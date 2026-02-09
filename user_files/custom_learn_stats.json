@@ -1,0 +1,25 @@
+{
+  "lifetime": {
+    "topic": 1200,
+    "item": 5400,
+    "priority": 4100,
+    "random": 2500,
+    "by_tag": {
+      "topic": {"psychology": 300, "religion": 120},
+      "item": {"psychology": 900, "religion": 450}
+    }
+  },
+  "daily": {
+    "2026-01-03": {
+      "topic": 12,
+      "item": 48,
+      "priority": 40,
+      "random": 20,
+      "by_tag": {
+        "topic": {"psychology": 5},
+        "item": {"psychology": 18, "religion": 10}
+      }
+    }
+  },
+  "last_reset": "2026-01-03T04:00:00"
+}

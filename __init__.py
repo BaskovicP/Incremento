@@ -1,34 +1,49 @@
-# import the main window object (mw) from aqt
+"""
+This module defines the main functionality for the Incremental Learning Anki addon.
+It includes the AddonManager class for managing addon-specific data and the learnFunction
+for initiating the learning process.
+"""
+
+import json
 from aqt import mw
-# import the "show info" tool from utils.py
-from aqt.utils import showInfo, qconnect
-# import all of the Qt GUI library
+from aqt.utils import showInfo
 from aqt.qt import *
 
-# We're going to add a menu item below. First we want to create a function to
-# be called when the menu item is activated.
+from .utils.statistics import load_stats, save_stats
+from .utils.cards import add_topic_type_to_custom_data
 
-def testFunction() -> None:
-    # get the number of cards in the current collection, which is stored in
-    # the main window
-    cardCount = mw.col.card_count()
-    # show a message box
-    showInfo("Card count: %d" % cardCount)
+class AddonManager:
+    def __init__(self):
+        self.addon_dir = os.path.dirname(__file__)
+        self.stats = None
+
+    def get_stats(self):
+        if self.stats is None:
+            self.stats = load_stats(self.addon_dir)
+        return self.stats
+
+
+addon_manager = AddonManager()
+
 
 def learnFunction() -> None:
-    # placeholder for learn button functionality
-    showInfo("Learn button clicked!")
+    # cids = mw.col.find_cards("is:due")
+    # cid = random.choice(cids)
+    # card = mw.col.get_card(cid)
 
-# create a new menu item, "test"
-action = QAction("test", mw)
-# set it to call testFunction when it's clicked
-qconnect(action.triggered, testFunction)
-# and add it to the tools menu
-mw.form.menuTools.addAction(action)
 
-# create a new menu item, "Learn"
-learnAction = QAction("Learn", mw)
-# set it to call learnFunction when it's clicked
+    add_topic_type_to_custom_data("topics")
+
+    test_card = mw.col.get_card(mw.col.find_cards("deck:topics")[0])
+
+    showInfo(json.loads(test_card.custom_data))
+
+    config = mw.addonManager.getConfig(__name__)
+    if config:
+        showInfo(config['my_var'])
+    else:
+        showInfo("Learn button clicked! Replace this with your test code.")
+
+learnAction = QAction("Start Incremental Learning", mw)
 qconnect(learnAction.triggered, learnFunction)
-# and add it to the tools menu
 mw.form.menuTools.addAction(learnAction)
