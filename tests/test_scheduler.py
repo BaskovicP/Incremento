@@ -135,13 +135,15 @@ class TestCardTypeSelection:
         with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
             with _mock_card_utils(tag_topic=[101, 102]):
                 result = scheduler.get_card_from_scheduler()
-        assert result in [101, 102]
+        assert result.card in [101, 102]
+        assert result.card_type == "topics"
 
     def test_items_fetches_from_item_function(self):
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[201, 202]):
                 result = scheduler.get_card_from_scheduler()
-        assert result in [201, 202]
+        assert result.card in [201, 202]
+        assert result.card_type == "items"
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +155,8 @@ class TestModeSelection:
         with _patch_soft_pick(card_type="items", mode="priority"):
             with _mock_card_utils(tag_item=[501, 502, 503]):
                 result = scheduler.get_card_from_scheduler()
-        assert result == 501
+        assert result.card == 501
+        assert result.mode == "priority"
 
     def test_random_calls_random_choice(self):
         with _patch_soft_pick(card_type="items", mode="random"):
@@ -161,7 +164,8 @@ class TestModeSelection:
                 with patch("scheduler.random.choice", return_value=602) as mock_choice:
                     result = scheduler.get_card_from_scheduler()
         mock_choice.assert_called_once_with([601, 602, 603])
-        assert result == 602
+        assert result.card == 602
+        assert result.mode == "random"
 
 
 # ---------------------------------------------------------------------------
@@ -173,31 +177,35 @@ class TestTagFallback:
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[], all_item=[201, 202]):
                 result = scheduler.get_card_from_scheduler()
-        assert result in [201, 202]
+        assert result.card in [201, 202]
+        assert result.tag is None  # tag was ignored
 
     def test_falls_back_to_all_topics_when_tag_empty(self):
         with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
             with _mock_card_utils(tag_topic=[], all_topic=[101, 102]):
                 result = scheduler.get_card_from_scheduler()
-        assert result in [101, 102]
+        assert result.card in [101, 102]
+        assert result.tag is None
 
     def test_falls_back_to_other_type_when_selected_type_empty(self):
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[], all_item=[], all_topic=[101, 102]):
                 result = scheduler.get_card_from_scheduler()
-        assert result in [101, 102]
+        assert result.card in [101, 102]
+        assert result.card_type == "topics"  # fell back to other type
 
     def test_falls_back_to_items_when_topics_empty(self):
         with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
             with _mock_card_utils(tag_topic=[], all_topic=[], all_item=[201, 202]):
                 result = scheduler.get_card_from_scheduler()
-        assert result in [201, 202]
+        assert result.card in [201, 202]
+        assert result.card_type == "items"
 
-    def test_returns_none_when_all_sources_empty(self):
+    def test_returns_none_card_when_all_sources_empty(self):
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[], all_item=[], all_topic=[]):
                 result = scheduler.get_card_from_scheduler()
-        assert result is None
+        assert result.card is None
 
     def test_does_not_use_fallback_when_tag_has_cards(self):
         """Fallback (get_all_item_cards) must NOT be called when tag returns results."""
@@ -211,7 +219,8 @@ class TestTagFallback:
                 get_all_topic_cards=lambda: [],
             ):
                 result = scheduler.get_card_from_scheduler()
-        assert result == 201
+        assert result.card == 201
+        assert result.tag == "health"  # tag was used successfully
         assert calls == [], "fallback should not have been called"
 
 
@@ -245,7 +254,7 @@ class TestCountsTracking:
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[201]):
                 r2 = scheduler.get_card_from_scheduler()
-        assert r1 == r2  # both get the same first card; no carry-over state
+        assert r1.card == r2.card  # no carry-over state
 
 
 # ---------------------------------------------------------------------------
@@ -257,4 +266,4 @@ class TestEdgeCases:
         with _patch_soft_pick(card_type="items", mode="priority"):
             with _mock_card_utils(tag_item=[999]):
                 result = scheduler.get_card_from_scheduler()
-        assert result == 999
+        assert result.card == 999

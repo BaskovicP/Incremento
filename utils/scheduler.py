@@ -1,5 +1,14 @@
 import random
+from typing import NamedTuple
+
 import cards as card_utils
+
+
+class SchedulerResult(NamedTuple):
+    card: object
+    card_type: str        # "topics" | "items"  (actual, after fallbacks)
+    tag: str | None       # tag used, or None if fallback ignored it
+    mode: str             # "random" | "priority"
 
 
 def soft_pick(weights: dict, counts: dict, alpha=0.2, epsilon=0.05) -> str:
@@ -48,7 +57,7 @@ def get_card_from_scheduler(
         cards = card_utils.get_all_item_cards() if card_type == "topics" else card_utils.get_all_topic_cards()
 
     if not cards:
-        return None
+        return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
 
     # 3. Update counts based on what we ACTUALLY used
     counts["type"][actual_type] = counts["type"].get(actual_type, 0) + 1
@@ -56,4 +65,5 @@ def get_card_from_scheduler(
     if actual_tag:
         counts["tags"][actual_tag] = counts["tags"].get(actual_tag, 0) + 1
 
-    return random.choice(cards) if mode == "random" else cards[0]
+    card = random.choice(cards) if mode == "random" else cards[0]
+    return SchedulerResult(card=card, card_type=actual_type, tag=actual_tag, mode=mode)
