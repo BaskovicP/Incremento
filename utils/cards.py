@@ -52,3 +52,9 @@ def batch_update_card_custom_data(card_ids: Sequence[CardId], custom_data: dict)
     return changed_cards
 
 
+def get_topic_cards_by_tag(tag: str):
+    return mw.col.find_cards(all_ready_cards_filter + f' deck:topics tag:{tag}')
+
+
+def get_item_cards_by_tag(tag: str):
+    return mw.col.find_cards(all_ready_cards_filter + f' -deck:"Topics::*" tag:{tag}')

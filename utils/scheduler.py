@@ -1,29 +1,59 @@
 import random
 import cards as card_utils
 
-def get_card_from_scheduler(topics_rate=0.5, random_rate=0.5):
-    card_type = 'item'
-    probability = 'priority'
 
-    if random.random() > topics_rate:
-        card_type = 'topic'
+def soft_pick(weights: dict, counts: dict, alpha=0.2, epsilon=0.05) -> str:
+    """Debt-based weighted random selection"""
+    n = sum(counts.values())
+    probs = {k: max(w * n - counts.get(k, 0) + alpha, epsilon) for k, w in weights.items()}
+    total = sum(probs.values())
 
-    if random.random() > random_rate:
-        probability = 'random'
+    r = random.random()
+    for key, p in probs.items():
+        r -= p / total
+        if r <= 0:
+            return key
+    return key
 
-    if card_type == 'topic':
-        cards = card_utils.get_all_topic_cards()
-    else:
-        cards = card_utils.get_all_item_cards()
+
+def get_card_from_scheduler(
+        topics_rate=0.3,
+        random_rate=0.5,
+        tag_weights={"health": 0.5, "psych": 0.3, "other": 0.2},
+        counts=None,
+        alpha=0.2,
+        epsilon=0.05
+):
+    if counts is None:
+        counts = {"type": {}, "tags": {}, "mode": {}}
+
+    # 1. Decisions
+    card_type = soft_pick({"topics": topics_rate, "items": 1 - topics_rate}, counts["type"], alpha, epsilon)
+    tag = soft_pick(tag_weights, counts["tags"], alpha, epsilon)
+    mode = soft_pick({"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
+
+    # 2. Fetch with fallbacks (track what we actually used)
+    actual_type = card_type
+    actual_tag = tag
+
+    fetch = card_utils.get_topic_cards_by_tag if card_type == "topics" else card_utils.get_item_cards_by_tag
+    cards = fetch(tag)
+
+    if not cards:
+        actual_tag = None  # tag ignored
+        cards = card_utils.get_all_topic_cards() if card_type == "topics" else card_utils.get_all_item_cards()
+
+    if not cards:
+        actual_type = "items" if card_type == "topics" else "topics"
+        cards = card_utils.get_all_item_cards() if card_type == "topics" else card_utils.get_all_topic_cards()
 
     if not cards:
         return None
 
-    if probability == 'random':
-        return random.choice(cards)
-    else:
-        # Sort by priority and get the first priority one
-        return cards[0]
+    # 3. Update counts based on what we ACTUALLY used
+    counts["type"][actual_type] = counts["type"].get(actual_type, 0) + 1
+    counts["mode"][mode] = counts["mode"].get(mode, 0) + 1
+    if actual_tag:
+        counts["tags"][actual_tag] = counts["tags"].get(actual_tag, 0) + 1
 
-    # Daj mi po prioritetu ili random
-    # Daj mi po tagu ili ne
+    return random.choice(cards) if mode == "random" else cards[0]
