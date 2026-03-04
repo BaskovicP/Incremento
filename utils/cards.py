@@ -9,6 +9,17 @@ all_ready_cards_filter = "is:due OR is:learn OR is:new"
 def get_all_ready_card_ids():
     return mw.col.find_cards(all_ready_cards_filter)
 
+def get_all_topic_cards():
+    # TODO: Extract topics into a variable
+    return mw.col.find_cards(all_ready_cards_filter + " decks:topics")
+
+def get_all_item_cards():
+    return mw.col.find_cards(all_ready_cards_filter + '-deck:"Topics::*"')
+
+
+
+
+# Potentialy useful
 def get_all_ready_cards_custom_data():
     result = {}
     for cid in get_all_ready_card_ids():
@@ -19,8 +30,6 @@ def get_all_ready_cards_custom_data():
            except:
                result[cid] = {}
     return result
-
-
 def change_custom_data(card_id: CardId, custom_data: dict) -> Card:
     card = mw.col.get_card(card_id)
     try:
@@ -30,14 +39,6 @@ def change_custom_data(card_id: CardId, custom_data: dict) -> Card:
         print("Filling custom data failed")
 
     return card
-
-
-
-def add_topic_type_to_custom_data(deckName):
-    card_ids = mw.col.find_cards(f"deck:{deckName}")
-    changed_cards = batch_update_card_custom_data(card_ids, {"topic": True})
-    return len(changed_cards)
-
 
 def batch_update_card_custom_data(card_ids: Sequence[CardId], custom_data: dict) -> list[Any]:
     changed_cards = []
@@ -51,8 +52,3 @@ def batch_update_card_custom_data(card_ids: Sequence[CardId], custom_data: dict)
     return changed_cards
 
 
-def get_all_topic_cards():
-    return mw.col.find_cards(all_ready_cards_filter + " decks:topics")
-
-def get_all_item_cards():
-    return mw.col.find_cards(all_ready_cards_filter + '-deck:"Topics::*"')
