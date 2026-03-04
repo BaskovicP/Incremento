@@ -29,6 +29,7 @@ def get_card_from_scheduler(
         topics_rate=0.3,
         random_rate=0.5,
         tag_weights={"health": 0.5, "psych": 0.3, "other": 0.2},
+        use_tags=True,
         counts=None,
         alpha=0.2,
         epsilon=0.05
@@ -38,18 +39,22 @@ def get_card_from_scheduler(
 
     # 1. Decisions
     card_type = soft_pick({"topics": topics_rate, "items": 1 - topics_rate}, counts["type"], alpha, epsilon)
-    tag = soft_pick(tag_weights, counts["tags"], alpha, epsilon)
     mode = soft_pick({"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
 
     # 2. Fetch with fallbacks (track what we actually used)
     actual_type = card_type
-    actual_tag = tag
+    actual_tag = None
 
-    fetch = card_utils.get_topic_cards_by_tag if card_type == "topics" else card_utils.get_item_cards_by_tag
-    cards = fetch(tag)
+    if use_tags:
+        tag = soft_pick(tag_weights, counts["tags"], alpha, epsilon)
+        actual_tag = tag
+        fetch = card_utils.get_topic_cards_by_tag if card_type == "topics" else card_utils.get_item_cards_by_tag
+        cards = fetch(tag)
 
-    if not cards:
-        actual_tag = None  # tag ignored
+        if not cards:
+            actual_tag = None  # tag ignored
+            cards = card_utils.get_all_topic_cards() if card_type == "topics" else card_utils.get_all_item_cards()
+    else:
         cards = card_utils.get_all_topic_cards() if card_type == "topics" else card_utils.get_all_item_cards()
 
     if not cards:

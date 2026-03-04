@@ -1,48 +1,44 @@
-"""
-This module defines the main functionality for the Incremental Learning Anki addon.
-It includes the AddonManager class for managing addon-specific data and the learnFunction
-for initiating the learning process.
-"""
+import os
+import sys
 
-import json
 from aqt import mw
 from aqt.utils import showInfo
-from aqt.qt import *
+from aqt.qt import QAction, qconnect
 
-from .utils.statistics import load_stats, save_stats
-from .utils.cards import add_topic_type_to_custom_data
+# Allow utils/scheduler.py to do `import cards` as a plain import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
 
-class AddonManager:
-    def __init__(self):
-        self.addon_dir = os.path.dirname(__file__)
-        self.stats = None
+from .utils.scheduler import get_card_from_scheduler
 
-    def get_stats(self):
-        if self.stats is None:
-            self.stats = load_stats(self.addon_dir)
-        return self.stats
-
-
-addon_manager = AddonManager()
+# Counts persist for the whole Anki session (resets on restart)
+_counts = {"type": {}, "tags": {}, "mode": {}}
 
 
 def learnFunction() -> None:
-    # cids = mw.col.find_cards("is:due")
-    # cid = random.choice(cids)
-    # card = mw.col.get_card(cid)
+    result = get_card_from_scheduler(counts=_counts)
 
+    if result.card is None:
+        showInfo("No cards available to study right now.")
+        return
 
-    add_topic_type_to_custom_data("topics")
+    card = mw.col.get_card(result.card)
+    note = card.note()
+    question = note.fields[0][:120].strip()
 
-    test_card = mw.col.get_card(mw.col.find_cards("deck:topics")[0])
+    msg = (
+        f"Card:  {question}\n"
+        f"\n"
+        f"Type:  {result.card_type}\n"
+        f"Tag:   {result.tag or '(none — tag fallback)'}\n"
+        f"Mode:  {result.mode}\n"
+        f"\n"
+        f"Session counts:\n"
+        f"  type  {_counts['type']}\n"
+        f"  tags  {_counts['tags']}\n"
+        f"  mode  {_counts['mode']}\n"
+    )
+    showInfo(msg)
 
-    showInfo(json.loads(test_card.custom_data))
-
-    config = mw.addonManager.getConfig(__name__)
-    if config:
-        showInfo(config['my_var'])
-    else:
-        showInfo("Learn button clicked! Replace this with your test code.")
 
 learnAction = QAction("Start Incremental Learning", mw)
 qconnect(learnAction.triggered, learnFunction)

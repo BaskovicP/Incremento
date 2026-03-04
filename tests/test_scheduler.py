@@ -6,9 +6,10 @@ import scheduler
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _patch_soft_pick(card_type="items", tag="health", mode="priority"):
-    """Stub soft_pick to return deterministic decisions in order: type, tag, mode."""
-    return patch("scheduler.soft_pick", side_effect=[card_type, tag, mode])
+def _patch_soft_pick(card_type="items", tag="health", mode="priority", use_tags=True):
+    """Stub soft_pick to return deterministic decisions in order: type, mode, [tag]."""
+    side_effect = [card_type, mode, tag] if use_tags else [card_type, mode]
+    return patch("scheduler.soft_pick", side_effect=side_effect)
 
 
 def _mock_card_utils(tag_topic=None, tag_item=None, all_topic=None, all_item=None):
@@ -222,6 +223,54 @@ class TestTagFallback:
         assert result.card == 201
         assert result.tag == "health"  # tag was used successfully
         assert calls == [], "fallback should not have been called"
+
+
+# ---------------------------------------------------------------------------
+# use_tags=False
+# ---------------------------------------------------------------------------
+
+class TestUseTagsFalse:
+    def test_skips_tag_fetch_and_uses_all_cards(self):
+        tag_fetch_calls = []
+        with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
+            with patch.multiple(
+                "scheduler.card_utils",
+                get_item_cards_by_tag=lambda tag: tag_fetch_calls.append(tag) or [],
+                get_all_item_cards=lambda: [201, 202],
+                get_topic_cards_by_tag=lambda tag: [],
+                get_all_topic_cards=lambda: [],
+            ):
+                result = scheduler.get_card_from_scheduler(use_tags=False)
+        assert result.card in [201, 202]
+        assert result.tag is None
+        assert tag_fetch_calls == [], "tag-based fetch should not be called"
+
+    def test_tag_is_none_in_result(self):
+        with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
+            with _mock_card_utils(all_item=[201]):
+                result = scheduler.get_card_from_scheduler(use_tags=False)
+        assert result.tag is None
+
+    def test_tag_counts_not_updated(self):
+        counts = {"type": {}, "tags": {}, "mode": {}}
+        with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
+            with _mock_card_utils(all_item=[201]):
+                scheduler.get_card_from_scheduler(use_tags=False, counts=counts)
+        assert counts["tags"] == {}
+
+    def test_use_tags_true_still_calls_tag_fetch(self):
+        tag_fetch_calls = []
+        with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
+            with patch.multiple(
+                "scheduler.card_utils",
+                get_item_cards_by_tag=lambda tag: tag_fetch_calls.append(tag) or [201],
+                get_all_item_cards=lambda: [],
+                get_topic_cards_by_tag=lambda tag: [],
+                get_all_topic_cards=lambda: [],
+            ):
+                result = scheduler.get_card_from_scheduler(use_tags=True)
+        assert tag_fetch_calls == ["health"]
+        assert result.tag == "health"
 
 
 # ---------------------------------------------------------------------------
