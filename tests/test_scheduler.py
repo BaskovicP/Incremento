@@ -54,6 +54,77 @@ class TestSoftPick:
         selections = [scheduler.soft_pick(weights, counts) for _ in range(100)]
         assert selections.count("b") > selections.count("a")
 
+    # --- deterministic tests (mocked random) ---
+    # With {"a": 0.5, "b": 0.5}, counts={}, alpha=0.2:
+    #   n=0 → probs = {"a": 0.2, "b": 0.2}, total=0.4 → each has 50% share
+    #   r=0.1 → r -= 0.5 = -0.4 ≤ 0 → "a"
+    #   r=0.9 → r -= 0.5 = 0.4 > 0; r -= 0.5 = -0.1 ≤ 0 → "b"
+
+    def test_selects_first_key_with_small_random(self):
+        with patch("scheduler.random.random", return_value=0.1):
+            result = scheduler.soft_pick({"a": 0.5, "b": 0.5}, {})
+        assert result == "a"
+
+    def test_selects_second_key_with_large_random(self):
+        with patch("scheduler.random.random", return_value=0.9):
+            result = scheduler.soft_pick({"a": 0.5, "b": 0.5}, {})
+        assert result == "b"
+
+    def test_selects_third_of_three_keys(self):
+        # {"a": 1/3, "b": 1/3, "c": 1/3}, counts={} → equal 1/3 shares
+        # r=0.9 → r -= 1/3 ≈ 0.567 > 0; r -= 1/3 ≈ 0.234 > 0; r -= 1/3 ≈ -0.1 ≤ 0 → "c"
+        with patch("scheduler.random.random", return_value=0.9):
+            result = scheduler.soft_pick({"a": 1/3, "b": 1/3, "c": 1/3}, {})
+        assert result == "c"
+
+    # --- alpha smoothing ---
+
+    def test_empty_counts_gives_equal_probability_regardless_of_weights(self):
+        """With n=0, alpha dominates: prob = alpha for all keys regardless of weight."""
+        weights = {"rare": 0.1, "common": 0.9}
+        selections = [scheduler.soft_pick(weights, {}) for _ in range(1000)]
+        ratio = selections.count("common") / 1000
+        assert 0.4 < ratio < 0.6  # ~50/50, NOT 90/10
+
+    # --- epsilon floor ---
+    # With counts={"a": 1000}, weights={"a": 0.5, "b": 0.5}:
+    #   n=1000 → probs["a"] = max(500 - 1000 + 0.2, 0.05) = 0.05  (epsilon floor)
+    #            probs["b"] = max(500 - 0    + 0.2, 0.05) = 500.2
+    #   p_a/total ≈ 0.0001 → r=0.0 triggers "a" first
+
+    def test_epsilon_floor_keeps_overrepresented_key_selectable(self):
+        """A key far over its budget is still selectable via the epsilon floor."""
+        with patch("scheduler.random.random", return_value=0.0):
+            result = scheduler.soft_pick({"a": 0.5, "b": 0.5}, {"a": 1000})
+        assert result == "a"
+
+    def test_custom_epsilon_raises_floor(self):
+        """A larger epsilon gives a bigger minimum share to overrepresented keys."""
+        # default epsilon=0.05 → probs["a"] = 0.05
+        # custom epsilon=0.5  → probs["a"] = 0.5 (larger floor)
+        counts = {"a": 1000}
+        weights = {"a": 0.5, "b": 0.5}
+        default_share = 0.05 / (0.05 + 500.2)
+        larger_share  = 0.5  / (0.5  + 500.2)
+        assert larger_share > default_share
+
+    # --- debt / catch-up ---
+    # counts={"a": 10}, weights={"a": 0.5, "b": 0.5}:
+    #   n=10 → probs["a"] = max(5 - 10 + 0.2, 0.05) = 0.05
+    #          probs["b"] = max(5 -  0 + 0.2, 0.05) = 5.2
+    #   p_b/total ≈ 0.99 → r=0.5 skips "a" and lands on "b"
+
+    def test_underrepresented_key_dominates(self):
+        with patch("scheduler.random.random", return_value=0.5):
+            result = scheduler.soft_pick({"a": 0.5, "b": 0.5}, {"a": 10})
+        assert result == "b"
+
+    def test_underrepresented_key_selected_far_more_often(self):
+        weights = {"a": 0.5, "b": 0.5}
+        counts = {"a": 8, "b": 2}  # n=10: probs["a"]≈0.05, probs["b"]≈3.2
+        selections = [scheduler.soft_pick(weights, counts) for _ in range(200)]
+        assert selections.count("b") > selections.count("a") * 10
+
 
 # ---------------------------------------------------------------------------
 # Card type selection (topics vs items)
