@@ -1,9 +1,27 @@
-import json, os, time
+import json
+import os
+import time
 from pathlib import Path
 
 
+def _empty() -> dict:
+    return {"type": {}, "tags": {}, "mode": {}}
+
+
+def _today() -> str:
+    return time.strftime("%Y-%m-%d")
+
+
+def _is_valid_counts_block(d) -> bool:
+    return (
+        isinstance(d, dict)
+        and isinstance(d.get("type"), dict)
+        and isinstance(d.get("tags"), dict)
+        and isinstance(d.get("mode"), dict)
+    )
+
+
 def _stats_path(addon_dir: str) -> Path:
-    # addon_dir = os.path.dirname(__file__) from your add-on package
     path = Path(addon_dir) / "user_files" / "custom_learn_stats.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
@@ -12,68 +30,73 @@ def _stats_path(addon_dir: str) -> Path:
 def load_stats(addon_dir: str) -> dict:
     path = _stats_path(addon_dir)
     if not path.exists():
-        return {
-            "lifetime": {"topic": 0, "item": 0, "priority": 0, "random": 0,
-                         "by_tag": {"topic": {}, "item": {}}},
-            "daily": {},
-            "last_reset": None
-        }
+        return {}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        # fallback: don’t crash if file is corrupted
-        return {
-            "lifetime": {"topic": 0, "item": 0, "priority": 0, "random": 0,
-                         "by_tag": {"topic": {}, "item": {}}},
-            "daily": {},
-            "last_reset": None
-        }
+        return {}
 
 
 def save_stats(addon_dir: str, stats: dict) -> None:
     path = _stats_path(addon_dir)
     tmp = path.with_name(path.name + ".tmp")
-
     data = json.dumps(stats, ensure_ascii=False, indent=2, sort_keys=True)
     tmp.write_text(data, encoding="utf-8")
-
-    # atomic replace
     os.replace(tmp, path)
 
 
-def get_daily_stats(stats: dict) -> dict:
-    today = time.strftime("%Y-%m-%d")
-    if stats.get("last_reset") != today:
-        stats["daily"] = {}
-        stats["last_reset"] = today
-    return stats["daily"]
+class StatsManager:
+    def __init__(self, addon_dir: str):
+        self._addon_dir = addon_dir
+        self.session = _empty()
 
+        raw = load_stats(addon_dir)
 
-def get_daily_item_stats(stats: dict) -> dict:
-    daily_stats = get_daily_stats(stats)
-    if "item" not in daily_stats:
-        daily_stats["item"] = {}
-    return daily_stats["item"]
+        lt = raw.get("lifetime")
+        self.lifetime = lt if _is_valid_counts_block(lt) else _empty()
 
+        daily_raw = raw.get("daily", {})
+        if (
+            isinstance(daily_raw, dict)
+            and daily_raw.get("date") == _today()
+            and _is_valid_counts_block(daily_raw.get("counts"))
+        ):
+            self.daily = daily_raw["counts"]
+        else:
+            self.daily = _empty()
 
-def get_daily_topic_stats(stats: dict) -> dict:
-    daily_stats = get_daily_stats(stats)
-    if "topic" not in daily_stats:
-        daily_stats["topic"] = {}
-    return daily_stats["topic"]
+    def counts_for(self, scope: str) -> dict:
+        if scope == "session":
+            return self.session
+        if scope == "daily":
+            return self.daily
+        if scope == "lifetime":
+            return self.lifetime
+        raise ValueError(
+            f"Unknown scope: {scope!r}. Must be 'session', 'daily', or 'lifetime'."
+        )
 
+    def record(self, result, scheduled_scope: str) -> None:
+        if result.card is None:
+            return
 
-def get_lifetime_stats(stats: dict) -> dict:
-    return stats["lifetime"]
+        for scope_name in ("session", "daily", "lifetime"):
+            if scope_name == scheduled_scope:
+                continue
+            counts = self.counts_for(scope_name)
+            counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
+            counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
+            if result.tag is not None:
+                counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
 
+        self._save()
 
-def get_lifetime_item_stats(stats: dict) -> dict:
-    return stats["lifetime"]["item"]
-
-
-def get_lifetime_priority_stats(stats: dict) -> dict:
-    return stats["lifetime"]["priority"]
-
-
-def get_lifetime_topic_stats(stats: dict) -> dict:
-    return stats["lifetime"]["topic"]
+    def _save(self) -> None:
+        stats = {
+            "daily": {
+                "date": _today(),
+                "counts": self.daily,
+            },
+            "lifetime": self.lifetime,
+        }
+        save_stats(self._addon_dir, stats)

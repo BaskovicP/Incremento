@@ -1,4 +1,4 @@
 {
-    "my_var": "Learn function test value"
+    "my_var": "Learn function test value",
+    "scheduler_scope": "session"
 }
-
