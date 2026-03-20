@@ -43,8 +43,6 @@ def get_card_from_scheduler(
     card_type = soft_pick({"topics": topics_rate, "items": 1 - topics_rate}, counts["type"], alpha, epsilon)
     mode = soft_pick({"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
 
-    print('card_type', card_type)
-
     # 2. Fetch with fallbacks (track what we actually used)
     actual_type = card_type
     actual_tag = None
@@ -55,21 +53,36 @@ def get_card_from_scheduler(
     if use_tags:
         tag = soft_pick(tag_weights, counts["tags"], alpha, epsilon)
         actual_tag = tag
-        fetch = card_utils.get_topic_cards_by_tag if card_type == "topics" else card_utils.get_item_cards_by_tag
-        cards = available(fetch(tag))
+
+        # Primary: requested type + tag
+        fetch_primary = (card_utils.get_topic_cards_by_tag if card_type == "topics"
+                         else card_utils.get_item_cards_by_tag)
+        cards = available(fetch_primary(tag))
+
+        # Type fallback: try the other type, but STAY within the tag
+        if not cards:
+            actual_type = "items" if card_type == "topics" else "topics"
+            fetch_alt = (card_utils.get_item_cards_by_tag if card_type == "topics"
+                         else card_utils.get_topic_cards_by_tag)
+            cards = available(fetch_alt(tag))
+
+        # No cards at all for this tag → caller handles it (next tag or Phase 2)
+        if not cards:
+            return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
+
+    else:
+        # No tag constraint — fetch all cards of the chosen type
+        cards = available(card_utils.get_all_topic_cards() if card_type == "topics"
+                          else card_utils.get_all_item_cards())
+
+        # Type fallback across all cards
+        if not cards:
+            actual_type = "items" if card_type == "topics" else "topics"
+            cards = available(card_utils.get_all_item_cards() if card_type == "topics"
+                              else card_utils.get_all_topic_cards())
 
         if not cards:
-            actual_tag = None  # tag ignored
-            cards = available(card_utils.get_all_topic_cards() if card_type == "topics" else card_utils.get_all_item_cards())
-    else:
-        cards = available(card_utils.get_all_topic_cards() if card_type == "topics" else card_utils.get_all_item_cards())
-
-    if not cards:
-        actual_type = "items" if card_type == "topics" else "topics"
-        cards = available(card_utils.get_all_item_cards() if card_type == "topics" else card_utils.get_all_topic_cards())
-
-    if not cards:
-        return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
+            return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
 
     card = random.choice(cards) if mode == "random" else cards[0]
     return SchedulerResult(card=card, card_type=actual_type, tag=actual_tag, mode=mode)

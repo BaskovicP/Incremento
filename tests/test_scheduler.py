@@ -135,14 +135,14 @@ class TestCardTypeSelection:
     def test_topics_fetches_from_topic_function(self):
         with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
             with _mock_card_utils(tag_topic=[101, 102]):
-                result = scheduler.get_card_from_scheduler()
+                result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card in [101, 102]
         assert result.card_type == "topics"
 
     def test_items_fetches_from_item_function(self):
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[201, 202]):
-                result = scheduler.get_card_from_scheduler()
+                result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card in [201, 202]
         assert result.card_type == "items"
 
@@ -155,7 +155,7 @@ class TestModeSelection:
     def test_priority_returns_first_card(self):
         with _patch_soft_pick(card_type="items", mode="priority"):
             with _mock_card_utils(tag_item=[501, 502, 503]):
-                result = scheduler.get_card_from_scheduler()
+                result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card == 501
         assert result.mode == "priority"
 
@@ -163,7 +163,7 @@ class TestModeSelection:
         with _patch_soft_pick(card_type="items", mode="random"):
             with _mock_card_utils(tag_item=[601, 602, 603]):
                 with patch("scheduler.random.choice", return_value=602) as mock_choice:
-                    result = scheduler.get_card_from_scheduler()
+                    result = scheduler.get_card_from_scheduler(use_tags=True)
         mock_choice.assert_called_once_with([601, 602, 603])
         assert result.card == 602
         assert result.mode == "random"
@@ -219,7 +219,7 @@ class TestTagFallback:
                 get_topic_cards_by_tag=lambda tag: [],
                 get_all_topic_cards=lambda: [],
             ):
-                result = scheduler.get_card_from_scheduler()
+                result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card == 201
         assert result.tag == "health"  # tag was used successfully
         assert calls == [], "fallback should not have been called"
@@ -278,22 +278,26 @@ class TestUseTagsFalse:
 # ---------------------------------------------------------------------------
 
 class TestCountsTracking:
-    def test_counts_updated_after_call(self):
+    def test_counts_passed_to_scheduler_not_modified(self):
+        """Scheduler uses counts for soft_pick decisions but does not modify the dict.
+        The caller (_pick in __init__.py) is responsible for updating counts from the result."""
         counts = {"type": {}, "tags": {}, "mode": {}}
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[201]):
-                scheduler.get_card_from_scheduler(counts=counts)
-        assert counts["type"]["items"] == 1
-        assert counts["tags"]["health"] == 1
-        assert counts["mode"]["priority"] == 1
+                result = scheduler.get_card_from_scheduler(counts=counts, use_tags=True)
+        assert result.card_type == "items"
+        assert result.tag == "health"
+        assert result.mode == "priority"
+        assert counts == {"type": {}, "tags": {}, "mode": {}}  # unchanged by scheduler
 
-    def test_counts_accumulate_across_calls(self):
+    def test_scheduler_called_repeatedly_with_same_counts(self):
+        """Scheduler can be called multiple times with the same counts dict."""
         counts = {"type": {}, "tags": {}, "mode": {}}
         with _mock_card_utils(tag_item=[201]):
             for _ in range(3):
                 with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
-                    scheduler.get_card_from_scheduler(counts=counts)
-        assert counts["type"]["items"] == 3
+                    result = scheduler.get_card_from_scheduler(counts=counts, use_tags=True)
+        assert result.card == 201
 
     def test_default_counts_do_not_persist_between_calls(self):
         """Each call with counts=None should start fresh."""
@@ -314,5 +318,5 @@ class TestEdgeCases:
     def test_single_card_returned(self):
         with _patch_soft_pick(card_type="items", mode="priority"):
             with _mock_card_utils(tag_item=[999]):
-                result = scheduler.get_card_from_scheduler()
+                result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card == 999

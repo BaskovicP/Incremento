@@ -14,6 +14,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
 
 from .utils.scheduler import get_card_from_scheduler
 from .utils.statistics import StatsManager
+from .utils.learn_dialog import SchedulerConfigDialog
+from .utils.scheduler_config import load_scheduler_config
 
 _stats = StatsManager(os.path.dirname(__file__))
 
@@ -26,27 +28,58 @@ def learnFunction() -> None:
     scope = config.get("scheduler_scope", "session")
     target_count = config.get("session_card_count", 50)
 
+    dlg = SchedulerConfigDialog(mw)
+    if not dlg.exec():
+        return
 
+    dlg.save_config()
+    cfg = dlg.to_config()
 
-    # Collect up to target_count unique card IDs via scheduler
     selected_ids: list[CardId] = []
     added_to_filtered: set[CardId] = set()
 
-    for _ in range(target_count * 3):
+    def _pick(use_tags: bool, tag_weights: dict) -> bool:
+        """Attempt one card pick. Returns False when no card is available."""
         counts = _stats.counts_for(scope)
-        if len(selected_ids) >= target_count:
-            break
-        result = get_card_from_scheduler(counts=counts, topics_rate=0.9, random_rate=0.99, exclude_ids=added_to_filtered)
+        result = get_card_from_scheduler(
+            counts=counts,
+            topics_rate=cfg.topics_rate,
+            random_rate=cfg.random_rate,
+            use_tags=use_tags,
+            tag_weights=tag_weights,
+            exclude_ids=added_to_filtered,
+        )
         if result.card is None:
-            break
+            return False
         counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
         counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
         if result.tag:
             counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
-
         _stats.record(result, scope)
         added_to_filtered.add(result.card)
         selected_ids.append(result.card)
+        return True
+
+    # Phase 1 — tag groups in descending weight order, exhausted sequentially.
+    if cfg.use_tags:
+        ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
+        for tag, weight in ordered:
+            tag_target = round(weight * target_count)
+            tag_picked = 0
+            for _ in range(tag_target * 3):
+                if tag_picked >= tag_target or len(selected_ids) >= target_count:
+                    break
+                if not _pick(use_tags=True, tag_weights={tag: 1.0}):
+                    break
+                tag_picked += 1
+
+    # Phase 2 — fill remaining slots with any card (Rest), if enabled.
+    if cfg.include_rest or not cfg.use_tags:
+        for _ in range(target_count * 3):
+            if len(selected_ids) >= target_count:
+                break
+            if not _pick(use_tags=False, tag_weights={}):
+                break
 
     if not selected_ids:
         showInfo("No cards available to study.")
