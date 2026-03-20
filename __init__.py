@@ -1,9 +1,13 @@
 import os
 import sys
 
+import pydevd_pycharm
+pydevd_pycharm.settrace('localhost', port=5678, suspend=False)
+
 from aqt import mw
 from aqt.utils import showInfo
-from aqt.qt import QAction, qconnect
+from aqt.qt import QAction, QDialog, qconnect
+from anki.cards import CardId
 
 # Allow utils/scheduler.py to do `import cards` as a plain import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
@@ -14,31 +18,63 @@ from .utils.statistics import StatsManager
 _stats = StatsManager(os.path.dirname(__file__))
 
 
+INCREMENTO_DECK = "Incremento Session"
+
+
 def learnFunction() -> None:
     config = mw.addonManager.getConfig(__name__) or {}
     scope = config.get("scheduler_scope", "session")
+    target_count = config.get("session_card_count", 50)
 
-    counts = _stats.counts_for(scope)
-    result = get_card_from_scheduler(counts=counts)
-    _stats.record(result, scope)
 
-    if result.card is None:
-        showInfo("No cards available to study right now.")
+
+    # Collect up to target_count unique card IDs via scheduler
+    selected_ids: list[CardId] = []
+    added_to_filtered: set[CardId] = set()
+
+    for _ in range(target_count * 3):
+        counts = _stats.counts_for(scope)
+        if len(selected_ids) >= target_count:
+            break
+        result = get_card_from_scheduler(counts=counts, topics_rate=0.9, random_rate=0.99, exclude_ids=added_to_filtered)
+        if result.card is None:
+            break
+        counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
+        counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
+        if result.tag:
+            counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
+
+        _stats.record(result, scope)
+        added_to_filtered.add(result.card)
+        selected_ids.append(result.card)
+
+    if not selected_ids:
+        showInfo("No cards available to study.")
         return
 
-    card = mw.col.get_card(result.card)
-    note = card.note()
-    question = note.fields[0][:120].strip()
+    search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
 
-    msg = (
-        f"Card:  {question}\n\n"
-        f"Type: {result.card_type}  Tag: {result.tag or '—'}  Mode: {result.mode}\n"
-        f"Scope: {scope}\n\n"
-        f"Session   type={_stats.session['type']}  tags={_stats.session['tags']}  mode={_stats.session['mode']}\n"
-        f"Daily     type={_stats.daily['type']}  tags={_stats.daily['tags']}  mode={_stats.daily['mode']}\n"
-        f"Lifetime  type={_stats.lifetime['type']}  tags={_stats.lifetime['tags']}  mode={_stats.lifetime['mode']}\n"
-    )
-    showInfo(msg)
+    # Get or create the filtered deck
+    existing = mw.col.decks.by_name(INCREMENTO_DECK)
+    if existing:
+        if not existing.get("dyn"):
+            showInfo(f"'{INCREMENTO_DECK}' is a normal deck. Delete or rename it first.")
+            return
+        did = existing["id"]
+        mw.col.sched.empty_filtered_deck(did)
+    else:
+        did = mw.col.decks.new_filtered(INCREMENTO_DECK)
+
+    # Configure via protobuf API (Anki 2.1.45+)
+    fdu = mw.col.sched.get_or_create_filtered_deck(did)
+    fdu.config.reschedule = True
+    del fdu.config.search_terms[:]
+    fdu.config.search_terms.add(search=search, limit=len(selected_ids))
+    op = mw.col.sched.add_or_update_filtered_deck(fdu)
+
+    mw.col.sched.rebuild_filtered_deck(op.id)
+    mw.col.decks.select(op.id)
+    mw.moveToState("review")
 
 
 learnAction = QAction("Start Incremental Learning", mw)

@@ -4,17 +4,16 @@ from typing import Any, Sequence
 from anki.cards import Card, CardId
 from aqt import mw
 
-all_ready_cards_filter = "is:due OR is:learn OR is:new"
+all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
 
 def get_all_ready_card_ids():
     return mw.col.find_cards(all_ready_cards_filter)
 
 def get_all_topic_cards():
-    # TODO: Extract topics into a variable
-    return mw.col.find_cards(all_ready_cards_filter + " decks:topics")
+    return mw.col.find_cards(f"deck:Topics {all_ready_cards_filter}")
 
 def get_all_item_cards():
-    return mw.col.find_cards(all_ready_cards_filter + '-deck:"Topics::*"')
+    return mw.col.find_cards(f"-deck:Topics {all_ready_cards_filter}")
 
 
 
@@ -53,8 +52,8 @@ def batch_update_card_custom_data(card_ids: Sequence[CardId], custom_data: dict)
 
 
 def get_topic_cards_by_tag(tag: str):
-    return mw.col.find_cards(all_ready_cards_filter + f' deck:topics tag:{tag}')
+    return mw.col.find_cards(f"deck:Topics tag:{tag} {all_ready_cards_filter}")
 
 
 def get_item_cards_by_tag(tag: str):
-    return mw.col.find_cards(all_ready_cards_filter + f' -deck:"Topics::*" tag:{tag}')
+    return mw.col.find_cards(f"-deck:Topics tag:{tag} {all_ready_cards_filter}")
