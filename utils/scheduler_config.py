@@ -17,6 +17,7 @@ class SchedulerConfig:
     use_tags: bool = False         # True if any real tag rows are active
     tag_weights: dict = field(default_factory=dict)  # {tag: normalised_weight}
     include_rest: bool = True      # fill remaining slots with untagged cards after tag phases
+    priority_order: list = field(default_factory=lambda: ["tags", "type", "mode"])
 
 
 def load_scheduler_config() -> SchedulerConfig:
@@ -43,10 +44,13 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     total = sum(raw.values()) or 1
     tag_weights = {tag: v / total for tag, v in raw.items()}
 
+    priority_order = d.get("priority_order", ["tags", "type", "mode"])
+
     return SchedulerConfig(
         topics_rate=topics_rate,
         random_rate=random_rate,
         use_tags=bool(real_rows),
         tag_weights=tag_weights,
         include_rest=no_tags_checked,
+        priority_order=priority_order,
     )

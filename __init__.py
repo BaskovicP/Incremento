@@ -38,7 +38,9 @@ def learnFunction() -> None:
     selected_ids: list[CardId] = []
     added_to_filtered: set[CardId] = set()
 
-    def _pick(use_tags: bool, tag_weights: dict) -> bool:
+    def _pick(use_tags: bool, tag_weights: dict,
+              force_card_type: str | None = None,
+              force_mode: str | None = None) -> bool:
         """Attempt one card pick. Returns False when no card is available."""
         counts = _stats.counts_for(scope)
         result = get_card_from_scheduler(
@@ -48,6 +50,8 @@ def learnFunction() -> None:
             use_tags=use_tags,
             tag_weights=tag_weights,
             exclude_ids=added_to_filtered,
+            force_card_type=force_card_type,
+            force_mode=force_mode,
         )
         if result.card is None:
             return False
@@ -60,8 +64,11 @@ def learnFunction() -> None:
         selected_ids.append(result.card)
         return True
 
-    # Phase 1 — tag groups in descending weight order, exhausted sequentially.
-    if cfg.use_tags:
+    # Phase 1 — enforce the first priority dimension as a hard constraint.
+    p1 = cfg.priority_order[0] if cfg.priority_order else "tags"
+
+    if p1 == "tags" and cfg.use_tags:
+        # Loop per-tag in descending weight order.
         ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
         for tag, weight in ordered:
             tag_target = round(weight * target_count)
@@ -73,8 +80,38 @@ def learnFunction() -> None:
                     break
                 tag_picked += 1
 
-    # Phase 2 — fill remaining slots with any card (Rest), if enabled.
-    if cfg.include_rest or not cfg.use_tags:
+    elif p1 == "type":
+        # Loop per-type: topics quota first, then items quota.
+        topics_target = round(cfg.topics_rate * target_count)
+        items_target = target_count - topics_target
+        for forced_type, type_target in [("topics", topics_target), ("items", items_target)]:
+            type_picked = 0
+            for _ in range(type_target * 3):
+                if type_picked >= type_target or len(selected_ids) >= target_count:
+                    break
+                if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights,
+                             force_card_type=forced_type):
+                    break
+                type_picked += 1
+
+    elif p1 == "mode":
+        # Loop per-mode: priority-ordered cards first, then random.
+        priority_target = round((1 - cfg.random_rate) * target_count)
+        random_target = target_count - priority_target
+        for forced_mode, mode_target in [("priority", priority_target), ("random", random_target)]:
+            mode_picked = 0
+            for _ in range(mode_target * 3):
+                if mode_picked >= mode_target or len(selected_ids) >= target_count:
+                    break
+                if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights,
+                             force_mode=forced_mode):
+                    break
+                mode_picked += 1
+
+    # Phase 2 — fill remaining slots (ungated for non-tags strategies;
+    # gated on include_rest for tags-first).
+    run_phase2 = (cfg.include_rest or not cfg.use_tags) if p1 == "tags" else True
+    if run_phase2:
         for _ in range(target_count * 3):
             if len(selected_ids) >= target_count:
                 break

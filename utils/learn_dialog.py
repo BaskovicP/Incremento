@@ -7,6 +7,13 @@ from aqt.qt import (
 from .scheduler_config import SchedulerConfig, NO_TAGS_KEY
 
 
+_PRIORITY_DIMS = [
+    ("tags",  "Tags"),
+    ("type",  "Type (topics / items)"),
+    ("mode",  "Mode (priority / random)"),
+]
+
+
 class SchedulerConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,6 +73,24 @@ class SchedulerConfigDialog(QDialog):
                  lambda v: (self._random_left_lbl.setText(f"{100 - v}%"),
                              self._random_right_lbl.setText(f"{v}%")))
 
+        # -- Priority order --
+        layout.addWidget(QLabel("Scheduling priority order:"))
+        priority_row = QHBoxLayout()
+        self._priority_combos: list[QComboBox] = []
+        saved_order = self._saved.get("priority_order", ["tags", "type", "mode"])
+        for i in range(3):
+            if i > 0:
+                priority_row.addWidget(QLabel("→"))
+            combo = QComboBox()
+            self._priority_combos.append(combo)
+            priority_row.addWidget(combo)
+        layout.addLayout(priority_row)
+        self._refresh_priority_combos(saved_order)
+        qconnect(self._priority_combos[0].currentIndexChanged,
+                 lambda _: self._on_priority_changed(0))
+        qconnect(self._priority_combos[1].currentIndexChanged,
+                 lambda _: self._on_priority_changed(1))
+
         # -- Tag distribution --
         layout.addWidget(QLabel("Tag distribution"))
 
@@ -100,6 +125,37 @@ class SchedulerConfigDialog(QDialog):
         qconnect(btn_box.accepted, self.accept)
         qconnect(btn_box.rejected, self.reject)
         layout.addWidget(btn_box)
+
+    # ------------------------------------------------------------------
+    # Priority order helpers
+    # ------------------------------------------------------------------
+
+    def _refresh_priority_combos(self, order: list) -> None:
+        """Populate the three priority combos so each shows only unused options."""
+        for i, combo in enumerate(self._priority_combos):
+            already_used = [order[j] for j in range(i)]
+            combo.blockSignals(True)
+            combo.clear()
+            for key, label in _PRIORITY_DIMS:
+                if key not in already_used:
+                    combo.addItem(label, key)
+            # Select the item matching order[i]
+            for j in range(combo.count()):
+                if combo.itemData(j) == order[i]:
+                    combo.setCurrentIndex(j)
+                    break
+            combo.blockSignals(False)
+        # Disable the last combo — it always has exactly one option
+        self._priority_combos[2].setEnabled(False)
+
+    def _on_priority_changed(self, changed_idx: int) -> None:
+        """When combo i changes, rebuild subsequent combos with remaining dims."""
+        used = [self._priority_combos[i].currentData() for i in range(changed_idx + 1)]
+        remaining = [k for k, _ in _PRIORITY_DIMS if k not in used]
+        self._refresh_priority_combos(used + remaining)
+
+    def _get_priority_order(self) -> list:
+        return [c.currentData() for c in self._priority_combos]
 
     # ------------------------------------------------------------------
     # Tag row helpers
@@ -257,6 +313,7 @@ class SchedulerConfigDialog(QDialog):
             use_tags=bool(raw),
             tag_weights={tag: v / total for tag, v in raw.items()},
             include_rest=self._no_tags_cb.isChecked(),
+            priority_order=self._get_priority_order(),
         )
 
     # ------------------------------------------------------------------
@@ -269,6 +326,7 @@ class SchedulerConfigDialog(QDialog):
             "topics_slider": self._topics_slider.value(),
             "random_slider": self._random_slider.value(),
             "no_tags_checked": self._no_tags_cb.isChecked(),
+            "priority_order": self._get_priority_order(),
             "tag_rows": [
                 {
                     "tag": row["tag"],

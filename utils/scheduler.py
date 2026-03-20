@@ -34,14 +34,18 @@ def get_card_from_scheduler(
         alpha=0.2,
         epsilon=0.05,
         exclude_ids=None,
+        force_card_type=None,   # "topics" | "items" | None — skips soft_pick for type
+        force_mode=None,        # "random" | "priority" | None — skips soft_pick for mode
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
     exclude = set(exclude_ids) if exclude_ids else set()
 
     # 1. Decisions
-    card_type = soft_pick({"topics": topics_rate, "items": 1 - topics_rate}, counts["type"], alpha, epsilon)
-    mode = soft_pick({"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
+    card_type = force_card_type if force_card_type is not None else soft_pick(
+        {"topics": topics_rate, "items": 1 - topics_rate}, counts["type"], alpha, epsilon)
+    mode = force_mode if force_mode is not None else soft_pick(
+        {"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
 
     # 2. Fetch with fallbacks (track what we actually used)
     actual_type = card_type

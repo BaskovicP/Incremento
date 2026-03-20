@@ -320,3 +320,49 @@ class TestEdgeCases:
             with _mock_card_utils(tag_item=[999]):
                 result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card == 999
+
+
+# ---------------------------------------------------------------------------
+# Forced dimensions (force_card_type / force_mode)
+# ---------------------------------------------------------------------------
+
+class TestForcedDimensions:
+    def test_force_card_type_topics(self):
+        """force_card_type bypasses soft_pick and pins the type."""
+        with patch("scheduler.soft_pick", side_effect=["priority"]) as mock_sp:
+            with _mock_card_utils(all_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="topics", use_tags=False)
+        assert result.card == 101
+        assert result.card_type == "topics"
+        # soft_pick called only once (for mode, not for type)
+        assert mock_sp.call_count == 1
+
+    def test_force_card_type_items(self):
+        with patch("scheduler.soft_pick", side_effect=["priority"]):
+            with _mock_card_utils(all_item=[201]):
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="items", use_tags=False)
+        assert result.card == 201
+        assert result.card_type == "items"
+
+    def test_force_mode_priority(self):
+        """force_mode bypasses soft_pick and pins the mode."""
+        with patch("scheduler.soft_pick", side_effect=["items"]) as mock_sp:
+            with _mock_card_utils(all_item=[201, 202, 203]):
+                result = scheduler.get_card_from_scheduler(
+                    force_mode="priority", use_tags=False)
+        assert result.card == 201   # priority → first card
+        assert result.mode == "priority"
+        assert mock_sp.call_count == 1  # only type was soft-picked
+
+    def test_force_both_skips_all_soft_picks(self):
+        """When both are forced, soft_pick is never called."""
+        with patch("scheduler.soft_pick") as mock_sp:
+            with _mock_card_utils(all_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="topics", force_mode="priority", use_tags=False)
+        mock_sp.assert_not_called()
+        assert result.card == 101
+        assert result.card_type == "topics"
+        assert result.mode == "priority"
