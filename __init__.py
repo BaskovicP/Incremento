@@ -162,30 +162,31 @@ def learnFunction() -> None:
         return
 
     # DEBUG: show scheduled card order before building the filtered deck
-    _debug_dlg = QDialog(mw)
-    _debug_dlg.setWindowTitle(f"DEBUG — Scheduled order ({len(selected_ids)} cards)")
-    _debug_dlg.resize(700, 500)
-    _debug_layout = QVBoxLayout(_debug_dlg)
-    _debug_txt = QTextEdit()
-    _debug_txt.setReadOnly(True)
-    _debug_txt.setFontFamily("Courier")
-    _debug_lines = ["#    type     mode       tag                  first field"]
-    _debug_lines.append("-" * 80)
-    for _i, _cid in enumerate(selected_ids):
-        _meta = _picked_meta.get(_cid, {})
-        _card = mw.col.get_card(_cid)
-        _note = mw.col.get_note(_card.nid)
-        _field = (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
-        _debug_lines.append(
-            f"{_i+1:3}.  {_meta.get('card_type','?'):7}  {_meta.get('mode','?'):9}  "
-            f"{(_meta.get('tag') or 'no-tag'):20} {_field}"
-        )
-    _debug_txt.setPlainText("\n".join(_debug_lines))
-    _debug_layout.addWidget(_debug_txt)
-    _debug_btn = QPushButton("Continue")
-    _debug_btn.clicked.connect(_debug_dlg.accept)
-    _debug_layout.addWidget(_debug_btn)
-    _debug_dlg.exec()
+    if cfg.show_debug:
+        _debug_dlg = QDialog(mw)
+        _debug_dlg.setWindowTitle(f"DEBUG — Scheduled order ({len(selected_ids)} cards)")
+        _debug_dlg.resize(700, 500)
+        _debug_layout = QVBoxLayout(_debug_dlg)
+        _debug_txt = QTextEdit()
+        _debug_txt.setReadOnly(True)
+        _debug_txt.setFontFamily("Courier")
+        _debug_lines = ["#    type     mode       tag                  first field"]
+        _debug_lines.append("-" * 80)
+        for _i, _cid in enumerate(selected_ids):
+            _meta = _picked_meta.get(_cid, {})
+            _card = mw.col.get_card(_cid)
+            _note = mw.col.get_note(_card.nid)
+            _field = (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
+            _debug_lines.append(
+                f"{_i+1:3}.  {_meta.get('card_type','?'):7}  {_meta.get('mode','?'):9}  "
+                f"{(_meta.get('tag') or 'no-tag'):20} {_field}"
+            )
+        _debug_txt.setPlainText("\n".join(_debug_lines))
+        _debug_layout.addWidget(_debug_txt)
+        _debug_btn = QPushButton("Continue")
+        _debug_btn.clicked.connect(_debug_dlg.accept)
+        _debug_layout.addWidget(_debug_btn)
+        _debug_dlg.exec()
 
     search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
 
@@ -247,29 +248,12 @@ def learnFunction() -> None:
 
     gui_hooks.reviewer_did_answer_card.append(_on_card_answered)
 
-    # One-shot hook: show summary and clean up when the reviewer is left.
-    session_counts = stats.counts_for("session")
-
-    def _show_summary() -> None:
-        gui_hooks.reviewer_will_end.remove(_show_summary)
+    # One-shot hook: clean up when the reviewer is left.
+    def _on_reviewer_end() -> None:
+        gui_hooks.reviewer_will_end.remove(_on_reviewer_end)
         gui_hooks.reviewer_did_answer_card.remove(_on_card_answered)
-        n_topics   = session_counts["type"].get("topics", 0)
-        n_items    = session_counts["type"].get("items", 0)
-        n_priority = session_counts["mode"].get("priority", 0)
-        n_random   = session_counts["mode"].get("random", 0)
-        total = n_topics + n_items
-        lines = [f"Session complete: {total} card(s) studied"]
-        lines.append(f"  Topics: {n_topics}   Items: {n_items}")
-        if n_priority or n_random:
-            lines.append(f"  Priority: {n_priority}   Random: {n_random}")
-        visible_tags = {t: c for t, c in session_counts["tags"].items()
-                        if not t.startswith("__")}
-        if visible_tags:
-            tag_parts = ", ".join(f"{t}: {c}" for t, c in visible_tags.items())
-            lines.append(f"  Tags: {tag_parts}")
-        showInfo("\n".join(lines))
 
-    gui_hooks.reviewer_will_end.append(_show_summary)
+    gui_hooks.reviewer_will_end.append(_on_reviewer_end)
     mw.moveToState("review")
 
 

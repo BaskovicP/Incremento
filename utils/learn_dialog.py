@@ -355,6 +355,10 @@ class SchedulerConfigDialog(QDialog):
         self._preserve_order_cb.setChecked(self._saved.get("preserve_order", True))
         layout.addWidget(self._preserve_order_cb)
 
+        self._show_debug_cb = QCheckBox("Show debug information on cards when starting")
+        self._show_debug_cb.setChecked(self._saved.get("show_debug", False))
+        layout.addWidget(self._show_debug_cb)
+
         qconnect(self._topics_filter_edit.textChanged, lambda _: self._refresh_counts())
         qconnect(self._items_filter_edit.textChanged,  lambda _: self._refresh_counts())
 
@@ -708,6 +712,7 @@ class SchedulerConfigDialog(QDialog):
             include_learning=self._cb_learning.isChecked(),
             include_due=self._cb_due.isChecked(),
             preserve_order=self._preserve_order_cb.isChecked(),
+            show_debug=self._show_debug_cb.isChecked(),
         )
 
     # ------------------------------------------------------------------
@@ -739,5 +744,6 @@ class SchedulerConfigDialog(QDialog):
             "include_learning": self._cb_learning.isChecked(),
             "include_due":      self._cb_due.isChecked(),
             "preserve_order":   self._preserve_order_cb.isChecked(),
+            "show_debug":       self._show_debug_cb.isChecked(),
         }
         mw.addonManager.writeConfig(__name__, config)
