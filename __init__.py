@@ -6,7 +6,9 @@ import types
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import QAction, QDialog, QVBoxLayout, QTextEdit, QPushButton, qconnect
+from aqt.qt import (QAction, QDialog, QVBoxLayout, QTextEdit,
+                     QPushButton, QDockWidget,
+                     QShortcut, QKeySequence, qconnect, QTimer, Qt)
 from anki.cards import CardId
 
 # Allow utils/scheduler.py to do `import cards` as a plain import
@@ -286,61 +288,102 @@ def _on_pdf_question_shown(card) -> None:
     )
 
 
+_add_card_dock = None  # QDockWidget instance, persists across card reviews
+
+
+def _build_add_card_dock():
+    """Embed the native AddCards dialog into a left dock widget."""
+    global _add_card_dock
+    from aqt.addcards import AddCards
+
+    dock = QDockWidget("Add Card", mw)
+    dock.setObjectName("incremento_add_card_dock")
+    dock.setMinimumWidth(400)
+
+    # Open the native dialog; hide it before the event loop renders it as a
+    # floating window, then reparent it into the dock as a plain widget.
+    dlg = AddCards(mw)
+    dlg.hide()
+    dlg.setParent(dock)
+    dlg.setWindowFlags(Qt.WindowType.Widget)
+    dock.setWidget(dlg)
+
+    mw.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+    _add_card_dock = dock
+    dlg.show()
+
+    def _set_field(idx, text):
+        note = dlg.editor.note
+        if note and idx < len(note.fields):
+            note.fields[idx] = text
+            try:
+                dlg.editor.loadNote()
+            except Exception:
+                pass
+
+    dock._set_field = _set_field
+    return dock
+
+
+def _open_add_card_dock():
+    global _add_card_dock
+    if _add_card_dock is not None:
+        try:
+            _add_card_dock.show()
+            _add_card_dock.raise_()
+            return
+        except RuntimeError:
+            _add_card_dock = None
+    _build_add_card_dock()
+
+
+def _fill_dock_field(idx, text):
+    global _add_card_dock
+    if _add_card_dock is None:
+        _build_add_card_dock()
+        QTimer.singleShot(600, lambda: _do_fill(idx, text))
+        return
+    try:
+        _add_card_dock.show()
+        _add_card_dock.raise_()
+        _do_fill(idx, text)
+    except RuntimeError:
+        _add_card_dock = None
+
+
+def _do_fill(idx, text):
+    if _add_card_dock is None:
+        return
+    try:
+        _add_card_dock._set_field(idx, text)
+    except (RuntimeError, AttributeError):
+        pass
+
+
+def _shortcut_fill(idx):
+    """Python-level Cmd/Ctrl+N handler — gets PDF selection and fills dock field."""
+    if mw.state != "review" or mw.reviewer is None:
+        return
+    sel = mw.reviewer.web.page().selectedText().strip()
+    if not sel:
+        return
+    _fill_dock_field(idx, sel)
+
+
 def _on_js_message(handled, message, context) -> tuple:
     if not isinstance(message, str) or not message.startswith("incremento_"):
         return handled
 
-    if message == "incremento_get_notetypes":
-        notetypes = [
-            {"name": m["name"], "fields": [f["name"] for f in m["flds"]]}
-            for m in mw.col.models.all()
-        ]
-        mw.reviewer.web.eval(
-            "window.incrementoReceiveNotetypes && "
-            f"window.incrementoReceiveNotetypes({json.dumps(notetypes)})"
-        )
+    if message == "incremento_open_add_card":
+        _open_add_card_dock()
         return (True, None)
 
-    if message == "incremento_get_decks":
-        deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
-        mw.reviewer.web.eval(
-            "window.incrementoReceiveDecks && "
-            f"window.incrementoReceiveDecks({json.dumps(deck_names)})"
-        )
-        return (True, None)
-
-    if message.startswith("incremento_add_card:"):
+    if message.startswith("incremento_fill_field:"):
         try:
-            data = json.loads(message[len("incremento_add_card:"):])
-            notetype_name = data.get("notetype", "")
-            deck_name     = data.get("deck", "")
-            fields_data   = data.get("fields", {})
-
-            model = mw.col.models.by_name(notetype_name)
-            if model is None:
-                raise ValueError(f"Note type '{notetype_name}' not found")
-
-            deck = mw.col.decks.by_name(deck_name)
-            deck_id = (
-                mw.col.decks.add_normal_deck_with_name(deck_name).id
-                if deck is None else deck["id"]
-            )
-
-            note = mw.col.new_note(model)
-            for fname, val in fields_data.items():
-                if fname in note:
-                    note[fname] = val
-            mw.col.add_note(note, deck_id)
-
-            mw.reviewer.web.eval(
-                "window.incrementoAddCardResult && "
-                "window.incrementoAddCardResult(true, 'Card added!')"
-            )
-        except Exception as e:
-            mw.reviewer.web.eval(
-                "window.incrementoAddCardResult && "
-                f"window.incrementoAddCardResult(false, {json.dumps(str(e))})"
-            )
+            data = json.loads(message[len("incremento_fill_field:"):])
+            _fill_dock_field(int(data["idx"]), data["text"])
+        except Exception:
+            pass
         return (True, None)
 
     if message.startswith("incremento_pdf_nav:"):
@@ -374,6 +417,17 @@ def _sync_pdf_note_type() -> None:
 
 
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
+
+
+def _register_shortcuts() -> None:
+    """Register Cmd/Ctrl+1–4 at the application level to fill dock fields from PDF selection."""
+    for i in range(1, 5):
+        sc = QShortcut(QKeySequence(f"Ctrl+{i}"), mw)
+        sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        sc.activated.connect(lambda idx=i - 1: _shortcut_fill(idx))
+
+
+gui_hooks.main_window_did_init.append(_register_shortcuts)
 
 
 def showStatsFunction() -> None:
