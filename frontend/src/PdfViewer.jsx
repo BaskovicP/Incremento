@@ -13,17 +13,18 @@ export default function PdfViewer() {
   const [zoom,       setZoom]       = useState(1.0);
   const [error,      setError]      = useState('');
 
-  const pdfDocRef    = useRef(null);
-  const busyRef      = useRef(false);
-  const activeCvsRef = useRef('a');
-  const cardIdRef    = useRef(null);
-  const filenameRef  = useRef(null);
-  const pageRef      = useRef(1);
-  const zoomRef      = useRef(1.0);
-  const canvasARef   = useRef(null);
-  const canvasBRef   = useRef(null);
-  const containerRef = useRef(null);
-  const textLayerRef = useRef(null);
+  const pdfDocRef        = useRef(null);
+  const busyRef          = useRef(false);
+  const activeCvsRef     = useRef('a');
+  const cardIdRef        = useRef(null);
+  const filenameRef      = useRef(null);
+  const pageRef          = useRef(1);
+  const zoomRef          = useRef(1.0);
+  const lastRenderWidthRef = useRef(0);   // width used in last renderPage call
+  const canvasARef       = useRef(null);
+  const canvasBRef       = useRef(null);
+  const containerRef     = useRef(null);
+  const textLayerRef     = useRef(null);
 
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
@@ -71,6 +72,7 @@ export default function PdfViewer() {
       if (!backCvs) { busyRef.current = false; return; }
 
       const colW = containerRef.current?.offsetWidth || 800;
+      lastRenderWidthRef.current = colW;
       const maxH = Math.max(window.innerHeight - 120, 300);
       const base = pg.getViewport({ scale: 1 });
       let scale  = Math.min(colW / base.width, maxH / base.height) * zoomRef.current;
@@ -166,6 +168,25 @@ export default function PdfViewer() {
     };
   }, []);
 
+  /* ── Re-render when container is resized (keeps text layer aligned) ─────── */
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let timer;
+    const observer = new ResizeObserver((entries) => {
+      const newW = Math.round(entries[0]?.contentRect.width ?? 0);
+      // Ignore sub-5px jitter (scrollbars, click events, etc.) — only act on
+      // real window resizes so that text selection is never interrupted.
+      if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!busyRef.current && pdfDocRef.current) renderPage(pageRef.current);
+      }, 150);
+    });
+    observer.observe(container);
+    return () => { clearTimeout(timer); observer.disconnect(); };
+  }, [renderPage]);
+
   /* ── Register globals ────────────────────────────────────────────────────── */
   useEffect(() => {
     window.incrementoPdfStart = startViewer;
@@ -183,6 +204,21 @@ export default function PdfViewer() {
       delete window.incrementoPdfZoom;
     };
   }, [startViewer, nav, adjustZoom]);
+
+  /* ── Ctrl+1–4 in JS (real Ctrl key; Cmd handled by Python QShortcut) ────── */
+  useEffect(() => {
+    const handler = (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const n = parseInt(e.key, 10);
+      if (n < 1 || n > 4) return;
+      const sel = window.getSelection()?.toString().trim() || '';
+      if (!sel) return;
+      e.preventDefault();
+      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx: n - 1, text: sel }));
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   /* ── Render ──────────────────────────────────────────────────────────────── */
   return (

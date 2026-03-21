@@ -361,13 +361,16 @@ def _do_fill(idx, text):
 
 
 def _shortcut_fill(idx):
-    """Python-level Cmd/Ctrl+N handler — gets PDF selection and fills dock field."""
+    """Python-level Cmd/Ctrl+N handler — gets PDF selection via JS and fills dock field."""
     if mw.state != "review" or mw.reviewer is None:
         return
-    sel = mw.reviewer.web.page().selectedText().strip()
-    if not sel:
-        return
-    _fill_dock_field(idx, sel)
+
+    def _got_text(text: str) -> None:
+        if text and text.strip():
+            _fill_dock_field(idx, text.strip())
+
+    # worldId=0 (MainWorld) is required in PyQt6 when passing a callback
+    mw.reviewer.web.page().runJavaScript("window.getSelection().toString()", 0, _got_text)
 
 
 def _on_js_message(handled, message, context) -> tuple:
