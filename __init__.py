@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 import sys
 import types
@@ -16,8 +17,12 @@ from .utils.statistics import StatsManager
 from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
+from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page
 
 INCREMENTO_DECK = "Incremento Session"
+_ADDON_DIR = os.path.dirname(__file__)
+
+mw.addonManager.setWebExports(__name__, r"user_files/.*")
 
 # Most-recent session counts — updated after each learnFunction picking loop.
 # Passed to StatsDialog so the "This Session" view reflects the last session.
@@ -257,6 +262,59 @@ def learnFunction() -> None:
     mw.moveToState("review")
 
 
+def _on_pdf_question_shown(card) -> None:
+    if card is None:
+        return
+    try:
+        note  = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+    except Exception:
+        return
+    if model is None or model.get("name") != PDF_NOTE_TYPE:
+        return
+    try:
+        filename = note["PDF_Filename"]
+    except (KeyError, TypeError):
+        return
+    page = get_page(_ADDON_DIR, card.id)
+    # Always store args as a global — inline script picks them up if it runs later.
+    # Also call directly if the function is already defined (subsequent card views).
+    mw.reviewer.web.eval(
+        f"window._incPdfPending = {{cardId: {card.id}, filename: {json.dumps(filename)}, page: {page}}};"
+        f"typeof incrementoPdfStart === 'function' && "
+        f"(window._incPdfPending = null, incrementoPdfStart({card.id}, {json.dumps(filename)}, {page}));"
+    )
+
+
+def _on_js_message(handled, message, context) -> tuple:
+    if not isinstance(message, str) or not message.startswith("incremento_pdf_nav:"):
+        return handled
+    parts = message.split(":")
+    if len(parts) != 3:
+        return handled
+    try:
+        set_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
+    except ValueError:
+        pass
+    return (True, None)
+
+
+gui_hooks.reviewer_did_show_question.append(_on_pdf_question_shown)
+gui_hooks.webview_did_receive_js_message.append(_on_js_message)
+
+
+def _sync_pdf_note_type() -> None:
+    """Update the PDF card template to the current code version on startup."""
+    try:
+        from .utils.pdf_manager import ensure_pdf_note_type
+        ensure_pdf_note_type(mw.col)
+    except Exception:
+        pass
+
+
+gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
+
+
 def showStatsFunction() -> None:
     cfg = load_scheduler_config()
     dlg = StatsDialog(
@@ -268,6 +326,19 @@ def showStatsFunction() -> None:
     dlg.exec()
 
 
+def addPdfFunction() -> None:
+    from .utils.pdf_dialog  import AddPdfDialog
+    from .utils.pdf_manager import add_pdf_card
+    dlg = AddPdfDialog(mw)
+    if not dlg.exec():
+        return
+    try:
+        add_pdf_card(_ADDON_DIR, mw.col, dlg.pdf_path, dlg.title_text)
+        showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
+    except Exception as e:
+        showInfo(f"Failed to add PDF card:\n{e}")
+
+
 learnAction = QAction("Start Incremental Learning", mw)
 qconnect(learnAction.triggered, learnFunction)
 mw.form.menuTools.addAction(learnAction)
@@ -275,3 +346,7 @@ mw.form.menuTools.addAction(learnAction)
 statsAction = QAction("Incremento Statistics", mw)
 qconnect(statsAction.triggered, showStatsFunction)
 mw.form.menuTools.addAction(statsAction)
+
+addPdfAction = QAction("Add PDF to Topics", mw)
+qconnect(addPdfAction.triggered, addPdfFunction)
+mw.form.menuTools.addAction(addPdfAction)
