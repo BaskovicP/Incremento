@@ -40,20 +40,34 @@ export default function PdfViewer() {
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
 
-  // PDF.js 3.x: use streamTextContent() → textContentSource (ReadableStream)
+  // PDF.js 3.x: use streamTextContent() → textContentSource (ReadableStream).
+  // PDF.js 3.x REQUIRES --scale-factor CSS variable on the container; without it
+  // setLayerDimensions() sets width/height to calc(invalid)=0 and every span
+  // transform resolves to 0, so all spans collapse at (0,0).
   const renderTextLayer = useCallback((pg, viewport) => {
     const tl  = textLayerRef.current;
     const lib = window.pdfjsLib;
     if (!tl || !lib) return;
-    tl.innerHTML    = '';
-    tl.style.width  = viewport.width  + 'px';
-    tl.style.height = viewport.height + 'px';
+    tl.innerHTML = '';
+
+    // ── Critical for PDF.js 3.x ──────────────────────────────────────────────
+    // setLayerDimensions() will set tl.style.width/height using this variable.
+    // Every span's CSS transform also resolves through it.
+    tl.style.setProperty('--scale-factor', viewport.scale);
+
+    // Position the text layer pixel-precisely over the centered canvas.
+    // (canvas uses margin:0 auto inside a block wrapper; replicate that math.)
+    const wrapperWidth = containerRef.current?.offsetWidth ?? viewport.width;
+    const left = Math.round((wrapperWidth - viewport.width) / 2);
+    tl.style.left      = left + 'px';
+    tl.style.top       = '0px';
+    tl.style.transform = 'none';
+
     try {
       const stream = pg.streamTextContent({ includeMarkedContent: true });
       const task   = lib.renderTextLayer({ textContentSource: stream, container: tl, viewport });
       if (task?.promise) task.promise.catch(() => {});
       if (task?.cancel) {
-        // store cancel fn so we can abort if page changes
         tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
       }
     } catch (_) {}
@@ -176,6 +190,26 @@ export default function PdfViewer() {
     metaLoadedRef.current = true;
     window.pycmd('incremento_get_notetypes');
     window.pycmd('incremento_get_decks');
+  }, []);
+
+  // Stop Anki's global selectstart / mousedown handlers from reaching the text layer.
+  // Anki may call e.preventDefault() on selectstart, which kills text selection.
+  // Using the bubble phase: events reach the span (target) → bubble to text-layer
+  // → we stop them before they reach Anki's document-level handlers.
+  useEffect(() => {
+    const tl = textLayerRef.current;
+    if (!tl) return;
+    const stop = (e) => e.stopPropagation();
+    tl.addEventListener('selectstart', stop);
+    tl.addEventListener('mousedown',   stop);
+    tl.addEventListener('mouseup',     stop);
+    tl.addEventListener('click',       stop);
+    return () => {
+      tl.removeEventListener('selectstart', stop);
+      tl.removeEventListener('mousedown',   stop);
+      tl.removeEventListener('mouseup',     stop);
+      tl.removeEventListener('click',       stop);
+    };
   }, []);
 
   // Register globals
@@ -303,26 +337,26 @@ export default function PdfViewer() {
           ref={containerRef}
           style={{ position: 'relative', display: 'block', textAlign: 'center' }}
         >
-          <canvas ref={canvasARef} id="pdf-canvas-a" style={{ display: 'block', margin: '0 auto' }} />
+          <canvas ref={canvasARef} id="pdf-canvas-a" style={{ display: 'block', margin: '0 auto', pointerEvents: 'none' }} />
           <canvas
             ref={canvasBRef}
             id="pdf-canvas-b"
-            style={{ display: 'none', position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)' }}
+            style={{ display: 'none', position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}
           />
           <div
             ref={textLayerRef}
             id="pdf-text-layer"
             style={{
               position: 'absolute',
-              // centre over the canvas (which is margin:auto inside a block wrapper)
               top: 0,
-              left: '50%',
-              transform: 'translateX(-50%)',
+              left: 0,      /* renderTextLayer() updates left precisely after each render */
               overflow: 'hidden',
               lineHeight: 1,
+              zIndex: 2,
               pointerEvents: 'auto',
               userSelect: 'text',
               WebkitUserSelect: 'text',
+              cursor: 'text',
             }}
           />
         </div>
