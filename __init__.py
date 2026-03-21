@@ -5,7 +5,7 @@ import types
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import QAction, QDialog, qconnect
+from aqt.qt import QAction, QDialog, QVBoxLayout, QTextEdit, QPushButton, qconnect
 from anki.cards import CardId
 
 # Allow utils/scheduler.py to do `import cards` as a plain import
@@ -160,6 +160,32 @@ def learnFunction() -> None:
     if not selected_ids:
         showInfo("No cards available to study.")
         return
+
+    # DEBUG: show scheduled card order before building the filtered deck
+    _debug_dlg = QDialog(mw)
+    _debug_dlg.setWindowTitle(f"DEBUG — Scheduled order ({len(selected_ids)} cards)")
+    _debug_dlg.resize(700, 500)
+    _debug_layout = QVBoxLayout(_debug_dlg)
+    _debug_txt = QTextEdit()
+    _debug_txt.setReadOnly(True)
+    _debug_txt.setFontFamily("Courier")
+    _debug_lines = ["#    type     mode       tag                  first field"]
+    _debug_lines.append("-" * 80)
+    for _i, _cid in enumerate(selected_ids):
+        _meta = _picked_meta.get(_cid, {})
+        _card = mw.col.get_card(_cid)
+        _note = mw.col.get_note(_card.nid)
+        _field = (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
+        _debug_lines.append(
+            f"{_i+1:3}.  {_meta.get('card_type','?'):7}  {_meta.get('mode','?'):9}  "
+            f"{(_meta.get('tag') or 'no-tag'):20} {_field}"
+        )
+    _debug_txt.setPlainText("\n".join(_debug_lines))
+    _debug_layout.addWidget(_debug_txt)
+    _debug_btn = QPushButton("Continue")
+    _debug_btn.clicked.connect(_debug_dlg.accept)
+    _debug_layout.addWidget(_debug_btn)
+    _debug_dlg.exec()
 
     search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
 
