@@ -1,10 +1,9 @@
+import copy
 import os
 import sys
+import types
 
-import pydevd_pycharm
-pydevd_pycharm.settrace('localhost', port=5678, suspend=False)
-
-from aqt import mw
+from aqt import mw, gui_hooks
 from aqt.utils import showInfo
 from aqt.qt import QAction, QDialog, qconnect
 from anki.cards import CardId
@@ -16,25 +15,37 @@ from .utils.scheduler import get_card_from_scheduler
 from .utils.statistics import StatsManager
 from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
+from .utils.stats_dialog import StatsDialog
 
 INCREMENTO_DECK = "Incremento Session"
+
+# Most-recent session counts — updated after each learnFunction picking loop.
+# Passed to StatsDialog so the "This Session" view reflects the last session.
+_session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
+
+
+def _reset_session_counts() -> None:
+    global _session_counts
+    _session_counts = {"type": {}, "tags": {}, "mode": {}}
 
 
 def learnFunction() -> None:
     config = mw.addonManager.getConfig(__name__) or {}
-    target_count = config.get("session_card_count", 50)
 
-    dlg = SchedulerConfigDialog(mw)
+    dlg = SchedulerConfigDialog(mw, on_clear_session=_reset_session_counts)
     if not dlg.exec():
         return
 
     dlg.save_config()
     cfg = dlg.to_config()
+    target_count = cfg.session_card_count
 
     stats = StatsManager(os.path.dirname(__file__), day_end_time=cfg.day_end_time)
 
     selected_ids: list[CardId] = []
     added_to_filtered: set[CardId] = set()
+    # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
+    _picked_meta: dict[int, dict] = {}
 
     def _pick(use_tags: bool, tag_weights: dict,
               force_card_type: str | None = None,
@@ -50,6 +61,9 @@ def learnFunction() -> None:
             exclude_ids=added_to_filtered,
             force_card_type=force_card_type,
             force_mode=force_mode,
+            topics_filter=cfg.topics_filter,
+            items_filter=cfg.items_filter,
+            ready_filter=cfg.ready_filter,
         )
         if result.card is None:
             return False
@@ -57,7 +71,14 @@ def learnFunction() -> None:
         counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
         if result.tag:
             counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
-        stats.record(result, cfg.scheduler_scope)
+        # Do NOT call stats.record() here — that would write picks to daily/lifetime.
+        # Recording to daily/lifetime is deferred to the reviewer_did_answer_card hook
+        # so that only actually reviewed cards count toward those scopes.
+        _picked_meta[result.card] = {
+            "card_type": result.card_type,
+            "tag":       result.tag,
+            "mode":      result.mode,
+        }
         added_to_filtered.add(result.card)
         selected_ids.append(result.card)
         return True
@@ -132,6 +153,10 @@ def learnFunction() -> None:
                 if not _pick(use_tags=False, tag_weights={}):
                     break
 
+    # Snapshot session counts so the statistics dialog can show them later.
+    global _session_counts
+    _session_counts = copy.deepcopy(stats.session)
+
     if not selected_ids:
         showInfo("No cards available to study.")
         return
@@ -158,9 +183,66 @@ def learnFunction() -> None:
 
     mw.col.sched.rebuild_filtered_deck(op.id)
     mw.col.decks.select(op.id)
+
+    # Hook: record each card to daily/lifetime the first time it is answered.
+    # This ensures only actually reviewed cards count — not just scheduled ones.
+    _reviewed_ids: set[int] = set()
+
+    def _on_card_answered(reviewer, card, ease: int) -> None:
+        cid = card.id
+        if cid not in _picked_meta or cid in _reviewed_ids:
+            return
+        _reviewed_ids.add(cid)
+        meta = _picked_meta[cid]
+        fake = types.SimpleNamespace(
+            card=cid,
+            card_type=meta["card_type"],
+            tag=meta["tag"],
+            mode=meta["mode"],
+        )
+        stats.record(fake, cfg.scheduler_scope)
+
+    gui_hooks.reviewer_did_answer_card.append(_on_card_answered)
+
+    # One-shot hook: show summary and clean up when the reviewer is left.
+    session_counts = stats.counts_for("session")
+
+    def _show_summary() -> None:
+        gui_hooks.reviewer_will_end.remove(_show_summary)
+        gui_hooks.reviewer_did_answer_card.remove(_on_card_answered)
+        n_topics   = session_counts["type"].get("topics", 0)
+        n_items    = session_counts["type"].get("items", 0)
+        n_priority = session_counts["mode"].get("priority", 0)
+        n_random   = session_counts["mode"].get("random", 0)
+        total = n_topics + n_items
+        lines = [f"Session complete: {total} card(s) studied"]
+        lines.append(f"  Topics: {n_topics}   Items: {n_items}")
+        if n_priority or n_random:
+            lines.append(f"  Priority: {n_priority}   Random: {n_random}")
+        if session_counts["tags"]:
+            tag_parts = ", ".join(f"{t}: {c}" for t, c in session_counts["tags"].items())
+            lines.append(f"  Tags: {tag_parts}")
+        showInfo("\n".join(lines))
+
+    gui_hooks.reviewer_will_end.append(_show_summary)
     mw.moveToState("review")
+
+
+def showStatsFunction() -> None:
+    cfg = load_scheduler_config()
+    dlg = StatsDialog(
+        addon_dir=os.path.dirname(__file__),
+        session_counts=_session_counts,
+        day_end_time=cfg.day_end_time,
+        parent=mw,
+    )
+    dlg.exec()
 
 
 learnAction = QAction("Start Incremental Learning", mw)
 qconnect(learnAction.triggered, learnFunction)
 mw.form.menuTools.addAction(learnAction)
+
+statsAction = QAction("Incremento Statistics", mw)
+qconnect(statsAction.triggered, showStatsFunction)
+mw.form.menuTools.addAction(statsAction)

@@ -12,6 +12,7 @@ _ADDON_PKG = __name__.split(".")[0]
 
 @dataclass
 class SchedulerConfig:
+    session_card_count: int = 50   # number of cards to schedule per session
     topics_rate: float = 0.9       # probability of picking a topic card
     random_rate: float = 0.99      # probability of random mode vs priority
     use_tags: bool = False         # True if any real tag rows are active
@@ -21,6 +22,27 @@ class SchedulerConfig:
     day_end_time: str = "00:00"        # HH:MM — logical day boundary for "daily" scope
     priority_order: list = field(default_factory=lambda: ["tags", "type", "mode"])
     enforce_priority: bool = True      # False → soft debt-based ordering, no hard quotas
+    topics_filter: str = "deck:Topics"   # Anki search filter for topic cards
+    items_filter: str = "-deck:Topics"   # Anki search filter for item cards
+    include_new: bool = True             # include is:new cards
+    include_learning: bool = True        # include is:learn cards
+    include_due: bool = True             # include is:due (review) cards
+
+    @property
+    def ready_filter(self) -> str:
+        """Anki search clause for the card states to include."""
+        parts = []
+        if self.include_new:
+            parts.append("is:new")
+        if self.include_learning:
+            parts.append("is:learn")
+        if self.include_due:
+            parts.append("is:due")
+        if not parts:
+            return "is:new"   # safety fallback — never emit an empty filter
+        if len(parts) == 1:
+            return parts[0]
+        return "(" + " OR ".join(parts) + ")"
 
 
 def load_scheduler_config() -> SchedulerConfig:
@@ -36,6 +58,7 @@ def load_scheduler_config() -> SchedulerConfig:
 
 def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     """Build a SchedulerConfig from the raw ``dialog`` config sub-dict."""
+    session_card_count = int(d.get("session_card_count", 50))
     topics_rate = 1.0 - d.get("topics_slider", 10) / 100.0
     random_rate = d.get("random_slider", 99) / 100.0
 
@@ -52,8 +75,14 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
 
     scheduler_scope = d.get("scheduler_scope", "session")
     day_end_time    = d.get("day_end_time", "00:00")
+    topics_filter    = d.get("topics_filter",    "deck:Topics")
+    items_filter     = d.get("items_filter",     "-deck:Topics")
+    include_new      = d.get("include_new",      True)
+    include_learning = d.get("include_learning", True)
+    include_due      = d.get("include_due",      True)
 
     return SchedulerConfig(
+        session_card_count=session_card_count,
         topics_rate=topics_rate,
         random_rate=random_rate,
         use_tags=bool(real_rows),
@@ -63,4 +92,9 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         day_end_time=day_end_time,
         priority_order=priority_order,
         enforce_priority=enforce_priority,
+        topics_filter=topics_filter,
+        items_filter=items_filter,
+        include_new=include_new,
+        include_learning=include_learning,
+        include_due=include_due,
     )

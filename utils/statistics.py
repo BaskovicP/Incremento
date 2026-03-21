@@ -61,6 +61,31 @@ def save_stats(addon_dir: str, stats: dict) -> None:
     os.replace(tmp, path)
 
 
+def delete_daily_stats(addon_dir: str) -> None:
+    """Remove today's statistics from disk."""
+    raw = load_stats(addon_dir)
+    if "daily" not in raw:
+        return
+    del raw["daily"]
+    save_stats(addon_dir, raw)
+
+
+def delete_lifetime_stats(addon_dir: str) -> None:
+    """Remove lifetime statistics from disk."""
+    raw = load_stats(addon_dir)
+    if "lifetime" not in raw:
+        return
+    del raw["lifetime"]
+    save_stats(addon_dir, raw)
+
+
+def delete_all_stats(addon_dir: str) -> None:
+    """Delete the entire statistics file."""
+    path = _stats_path(addon_dir)
+    if path.exists():
+        path.unlink()
+
+
 class StatsManager:
     def __init__(self, addon_dir: str, day_end_time: str = "00:00"):
         self._addon_dir = addon_dir

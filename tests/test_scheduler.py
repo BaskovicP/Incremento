@@ -1,5 +1,6 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import scheduler
+import cards as card_utils
 
 
 # ---------------------------------------------------------------------------
@@ -20,10 +21,10 @@ def _mock_card_utils(tag_topic=None, tag_item=None, all_topic=None, all_item=Non
     all_item  = [] if all_item  is None else all_item
     return patch.multiple(
         "scheduler.card_utils",
-        get_topic_cards_by_tag=lambda tag: tag_topic,
-        get_item_cards_by_tag=lambda tag: tag_item,
-        get_all_topic_cards=lambda: all_topic,
-        get_all_item_cards=lambda: all_item,
+        get_topic_cards_by_tag=lambda tag, **kw: tag_topic,
+        get_item_cards_by_tag=lambda tag, **kw: tag_item,
+        get_all_topic_cards=lambda **kw: all_topic,
+        get_all_item_cards=lambda **kw: all_item,
     )
 
 
@@ -214,10 +215,10 @@ class TestTagFallback:
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with patch.multiple(
                 "scheduler.card_utils",
-                get_item_cards_by_tag=lambda tag: [201],
-                get_all_item_cards=lambda: calls.append(1) or [999],
-                get_topic_cards_by_tag=lambda tag: [],
-                get_all_topic_cards=lambda: [],
+                get_item_cards_by_tag=lambda tag, **kw: [201],
+                get_all_item_cards=lambda **kw: calls.append(1) or [999],
+                get_topic_cards_by_tag=lambda tag, **kw: [],
+                get_all_topic_cards=lambda **kw: [],
             ):
                 result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card == 201
@@ -235,10 +236,10 @@ class TestUseTagsFalse:
         with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
             with patch.multiple(
                 "scheduler.card_utils",
-                get_item_cards_by_tag=lambda tag: tag_fetch_calls.append(tag) or [],
-                get_all_item_cards=lambda: [201, 202],
-                get_topic_cards_by_tag=lambda tag: [],
-                get_all_topic_cards=lambda: [],
+                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag) or [],
+                get_all_item_cards=lambda **kw: [201, 202],
+                get_topic_cards_by_tag=lambda tag, **kw: [],
+                get_all_topic_cards=lambda **kw: [],
             ):
                 result = scheduler.get_card_from_scheduler(use_tags=False)
         assert result.card in [201, 202]
@@ -263,10 +264,10 @@ class TestUseTagsFalse:
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with patch.multiple(
                 "scheduler.card_utils",
-                get_item_cards_by_tag=lambda tag: tag_fetch_calls.append(tag) or [201],
-                get_all_item_cards=lambda: [],
-                get_topic_cards_by_tag=lambda tag: [],
-                get_all_topic_cards=lambda: [],
+                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag) or [201],
+                get_all_item_cards=lambda **kw: [],
+                get_topic_cards_by_tag=lambda tag, **kw: [],
+                get_all_topic_cards=lambda **kw: [],
             ):
                 result = scheduler.get_card_from_scheduler(use_tags=True)
         assert tag_fetch_calls == ["health"]
@@ -366,3 +367,59 @@ class TestForcedDimensions:
         assert result.card == 101
         assert result.card_type == "topics"
         assert result.mode == "priority"
+
+
+# ---------------------------------------------------------------------------
+# Priority mode — sort by due date
+# ---------------------------------------------------------------------------
+
+class TestPriorityModeSort:
+    """Verify that priority mode returns the most overdue card (lowest due value)."""
+
+    def _make_cards(self, due_map: dict) -> dict:
+        """Return {card_id: MagicMock(due=...)} from {card_id: due_value}."""
+        return {cid: MagicMock(due=due) for cid, due in due_map.items()}
+
+    def test_priority_returns_most_overdue_card_no_tags(self):
+        """cards[0] after sort should be the card with the smallest due value."""
+        mock_cards = self._make_cards({201: 10, 202: 1, 203: 5})
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [201, 202, 203]
+            mock_mw.col.get_card.side_effect = lambda cid: mock_cards[cid]
+            with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
+                result = scheduler.get_card_from_scheduler(use_tags=False)
+        assert result.card == 202   # due=1, most overdue
+        assert result.mode == "priority"
+
+    def test_priority_returns_most_overdue_card_with_tags(self):
+        mock_cards = self._make_cards({101: 3, 102: 1, 103: 8})
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [101, 102, 103]
+            mock_mw.col.get_card.side_effect = lambda cid: mock_cards[cid]
+            with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
+                result = scheduler.get_card_from_scheduler(use_tags=True)
+        assert result.card == 102   # due=1, most overdue
+        assert result.mode == "priority"
+
+    def test_priority_already_sorted_returns_first(self):
+        """If cards are already in due order, cards[0] is still most overdue."""
+        mock_cards = self._make_cards({301: 1, 302: 5, 303: 10})
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [301, 302, 303]
+            mock_mw.col.get_card.side_effect = lambda cid: mock_cards[cid]
+            with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
+                result = scheduler.get_card_from_scheduler(use_tags=False)
+        assert result.card == 301   # due=1, already first
+
+    def test_random_mode_uses_choice_not_first_sorted(self):
+        """Random mode calls random.choice, not the sorted first card."""
+        mock_cards = self._make_cards({401: 10, 402: 1, 403: 5})
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [401, 402, 403]
+            mock_mw.col.get_card.side_effect = lambda cid: mock_cards[cid]
+            with patch("scheduler.soft_pick", side_effect=["items", "random"]):
+                with patch("scheduler.random.choice", return_value=403) as mock_choice:
+                    result = scheduler.get_card_from_scheduler(use_tags=False)
+        mock_choice.assert_called_once()
+        assert result.card == 403   # random.choice result, not most overdue (402)
+        assert result.mode == "random"

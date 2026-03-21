@@ -9,7 +9,8 @@ for mod in ("anki", "anki.cards", "aqt", "aqt.utils", "aqt.qt"):
 
 # Mock incremento sub-modules so that __init__.py can resolve relative imports.
 # These must be MagicMock so attribute access auto-creates stubs.
-for mod_name in ("incremento.utils", "incremento.utils.cards", "incremento.utils.statistics"):
+for mod_name in ("incremento.utils", "incremento.utils.cards",
+                 "incremento.utils.statistics", "incremento.utils.stats_dialog"):
     sys.modules.setdefault(mod_name, MagicMock())
 
 # Use a plain ModuleType for the package itself — NOT a MagicMock — so that

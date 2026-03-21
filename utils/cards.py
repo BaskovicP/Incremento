@@ -6,14 +6,28 @@ from aqt import mw
 
 all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
 
+
+def _sort_by_due(card_ids):
+    """Return card_ids sorted by ascending due date (most overdue first)."""
+    if not card_ids:
+        return list(card_ids)
+    pairs = [(mw.col.get_card(cid).due, cid) for cid in card_ids]
+    pairs.sort()
+    return [cid for _, cid in pairs]
+
+
 def get_all_ready_card_ids():
     return mw.col.find_cards(all_ready_cards_filter)
 
-def get_all_topic_cards():
-    return mw.col.find_cards(f"deck:Topics {all_ready_cards_filter}")
 
-def get_all_item_cards():
-    return mw.col.find_cards(f"-deck:Topics {all_ready_cards_filter}")
+def get_all_topic_cards(topics_filter: str = "deck:Topics",
+                        ready_filter: str = all_ready_cards_filter):
+    return _sort_by_due(mw.col.find_cards(f"{topics_filter} {ready_filter}"))
+
+
+def get_all_item_cards(items_filter: str = "-deck:Topics",
+                       ready_filter: str = all_ready_cards_filter):
+    return _sort_by_due(mw.col.find_cards(f"{items_filter} {ready_filter}"))
 
 
 
@@ -51,9 +65,11 @@ def batch_update_card_custom_data(card_ids: Sequence[CardId], custom_data: dict)
     return changed_cards
 
 
-def get_topic_cards_by_tag(tag: str):
-    return mw.col.find_cards(f"deck:Topics tag:{tag} {all_ready_cards_filter}")
+def get_topic_cards_by_tag(tag: str, topics_filter: str = "deck:Topics",
+                           ready_filter: str = all_ready_cards_filter):
+    return _sort_by_due(mw.col.find_cards(f"{topics_filter} tag:{tag} {ready_filter}"))
 
 
-def get_item_cards_by_tag(tag: str):
-    return mw.col.find_cards(f"-deck:Topics tag:{tag} {all_ready_cards_filter}")
+def get_item_cards_by_tag(tag: str, items_filter: str = "-deck:Topics",
+                          ready_filter: str = all_ready_cards_filter):
+    return _sort_by_due(mw.col.find_cards(f"{items_filter} tag:{tag} {ready_filter}"))

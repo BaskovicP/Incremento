@@ -36,6 +36,9 @@ def get_card_from_scheduler(
         exclude_ids=None,
         force_card_type=None,   # "topics" | "items" | None — skips soft_pick for type
         force_mode=None,        # "random" | "priority" | None — skips soft_pick for mode
+        topics_filter: str = "deck:Topics",
+        items_filter: str = "-deck:Topics",
+        ready_filter: str = "(is:due OR is:learn OR is:new)",
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
@@ -59,16 +62,22 @@ def get_card_from_scheduler(
         actual_tag = tag
 
         # Primary: requested type + tag
-        fetch_primary = (card_utils.get_topic_cards_by_tag if card_type == "topics"
-                         else card_utils.get_item_cards_by_tag)
-        cards = available(fetch_primary(tag))
+        if card_type == "topics":
+            cards = available(card_utils.get_topic_cards_by_tag(
+                tag, topics_filter=topics_filter, ready_filter=ready_filter))
+        else:
+            cards = available(card_utils.get_item_cards_by_tag(
+                tag, items_filter=items_filter, ready_filter=ready_filter))
 
         # Type fallback: try the other type, but STAY within the tag
         if not cards:
             actual_type = "items" if card_type == "topics" else "topics"
-            fetch_alt = (card_utils.get_item_cards_by_tag if card_type == "topics"
-                         else card_utils.get_topic_cards_by_tag)
-            cards = available(fetch_alt(tag))
+            if card_type == "topics":
+                cards = available(card_utils.get_item_cards_by_tag(
+                    tag, items_filter=items_filter, ready_filter=ready_filter))
+            else:
+                cards = available(card_utils.get_topic_cards_by_tag(
+                    tag, topics_filter=topics_filter, ready_filter=ready_filter))
 
         # No cards at all for this tag → caller handles it (next tag or Phase 2)
         if not cards:
@@ -76,14 +85,22 @@ def get_card_from_scheduler(
 
     else:
         # No tag constraint — fetch all cards of the chosen type
-        cards = available(card_utils.get_all_topic_cards() if card_type == "topics"
-                          else card_utils.get_all_item_cards())
+        if card_type == "topics":
+            cards = available(card_utils.get_all_topic_cards(
+                topics_filter=topics_filter, ready_filter=ready_filter))
+        else:
+            cards = available(card_utils.get_all_item_cards(
+                items_filter=items_filter, ready_filter=ready_filter))
 
         # Type fallback across all cards
         if not cards:
             actual_type = "items" if card_type == "topics" else "topics"
-            cards = available(card_utils.get_all_item_cards() if card_type == "topics"
-                              else card_utils.get_all_topic_cards())
+            if card_type == "topics":
+                cards = available(card_utils.get_all_item_cards(
+                    items_filter=items_filter, ready_filter=ready_filter))
+            else:
+                cards = available(card_utils.get_all_topic_cards(
+                    topics_filter=topics_filter, ready_filter=ready_filter))
 
         if not cards:
             return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
