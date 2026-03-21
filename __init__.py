@@ -11,7 +11,7 @@ from anki.cards import CardId
 # Allow utils/scheduler.py to do `import cards` as a plain import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
 
-from .utils.scheduler import get_card_from_scheduler
+from .utils.scheduler import get_card_from_scheduler, NO_TAGS_KEY
 from .utils.statistics import StatsManager
 from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
@@ -178,10 +178,25 @@ def learnFunction() -> None:
     fdu = mw.col.sched.get_or_create_filtered_deck(did)
     fdu.config.reschedule = True
     del fdu.config.search_terms[:]
-    fdu.config.search_terms.add(search=search, limit=len(selected_ids))
+    # Always a single SearchTerm — Anki only processes the first 2 SearchTerms
+    # so N-per-card terms silently truncate. order=0 (default) when preserving
+    # order (due values get stamped post-rebuild anyway); order=1 (RANDOM) otherwise.
+    fdu.config.search_terms.add(
+        search=search,
+        limit=len(selected_ids),
+        order=0 if cfg.preserve_order else 1,
+    )
     op = mw.col.sched.add_or_update_filtered_deck(fdu)
 
     mw.col.sched.rebuild_filtered_deck(op.id)
+
+    if cfg.preserve_order:
+        # odue is already saved by rebuild — original scheduling is safe.
+        # Stamp due = position so the scheduler presents cards in selected_ids order.
+        for i, cid in enumerate(selected_ids):
+            card = mw.col.get_card(cid)
+            card.due = i
+            mw.col.update_card(card)
     mw.col.decks.select(op.id)
 
     # Hook: record each card to daily/lifetime the first time it is answered.
@@ -194,10 +209,12 @@ def learnFunction() -> None:
             return
         _reviewed_ids.add(cid)
         meta = _picked_meta[cid]
+        # NO_TAGS_KEY is a synthetic key for debt tracking — don't persist it.
+        tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
         fake = types.SimpleNamespace(
             card=cid,
             card_type=meta["card_type"],
-            tag=meta["tag"],
+            tag=tag,
             mode=meta["mode"],
         )
         stats.record(fake, cfg.scheduler_scope)
@@ -219,8 +236,10 @@ def learnFunction() -> None:
         lines.append(f"  Topics: {n_topics}   Items: {n_items}")
         if n_priority or n_random:
             lines.append(f"  Priority: {n_priority}   Random: {n_random}")
-        if session_counts["tags"]:
-            tag_parts = ", ".join(f"{t}: {c}" for t, c in session_counts["tags"].items())
+        visible_tags = {t: c for t, c in session_counts["tags"].items()
+                        if not t.startswith("__")}
+        if visible_tags:
+            tag_parts = ", ".join(f"{t}: {c}" for t, c in visible_tags.items())
             lines.append(f"  Tags: {tag_parts}")
         showInfo("\n".join(lines))
 

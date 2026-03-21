@@ -2,6 +2,8 @@ from unittest.mock import patch, MagicMock
 import scheduler
 import cards as card_utils
 
+NO_TAGS_KEY = scheduler.NO_TAGS_KEY
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -321,6 +323,81 @@ class TestEdgeCases:
             with _mock_card_utils(tag_item=[999]):
                 result = scheduler.get_card_from_scheduler(use_tags=True)
         assert result.card == 999
+
+
+# ---------------------------------------------------------------------------
+# "Other cards" remainder — partial tag weights
+# ---------------------------------------------------------------------------
+
+class TestOtherCardsRemainder:
+    """When tag weights sum to < 1.0, the remainder is offered as NO_TAGS_KEY."""
+
+    def test_full_weight_no_remainder_added(self):
+        """sum(tag_weights) == 1.0 → NO_TAGS_KEY not added to extended weights."""
+        calls = []
+        # Capture the weights passed to soft_pick
+        original_sp = scheduler.soft_pick
+        def capturing_sp(weights, counts, *a, **kw):
+            calls.append(dict(weights))
+            return list(weights.keys())[0]  # always return first key
+        with patch("scheduler.soft_pick", side_effect=capturing_sp):
+            with _mock_card_utils(tag_item=[201]):
+                scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"health": 0.5, "psych": 0.5},  # sum = 1.0
+                )
+        # Third call is the tag soft_pick — NO_TAGS_KEY must NOT be present
+        tag_weights_call = calls[2]
+        assert NO_TAGS_KEY not in tag_weights_call
+
+    def test_partial_weight_adds_remainder_key(self):
+        """sum(tag_weights) == 0.20 → NO_TAGS_KEY with weight 0.80 is added."""
+        calls = []
+        def capturing_sp(weights, counts, *a, **kw):
+            calls.append(dict(weights))
+            return list(weights.keys())[0]
+        with patch("scheduler.soft_pick", side_effect=capturing_sp):
+            with _mock_card_utils(all_item=[201]):
+                scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"statistics": 0.20},  # sum = 0.20
+                )
+        tag_weights_call = calls[2]
+        assert NO_TAGS_KEY in tag_weights_call
+        assert abs(tag_weights_call[NO_TAGS_KEY] - 0.80) < 1e-6
+
+    def test_no_tags_key_selection_uses_general_pool(self):
+        """When soft_pick returns NO_TAGS_KEY, the general pool is used."""
+        tag_fetch_calls = []
+        with patch("scheduler.soft_pick",
+                   side_effect=["items", "priority", NO_TAGS_KEY]):
+            with patch.multiple(
+                "scheduler.card_utils",
+                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag) or [],
+                get_all_item_cards=lambda **kw: [501, 502],
+                get_topic_cards_by_tag=lambda tag, **kw: [],
+                get_all_topic_cards=lambda **kw: [],
+            ):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"statistics": 0.20},
+                )
+        assert result.card in [501, 502]
+        assert result.tag == NO_TAGS_KEY   # sentinel returned for debt tracking
+        assert tag_fetch_calls == [], "tag-based fetch must not be called for NO_TAGS_KEY"
+
+    def test_no_tags_key_result_has_correct_type(self):
+        """An 'other' pick correctly reports its actual card type."""
+        with patch("scheduler.soft_pick",
+                   side_effect=["topics", "priority", NO_TAGS_KEY]):
+            with _mock_card_utils(all_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"statistics": 0.20},
+                )
+        assert result.card == 101
+        assert result.card_type == "topics"
+        assert result.tag == NO_TAGS_KEY
 
 
 # ---------------------------------------------------------------------------

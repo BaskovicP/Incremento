@@ -27,6 +27,7 @@ class SchedulerConfig:
     include_new: bool = True             # include is:new cards
     include_learning: bool = True        # include is:learn cards
     include_due: bool = True             # include is:due (review) cards
+    preserve_order: bool = True          # build filtered deck in scheduler-selected order
 
     @property
     def ready_filter(self) -> str:
@@ -67,8 +68,9 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
 
     real_rows = [r for r in tag_rows if r["tag"] != NO_TAGS_KEY]
     raw = {r["tag"]: r["weight"] for r in real_rows}
-    total = sum(raw.values()) or 1
-    tag_weights = {tag: v / total for tag, v in raw.items()}
+    # Each slider value is an absolute % of the session (0–100).
+    # Do NOT normalise across tags — the remainder goes to "other cards".
+    tag_weights = {tag: v / 100.0 for tag, v in raw.items()}
 
     priority_order    = d.get("priority_order", ["tags", "type", "mode"])
     enforce_priority  = d.get("enforce_priority", True)
@@ -80,6 +82,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     include_new      = d.get("include_new",      True)
     include_learning = d.get("include_learning", True)
     include_due      = d.get("include_due",      True)
+    preserve_order   = d.get("preserve_order",   True)
 
     return SchedulerConfig(
         session_card_count=session_card_count,
@@ -97,4 +100,5 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         include_new=include_new,
         include_learning=include_learning,
         include_due=include_due,
+        preserve_order=preserve_order,
     )

@@ -3,6 +3,11 @@ from typing import NamedTuple
 
 import cards as card_utils
 
+# Synthetic key used when soft_pick selects the "other cards" bucket (the
+# untagged remainder).  Returned as result.tag so the caller can track its
+# debt correctly, but must be filtered before writing to persistent stats.
+NO_TAGS_KEY = "__no_tags__"
+
 
 class SchedulerResult(NamedTuple):
     card: object
@@ -58,30 +63,57 @@ def get_card_from_scheduler(
         return [c for c in raw if c not in exclude]
 
     if use_tags:
-        tag = soft_pick(tag_weights, counts["tags"], alpha, epsilon)
+        # Build extended weights: add an "other cards" bucket for the
+        # unallocated fraction (e.g. tags sum to 0.20 → other = 0.80).
+        remainder = max(0.0, 1.0 - sum(tag_weights.values()))
+        extended = dict(tag_weights)
+        if remainder > 1e-6:
+            extended[NO_TAGS_KEY] = remainder
+
+        tag = soft_pick(extended, counts["tags"], alpha, epsilon)
         actual_tag = tag
 
-        # Primary: requested type + tag
-        if card_type == "topics":
-            cards = available(card_utils.get_topic_cards_by_tag(
-                tag, topics_filter=topics_filter, ready_filter=ready_filter))
-        else:
-            cards = available(card_utils.get_item_cards_by_tag(
-                tag, items_filter=items_filter, ready_filter=ready_filter))
-
-        # Type fallback: try the other type, but STAY within the tag
-        if not cards:
-            actual_type = "items" if card_type == "topics" else "topics"
+        if tag == NO_TAGS_KEY:
+            # "Other" bucket selected — fetch from the general pool (no tag filter).
             if card_type == "topics":
-                cards = available(card_utils.get_item_cards_by_tag(
-                    tag, items_filter=items_filter, ready_filter=ready_filter))
+                cards = available(card_utils.get_all_topic_cards(
+                    topics_filter=topics_filter, ready_filter=ready_filter))
             else:
+                cards = available(card_utils.get_all_item_cards(
+                    items_filter=items_filter, ready_filter=ready_filter))
+            if not cards:
+                actual_type = "items" if card_type == "topics" else "topics"
+                if card_type == "topics":
+                    cards = available(card_utils.get_all_item_cards(
+                        items_filter=items_filter, ready_filter=ready_filter))
+                else:
+                    cards = available(card_utils.get_all_topic_cards(
+                        topics_filter=topics_filter, ready_filter=ready_filter))
+            if not cards:
+                return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
+        else:
+            # Tag-constrained pick.
+            # Primary: requested type + tag
+            if card_type == "topics":
                 cards = available(card_utils.get_topic_cards_by_tag(
                     tag, topics_filter=topics_filter, ready_filter=ready_filter))
+            else:
+                cards = available(card_utils.get_item_cards_by_tag(
+                    tag, items_filter=items_filter, ready_filter=ready_filter))
 
-        # No cards at all for this tag → caller handles it (next tag or Phase 2)
-        if not cards:
-            return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
+            # Type fallback: try the other type, but STAY within the tag
+            if not cards:
+                actual_type = "items" if card_type == "topics" else "topics"
+                if card_type == "topics":
+                    cards = available(card_utils.get_item_cards_by_tag(
+                        tag, items_filter=items_filter, ready_filter=ready_filter))
+                else:
+                    cards = available(card_utils.get_topic_cards_by_tag(
+                        tag, topics_filter=topics_filter, ready_filter=ready_filter))
+
+            # No cards at all for this tag → caller handles it (next tag or Phase 2)
+            if not cards:
+                return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
 
     else:
         # No tag constraint — fetch all cards of the chosen type

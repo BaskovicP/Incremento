@@ -267,8 +267,8 @@ class SchedulerConfigDialog(QDialog):
         _tag_header.setStyleSheet("font-weight: bold;")
         layout.addWidget(_tag_header)
         _tag_desc = QLabel(
-            "Allocate what share of the session each tag receives. "
-            "Weights are normalised automatically."
+            "Set what percentage of the session each tag receives. "
+            "Sliders are independent — the remainder goes to untagged cards."
         )
         _tag_desc.setWordWrap(True)
         _tag_desc.setStyleSheet("color: gray;")
@@ -294,13 +294,17 @@ class SchedulerConfigDialog(QDialog):
         self._tags_container = QWidget()
         self._tags_layout = QVBoxLayout(self._tags_container)
         self._tags_layout.setContentsMargins(0, 0, 0, 0)
+        self._tags_layout.setSpacing(2)
         layout.addWidget(self._tags_container)
 
-        # Restore saved tag rows (no redistribution until all are loaded)
+        # Restore saved tag rows
         for entry in self._saved.get("tag_rows", []):
-            self._add_tag_row(entry["tag"], entry.get("weight", 50),
-                              locked=entry.get("locked", False), redistribute=False)
-        self._rebalance()
+            self._add_tag_row(entry["tag"], entry.get("weight", 20),
+                              locked=entry.get("locked", False))
+
+        self._other_lbl = QLabel("")
+        layout.addWidget(self._other_lbl)
+        self._update_other_label()
 
         # -- Advanced: deck filters --
         _adv_header = QLabel("Advanced")
@@ -340,6 +344,16 @@ class SchedulerConfigDialog(QDialog):
                  lambda: self._test_filter(self._items_filter_edit.text().strip() or "-deck:Topics"))
         items_filter_row.addWidget(test_items_btn)
         layout.addLayout(items_filter_row)
+
+        self._preserve_order_cb = QCheckBox("Present cards in scheduler order")
+        self._preserve_order_cb.setToolTip(
+            "When checked, cards appear in the exact order the scheduler selected them.\n"
+            "Stopping early gives a proportional sample matching your tag/type ratios.\n"
+            "Works best with soft scheduling (strict enforcement disabled).\n\n"
+            "When unchecked, cards are shown in random order."
+        )
+        self._preserve_order_cb.setChecked(self._saved.get("preserve_order", True))
+        layout.addWidget(self._preserve_order_cb)
 
         qconnect(self._topics_filter_edit.textChanged, lambda _: self._refresh_counts())
         qconnect(self._items_filter_edit.textChanged,  lambda _: self._refresh_counts())
@@ -454,7 +468,7 @@ class SchedulerConfigDialog(QDialog):
         """Create the shared [label | slider | pct | lock] part of a tag row."""
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setContentsMargins(0, 5, 0, 5)
         name_label = QLabel(label_text)
         row_layout.addWidget(name_label)
 
@@ -473,16 +487,14 @@ class SchedulerConfigDialog(QDialog):
         lock_cb.setFixedWidth(48)
         row_layout.addWidget(lock_cb)
 
-        # Disable slider when locked; re-enable and rebalance on toggle
+        # Disable slider when locked; re-enable on toggle
         slider.setEnabled(not locked)
         qconnect(lock_cb.stateChanged,
                  lambda _, cb=lock_cb, s=slider: s.setEnabled(not cb.isChecked()))
-        qconnect(lock_cb.stateChanged, lambda _: self._rebalance())
 
         return row_widget, row_layout, slider, pct_label, lock_cb, name_label
 
-    def _add_tag_row(self, tag: str, weight: int = 50, locked: bool = False,
-                     redistribute: bool = True) -> None:
+    def _add_tag_row(self, tag: str, weight: int = 20, locked: bool = False) -> None:
         if not tag:
             return
         if any(r["tag"] == tag for r in self._linked_rows):
@@ -515,8 +527,7 @@ class SchedulerConfigDialog(QDialog):
         if idx >= 0:
             self._tag_combo.removeItem(idx)
 
-        if redistribute:
-            self._rebalance()
+        self._update_other_label()
 
     def _remove_row(self, row_dict: dict) -> None:
         tag = row_dict["tag"]
@@ -530,78 +541,34 @@ class SchedulerConfigDialog(QDialog):
         items.sort()
         self._tag_combo.insertItem(items.index(tag), tag)
 
-        self._rebalance()
+        self._update_other_label()
 
     # ------------------------------------------------------------------
-    # Linked-slider logic (lock-aware)
+    # Slider logic — each tag slider is independent (no forced rebalancing)
     # ------------------------------------------------------------------
-
-    def _rebalance(self) -> None:
-        """Redistribute unlocked rows so all rows together sum to 100%."""
-        rows = self._linked_rows
-        if not rows:
-            return
-        locked_total = sum(r["slider"].value() for r in rows if r["lock_cb"].isChecked())
-        unlocked = [r for r in rows if not r["lock_cb"].isChecked()]
-        if not unlocked:
-            return
-        self._distribute_remaining(unlocked, max(0, 100 - locked_total))
-
-    def _distribute_remaining(self, rows: list[dict], total: int) -> None:
-        """Set sliders in rows to proportionally sum to total."""
-        if not rows:
-            return
-        total = max(0, total)
-        self._updating = True
-        try:
-            current = sum(r["slider"].value() for r in rows)
-            if current == 0:
-                base = total // len(rows)
-                rem = total - base * len(rows)
-                for i, r in enumerate(rows):
-                    v = base + (rem if i == 0 else 0)
-                    r["slider"].setValue(v)
-                    r["pct_label"].setText(f"{v}%")
-            else:
-                new_vals = [round(r["slider"].value() / current * total) for r in rows]
-                new_vals[-1] = max(0, new_vals[-1] + (total - sum(new_vals)))
-                for r, v in zip(rows, new_vals):
-                    r["slider"].setValue(v)
-                    r["pct_label"].setText(f"{v}%")
-        finally:
-            self._updating = False
 
     def _on_weight_changed(self, changed_row: dict) -> None:
         if self._updating:
             return
+        changed_row["pct_label"].setText(f"{changed_row['slider'].value()}%")
+        self._update_other_label()
 
-        locked_total = sum(r["slider"].value() for r in self._linked_rows
-                           if r["lock_cb"].isChecked() and r is not changed_row)
-        budget = 100 - locked_total  # max this slider + unlocked others can share
-
-        unlocked_others = [r for r in self._linked_rows
-                           if r is not changed_row and not r["lock_cb"].isChecked()]
-
-        # If this is the only free slider it must hold the entire remaining budget.
-        if not unlocked_others:
-            self._updating = True
-            try:
-                changed_row["slider"].setValue(budget)
-                changed_row["pct_label"].setText(f"{budget}%")
-            finally:
-                self._updating = False
+    def _update_other_label(self) -> None:
+        """Show what fraction of the session is left for untagged cards."""
+        total = sum(r["slider"].value() for r in self._linked_rows)
+        other = max(0, 100 - total)
+        if not hasattr(self, "_other_lbl"):
             return
-
-        # Clamp so locked rows are never crowded out.
-        new_val = min(changed_row["slider"].value(), budget)
-        self._updating = True
-        try:
-            changed_row["slider"].setValue(new_val)
-        finally:
-            self._updating = False
-        changed_row["pct_label"].setText(f"{new_val}%")
-
-        self._distribute_remaining(unlocked_others, budget - new_val)
+        if total > 100:
+            self._other_lbl.setText(
+                f'<span style="color: #e0a020; font-size: small;">'
+                f'Other cards: {other}%  (tag weights exceed 100% — reduce some sliders)</span>'
+            )
+        else:
+            self._other_lbl.setText(
+                f'<span style="color: gray; font-size: small;">'
+                f'Other cards: {other}%</span>'
+            )
 
     def _ready_filter_from_checks(self) -> str:
         """Build the is:… clause from the card-type checkboxes."""
@@ -724,13 +691,12 @@ class SchedulerConfigDialog(QDialog):
     def to_config(self) -> SchedulerConfig:
         """Return a SchedulerConfig built from the current widget state."""
         raw = {r["tag"]: r["slider"].value() for r in self._linked_rows}
-        total = sum(raw.values()) or 1
         return SchedulerConfig(
             session_card_count=self._count_spin.value(),
             topics_rate=1.0 - self._topics_slider.value() / 100.0,
             random_rate=self._random_slider.value() / 100.0,
             use_tags=bool(raw),
-            tag_weights={tag: v / total for tag, v in raw.items()},
+            tag_weights={tag: v / 100.0 for tag, v in raw.items()},
             include_rest=self._no_tags_cb.isChecked(),
             scheduler_scope=self._scope_combo.currentData(),
             day_end_time=self._get_day_end_time(),
@@ -741,6 +707,7 @@ class SchedulerConfigDialog(QDialog):
             include_new=self._cb_new.isChecked(),
             include_learning=self._cb_learning.isChecked(),
             include_due=self._cb_due.isChecked(),
+            preserve_order=self._preserve_order_cb.isChecked(),
         )
 
     # ------------------------------------------------------------------
@@ -771,5 +738,6 @@ class SchedulerConfigDialog(QDialog):
             "include_new":      self._cb_new.isChecked(),
             "include_learning": self._cb_learning.isChecked(),
             "include_due":      self._cb_due.isChecked(),
+            "preserve_order":   self._preserve_order_cb.isChecked(),
         }
         mw.addonManager.writeConfig(__name__, config)

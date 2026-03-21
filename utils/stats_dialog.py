@@ -241,8 +241,8 @@ class StatsDialog(QDialog):
                 _MODE_COLORS, self._content,
             ))
 
-        # Tags
-        tag_data = counts["tags"]
+        # Tags (filter out synthetic internal keys like __no_tags__)
+        tag_data = {k: v for k, v in counts["tags"].items() if not k.startswith("__")}
         if tag_data:
             sorted_tags = sorted(tag_data.items(), key=lambda x: x[1], reverse=True)
             self._clayout.addWidget(_section(
