@@ -12,3 +12,5 @@ user_files/custom_learn_stats.json
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
+/frontend/node_modules/
+

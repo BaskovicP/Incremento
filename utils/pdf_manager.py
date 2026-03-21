@@ -6,110 +6,25 @@ PDF_NOTE_TYPE = "Incremento PDF"
 
 CARD_TEMPLATE_FRONT = r"""
 <script src="/_addons/incremento/user_files/pdfjs/pdf.min.js"></script>
+<style>
+#pdf-text-layer {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+#pdf-text-layer span {
+  color: transparent; position: absolute; white-space: pre; cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+#pdf-text-layer ::selection { background: rgba(0,100,255,0.3); color: transparent; }
+</style>
 <div id="incremento-pdf-meta"
      data-filename="{{PDF_Filename}}"
      data-title="{{Title}}"
      style="display:none">{{PDF_Filename}}</div>
-<div id="pdf-container" style="width:100%;text-align:center;">
-  <canvas id="pdf-canvas" width="800"></canvas>
-  <div id="pdf-error" style="color:red;display:none;"></div>
-  <div id="pdf-controls" style="margin-top:8px;">
-    <button onclick="incrementoPdfNav(-1)">&#8592; Prev</button>
-    <span id="pdf-page-label" style="margin:0 12px;">Page — / —</span>
-    <button onclick="incrementoPdfNav(1)">Next &#8594;</button>
-  </div>
-</div>
-
-<script>
-(function () {
-  var _cardId    = null;
-  var _filename  = null;
-  var _page      = 1;
-  var _totalPages= 0;
-  var _pdfDoc    = null;
-  var _busy      = false;
-
-  function showError(msg) {
-    var el = document.getElementById("pdf-error");
-    if (el) { el.style.display = ""; el.textContent = msg; }
-  }
-
-  function renderPage(num) {
-    if (_busy || !_pdfDoc) return;
-    _busy = true;
-    _pdfDoc.getPage(num).then(function(page) {
-      var canvas  = document.getElementById("pdf-canvas");
-      var ctx     = canvas.getContext("2d");
-      var container = document.getElementById("pdf-container");
-      var width   = container.offsetWidth || 800;
-      var viewport= page.getViewport({ scale: 1 });
-      var scale   = width / viewport.width;
-      if (!scale || scale <= 0) scale = 1;
-      var scaledVP= page.getViewport({ scale: scale });
-      canvas.width = scaledVP.width;
-      canvas.height= scaledVP.height;
-      page.render({ canvasContext: ctx, viewport: scaledVP }).promise.then(function() {
-        var lbl = document.getElementById("pdf-page-label");
-        if (lbl) lbl.textContent = "Page " + num + " / " + _totalPages;
-        _busy = false;
-      }).catch(function(e) { showError("Render error: " + e); _busy = false; });
-    }).catch(function(e) { showError("Page error: " + e); _busy = false; });
-  }
-
-  function _doStart() {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "/_addons/incremento/user_files/pdfjs/pdf.worker.min.js";
-    var url = "/" + encodeURIComponent(_filename);
-    pdfjsLib.getDocument(url).promise.then(function(doc) {
-      _pdfDoc     = doc;
-      _totalPages = doc.numPages;
-      if (_page > _totalPages) _page = _totalPages;
-      renderPage(_page);
-    }).catch(function(e) { showError("Load error: " + e); });
-  }
-
-  window.incrementoPdfNav = function(delta) {
-    if (!_pdfDoc) return;
-    var next = _page + delta;
-    if (next < 1 || next > _totalPages) return;
-    _page = next;
-    pycmd("incremento_pdf_nav:" + _cardId + ":" + _page);
-    renderPage(_page);
-  };
-
-  window.incrementoPdfStart = function(cardId, filename, startPage) {
-    _cardId   = cardId;
-    _filename = filename;
-    _page     = startPage || 1;
-    window._incPdfPending = null;  // consumed
-
-    if (typeof pdfjsLib === "undefined") {
-      // PDF.js still loading — poll until ready (up to 2s)
-      var _attempts = 0;
-      var _poll = setInterval(function() {
-        if (typeof pdfjsLib !== "undefined") {
-          clearInterval(_poll);
-          _doStart();
-        } else if (++_attempts > 20) {
-          clearInterval(_poll);
-          showError("PDF.js failed to load.");
-        }
-      }, 100);
-      return;
-    }
-
-    _doStart();
-  };
-
-  // If Python fired web.eval before this script ran, pick up the pending args now.
-  if (window._incPdfPending) {
-    var _p = window._incPdfPending;
-    window._incPdfPending = null;
-    incrementoPdfStart(_p.cardId, _p.filename, _p.page);
-  }
-
-})();
-</script>
+<div id="pdf-react-root"></div>
+<script src="/_addons/incremento/user_files/dist/pdf_viewer.js"></script>
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"

@@ -247,3 +247,70 @@ with patch("cards.mw") as mock_mw:
 - The `day_end_time` boundary shifts the logical date: if it's `04:00` and the wall clock is `03:30`, `_effective_date` returns yesterday's ISO string.
 - Filtered deck uses Anki's protobuf API (`get_or_create_filtered_deck` / `add_or_update_filtered_deck`) — requires Anki 2.1.45+.
 - `fdu.config.reschedule = True` is set so cards return to their original deck after review with updated scheduling.
+
+---
+
+## PDF Card System (`utils/pdf_manager.py`, `utils/pdf_dialog.py`)
+
+Reference implementation studied: `anki-search-inside-add-card` addon.
+
+### Note type
+
+`PDF_NOTE_TYPE = "Incremento PDF"` — created/updated by `ensure_pdf_note_type(col)`.
+Fields: `Title`, `PDF_Filename`.
+`ensure_pdf_note_type` is called from a `main_window_did_init` hook (`_sync_pdf_note_type` in `__init__.py`) so template changes in code propagate to the DB on every startup via `models.update_dict(m)`.
+
+### Card template (`CARD_TEMPLATE_FRONT`)
+
+Structure (top to bottom):
+1. `<script src="/_addons/incremento/user_files/pdfjs/pdf.min.js">` — loaded **first** so it's ready before the inline script runs
+2. CSS block — `.textLayer` styles: absolute overlay, transparent text, blue `::selection`
+3. Hidden `<div id="incremento-pdf-meta" data-filename="{{PDF_Filename}}">{{PDF_Filename}}</div>` — satisfies Anki's "must have a field on front" validator; also carries the filename for potential DOM reads
+4. `#pdf-canvas-wrapper` (relative-positioned) containing `<canvas>` + `<div id="pdf-text-layer">`
+5. Controls: ← Prev · Page N/M · Next → · − zoom% +
+6. Inline `<script>` IIFE — defines all JS functions
+
+### JavaScript internals
+
+State variables inside the IIFE closure: `_cardId`, `_filename`, `_page`, `_totalPages`, `_pdfDoc`, `_busy`, `_zoom`.
+
+**Timing problem & solution**: `reviewer_did_show_question` fires while the inline `<script>` may not have executed yet (Anki injects card HTML via JS, not full page load).
+Fix: Python always sets `window._incPdfPending = {cardId, filename, page}` before calling the function; the inline script reads `_incPdfPending` at the bottom of the IIFE and self-starts if Python fired first.
+
+**URL for media files**: Anki's media server serves collection files at root — use `"/" + encodeURIComponent(filename)`, not `/_anki/media/filename`.
+
+**PDF.js polling**: if `pdfjsLib` is still undefined when `incrementoPdfStart` runs, poll every 100ms up to 20 times (2s) rather than a single fixed timeout.
+
+**Text layer** (enables text selection):
+- `_renderTextLayer(page, viewport)` called after canvas render completes
+- Clears `#pdf-text-layer`, sets it to exact canvas dimensions, calls `pdfjsLib.renderTextLayer({textContentSource, container, viewport})`
+- Errors silently swallowed — canvas render is unaffected if text layer fails
+
+**Zoom**: `_zoom` multiplier (default 1.0) applied to the fit-to-width base scale. `±` buttons step by 0.01, clamped to [0.25, 4.0].
+
+**Navigation**: `pycmd("incremento_pdf_nav:<cardId>:<page>")` → `_on_js_message` in `__init__.py` → `set_page(addon_dir, card_id, page)`.
+
+### Python hooks (`__init__.py`)
+
+| Hook | Purpose |
+|---|---|
+| `main_window_did_init` | Calls `_sync_pdf_note_type()` to update DB template |
+| `reviewer_did_show_question(card)` | Sets `_incPdfPending` + calls `incrementoPdfStart` via `mw.reviewer.web.eval` |
+| `webview_did_receive_js_message` | Intercepts `incremento_pdf_nav:` messages, calls `set_page` |
+
+`setWebExports(__name__, r"user_files/.*")` makes `user_files/pdfjs/*.js` accessible at `/_addons/incremento/user_files/pdfjs/…`.
+
+### Page progress (`user_files/pdf_progress.json`)
+
+```json
+{"<card_id_str>": <page_int>}
+```
+`get_page(addon_dir, card_id) → int` (default 1), `set_page(addon_dir, card_id, page)`. Atomic write via `.tmp` + `os.replace`.
+
+### Key lessons from reference addon
+
+- **Double-buffer canvas** (two canvases, swap after render) prevents flicker on page turns — not yet implemented here
+- **High-DPI**: multiply canvas dimensions by `window.devicePixelRatio`, apply inverse CSS transform — not yet implemented
+- **PDF.js workerSrc** must be an absolute URL (full `http://…` or absolute path) — relative paths fail in some Qt WebEngine versions
+- **Progress tracked per-note** in reference addon; Incremento tracks per-card (card ID key)
+- Reference addon uses PDF.js 2.4.456; Incremento ships its own copy in `user_files/pdfjs/` — version unknown but includes `pdf.sandbox.min.js` (≥ 2.10)
