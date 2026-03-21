@@ -17,7 +17,10 @@ class SchedulerConfig:
     use_tags: bool = False         # True if any real tag rows are active
     tag_weights: dict = field(default_factory=dict)  # {tag: normalised_weight}
     include_rest: bool = True      # fill remaining slots with untagged cards after tag phases
+    scheduler_scope: str = "session"   # "session" | "daily" | "lifetime"
+    day_end_time: str = "00:00"        # HH:MM — logical day boundary for "daily" scope
     priority_order: list = field(default_factory=lambda: ["tags", "type", "mode"])
+    enforce_priority: bool = True      # False → soft debt-based ordering, no hard quotas
 
 
 def load_scheduler_config() -> SchedulerConfig:
@@ -44,7 +47,11 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     total = sum(raw.values()) or 1
     tag_weights = {tag: v / total for tag, v in raw.items()}
 
-    priority_order = d.get("priority_order", ["tags", "type", "mode"])
+    priority_order    = d.get("priority_order", ["tags", "type", "mode"])
+    enforce_priority  = d.get("enforce_priority", True)
+
+    scheduler_scope = d.get("scheduler_scope", "session")
+    day_end_time    = d.get("day_end_time", "00:00")
 
     return SchedulerConfig(
         topics_rate=topics_rate,
@@ -52,5 +59,8 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         use_tags=bool(real_rows),
         tag_weights=tag_weights,
         include_rest=no_tags_checked,
+        scheduler_scope=scheduler_scope,
+        day_end_time=day_end_time,
         priority_order=priority_order,
+        enforce_priority=enforce_priority,
     )

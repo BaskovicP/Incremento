@@ -6,6 +6,7 @@ No Anki mocking needed — statistics.py has no Anki imports.
 import importlib.util
 import json
 import os
+from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,6 +22,7 @@ _spec.loader.exec_module(_mod)
 StatsManager = _mod.StatsManager
 _empty = _mod._empty
 _today = _mod._today
+_effective_date = _mod._effective_date
 _is_valid_counts_block = _mod._is_valid_counts_block
 
 
@@ -206,3 +208,51 @@ class TestSave:
         user_files = tmp_path / "user_files"
         tmp_files = list(user_files.glob("*.tmp"))
         assert tmp_files == []
+
+
+class TestEffectiveDate:
+    def test_midnight_boundary_returns_today(self):
+        """With 00:00 boundary, effective date always equals calendar date."""
+        result = _effective_date("00:00")
+        assert result == _today()
+
+    def test_boundary_after_current_time_gives_yesterday(self, monkeypatch):
+        """If current time is before the boundary, logical date is yesterday."""
+        # Freeze 'now' to 03:00
+        fixed = datetime(2026, 3, 21, 3, 0)
+        monkeypatch.setattr(_mod, "datetime", type("_DT", (), {
+            "now": staticmethod(lambda: fixed),
+            "date": datetime.date,
+        })())
+        result = _effective_date("04:00")
+        assert result == "2026-03-20"  # yesterday
+
+    def test_boundary_before_current_time_gives_today(self, monkeypatch):
+        """If current time is at or after the boundary, logical date is today."""
+        fixed = datetime(2026, 3, 21, 5, 0)
+        monkeypatch.setattr(_mod, "datetime", type("_DT", (), {
+            "now": staticmethod(lambda: fixed),
+            "date": datetime.date,
+        })())
+        result = _effective_date("04:00")
+        assert result == "2026-03-21"
+
+    def test_stats_manager_uses_day_end_time(self, tmp_path, monkeypatch):
+        """StatsManager with day_end='04:00' at 03:00 loads 'yesterday' as today."""
+        fixed = datetime(2026, 3, 21, 3, 0)
+        monkeypatch.setattr(_mod, "datetime", type("_DT", (), {
+            "now": staticmethod(lambda: fixed),
+            "date": datetime.date,
+        })())
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        yesterday_counts = {"type": {"topics": 3}, "tags": {}, "mode": {"random": 2}}
+        data = {
+            "daily": {"date": "2026-03-20", "counts": yesterday_counts},
+            "lifetime": _empty(),
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+
+        sm = StatsManager(str(tmp_path), day_end_time="04:00")
+        # At 03:00 with 04:00 boundary, logical date is 2026-03-20 → loads yesterday's counts
+        assert sm.daily == yesterday_counts

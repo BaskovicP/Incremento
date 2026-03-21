@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 
@@ -10,6 +11,21 @@ def _empty() -> dict:
 
 def _today() -> str:
     return time.strftime("%Y-%m-%d")
+
+
+def _effective_date(day_end: str = "00:00") -> str:
+    """Return the logical date string, honouring a non-midnight day boundary.
+
+    If day_end is "04:00" and the current time is 03:30, the logical date is
+    yesterday — the user's 'day' hasn't ended yet.
+    """
+    now = datetime.now()
+    h, m = map(int, day_end.split(":"))
+    boundary_minutes = h * 60 + m
+    current_minutes  = now.hour * 60 + now.minute
+    if current_minutes < boundary_minutes:
+        return (now.date() - timedelta(days=1)).isoformat()
+    return now.date().isoformat()
 
 
 def _is_valid_counts_block(d) -> bool:
@@ -46,8 +62,9 @@ def save_stats(addon_dir: str, stats: dict) -> None:
 
 
 class StatsManager:
-    def __init__(self, addon_dir: str):
+    def __init__(self, addon_dir: str, day_end_time: str = "00:00"):
         self._addon_dir = addon_dir
+        self._day_end_time = day_end_time
         self.session = _empty()
 
         raw = load_stats(addon_dir)
@@ -58,7 +75,7 @@ class StatsManager:
         daily_raw = raw.get("daily", {})
         if (
             isinstance(daily_raw, dict)
-            and daily_raw.get("date") == _today()
+            and daily_raw.get("date") == _effective_date(self._day_end_time)
             and _is_valid_counts_block(daily_raw.get("counts"))
         ):
             self.daily = daily_raw["counts"]
@@ -94,7 +111,7 @@ class StatsManager:
     def _save(self) -> None:
         stats = {
             "daily": {
-                "date": _today(),
+                "date": _effective_date(self._day_end_time),
                 "counts": self.daily,
             },
             "lifetime": self.lifetime,

@@ -2,10 +2,22 @@ from aqt import mw
 from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
+    QTimeEdit, QTime,
 )
 
 from .scheduler_config import SchedulerConfig, NO_TAGS_KEY
 
+
+_DAY_END_PRESETS = [
+    ("00:00", "12:00 AM (midnight)"),
+    ("01:00", "1:00 AM"),
+    ("02:00", "2:00 AM"),
+    ("03:00", "3:00 AM"),
+    ("04:00", "4:00 AM"),
+    ("05:00", "5:00 AM"),
+    ("06:00", "6:00 AM"),
+    (None,    "Custom…"),
+]
 
 _PRIORITY_DIMS = [
     ("tags",  "Tags"),
@@ -73,9 +85,69 @@ class SchedulerConfigDialog(QDialog):
                  lambda v: (self._random_left_lbl.setText(f"{100 - v}%"),
                              self._random_right_lbl.setText(f"{v}%")))
 
+        # -- Scheduler scope --
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("Scheduler scope:"))
+        self._scope_combo = QComboBox()
+        self._scope_combo.addItem("Session",  "session")
+        self._scope_combo.addItem("Daily",    "daily")
+        self._scope_combo.addItem("Lifetime", "lifetime")
+        saved_scope = self._saved.get("scheduler_scope", "session")
+        for i in range(self._scope_combo.count()):
+            if self._scope_combo.itemData(i) == saved_scope:
+                self._scope_combo.setCurrentIndex(i)
+                break
+        scope_row.addWidget(self._scope_combo)
+
+        self._day_end_label = QLabel("  Day ends at:")
+        scope_row.addWidget(self._day_end_label)
+
+        self._day_end_preset = QComboBox()
+        for value, label in _DAY_END_PRESETS:
+            self._day_end_preset.addItem(label, value)
+        scope_row.addWidget(self._day_end_preset)
+
+        self._day_end_edit = QTimeEdit()
+        self._day_end_edit.setDisplayFormat("HH:mm")
+        scope_row.addWidget(self._day_end_edit)
+
+        scope_row.addStretch()
+        layout.addLayout(scope_row)
+
+        # Restore saved day-end time
+        saved_time = self._saved.get("day_end_time", "00:00")
+        preset_idx = next(
+            (i for i in range(self._day_end_preset.count())
+             if self._day_end_preset.itemData(i) == saved_time),
+            None,
+        )
+        if preset_idx is not None:
+            self._day_end_preset.setCurrentIndex(preset_idx)
+        else:
+            self._day_end_preset.setCurrentIndex(self._day_end_preset.count() - 1)
+            h, m = map(int, saved_time.split(":"))
+            self._day_end_edit.setTime(QTime(h, m))
+
+        self._update_day_end_visibility()
+        qconnect(self._scope_combo.currentIndexChanged, lambda _: self._update_day_end_visibility())
+        qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._on_day_end_preset_changed())
+
         # -- Priority order --
-        layout.addWidget(QLabel("Scheduling priority order:"))
-        priority_row = QHBoxLayout()
+        priority_header = QHBoxLayout()
+        self._enforce_cb = QCheckBox("Strict enforcement")
+        self._enforce_cb.setToolTip(
+            "Checked: exhaust each quota in order (e.g. all tag-A cards, then tag-B).\n"
+            "Unchecked: soft debt-based ordering — all dimensions interleave randomly."
+        )
+        self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
+        priority_header.addWidget(QLabel("Scheduling priority order:"))
+        priority_header.addStretch()
+        priority_header.addWidget(self._enforce_cb)
+        layout.addLayout(priority_header)
+
+        self._priority_order_widget = QWidget()
+        priority_row = QHBoxLayout(self._priority_order_widget)
+        priority_row.setContentsMargins(0, 0, 0, 0)
         self._priority_combos: list[QComboBox] = []
         saved_order = self._saved.get("priority_order", ["tags", "type", "mode"])
         for i in range(3):
@@ -84,8 +156,12 @@ class SchedulerConfigDialog(QDialog):
             combo = QComboBox()
             self._priority_combos.append(combo)
             priority_row.addWidget(combo)
-        layout.addLayout(priority_row)
+        priority_row.addStretch()
+        layout.addWidget(self._priority_order_widget)
         self._refresh_priority_combos(saved_order)
+        self._priority_order_widget.setEnabled(self._enforce_cb.isChecked())
+        qconnect(self._enforce_cb.stateChanged,
+                 lambda _: self._priority_order_widget.setEnabled(self._enforce_cb.isChecked()))
         qconnect(self._priority_combos[0].currentIndexChanged,
                  lambda _: self._on_priority_changed(0))
         qconnect(self._priority_combos[1].currentIndexChanged,
@@ -125,6 +201,24 @@ class SchedulerConfigDialog(QDialog):
         qconnect(btn_box.accepted, self.accept)
         qconnect(btn_box.rejected, self.reject)
         layout.addWidget(btn_box)
+
+    def _update_day_end_visibility(self) -> None:
+        is_daily = self._scope_combo.currentData() == "daily"
+        self._day_end_label.setVisible(is_daily)
+        self._day_end_preset.setVisible(is_daily)
+        self._day_end_edit.setVisible(is_daily and self._day_end_preset.currentData() is None)
+
+    def _on_day_end_preset_changed(self) -> None:
+        self._day_end_edit.setVisible(
+            self._scope_combo.currentData() == "daily"
+            and self._day_end_preset.currentData() is None
+        )
+
+    def _get_day_end_time(self) -> str:
+        preset = self._day_end_preset.currentData()
+        if preset is None:
+            return self._day_end_edit.time().toString("HH:mm")
+        return preset
 
     # ------------------------------------------------------------------
     # Priority order helpers
@@ -313,7 +407,10 @@ class SchedulerConfigDialog(QDialog):
             use_tags=bool(raw),
             tag_weights={tag: v / total for tag, v in raw.items()},
             include_rest=self._no_tags_cb.isChecked(),
+            scheduler_scope=self._scope_combo.currentData(),
+            day_end_time=self._get_day_end_time(),
             priority_order=self._get_priority_order(),
+            enforce_priority=self._enforce_cb.isChecked(),
         )
 
     # ------------------------------------------------------------------
@@ -327,6 +424,9 @@ class SchedulerConfigDialog(QDialog):
             "random_slider": self._random_slider.value(),
             "no_tags_checked": self._no_tags_cb.isChecked(),
             "priority_order": self._get_priority_order(),
+            "enforce_priority": self._enforce_cb.isChecked(),
+            "scheduler_scope": self._scope_combo.currentData(),
+            "day_end_time": self._get_day_end_time(),
             "tag_rows": [
                 {
                     "tag": row["tag"],
