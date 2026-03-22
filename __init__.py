@@ -28,6 +28,8 @@ from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_
 from .utils.video_manager import (VIDEO_NOTE_TYPE, extract_video_id, fmt_time,
                                    get_video_position, set_video_position,
                                    ensure_video_note_type, add_video_card)
+from .utils.web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
+                                ensure_web_note_type, add_web_card)
 from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
 from .utils.priority_manager import get_priority, set_priority
 from .utils.priority_dialog import PriorityDialog
@@ -288,6 +290,13 @@ _current_video_card_id = None
 _video_timer          = None
 _video_tick_count     = 0
 _video_profile        = None   # module-level singleton — avoids use-after-free on exit
+
+_web_dock             = None
+_current_web_card_id  = None
+_current_web_home_url = None   # original URL from the card's URL field
+_web_profile          = None   # module-level singleton
+
+_browsing_unlocked    = False  # True after correct PIN entry (or no PIN set)
 
 
 def _pdf_citation() -> str:
@@ -562,6 +571,66 @@ def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False, read_pa
         _pdf_dock._view.page().runJavaScript(js)
 
 
+# ── PIN lock ─────────────────────────────────────────────────────────────────
+
+def _get_pin_hash() -> str | None:
+    cfg = mw.addonManager.getConfig(__name__) or {}
+    return cfg.get("pin_hash") or None
+
+
+def _check_pin_on_startup() -> None:
+    global _browsing_unlocked
+    if _get_pin_hash() is None:
+        _browsing_unlocked = True
+        return
+    # Defer slightly so the main window is fully painted before the dialog appears
+    QTimer.singleShot(400, _show_unlock_dialog)
+
+
+def _show_unlock_dialog() -> None:
+    global _browsing_unlocked
+    from .utils.pin_dialog import PinUnlockDialog, hash_pin
+    dlg = PinUnlockDialog(mw)
+    while True:
+        if not dlg.exec():
+            return  # user skipped — stays locked
+        if hash_pin(dlg.pin) == _get_pin_hash():
+            _browsing_unlocked = True
+            return
+        dlg.show_error("Incorrect PIN — try again.")
+
+
+def managePinFunction() -> None:
+    """Incremento -> Manage PIN"""
+    global _browsing_unlocked
+    from .utils.pin_dialog import PinSetupDialog, hash_pin
+
+    stored_hash = _get_pin_hash()
+    has_pin = stored_hash is not None
+
+    dlg = PinSetupDialog(has_pin=has_pin, parent=mw)
+    if not dlg.exec():
+        return
+
+    # Verify current PIN before allowing change
+    if has_pin and hash_pin(dlg.current_pin) != stored_hash:
+        showInfo("Incorrect current PIN.")
+        return
+
+    cfg = mw.addonManager.getConfig(__name__) or {}
+    new_pin = dlg.new_pin
+    if new_pin:
+        cfg["pin_hash"] = hash_pin(new_pin)
+        _browsing_unlocked = True
+        mw.addonManager.writeConfig(__name__, cfg)
+        tooltip("PIN set. Web and video browsing unlocked for this session.")
+    else:
+        cfg.pop("pin_hash", None)
+        _browsing_unlocked = True
+        mw.addonManager.writeConfig(__name__, cfg)
+        tooltip("PIN removed. Browsing will always be unlocked.")
+
+
 # ── Video dock ────────────────────────────────────────────────────────────────
 
 _YT_CURRENT_TIME_JS = (
@@ -595,6 +664,12 @@ def _build_video_dock():
     # Persistent named profile so YouTube login cookies survive across restarts.
     if _video_profile is None:
         _video_profile = _WEProf("incremento_video")
+        _video_profile.setPersistentStoragePath(
+            os.path.join(_ADDON_DIR, "user_files", "video_profile")
+        )
+        _video_profile.setPersistentCookiesPolicy(
+            _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
+        )
         _video_profile.setHttpUserAgent(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -738,7 +813,7 @@ def _do_video_add_card(t) -> None:
 
 def _on_video_question_shown(card) -> None:
     global _video_dock, _video_timer
-    if card is None:
+    if card is None or not _browsing_unlocked:
         return
     try:
         note  = mw.col.get_note(card.nid)
@@ -778,6 +853,190 @@ def _on_video_reviewer_will_end() -> None:
             _video_dock.hide()
         except RuntimeError:
             _video_dock = None
+
+
+# ── Web dock ──────────────────────────────────────────────────────────────────
+
+def _build_web_dock():
+    global _web_dock, _web_profile
+
+    from PyQt6.QtWebEngineCore import (QWebEngineSettings as _WES,
+                                       QWebEngineProfile as _WEProf,
+                                       QWebEnginePage as _WEPage)
+
+    dock = QDockWidget("Web", mw)
+    dock.setObjectName("incremento_web_dock")
+    dock.setMinimumWidth(600)
+
+    container = QWidget()
+    vbox = QVBoxLayout(container)
+    vbox.setContentsMargins(0, 0, 0, 0)
+    vbox.setSpacing(0)
+
+    view = QWebEngineView(container)
+
+    if _web_profile is None:
+        _web_profile = _WEProf("incremento_web")
+        _web_profile.setPersistentStoragePath(
+            os.path.join(_ADDON_DIR, "user_files", "web_profile")
+        )
+        _web_profile.setPersistentCookiesPolicy(
+            _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
+        )
+        _web_profile.setHttpUserAgent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
+        _web_profile.settings().setAttribute(
+            _WES.WebAttribute.PlaybackRequiresUserGesture, False
+        )
+
+    _page = _WEPage(_web_profile)
+    view.setPage(_page)
+
+    vbox.addWidget(view, 1)
+
+    # Controls bar: URL display + Home button
+    ctrl = QWidget(container)
+    ctrl_layout = QHBoxLayout(ctrl)
+    ctrl_layout.setContentsMargins(8, 4, 8, 4)
+    ctrl_layout.setSpacing(6)
+
+    url_lbl = QLabel("")
+    url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
+    url_lbl.setWordWrap(False)
+    url_lbl.setMaximumWidth(500)
+    ctrl_layout.addWidget(url_lbl, 1)
+
+    home_btn = QPushButton("⌂ Home")
+    home_btn.setFixedWidth(70)
+    ctrl_layout.addWidget(home_btn)
+
+    vbox.addWidget(ctrl)
+
+    dock.setWidget(container)
+    mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    dock._view    = view
+    dock._url_lbl = url_lbl
+
+    def _on_url_changed(qurl):
+        url_str = qurl.toString()
+        # Truncate for display
+        display = url_str if len(url_str) <= 80 else url_str[:77] + "…"
+        try:
+            url_lbl.setText(display)
+        except RuntimeError:
+            pass
+
+    def _on_load_finished(ok):
+        if not ok or _current_web_card_id is None:
+            return
+        url_str = view.url().toString()
+        if url_str and url_str != "about:blank":
+            try:
+                set_web_url(_ADDON_DIR, _current_web_card_id, url_str)
+            except Exception:
+                pass
+
+    view.urlChanged.connect(_on_url_changed)
+    view.loadFinished.connect(_on_load_finished)
+    qconnect(home_btn.clicked, _web_go_home)
+
+    _web_dock = dock
+    return dock
+
+
+def _web_go_home() -> None:
+    if _web_dock is None or not _current_web_home_url:
+        return
+    try:
+        _web_dock._view.load(QUrl(_current_web_home_url))
+    except (RuntimeError, AttributeError):
+        pass
+
+
+def _show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
+    global _web_dock, _current_web_card_id, _current_web_home_url
+
+    _current_web_card_id  = card_id
+    _current_web_home_url = home_url
+
+    if _web_dock is None:
+        _build_web_dock()
+    else:
+        try:
+            _web_dock.widget()
+        except RuntimeError:
+            _web_dock = None
+            _build_web_dock()
+
+    load_url = last_url if last_url else home_url
+    _web_dock.show()
+    _web_dock.raise_()
+    _web_dock._view.load(QUrl(load_url))
+
+
+def _on_web_question_shown(card) -> None:
+    global _web_dock
+    if card is None or not _browsing_unlocked:
+        return
+    try:
+        note  = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+    except Exception:
+        return
+    if model is None or model.get("name") != WEB_NOTE_TYPE:
+        if _web_dock is not None:
+            try:
+                _web_dock.hide()
+            except RuntimeError:
+                _web_dock = None
+        return
+    try:
+        home_url = note["URL"]
+    except (KeyError, TypeError):
+        return
+    if not home_url:
+        return
+    last_url = get_web_url(_ADDON_DIR, card.id)
+    _show_web_in_dock(card.id, home_url, last_url)
+
+
+def _on_web_reviewer_will_end() -> None:
+    if _web_dock is not None:
+        try:
+            _web_dock.hide()
+        except RuntimeError:
+            pass
+
+
+def _sync_web_note_type() -> None:
+    try:
+        ensure_web_note_type(mw.col)
+    except Exception:
+        pass
+
+
+def addWebFunction() -> None:
+    """Incremento -> Add Content -> Web Page"""
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    from .utils.add_web_dialog import AddWebDialog
+    dlg = AddWebDialog(deck_names, default_deck="Topics", parent=mw)
+    if not dlg.exec():
+        return
+    url = dlg.url
+    if not url:
+        showInfo("Please enter a URL.")
+        return
+    title = dlg.title or url
+    try:
+        add_web_card(mw.col, url, title, dlg.deck_name)
+        mw.col.reset()
+        tooltip(f"Web card '{title}' added to {dlg.deck_name}.")
+    except Exception as e:
+        showInfo(f"Failed to add web card:\n{e}")
 
 
 def _on_pdf_question_shown(card) -> None:
@@ -955,8 +1214,10 @@ def _on_pdf_reviewer_will_end() -> None:
 
 gui_hooks.reviewer_did_show_question.append(_on_pdf_question_shown)
 gui_hooks.reviewer_did_show_question.append(_on_video_question_shown)
+gui_hooks.reviewer_did_show_question.append(_on_web_question_shown)
 gui_hooks.reviewer_will_end.append(_on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_on_video_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_on_web_reviewer_will_end)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
@@ -984,6 +1245,8 @@ def _sync_video_note_type() -> None:
 
 
 gui_hooks.main_window_did_init.append(_sync_video_note_type)
+gui_hooks.main_window_did_init.append(_sync_web_note_type)
+gui_hooks.main_window_did_init.append(_check_pin_on_startup)
 
 
 def showStatsFunction() -> None:
@@ -1284,6 +1547,10 @@ _addVideoAction = QAction("YouTube Video", mw)
 qconnect(_addVideoAction.triggered, addVideoFunction)
 _addContentMenu.addAction(_addVideoAction)
 
+_addWebAction = QAction("Web Page", mw)
+qconnect(_addWebAction.triggered, addWebFunction)
+_addContentMenu.addAction(_addWebAction)
+
 _menu.addSeparator()
 
 _statsAction = QAction("Statistics", mw)
@@ -1293,3 +1560,9 @@ _menu.addAction(_statsAction)
 _exportAction = QAction("Export User Data", mw)
 qconnect(_exportAction.triggered, exportFunction)
 _menu.addAction(_exportAction)
+
+_menu.addSeparator()
+
+_pinAction = QAction("Manage PIN…", mw)
+qconnect(_pinAction.triggered, managePinFunction)
+_menu.addAction(_pinAction)

@@ -79,6 +79,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             card_id  INTEGER PRIMARY KEY,
             position REAL    NOT NULL DEFAULT 0.0
         );
+
+        CREATE TABLE IF NOT EXISTS web_progress (
+            card_id INTEGER PRIMARY KEY,
+            url     TEXT    NOT NULL DEFAULT ''
+        );
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
