@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; }
+#player, #player iframe { width: 100vw !important; height: 100vh !important; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+window._ytp = null;
+window._pendingStart = null;
+
+function onYouTubeIframeAPIReady() {
+  if (window._pendingStart) {
+    _doStart(window._pendingStart.id, window._pendingStart.t);
+    window._pendingStart = null;
+  }
+}
+
+function _doStart(videoId, startSec) {
+  if (window._ytp) {
+    window._ytp.loadVideoById({ videoId: videoId, startSeconds: startSec });
+  } else {
+    window._ytp = new YT.Player('player', {
+      videoId: videoId,
+      playerVars: {
+        start:          Math.floor(startSec || 0),
+        autoplay:       1,
+        rel:            0,
+        modestbranding: 1
+      },
+      events: {
+        onReady: function(e) { e.target.playVideo(); }
+      }
+    });
+  }
+}
+
+function startVideo(videoId, startSec) {
+  if (typeof YT === 'undefined' || typeof YT.Player === 'undefined') {
+    window._pendingStart = { id: videoId, t: startSec };
+  } else {
+    _doStart(videoId, startSec);
+  }
+}
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

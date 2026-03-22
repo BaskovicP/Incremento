@@ -25,6 +25,9 @@ from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
 from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom, get_read_page, set_read_page
+from .utils.video_manager import (VIDEO_NOTE_TYPE, extract_video_id, fmt_time,
+                                   get_video_position, set_video_position,
+                                   ensure_video_note_type, add_video_card)
 from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
 from .utils.priority_manager import get_priority, set_priority
 from .utils.priority_dialog import PriorityDialog
@@ -280,6 +283,12 @@ _current_pdf_card_id  = None
 _current_pdf_filename = None
 _pdf_via_link         = False   # True when dock was opened via a cross-reference link
 
+_video_dock           = None
+_current_video_card_id = None
+_video_timer          = None
+_video_tick_count     = 0
+_video_profile        = None   # module-level singleton — avoids use-after-free on exit
+
 
 def _pdf_citation() -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
@@ -296,6 +305,10 @@ def _pdf_citation() -> str:
 
 _DOCK_HTML = QUrl.fromLocalFile(
     os.path.join(_ADDON_DIR, 'user_files', 'pdf_dock.html')
+).toString()
+
+_VIDEO_PLAYER_HTML = QUrl.fromLocalFile(
+    os.path.join(_ADDON_DIR, 'user_files', 'video_player.html')
 ).toString()
 _WORKER_URL = QUrl.fromLocalFile(
     os.path.join(_ADDON_DIR, 'user_files', 'pdfjs', 'pdf.worker.min.js')
@@ -549,6 +562,224 @@ def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False, read_pa
         _pdf_dock._view.page().runJavaScript(js)
 
 
+# ── Video dock ────────────────────────────────────────────────────────────────
+
+_YT_CURRENT_TIME_JS = (
+    "(function(){"
+    "var v=document.querySelector('video');"
+    "return v ? v.currentTime : 0;"
+    "})()"
+)
+
+
+def _build_video_dock():
+    global _video_dock, _video_profile
+
+    dock = QDockWidget("Video", mw)
+    dock.setObjectName("incremento_video_dock")
+    dock.setMinimumWidth(560)
+
+    from PyQt6.QtWebEngineCore import (QWebEngineSettings as _WES,
+                                       QWebEngineProfile as _WEProf,
+                                       QWebEnginePage as _WEPage)
+
+    container = QWidget()
+    vbox = QVBoxLayout(container)
+    vbox.setContentsMargins(0, 0, 0, 0)
+    vbox.setSpacing(0)
+
+    view = QWebEngineView(container)
+
+    # Module-level profile with no parent — avoids use-after-free segfault on exit
+    # that occurs when the profile is parented to the view and both get destroyed.
+    # Persistent named profile so YouTube login cookies survive across restarts.
+    if _video_profile is None:
+        _video_profile = _WEProf("incremento_video")
+        _video_profile.setHttpUserAgent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
+        _video_profile.settings().setAttribute(
+            _WES.WebAttribute.PlaybackRequiresUserGesture, False
+        )
+
+    _page = _WEPage(_video_profile)  # no parent — profile must outlive page
+    view.setPage(_page)
+
+    vbox.addWidget(view, 1)
+
+    ctrl = QWidget(container)
+    ctrl_layout = QHBoxLayout(ctrl)
+    ctrl_layout.setContentsMargins(8, 4, 8, 4)
+
+    ts_lbl = QLabel("\u25b6  0:00")
+    ts_lbl.setStyleSheet("font-family: monospace; font-size: 12px;")
+    ctrl_layout.addWidget(ts_lbl)
+    ctrl_layout.addStretch()
+
+    add_btn = QPushButton("+ Add Card at this point")
+    ctrl_layout.addWidget(add_btn)
+    vbox.addWidget(ctrl)
+
+    dock.setWidget(container)
+    mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    dock._view   = view
+    dock._ts_lbl = ts_lbl
+    qconnect(add_btn.clicked, _video_add_card_at_point)
+
+    _video_dock = dock
+    return dock
+
+
+def _show_video_in_dock(card_id: int, youtube_url: str, position: float = 0.0) -> None:
+    global _video_dock, _current_video_card_id
+
+    _current_video_card_id = card_id
+
+    if _video_dock is None:
+        _build_video_dock()
+    else:
+        try:
+            _video_dock.widget()
+        except RuntimeError:
+            _video_dock = None
+            _build_video_dock()
+
+    video_id = extract_video_id(youtube_url)
+    if not video_id:
+        showInfo(f"Could not find a YouTube video ID in:\n{youtube_url}")
+        return
+
+    # Load the full YouTube watch page — this avoids all embed-level restrictions
+    # (Error 152/153) that occur when using the IFrame API from a non-browser origin.
+    # Position tracking uses document.querySelector('video').currentTime.
+    start_sec = int(position)
+    url = QUrl(f"https://www.youtube.com/watch?v={video_id}&t={start_sec}s&autoplay=1")
+
+    _video_dock.show()
+    _video_dock.raise_()
+    _video_dock._view.load(url)
+    _start_video_timer()
+
+
+def _start_video_timer() -> None:
+    global _video_timer, _video_tick_count
+    _video_tick_count = 0
+    if _video_timer is not None:
+        try:
+            _video_timer.stop()
+        except RuntimeError:
+            pass
+    _video_timer = QTimer()
+    _video_timer.setInterval(1000)
+    _video_timer.timeout.connect(_video_timer_tick)
+    _video_timer.start()
+
+
+def _video_timer_tick() -> None:
+    if _video_dock is None or _current_video_card_id is None:
+        return
+    try:
+        _video_dock._view.page().runJavaScript(_YT_CURRENT_TIME_JS, _on_video_time)
+    except (RuntimeError, AttributeError):
+        pass
+
+
+def _on_video_time(t) -> None:
+    global _video_tick_count
+    if _video_dock is None:
+        return
+    t = float(t or 0)
+    try:
+        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(t)}")
+    except (RuntimeError, AttributeError):
+        return
+    _video_tick_count += 1
+    if _video_tick_count >= 5 and _current_video_card_id:
+        _video_tick_count = 0
+        try:
+            set_video_position(_ADDON_DIR, _current_video_card_id, t)
+        except Exception:
+            pass
+
+
+def _video_add_card_at_point() -> None:
+    if _video_dock is None or _current_video_card_id is None:
+        return
+    try:
+        _video_dock._view.page().runJavaScript(_YT_CURRENT_TIME_JS, _do_video_add_card)
+    except (RuntimeError, AttributeError):
+        pass
+
+
+def _do_video_add_card(t) -> None:
+    t = float(t or 0)
+    if _current_video_card_id is None:
+        return
+    try:
+        set_video_position(_ADDON_DIR, _current_video_card_id, t)
+    except Exception:
+        pass
+    ts = fmt_time(t)
+    try:
+        note = mw.col.get_card(_current_video_card_id).note()
+        title = note.fields[0][:60].strip() if note.fields else ""
+    except Exception:
+        title = ""
+    label = f"&#9654; {ts}" + (f" \u2013 {title}" if title else "")
+    link = (
+        f'<a href="#" onclick="pycmd(\'incremento_open_video:{_current_video_card_id}:{t}\')" '
+        f'style="color:#4a90d9;">{label}</a>'
+    )
+    _fill_dock_field(0, link)
+
+
+def _on_video_question_shown(card) -> None:
+    global _video_dock, _video_timer
+    if card is None:
+        return
+    try:
+        note  = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+    except Exception:
+        return
+    if model is None or model.get("name") != VIDEO_NOTE_TYPE:
+        if _video_dock is not None:
+            try:
+                _video_dock.hide()
+            except RuntimeError:
+                _video_dock = None
+        if _video_timer is not None:
+            try:
+                _video_timer.stop()
+            except RuntimeError:
+                pass
+        return
+    try:
+        youtube_url = note["YouTube_URL"]
+    except (KeyError, TypeError):
+        return
+    position = get_video_position(_ADDON_DIR, card.id)
+    _show_video_in_dock(card.id, youtube_url, position)
+
+
+def _on_video_reviewer_will_end() -> None:
+    global _video_dock, _video_timer
+    if _video_timer is not None:
+        try:
+            _video_timer.stop()
+        except RuntimeError:
+            pass
+        _video_timer = None
+    if _video_dock is not None:
+        try:
+            _video_dock.hide()
+        except RuntimeError:
+            _video_dock = None
+
+
 def _on_pdf_question_shown(card) -> None:
     global _pdf_dock
     if card is None:
@@ -696,6 +927,20 @@ def _on_js_message(handled, message, context) -> tuple:
                 pass
         return (True, None)
 
+    if message.startswith("incremento_open_video:"):
+        parts = message.split(":")
+        if len(parts) == 3:
+            try:
+                card_id  = int(parts[1])
+                position = float(parts[2])
+                card     = mw.col.get_card(card_id)
+                note     = mw.col.get_note(card.nid)
+                url      = note["YouTube_URL"]
+                QTimer.singleShot(0, lambda: _show_video_in_dock(card_id, url, position))
+            except Exception:
+                pass
+        return (True, None)
+
     return handled
 
 
@@ -709,7 +954,9 @@ def _on_pdf_reviewer_will_end() -> None:
 
 
 gui_hooks.reviewer_did_show_question.append(_on_pdf_question_shown)
+gui_hooks.reviewer_did_show_question.append(_on_video_question_shown)
 gui_hooks.reviewer_will_end.append(_on_pdf_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_on_video_reviewer_will_end)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
@@ -728,6 +975,15 @@ def _sync_pdf_note_type() -> None:
 
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
 
+
+def _sync_video_note_type() -> None:
+    try:
+        ensure_video_note_type(mw.col)
+    except Exception:
+        pass
+
+
+gui_hooks.main_window_did_init.append(_sync_video_note_type)
 
 
 def showStatsFunction() -> None:
@@ -966,6 +1222,29 @@ _extract_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_extract_shortcut.activated, _extract_card)
 
 
+def addVideoFunction() -> None:
+    """Incremento -> Add Content -> YouTube Video"""
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    from .utils.add_video_dialog import AddVideoDialog
+    dlg = AddVideoDialog(deck_names, default_deck="Topics", parent=mw)
+    if not dlg.exec():
+        return
+    url = dlg.youtube_url
+    if not url:
+        showInfo("Please enter a YouTube URL.")
+        return
+    if not extract_video_id(url):
+        showInfo("Could not find a valid YouTube video ID in that URL.")
+        return
+    title = dlg.title or url
+    try:
+        add_video_card(mw.col, url, title)
+        mw.col.reset()
+        tooltip(f"Video card '{title}' added to Topics.")
+    except Exception as e:
+        showInfo(f"Failed to add video card:\n{e}")
+
+
 def addWebpageFunction() -> None:
     from .utils.webpage_dialog import WebpageToPdfDialog
     from .utils.pdf_manager import add_pdf_card
@@ -1000,6 +1279,10 @@ _addContentMenu.addAction(_addPdfAction)
 _addWebpageAction = QAction("Webpage to PDF", mw)
 qconnect(_addWebpageAction.triggered, addWebpageFunction)
 _addContentMenu.addAction(_addWebpageAction)
+
+_addVideoAction = QAction("YouTube Video", mw)
+qconnect(_addVideoAction.triggered, addVideoFunction)
+_addContentMenu.addAction(_addVideoAction)
 
 _menu.addSeparator()
 

@@ -74,6 +74,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             card_id  INTEGER PRIMARY KEY,
             priority REAL    NOT NULL DEFAULT 50.0
         );
+
+        CREATE TABLE IF NOT EXISTS video_progress (
+            card_id  INTEGER PRIMARY KEY,
+            position REAL    NOT NULL DEFAULT 0.0
+        );
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
