@@ -471,7 +471,8 @@ def _build_add_card_dock():
     def _set_field(idx, text):
         note = dlg.editor.note
         if note and idx < len(note.fields):
-            note.fields[idx] = text
+            existing = note.fields[idx]
+            note.fields[idx] = (existing + '<br><br>' + text) if existing else text
             try:
                 dlg.editor.loadNote()
             except Exception:
