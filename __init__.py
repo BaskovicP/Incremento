@@ -6,11 +6,11 @@ import types
 import zipfile
 
 from aqt import mw, gui_hooks
-from aqt.utils import showInfo
+from aqt.utils import showInfo, tooltip
 from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
                      QPushButton, QDockWidget, QLabel, QWidget,
                      QShortcut, QKeySequence, QApplication,
-                     qconnect, QTimer, Qt)
+                     qconnect, QTimer, Qt, QPixmap)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtCore import QUrl
@@ -24,7 +24,7 @@ from .utils.statistics import StatsManager
 from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
-from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom
+from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom, get_read_page, set_read_page
 from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
 from .utils.priority_manager import get_priority, set_priority
 from .utils.priority_dialog import PriorityDialog
@@ -338,6 +338,13 @@ class _PdfDockPage(QWebEnginePage):
                 remove_highlight(_ADDON_DIR, int(data['cardId']), data['id'])
             except Exception:
                 pass
+        elif msg.startswith('incremento_pdf_mark_read:'):
+            parts = msg.split(':')
+            if len(parts) == 3:
+                try:
+                    set_read_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
+                except ValueError:
+                    pass
         elif msg == 'incremento_open_add_card':
             _open_add_card_dock()
         elif msg.startswith('incremento_fill_field:'):
@@ -346,6 +353,90 @@ class _PdfDockPage(QWebEnginePage):
                 _fill_dock_field(int(data['idx']), data['text'])
             except Exception:
                 pass
+        elif msg.startswith('incremento_pdf_snapshot:'):
+            QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
+
+
+def _handle_pdf_snapshot(msg: str) -> None:
+    """Save snapshot image to media and fill a chosen field in the Add Card dock."""
+    import base64 as _b64, tempfile as _tmp
+    from PyQt6.QtGui import QImage
+    try:
+        data    = json.loads(msg[len('incremento_pdf_snapshot:'):])
+        img_b64 = data["image"]
+        if "," in img_b64:
+            img_b64 = img_b64.split(",", 1)[1]
+        img_bytes = _b64.b64decode(img_b64)
+
+        with _tmp.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(img_bytes)
+            tmp_path = f.name
+        try:
+            media_filename = mw.col.media.add_file(tmp_path)
+        finally:
+            os.unlink(tmp_path)
+
+        # Open Add Card dock and read its current field names
+        _open_add_card_dock()
+        field_names = []
+        try:
+            note = _add_card_dock.widget().editor.note
+            if note:
+                field_names = [f["name"] for f in note.note_type()["flds"]]
+        except Exception:
+            pass
+        if not field_names:
+            field_names = [f"Field {i + 1}" for i in range(4)]
+
+        # Build pixmap preview
+        pixmap = QPixmap.fromImage(QImage.fromData(img_bytes))
+        scaled = pixmap.scaledToWidth(300, Qt.TransformationMode.SmoothTransformation)
+        if scaled.height() > 180:
+            scaled = pixmap.scaledToHeight(180, Qt.TransformationMode.SmoothTransformation)
+
+        # Dialog: image preview + one button per field name
+        picker = QDialog(mw)
+        picker.setWindowTitle("Insert snapshot into field")
+        picker.setFixedWidth(340)
+        layout = QVBoxLayout(picker)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(0)
+
+        preview_lbl = QLabel()
+        preview_lbl.setPixmap(scaled)
+        preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(preview_lbl)
+
+        layout.addSpacing(14)
+        layout.addWidget(QLabel("Insert image into:"))
+        layout.addSpacing(8)
+
+        chosen_idx = [-1]
+
+        def _make_handler(idx):
+            def _handler():
+                chosen_idx[0] = idx
+                picker.accept()
+            return _handler
+
+        for i, name in enumerate(field_names):
+            btn = QPushButton(name)
+            btn.setStyleSheet("text-align: left; padding: 7px 12px;")
+            btn.clicked.connect(_make_handler(i))
+            layout.addWidget(btn)
+            layout.addSpacing(4)
+
+        layout.addSpacing(8)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(picker.reject)
+        layout.addWidget(cancel_btn)
+
+        if not picker.exec() or chosen_idx[0] < 0:
+            return
+
+        _fill_dock_field(chosen_idx[0], f'<img src="{media_filename}">')
+    except Exception as e:
+        showInfo(f"Snapshot failed:\n{e}")
 
 
 def _build_pdf_dock():
@@ -410,7 +501,7 @@ def _on_pdf_selection(idx, text):
         QTimer.singleShot(150, lambda: _fill_dock_field(idx, text))
 
 
-def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False):
+def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False, read_page=0):
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link
     _current_pdf_card_id  = card_id
     _current_pdf_filename = filename
@@ -439,10 +530,10 @@ def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False):
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}}};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}}};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}));"
     )
 
     current = _pdf_dock._view.url().toString()
@@ -479,9 +570,10 @@ def _on_pdf_question_shown(card) -> None:
         filename = note["PDF_Filename"]
     except (KeyError, TypeError):
         return
-    page = get_page(_ADDON_DIR, card.id)
-    zoom = get_zoom(_ADDON_DIR, card.id)
-    _show_pdf_in_dock(card.id, filename, page, zoom)
+    page      = get_page(_ADDON_DIR, card.id)
+    zoom      = get_zoom(_ADDON_DIR, card.id)
+    read_page = get_read_page(_ADDON_DIR, card.id)
+    _show_pdf_in_dock(card.id, filename, page, zoom, read_page=read_page)
 
 
 _add_card_dock = None  # QDockWidget instance, persists across card reviews
@@ -573,6 +665,18 @@ def _on_js_message(handled, message, context) -> tuple:
         try:
             data = json.loads(message[len("incremento_fill_field:"):])
             _fill_dock_field(int(data["idx"]), data["text"])
+        except Exception:
+            pass
+        return (True, None)
+
+    if message.startswith("incremento_open_card:"):
+        try:
+            card_id = int(message[len("incremento_open_card:"):])
+            from aqt import dialogs
+            def _browse():
+                b = dialogs.open("Browser", mw)
+                b.search_for(f"cid:{card_id}")
+            QTimer.singleShot(0, _browse)
         except Exception:
             pass
         return (True, None)
@@ -762,6 +866,76 @@ def exportFunction() -> None:
         showInfo(f"Export failed:\n{e}")
 
 
+def _extract_card() -> None:
+    """Option+X: grab the reviewer's selected text, open the extract-card dialog."""
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer else None
+    if card is None:
+        return
+    mw.reviewer.web.page().runJavaScript(
+        "window.getSelection()?.toString() || ''",
+        lambda text: _on_extract_selection(text.strip(), card),
+    )
+
+
+def _on_extract_selection(selected_text: str, parent_card) -> None:
+    from .utils.extract_card_dialog import ExtractCardDialog
+
+    # Build note-type list
+    notetypes = [
+        {"name": m["name"], "fields": [f["name"] for f in m["flds"]]}
+        for m in mw.col.models.all()
+    ]
+
+    # Build deck list
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+
+    # Defaults: same note type and deck as the parent card
+    parent_note = parent_card.note()
+    default_notetype = parent_note.note_type()["name"]
+    parent_deck = mw.col.decks.get(parent_card.did)
+    default_deck = parent_deck["name"] if parent_deck else ""
+
+    # Parent card link (appended to field 0 of the new card)
+    parent_label = (parent_note.fields[0][:60].strip()
+                    if parent_note.fields else f"Card {parent_card.id}")
+    parent_link = (
+        f'<a href="#" onclick="pycmd(\'incremento_open_card:{parent_card.id}\')" '
+        f'style="font-size:0.85em;color:#888;">↩ {parent_label}</a>'
+    )
+
+    dlg = ExtractCardDialog(
+        selected_text=selected_text,
+        parent_link_html=parent_link,
+        notetypes=notetypes,
+        deck_names=deck_names,
+        default_notetype=default_notetype,
+        default_deck=default_deck,
+        parent=mw,
+    )
+    if not dlg.exec():
+        return
+
+    try:
+        model = mw.col.models.by_name(dlg.notetype_name)
+        if model is None:
+            showInfo(f"Note type '{dlg.notetype_name}' not found.")
+            return
+        deck = mw.col.decks.by_name(dlg.deck_name)
+        deck_id = (
+            mw.col.decks.add_normal_deck_with_name(dlg.deck_name).id
+            if deck is None else deck["id"]
+        )
+        note = mw.col.new_note(model)
+        for fname, val in dlg.field_values.items():
+            if fname in note:
+                note[fname] = val
+        mw.col.add_note(note, deck_id)
+        showInfo(f"Card created in '{dlg.deck_name}'.")
+    except Exception as e:
+        showInfo(f"Failed to create card:\n{e}")
+
+
 def _open_priority_dialog() -> None:
     """Open the priority assignment dialog for the currently reviewed card."""
     reviewer = getattr(mw, "reviewer", None)
@@ -786,6 +960,10 @@ def _open_priority_dialog() -> None:
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
 _priority_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_priority_shortcut.activated, _open_priority_dialog)
+
+_extract_shortcut = QShortcut(QKeySequence("Alt+X"), mw)
+_extract_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(_extract_shortcut.activated, _extract_card)
 
 
 def addWebpageFunction() -> None:

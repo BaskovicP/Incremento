@@ -29,6 +29,9 @@ export default function PdfViewer() {
   const [hlColor,        setHlColor]        = useState('yellow');
   const [renderInfo,     setRenderInfo]     = useState({ scale: 1, tlLeft: 0 });
   const [autoHighlight,  setAutoHighlight]  = useState(false);
+  const [readPage,       setReadPage]       = useState(0);
+  const [snapshotMode,   setSnapshotMode]   = useState(false);
+  const [snapRect,       setSnapRect]       = useState(null);
 
   const pdfDocRef          = useRef(null);
   const busyRef            = useRef(false);
@@ -41,6 +44,8 @@ export default function PdfViewer() {
   const lastScaleRef       = useRef(1);
   const hlColorRef         = useRef('yellow');
   const autoHighlightRef   = useRef(false);
+  const readPageRef        = useRef(0);
+  const snapStartRef       = useRef(null);
   const canvasARef         = useRef(null);
   const canvasBRef         = useRef(null);
   const containerRef       = useRef(null);
@@ -135,6 +140,7 @@ export default function PdfViewer() {
           setPage(num);
           pageRef.current = num;
           busyRef.current = false;
+          if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
           renderTextLayer(pg, viewport);
         })
         .catch(e => { setError('Render error: ' + e); busyRef.current = false; });
@@ -160,7 +166,7 @@ export default function PdfViewer() {
       .catch(e => setError('Load error: ' + e));
   }, [renderPage]);
 
-  const startViewer = useCallback((cardId, filename, startPage, startZoom) => {
+  const startViewer = useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
     cardIdRef.current   = cardId;
     filenameRef.current = filename;
     pageRef.current     = startPage || 1;
@@ -169,6 +175,9 @@ export default function PdfViewer() {
     setZoom(z);
     setHighlights(window._incPdfHighlights || []);
     window._incPdfHighlights = null;
+    const rp = parseInt(startReadPage) || 0;
+    readPageRef.current = rp;
+    setReadPage(rp);
     window._incPdfPending = null;
     if (typeof window.pdfjsLib === 'undefined') {
       let attempts = 0;
@@ -199,6 +208,80 @@ export default function PdfViewer() {
     renderPage(pageRef.current);
     window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
+
+  const markRead = useCallback(() => {
+    const p   = pageRef.current;
+    const cur = readPageRef.current;
+    // Toggle: if current page is already within the read range, clear; otherwise mark up to here
+    const newRp = (p <= cur) ? 0 : p;
+    readPageRef.current = newRp;
+    setReadPage(newRp);
+    window.pycmd('incremento_pdf_mark_read:' + cardIdRef.current + ':' + newRp);
+  }, []);
+
+  const handleSnapStart = useCallback((e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    snapStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    setSnapRect(null);
+    e.preventDefault();
+  }, []);
+
+  const handleSnapMove = useCallback((e) => {
+    if (!snapStartRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const { x: sx, y: sy } = snapStartRef.current;
+    setSnapRect({ x: Math.min(sx, cx), y: Math.min(sy, cy),
+                  w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
+  }, []);
+
+  const handleSnapEnd = useCallback((e) => {
+    if (!snapStartRef.current) return;
+    const overlayRect = e.currentTarget.getBoundingClientRect();
+    const ex = e.clientX - overlayRect.left;
+    const ey = e.clientY - overlayRect.top;
+    const { x: sx, y: sy } = snapStartRef.current;
+    snapStartRef.current = null;
+    setSnapshotMode(false);
+    setSnapRect(null);
+
+    const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
+    const rw = Math.abs(ex - sx), rh = Math.abs(ey - sy);
+    if (rw < 5 || rh < 5) return;
+
+    const cvs = activeCvsRef.current === 'a' ? canvasARef.current : canvasBRef.current;
+    if (!cvs) return;
+
+    const cvsRect = cvs.getBoundingClientRect();
+    const cvsLeft = cvsRect.left - overlayRect.left;
+    const cvsTop  = cvsRect.top  - overlayRect.top;
+
+    const cx  = Math.max(0, rx - cvsLeft);
+    const cy  = Math.max(0, ry - cvsTop);
+    const cx2 = Math.min(rx + rw - cvsLeft, cvsRect.width);
+    const cy2 = Math.min(ry + rh - cvsTop,  cvsRect.height);
+    const cw  = cx2 - cx;
+    const ch  = cy2 - cy;
+    if (cw < 5 || ch < 5) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const tmp = document.createElement('canvas');
+    tmp.width  = Math.round(cw * dpr);
+    tmp.height = Math.round(ch * dpr);
+    tmp.getContext('2d').drawImage(
+      cvs,
+      Math.round(cx * dpr), Math.round(cy * dpr),
+      Math.round(cw * dpr), Math.round(ch * dpr),
+      0, 0,
+      Math.round(cw * dpr), Math.round(ch * dpr)
+    );
+    window.pycmd('incremento_pdf_snapshot:' + JSON.stringify({
+      cardId: cardIdRef.current,
+      page: pageRef.current,
+      image: tmp.toDataURL('image/png'),
+    }));
+  }, []);
 
   const deleteHighlight = useCallback((id) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
@@ -249,7 +332,7 @@ export default function PdfViewer() {
     const pending = window._incPdfPending;
     if (pending) {
       window._incPdfPending = null;
-      startViewer(pending.cardId, pending.filename, pending.page, pending.zoom);
+      startViewer(pending.cardId, pending.filename, pending.page, pending.zoom, pending.readPage || 0);
     }
     return () => {
       delete window.incrementoPdfStart;
@@ -357,6 +440,48 @@ export default function PdfViewer() {
           &#43; Add Card
         </button>
 
+        <span style={{ marginLeft: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <button
+            title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
+            style={{
+              background: readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
+              border: '1px solid rgba(34,197,94,0.6)',
+              borderRadius: 4,
+              color: readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
+              cursor: 'pointer',
+              padding: '2px 8px',
+              fontSize: 12,
+              fontWeight: readPage > 0 && page <= readPage ? 'bold' : 'normal',
+            }}
+            onClick={markRead}
+          >
+            ✓ Read to here
+          </button>
+          {readPage > 0 && (
+            <span style={{ fontSize: 11, color: 'rgb(22,163,74)', fontWeight: 'bold' }}>
+              p.1–{readPage}
+            </span>
+          )}
+        </span>
+
+        <button
+          title={snapshotMode ? 'Click to cancel snapshot' : 'Draw a rectangle on the PDF to capture it'}
+          style={{
+            marginLeft: 12,
+            background: snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
+            border: '1px solid rgba(37,99,235,0.5)',
+            borderRadius: 4,
+            color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
+            cursor: 'pointer',
+            padding: '2px 8px',
+            fontSize: 12,
+            fontWeight: snapshotMode ? 'bold' : 'normal',
+          }}
+          onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
+        >
+          &#x1F4F7; Snapshot
+        </button>
+
         <label style={{ marginLeft: 16, fontSize: 12, cursor: 'pointer',
                         userSelect: 'none', verticalAlign: 'middle' }}>
           <input
@@ -442,7 +567,32 @@ export default function PdfViewer() {
             cursor: 'text',
           }}
         />
+
+        {/* Snapshot selection overlay */}
+        {snapshotMode && (
+          <div
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                     cursor: 'crosshair', zIndex: 20, userSelect: 'none' }}
+            onMouseDown={handleSnapStart}
+            onMouseMove={handleSnapMove}
+            onMouseUp={handleSnapEnd}
+          >
+            {snapRect && snapRect.w > 2 && snapRect.h > 2 && (
+              <div style={{
+                position: 'absolute',
+                left: snapRect.x, top: snapRect.y,
+                width: snapRect.w, height: snapRect.h,
+                border: '2px dashed rgb(37,99,235)',
+                background: 'rgba(37,99,235,0.08)',
+                pointerEvents: 'none',
+                boxSizing: 'border-box',
+              }} />
+            )}
+          </div>
+        )}
       </div>
+
+
     </div>
   );
 }

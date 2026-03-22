@@ -48,9 +48,10 @@ def get_connection(addon_dir: str) -> sqlite3.Connection:
 def _create_tables(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS pdf_progress (
-            card_id INTEGER PRIMARY KEY,
-            page    INTEGER NOT NULL DEFAULT 1,
-            zoom    REAL    NOT NULL DEFAULT 1.0
+            card_id   INTEGER PRIMARY KEY,
+            page      INTEGER NOT NULL DEFAULT 1,
+            zoom      REAL    NOT NULL DEFAULT 1.0,
+            read_page INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS pdf_highlights (
@@ -74,6 +75,14 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             priority REAL    NOT NULL DEFAULT 50.0
         );
     """)
+    # Add read_page to existing pdf_progress tables that predate this column
+    try:
+        conn.execute(
+            "ALTER TABLE pdf_progress ADD COLUMN read_page INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+    except Exception:
+        pass  # column already exists
 
 
 # ── Export helpers (called by the export function in __init__.py) ─────────────

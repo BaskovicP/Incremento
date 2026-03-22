@@ -59,6 +59,24 @@ def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
     conn.commit()
 
 
+def get_read_page(addon_dir: str, card_id: int) -> int:
+    """Return the highest page marked as read (0 = nothing marked yet)."""
+    row = get_connection(addon_dir).execute(
+        "SELECT read_page FROM pdf_progress WHERE card_id = ?", (card_id,)
+    ).fetchone()
+    return row[0] if row else 0
+
+
+def set_read_page(addon_dir: str, card_id: int, read_page: int) -> None:
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO pdf_progress (card_id, page, zoom, read_page) VALUES (?, 1, 1.0, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET read_page = excluded.read_page",
+        (card_id, read_page),
+    )
+    conn.commit()
+
+
 # ---------------------------------------------------------------------------
 # Note type management
 # ---------------------------------------------------------------------------
