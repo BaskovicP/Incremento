@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html, body { margin: 0; padding: 0; height: 100%; background: #1e1e1e; color: #ddd; font-family: sans-serif; }
+button {
+  background: #333; color: #ddd; border: 1px solid #555;
+  padding: 3px 12px; border-radius: 4px; cursor: pointer; font-size: 13px;
+}
+button:hover { background: #444; }
+
+/* PDF.js text layer — spans must be transparent overlays */
+#pdf-text-layer {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+#pdf-text-layer span {
+  color: transparent !important;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+#pdf-text-layer ::selection {
+  background: rgba(0, 100, 255, 0.3);
+  color: transparent;
+}
+</style>
+</head>
+<body>
+<div id="pdf-react-root" style="width:100%;min-height:100vh;"></div>
+<script src="pdfjs/pdf.min.js"></script>
+<script src="dist/pdf_viewer.js"></script>
+</body>
+</html>
