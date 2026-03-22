@@ -7,7 +7,7 @@ import zipfile
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import (QAction, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
+from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
                      QPushButton, QDockWidget, QLabel, QWidget,
                      QShortcut, QKeySequence, QApplication,
                      qconnect, QTimer, Qt)
@@ -788,18 +788,47 @@ _priority_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_priority_shortcut.activated, _open_priority_dialog)
 
 
-learnAction = QAction("Start Incremental Learning", mw)
-qconnect(learnAction.triggered, learnFunction)
-mw.form.menuTools.addAction(learnAction)
+def addWebpageFunction() -> None:
+    from .utils.webpage_dialog import WebpageToPdfDialog
+    from .utils.pdf_manager import add_pdf_card
+    dlg = WebpageToPdfDialog(mw)
+    if not dlg.exec():
+        return
+    try:
+        add_pdf_card(_ADDON_DIR, mw.col, dlg.pdf_path, dlg.title_text)
+        showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
+    except Exception as e:
+        showInfo(f"Failed to import webpage as PDF:\n{e}")
 
-statsAction = QAction("Incremento Statistics", mw)
-qconnect(statsAction.triggered, showStatsFunction)
-mw.form.menuTools.addAction(statsAction)
 
-addPdfAction = QAction("Add PDF to Topics", mw)
-qconnect(addPdfAction.triggered, addPdfFunction)
-mw.form.menuTools.addAction(addPdfAction)
+# ── Incremento top-level menu ─────────────────────────────────────────────────
 
-exportAction = QAction("Export All Incremento User Data", mw)
-qconnect(exportAction.triggered, exportFunction)
-mw.form.menuTools.addAction(exportAction)
+_menu = QMenu("Incremento", mw)
+mw.menuBar().addMenu(_menu)
+
+_startAction = QAction("Start Incremental Learning", mw)
+qconnect(_startAction.triggered, learnFunction)
+_menu.addAction(_startAction)
+
+_menu.addSeparator()
+
+_addContentMenu = QMenu("Add Content", mw)
+_menu.addMenu(_addContentMenu)
+
+_addPdfAction = QAction("Add PDF", mw)
+qconnect(_addPdfAction.triggered, addPdfFunction)
+_addContentMenu.addAction(_addPdfAction)
+
+_addWebpageAction = QAction("Webpage to PDF", mw)
+qconnect(_addWebpageAction.triggered, addWebpageFunction)
+_addContentMenu.addAction(_addWebpageAction)
+
+_menu.addSeparator()
+
+_statsAction = QAction("Statistics", mw)
+qconnect(_statsAction.triggered, showStatsFunction)
+_menu.addAction(_statsAction)
+
+_exportAction = QAction("Export User Data", mw)
+qconnect(_exportAction.triggered, exportFunction)
+_menu.addAction(_exportAction)

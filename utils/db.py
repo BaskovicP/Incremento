@@ -38,7 +38,6 @@ def get_connection(addon_dir: str) -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         _create_tables(conn)
-        _migrate(conn, addon_dir)
         _connection = conn
         _initialized_for = addon_dir
     return _connection
@@ -76,8 +75,6 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
     """)
 
-
-# ── One-time JSON / legacy SQLite migration ───────────────────────────────────
 
 # ── Export helpers (called by the export function in __init__.py) ─────────────
 
