@@ -1,8 +1,12 @@
-import json
 import os
 from pathlib import Path
 
 from PyQt6.QtPdf import QPdfDocument
+
+try:
+    from .db import get_connection
+except ImportError:
+    from db import get_connection  # test environment (utils/ on sys.path)
 
 PDF_NOTE_TYPE = "Incremento PDF"
 
@@ -21,62 +25,38 @@ CARD_TEMPLATE_BACK = "{{Title}}"
 # Page progress I/O
 # ---------------------------------------------------------------------------
 
-def _progress_path(addon_dir: str) -> Path:
-    path = Path(addon_dir) / "user_files" / "pdf_progress.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def load_pdf_progress(addon_dir: str) -> dict:
-    path = _progress_path(addon_dir)
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def save_pdf_progress(addon_dir: str, data: dict) -> None:
-    path = _progress_path(addon_dir)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
-                   encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def _card_progress(data: dict, card_id: int) -> dict:
-    """Return the progress dict for a card, migrating old int-only format."""
-    val = data.get(str(card_id))
-    if val is None:
-        return {"page": 1, "zoom": 1.0}
-    if isinstance(val, int):
-        return {"page": val, "zoom": 1.0}
-    return val
-
-
 def get_page(addon_dir: str, card_id: int) -> int:
-    return _card_progress(load_pdf_progress(addon_dir), card_id).get("page", 1)
+    row = get_connection(addon_dir).execute(
+        "SELECT page FROM pdf_progress WHERE card_id = ?", (card_id,)
+    ).fetchone()
+    return row[0] if row else 1
 
 
 def get_zoom(addon_dir: str, card_id: int) -> float:
-    return _card_progress(load_pdf_progress(addon_dir), card_id).get("zoom", 1.0)
+    row = get_connection(addon_dir).execute(
+        "SELECT zoom FROM pdf_progress WHERE card_id = ?", (card_id,)
+    ).fetchone()
+    return row[0] if row else 1.0
 
 
 def set_page(addon_dir: str, card_id: int, page: int) -> None:
-    data = load_pdf_progress(addon_dir)
-    prog = _card_progress(data, card_id)
-    prog["page"] = page
-    data[str(card_id)] = prog
-    save_pdf_progress(addon_dir, data)
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO pdf_progress (card_id, page, zoom) VALUES (?, ?, 1.0) "
+        "ON CONFLICT(card_id) DO UPDATE SET page = excluded.page",
+        (card_id, page),
+    )
+    conn.commit()
 
 
 def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
-    data = load_pdf_progress(addon_dir)
-    prog = _card_progress(data, card_id)
-    prog["zoom"] = round(float(zoom), 2)
-    data[str(card_id)] = prog
-    save_pdf_progress(addon_dir, data)
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO pdf_progress (card_id, page, zoom) VALUES (?, 1, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET zoom = excluded.zoom",
+        (card_id, round(float(zoom), 2)),
+    )
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------

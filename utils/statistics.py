@@ -1,8 +1,11 @@
 import json
-import os
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
+
+try:
+    from .db import get_connection
+except ImportError:
+    from db import get_connection  # test environment (utils/ on sys.path)
 
 
 def _empty() -> dict:
@@ -37,53 +40,54 @@ def _is_valid_counts_block(d) -> bool:
     )
 
 
-def _stats_path(addon_dir: str) -> Path:
-    path = Path(addon_dir) / "user_files" / "custom_learn_stats.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def load_stats(addon_dir: str) -> dict:
-    path = _stats_path(addon_dir)
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    rows = get_connection(addon_dir).execute(
+        "SELECT scope, date, data FROM stats"
+    ).fetchall()
+    result: dict = {}
+    for scope, date, data in rows:
+        if scope == "daily":
+            result["daily"] = {"date": date, "counts": json.loads(data)}
+        else:
+            result[scope] = json.loads(data)
+    return result
 
 
 def save_stats(addon_dir: str, stats: dict) -> None:
-    path = _stats_path(addon_dir)
-    tmp = path.with_name(path.name + ".tmp")
-    data = json.dumps(stats, ensure_ascii=False, indent=2, sort_keys=True)
-    tmp.write_text(data, encoding="utf-8")
-    os.replace(tmp, path)
+    conn = get_connection(addon_dir)
+    if "daily" in stats:
+        d = stats["daily"]
+        conn.execute(
+            "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+            ("daily", d.get("date"), json.dumps(d.get("counts", {}))),
+        )
+    if "lifetime" in stats:
+        conn.execute(
+            "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+            ("lifetime", None, json.dumps(stats["lifetime"])),
+        )
+    conn.commit()
 
 
 def delete_daily_stats(addon_dir: str) -> None:
-    """Remove today's statistics from disk."""
-    raw = load_stats(addon_dir)
-    if "daily" not in raw:
-        return
-    del raw["daily"]
-    save_stats(addon_dir, raw)
+    """Remove today's statistics."""
+    conn = get_connection(addon_dir)
+    conn.execute("DELETE FROM stats WHERE scope = 'daily'")
+    conn.commit()
 
 
 def delete_lifetime_stats(addon_dir: str) -> None:
-    """Remove lifetime statistics from disk."""
-    raw = load_stats(addon_dir)
-    if "lifetime" not in raw:
-        return
-    del raw["lifetime"]
-    save_stats(addon_dir, raw)
+    """Remove lifetime statistics."""
+    conn = get_connection(addon_dir)
+    conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
+    conn.commit()
 
 
 def delete_all_stats(addon_dir: str) -> None:
-    """Delete the entire statistics file."""
-    path = _stats_path(addon_dir)
-    if path.exists():
-        path.unlink()
+    """Delete all statistics data."""
+    conn = get_connection(addon_dir)
+    conn.execute("DELETE FROM stats")
+    conn.commit()
 
 
 class StatsManager:

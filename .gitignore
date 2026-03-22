@@ -2,10 +2,10 @@
 meta.json
 
 # ── User runtime data (personal, machine-specific) ─────────────────────────
-user_files/custom_learn_stats.json
-user_files/pdf_progress.json
-user_files/pdf_highlights.json
-user_files/priorities.db
+user_files/*.db
+user_files/*.db-shm
+user_files/*.db-wal
+user_files/*.json
 user_files/*.tmp
 
 # ── Python ──────────────────────────────────────────────────────────────────
@@ -23,17 +23,3 @@ __pycache__/
 
 # ── Frontend ────────────────────────────────────────────────────────────────
 frontend/node_modules/
-
-/.idea/.gitignore
-/.idea/copilot.data.migration.agent.xml
-/.idea/copilot.data.migration.ask.xml
-/.idea/copilot.data.migration.ask2agent.xml
-/.idea/copilot.data.migration.edit.xml
-/.idea/incremento.iml
-/.idea/material_theme_project_new.xml
-/meta.json
-/.idea/misc.xml
-/.idea/modules.xml
-/.idea/inspectionProfiles/profiles_settings.xml
-/.idea/inspectionProfiles/Project_Default.xml
-/.idea/vcs.xml

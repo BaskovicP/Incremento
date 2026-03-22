@@ -14,19 +14,30 @@ incremento_export_YYYY-MM-DD.zip
 ├── manifest.json               ← export metadata (date, counts, file descriptions)
 ├── config.json                 ← all scheduler and session settings
 ├── data/
-│   ├── custom_learn_stats.json ← session, daily and lifetime review statistics
-│   ├── pdf_progress.json       ← reading position and zoom level for every PDF card
-│   ├── pdf_highlights.json     ← all highlighted passages and their colours
-│   ├── priorities.db           ← card priorities (SQLite, for direct restore)
-│   └── priorities.json         ← card priorities (human-readable JSON copy)
+│   ├── incremento.db           ← all user data in one SQLite file (for direct restore)
+│   ├── priorities.json         ← card priorities          (human-readable copy)
+│   ├── pdf_progress.json       ← reading positions/zoom   (human-readable copy)
+│   ├── highlights.json         ← PDF text highlights      (human-readable copy)
+│   └── stats.json              ← review statistics        (human-readable copy)
 └── pdfs/
     ├── book1.pdf
     └── ...                     ← every PDF file referenced by an Incremento card
 ```
 
-> **Note:** `priorities.db` and `priorities.json` contain the same data.
-> The `.db` file is for fast direct restore; the `.json` is for manual inspection
-> or importing into other tools.
+`incremento.db` is the authoritative source. The four JSON files are human-readable
+copies of the same data — useful for inspection or importing into other tools, but
+not required for restore.
+
+---
+
+## What incremento.db contains
+
+| Table | Contents |
+|---|---|
+| `priorities` | Priority value (0–100) per card ID |
+| `pdf_progress` | Current page and zoom level per card ID |
+| `pdf_highlights` | All highlighted passages, colours and positions |
+| `stats` | Daily and lifetime review statistics |
 
 ---
 
@@ -37,7 +48,7 @@ incremento_export_YYYY-MM-DD.zip
 3. Choose a save location. The default filename includes today's date.
 4. Click **Save**. A summary dialog confirms what was exported.
 
-The export is safe to run at any time — it is read-only and does not modify any data.
+The export is read-only — it never modifies any data.
 
 ---
 
@@ -45,19 +56,18 @@ The export is safe to run at any time — it is read-only and does not modify an
 
 ### Step 1 — Install Anki and the Incremento addon
 
-Install the same version of Anki and then install Incremento via
+Install the same version of Anki, then install Incremento via
 **Tools → Add-ons → Get Add-ons**.
 
 ### Step 2 — Copy your Anki collection
 
-Export your Anki collection from the old machine (**File → Export → Anki Collection
+Export your collection from the old machine (**File → Export → Anki Collection
 Package (.colpkg)**) and import it on the new machine. This restores all your cards,
-including the Incremento PDF note type and card structure.
+including the Incremento PDF note type.
 
 ### Step 3 — Copy the PDF files
 
-From the ZIP, copy everything inside the `pdfs/` folder into Anki's media folder on
-the new machine:
+From the ZIP, copy everything inside `pdfs/` into Anki's media folder on the new machine:
 
 | Platform | Anki media folder |
 |---|---|
@@ -67,7 +77,7 @@ the new machine:
 
 Replace `<profile>` with your Anki profile name (usually `User 1`).
 
-### Step 4 — Restore the data files
+### Step 4 — Restore incremento.db
 
 Find the Incremento addon folder on the new machine:
 
@@ -77,18 +87,11 @@ Find the Incremento addon folder on the new machine:
 | Windows | `%APPDATA%\Anki2\addons21\incremento\` |
 | Linux | `~/.local/share/Anki2/addons21/incremento/` |
 
-Inside it, create a `user_files/` folder if it does not exist. Then copy these files
-from the ZIP's `data/` folder into `user_files/`:
+Inside it, create a `user_files/` folder if it does not exist. Then copy
+`data/incremento.db` from the ZIP into that `user_files/` folder.
 
-| File | What it restores |
-|---|---|
-| `custom_learn_stats.json` | Review statistics (session, daily, lifetime) |
-| `pdf_progress.json` | Reading position and zoom for every PDF card |
-| `pdf_highlights.json` | All highlights |
-| `priorities.db` | Card priorities (recommended — used directly by the addon) |
-
-You do **not** need to copy `priorities.json` unless you want a human-readable
-reference. If `priorities.db` is present, it takes precedence.
+That single file restores everything: reading positions, highlights, priorities,
+and statistics.
 
 ### Step 5 — Restore scheduler settings
 
@@ -107,40 +110,55 @@ Alternatively, just configure the settings manually via
 
 ---
 
+## Partial restores
+
+Each table inside `incremento.db` is independent. If you only want to restore
+priorities without touching statistics, you can import just the priorities rows
+using any SQLite tool:
+
+```sql
+-- Run on the new machine's incremento.db:
+ATTACH '/path/to/exported/incremento.db' AS src;
+INSERT OR REPLACE INTO priorities SELECT * FROM src.priorities;
+DETACH src;
+```
+
+---
+
 ## Inspecting the data manually
 
-All data files except `priorities.db` are plain JSON and can be opened in any text
-editor.
+### Via the JSON copies in the ZIP
 
-### priorities.json
+All four `.json` files in `data/` are plain text and can be opened in any editor.
 
+**priorities.json**
 ```json
 {
   "1234567890123": 12.5,
-  "1234567890124": 50.0,
-  "1234567890125": 87.32
+  "1234567890124": 50.0
+}
+```
+Keys are card IDs. Values are priorities on a 0–100 scale where **0 = highest
+importance** and **100 = lowest importance**. Default is 50.0.
+
+**pdf_progress.json**
+```json
+{
+  "1234567890123": {"page": 14, "zoom": 1.25}
 }
 ```
 
-Keys are card IDs (integers stored as strings). Values are priorities on a 0–100
-scale where **0 = highest importance** and **100 = lowest importance**. The default
-is 50.0.
-
-### priorities.db (SQLite)
-
-Open with any SQLite browser (e.g. [DB Browser for SQLite](https://sqlitebrowser.org)):
-
-```sql
-SELECT card_id, priority FROM priorities ORDER BY priority;
+**highlights.json**
+```json
+{
+  "1234567890123": [
+    {"id": "abc123", "page": 5, "color": "yellow",
+     "text": "selected text", "rects": [{"x":10,"y":20,"w":100,"h":15}]}
+  ]
+}
 ```
 
-Or from the command line:
-```sh
-sqlite3 priorities.db "SELECT card_id, priority FROM priorities ORDER BY priority;"
-```
-
-### custom_learn_stats.json
-
+**stats.json**
 ```json
 {
   "daily":    {"date": "2026-03-22", "counts": {"type": {}, "tags": {}, "mode": {}}},
@@ -148,21 +166,20 @@ sqlite3 priorities.db "SELECT card_id, priority FROM priorities ORDER BY priorit
 }
 ```
 
-`type` tracks topics vs items, `mode` tracks priority vs random picks, `tags` tracks
-per-tag counts.
+### Via SQLite directly
 
----
+Open `incremento.db` with [DB Browser for SQLite](https://sqlitebrowser.org) or
+the command line:
 
-## Partial restores
-
-You can restore any subset of files independently — the addon reads each file only
-when it needs it. For example, restoring only `priorities.db` will recover priorities
-without touching statistics or highlights.
+```sh
+sqlite3 incremento.db ".tables"
+sqlite3 incremento.db "SELECT card_id, priority FROM priorities ORDER BY priority;"
+sqlite3 incremento.db "SELECT card_id, page, zoom FROM pdf_progress;"
+```
 
 ---
 
 ## Scheduling regular backups
 
-The export is a single menu action, so it is easy to run before any major Anki
-session. There is no automatic scheduled export — run it manually whenever you want
-a checkpoint, especially before upgrading Anki or the addon.
+Run **Tools → Export All Incremento User Data** before any major Anki session,
+before upgrading Anki, or before upgrading the addon. There is no automatic export.
