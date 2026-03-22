@@ -26,6 +26,8 @@ from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
 from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom
 from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
+from .utils.priority_manager import get_priority, set_priority
+from .utils.priority_dialog import PriorityDialog
 
 INCREMENTO_DECK = "Incremento Session"
 _ADDON_DIR = os.path.dirname(__file__)
@@ -705,6 +707,32 @@ def exportFunction() -> None:
         )
     except Exception as e:
         showInfo(f"Export failed:\n{e}")
+
+
+def _open_priority_dialog() -> None:
+    """Open the priority assignment dialog for the currently reviewed card."""
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer else None
+    if card is None:
+        showInfo("No card is currently being reviewed.")
+        return
+
+    current = get_priority(_ADDON_DIR, card.id)
+    # Build a short label: first 60 chars of the front field
+    note = card.note()
+    label_text = ""
+    if note.fields:
+        label_text = note.fields[0][:80].strip()
+
+    dlg = PriorityDialog(current_priority=current,
+                         card_label=label_text, parent=mw)
+    if dlg.exec():
+        set_priority(_ADDON_DIR, card.id, dlg.priority)
+
+
+_priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
+_priority_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(_priority_shortcut.activated, _open_priority_dialog)
 
 
 learnAction = QAction("Start Incremental Learning", mw)
