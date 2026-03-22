@@ -7,8 +7,7 @@ import types
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
 from aqt.qt import (QAction, QDialog, QVBoxLayout, QTextEdit,
-                     QPushButton, QDockWidget,
-                     QShortcut, QKeySequence, qconnect, QTimer, Qt)
+                     QPushButton, QDockWidget, qconnect, QTimer, Qt)
 from anki.cards import CardId
 
 # Allow utils/scheduler.py to do `import cards` as a plain import
@@ -360,18 +359,6 @@ def _do_fill(idx, text):
         pass
 
 
-def _shortcut_fill(idx):
-    """Python-level Cmd/Ctrl+N handler — gets PDF selection via JS and fills dock field."""
-    if mw.state != "review" or mw.reviewer is None:
-        return
-
-    def _got_text(text: str) -> None:
-        if text and text.strip():
-            _fill_dock_field(idx, text.strip())
-
-    # worldId=0 (MainWorld) is required in PyQt6 when passing a callback
-    mw.reviewer.web.page().runJavaScript("window.getSelection().toString()", 0, _got_text)
-
 
 def _on_js_message(handled, message, context) -> tuple:
     if not isinstance(message, str) or not message.startswith("incremento_"):
@@ -421,16 +408,6 @@ def _sync_pdf_note_type() -> None:
 
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
 
-
-def _register_shortcuts() -> None:
-    """Register Cmd/Ctrl+1–4 at the application level to fill dock fields from PDF selection."""
-    for i in range(1, 5):
-        sc = QShortcut(QKeySequence(f"Ctrl+{i}"), mw)
-        sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        sc.activated.connect(lambda idx=i - 1: _shortcut_fill(idx))
-
-
-gui_hooks.main_window_did_init.append(_register_shortcuts)
 
 
 def showStatsFunction() -> None:

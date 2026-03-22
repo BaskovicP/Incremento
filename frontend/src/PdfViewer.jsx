@@ -45,10 +45,25 @@ export default function PdfViewer() {
     tl.style.top       = '0px';
     tl.style.transform = 'none';
 
+    tl.style.width    = viewport.width  + 'px';
+    tl.style.height   = viewport.height + 'px';
+    // clip-path clips ::selection rendering (overflow:hidden does not in WebKit)
+    tl.style.clipPath = 'inset(0)';
+
     try {
-      const stream = pg.streamTextContent({ includeMarkedContent: true });
+      const stream = pg.streamTextContent();
       const task   = lib.renderTextLayer({ textContentSource: stream, container: tl, viewport });
-      if (task?.promise) task.promise.catch(() => {});
+      if (task?.promise) task.promise.then(() => {
+        tl.querySelectorAll('span').forEach(span => {
+          // Remove whitespace-only spans (/\S/ catches \u00A0 etc. that .trim() misses)
+          if (!/\S/.test(span.textContent)) { span.remove(); return; }
+          // getBoundingClientRect returns the post-transform visual size — works for
+          // both scaleX() and matrix() formats. A span that appears as a vertical
+          // strip has near-zero visual width regardless of transform syntax.
+          const rect = span.getBoundingClientRect();
+          if (rect.width < 2 && rect.height > 0) span.remove();
+        });
+      }).catch(() => {});
       if (task?.cancel)  tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
     } catch (_) {}
   }, []);
