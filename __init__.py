@@ -651,12 +651,17 @@ def addPdfFunction() -> None:
 
 
 def exportFunction() -> None:
+    import datetime
     from aqt.qt import QFileDialog
+    from .utils.priority_manager import get_all_priorities
+
+    today = datetime.date.today().isoformat()
+    default_name = os.path.expanduser(f"~/incremento_export_{today}.zip")
 
     path, _ = QFileDialog.getSaveFileName(
         mw,
         "Export Incremento User Data",
-        os.path.expanduser("~/incremento_export.zip"),
+        default_name,
         "ZIP files (*.zip)",
     )
     if not path:
@@ -681,28 +686,82 @@ def exportFunction() -> None:
 
     try:
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Incremento JSON data files
-            for fname in ("custom_learn_stats.json", "pdf_progress.json", "pdf_highlights.json"):
+
+            # ── data/ — user runtime files ────────────────────────────────
+            for fname in ("custom_learn_stats.json", "pdf_progress.json",
+                          "pdf_highlights.json"):
                 fpath = os.path.join(user_files_dir, fname)
                 if os.path.exists(fpath):
-                    zf.write(fpath, fname)
+                    zf.write(fpath, f"data/{fname}")
 
-            # Addon config (scheduler settings)
+            # priorities.db — binary SQLite (direct restore)
+            db_path = os.path.join(user_files_dir, "priorities.db")
+            if os.path.exists(db_path):
+                zf.write(db_path, "data/priorities.db")
+
+            # priorities.json — portable human-readable copy
+            priorities = get_all_priorities(_ADDON_DIR)
+            priority_count = len(priorities)
+            zf.writestr(
+                "data/priorities.json",
+                json.dumps(
+                    {str(k): v for k, v in sorted(priorities.items())},
+                    ensure_ascii=False, indent=2
+                ),
+            )
+
+            # ── config.json — scheduler settings ─────────────────────────
             config = mw.addonManager.getConfig(__name__) or {}
             zf.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
 
-            # PDF files from Anki media
+            # ── pdfs/ — PDF media files ───────────────────────────────────
             pdf_count = 0
+            pdf_missing = []
             for fname in pdf_filenames:
                 pdf_path = os.path.join(media_dir, fname)
                 if os.path.exists(pdf_path):
-                    zf.write(pdf_path, os.path.join("pdfs", fname))
+                    zf.write(pdf_path, f"pdfs/{fname}")
                     pdf_count += 1
+                else:
+                    pdf_missing.append(fname)
 
+            # ── manifest.json — export metadata ──────────────────────────
+            manifest = {
+                "export_date": today,
+                "addon": "Incremento",
+                "anki_version": getattr(mw.pm, "meta", {}).get("ankiVersion", "unknown"),
+                "counts": {
+                    "pdf_notes": len(pdf_filenames),
+                    "pdfs_exported": pdf_count,
+                    "pdfs_missing": len(pdf_missing),
+                    "priorities": priority_count,
+                },
+                "files": {
+                    "data/custom_learn_stats.json": "Session, daily and lifetime statistics",
+                    "data/pdf_progress.json":       "Per-card PDF reading position and zoom",
+                    "data/pdf_highlights.json":     "PDF text highlights",
+                    "data/priorities.db":           "Card priorities (SQLite, for direct restore)",
+                    "data/priorities.json":         "Card priorities (JSON, human-readable copy)",
+                    "config.json":                  "Scheduler and session settings",
+                    "pdfs/":                        "PDF files referenced by Incremento cards",
+                },
+            }
+            if pdf_missing:
+                manifest["pdfs_missing_filenames"] = pdf_missing
+
+            zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+        # ── Success dialog ────────────────────────────────────────────────
+        missing_note = (
+            f"\n\n  ⚠ {len(pdf_missing)} PDF file(s) not found in media folder"
+            if pdf_missing else ""
+        )
         showInfo(
             f"Export complete.\n\n"
-            f"  • {pdf_count} PDF file(s)\n"
-            f"  • Statistics, progress, highlights, config\n\n"
+            f"  • {pdf_count} of {len(pdf_filenames)} PDF file(s)\n"
+            f"  • {priority_count} card priorit{'y' if priority_count == 1 else 'ies'}\n"
+            f"  • Statistics, highlights, progress, config"
+            f"{missing_note}\n\n"
             f"Saved to:\n{path}"
         )
     except Exception as e:

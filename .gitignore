@@ -5,7 +5,7 @@ meta.json
 user_files/custom_learn_stats.json
 user_files/pdf_progress.json
 user_files/pdf_highlights.json
-user_files/priorities.json
+user_files/priorities.db
 user_files/*.tmp
 
 # ── Python ──────────────────────────────────────────────────────────────────
