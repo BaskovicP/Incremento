@@ -1,4 +1,28 @@
+# ── Anki addon metadata (contains private package ID) ──────────────────────
+meta.json
+
+# ── User runtime data (personal, machine-specific) ─────────────────────────
 user_files/custom_learn_stats.json
+user_files/pdf_progress.json
+user_files/pdf_highlights.json
+user_files/*.tmp
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+
+# ── Caches ──────────────────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# ── IDE ─────────────────────────────────────────────────────────────────────
+.idea/
+
+# ── Frontend ────────────────────────────────────────────────────────────────
+frontend/node_modules/
+
 /.idea/.gitignore
 /.idea/copilot.data.migration.agent.xml
 /.idea/copilot.data.migration.ask.xml
@@ -12,5 +36,3 @@ user_files/custom_learn_stats.json
 /.idea/inspectionProfiles/profiles_settings.xml
 /.idea/inspectionProfiles/Project_Default.xml
 /.idea/vcs.xml
-/frontend/node_modules/
-
