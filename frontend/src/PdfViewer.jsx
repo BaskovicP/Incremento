@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const WORKER_SRC = '/_addons/incremento/user_files/pdfjs/pdf.worker.min.js';
+const DEFAULT_WORKER_SRC = '/_addons/incremento/user_files/pdfjs/pdf.worker.min.js';
 const ZOOM_STEP  = 0.1;
 const ZOOM_MIN   = 0.25;
 const ZOOM_MAX   = 4.0;
@@ -53,9 +53,17 @@ export default function PdfViewer() {
       tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
       task.render().then(() => {
         tl.querySelectorAll('span').forEach(span => {
+          // Remove whitespace-only spans
           if (!/\S/.test(span.textContent)) { span.remove(); return; }
+          // Remove spans that are visually almost invisible (< 3px wide)
           const rect = span.getBoundingClientRect();
-          if (rect.width < 2 && rect.height > 0) span.remove();
+          if (rect.width > 0 && rect.width < 3 && rect.height > 0) { span.remove(); return; }
+          // Remove column-separator spans: text compressed to < 5% of normal width
+          const sx = parseFloat((span.style.transform || '').match(/scaleX\(([\d.e+-]+)\)/)?.[1]);
+          if (!isNaN(sx) && sx < 0.05) { span.remove(); return; }
+          // Also handle matrix() form: matrix(a, b, c, d, tx, ty) — a is scaleX
+          const mx = parseFloat((span.style.transform || '').match(/matrix\(([\d.e+-]+)/)?.[1]);
+          if (!isNaN(mx) && mx < 0.05) { span.remove(); }
         });
       }).catch(() => {});
     } catch (_) {}
@@ -112,8 +120,13 @@ export default function PdfViewer() {
   /* ── PDF loading ─────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
     const lib = window.pdfjsLib;
-    lib.GlobalWorkerOptions.workerSrc = WORKER_SRC;
-    lib.getDocument('/' + encodeURIComponent(filenameRef.current)).promise
+    // Read at call-time so Python's window._pdfWorkerSrc injection is picked up
+    lib.GlobalWorkerOptions.workerSrc = window._pdfWorkerSrc || DEFAULT_WORKER_SRC;
+    window._pdfWorkerSrc = null;  // consume it
+    // window._pdfFileUrl is injected by the Python dock (file:// path to the PDF)
+    const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
+    window._pdfFileUrl = null;   // consume it
+    lib.getDocument(pdfUrl).promise
       .then(doc => {
         pdfDocRef.current = doc;
         const total     = doc.numPages;
@@ -125,10 +138,13 @@ export default function PdfViewer() {
       .catch(e => setError('Load error: ' + e));
   }, [renderPage]);
 
-  const startViewer = useCallback((cardId, filename, startPage) => {
+  const startViewer = useCallback((cardId, filename, startPage, startZoom) => {
     cardIdRef.current   = cardId;
     filenameRef.current = filename;
     pageRef.current     = startPage || 1;
+    const z = parseFloat(startZoom) || 1.0;
+    zoomRef.current = z;
+    setZoom(z);
     window._incPdfPending = null;
     if (typeof window.pdfjsLib === 'undefined') {
       let attempts = 0;
@@ -157,6 +173,7 @@ export default function PdfViewer() {
     zoomRef.current = clamped;
     setZoom(clamped);
     renderPage(pageRef.current);
+    window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
 
   /* ── Text-layer event isolation (stop Anki intercepting selection events) ── */
@@ -204,7 +221,7 @@ export default function PdfViewer() {
     const pending = window._incPdfPending;
     if (pending) {
       window._incPdfPending = null;
-      startViewer(pending.cardId, pending.filename, pending.page);
+      startViewer(pending.cardId, pending.filename, pending.page, pending.zoom);
     }
     return () => {
       delete window.incrementoPdfStart;

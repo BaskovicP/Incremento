@@ -4,27 +4,12 @@ from pathlib import Path
 
 PDF_NOTE_TYPE = "Incremento PDF"
 
-CARD_TEMPLATE_FRONT = r"""
-<script src="/_addons/incremento/user_files/pdfjs/pdf.min.js"></script>
-<style>
-#pdf-text-layer {
-  user-select: text !important;
-  -webkit-user-select: text !important;
-}
-#pdf-text-layer span {
-  color: transparent; position: absolute; white-space: pre; cursor: text;
-  transform-origin: 0% 0%;
-  user-select: text !important;
-  -webkit-user-select: text !important;
-}
-#pdf-text-layer ::selection { background: rgba(0,100,255,0.3); color: transparent; }
-</style>
-<div id="incremento-pdf-meta"
-     data-filename="{{PDF_Filename}}"
-     data-title="{{Title}}"
-     style="display:none">{{PDF_Filename}}</div>
-<div id="pdf-react-root"></div>
-<script src="/_addons/incremento/user_files/dist/pdf_viewer.js"></script>
+CARD_TEMPLATE_FRONT = """
+<div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
+  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
+  <div style="font-size:0.85em;">PDF open in sidebar &nbsp;·&nbsp; select text → ⌘C → ⌘1–4 to fill fields</div>
+</div>
+{{PDF_Filename}}
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
@@ -58,14 +43,37 @@ def save_pdf_progress(addon_dir: str, data: dict) -> None:
     os.replace(tmp, path)
 
 
+def _card_progress(data: dict, card_id: int) -> dict:
+    """Return the progress dict for a card, migrating old int-only format."""
+    val = data.get(str(card_id))
+    if val is None:
+        return {"page": 1, "zoom": 1.0}
+    if isinstance(val, int):
+        return {"page": val, "zoom": 1.0}
+    return val
+
+
 def get_page(addon_dir: str, card_id: int) -> int:
-    data = load_pdf_progress(addon_dir)
-    return data.get(str(card_id), 1)
+    return _card_progress(load_pdf_progress(addon_dir), card_id).get("page", 1)
+
+
+def get_zoom(addon_dir: str, card_id: int) -> float:
+    return _card_progress(load_pdf_progress(addon_dir), card_id).get("zoom", 1.0)
 
 
 def set_page(addon_dir: str, card_id: int, page: int) -> None:
     data = load_pdf_progress(addon_dir)
-    data[str(card_id)] = page
+    prog = _card_progress(data, card_id)
+    prog["page"] = page
+    data[str(card_id)] = prog
+    save_pdf_progress(addon_dir, data)
+
+
+def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
+    data = load_pdf_progress(addon_dir)
+    prog = _card_progress(data, card_id)
+    prog["zoom"] = round(float(zoom), 2)
+    data[str(card_id)] = prog
     save_pdf_progress(addon_dir, data)
 
 

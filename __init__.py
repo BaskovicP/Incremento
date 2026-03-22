@@ -6,8 +6,13 @@ import types
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import (QAction, QDialog, QVBoxLayout, QTextEdit,
-                     QPushButton, QDockWidget, qconnect, QTimer, Qt)
+from aqt.qt import (QAction, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
+                     QPushButton, QDockWidget, QLabel, QWidget,
+                     QShortcut, QKeySequence, QApplication,
+                     qconnect, QTimer, Qt)
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+from PyQt6.QtCore import QUrl
 from anki.cards import CardId
 
 # Allow utils/scheduler.py to do `import cards` as a plain import
@@ -18,7 +23,7 @@ from .utils.statistics import StatsManager
 from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
-from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page
+from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom
 
 INCREMENTO_DECK = "Incremento Session"
 _ADDON_DIR = os.path.dirname(__file__)
@@ -263,7 +268,158 @@ def learnFunction() -> None:
     mw.moveToState("review")
 
 
+# ── PDF dock (QWebEngineView + PDF.js) ────────────────────────────────────────
+
+_pdf_dock = None
+_shortcuts_registered = False
+
+_DOCK_HTML = QUrl.fromLocalFile(
+    os.path.join(_ADDON_DIR, 'user_files', 'pdf_dock.html')
+).toString()
+_WORKER_URL = QUrl.fromLocalFile(
+    os.path.join(_ADDON_DIR, 'user_files', 'pdfjs', 'pdf.worker.min.js')
+).toString()
+
+
+class _PdfDockPage(QWebEnginePage):
+    """Intercepts console.log to get pycmd messages from the PDF viewer JS."""
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        prefix = '__incremento_pycmd__:'
+        if not message.startswith(prefix):
+            return
+        msg = message[len(prefix):]
+
+        if msg.startswith('incremento_pdf_nav:'):
+            parts = msg.split(':')
+            if len(parts) == 3:
+                try:
+                    set_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
+                except ValueError:
+                    pass
+        elif msg.startswith('incremento_pdf_zoom:'):
+            parts = msg.split(':')
+            if len(parts) == 3:
+                try:
+                    set_zoom(_ADDON_DIR, int(parts[1]), float(parts[2]))
+                except ValueError:
+                    pass
+        elif msg == 'incremento_open_add_card':
+            _open_add_card_dock()
+        elif msg.startswith('incremento_fill_field:'):
+            try:
+                data = json.loads(msg[len('incremento_fill_field:'):])
+                _fill_dock_field(int(data['idx']), data['text'])
+            except Exception:
+                pass
+
+
+def _build_pdf_dock():
+    global _pdf_dock, _shortcuts_registered
+
+    dock = QDockWidget("PDF Viewer", mw)
+    dock.setObjectName("incremento_pdf_dock")
+    dock.setMinimumWidth(550)
+
+    page = _PdfDockPage(dock)
+    # Allow file:// page to load other file:// resources (worker, PDF)
+    s = page.settings()
+    s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+    s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+
+    view = QWebEngineView(dock)
+    view.setPage(page)
+    dock.setWidget(view)
+    dock._view = view
+
+    mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+
+    # Inject fake pycmd bridge after every page load (needed on first load and reloads)
+    def _on_load_finished(ok):
+        if ok:
+            view.page().runJavaScript(
+                "window.pycmd = function(msg) {"
+                "  console.log('__incremento_pycmd__:' + msg);"
+                "};"
+            )
+
+    view.loadFinished.connect(_on_load_finished)
+
+    # Cmd/Ctrl+1–4: get active selection from the PDF webview → fill Add Card field
+    if not _shortcuts_registered:
+        def _make_sc(n):
+            sc = QShortcut(QKeySequence(f"Ctrl+{n}"), mw)
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            def _act():
+                if _pdf_dock is None:
+                    return
+                try:
+                    _pdf_dock._view.page().runJavaScript(
+                        "window.getSelection()?.toString() || ''",
+                        lambda text: _on_pdf_selection(n - 1, text),
+                    )
+                except Exception:
+                    pass
+            sc.activated.connect(_act)
+        for i in range(1, 5):
+            _make_sc(i)
+        globals()['_shortcuts_registered'] = True
+
+    _pdf_dock = dock
+    return dock
+
+
+def _on_pdf_selection(idx, text):
+    text = (text or '').strip()
+    if text:
+        _open_add_card_dock()
+        QTimer.singleShot(150, lambda: _fill_dock_field(idx, text))
+
+
+def _show_pdf_in_dock(card_id, filename, page, zoom=1.0):
+    global _pdf_dock
+    if _pdf_dock is None:
+        _build_pdf_dock()
+    else:
+        try:
+            _pdf_dock.widget()
+        except RuntimeError:
+            _pdf_dock = None
+            _build_pdf_dock()
+
+    _pdf_dock.show()
+    _pdf_dock.raise_()
+
+    pdf_file_url = QUrl.fromLocalFile(
+        os.path.join(mw.col.media.dir(), filename)
+    ).toString()
+
+    # Set the PDF file URL and worker URL globals before starting the viewer.
+    # Use _incPdfPending so the React useEffect picks it up if not mounted yet.
+    js = (
+        f"window._pdfWorkerSrc = {json.dumps(_WORKER_URL)};"
+        f"window._pdfFileUrl   = {json.dumps(pdf_file_url)};"
+        f"window._incPdfPending = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}}};"
+        f"typeof incrementoPdfStart === 'function' && "
+        f"(window._incPdfPending = null,"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}));"
+    )
+
+    current = _pdf_dock._view.url().toString()
+    if current != _DOCK_HTML:
+        # First load — run JS after the page finishes loading
+        def _on_first_load(ok):
+            _pdf_dock._view.loadFinished.disconnect(_on_first_load)
+            if ok:
+                _pdf_dock._view.page().runJavaScript(js)
+        _pdf_dock._view.loadFinished.connect(_on_first_load)
+        _pdf_dock._view.load(QUrl(_DOCK_HTML))
+    else:
+        _pdf_dock._view.page().runJavaScript(js)
+
+
 def _on_pdf_question_shown(card) -> None:
+    global _pdf_dock
     if card is None:
         return
     try:
@@ -272,19 +428,20 @@ def _on_pdf_question_shown(card) -> None:
     except Exception:
         return
     if model is None or model.get("name") != PDF_NOTE_TYPE:
+        # Hide the PDF dock when reviewing non-PDF cards
+        if _pdf_dock is not None:
+            try:
+                _pdf_dock.hide()
+            except RuntimeError:
+                _pdf_dock = None
         return
     try:
         filename = note["PDF_Filename"]
     except (KeyError, TypeError):
         return
     page = get_page(_ADDON_DIR, card.id)
-    # Always store args as a global — inline script picks them up if it runs later.
-    # Also call directly if the function is already defined (subsequent card views).
-    mw.reviewer.web.eval(
-        f"window._incPdfPending = {{cardId: {card.id}, filename: {json.dumps(filename)}, page: {page}}};"
-        f"typeof incrementoPdfStart === 'function' && "
-        f"(window._incPdfPending = null, incrementoPdfStart({card.id}, {json.dumps(filename)}, {page}));"
-    )
+    zoom = get_zoom(_ADDON_DIR, card.id)
+    _show_pdf_in_dock(card.id, filename, page, zoom)
 
 
 _add_card_dock = None  # QDockWidget instance, persists across card reviews
@@ -376,20 +533,20 @@ def _on_js_message(handled, message, context) -> tuple:
             pass
         return (True, None)
 
-    if message.startswith("incremento_pdf_nav:"):
-        parts = message.split(":")
-        if len(parts) != 3:
-            return handled
-        try:
-            set_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
-        except ValueError:
-            pass
-        return (True, None)
-
     return handled
 
 
+def _on_pdf_reviewer_will_end() -> None:
+    global _pdf_dock
+    if _pdf_dock is not None:
+        try:
+            _pdf_dock.hide()
+        except RuntimeError:
+            _pdf_dock = None
+
+
 gui_hooks.reviewer_did_show_question.append(_on_pdf_question_shown)
+gui_hooks.reviewer_will_end.append(_on_pdf_reviewer_will_end)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
