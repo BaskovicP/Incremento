@@ -2,6 +2,8 @@ import json
 import os
 from pathlib import Path
 
+from PyQt6.QtPdf import QPdfDocument
+
 PDF_NOTE_TYPE = "Incremento PDF"
 
 CARD_TEMPLATE_FRONT = """
@@ -81,14 +83,34 @@ def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
 # Note type management
 # ---------------------------------------------------------------------------
 
+def extract_pdf_text(pdf_path: str) -> str:
+    """Extract all text from a PDF using Qt's QPdfDocument. Returns empty string on failure."""
+    doc = QPdfDocument(None)
+    try:
+        if doc.load(pdf_path) != QPdfDocument.Status.Ready:
+            return ""
+        pages = []
+        for i in range(doc.pageCount()):
+            sel = doc.getAllText(i)
+            if sel.isValid():
+                t = sel.text().strip()
+                if t:
+                    pages.append(t)
+        return "\n\n".join(pages)
+    except Exception:
+        return ""
+    finally:
+        doc.close()
+
+
 def ensure_pdf_note_type(col) -> None:
-    """Create the Incremento PDF note type, or update its template if it already exists."""
+    """Create the Incremento PDF note type, or update its template/fields if it already exists."""
     models = col.models
     m = models.by_name(PDF_NOTE_TYPE)
 
     if m is None:
         m = models.new(PDF_NOTE_TYPE)
-        for field_name in ("Title", "PDF_Filename"):
+        for field_name in ("Title", "PDF_Filename", "Content"):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
         tmpl = models.new_template("Card 1")
@@ -97,11 +119,20 @@ def ensure_pdf_note_type(col) -> None:
         models.add_template(m, tmpl)
         models.add(m)
     else:
-        # Always sync the template so code changes take effect without manual DB edits.
+        changed = False
+        # Add Content field if missing (migration for existing note types)
+        existing_names = [f["name"] for f in m["flds"]]
+        if "Content" not in existing_names:
+            fld = models.new_field("Content")
+            models.add_field(m, fld)
+            changed = True
+        # Sync template
         tmpl = m["tmpls"][0]
         if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
             tmpl["qfmt"] = CARD_TEMPLATE_FRONT
             tmpl["afmt"] = CARD_TEMPLATE_BACK
+            changed = True
+        if changed:
             models.update_dict(m)
 
 
@@ -127,6 +158,7 @@ def add_pdf_card(addon_dir: str, col, pdf_path: str, title: str,
     note = col.new_note(model)
     note["Title"] = title
     note["PDF_Filename"] = media_filename
+    note["Content"] = extract_pdf_text(pdf_path)
     note.note_type()["did"] = deck_id
     col.add_note(note, deck_id)
 

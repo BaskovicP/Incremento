@@ -7,24 +7,44 @@ const ZOOM_MAX   = 4.0;
 const POLL_MS    = 100;
 const POLL_MAX   = 20;
 
-export default function PdfViewer() {
-  const [page,       setPage]       = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [zoom,       setZoom]       = useState(1.0);
-  const [error,      setError]      = useState('');
+const HL_COLORS = {
+  yellow: 'rgba(255,220,0,0.45)',
+  green:  'rgba(0,200,80,0.4)',
+  blue:   'rgba(30,144,255,0.4)',
+  pink:   'rgba(255,80,140,0.4)',
+};
+const HL_SOLID = {
+  yellow: '#FFE000',
+  green:  '#00C850',
+  blue:   '#1E90FF',
+  pink:   '#FF508C',
+};
 
-  const pdfDocRef        = useRef(null);
-  const busyRef          = useRef(false);
-  const activeCvsRef     = useRef('a');
-  const cardIdRef        = useRef(null);
-  const filenameRef      = useRef(null);
-  const pageRef          = useRef(1);
-  const zoomRef          = useRef(1.0);
-  const lastRenderWidthRef = useRef(0);   // width used in last renderPage call
-  const canvasARef       = useRef(null);
-  const canvasBRef       = useRef(null);
-  const containerRef     = useRef(null);
-  const textLayerRef     = useRef(null);
+export default function PdfViewer() {
+  const [page,        setPage]        = useState(1);
+  const [totalPages,  setTotalPages]  = useState(0);
+  const [zoom,        setZoom]        = useState(1.0);
+  const [error,       setError]       = useState('');
+  const [highlights,     setHighlights]     = useState([]);
+  const [hlColor,        setHlColor]        = useState('yellow');
+  const [renderInfo,     setRenderInfo]     = useState({ scale: 1, tlLeft: 0 });
+  const [autoHighlight,  setAutoHighlight]  = useState(false);
+
+  const pdfDocRef          = useRef(null);
+  const busyRef            = useRef(false);
+  const activeCvsRef       = useRef('a');
+  const cardIdRef          = useRef(null);
+  const filenameRef        = useRef(null);
+  const pageRef            = useRef(1);
+  const zoomRef            = useRef(1.0);
+  const lastRenderWidthRef = useRef(0);
+  const lastScaleRef       = useRef(1);
+  const hlColorRef         = useRef('yellow');
+  const autoHighlightRef   = useRef(false);
+  const canvasARef         = useRef(null);
+  const canvasBRef         = useRef(null);
+  const containerRef       = useRef(null);
+  const textLayerRef       = useRef(null);
 
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
@@ -42,13 +62,17 @@ export default function PdfViewer() {
     tl.style.clipPath = 'inset(0)';
 
     const wrapperW = containerRef.current?.offsetWidth ?? viewport.width;
-    tl.style.left      = Math.round((wrapperW - viewport.width) / 2) + 'px';
+    const tlLeft   = Math.round((wrapperW - viewport.width) / 2);
+    tl.style.left      = tlLeft + 'px';
     tl.style.top       = '0px';
     tl.style.transform = 'none';
 
+    // Expose current scale + offset so highlight overlay re-renders correctly
+    lastScaleRef.current = viewport.scale;
+    setRenderInfo({ scale: viewport.scale, tlLeft });
+
     try {
       const stream = pg.streamTextContent();
-      // PDF.js 4.x: TextLayer class replaces renderTextLayer()
       const task = new lib.TextLayer({ textContentSource: stream, container: tl, viewport });
       tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
       task.render().then(() => {
@@ -120,12 +144,10 @@ export default function PdfViewer() {
   /* ── PDF loading ─────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
     const lib = window.pdfjsLib;
-    // Read at call-time so Python's window._pdfWorkerSrc injection is picked up
     lib.GlobalWorkerOptions.workerSrc = window._pdfWorkerSrc || DEFAULT_WORKER_SRC;
-    window._pdfWorkerSrc = null;  // consume it
-    // window._pdfFileUrl is injected by the Python dock (file:// path to the PDF)
+    window._pdfWorkerSrc = null;
     const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
-    window._pdfFileUrl = null;   // consume it
+    window._pdfFileUrl = null;
     lib.getDocument(pdfUrl).promise
       .then(doc => {
         pdfDocRef.current = doc;
@@ -145,6 +167,8 @@ export default function PdfViewer() {
     const z = parseFloat(startZoom) || 1.0;
     zoomRef.current = z;
     setZoom(z);
+    setHighlights(window._incPdfHighlights || []);
+    window._incPdfHighlights = null;
     window._incPdfPending = null;
     if (typeof window.pdfjsLib === 'undefined') {
       let attempts = 0;
@@ -176,7 +200,12 @@ export default function PdfViewer() {
     window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
 
-  /* ── Text-layer event isolation (stop Anki intercepting selection events) ── */
+  const deleteHighlight = useCallback((id) => {
+    setHighlights(prev => prev.filter(h => h.id !== id));
+    window.pycmd('incremento_pdf_hl_del:' + JSON.stringify({ cardId: cardIdRef.current, id }));
+  }, []);
+
+  /* ── Text-layer event isolation ───────────────────────────────────────────── */
   useEffect(() => {
     const tl = textLayerRef.current;
     if (!tl) return;
@@ -193,15 +222,14 @@ export default function PdfViewer() {
     };
   }, []);
 
-  /* ── Re-render when container is resized (keeps text layer aligned) ─────── */
+
+  /* ── Re-render when container is resized ─────────────────────────────────── */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     let timer;
     const observer = new ResizeObserver((entries) => {
       const newW = Math.round(entries[0]?.contentRect.width ?? 0);
-      // Ignore sub-5px jitter (scrollbars, click events, etc.) — only act on
-      // real window resizes so that text selection is never interrupted.
       if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
@@ -230,20 +258,61 @@ export default function PdfViewer() {
     };
   }, [startViewer, nav, adjustZoom]);
 
-  /* ── Ctrl+1–4 in JS (real Ctrl key; Cmd handled by Python QShortcut) ────── */
+  /* ── Ctrl+1–4 fill field  /  Option+H highlight ─────────────────────────── */
   useEffect(() => {
+    const makeHighlight = (sel) => {
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+      const tl = textLayerRef.current;
+      const range = sel.getRangeAt(0);
+      if (!tl || !tl.contains(range.commonAncestorContainer)) return;
+      const tlRect = tl.getBoundingClientRect();
+      const scale  = lastScaleRef.current;
+      const rects  = Array.from(range.getClientRects())
+        .map(r => ({
+          x: (r.left - tlRect.left) / scale,
+          y: (r.top  - tlRect.top)  / scale,
+          w: r.width  / scale,
+          h: r.height / scale,
+        }))
+        .filter(r => r.w > 2 && r.h > 2);
+      if (!rects.length) return;
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      const hl = { id, page: pageRef.current, color: hlColorRef.current,
+                   text: sel.toString(), rects };
+      setHighlights(prev => [...prev, hl]);
+      window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
+    };
+
     const handler = (e) => {
+      // Option/Alt+H — highlight current selection
+      if (e.altKey && e.code === 'KeyH') {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+        const tl = textLayerRef.current;
+        if (!tl || !tl.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+        e.preventDefault();
+        makeHighlight(sel);
+        sel.removeAllRanges();
+        return;
+      }
+
+      // Cmd/Ctrl+1–4 — fill Add Card field (+ auto-highlight if enabled)
       if (!(e.metaKey || e.ctrlKey)) return;
       const n = parseInt(e.key, 10);
       if (n < 1 || n > 4) return;
-      const sel = window.getSelection()?.toString().trim() || '';
-      if (!sel) return;
+      const selObj  = window.getSelection();
+      const selText = selObj?.toString().trim() || '';
+      if (!selText) return;
       e.preventDefault();
-      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx: n - 1, text: sel }));
+      if (autoHighlightRef.current) makeHighlight(selObj);
+      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx: n - 1, text: selText }));
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, []);
+
+  /* ── Highlights for current page ─────────────────────────────────────────── */
+  const pageHighlights = highlights.filter(h => h.page === page);
 
   /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
@@ -261,19 +330,50 @@ export default function PdfViewer() {
           <span style={{ margin: '0 8px' }}>{Math.round(zoom * 100)}%</span>
           <button onClick={() => adjustZoom(1)}>&#43;</button>
         </span>
+
+        {/* Highlight color picker */}
+        <span style={{ marginLeft: 20, verticalAlign: 'middle' }}>
+          {Object.keys(HL_COLORS).map(c => (
+            <button
+              key={c}
+              title={`Highlight ${c}`}
+              onClick={() => { hlColorRef.current = c; setHlColor(c); }}
+              style={{
+                marginLeft: 3,
+                background: HL_SOLID[c],
+                border: hlColor === c ? '2px solid white' : '2px solid transparent',
+                width: 18, height: 18,
+                borderRadius: 3, padding: 0, cursor: 'pointer',
+                verticalAlign: 'middle',
+              }}
+            />
+          ))}
+        </span>
+
         <button
           style={{ marginLeft: 20 }}
           onClick={() => window.pycmd('incremento_open_add_card')}
         >
           &#43; Add Card
         </button>
+
+        <label style={{ marginLeft: 16, fontSize: 12, cursor: 'pointer',
+                        userSelect: 'none', verticalAlign: 'middle' }}>
+          <input
+            type="checkbox"
+            checked={autoHighlight}
+            onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
+            style={{ marginRight: 4, verticalAlign: 'middle' }}
+          />
+          Highlight when extracting
+        </label>
       </div>
 
       {error && (
         <div style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}>{error}</div>
       )}
 
-      {/* Canvas wrapper — display:block ensures offsetWidth = column width */}
+      {/* Canvas wrapper */}
       <div
         id="pdf-canvas-wrapper"
         ref={containerRef}
@@ -284,6 +384,53 @@ export default function PdfViewer() {
         <canvas ref={canvasBRef} id="pdf-canvas-b"
           style={{ display: 'none', position: 'absolute', top: 0, left: '50%',
                    transform: 'translateX(-50%)', pointerEvents: 'none' }} />
+
+        {/* Highlight rects — below text layer (z:1), non-blocking */}
+        {pageHighlights.map(h =>
+          h.rects.map((r, ri) => (
+            <div
+              key={`${h.id}-${ri}`}
+              style={{
+                position:    'absolute',
+                left:        renderInfo.tlLeft + r.x * renderInfo.scale,
+                top:         r.y * renderInfo.scale,
+                width:       r.w * renderInfo.scale,
+                height:      r.h * renderInfo.scale,
+                background:  HL_COLORS[h.color] || HL_COLORS.yellow,
+                mixBlendMode:'multiply',
+                pointerEvents: 'none',
+                zIndex: 1,
+              }}
+            />
+          ))
+        )}
+
+        {/* Delete buttons — above text layer (z:10), one per highlight group */}
+        {pageHighlights.map(h => {
+          if (!h.rects.length) return null;
+          const r = h.rects[0];
+          return (
+            <button
+              key={`del-${h.id}`}
+              title="Remove highlight"
+              onClick={() => deleteHighlight(h.id)}
+              style={{
+                position:  'absolute',
+                left:      renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 8,
+                top:       r.y * renderInfo.scale - 8,
+                width: 16, height: 16,
+                fontSize: 10, lineHeight: '16px', textAlign: 'center',
+                padding: 0, border: 'none',
+                background: 'rgba(80,80,80,0.85)', color: '#fff',
+                borderRadius: '50%', cursor: 'pointer',
+                zIndex: 10,
+              }}
+            >
+              ×
+            </button>
+          );
+        })}
+
         <div
           ref={textLayerRef}
           id="pdf-text-layer"

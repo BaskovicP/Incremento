@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import types
+import zipfile
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
@@ -24,6 +25,7 @@ from .utils.learn_dialog import SchedulerConfigDialog
 from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
 from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom
+from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
 
 INCREMENTO_DECK = "Incremento Session"
 _ADDON_DIR = os.path.dirname(__file__)
@@ -272,6 +274,23 @@ def learnFunction() -> None:
 
 _pdf_dock = None
 _shortcuts_registered = False
+_current_pdf_card_id  = None
+_current_pdf_filename = None
+_pdf_via_link         = False   # True when dock was opened via a cross-reference link
+
+
+def _pdf_citation() -> str:
+    """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
+    if not _current_pdf_card_id or not _current_pdf_filename:
+        return ''
+    page = get_page(_ADDON_DIR, _current_pdf_card_id)
+    name = os.path.splitext(_current_pdf_filename)[0]
+    cmd  = f'incremento_open_pdf:{_current_pdf_card_id}:{page}'
+    return (
+        f'<a onclick="pycmd(\'{cmd}\'); return false;" '
+        f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
+        f'Page {page}. of {name}</a>'
+    )
 
 _DOCK_HTML = QUrl.fromLocalFile(
     os.path.join(_ADDON_DIR, 'user_files', 'pdf_dock.html')
@@ -294,7 +313,8 @@ class _PdfDockPage(QWebEnginePage):
             parts = msg.split(':')
             if len(parts) == 3:
                 try:
-                    set_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
+                    if not _pdf_via_link:
+                        set_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
                 except ValueError:
                     pass
         elif msg.startswith('incremento_pdf_zoom:'):
@@ -304,6 +324,18 @@ class _PdfDockPage(QWebEnginePage):
                     set_zoom(_ADDON_DIR, int(parts[1]), float(parts[2]))
                 except ValueError:
                     pass
+        elif msg.startswith('incremento_pdf_hl_add:'):
+            try:
+                data = json.loads(msg[len('incremento_pdf_hl_add:'):])
+                add_highlight(_ADDON_DIR, int(data['cardId']), data['highlight'])
+            except Exception:
+                pass
+        elif msg.startswith('incremento_pdf_hl_del:'):
+            try:
+                data = json.loads(msg[len('incremento_pdf_hl_del:'):])
+                remove_highlight(_ADDON_DIR, int(data['cardId']), data['id'])
+            except Exception:
+                pass
         elif msg == 'incremento_open_add_card':
             _open_add_card_dock()
         elif msg.startswith('incremento_fill_field:'):
@@ -376,8 +408,11 @@ def _on_pdf_selection(idx, text):
         QTimer.singleShot(150, lambda: _fill_dock_field(idx, text))
 
 
-def _show_pdf_in_dock(card_id, filename, page, zoom=1.0):
-    global _pdf_dock
+def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False):
+    global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link
+    _current_pdf_card_id  = card_id
+    _current_pdf_filename = filename
+    _pdf_via_link         = via_link
     if _pdf_dock is None:
         _build_pdf_dock()
     else:
@@ -394,12 +429,15 @@ def _show_pdf_in_dock(card_id, filename, page, zoom=1.0):
         os.path.join(mw.col.media.dir(), filename)
     ).toString()
 
+    hls = load_highlights(_ADDON_DIR, card_id)
+
     # Set the PDF file URL and worker URL globals before starting the viewer.
     # Use _incPdfPending so the React useEffect picks it up if not mounted yet.
     js = (
-        f"window._pdfWorkerSrc = {json.dumps(_WORKER_URL)};"
-        f"window._pdfFileUrl   = {json.dumps(pdf_file_url)};"
-        f"window._incPdfPending = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}}};"
+        f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
+        f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
+        f"window._incPdfHighlights = {json.dumps(hls)};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}}};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
         f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}));"
@@ -496,6 +534,9 @@ def _open_add_card_dock():
 
 def _fill_dock_field(idx, text):
     global _add_card_dock
+    citation = _pdf_citation()
+    if citation:
+        text = text + '<br>' + citation
     if _add_card_dock is None:
         _build_add_card_dock()
         QTimer.singleShot(600, lambda: _do_fill(idx, text))
@@ -532,6 +573,21 @@ def _on_js_message(handled, message, context) -> tuple:
             _fill_dock_field(int(data["idx"]), data["text"])
         except Exception:
             pass
+        return (True, None)
+
+    if message.startswith("incremento_open_pdf:"):
+        parts = message.split(":")
+        if len(parts) == 3:
+            try:
+                card_id = int(parts[1])
+                page    = int(parts[2])
+                card    = mw.col.get_card(card_id)
+                note    = mw.col.get_note(card.nid)
+                filename = note["PDF_Filename"]
+                zoom    = get_zoom(_ADDON_DIR, card_id)
+                _show_pdf_in_dock(card_id, filename, page, zoom, via_link=True)
+            except Exception:
+                pass
         return (True, None)
 
     return handled
@@ -592,6 +648,65 @@ def addPdfFunction() -> None:
         showInfo(f"Failed to add PDF card:\n{e}")
 
 
+def exportFunction() -> None:
+    from aqt.qt import QFileDialog
+
+    path, _ = QFileDialog.getSaveFileName(
+        mw,
+        "Export Incremento User Data",
+        os.path.expanduser("~/incremento_export.zip"),
+        "ZIP files (*.zip)",
+    )
+    if not path:
+        return
+
+    user_files_dir = os.path.join(_ADDON_DIR, "user_files")
+    media_dir      = mw.col.media.dir()
+
+    # Gather PDF filenames from all Incremento PDF notes
+    pdf_filenames = []
+    try:
+        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+        for nid in note_ids:
+            try:
+                fname = mw.col.get_note(nid)["PDF_Filename"]
+                if fname:
+                    pdf_filenames.append(fname)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Incremento JSON data files
+            for fname in ("custom_learn_stats.json", "pdf_progress.json", "pdf_highlights.json"):
+                fpath = os.path.join(user_files_dir, fname)
+                if os.path.exists(fpath):
+                    zf.write(fpath, fname)
+
+            # Addon config (scheduler settings)
+            config = mw.addonManager.getConfig(__name__) or {}
+            zf.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
+
+            # PDF files from Anki media
+            pdf_count = 0
+            for fname in pdf_filenames:
+                pdf_path = os.path.join(media_dir, fname)
+                if os.path.exists(pdf_path):
+                    zf.write(pdf_path, os.path.join("pdfs", fname))
+                    pdf_count += 1
+
+        showInfo(
+            f"Export complete.\n\n"
+            f"  • {pdf_count} PDF file(s)\n"
+            f"  • Statistics, progress, highlights, config\n\n"
+            f"Saved to:\n{path}"
+        )
+    except Exception as e:
+        showInfo(f"Export failed:\n{e}")
+
+
 learnAction = QAction("Start Incremental Learning", mw)
 qconnect(learnAction.triggered, learnFunction)
 mw.form.menuTools.addAction(learnAction)
@@ -603,3 +718,7 @@ mw.form.menuTools.addAction(statsAction)
 addPdfAction = QAction("Add PDF to Topics", mw)
 qconnect(addPdfAction.triggered, addPdfFunction)
 mw.form.menuTools.addAction(addPdfAction)
+
+exportAction = QAction("Export All Incremento User Data", mw)
+qconnect(exportAction.triggered, exportFunction)
+mw.form.menuTools.addAction(exportAction)
