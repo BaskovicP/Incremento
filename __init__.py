@@ -1,1361 +1,53 @@
-import copy
 import json
 import os
 import sys
-import types
 import zipfile
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo, tooltip
-from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
+from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout,
                      QPushButton, QDockWidget, QLabel, QWidget, QLineEdit,
                      QShortcut, QKeySequence, QApplication, QListWidget, QListWidgetItem,
                      QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-                     QColor, QToolBar, qconnect, QTimer, Qt, QPixmap, QObject, QEvent)
+                     QColor, QToolBar, qconnect, QTimer, Qt, QObject, QEvent)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtCore import QUrl
-from anki.cards import CardId
 
 # Allow utils/scheduler.py to do `import cards` as a plain import
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
 
-from .utils.scheduler import get_card_from_scheduler, NO_TAGS_KEY
-from .utils.statistics import StatsManager
-from .utils.learn_dialog import SchedulerConfigDialog
-from .utils.scheduler_config import load_scheduler_config
 from .utils.stats_dialog import StatsDialog
-from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, set_page, get_zoom, set_zoom, get_read_page, set_read_page
-from .utils.video_manager import (VIDEO_NOTE_TYPE, extract_video_id, fmt_time,
-                                   get_video_position, set_video_position,
-                                   ensure_video_note_type, add_video_card)
-from .utils.web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
-                                ensure_web_note_type, add_web_card)
-from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
-from .utils.db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
+from .utils.scheduler_config import load_scheduler_config
+from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, get_zoom, get_read_page
+from .utils.video_manager import extract_video_id, add_video_card
 from .utils.priority_manager import get_priority, set_priority, get_all_priorities
 from .utils.priority_dialog import PriorityDialog
+from .utils import timer_widget as _timer_mod
+from .utils.timer_widget import (
+    build_timer_toolbar,
+    on_timer_question_shown as _on_timer_question_shown,
+    timer_on_card_answered  as _timer_on_card_answered,
+)
+from .utils import pdf_dock as _pdf_dock_mod
+from .utils import video_dock as _video_dock_mod
+from .utils import web_dock as _web_dock_mod
+from .utils import add_card_dock as _add_card_dock_mod
+from .utils.session import learnFunction, reset_session_counts, get_session_counts
 
-INCREMENTO_DECK = "Incremento Session"
 _ADDON_DIR = os.path.dirname(__file__)
 
 mw.addonManager.setWebExports(__name__, r"user_files/.*")
 
-# Most-recent session counts — updated after each learnFunction picking loop.
-# Passed to StatsDialog so the "This Session" view reflects the last session.
-_session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
-
 # Last PDF card opened via the Quick Open dialog (used by Ctrl+L).
 _last_opened_pdf_cid: int | None = None
 
-# ── Focus timer state ──────────────────────────────────────────────────────────
-_timer_running: bool = False
-_timer_duration_min: int = 30
-_timer_cards_answered: int = 0
-_timer_pdf_pages: set = set()   # {(card_id, page)} — unique PDF pages seen
 
-class _TimerWidget(QWidget):
-    """Compact focus timer embedded in the Anki toolbar (never overlaps cards)."""
-
-    _PRESETS = [5, 10, 15, 25, 30, 45, 60]
-    _NORMAL_SS = (
-        "QLabel { font-size: 18px; font-weight: bold; font-family: monospace;"
-        " min-width: 72px; qproperty-alignment: AlignCenter; }"
-    )
-    _URGENT_SS = (
-        "QLabel { font-size: 18px; font-weight: bold; font-family: monospace;"
-        " min-width: 72px; color: #ff4444; qproperty-alignment: AlignCenter; }"
-    )
-    _PRESET_SS = (
-        "QPushButton { padding: 2px 7px; border-radius: 3px; }"
-        " QPushButton:checked { color: #ff8c00; font-weight: bold; }"
-    )
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._sel = 30
-        self._rem = 30 * 60
-        self._running = False
-        self._qt_timer = QTimer(self)
-        self._qt_timer.setInterval(1000)
-        self._qt_timer.timeout.connect(self._tick)
-
-        row = QHBoxLayout(self)
-        row.setContentsMargins(10, 2, 10, 2)
-        row.setSpacing(5)
-
-        self._preset_btns: dict[int, QPushButton] = {}
-        for m in self._PRESETS:
-            b = QPushButton(str(m))
-            b.setCheckable(True)
-            b.setFixedHeight(22)
-            b.setStyleSheet(self._PRESET_SS)
-            b.clicked.connect(lambda _, mins=m: self._pick(mins))
-            row.addWidget(b)
-            self._preset_btns[m] = b
-
-        row.addSpacing(8)
-
-        self._display = QLabel("30:00")
-        self._display.setStyleSheet(self._NORMAL_SS)
-        row.addWidget(self._display)
-
-        row.addSpacing(4)
-
-        self._start_btn = QPushButton("▶  Start")
-        self._start_btn.setFixedHeight(22)
-        self._start_btn.clicked.connect(self._toggle)
-        row.addWidget(self._start_btn)
-
-        reset_btn = QPushButton("↺")
-        reset_btn.setFixedHeight(22)
-        reset_btn.setFixedWidth(26)
-        reset_btn.setToolTip("Reset timer (double-click display also resets)")
-        reset_btn.clicked.connect(self._reset)
-        row.addWidget(reset_btn)
-
-        self._display.mouseDoubleClickEvent = lambda _: self._reset()
-        self._pick(30, init=True)
-
-    # ── helpers ───────────────────────────────────────────────────────────────
-
-    def _fmt(self, s: int) -> str:
-        return f"{s // 60:02d}:{s % 60:02d}"
-
-    def _render(self) -> None:
-        self._display.setText(self._fmt(self._rem))
-        urgent = self._running and self._rem <= 60
-        self._display.setStyleSheet(self._URGENT_SS if urgent else self._NORMAL_SS)
-
-    def _pick(self, mins: int, init: bool = False) -> None:
-        if self._running and not init:
-            return
-        self._sel = mins
-        self._rem = mins * 60
-        for m, b in self._preset_btns.items():
-            b.setChecked(m == mins)
-        self._render()
-
-    # ── actions ───────────────────────────────────────────────────────────────
-
-    def _toggle(self) -> None:
-        if self._running:
-            self._pause()
-        else:
-            self._start()
-
-    def _start(self) -> None:
-        if self._rem <= 0:
-            self._rem = self._sel * 60
-        self._running = True
-        self._start_btn.setText("⏸  Pause")
-        self._render()
-        self._begin_session()
-        self._qt_timer.start()
-
-    def _pause(self) -> None:
-        self._qt_timer.stop()
-        self._running = False
-        self._start_btn.setText("▶  Resume")
-        self._render()
-        _timer_running_set(False)
-
-    def _reset(self) -> None:
-        self._qt_timer.stop()
-        self._running = False
-        self._rem = self._sel * 60
-        self._start_btn.setText("▶  Start")
-        self._render()
-        _timer_running_set(False)
-
-    def _tick(self) -> None:
-        self._rem = max(0, self._rem - 1)
-        self._render()
-        if self._rem == 0:
-            self._qt_timer.stop()
-            self._running = False
-            self._start_btn.setText("▶  Start")
-            _timer_running_set(False)
-            QTimer.singleShot(0, _show_timer_summary)
-
-    # ── session state helpers (write to module globals) ───────────────────────
-
-    def _begin_session(self) -> None:
-        global _timer_running, _timer_duration_min, _timer_cards_answered, _timer_pdf_pages
-        _timer_running       = True
-        _timer_duration_min  = self._sel
-        _timer_cards_answered = 0
-        _timer_pdf_pages     = set()
-
-
-def _timer_running_set(val: bool) -> None:
-    global _timer_running
-    _timer_running = val
-
-
-def _reset_session_counts() -> None:
-    global _session_counts
-    _session_counts = {"type": {}, "tags": {}, "mode": {}}
-
-
-def learnFunction() -> None:
-    config = mw.addonManager.getConfig(__name__) or {}
-
-    dlg = SchedulerConfigDialog(mw, on_clear_session=_reset_session_counts)
-    if not dlg.exec():
-        return
-
-    dlg.save_config()
-    cfg = dlg.to_config()
-    target_count = cfg.session_card_count
-
-    stats = StatsManager(os.path.dirname(__file__), day_end_time=cfg.day_end_time)
-
-    selected_ids: list[CardId] = []
-    added_to_filtered: set[CardId] = set()
-    # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
-    _picked_meta: dict[int, dict] = {}
-
-    def _pick(use_tags: bool, tag_weights: dict,
-              force_card_type: str | None = None,
-              force_mode: str | None = None) -> bool:
-        """Attempt one card pick. Returns False when no card is available."""
-        counts = stats.counts_for(cfg.scheduler_scope)
-        result = get_card_from_scheduler(
-            counts=counts,
-            topics_rate=cfg.topics_rate,
-            random_rate=cfg.random_rate,
-            use_tags=use_tags,
-            tag_weights=tag_weights,
-            exclude_ids=added_to_filtered,
-            force_card_type=force_card_type,
-            force_mode=force_mode,
-            topics_filter=cfg.topics_filter,
-            items_filter=cfg.items_filter,
-            ready_filter=cfg.ready_filter,
-            pdf_rate=cfg.pdf_rate,
-        )
-        if result.card is None:
-            return False
-        counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
-        counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
-        if result.tag:
-            counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
-        # Do NOT call stats.record() here — that would write picks to daily/lifetime.
-        # Recording to daily/lifetime is deferred to the reviewer_did_answer_card hook
-        # so that only actually reviewed cards count toward those scopes.
-        _picked_meta[result.card] = {
-            "card_type": result.card_type,
-            "tag":       result.tag,
-            "mode":      result.mode,
-        }
-        added_to_filtered.add(result.card)
-        selected_ids.append(result.card)
-        return True
-
-    if cfg.enforce_priority:
-        # Hard mode — Phase 1 exhausts the leading dimension's quota sequentially.
-        p1 = cfg.priority_order[0] if cfg.priority_order else "tags"
-
-        if p1 == "tags" and cfg.use_tags:
-            # Loop per-tag in descending weight order.
-            ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
-            for tag, weight in ordered:
-                tag_target = round(weight * target_count)
-                tag_picked = 0
-                for _ in range(tag_target * 3):
-                    if tag_picked >= tag_target or len(selected_ids) >= target_count:
-                        break
-                    if not _pick(use_tags=True, tag_weights={tag: 1.0}):
-                        break
-                    tag_picked += 1
-
-        elif p1 == "type":
-            # Loop per-type: topics quota first, then items quota.
-            topics_target = round(cfg.topics_rate * target_count)
-            items_target = target_count - topics_target
-            for forced_type, type_target in [("topics", topics_target), ("items", items_target)]:
-                type_picked = 0
-                for _ in range(type_target * 3):
-                    if type_picked >= type_target or len(selected_ids) >= target_count:
-                        break
-                    if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights,
-                                 force_card_type=forced_type):
-                        break
-                    type_picked += 1
-
-        elif p1 == "mode":
-            # Loop per-mode: priority-ordered cards first, then random.
-            priority_target = round((1 - cfg.random_rate) * target_count)
-            random_target = target_count - priority_target
-            for forced_mode, mode_target in [("priority", priority_target), ("random", random_target)]:
-                mode_picked = 0
-                for _ in range(mode_target * 3):
-                    if mode_picked >= mode_target or len(selected_ids) >= target_count:
-                        break
-                    if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights,
-                                 force_mode=forced_mode):
-                        break
-                    mode_picked += 1
-
-        # Phase 2 — fill remaining slots.
-        run_phase2 = (cfg.include_rest or not cfg.use_tags) if p1 == "tags" else True
-        if run_phase2:
-            for _ in range(target_count * 3):
-                if len(selected_ids) >= target_count:
-                    break
-                if not _pick(use_tags=False, tag_weights={}):
-                    break
-
-    else:
-        # Soft mode — all dimensions handled by soft_pick (debt-based stochastic).
-        # Tags, type and mode are interleaved; weights are honoured on average, not enforced.
-        for _ in range(target_count * 3):
-            if len(selected_ids) >= target_count:
-                break
-            if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights):
-                break
-        # If tags were used and include_rest is on, top up with any remaining cards.
-        if cfg.use_tags and cfg.include_rest and len(selected_ids) < target_count:
-            for _ in range(target_count * 3):
-                if len(selected_ids) >= target_count:
-                    break
-                if not _pick(use_tags=False, tag_weights={}):
-                    break
-
-    # Snapshot session counts so the statistics dialog can show them later.
-    global _session_counts
-    _session_counts = copy.deepcopy(stats.session)
-
-    if not selected_ids:
-        showInfo("No cards available to study.")
-        return
-
-    # DEBUG: show scheduled card order before building the filtered deck
-    if cfg.show_debug:
-        _debug_dlg = QDialog(mw)
-        _debug_dlg.setWindowTitle(f"DEBUG — Scheduled order ({len(selected_ids)} cards)")
-        _debug_dlg.resize(700, 500)
-        _debug_layout = QVBoxLayout(_debug_dlg)
-        _debug_txt = QTextEdit()
-        _debug_txt.setReadOnly(True)
-        _debug_txt.setFontFamily("Courier")
-        _debug_lines = ["#    type     mode       tag                  first field"]
-        _debug_lines.append("-" * 80)
-        for _i, _cid in enumerate(selected_ids):
-            _meta = _picked_meta.get(_cid, {})
-            _card = mw.col.get_card(_cid)
-            _note = mw.col.get_note(_card.nid)
-            _field = (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
-            _debug_lines.append(
-                f"{_i+1:3}.  {_meta.get('card_type','?'):7}  {_meta.get('mode','?'):9}  "
-                f"{(_meta.get('tag') or 'no-tag'):20} {_field}"
-            )
-        _debug_txt.setPlainText("\n".join(_debug_lines))
-        _debug_layout.addWidget(_debug_txt)
-        _debug_btn = QPushButton("Continue")
-        _debug_btn.clicked.connect(_debug_dlg.accept)
-        _debug_layout.addWidget(_debug_btn)
-        _debug_dlg.exec()
-
-    search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
-
-    # Get or create the filtered deck
-    existing = mw.col.decks.by_name(INCREMENTO_DECK)
-    if existing:
-        if not existing.get("dyn"):
-            showInfo(f"'{INCREMENTO_DECK}' is a normal deck. Delete or rename it first.")
-            return
-        did = existing["id"]
-        mw.col.sched.empty_filtered_deck(did)
-    else:
-        did = mw.col.decks.new_filtered(INCREMENTO_DECK)
-
-    # Configure via protobuf API (Anki 2.1.45+)
-    fdu = mw.col.sched.get_or_create_filtered_deck(did)
-    fdu.config.reschedule = True
-    del fdu.config.search_terms[:]
-    # Always a single SearchTerm — Anki only processes the first 2 SearchTerms
-    # so N-per-card terms silently truncate. order=0 (default) when preserving
-    # order (due values get stamped post-rebuild anyway); order=1 (RANDOM) otherwise.
-    fdu.config.search_terms.add(
-        search=search,
-        limit=len(selected_ids),
-        order=0 if cfg.preserve_order else 1,
-    )
-    op = mw.col.sched.add_or_update_filtered_deck(fdu)
-
-    mw.col.sched.rebuild_filtered_deck(op.id)
-
-    if cfg.preserve_order:
-        # odue is already saved by rebuild — original scheduling is safe.
-        # Stamp due = position so the scheduler presents cards in selected_ids order.
-        for i, cid in enumerate(selected_ids):
-            card = mw.col.get_card(cid)
-            card.due = i
-            mw.col.update_card(card)
-    mw.col.decks.select(op.id)
-
-    # Hook: record each card to daily/lifetime the first time it is answered.
-    # This ensures only actually reviewed cards count — not just scheduled ones.
-    _reviewed_ids: set[int] = set()
-
-    def _on_card_answered(reviewer, card, ease: int) -> None:
-        cid = card.id
-        if cid not in _picked_meta or cid in _reviewed_ids:
-            return
-        _reviewed_ids.add(cid)
-        meta = _picked_meta[cid]
-        # NO_TAGS_KEY is a synthetic key for debt tracking — don't persist it.
-        tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
-        fake = types.SimpleNamespace(
-            card=cid,
-            card_type=meta["card_type"],
-            tag=tag,
-            mode=meta["mode"],
-        )
-        stats.record(fake, cfg.scheduler_scope)
-
-    gui_hooks.reviewer_did_answer_card.append(_on_card_answered)
-
-    # One-shot hook: clean up when the reviewer is left.
-    def _on_reviewer_end() -> None:
-        gui_hooks.reviewer_will_end.remove(_on_reviewer_end)
-        gui_hooks.reviewer_did_answer_card.remove(_on_card_answered)
-
-    gui_hooks.reviewer_will_end.append(_on_reviewer_end)
-    mw.moveToState("review")
-
-
-# ── PDF dock (QWebEngineView + PDF.js) ────────────────────────────────────────
-
-_pdf_dock = None
-_shortcuts_registered = False
-_current_pdf_card_id  = None
-_current_pdf_filename = None
-_pdf_via_link         = False   # True when dock was opened via a cross-reference link
-
-_video_dock           = None
-_current_video_card_id = None
-_video_timer          = None
-_video_tick_count     = 0
-_video_profile        = None   # module-level singleton — avoids use-after-free on exit
-
-_web_dock             = None
-_current_web_card_id  = None
-_current_web_home_url = None   # original URL from the card's URL field
-_web_profile          = None   # module-level singleton
-
-
-def _pdf_citation() -> str:
-    """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
-    if not _current_pdf_card_id or not _current_pdf_filename:
-        return ''
-    page = get_page(_ADDON_DIR, _current_pdf_card_id)
-    name = os.path.splitext(_current_pdf_filename)[0]
-    cmd  = f'incremento_open_pdf:{_current_pdf_card_id}:{page}'
-    return (
-        f'<a onclick="pycmd(\'{cmd}\'); return false;" '
-        f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
-        f'Page {page}. of {name}</a>'
-    )
-
-_DOCK_HTML = QUrl.fromLocalFile(
-    os.path.join(_ADDON_DIR, 'user_files', 'pdf_dock.html')
-).toString()
-
-_VIDEO_PLAYER_HTML = QUrl.fromLocalFile(
-    os.path.join(_ADDON_DIR, 'user_files', 'video_player.html')
-).toString()
-_WORKER_URL = QUrl.fromLocalFile(
-    os.path.join(_ADDON_DIR, 'user_files', 'pdfjs', 'pdf.worker.min.js')
-).toString()
-
-
-class _PdfDockPage(QWebEnginePage):
-    """Intercepts console.log to get pycmd messages from the PDF viewer JS."""
-
-    def javaScriptConsoleMessage(self, level, message, line, source):
-        prefix = '__incremento_pycmd__:'
-        if not message.startswith(prefix):
-            return
-        msg = message[len(prefix):]
-
-        if msg.startswith('incremento_pdf_nav:'):
-            parts = msg.split(':')
-            if len(parts) == 3:
-                try:
-                    cid = int(parts[1])
-                    pg  = int(parts[2])
-                    if not _pdf_via_link:
-                        set_page(_ADDON_DIR, cid, pg)
-                    if _timer_running:
-                        _timer_pdf_pages.add((cid, pg))
-                except ValueError:
-                    pass
-        elif msg.startswith('incremento_pdf_zoom:'):
-            parts = msg.split(':')
-            if len(parts) == 3:
-                try:
-                    set_zoom(_ADDON_DIR, int(parts[1]), float(parts[2]))
-                except ValueError:
-                    pass
-        elif msg.startswith('incremento_pdf_hl_add:'):
-            try:
-                data = json.loads(msg[len('incremento_pdf_hl_add:'):])
-                add_highlight(_ADDON_DIR, int(data['cardId']), data['highlight'])
-            except Exception:
-                pass
-        elif msg.startswith('incremento_pdf_hl_del:'):
-            try:
-                data = json.loads(msg[len('incremento_pdf_hl_del:'):])
-                remove_highlight(_ADDON_DIR, int(data['cardId']), data['id'])
-            except Exception:
-                pass
-        elif msg.startswith('incremento_pdf_mark_read:'):
-            parts = msg.split(':')
-            if len(parts) == 3:
-                try:
-                    set_read_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
-                except ValueError:
-                    pass
-        elif msg.startswith('incremento_pdf_cmd1:'):
-            text = msg[len('incremento_pdf_cmd1:'):]
-            if text:
-                QTimer.singleShot(0, lambda t=text: _on_pdf_selection(0, t))
-        elif msg == 'incremento_open_add_card':
-            _open_add_card_dock()
-        elif msg.startswith('incremento_fill_field:'):
-            try:
-                data = json.loads(msg[len('incremento_fill_field:'):])
-                _fill_dock_field(int(data['idx']), data['text'])
-            except Exception:
-                pass
-        elif msg.startswith('incremento_pdf_snapshot:'):
-            QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
-        elif msg.startswith('incremento_pdf_finished:'):
-            try:
-                card_id = int(msg[len('incremento_pdf_finished:'):])
-                mw.col.sched.suspend_cards([card_id])
-                mw.col.reset()
-                tooltip("PDF card suspended — it won't appear in future sessions.")
-                if _pdf_dock:
-                    _pdf_dock.hide()
-            except Exception as e:
-                showInfo(f"Could not suspend card:\n{e}")
-        elif msg.startswith('incremento_open_card:'):
-            try:
-                note_id = int(msg[len('incremento_open_card:'):])
-                from aqt import dialogs
-                def _browse(nid=note_id):
-                    b = dialogs.open("Browser", mw)
-                    b.search_for(f"nid:{nid}")
-                QTimer.singleShot(0, _browse)
-            except Exception:
-                pass
-        elif msg.startswith('incremento_get_page_cards:'):
-            try:
-                parts = msg.split(':')
-                pdf_card_id = int(parts[1])
-                page = int(parts[2])
-                cards = get_pdf_card_sources(_ADDON_DIR, pdf_card_id, page)
-                counts = get_pdf_page_card_counts(_ADDON_DIR, pdf_card_id)
-                data = {'page': page, 'cards': cards, 'pageCounts': counts}
-                js = (
-                    "window.incrementoReceivePageCards && "
-                    f"window.incrementoReceivePageCards({json.dumps(data)})"
-                )
-                QTimer.singleShot(0, lambda j=js: (
-                    _pdf_dock._view.page().runJavaScript(j)
-                    if _pdf_dock else None
-                ))
-            except Exception:
-                pass
-
-
-def _handle_pdf_snapshot(msg: str) -> None:
-    """Save snapshot image to media and fill a chosen field in the Add Card dock."""
-    import base64 as _b64, tempfile as _tmp
-    from PyQt6.QtGui import QImage
-    try:
-        data    = json.loads(msg[len('incremento_pdf_snapshot:'):])
-        img_b64 = data["image"]
-        if "," in img_b64:
-            img_b64 = img_b64.split(",", 1)[1]
-        img_bytes = _b64.b64decode(img_b64)
-
-        with _tmp.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(img_bytes)
-            tmp_path = f.name
-        try:
-            media_filename = mw.col.media.add_file(tmp_path)
-        finally:
-            os.unlink(tmp_path)
-
-        # Open Add Card dock and read its current field names
-        _open_add_card_dock()
-        field_names = []
-        try:
-            note = _add_card_dock.widget().editor.note
-            if note:
-                field_names = [f["name"] for f in note.note_type()["flds"]]
-        except Exception:
-            pass
-        if not field_names:
-            field_names = [f"Field {i + 1}" for i in range(4)]
-
-        # Build pixmap preview
-        pixmap = QPixmap.fromImage(QImage.fromData(img_bytes))
-        scaled = pixmap.scaledToWidth(300, Qt.TransformationMode.SmoothTransformation)
-        if scaled.height() > 180:
-            scaled = pixmap.scaledToHeight(180, Qt.TransformationMode.SmoothTransformation)
-
-        # Dialog: image preview + one button per field name
-        picker = QDialog(mw)
-        picker.setWindowTitle("Insert snapshot into field")
-        picker.setFixedWidth(340)
-        layout = QVBoxLayout(picker)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(0)
-
-        preview_lbl = QLabel()
-        preview_lbl.setPixmap(scaled)
-        preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(preview_lbl)
-
-        layout.addSpacing(14)
-        layout.addWidget(QLabel("Insert image into:"))
-        layout.addSpacing(8)
-
-        chosen_idx = [-1]
-
-        def _make_handler(idx):
-            def _handler():
-                chosen_idx[0] = idx
-                picker.accept()
-            return _handler
-
-        for i, name in enumerate(field_names):
-            btn = QPushButton(name)
-            btn.setStyleSheet("text-align: left; padding: 7px 12px;")
-            btn.clicked.connect(_make_handler(i))
-            layout.addWidget(btn)
-            layout.addSpacing(4)
-
-        layout.addSpacing(8)
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.clicked.connect(picker.reject)
-        layout.addWidget(cancel_btn)
-
-        if not picker.exec() or chosen_idx[0] < 0:
-            return
-
-        _fill_dock_field(chosen_idx[0], f'<img src="{media_filename}">')
-    except Exception as e:
-        showInfo(f"Snapshot failed:\n{e}")
-
-
-def _build_pdf_dock():
-    global _pdf_dock, _shortcuts_registered
-
-    dock = QDockWidget("PDF Viewer", mw)
-    dock.setObjectName("incremento_pdf_dock")
-    dock.setMinimumWidth(550)
-
-    page = _PdfDockPage(dock)
-    # Allow file:// page to load other file:// resources (worker, PDF)
-    s = page.settings()
-    s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
-    s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-
-    view = QWebEngineView(dock)
-    view.setPage(page)
-    dock.setWidget(view)
-    dock._view = view
-
-    mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-
-    # Inject fake pycmd bridge + Cmd+1 keydown listener after every page load
-    def _on_load_finished(ok):
-        if ok:
-            view.page().runJavaScript(
-                "window.pycmd = function(msg) {"
-                "  console.log('__incremento_pycmd__:' + msg);"
-                "};"
-                # Cache selection on change so the keydown handler can read it.
-                "document.addEventListener('selectionchange', function() {"
-                "  var s = window.getSelection();"
-                "  window._lastPdfSelection = s ? s.toString() : '';"
-                "});"
-                # Cmd+1 (metaKey on macOS) — intercept inside the webview
-                # before Chromium/WebEngine consumes it.
-                "document.addEventListener('keydown', function(e) {"
-                "  if (e.metaKey && e.key === '1') {"
-                "    e.preventDefault();"
-                "    var sel = window._lastPdfSelection || '';"
-                "    if (sel) { window.pycmd('incremento_pdf_cmd1:' + sel); }"
-                "  }"
-                "});"
-            )
-
-    view.loadFinished.connect(_on_load_finished)
-
-    # Cmd+1: get active selection from the PDF webview → fill first Add Card field
-    if not _shortcuts_registered:
-        sc = QShortcut(QKeySequence("Ctrl+1"), mw)
-        sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        def _act():
-            if _pdf_dock is None:
-                return
-            try:
-                _pdf_dock._view.page().runJavaScript(
-                    "window._lastPdfSelection || window.getSelection()?.toString() || ''",
-                    lambda text: _on_pdf_selection(0, text),
-                )
-            except Exception:
-                pass
-        sc.activated.connect(_act)
-        globals()['_shortcuts_registered'] = True
-
-    _pdf_dock = dock
-    return dock
-
-
-def _on_pdf_selection(idx, text):
-    text = (text or '').strip()
-    if text:
-        _open_add_card_dock()
-        QTimer.singleShot(150, lambda: _fill_dock_field(idx, text))
-
-
-def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False, read_page=0):
-    global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link
-    _current_pdf_card_id  = card_id
-    _current_pdf_filename = filename
-    _pdf_via_link         = via_link
-    if _pdf_dock is None:
-        _build_pdf_dock()
-    else:
-        try:
-            _pdf_dock.widget()
-        except RuntimeError:
-            _pdf_dock = None
-            _build_pdf_dock()
-
-    _pdf_dock.show()
-    _pdf_dock.raise_()
-
-    pdf_file_url = QUrl.fromLocalFile(
-        os.path.join(mw.col.media.dir(), filename)
-    ).toString()
-
-    hls = load_highlights(_ADDON_DIR, card_id)
-
-    # Set the PDF file URL and worker URL globals before starting the viewer.
-    # Use _incPdfPending so the React useEffect picks it up if not mounted yet.
-    js = (
-        f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
-        f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
-        f"window._incPdfHighlights = {json.dumps(hls)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}}};"
-        f"typeof incrementoPdfStart === 'function' && "
-        f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}));"
-    )
-
-    current = _pdf_dock._view.url().toString()
-    if current != _DOCK_HTML:
-        # First load — run JS after the page finishes loading
-        def _on_first_load(ok):
-            _pdf_dock._view.loadFinished.disconnect(_on_first_load)
-            if ok:
-                _pdf_dock._view.page().runJavaScript(js)
-        _pdf_dock._view.loadFinished.connect(_on_first_load)
-        _pdf_dock._view.load(QUrl(_DOCK_HTML))
-    else:
-        _pdf_dock._view.page().runJavaScript(js)
-
-
-
-# ── Video dock ────────────────────────────────────────────────────────────────
-
-_YT_CURRENT_TIME_JS = (
-    "(function(){"
-    "var v=document.querySelector('video');"
-    "return v ? v.currentTime : 0;"
-    "})()"
+# Wire add_card_dock callbacks to pdf_dock.
+_pdf_dock_mod.register_add_card_callbacks(
+    _add_card_dock_mod.open_add_card_dock,
+    _add_card_dock_mod.fill_dock_field,
+    _add_card_dock_mod.get_add_card_dock,
 )
-
-
-def _build_video_dock():
-    global _video_dock, _video_profile
-
-    dock = QDockWidget("Video", mw)
-    dock.setObjectName("incremento_video_dock")
-    dock.setMinimumWidth(560)
-
-    from PyQt6.QtWebEngineCore import (QWebEngineSettings as _WES,
-                                       QWebEngineProfile as _WEProf,
-                                       QWebEnginePage as _WEPage)
-
-    container = QWidget()
-    vbox = QVBoxLayout(container)
-    vbox.setContentsMargins(0, 0, 0, 0)
-    vbox.setSpacing(0)
-
-    view = QWebEngineView(container)
-
-    # Module-level profile with no parent — avoids use-after-free segfault on exit
-    # that occurs when the profile is parented to the view and both get destroyed.
-    # Persistent named profile so YouTube login cookies survive across restarts.
-    if _video_profile is None:
-        _video_profile = _WEProf("incremento_video")
-        _video_profile.setPersistentStoragePath(
-            os.path.join(_ADDON_DIR, "user_files", "video_profile")
-        )
-        _video_profile.setPersistentCookiesPolicy(
-            _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
-        )
-        _video_profile.setHttpUserAgent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
-        _video_profile.settings().setAttribute(
-            _WES.WebAttribute.PlaybackRequiresUserGesture, False
-        )
-
-    _page = _WEPage(_video_profile)  # no parent — profile must outlive page
-    view.setPage(_page)
-
-    vbox.addWidget(view, 1)
-
-    ctrl = QWidget(container)
-    ctrl_layout = QHBoxLayout(ctrl)
-    ctrl_layout.setContentsMargins(8, 4, 8, 4)
-
-    ts_lbl = QLabel("\u25b6  0:00")
-    ts_lbl.setStyleSheet("font-family: monospace; font-size: 12px;")
-    ctrl_layout.addWidget(ts_lbl)
-    ctrl_layout.addStretch()
-
-    add_btn = QPushButton("+ Add Card at this point")
-    ctrl_layout.addWidget(add_btn)
-    vbox.addWidget(ctrl)
-
-    dock.setWidget(container)
-    mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-
-    dock._view   = view
-    dock._ts_lbl = ts_lbl
-    qconnect(add_btn.clicked, _video_add_card_at_point)
-
-    _video_dock = dock
-    return dock
-
-
-def _show_video_in_dock(card_id: int, youtube_url: str, position: float = 0.0) -> None:
-    global _video_dock, _current_video_card_id
-
-    _current_video_card_id = card_id
-
-    if _video_dock is None:
-        _build_video_dock()
-    else:
-        try:
-            _video_dock.widget()
-        except RuntimeError:
-            _video_dock = None
-            _build_video_dock()
-
-    video_id = extract_video_id(youtube_url)
-    if not video_id:
-        showInfo(f"Could not find a YouTube video ID in:\n{youtube_url}")
-        return
-
-    # Load the full YouTube watch page — this avoids all embed-level restrictions
-    # (Error 152/153) that occur when using the IFrame API from a non-browser origin.
-    # Position tracking uses document.querySelector('video').currentTime.
-    start_sec = int(position)
-    url = QUrl(f"https://www.youtube.com/watch?v={video_id}&t={start_sec}s&autoplay=1")
-
-    _video_dock.show()
-    _video_dock.raise_()
-    _video_dock._view.load(url)
-    _start_video_timer()
-
-
-def _start_video_timer() -> None:
-    global _video_timer, _video_tick_count
-    _video_tick_count = 0
-    if _video_timer is not None:
-        try:
-            _video_timer.stop()
-        except RuntimeError:
-            pass
-    _video_timer = QTimer()
-    _video_timer.setInterval(1000)
-    _video_timer.timeout.connect(_video_timer_tick)
-    _video_timer.start()
-
-
-def _video_timer_tick() -> None:
-    if _video_dock is None or _current_video_card_id is None:
-        return
-    try:
-        _video_dock._view.page().runJavaScript(_YT_CURRENT_TIME_JS, _on_video_time)
-    except (RuntimeError, AttributeError):
-        pass
-
-
-def _on_video_time(t) -> None:
-    global _video_tick_count
-    if _video_dock is None:
-        return
-    t = float(t or 0)
-    try:
-        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(t)}")
-    except (RuntimeError, AttributeError):
-        return
-    _video_tick_count += 1
-    if _video_tick_count >= 5 and _current_video_card_id:
-        _video_tick_count = 0
-        try:
-            set_video_position(_ADDON_DIR, _current_video_card_id, t)
-        except Exception:
-            pass
-
-
-def _video_add_card_at_point() -> None:
-    if _video_dock is None or _current_video_card_id is None:
-        return
-    try:
-        _video_dock._view.page().runJavaScript(_YT_CURRENT_TIME_JS, _do_video_add_card)
-    except (RuntimeError, AttributeError):
-        pass
-
-
-def _do_video_add_card(t) -> None:
-    t = float(t or 0)
-    if _current_video_card_id is None:
-        return
-    try:
-        set_video_position(_ADDON_DIR, _current_video_card_id, t)
-    except Exception:
-        pass
-    ts = fmt_time(t)
-    try:
-        note = mw.col.get_card(_current_video_card_id).note()
-        title = note.fields[0][:60].strip() if note.fields else ""
-    except Exception:
-        title = ""
-    label = f"&#9654; {ts}" + (f" \u2013 {title}" if title else "")
-    link = (
-        f'<a href="#" onclick="pycmd(\'incremento_open_video:{_current_video_card_id}:{t}\')" '
-        f'style="color:#4a90d9;">{label}</a>'
-    )
-    _fill_dock_field(0, link)
-
-
-def _on_video_question_shown(card) -> None:
-    global _video_dock, _video_timer
-    if card is None:
-        return
-    try:
-        note  = mw.col.get_note(card.nid)
-        model = mw.col.models.get(note.mid)
-    except Exception:
-        return
-    if model is None or model.get("name") != VIDEO_NOTE_TYPE:
-        if _video_dock is not None:
-            try:
-                _video_dock.hide()
-            except RuntimeError:
-                _video_dock = None
-        if _video_timer is not None:
-            try:
-                _video_timer.stop()
-            except RuntimeError:
-                pass
-        return
-    try:
-        youtube_url = note["YouTube_URL"]
-    except (KeyError, TypeError):
-        return
-    position = get_video_position(_ADDON_DIR, card.id)
-    _show_video_in_dock(card.id, youtube_url, position)
-
-
-def _on_video_reviewer_will_end() -> None:
-    global _video_dock, _video_timer
-    if _video_timer is not None:
-        try:
-            _video_timer.stop()
-        except RuntimeError:
-            pass
-        _video_timer = None
-    if _video_dock is not None:
-        try:
-            _video_dock.hide()
-        except RuntimeError:
-            _video_dock = None
-
-
-# ── Web dock ──────────────────────────────────────────────────────────────────
-
-def _build_web_dock():
-    global _web_dock, _web_profile
-
-    from PyQt6.QtWebEngineCore import (QWebEngineSettings as _WES,
-                                       QWebEngineProfile as _WEProf,
-                                       QWebEnginePage as _WEPage)
-
-    dock = QDockWidget("Web", mw)
-    dock.setObjectName("incremento_web_dock")
-    dock.setMinimumWidth(600)
-
-    container = QWidget()
-    vbox = QVBoxLayout(container)
-    vbox.setContentsMargins(0, 0, 0, 0)
-    vbox.setSpacing(0)
-
-    view = QWebEngineView(container)
-
-    if _web_profile is None:
-        _web_profile = _WEProf("incremento_web")
-        _web_profile.setPersistentStoragePath(
-            os.path.join(_ADDON_DIR, "user_files", "web_profile")
-        )
-        _web_profile.setPersistentCookiesPolicy(
-            _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
-        )
-        _web_profile.setHttpUserAgent(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
-        _web_profile.settings().setAttribute(
-            _WES.WebAttribute.PlaybackRequiresUserGesture, False
-        )
-
-    _page = _WEPage(_web_profile)
-    view.setPage(_page)
-
-    vbox.addWidget(view, 1)
-
-    # Controls bar: URL display + Home button
-    ctrl = QWidget(container)
-    ctrl_layout = QHBoxLayout(ctrl)
-    ctrl_layout.setContentsMargins(8, 4, 8, 4)
-    ctrl_layout.setSpacing(6)
-
-    url_lbl = QLabel("")
-    url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
-    url_lbl.setWordWrap(False)
-    url_lbl.setMaximumWidth(500)
-    ctrl_layout.addWidget(url_lbl, 1)
-
-    home_btn = QPushButton("⌂ Home")
-    home_btn.setFixedWidth(70)
-    ctrl_layout.addWidget(home_btn)
-
-    vbox.addWidget(ctrl)
-
-    dock.setWidget(container)
-    mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-
-    dock._view    = view
-    dock._url_lbl = url_lbl
-
-    def _on_url_changed(qurl):
-        url_str = qurl.toString()
-        # Truncate for display
-        display = url_str if len(url_str) <= 80 else url_str[:77] + "…"
-        try:
-            url_lbl.setText(display)
-        except RuntimeError:
-            pass
-
-    def _on_load_finished(ok):
-        if not ok or _current_web_card_id is None:
-            return
-        url_str = view.url().toString()
-        if url_str and url_str != "about:blank":
-            try:
-                set_web_url(_ADDON_DIR, _current_web_card_id, url_str)
-            except Exception:
-                pass
-
-    view.urlChanged.connect(_on_url_changed)
-    view.loadFinished.connect(_on_load_finished)
-    qconnect(home_btn.clicked, _web_go_home)
-
-    _web_dock = dock
-    return dock
-
-
-def _web_go_home() -> None:
-    if _web_dock is None or not _current_web_home_url:
-        return
-    try:
-        _web_dock._view.load(QUrl(_current_web_home_url))
-    except (RuntimeError, AttributeError):
-        pass
-
-
-def _show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
-    global _web_dock, _current_web_card_id, _current_web_home_url
-
-    _current_web_card_id  = card_id
-    _current_web_home_url = home_url
-
-    if _web_dock is None:
-        _build_web_dock()
-    else:
-        try:
-            _web_dock.widget()
-        except RuntimeError:
-            _web_dock = None
-            _build_web_dock()
-
-    load_url = last_url if last_url else home_url
-    _web_dock.show()
-    _web_dock.raise_()
-    _web_dock._view.load(QUrl(load_url))
-
-
-def _on_web_question_shown(card) -> None:
-    global _web_dock
-    if card is None:
-        return
-    try:
-        note  = mw.col.get_note(card.nid)
-        model = mw.col.models.get(note.mid)
-    except Exception:
-        return
-    if model is None or model.get("name") != WEB_NOTE_TYPE:
-        if _web_dock is not None:
-            try:
-                _web_dock.hide()
-            except RuntimeError:
-                _web_dock = None
-        return
-    try:
-        home_url = note["URL"]
-    except (KeyError, TypeError):
-        return
-    if not home_url:
-        return
-    last_url = get_web_url(_ADDON_DIR, card.id)
-    _show_web_in_dock(card.id, home_url, last_url)
-
-
-def _on_web_reviewer_will_end() -> None:
-    if _web_dock is not None:
-        try:
-            _web_dock.hide()
-        except RuntimeError:
-            pass
-
-
-def _sync_web_note_type() -> None:
-    try:
-        ensure_web_note_type(mw.col)
-    except Exception:
-        pass
-
-
-def addWebFunction() -> None:
-    """Incremento -> Add Content -> Web Page"""
-    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
-    from .utils.add_web_dialog import AddWebDialog
-    dlg = AddWebDialog(deck_names, default_deck="Topics", parent=mw)
-    if not dlg.exec():
-        return
-    url = dlg.url
-    if not url:
-        showInfo("Please enter a URL.")
-        return
-    title = dlg.title or url
-    try:
-        add_web_card(mw.col, url, title, dlg.deck_name)
-        mw.col.reset()
-        tooltip(f"Web card '{title}' added to {dlg.deck_name}.")
-    except Exception as e:
-        showInfo(f"Failed to add web card:\n{e}")
-
-
-def _show_timer_summary() -> None:
-    """Show the end-of-timer summary dialog."""
-    dur   = _timer_duration_min
-    cards = _timer_cards_answered
-
-    dlg = QDialog(mw)
-    dlg.setWindowTitle("Session Complete")
-    dlg.setMinimumWidth(320)
-
-    layout = QVBoxLayout(dlg)
-    layout.setSpacing(14)
-    layout.setContentsMargins(24, 24, 24, 20)
-
-    title_lbl = QLabel(f"⏱  {dur}-minute session complete")
-    title_lbl.setStyleSheet("font-size: 17px; font-weight: bold;")
-    layout.addWidget(title_lbl)
-
-    cards_lbl = QLabel(f"<b>{cards}</b> card{'s' if cards != 1 else ''} reviewed")
-    cards_lbl.setStyleSheet("font-size: 14px;")
-    layout.addWidget(cards_lbl)
-
-    if _timer_pdf_pages:
-        by_pdf: dict[int, set] = {}
-        for cid, page in _timer_pdf_pages:
-            by_pdf.setdefault(cid, set()).add(page)
-        total_pages = sum(len(v) for v in by_pdf.values())
-        n_pdfs = len(by_pdf)
-        pdf_lbl = QLabel(
-            f"<b>{total_pages}</b> PDF page{'s' if total_pages != 1 else ''} read"
-            f" across {n_pdfs} book{'s' if n_pdfs != 1 else ''}"
-        )
-        pdf_lbl.setStyleSheet("font-size: 14px;")
-        layout.addWidget(pdf_lbl)
-
-    layout.addSpacing(4)
-
-    ok_btn = QPushButton("Done")
-    ok_btn.setStyleSheet(
-        "QPushButton { background: #2979ff; color: white; border: none;"
-        " padding: 9px; font-size: 14px; border-radius: 4px; }"
-        " QPushButton:hover { background: #1565c0; }"
-    )
-    ok_btn.clicked.connect(dlg.accept)
-    layout.addWidget(ok_btn)
-
-    dlg.exec()
-
-
-def _on_timer_question_shown(card) -> None:
-    """Records the current PDF page for timer stats when the timer is active."""
-    if not _timer_running or card is None:
-        return
-    try:
-        note  = mw.col.get_note(card.nid)
-        model = mw.col.models.get(note.mid)
-        if model and model.get("name") == PDF_NOTE_TYPE:
-            page = get_page(_ADDON_DIR, card.id)
-            _timer_pdf_pages.add((card.id, page))
-    except Exception:
-        pass
-
-
-def _timer_on_card_answered(reviewer, card, ease: int) -> None:
-    """Global hook: counts every answered card while the timer is running."""
-    global _timer_cards_answered
-    if _timer_running:
-        _timer_cards_answered += 1
-
-
-def _on_pdf_question_shown(card) -> None:
-    global _pdf_dock
-    if card is None:
-        return
-    try:
-        note  = mw.col.get_note(card.nid)
-        model = mw.col.models.get(note.mid)
-    except Exception:
-        return
-    if model is None or model.get("name") != PDF_NOTE_TYPE:
-        # Hide the PDF dock when reviewing non-PDF cards
-        if _pdf_dock is not None:
-            try:
-                _pdf_dock.hide()
-            except RuntimeError:
-                _pdf_dock = None
-        return
-    try:
-        filename = note["PDF_Filename"]
-    except (KeyError, TypeError):
-        return
-    page      = get_page(_ADDON_DIR, card.id)
-    zoom      = get_zoom(_ADDON_DIR, card.id)
-    read_page = get_read_page(_ADDON_DIR, card.id)
-    _show_pdf_in_dock(card.id, filename, page, zoom, read_page=read_page)
-
-
-_add_card_dock = None  # QDockWidget instance, persists across card reviews
-
-
-def _build_add_card_dock():
-    """Embed the native AddCards dialog into a left dock widget."""
-    global _add_card_dock
-    from aqt.addcards import AddCards
-
-    dock = QDockWidget("Add Card", mw)
-    dock.setObjectName("incremento_add_card_dock")
-    dock.setMinimumWidth(400)
-
-    # Open the native dialog; hide it before the event loop renders it as a
-    # floating window, then reparent it into the dock as a plain widget.
-    dlg = AddCards(mw)
-    dlg.hide()
-    dlg.setParent(dock)
-    dlg.setWindowFlags(Qt.WindowType.Widget)
-    dock.setWidget(dlg)
-
-    mw.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
-    _add_card_dock = dock
-    dlg.show()
-
-    def _set_field(idx, text):
-        note = dlg.editor.note
-        if note and idx < len(note.fields):
-            existing = note.fields[idx]
-            note.fields[idx] = (existing + '<br><br>' + text) if existing else text
-            try:
-                dlg.editor.loadNote()
-            except Exception:
-                pass
-
-    dock._set_field = _set_field
-    return dock
-
-
-def _open_add_card_dock():
-    global _add_card_dock
-    if _add_card_dock is not None:
-        try:
-            _add_card_dock.show()
-            _add_card_dock.raise_()
-            return
-        except RuntimeError:
-            _add_card_dock = None
-    _build_add_card_dock()
-
-
-def _fill_dock_field(idx, text):
-    global _add_card_dock
-    citation = _pdf_citation()
-    if citation:
-        text = text + '<br>' + citation
-    if _add_card_dock is None:
-        _build_add_card_dock()
-        QTimer.singleShot(600, lambda: _do_fill(idx, text))
-        return
-    try:
-        _add_card_dock.show()
-        _add_card_dock.raise_()
-        _do_fill(idx, text)
-    except RuntimeError:
-        _add_card_dock = None
-
-
-def _do_fill(idx, text):
-    if _add_card_dock is None:
-        return
-    try:
-        _add_card_dock._set_field(idx, text)
-    except (RuntimeError, AttributeError):
-        pass
-
 
 
 def _on_js_message(handled, message, context) -> tuple:
@@ -1363,13 +55,13 @@ def _on_js_message(handled, message, context) -> tuple:
         return handled
 
     if message == "incremento_open_add_card":
-        _open_add_card_dock()
+        _add_card_dock_mod.open_add_card_dock()
         return (True, None)
 
     if message.startswith("incremento_fill_field:"):
         try:
             data = json.loads(message[len("incremento_fill_field:"):])
-            _fill_dock_field(int(data["idx"]), data["text"])
+            _add_card_dock_mod.fill_dock_field(int(data["idx"]), data["text"])
         except Exception:
             pass
         return (True, None)
@@ -1396,7 +88,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 note    = mw.col.get_note(card.nid)
                 filename = note["PDF_Filename"]
                 zoom    = get_zoom(_ADDON_DIR, card_id)
-                _show_pdf_in_dock(card_id, filename, page, zoom, via_link=True)
+                _pdf_dock_mod.show_pdf_in_dock(card_id, filename, page, zoom, via_link=True)
             except Exception:
                 pass
         return (True, None)
@@ -1410,7 +102,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 card     = mw.col.get_card(card_id)
                 note     = mw.col.get_note(card.nid)
                 url      = note["YouTube_URL"]
-                QTimer.singleShot(0, lambda: _show_video_in_dock(card_id, url, position))
+                QTimer.singleShot(0, lambda: _video_dock_mod.show_video_in_dock(card_id, url, position))
             except Exception:
                 pass
         return (True, None)
@@ -1418,58 +110,16 @@ def _on_js_message(handled, message, context) -> tuple:
     return handled
 
 
-def _on_pdf_reviewer_will_end() -> None:
-    global _pdf_dock
-    if _pdf_dock is not None:
-        try:
-            _pdf_dock.hide()
-        except RuntimeError:
-            _pdf_dock = None
-
-
-def _on_add_cards_did_add_note(note) -> None:
-    """When a card is saved in the AddCards dock, record it against the current PDF page."""
-    if _current_pdf_card_id is None:
-        return
-    page = get_page(_ADDON_DIR, _current_pdf_card_id)
-    # Build a plain-text excerpt from the first two non-empty fields
-    import re as _re
-    parts = []
-    for field in (note.fields or [])[:2]:
-        plain = _re.sub(r'<[^>]+>', '', field).strip()[:120]
-        if plain:
-            parts.append(plain)
-    excerpt = ' / '.join(parts)[:200]
-    try:
-        add_pdf_card_source(_ADDON_DIR, _current_pdf_card_id, page, note.id, excerpt)
-    except Exception:
-        pass
-    # Push an updated card list to the PDF viewer
-    if _pdf_dock is None:
-        return
-    try:
-        cards = get_pdf_card_sources(_ADDON_DIR, _current_pdf_card_id, page)
-        counts = get_pdf_page_card_counts(_ADDON_DIR, _current_pdf_card_id)
-        data = {'page': page, 'cards': cards, 'pageCounts': counts}
-        js = (
-            "window.incrementoReceivePageCards && "
-            f"window.incrementoReceivePageCards({json.dumps(data)})"
-        )
-        _pdf_dock._view.page().runJavaScript(js)
-    except Exception:
-        pass
-
-
-gui_hooks.add_cards_did_add_note.append(_on_add_cards_did_add_note)
+gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
 
 gui_hooks.reviewer_did_show_question.append(_on_timer_question_shown)
-gui_hooks.reviewer_did_show_question.append(_on_pdf_question_shown)
-gui_hooks.reviewer_did_show_question.append(_on_video_question_shown)
-gui_hooks.reviewer_did_show_question.append(_on_web_question_shown)
+gui_hooks.reviewer_did_show_question.append(_pdf_dock_mod.on_pdf_question_shown)
+gui_hooks.reviewer_did_show_question.append(_video_dock_mod.on_video_question_shown)
+gui_hooks.reviewer_did_show_question.append(_web_dock_mod.on_web_question_shown)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
-gui_hooks.reviewer_will_end.append(_on_pdf_reviewer_will_end)
-gui_hooks.reviewer_will_end.append(_on_video_reviewer_will_end)
-gui_hooks.reviewer_will_end.append(_on_web_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
@@ -1487,42 +137,12 @@ def _sync_pdf_note_type() -> None:
 
 
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
-
-
-def _sync_video_note_type() -> None:
-    try:
-        ensure_video_note_type(mw.col)
-    except Exception:
-        pass
-
-
-gui_hooks.main_window_did_init.append(_sync_video_note_type)
-gui_hooks.main_window_did_init.append(_sync_web_note_type)
-
-
-_timer_toolbar = None   # set by _build_timer_toolbar
+gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
+gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 
 
 def _build_timer_toolbar() -> None:
-    """Create and dock the focus timer toolbar; restore saved visibility."""
-    global _timer_toolbar
-    tb = QToolBar("Focus Timer", mw)
-    tb.setObjectName("incremento_timer_toolbar")
-    tb.setMovable(False)
-    tb.setFloatable(False)
-    from aqt.qt import QSizePolicy
-    spacer = QWidget(tb)
-    spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    tb.addWidget(spacer)
-    tb.addWidget(_TimerWidget(tb))
-    mw.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
-    _timer_toolbar = tb
-
-    # Restore saved visibility and sync the menu action checkmark
-    cfg = mw.addonManager.getConfig(__name__) or {}
-    visible = cfg.get("show_timer", True)
-    tb.setVisible(visible)
-    _timerToggleAction.setChecked(visible)
+    build_timer_toolbar(_timerToggleAction)
 
 
 gui_hooks.main_window_did_init.append(_build_timer_toolbar)
@@ -1627,7 +247,9 @@ class _PdfQuickJumpDialog(QDialog):
         self._all_entries.sort(key=lambda e: e[0].lower())
 
     @staticmethod
-    def _prio_bg(p: float) -> QColor:
+    def _prio_bg(p) -> QColor:
+        if p is None:
+            return QColor(80, 80, 80)
         if p >= 75:
             return QColor(160, 20, 20)
         if p >= 55:
@@ -1731,7 +353,7 @@ def _open_pdf_quick_jump() -> None:
         zoom      = get_zoom(_ADDON_DIR, cid)
         read_page = get_read_page(_ADDON_DIR, cid)
         _last_opened_pdf_cid = cid
-        _show_pdf_in_dock(cid, filename, page, zoom, read_page=read_page)
+        _pdf_dock_mod.show_pdf_in_dock(cid, filename, page, zoom, read_page=read_page)
     except Exception as e:
         showInfo(f"Could not open PDF:\n{e}")
 
@@ -1745,7 +367,7 @@ def showStatsFunction() -> None:
     cfg = load_scheduler_config()
     dlg = StatsDialog(
         addon_dir=os.path.dirname(__file__),
-        session_counts=_session_counts,
+        session_counts=get_session_counts(),
         day_end_time=cfg.day_end_time,
         parent=mw,
     )
@@ -1966,6 +588,7 @@ def _open_priority_dialog() -> None:
                          card_label=label_text, parent=mw)
     if dlg.exec():
         set_priority(_ADDON_DIR, card.id, dlg.priority)
+        tooltip(f"Priority set to {dlg.priority:.0f}")
 
 
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
@@ -2040,7 +663,7 @@ qconnect(_addVideoAction.triggered, addVideoFunction)
 _addContentMenu.addAction(_addVideoAction)
 
 _addWebAction = QAction("Web Page", mw)
-qconnect(_addWebAction.triggered, addWebFunction)
+qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
 _addContentMenu.addAction(_addWebAction)
 
 _menu.addSeparator()
@@ -2050,8 +673,8 @@ _timerToggleAction.setCheckable(True)
 _timerToggleAction.setChecked(True)   # default; corrected by _build_timer_toolbar
 
 def _on_timer_toggle(checked: bool) -> None:
-    if _timer_toolbar is not None:
-        _timer_toolbar.setVisible(checked)
+    if _timer_mod._timer_toolbar is not None:
+        _timer_mod._timer_toolbar.setVisible(checked)
     cfg = mw.addonManager.getConfig(__name__) or {}
     cfg["show_timer"] = checked
     mw.addonManager.writeConfig(__name__, cfg)
@@ -2068,4 +691,3 @@ _menu.addAction(_statsAction)
 _exportAction = QAction("Export User Data", mw)
 qconnect(_exportAction.triggered, exportFunction)
 _menu.addAction(_exportAction)
-

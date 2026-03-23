@@ -112,6 +112,12 @@ class StatsManager:
             self.daily = _empty()
 
     def counts_for(self, scope: str) -> dict:
+        """Return a LIVE reference to the counts dict for *scope*.
+
+        IMPORTANT — the caller must mutate the returned dict in-place to drive
+        soft_pick debt.  Do NOT store a copy; debt tracking depends on this
+        reference pointing to the same object that record() reads from.
+        """
         if scope == "session":
             return self.session
         if scope == "daily":

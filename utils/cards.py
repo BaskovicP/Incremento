@@ -8,12 +8,21 @@ all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
 
 
 def _sort_by_due(card_ids):
-    """Return card_ids sorted by ascending due date (most overdue first)."""
+    """Return card_ids sorted by ascending due date (most overdue first).
+
+    Uses a single bulk SQL query instead of one get_card() call per card,
+    reducing N individual DB round-trips to one.
+    """
     if not card_ids:
         return list(card_ids)
-    pairs = [(mw.col.get_card(cid).due, cid) for cid in card_ids]
-    pairs.sort()
-    return [cid for _, cid in pairs]
+    ids = list(card_ids)
+    placeholders = ",".join("?" * len(ids))
+    rows = mw.col.db.execute(
+        f"SELECT id, due FROM cards WHERE id IN ({placeholders})", ids
+    ).fetchall()
+    due_map = {row[0]: row[1] for row in rows}
+    ids.sort(key=lambda cid: due_map.get(cid, 0))
+    return ids
 
 
 def get_all_ready_card_ids():
@@ -40,7 +49,8 @@ def get_all_ready_cards_custom_data():
         if card.custom_data:
            try:
                result[cid] = json.loads(card.custom_data)
-           except:
+           except Exception as e:
+               print(f"[Incremento] cards: failed to parse custom_data for cid {cid}: {e}")
                result[cid] = {}
     return result
 def change_custom_data(card_id: CardId, custom_data: dict) -> Card:
@@ -48,8 +58,8 @@ def change_custom_data(card_id: CardId, custom_data: dict) -> Card:
     try:
         original_custom_data = json.loads(card.custom_data)
         card.custom_data = {**original_custom_data, **custom_data}
-    except:
-        print("Filling custom data failed")
+    except Exception as e:
+        print(f"[Incremento] cards: change_custom_data failed for card_id {card_id}: {e}")
 
     return card
 

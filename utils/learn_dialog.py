@@ -659,6 +659,28 @@ class SchedulerConfigDialog(QDialog):
         count = len(mw.col.find_cards(f"{query} {ready}"))
         showInfo(f'Filter "{query}" matches {count} ready card(s).')
 
+    def accept(self) -> None:
+        """Warn if both filters return no cards, then accept."""
+        try:
+            ready = self._ready_filter_from_checks()
+            tf  = self._topics_filter_edit.text().strip() or "deck:Topics"
+            itf = self._items_filter_edit.text().strip()  or "-deck:Topics"
+            n_topics = len(mw.col.find_cards(f"{tf} {ready}"))
+            n_items  = len(mw.col.find_cards(f"{itf} {ready}"))
+            if n_topics == 0 and n_items == 0:
+                from aqt.qt import QMessageBox
+                r = QMessageBox.warning(
+                    self, "No Cards Found",
+                    "Both filters returned 0 ready cards.\n"
+                    "The session will be empty.\n\nContinue anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if r != QMessageBox.StandardButton.Yes:
+                    return
+        except Exception:
+            pass
+        super().accept()
+
     # ------------------------------------------------------------------
     # Statistics history actions
     # ------------------------------------------------------------------

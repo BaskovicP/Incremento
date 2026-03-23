@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-const DEFAULT_WORKER_SRC = '/_addons/incremento/user_files/pdfjs/pdf.worker.min.js';
-const ZOOM_STEP  = 0.1;
-const ZOOM_MIN   = 0.25;
-const ZOOM_MAX   = 4.0;
-const POLL_MS    = 100;
-const POLL_MAX   = 20;
+import { usePdfRender } from './usePdfRender.js';
+import HighlightLayer  from './HighlightLayer.jsx';
+import PageCardPanel   from './PageCardPanel.jsx';
 
 const HL_COLORS = {
   yellow: 'rgba(255,220,0,0.45)',
@@ -21,206 +17,34 @@ const HL_SOLID = {
 };
 
 export default function PdfViewer() {
-  const [page,        setPage]        = useState(1);
-  const [totalPages,  setTotalPages]  = useState(0);
-  const [zoom,        setZoom]        = useState(1.0);
-  const [error,       setError]       = useState('');
-  const [highlights,     setHighlights]     = useState([]);
-  const [hlColor,        setHlColor]        = useState('yellow');
-  const [renderInfo,     setRenderInfo]     = useState({ scale: 1, tlLeft: 0 });
-  const [autoHighlight,  setAutoHighlight]  = useState(false);
-  const [readPage,       setReadPage]       = useState(0);
-  const [snapshotMode,   setSnapshotMode]   = useState(false);
-  const [snapRect,       setSnapRect]       = useState(null);
-  const [pageCards,      setPageCards]      = useState([]);   // cards created on current page
-  const [showCardPanel,  setShowCardPanel]  = useState(false);
+  // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
+  const {
+    page, totalPages, zoom, error, renderInfo, readPage,
+    canvasARef, canvasBRef, containerRef, textLayerRef,
+    pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
+    startViewer, nav, adjustZoom, markRead,
+  } = usePdfRender();
 
-  const pdfDocRef          = useRef(null);
-  const busyRef            = useRef(false);
-  const activeCvsRef       = useRef('a');
-  const cardIdRef          = useRef(null);
-  const filenameRef        = useRef(null);
-  const pageRef            = useRef(1);
-  const zoomRef            = useRef(1.0);
-  const lastRenderWidthRef = useRef(0);
-  const lastScaleRef       = useRef(1);
-  const hlColorRef         = useRef('yellow');
-  const autoHighlightRef   = useRef(false);
-  const readPageRef        = useRef(0);
-  const snapStartRef       = useRef(null);
-  const canvasARef         = useRef(null);
-  const canvasBRef         = useRef(null);
-  const containerRef       = useRef(null);
-  const textLayerRef       = useRef(null);
+  // ── Highlight state ────────────────────────────────────────────────────────
+  const [highlights,    setHighlights]    = useState([]);
+  const [hlColor,       setHlColor]       = useState('yellow');
+  const [autoHighlight, setAutoHighlight] = useState(false);
+  const hlColorRef       = useRef('yellow');
+  const autoHighlightRef = useRef(false);
 
-  useEffect(() => { pageRef.current = page; }, [page]);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  // ── Snapshot state ─────────────────────────────────────────────────────────
+  const [snapshotMode, setSnapshotMode] = useState(false);
+  const [snapRect,     setSnapRect]     = useState(null);
+  const snapStartRef = useRef(null);
 
-  /* ── Text layer (PDF.js 4.x) ─────────────────────────────────────────────── */
-  const renderTextLayer = useCallback((pg, viewport) => {
-    const tl  = textLayerRef.current;
-    const lib = window.pdfjsLib;
-    if (!tl || !lib) return;
-    tl.innerHTML = '';
+  // ── Page card panel state ──────────────────────────────────────────────────
+  const [pageCards,     setPageCards]     = useState([]);
+  const [showCardPanel, setShowCardPanel] = useState(false);
 
-    tl.style.setProperty('--scale-factor', viewport.scale);
-    tl.style.width    = viewport.width  + 'px';
-    tl.style.height   = viewport.height + 'px';
-    tl.style.clipPath = 'inset(0)';
+  // ── Highlights for the current page ───────────────────────────────────────
+  const pageHighlights = highlights.filter(h => h.page === page);
 
-    const wrapperW = containerRef.current?.offsetWidth ?? viewport.width;
-    const tlLeft   = Math.round((wrapperW - viewport.width) / 2);
-    tl.style.left      = tlLeft + 'px';
-    tl.style.top       = '0px';
-    tl.style.transform = 'none';
-
-    // Expose current scale + offset so highlight overlay re-renders correctly
-    lastScaleRef.current = viewport.scale;
-    setRenderInfo({ scale: viewport.scale, tlLeft });
-
-    try {
-      const stream = pg.streamTextContent();
-      const task = new lib.TextLayer({ textContentSource: stream, container: tl, viewport });
-      tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
-      task.render().then(() => {
-        tl.querySelectorAll('span').forEach(span => {
-          // Remove whitespace-only spans
-          if (!/\S/.test(span.textContent)) { span.remove(); return; }
-          // Remove spans that are visually almost invisible (< 3px wide)
-          const rect = span.getBoundingClientRect();
-          if (rect.width > 0 && rect.width < 3 && rect.height > 0) { span.remove(); return; }
-          // Remove column-separator spans: text compressed to < 5% of normal width
-          const sx = parseFloat((span.style.transform || '').match(/scaleX\(([\d.e+-]+)\)/)?.[1]);
-          if (!isNaN(sx) && sx < 0.05) { span.remove(); return; }
-          // Also handle matrix() form: matrix(a, b, c, d, tx, ty) — a is scaleX
-          const mx = parseFloat((span.style.transform || '').match(/matrix\(([\d.e+-]+)/)?.[1]);
-          if (!isNaN(mx) && mx < 0.05) { span.remove(); }
-        });
-      }).catch(() => {});
-    } catch (_) {}
-  }, []);
-
-  /* ── Render page ─────────────────────────────────────────────────────────── */
-  const renderPage = useCallback((num) => {
-    const doc = pdfDocRef.current;
-    if (busyRef.current || !doc) return;
-    busyRef.current = true;
-
-    if (textLayerRef.current?._cancelTextLayer) {
-      textLayerRef.current._cancelTextLayer();
-      textLayerRef.current._cancelTextLayer = null;
-    }
-
-    doc.getPage(num).then(pg => {
-      const backId  = activeCvsRef.current === 'a' ? 'b' : 'a';
-      const frontId = activeCvsRef.current;
-      const backCvs  = backId  === 'a' ? canvasARef.current : canvasBRef.current;
-      const frontCvs = frontId === 'a' ? canvasARef.current : canvasBRef.current;
-      if (!backCvs) { busyRef.current = false; return; }
-
-      const colW = containerRef.current?.offsetWidth || 800;
-      lastRenderWidthRef.current = colW;
-      const maxH = Math.max(window.innerHeight - 120, 300);
-      const base = pg.getViewport({ scale: 1 });
-      let scale  = Math.min(colW / base.width, maxH / base.height) * zoomRef.current;
-      if (!scale || scale <= 0) scale = 1;
-
-      const viewport = pg.getViewport({ scale });
-      const dpr      = window.devicePixelRatio || 1;
-
-      backCvs.width        = viewport.width  * dpr;
-      backCvs.height       = viewport.height * dpr;
-      backCvs.style.width  = viewport.width  + 'px';
-      backCvs.style.height = viewport.height + 'px';
-
-      pg.render({ canvasContext: backCvs.getContext('2d'), viewport, transform: [dpr, 0, 0, dpr, 0, 0] })
-        .promise
-        .then(() => {
-          backCvs.style.display  = 'block';
-          if (frontCvs) frontCvs.style.display = 'none';
-          activeCvsRef.current = backId;
-          setPage(num);
-          pageRef.current = num;
-          busyRef.current = false;
-          if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
-          renderTextLayer(pg, viewport);
-        })
-        .catch(e => { setError('Render error: ' + e); busyRef.current = false; });
-    }).catch(e => { setError('Page error: ' + e); busyRef.current = false; });
-  }, [renderTextLayer]);
-
-  /* ── PDF loading ─────────────────────────────────────────────────────────── */
-  const doStart = useCallback(() => {
-    const lib = window.pdfjsLib;
-    lib.GlobalWorkerOptions.workerSrc = window._pdfWorkerSrc || DEFAULT_WORKER_SRC;
-    window._pdfWorkerSrc = null;
-    const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
-    window._pdfFileUrl = null;
-    lib.getDocument(pdfUrl).promise
-      .then(doc => {
-        pdfDocRef.current = doc;
-        const total     = doc.numPages;
-        const startPage = Math.min(Math.max(pageRef.current, 1), total);
-        setTotalPages(total);
-        pageRef.current = startPage;
-        renderPage(startPage);
-      })
-      .catch(e => setError('Load error: ' + e));
-  }, [renderPage]);
-
-  const startViewer = useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
-    cardIdRef.current   = cardId;
-    filenameRef.current = filename;
-    pageRef.current     = startPage || 1;
-    const z = parseFloat(startZoom) || 1.0;
-    zoomRef.current = z;
-    setZoom(z);
-    setHighlights(window._incPdfHighlights || []);
-    window._incPdfHighlights = null;
-    const rp = parseInt(startReadPage) || 0;
-    readPageRef.current = rp;
-    setReadPage(rp);
-    window._incPdfPending = null;
-    if (typeof window.pdfjsLib === 'undefined') {
-      let attempts = 0;
-      const poll = setInterval(() => {
-        if (typeof window.pdfjsLib !== 'undefined') { clearInterval(poll); doStart(); }
-        else if (++attempts > POLL_MAX) { clearInterval(poll); setError('PDF.js failed to load.'); }
-      }, POLL_MS);
-      return;
-    }
-    doStart();
-  }, [doStart]);
-
-  const nav = useCallback((delta) => {
-    const doc = pdfDocRef.current;
-    if (!doc) return;
-    const next = pageRef.current + delta;
-    if (next < 1 || next > doc.numPages) return;
-    pageRef.current = next;
-    window.pycmd('incremento_pdf_nav:' + cardIdRef.current + ':' + next);
-    renderPage(next);
-  }, [renderPage]);
-
-  const adjustZoom = useCallback((dir) => {
-    if (!pdfDocRef.current) return;
-    const clamped = parseFloat(Math.max(ZOOM_MIN, Math.min(zoomRef.current + dir * ZOOM_STEP, ZOOM_MAX)).toFixed(2));
-    zoomRef.current = clamped;
-    setZoom(clamped);
-    renderPage(pageRef.current);
-    window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
-  }, [renderPage]);
-
-  const markRead = useCallback(() => {
-    const p   = pageRef.current;
-    const cur = readPageRef.current;
-    // Toggle: if current page is already within the read range, clear; otherwise mark up to here
-    const newRp = (p <= cur) ? 0 : p;
-    readPageRef.current = newRp;
-    setReadPage(newRp);
-    window.pycmd('incremento_pdf_mark_read:' + cardIdRef.current + ':' + newRp);
-  }, []);
-
+  // ── Snapshot handlers ──────────────────────────────────────────────────────
   const handleSnapStart = useCallback((e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     snapStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -280,54 +104,27 @@ export default function PdfViewer() {
     );
     window.pycmd('incremento_pdf_snapshot:' + JSON.stringify({
       cardId: cardIdRef.current,
-      page: pageRef.current,
-      image: tmp.toDataURL('image/png'),
+      page:   pageRef.current,
+      image:  tmp.toDataURL('image/png'),
     }));
-  }, []);
+  }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, pageRef]);
 
+  // ── Highlight helpers ──────────────────────────────────────────────────────
   const deleteHighlight = useCallback((id) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
     window.pycmd('incremento_pdf_hl_del:' + JSON.stringify({ cardId: cardIdRef.current, id }));
-  }, []);
+  }, [cardIdRef]);
 
-  /* ── Text-layer event isolation ───────────────────────────────────────────── */
+  // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
-    const tl = textLayerRef.current;
-    if (!tl) return;
-    const stop = (e) => e.stopPropagation();
-    tl.addEventListener('selectstart', stop);
-    tl.addEventListener('mousedown',   stop);
-    tl.addEventListener('mouseup',     stop);
-    tl.addEventListener('click',       stop);
-    return () => {
-      tl.removeEventListener('selectstart', stop);
-      tl.removeEventListener('mousedown',   stop);
-      tl.removeEventListener('mouseup',     stop);
-      tl.removeEventListener('click',       stop);
+    // Wrap startViewer to also consume pending highlights.
+    const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0) => {
+      setHighlights(window._incPdfHighlights || []);
+      window._incPdfHighlights = null;
+      startViewer(cardId, filename, startPage, startZoom, startReadPage);
     };
-  }, []);
 
-
-  /* ── Re-render when container is resized ─────────────────────────────────── */
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    let timer;
-    const observer = new ResizeObserver((entries) => {
-      const newW = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (!busyRef.current && pdfDocRef.current) renderPage(pageRef.current);
-      }, 150);
-    });
-    observer.observe(container);
-    return () => { clearTimeout(timer); observer.disconnect(); };
-  }, [renderPage]);
-
-  /* ── Register globals ────────────────────────────────────────────────────── */
-  useEffect(() => {
-    window.incrementoPdfStart = startViewer;
+    window.incrementoPdfStart = startWithHighlights;
     window.incrementoPdfNav   = nav;
     window.incrementoPdfZoom  = adjustZoom;
 
@@ -340,7 +137,7 @@ export default function PdfViewer() {
     const pending = window._incPdfPending;
     if (pending) {
       window._incPdfPending = null;
-      startViewer(pending.cardId, pending.filename, pending.page, pending.zoom, pending.readPage || 0);
+      startWithHighlights(pending.cardId, pending.filename, pending.page, pending.zoom, pending.readPage || 0);
     }
     return () => {
       delete window.incrementoPdfStart;
@@ -348,17 +145,17 @@ export default function PdfViewer() {
       delete window.incrementoPdfZoom;
       delete window.incrementoReceivePageCards;
     };
-  }, [startViewer, nav, adjustZoom]);
+  }, [startViewer, nav, adjustZoom, pageRef]);
 
-  /* ── Request card sources for current page ───────────────────────────────── */
+  // ── Request card sources for current page ─────────────────────────────────
   useEffect(() => {
     if (!pdfDocRef.current || !cardIdRef.current) return;
     setPageCards([]);
     setShowCardPanel(false);
     window.pycmd('incremento_get_page_cards:' + cardIdRef.current + ':' + page);
-  }, [page]);
+  }, [page, pdfDocRef, cardIdRef]);
 
-  /* ── Ctrl+1–4 fill field  /  Option+H highlight ─────────────────────────── */
+  // ── Keyboard: Ctrl/Cmd+1–4 fill field / Option+H highlight ───────────────
   useEffect(() => {
     const makeHighlight = (sel) => {
       if (!sel || sel.isCollapsed || !sel.rangeCount) return;
@@ -395,7 +192,6 @@ export default function PdfViewer() {
         sel.removeAllRanges();
         return;
       }
-
       // Cmd/Ctrl+1–4 — fill Add Card field (+ auto-highlight if enabled)
       if (!(e.metaKey || e.ctrlKey)) return;
       const n = parseInt(e.key, 10);
@@ -409,12 +205,9 @@ export default function PdfViewer() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
 
-  /* ── Highlights for current page ─────────────────────────────────────────── */
-  const pageHighlights = highlights.filter(h => h.page === page);
-
-  /* ── Render ──────────────────────────────────────────────────────────────── */
+  /* ── Render ────────────────────────────────────────────────────────────────── */
   return (
     <div style={{ width: '100%' }}>
 
@@ -442,8 +235,8 @@ export default function PdfViewer() {
               title={`Highlight ${c}`}
               onClick={() => { hlColorRef.current = c; setHlColor(c); }}
               style={{
-                background: HL_SOLID[c],
-                border: hlColor === c ? '2px solid white' : '2px solid transparent',
+                background:  HL_SOLID[c],
+                border:      hlColor === c ? '2px solid white' : '2px solid transparent',
                 width: 18, height: 18,
                 borderRadius: 3, padding: 0, cursor: 'pointer',
               }}
@@ -462,8 +255,8 @@ export default function PdfViewer() {
           <button
             title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
             style={{
-              background: snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
-              border: '1px solid rgba(37,99,235,0.5)',
+              background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
+              border:      '1px solid rgba(37,99,235,0.5)',
               borderRadius: 4, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
               cursor: 'pointer', padding: '2px 8px', fontSize: 12,
               fontWeight: snapshotMode ? 'bold' : 'normal',
@@ -476,11 +269,11 @@ export default function PdfViewer() {
             <button
               title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
               style={{
-                background: readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
-                border: '1px solid rgba(34,197,94,0.6)', borderRadius: 4,
-                color: readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
-                cursor: 'pointer', padding: '2px 8px', fontSize: 12,
-                fontWeight: readPage > 0 && page <= readPage ? 'bold' : 'normal',
+                background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
+                border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 4,
+                color:       readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
+                cursor:      'pointer', padding: '2px 8px', fontSize: 12,
+                fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
               }}
               onClick={markRead}
             >
@@ -504,10 +297,10 @@ export default function PdfViewer() {
               title={`${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page — click to preview`}
               onClick={() => setShowCardPanel(o => !o)}
               style={{
-                background: showCardPanel ? 'rgba(74,144,217,0.25)' : 'rgba(74,144,217,0.12)',
-                border: '1px solid rgba(74,144,217,0.6)', borderRadius: 4,
-                color: 'rgb(74,144,217)', cursor: 'pointer',
-                padding: '2px 8px', fontSize: 12, fontWeight: 'bold',
+                background:  showCardPanel ? 'rgba(74,144,217,0.25)' : 'rgba(74,144,217,0.12)',
+                border:      '1px solid rgba(74,144,217,0.6)', borderRadius: 4,
+                color:       'rgb(74,144,217)', cursor: 'pointer',
+                padding:     '2px 8px', fontSize: 12, fontWeight: 'bold',
               }}
             >
               &#x1F4C4; {pageCards.length}
@@ -516,10 +309,10 @@ export default function PdfViewer() {
           <button
             title="Mark this PDF as finished reading — suspends the card so it won't appear again"
             style={{
-              background: 'transparent',
-              border: '1px solid rgba(220,50,50,0.45)', borderRadius: 4,
-              color: 'rgba(220,70,70,0.9)', cursor: 'pointer',
-              padding: '2px 8px', fontSize: 12,
+              background:  'transparent',
+              border:      '1px solid rgba(220,50,50,0.45)', borderRadius: 4,
+              color:       'rgba(220,70,70,0.9)', cursor: 'pointer',
+              padding:     '2px 8px', fontSize: 12,
             }}
             onClick={() => {
               if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
@@ -535,34 +328,7 @@ export default function PdfViewer() {
 
       {/* Card preview panel */}
       {showCardPanel && pageCards.length > 0 && (
-        <div style={{
-          margin: '6px 8px 2px',
-          padding: '8px 10px',
-          background: 'rgba(74,144,217,0.08)',
-          border: '1px solid rgba(74,144,217,0.3)',
-          borderRadius: 6,
-          fontSize: 12,
-        }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 6, color: 'rgb(74,144,217)' }}>
-            Cards created on page {page}
-          </div>
-          {pageCards.map((c, i) => (
-            <div key={c.note_id} style={{
-              padding: '5px 8px',
-              marginBottom: i < pageCards.length - 1 ? 5 : 0,
-              background: 'rgba(255,255,255,0.05)',
-              borderRadius: 4,
-              borderLeft: '3px solid rgba(74,144,217,0.5)',
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-            onClick={() => window.pycmd('incremento_open_card:' + c.note_id)}
-            title="Click to open in card browser"
-            >
-              {c.excerpt || <em style={{ color: '#888' }}>No text</em>}
-            </div>
-          ))}
-        </div>
+        <PageCardPanel page={page} pageCards={pageCards} />
       )}
 
       {error && (
@@ -581,51 +347,16 @@ export default function PdfViewer() {
           style={{ display: 'none', position: 'absolute', top: 0, left: '50%',
                    transform: 'translateX(-50%)', pointerEvents: 'none' }} />
 
-        {/* Highlight rects — below text layer (z:1), non-blocking */}
-        {pageHighlights.map(h =>
-          h.rects.map((r, ri) => (
-            <div
-              key={`${h.id}-${ri}`}
-              style={{
-                position:    'absolute',
-                left:        renderInfo.tlLeft + r.x * renderInfo.scale,
-                top:         r.y * renderInfo.scale,
-                width:       r.w * renderInfo.scale,
-                height:      r.h * renderInfo.scale,
-                background:  HL_COLORS[h.color] || HL_COLORS.yellow,
-                mixBlendMode:'multiply',
-                pointerEvents: 'none',
-                zIndex: 1,
-              }}
-            />
-          ))
-        )}
-
-        {/* Delete buttons — above text layer (z:10), one per highlight group */}
-        {pageHighlights.map(h => {
-          if (!h.rects.length) return null;
-          const r = h.rects[0];
-          return (
-            <button
-              key={`del-${h.id}`}
-              title="Remove highlight"
-              onClick={() => deleteHighlight(h.id)}
-              style={{
-                position:  'absolute',
-                left:      renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 8,
-                top:       r.y * renderInfo.scale - 8,
-                width: 16, height: 16,
-                fontSize: 10, lineHeight: '16px', textAlign: 'center',
-                padding: 0, border: 'none',
-                background: 'rgba(80,80,80,0.85)', color: '#fff',
-                borderRadius: '50%', cursor: 'pointer',
-                zIndex: 10,
-              }}
-            >
-              ×
-            </button>
-          );
-        })}
+        <HighlightLayer
+          pageHighlights={pageHighlights}
+          renderInfo={renderInfo}
+          deleteHighlight={deleteHighlight}
+          snapshotMode={snapshotMode}
+          snapRect={snapRect}
+          handleSnapStart={handleSnapStart}
+          handleSnapMove={handleSnapMove}
+          handleSnapEnd={handleSnapEnd}
+        />
 
         <div
           ref={textLayerRef}
@@ -638,31 +369,7 @@ export default function PdfViewer() {
             cursor: 'text',
           }}
         />
-
-        {/* Snapshot selection overlay */}
-        {snapshotMode && (
-          <div
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                     cursor: 'crosshair', zIndex: 20, userSelect: 'none' }}
-            onMouseDown={handleSnapStart}
-            onMouseMove={handleSnapMove}
-            onMouseUp={handleSnapEnd}
-          >
-            {snapRect && snapRect.w > 2 && snapRect.h > 2 && (
-              <div style={{
-                position: 'absolute',
-                left: snapRect.x, top: snapRect.y,
-                width: snapRect.w, height: snapRect.h,
-                border: '2px dashed rgb(37,99,235)',
-                background: 'rgba(37,99,235,0.08)',
-                pointerEvents: 'none',
-                boxSizing: 'border-box',
-              }} />
-            )}
-          </div>
-        )}
       </div>
-
 
     </div>
   );
