@@ -357,7 +357,21 @@ export default function PdfViewer() {
     <div style={{ width: '100%' }}>
 
       {/* Controls */}
-      <div id="pdf-controls" style={{ padding: '6px 8px 4px', userSelect: 'none' }}>
+      <div
+        id="pdf-controls"
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+          padding: '6px 8px 6px',
+          userSelect: 'none',
+          background: 'rgba(30, 30, 30, 0.96)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          borderBottom: '1px solid rgba(130,130,130,0.35)',
+          boxShadow: '0 3px 10px rgba(0,0,0,0.28)',
+        }}
+      >
 
         {/* ── Row 1: Navigation + Zoom ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
