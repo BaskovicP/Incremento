@@ -728,19 +728,41 @@ export default function PdfViewer() {
                   }}
                   title={`Go to page ${hl.page || 1}`}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: 0.9, marginBottom: 3 }}>
-                    <span
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: 0.9 }}>
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 999,
+                          background: HL_SOLID[hl.color] || '#9CA3AF',
+                          border: '1px solid rgba(255,255,255,0.35)',
+                          display: 'inline-block',
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>Page {hl.page || 1}</span>
+                    </span>
+                    <button
+                      title="Delete this highlight"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        deleteHighlight(hl.id);
+                      }}
                       style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 999,
-                        background: HL_SOLID[hl.color] || '#9CA3AF',
-                        border: '1px solid rgba(255,255,255,0.35)',
-                        display: 'inline-block',
+                        border: '1px solid rgba(220,70,70,0.55)',
+                        borderRadius: 4,
+                        background: 'rgba(220,70,70,0.12)',
+                        color: 'rgba(248,113,113,0.95)',
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        padding: '1px 7px',
                         flexShrink: 0,
                       }}
-                    />
-                    <span>Page {hl.page || 1}</span>
+                    >
+                      Delete
+                    </button>
                   </div>
                   <div style={{ fontSize: 12, lineHeight: 1.35 }}>
                     {(hl.text || '(no text)').trim()}
