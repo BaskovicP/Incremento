@@ -55,7 +55,12 @@ from .utils import pdf_dock as _pdf_dock_mod
 from .utils import video_dock as _video_dock_mod
 from .utils import web_dock as _web_dock_mod
 from .utils import add_card_dock as _add_card_dock_mod
-from .utils.session import learnFunction, reset_session_counts, get_session_counts
+from .utils.session import (
+    learnFunction,
+    reset_session_counts,
+    get_session_counts,
+    get_session_times,
+)
 from .utils.settings_dialog import IncrementoSettingsDialog, default_shortcuts
 
 _ADDON_DIR = os.path.dirname(__file__)
@@ -429,6 +434,7 @@ def showStatsFunction() -> None:
     dlg = StatsDialog(
         addon_dir=os.path.dirname(__file__),
         session_counts=get_session_counts(),
+        session_time=get_session_times(),
         day_end_time=cfg.day_end_time,
         parent=mw,
     )

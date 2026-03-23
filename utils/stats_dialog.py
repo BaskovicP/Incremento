@@ -1,40 +1,73 @@
 """Statistics viewer dialog for Incremento."""
+
 from __future__ import annotations
 
 from aqt import mw
 from aqt.qt import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QWidget, Qt,
-    QButtonGroup, QRadioButton, QScrollArea, QPainter, QColor,
-    QFrame, QSizePolicy, qconnect,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
+    Qt,
+    QButtonGroup,
+    QRadioButton,
+    QScrollArea,
+    QPainter,
+    QColor,
+    QFrame,
+    QSizePolicy,
+    qconnect,
 )
 
-from .statistics import load_stats, _effective_date, _empty, _is_valid_counts_block
+from .statistics import (
+    load_stats,
+    _effective_date,
+    _empty,
+    _empty_time,
+    _is_valid_counts_block,
+    _is_valid_time_block,
+)
 
 # ── colour palettes ────────────────────────────────────────────────────────────
-_TYPE_COLORS = ["#4a90d9", "#7bc67e"]          # Topics, Items
-_MODE_COLORS = ["#e0a020", "#8da0cb"]          # Priority, Random
-_TAG_COLORS  = [                               # cycled for arbitrary tag lists
-    "#4a90d9", "#7bc67e", "#e0a020", "#e05050",
-    "#9b59b6", "#1abc9c", "#e67e22", "#c0392b",
+_TYPE_COLORS = ["#4a90d9", "#7bc67e"]  # Topics, Items
+_MODE_COLORS = ["#e0a020", "#8da0cb"]  # Priority, Random
+_TAG_COLORS = [  # cycled for arbitrary tag lists
+    "#4a90d9",
+    "#7bc67e",
+    "#e0a020",
+    "#e05050",
+    "#9b59b6",
+    "#1abc9c",
+    "#e67e22",
+    "#c0392b",
 ]
 
 
 # ── bar chart widget ───────────────────────────────────────────────────────────
 
+
 class _BarChart(QWidget):
     """Draws a set of labelled horizontal bars with QPainter."""
 
     _LABEL_W = 120
-    _RIGHT_W  = 90
-    _BAR_H    = 14
-    _ROW_H    = 28
+    _RIGHT_W = 90
+    _BAR_H = 14
+    _ROW_H = 28
 
-    def __init__(self, items: list[tuple[str, int]], colors: list[str],
-                 parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        items: list[tuple[str, float]],
+        colors: list[str],
+        value_formatter=None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
-        self._items  = items          # [(label, value), …]
+        self._items = items  # [(label, value), …]
         self._colors = [QColor(c) for c in colors]
-        self._total  = sum(v for _, v in items) or 1
+        self._total = sum(v for _, v in items) or 1.0
+        self._fmt = value_formatter or (lambda v: str(int(round(v))))
         self.setFixedHeight(self._ROW_H * max(1, len(items)) + 4)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -44,9 +77,9 @@ class _BarChart(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        w      = self.width()
-        bar_x  = self._LABEL_W + 8
-        bar_w  = max(10, w - bar_x - self._RIGHT_W - 8)
+        w = self.width()
+        bar_x = self._LABEL_W + 8
+        bar_w = max(10, w - bar_x - self._RIGHT_W - 8)
         text_c = self.palette().text().color()
         track_c = QColor(text_c.red(), text_c.green(), text_c.blue(), 30)
         af = Qt.AlignmentFlag
@@ -58,11 +91,18 @@ class _BarChart(QWidget):
 
             # Label (left-aligned, ellide if needed)
             p.setPen(text_c)
-            fm    = p.fontMetrics()
-            elided = fm.elidedText(label, Qt.TextElideMode.ElideRight,
-                                   self._LABEL_W - 4)
-            p.drawText(0, row_y, self._LABEL_W - 4, self._ROW_H,
-                       af.AlignVCenter | af.AlignLeft, elided)
+            fm = p.fontMetrics()
+            elided = fm.elidedText(
+                label, Qt.TextElideMode.ElideRight, self._LABEL_W - 4
+            )
+            p.drawText(
+                0,
+                row_y,
+                self._LABEL_W - 4,
+                self._ROW_H,
+                af.AlignVCenter | af.AlignLeft,
+                elided,
+            )
 
             # Track (faint rounded rect)
             p.setPen(Qt.PenStyle.NoPen)
@@ -78,17 +118,28 @@ class _BarChart(QWidget):
             # Right text: count  (pct%)
             pct = round(100 * value / self._total)
             p.setPen(text_c)
-            p.drawText(w - self._RIGHT_W, row_y, self._RIGHT_W, self._ROW_H,
-                       af.AlignVCenter | af.AlignLeft,
-                       f"{value}  ({pct}\u202f%)")
+            p.drawText(
+                w - self._RIGHT_W,
+                row_y,
+                self._RIGHT_W,
+                self._ROW_H,
+                af.AlignVCenter | af.AlignLeft,
+                f"{self._fmt(value)}  ({pct}\u202f%)",
+            )
 
         p.end()
 
 
 # ── section helper ─────────────────────────────────────────────────────────────
 
-def _section(title: str, items: list[tuple[str, int]],
-             colors: list[str], parent: QWidget) -> QWidget:
+
+def _section(
+    title: str,
+    items: list[tuple[str, float]],
+    colors: list[str],
+    parent: QWidget,
+    value_formatter=None,
+) -> QWidget:
     """Return a titled chart widget."""
     container = QWidget(parent)
     lay = QVBoxLayout(container)
@@ -101,22 +152,42 @@ def _section(title: str, items: list[tuple[str, int]],
 
     # Filter out zero-value entries that would just waste vertical space
     visible = [(lbl, v) for lbl, v in items if v > 0] or items
-    lay.addWidget(_BarChart(visible, colors, container))
+    lay.addWidget(
+        _BarChart(visible, colors, value_formatter=value_formatter, parent=container)
+    )
     return container
+
+
+def _fmt_duration(seconds: float) -> str:
+    total = int(round(max(0.0, seconds)))
+    h = total // 3600
+    m = (total % 3600) // 60
+    s = total % 60
+    if h:
+        return f"{h}h {m}m"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
 
 
 # ── main dialog ────────────────────────────────────────────────────────────────
 
+
 class StatsDialog(QDialog):
-    def __init__(self, addon_dir: str,
-                 session_counts: dict | None = None,
-                 day_end_time: str = "00:00",
-                 parent=None) -> None:
+    def __init__(
+        self,
+        addon_dir: str,
+        session_counts: dict | None = None,
+        session_time: dict | None = None,
+        day_end_time: str = "00:00",
+        parent=None,
+    ) -> None:
         super().__init__(parent)
-        self._addon_dir      = addon_dir
-        self._day_end_time   = day_end_time
+        self._addon_dir = addon_dir
+        self._day_end_time = day_end_time
         self._session_counts = session_counts or _empty()
-        self._raw            = load_stats(addon_dir)
+        self._session_time = session_time or _empty_time()
+        self._raw = load_stats(addon_dir)
 
         self.setWindowTitle("Incremento — Statistics")
         self.setMinimumWidth(540)
@@ -131,15 +202,38 @@ class StatsDialog(QDialog):
 
         if scope == "daily":
             daily_raw = self._raw.get("daily", {})
-            if (isinstance(daily_raw, dict)
-                    and daily_raw.get("date") == _effective_date(self._day_end_time)
-                    and _is_valid_counts_block(daily_raw.get("counts"))):
+            if (
+                isinstance(daily_raw, dict)
+                and daily_raw.get("date") == _effective_date(self._day_end_time)
+                and _is_valid_counts_block(daily_raw.get("counts"))
+            ):
                 return daily_raw["counts"]
             return _empty()
 
         # lifetime
         lt = self._raw.get("lifetime")
         return lt if _is_valid_counts_block(lt) else _empty()
+
+    def _get_time(self, scope: str) -> dict:
+        if scope == "session":
+            return self._session_time
+
+        time_raw = self._raw.get("time")
+        if not isinstance(time_raw, dict):
+            return _empty_time()
+
+        if scope == "daily":
+            daily = time_raw.get("daily", {})
+            if (
+                isinstance(daily, dict)
+                and daily.get("date") == _effective_date(self._day_end_time)
+                and _is_valid_time_block(daily.get("seconds"))
+            ):
+                return daily["seconds"]
+            return _empty_time()
+
+        lt = time_raw.get("lifetime")
+        return lt if _is_valid_time_block(lt) else _empty_time()
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -150,11 +244,13 @@ class StatsDialog(QDialog):
         # Scope radio buttons
         scope_row = QHBoxLayout()
         self._scope_group = QButtonGroup(self)
-        for i, (key, label) in enumerate([
-            ("session",  "This Session"),
-            ("daily",    "Today"),
-            ("lifetime", "All Time"),
-        ]):
+        for i, (key, label) in enumerate(
+            [
+                ("session", "This Session"),
+                ("daily", "Today"),
+                ("lifetime", "All Time"),
+            ]
+        ):
             rb = QRadioButton(label)
             rb.setProperty("scope_key", key)
             if i == 0:
@@ -195,24 +291,32 @@ class StatsDialog(QDialog):
         # Clear previous content
         while self._clayout.count():
             item = self._clayout.takeAt(0)
-            if (w := item.widget()):
+            if w := item.widget():
                 w.deleteLater()
 
         checked = self._scope_group.checkedButton()
-        scope   = checked.property("scope_key") if checked else "session"
-        counts  = self._get_counts(scope)
+        scope = checked.property("scope_key") if checked else "session"
+        counts = self._get_counts(scope)
+        time_stats = self._get_time(scope)
 
         total = sum(counts["type"].values())
+        total_seconds = sum(time_stats["type"].values())
 
         # Total
         total_lbl = QLabel(f"<b>Total cards studied: {total}</b>")
         total_lbl.setStyleSheet("padding: 4px 0;")
         self._clayout.addWidget(total_lbl)
 
+        time_lbl = QLabel(f"<b>Total review time: {_fmt_duration(total_seconds)}</b>")
+        time_lbl.setStyleSheet("padding: 0 0 4px 0;")
+        self._clayout.addWidget(time_lbl)
+
         if total == 0:
-            hint = ("Start a learning session to record data here."
-                    if scope == "session"
-                    else "No data recorded yet for this scope.")
+            hint = (
+                "Start a learning session to record data here."
+                if scope == "session"
+                else "No data recorded yet for this scope."
+            )
             note = QLabel(hint)
             note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             note.setStyleSheet("color: gray; padding: 32px;")
@@ -223,30 +327,69 @@ class StatsDialog(QDialog):
 
         # Card types
         n_topics = counts["type"].get("topics", 0)
-        n_items  = counts["type"].get("items",  0)
+        n_items = counts["type"].get("items", 0)
         if n_topics or n_items:
-            self._clayout.addWidget(_section(
-                "Card Types",
-                [("Topics", n_topics), ("Items", n_items)],
-                _TYPE_COLORS, self._content,
-            ))
+            self._clayout.addWidget(
+                _section(
+                    "Card Types",
+                    [("Topics", n_topics), ("Items", n_items)],
+                    _TYPE_COLORS,
+                    self._content,
+                )
+            )
 
         # Mode
-        n_prio   = counts["mode"].get("priority", 0)
-        n_random = counts["mode"].get("random",   0)
+        n_prio = counts["mode"].get("priority", 0)
+        n_random = counts["mode"].get("random", 0)
         if n_prio or n_random:
-            self._clayout.addWidget(_section(
-                "Selection Mode",
-                [("Priority", n_prio), ("Random", n_random)],
-                _MODE_COLORS, self._content,
-            ))
+            self._clayout.addWidget(
+                _section(
+                    "Selection Mode",
+                    [("Priority", n_prio), ("Random", n_random)],
+                    _MODE_COLORS,
+                    self._content,
+                )
+            )
 
         # Tags (filter out synthetic internal keys like __no_tags__)
         tag_data = {k: v for k, v in counts["tags"].items() if not k.startswith("__")}
         if tag_data:
             sorted_tags = sorted(tag_data.items(), key=lambda x: x[1], reverse=True)
-            self._clayout.addWidget(_section(
-                "Tags", sorted_tags, _TAG_COLORS, self._content,
-            ))
+            self._clayout.addWidget(
+                _section(
+                    "Tags",
+                    sorted_tags,
+                    _TAG_COLORS,
+                    self._content,
+                )
+            )
+
+        # Time by card type
+        t_topics = time_stats["type"].get("topics", 0.0)
+        t_items = time_stats["type"].get("items", 0.0)
+        if t_topics or t_items:
+            self._clayout.addWidget(
+                _section(
+                    "Review Time by Card Type",
+                    [("Topics", t_topics), ("Items", t_items)],
+                    _TYPE_COLORS,
+                    self._content,
+                    value_formatter=_fmt_duration,
+                )
+            )
+
+        # Time by tag
+        t_tags = {k: v for k, v in time_stats["tags"].items() if not k.startswith("__")}
+        if t_tags:
+            sorted_ttags = sorted(t_tags.items(), key=lambda x: x[1], reverse=True)
+            self._clayout.addWidget(
+                _section(
+                    "Review Time by Tag",
+                    sorted_ttags,
+                    _TAG_COLORS,
+                    self._content,
+                    value_formatter=_fmt_duration,
+                )
+            )
 
         self._clayout.addStretch()

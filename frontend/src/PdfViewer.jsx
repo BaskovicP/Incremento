@@ -292,6 +292,45 @@ export default function PdfViewer() {
     window.pycmd('incremento_pdf_hl_del:' + JSON.stringify({ cardId: cardIdRef.current, id }));
   }, [cardIdRef]);
 
+  const makeHighlight = useCallback((sel, forcedColor = null) => {
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
+    const tl = textLayerRef.current;
+    const range = sel.getRangeAt(0);
+    if (!tl || !tl.contains(range.commonAncestorContainer)) return false;
+    const tlRect = tl.getBoundingClientRect();
+    const scale = lastScaleRef.current;
+    const rects = Array.from(range.getClientRects())
+      .map(r => ({
+        x: (r.left - tlRect.left) / scale,
+        y: (r.top  - tlRect.top)  / scale,
+        w: r.width  / scale,
+        h: r.height / scale,
+      }))
+      .filter(r => r.w > 2 && r.h > 2);
+    if (!rects.length) return false;
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const hl = {
+      id,
+      page: pageRef.current,
+      color: forcedColor || hlColorRef.current,
+      text: sel.toString(),
+      rects,
+    };
+    setHighlights(prev => [...prev, hl]);
+    window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
+    return true;
+  }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
+
+  const pickHighlightColor = useCallback((color, applyNow = false) => {
+    hlColorRef.current = color;
+    setHlColor(color);
+    if (!applyNow) return;
+    const sel = window.getSelection();
+    if (makeHighlight(sel, color) && sel?.removeAllRanges) {
+      sel.removeAllRanges();
+    }
+  }, [makeHighlight]);
+
   // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
     // Wrap startViewer to also consume pending highlights.
@@ -336,29 +375,6 @@ export default function PdfViewer() {
 
   // ── Keyboard: Ctrl/Cmd+1–4 fill field / Option+H highlight ───────────────
   useEffect(() => {
-    const makeHighlight = (sel) => {
-      if (!sel || sel.isCollapsed || !sel.rangeCount) return;
-      const tl = textLayerRef.current;
-      const range = sel.getRangeAt(0);
-      if (!tl || !tl.contains(range.commonAncestorContainer)) return;
-      const tlRect = tl.getBoundingClientRect();
-      const scale  = lastScaleRef.current;
-      const rects  = Array.from(range.getClientRects())
-        .map(r => ({
-          x: (r.left - tlRect.left) / scale,
-          y: (r.top  - tlRect.top)  / scale,
-          w: r.width  / scale,
-          h: r.height / scale,
-        }))
-        .filter(r => r.w > 2 && r.h > 2);
-      if (!rects.length) return;
-      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      const hl = { id, page: pageRef.current, color: hlColorRef.current,
-                   text: sel.toString(), rects };
-      setHighlights(prev => [...prev, hl]);
-      window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
-    };
-
     const idxFromShortcut = (e) => {
       const byCode = {
         Digit1: 0,
@@ -420,7 +436,7 @@ export default function PdfViewer() {
       window.removeEventListener('keydown', handler, true);
       delete window.incrementoHandleExtractShortcut;
     };
-  }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
+  }, [textLayerRef, makeHighlight]);
 
   // ── Copy cleaned selection from PDF text layer ─────────────────────────────
   useEffect(() => {
@@ -541,7 +557,11 @@ export default function PdfViewer() {
               <button
                 key={c}
                 title={`Highlight ${c}`}
-                onClick={() => { hlColorRef.current = c; setHlColor(c); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickHighlightColor(c, true);
+                }}
+                onClick={() => pickHighlightColor(c, false)}
                 style={{
                   background:  HL_SOLID[c],
                   border:      hlColor === c ? '2px solid white' : '2px solid transparent',

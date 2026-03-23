@@ -13,6 +13,10 @@ def _empty() -> dict:
     return {"type": {}, "tags": {}, "mode": {}}
 
 
+def _empty_time() -> dict:
+    return {"type": {}, "tags": {}}
+
+
 def _today() -> str:
     return time.strftime("%Y-%m-%d")
 
@@ -38,6 +42,14 @@ def _is_valid_counts_block(d) -> bool:
         and isinstance(d.get("type"), dict)
         and isinstance(d.get("tags"), dict)
         and isinstance(d.get("mode"), dict)
+    )
+
+
+def _is_valid_time_block(d) -> bool:
+    return (
+        isinstance(d, dict)
+        and isinstance(d.get("type"), dict)
+        and isinstance(d.get("tags"), dict)
     )
 
 
@@ -111,6 +123,11 @@ def delete_daily_stats(addon_dir: str) -> None:
     stats = load_stats(addon_dir)
     if "daily" in stats:
         del stats["daily"]
+    if isinstance(stats.get("time"), dict) and "daily" in stats["time"]:
+        del stats["time"]["daily"]
+        if not stats["time"]:
+            del stats["time"]
+    if "daily" in stats or "time" in stats:
         save_stats(addon_dir, stats)
 
     try:
@@ -126,6 +143,11 @@ def delete_lifetime_stats(addon_dir: str) -> None:
     stats = load_stats(addon_dir)
     if "lifetime" in stats:
         del stats["lifetime"]
+    if isinstance(stats.get("time"), dict) and "lifetime" in stats["time"]:
+        del stats["time"]["lifetime"]
+        if not stats["time"]:
+            del stats["time"]
+    if "lifetime" in stats or "time" in stats:
         save_stats(addon_dir, stats)
 
     try:
@@ -155,6 +177,7 @@ class StatsManager:
         self._addon_dir = addon_dir
         self._day_end_time = day_end_time
         self.session = _empty()
+        self.session_time = _empty_time()
 
         raw = load_stats(addon_dir)
 
@@ -170,6 +193,21 @@ class StatsManager:
             self.daily = daily_raw["counts"]
         else:
             self.daily = _empty()
+
+        raw_time = raw.get("time") if isinstance(raw.get("time"), dict) else {}
+
+        daily_time_raw = raw_time.get("daily") if isinstance(raw_time, dict) else {}
+        if (
+            isinstance(daily_time_raw, dict)
+            and daily_time_raw.get("date") == _effective_date(self._day_end_time)
+            and _is_valid_time_block(daily_time_raw.get("seconds"))
+        ):
+            self.daily_time = daily_time_raw["seconds"]
+        else:
+            self.daily_time = _empty_time()
+
+        lt_time = raw_time.get("lifetime") if isinstance(raw_time, dict) else None
+        self.lifetime_time = lt_time if _is_valid_time_block(lt_time) else _empty_time()
 
     def counts_for(self, scope: str) -> dict:
         """Return a LIVE reference to the counts dict for *scope*.
@@ -203,7 +241,17 @@ class StatsManager:
             if result.tag is not None:
                 counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
 
+        seconds = max(0.0, float(getattr(result, "review_seconds", 0.0) or 0.0))
+        if seconds > 0:
+            self._record_time(result, seconds)
+
         self._save()
+
+    def _record_time(self, result, seconds: float) -> None:
+        for t in (self.session_time, self.daily_time, self.lifetime_time):
+            t["type"][result.card_type] = t["type"].get(result.card_type, 0.0) + seconds
+            if result.tag is not None:
+                t["tags"][result.tag] = t["tags"].get(result.tag, 0.0) + seconds
 
     def _save(self) -> None:
         stats = {
@@ -212,5 +260,12 @@ class StatsManager:
                 "counts": self.daily,
             },
             "lifetime": self.lifetime,
+            "time": {
+                "daily": {
+                    "date": _effective_date(self._day_end_time),
+                    "seconds": self.daily_time,
+                },
+                "lifetime": self.lifetime_time,
+            },
         }
         save_stats(self._addon_dir, stats)

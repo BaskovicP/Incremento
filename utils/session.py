@@ -20,11 +20,13 @@ from aqt.utils import showInfo
 from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton, Qt
 
 from .scheduler import get_card_from_scheduler, NO_TAGS_KEY
-from .statistics import StatsManager
+from .statistics import StatsManager, _empty_time
 from .learn_dialog import SchedulerConfigDialog
 from .scheduler_config import load_scheduler_config
 
-_ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+_ADDON_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+)
 _ADDON_PKG = __name__.split(".")[0]  # "incremento"
 
 INCREMENTO_DECK = "Incremento Session"
@@ -32,16 +34,51 @@ INCREMENTO_DECK = "Incremento Session"
 # Most-recent session counts — updated after each learnFunction picking loop.
 # Accessed via get_session_counts() from __init__.py for the stats dialog.
 _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
+_session_times: dict = _empty_time()
 
 
 def reset_session_counts() -> None:
-    global _session_counts
+    global _session_counts, _session_times
     _session_counts = {"type": {}, "tags": {}, "mode": {}}
+    _session_times = _empty_time()
 
 
 def get_session_counts() -> dict:
     """Return the last session's counts (live reference — do not mutate)."""
     return _session_counts
+
+
+def get_session_times() -> dict:
+    """Return review-time stats for the last/active session."""
+    return _session_times
+
+
+def _review_seconds(reviewer, card) -> float:
+    """Best-effort extraction of the just-finished review duration in seconds."""
+    try:
+        if hasattr(card, "time_taken"):
+            try:
+                ms = card.time_taken()  # Anki card API (ms)
+            except TypeError:
+                ms = card.time_taken(capped=False)
+            if ms:
+                return max(0.0, float(ms) / 1000.0)
+    except Exception:
+        pass
+
+    try:
+        rc = getattr(reviewer, "card", None)
+        if rc is not None and hasattr(rc, "time_taken"):
+            try:
+                ms = rc.time_taken()
+            except TypeError:
+                ms = rc.time_taken(capped=False)
+            if ms:
+                return max(0.0, float(ms) / 1000.0)
+    except Exception:
+        pass
+
+    return 0.0
 
 
 def learnFunction() -> None:
@@ -62,8 +99,9 @@ def learnFunction() -> None:
     # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
     _picked_meta: dict[int, dict] = {}
 
-    def _pick(use_tags: bool, tag_weights: dict,
-              force_card_type=None, force_mode=None) -> bool:
+    def _pick(
+        use_tags: bool, tag_weights: dict, force_card_type=None, force_mode=None
+    ) -> bool:
         """Attempt one card pick. Returns False when no card is available."""
         counts = stats.counts_for(cfg.scheduler_scope)
         result = get_card_from_scheduler(
@@ -91,8 +129,8 @@ def learnFunction() -> None:
         # so that only actually reviewed cards count toward those scopes.
         _picked_meta[result.card] = {
             "card_type": result.card_type,
-            "tag":       result.tag,
-            "mode":      result.mode,
+            "tag": result.tag,
+            "mode": result.mode,
         }
         added_to_filtered.add(result.card)
         selected_ids.append(result.card)
@@ -117,26 +155,38 @@ def learnFunction() -> None:
         elif p1 == "type":
             topics_target = round(cfg.topics_rate * target_count)
             items_target = target_count - topics_target
-            for forced_type, type_target in [("topics", topics_target), ("items", items_target)]:
+            for forced_type, type_target in [
+                ("topics", topics_target),
+                ("items", items_target),
+            ]:
                 type_picked = 0
                 for _ in range(type_target * 3):
                     if type_picked >= type_target or len(selected_ids) >= target_count:
                         break
-                    if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights,
-                                 force_card_type=forced_type):
+                    if not _pick(
+                        use_tags=cfg.use_tags,
+                        tag_weights=cfg.tag_weights,
+                        force_card_type=forced_type,
+                    ):
                         break
                     type_picked += 1
 
         elif p1 == "mode":
             priority_target = round((1 - cfg.random_rate) * target_count)
             random_target = target_count - priority_target
-            for forced_mode, mode_target in [("priority", priority_target), ("random", random_target)]:
+            for forced_mode, mode_target in [
+                ("priority", priority_target),
+                ("random", random_target),
+            ]:
                 mode_picked = 0
                 for _ in range(mode_target * 3):
                     if mode_picked >= mode_target or len(selected_ids) >= target_count:
                         break
-                    if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights,
-                                 force_mode=forced_mode):
+                    if not _pick(
+                        use_tags=cfg.use_tags,
+                        tag_weights=cfg.tag_weights,
+                        force_mode=forced_mode,
+                    ):
                         break
                     mode_picked += 1
 
@@ -164,8 +214,9 @@ def learnFunction() -> None:
                     break
 
     # Snapshot session counts so the statistics dialog can show them later.
-    global _session_counts
+    global _session_counts, _session_times
     _session_counts = copy.deepcopy(stats.session)
+    _session_times = copy.deepcopy(stats.session_time)
 
     if not selected_ids:
         showInfo("No cards available to study.")
@@ -174,7 +225,9 @@ def learnFunction() -> None:
     # DEBUG: show scheduled card order before building the filtered deck
     if cfg.show_debug:
         _debug_dlg = QDialog(mw)
-        _debug_dlg.setWindowTitle(f"DEBUG — Scheduled order ({len(selected_ids)} cards)")
+        _debug_dlg.setWindowTitle(
+            f"DEBUG — Scheduled order ({len(selected_ids)} cards)"
+        )
         _debug_dlg.resize(700, 500)
         _debug_layout = QVBoxLayout(_debug_dlg)
         _debug_txt = QTextEdit()
@@ -186,9 +239,11 @@ def learnFunction() -> None:
             _meta = _picked_meta.get(_cid, {})
             _card = mw.col.get_card(_cid)
             _note = mw.col.get_note(_card.nid)
-            _field = (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
+            _field = (
+                (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
+            )
             _debug_lines.append(
-                f"{_i+1:3}.  {_meta.get('card_type','?'):7}  {_meta.get('mode','?'):9}  "
+                f"{_i + 1:3}.  {_meta.get('card_type', '?'):7}  {_meta.get('mode', '?'):9}  "
                 f"{(_meta.get('tag') or 'no-tag'):20} {_field}"
             )
         _debug_txt.setPlainText("\n".join(_debug_lines))
@@ -204,7 +259,9 @@ def learnFunction() -> None:
     existing = mw.col.decks.by_name(INCREMENTO_DECK)
     if existing:
         if not existing.get("dyn"):
-            showInfo(f"'{INCREMENTO_DECK}' is a normal deck. Delete or rename it first.")
+            showInfo(
+                f"'{INCREMENTO_DECK}' is a normal deck. Delete or rename it first."
+            )
             return
         did = existing["id"]
         mw.col.sched.empty_filtered_deck(did)
@@ -241,6 +298,7 @@ def learnFunction() -> None:
     _reviewed_ids: set[int] = set()
 
     def _on_card_answered(reviewer, card, ease: int) -> None:
+        global _session_times
         try:
             cid = card.id
             if cid not in _picked_meta or cid in _reviewed_ids:
@@ -254,8 +312,10 @@ def learnFunction() -> None:
                 card_type=meta["card_type"],
                 tag=tag,
                 mode=meta["mode"],
+                review_seconds=_review_seconds(reviewer, card),
             )
             stats.record(fake, cfg.scheduler_scope)
+            _session_times = copy.deepcopy(stats.session_time)
         except Exception as e:
             print(f"[Incremento] _on_card_answered error: {e}")
 
