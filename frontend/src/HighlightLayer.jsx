@@ -15,6 +15,7 @@ export default function HighlightLayer({
   pageHighlights,
   renderInfo,
   deleteHighlight,
+  focusedHighlightId,
   snapshotMode,
   snapRect,
   handleSnapStart,
@@ -36,6 +37,8 @@ export default function HighlightLayer({
               height:        r.h * renderInfo.scale,
               background:    HL_COLORS[h.color] || HL_COLORS.yellow,
               mixBlendMode:  'multiply',
+              outline:       h.id === focusedHighlightId ? '2px solid rgba(255,255,255,0.95)' : 'none',
+              boxShadow:     h.id === focusedHighlightId ? '0 0 0 3px rgba(56,189,248,0.55)' : 'none',
               pointerEvents: 'none',
               zIndex:        1,
             }}

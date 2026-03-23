@@ -169,6 +169,11 @@ export default function PdfViewer() {
   // ── Page card panel state ──────────────────────────────────────────────────
   const [pageCards,     setPageCards]     = useState([]);
   const [showCardPanel, setShowCardPanel] = useState(false);
+  const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
+  const [highlightsScope, setHighlightsScope] = useState('all');
+  const [focusedHighlightId, setFocusedHighlightId] = useState(null);
+  const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
+  const pendingHighlightScrollRef = useRef(null);
 
   // ── Highlights for the current page ───────────────────────────────────────
   const pageHighlights = highlights.filter(h => h.page === page);
@@ -178,6 +183,43 @@ export default function PdfViewer() {
     : 0;
   const progressSegments = 10;
   const filledSegments = Math.round((progressPct / 100) * progressSegments);
+  const sortedHighlights = [...highlights].sort((a, b) => {
+    if ((a.page || 0) !== (b.page || 0)) return (a.page || 0) - (b.page || 0);
+    return String(a.id || '').localeCompare(String(b.id || ''));
+  });
+  const highlightsForPanel = highlightsScope === 'page'
+    ? sortedHighlights.filter((h) => h.page === page)
+    : sortedHighlights;
+
+  useEffect(() => {
+    const pendingId = pendingHighlightScrollRef.current;
+    if (!pendingId) return;
+    const target = highlights.find((h) => h.id === pendingId);
+    if (!target || target.page !== page || !target.rects?.length) return;
+
+    const firstRect = target.rects[0];
+    const wrapper = containerRef.current;
+    if (!wrapper) return;
+
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const scale = renderInfo?.scale || 1;
+    const tlLeft = renderInfo?.tlLeft || 0;
+    const targetTop = window.scrollY + wrapperRect.top + (firstRect.y * scale) - CONTROLS_HEIGHT - 24;
+    const targetLeft = Math.max(
+      0,
+      window.scrollX + tlLeft + (firstRect.x * scale) - (window.innerWidth * 0.25),
+    );
+
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      left: targetLeft,
+      behavior: 'smooth',
+    });
+
+    setFocusedHighlightId(pendingId);
+    window.setTimeout(() => setFocusedHighlightId(null), 1400);
+    pendingHighlightScrollRef.current = null;
+  }, [page, renderInfo, highlights, containerRef, highlightJumpNonce]);
 
   // ── Snapshot handlers ──────────────────────────────────────────────────────
   const handleSnapStart = useCallback((e) => {
@@ -530,6 +572,25 @@ export default function PdfViewer() {
             >
               &#x1F4F7; Snapshot
             </button>
+            <button
+              title="Show highlights list"
+              style={{
+                background: showHighlightsPanel ? 'rgba(56,189,248,0.2)' : 'transparent',
+                border: '1px solid rgba(56,189,248,0.55)',
+                borderRadius: 4,
+                color: showHighlightsPanel ? 'rgb(56,189,248)' : 'inherit',
+                cursor: 'pointer',
+                padding: '2px 8px',
+                fontSize: 12,
+                fontWeight: showHighlightsPanel ? 'bold' : 'normal',
+              }}
+              onClick={() => {
+                setHighlightsScope('all');
+                setShowHighlightsPanel(o => !o);
+              }}
+            >
+              &#x1F4D1; Highlights ({highlights.length})
+            </button>
           </span>
           <span style={{ width: 1, height: 20, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -576,6 +637,121 @@ export default function PdfViewer() {
         <PageCardPanel page={page} pageCards={pageCards} />
       )}
 
+      {/* Highlights panel */}
+      {showHighlightsPanel && (
+        <div
+          style={{
+            position: 'fixed',
+            top: CONTROLS_HEIGHT + 8,
+            right: 12,
+            width: 'min(520px, calc(100vw - 24px))',
+            maxHeight: 'calc(100vh - 220px)',
+            overflowY: 'auto',
+            background: 'rgba(25,25,25,0.97)',
+            border: '1px solid rgba(120,120,120,0.45)',
+            borderRadius: 8,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+            padding: 10,
+            zIndex: 60,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <strong style={{ fontSize: 13 }}>PDF Highlights</strong>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={() => setHighlightsScope('all')}
+                style={{
+                  border: '1px solid rgba(59,130,246,0.55)',
+                  borderRadius: 4,
+                  background: highlightsScope === 'all' ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  color: highlightsScope === 'all' ? 'rgb(96,165,250)' : 'inherit',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: '1px 8px',
+                }}
+              >
+                Whole PDF
+              </button>
+              <button
+                onClick={() => setHighlightsScope('page')}
+                style={{
+                  border: '1px solid rgba(59,130,246,0.55)',
+                  borderRadius: 4,
+                  background: highlightsScope === 'page' ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  color: highlightsScope === 'page' ? 'rgb(96,165,250)' : 'inherit',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: '1px 8px',
+                }}
+              >
+                This page
+              </button>
+              <button
+                onClick={() => setShowHighlightsPanel(false)}
+                style={{
+                  border: '1px solid rgba(140,140,140,0.5)',
+                  borderRadius: 4,
+                  background: 'transparent',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: '1px 8px',
+                }}
+              >
+                Close
+              </button>
+            </span>
+          </div>
+
+          {highlightsForPanel.length === 0 ? (
+            <div style={{ fontSize: 12, opacity: 0.75 }}>No highlights yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {highlightsForPanel.map((hl) => (
+                <button
+                  key={hl.id}
+                  onClick={() => {
+                    const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
+                    pendingHighlightScrollRef.current = hl.id;
+                    setHighlightJumpNonce((n) => n + 1);
+                    nav(targetPage - pageRef.current);
+                    setShowHighlightsPanel(false);
+                  }}
+                  style={{
+                    textAlign: 'left',
+                    border: '1px solid rgba(90,90,90,0.55)',
+                    borderRadius: 6,
+                    background: 'rgba(35,35,35,0.75)',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    padding: '8px 10px',
+                  }}
+                  title={`Go to page ${hl.page || 1}`}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: 0.9, marginBottom: 3 }}>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: HL_SOLID[hl.color] || '#9CA3AF',
+                        border: '1px solid rgba(255,255,255,0.35)',
+                        display: 'inline-block',
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>Page {hl.page || 1}</span>
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+                    {(hl.text || '(no text)').trim()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {error && (
         <div style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}>{error}</div>
       )}
@@ -596,6 +772,7 @@ export default function PdfViewer() {
           pageHighlights={pageHighlights}
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}
+          focusedHighlightId={focusedHighlightId}
           snapshotMode={snapshotMode}
           snapRect={snapRect}
           handleSnapStart={handleSnapStart}
