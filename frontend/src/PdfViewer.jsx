@@ -530,6 +530,27 @@ export default function PdfViewer() {
           />
           Highlight when extracting
         </label>
+
+        <button
+          title="Mark this PDF as finished reading — suspends the card so it won't appear again"
+          style={{
+            marginLeft: 16,
+            background: 'transparent',
+            border: '1px solid rgba(220,50,50,0.45)',
+            borderRadius: 4,
+            color: 'rgba(220,70,70,0.9)',
+            cursor: 'pointer',
+            padding: '2px 8px',
+            fontSize: 12,
+          }}
+          onClick={() => {
+            if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
+              window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
+            }
+          }}
+        >
+          ✓ Finished Reading
+        </button>
       </div>
 
       {/* Card preview panel */}

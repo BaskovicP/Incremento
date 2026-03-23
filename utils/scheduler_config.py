@@ -29,6 +29,7 @@ class SchedulerConfig:
     include_due: bool = True             # include is:due (review) cards
     preserve_order: bool = True          # build filtered deck in scheduler-selected order
     show_debug: bool = False             # show card order debug dialog at session start
+    pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
 
     @property
     def ready_filter(self) -> str:
@@ -85,6 +86,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     include_due      = d.get("include_due",      True)
     preserve_order   = d.get("preserve_order",   True)
     show_debug       = d.get("show_debug",       False)
+    pdf_rate         = d.get("pdf_slider",        0) / 100.0
 
     return SchedulerConfig(
         session_card_count=session_card_count,
@@ -104,4 +106,5 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         include_due=include_due,
         preserve_order=preserve_order,
         show_debug=show_debug,
+        pdf_rate=pdf_rate,
     )

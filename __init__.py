@@ -8,9 +8,9 @@ import zipfile
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo, tooltip
 from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
-                     QPushButton, QDockWidget, QLabel, QWidget,
-                     QShortcut, QKeySequence, QApplication,
-                     qconnect, QTimer, Qt, QPixmap)
+                     QPushButton, QDockWidget, QLabel, QWidget, QLineEdit,
+                     QShortcut, QKeySequence, QApplication, QListWidget, QListWidgetItem,
+                     qconnect, QTimer, Qt, QPixmap, QObject, QEvent)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtCore import QUrl
@@ -85,6 +85,7 @@ def learnFunction() -> None:
             topics_filter=cfg.topics_filter,
             items_filter=cfg.items_filter,
             ready_filter=cfg.ready_filter,
+            pdf_rate=cfg.pdf_rate,
         )
         if result.card is None:
             return False
@@ -378,6 +379,16 @@ class _PdfDockPage(QWebEnginePage):
                 pass
         elif msg.startswith('incremento_pdf_snapshot:'):
             QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
+        elif msg.startswith('incremento_pdf_finished:'):
+            try:
+                card_id = int(msg[len('incremento_pdf_finished:'):])
+                mw.col.sched.suspend_cards([card_id])
+                mw.col.reset()
+                tooltip("PDF card suspended — it won't appear in future sessions.")
+                if _pdf_dock:
+                    _pdf_dock.hide()
+            except Exception as e:
+                showInfo(f"Could not suspend card:\n{e}")
         elif msg.startswith('incremento_open_card:'):
             try:
                 note_id = int(msg[len('incremento_open_card:'):])
@@ -1311,6 +1322,125 @@ def _sync_video_note_type() -> None:
 gui_hooks.main_window_did_init.append(_sync_video_note_type)
 gui_hooks.main_window_did_init.append(_sync_web_note_type)
 gui_hooks.main_window_did_init.append(_check_pin_on_startup)
+
+
+# ── Option+P quick-jump to PDF ────────────────────────────────────────────────
+
+class _PdfQuickJumpDialog(QDialog):
+    """Fuzzy-search dialog: find a PDF card by title and open it in the dock."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Open PDF  (Ctrl+⌥P)")
+        self.setMinimumWidth(440)
+        self.setMinimumHeight(320)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+        layout.setContentsMargins(14, 14, 14, 14)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Type to filter PDF titles…")
+        layout.addWidget(self._search)
+
+        self._list = QListWidget()
+        layout.addWidget(self._list)
+
+        # Load all non-suspended PDF cards
+        self._entries: list[tuple[str, int, int]] = []  # (title, card_id, page)
+        try:
+            note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}" -is:suspended')
+            for nid in note_ids:
+                try:
+                    note = mw.col.get_note(nid)
+                    title = note.fields[0] if note.fields else str(nid)
+                    cids = mw.col.find_cards(f"nid:{nid}")
+                    if cids:
+                        cid = cids[0]
+                        page = get_page(_ADDON_DIR, cid)
+                        self._entries.append((title, cid, page))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        self._entries.sort(key=lambda e: e[0].lower())
+        self._refresh("")
+
+        qconnect(self._search.textChanged, self._refresh)
+        self._search.returnPressed.connect(self._accept_current)
+        self._list.itemDoubleClicked.connect(lambda _: self._accept_current())
+
+        # Forward Up/Down in the search field to the list
+        self._search.installEventFilter(self)
+
+        btn_row = QHBoxLayout()
+        open_btn = QPushButton("Open")
+        open_btn.setDefault(True)
+        cancel_btn = QPushButton("Cancel")
+        btn_row.addStretch()
+        btn_row.addWidget(open_btn)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+        open_btn.clicked.connect(self._accept_current)
+        cancel_btn.clicked.connect(self.reject)
+
+    def eventFilter(self, obj, event):
+        if obj is self._search and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key == Qt.Key.Key_Down:
+                row = min(self._list.currentRow() + 1, self._list.count() - 1)
+                self._list.setCurrentRow(row)
+                return True
+            if key == Qt.Key.Key_Up:
+                row = max(self._list.currentRow() - 1, 0)
+                self._list.setCurrentRow(row)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _refresh(self, query: str) -> None:
+        self._list.clear()
+        q = query.lower()
+        for title, cid, page in self._entries:
+            if q in title.lower():
+                item = QListWidgetItem(f"{title}  —  p.{page}")
+                item.setData(Qt.ItemDataRole.UserRole, cid)
+                self._list.addItem(item)
+        if self._list.count():
+            self._list.setCurrentRow(0)
+
+    def _accept_current(self) -> None:
+        if self._list.currentItem():
+            self.accept()
+
+    @property
+    def selected_card_id(self) -> int | None:
+        item = self._list.currentItem()
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+
+def _open_pdf_quick_jump() -> None:
+    dlg = _PdfQuickJumpDialog(mw)
+    if not dlg.exec():
+        return
+    cid = dlg.selected_card_id
+    if cid is None:
+        return
+    try:
+        card = mw.col.get_card(cid)
+        note = mw.col.get_note(card.nid)
+        filename = note["PDF_Filename"]
+        page      = get_page(_ADDON_DIR, cid)
+        zoom      = get_zoom(_ADDON_DIR, cid)
+        read_page = get_read_page(_ADDON_DIR, cid)
+        _show_pdf_in_dock(cid, filename, page, zoom, read_page=read_page)
+    except Exception as e:
+        showInfo(f"Could not open PDF:\n{e}")
+
+
+_pdf_jump_shortcut = QShortcut(QKeySequence("Ctrl+Alt+P"), mw)
+_pdf_jump_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(_pdf_jump_shortcut.activated, _open_pdf_quick_jump)
 
 
 def showStatsFunction() -> None:

@@ -115,6 +115,37 @@ class SchedulerConfigDialog(QDialog):
         self._counts_lbl = QLabel("")
         layout.addWidget(self._counts_lbl)
 
+        # -- PDF / Other row --
+        # Left label shows pdf%, right label shows other%.
+        # pdf_rate = slider/100, so slider right = more other cards.
+        pdf_val = self._saved.get("pdf_slider", 0)
+        pdf_row = QHBoxLayout()
+        self._pdf_left_lbl = QLabel(f"{pdf_val}%")
+        self._pdf_left_lbl.setFixedWidth(36)
+        pdf_row.addWidget(self._pdf_left_lbl)
+        _lbl_pdf = QLabel("PDF")
+        _lbl_pdf.setToolTip("Incremento PDF reading cards — always eligible regardless of scheduling state")
+        pdf_row.addWidget(_lbl_pdf)
+        self._pdf_slider = QSlider(Qt.Orientation.Horizontal)
+        self._pdf_slider.setRange(0, 100)
+        self._pdf_slider.setValue(pdf_val)
+        self._pdf_slider.setToolTip(
+            "Slide right for more non-PDF cards; slide left for more PDF reading cards.\n"
+            "PDF cards are always eligible — they don't need to be 'due' to appear."
+        )
+        pdf_row.addWidget(self._pdf_slider)
+        _lbl_other = QLabel("Other")
+        _lbl_other.setToolTip("All non-PDF cards (topics and items)")
+        pdf_row.addWidget(_lbl_other)
+        self._pdf_right_lbl = QLabel(f"{100 - pdf_val}%")
+        self._pdf_right_lbl.setFixedWidth(36)
+        pdf_row.addWidget(self._pdf_right_lbl)
+        layout.addLayout(pdf_row)
+
+        qconnect(self._pdf_slider.valueChanged,
+                 lambda v: (self._pdf_left_lbl.setText(f"{v}%"),
+                             self._pdf_right_lbl.setText(f"{100 - v}%")))
+
         # -- Priority / Random row --
         # Left label shows priority%, right label shows random%.
         # random_rate = slider/100, so slider right = more random.
@@ -699,6 +730,7 @@ class SchedulerConfigDialog(QDialog):
             session_card_count=self._count_spin.value(),
             topics_rate=1.0 - self._topics_slider.value() / 100.0,
             random_rate=self._random_slider.value() / 100.0,
+            pdf_rate=self._pdf_slider.value() / 100.0,
             use_tags=bool(raw),
             tag_weights={tag: v / 100.0 for tag, v in raw.items()},
             include_rest=self._no_tags_cb.isChecked(),
@@ -725,6 +757,7 @@ class SchedulerConfigDialog(QDialog):
             "session_card_count": self._count_spin.value(),
             "topics_slider": self._topics_slider.value(),
             "random_slider": self._random_slider.value(),
+            "pdf_slider": self._pdf_slider.value(),
             "no_tags_checked": self._no_tags_cb.isChecked(),
             "priority_order": self._get_priority_order(),
             "enforce_priority": self._enforce_cb.isChecked(),

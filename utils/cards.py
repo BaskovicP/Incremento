@@ -73,3 +73,8 @@ def get_topic_cards_by_tag(tag: str, topics_filter: str = "deck:Topics",
 def get_item_cards_by_tag(tag: str, items_filter: str = "-deck:Topics",
                           ready_filter: str = all_ready_cards_filter):
     return _sort_by_due(mw.col.find_cards(f"{items_filter} tag:{tag} {ready_filter}"))
+
+
+def get_all_pdf_cards(pdf_filter: str = 'note:"Incremento PDF"'):
+    """Return all non-suspended PDF cards, always eligible regardless of due state."""
+    return _sort_by_due(mw.col.find_cards(f"{pdf_filter} -is:suspended"))
