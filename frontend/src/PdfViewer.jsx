@@ -171,6 +171,7 @@ export default function PdfViewer() {
 
   // ── Highlights for the current page ───────────────────────────────────────
   const pageHighlights = highlights.filter(h => h.page === page);
+  const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
 
   // ── Snapshot handlers ──────────────────────────────────────────────────────
   const handleSnapStart = useCallback((e) => {
@@ -354,7 +355,7 @@ export default function PdfViewer() {
 
   /* ── Render ────────────────────────────────────────────────────────────────── */
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ width: '100%', minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : undefined }}>
 
       {/* Controls */}
       <div

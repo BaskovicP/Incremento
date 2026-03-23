@@ -2,8 +2,16 @@ import os
 import tempfile
 
 from aqt.qt import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QProgressBar, QApplication, Qt,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QProgressBar,
+    QApplication,
+    QCheckBox,
+    Qt,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl, QEventLoop, QMarginsF
@@ -37,13 +45,23 @@ class WebpageToPdfDialog(QDialog):
         self._title_edit.setPlaceholderText("Article title")
         layout.addWidget(self._title_edit)
 
+        self._add_tag_checkbox = QCheckBox("Add tag to imported card")
+        self._add_tag_checkbox.setChecked(False)
+        self._add_tag_checkbox.toggled.connect(self._on_tag_mode_changed)
+        layout.addWidget(self._add_tag_checkbox)
+
+        self._tag_edit = QLineEdit()
+        self._tag_edit.setPlaceholderText("e.g. incremento::web")
+        layout.addWidget(self._tag_edit)
+        self._on_tag_mode_changed(False)
+
         # Status / progress
         self._status_lbl = QLabel("")
         self._status_lbl.setWordWrap(True)
         layout.addWidget(self._status_lbl)
 
         self._progress = QProgressBar()
-        self._progress.setRange(0, 0)   # indeterminate spinner
+        self._progress.setRange(0, 0)  # indeterminate spinner
         self._progress.setVisible(False)
         layout.addWidget(self._progress)
 
@@ -71,6 +89,9 @@ class WebpageToPdfDialog(QDialog):
             url = "https://" + url
 
         title = self._title_edit.text().strip() or url
+        if self._add_tag_checkbox.isChecked() and not self._tag_edit.text().strip():
+            self._status_lbl.setText("Please enter a tag, or disable tag appending.")
+            return
 
         self._import_btn.setEnabled(False)
         self._progress.setVisible(True)
@@ -83,7 +104,7 @@ class WebpageToPdfDialog(QDialog):
         view = QWebEngineView()
         view.setFixedSize(1280, 960)
         view.hide()
-        self._view = view   # prevent garbage collection during async chain
+        self._view = view  # prevent garbage collection during async chain
 
         loop = QEventLoop()
 
@@ -121,6 +142,9 @@ class WebpageToPdfDialog(QDialog):
         view.load(QUrl(url))
         loop.exec()
 
+    def _on_tag_mode_changed(self, checked: bool) -> None:
+        self._tag_edit.setEnabled(checked)
+
     # ── Public properties ─────────────────────────────────────────────────────
 
     @property
@@ -130,3 +154,13 @@ class WebpageToPdfDialog(QDialog):
     @property
     def title_text(self) -> str | None:
         return self._title
+
+    @property
+    def tags_to_apply(self) -> list[str]:
+        if not self._add_tag_checkbox.isChecked():
+            return []
+        raw = self._tag_edit.text().strip()
+        if not raw:
+            return []
+        tags = [t.lstrip("#") for t in raw.split() if t.strip()]
+        return [t for t in tags if t]

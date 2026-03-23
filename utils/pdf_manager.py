@@ -25,17 +25,22 @@ CARD_TEMPLATE_BACK = "{{Title}}"
 # Page progress I/O
 # ---------------------------------------------------------------------------
 
+
 def get_page(addon_dir: str, card_id: int) -> int:
-    row = get_connection(addon_dir).execute(
-        "SELECT page FROM pdf_progress WHERE card_id = ?", (card_id,)
-    ).fetchone()
+    row = (
+        get_connection(addon_dir)
+        .execute("SELECT page FROM pdf_progress WHERE card_id = ?", (card_id,))
+        .fetchone()
+    )
     return row[0] if row else 1
 
 
 def get_zoom(addon_dir: str, card_id: int) -> float:
-    row = get_connection(addon_dir).execute(
-        "SELECT zoom FROM pdf_progress WHERE card_id = ?", (card_id,)
-    ).fetchone()
+    row = (
+        get_connection(addon_dir)
+        .execute("SELECT zoom FROM pdf_progress WHERE card_id = ?", (card_id,))
+        .fetchone()
+    )
     return row[0] if row else 1.0
 
 
@@ -61,9 +66,11 @@ def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
 
 def get_read_page(addon_dir: str, card_id: int) -> int:
     """Return the highest page marked as read (0 = nothing marked yet)."""
-    row = get_connection(addon_dir).execute(
-        "SELECT read_page FROM pdf_progress WHERE card_id = ?", (card_id,)
-    ).fetchone()
+    row = (
+        get_connection(addon_dir)
+        .execute("SELECT read_page FROM pdf_progress WHERE card_id = ?", (card_id,))
+        .fetchone()
+    )
     return row[0] if row else 0
 
 
@@ -80,6 +87,7 @@ def set_read_page(addon_dir: str, card_id: int, read_page: int) -> None:
 # ---------------------------------------------------------------------------
 # Note type management
 # ---------------------------------------------------------------------------
+
 
 def extract_pdf_text(pdf_path: str) -> str:
     """Extract all text from a PDF using Qt's QPdfDocument. Returns empty string on failure."""
@@ -138,8 +146,15 @@ def ensure_pdf_note_type(col) -> None:
 # Card creation
 # ---------------------------------------------------------------------------
 
-def add_pdf_card(addon_dir: str, col, pdf_path: str, title: str,
-                 deck_name: str = "Topics") -> int:
+
+def add_pdf_card(
+    addon_dir: str,
+    col,
+    pdf_path: str,
+    title: str,
+    deck_name: str = "Topics",
+    tags: list[str] | None = None,
+) -> int:
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
 
@@ -157,6 +172,13 @@ def add_pdf_card(addon_dir: str, col, pdf_path: str, title: str,
     note["Title"] = title
     note["PDF_Filename"] = media_filename
     note["Content"] = extract_pdf_text(pdf_path)
+    for tag in tags or []:
+        if not tag:
+            continue
+        if hasattr(note, "add_tag"):
+            note.add_tag(tag)
+        elif hasattr(note, "tags"):
+            note.tags.append(tag)
     note.note_type()["did"] = deck_id
     col.add_note(note, deck_id)
 

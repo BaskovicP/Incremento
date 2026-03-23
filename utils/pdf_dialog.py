@@ -40,6 +40,13 @@ class AddPdfDialog(QDialog):
         self._title_from_filename.setChecked(True)
         self._title_from_filename.toggled.connect(self._on_title_mode_changed)
 
+        self._add_tag_checkbox = QCheckBox("Add tag to imported cards")
+        self._add_tag_checkbox.setChecked(False)
+        self._add_tag_checkbox.toggled.connect(self._on_tag_mode_changed)
+
+        self._tag_edit = QLineEdit()
+        self._tag_edit.setPlaceholderText("e.g. incremento::pdf")
+
         self._error_lbl = QLabel()
         self._error_lbl.setStyleSheet("color: red;")
         self._error_lbl.setVisible(False)
@@ -48,6 +55,8 @@ class AddPdfDialog(QDialog):
         form.addRow("PDF files:", path_row)
         form.addRow("", self._title_from_filename)
         form.addRow("Title:", self._title_edit)
+        form.addRow("", self._add_tag_checkbox)
+        form.addRow("Tag:", self._tag_edit)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -61,6 +70,7 @@ class AddPdfDialog(QDialog):
         layout.addWidget(buttons)
 
         self._on_title_mode_changed(self._title_from_filename.isChecked())
+        self._on_tag_mode_changed(self._add_tag_checkbox.isChecked())
 
     # ------------------------------------------------------------------
 
@@ -95,6 +105,9 @@ class AddPdfDialog(QDialog):
         ):
             self._show_error("Please enter a title.")
             return
+        if self._add_tag_checkbox.isChecked() and (not self._tag_edit.text().strip()):
+            self._show_error("Please enter a tag, or disable tag appending.")
+            return
         self._error_lbl.setVisible(False)
         self.accept()
 
@@ -104,6 +117,9 @@ class AddPdfDialog(QDialog):
             self._title_edit.setPlaceholderText("Derived from each file name")
         else:
             self._title_edit.setPlaceholderText("Card title")
+
+    def _on_tag_mode_changed(self, checked: bool) -> None:
+        self._tag_edit.setEnabled(checked)
 
     def _show_error(self, msg: str) -> None:
         self._error_lbl.setText(msg)
@@ -126,6 +142,16 @@ class AddPdfDialog(QDialog):
     @property
     def use_filename_titles(self) -> bool:
         return self._title_from_filename.isChecked()
+
+    @property
+    def tags_to_apply(self) -> list[str]:
+        if not self._add_tag_checkbox.isChecked():
+            return []
+        raw = self._tag_edit.text().strip()
+        if not raw:
+            return []
+        tags = [t.lstrip("#") for t in raw.split() if t.strip()]
+        return [t for t in tags if t]
 
     def selected_entries(self) -> list[tuple[str, str]]:
         if self._title_from_filename.isChecked():

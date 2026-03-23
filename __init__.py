@@ -418,13 +418,14 @@ def addPdfFunction() -> None:
     entries = dlg.selected_entries()
     if not entries:
         return
+    tags_to_apply = dlg.tags_to_apply
 
     created = 0
     failed: list[tuple[str, str]] = []
     try:
         for pdf_path, title in entries:
             try:
-                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title)
+                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, tags=tags_to_apply)
                 created += 1
             except Exception as e:
                 failed.append((pdf_path, str(e)))
@@ -707,7 +708,13 @@ def addWebpageFunction() -> None:
     if not dlg.exec():
         return
     try:
-        add_pdf_card(_ADDON_DIR, mw.col, dlg.pdf_path, dlg.title_text)
+        add_pdf_card(
+            _ADDON_DIR,
+            mw.col,
+            dlg.pdf_path,
+            dlg.title_text,
+            tags=dlg.tags_to_apply,
+        )
         showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
     except Exception as e:
         showInfo(f"Failed to import webpage as PDF:\n{e}")
