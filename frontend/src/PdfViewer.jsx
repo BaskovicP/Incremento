@@ -32,6 +32,8 @@ export default function PdfViewer() {
   const [readPage,       setReadPage]       = useState(0);
   const [snapshotMode,   setSnapshotMode]   = useState(false);
   const [snapRect,       setSnapRect]       = useState(null);
+  const [pageCards,      setPageCards]      = useState([]);   // cards created on current page
+  const [showCardPanel,  setShowCardPanel]  = useState(false);
 
   const pdfDocRef          = useRef(null);
   const busyRef            = useRef(false);
@@ -329,6 +331,12 @@ export default function PdfViewer() {
     window.incrementoPdfNav   = nav;
     window.incrementoPdfZoom  = adjustZoom;
 
+    window.incrementoReceivePageCards = (data) => {
+      if (data.page === pageRef.current) {
+        setPageCards(data.cards || []);
+      }
+    };
+
     const pending = window._incPdfPending;
     if (pending) {
       window._incPdfPending = null;
@@ -338,8 +346,17 @@ export default function PdfViewer() {
       delete window.incrementoPdfStart;
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
+      delete window.incrementoReceivePageCards;
     };
   }, [startViewer, nav, adjustZoom]);
+
+  /* ── Request card sources for current page ───────────────────────────────── */
+  useEffect(() => {
+    if (!pdfDocRef.current || !cardIdRef.current) return;
+    setPageCards([]);
+    setShowCardPanel(false);
+    window.pycmd('incremento_get_page_cards:' + cardIdRef.current + ':' + page);
+  }, [page]);
 
   /* ── Ctrl+1–4 fill field  /  Option+H highlight ─────────────────────────── */
   useEffect(() => {
@@ -440,6 +457,27 @@ export default function PdfViewer() {
           &#43; Add Card
         </button>
 
+        {/* Per-page card badge */}
+        {pageCards.length > 0 && (
+          <button
+            title={`${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page — click to preview`}
+            onClick={() => setShowCardPanel(o => !o)}
+            style={{
+              marginLeft: 10,
+              background: showCardPanel ? 'rgba(74,144,217,0.25)' : 'rgba(74,144,217,0.12)',
+              border: '1px solid rgba(74,144,217,0.6)',
+              borderRadius: 4,
+              color: 'rgb(74,144,217)',
+              cursor: 'pointer',
+              padding: '2px 8px',
+              fontSize: 12,
+              fontWeight: 'bold',
+            }}
+          >
+            &#x1F4C4; {pageCards.length}
+          </button>
+        )}
+
         <span style={{ marginLeft: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <button
             title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
@@ -493,6 +531,38 @@ export default function PdfViewer() {
           Highlight when extracting
         </label>
       </div>
+
+      {/* Card preview panel */}
+      {showCardPanel && pageCards.length > 0 && (
+        <div style={{
+          margin: '6px 8px 2px',
+          padding: '8px 10px',
+          background: 'rgba(74,144,217,0.08)',
+          border: '1px solid rgba(74,144,217,0.3)',
+          borderRadius: 6,
+          fontSize: 12,
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 6, color: 'rgb(74,144,217)' }}>
+            Cards created on page {page}
+          </div>
+          {pageCards.map((c, i) => (
+            <div key={c.note_id} style={{
+              padding: '5px 8px',
+              marginBottom: i < pageCards.length - 1 ? 5 : 0,
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: 4,
+              borderLeft: '3px solid rgba(74,144,217,0.5)',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={() => window.pycmd('incremento_open_card:' + c.note_id)}
+            title="Click to open in card browser"
+            >
+              {c.excerpt || <em style={{ color: '#888' }}>No text</em>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}>{error}</div>

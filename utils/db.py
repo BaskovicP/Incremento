@@ -6,10 +6,11 @@ WAL mode + NORMAL synchronous gives fast writes while staying crash-safe.
 
 Tables
 ------
-pdf_progress   — reading position and zoom per card
-pdf_highlights — highlighted passages per card
-stats          — daily and lifetime review statistics (JSON blobs per scope)
-priorities     — card priority values
+pdf_progress    — reading position and zoom per card
+pdf_highlights  — highlighted passages per card
+stats           — daily and lifetime review statistics (JSON blobs per scope)
+priorities      — card priority values
+pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 """
 
 import json
@@ -84,6 +85,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             card_id INTEGER PRIMARY KEY,
             url     TEXT    NOT NULL DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS pdf_card_sources (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            pdf_card_id INTEGER NOT NULL,
+            page        INTEGER NOT NULL,
+            note_id     INTEGER NOT NULL,
+            excerpt     TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_pcs_card_page
+            ON pdf_card_sources (pdf_card_id, page);
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
@@ -123,6 +134,36 @@ def export_highlights_json(addon_dir: str) -> str:
              "text": text, "rects": json.loads(rects)}
         )
     return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+def add_pdf_card_source(addon_dir: str, pdf_card_id: int, page: int,
+                        note_id: int, excerpt: str = '') -> None:
+    """Record that note_id was created while reading pdf_card_id at page."""
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO pdf_card_sources (pdf_card_id, page, note_id, excerpt) VALUES (?, ?, ?, ?)",
+        (pdf_card_id, page, note_id, excerpt),
+    )
+    conn.commit()
+
+
+def get_pdf_card_sources(addon_dir: str, pdf_card_id: int, page: int) -> list:
+    """Return list of {note_id, excerpt} for cards created on this PDF page."""
+    rows = get_connection(addon_dir).execute(
+        "SELECT note_id, excerpt FROM pdf_card_sources "
+        "WHERE pdf_card_id = ? AND page = ? ORDER BY id",
+        (pdf_card_id, page),
+    ).fetchall()
+    return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
+
+
+def get_pdf_page_card_counts(addon_dir: str, pdf_card_id: int) -> dict:
+    """Return {page: count} for all pages that have at least one card."""
+    rows = get_connection(addon_dir).execute(
+        "SELECT page, COUNT(*) FROM pdf_card_sources WHERE pdf_card_id = ? GROUP BY page",
+        (pdf_card_id,),
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
 
 
 def export_stats_json(addon_dir: str) -> str:

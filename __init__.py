@@ -31,6 +31,7 @@ from .utils.video_manager import (VIDEO_NOTE_TYPE, extract_video_id, fmt_time,
 from .utils.web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
                                 ensure_web_note_type, add_web_card)
 from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
+from .utils.db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
 from .utils.priority_manager import get_priority, set_priority
 from .utils.priority_dialog import PriorityDialog
 
@@ -377,6 +378,34 @@ class _PdfDockPage(QWebEnginePage):
                 pass
         elif msg.startswith('incremento_pdf_snapshot:'):
             QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
+        elif msg.startswith('incremento_open_card:'):
+            try:
+                note_id = int(msg[len('incremento_open_card:'):])
+                from aqt import dialogs
+                def _browse(nid=note_id):
+                    b = dialogs.open("Browser", mw)
+                    b.search_for(f"nid:{nid}")
+                QTimer.singleShot(0, _browse)
+            except Exception:
+                pass
+        elif msg.startswith('incremento_get_page_cards:'):
+            try:
+                parts = msg.split(':')
+                pdf_card_id = int(parts[1])
+                page = int(parts[2])
+                cards = get_pdf_card_sources(_ADDON_DIR, pdf_card_id, page)
+                counts = get_pdf_page_card_counts(_ADDON_DIR, pdf_card_id)
+                data = {'page': page, 'cards': cards, 'pageCounts': counts}
+                js = (
+                    "window.incrementoReceivePageCards && "
+                    f"window.incrementoReceivePageCards({json.dumps(data)})"
+                )
+                QTimer.singleShot(0, lambda j=js: (
+                    _pdf_dock._view.page().runJavaScript(j)
+                    if _pdf_dock else None
+                ))
+            except Exception:
+                pass
 
 
 def _handle_pdf_snapshot(msg: str) -> None:
@@ -1161,11 +1190,11 @@ def _on_js_message(handled, message, context) -> tuple:
 
     if message.startswith("incremento_open_card:"):
         try:
-            card_id = int(message[len("incremento_open_card:"):])
+            note_id = int(message[len("incremento_open_card:"):])
             from aqt import dialogs
-            def _browse():
+            def _browse(nid=note_id):
                 b = dialogs.open("Browser", mw)
-                b.search_for(f"cid:{card_id}")
+                b.search_for(f"nid:{nid}")
             QTimer.singleShot(0, _browse)
         except Exception:
             pass
@@ -1211,6 +1240,41 @@ def _on_pdf_reviewer_will_end() -> None:
         except RuntimeError:
             _pdf_dock = None
 
+
+def _on_add_cards_did_add_note(note) -> None:
+    """When a card is saved in the AddCards dock, record it against the current PDF page."""
+    if _current_pdf_card_id is None:
+        return
+    page = get_page(_ADDON_DIR, _current_pdf_card_id)
+    # Build a plain-text excerpt from the first two non-empty fields
+    import re as _re
+    parts = []
+    for field in (note.fields or [])[:2]:
+        plain = _re.sub(r'<[^>]+>', '', field).strip()[:120]
+        if plain:
+            parts.append(plain)
+    excerpt = ' / '.join(parts)[:200]
+    try:
+        add_pdf_card_source(_ADDON_DIR, _current_pdf_card_id, page, note.id, excerpt)
+    except Exception:
+        pass
+    # Push an updated card list to the PDF viewer
+    if _pdf_dock is None:
+        return
+    try:
+        cards = get_pdf_card_sources(_ADDON_DIR, _current_pdf_card_id, page)
+        counts = get_pdf_page_card_counts(_ADDON_DIR, _current_pdf_card_id)
+        data = {'page': page, 'cards': cards, 'pageCounts': counts}
+        js = (
+            "window.incrementoReceivePageCards && "
+            f"window.incrementoReceivePageCards({json.dumps(data)})"
+        )
+        _pdf_dock._view.page().runJavaScript(js)
+    except Exception:
+        pass
+
+
+gui_hooks.add_cards_did_add_note.append(_on_add_cards_did_add_note)
 
 gui_hooks.reviewer_did_show_question.append(_on_pdf_question_shown)
 gui_hooks.reviewer_did_show_question.append(_on_video_question_shown)
