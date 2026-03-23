@@ -353,16 +353,31 @@ export default function PdfViewer() {
       e.preventDefault();
       e.stopPropagation();
 
+      performExtraction(idx);
+    };
+
+    const performExtraction = (idx) => {
       const selObj  = window.getSelection();
       const tl = textLayerRef.current;
-      if (!tl || !selObj || !selObj.rangeCount || !isSelectionInside(selObj, tl)) return;
+      if (!tl || !selObj || !selObj.rangeCount || !isSelectionInside(selObj, tl)) return false;
       const selText = selectionCleaned(selObj, tl);
-      if (!selText) return;
+      if (!selText) return false;
       if (autoHighlightRef.current) makeHighlight(selObj);
       window.pycmd('incremento_fill_field:' + JSON.stringify({ idx, text: selText }));
+      return true;
     };
+
+    window.incrementoHandleExtractShortcut = (idx) => {
+      const n = Number(idx);
+      if (!Number.isInteger(n) || n < 0 || n > 3) return false;
+      return performExtraction(n);
+    };
+
     window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
+    return () => {
+      window.removeEventListener('keydown', handler, true);
+      delete window.incrementoHandleExtractShortcut;
+    };
   }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
 
   // ── Copy cleaned selection from PDF text layer ─────────────────────────────

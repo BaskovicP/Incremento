@@ -295,8 +295,7 @@ class _PdfShortcutFilter(QObject):
 
             try:
                 _pdf_dock._view.page().runJavaScript(
-                    "window._lastPdfSelection || window.getSelection()?.toString() || ''",
-                    lambda text, i=idx: _on_pdf_selection(i, text),
+                    f"window.incrementoHandleExtractShortcut && window.incrementoHandleExtractShortcut({idx});"
                 )
             except Exception:
                 pass
@@ -467,8 +466,7 @@ def _build_pdf_dock():
                 return
             try:
                 _pdf_dock._view.page().runJavaScript(
-                    "window._lastPdfSelection || window.getSelection()?.toString() || ''",
-                    lambda text: _on_pdf_selection(0, text),
+                    "window.incrementoHandleExtractShortcut && window.incrementoHandleExtractShortcut(0);",
                 )
             except Exception:
                 pass
