@@ -56,8 +56,30 @@ from .utils import video_dock as _video_dock_mod
 from .utils import web_dock as _web_dock_mod
 from .utils import add_card_dock as _add_card_dock_mod
 from .utils.session import learnFunction, reset_session_counts, get_session_counts
+from .utils.settings_dialog import IncrementoSettingsDialog, default_shortcuts
 
 _ADDON_DIR = os.path.dirname(__file__)
+
+_shortcut_actions: dict[str, object] = {}
+
+
+def _register_shortcut_action(action_id: str, action_obj) -> None:
+    _shortcut_actions[action_id] = action_obj
+
+
+def _apply_shortcuts_from_config() -> None:
+    cfg = mw.addonManager.getConfig(__name__) or {}
+    defaults = default_shortcuts()
+    user_shortcuts = cfg.get("shortcuts") or {}
+
+    for action_id, action_obj in _shortcut_actions.items():
+        shortcut_text = user_shortcuts.get(action_id, defaults.get(action_id, ""))
+        seq = QKeySequence(shortcut_text) if shortcut_text else QKeySequence()
+        if hasattr(action_obj, "setShortcut"):
+            action_obj.setShortcut(seq)
+        elif hasattr(action_obj, "setKey"):
+            action_obj.setKey(seq)
+
 
 mw.addonManager.setWebExports(__name__, r"user_files/.*")
 
@@ -392,9 +414,14 @@ def _open_pdf_quick_jump() -> None:
         showInfo(f"Could not open PDF:\n{e}")
 
 
+def _trigger_pdf_viewer_action(action: str) -> None:
+    _pdf_dock_mod.trigger_viewer_action(action)
+
+
 _pdf_jump_shortcut = QShortcut(QKeySequence("Ctrl+Alt+P"), mw)
 _pdf_jump_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_pdf_jump_shortcut.activated, _open_pdf_quick_jump)
+_register_shortcut_action("quick_open_pdf", _pdf_jump_shortcut)
 
 
 def showStatsFunction() -> None:
@@ -670,10 +697,52 @@ def _open_priority_dialog() -> None:
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
 _priority_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_priority_shortcut.activated, _open_priority_dialog)
+_register_shortcut_action("set_priority", _priority_shortcut)
 
 _extract_shortcut = QShortcut(QKeySequence("Alt+X"), mw)
 _extract_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_extract_shortcut.activated, _extract_card)
+_register_shortcut_action("extract_card", _extract_shortcut)
+
+_pdf_prev_page_shortcut = QShortcut(QKeySequence("Ctrl+Alt+Left"), mw)
+_pdf_prev_page_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(
+    _pdf_prev_page_shortcut.activated,
+    lambda: _trigger_pdf_viewer_action("prev_page"),
+)
+_register_shortcut_action("pdf_prev_page", _pdf_prev_page_shortcut)
+
+_pdf_next_page_shortcut = QShortcut(QKeySequence("Ctrl+Alt+Right"), mw)
+_pdf_next_page_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(
+    _pdf_next_page_shortcut.activated,
+    lambda: _trigger_pdf_viewer_action("next_page"),
+)
+_register_shortcut_action("pdf_next_page", _pdf_next_page_shortcut)
+
+_pdf_zoom_out_shortcut = QShortcut(QKeySequence("Ctrl+Alt+-"), mw)
+_pdf_zoom_out_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(
+    _pdf_zoom_out_shortcut.activated,
+    lambda: _trigger_pdf_viewer_action("zoom_out"),
+)
+_register_shortcut_action("pdf_zoom_out", _pdf_zoom_out_shortcut)
+
+_pdf_zoom_in_shortcut = QShortcut(QKeySequence("Ctrl+Alt+="), mw)
+_pdf_zoom_in_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(
+    _pdf_zoom_in_shortcut.activated,
+    lambda: _trigger_pdf_viewer_action("zoom_in"),
+)
+_register_shortcut_action("pdf_zoom_in", _pdf_zoom_in_shortcut)
+
+_pdf_mark_read_shortcut = QShortcut(QKeySequence("Ctrl+Alt+M"), mw)
+_pdf_mark_read_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(
+    _pdf_mark_read_shortcut.activated,
+    lambda: _trigger_pdf_viewer_action("mark_read"),
+)
+_register_shortcut_action("pdf_mark_read", _pdf_mark_read_shortcut)
 
 
 def addVideoFunction() -> None:
@@ -720,6 +789,40 @@ def addWebpageFunction() -> None:
         showInfo(f"Failed to import webpage as PDF:\n{e}")
 
 
+def openSettingsFunction() -> None:
+    cfg = mw.addonManager.getConfig(__name__) or {}
+    dlg = IncrementoSettingsDialog(cfg.get("shortcuts") or {}, parent=mw)
+    if not dlg.exec():
+        return
+
+    cfg["shortcuts"] = dlg.shortcuts_map
+    mw.addonManager.writeConfig(__name__, cfg)
+    _apply_shortcuts_from_config()
+    tooltip("Incremento shortcuts updated.")
+
+
+def _ensure_settings_menu_action() -> None:
+    for act in _menu.actions():
+        if act.text() == "Settings":
+            return
+
+    action = QAction("Settings", mw)
+    action.setMenuRole(QAction.MenuRole.NoRole)
+    qconnect(action.triggered, openSettingsFunction)
+
+    inserted = False
+    for act in _menu.actions():
+        if act.isSeparator():
+            _menu.insertAction(act, action)
+            inserted = True
+            break
+    if not inserted:
+        _menu.addAction(action)
+
+    _register_shortcut_action("open_settings", action)
+    _apply_shortcuts_from_config()
+
+
 # ── Incremento top-level menu ─────────────────────────────────────────────────
 
 _menu = QMenu("Incremento", mw)
@@ -728,6 +831,13 @@ mw.menuBar().addMenu(_menu)
 _startAction = QAction("Start Incremental Learning", mw)
 qconnect(_startAction.triggered, learnFunction)
 _menu.addAction(_startAction)
+_register_shortcut_action("start_learning", _startAction)
+
+_settingsAction = QAction("Settings", mw)
+_settingsAction.setMenuRole(QAction.MenuRole.NoRole)
+qconnect(_settingsAction.triggered, openSettingsFunction)
+_menu.addAction(_settingsAction)
+_register_shortcut_action("open_settings", _settingsAction)
 
 _menu.addSeparator()
 
@@ -737,18 +847,22 @@ _menu.addMenu(_addContentMenu)
 _addPdfAction = QAction("Add PDF", mw)
 qconnect(_addPdfAction.triggered, addPdfFunction)
 _addContentMenu.addAction(_addPdfAction)
+_register_shortcut_action("add_pdf", _addPdfAction)
 
 _addWebpageAction = QAction("Webpage to PDF", mw)
 qconnect(_addWebpageAction.triggered, addWebpageFunction)
 _addContentMenu.addAction(_addWebpageAction)
+_register_shortcut_action("webpage_to_pdf", _addWebpageAction)
 
 _addVideoAction = QAction("YouTube Video", mw)
 qconnect(_addVideoAction.triggered, addVideoFunction)
 _addContentMenu.addAction(_addVideoAction)
+_register_shortcut_action("youtube_video", _addVideoAction)
 
 _addWebAction = QAction("Web Page", mw)
 qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
 _addContentMenu.addAction(_addWebAction)
+_register_shortcut_action("add_web_page", _addWebAction)
 
 _menu.addSeparator()
 
@@ -767,13 +881,19 @@ def _on_timer_toggle(checked: bool) -> None:
 
 qconnect(_timerToggleAction.triggered, _on_timer_toggle)
 _menu.addAction(_timerToggleAction)
+_register_shortcut_action("toggle_focus_timer", _timerToggleAction)
 
 _menu.addSeparator()
 
 _statsAction = QAction("Statistics", mw)
 qconnect(_statsAction.triggered, showStatsFunction)
 _menu.addAction(_statsAction)
+_register_shortcut_action("statistics", _statsAction)
 
 _exportAction = QAction("Export User Data", mw)
 qconnect(_exportAction.triggered, exportFunction)
 _menu.addAction(_exportAction)
+_register_shortcut_action("export_user_data", _exportAction)
+
+_apply_shortcuts_from_config()
+_ensure_settings_menu_action()

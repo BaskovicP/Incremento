@@ -15,6 +15,7 @@ const HL_SOLID = {
   blue:   '#1E90FF',
   pink:   '#FF508C',
 };
+const CONTROLS_HEIGHT = 172;
 
 function calculateTextWidth(text, font) {
   const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement('canvas'));
@@ -256,6 +257,7 @@ export default function PdfViewer() {
     window.incrementoPdfStart = startWithHighlights;
     window.incrementoPdfNav   = nav;
     window.incrementoPdfZoom  = adjustZoom;
+    window.incrementoPdfMarkRead = markRead;
 
     window.incrementoReceivePageCards = (data) => {
       if (data.page === pageRef.current) {
@@ -272,9 +274,10 @@ export default function PdfViewer() {
       delete window.incrementoPdfStart;
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
+      delete window.incrementoPdfMarkRead;
       delete window.incrementoReceivePageCards;
     };
-  }, [startViewer, nav, adjustZoom, pageRef]);
+  }, [startViewer, nav, adjustZoom, markRead, pageRef]);
 
   // ── Request card sources for current page ─────────────────────────────────
   useEffect(() => {
@@ -355,15 +358,25 @@ export default function PdfViewer() {
 
   /* ── Render ────────────────────────────────────────────────────────────────── */
   return (
-    <div style={{ width: '100%', minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : undefined }}>
+    <div
+      style={{
+        width: '100%',
+        minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : undefined,
+        paddingTop: `${CONTROLS_HEIGHT}px`,
+      }}
+    >
 
       {/* Controls */}
       <div
         id="pdf-controls"
         style={{
-          position: 'sticky',
+          position: 'fixed',
           top: 0,
+          left: 0,
+          right: 0,
           zIndex: 50,
+          width: '100vw',
+          boxSizing: 'border-box',
           padding: '6px 8px 6px',
           userSelect: 'none',
           background: 'rgba(30, 30, 30, 0.96)',
