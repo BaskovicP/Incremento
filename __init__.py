@@ -10,7 +10,8 @@ from aqt.utils import showInfo, tooltip
 from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
                      QPushButton, QDockWidget, QLabel, QWidget, QLineEdit,
                      QShortcut, QKeySequence, QApplication, QListWidget, QListWidgetItem,
-                     qconnect, QTimer, Qt, QPixmap, QObject, QEvent)
+                     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+                     QColor, qconnect, QTimer, Qt, QPixmap, QObject, QEvent)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtCore import QUrl
@@ -32,7 +33,7 @@ from .utils.web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
                                 ensure_web_note_type, add_web_card)
 from .utils.pdf_highlights import load_highlights, add_highlight, remove_highlight
 from .utils.db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
-from .utils.priority_manager import get_priority, set_priority
+from .utils.priority_manager import get_priority, set_priority, get_all_priorities
 from .utils.priority_dialog import PriorityDialog
 
 INCREMENTO_DECK = "Incremento Session"
@@ -43,6 +44,9 @@ mw.addonManager.setWebExports(__name__, r"user_files/.*")
 # Most-recent session counts — updated after each learnFunction picking loop.
 # Passed to StatsDialog so the "This Session" view reflects the last session.
 _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
+
+# Last PDF card opened via the Quick Open dialog (used by Ctrl+L).
+_last_opened_pdf_cid: int | None = None
 
 
 def _reset_session_counts() -> None:
@@ -1327,27 +1331,83 @@ gui_hooks.main_window_did_init.append(_check_pin_on_startup)
 # ── Option+P quick-jump to PDF ────────────────────────────────────────────────
 
 class _PdfQuickJumpDialog(QDialog):
-    """Fuzzy-search dialog: find a PDF card by title and open it in the dock."""
+    """Quick Open dialog: fuzzy-search PDF cards by title with priority display."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Open PDF  (Ctrl+⌥P)")
-        self.setMinimumWidth(440)
-        self.setMinimumHeight(320)
+        self.setWindowTitle("Quick Open")
+        self.resize(860, 580)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(0)
+        layout.setContentsMargins(12, 12, 12, 12)
 
+        # ── Search box ─────────────────────────────────────────────────────────
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Type to filter PDF titles…")
+        self._search.setStyleSheet(
+            "QLineEdit { border: 2px solid #2979ff; border-radius: 3px;"
+            " padding: 6px 10px; font-size: 15px; }"
+        )
         layout.addWidget(self._search)
+        layout.addSpacing(10)
 
-        self._list = QListWidget()
-        layout.addWidget(self._list)
+        # ── Results table ──────────────────────────────────────────────────────
+        self._table = QTableWidget(0, 4)
+        self._table.setHorizontalHeaderLabels(["Title", "Type", "Prio", ""])
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self._table.setColumnWidth(1, 52)
+        self._table.setColumnWidth(2, 48)
+        self._table.setColumnWidth(3, 28)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setShowGrid(True)
+        self._table.setWordWrap(True)
+        layout.addWidget(self._table)
+        layout.addSpacing(10)
 
-        # Load all non-suspended PDF cards
-        self._entries: list[tuple[str, int, int]] = []  # (title, card_id, page)
+        # ── Keyboard shortcut hints ────────────────────────────────────────────
+        for key, desc in [
+            ("Ctrl + F", "Open First in Queue"),
+            ("Ctrl + R", "Open Random Note"),
+            ("Ctrl + L", "Open Last Opened Note"),
+        ]:
+            lbl = QLabel(f"<b>{key}</b>: {desc}")
+            lbl.setStyleSheet("font-size: 13px; padding: 2px 0;")
+            layout.addWidget(lbl)
+        layout.addSpacing(10)
+
+        # ── Cancel button ──────────────────────────────────────────────────────
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(
+            "QPushButton { background: #2979ff; color: white; border: none;"
+            " padding: 10px; font-size: 14px; border-radius: 3px; }"
+            " QPushButton:hover { background: #1565c0; }"
+        )
+        cancel_btn.clicked.connect(self.reject)
+        layout.addWidget(cancel_btn)
+
+        # ── Load data ──────────────────────────────────────────────────────────
+        self._all_entries: list[tuple[str, int, int, float | None]] = []
+        self._load_entries()
+        self._refresh("")
+
+        qconnect(self._search.textChanged, self._refresh)
+        self._search.returnPressed.connect(self._accept_current)
+        self._table.itemDoubleClicked.connect(lambda _: self._accept_current())
+        self._search.installEventFilter(self)
+
+        # In-dialog shortcuts (Ctrl+F/R/L)
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self._open_first)
+        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self._open_random)
+        QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self._open_last)
+
+    def _load_entries(self) -> None:
+        all_prios = get_all_priorities(_ADDON_DIR)   # {cid: priority}
         try:
             note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}" -is:suspended')
             for nid in note_ids:
@@ -1358,68 +1418,105 @@ class _PdfQuickJumpDialog(QDialog):
                     if cids:
                         cid = cids[0]
                         page = get_page(_ADDON_DIR, cid)
-                        self._entries.append((title, cid, page))
+                        prio = all_prios.get(cid)   # None = not explicitly set
+                        self._all_entries.append((title, cid, page, prio))
                 except Exception:
                     pass
         except Exception:
             pass
+        self._all_entries.sort(key=lambda e: e[0].lower())
 
-        self._entries.sort(key=lambda e: e[0].lower())
-        self._refresh("")
+    @staticmethod
+    def _prio_bg(p: float) -> QColor:
+        if p >= 75:
+            return QColor(160, 20, 20)
+        if p >= 55:
+            return QColor(150, 80, 0)
+        if p >= 35:
+            return QColor(110, 100, 0)
+        return QColor(50, 110, 35)
 
-        qconnect(self._search.textChanged, self._refresh)
-        self._search.returnPressed.connect(self._accept_current)
-        self._list.itemDoubleClicked.connect(lambda _: self._accept_current())
+    def _refresh(self, query: str) -> None:
+        self._table.setRowCount(0)
+        q = query.lower()
+        n = 0
+        for title, cid, page, prio in self._all_entries:
+            if q in title.lower():
+                n += 1
+                row = self._table.rowCount()
+                self._table.insertRow(row)
 
-        # Forward Up/Down in the search field to the list
-        self._search.installEventFilter(self)
+                title_item = QTableWidgetItem(f"{n}.  {title}")
+                title_item.setData(Qt.ItemDataRole.UserRole, cid)
+                self._table.setItem(row, 0, title_item)
 
-        btn_row = QHBoxLayout()
-        open_btn = QPushButton("Open")
-        open_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
-        btn_row.addStretch()
-        btn_row.addWidget(open_btn)
-        btn_row.addWidget(cancel_btn)
-        layout.addLayout(btn_row)
-        open_btn.clicked.connect(self._accept_current)
-        cancel_btn.clicked.connect(self.reject)
+                type_item = QTableWidgetItem("PDF")
+                type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._table.setItem(row, 1, type_item)
+
+                if prio is not None:
+                    prio_item = QTableWidgetItem(str(int(round(prio))))
+                    prio_item.setBackground(self._prio_bg(prio))
+                    prio_item.setForeground(QColor("white"))
+                else:
+                    prio_item = QTableWidgetItem("-")
+                    prio_item.setForeground(QColor("#888888"))
+                prio_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._table.setItem(row, 2, prio_item)
+
+                self._table.setItem(row, 3, QTableWidgetItem(""))
+
+        self._table.resizeRowsToContents()
+        if self._table.rowCount():
+            self._table.selectRow(0)
+
+    def _open_first(self) -> None:
+        """Open the highest-priority entry (lowest priority value = most important)."""
+        if not self._all_entries:
+            return
+        best = min(self._all_entries, key=lambda e: e[3] if e[3] is not None else 50.0)
+        self._select_cid_and_accept(best[1])
+
+    def _open_random(self) -> None:
+        import random as _random
+        if self._all_entries:
+            self._select_cid_and_accept(_random.choice(self._all_entries)[1])
+
+    def _open_last(self) -> None:
+        if _last_opened_pdf_cid is not None:
+            self._select_cid_and_accept(_last_opened_pdf_cid)
+
+    def _select_cid_and_accept(self, cid: int) -> None:
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item and item.data(Qt.ItemDataRole.UserRole) == cid:
+                self._table.selectRow(row)
+                break
+        self.accept()
 
     def eventFilter(self, obj, event):
         if obj is self._search and event.type() == QEvent.Type.KeyPress:
             key = event.key()
             if key == Qt.Key.Key_Down:
-                row = min(self._list.currentRow() + 1, self._list.count() - 1)
-                self._list.setCurrentRow(row)
+                self._table.selectRow(min(self._table.currentRow() + 1, self._table.rowCount() - 1))
                 return True
             if key == Qt.Key.Key_Up:
-                row = max(self._list.currentRow() - 1, 0)
-                self._list.setCurrentRow(row)
+                self._table.selectRow(max(self._table.currentRow() - 1, 0))
                 return True
         return super().eventFilter(obj, event)
 
-    def _refresh(self, query: str) -> None:
-        self._list.clear()
-        q = query.lower()
-        for title, cid, page in self._entries:
-            if q in title.lower():
-                item = QListWidgetItem(f"{title}  —  p.{page}")
-                item.setData(Qt.ItemDataRole.UserRole, cid)
-                self._list.addItem(item)
-        if self._list.count():
-            self._list.setCurrentRow(0)
-
     def _accept_current(self) -> None:
-        if self._list.currentItem():
+        if self._table.currentRow() >= 0:
             self.accept()
 
     @property
     def selected_card_id(self) -> int | None:
-        item = self._list.currentItem()
+        item = self._table.item(self._table.currentRow(), 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
 
 def _open_pdf_quick_jump() -> None:
+    global _last_opened_pdf_cid
     dlg = _PdfQuickJumpDialog(mw)
     if not dlg.exec():
         return
@@ -1433,6 +1530,7 @@ def _open_pdf_quick_jump() -> None:
         page      = get_page(_ADDON_DIR, cid)
         zoom      = get_zoom(_ADDON_DIR, cid)
         read_page = get_read_page(_ADDON_DIR, cid)
+        _last_opened_pdf_cid = cid
         _show_pdf_in_dock(cid, filename, page, zoom, read_page=read_page)
     except Exception as e:
         showInfo(f"Could not open PDF:\n{e}")
