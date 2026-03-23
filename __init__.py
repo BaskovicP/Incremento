@@ -519,6 +519,10 @@ class _PdfDockPage(QWebEnginePage):
                     set_read_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
                 except ValueError:
                     pass
+        elif msg.startswith('incremento_pdf_cmd1:'):
+            text = msg[len('incremento_pdf_cmd1:'):]
+            if text:
+                QTimer.singleShot(0, lambda t=text: _on_pdf_selection(0, t))
         elif msg == 'incremento_open_add_card':
             _open_add_card_dock()
         elif msg.startswith('incremento_fill_field:'):
@@ -671,35 +675,46 @@ def _build_pdf_dock():
 
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
-    # Inject fake pycmd bridge after every page load (needed on first load and reloads)
+    # Inject fake pycmd bridge + Cmd+1 keydown listener after every page load
     def _on_load_finished(ok):
         if ok:
             view.page().runJavaScript(
                 "window.pycmd = function(msg) {"
                 "  console.log('__incremento_pycmd__:' + msg);"
                 "};"
+                # Cache selection on change so the keydown handler can read it.
+                "document.addEventListener('selectionchange', function() {"
+                "  var s = window.getSelection();"
+                "  window._lastPdfSelection = s ? s.toString() : '';"
+                "});"
+                # Cmd+1 (metaKey on macOS) — intercept inside the webview
+                # before Chromium/WebEngine consumes it.
+                "document.addEventListener('keydown', function(e) {"
+                "  if (e.metaKey && e.key === '1') {"
+                "    e.preventDefault();"
+                "    var sel = window._lastPdfSelection || '';"
+                "    if (sel) { window.pycmd('incremento_pdf_cmd1:' + sel); }"
+                "  }"
+                "});"
             )
 
     view.loadFinished.connect(_on_load_finished)
 
-    # Cmd/Ctrl+1–4: get active selection from the PDF webview → fill Add Card field
+    # Cmd+1: get active selection from the PDF webview → fill first Add Card field
     if not _shortcuts_registered:
-        def _make_sc(n):
-            sc = QShortcut(QKeySequence(f"Ctrl+{n}"), mw)
-            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
-            def _act():
-                if _pdf_dock is None:
-                    return
-                try:
-                    _pdf_dock._view.page().runJavaScript(
-                        "window.getSelection()?.toString() || ''",
-                        lambda text: _on_pdf_selection(n - 1, text),
-                    )
-                except Exception:
-                    pass
-            sc.activated.connect(_act)
-        for i in range(1, 5):
-            _make_sc(i)
+        sc = QShortcut(QKeySequence("Ctrl+1"), mw)
+        sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        def _act():
+            if _pdf_dock is None:
+                return
+            try:
+                _pdf_dock._view.page().runJavaScript(
+                    "window._lastPdfSelection || window.getSelection()?.toString() || ''",
+                    lambda text: _on_pdf_selection(0, text),
+                )
+            except Exception:
+                pass
+        sc.activated.connect(_act)
         globals()['_shortcuts_registered'] = True
 
     _pdf_dock = dock
