@@ -446,8 +446,6 @@ _current_web_card_id  = None
 _current_web_home_url = None   # original URL from the card's URL field
 _web_profile          = None   # module-level singleton
 
-_browsing_unlocked    = False  # True after correct PIN entry (or no PIN set)
-
 
 def _pdf_citation() -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
@@ -763,65 +761,6 @@ def _show_pdf_in_dock(card_id, filename, page, zoom=1.0, via_link=False, read_pa
         _pdf_dock._view.page().runJavaScript(js)
 
 
-# ── PIN lock ─────────────────────────────────────────────────────────────────
-
-def _get_pin_hash() -> str | None:
-    cfg = mw.addonManager.getConfig(__name__) or {}
-    return cfg.get("pin_hash") or None
-
-
-def _check_pin_on_startup() -> None:
-    global _browsing_unlocked
-    if _get_pin_hash() is None:
-        _browsing_unlocked = True
-        return
-    # Defer slightly so the main window is fully painted before the dialog appears
-    QTimer.singleShot(400, _show_unlock_dialog)
-
-
-def _show_unlock_dialog() -> None:
-    global _browsing_unlocked
-    from .utils.pin_dialog import PinUnlockDialog, hash_pin
-    dlg = PinUnlockDialog(mw)
-    while True:
-        if not dlg.exec():
-            return  # user skipped — stays locked
-        if hash_pin(dlg.pin) == _get_pin_hash():
-            _browsing_unlocked = True
-            return
-        dlg.show_error("Incorrect PIN — try again.")
-
-
-def managePinFunction() -> None:
-    """Incremento -> Manage PIN"""
-    global _browsing_unlocked
-    from .utils.pin_dialog import PinSetupDialog, hash_pin
-
-    stored_hash = _get_pin_hash()
-    has_pin = stored_hash is not None
-
-    dlg = PinSetupDialog(has_pin=has_pin, parent=mw)
-    if not dlg.exec():
-        return
-
-    # Verify current PIN before allowing change
-    if has_pin and hash_pin(dlg.current_pin) != stored_hash:
-        showInfo("Incorrect current PIN.")
-        return
-
-    cfg = mw.addonManager.getConfig(__name__) or {}
-    new_pin = dlg.new_pin
-    if new_pin:
-        cfg["pin_hash"] = hash_pin(new_pin)
-        _browsing_unlocked = True
-        mw.addonManager.writeConfig(__name__, cfg)
-        tooltip("PIN set. Web and video browsing unlocked for this session.")
-    else:
-        cfg.pop("pin_hash", None)
-        _browsing_unlocked = True
-        mw.addonManager.writeConfig(__name__, cfg)
-        tooltip("PIN removed. Browsing will always be unlocked.")
-
 
 # ── Video dock ────────────────────────────────────────────────────────────────
 
@@ -1005,7 +944,7 @@ def _do_video_add_card(t) -> None:
 
 def _on_video_question_shown(card) -> None:
     global _video_dock, _video_timer
-    if card is None or not _browsing_unlocked:
+    if card is None:
         return
     try:
         note  = mw.col.get_note(card.nid)
@@ -1172,7 +1111,7 @@ def _show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
 
 def _on_web_question_shown(card) -> None:
     global _web_dock
-    if card is None or not _browsing_unlocked:
+    if card is None:
         return
     try:
         note  = mw.col.get_note(card.nid)
@@ -1544,7 +1483,6 @@ def _sync_video_note_type() -> None:
 
 gui_hooks.main_window_did_init.append(_sync_video_note_type)
 gui_hooks.main_window_did_init.append(_sync_web_note_type)
-gui_hooks.main_window_did_init.append(_check_pin_on_startup)
 
 
 _timer_toolbar = None   # set by _build_timer_toolbar
@@ -1557,6 +1495,10 @@ def _build_timer_toolbar() -> None:
     tb.setObjectName("incremento_timer_toolbar")
     tb.setMovable(False)
     tb.setFloatable(False)
+    from aqt.qt import QSizePolicy
+    spacer = QWidget(tb)
+    spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    tb.addWidget(spacer)
     tb.addWidget(_TimerWidget(tb))
     mw.addToolBar(Qt.ToolBarArea.TopToolBarArea, tb)
     _timer_toolbar = tb
@@ -2112,8 +2054,3 @@ _exportAction = QAction("Export User Data", mw)
 qconnect(_exportAction.triggered, exportFunction)
 _menu.addAction(_exportAction)
 
-_menu.addSeparator()
-
-_pinAction = QAction("Manage PIN…", mw)
-qconnect(_pinAction.triggered, managePinFunction)
-_menu.addAction(_pinAction)

@@ -419,138 +419,118 @@ export default function PdfViewer() {
     <div style={{ width: '100%' }}>
 
       {/* Controls */}
-      <div id="pdf-controls" style={{ textAlign: 'center', padding: '4px 0' }}>
-        <button onClick={() => nav(-1)}>&#8592; Prev</button>
-        <span style={{ margin: '0 12px' }}>
-          {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
-        </span>
-        <button onClick={() => nav(1)}>Next &#8594;</button>
-        <span style={{ marginLeft: 20 }}>
-          <button onClick={() => adjustZoom(-1)}>&#8722;</button>
-          <span style={{ margin: '0 8px' }}>{Math.round(zoom * 100)}%</span>
-          <button onClick={() => adjustZoom(1)}>&#43;</button>
-        </span>
+      <div id="pdf-controls" style={{ padding: '6px 8px 4px', userSelect: 'none' }}>
 
-        {/* Highlight color picker */}
-        <span style={{ marginLeft: 20, verticalAlign: 'middle' }}>
+        {/* ── Row 1: Navigation + Zoom ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
+          <button onClick={() => nav(-1)}>&#8592; Prev</button>
+          <span style={{ margin: '0 4px' }}>
+            {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
+          </span>
+          <button onClick={() => nav(1)}>Next &#8594;</button>
+          <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', margin: '0 4px', display: 'inline-block' }} />
+          <button onClick={() => adjustZoom(-1)}>&#8722;</button>
+          <span style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+          <button onClick={() => adjustZoom(1)}>&#43;</button>
+        </div>
+
+        {/* ── Row 2: Annotation tools ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6 }}>
           {Object.keys(HL_COLORS).map(c => (
             <button
               key={c}
               title={`Highlight ${c}`}
               onClick={() => { hlColorRef.current = c; setHlColor(c); }}
               style={{
-                marginLeft: 3,
                 background: HL_SOLID[c],
                 border: hlColor === c ? '2px solid white' : '2px solid transparent',
                 width: 18, height: 18,
                 borderRadius: 3, padding: 0, cursor: 'pointer',
-                verticalAlign: 'middle',
               }}
             />
           ))}
-        </span>
-
-        <button
-          style={{ marginLeft: 20 }}
-          onClick={() => window.pycmd('incremento_open_add_card')}
-        >
-          &#43; Add Card
-        </button>
-
-        {/* Per-page card badge */}
-        {pageCards.length > 0 && (
+          <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
+          <label style={{ fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input
+              type="checkbox"
+              checked={autoHighlight}
+              onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
+            />
+            Highlight when extracting
+          </label>
+          <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
           <button
-            title={`${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page — click to preview`}
-            onClick={() => setShowCardPanel(o => !o)}
+            title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
             style={{
-              marginLeft: 10,
-              background: showCardPanel ? 'rgba(74,144,217,0.25)' : 'rgba(74,144,217,0.12)',
-              border: '1px solid rgba(74,144,217,0.6)',
-              borderRadius: 4,
-              color: 'rgb(74,144,217)',
-              cursor: 'pointer',
-              padding: '2px 8px',
-              fontSize: 12,
-              fontWeight: 'bold',
+              background: snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
+              border: '1px solid rgba(37,99,235,0.5)',
+              borderRadius: 4, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
+              cursor: 'pointer', padding: '2px 8px', fontSize: 12,
+              fontWeight: snapshotMode ? 'bold' : 'normal',
             }}
+            onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
           >
-            &#x1F4C4; {pageCards.length}
+            &#x1F4F7; Snapshot
           </button>
-        )}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <button
+              title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
+              style={{
+                background: readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
+                border: '1px solid rgba(34,197,94,0.6)', borderRadius: 4,
+                color: readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
+                cursor: 'pointer', padding: '2px 8px', fontSize: 12,
+                fontWeight: readPage > 0 && page <= readPage ? 'bold' : 'normal',
+              }}
+              onClick={markRead}
+            >
+              ✓ Read to here
+            </button>
+            {readPage > 0 && (
+              <span style={{ fontSize: 11, color: 'rgb(22,163,74)', fontWeight: 'bold' }}>
+                p.1–{readPage}
+              </span>
+            )}
+          </span>
+        </div>
 
-        <span style={{ marginLeft: 12, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <button
-            title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
-            style={{
-              background: readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
-              border: '1px solid rgba(34,197,94,0.6)',
-              borderRadius: 4,
-              color: readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
-              cursor: 'pointer',
-              padding: '2px 8px',
-              fontSize: 12,
-              fontWeight: readPage > 0 && page <= readPage ? 'bold' : 'normal',
-            }}
-            onClick={markRead}
-          >
-            ✓ Read to here
+        {/* ── Row 3: Card management ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <button onClick={() => window.pycmd('incremento_open_add_card')}>
+            &#43; Add Card
           </button>
-          {readPage > 0 && (
-            <span style={{ fontSize: 11, color: 'rgb(22,163,74)', fontWeight: 'bold' }}>
-              p.1–{readPage}
-            </span>
+          {pageCards.length > 0 && (
+            <button
+              title={`${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page — click to preview`}
+              onClick={() => setShowCardPanel(o => !o)}
+              style={{
+                background: showCardPanel ? 'rgba(74,144,217,0.25)' : 'rgba(74,144,217,0.12)',
+                border: '1px solid rgba(74,144,217,0.6)', borderRadius: 4,
+                color: 'rgb(74,144,217)', cursor: 'pointer',
+                padding: '2px 8px', fontSize: 12, fontWeight: 'bold',
+              }}
+            >
+              &#x1F4C4; {pageCards.length}
+            </button>
           )}
-        </span>
+          <button
+            title="Mark this PDF as finished reading — suspends the card so it won't appear again"
+            style={{
+              background: 'transparent',
+              border: '1px solid rgba(220,50,50,0.45)', borderRadius: 4,
+              color: 'rgba(220,70,70,0.9)', cursor: 'pointer',
+              padding: '2px 8px', fontSize: 12,
+            }}
+            onClick={() => {
+              if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
+                window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
+              }
+            }}
+          >
+            ✓ Finished Reading
+          </button>
+        </div>
 
-        <button
-          title={snapshotMode ? 'Click to cancel snapshot' : 'Draw a rectangle on the PDF to capture it'}
-          style={{
-            marginLeft: 12,
-            background: snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
-            border: '1px solid rgba(37,99,235,0.5)',
-            borderRadius: 4,
-            color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
-            cursor: 'pointer',
-            padding: '2px 8px',
-            fontSize: 12,
-            fontWeight: snapshotMode ? 'bold' : 'normal',
-          }}
-          onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
-        >
-          &#x1F4F7; Snapshot
-        </button>
-
-        <label style={{ marginLeft: 16, fontSize: 12, cursor: 'pointer',
-                        userSelect: 'none', verticalAlign: 'middle' }}>
-          <input
-            type="checkbox"
-            checked={autoHighlight}
-            onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
-            style={{ marginRight: 4, verticalAlign: 'middle' }}
-          />
-          Highlight when extracting
-        </label>
-
-        <button
-          title="Mark this PDF as finished reading — suspends the card so it won't appear again"
-          style={{
-            marginLeft: 16,
-            background: 'transparent',
-            border: '1px solid rgba(220,50,50,0.45)',
-            borderRadius: 4,
-            color: 'rgba(220,70,70,0.9)',
-            cursor: 'pointer',
-            padding: '2px 8px',
-            fontSize: 12,
-          }}
-          onClick={() => {
-            if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
-              window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
-            }
-          }}
-        >
-          ✓ Finished Reading
-        </button>
       </div>
 
       {/* Card preview panel */}
