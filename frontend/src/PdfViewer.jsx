@@ -16,6 +16,134 @@ const HL_SOLID = {
   pink:   '#FF508C',
 };
 
+function calculateTextWidth(text, font) {
+  const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement('canvas'));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return text.length * 8;
+  ctx.font = font;
+  return ctx.measureText(text).width;
+}
+
+function nodesInSelection(range, textLayer) {
+  if (!range || !textLayer) return null;
+  const all = textLayer.children;
+  const nodes = [];
+  const start = range.startContainer?.nodeName === '#text'
+    ? range.startContainer.parentNode
+    : range.startContainer;
+  const end = range.endContainer?.nodeName === '#text'
+    ? range.endContainer.parentNode
+    : range.endContainer;
+  let inside = false;
+  for (let i = 0; i < all.length; i += 1) {
+    if (all[i] === start) inside = true;
+    if (inside) nodes.push(all[i]);
+    if (all[i] === end) break;
+  }
+  return nodes;
+}
+
+function isSelectionInside(sel, container) {
+  if (!sel || !container || !sel.rangeCount) return false;
+  for (let i = 0; i < sel.rangeCount; i += 1) {
+    const node = sel.getRangeAt(i).commonAncestorContainer;
+    if (!container.contains(node)) return false;
+  }
+  return true;
+}
+
+function selectionCleaned(sel, textLayer) {
+  try {
+    if (!sel || !sel.rangeCount) return '';
+    const range = sel.getRangeAt(0);
+    const nodes = nodesInSelection(range, textLayer);
+    const original = (sel.toString() || '').trim();
+    if (!nodes || nodes.length <= 1) return original;
+
+    let text = '';
+    let offsetLeftLast = 0;
+    let offsetTopLast = 0;
+    let textWidthLast = 0;
+    let insertedCount = 0;
+    let lastFontSize = null;
+    const lastYDiffs = [];
+
+    for (let i = 0; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      const piece = (node.innerText || node.textContent || '');
+      if (!piece) continue;
+
+      if ((node.offsetLeft < offsetLeftLast || node.offsetTop > offsetTopLast + 5) && !piece.startsWith(' ')) {
+        const fontSize = Number((node.style.fontSize || '').replace('px', '')) || null;
+        if (lastFontSize && fontSize && Math.abs(fontSize - lastFontSize) > 4) {
+          text += '\n\n' + piece;
+          insertedCount += 2;
+        } else if (lastYDiffs.length > 0 && (node.offsetTop - offsetTopLast) > lastYDiffs[lastYDiffs.length - 1] + 2) {
+          text += '\n\n' + piece;
+          insertedCount += 2;
+        } else if (text.endsWith('-')) {
+          text = text.slice(0, -1) + piece;
+          insertedCount -= 1;
+        } else {
+          text += ' ' + piece;
+          insertedCount += 1;
+        }
+        if (offsetTopLast !== 0) {
+          lastYDiffs.push(node.offsetTop - offsetTopLast);
+        }
+        lastFontSize = fontSize;
+      } else if (offsetLeftLast + textWidthLast < node.offsetLeft - 2 && !piece.startsWith(' ')) {
+        text += ' ' + piece;
+        insertedCount += 1;
+      } else if (offsetLeftLast + textWidthLast > node.offsetLeft - 5) {
+        text = text.trimEnd() + piece;
+      } else {
+        text += piece;
+      }
+
+      offsetLeftLast = node.offsetLeft;
+      offsetTopLast = node.offsetTop;
+
+      const fontDescriptor = `${node.style.fontWeight || 'normal'} ${node.style.fontSize || '12px'} ${node.style.fontFamily || 'sans-serif'}`;
+      const scaleX = Number((node.style.transform || '').match(/[0-9]+(\.[0-9]+)?/)?.[0] || 1);
+      textWidthLast = calculateTextWidth(piece.trim(), fontDescriptor) * scaleX;
+    }
+
+    if (!text.length) return original;
+
+    text = text.replace(/( |\u00a0){2,}/g, ' ')
+      .replace(/ ([,.;:]) /g, '$1 ')
+      .replace(/ ([)\].!?:])/g, '$1')
+      .replace(/([\[(]) /g, '$1')
+      .trim();
+
+    if (!original) return text;
+    if (!original.startsWith(text.substring(0, Math.min(10, text.length)))) {
+      for (let y = 10; y > 0; y -= 1) {
+        const probe = original.substring(0, Math.min(y, original.length));
+        const idx = text.indexOf(probe);
+        if (idx > 0) {
+          text = text.substring(idx);
+          break;
+        }
+      }
+    }
+    if (text.length > original.length + insertedCount) {
+      for (let y = 10; y > 0; y -= 1) {
+        const probe = original.substring(Math.max(0, original.length - y));
+        const idx = text.lastIndexOf(probe);
+        if (idx >= 0) {
+          text = text.substring(0, idx + probe.length);
+          break;
+        }
+      }
+    }
+    return text.trim();
+  } catch {
+    return (sel?.toString() || '').trim();
+  }
+}
+
 export default function PdfViewer() {
   // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
   const {
@@ -197,7 +325,9 @@ export default function PdfViewer() {
       const n = parseInt(e.key, 10);
       if (n < 1 || n > 4) return;
       const selObj  = window.getSelection();
-      const selText = selObj?.toString().trim() || '';
+      const tl = textLayerRef.current;
+      if (!tl || !selObj || !selObj.rangeCount || !isSelectionInside(selObj, tl)) return;
+      const selText = selectionCleaned(selObj, tl);
       if (!selText) return;
       e.preventDefault();
       if (autoHighlightRef.current) makeHighlight(selObj);
@@ -206,6 +336,21 @@ export default function PdfViewer() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
+
+  // ── Copy cleaned selection from PDF text layer ─────────────────────────────
+  useEffect(() => {
+    const onCopy = (e) => {
+      const tl = textLayerRef.current;
+      const sel = window.getSelection();
+      if (!tl || !sel || !sel.rangeCount || !isSelectionInside(sel, tl)) return;
+      const cleaned = selectionCleaned(sel, tl);
+      if (!cleaned) return;
+      e.clipboardData?.setData('text/plain', cleaned);
+      e.preventDefault();
+    };
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, [textLayerRef]);
 
   /* ── Render ────────────────────────────────────────────────────────────────── */
   return (
