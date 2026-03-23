@@ -116,11 +116,11 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._counts_lbl)
 
         # -- PDF / Other row --
-        # Left label shows pdf%, right label shows other%.
-        # pdf_rate = slider/100, so slider right = more other cards.
+        # Left label shows pdf% (100-v), right label shows other% (v).
+        # Slider right = more Other; pdf_rate = (100-slider)/100.
         pdf_val = self._saved.get("pdf_slider", 0)
         pdf_row = QHBoxLayout()
-        self._pdf_left_lbl = QLabel(f"{pdf_val}%")
+        self._pdf_left_lbl = QLabel(f"{100 - pdf_val}%")
         self._pdf_left_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_left_lbl)
         _lbl_pdf = QLabel("PDF")
@@ -137,14 +137,14 @@ class SchedulerConfigDialog(QDialog):
         _lbl_other = QLabel("Other")
         _lbl_other.setToolTip("All non-PDF cards (topics and items)")
         pdf_row.addWidget(_lbl_other)
-        self._pdf_right_lbl = QLabel(f"{100 - pdf_val}%")
+        self._pdf_right_lbl = QLabel(f"{pdf_val}%")
         self._pdf_right_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_right_lbl)
         layout.addLayout(pdf_row)
 
         qconnect(self._pdf_slider.valueChanged,
-                 lambda v: (self._pdf_left_lbl.setText(f"{v}%"),
-                             self._pdf_right_lbl.setText(f"{100 - v}%")))
+                 lambda v: (self._pdf_left_lbl.setText(f"{100 - v}%"),
+                             self._pdf_right_lbl.setText(f"{v}%")))
 
         # -- Priority / Random row --
         # Left label shows priority%, right label shows random%.
@@ -752,7 +752,7 @@ class SchedulerConfigDialog(QDialog):
             session_card_count=self._count_spin.value(),
             topics_rate=1.0 - self._topics_slider.value() / 100.0,
             random_rate=self._random_slider.value() / 100.0,
-            pdf_rate=self._pdf_slider.value() / 100.0,
+            pdf_rate=(100 - self._pdf_slider.value()) / 100.0,
             use_tags=bool(raw),
             tag_weights={tag: v / 100.0 for tag, v in raw.items()},
             include_rest=self._no_tags_cb.isChecked(),

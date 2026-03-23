@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from datetime import datetime, timedelta
 
@@ -25,7 +26,7 @@ def _effective_date(day_end: str = "00:00") -> str:
     now = datetime.now()
     h, m = map(int, day_end.split(":"))
     boundary_minutes = h * 60 + m
-    current_minutes  = now.hour * 60 + now.minute
+    current_minutes = now.hour * 60 + now.minute
     if current_minutes < boundary_minutes:
         return (now.date() - timedelta(days=1)).isoformat()
     return now.date().isoformat()
@@ -40,10 +41,30 @@ def _is_valid_counts_block(d) -> bool:
     )
 
 
+def _stats_path(addon_dir: str) -> str:
+    return os.path.join(addon_dir, "user_files", "custom_learn_stats.json")
+
+
 def load_stats(addon_dir: str) -> dict:
-    rows = get_connection(addon_dir).execute(
-        "SELECT scope, date, data FROM stats"
-    ).fetchall()
+    path = _stats_path(addon_dir)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    # Backward-compatible fallback for users that only have DB-backed stats.
+    try:
+        rows = (
+            get_connection(addon_dir)
+            .execute("SELECT scope, date, data FROM stats")
+            .fetchall()
+        )
+    except Exception:
+        return {}
+
     result: dict = {}
     for scope, date, data in rows:
         if scope == "daily":
@@ -54,40 +75,79 @@ def load_stats(addon_dir: str) -> dict:
 
 
 def save_stats(addon_dir: str, stats: dict) -> None:
-    conn = get_connection(addon_dir)
-    if "daily" in stats:
-        d = stats["daily"]
-        conn.execute(
-            "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
-            ("daily", d.get("date"), json.dumps(d.get("counts", {}))),
-        )
-    if "lifetime" in stats:
-        conn.execute(
-            "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
-            ("lifetime", None, json.dumps(stats["lifetime"])),
-        )
-    conn.commit()
+    path = _stats_path(addon_dir)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(stats, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+    # Keep DB export path functional (best effort).
+    try:
+        conn = get_connection(addon_dir)
+        if "daily" in stats:
+            d = stats["daily"]
+            conn.execute(
+                "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+                ("daily", d.get("date"), json.dumps(d.get("counts", {}))),
+            )
+        else:
+            conn.execute("DELETE FROM stats WHERE scope = 'daily'")
+
+        if "lifetime" in stats:
+            conn.execute(
+                "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+                ("lifetime", None, json.dumps(stats["lifetime"])),
+            )
+        else:
+            conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
+        conn.commit()
+    except Exception:
+        pass
 
 
 def delete_daily_stats(addon_dir: str) -> None:
     """Remove today's statistics."""
-    conn = get_connection(addon_dir)
-    conn.execute("DELETE FROM stats WHERE scope = 'daily'")
-    conn.commit()
+    stats = load_stats(addon_dir)
+    if "daily" in stats:
+        del stats["daily"]
+        save_stats(addon_dir, stats)
+
+    try:
+        conn = get_connection(addon_dir)
+        conn.execute("DELETE FROM stats WHERE scope = 'daily'")
+        conn.commit()
+    except Exception:
+        pass
 
 
 def delete_lifetime_stats(addon_dir: str) -> None:
     """Remove lifetime statistics."""
-    conn = get_connection(addon_dir)
-    conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
-    conn.commit()
+    stats = load_stats(addon_dir)
+    if "lifetime" in stats:
+        del stats["lifetime"]
+        save_stats(addon_dir, stats)
+
+    try:
+        conn = get_connection(addon_dir)
+        conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
+        conn.commit()
+    except Exception:
+        pass
 
 
 def delete_all_stats(addon_dir: str) -> None:
     """Delete all statistics data."""
-    conn = get_connection(addon_dir)
-    conn.execute("DELETE FROM stats")
-    conn.commit()
+    path = _stats_path(addon_dir)
+    if os.path.exists(path):
+        os.remove(path)
+
+    try:
+        conn = get_connection(addon_dir)
+        conn.execute("DELETE FROM stats")
+        conn.commit()
+    except Exception:
+        pass
 
 
 class StatsManager:
@@ -136,7 +196,9 @@ class StatsManager:
             if scope_name == scheduled_scope:
                 continue
             counts = self.counts_for(scope_name)
-            counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
+            counts["type"][result.card_type] = (
+                counts["type"].get(result.card_type, 0) + 1
+            )
             counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
             if result.tag is not None:
                 counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1

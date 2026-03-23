@@ -9,6 +9,7 @@ NO_TAGS_KEY = scheduler.NO_TAGS_KEY
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _patch_soft_pick(card_type="items", tag="health", mode="priority", use_tags=True):
     """Stub soft_pick to return deterministic decisions in order: type, mode, [tag]."""
     side_effect = [card_type, mode, tag] if use_tags else [card_type, mode]
@@ -18,9 +19,9 @@ def _patch_soft_pick(card_type="items", tag="health", mode="priority", use_tags=
 def _mock_card_utils(tag_topic=None, tag_item=None, all_topic=None, all_item=None):
     """Patch all four card fetch functions on scheduler.card_utils."""
     tag_topic = [] if tag_topic is None else tag_topic
-    tag_item  = [] if tag_item  is None else tag_item
+    tag_item = [] if tag_item is None else tag_item
     all_topic = [] if all_topic is None else all_topic
-    all_item  = [] if all_item  is None else all_item
+    all_item = [] if all_item is None else all_item
     return patch.multiple(
         "scheduler.card_utils",
         get_topic_cards_by_tag=lambda tag, **kw: tag_topic,
@@ -33,6 +34,7 @@ def _mock_card_utils(tag_topic=None, tag_item=None, all_topic=None, all_item=Non
 # ---------------------------------------------------------------------------
 # soft_pick
 # ---------------------------------------------------------------------------
+
 
 class TestSoftPick:
     def test_returns_a_key_from_weights(self):
@@ -78,7 +80,7 @@ class TestSoftPick:
         # {"a": 1/3, "b": 1/3, "c": 1/3}, counts={} → equal 1/3 shares
         # r=0.9 → r -= 1/3 ≈ 0.567 > 0; r -= 1/3 ≈ 0.234 > 0; r -= 1/3 ≈ -0.1 ≤ 0 → "c"
         with patch("scheduler.random.random", return_value=0.9):
-            result = scheduler.soft_pick({"a": 1/3, "b": 1/3, "c": 1/3}, {})
+            result = scheduler.soft_pick({"a": 1 / 3, "b": 1 / 3, "c": 1 / 3}, {})
         assert result == "c"
 
     # --- alpha smoothing ---
@@ -109,7 +111,7 @@ class TestSoftPick:
         counts = {"a": 1000}
         weights = {"a": 0.5, "b": 0.5}
         default_share = 0.05 / (0.05 + 500.2)
-        larger_share  = 0.5  / (0.5  + 500.2)
+        larger_share = 0.5 / (0.5 + 500.2)
         assert larger_share > default_share
 
     # --- debt / catch-up ---
@@ -134,6 +136,7 @@ class TestSoftPick:
 # Card type selection (topics vs items)
 # ---------------------------------------------------------------------------
 
+
 class TestCardTypeSelection:
     def test_topics_fetches_from_topic_function(self):
         with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
@@ -153,6 +156,7 @@ class TestCardTypeSelection:
 # ---------------------------------------------------------------------------
 # Mode selection (priority vs random)
 # ---------------------------------------------------------------------------
+
 
 class TestModeSelection:
     def test_priority_returns_first_card(self):
@@ -175,6 +179,7 @@ class TestModeSelection:
 # ---------------------------------------------------------------------------
 # Tag fallback
 # ---------------------------------------------------------------------------
+
 
 class TestTagFallback:
     def test_falls_back_to_all_items_when_tag_empty(self):
@@ -232,13 +237,15 @@ class TestTagFallback:
 # use_tags=False
 # ---------------------------------------------------------------------------
 
+
 class TestUseTagsFalse:
     def test_skips_tag_fetch_and_uses_all_cards(self):
         tag_fetch_calls = []
         with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
             with patch.multiple(
                 "scheduler.card_utils",
-                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag) or [],
+                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag)
+                or [],
                 get_all_item_cards=lambda **kw: [201, 202],
                 get_topic_cards_by_tag=lambda tag, **kw: [],
                 get_all_topic_cards=lambda **kw: [],
@@ -266,7 +273,8 @@ class TestUseTagsFalse:
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with patch.multiple(
                 "scheduler.card_utils",
-                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag) or [201],
+                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag)
+                or [201],
                 get_all_item_cards=lambda **kw: [],
                 get_topic_cards_by_tag=lambda tag, **kw: [],
                 get_all_topic_cards=lambda **kw: [],
@@ -279,6 +287,7 @@ class TestUseTagsFalse:
 # ---------------------------------------------------------------------------
 # Counts tracking
 # ---------------------------------------------------------------------------
+
 
 class TestCountsTracking:
     def test_counts_passed_to_scheduler_not_modified(self):
@@ -299,7 +308,9 @@ class TestCountsTracking:
         with _mock_card_utils(tag_item=[201]):
             for _ in range(3):
                 with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
-                    result = scheduler.get_card_from_scheduler(counts=counts, use_tags=True)
+                    result = scheduler.get_card_from_scheduler(
+                        counts=counts, use_tags=True
+                    )
         assert result.card == 201
 
     def test_default_counts_do_not_persist_between_calls(self):
@@ -317,6 +328,7 @@ class TestCountsTracking:
 # Edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestEdgeCases:
     def test_single_card_returned(self):
         with _patch_soft_pick(card_type="items", mode="priority"):
@@ -329,6 +341,7 @@ class TestEdgeCases:
 # "Other cards" remainder — partial tag weights
 # ---------------------------------------------------------------------------
 
+
 class TestOtherCardsRemainder:
     """When tag weights sum to < 1.0, the remainder is offered as NO_TAGS_KEY."""
 
@@ -337,9 +350,11 @@ class TestOtherCardsRemainder:
         calls = []
         # Capture the weights passed to soft_pick
         original_sp = scheduler.soft_pick
+
         def capturing_sp(weights, counts, *a, **kw):
             calls.append(dict(weights))
             return list(weights.keys())[0]  # always return first key
+
         with patch("scheduler.soft_pick", side_effect=capturing_sp):
             with _mock_card_utils(tag_item=[201]):
                 scheduler.get_card_from_scheduler(
@@ -353,9 +368,11 @@ class TestOtherCardsRemainder:
     def test_partial_weight_adds_remainder_key(self):
         """sum(tag_weights) == 0.20 → NO_TAGS_KEY with weight 0.80 is added."""
         calls = []
+
         def capturing_sp(weights, counts, *a, **kw):
             calls.append(dict(weights))
             return list(weights.keys())[0]
+
         with patch("scheduler.soft_pick", side_effect=capturing_sp):
             with _mock_card_utils(all_item=[201]):
                 scheduler.get_card_from_scheduler(
@@ -369,11 +386,13 @@ class TestOtherCardsRemainder:
     def test_no_tags_key_selection_uses_general_pool(self):
         """When soft_pick returns NO_TAGS_KEY, the general pool is used."""
         tag_fetch_calls = []
-        with patch("scheduler.soft_pick",
-                   side_effect=["items", "priority", NO_TAGS_KEY]):
+        with patch(
+            "scheduler.soft_pick", side_effect=["items", "priority", NO_TAGS_KEY]
+        ):
             with patch.multiple(
                 "scheduler.card_utils",
-                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag) or [],
+                get_item_cards_by_tag=lambda tag, **kw: tag_fetch_calls.append(tag)
+                or [],
                 get_all_item_cards=lambda **kw: [501, 502],
                 get_topic_cards_by_tag=lambda tag, **kw: [],
                 get_all_topic_cards=lambda **kw: [],
@@ -383,13 +402,16 @@ class TestOtherCardsRemainder:
                     tag_weights={"statistics": 0.20},
                 )
         assert result.card in [501, 502]
-        assert result.tag == NO_TAGS_KEY   # sentinel returned for debt tracking
-        assert tag_fetch_calls == [], "tag-based fetch must not be called for NO_TAGS_KEY"
+        assert result.tag == NO_TAGS_KEY  # sentinel returned for debt tracking
+        assert tag_fetch_calls == [], (
+            "tag-based fetch must not be called for NO_TAGS_KEY"
+        )
 
     def test_no_tags_key_result_has_correct_type(self):
         """An 'other' pick correctly reports its actual card type."""
-        with patch("scheduler.soft_pick",
-                   side_effect=["topics", "priority", NO_TAGS_KEY]):
+        with patch(
+            "scheduler.soft_pick", side_effect=["topics", "priority", NO_TAGS_KEY]
+        ):
             with _mock_card_utils(all_topic=[101]):
                 result = scheduler.get_card_from_scheduler(
                     use_tags=True,
@@ -404,13 +426,15 @@ class TestOtherCardsRemainder:
 # Forced dimensions (force_card_type / force_mode)
 # ---------------------------------------------------------------------------
 
+
 class TestForcedDimensions:
     def test_force_card_type_topics(self):
         """force_card_type bypasses soft_pick and pins the type."""
         with patch("scheduler.soft_pick", side_effect=["priority"]) as mock_sp:
             with _mock_card_utils(all_topic=[101]):
                 result = scheduler.get_card_from_scheduler(
-                    force_card_type="topics", use_tags=False)
+                    force_card_type="topics", use_tags=False
+                )
         assert result.card == 101
         assert result.card_type == "topics"
         # soft_pick called only once (for mode, not for type)
@@ -420,7 +444,8 @@ class TestForcedDimensions:
         with patch("scheduler.soft_pick", side_effect=["priority"]):
             with _mock_card_utils(all_item=[201]):
                 result = scheduler.get_card_from_scheduler(
-                    force_card_type="items", use_tags=False)
+                    force_card_type="items", use_tags=False
+                )
         assert result.card == 201
         assert result.card_type == "items"
 
@@ -429,8 +454,9 @@ class TestForcedDimensions:
         with patch("scheduler.soft_pick", side_effect=["items"]) as mock_sp:
             with _mock_card_utils(all_item=[201, 202, 203]):
                 result = scheduler.get_card_from_scheduler(
-                    force_mode="priority", use_tags=False)
-        assert result.card == 201   # priority → first card
+                    force_mode="priority", use_tags=False
+                )
+        assert result.card == 201  # priority → first card
         assert result.mode == "priority"
         assert mock_sp.call_count == 1  # only type was soft-picked
 
@@ -439,7 +465,8 @@ class TestForcedDimensions:
         with patch("scheduler.soft_pick") as mock_sp:
             with _mock_card_utils(all_topic=[101]):
                 result = scheduler.get_card_from_scheduler(
-                    force_card_type="topics", force_mode="priority", use_tags=False)
+                    force_card_type="topics", force_mode="priority", use_tags=False
+                )
         mock_sp.assert_not_called()
         assert result.card == 101
         assert result.card_type == "topics"
@@ -450,15 +477,16 @@ class TestForcedDimensions:
 # Priority mode — sort by due date
 # ---------------------------------------------------------------------------
 
+
 class TestPriorityModeSort:
     """Verify that priority mode returns the most overdue card (lowest due value)."""
 
     def _make_db_mock(self, due_map: dict) -> MagicMock:
-        """Build a mock_mw whose col.db.execute returns rows for the given {cid: due}."""
+        """Build a mock_mw whose col.db.all returns rows for the given {cid: due}."""
         mock_mw = MagicMock()
-        rows = list(due_map.items())   # [(cid, due), ...]
+        rows = list(due_map.items())  # [(cid, due), ...]
         mock_mw.col.find_cards.return_value = list(due_map.keys())
-        mock_mw.col.db.execute.return_value.fetchall.return_value = rows
+        mock_mw.col.db.all.return_value = rows
         return mock_mw
 
     def test_priority_returns_most_overdue_card_no_tags(self):
@@ -466,14 +494,14 @@ class TestPriorityModeSort:
         with patch("cards.mw", self._make_db_mock({201: 10, 202: 1, 203: 5})):
             with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
                 result = scheduler.get_card_from_scheduler(use_tags=False)
-        assert result.card == 202   # due=1, most overdue
+        assert result.card == 202  # due=1, most overdue
         assert result.mode == "priority"
 
     def test_priority_returns_most_overdue_card_with_tags(self):
         with patch("cards.mw", self._make_db_mock({101: 3, 102: 1, 103: 8})):
             with _patch_soft_pick(card_type="topics", tag="health", mode="priority"):
                 result = scheduler.get_card_from_scheduler(use_tags=True)
-        assert result.card == 102   # due=1, most overdue
+        assert result.card == 102  # due=1, most overdue
         assert result.mode == "priority"
 
     def test_priority_already_sorted_returns_first(self):
@@ -481,7 +509,7 @@ class TestPriorityModeSort:
         with patch("cards.mw", self._make_db_mock({301: 1, 302: 5, 303: 10})):
             with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
                 result = scheduler.get_card_from_scheduler(use_tags=False)
-        assert result.card == 301   # due=1, already first
+        assert result.card == 301  # due=1, already first
 
     def test_random_mode_uses_choice_not_first_sorted(self):
         """Random mode calls random.choice, not the sorted first card."""
@@ -490,5 +518,5 @@ class TestPriorityModeSort:
                 with patch("scheduler.random.choice", return_value=403) as mock_choice:
                     result = scheduler.get_card_from_scheduler(use_tags=False)
         mock_choice.assert_called_once()
-        assert result.card == 403   # random.choice result, not most overdue (402)
+        assert result.card == 403  # random.choice result, not most overdue (402)
         assert result.mode == "random"
