@@ -173,6 +173,11 @@ export default function PdfViewer() {
   // ── Highlights for the current page ───────────────────────────────────────
   const pageHighlights = highlights.filter(h => h.page === page);
   const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
+  const progressPct = (totalPages > 0 && readPage > 0)
+    ? Math.max(0, Math.min(100, Math.round((readPage / totalPages) * 100)))
+    : 0;
+  const progressSegments = 10;
+  const filledSegments = Math.round((progressPct / 100) * progressSegments);
 
   // ── Snapshot handlers ──────────────────────────────────────────────────────
   const handleSnapStart = useCallback((e) => {
@@ -457,6 +462,38 @@ export default function PdfViewer() {
                 p.1–{readPage}
               </span>
             )}
+          </span>
+          <span
+            title={totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : 'Read progress'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              marginLeft: 8,
+              padding: '2px 6px',
+              borderRadius: 6,
+              background: 'rgba(20,20,20,0.45)',
+              border: '1px solid rgba(120,120,120,0.35)',
+            }}
+          >
+            <span style={{ minWidth: 36, textAlign: 'right', fontWeight: 'bold', fontSize: 12 }}>
+              {progressPct}%
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              {Array.from({ length: progressSegments }).map((_, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    width: 14,
+                    height: 20,
+                    borderRadius: 4,
+                    background: idx < filledSegments ? 'rgba(14,165,233,0.85)' : 'rgba(80,80,80,0.28)',
+                    border: idx < filledSegments ? '1px solid rgba(14,165,233,0.95)' : '1px solid rgba(130,130,130,0.55)',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              ))}
+            </span>
           </span>
         </div>
 
