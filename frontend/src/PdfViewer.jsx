@@ -317,6 +317,21 @@ export default function PdfViewer() {
       window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
     };
 
+    const idxFromShortcut = (e) => {
+      const byCode = {
+        Digit1: 0,
+        Digit2: 1,
+        Digit3: 2,
+        Digit4: 3,
+      };
+      if (Object.prototype.hasOwnProperty.call(byCode, e.code)) {
+        return byCode[e.code];
+      }
+      const n = parseInt(e.key, 10);
+      if (Number.isNaN(n) || n < 1 || n > 4) return null;
+      return n - 1;
+    };
+
     const handler = (e) => {
       // Option/Alt+H — highlight current selection
       if (e.altKey && e.code === 'KeyH') {
@@ -331,19 +346,23 @@ export default function PdfViewer() {
       }
       // Cmd/Ctrl+1–4 — fill Add Card field (+ auto-highlight if enabled)
       if (!(e.metaKey || e.ctrlKey)) return;
-      const n = parseInt(e.key, 10);
-      if (n < 1 || n > 4) return;
+      const idx = idxFromShortcut(e);
+      if (idx === null) return;
+
+      // Prevent browser/app tab-switch behavior (notably Cmd+1 on macOS).
+      e.preventDefault();
+      e.stopPropagation();
+
       const selObj  = window.getSelection();
       const tl = textLayerRef.current;
       if (!tl || !selObj || !selObj.rangeCount || !isSelectionInside(selObj, tl)) return;
       const selText = selectionCleaned(selObj, tl);
       if (!selText) return;
-      e.preventDefault();
       if (autoHighlightRef.current) makeHighlight(selObj);
-      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx: n - 1, text: selText }));
+      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx, text: selText }));
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
 
   // ── Copy cleaned selection from PDF text layer ─────────────────────────────

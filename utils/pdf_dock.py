@@ -14,6 +14,7 @@ import os
 
 from aqt import mw
 from aqt.qt import (
+    QApplication,
     QDockWidget,
     QWidget,
     QVBoxLayout,
@@ -31,7 +32,7 @@ from aqt.qt import (
 from aqt.utils import showInfo, tooltip
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import QEvent, QObject, QUrl
 
 from .pdf_manager import (
     PDF_NOTE_TYPE,
@@ -67,6 +68,8 @@ _shortcuts_registered = False
 _current_pdf_card_id = None
 _current_pdf_filename = None
 _pdf_via_link = False  # True when dock was opened via a cross-reference link
+_pdf_shortcuts = []
+_pdf_key_filter = None
 
 # ── Callback injection (breaks circular import with __init__.py) ──────────────
 
@@ -235,6 +238,73 @@ class _PdfDockPage(QWebEnginePage):
                 pass
 
 
+class _PdfShortcutFilter(QObject):
+    """Capture Cmd/Ctrl+1..4 before WebEngine or menu handling consumes them."""
+
+    def eventFilter(self, watched, event):
+        try:
+            if event.type() not in (
+                QEvent.Type.ShortcutOverride,
+                QEvent.Type.KeyPress,
+            ):
+                return False
+
+            if _pdf_dock is None or not _pdf_dock.isVisible():
+                return False
+
+            mods = event.modifiers()
+            if not (
+                mods
+                & (
+                    Qt.KeyboardModifier.MetaModifier
+                    | Qt.KeyboardModifier.ControlModifier
+                )
+            ):
+                return False
+
+            key_to_idx = {
+                Qt.Key.Key_1: 0,
+                Qt.Key.Key_Exclam: 0,
+                Qt.Key.Key_2: 1,
+                Qt.Key.Key_At: 1,
+                Qt.Key.Key_3: 2,
+                Qt.Key.Key_NumberSign: 2,
+                Qt.Key.Key_4: 3,
+                Qt.Key.Key_Dollar: 3,
+            }
+            idx = key_to_idx.get(event.key())
+            if idx is None:
+                text_to_idx = {
+                    "1": 0,
+                    "!": 0,
+                    "2": 1,
+                    "@": 1,
+                    "3": 2,
+                    "#": 2,
+                    "4": 3,
+                    "$": 3,
+                }
+                idx = text_to_idx.get((event.text() or "")[:1])
+            if idx is None:
+                return False
+
+            event.accept()
+
+            if event.type() == QEvent.Type.ShortcutOverride:
+                return True
+
+            try:
+                _pdf_dock._view.page().runJavaScript(
+                    "window._lastPdfSelection || window.getSelection()?.toString() || ''",
+                    lambda text, i=idx: _on_pdf_selection(i, text),
+                )
+            except Exception:
+                pass
+            return True
+        except Exception:
+            return False
+
+
 # ── Snapshot handler ──────────────────────────────────────────────────────────
 
 
@@ -332,7 +402,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
 
 
 def _build_pdf_dock():
-    global _pdf_dock, _shortcuts_registered
+    global _pdf_dock, _shortcuts_registered, _pdf_key_filter
 
     dock = QDockWidget("PDF Viewer", mw)
     dock.setObjectName("incremento_pdf_dock")
@@ -351,6 +421,16 @@ def _build_pdf_dock():
     dock.setWidget(view)
     dock._view = view
 
+    if _pdf_key_filter is None:
+        _pdf_key_filter = _PdfShortcutFilter(mw)
+
+    app = QApplication.instance()
+    if app is not None:
+        app.installEventFilter(_pdf_key_filter)
+    mw.installEventFilter(_pdf_key_filter)
+    view.installEventFilter(_pdf_key_filter)
+    page.installEventFilter(_pdf_key_filter)
+
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
     # Inject fake pycmd bridge + Cmd+1 keydown listener after every page load
@@ -365,25 +445,24 @@ def _build_pdf_dock():
                 "  var s = window.getSelection();"
                 "  window._lastPdfSelection = s ? s.toString() : '';"
                 "});"
-                # Cmd+1 (metaKey on macOS) — intercept inside the webview
-                # before Chromium/WebEngine consumes it.
+                # Cmd/Ctrl+1 inside the webview.
                 "document.addEventListener('keydown', function(e) {"
-                "  if (e.metaKey && e.key === '1') {"
+                "  var digit1 = (e.code === 'Digit1' || e.key === '1');"
+                "  if ((e.metaKey || e.ctrlKey) && digit1) {"
                 "    e.preventDefault();"
+                "    e.stopPropagation();"
                 "    var sel = window._lastPdfSelection || '';"
                 "    if (sel) { window.pycmd('incremento_pdf_cmd1:' + sel); }"
                 "  }"
-                "});"
+                "}, true);"
             )
 
     view.loadFinished.connect(_on_load_finished)
 
-    # Cmd+1 (Qt-level shortcut, fires for Ctrl+1 on macOS = physical Control key)
+    # Fallback app-level shortcuts in case WebEngine consumes the key event.
     if not _shortcuts_registered:
-        sc = QShortcut(QKeySequence("Ctrl+1"), mw)
-        sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
 
-        def _act():
+        def _act_extract_field1():
             if _pdf_dock is None:
                 return
             try:
@@ -394,7 +473,12 @@ def _build_pdf_dock():
             except Exception:
                 pass
 
-        sc.activated.connect(_act)
+        for seq in ("Ctrl+1", "Meta+1"):
+            sc = QShortcut(QKeySequence(seq), mw)
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            sc.activated.connect(_act_extract_field1)
+            _pdf_shortcuts.append(sc)
+
         globals()["_shortcuts_registered"] = True
 
     _pdf_dock = dock
