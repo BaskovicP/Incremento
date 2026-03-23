@@ -15,7 +15,7 @@ const HL_SOLID = {
   blue:   '#1E90FF',
   pink:   '#FF508C',
 };
-const CONTROLS_HEIGHT = 172;
+const CONTROLS_HEIGHT = 192;
 
 function calculateTextWidth(text, font) {
   const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement('canvas'));
@@ -405,71 +405,32 @@ export default function PdfViewer() {
           <button onClick={() => adjustZoom(1)}>&#43;</button>
         </div>
 
-        {/* ── Row 2: Annotation tools ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6 }}>
-          {Object.keys(HL_COLORS).map(c => (
-            <button
-              key={c}
-              title={`Highlight ${c}`}
-              onClick={() => { hlColorRef.current = c; setHlColor(c); }}
-              style={{
-                background:  HL_SOLID[c],
-                border:      hlColor === c ? '2px solid white' : '2px solid transparent',
-                width: 18, height: 18,
-                borderRadius: 3, padding: 0, cursor: 'pointer',
-              }}
-            />
-          ))}
-          <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
-          <label style={{ fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input
-              type="checkbox"
-              checked={autoHighlight}
-              onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
-            />
-            Highlight when extracting
-          </label>
-          <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
+        {/* ── Row 2: Reading progress ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 6 }}>
           <button
-            title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
+            title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
             style={{
-              background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
-              border:      '1px solid rgba(37,99,235,0.5)',
-              borderRadius: 4, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
-              cursor: 'pointer', padding: '2px 8px', fontSize: 12,
-              fontWeight: snapshotMode ? 'bold' : 'normal',
+              background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
+              border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 4,
+              color:       readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
+              cursor:      'pointer', padding: '2px 8px', fontSize: 12,
+              fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
             }}
-            onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
+            onClick={markRead}
           >
-            &#x1F4F7; Snapshot
+            ✓ Read to here
           </button>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <button
-              title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
-              style={{
-                background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
-                border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 4,
-                color:       readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
-                cursor:      'pointer', padding: '2px 8px', fontSize: 12,
-                fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
-              }}
-              onClick={markRead}
-            >
-              ✓ Read to here
-            </button>
-            {readPage > 0 && (
-              <span style={{ fontSize: 11, color: 'rgb(22,163,74)', fontWeight: 'bold' }}>
-                p.1–{readPage}
-              </span>
-            )}
-          </span>
+          {readPage > 0 && (
+            <span style={{ fontSize: 11, color: 'rgb(22,163,74)', fontWeight: 'bold' }}>
+              p.1–{readPage}
+            </span>
+          )}
           <span
             title={totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : 'Read progress'}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              marginLeft: 8,
               padding: '2px 6px',
               borderRadius: 6,
               background: 'rgba(20,20,20,0.45)',
@@ -497,8 +458,47 @@ export default function PdfViewer() {
           </span>
         </div>
 
-        {/* ── Row 3: Card management ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        {/* ── Row 3: Tools + card management ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {Object.keys(HL_COLORS).map(c => (
+              <button
+                key={c}
+                title={`Highlight ${c}`}
+                onClick={() => { hlColorRef.current = c; setHlColor(c); }}
+                style={{
+                  background:  HL_SOLID[c],
+                  border:      hlColor === c ? '2px solid white' : '2px solid transparent',
+                  width: 18, height: 18,
+                  borderRadius: 3, padding: 0, cursor: 'pointer',
+                }}
+              />
+            ))}
+            <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
+            <label style={{ fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={autoHighlight}
+                onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
+              />
+              Highlight when extracting
+            </label>
+            <button
+              title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
+              style={{
+                background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
+                border:      '1px solid rgba(37,99,235,0.5)',
+                borderRadius: 4, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
+                cursor: 'pointer', padding: '2px 8px', fontSize: 12,
+                fontWeight: snapshotMode ? 'bold' : 'normal',
+              }}
+              onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
+            >
+              &#x1F4F7; Snapshot
+            </button>
+          </span>
+          <span style={{ width: 1, height: 20, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => window.pycmd('incremento_open_add_card')}>
             &#43; Add Card
           </button>
@@ -532,6 +532,7 @@ export default function PdfViewer() {
           >
             ✓ Finished Reading
           </button>
+          </span>
         </div>
 
       </div>
