@@ -5,11 +5,34 @@ import zipfile
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo, tooltip
-from aqt.qt import (QAction, QMenu, QDialog, QVBoxLayout, QHBoxLayout,
-                     QPushButton, QDockWidget, QLabel, QWidget, QLineEdit,
-                     QShortcut, QKeySequence, QApplication, QListWidget, QListWidgetItem,
-                     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-                     QColor, QToolBar, qconnect, QTimer, Qt, QObject, QEvent)
+from aqt.qt import (
+    QAction,
+    QMenu,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QDockWidget,
+    QLabel,
+    QWidget,
+    QLineEdit,
+    QShortcut,
+    QKeySequence,
+    QApplication,
+    QListWidget,
+    QListWidgetItem,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QAbstractItemView,
+    QColor,
+    QToolBar,
+    qconnect,
+    QTimer,
+    Qt,
+    QObject,
+    QEvent,
+)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 
@@ -26,7 +49,7 @@ from .utils import timer_widget as _timer_mod
 from .utils.timer_widget import (
     build_timer_toolbar,
     on_timer_question_shown as _on_timer_question_shown,
-    timer_on_card_answered  as _timer_on_card_answered,
+    timer_on_card_answered as _timer_on_card_answered,
 )
 from .utils import pdf_dock as _pdf_dock_mod
 from .utils import video_dock as _video_dock_mod
@@ -60,7 +83,7 @@ def _on_js_message(handled, message, context) -> tuple:
 
     if message.startswith("incremento_fill_field:"):
         try:
-            data = json.loads(message[len("incremento_fill_field:"):])
+            data = json.loads(message[len("incremento_fill_field:") :])
             _add_card_dock_mod.fill_dock_field(int(data["idx"]), data["text"])
         except Exception:
             pass
@@ -68,11 +91,13 @@ def _on_js_message(handled, message, context) -> tuple:
 
     if message.startswith("incremento_open_card:"):
         try:
-            note_id = int(message[len("incremento_open_card:"):])
+            note_id = int(message[len("incremento_open_card:") :])
             from aqt import dialogs
+
             def _browse(nid=note_id):
                 b = dialogs.open("Browser", mw)
                 b.search_for(f"nid:{nid}")
+
             QTimer.singleShot(0, _browse)
         except Exception:
             pass
@@ -83,12 +108,14 @@ def _on_js_message(handled, message, context) -> tuple:
         if len(parts) == 3:
             try:
                 card_id = int(parts[1])
-                page    = int(parts[2])
-                card    = mw.col.get_card(card_id)
-                note    = mw.col.get_note(card.nid)
+                page = int(parts[2])
+                card = mw.col.get_card(card_id)
+                note = mw.col.get_note(card.nid)
                 filename = note["PDF_Filename"]
-                zoom    = get_zoom(_ADDON_DIR, card_id)
-                _pdf_dock_mod.show_pdf_in_dock(card_id, filename, page, zoom, via_link=True)
+                zoom = get_zoom(_ADDON_DIR, card_id)
+                _pdf_dock_mod.show_pdf_in_dock(
+                    card_id, filename, page, zoom, via_link=True
+                )
             except Exception:
                 pass
         return (True, None)
@@ -97,12 +124,15 @@ def _on_js_message(handled, message, context) -> tuple:
         parts = message.split(":")
         if len(parts) == 3:
             try:
-                card_id  = int(parts[1])
+                card_id = int(parts[1])
                 position = float(parts[2])
-                card     = mw.col.get_card(card_id)
-                note     = mw.col.get_note(card.nid)
-                url      = note["YouTube_URL"]
-                QTimer.singleShot(0, lambda: _video_dock_mod.show_video_in_dock(card_id, url, position))
+                card = mw.col.get_card(card_id)
+                note = mw.col.get_note(card.nid)
+                url = note["YouTube_URL"]
+                QTimer.singleShot(
+                    0,
+                    lambda: _video_dock_mod.show_video_in_dock(card_id, url, position),
+                )
             except Exception:
                 pass
         return (True, None)
@@ -149,6 +179,7 @@ gui_hooks.main_window_did_init.append(_build_timer_toolbar)
 
 
 # ── Option+P quick-jump to PDF ────────────────────────────────────────────────
+
 
 class _PdfQuickJumpDialog(QDialog):
     """Quick Open dialog: fuzzy-search PDF cards by title with priority display."""
@@ -227,7 +258,7 @@ class _PdfQuickJumpDialog(QDialog):
         QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self._open_last)
 
     def _load_entries(self) -> None:
-        all_prios = get_all_priorities(_ADDON_DIR)   # {cid: priority}
+        all_prios = get_all_priorities(_ADDON_DIR)  # {cid: priority}
         try:
             note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}" -is:suspended')
             for nid in note_ids:
@@ -238,7 +269,7 @@ class _PdfQuickJumpDialog(QDialog):
                     if cids:
                         cid = cids[0]
                         page = get_page(_ADDON_DIR, cid)
-                        prio = all_prios.get(cid)   # None = not explicitly set
+                        prio = all_prios.get(cid)  # None = not explicitly set
                         self._all_entries.append((title, cid, page, prio))
                 except Exception:
                     pass
@@ -301,6 +332,7 @@ class _PdfQuickJumpDialog(QDialog):
 
     def _open_random(self) -> None:
         import random as _random
+
         if self._all_entries:
             self._select_cid_and_accept(_random.choice(self._all_entries)[1])
 
@@ -320,7 +352,9 @@ class _PdfQuickJumpDialog(QDialog):
         if obj is self._search and event.type() == QEvent.Type.KeyPress:
             key = event.key()
             if key == Qt.Key.Key_Down:
-                self._table.selectRow(min(self._table.currentRow() + 1, self._table.rowCount() - 1))
+                self._table.selectRow(
+                    min(self._table.currentRow() + 1, self._table.rowCount() - 1)
+                )
                 return True
             if key == Qt.Key.Key_Up:
                 self._table.selectRow(max(self._table.currentRow() - 1, 0))
@@ -349,8 +383,8 @@ def _open_pdf_quick_jump() -> None:
         card = mw.col.get_card(cid)
         note = mw.col.get_note(card.nid)
         filename = note["PDF_Filename"]
-        page      = get_page(_ADDON_DIR, cid)
-        zoom      = get_zoom(_ADDON_DIR, cid)
+        page = get_page(_ADDON_DIR, cid)
+        zoom = get_zoom(_ADDON_DIR, cid)
         read_page = get_read_page(_ADDON_DIR, cid)
         _last_opened_pdf_cid = cid
         _pdf_dock_mod.show_pdf_in_dock(cid, filename, page, zoom, read_page=read_page)
@@ -375,24 +409,58 @@ def showStatsFunction() -> None:
 
 
 def addPdfFunction() -> None:
-    from .utils.pdf_dialog  import AddPdfDialog
+    from .utils.pdf_dialog import AddPdfDialog
     from .utils.pdf_manager import add_pdf_card
+
     dlg = AddPdfDialog(mw)
     if not dlg.exec():
         return
+    entries = dlg.selected_entries()
+    if not entries:
+        return
+
+    created = 0
+    failed: list[tuple[str, str]] = []
     try:
-        add_pdf_card(_ADDON_DIR, mw.col, dlg.pdf_path, dlg.title_text)
-        showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
+        for pdf_path, title in entries:
+            try:
+                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title)
+                created += 1
+            except Exception as e:
+                failed.append((pdf_path, str(e)))
     except Exception as e:
-        showInfo(f"Failed to add PDF card:\n{e}")
+        showInfo(f"Failed to add PDF card(s):\n{e}")
+        return
+
+    if not failed:
+        if created == 1:
+            showInfo(f'PDF card "{entries[0][1]}" added to the Topics deck.')
+        else:
+            showInfo(f"Added {created} PDF cards to the Topics deck.")
+        return
+
+    failed_names = "\n".join(
+        f"- {os.path.basename(path)}: {msg}" for path, msg in failed[:10]
+    )
+    extra = ""
+    if len(failed) > 10:
+        extra = f"\n...and {len(failed) - 10} more failures."
+    showInfo(
+        f"Added {created} PDF card(s). Failed: {len(failed)}\n\n{failed_names}{extra}"
+    )
 
 
 def exportFunction() -> None:
     import datetime
     from aqt.qt import QFileDialog
-    from .utils.db import (get_connection, DB_NAME,
-                           export_priorities_json, export_pdf_progress_json,
-                           export_highlights_json, export_stats_json)
+    from .utils.db import (
+        get_connection,
+        DB_NAME,
+        export_priorities_json,
+        export_pdf_progress_json,
+        export_highlights_json,
+        export_stats_json,
+    )
 
     today = datetime.date.today().isoformat()
     default_name = os.path.expanduser(f"~/incremento_export_{today}.zip")
@@ -407,7 +475,7 @@ def exportFunction() -> None:
         return
 
     user_files_dir = os.path.join(_ADDON_DIR, "user_files")
-    media_dir      = mw.col.media.dir()
+    media_dir = mw.col.media.dir()
 
     # Gather PDF filenames from all Incremento PDF notes
     pdf_filenames = []
@@ -429,17 +497,16 @@ def exportFunction() -> None:
         priority_count = conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0]
 
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-
             # ── data/incremento.db — main SQLite database (direct restore) ──
             db_path = os.path.join(user_files_dir, DB_NAME)
             if os.path.exists(db_path):
                 zf.write(db_path, f"data/{DB_NAME}")
 
             # ── data/*.json — human-readable copies of each dataset ──────────
-            zf.writestr("data/priorities.json",   export_priorities_json(_ADDON_DIR))
+            zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR))
             zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR))
-            zf.writestr("data/highlights.json",   export_highlights_json(_ADDON_DIR))
-            zf.writestr("data/stats.json",        export_stats_json(_ADDON_DIR))
+            zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR))
+            zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR))
 
             # ── config.json — scheduler settings ─────────────────────────────
             config = mw.addonManager.getConfig(__name__) or {}
@@ -460,32 +527,37 @@ def exportFunction() -> None:
             manifest = {
                 "export_date": today,
                 "addon": "Incremento",
-                "anki_version": getattr(mw.pm, "meta", {}).get("ankiVersion", "unknown"),
+                "anki_version": getattr(mw.pm, "meta", {}).get(
+                    "ankiVersion", "unknown"
+                ),
                 "counts": {
-                    "pdf_notes":     len(pdf_filenames),
+                    "pdf_notes": len(pdf_filenames),
                     "pdfs_exported": pdf_count,
-                    "pdfs_missing":  len(pdf_missing),
-                    "priorities":    priority_count,
+                    "pdfs_missing": len(pdf_missing),
+                    "priorities": priority_count,
                 },
                 "files": {
-                    f"data/{DB_NAME}":          "All user data (SQLite, for direct restore)",
-                    "data/priorities.json":     "Card priorities (human-readable copy)",
-                    "data/pdf_progress.json":   "PDF reading positions and zoom levels",
-                    "data/highlights.json":     "PDF text highlights",
-                    "data/stats.json":          "Session, daily and lifetime statistics",
-                    "config.json":              "Scheduler and session settings",
-                    "pdfs/":                    "PDF files referenced by Incremento cards",
+                    f"data/{DB_NAME}": "All user data (SQLite, for direct restore)",
+                    "data/priorities.json": "Card priorities (human-readable copy)",
+                    "data/pdf_progress.json": "PDF reading positions and zoom levels",
+                    "data/highlights.json": "PDF text highlights",
+                    "data/stats.json": "Session, daily and lifetime statistics",
+                    "config.json": "Scheduler and session settings",
+                    "pdfs/": "PDF files referenced by Incremento cards",
                 },
             }
             if pdf_missing:
                 manifest["pdfs_missing_filenames"] = pdf_missing
 
-            zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+            zf.writestr(
+                "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
+            )
 
         # ── Success dialog ────────────────────────────────────────────────────
         missing_note = (
             f"\n\n  ⚠ {len(pdf_missing)} PDF file(s) not found in media folder"
-            if pdf_missing else ""
+            if pdf_missing
+            else ""
         )
         showInfo(
             f"Export complete.\n\n"
@@ -530,8 +602,11 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
     default_deck = parent_deck["name"] if parent_deck else ""
 
     # Parent card link (appended to field 0 of the new card)
-    parent_label = (parent_note.fields[0][:60].strip()
-                    if parent_note.fields else f"Card {parent_card.id}")
+    parent_label = (
+        parent_note.fields[0][:60].strip()
+        if parent_note.fields
+        else f"Card {parent_card.id}"
+    )
     parent_link = (
         f'<a href="#" onclick="pycmd(\'incremento_open_card:{parent_card.id}\')" '
         f'style="font-size:0.85em;color:#888;">↩ {parent_label}</a>'
@@ -557,7 +632,8 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         deck = mw.col.decks.by_name(dlg.deck_name)
         deck_id = (
             mw.col.decks.add_normal_deck_with_name(dlg.deck_name).id
-            if deck is None else deck["id"]
+            if deck is None
+            else deck["id"]
         )
         note = mw.col.new_note(model)
         for fname, val in dlg.field_values.items():
@@ -584,8 +660,7 @@ def _open_priority_dialog() -> None:
     if note.fields:
         label_text = note.fields[0][:80].strip()
 
-    dlg = PriorityDialog(current_priority=current,
-                         card_label=label_text, parent=mw)
+    dlg = PriorityDialog(current_priority=current, card_label=label_text, parent=mw)
     if dlg.exec():
         set_priority(_ADDON_DIR, card.id, dlg.priority)
         tooltip(f"Priority set to {dlg.priority:.0f}")
@@ -604,6 +679,7 @@ def addVideoFunction() -> None:
     """Incremento -> Add Content -> YouTube Video"""
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
     from .utils.add_video_dialog import AddVideoDialog
+
     dlg = AddVideoDialog(deck_names, default_deck="Topics", parent=mw)
     if not dlg.exec():
         return
@@ -626,6 +702,7 @@ def addVideoFunction() -> None:
 def addWebpageFunction() -> None:
     from .utils.webpage_dialog import WebpageToPdfDialog
     from .utils.pdf_manager import add_pdf_card
+
     dlg = WebpageToPdfDialog(mw)
     if not dlg.exec():
         return
@@ -670,7 +747,8 @@ _menu.addSeparator()
 
 _timerToggleAction = QAction("Show Focus Timer", mw)
 _timerToggleAction.setCheckable(True)
-_timerToggleAction.setChecked(True)   # default; corrected by _build_timer_toolbar
+_timerToggleAction.setChecked(True)  # default; corrected by _build_timer_toolbar
+
 
 def _on_timer_toggle(checked: bool) -> None:
     if _timer_mod._timer_toolbar is not None:
@@ -678,6 +756,7 @@ def _on_timer_toggle(checked: bool) -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
     cfg["show_timer"] = checked
     mw.addonManager.writeConfig(__name__, cfg)
+
 
 qconnect(_timerToggleAction.triggered, _on_timer_toggle)
 _menu.addAction(_timerToggleAction)
