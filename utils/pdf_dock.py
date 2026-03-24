@@ -76,6 +76,8 @@ _pdf_key_filter = None
 _cb_open_add_card_dock = None  # () -> None
 _cb_fill_dock_field = None  # (idx: int, text: str) -> None
 _cb_get_add_card_dock = None  # () -> QDockWidget | None
+_cb_pdf_view_started = None  # (card_id: int) -> None
+_cb_pdf_view_stopped = None  # (card_id: int | None) -> None
 
 
 def register_add_card_callbacks(open_fn, fill_fn, get_dock_fn) -> None:
@@ -89,6 +91,12 @@ def register_add_card_callbacks(open_fn, fill_fn, get_dock_fn) -> None:
     _cb_open_add_card_dock = open_fn
     _cb_fill_dock_field = fill_fn
     _cb_get_add_card_dock = get_dock_fn
+
+
+def register_pdf_view_callbacks(start_fn, stop_fn) -> None:
+    global _cb_pdf_view_started, _cb_pdf_view_stopped
+    _cb_pdf_view_started = start_fn
+    _cb_pdf_view_stopped = stop_fn
 
 
 # ── Citation helper (called by _fill_dock_field in __init__.py) ───────────────
@@ -432,6 +440,17 @@ def _build_pdf_dock():
 
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
+    def _on_visibility_changed(visible: bool) -> None:
+        if visible:
+            return
+        if _cb_pdf_view_stopped:
+            try:
+                _cb_pdf_view_stopped(_current_pdf_card_id)
+            except Exception:
+                pass
+
+    dock.visibilityChanged.connect(_on_visibility_changed)
+
     # Inject fake pycmd bridge + Cmd+1 keydown listener after every page load
     def _on_load_finished(ok):
         if ok:
@@ -541,6 +560,12 @@ def show_pdf_in_dock(
     _pdf_dock.show()
     _pdf_dock.raise_()
 
+    if _cb_pdf_view_started:
+        try:
+            _cb_pdf_view_started(card_id)
+        except Exception:
+            pass
+
     pdf_file_url = QUrl.fromLocalFile(
         os.path.join(mw.col.media.dir(), filename)
     ).toString()
@@ -588,6 +613,8 @@ def on_pdf_question_shown(card) -> None:
             if _pdf_dock is not None:
                 try:
                     _pdf_dock.hide()
+                    if _cb_pdf_view_stopped:
+                        _cb_pdf_view_stopped(_current_pdf_card_id)
                 except RuntimeError:
                     _pdf_dock = None
             return
@@ -608,6 +635,8 @@ def on_pdf_reviewer_will_end() -> None:
     if _pdf_dock is not None:
         try:
             _pdf_dock.hide()
+            if _cb_pdf_view_stopped:
+                _cb_pdf_view_stopped(_current_pdf_card_id)
         except RuntimeError:
             _pdf_dock = None
 

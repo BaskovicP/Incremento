@@ -311,7 +311,7 @@ class StatsDialog(QDialog):
         time_lbl.setStyleSheet("padding: 0 0 4px 0;")
         self._clayout.addWidget(time_lbl)
 
-        if total == 0:
+        if total == 0 and total_seconds <= 0:
             hint = (
                 "Start a learning session to record data here."
                 if scope == "session"

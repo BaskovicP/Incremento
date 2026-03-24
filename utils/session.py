@@ -13,6 +13,7 @@ Public API:
 
 import copy
 import os
+import time
 import types
 
 from aqt import mw, gui_hooks
@@ -53,8 +54,18 @@ def get_session_times() -> dict:
     return _session_times
 
 
-def _review_seconds(reviewer, card) -> float:
-    """Best-effort extraction of the just-finished review duration in seconds."""
+def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> float:
+    """Best-effort extraction of review duration in seconds.
+
+    Prefer a pre-measured duration (question shown -> answer shown / exit),
+    then fall back to Anki's time_taken API.
+    """
+    if measured_seconds is not None:
+        try:
+            return max(0.0, float(measured_seconds))
+        except Exception:
+            pass
+
     try:
         if hasattr(card, "time_taken"):
             try:
@@ -296,6 +307,30 @@ def learnFunction() -> None:
     # Hook: record each card to daily/lifetime the first time it is answered.
     # This ensures only actually reviewed cards count — not just scheduled ones.
     _reviewed_ids: set[int] = set()
+    _question_started_at: dict[int, float] = {}
+    _measured_review_seconds: dict[int, float] = {}
+    _last_shown_cid: int | None = None
+
+    def _on_card_shown(card) -> None:
+        nonlocal _last_shown_cid
+        try:
+            _last_shown_cid = card.id
+            _question_started_at[card.id] = time.monotonic()
+        except Exception:
+            pass
+
+    def _on_answer_shown(card) -> None:
+        """Freeze duration at answer reveal (question -> answer shown)."""
+        try:
+            cid = card.id
+            if cid in _measured_review_seconds:
+                return
+            started = _question_started_at.get(cid)
+            if started is None:
+                return
+            _measured_review_seconds[cid] = max(0.0, time.monotonic() - started)
+        except Exception:
+            pass
 
     def _on_card_answered(reviewer, card, ease: int) -> None:
         global _session_times
@@ -312,19 +347,97 @@ def learnFunction() -> None:
                 card_type=meta["card_type"],
                 tag=tag,
                 mode=meta["mode"],
-                review_seconds=_review_seconds(reviewer, card),
+                review_seconds=_review_seconds(
+                    reviewer,
+                    card,
+                    measured_seconds=_measured_review_seconds.pop(cid, None),
+                ),
             )
             stats.record(fake, cfg.scheduler_scope)
             _session_times = copy.deepcopy(stats.session_time)
+            _question_started_at.pop(cid, None)
         except Exception as e:
             print(f"[Incremento] _on_card_answered error: {e}")
 
+    gui_hooks.reviewer_did_show_question.append(_on_card_shown)
+    gui_hooks.reviewer_did_show_answer.append(_on_answer_shown)
     gui_hooks.reviewer_did_answer_card.append(_on_card_answered)
 
-    # One-shot hook: clean up when the reviewer is left.
+    _session_closed = False
+
+    def _flush_unanswered_time() -> None:
+        global _session_times
+        nonlocal _session_closed
+        if _session_closed:
+            return
+        _session_closed = True
+
+        # If user exits while looking at a question and no answer was shown,
+        # freeze elapsed time for that card at exit.
+        cid = None
+        try:
+            cur = getattr(getattr(mw, "reviewer", None), "card", None)
+            if cur is not None:
+                cid = cur.id
+            if cid is None:
+                cid = _last_shown_cid
+            if cid is None and _question_started_at:
+                # Last fallback when reviewer.card is already cleared.
+                cid = next(reversed(_question_started_at))
+            if cid is not None and cid not in _measured_review_seconds:
+                started = _question_started_at.get(cid)
+                if started is not None:
+                    _measured_review_seconds[cid] = max(0.0, time.monotonic() - started)
+        except Exception:
+            pass
+
+        # Freeze any remaining in-flight cards as a final fallback.
+        now = time.monotonic()
+        for pending_cid, started in list(_question_started_at.items()):
+            if pending_cid not in _measured_review_seconds:
+                _measured_review_seconds[pending_cid] = max(0.0, now - started)
+
+        # Persist elapsed time for any unreviewed picked cards as time-only.
+        try:
+            for pending_cid, seconds in list(_measured_review_seconds.items()):
+                if pending_cid in _reviewed_ids:
+                    continue
+                if pending_cid not in _picked_meta:
+                    continue
+                meta = _picked_meta[pending_cid]
+                tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
+                fake = types.SimpleNamespace(
+                    card=pending_cid,
+                    card_type=meta["card_type"],
+                    tag=tag,
+                    mode=meta["mode"],
+                )
+                stats.record_time_only(fake, seconds)
+
+            _session_times = copy.deepcopy(stats.session_time)
+        except Exception as e:
+            print(f"[Incremento] _on_reviewer_end time-only stats error: {e}")
+
+    # One-shot hooks: clean up when reviewer is left.
     def _on_reviewer_end() -> None:
-        gui_hooks.reviewer_will_end.remove(_on_reviewer_end)
-        gui_hooks.reviewer_did_answer_card.remove(_on_card_answered)
+        _flush_unanswered_time()
+
+        for hook_list, fn in (
+            (gui_hooks.reviewer_will_end, _on_reviewer_end),
+            (gui_hooks.state_did_change, _on_state_did_change),
+            (gui_hooks.reviewer_did_show_question, _on_card_shown),
+            (gui_hooks.reviewer_did_show_answer, _on_answer_shown),
+            (gui_hooks.reviewer_did_answer_card, _on_card_answered),
+        ):
+            try:
+                hook_list.remove(fn)
+            except ValueError:
+                pass
+
+    def _on_state_did_change(new_state: str, old_state: str) -> None:
+        if old_state == "review" and new_state != "review":
+            _on_reviewer_end()
 
     gui_hooks.reviewer_will_end.append(_on_reviewer_end)
+    gui_hooks.state_did_change.append(_on_state_did_change)
     mw.moveToState("review")

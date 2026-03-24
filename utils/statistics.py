@@ -253,6 +253,16 @@ class StatsManager:
             if result.tag is not None:
                 t["tags"][result.tag] = t["tags"].get(result.tag, 0.0) + seconds
 
+    def record_time_only(self, result, seconds: float) -> None:
+        """Record time without incrementing card/mode/tag counts."""
+        if result.card is None:
+            return
+        seconds = max(0.0, float(seconds or 0.0))
+        if seconds <= 0:
+            return
+        self._record_time(result, seconds)
+        self._save()
+
     def _save(self) -> None:
         stats = {
             "daily": {

@@ -55,6 +55,7 @@ from .utils import pdf_dock as _pdf_dock_mod
 from .utils import video_dock as _video_dock_mod
 from .utils import web_dock as _web_dock_mod
 from .utils import add_card_dock as _add_card_dock_mod
+from .utils import review_time_tracker as _review_time_mod
 from .utils.session import (
     learnFunction,
     reset_session_counts,
@@ -97,6 +98,10 @@ _pdf_dock_mod.register_add_card_callbacks(
     _add_card_dock_mod.open_add_card_dock,
     _add_card_dock_mod.fill_dock_field,
     _add_card_dock_mod.get_add_card_dock,
+)
+_pdf_dock_mod.register_pdf_view_callbacks(
+    _review_time_mod.on_pdf_view_started,
+    _review_time_mod.on_pdf_view_stopped,
 )
 
 
@@ -170,9 +175,12 @@ def _on_js_message(handled, message, context) -> tuple:
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
 
 gui_hooks.reviewer_did_show_question.append(_on_timer_question_shown)
+gui_hooks.reviewer_did_show_question.append(_review_time_mod.on_reviewer_question_shown)
 gui_hooks.reviewer_did_show_question.append(_pdf_dock_mod.on_pdf_question_shown)
 gui_hooks.reviewer_did_show_question.append(_video_dock_mod.on_video_question_shown)
 gui_hooks.reviewer_did_show_question.append(_web_dock_mod.on_web_question_shown)
+gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_shown)
+gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
@@ -430,11 +438,22 @@ _register_shortcut_action("quick_open_pdf", _pdf_jump_shortcut)
 
 
 def showStatsFunction() -> None:
+    base_time = get_session_times() or {"type": {}, "tags": {}}
+    runtime_time = _review_time_mod.get_runtime_session_time() or {
+        "type": {},
+        "tags": {},
+    }
+    merged_time = {"type": {}, "tags": {}}
+    for key in ("type", "tags"):
+        for src in (base_time.get(key, {}), runtime_time.get(key, {})):
+            for name, value in src.items():
+                merged_time[key][name] = merged_time[key].get(name, 0.0) + float(value)
+
     cfg = load_scheduler_config()
     dlg = StatsDialog(
         addon_dir=os.path.dirname(__file__),
         session_counts=get_session_counts(),
-        session_time=get_session_times(),
+        session_time=merged_time,
         day_end_time=cfg.day_end_time,
         parent=mw,
     )
