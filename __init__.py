@@ -56,6 +56,7 @@ from .utils.video_manager import extract_video_id, add_video_card
 from .utils.priority_manager import get_priority, set_priority, get_all_priorities
 from .utils.priority_dialog import PriorityDialog
 from .utils import timer_widget as _timer_mod
+from .utils.topic_scheduler import on_topic_card_answered as _on_topic_card_answered
 from .utils.timer_widget import (
     build_timer_toolbar,
     on_timer_question_shown as _on_timer_question_shown,
@@ -193,6 +194,7 @@ gui_hooks.reviewer_did_show_question.append(_web_dock_mod.on_web_question_shown)
 gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_shown)
 gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
+gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
@@ -1023,6 +1025,9 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
 
 def _open_priority_dialog() -> None:
     """Open the priority assignment dialog for the currently reviewed card."""
+    from .utils.topic_scheduler import is_topic_card
+    from .utils.db import get_topic_schedule, set_topic_schedule
+
     reviewer = getattr(mw, "reviewer", None)
     card = getattr(reviewer, "card", None) if reviewer else None
     if card is None:
@@ -1030,16 +1035,28 @@ def _open_priority_dialog() -> None:
         return
 
     current = get_priority(_ADDON_DIR, card.id)
-    # Build a short label: first 60 chars of the front field
     note = card.note()
-    label_text = ""
-    if note.fields:
-        label_text = note.fields[0][:80].strip()
+    label_text = note.fields[0][:80].strip() if note.fields else ""
 
-    dlg = PriorityDialog(current_priority=current, card_label=label_text, parent=mw)
+    a_factor = None
+    interval = None
+    if is_topic_card(card):
+        a_factor, interval = get_topic_schedule(_ADDON_DIR, card.id)
+
+    dlg = PriorityDialog(
+        current_priority=current,
+        card_label=label_text,
+        current_a_factor=a_factor,
+        current_interval=interval,
+        parent=mw,
+    )
     if dlg.exec():
         set_priority(_ADDON_DIR, card.id, dlg.priority)
-        tooltip(f"Priority set to {dlg.priority:.0f}")
+        msg = f"Priority set to {dlg.priority:.0f}"
+        if dlg.a_factor is not None:
+            set_topic_schedule(_ADDON_DIR, card.id, dlg.a_factor, interval or 1)
+            msg += f"  ·  A-Factor {dlg.a_factor:.3f}"
+        tooltip(msg)
 
 
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)

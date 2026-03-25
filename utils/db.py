@@ -106,6 +106,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_pti_card_page
             ON pdf_text_index (card_id, page);
+
+        CREATE TABLE IF NOT EXISTS topic_schedule (
+            card_id  INTEGER PRIMARY KEY,
+            a_factor REAL    NOT NULL DEFAULT 3.5,
+            interval INTEGER NOT NULL DEFAULT 1
+        );
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
@@ -268,3 +274,32 @@ def search_pdf_text_index(
         if len(out) >= limit:
             break
     return out
+
+
+# ── Topic A-factor schedule ───────────────────────────────────────────────────
+
+
+def get_topic_schedule(addon_dir: str, card_id: int) -> tuple[float, int]:
+    """Return (a_factor, last_interval) for a topic card, or defaults if unseen."""
+    row = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT a_factor, interval FROM topic_schedule WHERE card_id = ?",
+            (card_id,),
+        )
+        .fetchone()
+    )
+    return (row[0], row[1]) if row else (3.5, 1)
+
+
+def set_topic_schedule(
+    addon_dir: str, card_id: int, a_factor: float, interval: int
+) -> None:
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO topic_schedule (card_id, a_factor, interval) VALUES (?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "a_factor = excluded.a_factor, interval = excluded.interval",
+        (card_id, round(float(a_factor), 3), int(interval)),
+    )
+    conn.commit()

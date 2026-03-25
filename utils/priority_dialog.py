@@ -80,17 +80,26 @@ class PriorityDialog(QDialog):
     """Show a non-linear priority slider for a single card.
 
     Args:
-        current_priority: existing value (0.0–100.0, default 50.0)
-        card_label: short description shown in the title bar
+        current_priority:  existing value (0.0–100.0, default 50.0)
+        card_label:        short description shown at the top
+        current_a_factor:  if provided (topic cards only), show A-factor spinbox
+        current_interval:  last scheduled interval in days (displayed read-only)
     """
 
-    def __init__(self, current_priority: float = 50.0,
-                 card_label: str = "", parent=None):
+    def __init__(
+        self,
+        current_priority: float = 50.0,
+        card_label: str = "",
+        current_a_factor: float | None = None,
+        current_interval: int | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Set Priority")
-        self.setMinimumWidth(360)
+        self.setMinimumWidth(380)
 
         self._building = False  # guard against recursive signal loops
+        self._a_spin: QDoubleSpinBox | None = None
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -130,9 +139,9 @@ class PriorityDialog(QDialog):
         scale_row.addWidget(QLabel("100"))
         layout.addLayout(scale_row)
 
-        # Spinbox
+        # Priority spinbox
         spin_row = QHBoxLayout()
-        spin_row.addWidget(QLabel("Priority value:"))
+        spin_row.addWidget(QLabel("Priority:"))
         self._spin = QDoubleSpinBox()
         self._spin.setRange(0.0, 100.0)
         self._spin.setDecimals(4)
@@ -141,6 +150,29 @@ class PriorityDialog(QDialog):
         spin_row.addWidget(self._spin)
         spin_row.addStretch()
         layout.addLayout(spin_row)
+
+        # A-factor row — only for topic cards
+        if current_a_factor is not None:
+            af_row = QHBoxLayout()
+            af_row.addWidget(QLabel("A-Factor:"))
+            self._a_spin = QDoubleSpinBox()
+            self._a_spin.setRange(1.1, 100.0)
+            self._a_spin.setDecimals(3)
+            self._a_spin.setSingleStep(0.1)
+            self._a_spin.setFixedWidth(110)
+            self._a_spin.setValue(current_a_factor)
+            af_row.addWidget(self._a_spin)
+            if current_interval is not None:
+                af_row.addSpacing(16)
+                af_row.addWidget(QLabel(f"Last interval: {current_interval} d"))
+            af_row.addStretch()
+            layout.addLayout(af_row)
+            af_hint = QLabel(
+                "<small><i>Lower A-Factor → shorter intervals (important topic).<br>"
+                "Higher A-Factor → longer intervals (less urgent).</i></small>"
+            )
+            af_hint.setWordWrap(True)
+            layout.addWidget(af_hint)
 
         # OK / Cancel
         btn_row = QHBoxLayout()
@@ -197,3 +229,8 @@ class PriorityDialog(QDialog):
     def priority(self) -> float:
         """The selected priority value (0.0–100.0, 4 decimal places)."""
         return round(self._spin.value(), 4)
+
+    @property
+    def a_factor(self) -> float | None:
+        """The selected A-factor, or None if the field was not shown."""
+        return round(self._a_spin.value(), 3) if self._a_spin is not None else None
