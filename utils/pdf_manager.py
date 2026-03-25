@@ -1,12 +1,63 @@
+import hashlib
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
 from PyQt6.QtPdf import QPdfDocument
 
 try:
-    from .db import get_connection
+    from .db import get_connection, replace_pdf_text_index
 except ImportError:
-    from db import get_connection  # test environment (utils/ on sys.path)
+    from db import get_connection, replace_pdf_text_index  # test environment
+
+
+def get_pdf_dir() -> str:
+    """Return (and create) the addon's user_files/pdfs/ folder.
+
+    Stored inside the addon directory — outside Anki's media collection
+    so PDFs are never uploaded to AnkiWeb.
+    """
+    addon_dir = os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    )
+    pdf_dir = os.path.join(addon_dir, "user_files", "pdfs")
+    os.makedirs(pdf_dir, exist_ok=True)
+    return pdf_dir
+
+
+def _copy_to_pdf_dir(pdf_path: str) -> str:
+    """Copy *pdf_path* into the profile PDF dir; return the stored filename.
+
+    If a file with the same name already exists and has identical content the
+    existing file is reused.  If the names collide but the content differs a
+    numeric suffix is appended (e.g. ``report (1).pdf``).
+    """
+    pdf_dir = get_pdf_dir()
+    dest_name = os.path.basename(pdf_path)
+    dest_path = os.path.join(pdf_dir, dest_name)
+
+    def _md5(path: str) -> str:
+        h = hashlib.md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    if os.path.exists(dest_path):
+        if _md5(pdf_path) == _md5(dest_path):
+            return dest_name
+        stem, ext = os.path.splitext(dest_name)
+        n = 1
+        while True:
+            dest_name = f"{stem} ({n}){ext}"
+            dest_path = os.path.join(pdf_dir, dest_name)
+            if not os.path.exists(dest_path):
+                break
+            n += 1
+
+    shutil.copy2(pdf_path, dest_path)
+    return dest_name
 
 PDF_NOTE_TYPE = "Incremento PDF"
 
@@ -89,24 +140,67 @@ def set_read_page(addon_dir: str, card_id: int, read_page: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def extract_pdf_text(pdf_path: str) -> str:
-    """Extract all text from a PDF using Qt's QPdfDocument. Returns empty string on failure."""
+def extract_pdf_pages_text(pdf_path: str) -> list[str]:
+    """Extract per-page text from a PDF.
+
+    Primary extractor: Qt QPdfDocument page text.
+    Fallback extractor: pdftotext split by form-feed pages.
+    """
     doc = QPdfDocument(None)
     try:
         if doc.load(pdf_path) != QPdfDocument.Status.Ready:
-            return ""
+            raise RuntimeError("QPdfDocument not ready")
         pages = []
         for i in range(doc.pageCount()):
             sel = doc.getAllText(i)
             if sel.isValid():
                 t = sel.text().strip()
-                if t:
-                    pages.append(t)
-        return "\n\n".join(pages)
+                pages.append(t)
+            else:
+                pages.append("")
+        if any(pages):
+            return pages
     except Exception:
-        return ""
+        pass
     finally:
         doc.close()
+
+    # Fallback to poppler's pdftotext if installed.
+    # Check common install locations in addition to PATH, since Anki's
+    # subprocess environment may not include /opt/homebrew/bin.
+    _candidates = [
+        shutil.which("pdftotext"),
+        "/opt/homebrew/bin/pdftotext",
+        "/usr/local/bin/pdftotext",
+        "/usr/bin/pdftotext",
+    ]
+    exe = next((c for c in _candidates if c and os.path.isfile(c)), None)
+    if exe:
+        try:
+            proc = subprocess.run(
+                [exe, "-layout", "-enc", "UTF-8", pdf_path, "-"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode == 0:
+                text = proc.stdout or ""
+                parts = [p.strip() for p in text.split("\f")]
+                if parts:
+                    while parts and not parts[-1]:
+                        parts.pop()
+                    return parts
+        except Exception:
+            pass
+
+    return []
+
+
+def extract_pdf_text(pdf_path: str) -> str:
+    pages = extract_pdf_pages_text(pdf_path)
+    return "\n\n".join([p for p in pages if p]).strip()
+
+    return ""
 
 
 def ensure_pdf_note_type(col) -> None:
@@ -158,8 +252,8 @@ def add_pdf_card(
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
 
-    # Copy file to Anki media folder; returns (possibly deduplicated) filename
-    media_filename = col.media.add_file(pdf_path)
+    # Copy file to profile-local PDF dir (not Anki media, so it won't sync)
+    media_filename = _copy_to_pdf_dir(pdf_path)
 
     deck = col.decks.by_name(deck_name)
     if deck is None:
@@ -171,7 +265,8 @@ def add_pdf_card(
     note = col.new_note(model)
     note["Title"] = title
     note["PDF_Filename"] = media_filename
-    note["Content"] = extract_pdf_text(pdf_path)
+    page_texts = extract_pdf_pages_text(pdf_path)
+    note["Content"] = "\n\n".join([p for p in page_texts if p]).strip()
     for tag in tags or []:
         if not tag:
             continue
@@ -183,4 +278,9 @@ def add_pdf_card(
     col.add_note(note, deck_id)
 
     # Return the id of the first (and only) card created
-    return col.find_cards(f"nid:{note.id}")[0]
+    cid = col.find_cards(f"nid:{note.id}")[0]
+    try:
+        replace_pdf_text_index(addon_dir, cid, page_texts)
+    except Exception:
+        pass
+    return cid

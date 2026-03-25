@@ -37,6 +37,7 @@ from PyQt6.QtCore import QEvent, QObject, QUrl
 from .pdf_manager import (
     PDF_NOTE_TYPE,
     get_page,
+    get_pdf_dir,
     get_zoom,
     get_read_page,
     set_page,
@@ -542,7 +543,7 @@ def trigger_viewer_action(action: str) -> None:
 
 
 def show_pdf_in_dock(
-    card_id, filename, page, zoom=1.0, via_link=False, read_page=0
+    card_id, filename, page, zoom=1.0, via_link=False, read_page=0, search_query=""
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link
     _current_pdf_card_id = card_id
@@ -567,7 +568,7 @@ def show_pdf_in_dock(
             pass
 
     pdf_file_url = QUrl.fromLocalFile(
-        os.path.join(mw.col.media.dir(), filename)
+        os.path.join(get_pdf_dir(), filename)
     ).toString()
 
     hls = load_highlights(_ADDON_DIR, card_id)
@@ -576,10 +577,10 @@ def show_pdf_in_dock(
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}}};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}}};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}));"
     )
 
     current = _pdf_dock._view.url().toString()

@@ -7,6 +7,11 @@ user_files/*.db-shm
 user_files/*.db-wal
 user_files/*.json
 user_files/*.tmp
+user_files/pdfs/
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
 
 # ── Python ──────────────────────────────────────────────────────────────────
 __pycache__/

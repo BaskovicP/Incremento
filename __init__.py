@@ -2,6 +2,8 @@ import json
 import os
 import sys
 import zipfile
+from html import escape
+from urllib.parse import quote, urlparse, parse_qs
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo, tooltip
@@ -16,11 +18,13 @@ from aqt.qt import (
     QLabel,
     QWidget,
     QLineEdit,
+    QCheckBox,
     QShortcut,
     QKeySequence,
     QApplication,
     QListWidget,
     QListWidgetItem,
+    QTextBrowser,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
@@ -41,7 +45,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
 
 from .utils.stats_dialog import StatsDialog
 from .utils.scheduler_config import load_scheduler_config
-from .utils.pdf_manager import PDF_NOTE_TYPE, get_page, get_zoom, get_read_page
+from .utils.pdf_manager import (
+    PDF_NOTE_TYPE,
+    get_page,
+    get_zoom,
+    get_read_page,
+    extract_pdf_pages_text,
+)
 from .utils.video_manager import extract_video_id, add_video_card
 from .utils.priority_manager import get_priority, set_priority, get_all_priorities
 from .utils.priority_dialog import PriorityDialog
@@ -56,6 +66,7 @@ from .utils import video_dock as _video_dock_mod
 from .utils import web_dock as _web_dock_mod
 from .utils import add_card_dock as _add_card_dock_mod
 from .utils import review_time_tracker as _review_time_mod
+from .utils.db import get_connection, replace_pdf_text_index, search_pdf_text_index
 from .utils.session import (
     learnFunction,
     reset_session_counts,
@@ -415,16 +426,327 @@ def _open_pdf_quick_jump() -> None:
     if cid is None:
         return
     try:
-        card = mw.col.get_card(cid)
-        note = mw.col.get_note(card.nid)
-        filename = note["PDF_Filename"]
-        page = get_page(_ADDON_DIR, cid)
-        zoom = get_zoom(_ADDON_DIR, cid)
-        read_page = get_read_page(_ADDON_DIR, cid)
-        _last_opened_pdf_cid = cid
-        _pdf_dock_mod.show_pdf_in_dock(cid, filename, page, zoom, read_page=read_page)
+        _open_pdf_card(cid)
     except Exception as e:
         showInfo(f"Could not open PDF:\n{e}")
+
+
+def _open_pdf_card(
+    card_id: int, page: int | None = None, search_query: str = ""
+) -> None:
+    global _last_opened_pdf_cid
+    card = mw.col.get_card(card_id)
+    note = mw.col.get_note(card.nid)
+    filename = note["PDF_Filename"]
+    open_page = page if page is not None else get_page(_ADDON_DIR, card_id)
+    zoom = get_zoom(_ADDON_DIR, card_id)
+    read_page = get_read_page(_ADDON_DIR, card_id)
+    _last_opened_pdf_cid = card_id
+    _pdf_dock_mod.show_pdf_in_dock(
+        card_id,
+        filename,
+        open_page,
+        zoom,
+        read_page=read_page,
+        search_query=search_query,
+    )
+
+
+class _SearchAllDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Search ALL")
+        self.resize(900, 620)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search PDFs and cards...")
+        layout.addWidget(self._search)
+
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(16)
+        self._cb_highlights = QCheckBox("PDF Highlights")
+        self._cb_sources = QCheckBox("PDF Sources")
+        self._cb_content = QCheckBox("PDF Content")
+        self._cb_cards = QCheckBox("Cards")
+        for cb in (self._cb_highlights, self._cb_sources, self._cb_content, self._cb_cards):
+            cb.setChecked(True)
+            cb.toggled.connect(lambda _: self._refresh(self._search.text()))
+            filter_row.addWidget(cb)
+        filter_row.addStretch()
+        layout.addLayout(filter_row)
+
+        self._results = QTextBrowser()
+        self._results.setOpenLinks(False)
+        self._results.anchorClicked.connect(self._open_link)
+        layout.addWidget(self._results, stretch=1)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+
+        self._search.textChanged.connect(self._refresh)
+        self._refresh("")
+
+    @staticmethod
+    def _snippet(text: str, q: str, max_len: int = 120) -> str:
+        if not text:
+            return ""
+        plain = " ".join(text.split())
+        if not q:
+            return plain[:max_len]
+        i = plain.lower().find(q.lower())
+        if i < 0:
+            return plain[:max_len]
+        start = max(0, i - max_len // 3)
+        end = min(len(plain), start + max_len)
+        s = plain[start:end]
+        if start > 0:
+            s = "..." + s
+        if end < len(plain):
+            s = s + "..."
+        return s
+
+    def _safe_find_notes(self, query: str) -> list[int]:
+        try:
+            return mw.col.find_notes(query)
+        except Exception:
+            pass
+        escaped = query.replace('"', r"\"")
+        try:
+            return mw.col.find_notes(f'"{escaped}"')
+        except Exception:
+            return []
+
+    def _pdf_title(self, card_id: int) -> str:
+        try:
+            card = mw.col.get_card(card_id)
+            note = mw.col.get_note(card.nid)
+            return note.fields[0] if note.fields else f"PDF card {card_id}"
+        except Exception:
+            return f"PDF card {card_id}"
+
+    def _candidate_pdf_card_ids(self) -> list[int]:
+        cids: set[int] = set()
+        try:
+            cids.update(mw.col.find_cards(f'note:"{PDF_NOTE_TYPE}"'))
+        except Exception:
+            pass
+        try:
+            cids.update(mw.col.find_cards("PDF_Filename:*"))
+        except Exception:
+            pass
+        try:
+            rows = (
+                get_connection(_ADDON_DIR)
+                .execute("SELECT DISTINCT card_id FROM pdf_highlights")
+                .fetchall()
+            )
+            cids.update(int(r[0]) for r in rows)
+        except Exception:
+            pass
+        try:
+            rows = (
+                get_connection(_ADDON_DIR)
+                .execute("SELECT DISTINCT card_id FROM pdf_progress")
+                .fetchall()
+            )
+            cids.update(int(r[0]) for r in rows)
+        except Exception:
+            pass
+        return sorted(cids)
+
+    def _search_pdf_file_hits(
+        self, q: str, limit: int = 120
+    ) -> list[tuple[int, int, str]]:
+        """Search SQLite-backed PDF page-text index; build missing index on demand."""
+        hits = search_pdf_text_index(_ADDON_DIR, q, limit=limit)
+        if hits:
+            return [
+                (cid, page, self._snippet(text or "", q, max_len=180))
+                for cid, page, text in hits
+            ]
+
+        from .utils.pdf_manager import get_pdf_dir
+        pdf_dir = get_pdf_dir()
+        for cid in self._candidate_pdf_card_ids():
+            try:
+                card = mw.col.get_card(cid)
+                note = mw.col.get_note(card.nid)
+                filename = note["PDF_Filename"]
+                pdf_path = os.path.join(pdf_dir, filename)
+                page_texts = extract_pdf_pages_text(pdf_path)
+                replace_pdf_text_index(_ADDON_DIR, cid, page_texts)
+            except Exception:
+                continue
+
+        hits = search_pdf_text_index(_ADDON_DIR, q, limit=limit)
+        return [
+            (cid, page, self._snippet(text or "", q, max_len=180))
+            for cid, page, text in hits
+        ]
+
+    def _refresh(self, query: str) -> None:
+        q = (query or "").strip()
+        if len(q) < 2:
+            self._results.setHtml(
+                "<div style='color:#888;padding:10px'>Type at least 2 characters to search.</div>"
+            )
+            return
+
+        html = ["<div style='font-family:sans-serif'>"]
+        total = 0
+
+        def _normalize(s: str) -> str:
+            return " ".join((s or "").casefold().split())
+
+        q_norm = _normalize(q)
+        q_tokens = [t for t in q_norm.split(" ") if len(t) >= 2]
+
+        def _matches(text: str) -> bool:
+            norm = _normalize(text)
+            if q_norm and q_norm in norm:
+                return True
+            if not q_tokens:
+                return False
+            return all(tok in norm for tok in q_tokens)
+
+        # PDF highlights (go directly to page)
+        if self._cb_highlights.isChecked():
+            try:
+                rows = (
+                    get_connection(_ADDON_DIR)
+                    .execute(
+                        "SELECT card_id, page, text FROM pdf_highlights ORDER BY card_id, page"
+                    )
+                    .fetchall()
+                )
+                rows = [r for r in rows if _matches(r[2] or "")][:120]
+            except Exception:
+                rows = []
+
+            if rows:
+                html.append("<h3>PDF Highlights</h3>")
+                by_file: dict = {}
+                for cid, page, text in rows:
+                    by_file.setdefault(cid, []).append((page, text))
+                for cid, pages in by_file.items():
+                    title = escape(self._pdf_title(cid))
+                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
+                    for page, text in pages:
+                        snippet = escape(self._snippet(text or "", q))
+                        html.append(
+                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f" — <span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    html.append("</ul>")
+
+        # Cards created from PDF pages (go to page)
+        if self._cb_sources.isChecked():
+            try:
+                rows = (
+                    get_connection(_ADDON_DIR)
+                    .execute(
+                        "SELECT pdf_card_id, page, excerpt FROM pdf_card_sources ORDER BY id DESC"
+                    )
+                    .fetchall()
+                )
+                rows = [r for r in rows if _matches(r[2] or "")][:120]
+            except Exception:
+                rows = []
+
+            if rows:
+                html.append("<h3>PDF Sources</h3>")
+                by_file: dict = {}
+                for cid, page, excerpt in rows:
+                    by_file.setdefault(cid, []).append((page, excerpt))
+                for cid, pages in by_file.items():
+                    title = escape(self._pdf_title(cid))
+                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
+                    for page, excerpt in pages:
+                        snippet = escape(self._snippet(excerpt or "", q))
+                        html.append(
+                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f" — <span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    html.append("</ul>")
+
+        # Actual PDF file text (page-level)
+        if self._cb_content.isChecked():
+            pdf_page_hits = self._search_pdf_file_hits(q, limit=120)
+            if pdf_page_hits:
+                html.append("<h3>PDF File Content</h3>")
+                by_file: dict = {}
+                for cid, page, snippet_text in pdf_page_hits:
+                    by_file.setdefault(cid, []).append((page, snippet_text))
+                for cid, pages in by_file.items():
+                    title = escape(self._pdf_title(cid))
+                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
+                    for page, snippet_text in pages:
+                        snippet = escape(snippet_text)
+                        html.append(
+                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f" — <span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    html.append("</ul>")
+
+        # All cards/notes (open in Browser)
+        if self._cb_cards.isChecked():
+            note_ids = self._safe_find_notes(q)
+            if note_ids:
+                html.append("<h3>Cards</h3><ul>")
+                for nid in note_ids[:160]:
+                    try:
+                        note = mw.col.get_note(nid)
+                        model = mw.col.models.get(note.mid)
+                        model_name = model.get("name") if model else "Note"
+                        text = " ".join((note.fields or [])[:2])
+                        snippet = escape(self._snippet(text, q))
+                        html.append(
+                            f"<li><a href='inc://card/{nid}'>{escape(model_name)} — note {nid}</a>"
+                            f"<br><span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    except Exception:
+                        pass
+                html.append("</ul>")
+
+        if total == 0:
+            html.append("<div style='color:#888;padding:8px'>No matches found.</div>")
+        html.append("</div>")
+        self._results.setHtml("".join(html))
+
+    def _open_link(self, qurl) -> None:
+        s = qurl.toString()
+        try:
+            if s.startswith("inc://pdf/"):
+                parsed = urlparse(s)
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 2:
+                    cid = int(parts[0])
+                    page = int(parts[1])
+                    q = (parse_qs(parsed.query).get("q") or [""])[0]
+                    _open_pdf_card(cid, page, search_query=q)
+                return
+            if s.startswith("inc://card/"):
+                nid = int(s.rsplit("/", 1)[1])
+                from aqt import dialogs
+
+                b = dialogs.open("Browser", mw)
+                b.search_for(f"nid:{nid}")
+                return
+        except Exception as e:
+            showInfo(f"Could not open result:\n{e}")
+
+
+def _open_search_all() -> None:
+    _SearchAllDialog(mw).exec()
 
 
 def _trigger_pdf_viewer_action(action: str) -> None:
@@ -528,7 +850,8 @@ def exportFunction() -> None:
         return
 
     user_files_dir = os.path.join(_ADDON_DIR, "user_files")
-    media_dir = mw.col.media.dir()
+    from .utils.pdf_manager import get_pdf_dir
+    pdf_dir = get_pdf_dir()
 
     # Gather PDF filenames from all Incremento PDF notes
     pdf_filenames = []
@@ -569,7 +892,7 @@ def exportFunction() -> None:
             pdf_count = 0
             pdf_missing = []
             for fname in pdf_filenames:
-                pdf_path = os.path.join(media_dir, fname)
+                pdf_path = os.path.join(pdf_dir, fname)
                 if os.path.exists(pdf_path):
                     zf.write(pdf_path, f"pdfs/{fname}")
                     pdf_count += 1
@@ -814,6 +1137,81 @@ def addWebpageFunction() -> None:
         showInfo(f"Failed to import webpage as PDF:\n{e}")
 
 
+def reindexPdfTextFunction() -> None:
+    try:
+        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+    except Exception as e:
+        showInfo(f"Could not list PDF cards:\n{e}")
+        return
+
+    if not note_ids:
+        showInfo("No PDF cards found to reindex.")
+        return
+
+    updated = 0
+    unchanged = 0
+    failed: list[tuple[int, str]] = []
+    from .utils.pdf_manager import get_pdf_dir
+    pdf_dir = get_pdf_dir()
+
+    mw.progress.start(label="Reindexing PDF text...", immediate=True)
+    try:
+        total = len(note_ids)
+        for i, nid in enumerate(note_ids, start=1):
+            try:
+                mw.progress.update(label=f"Reindexing PDF text... ({i}/{total})")
+            except Exception:
+                pass
+
+            try:
+                note = mw.col.get_note(nid)
+                filename = note["PDF_Filename"]
+                pdf_path = os.path.join(pdf_dir, filename)
+                if not os.path.exists(pdf_path):
+                    failed.append((nid, f"file not found: {pdf_path}"))
+                    continue
+                page_texts = extract_pdf_pages_text(pdf_path)
+                if not any(page_texts):
+                    failed.append((nid, f"no text extracted from {filename} ({len(page_texts)} pages)"))
+                    continue
+                new_text = "\n\n".join([p for p in page_texts if p]).strip()
+                old_text = (note["Content"] or "") if "Content" in note else ""
+
+                for cid in mw.col.find_cards(f"nid:{nid}"):
+                    try:
+                        replace_pdf_text_index(_ADDON_DIR, cid, page_texts)
+                    except Exception:
+                        pass
+
+                if new_text != old_text:
+                    note["Content"] = new_text
+                    note.flush()
+                    updated += 1
+                else:
+                    unchanged += 1
+            except Exception as e:
+                failed.append((nid, str(e)))
+    finally:
+        mw.progress.finish()
+
+    if not failed:
+        showInfo(
+            f"PDF text reindex complete.\n\n"
+            f"Updated: {updated}\nUnchanged: {unchanged}\nTotal: {len(note_ids)}"
+        )
+        return
+
+    failed_preview = "\n".join(f"- nid:{nid}: {msg}" for nid, msg in failed[:10])
+    extra = ""
+    if len(failed) > 10:
+        extra = f"\n...and {len(failed) - 10} more failures."
+    showInfo(
+        f"PDF text reindex finished with issues.\n\n"
+        f"Updated: {updated}\nUnchanged: {unchanged}\nFailed: {len(failed)}\n\n"
+        f"{failed_preview}{extra}"
+    )
+
+
 def openSettingsFunction() -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
     dlg = IncrementoSettingsDialog(cfg.get("shortcuts") or {}, parent=mw)
@@ -910,10 +1308,22 @@ _register_shortcut_action("toggle_focus_timer", _timerToggleAction)
 
 _menu.addSeparator()
 
+_utilsMenu = QMenu("Utils", mw)
+_menu.addMenu(_utilsMenu)
+
+_reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
+qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
+_utilsMenu.addAction(_reindexPdfTextAction)
+
 _statsAction = QAction("Statistics", mw)
 qconnect(_statsAction.triggered, showStatsFunction)
 _menu.addAction(_statsAction)
 _register_shortcut_action("statistics", _statsAction)
+
+_searchAllAction = QAction("Search ALL", mw)
+qconnect(_searchAllAction.triggered, _open_search_all)
+_menu.addAction(_searchAllAction)
+_register_shortcut_action("search_all", _searchAllAction)
 
 _exportAction = QAction("Export User Data", mw)
 qconnect(_exportAction.triggered, exportFunction)
