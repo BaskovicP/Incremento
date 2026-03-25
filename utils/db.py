@@ -25,6 +25,7 @@ DB_NAME = "incremento.db"
 
 # ── Connection ────────────────────────────────────────────────────────────────
 
+
 def get_connection(addon_dir: str) -> sqlite3.Connection:
     global _connection, _initialized_for
     if _connection is None or _initialized_for != addon_dir:
@@ -45,6 +46,7 @@ def get_connection(addon_dir: str) -> sqlite3.Connection:
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────
+
 
 def _create_tables(conn: sqlite3.Connection) -> None:
     conn.executescript("""
@@ -95,6 +97,15 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_pcs_card_page
             ON pdf_card_sources (pdf_card_id, page);
+
+        CREATE TABLE IF NOT EXISTS pdf_text_index (
+            card_id INTEGER NOT NULL,
+            page    INTEGER NOT NULL,
+            text    TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (card_id, page)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pti_card_page
+            ON pdf_text_index (card_id, page);
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
@@ -108,36 +119,51 @@ def _create_tables(conn: sqlite3.Connection) -> None:
 
 # ── Export helpers (called by the export function in __init__.py) ─────────────
 
+
 def export_priorities_json(addon_dir: str) -> str:
-    rows = get_connection(addon_dir).execute(
-        "SELECT card_id, priority FROM priorities ORDER BY card_id"
-    ).fetchall()
+    rows = (
+        get_connection(addon_dir)
+        .execute("SELECT card_id, priority FROM priorities ORDER BY card_id")
+        .fetchall()
+    )
     return json.dumps({str(r[0]): r[1] for r in rows}, indent=2)
 
 
 def export_pdf_progress_json(addon_dir: str) -> str:
-    rows = get_connection(addon_dir).execute(
-        "SELECT card_id, page, zoom FROM pdf_progress ORDER BY card_id"
-    ).fetchall()
+    rows = (
+        get_connection(addon_dir)
+        .execute("SELECT card_id, page, zoom FROM pdf_progress ORDER BY card_id")
+        .fetchall()
+    )
     return json.dumps({str(r[0]): {"page": r[1], "zoom": r[2]} for r in rows}, indent=2)
 
 
 def export_highlights_json(addon_dir: str) -> str:
-    rows = get_connection(addon_dir).execute(
-        "SELECT card_id, id, page, color, text, rects FROM pdf_highlights ORDER BY card_id"
-    ).fetchall()
+    rows = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT card_id, id, page, color, text, rects FROM pdf_highlights ORDER BY card_id"
+        )
+        .fetchall()
+    )
     result: dict = {}
     for cid, hl_id, page, color, text, rects in rows:
         key = str(cid)
         result.setdefault(key, []).append(
-            {"id": hl_id, "page": page, "color": color,
-             "text": text, "rects": json.loads(rects)}
+            {
+                "id": hl_id,
+                "page": page,
+                "color": color,
+                "text": text,
+                "rects": json.loads(rects),
+            }
         )
     return json.dumps(result, indent=2, ensure_ascii=False)
 
 
-def add_pdf_card_source(addon_dir: str, pdf_card_id: int, page: int,
-                        note_id: int, excerpt: str = '') -> None:
+def add_pdf_card_source(
+    addon_dir: str, pdf_card_id: int, page: int, note_id: int, excerpt: str = ""
+) -> None:
     """Record that note_id was created while reading pdf_card_id at page."""
     conn = get_connection(addon_dir)
     conn.execute(
@@ -149,27 +175,37 @@ def add_pdf_card_source(addon_dir: str, pdf_card_id: int, page: int,
 
 def get_pdf_card_sources(addon_dir: str, pdf_card_id: int, page: int) -> list:
     """Return list of {note_id, excerpt} for cards created on this PDF page."""
-    rows = get_connection(addon_dir).execute(
-        "SELECT note_id, excerpt FROM pdf_card_sources "
-        "WHERE pdf_card_id = ? AND page = ? ORDER BY id",
-        (pdf_card_id, page),
-    ).fetchall()
+    rows = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT note_id, excerpt FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? AND page = ? ORDER BY id",
+            (pdf_card_id, page),
+        )
+        .fetchall()
+    )
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
 
 
 def get_pdf_page_card_counts(addon_dir: str, pdf_card_id: int) -> dict:
     """Return {page: count} for all pages that have at least one card."""
-    rows = get_connection(addon_dir).execute(
-        "SELECT page, COUNT(*) FROM pdf_card_sources WHERE pdf_card_id = ? GROUP BY page",
-        (pdf_card_id,),
-    ).fetchall()
+    rows = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT page, COUNT(*) FROM pdf_card_sources WHERE pdf_card_id = ? GROUP BY page",
+            (pdf_card_id,),
+        )
+        .fetchall()
+    )
     return {r[0]: r[1] for r in rows}
 
 
 def export_stats_json(addon_dir: str) -> str:
-    rows = get_connection(addon_dir).execute(
-        "SELECT scope, date, data FROM stats"
-    ).fetchall()
+    rows = (
+        get_connection(addon_dir)
+        .execute("SELECT scope, date, data FROM stats")
+        .fetchall()
+    )
     result: dict = {}
     for scope, date, data in rows:
         if scope == "daily":
@@ -177,3 +213,58 @@ def export_stats_json(addon_dir: str) -> str:
         else:
             result[scope] = json.loads(data)
     return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+def replace_pdf_text_index(addon_dir: str, card_id: int, page_texts: list[str]) -> None:
+    """Replace stored per-page extracted text for a PDF card."""
+    conn = get_connection(addon_dir)
+    conn.execute("DELETE FROM pdf_text_index WHERE card_id = ?", (card_id,))
+    rows = [
+        (card_id, i + 1, (txt or "").strip())
+        for i, txt in enumerate(page_texts)
+        if (txt or "").strip()
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO pdf_text_index (card_id, page, text) VALUES (?, ?, ?)",
+            rows,
+        )
+    conn.commit()
+
+
+def search_pdf_text_index(
+    addon_dir: str, query: str, limit: int = 120
+) -> list[tuple[int, int, str]]:
+    """Search indexed per-page PDF text. Returns [(card_id, page, text), ...]."""
+    q_norm = " ".join((query or "").casefold().split())
+    if len(q_norm) < 2:
+        return []
+    tokens = [t for t in q_norm.split(" ") if len(t) >= 2]
+    if not tokens:
+        return []
+
+    conn = get_connection(addon_dir)
+    pre = tokens[0]
+    rows = conn.execute(
+        "SELECT card_id, page, text FROM pdf_text_index "
+        "WHERE lower(text) LIKE lower(?) ORDER BY card_id, page LIMIT ?",
+        (f"%{pre}%", max(500, limit * 25)),
+    ).fetchall()
+
+    def _normalize(s: str) -> str:
+        return " ".join((s or "").casefold().split())
+
+    out: list[tuple[int, int, str]] = []
+    for cid, page, text in rows:
+        norm = _normalize(text or "")
+        if not norm:
+            continue
+        if q_norm in norm:
+            out.append((cid, page, text))
+        else:
+            hits = sum(1 for t in tokens if t in norm)
+            if hits >= max(1, int(len(tokens) * 0.7)):
+                out.append((cid, page, text))
+        if len(out) >= limit:
+            break
+    return out

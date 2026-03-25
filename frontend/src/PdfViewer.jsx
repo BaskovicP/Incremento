@@ -170,6 +170,7 @@ export default function PdfViewer() {
   const [pageCards,     setPageCards]     = useState([]);
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [highlightsScope, setHighlightsScope] = useState('all');
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
@@ -220,6 +221,41 @@ export default function PdfViewer() {
     window.setTimeout(() => setFocusedHighlightId(null), 1400);
     pendingHighlightScrollRef.current = null;
   }, [page, renderInfo, highlights, containerRef, highlightJumpNonce]);
+
+  useEffect(() => {
+    const tl = textLayerRef.current;
+    if (!tl) return;
+    const spans = Array.from(tl.querySelectorAll('span'));
+    spans.forEach((sp) => {
+      if (sp.dataset.incSearchHit === '1') {
+        sp.dataset.incSearchHit = '0';
+        sp.style.background = '';
+        sp.style.outline = '';
+      }
+    });
+
+    const q = (searchQuery || '').trim().toLowerCase();
+    if (!q) return;
+
+    const toks = q.split(/\s+/).filter((t) => t.length >= 2);
+    let firstHit = null;
+    for (const sp of spans) {
+      const txt = (sp.textContent || '').toLowerCase();
+      if (!txt) continue;
+      const hit = txt.includes(q) || (toks.length > 0 && toks.some((t) => txt.includes(t)));
+      if (!hit) continue;
+      sp.dataset.incSearchHit = '1';
+      sp.style.background = 'rgba(255, 153, 0, 0.45)';
+      sp.style.outline = '1px solid rgba(255, 153, 0, 0.95)';
+      if (!firstHit) firstHit = sp;
+    }
+
+    if (firstHit) {
+      try {
+        firstHit.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      } catch (_) {}
+    }
+  }, [searchQuery, page, renderInfo, textLayerRef]);
 
   // ── Snapshot handlers ──────────────────────────────────────────────────────
   const handleSnapStart = useCallback((e) => {
@@ -334,9 +370,10 @@ export default function PdfViewer() {
   // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
     // Wrap startViewer to also consume pending highlights.
-    const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0) => {
+    const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = '') => {
       setHighlights(window._incPdfHighlights || []);
       window._incPdfHighlights = null;
+      setSearchQuery(startSearchQuery || '');
       startViewer(cardId, filename, startPage, startZoom, startReadPage);
     };
 
@@ -354,7 +391,14 @@ export default function PdfViewer() {
     const pending = window._incPdfPending;
     if (pending) {
       window._incPdfPending = null;
-      startWithHighlights(pending.cardId, pending.filename, pending.page, pending.zoom, pending.readPage || 0);
+      startWithHighlights(
+        pending.cardId,
+        pending.filename,
+        pending.page,
+        pending.zoom,
+        pending.readPage || 0,
+        pending.searchQuery || '',
+      );
     }
     return () => {
       delete window.incrementoPdfStart;

@@ -50,6 +50,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "",
     },
     {
+        "id": "search_all",
+        "label": "Search ALL",
+        "default": "Ctrl+Alt+S",
+    },
+    {
         "id": "open_settings",
         "label": "Settings",
         "default": "",
