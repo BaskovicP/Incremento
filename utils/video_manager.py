@@ -89,7 +89,7 @@ def add_video_card(
     note = col.new_note(model)
     note["Title"] = title
     note["YouTube_URL"] = youtube_url
-    for tag in tags or []:
+    for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
         if not tag:
             continue
         if hasattr(note, "add_tag"):

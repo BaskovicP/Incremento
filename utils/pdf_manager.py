@@ -261,7 +261,7 @@ def add_pdf_card(
     note["Title"] = title
     note["PDF_Filename"] = media_filename
     page_texts = extract_pdf_pages_text(pdf_path)
-    for tag in tags or []:
+    for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
         if not tag:
             continue
         if hasattr(note, "add_tag"):
