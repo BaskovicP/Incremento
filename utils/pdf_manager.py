@@ -245,38 +245,38 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
     """OCR a scanned PDF and replace it with a searchable version.
 
     Pipeline:
-      1. PyMuPDF renders each page to a PNG at 200 DPI
-      2. tesseract converts each PNG to a single-page searchable PDF
-      3. pdfunite merges the pages into one file
+      1. PyMuPDF renders all pages to PNG at 200 DPI (sequential — fitz is not thread-safe)
+      2. Tesseract OCRs all pages in parallel (ThreadPoolExecutor, one thread per core)
+      3. PyMuPDF merges the per-page PDFs (no pdfunite dependency)
       4. The merged file replaces the original
 
-    Falls back to ocrmypdf if tesseract/pdfunite are unavailable.
+    Falls back to ocrmypdf if Tesseract is unavailable.
     Returns True on success, False if required tools are missing or OCR fails.
     """
     import tempfile
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    # --- preferred pipeline: tesseract + pdfunite --------------------------
+    # --- preferred pipeline: tesseract + PyMuPDF ---------------------------
     tesseract = _find_bin(
         shutil.which("tesseract"),
         "/opt/homebrew/bin/tesseract",
         "/usr/local/bin/tesseract",
         "/usr/bin/tesseract",
-    )
-    pdfunite = _find_bin(
-        shutil.which("pdfunite"),
-        "/opt/homebrew/bin/pdfunite",
-        "/usr/local/bin/pdfunite",
-        "/usr/bin/pdfunite",
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
     )
 
-    if tesseract and pdfunite:
+    if tesseract:
         try:
             import fitz  # PyMuPDF
         except ImportError:
             pass
         else:
             with tempfile.TemporaryDirectory() as tmpdir:
-                page_pdfs: list[str] = []
+                # Step 1: render all pages to PNG (sequential — fitz not thread-safe)
+                img_paths: list[str] = []
+                out_bases: list[str] = []
+                total_pages = 0
                 try:
                     doc = fitz.open(pdf_path)
                     total_pages = len(doc)
@@ -285,38 +285,59 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
                         pix = doc.load_page(i).get_pixmap(matrix=mat)
                         img_path = os.path.join(tmpdir, f"p{i:04d}.png")
                         pix.save(img_path)
-                        out_base = os.path.join(tmpdir, f"p{i:04d}")
+                        img_paths.append(img_path)
+                        out_bases.append(os.path.join(tmpdir, f"p{i:04d}"))
+                    doc.close()
+                except Exception:
+                    total_pages = 0
+
+                if total_pages == 0:
+                    pass  # fall through to ocrmypdf
+                else:
+                    # Step 2: OCR all pages in parallel
+                    page_pdfs: dict[int, str] = {}
+                    workers = min(os.cpu_count() or 1, total_pages, 8)
+                    done_count = 0
+                    failed = False
+
+                    def _ocr_page(i: int):
                         proc = subprocess.run(
-                            [tesseract, img_path, out_base, "pdf"],
+                            [tesseract, img_paths[i], out_bases[i], "pdf"],
                             capture_output=True,
                             timeout=120,
                         )
-                        if proc.returncode != 0:
-                            break
-                        page_pdfs.append(out_base + ".pdf")
-                        if progress_cb:
-                            progress_cb(i + 1, total_pages)
-                    doc.close()
-                except Exception:
-                    page_pdfs = []
+                        return i, proc.returncode == 0
 
-                if len(page_pdfs) > 0:
-                    merged = os.path.join(tmpdir, "merged.pdf")
                     try:
-                        if len(page_pdfs) == 1:
-                            shutil.copy2(page_pdfs[0], merged)
-                        else:
-                            subprocess.run(
-                                [pdfunite] + page_pdfs + [merged],
-                                capture_output=True,
-                                timeout=120,
-                                check=True,
-                            )
-                        if os.path.getsize(merged) > 0:
-                            shutil.move(merged, pdf_path)
-                            return True
+                        with ThreadPoolExecutor(max_workers=workers) as pool:
+                            futs = {pool.submit(_ocr_page, i): i for i in range(total_pages)}
+                            for fut in as_completed(futs):
+                                i, ok = fut.result()
+                                if not ok:
+                                    failed = True
+                                    break
+                                page_pdfs[i] = out_bases[i] + ".pdf"
+                                done_count += 1
+                                if progress_cb:
+                                    progress_cb(done_count, total_pages)
                     except Exception:
-                        pass
+                        failed = True
+
+                    if not failed and len(page_pdfs) == total_pages:
+                        # Step 3: merge with PyMuPDF (no pdfunite needed)
+                        try:
+                            merged_doc = fitz.open()
+                            for i in range(total_pages):
+                                with fitz.open(page_pdfs[i]) as part:
+                                    merged_doc.insert_pdf(part)
+                            merged_path = os.path.join(tmpdir, "merged.pdf")
+                            merged_doc.save(merged_path)
+                            merged_doc.close()
+                            if os.path.getsize(merged_path) > 0:
+                                shutil.move(merged_path, pdf_path)
+                                return True
+                        except Exception:
+                            pass
 
     # --- fallback: ocrmypdf ------------------------------------------------
     ocrmypdf = _find_bin(
@@ -328,7 +349,8 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
     if not ocrmypdf:
         return False
 
-    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    import tempfile as _tempfile
+    fd, tmp_path = _tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     try:
         proc = subprocess.run(
