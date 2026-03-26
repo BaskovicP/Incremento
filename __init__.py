@@ -897,37 +897,18 @@ def showStatsFunction() -> None:
 
 def addPdfFunction() -> None:
     from .utils.pdf_dialog import AddPdfDialog
-    from .utils.pdf_manager import add_pdf_card
 
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
-    dlg = AddPdfDialog(deck_names=deck_names, default_deck="Topics", parent=mw)
+    dlg = AddPdfDialog(addon_dir=_ADDON_DIR, deck_names=deck_names, default_deck="Topics", parent=mw)
     if not dlg.exec():
         return
-    entries = dlg.selected_entries()
-    if not entries:
-        return
 
+    created = dlg.created
+    failed = dlg.failed
     deck = dlg.deck_name
-    created: list[tuple[str, str]] = []  # (path, title)
-    failed: list[tuple[str, str]] = []
-    total = len(entries)
-    mw.progress.start(label="Adding PDFs…", max=total, immediate=True)
-    try:
-        for i, (pdf_path, title, tags) in enumerate(entries, 1):
-            mw.progress.update(
-                label=f"({i}/{total}) {os.path.basename(pdf_path)}",
-                value=i,
-            )
-            try:
-                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, deck_name=deck, tags=tags)
-                created.append((pdf_path, title))
-            except Exception as e:
-                failed.append((pdf_path, str(e)))
-    except Exception as e:
-        mw.progress.finish()
-        showInfo(f"Failed to add PDF card(s):\n{e}")
+
+    if not created and not failed:
         return
-    mw.progress.finish()
 
     def _fmt_size(path: str) -> str:
         try:

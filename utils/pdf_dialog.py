@@ -1,14 +1,16 @@
+import os
 from pathlib import Path
 
+from aqt import mw
 from aqt.qt import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
-    QCheckBox,
-    QHeaderView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPixmap,
@@ -28,21 +30,32 @@ from .tag_edit import QuickTagEdit
 
 
 class AddPdfDialog(QDialog):
-    def __init__(self, deck_names: list[str] | None = None, default_deck: str = "Topics", parent=None):
+    def __init__(
+        self,
+        addon_dir: str,
+        deck_names: list[str] | None = None,
+        default_deck: str = "Topics",
+        parent=None,
+    ):
         super().__init__(parent)
+        self._addon_dir = addon_dir
         self.setWindowTitle("Add PDFs")
-        self.setMinimumSize(860, 560)
+        self.setMinimumSize(900, 560)
 
         self._pdf_paths: list[str] = []
-        # path → tag_edit widget
         self._tag_edits: dict[str, QuickTagEdit] = {}
-        self._preview_cache: dict[str, QPixmap] = {}   # path → rendered first page
-        self._preview_inflight: set[str] = set()        # paths currently being rendered
+        self._preview_cache: dict[str, QPixmap] = {}
+        self._preview_inflight: set[str] = set()
+        self._has_text: dict[str, bool | None] = {}  # None=detecting
+        self._ocr_checks: dict[str, QCheckBox] = {}
+
+        # Populated by _process_files; read by addPdfFunction after exec()
+        self.created: list[tuple[str, str]] = []  # (path, title)
+        self.failed: list[tuple[str, str]] = []
 
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(8)
 
-        # ── Splitter: left (file list) | right (preview) ──────────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter, stretch=1)
 
@@ -52,20 +65,19 @@ class AddPdfDialog(QDialog):
         left_layout.setContentsMargins(0, 0, 4, 0)
         left_layout.setSpacing(6)
 
-        # Add buttons
         btn_row = QHBoxLayout()
-        add_files_btn = QPushButton("Add files…")
-        add_files_btn.clicked.connect(self._add_files)
-        add_folder_btn = QPushButton("Add folder…")
-        add_folder_btn.clicked.connect(self._add_folder)
-        btn_row.addWidget(add_files_btn)
-        btn_row.addWidget(add_folder_btn)
+        self._add_files_btn = QPushButton("Add files…")
+        self._add_files_btn.clicked.connect(self._add_files)
+        self._add_folder_btn = QPushButton("Add folder…")
+        self._add_folder_btn.clicked.connect(self._add_folder)
+        btn_row.addWidget(self._add_files_btn)
+        btn_row.addWidget(self._add_folder_btn)
         btn_row.addStretch()
         left_layout.addLayout(btn_row)
 
-        # File table — columns: ✕ | File | Tags
-        self._table = QTableWidget(0, 3)
-        self._table.setHorizontalHeaderLabels(["", "File", "Tags"])
+        # Table: ✕ | File | Tags | OCR
+        self._table = QTableWidget(0, 4)
+        self._table.setHorizontalHeaderLabels(["", "File", "Tags", "OCR"])
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -75,15 +87,16 @@ class AddPdfDialog(QDialog):
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         hdr.setStretchLastSection(False)
         self._table.setColumnWidth(0, 28)
-        self._table.setColumnWidth(1, 300)
-        self._table.setColumnWidth(2, 180)
+        self._table.setColumnWidth(1, 260)
+        self._table.setColumnWidth(2, 155)
+        self._table.setColumnWidth(3, 90)
 
         self._table.currentCellChanged.connect(lambda row, *_: self._on_row_changed(row))
         left_layout.addWidget(self._table, stretch=1)
 
-        # Global options (tags + title)
         options_widget = QWidget()
         form = QFormLayout(options_widget)
         form.setContentsMargins(0, 4, 0, 0)
@@ -108,7 +121,6 @@ class AddPdfDialog(QDialog):
         form.addRow("Deck:", self._deck_combo)
 
         left_layout.addWidget(options_widget)
-
         splitter.addWidget(left)
 
         # ── Right panel (preview) ─────────────────────────────────────────────
@@ -147,16 +159,19 @@ class AddPdfDialog(QDialog):
         self._error_lbl.setVisible(False)
         main_layout.addWidget(self._error_lbl)
 
-        buttons = QDialogButtonBox(
+        self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self._accept)
-        buttons.rejected.connect(self.reject)
-        main_layout.addWidget(buttons)
+        self._ok_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
+        self._ok_btn.setText("Add")
+        self._cancel_btn = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        self._buttons.accepted.connect(self._start_add)
+        self._buttons.rejected.connect(self.reject)
+        main_layout.addWidget(self._buttons)
 
         self._on_title_mode_changed(True)
 
-    # ── Internal ──────────────────────────────────────────────────────────────
+    # ── File management ───────────────────────────────────────────────────────
 
     def _last_dir(self) -> str:
         if self._pdf_paths:
@@ -190,7 +205,7 @@ class AddPdfDialog(QDialog):
         self._table.insertRow(row_idx)
         self._table.setRowHeight(row_idx, 28)
 
-        # ✕ remove button
+        # Column 0: ✕ remove
         remove_btn = QPushButton("✕")
         remove_btn.setFixedSize(22, 22)
         remove_btn.setFlat(True)
@@ -198,22 +213,79 @@ class AddPdfDialog(QDialog):
         remove_btn.clicked.connect(lambda _=False, p=path: self._remove_row(p))
         self._table.setCellWidget(row_idx, 0, remove_btn)
 
-        # Filename item — stores path in UserRole
+        # Column 1: filename
         name_item = QTableWidgetItem(Path(path).name)
         name_item.setData(Qt.ItemDataRole.UserRole, path)
         name_item.setToolTip(path)
         self._table.setItem(row_idx, 1, name_item)
 
-        # Per-file tag edit
+        # Column 2: per-file tags
         tag_edit = QuickTagEdit()
         tag_edit.setPlaceholderText("Tags (optional)")
         self._table.setCellWidget(row_idx, 2, tag_edit)
         self._tag_edits[path] = tag_edit
-        self._ensure_preview(path)  # start prefetch immediately
 
-        # Auto-select the first file added
+        # Column 3: OCR detection placeholder
+        lbl = QLabel("Detecting…")
+        lbl.setStyleSheet("font-size: 10px; color: gray;")
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._table.setCellWidget(row_idx, 3, lbl)
+        self._has_text[path] = None
+
+        # Start background tasks
+        self._ensure_preview(path)
+        self._check_text_bg(path)
+
         if len(self._pdf_paths) == 1:
             self._table.setCurrentCell(0, 1)
+
+    def _check_text_bg(self, path: str) -> None:
+        """Detect whether PDF has selectable text; update OCR column when done."""
+        def check():
+            doc = QPdfDocument(None)
+            try:
+                doc.load(path)
+                pages = min(doc.pageCount(), 3)
+                for i in range(pages):
+                    sel = doc.getAllText(i)
+                    if sel.isValid() and sel.text().strip():
+                        return True
+                return False
+            except Exception:
+                return True  # assume text on error, don't force OCR
+            finally:
+                doc.close()
+
+        def on_done(fut) -> None:
+            try:
+                has_text = fut.result()
+            except Exception:
+                has_text = True
+            self._has_text[path] = has_text
+            row = self._find_row(path)
+            if row < 0:
+                return
+            if has_text:
+                lbl = QLabel("—")
+                lbl.setStyleSheet("font-size: 10px; color: gray;")
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._table.setCellWidget(row, 3, lbl)
+            else:
+                cb = QCheckBox("Use OCR")
+                cb.setChecked(True)
+                cb.setToolTip("Run Tesseract OCR to embed a text layer")
+                cb.setStyleSheet("font-size: 10px;")
+                self._table.setCellWidget(row, 3, cb)
+                self._ocr_checks[path] = cb
+
+        mw.taskman.run_in_background(check, on_done)
+
+    def _find_row(self, path: str) -> int:
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 1)
+            if item and item.data(Qt.ItemDataRole.UserRole) == path:
+                return row
+        return -1
 
     def _remove_row(self, path: str) -> None:
         for row in range(self._table.rowCount()):
@@ -224,12 +296,16 @@ class AddPdfDialog(QDialog):
         self._tag_edits.pop(path, None)
         self._preview_cache.pop(path, None)
         self._preview_inflight.discard(path)
+        self._has_text.pop(path, None)
+        self._ocr_checks.pop(path, None)
         if path in self._pdf_paths:
             self._pdf_paths.remove(path)
         if not self._pdf_paths:
             self._preview_lbl.setPixmap(QPixmap())
             self._preview_lbl.setText("Select a file to preview")
             self._preview_name.clear()
+
+    # ── Preview ───────────────────────────────────────────────────────────────
 
     def _on_row_changed(self, row: int) -> None:
         if row < 0:
@@ -250,10 +326,8 @@ class AddPdfDialog(QDialog):
         )
 
     def _ensure_preview(self, path: str) -> None:
-        """Start a background render for path if not already cached or in-flight."""
         if path in self._preview_cache or path in self._preview_inflight:
             return
-        from aqt import mw
         self._preview_inflight.add(path)
 
         def render():
@@ -264,7 +338,11 @@ class AddPdfDialog(QDialog):
                     return None
                 page_size = doc.pagePointSize(0)
                 render_w = 260
-                render_h = int(render_w * page_size.height() / page_size.width()) if page_size.width() > 0 else int(render_w * 1.414)
+                render_h = (
+                    int(render_w * page_size.height() / page_size.width())
+                    if page_size.width() > 0
+                    else int(render_w * 1.414)
+                )
                 img = doc.render(0, QSize(render_w, render_h))
                 return img if not img.isNull() else None
             except Exception:
@@ -282,7 +360,6 @@ class AddPdfDialog(QDialog):
                 return
             pixmap = QPixmap.fromImage(img)
             self._preview_cache[path] = pixmap
-            # Update display if this path is currently selected
             current_row = self._table.currentRow()
             if current_row >= 0:
                 item = self._table.item(current_row, 1)
@@ -299,9 +376,11 @@ class AddPdfDialog(QDialog):
         else:
             self._preview_lbl.setPixmap(QPixmap())
             self._preview_lbl.setText("Loading…")
-            self._ensure_preview(path)  # no-op if prefetch already running
+            self._ensure_preview(path)
 
-    def _accept(self) -> None:
+    # ── Adding files ──────────────────────────────────────────────────────────
+
+    def _start_add(self) -> None:
         if not self._pdf_paths:
             self._show_error("Please add at least one PDF file.")
             return
@@ -312,7 +391,102 @@ class AddPdfDialog(QDialog):
             self._show_error("Please enter a title.")
             return
         self._error_lbl.setVisible(False)
-        self.accept()
+
+        global_tags = self._global_tag_edit.tags()
+        entries = []
+        for path in self._pdf_paths:
+            title = (
+                Path(path).stem
+                if self._title_from_filename.isChecked()
+                else self._title_edit.text().strip()
+            )
+            tag_edit = self._tag_edits.get(path)
+            file_tags = tag_edit.tags() if tag_edit else []
+            merged = global_tags + [t for t in file_tags if t not in global_tags]
+            ocr_check = self._ocr_checks.get(path)
+            do_ocr = ocr_check is not None and ocr_check.isChecked()
+            entries.append((path, title, merged, do_ocr))
+
+        # Lock the UI during adding
+        self._ok_btn.setEnabled(False)
+        self._cancel_btn.setEnabled(False)
+        self._add_files_btn.setEnabled(False)
+        self._add_folder_btn.setEnabled(False)
+
+        self._process_files(entries, 0)
+
+    def _set_row_status(self, path: str, text: str, color: str = "") -> None:
+        row = self._find_row(path)
+        if row < 0:
+            return
+        lbl = QLabel(text)
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        style = "font-size: 10px;"
+        if color:
+            style += f" color: {color};"
+        lbl.setStyleSheet(style)
+        self._table.setCellWidget(row, 3, lbl)
+
+    def _process_files(self, entries: list, idx: int) -> None:
+        if idx >= len(entries):
+            self.accept()
+            return
+
+        path, title, tags, do_ocr = entries[idx]
+        deck = self._deck_combo.currentText()
+
+        try:
+            from .pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
+            from .db import replace_pdf_text_index
+        except ImportError:
+            from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
+            from db import replace_pdf_text_index
+
+        self._set_row_status(path, "OCR…" if do_ocr else "Adding…")
+
+        try:
+            cid = add_pdf_card(self._addon_dir, mw.col, path, title, deck_name=deck, tags=tags)
+        except Exception as e:
+            self.failed.append((path, str(e)))
+            self._set_row_status(path, "✗", color="red")
+            self._process_files(entries, idx + 1)
+            return
+
+        if not do_ocr:
+            self.created.append((path, title))
+            self._set_row_status(path, "✓", color="#4caf50")
+            self._process_files(entries, idx + 1)
+            return
+
+        # OCR path: copy is already in pdf_dir; OCR it in background, then re-index
+        note = mw.col.get_note(mw.col.get_card(cid).nid)
+        dest_path = os.path.join(get_pdf_dir(), note["PDF_Filename"])
+
+        def _progress(current, total, _path=path):
+            mw.taskman.run_on_main(
+                lambda c=current, t=total: self._set_row_status(_path, f"OCR {c}/{t}")
+            )
+
+        def ocr_task():
+            success = ocr_pdf_in_place(dest_path, progress_cb=_progress)
+            if success:
+                return extract_pdf_pages_text(dest_path)
+            return []
+
+        def ocr_done(fut) -> None:
+            try:
+                page_texts = fut.result()
+                if page_texts:
+                    replace_pdf_text_index(self._addon_dir, cid, page_texts)
+            except Exception:
+                pass
+            self.created.append((path, title))
+            self._set_row_status(path, "✓", color="#4caf50")
+            self._process_files(entries, idx + 1)
+
+        mw.taskman.run_in_background(ocr_task, ocr_done)
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _on_title_mode_changed(self, checked: bool) -> None:
         self._title_edit.setEnabled(not checked)
@@ -347,16 +521,9 @@ class AddPdfDialog(QDialog):
         return self._deck_combo.currentText()
 
     def selected_entries(self) -> list[tuple[str, str, list[str]]]:
-        """Return (path, title, tags) for each selected PDF."""
+        """Return (path, title, tags) — kept for API compatibility."""
         global_tags = self._global_tag_edit.tags()
-
-        if self._title_from_filename.isChecked():
-            paths = self._pdf_paths
-        elif self._pdf_paths:
-            paths = [self._pdf_paths[0]]
-        else:
-            return []
-
+        paths = self._pdf_paths if self._title_from_filename.isChecked() else self._pdf_paths[:1]
         result = []
         for path in paths:
             title = Path(path).stem if self._title_from_filename.isChecked() else self.title_text

@@ -241,7 +241,7 @@ def _find_bin(*candidates: str) -> str | None:
     return next((c for c in candidates if c and os.path.isfile(c)), None)
 
 
-def ocr_pdf_in_place(pdf_path: str) -> bool:
+def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
     """OCR a scanned PDF and replace it with a searchable version.
 
     Pipeline:
@@ -279,8 +279,9 @@ def ocr_pdf_in_place(pdf_path: str) -> bool:
                 page_pdfs: list[str] = []
                 try:
                     doc = fitz.open(pdf_path)
+                    total_pages = len(doc)
                     mat = fitz.Matrix(200 / 72, 200 / 72)  # 200 DPI
-                    for i in range(len(doc)):
+                    for i in range(total_pages):
                         pix = doc.load_page(i).get_pixmap(matrix=mat)
                         img_path = os.path.join(tmpdir, f"p{i:04d}.png")
                         pix.save(img_path)
@@ -293,6 +294,8 @@ def ocr_pdf_in_place(pdf_path: str) -> bool:
                         if proc.returncode != 0:
                             break
                         page_pdfs.append(out_base + ".pdf")
+                        if progress_cb:
+                            progress_cb(i + 1, total_pages)
                     doc.close()
                 except Exception:
                     page_pdfs = []
@@ -372,11 +375,7 @@ def add_pdf_card(
     note["Title"] = title
     note["PDF_Filename"] = media_filename
 
-    # Extract text from the stored copy; OCR in-place if no text found
     page_texts = extract_pdf_pages_text(dest_path)
-    if not any(page_texts):
-        ocr_pdf_in_place(dest_path)
-        page_texts = extract_pdf_pages_text(dest_path)
     for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
         if not tag:
             continue
