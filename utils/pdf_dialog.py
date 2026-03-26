@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from aqt.qt import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -27,9 +28,9 @@ from .tag_edit import QuickTagEdit
 
 
 class AddPdfDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, deck_names: list[str] | None = None, default_deck: str = "Topics", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add PDFs to Topics")
+        self.setWindowTitle("Add PDFs")
         self.setMinimumSize(860, 560)
 
         self._pdf_paths: list[str] = []
@@ -97,6 +98,15 @@ class AddPdfDialog(QDialog):
 
         self._title_edit = QLineEdit()
         form.addRow("Title:", self._title_edit)
+
+        self._deck_combo = QComboBox()
+        for name in (deck_names or ["Topics"]):
+            self._deck_combo.addItem(name)
+        idx = self._deck_combo.findText(default_deck)
+        if idx >= 0:
+            self._deck_combo.setCurrentIndex(idx)
+        form.addRow("Deck:", self._deck_combo)
+
         left_layout.addWidget(options_widget)
 
         splitter.addWidget(left)
@@ -331,6 +341,10 @@ class AddPdfDialog(QDialog):
     @property
     def use_filename_titles(self) -> bool:
         return self._title_from_filename.isChecked()
+
+    @property
+    def deck_name(self) -> str:
+        return self._deck_combo.currentText()
 
     def selected_entries(self) -> list[tuple[str, str, list[str]]]:
         """Return (path, title, tags) for each selected PDF."""

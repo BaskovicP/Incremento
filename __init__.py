@@ -899,19 +899,21 @@ def addPdfFunction() -> None:
     from .utils.pdf_dialog import AddPdfDialog
     from .utils.pdf_manager import add_pdf_card
 
-    dlg = AddPdfDialog(mw)
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    dlg = AddPdfDialog(deck_names=deck_names, default_deck="Topics", parent=mw)
     if not dlg.exec():
         return
     entries = dlg.selected_entries()
     if not entries:
         return
 
+    deck = dlg.deck_name
     created = 0
     failed: list[tuple[str, str]] = []
     try:
         for pdf_path, title, tags in entries:
             try:
-                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, tags=tags)
+                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, deck_name=deck, tags=tags)
                 created += 1
             except Exception as e:
                 failed.append((pdf_path, str(e)))
