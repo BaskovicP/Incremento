@@ -236,29 +236,100 @@ def ensure_pdf_note_type(col) -> None:
 # ---------------------------------------------------------------------------
 
 
-def ocr_pdf_in_place(pdf_path: str) -> bool:
-    """Run ocrmypdf on *pdf_path*, replacing the file with an OCR'd version.
+def _find_bin(*candidates: str) -> str | None:
+    """Return the first existing executable path from candidates."""
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
 
-    Returns True if OCR was successfully applied, False if ocrmypdf is not
-    installed, the file is already searchable, or the run fails for any reason.
+
+def ocr_pdf_in_place(pdf_path: str) -> bool:
+    """OCR a scanned PDF and replace it with a searchable version.
+
+    Pipeline:
+      1. PyMuPDF renders each page to a PNG at 200 DPI
+      2. tesseract converts each PNG to a single-page searchable PDF
+      3. pdfunite merges the pages into one file
+      4. The merged file replaces the original
+
+    Falls back to ocrmypdf if tesseract/pdfunite are unavailable.
+    Returns True on success, False if required tools are missing or OCR fails.
     """
-    _candidates = [
+    import tempfile
+
+    # --- preferred pipeline: tesseract + pdfunite --------------------------
+    tesseract = _find_bin(
+        shutil.which("tesseract"),
+        "/opt/homebrew/bin/tesseract",
+        "/usr/local/bin/tesseract",
+        "/usr/bin/tesseract",
+    )
+    pdfunite = _find_bin(
+        shutil.which("pdfunite"),
+        "/opt/homebrew/bin/pdfunite",
+        "/usr/local/bin/pdfunite",
+        "/usr/bin/pdfunite",
+    )
+
+    if tesseract and pdfunite:
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            pass
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                page_pdfs: list[str] = []
+                try:
+                    doc = fitz.open(pdf_path)
+                    mat = fitz.Matrix(200 / 72, 200 / 72)  # 200 DPI
+                    for i in range(len(doc)):
+                        pix = doc.load_page(i).get_pixmap(matrix=mat)
+                        img_path = os.path.join(tmpdir, f"p{i:04d}.png")
+                        pix.save(img_path)
+                        out_base = os.path.join(tmpdir, f"p{i:04d}")
+                        proc = subprocess.run(
+                            [tesseract, img_path, out_base, "pdf"],
+                            capture_output=True,
+                            timeout=120,
+                        )
+                        if proc.returncode != 0:
+                            break
+                        page_pdfs.append(out_base + ".pdf")
+                    doc.close()
+                except Exception:
+                    page_pdfs = []
+
+                if len(page_pdfs) > 0:
+                    merged = os.path.join(tmpdir, "merged.pdf")
+                    try:
+                        if len(page_pdfs) == 1:
+                            shutil.copy2(page_pdfs[0], merged)
+                        else:
+                            subprocess.run(
+                                [pdfunite] + page_pdfs + [merged],
+                                capture_output=True,
+                                timeout=120,
+                                check=True,
+                            )
+                        if os.path.getsize(merged) > 0:
+                            shutil.move(merged, pdf_path)
+                            return True
+                    except Exception:
+                        pass
+
+    # --- fallback: ocrmypdf ------------------------------------------------
+    ocrmypdf = _find_bin(
         shutil.which("ocrmypdf"),
         "/opt/homebrew/bin/ocrmypdf",
         "/usr/local/bin/ocrmypdf",
         "/usr/bin/ocrmypdf",
-    ]
-    exe = next((c for c in _candidates if c and os.path.isfile(c)), None)
-    if not exe:
+    )
+    if not ocrmypdf:
         return False
 
-    import tempfile
     fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     try:
         proc = subprocess.run(
-            [exe, "--skip-text", "--quiet", pdf_path, tmp_path],
-            check=False,
+            [ocrmypdf, "--skip-text", "--quiet", pdf_path, tmp_path],
             capture_output=True,
             timeout=300,
         )
