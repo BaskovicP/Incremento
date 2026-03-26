@@ -1237,7 +1237,7 @@ def addVideoFunction() -> None:
         return
     title = dlg.title or url
     try:
-        add_video_card(mw.col, url, title)
+        add_video_card(mw.col, url, title, tags=dlg.tags)
         mw.col.reset()
         tooltip(f"Video card '{title}' added to Topics.")
     except Exception as e:

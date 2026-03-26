@@ -56,7 +56,13 @@ def ensure_web_note_type(col) -> None:
             models.update_dict(m)
 
 
-def add_web_card(col, url: str, title: str, deck_name: str = "Topics") -> int:
+def add_web_card(
+    col,
+    url: str,
+    title: str,
+    deck_name: str = "Topics",
+    tags: list[str] | None = None,
+) -> int:
     """Create an Incremento Web note, return the card id."""
     ensure_web_note_type(col)
     deck = col.decks.by_name(deck_name)
@@ -68,6 +74,13 @@ def add_web_card(col, url: str, title: str, deck_name: str = "Topics") -> int:
     note = col.new_note(model)
     note["Title"] = title
     note["URL"] = url
+    for tag in tags or []:
+        if not tag:
+            continue
+        if hasattr(note, "add_tag"):
+            note.add_tag(tag)
+        elif hasattr(note, "tags"):
+            note.tags.append(tag)
     note.note_type()["did"] = deck_id
     col.add_note(note, deck_id)
     return col.find_cards(f"nid:{note.id}")[0]

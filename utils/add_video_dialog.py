@@ -2,6 +2,8 @@ from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton,
 )
 
+from .tag_edit import QuickTagEdit
+
 
 class AddVideoDialog(QDialog):
     """Dialog to add a new YouTube video as an Incremento Video card."""
@@ -23,6 +25,10 @@ class AddVideoDialog(QDialog):
         layout.addWidget(QLabel("Title:"))
         self._title_edit = QLineEdit()
         layout.addWidget(self._title_edit)
+
+        layout.addWidget(QLabel("Tags:"))
+        self._tag_edit = QuickTagEdit()
+        layout.addWidget(self._tag_edit)
 
         dk_row = QHBoxLayout()
         dk_row.addWidget(QLabel("Deck:"))
@@ -59,3 +65,7 @@ class AddVideoDialog(QDialog):
     @property
     def deck_name(self) -> str:
         return self._dk_combo.currentText()
+
+    @property
+    def tags(self) -> list[str]:
+        return self._tag_edit.tags()

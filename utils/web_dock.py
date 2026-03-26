@@ -209,7 +209,7 @@ def add_web_function() -> None:
         return
     title = dlg.title or url
     try:
-        add_web_card(mw.col, url, title, dlg.deck_name)
+        add_web_card(mw.col, url, title, dlg.deck_name, tags=dlg.tags)
         mw.col.reset()
         tooltip(f"Web card '{title}' added to {dlg.deck_name}.")
     except Exception as e:
