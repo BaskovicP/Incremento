@@ -1350,6 +1350,90 @@ def reindexPdfTextFunction() -> None:
     )
 
 
+def cleanupOrphanPdfsFunction() -> None:
+    """Delete PDF files in user_files/pdfs/ that no card references."""
+    from .utils.pdf_manager import get_pdf_dir
+
+    pdf_dir = get_pdf_dir()
+
+    # All files currently on disk
+    try:
+        disk_files = {
+            f for f in os.listdir(pdf_dir)
+            if f.lower().endswith(".pdf")
+        }
+    except OSError as e:
+        showInfo(f"Could not read PDF directory:\n{e}")
+        return
+
+    if not disk_files:
+        showInfo("No PDF files found in user_files/pdfs/.")
+        return
+
+    # All filenames referenced by an Incremento PDF note
+    try:
+        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+        referenced = set()
+        for nid in note_ids:
+            note = mw.col.get_note(nid)
+            fname = note["PDF_Filename"].strip()
+            if fname:
+                referenced.add(fname)
+    except Exception as e:
+        showInfo(f"Could not query PDF cards:\n{e}")
+        return
+
+    orphans = sorted(disk_files - referenced)
+
+    if not orphans:
+        showInfo(
+            f"No orphaned PDFs found.\n\n"
+            f"{len(disk_files)} file(s) on disk, all referenced by a card."
+        )
+        return
+
+    def _fmt_size(path: str) -> str:
+        try:
+            b = os.path.getsize(path)
+            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
+        except OSError:
+            return "?"
+
+    lines = [f"Found {len(orphans)} orphaned PDF(s) (no card references them):\n"]
+    total_bytes = 0
+    for fname in orphans:
+        fpath = os.path.join(pdf_dir, fname)
+        try:
+            total_bytes += os.path.getsize(fpath)
+        except OSError:
+            pass
+        lines.append(f"• {fname}  ({_fmt_size(fpath)})")
+    total_str = f"{total_bytes / 1_048_576:.1f} MB" if total_bytes >= 1_048_576 else f"{total_bytes // 1024} KB"
+    lines.append(f"\nTotal: {total_str}")
+    lines.append("\nDelete these files?")
+
+    from aqt.utils import askUser
+    if not askUser("\n".join(lines), title="Clean Up Orphaned PDFs"):
+        return
+
+    deleted = 0
+    errors: list[str] = []
+    for fname in orphans:
+        fpath = os.path.join(pdf_dir, fname)
+        try:
+            os.remove(fpath)
+            deleted += 1
+        except OSError as e:
+            errors.append(f"• {fname}: {e}")
+
+    if not errors:
+        showInfo(f"Deleted {deleted} orphaned PDF file(s).\nRecovered {total_str}.")
+    else:
+        showInfo(
+            f"Deleted {deleted} of {len(orphans)} file(s).\n\nErrors:\n" + "\n".join(errors)
+        )
+
+
 def openSettingsFunction() -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
     dlg = IncrementoSettingsDialog(cfg.get("shortcuts") or {}, parent=mw)
@@ -1452,6 +1536,10 @@ _menu.addMenu(_utilsMenu)
 _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
 qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
 _utilsMenu.addAction(_reindexPdfTextAction)
+
+_cleanupOrphanPdfsAction = QAction("Clean Up Orphaned PDF Files…", mw)
+qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)
+_utilsMenu.addAction(_cleanupOrphanPdfsAction)
 
 _statsAction = QAction("Statistics", mw)
 qconnect(_statsAction.triggered, showStatsFunction)
