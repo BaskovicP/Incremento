@@ -1275,18 +1275,18 @@ def reindexPdfTextFunction() -> None:
         showInfo("No PDF cards found to reindex.")
         return
 
-    updated = 0
-    unchanged = 0
-    failed: list[tuple[int, str]] = []
+    indexed = 0
+    skipped = 0  # file missing or no text
+    failed: list[tuple[str, str]] = []
     from .utils.pdf_manager import get_pdf_dir
     pdf_dir = get_pdf_dir()
 
-    mw.progress.start(label="Reindexing PDF text...", immediate=True)
+    mw.progress.start(label="Reindexing PDF text…", immediate=True)
     try:
         total = len(note_ids)
         for i, nid in enumerate(note_ids, start=1):
             try:
-                mw.progress.update(label=f"Reindexing PDF text... ({i}/{total})")
+                mw.progress.update(label=f"({i}/{total}) Reindexing PDF text…")
             except Exception:
                 pass
 
@@ -1295,48 +1295,30 @@ def reindexPdfTextFunction() -> None:
                 filename = note["PDF_Filename"]
                 pdf_path = os.path.join(pdf_dir, filename)
                 if not os.path.exists(pdf_path):
-                    failed.append((nid, f"file not found: {pdf_path}"))
+                    skipped += 1
                     continue
                 page_texts = extract_pdf_pages_text(pdf_path)
                 if not any(page_texts):
-                    failed.append((nid, f"no text extracted from {filename} ({len(page_texts)} pages)"))
+                    skipped += 1
                     continue
-                new_text = "\n\n".join([p for p in page_texts if p]).strip()
-                old_text = (note["Content"] or "") if "Content" in note else ""
-
                 for cid in mw.col.find_cards(f"nid:{nid}"):
-                    try:
-                        replace_pdf_text_index(_ADDON_DIR, cid, page_texts)
-                    except Exception:
-                        pass
-
-                if new_text != old_text:
-                    note["Content"] = new_text
-                    note.flush()
-                    updated += 1
-                else:
-                    unchanged += 1
+                    replace_pdf_text_index(_ADDON_DIR, cid, page_texts)
+                indexed += 1
             except Exception as e:
-                failed.append((nid, str(e)))
+                failed.append((str(nid), str(e)))
     finally:
         mw.progress.finish()
 
-    if not failed:
-        showInfo(
-            f"PDF text reindex complete.\n\n"
-            f"Updated: {updated}\nUnchanged: {unchanged}\nTotal: {len(note_ids)}"
-        )
-        return
-
-    failed_preview = "\n".join(f"- nid:{nid}: {msg}" for nid, msg in failed[:10])
-    extra = ""
-    if len(failed) > 10:
-        extra = f"\n...and {len(failed) - 10} more failures."
-    showInfo(
-        f"PDF text reindex finished with issues.\n\n"
-        f"Updated: {updated}\nUnchanged: {unchanged}\nFailed: {len(failed)}\n\n"
-        f"{failed_preview}{extra}"
-    )
+    lines = [f"PDF text reindex complete.\n"]
+    lines.append(f"Indexed:  {indexed}")
+    lines.append(f"Skipped (no text / missing file):  {skipped}")
+    if failed:
+        lines.append(f"Errors:   {len(failed)}")
+        for nid_str, msg in failed[:10]:
+            lines.append(f"  • nid:{nid_str}: {msg}")
+        if len(failed) > 10:
+            lines.append(f"  …and {len(failed) - 10} more")
+    showInfo("\n".join(lines))
 
 
 def cleanupOrphanPdfsFunction() -> None:
