@@ -148,8 +148,9 @@ def extract_pdf_pages_text(pdf_path: str) -> list[str]:
     """
     doc = QPdfDocument(None)
     try:
-        if doc.load(pdf_path) != QPdfDocument.Status.Ready:
-            raise RuntimeError("QPdfDocument not ready")
+        doc.load(pdf_path)  # returns Error enum in Qt 6.4+; check pageCount instead
+        if doc.pageCount() == 0:
+            raise RuntimeError("QPdfDocument: no pages")
         pages = []
         for i in range(doc.pageCount()):
             sel = doc.getAllText(i)
@@ -210,7 +211,7 @@ def ensure_pdf_note_type(col) -> None:
 
     if m is None:
         m = models.new(PDF_NOTE_TYPE)
-        for field_name in ("Title", "PDF_Filename", "Content"):
+        for field_name in ("Title", "PDF_Filename"):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
         tmpl = models.new_template("Card 1")
@@ -220,12 +221,6 @@ def ensure_pdf_note_type(col) -> None:
         models.add(m)
     else:
         changed = False
-        # Add Content field if missing (migration for existing note types)
-        existing_names = [f["name"] for f in m["flds"]]
-        if "Content" not in existing_names:
-            fld = models.new_field("Content")
-            models.add_field(m, fld)
-            changed = True
         # Sync template
         tmpl = m["tmpls"][0]
         if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
@@ -266,7 +261,6 @@ def add_pdf_card(
     note["Title"] = title
     note["PDF_Filename"] = media_filename
     page_texts = extract_pdf_pages_text(pdf_path)
-    note["Content"] = "\n\n".join([p for p in page_texts if p]).strip()
     for tag in tags or []:
         if not tag:
             continue

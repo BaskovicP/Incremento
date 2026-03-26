@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import zipfile
 from html import escape
@@ -24,6 +25,7 @@ from aqt.qt import (
     QApplication,
     QListWidget,
     QListWidgetItem,
+    QSplitter,
     QTextBrowser,
     QTableWidget,
     QTableWidgetItem,
@@ -458,7 +460,7 @@ class _SearchAllDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Search ALL")
-        self.resize(900, 620)
+        self.resize(1280, 700)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -481,10 +483,32 @@ class _SearchAllDialog(QDialog):
         filter_row.addStretch()
         layout.addLayout(filter_row)
 
+        # ── Splitter: results (left) | preview (right) ────────────────────────
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
         self._results = QTextBrowser()
         self._results.setOpenLinks(False)
         self._results.anchorClicked.connect(self._open_link)
-        layout.addWidget(self._results, stretch=1)
+        self._results.highlighted[QUrl].connect(self._on_hover)
+        splitter.addWidget(self._results)
+
+        # Right: preview panel
+        preview_container = QWidget()
+        pc_layout = QVBoxLayout(preview_container)
+        pc_layout.setContentsMargins(0, 0, 0, 0)
+        pc_layout.setSpacing(0)
+        self._preview_header = QLabel("Preview")
+        self._preview_header.setStyleSheet(
+            "font-size:11px;color:#888;padding:4px 8px;"
+            "background:#f5f5f5;border-bottom:1px solid #ddd;"
+        )
+        pc_layout.addWidget(self._preview_header)
+        self._preview = QWebEngineView()
+        pc_layout.addWidget(self._preview, stretch=1)
+        splitter.addWidget(preview_container)
+
+        splitter.setSizes([620, 560])
+        layout.addWidget(splitter, stretch=1)
 
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
@@ -492,6 +516,7 @@ class _SearchAllDialog(QDialog):
 
         self._search.textChanged.connect(self._refresh)
         self._refresh("")
+        self._show_placeholder()
 
     @staticmethod
     def _snippet(text: str, q: str, max_len: int = 120) -> str:
@@ -724,6 +749,92 @@ class _SearchAllDialog(QDialog):
         html.append("</div>")
         self._results.setHtml("".join(html))
 
+    # ── Preview panel ─────────────────────────────────────────────────────────
+
+    def _show_placeholder(self) -> None:
+        self._preview_header.setText("Preview")
+        self._preview.setHtml(
+            "<html><body style='font-family:sans-serif;color:#aaa;"
+            "padding:24px;font-size:13px'>Hover over a result to preview.</body></html>"
+        )
+
+    def _on_hover(self, url) -> None:
+        # Qt6: highlighted emits QUrl; Qt5 emits str — handle both
+        url_str = url.toString() if hasattr(url, "toString") else str(url)
+        if not url_str:
+            return
+        try:
+            if url_str.startswith("inc://pdf/"):
+                parsed = urlparse(url_str)
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 2:
+                    cid, page = int(parts[0]), int(parts[1])
+                    q = (parse_qs(parsed.query).get("q") or [""])[0]
+                    self._preview_pdf_page(cid, page, q)
+            elif url_str.startswith("inc://card/"):
+                nid = int(url_str.rsplit("/", 1)[1])
+                self._preview_card(nid)
+        except Exception:
+            pass
+
+    def _highlight_terms(self, text: str, q: str) -> str:
+        """Return HTML-escaped text with query tokens wrapped in <mark>."""
+        out = escape(text)
+        if not q:
+            return out
+        for tok in q.split():
+            if len(tok) >= 2:
+                out = re.sub(
+                    f"(?i)({re.escape(escape(tok))})",
+                    r"<mark style='background:#ffe08a'>\1</mark>",
+                    out,
+                )
+        return out
+
+    def _preview_pdf_page(self, cid: int, page: int, q: str) -> None:
+        title = self._pdf_title(cid)
+        try:
+            row = (
+                get_connection(_ADDON_DIR)
+                .execute(
+                    "SELECT text FROM pdf_text_index WHERE card_id=? AND page=?",
+                    (cid, page),
+                )
+                .fetchone()
+            )
+            text = (row[0] or "") if row else ""
+        except Exception:
+            text = ""
+
+        body = self._highlight_terms(text, q) if text else "<i style='color:#aaa'>No text index for this page.</i>"
+        self._preview_header.setText(f"PDF: {title} — Page {page}")
+        self._preview.setHtml(
+            f"<html><body style='font-family:sans-serif;font-size:13px;"
+            f"padding:14px;line-height:1.6;white-space:pre-wrap'>{body}</body></html>"
+        )
+
+    def _preview_card(self, nid: int) -> None:
+        try:
+            note = mw.col.get_note(nid)
+            model = mw.col.models.get(note.mid)
+            model_name = escape(model.get("name", "Note") if model else "Note")
+            fld_names = [f.get("name", "") for f in (model.get("flds") or [])] if model else []
+            rows = ""
+            for i, fval in enumerate(note.fields):
+                fname = escape(fld_names[i]) if i < len(fld_names) else f"Field {i}"
+                rows += (
+                    f"<div style='margin-bottom:10px'>"
+                    f"<div style='font-size:11px;color:#888;margin-bottom:2px'>{fname}</div>"
+                    f"<div>{fval}</div></div>"
+                )
+            self._preview_header.setText(f"Card: {model_name} — note {nid}")
+            self._preview.setHtml(
+                f"<html><body style='font-family:sans-serif;font-size:13px;padding:14px'>"
+                f"{rows}</body></html>"
+            )
+        except Exception:
+            pass
+
     def _open_link(self, qurl) -> None:
         s = qurl.toString()
         try:
@@ -794,14 +905,13 @@ def addPdfFunction() -> None:
     entries = dlg.selected_entries()
     if not entries:
         return
-    tags_to_apply = dlg.tags_to_apply
 
     created = 0
     failed: list[tuple[str, str]] = []
     try:
-        for pdf_path, title in entries:
+        for pdf_path, title, tags in entries:
             try:
-                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, tags=tags_to_apply)
+                add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, tags=tags)
                 created += 1
             except Exception as e:
                 failed.append((pdf_path, str(e)))
@@ -811,7 +921,7 @@ def addPdfFunction() -> None:
 
     if not failed:
         if created == 1:
-            showInfo(f'PDF card "{entries[0][1]}" added to the Topics deck.')
+            showInfo(f'PDF card "{entries[0][1]}" added to the Topics deck.')  # noqa: E501
         else:
             showInfo(f"Added {created} PDF cards to the Topics deck.")
         return
