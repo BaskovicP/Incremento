@@ -474,14 +474,18 @@ class AddPdfDialog(QDialog):
             return []
 
         def ocr_done(fut) -> None:
+            ocr_ok = False
             try:
                 page_texts = fut.result()
                 if page_texts:
                     replace_pdf_text_index(self._addon_dir, cid, page_texts)
+                    ocr_ok = True
             except Exception:
                 pass
             self.created.append((path, title))
-            self._set_row_status(path, "✓", color="#4caf50")
+            status = "✓" if ocr_ok else "✓ (no text)"
+            color = "#4caf50" if ocr_ok else "#ff9800"
+            self._set_row_status(path, status, color=color)
             self._process_files(entries, idx + 1)
 
         mw.taskman.run_in_background(ocr_task, ocr_done)

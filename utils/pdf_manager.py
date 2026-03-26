@@ -143,32 +143,40 @@ def set_read_page(addon_dir: str, card_id: int, read_page: int) -> None:
 def extract_pdf_pages_text(pdf_path: str) -> list[str]:
     """Extract per-page text from a PDF.
 
-    Primary extractor: Qt QPdfDocument page text.
-    Fallback extractor: pdftotext split by form-feed pages.
+    Extraction order:
+      1. PyMuPDF (fitz) — handles Tesseract invisible-text layers (rendering
+         mode 3) and is safe to call from background threads.
+      2. Qt QPdfDocument — fast for regular PDFs; skips invisible text.
+      3. pdftotext (poppler) — last resort external binary.
     """
-    doc = QPdfDocument(None)
+    # 1. PyMuPDF — best at reading Tesseract OCR output
     try:
-        doc.load(pdf_path)  # returns Error enum in Qt 6.4+; check pageCount instead
-        if doc.pageCount() == 0:
-            raise RuntimeError("QPdfDocument: no pages")
-        pages = []
-        for i in range(doc.pageCount()):
-            sel = doc.getAllText(i)
-            if sel.isValid():
-                t = sel.text().strip()
-                pages.append(t)
-            else:
-                pages.append("")
+        import fitz
+        doc = fitz.open(pdf_path)
+        pages = [doc.load_page(i).get_text("text").strip() for i in range(len(doc))]
+        doc.close()
         if any(pages):
             return pages
+    except Exception:
+        pass
+
+    # 2. Qt QPdfDocument
+    doc = QPdfDocument(None)
+    try:
+        doc.load(pdf_path)
+        if doc.pageCount() > 0:
+            pages = []
+            for i in range(doc.pageCount()):
+                sel = doc.getAllText(i)
+                pages.append(sel.text().strip() if sel.isValid() else "")
+            if any(pages):
+                return pages
     except Exception:
         pass
     finally:
         doc.close()
 
-    # Fallback to poppler's pdftotext if installed.
-    # Check common install locations in addition to PATH, since Anki's
-    # subprocess environment may not include /opt/homebrew/bin.
+    # 3. pdftotext (poppler)
     _candidates = [
         shutil.which("pdftotext"),
         "/opt/homebrew/bin/pdftotext",
@@ -185,11 +193,10 @@ def extract_pdf_pages_text(pdf_path: str) -> list[str]:
                 text=True,
             )
             if proc.returncode == 0:
-                text = proc.stdout or ""
-                parts = [p.strip() for p in text.split("\f")]
+                parts = [p.strip() for p in (proc.stdout or "").split("\f")]
+                while parts and not parts[-1]:
+                    parts.pop()
                 if parts:
-                    while parts and not parts[-1]:
-                        parts.pop()
                     return parts
         except Exception:
             pass
