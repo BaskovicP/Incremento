@@ -908,35 +908,44 @@ def addPdfFunction() -> None:
         return
 
     deck = dlg.deck_name
-    created = 0
+    created: list[tuple[str, str]] = []  # (path, title)
     failed: list[tuple[str, str]] = []
     try:
         for pdf_path, title, tags in entries:
             try:
                 add_pdf_card(_ADDON_DIR, mw.col, pdf_path, title, deck_name=deck, tags=tags)
-                created += 1
+                created.append((pdf_path, title))
             except Exception as e:
                 failed.append((pdf_path, str(e)))
     except Exception as e:
         showInfo(f"Failed to add PDF card(s):\n{e}")
         return
 
-    if not failed:
-        if created == 1:
-            showInfo(f'PDF card "{entries[0][1]}" added to the Topics deck.')  # noqa: E501
-        else:
-            showInfo(f"Added {created} PDF cards to the Topics deck.")
-        return
+    def _fmt_size(path: str) -> str:
+        try:
+            b = os.path.getsize(path)
+            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
+        except OSError:
+            return "?"
 
-    failed_names = "\n".join(
-        f"- {os.path.basename(path)}: {msg}" for path, msg in failed[:10]
-    )
-    extra = ""
-    if len(failed) > 10:
-        extra = f"\n...and {len(failed) - 10} more failures."
-    showInfo(
-        f"Added {created} PDF card(s). Failed: {len(failed)}\n\n{failed_names}{extra}"
-    )
+    if created:
+        lines = [f"Added {len(created)} PDF card(s) → {deck}\n"]
+        for path, title in created:
+            lines.append(f"• {title}")
+            lines.append(f"  {os.path.basename(path)}  ·  {_fmt_size(path)}")
+        if failed:
+            lines.append(f"\nFailed: {len(failed)}")
+            for path, msg in failed[:10]:
+                lines.append(f"• {os.path.basename(path)}: {msg}")
+            if len(failed) > 10:
+                lines.append(f"  …and {len(failed) - 10} more")
+        showInfo("\n".join(lines))
+    else:
+        failed_lines = "\n".join(
+            f"• {os.path.basename(p)}: {msg}" for p, msg in failed[:10]
+        )
+        extra = f"\n…and {len(failed) - 10} more" if len(failed) > 10 else ""
+        showInfo(f"All imports failed ({len(failed)}):\n\n{failed_lines}{extra}")
 
 
 def exportFunction() -> None:
