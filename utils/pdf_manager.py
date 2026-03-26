@@ -236,6 +236,45 @@ def ensure_pdf_note_type(col) -> None:
 # ---------------------------------------------------------------------------
 
 
+def ocr_pdf_in_place(pdf_path: str) -> bool:
+    """Run ocrmypdf on *pdf_path*, replacing the file with an OCR'd version.
+
+    Returns True if OCR was successfully applied, False if ocrmypdf is not
+    installed, the file is already searchable, or the run fails for any reason.
+    """
+    _candidates = [
+        shutil.which("ocrmypdf"),
+        "/opt/homebrew/bin/ocrmypdf",
+        "/usr/local/bin/ocrmypdf",
+        "/usr/bin/ocrmypdf",
+    ]
+    exe = next((c for c in _candidates if c and os.path.isfile(c)), None)
+    if not exe:
+        return False
+
+    import tempfile
+    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    try:
+        proc = subprocess.run(
+            [exe, "--skip-text", "--quiet", pdf_path, tmp_path],
+            check=False,
+            capture_output=True,
+            timeout=300,
+        )
+        if proc.returncode == 0 and os.path.getsize(tmp_path) > 0:
+            shutil.move(tmp_path, pdf_path)
+            return True
+    except Exception:
+        pass
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+    return False
+
+
 def add_pdf_card(
     addon_dir: str,
     col,
@@ -249,6 +288,7 @@ def add_pdf_card(
 
     # Copy file to profile-local PDF dir (not Anki media, so it won't sync)
     media_filename = _copy_to_pdf_dir(pdf_path)
+    dest_path = os.path.join(get_pdf_dir(), media_filename)
 
     deck = col.decks.by_name(deck_name)
     if deck is None:
@@ -260,7 +300,12 @@ def add_pdf_card(
     note = col.new_note(model)
     note["Title"] = title
     note["PDF_Filename"] = media_filename
-    page_texts = extract_pdf_pages_text(pdf_path)
+
+    # Extract text from the stored copy; OCR in-place if no text found
+    page_texts = extract_pdf_pages_text(dest_path)
+    if not any(page_texts):
+        ocr_pdf_in_place(dest_path)
+        page_texts = extract_pdf_pages_text(dest_path)
     for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
         if not tag:
             continue
