@@ -6,7 +6,7 @@ from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
-    QInputDialog, QScrollArea, QObject, QEvent,
+    QInputDialog, QScrollArea, QObject, QEvent, QGraphicsOpacityEffect,
 )
 from aqt.utils import showInfo, tooltip
 
@@ -154,6 +154,8 @@ class _HandleEventFilter(QObject):
         self._f = funnel
 
     def eventFilter(self, obj, event):
+        if not self._f.isEnabled():
+            return False
         card = self._f._handle_map.get(id(obj))
         if card is None:
             return False
@@ -490,110 +492,7 @@ class SchedulerConfigDialog(QDialog):
         card_types_row.addStretch()
         layout.addLayout(card_types_row)
 
-        # ── 3. Content type priorities (Phase 0 — runs before everything else) ─
-        _ct_hrow = QHBoxLayout()
-        _ct_header = QLabel("Content type priorities")
-        _ct_header.setStyleSheet("font-weight: bold;")
-        _ct_hrow.addWidget(_ct_header)
-        _ct_hrow.addWidget(_info_icon(
-            "Reserve the first part of every session for a specific media type.\n\n"
-            "These cards are scheduled first (Phase 0), before Topics/Items ratios,\n"
-            "Tag quotas, or Scheduling priority order take effect.\n\n"
-            "Example: PDF = 30 % with 50 cards → the first 15 cards are always PDFs.\n"
-            "After that, normal scheduling fills the remaining 35 slots.\n\n"
-            "Leave unchecked for types you don't want to prioritise.\n"
-            "If fewer cards are available than the quota, all available cards are used."
-        ))
-        _ct_hrow.addStretch()
-        layout.addLayout(_ct_hrow)
-
-        _ct_desc = QLabel(
-            "Checked types are scheduled first — their percentage is filled before the rest of the session."
-        )
-        _ct_desc.setWordWrap(True)
-        _ct_desc.setStyleSheet("color: gray;")
-        layout.addWidget(_ct_desc)
-
-        _ct_tip = QLabel(
-            "Tip: Tag weights (below) also apply here — "
-            "e.g. statistics = 80 % means 80 % of your PDF picks will target statistics-tagged PDFs."
-        )
-        _ct_tip.setWordWrap(True)
-        _ct_tip.setStyleSheet("color: #4a7ab5; font-size: small; padding: 2px 0;")
-        layout.addWidget(_ct_tip)
-
-        _ct_tips = {
-            "pdf":     (
-                "Incremento PDF reading cards (note type: Incremento PDF).\n"
-                "Always eligible — not limited by New / Learning / Due state.\n\n"
-                "Example: 20 % of 50 cards = first 10 cards are PDFs."
-            ),
-            "youtube": (
-                "YouTube / video cards (note type: Incremento Video).\n"
-                "Always eligible — not limited by New / Learning / Due state.\n\n"
-                "Example: 10 % of 50 cards = first 5 cards are YouTube videos."
-            ),
-            "webpage": (
-                "Webpage cards (note type: Incremento Web).\n"
-                "Always eligible — not limited by New / Learning / Due state.\n\n"
-                "Example: 10 % of 50 cards = first 5 cards are webpages."
-            ),
-        }
-        ct_saved = {r["type"]: r for r in self._saved.get("content_type_rows", [])}
-        self._ct_rows: list[dict] = []
-        for ct_type, ct_label in [
-            ("pdf",     "PDF"),
-            ("youtube", "YouTube / Video"),
-            ("webpage", "Webpage"),
-        ]:
-            saved_row = ct_saved.get(ct_type, {})
-            ct_enabled = saved_row.get("enabled", False)
-            ct_weight  = saved_row.get("weight", 20)
-
-            ct_widget = QWidget()
-            ct_layout = QHBoxLayout(ct_widget)
-            ct_layout.setContentsMargins(0, 2, 0, 2)
-
-            ct_cb = QCheckBox(ct_label)
-            ct_cb.setChecked(ct_enabled)
-            ct_cb.setFixedWidth(140)
-            ct_layout.addWidget(ct_cb)
-
-            ct_slider = QSlider(Qt.Orientation.Horizontal)
-            ct_slider.setRange(0, 100)
-            ct_slider.setValue(ct_weight)
-            ct_slider.setEnabled(ct_enabled)
-            ct_slider.setToolTip("Percentage of the session to fill with this content type first")
-            ct_layout.addWidget(ct_slider)
-
-            ct_pct = QLabel(f"{ct_weight}%")
-            ct_pct.setFixedWidth(36)
-            ct_layout.addWidget(ct_pct)
-
-            ct_count = QLabel("")
-            ct_count.setStyleSheet("color: gray; font-size: small;")
-            ct_layout.addWidget(ct_count)
-
-            ct_layout.addWidget(_info_icon(_ct_tips[ct_type]))
-            layout.addWidget(ct_widget)
-
-            ct_row = {
-                "type": ct_type,
-                "cb": ct_cb,
-                "slider": ct_slider,
-                "pct_label": ct_pct,
-                "count_label": ct_count,
-            }
-            self._ct_rows.append(ct_row)
-
-            qconnect(ct_cb.stateChanged,
-                     lambda _, r=ct_row: r["slider"].setEnabled(r["cb"].isChecked()))
-            qconnect(ct_slider.valueChanged,
-                     lambda v, r=ct_row: r["pct_label"].setText(f"{v}%"))
-
-        self._refresh_ct_counts()
-
-        # ── 4. Topics / Items ratio ───────────────────────────────────────────
+        # ── 3. Topics / Items ratio ───────────────────────────────────────────
         topics_val = self._saved.get("topics_slider", 10)
         topics_row = QHBoxLayout()
         self._topics_left_lbl = QLabel(f"{100 - topics_val}%")
@@ -824,16 +723,22 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._other_lbl)
         self._update_other_label()
 
-        # ── 9. Scheduling funnel ───────────────────────────────────────────────
+        # ── 9. Scheduling funnel (collapsible) ────────────────────────────────
         _funnel_sep = QFrame()
         _funnel_sep.setFrameShape(QFrame.Shape.HLine)
         _funnel_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
         layout.addWidget(_funnel_sep)
 
         _funnel_hrow = QHBoxLayout()
-        _funnel_header = QLabel("Scheduling funnel")
-        _funnel_header.setStyleSheet("font-weight: bold;")
-        _funnel_hrow.addWidget(_funnel_header)
+        _funnel_toggle = QPushButton("▶  Scheduling funnel")
+        _funnel_toggle.setCheckable(True)
+        _funnel_toggle.setChecked(False)
+        _funnel_toggle.setFlat(True)
+        _funnel_toggle.setStyleSheet(
+            "QPushButton { font-weight: bold; text-align: left; padding: 4px 2px; border: none; }"
+            "QPushButton:hover { color: palette(highlight); }"
+        )
+        _funnel_hrow.addWidget(_funnel_toggle)
         _funnel_hrow.addWidget(_info_icon(
             "Only active when Strict enforcement is ON.\n\n"
             "─── Strict mode (enforcement checked) ───\n"
@@ -866,13 +771,128 @@ class SchedulerConfigDialog(QDialog):
         _funnel_hrow.addWidget(self._enforce_cb)
         layout.addLayout(_funnel_hrow)
 
+        _funnel_body = QWidget()
+        _funnel_body.setVisible(False)
+        _funnel_body_layout = QVBoxLayout(_funnel_body)
+        _funnel_body_layout.setContentsMargins(12, 0, 0, 8)
+        _funnel_body_layout.setSpacing(6)
+
+        # ── Content type priorities ────────────────────────────────────────────
+        _ct_hrow = QHBoxLayout()
+        _ct_header = QLabel("Content type priorities")
+        _ct_header.setStyleSheet("font-weight: bold;")
+        _ct_hrow.addWidget(_ct_header)
+        _ct_hrow.addWidget(_info_icon(
+            "Reserve the first part of every session for a specific media type.\n\n"
+            "These cards are scheduled first (Phase 0), before Topics/Items ratios,\n"
+            "Tag quotas, or Scheduling priority order take effect.\n\n"
+            "Example: PDF = 30 % with 50 cards → the first 15 cards are always PDFs.\n"
+            "After that, normal scheduling fills the remaining 35 slots.\n\n"
+            "Leave unchecked for types you don't want to prioritise.\n"
+            "If fewer cards are available than the quota, all available cards are used."
+        ))
+        _ct_hrow.addStretch()
+        _funnel_body_layout.addLayout(_ct_hrow)
+
+        _ct_desc = QLabel(
+            "Checked types are scheduled first — their percentage is filled before the rest of the session."
+        )
+        _ct_desc.setWordWrap(True)
+        _ct_desc.setStyleSheet("color: gray;")
+        _funnel_body_layout.addWidget(_ct_desc)
+
+        _ct_tip = QLabel(
+            "Tip: Tag weights (below) also apply here — "
+            "e.g. statistics = 80 % means 80 % of your PDF picks will target statistics-tagged PDFs."
+        )
+        _ct_tip.setWordWrap(True)
+        _ct_tip.setStyleSheet("color: #4a7ab5; font-size: small; padding: 2px 0;")
+        _funnel_body_layout.addWidget(_ct_tip)
+
+        _ct_tips = {
+            "pdf":     (
+                "Incremento PDF reading cards (note type: Incremento PDF).\n"
+                "Always eligible — not limited by New / Learning / Due state.\n\n"
+                "Example: 20 % of 50 cards = first 10 cards are PDFs."
+            ),
+            "youtube": (
+                "YouTube / video cards (note type: Incremento Video).\n"
+                "Always eligible — not limited by New / Learning / Due state.\n\n"
+                "Example: 10 % of 50 cards = first 5 cards are YouTube videos."
+            ),
+            "webpage": (
+                "Webpage cards (note type: Incremento Web).\n"
+                "Always eligible — not limited by New / Learning / Due state.\n\n"
+                "Example: 10 % of 50 cards = first 5 cards are webpages."
+            ),
+        }
+        ct_saved = {r["type"]: r for r in self._saved.get("content_type_rows", [])}
+        self._ct_rows: list[dict] = []
+        for ct_type, ct_label in [
+            ("pdf",     "PDF"),
+            ("youtube", "YouTube / Video"),
+            ("webpage", "Webpage"),
+        ]:
+            saved_row = ct_saved.get(ct_type, {})
+            ct_enabled = saved_row.get("enabled", False)
+            ct_weight  = saved_row.get("weight", 20)
+
+            ct_widget = QWidget()
+            ct_layout = QHBoxLayout(ct_widget)
+            ct_layout.setContentsMargins(0, 2, 0, 2)
+
+            ct_cb = QCheckBox(ct_label)
+            ct_cb.setChecked(ct_enabled)
+            ct_cb.setFixedWidth(140)
+            ct_layout.addWidget(ct_cb)
+
+            ct_slider = QSlider(Qt.Orientation.Horizontal)
+            ct_slider.setRange(0, 100)
+            ct_slider.setValue(ct_weight)
+            ct_slider.setEnabled(ct_enabled)
+            ct_slider.setToolTip("Percentage of the session to fill with this content type first")
+            ct_layout.addWidget(ct_slider)
+
+            ct_pct = QLabel(f"{ct_weight}%")
+            ct_pct.setFixedWidth(36)
+            ct_layout.addWidget(ct_pct)
+
+            ct_count = QLabel("")
+            ct_count.setStyleSheet("color: gray; font-size: small;")
+            ct_layout.addWidget(ct_count)
+
+            ct_layout.addWidget(_info_icon(_ct_tips[ct_type]))
+            _funnel_body_layout.addWidget(ct_widget)
+
+            ct_row = {
+                "type": ct_type,
+                "cb": ct_cb,
+                "slider": ct_slider,
+                "pct_label": ct_pct,
+                "count_label": ct_count,
+            }
+            self._ct_rows.append(ct_row)
+
+            qconnect(ct_cb.stateChanged,
+                     lambda _, r=ct_row: r["slider"].setEnabled(r["cb"].isChecked()))
+            qconnect(ct_slider.valueChanged,
+                     lambda v, r=ct_row: r["pct_label"].setText(f"{v}%"))
+
+        self._refresh_ct_counts()
+
+        # ── Phase order funnel ─────────────────────────────────────────────────
+        _inner_sep = QFrame()
+        _inner_sep.setFrameShape(QFrame.Shape.HLine)
+        _inner_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
+        _funnel_body_layout.addWidget(_inner_sep)
+
         self._funnel = FunnelWidget()
         saved_order = self._saved.get("phase_order", _DEFAULT_PHASE_ORDER)
         saved_enabled = self._saved.get("phases_enabled", {})
         for pid in _DEFAULT_PHASE_ORDER:
             self._funnel.add_phase(pid, enabled=saved_enabled.get(pid, True))
         self._funnel.set_order(saved_order, enabled=saved_enabled)
-        layout.addWidget(self._funnel)
+        _funnel_body_layout.addWidget(self._funnel)
 
         # Soft-mode banner — shown below the funnel when strict enforcement is off
         self._soft_mode_lbl = QLabel(
@@ -888,12 +908,21 @@ class SchedulerConfigDialog(QDialog):
             "font-size: 11px;"
         )
         self._soft_mode_lbl.setWordWrap(True)
-        layout.addWidget(self._soft_mode_lbl)
+        _funnel_body_layout.addWidget(self._soft_mode_lbl)
+
+        layout.addWidget(_funnel_body)
+
+        def _toggle_funnel(checked):
+            _funnel_toggle.setText("▼  Scheduling funnel" if checked else "▶  Scheduling funnel")
+            _funnel_body.setVisible(checked)
+        qconnect(_funnel_toggle.toggled, _toggle_funnel)
 
         def _update_funnel_state():
             strict = self._enforce_cb.isChecked()
             self._funnel.setEnabled(strict)
-            self._funnel.setStyleSheet("" if strict else "opacity: 0.45;")
+            _eff = QGraphicsOpacityEffect(self._funnel)
+            _eff.setOpacity(1.0 if strict else 0.35)
+            self._funnel.setGraphicsEffect(_eff)
             self._soft_mode_lbl.setVisible(not strict)
 
         _update_funnel_state()
