@@ -18,15 +18,15 @@ import types
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton, Qt
+from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton
 
-from .scheduler import get_card_from_scheduler, NO_TAGS_KEY
+from .scheduler import NO_TAGS_KEY
 from .statistics import StatsManager, _empty_time
+from .session_selection import select_session_cards
 try:
     from ..frontend.learn_dialog import SchedulerConfigDialog
 except ImportError:
     from learn_dialog import SchedulerConfigDialog  # tests add frontend/ to sys.path
-from .scheduler_config import load_scheduler_config
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -104,154 +104,26 @@ def learnFunction() -> None:
 
     dlg.save_config()
     cfg = dlg.to_config()
-    target_count = cfg.session_card_count
-
-    stats = StatsManager(_ADDON_DIR, day_end_time=cfg.day_end_time)
-
-    selected_ids = []
-    added_to_filtered = set()
-    # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
-    _picked_meta: dict[int, dict] = {}
-
-    def _pick(
-        use_tags: bool, tag_weights: dict, force_card_type=None, force_mode=None
-    ) -> bool:
-        """Attempt one card pick. Returns False when no card is available."""
-        counts = stats.counts_for(cfg.scheduler_scope)
-        result = get_card_from_scheduler(
-            counts=counts,
-            topics_rate=cfg.topics_rate,
-            random_rate=cfg.random_rate,
-            use_tags=use_tags,
-            tag_weights=tag_weights,
-            exclude_ids=added_to_filtered,
-            force_card_type=force_card_type,
-            force_mode=force_mode,
-            topics_filter=cfg.topics_filter,
-            items_filter=cfg.items_filter,
-            ready_filter=cfg.ready_filter,
-            pdf_rate=cfg.pdf_rate,
-        )
-        if result.card is None:
-            return False
-        counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
-        counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
-        if result.tag:
-            counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
-        # Do NOT call stats.record() here — that would write picks to daily/lifetime.
-        # Recording to daily/lifetime is deferred to the reviewer_did_answer_card hook
-        # so that only actually reviewed cards count toward those scopes.
-        _picked_meta[result.card] = {
-            "card_type": result.card_type,
-            "tag": result.tag,
-            "mode": result.mode,
-        }
-        added_to_filtered.add(result.card)
-        selected_ids.append(result.card)
-        return True
-
-    if cfg.enforce_priority:
-        # Strict mode — run each funnel phase in order, filling its quota before the next.
-        for phase_id in cfg.phase_order:
-            if not cfg.phases_enabled.get(phase_id, True):
-                continue
-            if len(selected_ids) >= target_count:
-                break
-
-            if phase_id == "content_types" and cfg.content_type_weights:
-                for ct, weight in cfg.content_type_weights.items():
-                    if weight <= 0:
-                        continue
-                    ct_target = round(weight * target_count)
-                    ct_picked = 0
-                    for _ in range(ct_target * 3):
-                        if ct_picked >= ct_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(
-                            use_tags=cfg.use_tags,
-                            tag_weights=cfg.tag_weights,
-                            force_card_type=ct,
-                        ):
-                            break
-                        ct_picked += 1
-
-            elif phase_id == "tags" and cfg.use_tags:
-                ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
-                for tag, weight in ordered:
-                    tag_target = round(weight * target_count)
-                    tag_picked = 0
-                    for _ in range(tag_target * 3):
-                        if tag_picked >= tag_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(use_tags=True, tag_weights={tag: 1.0}):
-                            break
-                        tag_picked += 1
-
-            elif phase_id == "type":
-                topics_target = round(cfg.topics_rate * target_count)
-                items_target = target_count - topics_target
-                for forced_type, type_target in [
-                    ("topics", topics_target),
-                    ("items", items_target),
-                ]:
-                    type_picked = 0
-                    for _ in range(type_target * 3):
-                        if type_picked >= type_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(
-                            use_tags=cfg.use_tags,
-                            tag_weights=cfg.tag_weights,
-                            force_card_type=forced_type,
-                        ):
-                            break
-                        type_picked += 1
-
-            elif phase_id == "mode":
-                priority_target = round((1 - cfg.random_rate) * target_count)
-                random_target = target_count - priority_target
-                for forced_mode, mode_target in [
-                    ("priority", priority_target),
-                    ("random", random_target),
-                ]:
-                    mode_picked = 0
-                    for _ in range(mode_target * 3):
-                        if mode_picked >= mode_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(
-                            use_tags=cfg.use_tags,
-                            tag_weights=cfg.tag_weights,
-                            force_mode=forced_mode,
-                        ):
-                            break
-                        mode_picked += 1
-
-        # Fill Remaining — always runs last in strict mode
-        if cfg.include_rest or not cfg.use_tags:
-            for _ in range(target_count * 3):
-                if len(selected_ids) >= target_count:
-                    break
-                if not _pick(use_tags=False, tag_weights={}):
-                    break
-
+    preview_override = dlg.get_preview_override() if hasattr(dlg, "get_preview_override") else None
+    if preview_override:
+        stats = StatsManager(_ADDON_DIR, day_end_time=cfg.day_end_time)
+        selected_ids = preview_override.get("selected_ids", [])
+        _picked_meta: dict[int, dict] = preview_override.get("picked_meta", {})
+        session_counts_snapshot = preview_override.get("session_counts", {"type": {}, "tags": {}, "mode": {}})
+        session_time_snapshot = preview_override.get("session_time", {"type": {}, "tags": {}})
     else:
-        # Soft mode — all dimensions handled by soft_pick (debt-based stochastic).
-        # Phase order / enabled state is ignored; all weights blend together.
-        for _ in range(target_count * 3):
-            if len(selected_ids) >= target_count:
-                break
-            if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights):
-                break
-        if cfg.use_tags and cfg.include_rest and len(selected_ids) < target_count:
-            for _ in range(target_count * 3):
-                if len(selected_ids) >= target_count:
-                    break
-                if not _pick(use_tags=False, tag_weights={}):
-                    break
+        selection = select_session_cards(cfg, _ADDON_DIR)
+        stats = selection.stats
+        selected_ids = selection.selected_ids
+        # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
+        _picked_meta = selection.picked_meta
+        session_counts_snapshot = stats.session
+        session_time_snapshot = stats.session_time
 
     # Snapshot session counts so the statistics dialog can show them later.
     global _session_counts, _session_times
-    _session_counts = copy.deepcopy(stats.session)
-    _session_times = copy.deepcopy(stats.session_time)
+    _session_counts = copy.deepcopy(session_counts_snapshot)
+    _session_times = copy.deepcopy(session_time_snapshot)
 
     if not selected_ids:
         showInfo("No cards available to study.")

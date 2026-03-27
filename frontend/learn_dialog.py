@@ -1,22 +1,30 @@
 import json
 import os
+import re
+import copy
+from html import escape, unescape
 
 from aqt import mw
 from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
-    QInputDialog, QScrollArea, QObject, QEvent, QGraphicsOpacityEffect,
+    QInputDialog, QScrollArea, QObject, QEvent, QGraphicsOpacityEffect, QSplitter,
+    QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QTimer,
 )
 from aqt.utils import showInfo, tooltip
 
 try:
     from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from ..backend.scheduler_preview import compute_expected_mix
+    from ..backend.session_selection import select_session_cards
+    from ..backend.pdf_manager import get_page, get_read_page, get_pdf_dir
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
     from scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from scheduler_preview import compute_expected_mix
+    from session_selection import select_session_cards
+    from pdf_manager import get_page, get_read_page, get_pdf_dir
     from statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 
 # Addon root: one level above this file (utils/)
@@ -57,6 +65,286 @@ def _info_icon(tip: str) -> QLabel:
         "QLabel:hover { background-color: #3060a0; }"
     )
     return lbl
+
+
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _field_to_plain_text(text: str) -> str:
+    s = (text or "")
+    s = s.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    s = _HTML_TAG_RE.sub("", s)
+    return unescape(s).strip()
+
+
+def _compact_text(text: str, max_len: int = 120) -> str:
+    flat = " ".join(_field_to_plain_text(text).split())
+    if len(flat) <= max_len:
+        return flat
+    return flat[: max_len - 1] + "…"
+
+
+class _LiveSchedulerPreviewDialog(QDialog):
+    """Modeless dialog showing currently scheduled cards and per-card preview."""
+
+    def __init__(self, owner: "SchedulerConfigDialog"):
+        super().__init__(owner)
+        self._owner = owner
+        self._entries: list[dict] = []
+
+        self.setWindowTitle("Live Scheduler Preview")
+        self.resize(980, 620)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
+
+        self._summary_lbl = QLabel("Click Refresh to preview current scheduler output.")
+        self._summary_lbl.setWordWrap(True)
+        self._summary_lbl.setStyleSheet("color: gray;")
+        root.addWidget(self._summary_lbl)
+
+        self._disclaimer_lbl = QLabel(
+            "Preview disclaimer: this is one sampled scheduler run. "
+            "If you start normally, scheduling reruns and may differ, especially in soft mode."
+        )
+        self._disclaimer_lbl.setWordWrap(True)
+        self._disclaimer_lbl.setStyleSheet("color: #8a4b00; font-size: small;")
+        root.addWidget(self._disclaimer_lbl)
+
+        self._use_live_preview_cb = QCheckBox(
+            "Use this previewed card list when starting (skip scheduler rerun)"
+        )
+        self._use_live_preview_cb.setChecked(owner._use_live_preview_enabled)
+        self._use_live_preview_cb.setToolTip(
+            "When enabled, Start Session reuses the latest refreshed preview list exactly."
+        )
+        qconnect(
+            self._use_live_preview_cb.stateChanged,
+            lambda _: self._owner.set_use_live_preview_enabled(self._use_live_preview_cb.isChecked()),
+        )
+        root.addWidget(self._use_live_preview_cb)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        self._table = QTableWidget(0, 5)
+        self._table.setHorizontalHeaderLabels(["#", "Type", "Mode", "Tag", "Card"])
+        self._table.verticalHeader().setVisible(False)
+        self._table.setAlternatingRowColors(True)
+        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        splitter.addWidget(self._table)
+
+        self._preview = QTextBrowser()
+        self._preview.setOpenExternalLinks(False)
+        splitter.addWidget(self._preview)
+
+        splitter.setSizes([520, 460])
+        root.addWidget(splitter, 1)
+
+        row = QHBoxLayout()
+        row.addStretch()
+        self._refresh_btn = QPushButton("Refresh")
+        qconnect(self._refresh_btn.clicked, self.refresh_now)
+        row.addWidget(self._refresh_btn)
+        close_btn = QPushButton("Close")
+        qconnect(close_btn.clicked, self.close)
+        row.addWidget(close_btn)
+        root.addLayout(row)
+
+        qconnect(self._table.currentCellChanged, self._on_row_changed)
+
+    def sync_use_preview_checkbox(self) -> None:
+        self._use_live_preview_cb.blockSignals(True)
+        self._use_live_preview_cb.setChecked(self._owner._use_live_preview_enabled)
+        self._use_live_preview_cb.blockSignals(False)
+
+    def _on_row_changed(self, row: int, _old_row: int, _col: int, _old_col: int) -> None:
+        if row < 0 or row >= len(self._entries):
+            return
+        self._show_entry(self._entries[row])
+
+    @staticmethod
+    def _fmt_counts(counts: dict) -> str:
+        if not counts:
+            return "none"
+        return ", ".join(f"{k}: {v}" for k, v in sorted(counts.items(), key=lambda x: x[0]))
+
+    def _update_summary(self, selected_ids: list[int], picked_meta: dict[int, dict], target: int) -> None:
+        type_counts: dict[str, int] = {}
+        mode_counts: dict[str, int] = {}
+        tag_counts: dict[str, int] = {}
+        for cid in selected_ids:
+            meta = picked_meta.get(cid, {})
+            ct = meta.get("card_type", "?")
+            md = meta.get("mode", "?")
+            tg = meta.get("tag") or "no-tag"
+            if tg == NO_TAGS_KEY:
+                tg = "other"
+            type_counts[ct] = type_counts.get(ct, 0) + 1
+            mode_counts[md] = mode_counts.get(md, 0) + 1
+            tag_counts[tg] = tag_counts.get(tg, 0) + 1
+
+        status = f"Scheduled {len(selected_ids)} / {target} cards."
+        if len(selected_ids) < target:
+            status += " Limited by current availability."
+
+        self._summary_lbl.setText(
+            status
+            + "  Types: "
+            + self._fmt_counts(type_counts)
+            + "  |  Modes: "
+            + self._fmt_counts(mode_counts)
+            + "  |  Tags: "
+            + self._fmt_counts(tag_counts)
+        )
+
+    def _show_entry(self, entry: dict) -> None:
+        parts = [
+            "<div style='font-family:sans-serif; padding: 6px 8px;'>",
+            f"<h3 style='margin:0 0 8px 0;'>{escape(entry['title'])}</h3>",
+            f"<div><b>Card ID:</b> {entry['card_id']}</div>",
+            f"<div><b>Type:</b> {escape(entry['card_type'])}</div>",
+            f"<div><b>Mode:</b> {escape(entry['mode'])}</div>",
+            f"<div><b>Tag:</b> {escape(entry['tag'])}</div>",
+        ]
+        if entry.get("pdf_filename"):
+            parts.append(f"<div><b>PDF file:</b> {escape(entry['pdf_filename'])}</div>")
+            if entry.get("pdf_exists") is not None:
+                parts.append(
+                    f"<div><b>PDF status:</b> {'found' if entry['pdf_exists'] else 'missing in user_files/pdfs'}</div>"
+                )
+            if entry.get("pdf_page") is not None:
+                parts.append(f"<div><b>Current page:</b> {entry['pdf_page']}</div>")
+            if entry.get("pdf_read_page") is not None:
+                parts.append(f"<div><b>Read-through page:</b> {entry['pdf_read_page']}</div>")
+        if entry.get("tags"):
+            parts.append(f"<div><b>Note tags:</b> {escape(entry['tags'])}</div>")
+        for field_name, field_value in entry["fields"]:
+            parts.append(
+                "<div style='margin-top:10px;'>"
+                f"<div style='font-weight:600; margin-bottom:4px;'>{escape(field_name)}</div>"
+                "<div style='white-space:pre-wrap; background:#f6f6f6; border:1px solid #ddd; "
+                f"border-radius:4px; padding:6px; color:#111;'>{escape(field_value)}</div>"
+                "</div>"
+            )
+        parts.append("</div>")
+        self._preview.setHtml("".join(parts))
+
+    @staticmethod
+    def _safe_note_field(note, field_name: str) -> str:
+        try:
+            v = note[field_name]
+            return str(v).strip()
+        except Exception:
+            return ""
+
+    def refresh_now(self) -> None:
+        self._refresh_btn.setEnabled(False)
+        try:
+            cfg = self._owner.to_config()
+            result = select_session_cards(cfg, _ADDON_DIR)
+            selected_ids = result.selected_ids
+            picked_meta = result.picked_meta
+            self._update_summary(selected_ids, picked_meta, cfg.session_card_count)
+            self._owner._cache_live_preview_result(result)
+
+            entries: list[dict] = []
+            self._table.setRowCount(0)
+            for i, cid in enumerate(selected_ids):
+                meta = picked_meta.get(cid, {})
+                card = mw.col.get_card(cid)
+                note = mw.col.get_note(card.nid)
+                note_fields = getattr(note, "fields", []) or []
+                try:
+                    model = note.note_type()
+                    field_names = [f.get("name", f"Field {ix + 1}") for ix, f in enumerate(model.get("flds", []))]
+                except Exception:
+                    field_names = [f"Field {ix + 1}" for ix, _ in enumerate(note_fields)]
+                if len(field_names) < len(note_fields):
+                    for ix in range(len(field_names), len(note_fields)):
+                        field_names.append(f"Field {ix + 1}")
+
+                readable_fields = []
+                for idx, raw_val in enumerate(note_fields):
+                    readable_fields.append((field_names[idx], _field_to_plain_text(raw_val)))
+
+                card_type = str(meta.get("card_type", "?"))
+                mode = str(meta.get("mode", "?"))
+                tag = meta.get("tag")
+                if tag == NO_TAGS_KEY:
+                    tag_text = "other"
+                else:
+                    tag_text = str(tag or "no-tag")
+                title = _compact_text(note_fields[0] if note_fields else str(cid), max_len=160)
+                tags = ", ".join(getattr(note, "tags", []) or [])
+                pdf_filename = ""
+                pdf_page = None
+                pdf_read_page = None
+                pdf_exists = None
+                if card_type == "pdf":
+                    pdf_filename = self._safe_note_field(note, "PDF_Filename")
+                    try:
+                        pdf_page = int(get_page(_ADDON_DIR, cid))
+                    except Exception:
+                        pdf_page = None
+                    try:
+                        pdf_read_page = int(get_read_page(_ADDON_DIR, cid))
+                    except Exception:
+                        pdf_read_page = None
+                    if pdf_filename:
+                        try:
+                            pdf_exists = os.path.exists(os.path.join(get_pdf_dir(), pdf_filename))
+                        except Exception:
+                            pdf_exists = None
+
+                entries.append(
+                    {
+                        "card_id": cid,
+                        "card_type": card_type,
+                        "mode": mode,
+                        "tag": tag_text,
+                        "title": title or f"Card {cid}",
+                        "tags": tags,
+                        "fields": readable_fields,
+                        "pdf_filename": pdf_filename,
+                        "pdf_page": pdf_page,
+                        "pdf_read_page": pdf_read_page,
+                        "pdf_exists": pdf_exists,
+                    }
+                )
+
+            self._entries = entries
+            self._table.setRowCount(len(entries))
+            for row, entry in enumerate(entries):
+                self._table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
+                self._table.setItem(row, 1, QTableWidgetItem(entry["card_type"]))
+                self._table.setItem(row, 2, QTableWidgetItem(entry["mode"]))
+                self._table.setItem(row, 3, QTableWidgetItem(entry["tag"]))
+                self._table.setItem(row, 4, QTableWidgetItem(entry["title"]))
+
+            if entries:
+                self._table.selectRow(0)
+                self._show_entry(entries[0])
+            else:
+                self._preview.setHtml(
+                    "<div style='color:#666; padding:10px;'>No cards available for the current settings.</div>"
+                )
+        except Exception as e:
+            self._summary_lbl.setText(f"Preview failed: {e}")
+            self._preview.setHtml("")
+            self._table.setRowCount(0)
+            self._entries = []
+            self._owner._clear_live_preview_cache()
+        finally:
+            self._refresh_btn.setEnabled(True)
 
 
 # ─── Phase funnel ─────────────────────────────────────────────────────────────
@@ -259,6 +547,7 @@ class FunnelWidget(QWidget):
         self._drag_start_y: int = 0
         self._drag_active: bool = False
         self._insert_before: int = 0
+        self._on_changed = None
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -266,9 +555,13 @@ class FunnelWidget(QWidget):
         card = _PhaseCard(phase_id, enabled, self._container)
         self._handle_map[id(card._handle)] = card
         card._handle.installEventFilter(self._ev)
+        qconnect(card._cb.stateChanged, lambda _: self._emit_changed())
         self._cards.append(card)
         self._rebuild()
         return card
+
+    def set_on_changed(self, callback) -> None:
+        self._on_changed = callback
 
     def set_order(self, order: list[str], enabled: dict | None = None) -> None:
         id_map = {c.phase_id: c for c in self._cards}
@@ -281,12 +574,17 @@ class FunnelWidget(QWidget):
             for c in self._cards:
                 c.set_enabled(enabled.get(c.phase_id, True))
         self._rebuild()
+        self._emit_changed()
 
     def get_order(self) -> list[str]:
         return [c.phase_id for c in self._cards]
 
     def get_enabled(self) -> dict[str, bool]:
         return {c.phase_id: c.is_enabled for c in self._cards}
+
+    def _emit_changed(self) -> None:
+        if callable(self._on_changed):
+            self._on_changed()
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
@@ -371,6 +669,7 @@ class FunnelWidget(QWidget):
                 adj = insert - 1 if insert > drag_idx else insert
                 self._cards.insert(adj, card)
                 self._rebuild()
+                self._emit_changed()
             card._apply_style(dragging=False)
             self._ind.hide()
         self._drag_card = None
@@ -405,8 +704,16 @@ class SchedulerConfigDialog(QDialog):
         self._linked_rows: list[dict] = []
         self._updating = False
         self._on_clear_session = on_clear_session
+        self._live_preview_dialog: _LiveSchedulerPreviewDialog | None = None
+        self._live_preview_cache: dict | None = None
+        self._live_preview_signature: str | None = None
+        self._preview_refresh_timer = QTimer(self)
+        self._preview_refresh_timer.setSingleShot(True)
+        self._preview_refresh_timer.setInterval(180)
+        qconnect(self._preview_refresh_timer.timeout, self._refresh_live_preview_if_open)
         config = mw.addonManager.getConfig(__name__) or {}
         self._saved = config.get("dialog", {})
+        self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._profiles: dict[str, dict] = config.get("profiles", {})
         self._setup_ui()
 
@@ -622,6 +929,24 @@ class SchedulerConfigDialog(QDialog):
         self._expected_counts_lbl.setStyleSheet("color: gray; font-size: small;")
         layout.addWidget(self._expected_counts_lbl)
 
+        _live_preview_row = QHBoxLayout()
+        self._live_preview_btn = QPushButton("Live card preview…")
+        self._live_preview_btn.setToolTip(
+            "Preview the actual scheduled card list with current settings.\n"
+            "Opens a two-column dialog: list on the left, per-card preview on the right."
+        )
+        qconnect(self._live_preview_btn.clicked, self._open_live_preview)
+        _live_preview_row.addWidget(self._live_preview_btn)
+        _live_preview_row.addStretch()
+        layout.addLayout(_live_preview_row)
+
+        self._live_preview_hint_lbl = QLabel(
+            "Live preview is an estimate sample. To force exact reuse, enable the checkbox inside the preview dialog."
+        )
+        self._live_preview_hint_lbl.setWordWrap(True)
+        self._live_preview_hint_lbl.setStyleSheet("color: gray; font-size: small;")
+        layout.addWidget(self._live_preview_hint_lbl)
+
         qconnect(self._topics_slider.valueChanged,
                  lambda v: (self._topics_left_lbl.setText(f"{100 - v}%"),
                              self._topics_right_lbl.setText(f"{v}%")))
@@ -635,6 +960,13 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._cb_new.stateChanged,      lambda _: self._refresh_counts())
         qconnect(self._cb_learning.stateChanged, lambda _: self._refresh_counts())
         qconnect(self._cb_due.stateChanged,      lambda _: self._refresh_counts())
+        qconnect(self._count_spin.valueChanged,   lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._topics_slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._pdf_slider.valueChanged,    lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._random_slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._cb_new.stateChanged,        lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._cb_learning.stateChanged,   lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._cb_due.stateChanged,        lambda _: self._schedule_live_preview_refresh())
         self._refresh_expected_mix_preview()
 
         # ── 7. Scheduler scope ────────────────────────────────────────────────
@@ -701,6 +1033,9 @@ class SchedulerConfigDialog(QDialog):
         self._update_day_end_visibility()
         qconnect(self._scope_combo.currentIndexChanged, lambda _: self._update_day_end_visibility())
         qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._on_day_end_preset_changed())
+        qconnect(self._scope_combo.currentIndexChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._day_end_edit.timeChanged, lambda _: self._schedule_live_preview_refresh())
 
         # ── 8. Tag quotas ─────────────────────────────────────────────────────
         _tag_hrow = QHBoxLayout()
@@ -737,6 +1072,7 @@ class SchedulerConfigDialog(QDialog):
         add_tag_row.addWidget(self._tag_combo)
         add_btn = QPushButton("Add")
         qconnect(add_btn.clicked, lambda: self._add_tag_row(self._tag_combo.currentText()))
+        qconnect(add_btn.clicked, lambda: self._schedule_live_preview_refresh())
         add_tag_row.addWidget(add_btn)
         layout.addLayout(add_tag_row)
 
@@ -747,6 +1083,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._no_tags_cb.setChecked(self._saved.get("no_tags_checked", True))
         layout.addWidget(self._no_tags_cb)
+        qconnect(self._no_tags_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._tags_container = QWidget()
         self._tags_layout = QVBoxLayout(self._tags_container)
@@ -931,6 +1268,8 @@ class SchedulerConfigDialog(QDialog):
                      lambda _, r=ct_row: r["slider"].setEnabled(r["cb"].isChecked()))
             qconnect(ct_slider.valueChanged,
                      lambda v, r=ct_row: r["pct_label"].setText(f"{v}%"))
+            qconnect(ct_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
+            qconnect(ct_slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._refresh_ct_counts()
 
@@ -946,6 +1285,7 @@ class SchedulerConfigDialog(QDialog):
         for pid in _DEFAULT_PHASE_ORDER:
             self._funnel.add_phase(pid, enabled=saved_enabled.get(pid, True))
         self._funnel.set_order(saved_order, enabled=saved_enabled)
+        self._funnel.set_on_changed(self._schedule_live_preview_refresh)
         _funnel_body_layout.addWidget(self._funnel)
 
         # Soft-mode banner — shown below the funnel when strict enforcement is off
@@ -982,6 +1322,7 @@ class SchedulerConfigDialog(QDialog):
 
         _update_funnel_state()
         qconnect(self._enforce_cb.stateChanged, lambda _: _update_funnel_state())
+        qconnect(self._enforce_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         # ── 10. Advanced (collapsible, starts collapsed) ──────────────────────
         _adv_sep = QFrame()
@@ -1074,6 +1415,9 @@ class SchedulerConfigDialog(QDialog):
 
         qconnect(self._topics_filter_edit.textChanged, lambda _: self._refresh_counts())
         qconnect(self._items_filter_edit.textChanged,  lambda _: self._refresh_counts())
+        qconnect(self._topics_filter_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._items_filter_edit.textChanged,  lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._preserve_order_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._refresh_counts()
 
@@ -1230,6 +1574,7 @@ class SchedulerConfigDialog(QDialog):
                     "lock_cb": lock_cb, "widget": row_widget, "name_label": name_label}
         self._refresh_tag_count(row_dict)
         qconnect(slider.valueChanged, lambda v, r=row_dict: self._on_weight_changed(r))
+        qconnect(slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
 
         row_layout.addSpacing(6)
         remove_btn = QPushButton("✕")
@@ -1250,6 +1595,7 @@ class SchedulerConfigDialog(QDialog):
             self._tag_combo.removeItem(idx)
 
         self._update_other_label()
+        self._schedule_live_preview_refresh()
 
     def _remove_row(self, row_dict: dict) -> None:
         tag = row_dict["tag"]
@@ -1264,6 +1610,7 @@ class SchedulerConfigDialog(QDialog):
         self._tag_combo.insertItem(items.index(tag), tag)
 
         self._update_other_label()
+        self._schedule_live_preview_refresh()
 
     # ------------------------------------------------------------------
     # Slider logic — each tag slider is independent (no forced rebalancing)
@@ -1274,6 +1621,7 @@ class SchedulerConfigDialog(QDialog):
             return
         changed_row["pct_label"].setText(f"{changed_row['slider'].value()}%")
         self._update_other_label()
+        self._schedule_live_preview_refresh()
 
     def _update_other_label(self) -> None:
         """Show what fraction of the session is left for untagged cards."""
@@ -1327,6 +1675,83 @@ class SchedulerConfigDialog(QDialog):
             f"Random {mc['random']}, Priority {mc['priority']} "
             "(availability may shift actual results)"
         )
+
+    def _selection_signature_payload(self) -> dict:
+        d = self._build_current_dict()
+        return {
+            "session_card_count": d.get("session_card_count"),
+            "topics_slider": d.get("topics_slider"),
+            "random_slider": d.get("random_slider"),
+            "pdf_slider": d.get("pdf_slider"),
+            "no_tags_checked": d.get("no_tags_checked"),
+            "phase_order": d.get("phase_order"),
+            "phases_enabled": d.get("phases_enabled"),
+            "enforce_priority": d.get("enforce_priority"),
+            "scheduler_scope": d.get("scheduler_scope"),
+            "day_end_time": d.get("day_end_time"),
+            "tag_rows": d.get("tag_rows"),
+            "content_type_rows": d.get("content_type_rows"),
+            "topics_filter": d.get("topics_filter"),
+            "items_filter": d.get("items_filter"),
+            "include_new": d.get("include_new"),
+            "include_learning": d.get("include_learning"),
+            "include_due": d.get("include_due"),
+        }
+
+    def _selection_signature(self) -> str:
+        return json.dumps(self._selection_signature_payload(), sort_keys=True, ensure_ascii=True)
+
+    def _cache_live_preview_result(self, result) -> None:
+        self._live_preview_cache = {
+            "selected_ids": list(result.selected_ids),
+            "picked_meta": copy.deepcopy(result.picked_meta),
+            "session_counts": copy.deepcopy(result.stats.session),
+            "session_time": copy.deepcopy(result.stats.session_time),
+        }
+        self._live_preview_signature = self._selection_signature()
+
+    def _clear_live_preview_cache(self) -> None:
+        self._live_preview_cache = None
+        self._live_preview_signature = None
+
+    def _live_preview_cache_is_current(self) -> bool:
+        if not self._live_preview_cache or not self._live_preview_signature:
+            return False
+        return self._live_preview_signature == self._selection_signature()
+
+    def set_use_live_preview_enabled(self, enabled: bool) -> None:
+        self._use_live_preview_enabled = bool(enabled)
+
+    def get_preview_override(self) -> dict | None:
+        if not self._use_live_preview_enabled:
+            return None
+        if not self._live_preview_cache_is_current():
+            return None
+        return copy.deepcopy(self._live_preview_cache)
+
+    def _open_live_preview(self) -> None:
+        if self._live_preview_dialog is None:
+            self._live_preview_dialog = _LiveSchedulerPreviewDialog(self)
+        self._live_preview_dialog.sync_use_preview_checkbox()
+        self._live_preview_dialog.show()
+        self._live_preview_dialog.raise_()
+        self._live_preview_dialog.activateWindow()
+        self._live_preview_dialog.refresh_now()
+
+    def _close_live_preview(self) -> None:
+        if self._live_preview_dialog is None:
+            return
+        self._live_preview_dialog.close()
+        self._live_preview_dialog = None
+
+    def _schedule_live_preview_refresh(self) -> None:
+        self._clear_live_preview_cache()
+        if self._live_preview_dialog and self._live_preview_dialog.isVisible():
+            self._preview_refresh_timer.start()
+
+    def _refresh_live_preview_if_open(self) -> None:
+        if self._live_preview_dialog and self._live_preview_dialog.isVisible():
+            self._live_preview_dialog.refresh_now()
 
     def _ready_filter_from_checks(self) -> str:
         """Build the is:… clause from the card-type checkboxes."""
@@ -1416,7 +1841,21 @@ class SchedulerConfigDialog(QDialog):
                     return
         except Exception:
             pass
+        if self._use_live_preview_enabled and not self._live_preview_cache_is_current():
+            QMessageBox.warning(
+                self,
+                "Live Preview Required",
+                "You enabled 'Use previewed card list'.\n\n"
+                "Open Live card preview and click Refresh after your latest settings change, "
+                "then start the session again.",
+            )
+            return
+        self._close_live_preview()
         super().accept()
+
+    def reject(self) -> None:
+        self._close_live_preview()
+        super().reject()
 
     # ------------------------------------------------------------------
     # Statistics history actions
@@ -1545,6 +1984,7 @@ class SchedulerConfigDialog(QDialog):
             "include_due":      self._cb_due.isChecked(),
             "preserve_order":   self._preserve_order_cb.isChecked(),
             "show_debug":       self._show_debug_cb.isChecked(),
+            "use_live_preview": self._use_live_preview_enabled,
         }
 
     def save_config(self) -> None:
@@ -1673,6 +2113,9 @@ class SchedulerConfigDialog(QDialog):
         self._items_filter_edit.setText(d.get("items_filter", "-deck:Topics"))
         self._preserve_order_cb.setChecked(d.get("preserve_order", True))
         self._show_debug_cb.setChecked(d.get("show_debug", False))
+        self._use_live_preview_enabled = bool(d.get("use_live_preview", False))
+        if self._live_preview_dialog is not None:
+            self._live_preview_dialog.sync_use_preview_checkbox()
 
         # Replace tag rows
         for row in list(self._linked_rows):
@@ -1694,3 +2137,4 @@ class SchedulerConfigDialog(QDialog):
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._refresh_counts()
+        self._schedule_live_preview_refresh()
