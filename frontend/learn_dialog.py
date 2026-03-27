@@ -835,25 +835,31 @@ class SchedulerConfigDialog(QDialog):
         _funnel_header.setStyleSheet("font-weight: bold;")
         _funnel_hrow.addWidget(_funnel_header)
         _funnel_hrow.addWidget(_info_icon(
-            "Drag phases up or down to set the order in which the scheduler fills cards.\n\n"
-            "In strict mode each enabled phase fills its quota in full before the next\n"
-            "phase starts. The funnel flows top → bottom: cards matching the first phase\n"
-            "are picked first, then the second phase fills remaining slots, and so on.\n\n"
+            "Only active when Strict enforcement is ON.\n\n"
+            "─── Strict mode (enforcement checked) ───\n"
+            "Each enabled phase fills its quota in full before the next phase starts.\n"
+            "Drag phases to change the order; use ✓ to enable/disable individual phases.\n\n"
             "Example order — Content Types → Tag Quotas → Card Type → Selection Mode:\n"
             "  1. Fill PDF / YouTube quotas\n"
             "  2. Fill tag quotas (statistics 30 %, psychology 20 %)\n"
-            "  3. Fill remaining with topics / items ratio\n"
-            "  4. Fill any last slots with priority / random ratio\n"
+            "  3. Fill remaining slots with the topics / items ratio\n"
+            "  4. Fill any last slots using the priority / random ratio\n"
             "  5. Fill Remaining — any ready card, always last\n\n"
-            "Use the ✓ checkbox on each phase to enable / disable it in strict mode.\n"
-            "In soft mode the funnel is ignored; all dimensions are balanced together."
+            "─── Soft mode (enforcement unchecked) ───\n"
+            "The funnel is INACTIVE. Phase order and the ✓ checkboxes have no effect.\n"
+            "Instead, the scheduler blends all your configured targets simultaneously\n"
+            "at every single pick using a debt tracker — it steers toward whichever\n"
+            "bucket (tag, type, mode) is most under-represented at that moment.\n"
+            "Your ratios are converged to gradually, not enforced up front."
         ))
         self._enforce_cb = QCheckBox("Strict enforcement")
         self._enforce_cb.setToolTip(
             "Strict (checked): each phase is filled in full before the next.\n"
-            "Example: all Content-Type quotas are filled, then Tag quotas, then the rest.\n\n"
-            "Soft (unchecked): the scheduler mixes all dimensions simultaneously,\n"
-            "gradually converging to your targets — phase order is ignored."
+            "The funnel order and phase checkboxes are active.\n\n"
+            "Soft (unchecked): the funnel is INACTIVE.\n"
+            "All dimensions are blended simultaneously at every pick using a debt\n"
+            "tracker — no hard quotas, no fixed order, just gradual convergence\n"
+            "toward your configured ratios."
         )
         self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
         _funnel_hrow.addStretch()
@@ -867,6 +873,31 @@ class SchedulerConfigDialog(QDialog):
             self._funnel.add_phase(pid, enabled=saved_enabled.get(pid, True))
         self._funnel.set_order(saved_order, enabled=saved_enabled)
         layout.addWidget(self._funnel)
+
+        # Soft-mode banner — shown below the funnel when strict enforcement is off
+        self._soft_mode_lbl = QLabel(
+            "⚠  Soft mode active — the funnel order and phase checkboxes are ignored.\n"
+            "    All targets blend simultaneously at every pick (debt-based)."
+        )
+        self._soft_mode_lbl.setStyleSheet(
+            "color: #b07800;"
+            "background: rgba(255,200,0,0.12);"
+            "border: 1px solid rgba(180,140,0,0.35);"
+            "border-radius: 4px;"
+            "padding: 5px 8px;"
+            "font-size: 11px;"
+        )
+        self._soft_mode_lbl.setWordWrap(True)
+        layout.addWidget(self._soft_mode_lbl)
+
+        def _update_funnel_state():
+            strict = self._enforce_cb.isChecked()
+            self._funnel.setEnabled(strict)
+            self._funnel.setStyleSheet("" if strict else "opacity: 0.45;")
+            self._soft_mode_lbl.setVisible(not strict)
+
+        _update_funnel_state()
+        qconnect(self._enforce_cb.stateChanged, lambda _: _update_funnel_state())
 
         # ── 10. Advanced (collapsible, starts collapsed) ──────────────────────
         _adv_sep = QFrame()
