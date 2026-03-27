@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=backend --cov=frontend --cov-report=term-missing"
+
+[tool.coverage.run]
+omit = ["tests/*", "utils/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]

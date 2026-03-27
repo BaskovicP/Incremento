@@ -14,7 +14,7 @@ import pytest
 # Load the module by file path to sidestep stdlib `statistics` name collision
 _spec = importlib.util.spec_from_file_location(
     "_incremento_statistics",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "utils", "statistics.py")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend", "statistics.py")),
 )
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
