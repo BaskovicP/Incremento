@@ -196,6 +196,14 @@ class SchedulerConfigDialog(QDialog):
         _ct_desc.setStyleSheet("color: gray;")
         layout.addWidget(_ct_desc)
 
+        _ct_tip = QLabel(
+            "Tip: Tag weights (below) also apply here — "
+            "e.g. statistics = 80 % means 80 % of your PDF picks will target statistics-tagged PDFs."
+        )
+        _ct_tip.setWordWrap(True)
+        _ct_tip.setStyleSheet("color: #4a7ab5; font-size: small; padding: 2px 0;")
+        layout.addWidget(_ct_tip)
+
         _ct_tips = {
             "pdf":     (
                 "Incremento PDF reading cards (note type: Incremento PDF).\n"
@@ -559,20 +567,39 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._other_lbl)
         self._update_other_label()
 
-        # ── 10. Advanced ──────────────────────────────────────────────────────
-        _adv_hrow = QHBoxLayout()
-        _adv_header = QLabel("Advanced")
-        _adv_header.setStyleSheet("font-weight: bold;")
-        _adv_hrow.addWidget(_adv_header)
-        _adv_hrow.addWidget(_info_icon(
+        # ── 10. Advanced (collapsible, starts collapsed) ──────────────────────
+        _adv_sep = QFrame()
+        _adv_sep.setFrameShape(QFrame.Shape.HLine)
+        _adv_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
+        layout.addWidget(_adv_sep)
+
+        _adv_toggle = QPushButton("▶  Advanced")
+        _adv_toggle.setCheckable(True)
+        _adv_toggle.setChecked(False)
+        _adv_toggle.setFlat(True)
+        _adv_toggle.setStyleSheet(
+            "QPushButton { font-weight: bold; text-align: left; padding: 4px 2px; border: none; }"
+            "QPushButton:hover { color: palette(highlight); }"
+        )
+        _adv_toggle_info = _info_icon(
             "Anki search filters that identify which cards are topics vs items.\n\n"
             "Default topics filter: deck:Topics OR tag:Incremento\n"
             "Default items filter:  -deck:Topics -tag:Incremento\n\n"
             "Use 'Test' to check how many ready cards match each filter.\n"
             "Changes here affect the counts shown next to Topics / Items above."
-        ))
+        )
+        _adv_hrow = QHBoxLayout()
+        _adv_hrow.setContentsMargins(0, 0, 0, 0)
+        _adv_hrow.addWidget(_adv_toggle)
+        _adv_hrow.addWidget(_adv_toggle_info)
         _adv_hrow.addStretch()
         layout.addLayout(_adv_hrow)
+
+        _adv_body = QWidget()
+        _adv_body.setVisible(False)
+        _adv_body_layout = QVBoxLayout(_adv_body)
+        _adv_body_layout.setContentsMargins(12, 0, 0, 8)
+        _adv_body_layout.setSpacing(6)
 
         topics_filter_row = QHBoxLayout()
         topics_filter_row.addWidget(QLabel("Topics filter:"))
@@ -589,7 +616,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(test_topics_btn.clicked,
                  lambda: self._test_filter(self._topics_filter_edit.text().strip() or "deck:Topics"))
         topics_filter_row.addWidget(test_topics_btn)
-        layout.addLayout(topics_filter_row)
+        _adv_body_layout.addLayout(topics_filter_row)
 
         items_filter_row = QHBoxLayout()
         items_filter_row.addWidget(QLabel("Items filter:"))
@@ -606,7 +633,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(test_items_btn.clicked,
                  lambda: self._test_filter(self._items_filter_edit.text().strip() or "-deck:Topics"))
         items_filter_row.addWidget(test_items_btn)
-        layout.addLayout(items_filter_row)
+        _adv_body_layout.addLayout(items_filter_row)
 
         self._preserve_order_cb = QCheckBox("Present cards in scheduler order")
         self._preserve_order_cb.setToolTip(
@@ -616,47 +643,69 @@ class SchedulerConfigDialog(QDialog):
             "When unchecked, cards are shown in random order."
         )
         self._preserve_order_cb.setChecked(self._saved.get("preserve_order", True))
-        layout.addWidget(self._preserve_order_cb)
+        _adv_body_layout.addWidget(self._preserve_order_cb)
 
         self._show_debug_cb = QCheckBox("Show debug information on cards when starting")
         self._show_debug_cb.setChecked(self._saved.get("show_debug", False))
-        layout.addWidget(self._show_debug_cb)
+        _adv_body_layout.addWidget(self._show_debug_cb)
+
+        layout.addWidget(_adv_body)
+
+        def _toggle_adv(checked):
+            _adv_toggle.setText("▼  Advanced" if checked else "▶  Advanced")
+            _adv_body.setVisible(checked)
+        qconnect(_adv_toggle.toggled, _toggle_adv)
 
         qconnect(self._topics_filter_edit.textChanged, lambda _: self._refresh_counts())
         qconnect(self._items_filter_edit.textChanged,  lambda _: self._refresh_counts())
 
         self._refresh_counts()
 
-        # ── Statistics history ────────────────────────────────────────────────
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.35); }")
-        layout.addWidget(sep)
+        # ── Statistics history (collapsible, starts collapsed) ────────────────
+        _stats_sep = QFrame()
+        _stats_sep.setFrameShape(QFrame.Shape.HLine)
+        _stats_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
+        layout.addWidget(_stats_sep)
 
-        _stats_header = QLabel("Statistics history")
-        _stats_header.setStyleSheet("font-weight: bold;")
-        layout.addWidget(_stats_header)
+        _stats_toggle = QPushButton("▶  Statistics history")
+        _stats_toggle.setCheckable(True)
+        _stats_toggle.setChecked(False)
+        _stats_toggle.setFlat(True)
+        _stats_toggle.setStyleSheet(
+            "QPushButton { font-weight: bold; text-align: left; padding: 4px 2px; border: none; }"
+            "QPushButton:hover { color: palette(highlight); }"
+        )
+        layout.addWidget(_stats_toggle)
+
+        _stats_body = QWidget()
+        _stats_body.setVisible(False)
+        _stats_body_layout = QVBoxLayout(_stats_body)
+        _stats_body_layout.setContentsMargins(12, 0, 0, 8)
+        _stats_body_layout.setSpacing(6)
 
         stats_row = QHBoxLayout()
 
         del_today_btn = QPushButton("Delete Today")
         del_today_btn.setToolTip("Permanently delete today's statistics")
+        del_today_btn.setStyleSheet("color: palette(text); opacity: 0.8;")
         qconnect(del_today_btn.clicked, self._delete_daily)
         stats_row.addWidget(del_today_btn)
 
         del_session_btn = QPushButton("Delete Session")
         del_session_btn.setToolTip("Clear the last session's in-memory statistics")
+        del_session_btn.setStyleSheet("color: palette(text); opacity: 0.8;")
         qconnect(del_session_btn.clicked, self._delete_session)
         stats_row.addWidget(del_session_btn)
 
         del_lifetime_btn = QPushButton("Delete All Time")
         del_lifetime_btn.setToolTip("Permanently delete all lifetime statistics")
+        del_lifetime_btn.setStyleSheet("color: palette(text); opacity: 0.8;")
         qconnect(del_lifetime_btn.clicked, self._delete_lifetime)
         stats_row.addWidget(del_lifetime_btn)
 
         del_all_btn = QPushButton("Delete All History")
         del_all_btn.setToolTip("Permanently delete all statistics (today + all time + session)")
-        del_all_btn.setStyleSheet("color: #e05050;")
+        del_all_btn.setStyleSheet("color: #c0392b; font-weight: bold;")
         qconnect(del_all_btn.clicked, self._delete_all)
         stats_row.addWidget(del_all_btn)
 
@@ -667,7 +716,13 @@ class SchedulerConfigDialog(QDialog):
         qconnect(export_btn.clicked, self._export_json)
         stats_row.addWidget(export_btn)
 
-        layout.addLayout(stats_row)
+        _stats_body_layout.addLayout(stats_row)
+        layout.addWidget(_stats_body)
+
+        def _toggle_stats(checked):
+            _stats_toggle.setText("▼  Statistics history" if checked else "▶  Statistics history")
+            _stats_body.setVisible(checked)
+        qconnect(_stats_toggle.toggled, _toggle_stats)
 
         # -- OK / Cancel (pinned outside scroll area) --
         _btn_sep = QFrame()
