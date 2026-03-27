@@ -6,8 +6,9 @@ from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
+    QInputDialog,
 )
-from aqt.utils import showInfo
+from aqt.utils import showInfo, tooltip
 
 from .scheduler_config import SchedulerConfig, NO_TAGS_KEY
 from .statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
@@ -44,6 +45,7 @@ class SchedulerConfigDialog(QDialog):
         self._on_clear_session = on_clear_session
         config = mw.addonManager.getConfig(__name__) or {}
         self._saved = config.get("dialog", {})
+        self._profiles: dict[str, dict] = config.get("profiles", {})
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -55,6 +57,42 @@ class SchedulerConfigDialog(QDialog):
         intro.setWordWrap(True)
         intro.setStyleSheet("color: gray;")
         layout.addWidget(intro)
+
+        # -- Profiles --
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(QLabel("Profile:"))
+        self._profile_combo = QComboBox()
+        self._profile_combo.setMinimumWidth(160)
+        self._profile_combo.setToolTip("Saved presets — pick one and click Load")
+        profile_row.addWidget(self._profile_combo)
+
+        self._profile_load_btn = QPushButton("Load")
+        self._profile_load_btn.setFixedWidth(52)
+        self._profile_load_btn.setToolTip("Apply the selected profile to all settings below")
+        qconnect(self._profile_load_btn.clicked, self._load_profile)
+        profile_row.addWidget(self._profile_load_btn)
+
+        save_as_btn = QPushButton("Save As…")
+        save_as_btn.setFixedWidth(72)
+        save_as_btn.setToolTip("Save the current settings as a named profile")
+        qconnect(save_as_btn.clicked, self._save_profile_as)
+        profile_row.addWidget(save_as_btn)
+
+        self._profile_delete_btn = QPushButton("Delete")
+        self._profile_delete_btn.setFixedWidth(58)
+        self._profile_delete_btn.setToolTip("Delete the selected profile")
+        self._profile_delete_btn.setStyleSheet("color: #e05050;")
+        qconnect(self._profile_delete_btn.clicked, self._delete_profile)
+        profile_row.addWidget(self._profile_delete_btn)
+
+        profile_row.addStretch()
+        layout.addLayout(profile_row)
+        self._refresh_profile_combo()
+
+        _profile_sep = QFrame()
+        _profile_sep.setFrameShape(QFrame.Shape.HLine)
+        _profile_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.35); }")
+        layout.addWidget(_profile_sep)
 
         # -- Session size --
         count_row = QHBoxLayout()
@@ -773,32 +811,162 @@ class SchedulerConfigDialog(QDialog):
     # Persistence
     # ------------------------------------------------------------------
 
-    def save_config(self) -> None:
-        config = mw.addonManager.getConfig(__name__) or {}
-        config["dialog"] = {
+    def _build_current_dict(self) -> dict:
+        """Serialize all current widget state to a plain dict (profile / save format)."""
+        return {
             "session_card_count": self._count_spin.value(),
-            "topics_slider": self._topics_slider.value(),
-            "random_slider": self._random_slider.value(),
-            "pdf_slider": self._pdf_slider.value(),
-            "no_tags_checked": self._no_tags_cb.isChecked(),
-            "priority_order": self._get_priority_order(),
-            "enforce_priority": self._enforce_cb.isChecked(),
-            "scheduler_scope": self._scope_combo.currentData(),
-            "day_end_time": self._get_day_end_time(),
+            "topics_slider":      self._topics_slider.value(),
+            "random_slider":      self._random_slider.value(),
+            "pdf_slider":         self._pdf_slider.value(),
+            "no_tags_checked":    self._no_tags_cb.isChecked(),
+            "priority_order":     self._get_priority_order(),
+            "enforce_priority":   self._enforce_cb.isChecked(),
+            "scheduler_scope":    self._scope_combo.currentData(),
+            "day_end_time":       self._get_day_end_time(),
             "tag_rows": [
-                {
-                    "tag": row["tag"],
-                    "weight": row["slider"].value(),
-                    "locked": row["lock_cb"].isChecked(),
-                }
-                for row in self._linked_rows
+                {"tag": r["tag"], "weight": r["slider"].value(), "locked": r["lock_cb"].isChecked()}
+                for r in self._linked_rows
             ],
-            "topics_filter": self._topics_filter_edit.text().strip() or "deck:Topics",
-            "items_filter": self._items_filter_edit.text().strip() or "-deck:Topics",
+            "topics_filter":    self._topics_filter_edit.text().strip() or "deck:Topics",
+            "items_filter":     self._items_filter_edit.text().strip() or "-deck:Topics",
             "include_new":      self._cb_new.isChecked(),
             "include_learning": self._cb_learning.isChecked(),
             "include_due":      self._cb_due.isChecked(),
             "preserve_order":   self._preserve_order_cb.isChecked(),
             "show_debug":       self._show_debug_cb.isChecked(),
         }
+
+    def save_config(self) -> None:
+        config = mw.addonManager.getConfig(__name__) or {}
+        config["dialog"] = self._build_current_dict()
         mw.addonManager.writeConfig(__name__, config)
+
+    # ------------------------------------------------------------------
+    # Profile management
+    # ------------------------------------------------------------------
+
+    def _refresh_profile_combo(self) -> None:
+        self._profile_combo.blockSignals(True)
+        self._profile_combo.clear()
+        for name in sorted(self._profiles.keys()):
+            self._profile_combo.addItem(name)
+        has = self._profile_combo.count() > 0
+        self._profile_load_btn.setEnabled(has)
+        self._profile_delete_btn.setEnabled(has)
+        self._profile_combo.blockSignals(False)
+
+    def _load_profile(self) -> None:
+        name = self._profile_combo.currentText()
+        if not name or name not in self._profiles:
+            return
+        self._load_profile_dict(self._profiles[name])
+
+    def _save_profile_as(self) -> None:
+        current = self._profile_combo.currentText()
+        name, ok = QInputDialog.getText(
+            self, "Save Profile", "Profile name:", text=current
+        )
+        name = name.strip()
+        if not ok or not name:
+            return
+        if name in self._profiles:
+            r = QMessageBox.question(
+                self, "Overwrite Profile",
+                f'Profile "{name}" already exists. Overwrite?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if r != QMessageBox.StandardButton.Yes:
+                return
+        self._profiles[name] = self._build_current_dict()
+        config = mw.addonManager.getConfig(__name__) or {}
+        config["profiles"] = self._profiles
+        mw.addonManager.writeConfig(__name__, config)
+        self._refresh_profile_combo()
+        idx = self._profile_combo.findText(name)
+        if idx >= 0:
+            self._profile_combo.setCurrentIndex(idx)
+        tooltip(f'Profile "{name}" saved.')
+
+    def _delete_profile(self) -> None:
+        name = self._profile_combo.currentText()
+        if not name or name not in self._profiles:
+            return
+        r = QMessageBox.question(
+            self, "Delete Profile",
+            f'Delete profile "{name}"?',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if r != QMessageBox.StandardButton.Yes:
+            return
+        del self._profiles[name]
+        config = mw.addonManager.getConfig(__name__) or {}
+        config["profiles"] = self._profiles
+        mw.addonManager.writeConfig(__name__, config)
+        self._refresh_profile_combo()
+        tooltip(f'Profile "{name}" deleted.')
+
+    def _load_profile_dict(self, d: dict) -> None:
+        """Apply a profile dict to all dialog widgets."""
+        self._count_spin.setValue(d.get("session_card_count", 50))
+
+        topics_val = d.get("topics_slider", 10)
+        self._topics_slider.setValue(topics_val)
+        self._topics_left_lbl.setText(f"{100 - topics_val}%")
+        self._topics_right_lbl.setText(f"{topics_val}%")
+
+        pdf_val = d.get("pdf_slider", 0)
+        self._pdf_slider.setValue(pdf_val)
+        self._pdf_left_lbl.setText(f"{100 - pdf_val}%")
+        self._pdf_right_lbl.setText(f"{pdf_val}%")
+
+        random_val = d.get("random_slider", 99)
+        self._random_slider.setValue(random_val)
+        self._random_left_lbl.setText(f"{100 - random_val}%")
+        self._random_right_lbl.setText(f"{random_val}%")
+
+        self._cb_new.setChecked(d.get("include_new", True))
+        self._cb_learning.setChecked(d.get("include_learning", True))
+        self._cb_due.setChecked(d.get("include_due", True))
+        self._no_tags_cb.setChecked(d.get("no_tags_checked", True))
+        self._enforce_cb.setChecked(d.get("enforce_priority", True))
+        self._priority_order_widget.setEnabled(self._enforce_cb.isChecked())
+
+        saved_scope = d.get("scheduler_scope", "session")
+        for i in range(self._scope_combo.count()):
+            if self._scope_combo.itemData(i) == saved_scope:
+                self._scope_combo.setCurrentIndex(i)
+                break
+
+        saved_time = d.get("day_end_time", "00:00")
+        preset_idx = next(
+            (i for i in range(self._day_end_preset.count())
+             if self._day_end_preset.itemData(i) == saved_time),
+            None,
+        )
+        if preset_idx is not None:
+            self._day_end_preset.setCurrentIndex(preset_idx)
+        else:
+            self._day_end_preset.setCurrentIndex(self._day_end_preset.count() - 1)
+            try:
+                h, m = map(int, saved_time.split(":"))
+                self._day_end_edit.setTime(QTime(h, m))
+            except Exception:
+                pass
+        self._update_day_end_visibility()
+
+        self._refresh_priority_combos(d.get("priority_order", ["tags", "type", "mode"]))
+
+        self._topics_filter_edit.setText(d.get("topics_filter", "deck:Topics"))
+        self._items_filter_edit.setText(d.get("items_filter", "-deck:Topics"))
+        self._preserve_order_cb.setChecked(d.get("preserve_order", True))
+        self._show_debug_cb.setChecked(d.get("show_debug", False))
+
+        # Replace tag rows
+        for row in list(self._linked_rows):
+            self._remove_row(row)
+        for entry in d.get("tag_rows", []):
+            self._add_tag_row(entry["tag"], entry.get("weight", 20),
+                              locked=entry.get("locked", False))
+
+        self._update_other_label()
+        self._refresh_counts()
