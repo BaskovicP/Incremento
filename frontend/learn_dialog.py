@@ -764,46 +764,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._scope_combo.currentIndexChanged, lambda _: self._update_day_end_visibility())
         qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._on_day_end_preset_changed())
 
-        # ── 8. Scheduling funnel ───────────────────────────────────────────────
-        _funnel_hrow = QHBoxLayout()
-        _funnel_header = QLabel("Scheduling funnel")
-        _funnel_header.setStyleSheet("font-weight: bold;")
-        _funnel_hrow.addWidget(_funnel_header)
-        _funnel_hrow.addWidget(_info_icon(
-            "Drag phases up or down to set the order in which the scheduler fills cards.\n\n"
-            "In strict mode each enabled phase fills its quota in full before the next\n"
-            "phase starts. The funnel flows top → bottom: cards matching the first phase\n"
-            "are picked first, then the second phase fills remaining slots, and so on.\n\n"
-            "Example order — Content Types → Tag Quotas → Card Type → Selection Mode:\n"
-            "  1. Fill PDF / YouTube quotas\n"
-            "  2. Fill tag quotas (statistics 30 %, psychology 20 %)\n"
-            "  3. Fill remaining with topics / items ratio\n"
-            "  4. Fill any last slots with priority / random ratio\n"
-            "  5. Fill Remaining — any ready card, always last\n\n"
-            "Use the ✓ checkbox on each phase to enable / disable it in strict mode.\n"
-            "In soft mode the funnel is ignored; all dimensions are balanced together."
-        ))
-        self._enforce_cb = QCheckBox("Strict enforcement")
-        self._enforce_cb.setToolTip(
-            "Strict (checked): each phase is filled in full before the next.\n"
-            "Example: all Content-Type quotas are filled, then Tag quotas, then the rest.\n\n"
-            "Soft (unchecked): the scheduler mixes all dimensions simultaneously,\n"
-            "gradually converging to your targets — phase order is ignored."
-        )
-        self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
-        _funnel_hrow.addStretch()
-        _funnel_hrow.addWidget(self._enforce_cb)
-        layout.addLayout(_funnel_hrow)
-
-        self._funnel = FunnelWidget()
-        saved_order = self._saved.get("phase_order", _DEFAULT_PHASE_ORDER)
-        saved_enabled = self._saved.get("phases_enabled", {})
-        for pid in _DEFAULT_PHASE_ORDER:
-            self._funnel.add_phase(pid, enabled=saved_enabled.get(pid, True))
-        self._funnel.set_order(saved_order, enabled=saved_enabled)
-        layout.addWidget(self._funnel)
-
-        # ── 9. Tag quotas ─────────────────────────────────────────────────────
+        # ── 8. Tag quotas ─────────────────────────────────────────────────────
         _tag_hrow = QHBoxLayout()
         _tag_header = QLabel("Tag quotas")
         _tag_header.setStyleSheet("font-weight: bold;")
@@ -815,11 +776,10 @@ class SchedulerConfigDialog(QDialog):
             "  when it's under-represented, less often when it's over-represented.\n"
             "  Example: physics = 20 % → roughly 1 in 5 picks tries to find a physics card.\n\n"
             "• Strict mode (strict enforcement on):\n"
-            "  The % becomes a hard quota filled first in Phase 1.\n"
+            "  The % becomes a hard quota filled before the rest of the session.\n"
             "  Example: physics = 20 % with 50 cards → exactly ~10 physics cards reserved.\n\n"
             "Sliders are independent — the remainder goes to untagged cards.\n"
-            "Total can exceed 100 % (a warning is shown).\n\n"
-            "Tag quotas run during Phase 1, after Content type priorities (Phase 0)."
+            "Total can exceed 100 % (a warning is shown)."
         ))
         _tag_hrow.addStretch()
         layout.addLayout(_tag_hrow)
@@ -863,6 +823,50 @@ class SchedulerConfigDialog(QDialog):
         self._other_lbl = QLabel("")
         layout.addWidget(self._other_lbl)
         self._update_other_label()
+
+        # ── 9. Scheduling funnel ───────────────────────────────────────────────
+        _funnel_sep = QFrame()
+        _funnel_sep.setFrameShape(QFrame.Shape.HLine)
+        _funnel_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
+        layout.addWidget(_funnel_sep)
+
+        _funnel_hrow = QHBoxLayout()
+        _funnel_header = QLabel("Scheduling funnel")
+        _funnel_header.setStyleSheet("font-weight: bold;")
+        _funnel_hrow.addWidget(_funnel_header)
+        _funnel_hrow.addWidget(_info_icon(
+            "Drag phases up or down to set the order in which the scheduler fills cards.\n\n"
+            "In strict mode each enabled phase fills its quota in full before the next\n"
+            "phase starts. The funnel flows top → bottom: cards matching the first phase\n"
+            "are picked first, then the second phase fills remaining slots, and so on.\n\n"
+            "Example order — Content Types → Tag Quotas → Card Type → Selection Mode:\n"
+            "  1. Fill PDF / YouTube quotas\n"
+            "  2. Fill tag quotas (statistics 30 %, psychology 20 %)\n"
+            "  3. Fill remaining with topics / items ratio\n"
+            "  4. Fill any last slots with priority / random ratio\n"
+            "  5. Fill Remaining — any ready card, always last\n\n"
+            "Use the ✓ checkbox on each phase to enable / disable it in strict mode.\n"
+            "In soft mode the funnel is ignored; all dimensions are balanced together."
+        ))
+        self._enforce_cb = QCheckBox("Strict enforcement")
+        self._enforce_cb.setToolTip(
+            "Strict (checked): each phase is filled in full before the next.\n"
+            "Example: all Content-Type quotas are filled, then Tag quotas, then the rest.\n\n"
+            "Soft (unchecked): the scheduler mixes all dimensions simultaneously,\n"
+            "gradually converging to your targets — phase order is ignored."
+        )
+        self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
+        _funnel_hrow.addStretch()
+        _funnel_hrow.addWidget(self._enforce_cb)
+        layout.addLayout(_funnel_hrow)
+
+        self._funnel = FunnelWidget()
+        saved_order = self._saved.get("phase_order", _DEFAULT_PHASE_ORDER)
+        saved_enabled = self._saved.get("phases_enabled", {})
+        for pid in _DEFAULT_PHASE_ORDER:
+            self._funnel.add_phase(pid, enabled=saved_enabled.get(pid, True))
+        self._funnel.set_order(saved_order, enabled=saved_enabled)
+        layout.addWidget(self._funnel)
 
         # ── 10. Advanced (collapsible, starts collapsed) ──────────────────────
         _adv_sep = QFrame()
