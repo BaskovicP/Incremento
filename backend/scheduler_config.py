@@ -31,6 +31,9 @@ class SchedulerConfig:
     show_debug: bool = False             # show card order debug dialog at session start
     pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
     content_type_weights: dict = field(default_factory=dict)  # {"pdf"|"youtube"|"webpage": fraction}
+    # Funnel: ordered list of phase IDs; phases_enabled gates each phase in strict mode
+    phase_order: list = field(default_factory=lambda: ["content_types", "tags", "type", "mode"])
+    phases_enabled: dict = field(default_factory=dict)  # {phase_id: bool}; True if absent
 
     @property
     def ready_filter(self) -> str:
@@ -121,4 +124,6 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         show_debug=show_debug,
         pdf_rate=pdf_rate,
         content_type_weights=content_type_weights,
+        phase_order=d.get("phase_order", ["content_types", "tags", "type", "mode"]),
+        phases_enabled=d.get("phases_enabled", {}),
     )

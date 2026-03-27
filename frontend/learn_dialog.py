@@ -6,7 +6,7 @@ from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
-    QInputDialog, QScrollArea,
+    QInputDialog, QScrollArea, QObject, QEvent,
 )
 from aqt.utils import showInfo, tooltip
 
@@ -41,6 +41,324 @@ def _info_icon(tip: str) -> QLabel:
     )
     return lbl
 
+
+# ─── Phase funnel ─────────────────────────────────────────────────────────────
+
+_PHASE_META = {
+    "content_types": {
+        "label": "Content Types",
+        "icon":  "📄",
+        "color": "#e07b39",
+        "desc":  "Fill PDF / YouTube / Webpage quotas",
+    },
+    "tags": {
+        "label": "Tag Quotas",
+        "icon":  "🏷",
+        "color": "#8e44ad",
+        "desc":  "Fill per-tag quotas (e.g. statistics, psychology …)",
+    },
+    "type": {
+        "label": "Card Type",
+        "icon":  "📊",
+        "color": "#2980b9",
+        "desc":  "Topics ↔ Items ratio enforcement",
+    },
+    "mode": {
+        "label": "Selection Mode",
+        "icon":  "🎲",
+        "color": "#27ae60",
+        "desc":  "Priority-first ↔ Random enforcement",
+    },
+}
+
+_DEFAULT_PHASE_ORDER = ["content_types", "tags", "type", "mode"]
+
+
+class _PhaseCard(QFrame):
+    """Single draggable phase card."""
+
+    def __init__(self, phase_id: str, enabled: bool = True, parent=None):
+        super().__init__(parent)
+        self.phase_id = phase_id
+        self._color = _PHASE_META[phase_id]["color"]
+        self.setObjectName("PhaseCard")
+        self._apply_style(dragging=False)
+        self.setFixedHeight(62)
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(6, 4, 8, 4)
+        row.setSpacing(6)
+
+        self._handle = QLabel("⠿")
+        self._handle.setFixedSize(20, 42)
+        self._handle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._handle.setStyleSheet(
+            "color: rgba(128,128,128,0.55); font-size: 18px; border: none;"
+        )
+        self._handle.setCursor(Qt.CursorShape.OpenHandCursor)
+        row.addWidget(self._handle)
+
+        icon_lbl = QLabel(_PHASE_META[phase_id]["icon"])
+        icon_lbl.setFixedWidth(22)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_lbl.setStyleSheet("border: none; font-size: 15px;")
+        row.addWidget(icon_lbl)
+
+        text_w = QWidget()
+        text_w.setStyleSheet("border: none;")
+        text_col = QVBoxLayout(text_w)
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(2)
+        title = QLabel(_PHASE_META[phase_id]["label"])
+        title.setStyleSheet("font-weight: bold; font-size: 12px;")
+        desc = QLabel(_PHASE_META[phase_id]["desc"])
+        desc.setStyleSheet("color: palette(mid); font-size: 11px;")
+        text_col.addWidget(title)
+        text_col.addWidget(desc)
+        row.addWidget(text_w, 1)
+
+        self._cb = QCheckBox()
+        self._cb.setChecked(enabled)
+        self._cb.setToolTip(
+            "Enable this phase in strict mode.\n"
+            "Soft mode uses all dimensions simultaneously regardless of this toggle."
+        )
+        self._cb.setStyleSheet("border: none;")
+        row.addWidget(self._cb)
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._cb.isChecked()
+
+    def set_enabled(self, v: bool) -> None:
+        self._cb.setChecked(v)
+
+    def _apply_style(self, dragging: bool) -> None:
+        s = "dashed" if dragging else "solid"
+        alpha = "0.2" if dragging else "0.35"
+        self.setStyleSheet(
+            f"QFrame#PhaseCard {{"
+            f"  background: palette(base);"
+            f"  border: 1px {s} rgba(128,128,128,{alpha});"
+            f"  border-left: 5px {s} {self._color};"
+            f"  border-radius: 6px;"
+            f"}}"
+        )
+
+
+class _HandleEventFilter(QObject):
+    """Routes mouse events on drag handles to the parent _FunnelWidget."""
+
+    def __init__(self, funnel: "FunnelWidget"):
+        super().__init__(funnel)
+        self._f = funnel
+
+    def eventFilter(self, obj, event):
+        card = self._f._handle_map.get(id(obj))
+        if card is None:
+            return False
+        t = event.type()
+        if t == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._f._on_press(card, event)
+            return True
+        if t == QEvent.Type.MouseMove:
+            self._f._on_move(card, event)
+            return True
+        if t == QEvent.Type.MouseButtonRelease:
+            self._f._on_release(card, event)
+            return True
+        return False
+
+
+class FunnelWidget(QWidget):
+    """Drag-and-drop scheduling phase funnel."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cards: list[_PhaseCard] = []
+        self._handle_map: dict[int, _PhaseCard] = {}
+        self._ev = _HandleEventFilter(self)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self._container = QWidget(self)
+        self._cl = QVBoxLayout(self._container)
+        self._cl.setContentsMargins(2, 2, 2, 2)
+        self._cl.setSpacing(0)
+        outer.addWidget(self._container)
+
+        # Drop-indicator: absolutely positioned inside _container
+        self._ind = QFrame(self._container)
+        self._ind.setFixedHeight(3)
+        self._ind.setStyleSheet("background: #4a7ab5; border: none;")
+        self._ind.hide()
+
+        # Fixed "Fill Remaining" footer
+        fill = QFrame()
+        fill.setObjectName("FillFooter")
+        fill.setStyleSheet(
+            "QFrame#FillFooter {"
+            "  background: palette(base);"
+            "  border: 1px solid rgba(128,128,128,0.25);"
+            "  border-left: 5px solid #7f8c8d;"
+            "  border-radius: 6px;"
+            "}"
+        )
+        fill.setFixedHeight(52)
+        fill_row = QHBoxLayout(fill)
+        fill_row.setContentsMargins(32, 4, 8, 4)
+        fill_row.setSpacing(6)
+        fi = QLabel("🔚")
+        fi.setFixedWidth(22)
+        fi.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        fi.setStyleSheet("border: none; font-size: 15px;")
+        fill_row.addWidget(fi)
+        fw = QWidget()
+        fw.setStyleSheet("border: none;")
+        fc = QVBoxLayout(fw)
+        fc.setContentsMargins(0, 0, 0, 0)
+        fc.setSpacing(2)
+        ft = QLabel("Fill Remaining")
+        ft.setStyleSheet("font-weight: bold; font-size: 12px;")
+        fd = QLabel("Any ready cards — always runs last")
+        fd.setStyleSheet("color: palette(mid); font-size: 11px;")
+        fc.addWidget(ft)
+        fc.addWidget(fd)
+        fill_row.addWidget(fw, 1)
+
+        arr = QLabel("▼")
+        arr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arr.setStyleSheet("color: rgba(128,128,128,0.45); font-size: 10px;")
+        arr.setFixedHeight(16)
+        outer.addWidget(arr)
+        outer.addWidget(fill)
+
+        # Drag state
+        self._drag_card: _PhaseCard | None = None
+        self._drag_start_y: int = 0
+        self._drag_active: bool = False
+        self._insert_before: int = 0
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def add_phase(self, phase_id: str, enabled: bool = True) -> _PhaseCard:
+        card = _PhaseCard(phase_id, enabled, self._container)
+        self._handle_map[id(card._handle)] = card
+        card._handle.installEventFilter(self._ev)
+        self._cards.append(card)
+        self._rebuild()
+        return card
+
+    def set_order(self, order: list[str], enabled: dict | None = None) -> None:
+        id_map = {c.phase_id: c for c in self._cards}
+        new = [id_map[pid] for pid in order if pid in id_map]
+        for c in self._cards:
+            if c not in new:
+                new.append(c)
+        self._cards = new
+        if enabled:
+            for c in self._cards:
+                c.set_enabled(enabled.get(c.phase_id, True))
+        self._rebuild()
+
+    def get_order(self) -> list[str]:
+        return [c.phase_id for c in self._cards]
+
+    def get_enabled(self) -> dict[str, bool]:
+        return {c.phase_id: c.is_enabled for c in self._cards}
+
+    # ── Layout ────────────────────────────────────────────────────────────────
+
+    def _rebuild(self) -> None:
+        while self._cl.count():
+            item = self._cl.takeAt(0)
+            w = item.widget()
+            if w:
+                w.setParent(None)
+        for i, card in enumerate(self._cards):
+            if i > 0:
+                a = QLabel("▼")
+                a.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                a.setStyleSheet(
+                    "color: rgba(128,128,128,0.45); font-size: 10px; padding: 0;"
+                )
+                a.setFixedHeight(16)
+                self._cl.addWidget(a)
+            card.setParent(self._container)
+            self._cl.addWidget(card)
+            card.show()
+
+    # ── Drag ──────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _gpt(event):
+        try:
+            return event.globalPosition().toPoint()
+        except AttributeError:
+            return event.globalPos()
+
+    def _cy(self, event) -> int:
+        return self._container.mapFromGlobal(self._gpt(event)).y()
+
+    def _midpoints(self) -> list[int]:
+        return [c.pos().y() + c.height() // 2 for c in self._cards]
+
+    def _ind_y(self, before: int) -> int:
+        if not self._cards:
+            return 2
+        if before <= 0:
+            return max(0, self._cards[0].pos().y() - 3)
+        if before >= len(self._cards):
+            c = self._cards[-1]
+            return c.pos().y() + c.height() + 4
+        return self._cards[before].pos().y() - 4
+
+    def _on_press(self, card: _PhaseCard, event) -> None:
+        self._drag_card = card
+        self._drag_start_y = self._cy(event)
+        self._drag_active = False
+
+    def _on_move(self, card: _PhaseCard, event) -> None:
+        if self._drag_card is not card:
+            return
+        cy = self._cy(event)
+        if not self._drag_active and abs(cy - self._drag_start_y) > 6:
+            self._drag_active = True
+            card._apply_style(dragging=True)
+
+        if self._drag_active:
+            drag_idx = self._cards.index(card)
+            insert = len(self._cards)
+            for i, mid in enumerate(self._midpoints()):
+                if cy < mid:
+                    insert = i
+                    break
+            self._insert_before = insert
+            if insert in (drag_idx, drag_idx + 1):
+                self._ind.hide()
+            else:
+                self._ind.setGeometry(0, self._ind_y(insert), self._container.width(), 3)
+                self._ind.raise_()
+                self._ind.show()
+
+    def _on_release(self, card: _PhaseCard, event) -> None:
+        if self._drag_active and self._drag_card is card:
+            drag_idx = self._cards.index(card)
+            insert = self._insert_before
+            if insert not in (drag_idx, drag_idx + 1):
+                self._cards.pop(drag_idx)
+                adj = insert - 1 if insert > drag_idx else insert
+                self._cards.insert(adj, card)
+                self._rebuild()
+            card._apply_style(dragging=False)
+            self._ind.hide()
+        self._drag_card = None
+        self._drag_active = False
+
+
+# ─── End funnel ───────────────────────────────────────────────────────────────
 
 _DAY_END_PRESETS = [
     ("00:00", "12:00 AM (midnight)"),
@@ -446,65 +764,44 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._scope_combo.currentIndexChanged, lambda _: self._update_day_end_visibility())
         qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._on_day_end_preset_changed())
 
-        # ── 8. Scheduling priority order (Phase 1) ────────────────────────────
-        priority_header = QHBoxLayout()
+        # ── 8. Scheduling funnel ───────────────────────────────────────────────
+        _funnel_hrow = QHBoxLayout()
+        _funnel_header = QLabel("Scheduling funnel")
+        _funnel_header.setStyleSheet("font-weight: bold;")
+        _funnel_hrow.addWidget(_funnel_header)
+        _funnel_hrow.addWidget(_info_icon(
+            "Drag phases up or down to set the order in which the scheduler fills cards.\n\n"
+            "In strict mode each enabled phase fills its quota in full before the next\n"
+            "phase starts. The funnel flows top → bottom: cards matching the first phase\n"
+            "are picked first, then the second phase fills remaining slots, and so on.\n\n"
+            "Example order — Content Types → Tag Quotas → Card Type → Selection Mode:\n"
+            "  1. Fill PDF / YouTube quotas\n"
+            "  2. Fill tag quotas (statistics 30 %, psychology 20 %)\n"
+            "  3. Fill remaining with topics / items ratio\n"
+            "  4. Fill any last slots with priority / random ratio\n"
+            "  5. Fill Remaining — any ready card, always last\n\n"
+            "Use the ✓ checkbox on each phase to enable / disable it in strict mode.\n"
+            "In soft mode the funnel is ignored; all dimensions are balanced together."
+        ))
         self._enforce_cb = QCheckBox("Strict enforcement")
         self._enforce_cb.setToolTip(
-            "Strict (checked): each bucket is filled in full before moving to the next.\n"
-            "Example: all tag-A cards are picked, then tag-B, then the rest.\n\n"
-            "Soft (unchecked): the scheduler picks from all dimensions at every step,\n"
-            "gradually converging to your target ratios without any hard ordering."
+            "Strict (checked): each phase is filled in full before the next.\n"
+            "Example: all Content-Type quotas are filled, then Tag quotas, then the rest.\n\n"
+            "Soft (unchecked): the scheduler mixes all dimensions simultaneously,\n"
+            "gradually converging to your targets — phase order is ignored."
         )
         self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
-        priority_header.addWidget(QLabel("Scheduling priority order:"))
-        priority_header.addWidget(_info_icon(
-            "Controls how the remaining session slots (after Content type priorities)\n"
-            "are ordered when Strict enforcement is on.\n\n"
-            "The three combo boxes set which dimension's quota is filled first:\n"
-            "• Tags — fill each tag's quota in full before moving to the next tag\n"
-            "• Type — fill all topic slots before item slots (or vice-versa)\n"
-            "• Mode — fill all Priority-mode slots before Random-mode slots\n\n"
-            "Example (Tags → Type → Mode, strict on):\n"
-            "  1. Fill tag:physics quota → 2. Fill remaining topics → 3. Fill items\n\n"
-            "When Strict enforcement is off, all three dimensions are balanced\n"
-            "simultaneously using a debt-based soft picker."
-        ))
-        priority_header.addStretch()
-        priority_header.addWidget(self._enforce_cb)
-        layout.addLayout(priority_header)
+        _funnel_hrow.addStretch()
+        _funnel_hrow.addWidget(self._enforce_cb)
+        layout.addLayout(_funnel_hrow)
 
-        _priority_desc = QLabel(
-            "Which dimension's quota is filled first when cards are limited."
-        )
-        _priority_desc.setStyleSheet("color: gray;")
-        layout.addWidget(_priority_desc)
-
-        self._priority_order_widget = QWidget()
-        priority_row = QHBoxLayout(self._priority_order_widget)
-        priority_row.setContentsMargins(0, 0, 0, 0)
-        self._priority_combos: list[QComboBox] = []
-        saved_order = self._saved.get("priority_order", ["tags", "type", "mode"])
-        for i in range(3):
-            if i > 0:
-                priority_row.addWidget(QLabel("→"))
-            combo = QComboBox()
-            self._priority_combos.append(combo)
-            priority_row.addWidget(combo)
-        priority_row.addStretch()
-        layout.addWidget(self._priority_order_widget)
-        self._refresh_priority_combos(saved_order)
-        for _combo in self._priority_combos:
-            _combo.setToolTip(
-                "The leftmost item is the hardest constraint (filled first).\n"
-                "Move a dimension left to give it higher priority."
-            )
-        self._priority_order_widget.setEnabled(self._enforce_cb.isChecked())
-        qconnect(self._enforce_cb.stateChanged,
-                 lambda _: self._priority_order_widget.setEnabled(self._enforce_cb.isChecked()))
-        qconnect(self._priority_combos[0].currentIndexChanged,
-                 lambda _: self._on_priority_changed(0))
-        qconnect(self._priority_combos[1].currentIndexChanged,
-                 lambda _: self._on_priority_changed(1))
+        self._funnel = FunnelWidget()
+        saved_order = self._saved.get("phase_order", _DEFAULT_PHASE_ORDER)
+        saved_enabled = self._saved.get("phases_enabled", {})
+        for pid in _DEFAULT_PHASE_ORDER:
+            self._funnel.add_phase(pid, enabled=saved_enabled.get(pid, True))
+        self._funnel.set_order(saved_order, enabled=saved_enabled)
+        layout.addWidget(self._funnel)
 
         # ── 9. Tag quotas ─────────────────────────────────────────────────────
         _tag_hrow = QHBoxLayout()
@@ -759,33 +1056,6 @@ class SchedulerConfigDialog(QDialog):
     # ------------------------------------------------------------------
     # Priority order helpers
     # ------------------------------------------------------------------
-
-    def _refresh_priority_combos(self, order: list) -> None:
-        """Populate the three priority combos so each shows only unused options."""
-        for i, combo in enumerate(self._priority_combos):
-            already_used = [order[j] for j in range(i)]
-            combo.blockSignals(True)
-            combo.clear()
-            for key, label in _PRIORITY_DIMS:
-                if key not in already_used:
-                    combo.addItem(label, key)
-            # Select the item matching order[i]
-            for j in range(combo.count()):
-                if combo.itemData(j) == order[i]:
-                    combo.setCurrentIndex(j)
-                    break
-            combo.blockSignals(False)
-        # Disable the last combo — it always has exactly one option
-        self._priority_combos[2].setEnabled(False)
-
-    def _on_priority_changed(self, changed_idx: int) -> None:
-        """When combo i changes, rebuild subsequent combos with remaining dims."""
-        used = [self._priority_combos[i].currentData() for i in range(changed_idx + 1)]
-        remaining = [k for k, _ in _PRIORITY_DIMS if k not in used]
-        self._refresh_priority_combos(used + remaining)
-
-    def _get_priority_order(self) -> list:
-        return [c.currentData() for c in self._priority_combos]
 
     # ------------------------------------------------------------------
     # Tag row helpers
@@ -1075,7 +1345,8 @@ class SchedulerConfigDialog(QDialog):
             include_rest=self._no_tags_cb.isChecked(),
             scheduler_scope=self._scope_combo.currentData(),
             day_end_time=self._get_day_end_time(),
-            priority_order=self._get_priority_order(),
+            phase_order=self._funnel.get_order(),
+            phases_enabled=self._funnel.get_enabled(),
             enforce_priority=self._enforce_cb.isChecked(),
             topics_filter=self._topics_filter_edit.text().strip() or "deck:Topics",
             items_filter=self._items_filter_edit.text().strip() or "-deck:Topics",
@@ -1099,7 +1370,8 @@ class SchedulerConfigDialog(QDialog):
             "random_slider":      self._random_slider.value(),
             "pdf_slider":         self._pdf_slider.value(),
             "no_tags_checked":    self._no_tags_cb.isChecked(),
-            "priority_order":     self._get_priority_order(),
+            "phase_order":        self._funnel.get_order(),
+            "phases_enabled":     self._funnel.get_enabled(),
             "enforce_priority":   self._enforce_cb.isChecked(),
             "scheduler_scope":    self._scope_combo.currentData(),
             "day_end_time":       self._get_day_end_time(),
@@ -1213,7 +1485,6 @@ class SchedulerConfigDialog(QDialog):
         self._cb_due.setChecked(d.get("include_due", True))
         self._no_tags_cb.setChecked(d.get("no_tags_checked", True))
         self._enforce_cb.setChecked(d.get("enforce_priority", True))
-        self._priority_order_widget.setEnabled(self._enforce_cb.isChecked())
 
         saved_scope = d.get("scheduler_scope", "session")
         for i in range(self._scope_combo.count()):
@@ -1238,7 +1509,10 @@ class SchedulerConfigDialog(QDialog):
                 pass
         self._update_day_end_visibility()
 
-        self._refresh_priority_combos(d.get("priority_order", ["tags", "type", "mode"]))
+        self._funnel.set_order(
+            d.get("phase_order", _DEFAULT_PHASE_ORDER),
+            enabled=d.get("phases_enabled", {}),
+        )
 
         self._topics_filter_edit.setText(d.get("topics_filter", "deck:Topics"))
         self._items_filter_edit.setText(d.get("items_filter", "-deck:Topics"))

@@ -150,82 +150,83 @@ def learnFunction() -> None:
         selected_ids.append(result.card)
         return True
 
-    if cfg.content_type_weights:
-        # Phase 0 — fill content type quotas (pdf / youtube / webpage) first.
-        # Tag weights are respected within each content type pool when use_tags is on.
-        for ct, weight in cfg.content_type_weights.items():
-            if weight <= 0:
-                continue
-            ct_target = round(weight * target_count)
-            ct_picked = 0
-            for _ in range(ct_target * 3):
-                if ct_picked >= ct_target or len(selected_ids) >= target_count:
-                    break
-                if not _pick(
-                    use_tags=cfg.use_tags,
-                    tag_weights=cfg.tag_weights,
-                    force_card_type=ct,
-                ):
-                    break
-                ct_picked += 1
-
     if cfg.enforce_priority:
-        # Hard mode — Phase 1 exhausts the leading dimension's quota sequentially.
-        p1 = cfg.priority_order[0] if cfg.priority_order else "tags"
+        # Strict mode — run each funnel phase in order, filling its quota before the next.
+        for phase_id in cfg.phase_order:
+            if not cfg.phases_enabled.get(phase_id, True):
+                continue
+            if len(selected_ids) >= target_count:
+                break
 
-        if p1 == "tags" and cfg.use_tags:
-            ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
-            for tag, weight in ordered:
-                tag_target = round(weight * target_count)
-                tag_picked = 0
-                for _ in range(tag_target * 3):
-                    if tag_picked >= tag_target or len(selected_ids) >= target_count:
-                        break
-                    if not _pick(use_tags=True, tag_weights={tag: 1.0}):
-                        break
-                    tag_picked += 1
+            if phase_id == "content_types" and cfg.content_type_weights:
+                for ct, weight in cfg.content_type_weights.items():
+                    if weight <= 0:
+                        continue
+                    ct_target = round(weight * target_count)
+                    ct_picked = 0
+                    for _ in range(ct_target * 3):
+                        if ct_picked >= ct_target or len(selected_ids) >= target_count:
+                            break
+                        if not _pick(
+                            use_tags=cfg.use_tags,
+                            tag_weights=cfg.tag_weights,
+                            force_card_type=ct,
+                        ):
+                            break
+                        ct_picked += 1
 
-        elif p1 == "type":
-            topics_target = round(cfg.topics_rate * target_count)
-            items_target = target_count - topics_target
-            for forced_type, type_target in [
-                ("topics", topics_target),
-                ("items", items_target),
-            ]:
-                type_picked = 0
-                for _ in range(type_target * 3):
-                    if type_picked >= type_target or len(selected_ids) >= target_count:
-                        break
-                    if not _pick(
-                        use_tags=cfg.use_tags,
-                        tag_weights=cfg.tag_weights,
-                        force_card_type=forced_type,
-                    ):
-                        break
-                    type_picked += 1
+            elif phase_id == "tags" and cfg.use_tags:
+                ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
+                for tag, weight in ordered:
+                    tag_target = round(weight * target_count)
+                    tag_picked = 0
+                    for _ in range(tag_target * 3):
+                        if tag_picked >= tag_target or len(selected_ids) >= target_count:
+                            break
+                        if not _pick(use_tags=True, tag_weights={tag: 1.0}):
+                            break
+                        tag_picked += 1
 
-        elif p1 == "mode":
-            priority_target = round((1 - cfg.random_rate) * target_count)
-            random_target = target_count - priority_target
-            for forced_mode, mode_target in [
-                ("priority", priority_target),
-                ("random", random_target),
-            ]:
-                mode_picked = 0
-                for _ in range(mode_target * 3):
-                    if mode_picked >= mode_target or len(selected_ids) >= target_count:
-                        break
-                    if not _pick(
-                        use_tags=cfg.use_tags,
-                        tag_weights=cfg.tag_weights,
-                        force_mode=forced_mode,
-                    ):
-                        break
-                    mode_picked += 1
+            elif phase_id == "type":
+                topics_target = round(cfg.topics_rate * target_count)
+                items_target = target_count - topics_target
+                for forced_type, type_target in [
+                    ("topics", topics_target),
+                    ("items", items_target),
+                ]:
+                    type_picked = 0
+                    for _ in range(type_target * 3):
+                        if type_picked >= type_target or len(selected_ids) >= target_count:
+                            break
+                        if not _pick(
+                            use_tags=cfg.use_tags,
+                            tag_weights=cfg.tag_weights,
+                            force_card_type=forced_type,
+                        ):
+                            break
+                        type_picked += 1
 
-        # Phase 2 — fill remaining slots.
-        run_phase2 = (cfg.include_rest or not cfg.use_tags) if p1 == "tags" else True
-        if run_phase2:
+            elif phase_id == "mode":
+                priority_target = round((1 - cfg.random_rate) * target_count)
+                random_target = target_count - priority_target
+                for forced_mode, mode_target in [
+                    ("priority", priority_target),
+                    ("random", random_target),
+                ]:
+                    mode_picked = 0
+                    for _ in range(mode_target * 3):
+                        if mode_picked >= mode_target or len(selected_ids) >= target_count:
+                            break
+                        if not _pick(
+                            use_tags=cfg.use_tags,
+                            tag_weights=cfg.tag_weights,
+                            force_mode=forced_mode,
+                        ):
+                            break
+                        mode_picked += 1
+
+        # Fill Remaining — always runs last in strict mode
+        if cfg.include_rest or not cfg.use_tags:
             for _ in range(target_count * 3):
                 if len(selected_ids) >= target_count:
                     break
@@ -234,6 +235,7 @@ def learnFunction() -> None:
 
     else:
         # Soft mode — all dimensions handled by soft_pick (debt-based stochastic).
+        # Phase order / enabled state is ignored; all weights blend together.
         for _ in range(target_count * 3):
             if len(selected_ids) >= target_count:
                 break
