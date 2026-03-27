@@ -221,6 +221,34 @@ gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 
 
+def _check_deps_first_run() -> None:
+    """On first run after install, show the dependency setup dialog if anything is missing."""
+    from .utils.deps import status
+    config = mw.addonManager.getConfig(__name__) or {}
+    if config.get("deps_notified"):
+        return
+    s = status()
+    if s["pymupdf"] and s["tesseract"]:
+        # Everything present — mark as notified and skip
+        config["deps_notified"] = True
+        mw.addonManager.writeConfig(__name__, config)
+        return
+    # Something is missing — show the setup dialog once
+    config["deps_notified"] = True
+    mw.addonManager.writeConfig(__name__, config)
+
+    def _show():
+        from .utils.deps import show_setup_dialog
+        show_setup_dialog(mw)
+
+    # Defer slightly so Anki finishes loading before the dialog appears
+    from aqt.qt import QTimer
+    QTimer.singleShot(1500, _show)
+
+
+gui_hooks.main_window_did_init.append(_check_deps_first_run)
+
+
 def _build_timer_toolbar() -> None:
     build_timer_toolbar(_timerToggleAction)
 
@@ -1503,6 +1531,15 @@ _menu.addSeparator()
 
 _utilsMenu = QMenu("Utils", mw)
 _menu.addMenu(_utilsMenu)
+
+_checkDepsAction = QAction("Check Dependencies…", mw)
+qconnect(_checkDepsAction.triggered, lambda: (
+    __import__("importlib").import_module(".utils.deps", package=__name__.split(".")[0])
+    .show_setup_dialog(mw, force=True)
+))
+_utilsMenu.addAction(_checkDepsAction)
+
+_utilsMenu.addSeparator()
 
 _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
 qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)

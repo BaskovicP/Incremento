@@ -271,12 +271,23 @@ class AddPdfDialog(QDialog):
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setCellWidget(row, 3, lbl)
             else:
-                cb = QCheckBox("Use OCR")
-                cb.setChecked(True)
-                cb.setToolTip("Run Tesseract OCR to embed a text layer")
-                cb.setStyleSheet("font-size: 10px;")
-                self._table.setCellWidget(row, 3, cb)
-                self._ocr_checks[path] = cb
+                from .deps import has_tesseract, tesseract_instructions
+                if has_tesseract():
+                    cb = QCheckBox("Use OCR")
+                    cb.setChecked(True)
+                    cb.setToolTip("Run Tesseract OCR to embed a text layer")
+                    cb.setStyleSheet("font-size: 10px;")
+                    self._table.setCellWidget(row, 3, cb)
+                    self._ocr_checks[path] = cb
+                else:
+                    lbl = QLabel("No OCR ⚠")
+                    lbl.setStyleSheet("font-size: 10px; color: #e0a020;")
+                    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    lbl.setToolTip(
+                        "This PDF has no selectable text and Tesseract is not installed.\n\n"
+                        + tesseract_instructions()
+                    )
+                    self._table.setCellWidget(row, 3, lbl)
 
         mw.taskman.run_in_background(check, on_done)
 
