@@ -30,6 +30,7 @@ class SchedulerConfig:
     preserve_order: bool = True          # build filtered deck in scheduler-selected order
     show_debug: bool = False             # show card order debug dialog at session start
     pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
+    content_type_weights: dict = field(default_factory=dict)  # {"pdf"|"youtube"|"webpage": fraction}
 
     @property
     def ready_filter(self) -> str:
@@ -93,6 +94,13 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     show_debug       = d.get("show_debug",       False)
     pdf_rate         = d.get("pdf_slider",        0) / 100.0
 
+    content_type_rows = d.get("content_type_rows", [])
+    content_type_weights = {
+        r["type"]: r["weight"] / 100.0
+        for r in content_type_rows
+        if r.get("enabled") and r.get("weight", 0) > 0
+    }
+
     return SchedulerConfig(
         session_card_count=session_card_count,
         topics_rate=topics_rate,
@@ -112,4 +120,5 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         preserve_order=preserve_order,
         show_debug=show_debug,
         pdf_rate=pdf_rate,
+        content_type_weights=content_type_weights,
     )

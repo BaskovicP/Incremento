@@ -150,6 +150,25 @@ def learnFunction() -> None:
         selected_ids.append(result.card)
         return True
 
+    if cfg.content_type_weights:
+        # Phase 0 — fill content type quotas (pdf / youtube / webpage) first.
+        # Tag weights are respected within each content type pool when use_tags is on.
+        for ct, weight in cfg.content_type_weights.items():
+            if weight <= 0:
+                continue
+            ct_target = round(weight * target_count)
+            ct_picked = 0
+            for _ in range(ct_target * 3):
+                if ct_picked >= ct_target or len(selected_ids) >= target_count:
+                    break
+                if not _pick(
+                    use_tags=cfg.use_tags,
+                    tag_weights=cfg.tag_weights,
+                    force_card_type=ct,
+                ):
+                    break
+                ct_picked += 1
+
     if cfg.enforce_priority:
         # Hard mode — Phase 1 exhausts the leading dimension's quota sequentially.
         p1 = cfg.priority_order[0] if cfg.priority_order else "tags"

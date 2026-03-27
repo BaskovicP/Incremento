@@ -156,3 +156,98 @@ class TestStatus:
         assert set(result.keys()) == {"pymupdf", "tesseract"}
         assert result["pymupdf"] is True
         assert result["tesseract"] is False
+
+
+# ---------------------------------------------------------------------------
+# pymupdf_instructions
+# ---------------------------------------------------------------------------
+
+
+class TestPymupdfInstructions:
+    def test_contains_pip(self):
+        instructions = deps.pymupdf_instructions()
+        assert "pip" in instructions
+
+    def test_contains_pymupdf(self):
+        instructions = deps.pymupdf_instructions()
+        assert "PyMuPDF" in instructions
+
+    def test_contains_python_executable(self):
+        instructions = deps.pymupdf_instructions()
+        assert sys.executable in instructions
+
+
+# ---------------------------------------------------------------------------
+# install_pymupdf
+# ---------------------------------------------------------------------------
+
+
+class TestInstallPymupdf:
+    def test_calls_taskman_run_in_background(self):
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        mw.taskman.run_in_background.assert_called_once()
+
+    def test_on_done_callback_called_with_true_on_success(self):
+        mw = MagicMock()
+        results = []
+
+        def on_done(ok):
+            results.append(ok)
+
+        deps.install_pymupdf(mw, on_done=on_done)
+        # Extract the on_done wrapper passed to taskman
+        call_args = mw.taskman.run_in_background.call_args[0]
+        _task_fn, _on_done_fn = call_args
+        future = MagicMock()
+        future.result.return_value = True
+        _on_done_fn(future)
+        assert results == [True]
+
+    def test_on_done_callback_called_with_false_on_exception(self):
+        mw = MagicMock()
+        results = []
+
+        def on_done(ok):
+            results.append(ok)
+
+        deps.install_pymupdf(mw, on_done=on_done)
+        call_args = mw.taskman.run_in_background.call_args[0]
+        _, _on_done_fn = call_args
+        future = MagicMock()
+        future.result.side_effect = Exception("install failed")
+        _on_done_fn(future)
+        assert results == [False]
+
+    def test_on_done_none_does_not_raise(self):
+        mw = MagicMock()
+        deps.install_pymupdf(mw, on_done=None)
+        call_args = mw.taskman.run_in_background.call_args[0]
+        _, _on_done_fn = call_args
+        future = MagicMock()
+        future.result.return_value = True
+        _on_done_fn(future)  # should not raise even with no callback
+
+    def test_task_returns_true_when_pip_succeeds(self):
+        """The background _task() function returns True when pip exits 0."""
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        call_args = mw.taskman.run_in_background.call_args[0]
+        _task_fn, _ = call_args
+        proc = MagicMock()
+        proc.returncode = 0
+        with patch("subprocess.run", return_value=proc):
+            result = _task_fn()
+        assert result is True
+
+    def test_task_returns_false_when_pip_fails(self):
+        """The background _task() function returns False when pip exits non-zero."""
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        call_args = mw.taskman.run_in_background.call_args[0]
+        _task_fn, _ = call_args
+        proc = MagicMock()
+        proc.returncode = 1
+        with patch("subprocess.run", return_value=proc):
+            result = _task_fn()
+        assert result is False

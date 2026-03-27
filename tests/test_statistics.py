@@ -256,3 +256,259 @@ class TestEffectiveDate:
         sm = StatsManager(str(tmp_path), day_end_time="04:00")
         # At 03:00 with 04:00 boundary, logical date is 2026-03-20 → loads yesterday's counts
         assert sm.daily == yesterday_counts
+
+
+# ── load_stats / save_stats ───────────────────────────────────────────────────
+
+load_stats = _mod.load_stats
+save_stats = _mod.save_stats
+delete_daily_stats = _mod.delete_daily_stats
+delete_lifetime_stats = _mod.delete_lifetime_stats
+delete_all_stats = _mod.delete_all_stats
+
+
+class TestLoadStats:
+    def test_returns_empty_dict_when_no_file_or_db(self, tmp_path, monkeypatch):
+        """When no JSON file and DB query fails, return {}."""
+        def failing_conn(addon_dir):
+            raise Exception("no db")
+        monkeypatch.setattr(_mod, "get_connection", failing_conn)
+        result = load_stats(str(tmp_path))
+        assert result == {}
+
+    def test_loads_from_db_when_no_json_file(self, tmp_path):
+        """When no JSON file exists, fall back to reading the SQLite DB."""
+        import json as _json
+        # Seed the DB directly via the real get_connection
+        conn = _mod.get_connection(str(tmp_path))
+        conn.execute(
+            "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+            ("daily", "2026-01-01", _json.dumps({"type": {}, "tags": {}, "mode": {}})),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+            ("lifetime", None, _json.dumps({"type": {}, "tags": {}, "mode": {}})),
+        )
+        conn.commit()
+        # No JSON file exists — load_stats should fall back to DB
+        result = load_stats(str(tmp_path))
+        assert "daily" in result or "lifetime" in result  # something was read
+
+    def test_returns_data_from_file(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        data = {"lifetime": _empty(), "daily": {"date": _today(), "counts": _empty()}}
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        result = load_stats(str(tmp_path))
+        assert "lifetime" in result
+
+    def test_returns_empty_on_corrupt_json(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        stats_file.write_text("not valid json{{{{", encoding="utf-8")
+        result = load_stats(str(tmp_path))
+        assert result == {}
+
+    def test_returns_empty_when_file_is_not_dict(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        stats_file.write_text("[1, 2, 3]", encoding="utf-8")
+        result = load_stats(str(tmp_path))
+        assert result == {}
+
+
+class TestDeleteStats:
+    def test_delete_daily_removes_daily_key(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result(card_type="topics", tag="health", mode="random")
+        sm.record(result, "session")
+
+        delete_daily_stats(str(tmp_path))
+        data = json.loads((tmp_path / "user_files" / "custom_learn_stats.json").read_text())
+        assert "daily" not in data
+
+    def test_delete_lifetime_removes_lifetime_key(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result(card_type="topics", tag="health", mode="random")
+        sm.record(result, "session")
+
+        delete_lifetime_stats(str(tmp_path))
+        data = json.loads((tmp_path / "user_files" / "custom_learn_stats.json").read_text())
+        assert "lifetime" not in data
+
+    def test_delete_all_removes_file(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result(card_type="topics", tag="health", mode="random")
+        sm.record(result, "session")
+
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        assert stats_file.exists()
+        delete_all_stats(str(tmp_path))
+        assert not stats_file.exists()
+
+    def test_delete_daily_noop_when_no_file(self, tmp_path):
+        """delete_daily_stats should not raise when no stats file exists."""
+        delete_daily_stats(str(tmp_path))  # should not raise
+
+    def test_delete_lifetime_noop_when_no_file(self, tmp_path):
+        delete_lifetime_stats(str(tmp_path))  # should not raise
+
+    def test_delete_all_noop_when_no_file(self, tmp_path):
+        delete_all_stats(str(tmp_path))  # should not raise
+
+    def test_delete_daily_removes_daily_time_entry(self, tmp_path):
+        """Deleting daily stats also removes the daily time entry from the time block."""
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        lt_time = {"type": {"topics": 5.0}, "tags": {}}
+        data = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {
+                "daily": {"date": _today(), "seconds": {"type": {"topics": 2.0}, "tags": {}}},
+                "lifetime": lt_time,
+            },
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        delete_daily_stats(str(tmp_path))
+        result = json.loads(stats_file.read_text())
+        # daily time should be gone; lifetime time should remain
+        assert "daily" not in result.get("time", {})
+        assert result.get("time", {}).get("lifetime") == lt_time
+
+    def test_delete_lifetime_removes_lifetime_time_entry(self, tmp_path):
+        """Deleting lifetime stats also removes the lifetime time entry."""
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        daily_time = {"date": _today(), "seconds": {"type": {"topics": 1.0}, "tags": {}}}
+        data = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {
+                "daily": daily_time,
+                "lifetime": {"type": {"topics": 10.0}, "tags": {}},
+            },
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        delete_lifetime_stats(str(tmp_path))
+        result = json.loads(stats_file.read_text())
+        assert "lifetime" not in result.get("time", {})
+        assert result.get("time", {}).get("daily") == daily_time
+
+    def test_delete_daily_exercises_empty_time_cleanup(self, tmp_path):
+        """Exercise the branch where deleting daily leaves time dict empty (line 129)."""
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        data = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {"daily": {"date": _today(), "seconds": {"type": {}, "tags": {}}}},
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        delete_daily_stats(str(tmp_path))  # exercises `if not stats["time"]: del stats["time"]`
+
+    def test_delete_lifetime_exercises_empty_time_cleanup(self, tmp_path):
+        """Exercise the branch where deleting lifetime leaves time dict empty (line 149)."""
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        data = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {"lifetime": {"type": {}, "tags": {}}},
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        delete_lifetime_stats(str(tmp_path))  # exercises `if not stats["time"]: del stats["time"]`
+
+    def test_save_stats_handles_db_failure_gracefully(self, tmp_path, monkeypatch):
+        """save_stats DB write is best-effort; exceptions must be swallowed (lines 117-118)."""
+        monkeypatch.setattr(_mod, "get_connection", lambda _: (_ for _ in ()).throw(Exception("DB gone")))
+        # Should not raise; JSON file should still be written
+        save_stats(str(tmp_path), {"lifetime": _empty()})
+        assert (tmp_path / "user_files" / "custom_learn_stats.json").exists()
+
+    def test_delete_functions_handle_db_error_gracefully(self, tmp_path, monkeypatch):
+        """DB operations in delete functions should be best-effort (no raise)."""
+        def failing_conn(addon_dir):
+            raise Exception("DB gone")
+        monkeypatch.setattr(_mod, "get_connection", failing_conn)
+        # Pre-populate file so the JSON path runs before DB
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        data = {"daily": {"date": _today(), "counts": _empty()}, "lifetime": _empty()}
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        # Should not raise even if DB fails
+        delete_daily_stats(str(tmp_path))
+        delete_lifetime_stats(str(tmp_path))
+        delete_all_stats(str(tmp_path))
+
+
+class TestRecordTimeOnly:
+    def test_records_time_for_valid_card(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result(card_type="topics", tag="health", mode="random")
+        result.card = 42
+        result.review_seconds = 0  # not used by record_time_only
+        sm.record_time_only(result, 30.0)
+        assert sm.daily_time["type"].get("topics", 0) == 30.0
+        assert sm.lifetime_time["type"].get("topics", 0) == 30.0
+        assert sm.session_time["type"].get("topics", 0) == 30.0
+
+    def test_does_nothing_when_card_is_none(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result(card=None)
+        sm.record_time_only(result, 30.0)
+        assert sm.session_time == {"type": {}, "tags": {}}
+
+    def test_does_nothing_for_zero_seconds(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result()
+        sm.record_time_only(result, 0.0)
+        assert sm.session_time == {"type": {}, "tags": {}}
+
+    def test_saves_to_disk(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result()
+        sm.record_time_only(result, 15.0)
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        assert stats_file.exists()
+
+    def test_accumulates_time(self, tmp_path):
+        sm = StatsManager(str(tmp_path))
+        result = make_result(card_type="topics", tag="health", mode="random")
+        sm.record_time_only(result, 10.0)
+        sm.record_time_only(result, 5.0)
+        assert sm.lifetime_time["type"]["topics"] == 15.0
+
+
+class TestDailyTimeLoading:
+    def test_loads_todays_daily_time(self, tmp_path):
+        """If the file contains today's daily_time, it should be loaded."""
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        time_block = {"type": {"topics": 120.0}, "tags": {"health": 60.0}}
+        data = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {
+                "daily": {"date": _today(), "seconds": time_block},
+                "lifetime": {"type": {}, "tags": {}},
+            },
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        sm = StatsManager(str(tmp_path))
+        assert sm.daily_time == time_block
+
+    def test_resets_daily_time_on_date_mismatch(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        data = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {
+                "daily": {"date": "2000-01-01", "seconds": {"type": {"topics": 5}, "tags": {}}},
+                "lifetime": {"type": {}, "tags": {}},
+            },
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+        sm = StatsManager(str(tmp_path))
+        assert sm.daily_time == {"type": {}, "tags": {}}

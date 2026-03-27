@@ -520,3 +520,123 @@ class TestPriorityModeSort:
         mock_choice.assert_called_once()
         assert result.card == 403  # random.choice result, not most overdue (402)
         assert result.mode == "random"
+
+
+# ---------------------------------------------------------------------------
+# PDF rate paths
+# ---------------------------------------------------------------------------
+
+
+def _mock_card_utils_with_pdf(tag_topic=None, tag_item=None, all_topic=None, all_item=None, pdf_cards=None):
+    tag_topic = [] if tag_topic is None else tag_topic
+    tag_item = [] if tag_item is None else tag_item
+    all_topic = [] if all_topic is None else all_topic
+    all_item = [] if all_item is None else all_item
+    pdf_cards = [] if pdf_cards is None else pdf_cards
+    return patch.multiple(
+        "scheduler.card_utils",
+        get_topic_cards_by_tag=lambda tag, **kw: tag_topic,
+        get_item_cards_by_tag=lambda tag, **kw: tag_item,
+        get_all_topic_cards=lambda **kw: all_topic,
+        get_all_item_cards=lambda **kw: all_item,
+        get_all_pdf_cards=lambda **kw: pdf_cards,
+    )
+
+
+class TestPdfRatePaths:
+    def test_pdf_type_returns_pdf_card_priority_mode(self):
+        """When card_type=='pdf', a PDF card is returned in priority mode (index 0)."""
+        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+            with _mock_card_utils_with_pdf(pdf_cards=[301, 302, 303]):
+                result = scheduler.get_card_from_scheduler(pdf_rate=0.2, use_tags=False)
+        assert result.card == 301
+        assert result.card_type == "pdf"
+        assert result.mode == "priority"
+
+    def test_pdf_type_returns_pdf_card_random_mode(self):
+        with patch("scheduler.soft_pick", side_effect=["pdf", "random"]):
+            with _mock_card_utils_with_pdf(pdf_cards=[301, 302, 303]):
+                with patch("scheduler.random.choice", return_value=302):
+                    result = scheduler.get_card_from_scheduler(pdf_rate=0.2, use_tags=False)
+        assert result.card == 302
+        assert result.card_type == "pdf"
+
+    def test_pdf_type_falls_back_to_topics_when_no_pdf_cards(self):
+        """When pdf_cards is empty, fall back to topics (topics_rate >= 0.5)."""
+        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+            with _mock_card_utils_with_pdf(pdf_cards=[], all_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    pdf_rate=0.2, topics_rate=0.7, use_tags=False
+                )
+        assert result.card == 101
+        assert result.card_type == "topics"
+
+    def test_pdf_soft_pick_uses_three_way_weights(self):
+        """With pdf_rate > 0, soft_pick receives a 3-key weights dict."""
+        captured = []
+        original_sp = scheduler.soft_pick
+
+        def capturing_sp(weights, counts, *a, **kw):
+            captured.append(dict(weights))
+            return list(weights.keys())[0]
+
+        with patch("scheduler.soft_pick", side_effect=capturing_sp):
+            with _mock_card_utils_with_pdf(pdf_cards=[301]):
+                scheduler.get_card_from_scheduler(pdf_rate=0.1, use_tags=False)
+
+        type_weights = captured[0]
+        assert "pdf" in type_weights
+        assert "topics" in type_weights
+        assert "items" in type_weights
+
+
+# ---------------------------------------------------------------------------
+# NO_TAGS_KEY fallback when general pool is also empty
+# ---------------------------------------------------------------------------
+
+
+class TestNoTagsKeyEmptyFallback:
+    def test_no_tags_key_falls_back_to_other_type_when_empty(self):
+        """When NO_TAGS_KEY is selected and the primary type has no cards,
+        fall back to the other type."""
+        with patch("scheduler.soft_pick", side_effect=["topics", "priority", NO_TAGS_KEY]):
+            with patch.multiple(
+                "scheduler.card_utils",
+                get_all_topic_cards=lambda **kw: [],
+                get_all_item_cards=lambda **kw: [501, 502],
+                get_topic_cards_by_tag=lambda tag, **kw: [],
+                get_item_cards_by_tag=lambda tag, **kw: [],
+            ):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"health": 0.2},
+                )
+        assert result.card in [501, 502]
+        assert result.card_type == "items"
+
+    def test_no_tags_key_returns_none_when_both_pools_empty(self):
+        """When NO_TAGS_KEY selected and both topic and item pools are empty."""
+        with patch("scheduler.soft_pick", side_effect=["topics", "priority", NO_TAGS_KEY]):
+            with _mock_card_utils(all_topic=[], all_item=[]):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"health": 0.2},
+                )
+        assert result.card is None
+
+    def test_tag_items_falls_back_to_topics_by_tag(self):
+        """When items-by-tag is empty, try topics-by-tag as fallback."""
+        with patch("scheduler.soft_pick", side_effect=["items", "priority", "health"]):
+            with patch.multiple(
+                "scheduler.card_utils",
+                get_item_cards_by_tag=lambda tag, **kw: [],
+                get_topic_cards_by_tag=lambda tag, **kw: [101, 102],
+                get_all_topic_cards=lambda **kw: [],
+                get_all_item_cards=lambda **kw: [],
+            ):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    tag_weights={"health": 1.0},
+                )
+        assert result.card in [101, 102]
+        assert result.card_type == "topics"

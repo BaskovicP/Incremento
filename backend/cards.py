@@ -103,3 +103,25 @@ def get_item_cards_by_tag(
 def get_all_pdf_cards(pdf_filter: str = 'note:"Incremento PDF"'):
     """Return all non-suspended PDF cards, always eligible regardless of due state."""
     return _sort_by_due(mw.col.find_cards(f"{pdf_filter} -is:suspended"))
+
+
+def get_all_youtube_cards(youtube_filter: str = 'note:"Incremento Video"'):
+    """Return all non-suspended YouTube/video cards, always eligible regardless of due state."""
+    return _sort_by_due(mw.col.find_cards(f"{youtube_filter} -is:suspended"))
+
+
+def get_all_webpage_cards(webpage_filter: str = 'note:"Incremento Web"'):
+    """Return all non-suspended webpage cards, always eligible regardless of due state."""
+    return _sort_by_due(mw.col.find_cards(f"{webpage_filter} -is:suspended"))
+
+
+def get_pdf_cards_by_tag(tag: str, pdf_filter: str = 'note:"Incremento PDF"'):
+    return _sort_by_due(mw.col.find_cards(f"{pdf_filter} tag:{tag} -is:suspended"))
+
+
+def get_youtube_cards_by_tag(tag: str, youtube_filter: str = 'note:"Incremento Video"'):
+    return _sort_by_due(mw.col.find_cards(f"{youtube_filter} tag:{tag} -is:suspended"))
+
+
+def get_webpage_cards_by_tag(tag: str, webpage_filter: str = 'note:"Incremento Web"'):
+    return _sort_by_due(mw.col.find_cards(f"{webpage_filter} tag:{tag} -is:suspended"))

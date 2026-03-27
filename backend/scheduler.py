@@ -14,7 +14,7 @@ NO_TAGS_KEY = "__no_tags__"
 
 class SchedulerResult(NamedTuple):
     card: object
-    card_type: str        # "topics" | "items" | "pdf"  (actual, after fallbacks)
+    card_type: str        # "topics" | "items" | "pdf" | "youtube" | "webpage"  (actual, after fallbacks)
     tag: str | None       # tag used, or None if fallback ignored it
     mode: str             # "random" | "priority"
 
@@ -42,13 +42,15 @@ def get_card_from_scheduler(
         alpha=0.2,
         epsilon=0.05,
         exclude_ids=None,
-        force_card_type=None,   # "topics" | "items" | "pdf" | None — skips soft_pick for type
+        force_card_type=None,   # "topics" | "items" | "pdf" | "youtube" | "webpage" | None
         force_mode=None,        # "random" | "priority" | None — skips soft_pick for mode
         topics_filter: str = "deck:Topics",
         items_filter: str = "-deck:Topics",
         ready_filter: str = "(is:due OR is:learn OR is:new)",
         pdf_rate: float = 0.0,
         pdf_filter: str = 'note:"Incremento PDF"',
+        youtube_filter: str = 'note:"Incremento Video"',
+        webpage_filter: str = 'note:"Incremento Web"',
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
@@ -83,13 +85,63 @@ def get_card_from_scheduler(
     effective_topics_filter = topics_filter + pdf_exclusion
     effective_items_filter  = items_filter  + pdf_exclusion
 
+    def _ct_pick(all_fn, tag_fn, fn_kwargs):
+        """Tag-aware pick within a content-type pool (pdf / youtube / webpage).
+
+        If use_tags is on, does a soft_pick over tag weights first then fetches
+        only cards matching that tag.  Falls back to the full pool if the tag
+        has no cards of this type.  Returns (cards, resolved_tag).
+        """
+        if use_tags and tag_weights:
+            remainder = max(0.0, 1.0 - sum(tag_weights.values()))
+            extended = dict(tag_weights)
+            if remainder > 1e-6:
+                extended[NO_TAGS_KEY] = remainder
+            tag = soft_pick(extended, counts["tags"], alpha, epsilon)
+            if tag != NO_TAGS_KEY:
+                tagged = available(tag_fn(tag, **fn_kwargs))
+                if tagged:
+                    return tagged, tag
+                # Tag has no cards of this content type — fall back to full pool
+            return available(all_fn(**fn_kwargs)), None
+        return available(all_fn(**fn_kwargs)), None
+
     # 2a. PDF pick path — no ready_filter, always eligible
     if card_type == "pdf":
-        pdf_cards = available(card_utils.get_all_pdf_cards(pdf_filter=pdf_filter))
+        pdf_cards, pdf_tag = _ct_pick(
+            card_utils.get_all_pdf_cards,
+            card_utils.get_pdf_cards_by_tag,
+            {"pdf_filter": pdf_filter},
+        )
         if pdf_cards:
             card = random.choice(pdf_cards) if mode == "random" else pdf_cards[0]
-            return SchedulerResult(card=card, card_type="pdf", tag=None, mode=mode)
-        # Fallback: treat as topics or items
+            return SchedulerResult(card=card, card_type="pdf", tag=pdf_tag, mode=mode)
+        actual_type = "topics" if topics_rate >= 0.5 else "items"
+        card_type = actual_type
+
+    # 2b. YouTube pick path — no ready_filter, always eligible
+    if card_type == "youtube":
+        yt_cards, yt_tag = _ct_pick(
+            card_utils.get_all_youtube_cards,
+            card_utils.get_youtube_cards_by_tag,
+            {"youtube_filter": youtube_filter},
+        )
+        if yt_cards:
+            card = random.choice(yt_cards) if mode == "random" else yt_cards[0]
+            return SchedulerResult(card=card, card_type="youtube", tag=yt_tag, mode=mode)
+        actual_type = "topics" if topics_rate >= 0.5 else "items"
+        card_type = actual_type
+
+    # 2c. Webpage pick path — no ready_filter, always eligible
+    if card_type == "webpage":
+        wp_cards, wp_tag = _ct_pick(
+            card_utils.get_all_webpage_cards,
+            card_utils.get_webpage_cards_by_tag,
+            {"webpage_filter": webpage_filter},
+        )
+        if wp_cards:
+            card = random.choice(wp_cards) if mode == "random" else wp_cards[0]
+            return SchedulerResult(card=card, card_type="webpage", tag=wp_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
 

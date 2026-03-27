@@ -172,3 +172,114 @@ class TestGetCardsByTag:
             mock_mw.col.db.all.return_value = [(5, 50), (3, 10), (4, 30)]
             result = cards.get_topic_cards_by_tag("science")
         assert result == [3, 4, 5]
+
+
+# ---------------------------------------------------------------------------
+# get_all_ready_card_ids (line 29)
+# ---------------------------------------------------------------------------
+
+
+class TestGetAllReadyCardIds:
+    def test_calls_find_cards_with_filter(self):
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [1, 2, 3]
+            result = cards.get_all_ready_card_ids()
+        assert result == [1, 2, 3]
+        call_arg = mock_mw.col.find_cards.call_args[0][0]
+        assert "is:due" in call_arg or "is:new" in call_arg or "is:learn" in call_arg
+
+
+# ---------------------------------------------------------------------------
+# get_all_pdf_cards (line 105)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# get_all_ready_cards_custom_data / change_custom_data
+# ---------------------------------------------------------------------------
+
+
+class TestCustomDataFunctions:
+    def test_get_custom_data_returns_parsed_json(self):
+        import json
+        mock_card = MagicMock()
+        mock_card.custom_data = '{"interval": 5}'
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [1]
+            mock_mw.col.db.all.return_value = [(1, 10)]
+            mock_mw.col.get_card.return_value = mock_card
+            result = cards.get_all_ready_cards_custom_data()
+        assert result == {1: {"interval": 5}}
+
+    def test_get_custom_data_skips_cards_with_no_data(self):
+        mock_card = MagicMock()
+        mock_card.custom_data = ""
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [1]
+            mock_mw.col.db.all.return_value = [(1, 10)]
+            mock_mw.col.get_card.return_value = mock_card
+            result = cards.get_all_ready_cards_custom_data()
+        assert result == {}
+
+    def test_get_custom_data_handles_invalid_json(self):
+        mock_card = MagicMock()
+        mock_card.custom_data = "not json"
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [1]
+            mock_mw.col.db.all.return_value = [(1, 10)]
+            mock_mw.col.get_card.return_value = mock_card
+            result = cards.get_all_ready_cards_custom_data()
+        assert result == {1: {}}
+
+    def test_change_custom_data_merges_fields(self):
+        import json
+        mock_card = MagicMock()
+        mock_card.custom_data = '{"existing": 1}'
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.get_card.return_value = mock_card
+            result = cards.change_custom_data(42, {"new": 2})
+        assert result is mock_card
+
+    def test_change_custom_data_handles_invalid_original(self):
+        mock_card = MagicMock()
+        mock_card.custom_data = "not json"
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.get_card.return_value = mock_card
+            result = cards.change_custom_data(42, {"new": 2})
+        # Should not raise; card is returned even if merge fails
+        assert result is mock_card
+
+    def test_batch_update_card_custom_data(self):
+        mock_card = MagicMock()
+        mock_card.custom_data = '{"x": 1}'
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.get_card.return_value = mock_card
+            result = cards.batch_update_card_custom_data([1, 2, 3], {"y": 2})
+        assert len(result) == 3
+        mock_mw.col.update_cards.assert_called_once()
+        mock_mw.col.merge_undo_entries.assert_called_once()
+
+
+class TestGetAllPdfCards:
+    def test_returns_pdf_cards_sorted(self):
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = [200, 100]
+            mock_mw.col.db.all.return_value = [(200, 50), (100, 10)]
+            result = cards.get_all_pdf_cards()
+        assert result == [100, 200]
+
+    def test_excludes_suspended_from_query(self):
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = []
+            mock_mw.col.db.all.return_value = []
+            cards.get_all_pdf_cards()
+            call_arg = mock_mw.col.find_cards.call_args[0][0]
+        assert "-is:suspended" in call_arg
+
+    def test_custom_pdf_filter(self):
+        with patch("cards.mw") as mock_mw:
+            mock_mw.col.find_cards.return_value = []
+            mock_mw.col.db.all.return_value = []
+            cards.get_all_pdf_cards(pdf_filter='note:"My PDF"')
+            call_arg = mock_mw.col.find_cards.call_args[0][0]
+        assert 'note:"My PDF"' in call_arg

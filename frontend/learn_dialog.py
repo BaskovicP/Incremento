@@ -6,7 +6,7 @@ from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
-    QInputDialog,
+    QInputDialog, QScrollArea,
 )
 from aqt.utils import showInfo, tooltip
 
@@ -19,6 +19,27 @@ except ImportError:
 
 # Addon root: one level above this file (utils/)
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+
+def _info_icon(tip: str) -> QLabel:
+    """Filled blue circle with white 'i'; hover to read the explanation."""
+    lbl = QLabel("i")
+    lbl.setToolTip(tip)
+    lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    lbl.setFixedSize(15, 15)
+    lbl.setStyleSheet(
+        "QLabel {"
+        "  color: white;"
+        "  background-color: #4a7ab5;"
+        "  border-radius: 7px;"
+        "  font-size: 9px;"
+        "  font-style: italic;"
+        "  font-weight: bold;"
+        "  padding-bottom: 1px;"
+        "}"
+        "QLabel:hover { background-color: #3060a0; }"
+    )
+    return lbl
 
 
 _DAY_END_PRESETS = [
@@ -53,7 +74,19 @@ class SchedulerConfigDialog(QDialog):
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 8)
+        main_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        main_layout.addWidget(scroll)
+
+        _scroll_content = QWidget()
+        scroll.setWidget(_scroll_content)
+        layout = QVBoxLayout(_scroll_content)
+        layout.setContentsMargins(12, 12, 12, 12)
 
         intro = QLabel(
             "Configure how Incremento selects cards for each study session."
@@ -98,18 +131,22 @@ class SchedulerConfigDialog(QDialog):
         _profile_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.35); }")
         layout.addWidget(_profile_sep)
 
-        # -- Session size --
+        # ── 1. Session size ───────────────────────────────────────────────────
         count_row = QHBoxLayout()
         count_row.addWidget(QLabel("Cards per session:"))
         self._count_spin = QSpinBox()
         self._count_spin.setRange(1, 500)
         self._count_spin.setValue(self._saved.get("session_card_count", 50))
-        self._count_spin.setToolTip("How many cards to schedule in this session.")
         count_row.addWidget(self._count_spin)
+        count_row.addWidget(_info_icon(
+            "Total cards Incremento schedules for this session.\n\n"
+            "Example: 50 → exactly 50 cards in the filtered deck.\n"
+            "All other settings (quotas, rates, priorities) are percentages of this number."
+        ))
         count_row.addStretch()
         layout.addLayout(count_row)
 
-        # -- Card type filter --
+        # ── 2. Card type filter ───────────────────────────────────────────────
         card_types_row = QHBoxLayout()
         card_types_row.addWidget(QLabel("Card types:"))
         self._cb_new = QCheckBox("New")
@@ -124,12 +161,113 @@ class SchedulerConfigDialog(QDialog):
         self._cb_due.setToolTip("Include review cards that are due for study (is:due)")
         self._cb_due.setChecked(self._saved.get("include_due", True))
         card_types_row.addWidget(self._cb_due)
+        card_types_row.addWidget(_info_icon(
+            "Which Anki scheduling states are included in the session pool.\n\n"
+            "• New — cards you've never studied before\n"
+            "• Learning — cards currently in learning / relearning steps\n"
+            "• Due / Review — mature cards scheduled for today\n\n"
+            "Note: PDF, YouTube and Webpage cards are always eligible regardless\n"
+            "of these checkboxes — they bypass Anki's scheduling state."
+        ))
         card_types_row.addStretch()
         layout.addLayout(card_types_row)
 
-        # -- Topics / Items row --
-        # Left label shows topics%, right label shows items% (they sum to 100).
-        # topics_rate = 1 - slider/100, so slider right = more items.
+        # ── 3. Content type priorities (Phase 0 — runs before everything else) ─
+        _ct_hrow = QHBoxLayout()
+        _ct_header = QLabel("Content type priorities")
+        _ct_header.setStyleSheet("font-weight: bold;")
+        _ct_hrow.addWidget(_ct_header)
+        _ct_hrow.addWidget(_info_icon(
+            "Reserve the first part of every session for a specific media type.\n\n"
+            "These cards are scheduled first (Phase 0), before Topics/Items ratios,\n"
+            "Tag quotas, or Scheduling priority order take effect.\n\n"
+            "Example: PDF = 30 % with 50 cards → the first 15 cards are always PDFs.\n"
+            "After that, normal scheduling fills the remaining 35 slots.\n\n"
+            "Leave unchecked for types you don't want to prioritise.\n"
+            "If fewer cards are available than the quota, all available cards are used."
+        ))
+        _ct_hrow.addStretch()
+        layout.addLayout(_ct_hrow)
+
+        _ct_desc = QLabel(
+            "Checked types are scheduled first — their percentage is filled before the rest of the session."
+        )
+        _ct_desc.setWordWrap(True)
+        _ct_desc.setStyleSheet("color: gray;")
+        layout.addWidget(_ct_desc)
+
+        _ct_tips = {
+            "pdf":     (
+                "Incremento PDF reading cards (note type: Incremento PDF).\n"
+                "Always eligible — not limited by New / Learning / Due state.\n\n"
+                "Example: 20 % of 50 cards = first 10 cards are PDFs."
+            ),
+            "youtube": (
+                "YouTube / video cards (note type: Incremento Video).\n"
+                "Always eligible — not limited by New / Learning / Due state.\n\n"
+                "Example: 10 % of 50 cards = first 5 cards are YouTube videos."
+            ),
+            "webpage": (
+                "Webpage cards (note type: Incremento Web).\n"
+                "Always eligible — not limited by New / Learning / Due state.\n\n"
+                "Example: 10 % of 50 cards = first 5 cards are webpages."
+            ),
+        }
+        ct_saved = {r["type"]: r for r in self._saved.get("content_type_rows", [])}
+        self._ct_rows: list[dict] = []
+        for ct_type, ct_label in [
+            ("pdf",     "PDF"),
+            ("youtube", "YouTube / Video"),
+            ("webpage", "Webpage"),
+        ]:
+            saved_row = ct_saved.get(ct_type, {})
+            ct_enabled = saved_row.get("enabled", False)
+            ct_weight  = saved_row.get("weight", 20)
+
+            ct_widget = QWidget()
+            ct_layout = QHBoxLayout(ct_widget)
+            ct_layout.setContentsMargins(0, 2, 0, 2)
+
+            ct_cb = QCheckBox(ct_label)
+            ct_cb.setChecked(ct_enabled)
+            ct_cb.setFixedWidth(140)
+            ct_layout.addWidget(ct_cb)
+
+            ct_slider = QSlider(Qt.Orientation.Horizontal)
+            ct_slider.setRange(0, 100)
+            ct_slider.setValue(ct_weight)
+            ct_slider.setEnabled(ct_enabled)
+            ct_slider.setToolTip("Percentage of the session to fill with this content type first")
+            ct_layout.addWidget(ct_slider)
+
+            ct_pct = QLabel(f"{ct_weight}%")
+            ct_pct.setFixedWidth(36)
+            ct_layout.addWidget(ct_pct)
+
+            ct_count = QLabel("")
+            ct_count.setStyleSheet("color: gray; font-size: small;")
+            ct_layout.addWidget(ct_count)
+
+            ct_layout.addWidget(_info_icon(_ct_tips[ct_type]))
+            layout.addWidget(ct_widget)
+
+            ct_row = {
+                "type": ct_type,
+                "cb": ct_cb,
+                "slider": ct_slider,
+                "pct_label": ct_pct,
+                "count_label": ct_count,
+            }
+            self._ct_rows.append(ct_row)
+
+            qconnect(ct_cb.stateChanged,
+                     lambda _, r=ct_row: r["slider"].setEnabled(r["cb"].isChecked()))
+            qconnect(ct_slider.valueChanged,
+                     lambda v, r=ct_row: r["pct_label"].setText(f"{v}%"))
+
+        self._refresh_ct_counts()
+
+        # ── 4. Topics / Items ratio ───────────────────────────────────────────
         topics_val = self._saved.get("topics_slider", 10)
         topics_row = QHBoxLayout()
         self._topics_left_lbl = QLabel(f"{100 - topics_val}%")
@@ -141,10 +279,6 @@ class SchedulerConfigDialog(QDialog):
         self._topics_slider = QSlider(Qt.Orientation.Horizontal)
         self._topics_slider.setRange(0, 100)
         self._topics_slider.setValue(topics_val)
-        self._topics_slider.setToolTip(
-            "Slide right for more item cards; slide left for more topic cards.\n"
-            "The percentages show the approximate share each type gets per session."
-        )
         topics_row.addWidget(self._topics_slider)
         _lbl_items = QLabel("Items")
         _lbl_items.setToolTip("Fact cards — Q&A flashcards, vocabulary, quick-recall items")
@@ -152,14 +286,18 @@ class SchedulerConfigDialog(QDialog):
         self._topics_right_lbl = QLabel(f"{topics_val}%")
         self._topics_right_lbl.setFixedWidth(36)
         topics_row.addWidget(self._topics_right_lbl)
+        topics_row.addWidget(_info_icon(
+            "Ratio of topic cards (concepts, long reads) vs item cards (flashcards, Q&A).\n\n"
+            "Example: 90 % Topics with 50 cards → ~45 topic cards and ~5 item cards.\n\n"
+            "Topics filter and Items filter (Advanced section) determine which cards\n"
+            "belong to each group."
+        ))
         layout.addLayout(topics_row)
 
         self._counts_lbl = QLabel("")
         layout.addWidget(self._counts_lbl)
 
-        # -- PDF / Other row --
-        # Left label shows pdf% (100-v), right label shows other% (v).
-        # Slider right = more Other; pdf_rate = (100-slider)/100.
+        # ── 5. PDF soft-mix rate ──────────────────────────────────────────────
         pdf_val = self._saved.get("pdf_slider", 0)
         pdf_row = QHBoxLayout()
         self._pdf_left_lbl = QLabel(f"{100 - pdf_val}%")
@@ -171,10 +309,6 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_slider = QSlider(Qt.Orientation.Horizontal)
         self._pdf_slider.setRange(0, 100)
         self._pdf_slider.setValue(pdf_val)
-        self._pdf_slider.setToolTip(
-            "Slide right for more non-PDF cards; slide left for more PDF reading cards.\n"
-            "PDF cards are always eligible — they don't need to be 'due' to appear."
-        )
         pdf_row.addWidget(self._pdf_slider)
         _lbl_other = QLabel("Other")
         _lbl_other.setToolTip("All non-PDF cards (topics and items)")
@@ -182,15 +316,22 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_right_lbl = QLabel(f"{pdf_val}%")
         self._pdf_right_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_right_lbl)
+        pdf_row.addWidget(_info_icon(
+            "Soft PDF mix rate — how often a PDF card is picked during normal scheduling.\n\n"
+            "Unlike Content type priorities (which fill a hard quota first), this is a\n"
+            "stochastic target: PDF cards are woven throughout the session.\n\n"
+            "Example: PDF = 20 % → roughly 1 in 5 picks targets a PDF card.\n"
+            "Set to 0 % (slider fully right) to exclude PDFs from soft mixing.\n\n"
+            "You can use both: priority fills a hard quota first, then soft mixing\n"
+            "adds more PDFs in the remaining slots."
+        ))
         layout.addLayout(pdf_row)
 
         qconnect(self._pdf_slider.valueChanged,
                  lambda v: (self._pdf_left_lbl.setText(f"{100 - v}%"),
                              self._pdf_right_lbl.setText(f"{v}%")))
 
-        # -- Priority / Random row --
-        # Left label shows priority%, right label shows random%.
-        # random_rate = slider/100, so slider right = more random.
+        # ── 6. Priority / Random selection mode ───────────────────────────────
         random_val = self._saved.get("random_slider", 99)
         random_row = QHBoxLayout()
         self._random_left_lbl = QLabel(f"{100 - random_val}%")
@@ -204,9 +345,6 @@ class SchedulerConfigDialog(QDialog):
         self._random_slider = QSlider(Qt.Orientation.Horizontal)
         self._random_slider.setRange(0, 100)
         self._random_slider.setValue(random_val)
-        self._random_slider.setToolTip(
-            "Slide right for more randomness; slide left to always pick the highest-priority card first."
-        )
         random_row.addWidget(self._random_slider)
         _lbl_random = QLabel("Random")
         _lbl_random.setToolTip("Pick cards at random from the eligible pool")
@@ -214,6 +352,15 @@ class SchedulerConfigDialog(QDialog):
         self._random_right_lbl = QLabel(f"{random_val}%")
         self._random_right_lbl.setFixedWidth(36)
         random_row.addWidget(self._random_right_lbl)
+        random_row.addWidget(_info_icon(
+            "How cards are selected from the eligible pool at each pick.\n\n"
+            "• Priority (left) — picks the most overdue card first (sorted by due date).\n"
+            "  Use this to work through your backlog in order.\n"
+            "• Random (right) — picks any eligible card at random.\n"
+            "  Use this for a varied, low-stakes session.\n\n"
+            "Example: 99 % Random → almost always picks randomly;\n"
+            "1 % Priority → the most overdue card occasionally sneaks in."
+        ))
         layout.addLayout(random_row)
 
         qconnect(self._topics_slider.valueChanged,
@@ -226,25 +373,30 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._cb_learning.stateChanged, lambda _: self._refresh_counts())
         qconnect(self._cb_due.stateChanged,      lambda _: self._refresh_counts())
 
-        # -- Scheduler scope --
+        # ── 7. Scheduler scope ────────────────────────────────────────────────
         scope_row = QHBoxLayout()
         scope_row.addWidget(QLabel("Scheduler scope:"))
         self._scope_combo = QComboBox()
         self._scope_combo.addItem("This session",  "session")
         self._scope_combo.addItem("Today",          "daily")
         self._scope_combo.addItem("All time",       "lifetime")
-        self._scope_combo.setToolTip(
-            "How far back the scheduler looks when balancing card types and tags.\n"
-            "• This session — resets each time you open this dialog\n"
-            "• Today — remembers picks across multiple same-day sessions\n"
-            "• All time — balances over your entire study history"
-        )
         saved_scope = self._saved.get("scheduler_scope", "session")
         for i in range(self._scope_combo.count()):
             if self._scope_combo.itemData(i) == saved_scope:
                 self._scope_combo.setCurrentIndex(i)
                 break
         scope_row.addWidget(self._scope_combo)
+        scope_row.addWidget(_info_icon(
+            "How far back the scheduler looks when balancing card types and tags.\n\n"
+            "• This session — debt resets each time you open this dialog.\n"
+            "  Best for: fresh start every day.\n"
+            "• Today — debt accumulates across multiple same-day sessions.\n"
+            "  Best for: studying in several short bursts during the day.\n"
+            "• All time — balances over your entire study history.\n"
+            "  Best for: strict long-term ratio enforcement.\n\n"
+            "Example (Today scope, 90 % Topics target): if your morning session\n"
+            "was all topics, the afternoon session will lean toward items to compensate."
+        ))
 
         self._day_end_label = QLabel("  Day ends at:")
         self._day_end_label.setToolTip(
@@ -269,7 +421,6 @@ class SchedulerConfigDialog(QDialog):
         scope_row.addStretch()
         layout.addLayout(scope_row)
 
-        # Restore saved day-end time
         saved_time = self._saved.get("day_end_time", "00:00")
         preset_idx = next(
             (i for i in range(self._day_end_preset.count())
@@ -287,7 +438,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._scope_combo.currentIndexChanged, lambda _: self._update_day_end_visibility())
         qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._on_day_end_preset_changed())
 
-        # -- Priority order --
+        # ── 8. Scheduling priority order (Phase 1) ────────────────────────────
         priority_header = QHBoxLayout()
         self._enforce_cb = QCheckBox("Strict enforcement")
         self._enforce_cb.setToolTip(
@@ -298,6 +449,18 @@ class SchedulerConfigDialog(QDialog):
         )
         self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
         priority_header.addWidget(QLabel("Scheduling priority order:"))
+        priority_header.addWidget(_info_icon(
+            "Controls how the remaining session slots (after Content type priorities)\n"
+            "are ordered when Strict enforcement is on.\n\n"
+            "The three combo boxes set which dimension's quota is filled first:\n"
+            "• Tags — fill each tag's quota in full before moving to the next tag\n"
+            "• Type — fill all topic slots before item slots (or vice-versa)\n"
+            "• Mode — fill all Priority-mode slots before Random-mode slots\n\n"
+            "Example (Tags → Type → Mode, strict on):\n"
+            "  1. Fill tag:physics quota → 2. Fill remaining topics → 3. Fill items\n\n"
+            "When Strict enforcement is off, all three dimensions are balanced\n"
+            "simultaneously using a debt-based soft picker."
+        ))
         priority_header.addStretch()
         priority_header.addWidget(self._enforce_cb)
         layout.addLayout(priority_header)
@@ -335,12 +498,30 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._priority_combos[1].currentIndexChanged,
                  lambda _: self._on_priority_changed(1))
 
-        # -- Tag distribution --
+        # ── 9. Tag quotas ─────────────────────────────────────────────────────
+        _tag_hrow = QHBoxLayout()
         _tag_header = QLabel("Tag quotas")
         _tag_header.setStyleSheet("font-weight: bold;")
-        layout.addWidget(_tag_header)
+        _tag_hrow.addWidget(_tag_header)
+        _tag_hrow.addWidget(_info_icon(
+            "Each slider sets the probability that any given card pick will target this tag.\n\n"
+            "• Soft mode (strict enforcement off):\n"
+            "  The % is a running target — the scheduler picks from this tag more often\n"
+            "  when it's under-represented, less often when it's over-represented.\n"
+            "  Example: physics = 20 % → roughly 1 in 5 picks tries to find a physics card.\n\n"
+            "• Strict mode (strict enforcement on):\n"
+            "  The % becomes a hard quota filled first in Phase 1.\n"
+            "  Example: physics = 20 % with 50 cards → exactly ~10 physics cards reserved.\n\n"
+            "Sliders are independent — the remainder goes to untagged cards.\n"
+            "Total can exceed 100 % (a warning is shown).\n\n"
+            "Tag quotas run during Phase 1, after Content type priorities (Phase 0)."
+        ))
+        _tag_hrow.addStretch()
+        layout.addLayout(_tag_hrow)
+
         _tag_desc = QLabel(
-            "Set what percentage of the session each tag receives. "
+            "Each slider is the probability that a given pick targets this tag. "
+            "In strict mode it becomes a hard quota. "
             "Sliders are independent — the remainder goes to untagged cards."
         )
         _tag_desc.setWordWrap(True)
@@ -370,7 +551,6 @@ class SchedulerConfigDialog(QDialog):
         self._tags_layout.setSpacing(2)
         layout.addWidget(self._tags_container)
 
-        # Restore saved tag rows
         for entry in self._saved.get("tag_rows", []):
             self._add_tag_row(entry["tag"], entry.get("weight", 20),
                               locked=entry.get("locked", False))
@@ -379,10 +559,20 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._other_lbl)
         self._update_other_label()
 
-        # -- Advanced: deck filters --
+        # ── 10. Advanced ──────────────────────────────────────────────────────
+        _adv_hrow = QHBoxLayout()
         _adv_header = QLabel("Advanced")
         _adv_header.setStyleSheet("font-weight: bold;")
-        layout.addWidget(_adv_header)
+        _adv_hrow.addWidget(_adv_header)
+        _adv_hrow.addWidget(_info_icon(
+            "Anki search filters that identify which cards are topics vs items.\n\n"
+            "Default topics filter: deck:Topics OR tag:Incremento\n"
+            "Default items filter:  -deck:Topics -tag:Incremento\n\n"
+            "Use 'Test' to check how many ready cards match each filter.\n"
+            "Changes here affect the counts shown next to Topics / Items above."
+        ))
+        _adv_hrow.addStretch()
+        layout.addLayout(_adv_hrow)
 
         topics_filter_row = QHBoxLayout()
         topics_filter_row.addWidget(QLabel("Topics filter:"))
@@ -390,7 +580,7 @@ class SchedulerConfigDialog(QDialog):
         self._topics_filter_edit.setPlaceholderText("deck:Topics")
         self._topics_filter_edit.setToolTip(
             "Anki search query that identifies topic (concept) cards.\n"
-            "Default: deck:Topics"
+            "Default: deck:Topics OR tag:Incremento"
         )
         self._topics_filter_edit.setText(self._saved.get("topics_filter", "deck:Topics"))
         topics_filter_row.addWidget(self._topics_filter_edit)
@@ -407,7 +597,7 @@ class SchedulerConfigDialog(QDialog):
         self._items_filter_edit.setPlaceholderText("-deck:Topics")
         self._items_filter_edit.setToolTip(
             "Anki search query that identifies item (flashcard) cards.\n"
-            "Default: -deck:Topics"
+            "Default: -deck:Topics -tag:Incremento"
         )
         self._items_filter_edit.setText(self._saved.get("items_filter", "-deck:Topics"))
         items_filter_row.addWidget(self._items_filter_edit)
@@ -437,7 +627,7 @@ class SchedulerConfigDialog(QDialog):
 
         self._refresh_counts()
 
-        # -- Statistics history --
+        # ── Statistics history ────────────────────────────────────────────────
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.35); }")
@@ -479,13 +669,19 @@ class SchedulerConfigDialog(QDialog):
 
         layout.addLayout(stats_row)
 
-        # -- OK / Cancel --
+        # -- OK / Cancel (pinned outside scroll area) --
+        _btn_sep = QFrame()
+        _btn_sep.setFrameShape(QFrame.Shape.HLine)
+        _btn_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.35); }")
+        main_layout.addWidget(_btn_sep)
+
         btn_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        btn_box.setContentsMargins(12, 4, 12, 4)
         qconnect(btn_box.accepted, self.accept)
         qconnect(btn_box.rejected, self.reject)
-        layout.addWidget(btn_box)
+        main_layout.addWidget(btn_box)
 
     def _update_day_end_visibility(self) -> None:
         is_daily = self._scope_combo.currentData() == "daily"
@@ -552,6 +748,11 @@ class SchedulerConfigDialog(QDialog):
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, 100)
         slider.setValue(weight)
+        slider.setToolTip(
+            "Probability that any given pick in the session targets this tag.\n"
+            "In soft mode: a running target (~20% → roughly 1 in 5 picks aims here).\n"
+            "In strict mode: a hard quota filled before the rest of the session."
+        )
         row_layout.addWidget(slider)
 
         pct_label = QLabel(f"{weight}%")
@@ -695,6 +896,20 @@ class SchedulerConfigDialog(QDialog):
         for row in self._linked_rows:
             self._refresh_tag_count(row)
 
+    def _refresh_ct_counts(self) -> None:
+        """Update available-card counts on all content type rows."""
+        _ct_filter_map = {
+            "pdf":     'note:"Incremento PDF" -is:suspended',
+            "youtube": 'note:"Incremento Video" -is:suspended',
+            "webpage": 'note:"Incremento Web" -is:suspended',
+        }
+        for row in getattr(self, "_ct_rows", []):
+            try:
+                n = len(mw.col.find_cards(_ct_filter_map[row["type"]]))
+                row["count_label"].setText(f"({n} available)")
+            except Exception:
+                row["count_label"].setText("")
+
     def _test_filter(self, query: str) -> None:
         """Show the card count for a filter string."""
         ready = self._ready_filter_from_checks()
@@ -790,6 +1005,11 @@ class SchedulerConfigDialog(QDialog):
     def to_config(self) -> SchedulerConfig:
         """Return a SchedulerConfig built from the current widget state."""
         raw = {r["tag"]: r["slider"].value() for r in self._linked_rows}
+        ct_weights = {
+            r["type"]: r["slider"].value() / 100.0
+            for r in self._ct_rows
+            if r["cb"].isChecked() and r["slider"].value() > 0
+        }
         return SchedulerConfig(
             session_card_count=self._count_spin.value(),
             topics_rate=1.0 - self._topics_slider.value() / 100.0,
@@ -809,6 +1029,7 @@ class SchedulerConfigDialog(QDialog):
             include_due=self._cb_due.isChecked(),
             preserve_order=self._preserve_order_cb.isChecked(),
             show_debug=self._show_debug_cb.isChecked(),
+            content_type_weights=ct_weights,
         )
 
     # ------------------------------------------------------------------
@@ -830,6 +1051,10 @@ class SchedulerConfigDialog(QDialog):
             "tag_rows": [
                 {"tag": r["tag"], "weight": r["slider"].value(), "locked": r["lock_cb"].isChecked()}
                 for r in self._linked_rows
+            ],
+            "content_type_rows": [
+                {"type": r["type"], "enabled": r["cb"].isChecked(), "weight": r["slider"].value()}
+                for r in self._ct_rows
             ],
             "topics_filter":    self._topics_filter_edit.text().strip() or "deck:Topics",
             "items_filter":     self._items_filter_edit.text().strip() or "-deck:Topics",
@@ -971,6 +1196,16 @@ class SchedulerConfigDialog(QDialog):
         for entry in d.get("tag_rows", []):
             self._add_tag_row(entry["tag"], entry.get("weight", 20),
                               locked=entry.get("locked", False))
+
+        # Restore content type rows
+        ct_saved = {r["type"]: r for r in d.get("content_type_rows", [])}
+        for row in self._ct_rows:
+            saved = ct_saved.get(row["type"], {})
+            row["cb"].setChecked(saved.get("enabled", False))
+            w = saved.get("weight", 20)
+            row["slider"].setValue(w)
+            row["pct_label"].setText(f"{w}%")
+            row["slider"].setEnabled(row["cb"].isChecked())
 
         self._update_other_label()
         self._refresh_counts()
