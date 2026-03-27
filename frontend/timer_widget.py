@@ -223,7 +223,10 @@ def on_timer_question_shown(card) -> None:
     if not _timer_running or card is None:
         return
     try:
-        from .pdf_manager import PDF_NOTE_TYPE, get_page
+        try:
+            from ..backend.pdf_manager import PDF_NOTE_TYPE, get_page
+        except Exception:
+            from pdf_manager import PDF_NOTE_TYPE, get_page
         note  = mw.col.get_note(card.nid)
         model = mw.col.models.get(note.mid)
         if model and model.get("name") == PDF_NOTE_TYPE:

@@ -274,7 +274,10 @@ class AddPdfDialog(QDialog):
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setCellWidget(row, 3, lbl)
             else:
-                from .deps import has_tesseract, tesseract_instructions
+                try:
+                    from ..backend.deps import has_tesseract, tesseract_instructions
+                except Exception:
+                    from backend.deps import has_tesseract, tesseract_instructions
                 if has_tesseract():
                     cb = QCheckBox("Use OCR")
                     cb.setChecked(True)
@@ -450,9 +453,14 @@ class AddPdfDialog(QDialog):
         deck = self._deck_combo.currentText()
 
         try:
-            from .pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
-            from .db import replace_pdf_text_index
-        except ImportError:
+            from ..backend.pdf_manager import (
+                add_pdf_card,
+                ocr_pdf_in_place,
+                extract_pdf_pages_text,
+                get_pdf_dir,
+            )
+            from ..backend.db import replace_pdf_text_index
+        except Exception:
             from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
             from db import replace_pdf_text_index
 
