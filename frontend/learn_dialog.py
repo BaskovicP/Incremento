@@ -227,6 +227,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 parts.append(f"<div><b>Read-through page:</b> {entry['pdf_read_page']}</div>")
         if entry.get("tags"):
             parts.append(f"<div><b>Note tags:</b> {escape(entry['tags'])}</div>")
+
         for field_name, field_value in entry["fields"]:
             parts.append(
                 "<div style='margin-top:10px;'>"
