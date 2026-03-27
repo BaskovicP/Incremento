@@ -12,13 +12,30 @@ from aqt.utils import showInfo, tooltip
 
 try:
     from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY
+    from ..backend.scheduler_preview import compute_expected_mix
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
     from scheduler_config import SchedulerConfig, NO_TAGS_KEY
+    from scheduler_preview import compute_expected_mix
     from statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 
 # Addon root: one level above this file (utils/)
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+
+def _compute_expected_mix(
+    session_card_count: int,
+    topics_slider: int,
+    pdf_slider: int,
+    random_slider: int,
+) -> dict:
+    """Compatibility wrapper for UI code and potential test imports."""
+    return compute_expected_mix(
+        session_card_count=session_card_count,
+        topics_slider=topics_slider,
+        pdf_slider=pdf_slider,
+        random_slider=random_slider,
+    )
 
 
 def _info_icon(tip: str) -> QLabel:
@@ -588,15 +605,37 @@ class SchedulerConfigDialog(QDialog):
         ))
         layout.addLayout(random_row)
 
+        self._axis_hint_lbl = QLabel(
+            "Percentages are independent targets per axis, not a shared 100% pool."
+        )
+        self._axis_hint_lbl.setWordWrap(True)
+        self._axis_hint_lbl.setStyleSheet("color: gray; font-size: small;")
+        layout.addWidget(self._axis_hint_lbl)
+
+        self._expected_mix_lbl = QLabel("")
+        self._expected_mix_lbl.setWordWrap(True)
+        self._expected_mix_lbl.setStyleSheet("color: #4a7ab5;")
+        layout.addWidget(self._expected_mix_lbl)
+
+        self._expected_counts_lbl = QLabel("")
+        self._expected_counts_lbl.setWordWrap(True)
+        self._expected_counts_lbl.setStyleSheet("color: gray; font-size: small;")
+        layout.addWidget(self._expected_counts_lbl)
+
         qconnect(self._topics_slider.valueChanged,
                  lambda v: (self._topics_left_lbl.setText(f"{100 - v}%"),
                              self._topics_right_lbl.setText(f"{v}%")))
         qconnect(self._random_slider.valueChanged,
                  lambda v: (self._random_left_lbl.setText(f"{100 - v}%"),
                              self._random_right_lbl.setText(f"{v}%")))
+        qconnect(self._count_spin.valueChanged, lambda _: self._refresh_expected_mix_preview())
+        qconnect(self._topics_slider.valueChanged, lambda _: self._refresh_expected_mix_preview())
+        qconnect(self._pdf_slider.valueChanged,    lambda _: self._refresh_expected_mix_preview())
+        qconnect(self._random_slider.valueChanged, lambda _: self._refresh_expected_mix_preview())
         qconnect(self._cb_new.stateChanged,      lambda _: self._refresh_counts())
         qconnect(self._cb_learning.stateChanged, lambda _: self._refresh_counts())
         qconnect(self._cb_due.stateChanged,      lambda _: self._refresh_counts())
+        self._refresh_expected_mix_preview()
 
         # ── 7. Scheduler scope ────────────────────────────────────────────────
         scope_row = QHBoxLayout()
@@ -771,6 +810,21 @@ class SchedulerConfigDialog(QDialog):
         _funnel_hrow.addWidget(self._enforce_cb)
         layout.addLayout(_funnel_hrow)
 
+        self._strict_mode_lbl = QLabel(
+            "⚠  Strict mode active — phase order can bias final distribution when "
+            "earlier phases consume available cards."
+        )
+        self._strict_mode_lbl.setStyleSheet(
+            "color: #8a4b00;"
+            "background: rgba(255,180,0,0.12);"
+            "border: 1px solid rgba(160,100,0,0.35);"
+            "border-radius: 4px;"
+            "padding: 5px 8px;"
+            "font-size: 11px;"
+        )
+        self._strict_mode_lbl.setWordWrap(True)
+        layout.addWidget(self._strict_mode_lbl)
+
         _funnel_body = QWidget()
         _funnel_body.setVisible(False)
         _funnel_body_layout = QVBoxLayout(_funnel_body)
@@ -923,6 +977,7 @@ class SchedulerConfigDialog(QDialog):
             _eff = QGraphicsOpacityEffect(self._funnel)
             _eff.setOpacity(1.0 if strict else 0.35)
             self._funnel.setGraphicsEffect(_eff)
+            self._strict_mode_lbl.setVisible(strict)
             self._soft_mode_lbl.setVisible(not strict)
 
         _update_funnel_state()
@@ -1236,6 +1291,42 @@ class SchedulerConfigDialog(QDialog):
                 f'<span style="color: gray; font-size: small;">'
                 f'Other cards: {other}%</span>'
             )
+
+    @staticmethod
+    def _format_pct(value: float) -> str:
+        return f"{value * 100:.1f}%"
+
+    def _refresh_expected_mix_preview(self) -> None:
+        """Update the explanatory mix preview beneath the primary sliders."""
+        if not hasattr(self, "_expected_mix_lbl") or not hasattr(self, "_expected_counts_lbl"):
+            return
+
+        mix = _compute_expected_mix(
+            session_card_count=self._count_spin.value(),
+            topics_slider=self._topics_slider.value(),
+            pdf_slider=self._pdf_slider.value(),
+            random_slider=self._random_slider.value(),
+        )
+
+        cs = mix["content_shares"]
+        ms = mix["mode_shares"]
+        cc = mix["content_counts"]
+        mc = mix["mode_counts"]
+
+        self._expected_mix_lbl.setText(
+            "Expected mix: "
+            f"PDF {self._format_pct(cs['pdf'])}, "
+            f"Topics {self._format_pct(cs['topics'])}, "
+            f"Items {self._format_pct(cs['items'])} · "
+            f"Random {self._format_pct(ms['random'])}, "
+            f"Priority {self._format_pct(ms['priority'])}"
+        )
+        self._expected_counts_lbl.setText(
+            f"At {self._count_spin.value()} cards/session: "
+            f"PDF {cc['pdf']}, Topics {cc['topics']}, Items {cc['items']} · "
+            f"Random {mc['random']}, Priority {mc['priority']} "
+            "(availability may shift actual results)"
+        )
 
     def _ready_filter_from_checks(self) -> str:
         """Build the is:… clause from the card-type checkboxes."""
@@ -1601,4 +1692,5 @@ class SchedulerConfigDialog(QDialog):
             row["slider"].setEnabled(row["cb"].isChecked())
 
         self._update_other_label()
+        self._refresh_expected_mix_preview()
         self._refresh_counts()
