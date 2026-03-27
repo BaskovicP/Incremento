@@ -2,6 +2,7 @@ import json
 import os
 import re
 import copy
+import math
 from html import escape, unescape
 
 from aqt import mw
@@ -10,7 +11,7 @@ from aqt.qt import (
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
     QInputDialog, QScrollArea, QObject, QEvent, QGraphicsOpacityEffect, QSplitter,
-    QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QTimer,
+    QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QTimer, QColor,
 )
 from aqt.utils import showInfo, tooltip
 
@@ -84,6 +85,22 @@ def _compact_text(text: str, max_len: int = 120) -> str:
     return flat[: max_len - 1] + "…"
 
 
+class _SortTableWidgetItem(QTableWidgetItem):
+    """Table item that sorts by explicit key when provided."""
+
+    def __lt__(self, other):
+        if not isinstance(other, QTableWidgetItem):
+            return super().__lt__(other)
+        a = self.data(Qt.ItemDataRole.UserRole)
+        b = other.data(Qt.ItemDataRole.UserRole)
+        if a is not None and b is not None:
+            try:
+                return a < b
+            except Exception:
+                pass
+        return self.text().lower() < other.text().lower()
+
+
 class _LiveSchedulerPreviewDialog(QDialog):
     """Modeless dialog showing currently scheduled cards and per-card preview."""
 
@@ -134,7 +151,10 @@ class _LiveSchedulerPreviewDialog(QDialog):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSortingEnabled(True)
         hdr = self._table.horizontalHeader()
+        hdr.setSortIndicatorShown(True)
+        hdr.setSectionsClickable(True)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -167,9 +187,21 @@ class _LiveSchedulerPreviewDialog(QDialog):
         self._use_live_preview_cb.blockSignals(False)
 
     def _on_row_changed(self, row: int, _old_row: int, _col: int, _old_col: int) -> None:
-        if row < 0 or row >= len(self._entries):
+        if row < 0:
             return
-        self._show_entry(self._entries[row])
+        first_item = self._table.item(row, 0)
+        if first_item is None:
+            return
+        entry_idx = first_item.data(Qt.ItemDataRole.UserRole + 1)
+        if entry_idx is None:
+            return
+        try:
+            idx = int(entry_idx)
+        except Exception:
+            return
+        if idx < 0 or idx >= len(self._entries):
+            return
+        self._show_entry(self._entries[idx])
 
     @staticmethod
     def _fmt_counts(counts: dict) -> str:
@@ -258,6 +290,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
             self._owner._cache_live_preview_result(result)
 
             entries: list[dict] = []
+            self._table.setSortingEnabled(False)
             self._table.setRowCount(0)
             for i, cid in enumerate(selected_ids):
                 meta = picked_meta.get(cid, {})
@@ -325,15 +358,37 @@ class _LiveSchedulerPreviewDialog(QDialog):
             self._entries = entries
             self._table.setRowCount(len(entries))
             for row, entry in enumerate(entries):
-                self._table.setItem(row, 0, QTableWidgetItem(str(row + 1)))
-                self._table.setItem(row, 1, QTableWidgetItem(entry["card_type"]))
-                self._table.setItem(row, 2, QTableWidgetItem(entry["mode"]))
-                self._table.setItem(row, 3, QTableWidgetItem(entry["tag"]))
-                self._table.setItem(row, 4, QTableWidgetItem(entry["title"]))
+                row_num_item = _SortTableWidgetItem(str(row + 1))
+                row_num_item.setData(Qt.ItemDataRole.UserRole, row + 1)
+                row_num_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+                self._table.setItem(row, 0, row_num_item)
+
+                ct_item = _SortTableWidgetItem(entry["card_type"])
+                ct_item.setData(Qt.ItemDataRole.UserRole, entry["card_type"].lower())
+                ct_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+                self._table.setItem(row, 1, ct_item)
+
+                mode_item = _SortTableWidgetItem(entry["mode"])
+                mode_item.setData(Qt.ItemDataRole.UserRole, entry["mode"].lower())
+                mode_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+                self._table.setItem(row, 2, mode_item)
+
+                tag_item = _SortTableWidgetItem(entry["tag"])
+                tag_item.setData(Qt.ItemDataRole.UserRole, entry["tag"].lower())
+                tag_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+                self._table.setItem(row, 3, tag_item)
+
+                title_item = _SortTableWidgetItem(entry["title"])
+                title_item.setData(Qt.ItemDataRole.UserRole, entry["title"].lower())
+                title_item.setData(Qt.ItemDataRole.UserRole + 1, row)
+                self._table.setItem(row, 4, title_item)
+
+            self._table.setSortingEnabled(True)
+            self._table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
             if entries:
                 self._table.selectRow(0)
-                self._show_entry(entries[0])
+                self._on_row_changed(0, -1, 0, -1)
             else:
                 self._preview.setHtml(
                     "<div style='color:#666; padding:10px;'>No cards available for the current settings.</div>"
@@ -717,6 +772,25 @@ class SchedulerConfigDialog(QDialog):
         self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._profiles: dict[str, dict] = config.get("profiles", {})
         self._setup_ui()
+        self._apply_initial_size()
+
+    def _apply_initial_size(self) -> None:
+        """Open at about 2x area of the natural layout size to reduce manual resizing."""
+        hint = self.sizeHint()
+        if hint.width() <= 0 or hint.height() <= 0:
+            return
+
+        linear_scale = math.sqrt(2.0)  # ~2x area while keeping aspect ratio
+        target_w = max(820, int(round(hint.width() * linear_scale)))
+        target_h = max(680, int(round(hint.height() * linear_scale)))
+
+        screen = self.screen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            target_w = min(target_w, max(640, int(avail.width() * 0.95)))
+            target_h = min(target_h, max(520, int(avail.height() * 0.95)))
+
+        self.resize(target_w, target_h)
 
     def _setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -929,6 +1003,31 @@ class SchedulerConfigDialog(QDialog):
         self._expected_counts_lbl.setWordWrap(True)
         self._expected_counts_lbl.setStyleSheet("color: gray; font-size: small;")
         layout.addWidget(self._expected_counts_lbl)
+
+        self._tag_content_title_lbl = QLabel("Tag × content estimate:")
+        self._tag_content_title_lbl.setStyleSheet("color: gray; font-size: small;")
+        layout.addWidget(self._tag_content_title_lbl)
+        self._tag_content_table = QTableWidget(0, 5)
+        self._tag_content_table.setHorizontalHeaderLabels(["Tag", "PDF", "Topics", "Items", "Total"])
+        self._tag_content_table.verticalHeader().setVisible(False)
+        self._tag_content_table.setAlternatingRowColors(True)
+        self._tag_content_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._tag_content_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self._tag_content_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._tag_content_table.setMinimumHeight(112)
+        self._tag_content_table.setMaximumHeight(220)
+        _hdr = self._tag_content_table.horizontalHeader()
+        _hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        _hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        _hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        _hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        _hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self._tag_content_table)
+
+        self._tag_content_note_lbl = QLabel("")
+        self._tag_content_note_lbl.setWordWrap(True)
+        self._tag_content_note_lbl.setStyleSheet("color: gray; font-size: small;")
+        layout.addWidget(self._tag_content_note_lbl)
 
         _live_preview_row = QHBoxLayout()
         self._live_preview_btn = QPushButton("Live card preview…")
@@ -1596,6 +1695,7 @@ class SchedulerConfigDialog(QDialog):
             self._tag_combo.removeItem(idx)
 
         self._update_other_label()
+        self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
     def _remove_row(self, row_dict: dict) -> None:
@@ -1611,6 +1711,7 @@ class SchedulerConfigDialog(QDialog):
         self._tag_combo.insertItem(items.index(tag), tag)
 
         self._update_other_label()
+        self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
     # ------------------------------------------------------------------
@@ -1622,6 +1723,7 @@ class SchedulerConfigDialog(QDialog):
             return
         changed_row["pct_label"].setText(f"{changed_row['slider'].value()}%")
         self._update_other_label()
+        self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
     def _update_other_label(self) -> None:
@@ -1644,6 +1746,87 @@ class SchedulerConfigDialog(QDialog):
     @staticmethod
     def _format_pct(value: float) -> str:
         return f"{value * 100:.1f}%"
+
+    @staticmethod
+    def _apportion_counts(total: int, shares: dict[str, float]) -> dict[str, int]:
+        if total <= 0:
+            return {k: 0 for k in shares}
+        raw = {k: max(0.0, v) * total for k, v in shares.items()}
+        counts = {k: int(raw[k]) for k in shares}
+        remainder = total - sum(counts.values())
+        if remainder <= 0:
+            return counts
+        ranked = sorted(
+            shares.keys(),
+            key=lambda k: (raw[k] - counts[k], k),
+            reverse=True,
+        )
+        for i in range(remainder):
+            counts[ranked[i % len(ranked)]] += 1
+        return counts
+
+
+    def _set_heatmap_cell(
+        self,
+        table: QTableWidget,
+        row: int,
+        col: int,
+        count: int,
+        content_total: int,
+    ) -> None:
+        pct = (count / content_total) if content_total > 0 else 0.0
+        text = f"{count}" if content_total <= 0 else f"{count} ({pct * 100:.0f}%)"
+        item = QTableWidgetItem(text)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        intensity = min(1.0, max(0.0, pct))
+        alpha = int(28 + intensity * 150)
+        item.setBackground(QColor(84, 132, 196, alpha))
+        table.setItem(row, col, item)
+
+    def _update_tag_content_heatmap(
+        self,
+        rows: list[tuple[str, float]],
+        tag_shares_for_content: dict[str, float],
+        tags_normalized: bool,
+        cc: dict[str, int],
+    ) -> None:
+        if not hasattr(self, "_tag_content_table"):
+            return
+
+        table = self._tag_content_table
+        content_cols = [("PDF", cc["pdf"]), ("Topics", cc["topics"]), ("Items", cc["items"])]
+
+        if rows:
+            tag_labels = [tag for tag, _ in rows]
+            if "Other" in tag_shares_for_content:
+                tag_labels.append("Other")
+        else:
+            tag_labels = ["Other"]
+
+        matrix: dict[str, dict[str, int]] = {tag: {"PDF": 0, "Topics": 0, "Items": 0} for tag in tag_labels}
+        for content_name, content_count in content_cols:
+            per_content_counts = self._apportion_counts(content_count, tag_shares_for_content)
+            for tag in tag_labels:
+                matrix[tag][content_name] = int(per_content_counts.get(tag, 0))
+
+        table.setRowCount(len(tag_labels))
+        for r, tag in enumerate(tag_labels):
+            tag_item = QTableWidgetItem(tag)
+            table.setItem(r, 0, tag_item)
+            total = 0
+            for c, (content_name, content_total) in enumerate(content_cols, start=1):
+                count = matrix[tag][content_name]
+                total += count
+                self._set_heatmap_cell(table, r, c, count, content_total)
+            tot_item = QTableWidgetItem(str(total))
+            tot_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            table.setItem(r, 4, tot_item)
+
+        note = (
+            "Cells show estimated count and share within each content column."
+            + (" Tag shares are normalized because configured totals exceed 100%." if tags_normalized else "")
+        )
+        self._tag_content_note_lbl.setText(note)
 
     def _refresh_expected_mix_preview(self) -> None:
         """Update the explanatory mix preview beneath the primary sliders."""
@@ -1675,6 +1858,29 @@ class SchedulerConfigDialog(QDialog):
             f"PDF {cc['pdf']}, Topics {cc['topics']}, Items {cc['items']} · "
             f"Random {mc['random']}, Priority {mc['priority']} "
             "(availability may shift actual results)"
+        )
+        rows = [
+            (str(r["tag"]), max(0.0, r["slider"].value() / 100.0))
+            for r in self._linked_rows
+            if r["slider"].value() > 0
+        ]
+        tags_total = sum(w for _, w in rows)
+        tags_normalized = False
+        if not rows:
+            tag_shares_for_content = {"Other": 1.0}
+        elif tags_total <= 1.0:
+            tag_shares_for_content = {tag: w for tag, w in rows}
+            tag_shares_for_content["Other"] = max(0.0, 1.0 - tags_total)
+        else:
+            tags_normalized = True
+            norm = 1.0 / tags_total
+            tag_shares_for_content = {tag: (w * norm) for tag, w in rows}
+
+        self._update_tag_content_heatmap(
+            rows=rows,
+            tag_shares_for_content=tag_shares_for_content,
+            tags_normalized=tags_normalized,
+            cc=cc,
         )
 
     def _selection_signature_payload(self) -> dict:
