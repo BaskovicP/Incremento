@@ -1,4 +1,5 @@
 import re
+from urllib.parse import unquote
 
 try:
     from .db import get_connection
@@ -20,8 +21,28 @@ CARD_TEMPLATE_BACK = "{{Title}}"
 
 def extract_video_id(url: str) -> str | None:
     """Return the 11-char YouTube video ID from any common YouTube URL format."""
-    m = re.search(r'(?:v=|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})', url)
-    return m.group(1) if m else None
+    raw = (url or "").strip()
+    if not raw:
+        return None
+
+    # Allow users to paste just the raw 11-char ID.
+    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", raw):
+        return raw
+
+    # Decode URL-encoded wrappers (e.g. attribution links), then scan both forms.
+    candidates = [raw]
+    decoded = unquote(raw)
+    if decoded != raw:
+        candidates.append(decoded)
+
+    pattern = re.compile(
+        r"(?:v=|vi=|youtu\.be/|embed/|shorts/|live/)([a-zA-Z0-9_-]{11})"
+    )
+    for text in candidates:
+        m = pattern.search(text)
+        if m:
+            return m.group(1)
+    return None
 
 
 def fmt_time(seconds: float) -> str:

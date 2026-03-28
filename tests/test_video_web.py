@@ -40,8 +40,21 @@ class TestExtractVideoId:
     def test_embed_url(self):
         assert extract_video_id("https://www.youtube.com/embed/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
 
+    def test_shorts_url(self):
+        assert extract_video_id("https://www.youtube.com/shorts/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
+    def test_live_url(self):
+        assert extract_video_id("https://www.youtube.com/live/dQw4w9WgXcQ?feature=share") == "dQw4w9WgXcQ"
+
     def test_url_with_extra_params(self):
         assert extract_video_id("https://youtube.com/watch?v=abcdefghijk&t=30") == "abcdefghijk"
+
+    def test_plain_video_id(self):
+        assert extract_video_id("dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
+    def test_url_encoded_wrapper(self):
+        url = "https://www.youtube.com/attribution_link?a=1&u=%2Fwatch%3Fv%3DdQw4w9WgXcQ%26feature%3Dshare"
+        assert extract_video_id(url) == "dQw4w9WgXcQ"
 
     def test_returns_none_for_invalid_url(self):
         assert extract_video_id("https://example.com/video") is None

@@ -14,7 +14,7 @@ Public API:
 import os
 
 from aqt import mw
-from aqt.utils import showInfo
+from aqt.utils import tooltip
 from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, QTimer, Qt, qconnect)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -126,9 +126,10 @@ def show_video_in_dock(card_id: int, youtube_url: str, position: float = 0.0) ->
             _video_dock = None
             _build_video_dock()
 
-    video_id = extract_video_id(youtube_url)
+    video_id = extract_video_id((youtube_url or "").strip())
     if not video_id:
-        showInfo(f"Could not find a YouTube video ID in:\n{youtube_url}")
+        tooltip("Incremento: This video card has no valid YouTube URL.")
+        print(f"[Incremento] Invalid YouTube URL for card {card_id}: {youtube_url!r}")
         return
 
     # Load the full YouTube watch page — this avoids all embed-level restrictions
@@ -238,9 +239,24 @@ def on_video_question_shown(card) -> None:
                     pass
             return
         try:
-            youtube_url = note["YouTube_URL"]
+            youtube_url = (note["YouTube_URL"] or "").strip()
         except (KeyError, TypeError):
             return
+        # Fallback for malformed cards where URL was accidentally saved in Title.
+        if not youtube_url:
+            try:
+                title_text = (note["Title"] or "").strip()
+            except Exception:
+                title_text = ""
+            if extract_video_id(title_text):
+                youtube_url = title_text
+            else:
+                if _video_dock is not None:
+                    try:
+                        _video_dock.hide()
+                    except RuntimeError:
+                        _video_dock = None
+                return
         position = get_video_position(_ADDON_DIR, card.id)
         show_video_in_dock(card.id, youtube_url, position)
     except Exception as e:
