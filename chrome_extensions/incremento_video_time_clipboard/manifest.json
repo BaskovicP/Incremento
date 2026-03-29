@@ -7,12 +7,14 @@
     "storage",
     "offscreen",
     "clipboardWrite",
-    "tabs"
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "*://*.youtube.com/*",
     "*://youtu.be/*",
-    "*://*.vimeo.com/*"
+    "*://*.vimeo.com/*",
+    "http://127.0.0.1:8765/*"
   ],
   "background": {
     "service_worker": "background.js"

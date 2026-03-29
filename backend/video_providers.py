@@ -182,18 +182,27 @@ def canonicalize_video_url(url: str) -> str:
     return raw
 
 
-def build_remote_video_watch_url(url: str, start_sec: int = 0) -> str | None:
+def build_remote_video_watch_url(url: str, start_sec: int = 0, card_id: int | None = None) -> str | None:
+    card_q = ""
+    try:
+        cid = int(card_id) if card_id is not None else 0
+    except Exception:
+        cid = 0
+    if cid > 0:
+        card_q = f"&inc_card_id={cid}"
     yt = extract_youtube_id(url)
     if yt:
         s = max(0, int(start_sec))
         if s <= 0:
             s = extract_start_seconds(url) or 0
-        return f"https://www.youtube.com/watch?v={yt}&t={s}s&autoplay=0"
+        return f"https://www.youtube.com/watch?v={yt}&t={s}s&autoplay=0{card_q}"
     vm = extract_vimeo_id(url)
     if vm:
         parsed = urlparse(canonicalize_video_url(url))
         query = _strip_vimeo_query_params(parsed.query)
         base = f"https://player.vimeo.com/video/{vm}"
+        if card_q:
+            query = f"{query}{card_q}" if query else card_q.lstrip("&")
         if query:
             base = f"{base}?{query}"
         s = max(0, int(start_sec))

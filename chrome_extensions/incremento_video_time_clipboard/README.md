@@ -8,6 +8,8 @@ Copies the last watched YouTube/Vimeo time to your clipboard when a video tab cl
 - Reads the active `<video>` element `currentTime`.
 - Sends heartbeats to extension background.
 - On tab close, copies formatted time (`M:SS` or `H:MM:SS`) to clipboard.
+- On tab close, also pushes the timestamp to Anki via AnkiConnect by updating `Incremento Video` notes (`YouTube_URL` field).
+- Also pushes timestamp (no clipboard copy) on pause, visibility hidden, and page unload/navigation events.
 - Stores the last captured value in extension storage as backup.
 - Clicking the extension icon copies the latest stored time again.
 - Keyboard shortcut `Alt+Shift+V` (customizable in `chrome://extensions/shortcuts`) copies latest stored time.
@@ -33,6 +35,10 @@ You can also press `Alt+Shift+V`.
 
 ## Notes
 
+- Requires Anki running with AnkiConnect on `http://127.0.0.1:8765`.
+- If URL contains `inc_card_id=<card_id>` (added by Incremento browser-open), sync targets that exact card/note first.
+- Otherwise, sync falls back to matching `Incremento Video` notes whose `YouTube_URL` contains the same video id.
 - This depends on browser extension APIs and clipboard permissions.
 - Some private/incognito/restricted contexts may limit clipboard behavior.
 - The extension is local-only and does not send data externally.
+- Clipboard copy uses layered fallbacks (service worker clipboard, offscreen document, then active-tab script injection) for better compatibility.

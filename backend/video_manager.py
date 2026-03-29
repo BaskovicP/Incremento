@@ -69,8 +69,8 @@ def canonicalize_video_url(url: str) -> str:
     return _canonicalize_video_url(url)
 
 
-def build_remote_video_watch_url(url: str, start_sec: int = 0) -> str | None:
-    return _build_remote_video_watch_url(url, start_sec=start_sec)
+def build_remote_video_watch_url(url: str, start_sec: int = 0, card_id: int | None = None) -> str | None:
+    return _build_remote_video_watch_url(url, start_sec=start_sec, card_id=card_id)
 
 
 def _extract_vimeo_embed_url_from_html(html_text: str, video_id: str) -> str | None:

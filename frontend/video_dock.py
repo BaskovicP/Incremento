@@ -43,6 +43,7 @@ try:
         detect_video_provider,
         resolve_video_url_for_embed,
         is_supported_video_url,
+        extract_start_seconds,
         fmt_time,
         get_video_position,
         set_video_position,
@@ -56,6 +57,7 @@ except ImportError:
         detect_video_provider,
         resolve_video_url_for_embed,
         is_supported_video_url,
+        extract_start_seconds,
         fmt_time,
         get_video_position,
         set_video_position,
@@ -1043,7 +1045,11 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
         sec = max(0, int(float(seconds or 0.0)))
     except Exception:
         sec = max(0, int(float(_last_known_position or 0.0)))
-    watch_url = build_remote_video_watch_url(_current_video_url, start_sec=sec)
+    watch_url = build_remote_video_watch_url(
+        _current_video_url,
+        start_sec=sec,
+        card_id=int(_current_video_card_id),
+    )
     if not watch_url:
         tooltip("Incremento: no remote URL is available for browser fallback.")
         return
@@ -1222,7 +1228,19 @@ def on_video_question_shown(card) -> None:
                     except RuntimeError:
                         _video_dock = None
                 return
-        position = get_video_position(_ADDON_DIR, card.id)
+        position = float(get_video_position(_ADDON_DIR, card.id) or 0.0)
+        try:
+            url_position = float(extract_start_seconds(youtube_url) or 0.0)
+        except Exception:
+            url_position = 0.0
+        # If URL timestamp was externally updated (e.g., browser extension via
+        # AnkiConnect), honor it and sync DB so resume is deterministic.
+        if url_position > 0.0 and abs(url_position - position) >= 1.0:
+            position = url_position
+            try:
+                set_video_position(_ADDON_DIR, card.id, position)
+            except Exception:
+                pass
         show_video_in_dock(card.id, youtube_url, position, local_video_file)
     except Exception as e:
         print(f"[Incremento] on_video_question_shown error: {e}")

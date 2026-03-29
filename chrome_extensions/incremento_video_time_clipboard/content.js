@@ -81,6 +81,20 @@
     return { provider: "", videoId: "" };
   }
 
+  function extractIncrementoCardId(url) {
+    try {
+      const u = new URL(url);
+      const raw = u.searchParams.get("inc_card_id") || "";
+      const cid = Number(raw);
+      if (Number.isFinite(cid) && cid > 0) {
+        return Math.floor(cid);
+      }
+    } catch (_err) {
+      // noop
+    }
+    return 0;
+  }
+
   function bestVideoElement() {
     const videos = Array.from(document.querySelectorAll("video"));
     if (videos.length === 0) return null;
@@ -92,17 +106,57 @@
     return videos[0];
   }
 
+  function parseClockToSeconds(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return -1;
+    const parts = raw.split(":").map((p) => p.trim());
+    if (!parts.every((p) => /^\d+$/.test(p))) {
+      return -1;
+    }
+    if (parts.length === 2) {
+      return Number(parts[0]) * 60 + Number(parts[1]);
+    }
+    if (parts.length === 3) {
+      return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]);
+    }
+    return -1;
+  }
+
+  function readVimeoTimecodeSeconds() {
+    const candidates = Array.from(
+      document.querySelectorAll(
+        '[data-progress-bar-timecode="true"], [class*="Timecode_module_timecode__"]'
+      )
+    );
+    for (const el of candidates) {
+      const txt = String(el?.textContent || "").trim();
+      const sec = parseClockToSeconds(txt);
+      if (sec >= 0) {
+        return sec;
+      }
+    }
+    return -1;
+  }
+
   let lastSentSec = -1;
   let lastSentAt = 0;
 
-  function sendHeartbeat(force = false) {
+  function sendHeartbeat(force = false, flush = false) {
     const { provider, videoId } = detectProviderAndId();
     if (!provider) return;
 
     const video = bestVideoElement();
-    if (!video) return;
-
-    const sec = Math.max(0, Math.floor(Number(video.currentTime) || 0));
+    let sec = -1;
+    if (video) {
+      sec = Math.max(0, Math.floor(Number(video.currentTime) || 0));
+    }
+    if (provider === "vimeo" && sec <= 0) {
+      const vimeoSec = readVimeoTimecodeSeconds();
+      if (vimeoSec >= 0) {
+        sec = vimeoSec;
+      }
+    }
+    if (sec < 0) return;
     const now = Date.now();
     if (!force && sec === lastSentSec && now - lastSentAt < 4000) {
       return;
@@ -115,6 +169,8 @@
         type: "heartbeat",
         provider,
         videoId,
+        cardId: extractIncrementoCardId(window.location.href || ""),
+        flush: !!flush,
         seconds: sec,
         url: window.location.href || "",
         title: document.title || "",
@@ -125,19 +181,19 @@
     );
   }
 
-  const periodic = window.setInterval(() => sendHeartbeat(false), 1000);
-  window.addEventListener("pagehide", () => sendHeartbeat(true), { capture: true });
-  window.addEventListener("beforeunload", () => sendHeartbeat(true), { capture: true });
+  const periodic = window.setInterval(() => sendHeartbeat(false, false), 1000);
+  window.addEventListener("pagehide", () => sendHeartbeat(true, true), { capture: true });
+  window.addEventListener("beforeunload", () => sendHeartbeat(true, true), { capture: true });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      sendHeartbeat(true);
+      sendHeartbeat(true, true);
     }
   });
-  document.addEventListener("timeupdate", () => sendHeartbeat(false), true);
-  document.addEventListener("pause", () => sendHeartbeat(true), true);
-  document.addEventListener("ended", () => sendHeartbeat(true), true);
+  document.addEventListener("timeupdate", () => sendHeartbeat(false, false), true);
+  document.addEventListener("pause", () => sendHeartbeat(true, true), true);
+  document.addEventListener("ended", () => sendHeartbeat(true, true), true);
 
-  window.setTimeout(() => sendHeartbeat(true), 1200);
+  window.setTimeout(() => sendHeartbeat(true, false), 1200);
   window.addEventListener("unload", () => {
     try {
       clearInterval(periodic);
