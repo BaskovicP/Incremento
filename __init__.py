@@ -26,9 +26,10 @@ from .backend.pdf_manager import (
 from .backend.video_manager import (
     VIDEO_NOTE_TYPE,
     LOCAL_VIDEO_FIELD,
-    extract_video_id,
+    is_supported_video_url,
+    resolve_video_url_for_embed,
     add_video_card,
-    download_and_compress_youtube_video,
+    download_and_compress_video,
     import_local_video_file,
 )
 from .backend.priority_manager import get_priority, set_priority, get_all_priorities
@@ -659,13 +660,13 @@ def addVideoFunction() -> None:
     deck_name = dlg.deck_name
     tags = dlg.tags
 
-    if source_mode == "youtube":
-        url = dlg.youtube_url
+    if source_mode in ("youtube", "vimeo"):
+        url = resolve_video_url_for_embed(dlg.video_url)
         if not url:
-            showInfo("Please enter a YouTube URL.")
+            showInfo("Please enter a video URL.")
             return
-        if not extract_video_id(url):
-            showInfo("Could not find a valid YouTube video ID in that URL.")
+        if not is_supported_video_url(url):
+            showInfo("Could not find a valid YouTube or Vimeo URL.")
             return
         title = dlg.title or url
         max_height = dlg.download_max_height
@@ -778,7 +779,7 @@ def addVideoFunction() -> None:
         mw.taskman.run_on_main(lambda p=percent, l=label: _progress_main(p, l))
 
     def _task():
-        return download_and_compress_youtube_video(
+        return download_and_compress_video(
             _ADDON_DIR,
             url,
             overwrite=(max_height is not None) or original_quality,

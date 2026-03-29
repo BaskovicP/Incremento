@@ -20,6 +20,15 @@ _vm = _load("_incremento_video_manager", "backend/video_manager.py")
 _wm = _load("_incremento_web_manager", "backend/web_manager.py")
 
 extract_video_id = _vm.extract_video_id
+extract_vimeo_id = _vm.extract_vimeo_id
+extract_video_key = _vm.extract_video_key
+is_supported_video_url = _vm.is_supported_video_url
+extract_start_seconds = _vm.extract_start_seconds
+canonicalize_video_url = _vm.canonicalize_video_url
+build_remote_video_watch_url = _vm.build_remote_video_watch_url
+resolve_video_url_for_embed = _vm.resolve_video_url_for_embed
+supports_browser_cookie_auth = _vm.supports_browser_cookie_auth
+provider_display_name = _vm.provider_display_name
 fmt_time = _vm.fmt_time
 get_video_position = _vm.get_video_position
 set_video_position = _vm.set_video_position
@@ -69,6 +78,127 @@ class TestExtractVideoId:
 
     def test_returns_none_for_empty_string(self):
         assert extract_video_id("") is None
+
+
+class TestVimeoVideoParsing:
+    def test_standard_vimeo_url(self):
+        assert extract_vimeo_id("https://vimeo.com/148751763") == "148751763"
+
+    def test_player_vimeo_url(self):
+        assert extract_vimeo_id("https://player.vimeo.com/video/148751763") == "148751763"
+
+    def test_channel_vimeo_url(self):
+        assert extract_vimeo_id("https://vimeo.com/channels/staffpicks/148751763") == "148751763"
+
+    def test_plain_vimeo_id(self):
+        assert extract_vimeo_id("148751763") == "148751763"
+
+    def test_vimeo_invalid(self):
+        assert extract_vimeo_id("https://example.com/video") is None
+
+    def test_supported_video_url_youtube_and_vimeo(self):
+        assert is_supported_video_url("https://youtu.be/dQw4w9WgXcQ")
+        assert is_supported_video_url("https://vimeo.com/148751763")
+        assert not is_supported_video_url("https://example.com/video")
+
+    def test_extract_video_key_youtube_compat(self):
+        assert extract_video_key("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
+    def test_extract_video_key_vimeo_prefixed(self):
+        assert extract_video_key("https://vimeo.com/148751763") == "vimeo_148751763"
+
+    def test_build_remote_watch_url_youtube(self):
+        assert (
+            build_remote_video_watch_url("https://youtu.be/dQw4w9WgXcQ", start_sec=44)
+            == "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=44s&autoplay=0"
+        )
+
+    def test_build_remote_watch_url_vimeo(self):
+        assert (
+            build_remote_video_watch_url("https://vimeo.com/148751763", start_sec=44)
+            == "https://player.vimeo.com/video/148751763#t=44s"
+        )
+
+    def test_build_remote_watch_url_vimeo_uses_embedded_time_when_no_saved_position(self):
+        assert (
+            build_remote_video_watch_url(
+                "https://player.vimeo.com/video/1173597756?title=0#t=21m23s",
+                start_sec=0,
+            )
+            == "https://player.vimeo.com/video/1173597756?title=0#t=1283s"
+        )
+
+    def test_extract_start_seconds_hms_fragment(self):
+        assert extract_start_seconds("https://vimeo.com/1173597756#t=21m23s") == 1283
+
+    def test_extract_start_seconds_query_seconds(self):
+        assert extract_start_seconds("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=4463s") == 4463
+
+    def test_canonicalize_video_url_vimeo_player(self):
+        assert (
+            canonicalize_video_url(
+                "https://player.vimeo.com/video/1173597756?title=0&byline=0#t=21m23s"
+            )
+            == "https://player.vimeo.com/video/1173597756?title=0&byline=0#t=1283s"
+        )
+
+    def test_canonicalize_video_url_vimeo_preserves_h_token(self):
+        assert (
+            canonicalize_video_url(
+                "https://player.vimeo.com/video/1173597756?h=abc123&t=9s"
+            )
+            == "https://player.vimeo.com/video/1173597756?h=abc123#t=9s"
+        )
+
+    def test_canonicalize_vimeo_unescapes_amp_query(self):
+        assert (
+            canonicalize_video_url(
+                "https://player.vimeo.com/video/1177424090?title=0&amp;byline=0&amp;portrait=0&amp;wmode=transparent"
+            )
+            == "https://player.vimeo.com/video/1177424090?title=0&byline=0&portrait=0&wmode=transparent"
+        )
+
+    def test_extract_vimeo_embed_url_from_html_prefers_h(self):
+        html = """
+        <script>
+          window.playerConfig = {"video":{"embed_code":"<iframe src=\\"https://player.vimeo.com/video/1177424090?h=abc123\\"></iframe>"}};
+        </script>
+        """
+        got = _vm._extract_vimeo_embed_url_from_html(html, "1177424090")
+        assert got == "https://player.vimeo.com/video/1177424090?h=abc123"
+
+    def test_resolve_video_url_for_embed_merges_h_token(self, monkeypatch):
+        _vm._VIMEO_EMBED_CACHE.clear()
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'<iframe src="https://player.vimeo.com/video/1177424090?h=abc123"></iframe>'
+
+        monkeypatch.setattr(_vm, "urlopen", lambda *_args, **_kwargs: _Resp())
+        url = "https://player.vimeo.com/video/1177424090?title=0"
+        got = resolve_video_url_for_embed(url, timeout_sec=0.1)
+        assert got == "https://player.vimeo.com/video/1177424090?title=0&h=abc123"
+
+    def test_resolve_video_url_for_embed_fallback_on_network_error(self, monkeypatch):
+        _vm._VIMEO_EMBED_CACHE.clear()
+        monkeypatch.setattr(_vm, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(Exception("boom")))
+        url = "https://player.vimeo.com/video/1177424090?title=0"
+        got = resolve_video_url_for_embed(url, timeout_sec=0.1)
+        assert got == "https://player.vimeo.com/video/1177424090?title=0"
+
+    def test_cookie_auth_provider_split(self):
+        assert supports_browser_cookie_auth("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        assert not supports_browser_cookie_auth("https://vimeo.com/148751763")
+
+    def test_provider_display_name(self):
+        assert provider_display_name("https://vimeo.com/148751763") == "Vimeo"
+        assert provider_display_name("https://youtu.be/dQw4w9WgXcQ") == "YouTube"
 
 
 # ── local video helpers ───────────────────────────────────────────────────────
@@ -127,6 +257,11 @@ class TestLocalVideoHelpers:
         fmt = ytdlp_format_selector("original", max_height=2160)
         assert "bestvideo[height<=2160]+bestaudio" in fmt
         assert "vcodec^=avc1" not in fmt
+
+    def test_ytdlp_selector_vimeo_download_prefers_mp4_aac(self):
+        fmt = ytdlp_format_selector("download", max_height=1080, provider="vimeo")
+        assert "best[ext=mp4][height<=1080][vcodec^=avc1][acodec^=mp4a]" in fmt
+        assert "best[ext=mp4][height<=1080][acodec!=none]" in fmt
 
     def test_extract_resolutions_from_info(self):
         info = {

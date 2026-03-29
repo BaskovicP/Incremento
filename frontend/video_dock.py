@@ -1,11 +1,11 @@
 """
-video_dock.py — YouTube video dock (QWebEngineView + position tracking).
+video_dock.py — Video dock (QWebEngineView + position tracking).
 
-Displays YouTube videos in a right-side dock that persists across card reviews.
+Displays URL/local videos in a right-side dock that persists across card reviews.
 Position is polled every second and saved every 5 ticks to pdf_progress storage.
 
 Public API:
-    show_video_in_dock(card_id, youtube_url, position)
+    show_video_in_dock(card_id, video_url, position)
     on_video_question_shown(card)
     on_video_reviewer_will_end()
     sync_video_note_type()
@@ -35,7 +35,10 @@ except Exception:
 try:
     from ..backend.video_manager import (
         VIDEO_NOTE_TYPE,
-        extract_video_id,
+        build_remote_video_watch_url,
+        detect_video_provider,
+        resolve_video_url_for_embed,
+        is_supported_video_url,
         fmt_time,
         get_video_position,
         set_video_position,
@@ -45,7 +48,10 @@ try:
 except ImportError:
     from video_manager import (
         VIDEO_NOTE_TYPE,
-        extract_video_id,
+        build_remote_video_watch_url,
+        detect_video_provider,
+        resolve_video_url_for_embed,
+        is_supported_video_url,
         fmt_time,
         get_video_position,
         set_video_position,
@@ -74,6 +80,9 @@ _seek_ui_updating      = False
 
 _PLAYBACK_STATUS_JS = (
     "(function(){"
+    "if(typeof window.__incrementoGetStatus==='function'){"
+    "try{return window.__incrementoGetStatus();}catch(_e){}"
+    "}"
     "var v=document.querySelector('video');"
     "if(!v){return {hasVideo:false,currentTime:0,readyState:0,networkState:0,duration:null,errorCode:0};}"
     "var t=Number.isFinite(v.currentTime)?v.currentTime:0;"
@@ -86,6 +95,9 @@ _PLAYBACK_STATUS_JS = (
 )
 _CURRENT_TIME_JS = (
     "(function(){"
+    "if(typeof window.__incrementoGetCurrentTime==='function'){"
+    "try{return window.__incrementoGetCurrentTime();}catch(_e){}"
+    "}"
     "var v=document.querySelector('video');"
     "return v ? v.currentTime : 0;"
     "})()"
@@ -116,7 +128,7 @@ def _build_video_dock():
 
     # Module-level profile with no parent — avoids use-after-free segfault on exit
     # that occurs when the profile is parented to the view and both get destroyed.
-    # Persistent named profile so YouTube login cookies survive across restarts.
+    # Persistent named profile so video-site cookies survive across restarts.
     if _video_profile is None:
         _video_profile = _WEProf("incremento_video")
         _video_profile.setPersistentStoragePath(
@@ -355,6 +367,9 @@ def _seek_to_seconds(seconds: float) -> None:
         return
     js = (
         "(function(sec){"
+        "if(typeof window.__incrementoSeekTo==='function'){"
+        "try{return !!window.__incrementoSeekTo(sec);}catch(_e){}"
+        "}"
         "var v=document.querySelector('video');"
         "if(!v){return false;}"
         "try{v.currentTime=sec; return true;}catch(_e){return false;}"
@@ -521,7 +536,7 @@ def _persist_position_now() -> None:
 
 def show_video_in_dock(
     card_id: int,
-    youtube_url: str,
+    video_url: str,
     position: float = 0.0,
     local_video_file: str = "",
 ) -> None:
@@ -530,8 +545,15 @@ def show_video_in_dock(
     global _last_known_position, _local_resume_pending, _local_resume_ms
     global _local_resume_attempts, _last_known_duration
 
+    normalized_url = (video_url or "").strip()
+    if detect_video_provider(normalized_url) == "vimeo":
+        try:
+            normalized_url = resolve_video_url_for_embed(normalized_url, timeout_sec=1.5)
+        except Exception:
+            pass
+
     _current_video_card_id = card_id
-    _current_video_url = (youtube_url or "").strip()
+    _current_video_url = normalized_url
     _last_known_position = max(0.0, float(position or 0.0))
     _last_known_duration = 0.0
 
@@ -545,10 +567,10 @@ def show_video_in_dock(
             _build_video_dock()
 
     local_relpath = (local_video_file or "").strip()
+    start_sec = int(position)
     if local_relpath:
         local_abs = local_video_abspath(_ADDON_DIR, local_relpath)
         if os.path.exists(local_abs):
-            start_sec = int(position)
             local_path = Path(local_abs)
             _current_local_relpath = local_relpath
             _local_fallback_done = False
@@ -586,56 +608,44 @@ def show_video_in_dock(
                     except Exception:
                         pass
             else:
-                _using_local_qt_player = False
-                _local_resume_pending = False
-                _local_resume_ms = 0
-                _local_resume_attempts = 0
-                _set_local_controls_visible(False)
-                mime_type = mimetypes.guess_type(local_path.name)[0] or "video/mp4"
-                page_html = _local_video_html(local_path.name, mime_type, start_sec)
-                base_url = QUrl.fromLocalFile(str(local_path.parent) + os.sep)
-                _video_dock._view.setHtml(page_html, base_url)
+                tooltip("Incremento: local playback requires Qt multimedia support; falling back to web playback.")
             _start_video_timer()
-            return
-        print(
-            f"[Incremento] Local video missing for card {card_id}: {local_relpath!r}"
-        )
+            if _using_local_qt_player:
+                return
+        print(f"[Incremento] Local video missing for card {card_id}: {local_relpath!r}")
 
-    video_id = extract_video_id((youtube_url or "").strip())
-    if not video_id:
-        tooltip("Incremento: This video card has no valid YouTube URL.")
-        print(f"[Incremento] Invalid YouTube URL for card {card_id}: {youtube_url!r}")
+    remote_watch_url = build_remote_video_watch_url(_current_video_url, start_sec=start_sec)
+    if remote_watch_url:
+        url = QUrl(remote_watch_url)
+        _current_local_relpath = ""
+        _local_fallback_done = False
+        _using_local_qt_player = False
+        _local_resume_pending = False
+        _local_resume_ms = 0
+        _local_resume_attempts = 0
+        _last_known_duration = 0.0
+        _set_local_controls_visible(False)
+        _reset_seek_ui()
+
+        local_player = getattr(_video_dock, "_local_player", None)
+        if local_player is not None:
+            try:
+                local_player.stop()
+            except Exception:
+                pass
+        media_stack = getattr(_video_dock, "_media_stack", None)
+        web_index = getattr(_video_dock, "_web_index", None)
+        if media_stack is not None and web_index is not None:
+            media_stack.setCurrentIndex(web_index)
+
+        _video_dock.show()
+        _video_dock.raise_()
+        _video_dock._view.load(url)
+        _start_video_timer()
         return
 
-    # Load the full YouTube watch page — this avoids all embed-level restrictions
-    # (Error 152/153) that occur when using the IFrame API from a non-browser origin.
-    start_sec = int(position)
-    url = QUrl(f"https://www.youtube.com/watch?v={video_id}&t={start_sec}s&autoplay=0")
-    _current_local_relpath = ""
-    _local_fallback_done = False
-    _using_local_qt_player = False
-    _local_resume_pending = False
-    _local_resume_ms = 0
-    _local_resume_attempts = 0
-    _last_known_duration = 0.0
-    _set_local_controls_visible(False)
-    _reset_seek_ui()
-
-    local_player = getattr(_video_dock, "_local_player", None)
-    if local_player is not None:
-        try:
-            local_player.stop()
-        except Exception:
-            pass
-    media_stack = getattr(_video_dock, "_media_stack", None)
-    web_index = getattr(_video_dock, "_web_index", None)
-    if media_stack is not None and web_index is not None:
-        media_stack.setCurrentIndex(web_index)
-
-    _video_dock.show()
-    _video_dock.raise_()
-    _video_dock._view.load(url)
-    _start_video_timer()
+    tooltip("Incremento: This video card has no valid video URL.")
+    print(f"[Incremento] Invalid video URL for card {card_id}: {video_url!r}")
 
 
 def _start_video_timer() -> None:
@@ -729,8 +739,8 @@ def _on_video_time(t) -> None:
         failed_decode = err_code > 0 or (has_video and ready_state == 0 and network_state == 3)
         if failed_decode:
             _local_fallback_done = True
-            if extract_video_id(_current_video_url):
-                tooltip("Incremento: local video failed to decode, falling back to YouTube stream.")
+            if is_supported_video_url(_current_video_url):
+                tooltip("Incremento: local video failed to decode, falling back to URL stream.")
                 show_video_in_dock(_current_video_card_id, _current_video_url, t, "")
                 return
             tooltip(
@@ -786,10 +796,6 @@ def _on_local_player_error(*_args) -> None:
             t = float(player.position()) / 1000.0
         except Exception:
             t = 0.0
-    if extract_video_id(_current_video_url):
-        tooltip("Incremento: local player failed, falling back to YouTube stream.")
-        show_video_in_dock(_current_video_card_id, _current_video_url, t, "")
-        return
     tooltip("Incremento: local video failed to play in Anki Qt player.")
 
 
@@ -877,7 +883,7 @@ def on_video_question_shown(card) -> None:
                 title_text = (note["Title"] or "").strip()
             except Exception:
                 title_text = ""
-            if extract_video_id(title_text):
+            if is_supported_video_url(title_text):
                 youtube_url = title_text
             else:
                 if _video_dock is not None:

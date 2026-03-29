@@ -6,13 +6,40 @@ import sys
 import tempfile
 from collections import deque
 from collections.abc import Callable
+from html import unescape as _html_unescape
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 try:
     from .db import get_connection
+    from .video_providers import (
+        extract_youtube_id as _extract_youtube_id,
+        extract_vimeo_id,
+        extract_video_key,
+        detect_video_provider,
+        is_supported_video_url,
+        canonicalize_video_url as _canonicalize_video_url,
+        extract_start_seconds,
+        build_remote_video_watch_url as _build_remote_video_watch_url,
+        supports_browser_cookie_auth,
+        provider_display_name,
+    )
 except ImportError:
     from db import get_connection
+    from video_providers import (
+        extract_youtube_id as _extract_youtube_id,
+        extract_vimeo_id,
+        extract_video_key,
+        detect_video_provider,
+        is_supported_video_url,
+        canonicalize_video_url as _canonicalize_video_url,
+        extract_start_seconds,
+        build_remote_video_watch_url as _build_remote_video_watch_url,
+        supports_browser_cookie_auth,
+        provider_display_name,
+    )
 
 VIDEO_NOTE_TYPE = "Incremento Video"
 LOCAL_VIDEO_FIELD = "Local_Video_File"
@@ -29,32 +56,104 @@ CARD_TEMPLATE_BACK = "{{Title}}"
 
 _VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".mov", ".m4v"}
 _YTDLP_PERCENT_RE = re.compile(r"\[download\]\s+(\d+(?:\.\d+)?)%")
+_VIMEO_EMBED_URL_RE = re.compile(r"https?://player\.vimeo\.com/video/\d+[^\s\"'<>]*")
+_VIMEO_EMBED_CACHE: dict[str, str] = {}
 
 
 def extract_video_id(url: str) -> str | None:
-    """Return the 11-char YouTube video ID from any common YouTube URL format."""
-    raw = (url or "").strip()
-    if not raw:
+    """Backward-compatible alias for YouTube ID extraction."""
+    return _extract_youtube_id(url)
+
+
+def canonicalize_video_url(url: str) -> str:
+    return _canonicalize_video_url(url)
+
+
+def build_remote_video_watch_url(url: str, start_sec: int = 0) -> str | None:
+    return _build_remote_video_watch_url(url, start_sec=start_sec)
+
+
+def _extract_vimeo_embed_url_from_html(html_text: str, video_id: str) -> str | None:
+    text = _html_unescape(html_text or "").replace("\\/", "/")
+    if not text or not video_id:
         return None
-
-    # Allow users to paste just the raw 11-char ID.
-    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", raw):
-        return raw
-
-    # Decode URL-encoded wrappers (e.g. attribution links), then scan both forms.
-    candidates = [raw]
-    decoded = unquote(raw)
-    if decoded != raw:
-        candidates.append(decoded)
-
-    pattern = re.compile(
-        r"(?:v=|vi=|youtu\.be/|embed/|shorts/|live/)([a-zA-Z0-9_-]{11})"
+    matches = re.findall(
+        rf"https?://player\.vimeo\.com/video/{re.escape(video_id)}[^\s\"'<>]*",
+        text,
     )
-    for text in candidates:
-        m = pattern.search(text)
-        if m:
-            return m.group(1)
-    return None
+    if not matches:
+        return None
+    cleaned = [m.rstrip("\\") for m in matches]
+    # Prefer tokenized embed URLs when present.
+    for m in cleaned:
+        if "h=" in m:
+            return m
+    return cleaned[0] if cleaned else None
+
+
+def _merge_vimeo_urls(original_url: str, resolved_embed_url: str) -> str:
+    original = urlparse(canonicalize_video_url(original_url))
+    resolved = urlparse(_html_unescape(resolved_embed_url or ""))
+
+    orig_q = dict(parse_qsl(original.query, keep_blank_values=True))
+    res_q = dict(parse_qsl(resolved.query, keep_blank_values=True))
+    merged_q = {**orig_q, **res_q}
+    query = urlencode(list(merged_q.items()), doseq=True)
+
+    scheme = resolved.scheme or original.scheme or "https"
+    netloc = resolved.netloc or original.netloc or "player.vimeo.com"
+    path = resolved.path or original.path
+    fragment = original.fragment
+    return urlunparse((scheme, netloc, path, "", query, fragment))
+
+
+def resolve_video_url_for_embed(url: str, timeout_sec: float = 4.0) -> str:
+    """
+    Return canonical URL, and for Vimeo attempt to resolve/embed-tokenize URL (h=...).
+    Network failures fall back to canonical URL.
+    """
+    canonical = canonicalize_video_url(url)
+    if detect_video_provider(canonical) != "vimeo":
+        return canonical
+
+    parsed = urlparse(canonical)
+    q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    if q.get("h"):
+        return canonical
+
+    vm_id = extract_vimeo_id(canonical)
+    if not vm_id:
+        return canonical
+
+    cache_key = f"{vm_id}"
+    cached = _VIMEO_EMBED_CACHE.get(cache_key)
+    if cached:
+        return _merge_vimeo_urls(canonical, cached)
+
+    req = Request(
+        canonical,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
+    try:
+        with urlopen(req, timeout=max(1.0, float(timeout_sec))) as resp:
+            html_text = resp.read().decode("utf-8", errors="replace")
+    except (URLError, HTTPError, TimeoutError, ValueError):
+        return canonical
+    except Exception:
+        return canonical
+
+    resolved = _extract_vimeo_embed_url_from_html(html_text, vm_id)
+    if not resolved:
+        return canonical
+    _VIMEO_EMBED_CACHE[cache_key] = resolved
+    return _merge_vimeo_urls(canonical, resolved)
 
 
 def local_video_relpath(video_id: str, ext: str = ".mp4") -> str:
@@ -183,6 +282,11 @@ def _ytdlp_error_message(lines: list[str]) -> str:
             "yt-dlp needs a JavaScript runtime for this video extraction.\n"
             "Install deno or node, then retry local download."
         )
+    if "Requested format is not available" in text:
+        return (
+            "Selected format is not available for this video.\n"
+            "Try 'Best available' or 'Original quality (no re-encoding)'."
+        )
     tail = [ln for ln in lines[-4:] if ln]
     if tail:
         return "yt-dlp download failed:\n" + "\n".join(tail)
@@ -250,7 +354,7 @@ def _hms_to_seconds(value: str) -> float | None:
     return h * 3600 + m * 60 + s
 
 
-def _ytdlp_format_selector(mode: str, max_height: int | None = None) -> str:
+def _ytdlp_format_selector_youtube(mode: str, max_height: int | None = None) -> str:
     """
     Return yt-dlp format selector for the selected pipeline mode.
     - compressible: maximize source quality; ffmpeg will normalize afterward.
@@ -282,7 +386,66 @@ def _ytdlp_format_selector(mode: str, max_height: int | None = None) -> str:
         f"best[ext=mp4]{h}[vcodec^=avc1][acodec^=mp4a]/"
         f"best[ext=mp4]{h}[vcodec^=avc1][acodec!=none]/"
         f"best[ext=mp4]{h}[vcodec!=none][acodec!=none]/"
-        "best[vcodec!=none][acodec!=none]"
+        "best[vcodec!=none][acodec!=none]/"
+        "best"
+    )
+
+
+def _ytdlp_format_selector_vimeo(mode: str, max_height: int | None = None) -> str:
+    """
+    Vimeo often exposes many codec variants; prefer Qt-friendly MP4/H.264/AAC first.
+    """
+    h = ""
+    try:
+        if max_height and int(max_height) > 0:
+            h = f"[height<={int(max_height)}]"
+    except Exception:
+        h = ""
+
+    if mode == "download":
+        return (
+            f"best[ext=mp4]{h}[vcodec^=avc1][acodec^=mp4a]/"
+            f"best[ext=mp4]{h}[vcodec^=h264][acodec^=mp4a]/"
+            f"best[ext=mp4]{h}[acodec^=mp4a]/"
+            f"best[ext=mp4]{h}[acodec!=none]/"
+            f"best{h}[vcodec!=none][acodec!=none]/"
+            "best[vcodec!=none][acodec!=none]/"
+            "best"
+        )
+    return (
+        f"bestvideo{h}+bestaudio/"
+        f"best{h}[vcodec!=none][acodec!=none]/"
+        "best[vcodec!=none][acodec!=none]/"
+        "best"
+    )
+
+
+def _ytdlp_fallback_selector(mode: str) -> str:
+    if mode == "download":
+        return "best"
+    return "bestvideo+bestaudio/best"
+
+
+def _ytdlp_format_selector(
+    mode: str,
+    max_height: int | None = None,
+    provider: str | None = None,
+) -> str:
+    if provider == "vimeo":
+        return _ytdlp_format_selector_vimeo(mode, max_height=max_height)
+    return _ytdlp_format_selector_youtube(mode, max_height=max_height)
+
+
+def _is_requested_format_unavailable(lines: list[str]) -> bool:
+    return any("Requested format is not available" in (ln or "") for ln in (lines or []))
+
+
+def _is_format_selection_issue(lines: list[str]) -> bool:
+    text = "\n".join(lines or []).lower()
+    return (
+        "requested format is not available" in text
+        or "no video formats found" in text
+        or "format not available" in text
     )
 
 
@@ -304,10 +467,10 @@ def _extract_resolutions_from_info(info: dict) -> list[int]:
     return sorted(heights, reverse=True)
 
 
-def list_available_video_resolutions(addon_dir: str, youtube_url: str) -> list[int]:
+def list_available_video_resolutions(addon_dir: str, video_url: str) -> list[int]:
     """Return sorted available video heights (e.g. [2160, 1440, 1080, 720])."""
-    if not extract_video_id(youtube_url or ""):
-        raise ValueError("Enter a valid YouTube URL first.")
+    if not is_supported_video_url(video_url or ""):
+        raise ValueError("Enter a valid YouTube or Vimeo URL first.")
 
     yt_dlp_cmd = _yt_dlp_cmd()
     if not yt_dlp_cmd:
@@ -322,12 +485,12 @@ def list_available_video_resolutions(addon_dir: str, youtube_url: str) -> list[i
         "--no-playlist",
         "--no-warnings",
         "-J",
-        youtube_url,
+        video_url,
     ]
     profile_dir = _video_profile_dir(addon_dir)
     cookie_attempt = (
         _has_chromium_cookies(profile_dir)
-        and "youtube.com" in (youtube_url or "").lower()
+        and supports_browser_cookie_auth(video_url)
     )
     attempts: list[list[str]] = []
     if cookie_attempt:
@@ -364,91 +527,142 @@ def list_available_video_resolutions(addon_dir: str, youtube_url: str) -> list[i
 def _run_yt_dlp_with_progress(
     addon_dir: str,
     yt_dlp_cmd: list[str],
-    youtube_url: str,
+    video_url: str,
     output_template: Path,
     progress_cb: Callable[[int, str], None] | None,
     mode: str = "download",
     max_height: int | None = None,
 ) -> None:
     merge_mode = mode in ("compressible", "original")
-    base_cmd = [
-        *yt_dlp_cmd,
-        "--no-playlist",
-        "--newline",
-        "-f",
-        _ytdlp_format_selector(mode, max_height=max_height),
-    ]
-    if merge_mode:
-        base_cmd.extend(
-            [
-                "--merge-output-format",
-                "mkv",
-            ]
-        )
-    base_cmd.extend(
-        [
-            "-o",
-            str(output_template),
-            youtube_url,
-        ]
-    )
 
     profile_dir = _video_profile_dir(addon_dir)
     cookie_attempt = (
         _has_chromium_cookies(profile_dir)
-        and "youtube.com" in (youtube_url or "").lower()
+        and supports_browser_cookie_auth(video_url)
     )
-    attempts: list[tuple[list[str], str]] = []
-    if cookie_attempt:
-        attempts.append(
-            (
-                [
-                    *base_cmd,
-                    "--cookies-from-browser",
-                    f"chromium:{profile_dir}",
-                ],
-                "Trying download with Incremento browser cookies…",
-            )
-        )
-    attempts.append((base_cmd, "Starting YouTube download…"))
+    provider = detect_video_provider(video_url)
+    provider_name = provider_display_name(video_url)
+
+    selectors: list[str | None] = [_ytdlp_format_selector(mode, max_height=max_height, provider=provider)]
+    fallback_selector = _ytdlp_fallback_selector(mode)
+    if fallback_selector not in selectors:
+        selectors.append(fallback_selector)
+    # Last-resort fallback: let yt-dlp choose its own default format.
+    selectors.append(None)
 
     all_tail: list[str] = []
-    for i, (cmd, start_label) in enumerate(attempts):
-        _emit_progress(progress_cb, 2, start_label)
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        tail = deque(maxlen=40)
-        for line in (proc.stdout or []):
-            txt = line.strip()
-            if txt:
-                tail.append(txt)
-            pct = _parse_ytdlp_percent(txt)
-            if pct is not None:
-                if merge_mode:
-                    overall = 2 + (pct / 100.0) * 58.0
-                else:
-                    overall = 2 + (pct / 100.0) * 96.0
-                _emit_progress(progress_cb, overall, f"Downloading video… {pct:.1f}%")
-                continue
-            if merge_mode and "[Merger]" in txt:
-                _emit_progress(progress_cb, 60, "Merging downloaded streams…")
-        rc = proc.wait()
-        if rc == 0:
-            break
-        all_tail = list(tail)
-        # Retry once without cookie extraction if cookie-based attempt failed.
-        if i + 1 < len(attempts):
-            _emit_progress(progress_cb, 2, "Retrying download without browser cookies…")
+    downloaded = False
+    for selector_index, selector in enumerate(selectors):
+        # Deduplicate selector sequence while preserving the final None fallback.
+        if selector_index < len(selectors) - 1 and selector in selectors[:selector_index]:
             continue
+        base_cmd = [
+            *yt_dlp_cmd,
+            "--no-playlist",
+            "--newline",
+        ]
+        if selector:
+            base_cmd.extend(["-f", selector])
+        if merge_mode:
+            base_cmd.extend(
+                [
+                    "--merge-output-format",
+                    "mkv",
+                ]
+            )
+        base_cmd.extend(
+            [
+                "-o",
+                str(output_template),
+                video_url,
+            ]
+        )
+
+        attempts: list[tuple[list[str], str]] = []
+        if cookie_attempt:
+            attempts.append(
+                (
+                    [
+                        *base_cmd,
+                        "--cookies-from-browser",
+                        f"chromium:{profile_dir}",
+                    ],
+                    f"Trying {provider_name} download with Incremento browser cookies…",
+                )
+            )
+        start_label = (
+            f"Starting {provider_name} download…"
+            if selector_index == 0
+            else (
+                f"Retrying {provider_name} download with broader format fallback…"
+                if selector is not None
+                else f"Retrying {provider_name} download with yt-dlp default format…"
+            )
+        )
+        attempts.append((base_cmd, start_label))
+
+        selector_failed_format = False
+        for i, (cmd, run_label) in enumerate(attempts):
+            _emit_progress(progress_cb, 2, run_label)
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            tail = deque(maxlen=40)
+            for line in (proc.stdout or []):
+                txt = line.strip()
+                if txt:
+                    tail.append(txt)
+                pct = _parse_ytdlp_percent(txt)
+                if pct is not None:
+                    if merge_mode:
+                        overall = 2 + (pct / 100.0) * 58.0
+                    else:
+                        overall = 2 + (pct / 100.0) * 96.0
+                    _emit_progress(progress_cb, overall, f"Downloading video… {pct:.1f}%")
+                    continue
+                if merge_mode and "[Merger]" in txt:
+                    _emit_progress(progress_cb, 60, "Merging downloaded streams…")
+            rc = proc.wait()
+            if rc == 0:
+                downloaded = True
+                break
+            all_tail = list(tail)
+            # Retry once without cookie extraction if cookie-based attempt failed.
+            if i + 1 < len(attempts):
+                _emit_progress(progress_cb, 2, "Retrying download without browser cookies…")
+                continue
+            if (
+                selector_index + 1 < len(selectors)
+                and _is_format_selection_issue(all_tail)
+            ):
+                selector_failed_format = True
+                _emit_progress(
+                    progress_cb,
+                    2,
+                    (
+                        "Selected format unavailable; trying broader fallback…"
+                        if selector is not None
+                        else "Format selection failed; trying next fallback…"
+                    ),
+                )
+                break
+            msg = _ytdlp_error_message(all_tail)
+            print("[Incremento] yt-dlp failure tail:")
+            for ln in all_tail:
+                print(ln)
+            raise RuntimeError(msg)
+
+        if downloaded:
+            break
+        if selector_failed_format:
+            continue
+
+    if not downloaded:
         msg = _ytdlp_error_message(all_tail)
-        print("[Incremento] yt-dlp failure tail:")
-        for ln in all_tail:
-            print(ln)
         raise RuntimeError(msg)
 
     if merge_mode:
@@ -755,9 +969,9 @@ def import_local_video_file(
     return f"videos/{target.name}"
 
 
-def download_and_compress_youtube_video(
+def download_and_compress_video(
     addon_dir: str,
-    youtube_url: str,
+    video_url: str,
     *,
     overwrite: bool = False,
     progress_cb: Callable[[int, str], None] | None = None,
@@ -765,13 +979,13 @@ def download_and_compress_youtube_video(
     original_quality: bool = False,
 ) -> str:
     """
-    Download a YouTube video into user_files/videos/.
+    Download a YouTube/Vimeo video into user_files/videos/.
     If ffmpeg is available, compress to mp4; otherwise keep downloaded container.
-    Returns relpath (e.g. videos/dQw4w9WgXcQ.mp4).
+    Returns relpath (e.g. videos/dQw4w9WgXcQ.mp4 or videos/vimeo_12345.mp4).
     """
-    video_id = extract_video_id(youtube_url or "")
-    if not video_id:
-        raise ValueError("Could not extract a valid YouTube video ID.")
+    video_key = extract_video_key(video_url or "")
+    if not video_key:
+        raise ValueError("Could not extract a valid YouTube or Vimeo video ID.")
 
     out_dir = Path(addon_dir) / "user_files" / "videos"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -779,13 +993,13 @@ def download_and_compress_youtube_video(
     # Reuse any existing local copy regardless of extension.
     existing = None
     for ext in _VIDEO_EXTS:
-        p = out_dir / f"{video_id}{ext}"
+        p = out_dir / f"{video_key}{ext}"
         if p.exists() and p.stat().st_size > 0:
             existing = p
             break
     if existing is not None and not overwrite:
         _emit_progress(progress_cb, 100, "Using existing local video copy.")
-        return local_video_relpath(video_id, existing.suffix)
+        return local_video_relpath(video_key, existing.suffix)
 
     yt_dlp_cmd, ffmpeg_bin = _video_tools()
     if not yt_dlp_cmd:
@@ -797,7 +1011,7 @@ def download_and_compress_youtube_video(
 
     with tempfile.TemporaryDirectory(prefix="incremento_video_") as tmp_dir:
         tmp = Path(tmp_dir)
-        dl_template = tmp / f"{video_id}.%(ext)s"
+        dl_template = tmp / f"{video_key}.%(ext)s"
         if original_quality and ffmpeg_bin:
             dl_mode = "original"
         else:
@@ -805,43 +1019,63 @@ def download_and_compress_youtube_video(
         _run_yt_dlp_with_progress(
             addon_dir,
             yt_dlp_cmd,
-            youtube_url,
+            video_url,
             dl_template,
             progress_cb,
             mode=dl_mode,
             max_height=max_height,
         )
 
-        candidates = [p for p in tmp.glob(f"{video_id}.*") if p.suffix.lower() in _VIDEO_EXTS]
+        candidates = [p for p in tmp.glob(f"{video_key}.*") if p.suffix.lower() in _VIDEO_EXTS]
         if not candidates:
             raise RuntimeError("yt-dlp finished, but no downloaded video file was found.")
         source_path = max(candidates, key=lambda p: p.stat().st_size)
 
         if original_quality:
             final_ext = source_path.suffix.lower() or ".mp4"
-            final_path = out_dir / f"{video_id}{final_ext}"
+            final_path = out_dir / f"{video_key}{final_ext}"
             if final_path.exists():
                 final_path.unlink()
             source_path.replace(final_path)
             _emit_progress(progress_cb, 100, "Video ready (original quality).")
-            return local_video_relpath(video_id, final_path.suffix)
+            return local_video_relpath(video_key, final_path.suffix)
 
         final_ext = ".mp4"
-        final_path = out_dir / f"{video_id}{final_ext}"
+        final_path = out_dir / f"{video_key}{final_ext}"
         if ffmpeg_bin:
-            encoded_path = tmp / f"{video_id}.compressed.mp4"
+            encoded_path = tmp / f"{video_key}.compressed.mp4"
             _compress_video(ffmpeg_bin, source_path, encoded_path, progress_cb=progress_cb)
             if final_path.exists():
                 final_path.unlink()
             encoded_path.replace(final_path)
         else:
             final_ext = source_path.suffix.lower() or ".mp4"
-            final_path = out_dir / f"{video_id}{final_ext}"
+            final_path = out_dir / f"{video_key}{final_ext}"
             if final_path.exists():
                 final_path.unlink()
             source_path.replace(final_path)
     _emit_progress(progress_cb, 100, "Video ready.")
-    return local_video_relpath(video_id, final_path.suffix)
+    return local_video_relpath(video_key, final_path.suffix)
+
+
+def download_and_compress_youtube_video(
+    addon_dir: str,
+    youtube_url: str,
+    *,
+    overwrite: bool = False,
+    progress_cb: Callable[[int, str], None] | None = None,
+    max_height: int | None = None,
+    original_quality: bool = False,
+) -> str:
+    """Backward-compatible wrapper for older callers."""
+    return download_and_compress_video(
+        addon_dir,
+        youtube_url,
+        overwrite=overwrite,
+        progress_cb=progress_cb,
+        max_height=max_height,
+        original_quality=original_quality,
+    )
 
 
 def fmt_time(seconds: float) -> str:

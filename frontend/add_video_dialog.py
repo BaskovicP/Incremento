@@ -21,7 +21,8 @@ except ImportError:
 try:
     from ..backend.video_manager import (
         video_download_requirements,
-        extract_video_id,
+        is_supported_video_url,
+        canonicalize_video_url,
         list_available_video_resolutions,
         supported_local_video_extensions,
     )
@@ -29,7 +30,8 @@ except ImportError:
     try:
         from backend.video_manager import (
             video_download_requirements,
-            extract_video_id,
+            is_supported_video_url,
+            canonicalize_video_url,
             list_available_video_resolutions,
             supported_local_video_extensions,
         )
@@ -37,8 +39,11 @@ except ImportError:
         def video_download_requirements() -> list[str]:
             return []
 
-        def extract_video_id(_url: str) -> str | None:
-            return None
+        def is_supported_video_url(_url: str) -> bool:
+            return False
+
+        def canonicalize_video_url(url: str) -> str:
+            return (url or "").strip()
 
         def list_available_video_resolutions(_addon_dir: str, _url: str) -> list[int]:
             return []
@@ -48,7 +53,7 @@ except ImportError:
 
 
 class AddVideoDialog(QDialog):
-    """Dialog to add a new YouTube video as an Incremento Video card."""
+    """Dialog to add a new URL/local video as an Incremento Video card."""
 
     def __init__(
         self,
@@ -73,14 +78,17 @@ class AddVideoDialog(QDialog):
         src_row.addWidget(QLabel("Source:"))
         self._source_combo = QComboBox()
         self._source_combo.addItem("YouTube URL", "youtube")
+        self._source_combo.addItem("Vimeo URL", "vimeo")
         self._source_combo.addItem("Local video file", "local")
         src_row.addWidget(self._source_combo, 1)
         layout.addLayout(src_row)
 
-        self._url_label = QLabel("YouTube URL:")
+        self._url_label = QLabel("Video URL:")
         layout.addWidget(self._url_label)
         self._url_edit = QLineEdit()
-        self._url_edit.setPlaceholderText("https://www.youtube.com/watch?v=\u2026")
+        self._url_edit.setPlaceholderText(
+            "https://www.youtube.com/watch?v=\u2026 or https://player.vimeo.com/video/\u2026"
+        )
         layout.addWidget(self._url_edit)
 
         self._local_label = QLabel("Local video file:")
@@ -195,6 +203,9 @@ class AddVideoDialog(QDialog):
         self._set_resolution_controls_visible(False)
         self._on_source_changed()
 
+    def _is_url_source(self) -> bool:
+        return self.source_mode in ("youtube", "vimeo")
+
     def _local_file_filter(self) -> str:
         exts = supported_local_video_extensions()
         patterns = " ".join(f"*{e}" for e in exts) if exts else "*.mp4 *.mkv *.webm *.mov *.m4v"
@@ -216,20 +227,30 @@ class AddVideoDialog(QDialog):
             self._title_edit.setText(stem)
 
     def _on_source_changed(self) -> None:
-        is_youtube = self.source_mode == "youtube"
-        self._url_label.setVisible(is_youtube)
-        self._url_edit.setVisible(is_youtube)
-        self._download_cb.setVisible(is_youtube)
-        self._download_hint.setVisible(is_youtube)
+        is_url_source = self._is_url_source()
+        self._url_label.setVisible(is_url_source)
+        self._url_edit.setVisible(is_url_source)
+        self._download_cb.setVisible(is_url_source)
+        self._download_hint.setVisible(is_url_source)
 
-        self._local_label.setVisible(not is_youtube)
-        self._local_file_edit.setVisible(not is_youtube)
-        self._local_browse_btn.setVisible(not is_youtube)
-        self._local_encode_label.setVisible(not is_youtube)
-        self._local_encode_combo.setVisible(not is_youtube)
-        self._local_hint.setVisible(not is_youtube)
+        self._local_label.setVisible(not is_url_source)
+        self._local_file_edit.setVisible(not is_url_source)
+        self._local_browse_btn.setVisible(not is_url_source)
+        self._local_encode_label.setVisible(not is_url_source)
+        self._local_encode_combo.setVisible(not is_url_source)
+        self._local_hint.setVisible(not is_url_source)
 
-        if is_youtube:
+        if self.source_mode == "youtube":
+            self._url_label.setText("YouTube URL:")
+            self._url_edit.setPlaceholderText("https://www.youtube.com/watch?v=\u2026")
+        elif self.source_mode == "vimeo":
+            self._url_label.setText("Vimeo URL:")
+            self._url_edit.setPlaceholderText("https://player.vimeo.com/video/\u2026")
+        else:
+            self._url_label.setText("Video URL:")
+            self._url_edit.setPlaceholderText("")
+
+        if is_url_source:
             self._on_download_toggled(self._download_cb.isChecked())
         else:
             self._set_resolution_controls_visible(False)
@@ -259,11 +280,11 @@ class AddVideoDialog(QDialog):
     def _refresh_resolutions(self) -> None:
         if not self._download_cb.isChecked():
             return
-        url = self.youtube_url
-        if not extract_video_id(url):
+        url = self.video_url
+        if not is_supported_video_url(url):
             self._populate_resolution_combo([])
             self._resolution_combo.setEnabled(False)
-            self._resolution_hint.setText("Enter a valid YouTube URL to load available resolutions.")
+            self._resolution_hint.setText("Enter a valid YouTube or Vimeo URL to load available resolutions.")
             return
 
         self._resolution_fetch_token += 1
@@ -302,7 +323,7 @@ class AddVideoDialog(QDialog):
         mw.taskman.run_in_background(_task, _on_done)
 
     def _on_download_toggled(self, checked: bool) -> None:
-        if self.source_mode != "youtube":
+        if not self._is_url_source():
             self._set_resolution_controls_visible(False)
             return
         self._set_resolution_controls_visible(checked)
@@ -317,8 +338,12 @@ class AddVideoDialog(QDialog):
             self._refresh_resolutions()
 
     @property
+    def video_url(self) -> str:
+        return canonicalize_video_url(self._url_edit.text().strip())
+
+    @property
     def youtube_url(self) -> str:
-        return self._url_edit.text().strip()
+        return self.video_url
 
     @property
     def source_mode(self) -> str:
@@ -348,7 +373,7 @@ class AddVideoDialog(QDialog):
 
     @property
     def download_locally(self) -> bool:
-        return self.source_mode == "youtube" and self._download_cb.isChecked()
+        return self._is_url_source() and self._download_cb.isChecked()
 
     @property
     def missing_download_tools(self) -> list[str]:
@@ -356,7 +381,7 @@ class AddVideoDialog(QDialog):
 
     @property
     def download_max_height(self) -> int | None:
-        if self.source_mode != "youtube" or not self._download_cb.isChecked():
+        if not self._is_url_source() or not self._download_cb.isChecked():
             return None
         data = self._resolution_combo.currentData()
         try:
@@ -367,6 +392,6 @@ class AddVideoDialog(QDialog):
 
     @property
     def download_original_quality(self) -> bool:
-        if self.source_mode != "youtube" or not self._download_cb.isChecked():
+        if not self._is_url_source() or not self._download_cb.isChecked():
             return False
         return self._resolution_combo.currentData() == "original"
