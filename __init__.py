@@ -651,7 +651,7 @@ def addVideoFunction() -> None:
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
     from .frontend.add_video_dialog import AddVideoDialog
 
-    dlg = AddVideoDialog(deck_names, default_deck="Topics", parent=mw)
+    dlg = AddVideoDialog(deck_names, default_deck="Topics", addon_dir=_ADDON_DIR, parent=mw)
     if not dlg.exec():
         return
     url = dlg.youtube_url
@@ -664,6 +664,8 @@ def addVideoFunction() -> None:
     title = dlg.title or url
     deck_name = dlg.deck_name
     tags = dlg.tags
+    max_height = dlg.download_max_height
+    original_quality = dlg.download_original_quality
 
     def _add_url_card(local_relpath: str = "") -> bool:
         try:
@@ -690,14 +692,19 @@ def addVideoFunction() -> None:
         return
 
     try:
+        label = (
+            "Downloading original-quality video…"
+            if original_quality
+            else "Downloading and compressing video…"
+        )
         mw.progress.start(
-            label="Downloading and compressing video…",
+            label=label,
             immediate=True,
             value=0,
             max=100,
         )
     except TypeError:
-        mw.progress.start(label="Downloading and compressing video…", immediate=True)
+        mw.progress.start(label=label, immediate=True)
 
     def _progress_main(percent: int, label: str) -> None:
         try:
@@ -712,7 +719,10 @@ def addVideoFunction() -> None:
         return download_and_compress_youtube_video(
             _ADDON_DIR,
             url,
+            overwrite=(max_height is not None) or original_quality,
             progress_cb=_progress_cb,
+            max_height=max_height,
+            original_quality=original_quality,
         )
 
     def _on_done(fut) -> None:
@@ -804,6 +814,73 @@ def reindexPdfTextFunction() -> None:
     showInfo("\n".join(lines))
 
 
+def _prune_stale_progress_rows() -> dict[str, int]:
+    """
+    Remove progress rows whose card_id no longer exists.
+    Returns per-table deleted counts.
+    """
+    conn = get_connection(_ADDON_DIR)
+    counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
+    live_ids = set(int(cid) for cid in mw.col.db.list("SELECT id FROM cards"))
+    total_deleted = 0
+
+    for table in ("pdf_progress", "video_progress", "web_progress"):
+        try:
+            rows = conn.execute(f"SELECT card_id FROM {table}").fetchall()
+        except Exception:
+            continue
+        stale_ids = []
+        for row in rows:
+            try:
+                cid = int(row[0])
+            except Exception:
+                continue
+            if cid not in live_ids:
+                stale_ids.append(cid)
+        if not stale_ids:
+            continue
+        conn.executemany(
+            f"DELETE FROM {table} WHERE card_id = ?",
+            [(cid,) for cid in stale_ids],
+        )
+        counts[table] = len(stale_ids)
+        total_deleted += len(stale_ids)
+
+    if total_deleted:
+        conn.commit()
+    return counts
+
+
+def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
+    pdf_n = int(counts.get("pdf_progress", 0) or 0)
+    video_n = int(counts.get("video_progress", 0) or 0)
+    web_n = int(counts.get("web_progress", 0) or 0)
+    total = pdf_n + video_n + web_n
+    if total <= 0:
+        return ""
+    return (
+        f"Stale progress rows removed: {total}\n"
+        f"• PDF: {pdf_n}\n"
+        f"• Video: {video_n}\n"
+        f"• Web: {web_n}"
+    )
+
+
+def cleanupStaleProgressFunction() -> None:
+    """Delete persisted progress rows for cards that no longer exist."""
+    try:
+        counts = _prune_stale_progress_rows()
+    except Exception as e:
+        showInfo(f"Could not clean stale progress rows:\n{e}")
+        return
+
+    summary = _format_pruned_progress_summary(counts)
+    if summary:
+        showInfo(summary)
+    else:
+        showInfo("No stale progress rows found.")
+
+
 def cleanupOrphanPdfsFunction() -> None:
     """Delete PDF files in user_files/pdfs/ that no card references."""
     from .backend.pdf_manager import get_pdf_dir
@@ -839,11 +916,20 @@ def cleanupOrphanPdfsFunction() -> None:
 
     orphans = sorted(disk_files - referenced)
 
+    try:
+        pruned_counts = _prune_stale_progress_rows()
+    except Exception:
+        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
+    pruned_summary = _format_pruned_progress_summary(pruned_counts)
+
     if not orphans:
-        showInfo(
+        msg = (
             f"No orphaned PDFs found.\n\n"
             f"{len(disk_files)} file(s) on disk, all referenced by a card."
         )
+        if pruned_summary:
+            msg += f"\n\n{pruned_summary}"
+        showInfo(msg)
         return
 
     def _fmt_size(path: str) -> str:
@@ -881,7 +967,10 @@ def cleanupOrphanPdfsFunction() -> None:
             errors.append(f"• {fname}: {e}")
 
     if not errors:
-        showInfo(f"Deleted {deleted} orphaned PDF file(s).\nRecovered {total_str}.")
+        msg = f"Deleted {deleted} orphaned PDF file(s).\nRecovered {total_str}."
+        if pruned_summary:
+            msg += f"\n\n{pruned_summary}"
+        showInfo(msg)
     else:
         showInfo(
             f"Deleted {deleted} of {len(orphans)} file(s).\n\nErrors:\n" + "\n".join(errors)
@@ -896,44 +985,53 @@ def cleanupOrphanVideosFunction() -> None:
         return
 
     try:
-        disk_files = {
+        disk_files = [
             f
             for f in os.listdir(videos_dir)
             if f.lower().endswith((".mp4", ".mkv", ".webm", ".mov", ".m4v"))
             and os.path.isfile(os.path.join(videos_dir, f))
-        }
+        ]
     except OSError as e:
         showInfo(f"Could not read video directory:\n{e}")
         return
 
     if not disk_files:
         showInfo("No local videos found in user_files/videos/.")
-        return
+    disk_map = {f.lower(): f for f in disk_files}
 
     try:
-        note_ids = mw.col.find_notes(f'note:"{VIDEO_NOTE_TYPE}"')
-        referenced = set()
-        for nid in note_ids:
-            note = mw.col.get_note(nid)
+        card_ids = mw.col.find_cards(f'note:"{VIDEO_NOTE_TYPE}"')
+        referenced: set[str] = set()
+        for cid in card_ids:
+            note = mw.col.get_card(cid).note()
             try:
                 rel = (note[LOCAL_VIDEO_FIELD] or "").strip()
             except Exception:
                 rel = ""
             if not rel:
                 continue
-            basename = os.path.basename(rel.replace("\\", "/"))
+            basename = os.path.basename(rel.replace("\\", "/")).strip()
             if basename:
-                referenced.add(basename)
+                referenced.add(basename.lower())
     except Exception as e:
         showInfo(f"Could not query video cards:\n{e}")
         return
 
-    orphans = sorted(disk_files - referenced)
+    try:
+        pruned_counts = _prune_stale_progress_rows()
+    except Exception:
+        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
+    pruned_summary = _format_pruned_progress_summary(pruned_counts)
+
+    orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
     if not orphans:
-        showInfo(
+        msg = (
             f"No orphaned local videos found.\n\n"
-            f"{len(disk_files)} file(s) on disk, all referenced by a card."
+            f"{len(disk_files)} file(s) on disk, all referenced by an existing card."
         )
+        if pruned_summary:
+            msg += f"\n\n{pruned_summary}"
+        showInfo(msg)
         return
 
     def _fmt_size(path: str) -> str:
@@ -975,7 +1073,10 @@ def cleanupOrphanVideosFunction() -> None:
             errors.append(f"• {fname}: {e}")
 
     if not errors:
-        showInfo(f"Deleted {deleted} orphaned video file(s).\nRecovered {total_str}.")
+        msg = f"Deleted {deleted} orphaned video file(s).\nRecovered {total_str}."
+        if pruned_summary:
+            msg += f"\n\n{pruned_summary}"
+        showInfo(msg)
     else:
         showInfo(
             f"Deleted {deleted} of {len(orphans)} file(s).\n\nErrors:\n" + "\n".join(errors)
@@ -1103,6 +1204,10 @@ _utilsMenu.addAction(_cleanupOrphanPdfsAction)
 _cleanupOrphanVideosAction = QAction("Clean Up Orphaned Video Files…", mw)
 qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
 _utilsMenu.addAction(_cleanupOrphanVideosAction)
+
+_cleanupStaleProgressAction = QAction("Clean Up Stale Progress Rows…", mw)
+qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
+_utilsMenu.addAction(_cleanupStaleProgressAction)
 
 _statsAction = QAction("Statistics", mw)
 qconnect(_statsAction.triggered, showStatsFunction)

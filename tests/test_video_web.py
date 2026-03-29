@@ -29,6 +29,7 @@ video_download_requirements = _vm.video_download_requirements
 parse_ytdlp_percent = _vm._parse_ytdlp_percent
 hms_to_seconds = _vm._hms_to_seconds
 ytdlp_format_selector = _vm._ytdlp_format_selector
+extract_resolutions_from_info = _vm._extract_resolutions_from_info
 
 get_web_url = _wm.get_web_url
 set_web_url = _wm.set_web_url
@@ -102,7 +103,42 @@ class TestLocalVideoHelpers:
         assert "acodec^=mp4a" in fmt
 
     def test_ytdlp_selector_uses_best_split_when_compressing(self):
-        assert ytdlp_format_selector("compressible") == "bestvideo+bestaudio/best"
+        assert ytdlp_format_selector("compressible") == (
+            "bestvideo[vcodec^=avc1][ext=mp4]+bestaudio[acodec^=mp4a]/"
+            "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+            "bestvideo+bestaudio/"
+            "best[vcodec!=none][acodec!=none]/"
+            "best[vcodec!=none][acodec!=none]"
+        )
+
+    def test_ytdlp_selector_applies_height_cap_download(self):
+        fmt = ytdlp_format_selector("download", max_height=720)
+        assert "[height<=720]" in fmt
+        assert "best[ext=mp4][height<=720][vcodec^=avc1][acodec^=mp4a]" in fmt
+
+    def test_ytdlp_selector_applies_height_cap_compressible(self):
+        fmt = ytdlp_format_selector("compressible", max_height=1080)
+        assert "bestvideo[height<=1080][vcodec^=avc1][ext=mp4]+bestaudio[acodec^=mp4a]" in fmt
+        assert "bestvideo[height<=1080]+bestaudio" in fmt
+        assert "best[height<=1080][vcodec!=none][acodec!=none]" in fmt
+
+    def test_ytdlp_selector_original_quality_mode(self):
+        fmt = ytdlp_format_selector("original", max_height=2160)
+        assert "bestvideo[height<=2160]+bestaudio" in fmt
+        assert "vcodec^=avc1" not in fmt
+
+    def test_extract_resolutions_from_info(self):
+        info = {
+            "formats": [
+                {"vcodec": "avc1.64001f", "height": 720},
+                {"vcodec": "none", "height": 720},
+                {"vcodec": "av01.0.08M.08", "height": 1080},
+                {"vcodec": "vp9", "height": 1080},
+                {"vcodec": "avc1", "height": 480},
+                {"vcodec": "avc1", "height": None},
+            ]
+        }
+        assert extract_resolutions_from_info(info) == [1080, 720, 480]
 
 
 # ── fmt_time ──────────────────────────────────────────────────────────────────

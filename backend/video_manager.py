@@ -1,3 +1,4 @@
+import json
 import re
 import shutil
 import subprocess
@@ -244,20 +245,115 @@ def _hms_to_seconds(value: str) -> float | None:
     return h * 3600 + m * 60 + s
 
 
-def _ytdlp_format_selector(mode: str) -> str:
+def _ytdlp_format_selector(mode: str, max_height: int | None = None) -> str:
     """
     Return yt-dlp format selector for the selected pipeline mode.
     - compressible: maximize source quality; ffmpeg will normalize afterward.
     - download: prefer broadly playable progressive H.264/AAC MP4 streams.
     """
+    h = ""
+    try:
+        if max_height and int(max_height) > 0:
+            h = f"[height<={int(max_height)}]"
+    except Exception:
+        h = ""
+
+    if mode == "original":
+        return (
+            f"bestvideo{h}+bestaudio/"
+            f"best{h}[vcodec!=none][acodec!=none]/"
+            "best[vcodec!=none][acodec!=none]"
+        )
+
     if mode == "compressible":
-        return "bestvideo+bestaudio/best"
+        return (
+            f"bestvideo{h}[vcodec^=avc1][ext=mp4]+bestaudio[acodec^=mp4a]/"
+            f"bestvideo{h}[vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+            f"bestvideo{h}+bestaudio/"
+            f"best{h}[vcodec!=none][acodec!=none]/"
+            "best[vcodec!=none][acodec!=none]"
+        )
     return (
-        "best[ext=mp4][vcodec^=avc1][acodec^=mp4a]/"
-        "best[ext=mp4][vcodec^=avc1][acodec!=none]/"
-        "best[ext=mp4][vcodec!=none][acodec!=none]/"
+        f"best[ext=mp4]{h}[vcodec^=avc1][acodec^=mp4a]/"
+        f"best[ext=mp4]{h}[vcodec^=avc1][acodec!=none]/"
+        f"best[ext=mp4]{h}[vcodec!=none][acodec!=none]/"
         "best[vcodec!=none][acodec!=none]"
     )
+
+
+def _extract_resolutions_from_info(info: dict) -> list[int]:
+    if not isinstance(info, dict):
+        return []
+    formats = info.get("formats")
+    if not isinstance(formats, list):
+        return []
+    heights: set[int] = set()
+    for entry in formats:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("vcodec") or "").lower() == "none":
+            continue
+        h = entry.get("height")
+        if isinstance(h, int) and h > 0:
+            heights.add(h)
+    return sorted(heights, reverse=True)
+
+
+def list_available_video_resolutions(addon_dir: str, youtube_url: str) -> list[int]:
+    """Return sorted available video heights (e.g. [2160, 1440, 1080, 720])."""
+    if not extract_video_id(youtube_url or ""):
+        raise ValueError("Enter a valid YouTube URL first.")
+
+    yt_dlp_cmd = _yt_dlp_cmd()
+    if not yt_dlp_cmd:
+        raise RuntimeError(
+            "Missing required tool: yt-dlp.\n"
+            "Automatic install failed. Install manually with:\n"
+            f"{sys.executable} -m pip install yt-dlp"
+        )
+
+    base_cmd = [
+        *yt_dlp_cmd,
+        "--no-playlist",
+        "--no-warnings",
+        "-J",
+        youtube_url,
+    ]
+    profile_dir = _video_profile_dir(addon_dir)
+    cookie_attempt = (
+        _has_chromium_cookies(profile_dir)
+        and "youtube.com" in (youtube_url or "").lower()
+    )
+    attempts: list[list[str]] = []
+    if cookie_attempt:
+        attempts.append(
+            [
+                *base_cmd,
+                "--cookies-from-browser",
+                f"chromium:{profile_dir}",
+            ]
+        )
+    attempts.append(base_cmd)
+
+    last_err = ""
+    for cmd in attempts:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        if proc.returncode == 0:
+            try:
+                info = json.loads(proc.stdout or "{}")
+            except Exception as e:
+                raise RuntimeError(f"Could not parse yt-dlp metadata output: {e}") from e
+            return _extract_resolutions_from_info(info)
+        lines = (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines()
+        lines = [ln.strip() for ln in lines if ln.strip()]
+        last_err = _ytdlp_error_message(lines[-10:]) if lines else "yt-dlp metadata fetch failed."
+
+    raise RuntimeError(last_err or "Could not fetch available resolutions.")
 
 
 def _run_yt_dlp_with_progress(
@@ -267,15 +363,17 @@ def _run_yt_dlp_with_progress(
     output_template: Path,
     progress_cb: Callable[[int, str], None] | None,
     mode: str = "download",
+    max_height: int | None = None,
 ) -> None:
+    merge_mode = mode in ("compressible", "original")
     base_cmd = [
         *yt_dlp_cmd,
         "--no-playlist",
         "--newline",
         "-f",
-        _ytdlp_format_selector(mode),
+        _ytdlp_format_selector(mode, max_height=max_height),
     ]
-    if mode == "compressible":
+    if merge_mode:
         base_cmd.extend(
             [
                 "--merge-output-format",
@@ -326,13 +424,13 @@ def _run_yt_dlp_with_progress(
                 tail.append(txt)
             pct = _parse_ytdlp_percent(txt)
             if pct is not None:
-                if mode == "compressible":
+                if merge_mode:
                     overall = 2 + (pct / 100.0) * 58.0
                 else:
                     overall = 2 + (pct / 100.0) * 96.0
                 _emit_progress(progress_cb, overall, f"Downloading video… {pct:.1f}%")
                 continue
-            if mode == "compressible" and "[Merger]" in txt:
+            if merge_mode and "[Merger]" in txt:
                 _emit_progress(progress_cb, 60, "Merging downloaded streams…")
         rc = proc.wait()
         if rc == 0:
@@ -348,7 +446,7 @@ def _run_yt_dlp_with_progress(
             print(ln)
         raise RuntimeError(msg)
 
-    if mode == "compressible":
+    if merge_mode:
         _emit_progress(progress_cb, 60, "Download finished. Starting compression…")
     else:
         _emit_progress(progress_cb, 99, "Finalizing downloaded file…")
@@ -361,7 +459,8 @@ def _compress_video(
     progress_cb: Callable[[int, str], None] | None = None,
 ) -> None:
     attempts = [
-        ("libx264", "20", "slow", ["-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1"]),
+        ("copy", None, None, []),
+        ("libx264", "18", "slow", ["-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1"]),
         ("libx265", "18", "slow", []),
     ]
     duration = _probe_duration_seconds(ffmpeg_bin, src)
@@ -372,32 +471,51 @@ def _compress_video(
                 dst.unlink()
             except Exception:
                 pass
-        cmd = [
-            ffmpeg_bin,
-            "-y",
-            "-i",
-            str(src),
-            "-c:v",
-            codec,
-            *extra_flags,
-            "-crf",
-            crf,
-            "-preset",
-            preset,
-            "-c:a",
-            "aac",
-            "-b:a",
-            "160k",
-            "-movflags",
-            "+faststart",
-            "-progress",
-            "pipe:1",
-            "-nostats",
-            "-loglevel",
-            "error",
-            str(dst),
-        ]
-        _emit_progress(progress_cb, 61, f"Compressing video ({codec})…")
+        if codec == "copy":
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-i",
+                str(src),
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                "-progress",
+                "pipe:1",
+                "-nostats",
+                "-loglevel",
+                "error",
+                str(dst),
+            ]
+            _emit_progress(progress_cb, 61, "Preparing MP4 (no re-encode)…")
+        else:
+            cmd = [
+                ffmpeg_bin,
+                "-y",
+                "-i",
+                str(src),
+                "-c:v",
+                codec,
+                *extra_flags,
+                "-crf",
+                crf,
+                "-preset",
+                preset,
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-movflags",
+                "+faststart",
+                "-progress",
+                "pipe:1",
+                "-nostats",
+                "-loglevel",
+                "error",
+                str(dst),
+            ]
+            _emit_progress(progress_cb, 61, f"Compressing video ({codec})…")
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -417,19 +535,26 @@ def _compress_video(
                     out_secs = 0.0
                 ratio = min(1.0, max(0.0, out_secs / duration))
                 pct = 61 + ratio * 37
-                _emit_progress(progress_cb, pct, f"Compressing video ({codec})… {ratio * 100:.1f}%")
+                if codec == "copy":
+                    _emit_progress(progress_cb, pct, f"Preparing MP4… {ratio * 100:.1f}%")
+                else:
+                    _emit_progress(progress_cb, pct, f"Compressing video ({codec})… {ratio * 100:.1f}%")
             elif txt.startswith("out_time=") and duration:
                 out_secs = _hms_to_seconds(txt.split("=", 1)[1] or "")
                 if out_secs is not None:
                     ratio = min(1.0, max(0.0, out_secs / duration))
                     pct = 61 + ratio * 37
-                    _emit_progress(progress_cb, pct, f"Compressing video ({codec})… {ratio * 100:.1f}%")
+                    if codec == "copy":
+                        _emit_progress(progress_cb, pct, f"Preparing MP4… {ratio * 100:.1f}%")
+                    else:
+                        _emit_progress(progress_cb, pct, f"Compressing video ({codec})… {ratio * 100:.1f}%")
             elif txt == "progress=end":
                 _emit_progress(progress_cb, 99, "Finalizing compressed file…")
         rc = proc.wait()
         if rc != 0:
             detail = "\n".join(tail) or "no output"
-            errors.append(f"ffmpeg {codec} compression failed.\n{detail}")
+            label = "remux" if codec == "copy" else f"{codec} compression"
+            errors.append(f"ffmpeg {label} failed.\n{detail}")
             continue
         if dst.exists() and dst.stat().st_size > 0:
             _emit_progress(progress_cb, 99, "Finalizing compressed file…")
@@ -444,6 +569,8 @@ def download_and_compress_youtube_video(
     *,
     overwrite: bool = False,
     progress_cb: Callable[[int, str], None] | None = None,
+    max_height: int | None = None,
+    original_quality: bool = False,
 ) -> str:
     """
     Download a YouTube video into user_files/videos/.
@@ -479,19 +606,33 @@ def download_and_compress_youtube_video(
     with tempfile.TemporaryDirectory(prefix="incremento_video_") as tmp_dir:
         tmp = Path(tmp_dir)
         dl_template = tmp / f"{video_id}.%(ext)s"
+        if original_quality and ffmpeg_bin:
+            dl_mode = "original"
+        else:
+            dl_mode = "compressible" if ffmpeg_bin else "download"
         _run_yt_dlp_with_progress(
             addon_dir,
             yt_dlp_cmd,
             youtube_url,
             dl_template,
             progress_cb,
-            mode="compressible" if ffmpeg_bin else "download",
+            mode=dl_mode,
+            max_height=max_height,
         )
 
         candidates = [p for p in tmp.glob(f"{video_id}.*") if p.suffix.lower() in _VIDEO_EXTS]
         if not candidates:
             raise RuntimeError("yt-dlp finished, but no downloaded video file was found.")
         source_path = max(candidates, key=lambda p: p.stat().st_size)
+
+        if original_quality:
+            final_ext = source_path.suffix.lower() or ".mp4"
+            final_path = out_dir / f"{video_id}{final_ext}"
+            if final_path.exists():
+                final_path.unlink()
+            source_path.replace(final_path)
+            _emit_progress(progress_cb, 100, "Video ready (original quality).")
+            return local_video_relpath(video_id, final_path.suffix)
 
         final_ext = ".mp4"
         final_path = out_dir / f"{video_id}{final_ext}"
