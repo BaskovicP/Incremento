@@ -30,6 +30,7 @@ parse_ytdlp_percent = _vm._parse_ytdlp_percent
 hms_to_seconds = _vm._hms_to_seconds
 ytdlp_format_selector = _vm._ytdlp_format_selector
 extract_resolutions_from_info = _vm._extract_resolutions_from_info
+supported_local_video_extensions = _vm.supported_local_video_extensions
 
 get_web_url = _wm.get_web_url
 set_web_url = _wm.set_web_url
@@ -139,6 +140,11 @@ class TestLocalVideoHelpers:
             ]
         }
         assert extract_resolutions_from_info(info) == [1080, 720, 480]
+
+    def test_supported_local_video_extensions(self):
+        exts = supported_local_video_extensions()
+        assert ".mp4" in exts
+        assert ".mkv" in exts
 
 
 # ── fmt_time ──────────────────────────────────────────────────────────────────

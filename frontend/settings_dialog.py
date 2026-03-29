@@ -31,7 +31,7 @@ SHORTCUT_ACTION_SPECS = [
     },
     {
         "id": "youtube_video",
-        "label": "YouTube Video",
+        "label": "Add Video",
         "default": "",
     },
     {

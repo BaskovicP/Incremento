@@ -10,6 +10,7 @@ from aqt.qt import (
     QLineEdit,
     QComboBox,
     QPushButton,
+    QFileDialog,
 )
 
 try:
@@ -22,6 +23,7 @@ try:
         video_download_requirements,
         extract_video_id,
         list_available_video_resolutions,
+        supported_local_video_extensions,
     )
 except ImportError:
     try:
@@ -29,6 +31,7 @@ except ImportError:
             video_download_requirements,
             extract_video_id,
             list_available_video_resolutions,
+            supported_local_video_extensions,
         )
     except Exception:
         def video_download_requirements() -> list[str]:
@@ -39,6 +42,9 @@ except ImportError:
 
         def list_available_video_resolutions(_addon_dir: str, _url: str) -> list[int]:
             return []
+
+        def supported_local_video_extensions() -> tuple[str, ...]:
+            return (".mp4", ".mkv", ".webm", ".mov", ".m4v")
 
 
 class AddVideoDialog(QDialog):
@@ -52,7 +58,7 @@ class AddVideoDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Add YouTube Video")
+        self.setWindowTitle("Add Video")
         self.setMinimumWidth(440)
         self._addon_dir = addon_dir or os.path.normpath(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -63,10 +69,47 @@ class AddVideoDialog(QDialog):
         layout.setSpacing(8)
         layout.setContentsMargins(14, 14, 14, 14)
 
-        layout.addWidget(QLabel("YouTube URL:"))
+        src_row = QHBoxLayout()
+        src_row.addWidget(QLabel("Source:"))
+        self._source_combo = QComboBox()
+        self._source_combo.addItem("YouTube URL", "youtube")
+        self._source_combo.addItem("Local video file", "local")
+        src_row.addWidget(self._source_combo, 1)
+        layout.addLayout(src_row)
+
+        self._url_label = QLabel("YouTube URL:")
+        layout.addWidget(self._url_label)
         self._url_edit = QLineEdit()
         self._url_edit.setPlaceholderText("https://www.youtube.com/watch?v=\u2026")
         layout.addWidget(self._url_edit)
+
+        self._local_label = QLabel("Local video file:")
+        layout.addWidget(self._local_label)
+        local_row = QHBoxLayout()
+        self._local_file_edit = QLineEdit()
+        self._local_file_edit.setReadOnly(True)
+        self._local_file_edit.setPlaceholderText("Choose a local video file…")
+        local_row.addWidget(self._local_file_edit, 1)
+        self._local_browse_btn = QPushButton("Browse…")
+        local_row.addWidget(self._local_browse_btn)
+        layout.addLayout(local_row)
+
+        self._local_encode_label = QLabel("Encoding:")
+        layout.addWidget(self._local_encode_label)
+        self._local_encode_combo = QComboBox()
+        self._local_encode_combo.addItem("Original quality (no re-encoding)", "original")
+        self._local_encode_combo.addItem("Encode H.264 high quality", "h264_high")
+        self._local_encode_combo.addItem("Encode H.264 smaller size", "h264_small")
+        layout.addWidget(self._local_encode_combo)
+
+        self._local_hint = QLabel("")
+        self._local_hint.setWordWrap(True)
+        self._local_hint.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+        self._local_hint.setText(
+            "Local import copies file into user_files/videos. "
+            "Use original quality for no re-encoding."
+        )
+        layout.addWidget(self._local_hint)
 
         layout.addWidget(QLabel("Title:"))
         self._title_edit = QLineEdit()
@@ -143,11 +186,54 @@ class AddVideoDialog(QDialog):
 
         ok_btn.clicked.connect(self.accept)
         cancel_btn.clicked.connect(self.reject)
+        self._source_combo.currentIndexChanged.connect(self._on_source_changed)
         self._download_cb.toggled.connect(self._on_download_toggled)
         self._url_edit.editingFinished.connect(self._on_url_edited)
         self._res_refresh_btn.clicked.connect(self._refresh_resolutions)
+        self._local_browse_btn.clicked.connect(self._browse_local_video)
 
         self._set_resolution_controls_visible(False)
+        self._on_source_changed()
+
+    def _local_file_filter(self) -> str:
+        exts = supported_local_video_extensions()
+        patterns = " ".join(f"*{e}" for e in exts) if exts else "*.mp4 *.mkv *.webm *.mov *.m4v"
+        return f"Video files ({patterns});;All files (*)"
+
+    def _browse_local_video(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Choose Local Video",
+            "",
+            self._local_file_filter(),
+        )
+        if not path:
+            return
+        self._local_file_edit.setText(path)
+        if not self.title:
+            base = os.path.basename(path)
+            stem = os.path.splitext(base)[0]
+            self._title_edit.setText(stem)
+
+    def _on_source_changed(self) -> None:
+        is_youtube = self.source_mode == "youtube"
+        self._url_label.setVisible(is_youtube)
+        self._url_edit.setVisible(is_youtube)
+        self._download_cb.setVisible(is_youtube)
+        self._download_hint.setVisible(is_youtube)
+
+        self._local_label.setVisible(not is_youtube)
+        self._local_file_edit.setVisible(not is_youtube)
+        self._local_browse_btn.setVisible(not is_youtube)
+        self._local_encode_label.setVisible(not is_youtube)
+        self._local_encode_combo.setVisible(not is_youtube)
+        self._local_hint.setVisible(not is_youtube)
+
+        if is_youtube:
+            self._on_download_toggled(self._download_cb.isChecked())
+        else:
+            self._set_resolution_controls_visible(False)
+            self._resolution_hint.setText("")
 
     def _set_resolution_controls_visible(self, visible: bool) -> None:
         for i in range(self._res_row_wrap.count()):
@@ -216,6 +302,9 @@ class AddVideoDialog(QDialog):
         mw.taskman.run_in_background(_task, _on_done)
 
     def _on_download_toggled(self, checked: bool) -> None:
+        if self.source_mode != "youtube":
+            self._set_resolution_controls_visible(False)
+            return
         self._set_resolution_controls_visible(checked)
         self._res_refresh_btn.setEnabled(checked)
         if checked:
@@ -232,6 +321,20 @@ class AddVideoDialog(QDialog):
         return self._url_edit.text().strip()
 
     @property
+    def source_mode(self) -> str:
+        data = self._source_combo.currentData()
+        return str(data or "youtube")
+
+    @property
+    def local_video_path(self) -> str:
+        return self._local_file_edit.text().strip()
+
+    @property
+    def local_encode_mode(self) -> str:
+        data = self._local_encode_combo.currentData()
+        return str(data or "original")
+
+    @property
     def title(self) -> str:
         return self._title_edit.text().strip()
 
@@ -245,7 +348,7 @@ class AddVideoDialog(QDialog):
 
     @property
     def download_locally(self) -> bool:
-        return self._download_cb.isChecked()
+        return self.source_mode == "youtube" and self._download_cb.isChecked()
 
     @property
     def missing_download_tools(self) -> list[str]:
@@ -253,7 +356,7 @@ class AddVideoDialog(QDialog):
 
     @property
     def download_max_height(self) -> int | None:
-        if not self._download_cb.isChecked():
+        if self.source_mode != "youtube" or not self._download_cb.isChecked():
             return None
         data = self._resolution_combo.currentData()
         try:
@@ -264,6 +367,6 @@ class AddVideoDialog(QDialog):
 
     @property
     def download_original_quality(self) -> bool:
-        if not self._download_cb.isChecked():
+        if self.source_mode != "youtube" or not self._download_cb.isChecked():
             return False
         return self._resolution_combo.currentData() == "original"

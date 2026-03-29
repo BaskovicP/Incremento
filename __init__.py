@@ -29,6 +29,7 @@ from .backend.video_manager import (
     extract_video_id,
     add_video_card,
     download_and_compress_youtube_video,
+    import_local_video_file,
 )
 from .backend.priority_manager import get_priority, set_priority, get_all_priorities
 from .frontend.priority_dialog import PriorityDialog
@@ -647,31 +648,47 @@ _register_shortcut_action("pdf_mark_read", _pdf_mark_read_shortcut)
 
 
 def addVideoFunction() -> None:
-    """Incremento -> Add Content -> YouTube Video"""
+    """Incremento -> Add Content -> Add Video"""
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
     from .frontend.add_video_dialog import AddVideoDialog
 
     dlg = AddVideoDialog(deck_names, default_deck="Topics", addon_dir=_ADDON_DIR, parent=mw)
     if not dlg.exec():
         return
-    url = dlg.youtube_url
-    if not url:
-        showInfo("Please enter a YouTube URL.")
-        return
-    if not extract_video_id(url):
-        showInfo("Could not find a valid YouTube video ID in that URL.")
-        return
-    title = dlg.title or url
+    source_mode = dlg.source_mode
     deck_name = dlg.deck_name
     tags = dlg.tags
-    max_height = dlg.download_max_height
-    original_quality = dlg.download_original_quality
 
-    def _add_url_card(local_relpath: str = "") -> bool:
+    if source_mode == "youtube":
+        url = dlg.youtube_url
+        if not url:
+            showInfo("Please enter a YouTube URL.")
+            return
+        if not extract_video_id(url):
+            showInfo("Could not find a valid YouTube video ID in that URL.")
+            return
+        title = dlg.title or url
+        max_height = dlg.download_max_height
+        original_quality = dlg.download_original_quality
+    else:
+        url = ""
+        local_path = dlg.local_video_path
+        if not local_path:
+            showInfo("Please choose a local video file.")
+            return
+        if not os.path.isfile(local_path):
+            showInfo("Selected local video file does not exist.")
+            return
+        title = dlg.title or os.path.splitext(os.path.basename(local_path))[0]
+        max_height = None
+        original_quality = False
+        local_encode_mode = dlg.local_encode_mode
+
+    def _add_card(local_relpath: str = "", youtube_url: str = url) -> bool:
         try:
             add_video_card(
                 mw.col,
-                url,
+                youtube_url,
                 title,
                 deck_name=deck_name,
                 tags=tags,
@@ -687,8 +704,53 @@ def addVideoFunction() -> None:
             showInfo(f"Failed to add video card:\n{e}")
             return False
 
+    if source_mode == "local":
+        try:
+            label = (
+                "Importing local video…"
+                if local_encode_mode == "original"
+                else "Importing and encoding local video…"
+            )
+            mw.progress.start(
+                label=label,
+                immediate=True,
+                value=0,
+                max=100,
+            )
+        except TypeError:
+            mw.progress.start(label=label, immediate=True)
+
+        def _progress_main(percent: int, label: str) -> None:
+            try:
+                mw.progress.update(label=label, value=int(percent), max=100)
+            except TypeError:
+                mw.progress.update(label=label)
+
+        def _progress_cb(percent: int, label: str) -> None:
+            mw.taskman.run_on_main(lambda p=percent, l=label: _progress_main(p, l))
+
+        def _task():
+            return import_local_video_file(
+                _ADDON_DIR,
+                local_path,
+                encode_mode=local_encode_mode,
+                progress_cb=_progress_cb,
+            )
+
+        def _on_done(fut) -> None:
+            mw.progress.finish()
+            try:
+                local_relpath = fut.result()
+            except Exception as e:
+                showInfo(f"Local video import failed:\n{e}")
+                return
+            _add_card(local_relpath=local_relpath, youtube_url="")
+
+        mw.taskman.run_in_background(_task, _on_done)
+        return
+
     if not dlg.download_locally:
-        _add_url_card()
+        _add_card()
         return
 
     try:
@@ -732,7 +794,7 @@ def addVideoFunction() -> None:
         except Exception as e:
             showInfo(f"Video download/compression failed:\n{e}")
             return
-        _add_url_card(local_relpath=local_relpath)
+        _add_card(local_relpath=local_relpath)
 
     mw.taskman.run_in_background(_task, _on_done)
 
@@ -1148,7 +1210,7 @@ qconnect(_addWebpageAction.triggered, addWebpageFunction)
 _addContentMenu.addAction(_addWebpageAction)
 _register_shortcut_action("webpage_to_pdf", _addWebpageAction)
 
-_addVideoAction = QAction("YouTube Video", mw)
+_addVideoAction = QAction("Add Video", mw)
 qconnect(_addVideoAction.triggered, addVideoFunction)
 _addContentMenu.addAction(_addVideoAction)
 _register_shortcut_action("youtube_video", _addVideoAction)

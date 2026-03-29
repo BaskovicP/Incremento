@@ -69,6 +69,11 @@ def local_video_abspath(addon_dir: str, relpath: str) -> str:
     return str((Path(addon_dir) / "user_files" / rel).resolve())
 
 
+def supported_local_video_extensions() -> tuple[str, ...]:
+    """Extensions accepted by local video import (lowercase, sorted)."""
+    return tuple(sorted(_VIDEO_EXTS))
+
+
 def _yt_dlp_cmd(allow_auto_install: bool = True) -> list[str] | None:
     yt_bin = shutil.which("yt-dlp")
     if yt_bin:
@@ -561,6 +566,193 @@ def _compress_video(
             return
         errors.append(f"ffmpeg {codec} produced no output.")
     raise RuntimeError("\n".join(errors))
+
+
+def _safe_video_slug(name: str) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        return "local_video"
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("._-")
+    return slug or "local_video"
+
+
+def _unique_target_path(out_dir: Path, stem: str, ext: str) -> Path:
+    ext_norm = ext if ext.startswith(".") else f".{ext}"
+    ext_norm = ext_norm.lower()
+    base = _safe_video_slug(stem)
+    candidate = out_dir / f"{base}{ext_norm}"
+    if not candidate.exists():
+        return candidate
+    i = 2
+    while True:
+        candidate = out_dir / f"{base}_{i}{ext_norm}"
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+def _copy_with_progress(
+    src: Path,
+    dst: Path,
+    progress_cb: Callable[[int, str], None] | None = None,
+) -> None:
+    total = 0
+    try:
+        total = max(0, int(src.stat().st_size))
+    except Exception:
+        total = 0
+    _emit_progress(progress_cb, 2, "Copying local video…")
+    copied = 0
+    with src.open("rb") as r, dst.open("wb") as w:
+        while True:
+            chunk = r.read(1024 * 1024)
+            if not chunk:
+                break
+            w.write(chunk)
+            copied += len(chunk)
+            if total > 0:
+                ratio = min(1.0, max(0.0, copied / total))
+                pct = 2 + ratio * 96
+                _emit_progress(progress_cb, pct, f"Copying local video… {ratio * 100:.1f}%")
+    _emit_progress(progress_cb, 99, "Finalizing local video…")
+
+
+def _encode_local_video_h264(
+    ffmpeg_bin: str,
+    src: Path,
+    dst: Path,
+    *,
+    quality_mode: str = "h264_high",
+    progress_cb: Callable[[int, str], None] | None = None,
+) -> None:
+    quality = (quality_mode or "").strip().lower()
+    if quality == "h264_small":
+        crf, preset, abr = "23", "medium", "160k"
+    else:
+        crf, preset, abr = "18", "slow", "192k"
+
+    duration = _probe_duration_seconds(ffmpeg_bin, src)
+    cmd = [
+        ffmpeg_bin,
+        "-y",
+        "-i",
+        str(src),
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.1",
+        "-crf",
+        crf,
+        "-preset",
+        preset,
+        "-c:a",
+        "aac",
+        "-b:a",
+        abr,
+        "-movflags",
+        "+faststart",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        "-loglevel",
+        "error",
+        str(dst),
+    ]
+    _emit_progress(progress_cb, 2, "Encoding local video (H.264)…")
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    tail = deque(maxlen=24)
+    for line in (proc.stdout or []):
+        txt = line.strip()
+        if txt:
+            tail.append(txt)
+        if txt.startswith("out_time_ms=") and duration:
+            try:
+                out_secs = float(txt.split("=", 1)[1]) / 1_000_000.0
+            except Exception:
+                out_secs = 0.0
+            ratio = min(1.0, max(0.0, out_secs / duration))
+            pct = 2 + ratio * 96
+            _emit_progress(progress_cb, pct, f"Encoding local video… {ratio * 100:.1f}%")
+        elif txt.startswith("out_time=") and duration:
+            out_secs = _hms_to_seconds(txt.split("=", 1)[1] or "")
+            if out_secs is not None:
+                ratio = min(1.0, max(0.0, out_secs / duration))
+                pct = 2 + ratio * 96
+                _emit_progress(progress_cb, pct, f"Encoding local video… {ratio * 100:.1f}%")
+    rc = proc.wait()
+    if rc != 0 or not dst.exists() or dst.stat().st_size <= 0:
+        detail = "\n".join(tail) or "no output"
+        raise RuntimeError(f"ffmpeg local encode failed.\n{detail}")
+    _emit_progress(progress_cb, 99, "Finalizing encoded video…")
+
+
+def import_local_video_file(
+    addon_dir: str,
+    source_path: str,
+    *,
+    encode_mode: str = "h264_high",
+    progress_cb: Callable[[int, str], None] | None = None,
+) -> str:
+    """
+    Import a local video file into user_files/videos and return relpath.
+    encode_mode:
+      - original: no re-encoding (copy source container/stream as-is)
+      - h264_high: encode to MP4 H.264 high quality
+      - h264_small: encode to MP4 H.264 smaller size
+    """
+    src = Path((source_path or "").strip()).expanduser()
+    if not src.exists() or not src.is_file():
+        raise ValueError("Selected local video file does not exist.")
+    ext = src.suffix.lower()
+    if ext not in _VIDEO_EXTS:
+        supported = ", ".join(sorted(_VIDEO_EXTS))
+        raise ValueError(f"Unsupported local video format: {ext or '(none)'} (supported: {supported})")
+
+    out_dir = Path(addon_dir) / "user_files" / "videos"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = (encode_mode or "h264_high").strip().lower()
+    if mode == "original":
+        target = _unique_target_path(out_dir, src.stem, ext)
+        if src.resolve() == target.resolve():
+            _emit_progress(progress_cb, 100, "Local video already in user_files/videos.")
+            return f"videos/{target.name}"
+        _copy_with_progress(src, target, progress_cb=progress_cb)
+        _emit_progress(progress_cb, 100, "Local video imported.")
+        return f"videos/{target.name}"
+
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        raise RuntimeError(
+            "ffmpeg is required for local encoding.\n"
+            "Install ffmpeg or select 'Original quality (no re-encoding)'."
+        )
+
+    target = _unique_target_path(out_dir, src.stem, ".mp4")
+    with tempfile.TemporaryDirectory(prefix="incremento_local_video_") as tmp_dir:
+        tmp_dst = Path(tmp_dir) / f"{target.stem}.mp4"
+        _encode_local_video_h264(
+            ffmpeg_bin,
+            src,
+            tmp_dst,
+            quality_mode=mode,
+            progress_cb=progress_cb,
+        )
+        if target.exists():
+            target.unlink()
+        tmp_dst.replace(target)
+    _emit_progress(progress_cb, 100, "Local video imported.")
+    return f"videos/{target.name}"
 
 
 def download_and_compress_youtube_video(

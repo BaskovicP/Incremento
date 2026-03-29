@@ -12,6 +12,7 @@ Public API:
 """
 
 import html
+import math
 import mimetypes
 import os
 from pathlib import Path
@@ -67,6 +68,9 @@ _last_known_position   = 0.0
 _local_resume_pending  = False
 _local_resume_ms       = 0
 _local_resume_attempts = 0
+_last_known_duration   = 0.0
+_seek_dragging         = False
+_seek_ui_updating      = False
 
 _PLAYBACK_STATUS_JS = (
     "(function(){"
@@ -161,7 +165,12 @@ def _build_video_dock():
     ts_lbl = QLabel("\u25b6  0:00")
     ts_lbl.setStyleSheet("font-family: monospace; font-size: 12px;")
     ctrl_layout.addWidget(ts_lbl)
-    ctrl_layout.addStretch()
+
+    seek_slider = QSlider(Qt.Orientation.Horizontal)
+    seek_slider.setRange(0, 0)
+    seek_slider.setEnabled(False)
+    seek_slider.setMinimumWidth(200)
+    ctrl_layout.addWidget(seek_slider, 1)
 
     add_btn = QPushButton("+ Add Card at this point")
     ctrl_layout.addWidget(add_btn)
@@ -199,6 +208,7 @@ def _build_video_dock():
 
     dock._view   = view
     dock._ts_lbl = ts_lbl
+    dock._seek_slider = seek_slider
     dock._media_stack = media_stack
     dock._web_index = web_index
     dock._local_index = local_index
@@ -212,6 +222,9 @@ def _build_video_dock():
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
     qconnect(add_btn.clicked, _video_add_card_at_point)
+    qconnect(seek_slider.sliderPressed, _on_seek_slider_pressed)
+    qconnect(seek_slider.sliderReleased, _on_seek_slider_released)
+    qconnect(seek_slider.valueChanged, _on_seek_slider_value_changed)
     qconnect(back_btn.clicked, lambda: _local_seek(-10))
     qconnect(play_btn.clicked, _toggle_local_playback)
     qconnect(fwd_btn.clicked, lambda: _local_seek(10))
@@ -261,6 +274,132 @@ def _set_local_controls_visible(visible: bool) -> None:
     ctrl = getattr(_video_dock, "_local_ctrl", None)
     if ctrl is not None:
         ctrl.setVisible(bool(visible))
+
+
+def _fmt_progress_label(current_sec: float, duration_sec: float | None) -> str:
+    cur = max(0.0, float(current_sec or 0.0))
+    if duration_sec is None or duration_sec <= 0:
+        return f"\u25b6  {fmt_time(cur)}"
+    dur = max(0.0, float(duration_sec))
+    return f"\u25b6  {fmt_time(cur)} / {fmt_time(dur)}"
+
+
+def _set_seek_ui(current_sec: float, duration_sec: float | None) -> None:
+    global _seek_ui_updating
+    if _video_dock is None:
+        return
+    try:
+        _video_dock._ts_lbl.setText(_fmt_progress_label(current_sec, duration_sec))
+    except (RuntimeError, AttributeError):
+        pass
+
+    slider = getattr(_video_dock, "_seek_slider", None)
+    if slider is None:
+        return
+
+    dur = float(duration_sec or 0.0)
+    if dur > 0.5 and math.isfinite(dur):
+        max_pos = max(1, int(round(dur)))
+        _seek_ui_updating = True
+        try:
+            if slider.minimum() != 0 or slider.maximum() != max_pos:
+                slider.setRange(0, max_pos)
+            slider.setEnabled(True)
+            if not _seek_dragging:
+                cur = max(0, min(max_pos, int(round(float(current_sec or 0.0)))))
+                slider.setValue(cur)
+        finally:
+            _seek_ui_updating = False
+    else:
+        _seek_ui_updating = True
+        try:
+            slider.setRange(0, 0)
+            slider.setEnabled(False)
+        finally:
+            _seek_ui_updating = False
+
+
+def _reset_seek_ui() -> None:
+    global _seek_ui_updating, _seek_dragging
+    _seek_dragging = False
+    if _video_dock is None:
+        return
+    slider = getattr(_video_dock, "_seek_slider", None)
+    if slider is None:
+        return
+    _seek_ui_updating = True
+    try:
+        slider.setRange(0, 0)
+        slider.setValue(0)
+        slider.setEnabled(False)
+        _video_dock._ts_lbl.setText("\u25b6  0:00")
+    except Exception:
+        pass
+    finally:
+        _seek_ui_updating = False
+
+
+def _seek_to_seconds(seconds: float) -> None:
+    global _last_known_position
+    if _video_dock is None:
+        return
+    t = max(0.0, float(seconds or 0.0))
+    _last_known_position = t
+    if _using_local_qt_player:
+        player = getattr(_video_dock, "_local_player", None)
+        if player is not None:
+            try:
+                player.setPosition(int(round(t * 1000.0)))
+            except Exception:
+                pass
+        return
+    js = (
+        "(function(sec){"
+        "var v=document.querySelector('video');"
+        "if(!v){return false;}"
+        "try{v.currentTime=sec; return true;}catch(_e){return false;}"
+        f"}})({t:.3f})"
+    )
+    try:
+        _video_dock._view.page().runJavaScript(js)
+    except Exception:
+        pass
+
+
+def _on_seek_slider_pressed() -> None:
+    global _seek_dragging
+    _seek_dragging = True
+
+
+def _on_seek_slider_released() -> None:
+    global _seek_dragging
+    if _video_dock is None:
+        _seek_dragging = False
+        return
+    slider = getattr(_video_dock, "_seek_slider", None)
+    if slider is None:
+        _seek_dragging = False
+        return
+    target = float(slider.value())
+    _seek_dragging = False
+    _seek_to_seconds(target)
+    _set_seek_ui(target, _last_known_duration if _last_known_duration > 0 else None)
+    if _current_video_card_id is not None and target > 0:
+        try:
+            set_video_position(_ADDON_DIR, _current_video_card_id, target)
+        except Exception:
+            pass
+
+
+def _on_seek_slider_value_changed(value: int) -> None:
+    if _seek_ui_updating or not _seek_dragging or _video_dock is None:
+        return
+    cur = max(0.0, float(value))
+    dur = _last_known_duration if _last_known_duration > 0 else None
+    try:
+        _video_dock._ts_lbl.setText(_fmt_progress_label(cur, dur))
+    except Exception:
+        pass
 
 
 def _local_seek(delta_seconds: int) -> None:
@@ -389,11 +528,12 @@ def show_video_in_dock(
     global _video_dock, _current_video_card_id, _current_video_url
     global _current_local_relpath, _local_fallback_done, _using_local_qt_player
     global _last_known_position, _local_resume_pending, _local_resume_ms
-    global _local_resume_attempts
+    global _local_resume_attempts, _last_known_duration
 
     _current_video_card_id = card_id
     _current_video_url = (youtube_url or "").strip()
     _last_known_position = max(0.0, float(position or 0.0))
+    _last_known_duration = 0.0
 
     if _video_dock is None:
         _build_video_dock()
@@ -442,7 +582,7 @@ def show_video_in_dock(
                 local_player.pause()
                 if _local_resume_ms > 0:
                     try:
-                        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(_local_resume_ms / 1000.0)}")
+                        _set_seek_ui(float(_local_resume_ms) / 1000.0, None)
                     except Exception:
                         pass
             else:
@@ -477,7 +617,9 @@ def show_video_in_dock(
     _local_resume_pending = False
     _local_resume_ms = 0
     _local_resume_attempts = 0
+    _last_known_duration = 0.0
     _set_local_controls_visible(False)
+    _reset_seek_ui()
 
     local_player = getattr(_video_dock, "_local_player", None)
     if local_player is not None:
@@ -527,7 +669,21 @@ def _video_timer_tick() -> None:
                         except Exception:
                             pass
                         _local_resume_attempts += 1
-                _on_video_time(float(pos_ms) / 1000.0)
+                dur_ms = 0
+                try:
+                    dur_ms = int(player.duration())
+                except Exception:
+                    dur_ms = 0
+                _on_video_time(
+                    {
+                        "currentTime": float(pos_ms) / 1000.0,
+                        "duration": (float(dur_ms) / 1000.0) if dur_ms > 0 else None,
+                        "hasVideo": True,
+                        "readyState": 4,
+                        "networkState": 1,
+                        "errorCode": 0,
+                    }
+                )
             except Exception:
                 pass
             return
@@ -540,6 +696,7 @@ def _video_timer_tick() -> None:
 def _on_video_time(t) -> None:
     global _video_tick_count, _local_fallback_done, _last_known_position
     global _local_resume_pending, _local_resume_attempts
+    global _last_known_duration
     if _video_dock is None:
         return
     status = t if isinstance(t, dict) else {}
@@ -557,6 +714,14 @@ def _on_video_time(t) -> None:
     ready_state = int(status.get("readyState", 0) or 0)
     network_state = int(status.get("networkState", 0) or 0)
     has_video = bool(status.get("hasVideo", True))
+    raw_dur = status.get("duration", None)
+    try:
+        dur = float(raw_dur) if raw_dur is not None else 0.0
+    except Exception:
+        dur = 0.0
+    if dur > 0 and math.isfinite(dur):
+        _last_known_duration = dur
+    duration_for_ui = _last_known_duration if _last_known_duration > 0 else None
 
     if _current_local_relpath and not _local_fallback_done and not _using_local_qt_player:
         # Explicit media failure only.
@@ -573,13 +738,10 @@ def _on_video_time(t) -> None:
                 "Re-download with ffmpeg for H.264 compatibility."
             )
 
-    try:
-        disp_t = t
-        if _using_local_qt_player and _local_resume_pending and t <= 0.0 and _local_resume_ms > 0:
-            disp_t = float(_local_resume_ms) / 1000.0
-        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(disp_t)}")
-    except (RuntimeError, AttributeError):
-        return
+    disp_t = t
+    if _using_local_qt_player and _local_resume_pending and t <= 0.0 and _local_resume_ms > 0:
+        disp_t = float(_local_resume_ms) / 1000.0
+    _set_seek_ui(disp_t, duration_for_ui)
     _video_tick_count += 1
     if _video_tick_count >= 5 and _current_video_card_id:
         _video_tick_count = 0
@@ -661,6 +823,7 @@ def on_video_question_shown(card) -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
     global _local_fallback_done, _using_local_qt_player, _current_video_card_id
     global _local_resume_pending, _local_resume_ms, _local_resume_attempts
+    global _last_known_duration
     try:
         if card is None:
             return
@@ -678,8 +841,10 @@ def on_video_question_shown(card) -> None:
             _local_resume_pending = False
             _local_resume_ms = 0
             _local_resume_attempts = 0
+            _last_known_duration = 0.0
             _current_video_card_id = None
             _set_local_controls_visible(False)
+            _reset_seek_ui()
             if _video_dock is not None:
                 local_player = getattr(_video_dock, "_local_player", None)
                 if local_player is not None:
@@ -731,6 +896,7 @@ def on_video_reviewer_will_end() -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
     global _local_fallback_done, _using_local_qt_player, _current_video_card_id
     global _local_resume_pending, _local_resume_ms, _local_resume_attempts
+    global _last_known_duration
     _persist_position_now()
     _current_local_relpath = ""
     _current_video_url = ""
@@ -739,8 +905,10 @@ def on_video_reviewer_will_end() -> None:
     _local_resume_pending = False
     _local_resume_ms = 0
     _local_resume_attempts = 0
+    _last_known_duration = 0.0
     _current_video_card_id = None
     _set_local_controls_visible(False)
+    _reset_seek_ui()
     if _video_timer is not None:
         try:
             _video_timer.stop()
