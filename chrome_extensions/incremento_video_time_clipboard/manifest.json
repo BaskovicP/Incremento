@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Incremento Video Time Clipboard",
+  "version": "0.2.0",
+  "description": "Tracks YouTube/Vimeo playback time and copies last stop time to clipboard when the tab closes.",
+  "permissions": [
+    "storage",
+    "offscreen",
+    "clipboardWrite",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://youtu.be/*",
+    "*://*.vimeo.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "copy-last-video-time": {
+      "suggested_key": {
+        "default": "Alt+Shift+V",
+        "mac": "Alt+Shift+V"
+      },
+      "description": "Copy latest tracked video time to clipboard"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*",
+        "*://youtu.be/*",
+        "*://*.vimeo.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Incremento Video Time Clipboard"
+  }
+}
