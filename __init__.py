@@ -23,7 +23,13 @@ from .backend.pdf_manager import (
     get_read_page,
     extract_pdf_pages_text,
 )
-from .backend.video_manager import extract_video_id, add_video_card
+from .backend.video_manager import (
+    VIDEO_NOTE_TYPE,
+    LOCAL_VIDEO_FIELD,
+    extract_video_id,
+    add_video_card,
+    download_and_compress_youtube_video,
+)
 from .backend.priority_manager import get_priority, set_priority, get_all_priorities
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
@@ -145,10 +151,22 @@ def _on_js_message(handled, message, context) -> tuple:
                 position = float(parts[2])
                 card = mw.col.get_card(card_id)
                 note = mw.col.get_note(card.nid)
-                url = note["YouTube_URL"]
+                try:
+                    url = note["YouTube_URL"]
+                except Exception:
+                    url = ""
+                try:
+                    local_video_file = note["Local_Video_File"]
+                except Exception:
+                    local_video_file = ""
                 QTimer.singleShot(
                     0,
-                    lambda: _video_dock_mod.show_video_in_dock(card_id, url, position),
+                    lambda: _video_dock_mod.show_video_in_dock(
+                        card_id,
+                        url,
+                        position,
+                        local_video_file,
+                    ),
                 )
             except Exception:
                 pass
@@ -643,12 +661,69 @@ def addVideoFunction() -> None:
         showInfo("Could not find a valid YouTube video ID in that URL.")
         return
     title = dlg.title or url
+    deck_name = dlg.deck_name
+    tags = dlg.tags
+
+    def _add_url_card(local_relpath: str = "") -> bool:
+        try:
+            add_video_card(
+                mw.col,
+                url,
+                title,
+                deck_name=deck_name,
+                tags=tags,
+                local_video_file=local_relpath,
+            )
+            mw.col.reset()
+            if local_relpath:
+                tooltip(f"Video card '{title}' added to {deck_name} (local copy ready).")
+            else:
+                tooltip(f"Video card '{title}' added to {deck_name}.")
+            return True
+        except Exception as e:
+            showInfo(f"Failed to add video card:\n{e}")
+            return False
+
+    if not dlg.download_locally:
+        _add_url_card()
+        return
+
     try:
-        add_video_card(mw.col, url, title, tags=dlg.tags)
-        mw.col.reset()
-        tooltip(f"Video card '{title}' added to Topics.")
-    except Exception as e:
-        showInfo(f"Failed to add video card:\n{e}")
+        mw.progress.start(
+            label="Downloading and compressing video…",
+            immediate=True,
+            value=0,
+            max=100,
+        )
+    except TypeError:
+        mw.progress.start(label="Downloading and compressing video…", immediate=True)
+
+    def _progress_main(percent: int, label: str) -> None:
+        try:
+            mw.progress.update(label=label, value=int(percent), max=100)
+        except TypeError:
+            mw.progress.update(label=label)
+
+    def _progress_cb(percent: int, label: str) -> None:
+        mw.taskman.run_on_main(lambda p=percent, l=label: _progress_main(p, l))
+
+    def _task():
+        return download_and_compress_youtube_video(
+            _ADDON_DIR,
+            url,
+            progress_cb=_progress_cb,
+        )
+
+    def _on_done(fut) -> None:
+        mw.progress.finish()
+        try:
+            local_relpath = fut.result()
+        except Exception as e:
+            showInfo(f"Video download/compression failed:\n{e}")
+            return
+        _add_url_card(local_relpath=local_relpath)
+
+    mw.taskman.run_in_background(_task, _on_done)
 
 
 def addWebpageFunction() -> None:
@@ -812,6 +887,100 @@ def cleanupOrphanPdfsFunction() -> None:
         )
 
 
+def cleanupOrphanVideosFunction() -> None:
+    """Delete local videos in user_files/videos/ that no video card references."""
+    videos_dir = os.path.join(_ADDON_DIR, "user_files", "videos")
+    if not os.path.isdir(videos_dir):
+        showInfo("No local videos found in user_files/videos/.")
+        return
+
+    try:
+        disk_files = {
+            f
+            for f in os.listdir(videos_dir)
+            if f.lower().endswith((".mp4", ".mkv", ".webm", ".mov", ".m4v"))
+            and os.path.isfile(os.path.join(videos_dir, f))
+        }
+    except OSError as e:
+        showInfo(f"Could not read video directory:\n{e}")
+        return
+
+    if not disk_files:
+        showInfo("No local videos found in user_files/videos/.")
+        return
+
+    try:
+        note_ids = mw.col.find_notes(f'note:"{VIDEO_NOTE_TYPE}"')
+        referenced = set()
+        for nid in note_ids:
+            note = mw.col.get_note(nid)
+            try:
+                rel = (note[LOCAL_VIDEO_FIELD] or "").strip()
+            except Exception:
+                rel = ""
+            if not rel:
+                continue
+            basename = os.path.basename(rel.replace("\\", "/"))
+            if basename:
+                referenced.add(basename)
+    except Exception as e:
+        showInfo(f"Could not query video cards:\n{e}")
+        return
+
+    orphans = sorted(disk_files - referenced)
+    if not orphans:
+        showInfo(
+            f"No orphaned local videos found.\n\n"
+            f"{len(disk_files)} file(s) on disk, all referenced by a card."
+        )
+        return
+
+    def _fmt_size(path: str) -> str:
+        try:
+            b = os.path.getsize(path)
+            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
+        except OSError:
+            return "?"
+
+    total_bytes = 0
+    lines = [f"Found {len(orphans)} orphaned local video file(s):\n"]
+    for fname in orphans:
+        fpath = os.path.join(videos_dir, fname)
+        try:
+            total_bytes += os.path.getsize(fpath)
+        except OSError:
+            pass
+        lines.append(f"• {fname}  ({_fmt_size(fpath)})")
+    total_str = (
+        f"{total_bytes / 1_048_576:.1f} MB"
+        if total_bytes >= 1_048_576
+        else f"{total_bytes // 1024} KB"
+    )
+    lines.append(f"\nTotal: {total_str}")
+    lines.append("\nDelete these files?")
+
+    from aqt.utils import askUser
+    if not askUser("\n".join(lines), title="Clean Up Orphaned Videos"):
+        return
+
+    deleted = 0
+    errors: list[str] = []
+    for fname in orphans:
+        fpath = os.path.join(videos_dir, fname)
+        try:
+            os.remove(fpath)
+            deleted += 1
+        except OSError as e:
+            errors.append(f"• {fname}: {e}")
+
+    if not errors:
+        showInfo(f"Deleted {deleted} orphaned video file(s).\nRecovered {total_str}.")
+    else:
+        showInfo(
+            f"Deleted {deleted} of {len(orphans)} file(s).\n\nErrors:\n" + "\n".join(errors)
+        )
+
+
 def openSettingsFunction() -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
     dlg = IncrementoSettingsDialog(cfg.get("shortcuts") or {}, parent=mw)
@@ -929,6 +1098,10 @@ _utilsMenu.addAction(_reindexPdfTextAction)
 _cleanupOrphanPdfsAction = QAction("Clean Up Orphaned PDF Files…", mw)
 qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)
 _utilsMenu.addAction(_cleanupOrphanPdfsAction)
+
+_cleanupOrphanVideosAction = QAction("Clean Up Orphaned Video Files…", mw)
+qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
+_utilsMenu.addAction(_cleanupOrphanVideosAction)
 
 _statsAction = QAction("Statistics", mw)
 qconnect(_statsAction.triggered, showStatsFunction)

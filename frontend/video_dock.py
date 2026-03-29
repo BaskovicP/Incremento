@@ -11,23 +11,45 @@ Public API:
     sync_video_note_type()
 """
 
+import html
+import mimetypes
 import os
+from pathlib import Path
 
 from aqt import mw
 from aqt.utils import tooltip
 from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
-                    QPushButton, QLabel, QTimer, Qt, qconnect)
+                    QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
+try:
+    from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+    from PyQt6.QtMultimediaWidgets import QVideoWidget
+except Exception:
+    QMediaPlayer = None
+    QAudioOutput = None
+    QVideoWidget = None
 
 try:
-    from ..backend.video_manager import (VIDEO_NOTE_TYPE, extract_video_id, fmt_time,
-                                         get_video_position, set_video_position,
-                                         ensure_video_note_type)
+    from ..backend.video_manager import (
+        VIDEO_NOTE_TYPE,
+        extract_video_id,
+        fmt_time,
+        get_video_position,
+        set_video_position,
+        ensure_video_note_type,
+        local_video_abspath,
+    )
 except ImportError:
-    from video_manager import (VIDEO_NOTE_TYPE, extract_video_id, fmt_time,
-                                get_video_position, set_video_position,
-                                ensure_video_note_type)
+    from video_manager import (
+        VIDEO_NOTE_TYPE,
+        extract_video_id,
+        fmt_time,
+        get_video_position,
+        set_video_position,
+        ensure_video_note_type,
+        local_video_abspath,
+    )
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -36,8 +58,24 @@ _current_video_card_id = None
 _video_timer           = None
 _video_tick_count      = 0
 _video_profile         = None  # module-level singleton — avoids use-after-free on exit
+_current_video_url     = ""
+_current_local_relpath = ""
+_local_fallback_done   = False
+_using_local_qt_player = False
 
-_YT_CURRENT_TIME_JS = (
+_PLAYBACK_STATUS_JS = (
+    "(function(){"
+    "var v=document.querySelector('video');"
+    "if(!v){return {hasVideo:false,currentTime:0,readyState:0,networkState:0,duration:null,errorCode:0};}"
+    "var t=Number.isFinite(v.currentTime)?v.currentTime:0;"
+    "var d=Number.isFinite(v.duration)?v.duration:null;"
+    "var rs=(typeof v.readyState==='number')?v.readyState:0;"
+    "var ns=(typeof v.networkState==='number')?v.networkState:0;"
+    "var ec=(v.error&&typeof v.error.code==='number')?v.error.code:0;"
+    "return {hasVideo:true,currentTime:t,readyState:rs,networkState:ns,duration:d,errorCode:ec};"
+    "})()"
+)
+_CURRENT_TIME_JS = (
     "(function(){"
     "var v=document.querySelector('video');"
     "return v ? v.currentTime : 0;"
@@ -61,7 +99,11 @@ def _build_video_dock():
     vbox.setContentsMargins(0, 0, 0, 0)
     vbox.setSpacing(0)
 
-    view = QWebEngineView(container)
+    media_host = QWidget(container)
+    media_stack = QStackedLayout(media_host)
+    media_stack.setContentsMargins(0, 0, 0, 0)
+
+    view = QWebEngineView(media_host)
 
     # Module-level profile with no parent — avoids use-after-free segfault on exit
     # that occurs when the profile is parented to the view and both get destroyed.
@@ -82,11 +124,30 @@ def _build_video_dock():
         _video_profile.settings().setAttribute(
             _WES.WebAttribute.PlaybackRequiresUserGesture, False
         )
+        _video_profile.settings().setAttribute(
+            _WES.WebAttribute.LocalContentCanAccessFileUrls, True
+        )
 
     _page = _WEPage(_video_profile)  # no parent — profile must outlive page
     view.setPage(_page)
+    media_stack.addWidget(view)
+    web_index = 0
 
-    vbox.addWidget(view, 1)
+    local_player = None
+    local_audio = None
+    local_video_widget = None
+    local_index = None
+    if QMediaPlayer is not None and QAudioOutput is not None and QVideoWidget is not None:
+        local_video_widget = QVideoWidget(media_host)
+        media_stack.addWidget(local_video_widget)
+        local_index = 1
+        local_audio = QAudioOutput(media_host)
+        local_player = QMediaPlayer(media_host)
+        local_player.setAudioOutput(local_audio)
+        local_player.setVideoOutput(local_video_widget)
+        local_audio.setVolume(1.0)
+
+    vbox.addWidget(media_host, 1)
 
     ctrl = QWidget(container)
     ctrl_layout = QHBoxLayout(ctrl)
@@ -106,16 +167,61 @@ def _build_video_dock():
 
     dock._view   = view
     dock._ts_lbl = ts_lbl
+    dock._media_stack = media_stack
+    dock._web_index = web_index
+    dock._local_index = local_index
+    dock._local_player = local_player
+    dock._local_audio = local_audio
+    dock._local_video_widget = local_video_widget
     qconnect(add_btn.clicked, _video_add_card_at_point)
+    if local_player is not None:
+        qconnect(local_player.errorOccurred, _on_local_player_error)
 
     _video_dock = dock
     return dock
 
 
-def show_video_in_dock(card_id: int, youtube_url: str, position: float = 0.0) -> None:
-    global _video_dock, _current_video_card_id
+def _local_video_html(video_src: str, mime_type: str, start_sec: int) -> str:
+    src = html.escape(video_src, quote=True)
+    mime = html.escape(mime_type or "video/mp4", quote=True)
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body {{ margin:0; padding:0; background:#000; width:100%; height:100%; overflow:hidden; }}
+#player {{ width:100vw; height:100vh; background:#000; }}
+</style>
+</head>
+<body>
+<video id="player" controls autoplay playsinline>
+  <source src="{src}" type="{mime}">
+</video>
+<script>
+const startSec = {max(0, int(start_sec))};
+const v = document.getElementById("player");
+v.addEventListener("loadedmetadata", () => {{
+  if (startSec > 0) {{
+    try {{ v.currentTime = startSec; }} catch (_e) {{}}
+  }}
+  try {{ v.play(); }} catch (_e) {{}}
+}});
+</script>
+</body>
+</html>"""
+
+
+def show_video_in_dock(
+    card_id: int,
+    youtube_url: str,
+    position: float = 0.0,
+    local_video_file: str = "",
+) -> None:
+    global _video_dock, _current_video_card_id, _current_video_url
+    global _current_local_relpath, _local_fallback_done, _using_local_qt_player
 
     _current_video_card_id = card_id
+    _current_video_url = (youtube_url or "").strip()
 
     if _video_dock is None:
         _build_video_dock()
@@ -125,6 +231,45 @@ def show_video_in_dock(card_id: int, youtube_url: str, position: float = 0.0) ->
         except RuntimeError:
             _video_dock = None
             _build_video_dock()
+
+    local_relpath = (local_video_file or "").strip()
+    if local_relpath:
+        local_abs = local_video_abspath(_ADDON_DIR, local_relpath)
+        if os.path.exists(local_abs):
+            start_sec = int(position)
+            local_path = Path(local_abs)
+            _current_local_relpath = local_relpath
+            _local_fallback_done = False
+            _video_dock.show()
+            _video_dock.raise_()
+            local_player = getattr(_video_dock, "_local_player", None)
+            local_index = getattr(_video_dock, "_local_index", None)
+            media_stack = getattr(_video_dock, "_media_stack", None)
+            if local_player is not None and local_index is not None and media_stack is not None:
+                _using_local_qt_player = True
+                try:
+                    local_player.stop()
+                except Exception:
+                    pass
+                media_stack.setCurrentIndex(local_index)
+                local_player.setSource(QUrl.fromLocalFile(str(local_path)))
+                if start_sec > 0:
+                    try:
+                        local_player.setPosition(start_sec * 1000)
+                    except Exception:
+                        pass
+                local_player.play()
+            else:
+                _using_local_qt_player = False
+                mime_type = mimetypes.guess_type(local_path.name)[0] or "video/mp4"
+                page_html = _local_video_html(local_path.name, mime_type, start_sec)
+                base_url = QUrl.fromLocalFile(str(local_path.parent) + os.sep)
+                _video_dock._view.setHtml(page_html, base_url)
+            _start_video_timer()
+            return
+        print(
+            f"[Incremento] Local video missing for card {card_id}: {local_relpath!r}"
+        )
 
     video_id = extract_video_id((youtube_url or "").strip())
     if not video_id:
@@ -136,6 +281,20 @@ def show_video_in_dock(card_id: int, youtube_url: str, position: float = 0.0) ->
     # (Error 152/153) that occur when using the IFrame API from a non-browser origin.
     start_sec = int(position)
     url = QUrl(f"https://www.youtube.com/watch?v={video_id}&t={start_sec}s&autoplay=1")
+    _current_local_relpath = ""
+    _local_fallback_done = False
+    _using_local_qt_player = False
+
+    local_player = getattr(_video_dock, "_local_player", None)
+    if local_player is not None:
+        try:
+            local_player.stop()
+        except Exception:
+            pass
+    media_stack = getattr(_video_dock, "_media_stack", None)
+    web_index = getattr(_video_dock, "_web_index", None)
+    if media_stack is not None and web_index is not None:
+        media_stack.setCurrentIndex(web_index)
 
     _video_dock.show()
     _video_dock.raise_()
@@ -160,17 +319,50 @@ def _start_video_timer() -> None:
 def _video_timer_tick() -> None:
     if _video_dock is None or _current_video_card_id is None:
         return
+    if _using_local_qt_player:
+        player = getattr(_video_dock, "_local_player", None)
+        if player is not None:
+            try:
+                _on_video_time(float(player.position()) / 1000.0)
+            except Exception:
+                pass
+            return
     try:
-        _video_dock._view.page().runJavaScript(_YT_CURRENT_TIME_JS, _on_video_time)
+        _video_dock._view.page().runJavaScript(_PLAYBACK_STATUS_JS, _on_video_time)
     except (RuntimeError, AttributeError):
         pass
 
 
 def _on_video_time(t) -> None:
-    global _video_tick_count
+    global _video_tick_count, _local_fallback_done
     if _video_dock is None:
         return
-    t = float(t or 0)
+    status = t if isinstance(t, dict) else {}
+    current_time = status.get("currentTime", t if not isinstance(t, dict) else 0)
+    try:
+        t = float(current_time or 0)
+    except Exception:
+        t = 0.0
+    err_code = int(status.get("errorCode", 0) or 0)
+    ready_state = int(status.get("readyState", 0) or 0)
+    network_state = int(status.get("networkState", 0) or 0)
+    has_video = bool(status.get("hasVideo", True))
+
+    if _current_local_relpath and not _local_fallback_done and not _using_local_qt_player:
+        # Explicit media failure only.
+        # HTMLMediaElement.networkState == 3 means NETWORK_NO_SOURCE.
+        failed_decode = err_code > 0 or (has_video and ready_state == 0 and network_state == 3)
+        if failed_decode:
+            _local_fallback_done = True
+            if extract_video_id(_current_video_url):
+                tooltip("Incremento: local video failed to decode, falling back to YouTube stream.")
+                show_video_in_dock(_current_video_card_id, _current_video_url, t, "")
+                return
+            tooltip(
+                "Incremento: local video failed to decode in Anki. "
+                "Re-download with ffmpeg for H.264 compatibility."
+            )
+
     try:
         _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(t)}")
     except (RuntimeError, AttributeError):
@@ -187,10 +379,39 @@ def _on_video_time(t) -> None:
 def _video_add_card_at_point() -> None:
     if _video_dock is None or _current_video_card_id is None:
         return
+    if _using_local_qt_player:
+        player = getattr(_video_dock, "_local_player", None)
+        if player is not None:
+            try:
+                _do_video_add_card(float(player.position()) / 1000.0)
+                return
+            except Exception:
+                pass
     try:
-        _video_dock._view.page().runJavaScript(_YT_CURRENT_TIME_JS, _do_video_add_card)
+        _video_dock._view.page().runJavaScript(_CURRENT_TIME_JS, _do_video_add_card)
     except (RuntimeError, AttributeError):
         pass
+
+
+def _on_local_player_error(*_args) -> None:
+    global _local_fallback_done
+    if _video_dock is None or _current_video_card_id is None:
+        return
+    if not _current_local_relpath or _local_fallback_done:
+        return
+    _local_fallback_done = True
+    player = getattr(_video_dock, "_local_player", None)
+    t = 0.0
+    if player is not None:
+        try:
+            t = float(player.position()) / 1000.0
+        except Exception:
+            t = 0.0
+    if extract_video_id(_current_video_url):
+        tooltip("Incremento: local player failed, falling back to YouTube stream.")
+        show_video_in_dock(_current_video_card_id, _current_video_url, t, "")
+        return
+    tooltip("Incremento: local video failed to play in Anki Qt player.")
 
 
 def _do_video_add_card(t) -> None:
@@ -217,7 +438,8 @@ def _do_video_add_card(t) -> None:
 
 
 def on_video_question_shown(card) -> None:
-    global _video_dock, _video_timer
+    global _video_dock, _video_timer, _current_local_relpath, _current_video_url
+    global _local_fallback_done, _using_local_qt_player
     try:
         if card is None:
             return
@@ -227,7 +449,17 @@ def on_video_question_shown(card) -> None:
         except Exception:
             return
         if model is None or model.get("name") != VIDEO_NOTE_TYPE:
+            _current_local_relpath = ""
+            _current_video_url = ""
+            _local_fallback_done = False
+            _using_local_qt_player = False
             if _video_dock is not None:
+                local_player = getattr(_video_dock, "_local_player", None)
+                if local_player is not None:
+                    try:
+                        local_player.stop()
+                    except Exception:
+                        pass
                 try:
                     _video_dock.hide()
                 except RuntimeError:
@@ -242,8 +474,13 @@ def on_video_question_shown(card) -> None:
             youtube_url = (note["YouTube_URL"] or "").strip()
         except (KeyError, TypeError):
             return
+        try:
+            local_video_file = (note["Local_Video_File"] or "").strip()
+        except Exception:
+            local_video_file = ""
         # Fallback for malformed cards where URL was accidentally saved in Title.
-        if not youtube_url:
+        # Skip this when local video exists: local playback does not need the URL.
+        if not youtube_url and not local_video_file:
             try:
                 title_text = (note["Title"] or "").strip()
             except Exception:
@@ -258,13 +495,18 @@ def on_video_question_shown(card) -> None:
                         _video_dock = None
                 return
         position = get_video_position(_ADDON_DIR, card.id)
-        show_video_in_dock(card.id, youtube_url, position)
+        show_video_in_dock(card.id, youtube_url, position, local_video_file)
     except Exception as e:
         print(f"[Incremento] on_video_question_shown error: {e}")
 
 
 def on_video_reviewer_will_end() -> None:
-    global _video_dock, _video_timer
+    global _video_dock, _video_timer, _current_local_relpath, _current_video_url
+    global _local_fallback_done, _using_local_qt_player
+    _current_local_relpath = ""
+    _current_video_url = ""
+    _local_fallback_done = False
+    _using_local_qt_player = False
     if _video_timer is not None:
         try:
             _video_timer.stop()
@@ -272,6 +514,12 @@ def on_video_reviewer_will_end() -> None:
             pass
         _video_timer = None
     if _video_dock is not None:
+        local_player = getattr(_video_dock, "_local_player", None)
+        if local_player is not None:
+            try:
+                local_player.stop()
+            except Exception:
+                pass
         try:
             _video_dock.hide()
         except RuntimeError:

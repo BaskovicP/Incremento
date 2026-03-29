@@ -23,6 +23,12 @@ extract_video_id = _vm.extract_video_id
 fmt_time = _vm.fmt_time
 get_video_position = _vm.get_video_position
 set_video_position = _vm.set_video_position
+local_video_relpath = _vm.local_video_relpath
+local_video_abspath = _vm.local_video_abspath
+video_download_requirements = _vm.video_download_requirements
+parse_ytdlp_percent = _vm._parse_ytdlp_percent
+hms_to_seconds = _vm._hms_to_seconds
+ytdlp_format_selector = _vm._ytdlp_format_selector
 
 get_web_url = _wm.get_web_url
 set_web_url = _wm.set_web_url
@@ -61,6 +67,42 @@ class TestExtractVideoId:
 
     def test_returns_none_for_empty_string(self):
         assert extract_video_id("") is None
+
+
+# ── local video helpers ───────────────────────────────────────────────────────
+
+class TestLocalVideoHelpers:
+    def test_relpath_uses_videos_subfolder(self):
+        assert local_video_relpath("dQw4w9WgXcQ") == "videos/dQw4w9WgXcQ.mp4"
+
+    def test_abspath_accepts_user_files_prefix(self, tmp_path):
+        got = local_video_abspath(str(tmp_path), "user_files/videos/a.mp4")
+        assert got == os.path.join(str(tmp_path), "user_files", "videos", "a.mp4")
+
+    def test_video_download_requirements_reports_missing_tools(self, monkeypatch):
+        monkeypatch.setattr(_vm, "_yt_dlp_cmd", lambda allow_auto_install=False: None)
+        monkeypatch.setattr(_vm.shutil, "which", lambda _name: None)
+        assert video_download_requirements() == ["yt-dlp", "ffmpeg (optional for compression)"]
+
+    def test_parse_ytdlp_percent(self):
+        assert parse_ytdlp_percent("[download]  23.4% of 10.00MiB") == pytest.approx(23.4)
+
+    def test_parse_ytdlp_percent_invalid(self):
+        assert parse_ytdlp_percent("some other output") is None
+
+    def test_hms_to_seconds(self):
+        assert hms_to_seconds("01:02:03.5") == pytest.approx(3723.5)
+
+    def test_hms_to_seconds_invalid(self):
+        assert hms_to_seconds("n/a") is None
+
+    def test_ytdlp_selector_prefers_h264_when_not_compressing(self):
+        fmt = ytdlp_format_selector("download")
+        assert "vcodec^=avc1" in fmt
+        assert "acodec^=mp4a" in fmt
+
+    def test_ytdlp_selector_uses_best_split_when_compressing(self):
+        assert ytdlp_format_selector("compressible") == "bestvideo+bestaudio/best"
 
 
 # ── fmt_time ──────────────────────────────────────────────────────────────────
@@ -185,6 +227,22 @@ class TestEnsureVideoNoteType:
         ensure_video_note_type(col)
         col.models.update_dict.assert_called_once()
 
+    def test_repairs_invalid_field_ordinals(self):
+        from unittest.mock import MagicMock
+        col = MagicMock()
+        m = {
+            "flds": [
+                {"name": "Title", "ord": 0},
+                {"name": "YouTube_URL", "ord": None},
+                {"name": _vm.LOCAL_VIDEO_FIELD, "ord": 2},
+            ],
+            "tmpls": [{"qfmt": _vm.CARD_TEMPLATE_FRONT, "afmt": _vm.CARD_TEMPLATE_BACK}],
+        }
+        col.models.by_name.return_value = m
+        ensure_video_note_type(col)
+        assert [f["ord"] for f in m["flds"]] == [0, 1, 2]
+        col.models.update_dict.assert_called_once()
+
 
 class TestEnsureWebNoteType:
     def test_creates_new_note_type_when_absent(self):
@@ -255,6 +313,20 @@ class TestAddVideoCard:
         col = _make_mock_col_for_add(deck_exists=True)
         add_video_card(col, "https://youtube.com/watch?v=abc", "My Video")
         col.decks.add_normal_deck_with_name.assert_not_called()
+
+    def test_sets_local_video_file_field(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+        add_video_card(
+            col,
+            "https://youtube.com/watch?v=abc",
+            "My Video",
+            local_video_file="videos/abc12345678.mp4",
+        )
+        setitem_calls = col.new_note.return_value.__setitem__.call_args_list
+        assert any(
+            c.args == (_vm.LOCAL_VIDEO_FIELD, "videos/abc12345678.mp4")
+            for c in setitem_calls
+        )
 
 
 class TestAddWebCard:
