@@ -15,15 +15,19 @@ import html
 import math
 import mimetypes
 import os
+import re
+import time
 from pathlib import Path
 
 from aqt import mw
 from aqt.utils import tooltip
 from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout,
-                    QComboBox, QSlider)
+                    QComboBox, QSlider, QApplication, QDialog, QLineEdit,
+                    QSpinBox, QDialogButtonBox)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
+from PyQt6.QtGui import QDesktopServices
 try:
     from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
     from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -77,6 +81,16 @@ _local_resume_attempts = 0
 _last_known_duration   = 0.0
 _seek_dragging         = False
 _seek_ui_updating      = False
+_app_state_connected   = False
+_browser_sync_pending  = False
+_browser_sync_wait_bg  = False
+_browser_sync_card_id  = None
+_browser_sync_seed_sec = 0
+_position_lock_card_id = None
+_position_lock_until   = 0.0
+_position_lock_sec     = 0.0
+_remote_resume_target  = 0.0
+_remote_resume_attempts = 0
 
 _PLAYBACK_STATUS_JS = (
     "(function(){"
@@ -105,7 +119,7 @@ _CURRENT_TIME_JS = (
 
 
 def _build_video_dock():
-    global _video_dock, _video_profile
+    global _video_dock, _video_profile, _app_state_connected
 
     from PyQt6.QtWebEngineCore import (QWebEngineSettings as _WES,
                                        QWebEngineProfile as _WEProf,
@@ -186,6 +200,9 @@ def _build_video_dock():
 
     add_btn = QPushButton("+ Add Card at this point")
     ctrl_layout.addWidget(add_btn)
+    browser_btn = QPushButton("Open in Browser")
+    browser_btn.setEnabled(False)
+    ctrl_layout.addWidget(browser_btn)
     vbox.addWidget(ctrl)
 
     local_ctrl = QWidget(container)
@@ -233,7 +250,9 @@ def _build_video_dock():
     dock._local_fwd_btn = fwd_btn
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
+    dock._browser_btn = browser_btn
     qconnect(add_btn.clicked, _video_add_card_at_point)
+    qconnect(browser_btn.clicked, _open_video_in_browser)
     qconnect(seek_slider.sliderPressed, _on_seek_slider_pressed)
     qconnect(seek_slider.sliderReleased, _on_seek_slider_released)
     qconnect(seek_slider.valueChanged, _on_seek_slider_value_changed)
@@ -246,6 +265,11 @@ def _build_video_dock():
         qconnect(local_player.errorOccurred, _on_local_player_error)
         qconnect(local_player.playbackStateChanged, _on_local_playback_state_changed)
         qconnect(local_player.mediaStatusChanged, _on_local_media_status_changed)
+    if not _app_state_connected:
+        app = QApplication.instance()
+        if app is not None:
+            qconnect(app.applicationStateChanged, _on_application_state_changed)
+            _app_state_connected = True
 
     _video_dock = dock
     return dock
@@ -286,6 +310,18 @@ def _set_local_controls_visible(visible: bool) -> None:
     ctrl = getattr(_video_dock, "_local_ctrl", None)
     if ctrl is not None:
         ctrl.setVisible(bool(visible))
+
+
+def _set_browser_button_enabled(enabled: bool) -> None:
+    if _video_dock is None:
+        return
+    btn = getattr(_video_dock, "_browser_btn", None)
+    if btn is None:
+        return
+    try:
+        btn.setEnabled(bool(enabled))
+    except Exception:
+        pass
 
 
 def _fmt_progress_label(current_sec: float, duration_sec: float | None) -> str:
@@ -544,6 +580,8 @@ def show_video_in_dock(
     global _current_local_relpath, _local_fallback_done, _using_local_qt_player
     global _last_known_position, _local_resume_pending, _local_resume_ms
     global _local_resume_attempts, _last_known_duration
+    global _position_lock_card_id, _position_lock_until, _position_lock_sec
+    global _remote_resume_target, _remote_resume_attempts
 
     normalized_url = (video_url or "").strip()
     if detect_video_provider(normalized_url) == "vimeo":
@@ -556,6 +594,12 @@ def show_video_in_dock(
     _current_video_url = normalized_url
     _last_known_position = max(0.0, float(position or 0.0))
     _last_known_duration = 0.0
+    _remote_resume_target = 0.0
+    _remote_resume_attempts = 0
+    if _position_lock_card_id is not None and _position_lock_card_id != int(card_id):
+        _position_lock_card_id = None
+        _position_lock_until = 0.0
+        _position_lock_sec = 0.0
 
     if _video_dock is None:
         _build_video_dock()
@@ -565,6 +609,7 @@ def show_video_in_dock(
         except RuntimeError:
             _video_dock = None
             _build_video_dock()
+    _set_browser_button_enabled(bool(build_remote_video_watch_url(_current_video_url, start_sec=0)))
 
     local_relpath = (local_video_file or "").strip()
     start_sec = int(position)
@@ -624,8 +669,12 @@ def show_video_in_dock(
         _local_resume_ms = 0
         _local_resume_attempts = 0
         _last_known_duration = 0.0
+        _remote_resume_target = max(0.0, float(start_sec))
+        _remote_resume_attempts = 0
         _set_local_controls_visible(False)
         _reset_seek_ui()
+        if _remote_resume_target > 0:
+            _set_seek_ui(_remote_resume_target, None)
 
         local_player = getattr(_video_dock, "_local_player", None)
         if local_player is not None:
@@ -663,7 +712,7 @@ def _start_video_timer() -> None:
 
 
 def _video_timer_tick() -> None:
-    global _local_resume_attempts
+    global _local_resume_attempts, _remote_resume_attempts
     if _video_dock is None or _current_video_card_id is None:
         return
     if _using_local_qt_player:
@@ -697,6 +746,13 @@ def _video_timer_tick() -> None:
             except Exception:
                 pass
             return
+    if _remote_resume_target > 0.0 and _remote_resume_attempts < 12:
+        # Force resume for web players that ignore initial URL timestamp.
+        try:
+            _seek_to_seconds(_remote_resume_target)
+        except Exception:
+            pass
+        _remote_resume_attempts += 1
     try:
         _video_dock._view.page().runJavaScript(_PLAYBACK_STATUS_JS, _on_video_time)
     except (RuntimeError, AttributeError):
@@ -705,8 +761,10 @@ def _video_timer_tick() -> None:
 
 def _on_video_time(t) -> None:
     global _video_tick_count, _local_fallback_done, _last_known_position
-    global _local_resume_pending, _local_resume_attempts
-    global _last_known_duration
+    global _local_resume_pending, _local_resume_attempts, _browser_sync_pending
+    global _last_known_duration, _position_lock_card_id
+    global _position_lock_until, _position_lock_sec
+    global _remote_resume_target, _remote_resume_attempts
     if _video_dock is None:
         return
     status = t if isinstance(t, dict) else {}
@@ -715,8 +773,23 @@ def _on_video_time(t) -> None:
         t = float(current_time or 0)
     except Exception:
         t = 0.0
+    if (
+        _position_lock_card_id is not None
+        and _current_video_card_id == _position_lock_card_id
+        and time.monotonic() < float(_position_lock_until or 0.0)
+    ):
+        lock_sec = max(0.0, float(_position_lock_sec or 0.0))
+        if t + 1.0 < lock_sec:
+            t = lock_sec
+        else:
+            _position_lock_card_id = None
+            _position_lock_until = 0.0
+            _position_lock_sec = 0.0
     if t > 0:
         _last_known_position = t
+    if _remote_resume_target > 0.0 and t >= (_remote_resume_target - 1.0):
+        _remote_resume_target = 0.0
+        _remote_resume_attempts = 0
     if _using_local_qt_player and _local_resume_pending and t > 0:
         _local_resume_pending = False
         _local_resume_attempts = 0
@@ -751,16 +824,24 @@ def _on_video_time(t) -> None:
     disp_t = t
     if _using_local_qt_player and _local_resume_pending and t <= 0.0 and _local_resume_ms > 0:
         disp_t = float(_local_resume_ms) / 1000.0
+    elif (not _using_local_qt_player) and t <= 0.0 and _last_known_position > 0.0:
+        # Keep UI stable while remote/web player initializes currentTime reporting.
+        disp_t = float(_last_known_position)
     _set_seek_ui(disp_t, duration_for_ui)
     _video_tick_count += 1
     if _video_tick_count >= 5 and _current_video_card_id:
         _video_tick_count = 0
+        if _browser_sync_pending:
+            return
         if _using_local_qt_player and _local_resume_pending and t <= 0.0:
             return
         if _current_local_relpath and t <= 0.0:
             return
+        persist_t = t if t > 0.0 else float(_last_known_position or 0.0)
+        if persist_t <= 0.0:
+            return
         try:
-            set_video_position(_ADDON_DIR, _current_video_card_id, t)
+            set_video_position(_ADDON_DIR, _current_video_card_id, persist_t)
         except Exception:
             pass
 
@@ -799,6 +880,242 @@ def _on_local_player_error(*_args) -> None:
     tooltip("Incremento: local video failed to play in Anki Qt player.")
 
 
+_USER_TIME_HMS_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
+
+
+def _parse_user_time_seconds(text: str) -> int | None:
+    raw = (text or "").strip().lower()
+    if not raw:
+        return None
+    raw = raw.replace(" ", "")
+    if raw.isdigit():
+        return max(0, int(raw))
+    if raw.endswith("s") and raw[:-1].isdigit():
+        return max(0, int(raw[:-1]))
+    if ":" in raw:
+        parts = raw.split(":")
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            return int(parts[0]) * 60 + int(parts[1])
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        return None
+    m = _USER_TIME_HMS_RE.fullmatch(raw)
+    if m and any(m.groups()):
+        h = int(m.group(1) or 0)
+        mi = int(m.group(2) or 0)
+        s = int(m.group(3) or 0)
+        return h * 3600 + mi * 60 + s
+    return None
+
+
+def _split_hms(total_seconds: int) -> tuple[int, int, int]:
+    t = max(0, int(total_seconds or 0))
+    h, rem = divmod(t, 3600)
+    m, s = divmod(rem, 60)
+    return h, m, s
+
+
+def _show_browser_stop_time_dialog(default_sec: int) -> tuple[bool, int]:
+    dlg = QDialog(mw)
+    dlg.setWindowTitle("Sync Browser Stop Time")
+    layout = QVBoxLayout(dlg)
+
+    prompt = QLabel("Where did you stop in browser?")
+    layout.addWidget(prompt)
+
+    raw_row = QHBoxLayout()
+    raw_edit = QLineEdit(fmt_time(float(default_sec)))
+    raw_edit.setPlaceholderText("12:34 or 1h2m3s")
+    raw_apply = QPushButton("Apply")
+    raw_row.addWidget(raw_edit, 1)
+    raw_row.addWidget(raw_apply)
+    layout.addLayout(raw_row)
+
+    h, m, s = _split_hms(default_sec)
+    h_spin = QSpinBox()
+    h_spin.setRange(0, 999)
+    h_spin.setValue(h)
+    h_spin.setSuffix(" h")
+    m_spin = QSpinBox()
+    m_spin.setRange(0, 59)
+    m_spin.setValue(m)
+    m_spin.setSuffix(" m")
+    s_spin = QSpinBox()
+    s_spin.setRange(0, 59)
+    s_spin.setValue(s)
+    s_spin.setSuffix(" s")
+
+    hms_row = QHBoxLayout()
+    hms_row.addWidget(h_spin)
+    hms_row.addWidget(m_spin)
+    hms_row.addWidget(s_spin)
+    hms_row.addStretch()
+    layout.addLayout(hms_row)
+
+    quick_row = QHBoxLayout()
+    minus_10 = QPushButton("−10s")
+    plus_10 = QPushButton("+10s")
+    plus_1m = QPushButton("+1m")
+    plus_5m = QPushButton("+5m")
+    quick_row.addWidget(minus_10)
+    quick_row.addWidget(plus_10)
+    quick_row.addWidget(plus_1m)
+    quick_row.addWidget(plus_5m)
+    quick_row.addStretch()
+    layout.addLayout(quick_row)
+
+    status_lbl = QLabel("")
+    layout.addWidget(status_lbl)
+
+    def _total_from_spins() -> int:
+        return int(h_spin.value()) * 3600 + int(m_spin.value()) * 60 + int(s_spin.value())
+
+    def _set_from_total(total: int, update_raw: bool = True) -> None:
+        hh, mm, ss = _split_hms(total)
+        h_spin.setValue(hh)
+        m_spin.setValue(mm)
+        s_spin.setValue(ss)
+        if update_raw:
+            raw_edit.setText(fmt_time(float(total)))
+        status_lbl.setText(f"Result: {fmt_time(float(total))} ({int(total)}s)")
+
+    def _apply_raw_text() -> None:
+        parsed = _parse_user_time_seconds(raw_edit.text())
+        if parsed is None:
+            status_lbl.setText("Invalid format. Use 12:34, 1:02:03, 1h2m3s, or seconds.")
+            return
+        _set_from_total(parsed, update_raw=True)
+
+    def _nudge(delta: int) -> None:
+        _set_from_total(max(0, _total_from_spins() + int(delta)), update_raw=True)
+
+    qconnect(raw_apply.clicked, _apply_raw_text)
+    qconnect(raw_edit.returnPressed, _apply_raw_text)
+    qconnect(minus_10.clicked, lambda: _nudge(-10))
+    qconnect(plus_10.clicked, lambda: _nudge(10))
+    qconnect(plus_1m.clicked, lambda: _nudge(60))
+    qconnect(plus_5m.clicked, lambda: _nudge(300))
+    qconnect(h_spin.valueChanged, lambda _v: _set_from_total(_total_from_spins(), update_raw=False))
+    qconnect(m_spin.valueChanged, lambda _v: _set_from_total(_total_from_spins(), update_raw=False))
+    qconnect(s_spin.valueChanged, lambda _v: _set_from_total(_total_from_spins(), update_raw=False))
+
+    _set_from_total(default_sec, update_raw=True)
+
+    button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    qconnect(button_box.accepted, dlg.accept)
+    qconnect(button_box.rejected, dlg.reject)
+    layout.addWidget(button_box)
+
+    if dlg.exec() != QDialog.DialogCode.Accepted:
+        return False, int(default_sec)
+    parsed = _parse_user_time_seconds(raw_edit.text())
+    if parsed is not None:
+        return True, int(parsed)
+    return True, _total_from_spins()
+
+
+def _open_video_in_browser() -> None:
+    if _video_dock is None or _current_video_card_id is None:
+        return
+    if _using_local_qt_player:
+        player = getattr(_video_dock, "_local_player", None)
+        sec = 0.0
+        if player is not None:
+            try:
+                sec = float(player.position()) / 1000.0
+            except Exception:
+                sec = 0.0
+        _open_video_in_browser_at_seconds(sec)
+        return
+    try:
+        _video_dock._view.page().runJavaScript(_CURRENT_TIME_JS, _open_video_in_browser_at_seconds)
+    except Exception:
+        _open_video_in_browser_at_seconds(_last_known_position)
+
+
+def _open_video_in_browser_at_seconds(seconds) -> None:
+    global _browser_sync_pending, _browser_sync_wait_bg
+    global _browser_sync_card_id, _browser_sync_seed_sec, _last_known_position
+
+    if _current_video_card_id is None:
+        return
+    try:
+        sec = max(0, int(float(seconds or 0.0)))
+    except Exception:
+        sec = max(0, int(float(_last_known_position or 0.0)))
+    watch_url = build_remote_video_watch_url(_current_video_url, start_sec=sec)
+    if not watch_url:
+        tooltip("Incremento: no remote URL is available for browser fallback.")
+        return
+    try:
+        set_video_position(_ADDON_DIR, _current_video_card_id, float(sec))
+    except Exception:
+        pass
+    _last_known_position = float(sec)
+
+    try:
+        ok = bool(QDesktopServices.openUrl(QUrl(watch_url)))
+    except Exception:
+        ok = False
+    if not ok:
+        tooltip("Incremento: failed to open system browser.")
+        return
+
+    _browser_sync_pending = True
+    _browser_sync_wait_bg = True
+    _browser_sync_card_id = int(_current_video_card_id)
+    _browser_sync_seed_sec = sec
+
+
+def _on_application_state_changed(state) -> None:
+    global _browser_sync_wait_bg
+    if not _browser_sync_pending:
+        return
+    if state != Qt.ApplicationState.ApplicationActive:
+        _browser_sync_wait_bg = False
+        return
+    if _browser_sync_wait_bg:
+        return
+    _prompt_browser_stop_time()
+
+
+def _prompt_browser_stop_time() -> None:
+    global _browser_sync_pending, _browser_sync_card_id, _browser_sync_seed_sec
+    global _last_known_position
+    global _position_lock_card_id, _position_lock_until, _position_lock_sec
+    if not _browser_sync_pending:
+        return
+
+    raw_card_id = _browser_sync_card_id
+    raw_seed = _browser_sync_seed_sec
+    _browser_sync_pending = False
+    _browser_sync_card_id = None
+    _browser_sync_seed_sec = 0
+
+    if raw_card_id is None:
+        return
+    try:
+        card_id = int(raw_card_id)
+    except Exception:
+        return
+
+    ok, sec = _show_browser_stop_time_dialog(int(raw_seed or 0))
+    if not ok:
+        return
+    try:
+        set_video_position(_ADDON_DIR, card_id, float(sec))
+    except Exception:
+        return
+    if _current_video_card_id == card_id:
+        _last_known_position = float(sec)
+        _position_lock_card_id = int(card_id)
+        _position_lock_sec = float(sec)
+        _position_lock_until = time.monotonic() + 8.0
+        _seek_to_seconds(float(sec))
+        _set_seek_ui(float(sec), _last_known_duration if _last_known_duration > 0 else None)
+    tooltip(f"Incremento: saved browser stop time at {fmt_time(float(sec))}.")
+
+
 def _do_video_add_card(t) -> None:
     global _last_known_position
     t = float(t or 0)
@@ -829,7 +1146,10 @@ def on_video_question_shown(card) -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
     global _local_fallback_done, _using_local_qt_player, _current_video_card_id
     global _local_resume_pending, _local_resume_ms, _local_resume_attempts
-    global _last_known_duration
+    global _last_known_duration, _browser_sync_pending, _browser_sync_wait_bg
+    global _browser_sync_card_id, _browser_sync_seed_sec
+    global _position_lock_card_id, _position_lock_until, _position_lock_sec
+    global _remote_resume_target, _remote_resume_attempts
     try:
         if card is None:
             return
@@ -849,7 +1169,17 @@ def on_video_question_shown(card) -> None:
             _local_resume_attempts = 0
             _last_known_duration = 0.0
             _current_video_card_id = None
+            _browser_sync_pending = False
+            _browser_sync_wait_bg = False
+            _browser_sync_card_id = None
+            _browser_sync_seed_sec = 0
+            _position_lock_card_id = None
+            _position_lock_until = 0.0
+            _position_lock_sec = 0.0
+            _remote_resume_target = 0.0
+            _remote_resume_attempts = 0
             _set_local_controls_visible(False)
+            _set_browser_button_enabled(False)
             _reset_seek_ui()
             if _video_dock is not None:
                 local_player = getattr(_video_dock, "_local_player", None)
@@ -902,7 +1232,10 @@ def on_video_reviewer_will_end() -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
     global _local_fallback_done, _using_local_qt_player, _current_video_card_id
     global _local_resume_pending, _local_resume_ms, _local_resume_attempts
-    global _last_known_duration
+    global _last_known_duration, _browser_sync_pending, _browser_sync_wait_bg
+    global _browser_sync_card_id, _browser_sync_seed_sec
+    global _position_lock_card_id, _position_lock_until, _position_lock_sec
+    global _remote_resume_target, _remote_resume_attempts
     _persist_position_now()
     _current_local_relpath = ""
     _current_video_url = ""
@@ -913,7 +1246,17 @@ def on_video_reviewer_will_end() -> None:
     _local_resume_attempts = 0
     _last_known_duration = 0.0
     _current_video_card_id = None
+    _browser_sync_pending = False
+    _browser_sync_wait_bg = False
+    _browser_sync_card_id = None
+    _browser_sync_seed_sec = 0
+    _position_lock_card_id = None
+    _position_lock_until = 0.0
+    _position_lock_sec = 0.0
+    _remote_resume_target = 0.0
+    _remote_resume_attempts = 0
     _set_local_controls_visible(False)
+    _set_browser_button_enabled(False)
     _reset_seek_ui()
     if _video_timer is not None:
         try:

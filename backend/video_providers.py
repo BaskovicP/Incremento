@@ -150,6 +150,15 @@ def _strip_time_query_params(query: str) -> str:
     return urlencode(kept, doseq=True)
 
 
+def _strip_vimeo_query_params(query: str) -> str:
+    pairs = parse_qsl(query or "", keep_blank_values=True)
+    # Drop time params (handled as fragment) and legacy Flash-era params that can
+    # cause blank rendering in embedded/Qt contexts.
+    blocked = {"t", "start", "time", "wmode"}
+    kept = [(k, v) for (k, v) in pairs if str(k).lower() not in blocked]
+    return urlencode(kept, doseq=True)
+
+
 def canonicalize_video_url(url: str) -> str:
     raw = unescape((url or "").strip())
     yt = extract_youtube_id(raw)
@@ -162,7 +171,7 @@ def canonicalize_video_url(url: str) -> str:
     vm = extract_vimeo_id(raw)
     if vm:
         parsed = urlparse(raw)
-        query = _strip_time_query_params(parsed.query)
+        query = _strip_vimeo_query_params(parsed.query)
         base = f"https://player.vimeo.com/video/{vm}"
         if query:
             base = f"{base}?{query}"
@@ -183,7 +192,7 @@ def build_remote_video_watch_url(url: str, start_sec: int = 0) -> str | None:
     vm = extract_vimeo_id(url)
     if vm:
         parsed = urlparse(canonicalize_video_url(url))
-        query = _strip_time_query_params(parsed.query)
+        query = _strip_vimeo_query_params(parsed.query)
         base = f"https://player.vimeo.com/video/{vm}"
         if query:
             base = f"{base}?{query}"

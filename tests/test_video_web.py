@@ -150,12 +150,20 @@ class TestVimeoVideoParsing:
             == "https://player.vimeo.com/video/1173597756?h=abc123#t=9s"
         )
 
+    def test_canonicalize_video_url_vimeo_strips_wmode(self):
+        assert (
+            canonicalize_video_url(
+                "https://player.vimeo.com/video/1177424090?title=0&byline=0&portrait=0&wmode=transparent&h=abc123"
+            )
+            == "https://player.vimeo.com/video/1177424090?title=0&byline=0&portrait=0&h=abc123"
+        )
+
     def test_canonicalize_vimeo_unescapes_amp_query(self):
         assert (
             canonicalize_video_url(
                 "https://player.vimeo.com/video/1177424090?title=0&amp;byline=0&amp;portrait=0&amp;wmode=transparent"
             )
-            == "https://player.vimeo.com/video/1177424090?title=0&byline=0&portrait=0&wmode=transparent"
+            == "https://player.vimeo.com/video/1177424090?title=0&byline=0&portrait=0"
         )
 
     def test_extract_vimeo_embed_url_from_html_prefers_h(self):
