@@ -19,7 +19,8 @@ from pathlib import Path
 from aqt import mw
 from aqt.utils import tooltip
 from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
-                    QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout)
+                    QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout,
+                    QComboBox, QSlider)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 try:
@@ -62,6 +63,10 @@ _current_video_url     = ""
 _current_local_relpath = ""
 _local_fallback_done   = False
 _using_local_qt_player = False
+_last_known_position   = 0.0
+_local_resume_pending  = False
+_local_resume_ms       = 0
+_local_resume_attempts = 0
 
 _PLAYBACK_STATUS_JS = (
     "(function(){"
@@ -162,6 +167,33 @@ def _build_video_dock():
     ctrl_layout.addWidget(add_btn)
     vbox.addWidget(ctrl)
 
+    local_ctrl = QWidget(container)
+    local_layout = QHBoxLayout(local_ctrl)
+    local_layout.setContentsMargins(8, 0, 8, 8)
+
+    back_btn = QPushButton("−10s")
+    play_btn = QPushButton("Pause")
+    fwd_btn = QPushButton("+10s")
+    rate_combo = QComboBox()
+    rate_combo.addItems(["0.75x", "1.0x", "1.25x", "1.5x", "2.0x"])
+    rate_combo.setCurrentText("1.0x")
+    vol_lbl = QLabel("Vol")
+    vol_slider = QSlider(Qt.Orientation.Horizontal)
+    vol_slider.setRange(0, 100)
+    vol_slider.setValue(100)
+    vol_slider.setFixedWidth(120)
+
+    local_layout.addWidget(back_btn)
+    local_layout.addWidget(play_btn)
+    local_layout.addWidget(fwd_btn)
+    local_layout.addWidget(QLabel("Speed"))
+    local_layout.addWidget(rate_combo)
+    local_layout.addWidget(vol_lbl)
+    local_layout.addWidget(vol_slider)
+    local_layout.addStretch()
+    local_ctrl.setVisible(False)
+    vbox.addWidget(local_ctrl)
+
     dock.setWidget(container)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
@@ -173,9 +205,22 @@ def _build_video_dock():
     dock._local_player = local_player
     dock._local_audio = local_audio
     dock._local_video_widget = local_video_widget
+    dock._local_ctrl = local_ctrl
+    dock._local_back_btn = back_btn
+    dock._local_play_btn = play_btn
+    dock._local_fwd_btn = fwd_btn
+    dock._local_rate_combo = rate_combo
+    dock._local_vol_slider = vol_slider
     qconnect(add_btn.clicked, _video_add_card_at_point)
+    qconnect(back_btn.clicked, lambda: _local_seek(-10))
+    qconnect(play_btn.clicked, _toggle_local_playback)
+    qconnect(fwd_btn.clicked, lambda: _local_seek(10))
+    qconnect(rate_combo.currentTextChanged, _set_local_rate)
+    qconnect(vol_slider.valueChanged, _set_local_volume)
     if local_player is not None:
         qconnect(local_player.errorOccurred, _on_local_player_error)
+        qconnect(local_player.playbackStateChanged, _on_local_playback_state_changed)
+        qconnect(local_player.mediaStatusChanged, _on_local_media_status_changed)
 
     _video_dock = dock
     return dock
@@ -194,7 +239,7 @@ html, body {{ margin:0; padding:0; background:#000; width:100%; height:100%; ove
 </style>
 </head>
 <body>
-<video id="player" controls autoplay playsinline>
+<video id="player" controls playsinline>
   <source src="{src}" type="{mime}">
 </video>
 <script>
@@ -204,11 +249,135 @@ v.addEventListener("loadedmetadata", () => {{
   if (startSec > 0) {{
     try {{ v.currentTime = startSec; }} catch (_e) {{}}
   }}
-  try {{ v.play(); }} catch (_e) {{}}
 }});
 </script>
 </body>
 </html>"""
+
+
+def _set_local_controls_visible(visible: bool) -> None:
+    if _video_dock is None:
+        return
+    ctrl = getattr(_video_dock, "_local_ctrl", None)
+    if ctrl is not None:
+        ctrl.setVisible(bool(visible))
+
+
+def _local_seek(delta_seconds: int) -> None:
+    if _video_dock is None:
+        return
+    player = getattr(_video_dock, "_local_player", None)
+    if player is None:
+        return
+    try:
+        cur = int(player.position())
+        nxt = max(0, cur + int(delta_seconds * 1000))
+        player.setPosition(nxt)
+    except Exception:
+        pass
+
+
+def _toggle_local_playback() -> None:
+    if _video_dock is None:
+        return
+    player = getattr(_video_dock, "_local_player", None)
+    if player is None or QMediaPlayer is None:
+        return
+    try:
+        if player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            player.pause()
+        else:
+            player.play()
+    except Exception:
+        pass
+
+
+def _set_local_rate(text: str) -> None:
+    if _video_dock is None:
+        return
+    player = getattr(_video_dock, "_local_player", None)
+    if player is None:
+        return
+    raw = (text or "").strip().lower().replace("x", "")
+    try:
+        rate = float(raw)
+    except Exception:
+        rate = 1.0
+    rate = max(0.25, min(4.0, rate))
+    try:
+        player.setPlaybackRate(rate)
+    except Exception:
+        pass
+
+
+def _set_local_volume(value: int) -> None:
+    if _video_dock is None:
+        return
+    audio = getattr(_video_dock, "_local_audio", None)
+    if audio is None:
+        return
+    try:
+        audio.setVolume(max(0.0, min(1.0, float(value) / 100.0)))
+    except Exception:
+        pass
+
+
+def _on_local_playback_state_changed(state) -> None:
+    if _video_dock is None:
+        return
+    btn = getattr(_video_dock, "_local_play_btn", None)
+    if btn is None:
+        return
+    if QMediaPlayer is None:
+        btn.setText("Play")
+        return
+    if state == QMediaPlayer.PlaybackState.PlayingState:
+        btn.setText("Pause")
+    else:
+        btn.setText("Play")
+
+
+def _on_local_media_status_changed(status) -> None:
+    global _local_resume_pending, _local_resume_ms, _last_known_position
+    global _local_resume_attempts
+    if _video_dock is None or not _using_local_qt_player:
+        return
+    if not _local_resume_pending or QMediaPlayer is None:
+        return
+    if status in (
+        QMediaPlayer.MediaStatus.LoadedMedia,
+        QMediaPlayer.MediaStatus.BufferedMedia,
+    ):
+        player = getattr(_video_dock, "_local_player", None)
+        if player is None:
+            return
+        try:
+            player.setPosition(max(0, int(_local_resume_ms)))
+            player.pause()
+            _last_known_position = max(_last_known_position, float(_local_resume_ms) / 1000.0)
+        except Exception:
+            pass
+        _local_resume_pending = False
+        _local_resume_attempts = 0
+
+
+def _persist_position_now() -> None:
+    if _current_video_card_id is None:
+        return
+    t = max(0.0, float(_last_known_position or 0.0))
+    if _using_local_qt_player and _video_dock is not None:
+        player = getattr(_video_dock, "_local_player", None)
+        if player is not None:
+            try:
+                t = max(t, float(player.position()) / 1000.0)
+            except Exception:
+                pass
+    if t <= 0.0:
+        return
+    try:
+        set_video_position(_ADDON_DIR, _current_video_card_id, t)
+    except Exception:
+        pass
 
 
 def show_video_in_dock(
@@ -219,9 +388,12 @@ def show_video_in_dock(
 ) -> None:
     global _video_dock, _current_video_card_id, _current_video_url
     global _current_local_relpath, _local_fallback_done, _using_local_qt_player
+    global _last_known_position, _local_resume_pending, _local_resume_ms
+    global _local_resume_attempts
 
     _current_video_card_id = card_id
     _current_video_url = (youtube_url or "").strip()
+    _last_known_position = max(0.0, float(position or 0.0))
 
     if _video_dock is None:
         _build_video_dock()
@@ -247,20 +419,38 @@ def show_video_in_dock(
             media_stack = getattr(_video_dock, "_media_stack", None)
             if local_player is not None and local_index is not None and media_stack is not None:
                 _using_local_qt_player = True
+                _set_local_controls_visible(True)
                 try:
                     local_player.stop()
                 except Exception:
                     pass
                 media_stack.setCurrentIndex(local_index)
+                _local_resume_ms = max(0, int(start_sec * 1000))
+                _local_resume_pending = _local_resume_ms > 0
+                _local_resume_attempts = 0
                 local_player.setSource(QUrl.fromLocalFile(str(local_path)))
-                if start_sec > 0:
+                if _local_resume_pending:
                     try:
-                        local_player.setPosition(start_sec * 1000)
+                        local_player.setPosition(_local_resume_ms)
                     except Exception:
                         pass
-                local_player.play()
+                else:
+                    try:
+                        local_player.setPosition(0)
+                    except Exception:
+                        pass
+                local_player.pause()
+                if _local_resume_ms > 0:
+                    try:
+                        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(_local_resume_ms / 1000.0)}")
+                    except Exception:
+                        pass
             else:
                 _using_local_qt_player = False
+                _local_resume_pending = False
+                _local_resume_ms = 0
+                _local_resume_attempts = 0
+                _set_local_controls_visible(False)
                 mime_type = mimetypes.guess_type(local_path.name)[0] or "video/mp4"
                 page_html = _local_video_html(local_path.name, mime_type, start_sec)
                 base_url = QUrl.fromLocalFile(str(local_path.parent) + os.sep)
@@ -280,10 +470,14 @@ def show_video_in_dock(
     # Load the full YouTube watch page — this avoids all embed-level restrictions
     # (Error 152/153) that occur when using the IFrame API from a non-browser origin.
     start_sec = int(position)
-    url = QUrl(f"https://www.youtube.com/watch?v={video_id}&t={start_sec}s&autoplay=1")
+    url = QUrl(f"https://www.youtube.com/watch?v={video_id}&t={start_sec}s&autoplay=0")
     _current_local_relpath = ""
     _local_fallback_done = False
     _using_local_qt_player = False
+    _local_resume_pending = False
+    _local_resume_ms = 0
+    _local_resume_attempts = 0
+    _set_local_controls_visible(False)
 
     local_player = getattr(_video_dock, "_local_player", None)
     if local_player is not None:
@@ -317,13 +511,23 @@ def _start_video_timer() -> None:
 
 
 def _video_timer_tick() -> None:
+    global _local_resume_attempts
     if _video_dock is None or _current_video_card_id is None:
         return
     if _using_local_qt_player:
         player = getattr(_video_dock, "_local_player", None)
         if player is not None:
             try:
-                _on_video_time(float(player.position()) / 1000.0)
+                pos_ms = int(player.position())
+                if _local_resume_pending and pos_ms <= 0 and _local_resume_ms > 0:
+                    if _local_resume_attempts < 12:
+                        try:
+                            player.setPosition(_local_resume_ms)
+                            player.pause()
+                        except Exception:
+                            pass
+                        _local_resume_attempts += 1
+                _on_video_time(float(pos_ms) / 1000.0)
             except Exception:
                 pass
             return
@@ -334,7 +538,8 @@ def _video_timer_tick() -> None:
 
 
 def _on_video_time(t) -> None:
-    global _video_tick_count, _local_fallback_done
+    global _video_tick_count, _local_fallback_done, _last_known_position
+    global _local_resume_pending, _local_resume_attempts
     if _video_dock is None:
         return
     status = t if isinstance(t, dict) else {}
@@ -343,6 +548,11 @@ def _on_video_time(t) -> None:
         t = float(current_time or 0)
     except Exception:
         t = 0.0
+    if t > 0:
+        _last_known_position = t
+    if _using_local_qt_player and _local_resume_pending and t > 0:
+        _local_resume_pending = False
+        _local_resume_attempts = 0
     err_code = int(status.get("errorCode", 0) or 0)
     ready_state = int(status.get("readyState", 0) or 0)
     network_state = int(status.get("networkState", 0) or 0)
@@ -364,12 +574,19 @@ def _on_video_time(t) -> None:
             )
 
     try:
-        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(t)}")
+        disp_t = t
+        if _using_local_qt_player and _local_resume_pending and t <= 0.0 and _local_resume_ms > 0:
+            disp_t = float(_local_resume_ms) / 1000.0
+        _video_dock._ts_lbl.setText(f"\u25b6  {fmt_time(disp_t)}")
     except (RuntimeError, AttributeError):
         return
     _video_tick_count += 1
     if _video_tick_count >= 5 and _current_video_card_id:
         _video_tick_count = 0
+        if _using_local_qt_player and _local_resume_pending and t <= 0.0:
+            return
+        if _current_local_relpath and t <= 0.0:
+            return
         try:
             set_video_position(_ADDON_DIR, _current_video_card_id, t)
         except Exception:
@@ -415,7 +632,10 @@ def _on_local_player_error(*_args) -> None:
 
 
 def _do_video_add_card(t) -> None:
+    global _last_known_position
     t = float(t or 0)
+    if t > 0:
+        _last_known_position = t
     if _current_video_card_id is None:
         return
     try:
@@ -439,7 +659,8 @@ def _do_video_add_card(t) -> None:
 
 def on_video_question_shown(card) -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
-    global _local_fallback_done, _using_local_qt_player
+    global _local_fallback_done, _using_local_qt_player, _current_video_card_id
+    global _local_resume_pending, _local_resume_ms, _local_resume_attempts
     try:
         if card is None:
             return
@@ -449,10 +670,16 @@ def on_video_question_shown(card) -> None:
         except Exception:
             return
         if model is None or model.get("name") != VIDEO_NOTE_TYPE:
+            _persist_position_now()
             _current_local_relpath = ""
             _current_video_url = ""
             _local_fallback_done = False
             _using_local_qt_player = False
+            _local_resume_pending = False
+            _local_resume_ms = 0
+            _local_resume_attempts = 0
+            _current_video_card_id = None
+            _set_local_controls_visible(False)
             if _video_dock is not None:
                 local_player = getattr(_video_dock, "_local_player", None)
                 if local_player is not None:
@@ -502,11 +729,18 @@ def on_video_question_shown(card) -> None:
 
 def on_video_reviewer_will_end() -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
-    global _local_fallback_done, _using_local_qt_player
+    global _local_fallback_done, _using_local_qt_player, _current_video_card_id
+    global _local_resume_pending, _local_resume_ms, _local_resume_attempts
+    _persist_position_now()
     _current_local_relpath = ""
     _current_video_url = ""
     _local_fallback_done = False
     _using_local_qt_player = False
+    _local_resume_pending = False
+    _local_resume_ms = 0
+    _local_resume_attempts = 0
+    _current_video_card_id = None
+    _set_local_controls_visible(False)
     if _video_timer is not None:
         try:
             _video_timer.stop()
@@ -529,5 +763,13 @@ def on_video_reviewer_will_end() -> None:
 def sync_video_note_type() -> None:
     try:
         ensure_video_note_type(mw.col)
+    except Exception:
+        pass
+
+
+def flush_video_progress(*_args, **_kwargs) -> None:
+    """Best-effort save hook for app/profile shutdown."""
+    try:
+        _persist_position_now()
     except Exception:
         pass

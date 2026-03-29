@@ -189,6 +189,7 @@ gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
+gui_hooks.profile_will_close.append(_video_dock_mod.flush_video_progress)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
