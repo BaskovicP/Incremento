@@ -40,13 +40,26 @@
     }, 2400);
   }
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (!msg || msg.type !== "SHOW_TOAST") {
-      return;
+  function getRuntime() {
+    try {
+      return chrome?.runtime || null;
+    } catch (_err) {
+      return null;
     }
-    showToast(msg.text || "");
-    sendResponse?.({ ok: true });
-  });
+  }
+
+  try {
+    const rt = getRuntime();
+    rt?.onMessage?.addListener((msg, _sender, sendResponse) => {
+      if (!msg || msg.type !== "SHOW_TOAST") {
+        return;
+      }
+      showToast(msg.text || "");
+      sendResponse?.({ ok: true });
+    });
+  } catch (_err) {
+    // stale/invalidated context
+  }
 
   function extractYouTubeId(url) {
     try {
@@ -168,13 +181,14 @@
   function safeSendMessage(payload) {
     if (!extensionAlive) return false;
     try {
-      if (!chrome?.runtime?.id) {
+      const rt = getRuntime();
+      if (!rt?.id) {
         deactivateExtensionContext();
         return false;
       }
-      chrome.runtime.sendMessage(payload, () => {
+      rt.sendMessage(payload, () => {
         try {
-          const err = chrome.runtime?.lastError;
+          const err = rt?.lastError;
           if (err && /context invalidated/i.test(String(err.message || ""))) {
             deactivateExtensionContext();
           }
