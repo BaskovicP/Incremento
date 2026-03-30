@@ -138,10 +138,59 @@
     return -1;
   }
 
+  function readYouTubeTimecodeSeconds() {
+    const candidates = Array.from(
+      document.querySelectorAll(".ytp-time-current, [class*='ytp-time-current']")
+    );
+    for (const el of candidates) {
+      const txt = String(el?.textContent || "").trim();
+      const sec = parseClockToSeconds(txt);
+      if (sec >= 0) {
+        return sec;
+      }
+    }
+    return -1;
+  }
+
   let lastSentSec = -1;
   let lastSentAt = 0;
+  let extensionAlive = true;
+  let periodic = null;
+
+  function deactivateExtensionContext() {
+    extensionAlive = false;
+    if (periodic !== null) {
+      clearInterval(periodic);
+      periodic = null;
+    }
+  }
+
+  function safeSendMessage(payload) {
+    if (!extensionAlive) return false;
+    try {
+      if (!chrome?.runtime?.id) {
+        deactivateExtensionContext();
+        return false;
+      }
+      chrome.runtime.sendMessage(payload, () => {
+        try {
+          const err = chrome.runtime?.lastError;
+          if (err && /context invalidated/i.test(String(err.message || ""))) {
+            deactivateExtensionContext();
+          }
+        } catch (_err) {
+          deactivateExtensionContext();
+        }
+      });
+      return true;
+    } catch (_err) {
+      deactivateExtensionContext();
+      return false;
+    }
+  }
 
   function sendHeartbeat(force = false, flush = false) {
+    if (!extensionAlive) return;
     const { provider, videoId } = detectProviderAndId();
     if (!provider) return;
 
@@ -149,6 +198,12 @@
     let sec = -1;
     if (video) {
       sec = Math.max(0, Math.floor(Number(video.currentTime) || 0));
+    }
+    if (provider === "youtube" && sec <= 0) {
+      const ytSec = readYouTubeTimecodeSeconds();
+      if (ytSec >= 0) {
+        sec = ytSec;
+      }
     }
     if (provider === "vimeo" && sec <= 0) {
       const vimeoSec = readVimeoTimecodeSeconds();
@@ -164,24 +219,19 @@
     lastSentSec = sec;
     lastSentAt = now;
 
-    chrome.runtime.sendMessage(
-      {
-        type: "heartbeat",
-        provider,
-        videoId,
-        cardId: extractIncrementoCardId(window.location.href || ""),
-        flush: !!flush,
-        seconds: sec,
-        url: window.location.href || "",
-        title: document.title || "",
-      },
-      () => {
-        void chrome.runtime?.lastError;
-      }
-    );
+    safeSendMessage({
+      type: "heartbeat",
+      provider,
+      videoId,
+      cardId: extractIncrementoCardId(window.location.href || ""),
+      flush: !!flush,
+      seconds: sec,
+      url: window.location.href || "",
+      title: document.title || "",
+    });
   }
 
-  const periodic = window.setInterval(() => sendHeartbeat(false, false), 1000);
+  periodic = window.setInterval(() => sendHeartbeat(false, false), 1000);
   window.addEventListener("pagehide", () => sendHeartbeat(true, true), { capture: true });
   window.addEventListener("beforeunload", () => sendHeartbeat(true, true), { capture: true });
   document.addEventListener("visibilitychange", () => {
@@ -190,6 +240,7 @@
     }
   });
   document.addEventListener("timeupdate", () => sendHeartbeat(false, false), true);
+  document.addEventListener("play", () => sendHeartbeat(true, false), true);
   document.addEventListener("pause", () => sendHeartbeat(true, true), true);
   document.addEventListener("ended", () => sendHeartbeat(true, true), true);
 
