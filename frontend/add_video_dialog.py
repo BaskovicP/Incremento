@@ -16,7 +16,7 @@ from aqt.qt import (
 try:
     from .tag_edit import QuickTagEdit
 except ImportError:
-    from tag_edit import QuickTagEdit
+    from incremento.frontend.tag_edit import QuickTagEdit
 
 try:
     from ..backend.video_manager import (
@@ -123,7 +123,6 @@ class AddVideoDialog(QDialog):
         self._title_edit = QLineEdit()
         layout.addWidget(self._title_edit)
 
-        layout.addWidget(QLabel("Tags:"))
         self._tag_edit = QuickTagEdit()
         layout.addWidget(self._tag_edit)
 

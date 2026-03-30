@@ -29,7 +29,7 @@ from PyQt6.QtPdf import QPdfDocument
 try:
     from .tag_edit import QuickTagEdit
 except ImportError:
-    from tag_edit import QuickTagEdit
+    from incremento.frontend.tag_edit import QuickTagEdit
 
 
 class AddPdfDialog(QDialog):
@@ -104,7 +104,7 @@ class AddPdfDialog(QDialog):
         form = QFormLayout(options_widget)
         form.setContentsMargins(0, 4, 0, 0)
 
-        self._global_tag_edit = QuickTagEdit()
+        self._global_tag_edit = QuickTagEdit(compact=True)
         form.addRow("Tags for all:", self._global_tag_edit)
 
         self._title_from_filename = QCheckBox("Use file name as title")
@@ -223,8 +223,7 @@ class AddPdfDialog(QDialog):
         self._table.setItem(row_idx, 1, name_item)
 
         # Column 2: per-file tags
-        tag_edit = QuickTagEdit()
-        tag_edit.setPlaceholderText("Tags (optional)")
+        tag_edit = QuickTagEdit(compact=True)
         self._table.setCellWidget(row_idx, 2, tag_edit)
         self._tag_edits[path] = tag_edit
 

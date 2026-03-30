@@ -19,7 +19,7 @@ from PyQt6.QtGui import QPageLayout, QPageSize
 try:
     from .tag_edit import QuickTagEdit
 except ImportError:
-    from tag_edit import QuickTagEdit
+    from incremento.frontend.tag_edit import QuickTagEdit
 
 
 class WebpageToPdfDialog(QDialog):
@@ -50,7 +50,6 @@ class WebpageToPdfDialog(QDialog):
         layout.addWidget(self._title_edit)
 
         self._tag_edit = QuickTagEdit()
-        layout.addWidget(QLabel("Tags:"))
         layout.addWidget(self._tag_edit)
 
         # Status / progress
