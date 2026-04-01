@@ -751,6 +751,12 @@ _PRIORITY_DIMS = [
     ("mode",  "Mode (priority / random)"),
 ]
 
+_DEFAULT_MAIN_GROUPS = {
+    "topics": "topics",
+    "pdf": "pdf",
+    "priority": "priority",
+}
+
 
 class SchedulerConfigDialog(QDialog):
     def __init__(self, parent=None, on_clear_session=None):
@@ -893,6 +899,15 @@ class SchedulerConfigDialog(QDialog):
 
         # ── 3. Topics / Items ratio ───────────────────────────────────────────
         topics_val = self._saved.get("topics_slider", 10)
+        main_locks = self._saved.get("main_locks", {}) or {}
+        main_groups = self._saved.get("main_groups", {}) or {}
+        if (
+            self._normalize_group_name(str(main_groups.get("topics", ""))) == "topics_pdf"
+            and self._normalize_group_name(str(main_groups.get("pdf", ""))) == "topics_pdf"
+        ):
+            main_groups = dict(main_groups)
+            main_groups["topics"] = _DEFAULT_MAIN_GROUPS["topics"]
+            main_groups["pdf"] = _DEFAULT_MAIN_GROUPS["pdf"]
         topics_row = QHBoxLayout()
         self._topics_left_lbl = QLabel(f"{100 - topics_val}%")
         self._topics_left_lbl.setFixedWidth(36)
@@ -910,6 +925,19 @@ class SchedulerConfigDialog(QDialog):
         self._topics_right_lbl = QLabel(f"{topics_val}%")
         self._topics_right_lbl.setFixedWidth(36)
         topics_row.addWidget(self._topics_right_lbl)
+        self._topics_lock_cb = QCheckBox("🔒")
+        self._topics_lock_cb.setChecked(bool(main_locks.get("topics", False)))
+        self._topics_lock_cb.setToolTip(
+            "Lock Topics target in the pooled main mix.\n"
+            "When locked, other unlocked main targets rebalance around it."
+        )
+        self._topics_lock_cb.setFixedWidth(48)
+        topics_row.addWidget(self._topics_lock_cb)
+        topics_row.addWidget(QLabel("Group:"))
+        self._topics_group_edit = QLineEdit(str(main_groups.get("topics", _DEFAULT_MAIN_GROUPS["topics"])))
+        self._topics_group_edit.setFixedWidth(90)
+        self._topics_group_edit.setToolTip("Rows with the same group name are constrained together.")
+        topics_row.addWidget(self._topics_group_edit)
         topics_row.addWidget(_info_icon(
             "Ratio of topic cards (concepts, long reads) vs item cards (flashcards, Q&A).\n\n"
             "Example: 90 % Topics with 50 cards → ~45 topic cards and ~5 item cards.\n\n"
@@ -940,6 +968,19 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_right_lbl = QLabel(f"{pdf_val}%")
         self._pdf_right_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_right_lbl)
+        self._pdf_lock_cb = QCheckBox("🔒")
+        self._pdf_lock_cb.setChecked(bool(main_locks.get("pdf", False)))
+        self._pdf_lock_cb.setToolTip(
+            "Lock PDF target in the pooled main mix.\n"
+            "When locked, other unlocked main targets rebalance around it."
+        )
+        self._pdf_lock_cb.setFixedWidth(48)
+        pdf_row.addWidget(self._pdf_lock_cb)
+        pdf_row.addWidget(QLabel("Group:"))
+        self._pdf_group_edit = QLineEdit(str(main_groups.get("pdf", _DEFAULT_MAIN_GROUPS["pdf"])))
+        self._pdf_group_edit.setFixedWidth(90)
+        self._pdf_group_edit.setToolTip("Rows with the same group name are constrained together.")
+        pdf_row.addWidget(self._pdf_group_edit)
         pdf_row.addWidget(_info_icon(
             "Soft PDF mix rate — how often a PDF card is picked during normal scheduling.\n\n"
             "Unlike Content type priorities (which fill a hard quota first), this is a\n"
@@ -976,6 +1017,19 @@ class SchedulerConfigDialog(QDialog):
         self._random_right_lbl = QLabel(f"{random_val}%")
         self._random_right_lbl.setFixedWidth(36)
         random_row.addWidget(self._random_right_lbl)
+        self._priority_lock_cb = QCheckBox("🔒")
+        self._priority_lock_cb.setChecked(bool(main_locks.get("priority", False)))
+        self._priority_lock_cb.setToolTip(
+            "Lock Priority target in the pooled main mix.\n"
+            "When locked, other unlocked main targets rebalance around it."
+        )
+        self._priority_lock_cb.setFixedWidth(48)
+        random_row.addWidget(self._priority_lock_cb)
+        random_row.addWidget(QLabel("Group:"))
+        self._priority_group_edit = QLineEdit(str(main_groups.get("priority", _DEFAULT_MAIN_GROUPS["priority"])))
+        self._priority_group_edit.setFixedWidth(90)
+        self._priority_group_edit.setToolTip("Rows with the same group name are constrained together.")
+        random_row.addWidget(self._priority_group_edit)
         random_row.addWidget(_info_icon(
             "How cards are selected from the eligible pool at each pick.\n\n"
             "• Priority (left) — picks the most overdue card first (sorted by due date).\n"
@@ -988,7 +1042,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addLayout(random_row)
 
         self._axis_hint_lbl = QLabel(
-            "Percentages are independent targets per axis, not a shared 100% pool."
+            "Rows in the same group are constrained to a shared 100% pool (locked rows are pinned)."
         )
         self._axis_hint_lbl.setWordWrap(True)
         self._axis_hint_lbl.setStyleSheet("color: gray; font-size: small;")
@@ -1053,6 +1107,15 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._random_slider.valueChanged,
                  lambda v: (self._random_left_lbl.setText(f"{100 - v}%"),
                              self._random_right_lbl.setText(f"{v}%")))
+        qconnect(self._topics_slider.valueChanged, lambda _: self._on_main_slider_changed("topics"))
+        qconnect(self._pdf_slider.valueChanged,    lambda _: self._on_main_slider_changed("pdf"))
+        qconnect(self._random_slider.valueChanged, lambda _: self._on_main_slider_changed("priority"))
+        qconnect(self._topics_lock_cb.stateChanged,   lambda _: self._on_main_lock_toggled("topics"))
+        qconnect(self._pdf_lock_cb.stateChanged,      lambda _: self._on_main_lock_toggled("pdf"))
+        qconnect(self._priority_lock_cb.stateChanged, lambda _: self._on_main_lock_toggled("priority"))
+        qconnect(self._topics_group_edit.textChanged,   lambda _: self._on_main_group_changed())
+        qconnect(self._pdf_group_edit.textChanged,      lambda _: self._on_main_group_changed())
+        qconnect(self._priority_group_edit.textChanged, lambda _: self._on_main_group_changed())
         qconnect(self._count_spin.valueChanged, lambda _: self._refresh_expected_mix_preview())
         qconnect(self._topics_slider.valueChanged, lambda _: self._refresh_expected_mix_preview())
         qconnect(self._pdf_slider.valueChanged,    lambda _: self._refresh_expected_mix_preview())
@@ -1067,6 +1130,16 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._cb_new.stateChanged,        lambda _: self._schedule_live_preview_refresh())
         qconnect(self._cb_learning.stateChanged,   lambda _: self._schedule_live_preview_refresh())
         qconnect(self._cb_due.stateChanged,        lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._topics_lock_cb.stateChanged,   lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._pdf_lock_cb.stateChanged,      lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._priority_lock_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._topics_group_edit.textChanged,   lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._pdf_group_edit.textChanged,      lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._priority_group_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
+        self._topics_slider.setEnabled(not self._topics_lock_cb.isChecked())
+        self._pdf_slider.setEnabled(not self._pdf_lock_cb.isChecked())
+        self._random_slider.setEnabled(not self._priority_lock_cb.isChecked())
+        self._rebalance_main_pool(changed_key=None)
         self._refresh_expected_mix_preview()
 
         # ── 7. Scheduler scope ────────────────────────────────────────────────
@@ -1151,7 +1224,8 @@ class SchedulerConfigDialog(QDialog):
             "• Strict mode (strict enforcement on):\n"
             "  The % becomes a hard quota filled before the rest of the session.\n"
             "  Example: physics = 20 % with 50 cards → exactly ~10 physics cards reserved.\n\n"
-            "Sliders are independent — the remainder goes to untagged cards.\n"
+            "Tag sliders with the same group name are constrained together to 100 %.\n"
+            "Leave group empty to keep a tag independent.\n"
             "Total can exceed 100 % (a warning is shown)."
         ))
         _tag_hrow.addStretch()
@@ -1160,7 +1234,8 @@ class SchedulerConfigDialog(QDialog):
         _tag_desc = QLabel(
             "Each slider is the probability that a given pick targets this tag. "
             "In strict mode it becomes a hard quota. "
-            "Sliders are independent — the remainder goes to untagged cards."
+            "Tag sliders in the same group share a constrained 100% pool. "
+            "The 'Other' row is always present."
         )
         _tag_desc.setWordWrap(True)
         _tag_desc.setStyleSheet("color: gray;")
@@ -1168,22 +1243,24 @@ class SchedulerConfigDialog(QDialog):
 
         add_tag_row = QHBoxLayout()
         self._tag_combo = QComboBox()
-        self._tag_combo.addItems(sorted(mw.col.tags.all()))
+        self._current_profile_tags = sorted(set(mw.col.tags.all()))
+        self._current_profile_tags_map = {t.casefold(): t for t in self._current_profile_tags}
+        self._tag_combo.addItems(self._current_profile_tags)
         add_tag_row.addWidget(self._tag_combo)
         add_btn = QPushButton("Add")
-        qconnect(add_btn.clicked, lambda: self._add_tag_row(self._tag_combo.currentText()))
+        qconnect(add_btn.clicked, lambda: self._add_tag_row(self._tag_combo.currentText(), group_name="tags"))
         qconnect(add_btn.clicked, lambda: self._schedule_live_preview_refresh())
         add_tag_row.addWidget(add_btn)
         layout.addLayout(add_tag_row)
 
-        self._no_tags_cb = QCheckBox("After exhausting tag groups, fill with rest of cards")
+        self._no_tags_cb = QCheckBox("Include other cards (controlled by Other slider)")
         self._no_tags_cb.setToolTip(
-            "When all tag quotas are filled, use any remaining cards\n"
-            "to reach the session target — regardless of their tags."
+            "Read-only compatibility flag.\n"
+            "Use the always-present 'Other' slider to control this."
         )
         self._no_tags_cb.setChecked(self._saved.get("no_tags_checked", True))
+        self._no_tags_cb.setEnabled(False)
         layout.addWidget(self._no_tags_cb)
-        qconnect(self._no_tags_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._tags_container = QWidget()
         self._tags_layout = QVBoxLayout(self._tags_container)
@@ -1191,9 +1268,18 @@ class SchedulerConfigDialog(QDialog):
         self._tags_layout.setSpacing(2)
         layout.addWidget(self._tags_container)
 
+        skipped_missing_tags = 0
         for entry in self._saved.get("tag_rows", []):
-            self._add_tag_row(entry["tag"], entry.get("weight", 20),
-                              locked=entry.get("locked", False))
+            tag = entry.get("tag")
+            if self._resolve_tag_for_current_profile(tag) is None:
+                skipped_missing_tags += 1
+                continue
+            self._add_tag_row(tag, entry.get("weight", 20),
+                              locked=entry.get("locked", False),
+                              group_name=entry.get("group", "tags"))
+        self._ensure_other_tag_row(default_enabled=self._saved.get("no_tags_checked", True))
+        if skipped_missing_tags > 0:
+            tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
 
         self._other_lbl = QLabel("")
         layout.addWidget(self._other_lbl)
@@ -1624,8 +1710,63 @@ class SchedulerConfigDialog(QDialog):
     # Tag row helpers
     # ------------------------------------------------------------------
 
-    def _make_row_base(self, label_text: str, weight: int,
-                       locked: bool) -> tuple[QWidget, QHBoxLayout, QSlider, QLabel, QCheckBox, QLabel]:
+    def _resolve_tag_for_current_profile(self, tag: str) -> str | None:
+        """Return canonical tag name for current profile, or None if missing."""
+        raw = str(tag or "").strip()
+        if not raw:
+            return None
+        if raw == NO_TAGS_KEY:
+            return NO_TAGS_KEY
+
+        current_tags = getattr(self, "_current_profile_tags", None)
+        if current_tags is None:
+            current_tags = sorted(set(mw.col.tags.all()))
+            self._current_profile_tags = current_tags
+            self._current_profile_tags_map = {t.casefold(): t for t in current_tags}
+
+        tag_map = getattr(self, "_current_profile_tags_map", {})
+        return tag_map.get(raw.casefold())
+
+    @staticmethod
+    def _tag_display_name(tag: str) -> str:
+        return "Other" if tag == NO_TAGS_KEY else tag
+
+    def _find_other_tag_row(self) -> dict | None:
+        for row in self._linked_rows:
+            if row.get("tag") == NO_TAGS_KEY:
+                return row
+        return None
+
+    def _current_include_rest_from_other_slider(self) -> bool:
+        other_row = self._find_other_tag_row()
+        if other_row is None:
+            cb = getattr(self, "_no_tags_cb", None)
+            return bool(cb.isChecked()) if cb is not None else True
+        return int(other_row["slider"].value()) > 0
+
+    def _sync_no_tags_checkbox_from_other_slider(self) -> None:
+        cb = getattr(self, "_no_tags_cb", None)
+        if cb is not None:
+            cb.setChecked(self._current_include_rest_from_other_slider())
+
+    def _ensure_other_tag_row(self, default_enabled: bool = True) -> None:
+        if self._find_other_tag_row() is not None:
+            return
+        real_total = sum(
+            int(r["slider"].value())
+            for r in self._linked_rows
+            if r.get("tag") != NO_TAGS_KEY
+        )
+        default_weight = max(0, min(100, 100 - real_total)) if default_enabled else 0
+        self._add_tag_row(NO_TAGS_KEY, weight=default_weight, locked=False, group_name="tags")
+
+    def _make_row_base(
+        self,
+        label_text: str,
+        weight: int,
+        locked: bool,
+        group_name: str,
+    ) -> tuple[QWidget, QHBoxLayout, QSlider, QLabel, QCheckBox, QLabel, QLineEdit]:
         """Create the shared [label | slider | pct | lock] part of a tag row."""
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
@@ -1649,42 +1790,55 @@ class SchedulerConfigDialog(QDialog):
 
         lock_cb = QCheckBox("🔒")
         lock_cb.setChecked(locked)
-        lock_cb.setToolTip("Lock this weight so other sliders don't affect it")
+        lock_cb.setToolTip("Lock this weight inside its group.")
         lock_cb.setFixedWidth(48)
         row_layout.addWidget(lock_cb)
 
-        # Disable slider when locked; re-enable on toggle
+        row_layout.addWidget(QLabel("Group:"))
+        group_edit = QLineEdit(group_name or "tags")
+        group_edit.setFixedWidth(90)
+        group_edit.setToolTip("Tag sliders with the same group name are constrained to a shared 100% pool.")
+        row_layout.addWidget(group_edit)
+
+        # Disable slider when locked; re-enable on toggle.
         slider.setEnabled(not locked)
         qconnect(lock_cb.stateChanged,
                  lambda _, cb=lock_cb, s=slider: s.setEnabled(not cb.isChecked()))
 
-        return row_widget, row_layout, slider, pct_label, lock_cb, name_label
+        return row_widget, row_layout, slider, pct_label, lock_cb, name_label, group_edit
 
-    def _add_tag_row(self, tag: str, weight: int = 20, locked: bool = False) -> None:
-        if not tag:
+    def _add_tag_row(self, tag: str, weight: int = 20, locked: bool = False, group_name: str = "tags") -> None:
+        resolved = self._resolve_tag_for_current_profile(tag)
+        if not resolved:
             return
+        tag = resolved
         if any(r["tag"] == tag for r in self._linked_rows):
             return
 
-        row_widget, row_layout, slider, pct_label, lock_cb, name_label = self._make_row_base(
-            tag, weight, locked
+        row_widget, row_layout, slider, pct_label, lock_cb, name_label, group_edit = self._make_row_base(
+            self._tag_display_name(tag), weight, locked, group_name
         )
 
         row_dict = {"tag": tag, "slider": slider, "pct_label": pct_label,
-                    "lock_cb": lock_cb, "widget": row_widget, "name_label": name_label}
+                    "lock_cb": lock_cb, "widget": row_widget, "name_label": name_label,
+                    "group_edit": group_edit}
         self._refresh_tag_count(row_dict)
         qconnect(slider.valueChanged, lambda v, r=row_dict: self._on_weight_changed(r))
         qconnect(slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(lock_cb.stateChanged, lambda _, r=row_dict: self._on_tag_lock_or_group_changed(r))
+        qconnect(group_edit.textChanged, lambda _, r=row_dict: self._on_tag_lock_or_group_changed(r))
+        qconnect(group_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
 
-        row_layout.addSpacing(6)
-        remove_btn = QPushButton("✕")
-        remove_btn.setFixedWidth(28)
-        remove_btn.setStyleSheet(
-            "QPushButton { color: #e05050; font-weight: bold; }"
-            "QPushButton:hover { color: #c03030; }"
-        )
-        qconnect(remove_btn.clicked, lambda checked=False, r=row_dict: self._remove_row(r))
-        row_layout.addWidget(remove_btn)
+        if tag != NO_TAGS_KEY:
+            row_layout.addSpacing(6)
+            remove_btn = QPushButton("✕")
+            remove_btn.setFixedWidth(28)
+            remove_btn.setStyleSheet(
+                "QPushButton { color: #e05050; font-weight: bold; }"
+                "QPushButton:hover { color: #c03030; }"
+            )
+            qconnect(remove_btn.clicked, lambda checked=False, r=row_dict: self._remove_row(r))
+            row_layout.addWidget(remove_btn)
 
         self._tags_layout.addWidget(row_widget)
         self._linked_rows.append(row_dict)
@@ -1694,12 +1848,18 @@ class SchedulerConfigDialog(QDialog):
         if idx >= 0:
             self._tag_combo.removeItem(idx)
 
+        self._rebalance_tag_groups(changed_row=None)
+        for row in self._linked_rows:
+            row["pct_label"].setText(f"{row['slider'].value()}%")
+        self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
-    def _remove_row(self, row_dict: dict) -> None:
+    def _remove_row(self, row_dict: dict, allow_other: bool = False) -> None:
         tag = row_dict["tag"]
+        if tag == NO_TAGS_KEY and not allow_other:
+            return
         if row_dict in self._linked_rows:
             self._linked_rows.remove(row_dict)
         row_dict["widget"].deleteLater()
@@ -1710,38 +1870,280 @@ class SchedulerConfigDialog(QDialog):
         items.sort()
         self._tag_combo.insertItem(items.index(tag), tag)
 
+        self._rebalance_tag_groups(changed_row=None)
+        for row in self._linked_rows:
+            row["pct_label"].setText(f"{row['slider'].value()}%")
+        self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
     # ------------------------------------------------------------------
-    # Slider logic — each tag slider is independent (no forced rebalancing)
+    # Slider logic — tag sliders constrain within same group name
     # ------------------------------------------------------------------
+
+    def _get_tag_group_name(self, row_dict: dict) -> str:
+        return self._normalize_group_name(row_dict["group_edit"].text())
+
+    def _rebalance_tag_groups(self, changed_row: dict | None) -> None:
+        if self._updating:
+            return
+        groups: dict[str, list[dict]] = {}
+        for row in self._linked_rows:
+            g = self._get_tag_group_name(row)
+            if not g:
+                continue
+            groups.setdefault(g, []).append(row)
+
+        if not groups:
+            return
+
+        current = {r["tag"]: int(r["slider"].value()) for r in self._linked_rows}
+        locks = {r["tag"]: bool(r["lock_cb"].isChecked()) for r in self._linked_rows}
+        changed_key = changed_row["tag"] if changed_row else None
+        changed_group = self._get_tag_group_name(changed_row) if changed_row else None
+
+        for group_name, rows in groups.items():
+            keys = [r["tag"] for r in rows]
+            if len(keys) <= 1:
+                continue
+            active_changed = changed_key if (changed_key and group_name == changed_group) else None
+            self._rebalance_group_subset(
+                values=current,
+                locks=locks,
+                keys=keys,
+                changed_key=active_changed,
+            )
+
+        self._updating = True
+        try:
+            for row in self._linked_rows:
+                row["slider"].setValue(max(0, min(100, int(current.get(row["tag"], row["slider"].value())))))
+                row["slider"].setEnabled(not row["lock_cb"].isChecked())
+        finally:
+            self._updating = False
 
     def _on_weight_changed(self, changed_row: dict) -> None:
         if self._updating:
             return
+        self._rebalance_tag_groups(changed_row)
         changed_row["pct_label"].setText(f"{changed_row['slider'].value()}%")
+        for row in self._linked_rows:
+            row["pct_label"].setText(f"{row['slider'].value()}%")
+        self._sync_no_tags_checkbox_from_other_slider()
+        self._update_other_label()
+        self._refresh_expected_mix_preview()
+        self._schedule_live_preview_refresh()
+
+    def _on_tag_lock_or_group_changed(self, row_dict: dict) -> None:
+        if self._updating:
+            return
+        row_dict["slider"].setEnabled(not row_dict["lock_cb"].isChecked())
+        self._rebalance_tag_groups(changed_row=None)
+        for row in self._linked_rows:
+            row["pct_label"].setText(f"{row['slider'].value()}%")
+        self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
     def _update_other_label(self) -> None:
-        """Show what fraction of the session is left for untagged cards."""
-        total = sum(r["slider"].value() for r in self._linked_rows)
-        other = max(0, 100 - total)
+        """Show configured vs effective "Other cards" target."""
         if not hasattr(self, "_other_lbl"):
             return
-        if total > 100:
+        other_row = self._find_other_tag_row()
+        real_total = sum(
+            int(r["slider"].value())
+            for r in self._linked_rows
+            if r.get("tag") != NO_TAGS_KEY
+        )
+        cb = getattr(self, "_no_tags_cb", None)
+        include_rest = (int(other_row["slider"].value()) > 0) if other_row is not None else (bool(cb.isChecked()) if cb is not None else True)
+        effective_other = max(0, 100 - real_total) if include_rest else 0
+        configured_other = int(other_row["slider"].value()) if other_row is not None else effective_other
+        if configured_other != effective_other:
             self._other_lbl.setText(
                 f'<span style="color: #e0a020; font-size: small;">'
-                f'Other cards: {other}%  (tag weights exceed 100% — reduce some sliders)</span>'
+                f'Other slider: {configured_other}% · Effective other: {effective_other}% '
+                f'(based on non-Other tag totals)</span>'
+            )
+            return
+        self._other_lbl.setText(
+            f'<span style="color: gray; font-size: small;">'
+            f'Other cards: {effective_other}%</span>'
+        )
+
+    def _get_main_lock_state(self) -> dict[str, bool]:
+        return {
+            "topics": self._topics_lock_cb.isChecked(),
+            "pdf": self._pdf_lock_cb.isChecked(),
+            "priority": self._priority_lock_cb.isChecked(),
+        }
+
+    @staticmethod
+    def _normalize_group_name(name: str) -> str:
+        return " ".join((name or "").strip().split()).lower()
+
+    def _get_main_group_state(self) -> dict[str, str]:
+        return {
+            "topics": self._normalize_group_name(self._topics_group_edit.text()),
+            "pdf": self._normalize_group_name(self._pdf_group_edit.text()),
+            "priority": self._normalize_group_name(self._priority_group_edit.text()),
+        }
+
+    def _get_main_targets(self) -> dict[str, int]:
+        return {
+            "topics": max(0, min(100, 100 - self._topics_slider.value())),
+            "pdf": max(0, min(100, 100 - self._pdf_slider.value())),
+            "priority": max(0, min(100, 100 - self._random_slider.value())),
+        }
+
+    @staticmethod
+    def _split_total_by_weights(total: int, keys: list[str], weights: dict[str, float]) -> dict[str, int]:
+        if not keys:
+            return {}
+        total = max(0, int(total))
+        clamped = {k: max(0.0, float(weights.get(k, 0.0))) for k in keys}
+        weight_sum = sum(clamped.values())
+        if weight_sum <= 0:
+            base = total // len(keys)
+            rem = total - (base * len(keys))
+            out = {k: base for k in keys}
+            for i in range(rem):
+                out[keys[i % len(keys)]] += 1
+            return out
+
+        raw = {k: (clamped[k] / weight_sum) * total for k in keys}
+        out = {k: int(raw[k]) for k in keys}
+        rem = total - sum(out.values())
+        if rem > 0:
+            ranked = sorted(keys, key=lambda k: (raw[k] - out[k], k), reverse=True)
+            for i in range(rem):
+                out[ranked[i % len(ranked)]] += 1
+        return out
+
+    def _apply_main_targets(self, targets: dict[str, int]) -> None:
+        t = max(0, min(100, int(targets.get("topics", 0))))
+        p = max(0, min(100, int(targets.get("pdf", 0))))
+        pr = max(0, min(100, int(targets.get("priority", 0))))
+        self._updating = True
+        try:
+            self._topics_slider.setValue(100 - t)
+            self._pdf_slider.setValue(100 - p)
+            self._random_slider.setValue(100 - pr)
+        finally:
+            self._updating = False
+
+    def _rebalance_group_subset(
+        self,
+        values: dict[str, int],
+        locks: dict[str, bool],
+        keys: list[str],
+        changed_key: str | None,
+    ) -> None:
+        if len(keys) <= 1:
+            return
+        locked_keys = [k for k in keys if locks.get(k, False)]
+        unlocked_keys = [k for k in keys if not locks.get(k, False)]
+        locked_sum = sum(values[k] for k in locked_keys)
+        if locked_sum > 100:
+            reduced = self._split_total_by_weights(
+                total=100,
+                keys=locked_keys,
+                weights={k: values[k] for k in locked_keys},
+            )
+            for k in keys:
+                values[k] = reduced.get(k, 0)
+            return
+
+        if changed_key is not None and changed_key in unlocked_keys:
+            max_changed = max(0, 100 - locked_sum)
+            values[changed_key] = min(values[changed_key], max_changed)
+            remaining = 100 - locked_sum - values[changed_key]
+            other_unlocked = [k for k in unlocked_keys if k != changed_key]
+            if other_unlocked:
+                redistributed = self._split_total_by_weights(
+                    total=remaining,
+                    keys=other_unlocked,
+                    weights={k: values[k] for k in other_unlocked},
+                )
+                for k in other_unlocked:
+                    values[k] = redistributed[k]
+            else:
+                values[changed_key] += max(0, remaining)
+            return
+
+        remaining = 100 - locked_sum
+        if unlocked_keys:
+            redistributed = self._split_total_by_weights(
+                total=remaining,
+                keys=unlocked_keys,
+                weights={k: values[k] for k in unlocked_keys},
+            )
+            for k in unlocked_keys:
+                values[k] = redistributed[k]
+        else:
+            normalized = self._split_total_by_weights(
+                total=100,
+                keys=keys,
+                weights={k: values[k] for k in keys},
+            )
+            for k in keys:
+                values[k] = normalized[k]
+
+    def _rebalance_main_pool(self, changed_key: str | None) -> None:
+        targets = self._get_main_targets()
+        locks = self._get_main_lock_state()
+        groups = self._get_main_group_state()
+        all_keys = ["topics", "pdf", "priority"]
+
+        self._topics_slider.setEnabled(not locks["topics"])
+        self._pdf_slider.setEnabled(not locks["pdf"])
+        self._random_slider.setEnabled(not locks["priority"])
+
+        if changed_key is not None and locks.get(changed_key, False):
+            return
+
+        if changed_key is not None:
+            group_name = groups.get(changed_key, "")
+            subset = [k for k in all_keys if groups.get(k, "") == group_name and group_name]
+            self._rebalance_group_subset(
+                values=targets,
+                locks=locks,
+                keys=subset,
+                changed_key=changed_key,
             )
         else:
-            self._other_lbl.setText(
-                f'<span style="color: gray; font-size: small;">'
-                f'Other cards: {other}%</span>'
-            )
+            handled: set[str] = set()
+            for key in all_keys:
+                group_name = groups.get(key, "")
+                if not group_name or group_name in handled:
+                    continue
+                handled.add(group_name)
+                subset = [k for k in all_keys if groups.get(k, "") == group_name]
+                self._rebalance_group_subset(
+                    values=targets,
+                    locks=locks,
+                    keys=subset,
+                    changed_key=None,
+                )
+
+        self._apply_main_targets(targets)
+
+    def _on_main_slider_changed(self, changed_key: str) -> None:
+        if self._updating:
+            return
+        self._rebalance_main_pool(changed_key=changed_key)
+
+    def _on_main_lock_toggled(self, _changed_key: str) -> None:
+        if self._updating:
+            return
+        self._rebalance_main_pool(changed_key=None)
+
+    def _on_main_group_changed(self) -> None:
+        if self._updating:
+            return
+        self._rebalance_main_pool(changed_key=None)
 
     @staticmethod
     def _format_pct(value: float) -> str:
@@ -1752,6 +2154,8 @@ class SchedulerConfigDialog(QDialog):
         if total <= 0:
             return {k: 0 for k in shares}
         raw = {k: max(0.0, v) * total for k, v in shares.items()}
+        if sum(raw.values()) <= 0:
+            return {k: 0 for k in shares}
         counts = {k: int(raw[k]) for k in shares}
         remainder = total - sum(counts.values())
         if remainder <= 0:
@@ -1859,25 +2263,30 @@ class SchedulerConfigDialog(QDialog):
             f"Random {mc['random']}, Priority {mc['priority']} "
             "(availability may shift actual results)"
         )
-        rows = [
+        real_rows = [
             (str(r["tag"]), max(0.0, r["slider"].value() / 100.0))
             for r in self._linked_rows
-            if r["slider"].value() > 0
+            if r["tag"] != NO_TAGS_KEY and r["slider"].value() > 0
         ]
-        tags_total = sum(w for _, w in rows)
+        other_row = self._find_other_tag_row()
+        cb = getattr(self, "_no_tags_cb", None)
+        include_rest = (int(other_row["slider"].value()) > 0) if other_row is not None else (bool(cb.isChecked()) if cb is not None else True)
+        tags_total = sum(w for _, w in real_rows)
         tags_normalized = False
-        if not rows:
-            tag_shares_for_content = {"Other": 1.0}
+        if not real_rows:
+            tag_shares_for_content = {"Other": 1.0 if include_rest else 0.0}
         elif tags_total <= 1.0:
-            tag_shares_for_content = {tag: w for tag, w in rows}
-            tag_shares_for_content["Other"] = max(0.0, 1.0 - tags_total)
+            tag_shares_for_content = {tag: w for tag, w in real_rows}
+            tag_shares_for_content["Other"] = max(0.0, 1.0 - tags_total) if include_rest else 0.0
         else:
             tags_normalized = True
             norm = 1.0 / tags_total
-            tag_shares_for_content = {tag: (w * norm) for tag, w in rows}
+            tag_shares_for_content = {tag: (w * norm) for tag, w in real_rows}
+            if include_rest:
+                tag_shares_for_content["Other"] = 0.0
 
         self._update_tag_content_heatmap(
-            rows=rows,
+            rows=[("Other" if tag == NO_TAGS_KEY else tag, w) for tag, w in real_rows],
             tag_shares_for_content=tag_shares_for_content,
             tags_normalized=tags_normalized,
             cc=cc,
@@ -1890,6 +2299,8 @@ class SchedulerConfigDialog(QDialog):
             "topics_slider": d.get("topics_slider"),
             "random_slider": d.get("random_slider"),
             "pdf_slider": d.get("pdf_slider"),
+            "main_locks": d.get("main_locks"),
+            "main_groups": d.get("main_groups"),
             "no_tags_checked": d.get("no_tags_checked"),
             "phase_order": d.get("phase_order"),
             "phases_enabled": d.get("phases_enabled"),
@@ -1978,6 +2389,11 @@ class SchedulerConfigDialog(QDialog):
     def _refresh_tag_count(self, row_dict: dict) -> None:
         """Update the count annotation on one tag row."""
         tag = row_dict["tag"]
+        if tag == NO_TAGS_KEY:
+            row_dict["name_label"].setText(
+                'Other <span style="color: gray; font-size: small;">(untagged remainder)</span>'
+            )
+            return
         ready = self._ready_filter_from_checks()
         # Use filter edits if they already exist (they're created after tag rows).
         tf_widget  = getattr(self, "_topics_filter_edit", None)
@@ -2130,7 +2546,11 @@ class SchedulerConfigDialog(QDialog):
 
     def to_config(self) -> SchedulerConfig:
         """Return a SchedulerConfig built from the current widget state."""
-        raw = {r["tag"]: r["slider"].value() for r in self._linked_rows}
+        raw = {
+            r["tag"]: r["slider"].value()
+            for r in self._linked_rows
+            if r["tag"] != NO_TAGS_KEY
+        }
         ct_weights = {
             r["type"]: r["slider"].value() / 100.0
             for r in self._ct_rows
@@ -2143,7 +2563,7 @@ class SchedulerConfigDialog(QDialog):
             pdf_rate=(100 - self._pdf_slider.value()) / 100.0,
             use_tags=bool(raw),
             tag_weights={tag: v / 100.0 for tag, v in raw.items()},
-            include_rest=self._no_tags_cb.isChecked(),
+            include_rest=self._current_include_rest_from_other_slider(),
             scheduler_scope=self._scope_combo.currentData(),
             day_end_time=self._get_day_end_time(),
             phase_order=self._funnel.get_order(),
@@ -2170,14 +2590,29 @@ class SchedulerConfigDialog(QDialog):
             "topics_slider":      self._topics_slider.value(),
             "random_slider":      self._random_slider.value(),
             "pdf_slider":         self._pdf_slider.value(),
-            "no_tags_checked":    self._no_tags_cb.isChecked(),
+            "main_locks": {
+                "topics": self._topics_lock_cb.isChecked(),
+                "pdf": self._pdf_lock_cb.isChecked(),
+                "priority": self._priority_lock_cb.isChecked(),
+            },
+            "main_groups": {
+                "topics": self._topics_group_edit.text().strip() or _DEFAULT_MAIN_GROUPS["topics"],
+                "pdf": self._pdf_group_edit.text().strip() or _DEFAULT_MAIN_GROUPS["pdf"],
+                "priority": self._priority_group_edit.text().strip() or _DEFAULT_MAIN_GROUPS["priority"],
+            },
+            "no_tags_checked":    self._current_include_rest_from_other_slider(),
             "phase_order":        self._funnel.get_order(),
             "phases_enabled":     self._funnel.get_enabled(),
             "enforce_priority":   self._enforce_cb.isChecked(),
             "scheduler_scope":    self._scope_combo.currentData(),
             "day_end_time":       self._get_day_end_time(),
             "tag_rows": [
-                {"tag": r["tag"], "weight": r["slider"].value(), "locked": r["lock_cb"].isChecked()}
+                {
+                    "tag": r["tag"],
+                    "weight": r["slider"].value(),
+                    "locked": r["lock_cb"].isChecked(),
+                    "group": r["group_edit"].text().strip() or "tags",
+                }
                 for r in self._linked_rows
             ],
             "content_type_rows": [
@@ -2282,6 +2717,16 @@ class SchedulerConfigDialog(QDialog):
         self._random_left_lbl.setText(f"{100 - random_val}%")
         self._random_right_lbl.setText(f"{random_val}%")
 
+        locks = d.get("main_locks", {}) or {}
+        self._topics_lock_cb.setChecked(bool(locks.get("topics", False)))
+        self._pdf_lock_cb.setChecked(bool(locks.get("pdf", False)))
+        self._priority_lock_cb.setChecked(bool(locks.get("priority", False)))
+        groups = d.get("main_groups", {}) or {}
+        self._topics_group_edit.setText(str(groups.get("topics", _DEFAULT_MAIN_GROUPS["topics"])))
+        self._pdf_group_edit.setText(str(groups.get("pdf", _DEFAULT_MAIN_GROUPS["pdf"])))
+        self._priority_group_edit.setText(str(groups.get("priority", _DEFAULT_MAIN_GROUPS["priority"])))
+        self._rebalance_main_pool(changed_key=None)
+
         self._cb_new.setChecked(d.get("include_new", True))
         self._cb_learning.setChecked(d.get("include_learning", True))
         self._cb_due.setChecked(d.get("include_due", True))
@@ -2326,10 +2771,20 @@ class SchedulerConfigDialog(QDialog):
 
         # Replace tag rows
         for row in list(self._linked_rows):
-            self._remove_row(row)
+            self._remove_row(row, allow_other=True)
+        skipped_missing_tags = 0
         for entry in d.get("tag_rows", []):
-            self._add_tag_row(entry["tag"], entry.get("weight", 20),
-                              locked=entry.get("locked", False))
+            tag = entry.get("tag")
+            if self._resolve_tag_for_current_profile(tag) is None:
+                skipped_missing_tags += 1
+                continue
+            self._add_tag_row(tag, entry.get("weight", 20),
+                              locked=entry.get("locked", False),
+                              group_name=entry.get("group", "tags"))
+        self._ensure_other_tag_row(default_enabled=d.get("no_tags_checked", True))
+        self._sync_no_tags_checkbox_from_other_slider()
+        if skipped_missing_tags > 0:
+            tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
 
         # Restore content type rows
         ct_saved = {r["type"]: r for r in d.get("content_type_rows", [])}

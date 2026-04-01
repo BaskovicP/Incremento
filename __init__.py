@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import zipfile
 
 from aqt import mw, gui_hooks
@@ -884,7 +885,7 @@ def _prune_stale_progress_rows() -> dict[str, int]:
     """
     conn = get_connection(_ADDON_DIR)
     counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
-    live_ids = set(int(cid) for cid in mw.col.db.list("SELECT id FROM cards"))
+    live_ids = _all_live_card_ids_any_profile()
     total_deleted = 0
 
     for table in ("pdf_progress", "video_progress", "web_progress"):
@@ -927,6 +928,361 @@ def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
         f"• Video: {video_n}\n"
         f"• Web: {web_n}"
     )
+
+
+def _current_profile_name() -> str:
+    pm = getattr(mw, "pm", None)
+    if pm is None:
+        return "Unknown"
+    for attr in ("name", "profileName"):
+        v = getattr(pm, attr, None)
+        try:
+            if callable(v):
+                got = v()
+            else:
+                got = v
+            if got:
+                return str(got)
+        except Exception:
+            continue
+    return "Unknown"
+
+
+def _iter_other_profile_collections() -> list[tuple[str, str]]:
+    """Return [(profile_name, collection_db_path)] for profiles other than current."""
+    pm = getattr(mw, "pm", None)
+    if pm is None:
+        return []
+
+    base = getattr(pm, "base", None)
+    try:
+        base = base() if callable(base) else base
+    except Exception:
+        base = None
+    if not base or not os.path.isdir(base):
+        return []
+
+    current_name = _current_profile_name()
+    current_folder = None
+    pf = getattr(pm, "profileFolder", None)
+    try:
+        current_folder = pf() if callable(pf) else pf
+    except Exception:
+        current_folder = None
+    if current_folder:
+        current_folder = os.path.realpath(str(current_folder))
+
+    out: list[tuple[str, str]] = []
+    for name in sorted(os.listdir(base)):
+        pdir = os.path.join(base, name)
+        if not os.path.isdir(pdir):
+            continue
+        if name == current_name:
+            continue
+        if current_folder and os.path.realpath(pdir) == current_folder:
+            continue
+        db_path = os.path.join(pdir, "collection.anki2")
+        if os.path.isfile(db_path):
+            out.append((name, db_path))
+    return out
+
+
+def _all_live_card_ids_any_profile() -> set[int]:
+    """Union of card IDs from current + other profiles."""
+    live_ids = set(int(cid) for cid in mw.col.db.list("SELECT id FROM cards"))
+    for _, db_path in _iter_other_profile_collections():
+        conn = None
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            for (cid,) in conn.execute("SELECT id FROM cards"):
+                try:
+                    live_ids.add(int(cid))
+                except Exception:
+                    pass
+        except Exception:
+            continue
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    return live_ids
+
+
+def _profiles_referencing_files(candidates: list[str], kind: str) -> dict[str, list[str]]:
+    """
+    For each candidate filename, return profile names that reference it in notes.flds.
+    kind: "pdf" or "video".
+    """
+    refs: dict[str, list[str]] = {}
+    if not candidates:
+        return refs
+
+    for profile_name, db_path in _iter_other_profile_collections():
+        conn = None
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            for fname in candidates:
+                tokens = [fname]
+                if kind == "video":
+                    tokens = [f"videos/{fname}", fname]
+                hit = False
+                for token in tokens:
+                    row = conn.execute(
+                        "SELECT 1 FROM notes WHERE instr(flds, ?) > 0 LIMIT 1",
+                        (token,),
+                    ).fetchone()
+                    if row:
+                        hit = True
+                        break
+                if hit:
+                    refs.setdefault(fname, []).append(profile_name)
+        except Exception:
+            continue
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    return refs
+
+
+def _partition_any_profile_ties(candidates: list[str], kind: str) -> tuple[list[str], list[str], dict[str, list[str]]]:
+    """Split candidates into (deletable, protected, refs_map)."""
+    refs_map = _profiles_referencing_files(candidates, kind)
+    protected = sorted([f for f in candidates if f in refs_map])
+    deletable = [f for f in candidates if f not in refs_map]
+    return deletable, protected, refs_map
+
+
+def _count_stale_progress_rows() -> dict[str, int]:
+    """Return per-table stale row counts without deleting."""
+    conn = get_connection(_ADDON_DIR)
+    counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
+    live_ids = _all_live_card_ids_any_profile()
+    for table in ("pdf_progress", "video_progress", "web_progress"):
+        try:
+            rows = conn.execute(f"SELECT card_id FROM {table}").fetchall()
+        except Exception:
+            continue
+        stale = 0
+        for row in rows:
+            try:
+                cid = int(row[0])
+            except Exception:
+                continue
+            if cid not in live_ids:
+                stale += 1
+        counts[table] = stale
+    return counts
+
+
+def _scan_orphan_pdfs() -> tuple[str, list[str], int]:
+    from .backend.pdf_manager import get_pdf_dir
+
+    pdf_dir = get_pdf_dir()
+    disk_files = {
+        f for f in os.listdir(pdf_dir)
+        if f.lower().endswith(".pdf")
+    }
+    if not disk_files:
+        return pdf_dir, [], 0
+
+    note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+    referenced = set()
+    for nid in note_ids:
+        note = mw.col.get_note(nid)
+        fname = note["PDF_Filename"].strip()
+        if fname:
+            referenced.add(fname)
+
+    orphans = sorted(disk_files - referenced)
+    total_bytes = 0
+    for fname in orphans:
+        fpath = os.path.join(pdf_dir, fname)
+        try:
+            total_bytes += os.path.getsize(fpath)
+        except OSError:
+            pass
+    return pdf_dir, orphans, total_bytes
+
+
+def _scan_orphan_videos() -> tuple[str, list[str], int]:
+    videos_dir = os.path.join(_ADDON_DIR, "user_files", "videos")
+    if not os.path.isdir(videos_dir):
+        return videos_dir, [], 0
+
+    disk_files = [
+        f
+        for f in os.listdir(videos_dir)
+        if f.lower().endswith((".mp4", ".mkv", ".webm", ".mov", ".m4v"))
+        and os.path.isfile(os.path.join(videos_dir, f))
+    ]
+    if not disk_files:
+        return videos_dir, [], 0
+
+    disk_map = {f.lower(): f for f in disk_files}
+    card_ids = mw.col.find_cards(f'note:"{VIDEO_NOTE_TYPE}"')
+    referenced: set[str] = set()
+    for cid in card_ids:
+        note = mw.col.get_card(cid).note()
+        try:
+            rel = (note[LOCAL_VIDEO_FIELD] or "").strip()
+        except Exception:
+            rel = ""
+        if not rel:
+            continue
+        basename = os.path.basename(rel.replace("\\", "/")).strip()
+        if basename:
+            referenced.add(basename.lower())
+
+    orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
+    total_bytes = 0
+    for fname in orphans:
+        fpath = os.path.join(videos_dir, fname)
+        try:
+            total_bytes += os.path.getsize(fpath)
+        except OSError:
+            pass
+    return videos_dir, orphans, total_bytes
+
+
+def cleanupNonActiveProfileDataFunction() -> None:
+    """
+    Offer one-shot cleanup of artifacts not referenced by the active profile:
+    orphan PDFs, orphan local videos, and stale progress rows.
+    """
+    try:
+        pdf_dir, orphan_pdfs_all, _pdf_bytes_all = _scan_orphan_pdfs()
+        videos_dir, orphan_videos_all, _video_bytes_all = _scan_orphan_videos()
+        orphan_pdfs, protected_pdfs, pdf_refs_map = _partition_any_profile_ties(orphan_pdfs_all, "pdf")
+        orphan_videos, protected_videos, video_refs_map = _partition_any_profile_ties(orphan_videos_all, "video")
+        pdf_bytes = 0
+        for fname in orphan_pdfs:
+            try:
+                pdf_bytes += os.path.getsize(os.path.join(pdf_dir, fname))
+            except OSError:
+                pass
+        video_bytes = 0
+        for fname in orphan_videos:
+            try:
+                video_bytes += os.path.getsize(os.path.join(videos_dir, fname))
+            except OSError:
+                pass
+        stale_counts = _count_stale_progress_rows()
+    except Exception as e:
+        showInfo(f"Could not scan non-active profile artifacts:\n{e}")
+        return
+
+    stale_total = sum(int(stale_counts.get(k, 0) or 0) for k in ("pdf_progress", "video_progress", "web_progress"))
+    if not orphan_pdfs and not orphan_videos and stale_total <= 0:
+        showInfo(
+            "No deletable cross-profile artifacts detected.\n\n"
+            "Nothing is safe to delete without affecting some profile."
+        )
+        return
+
+    profile_name = _current_profile_name()
+    total_bytes = pdf_bytes + video_bytes
+    total_str = (
+        f"{total_bytes / 1_048_576:.1f} MB"
+        if total_bytes >= 1_048_576
+        else f"{total_bytes // 1024} KB"
+    )
+
+    lines = [
+        f"Active profile: {profile_name}",
+        "",
+        "The following data is not referenced by this profile and may belong",
+        "to another profile (or be truly orphaned):",
+        "",
+        f"• PDF files: {len(orphan_pdfs)}",
+        f"• Video files: {len(orphan_videos)}",
+        f"• Progress rows: {stale_total} (PDF {stale_counts.get('pdf_progress', 0)}, "
+        f"Video {stale_counts.get('video_progress', 0)}, Web {stale_counts.get('web_progress', 0)})",
+    ]
+    if protected_pdfs:
+        lines.append(f"• Skipped PDF files tied to other profile(s): {len(protected_pdfs)}")
+    if protected_videos:
+        lines.append(f"• Skipped video files tied to other profile(s): {len(protected_videos)}")
+    if orphan_pdfs:
+        lines.append(f"• PDF folder: {pdf_dir}")
+    if orphan_videos:
+        lines.append(f"• Video folder: {videos_dir}")
+    if total_bytes > 0:
+        lines.append(f"• Recoverable disk space: {total_str}")
+    if protected_pdfs:
+        lines.append("")
+        lines.append("Skipped PDFs (kept):")
+        preview = protected_pdfs[:6]
+        for fname in preview:
+            profs = ", ".join(pdf_refs_map.get(fname, []))
+            lines.append(f"  - {fname}  (profiles: {profs})")
+        if len(protected_pdfs) > len(preview):
+            lines.append(f"  …and {len(protected_pdfs) - len(preview)} more")
+    if protected_videos:
+        lines.append("")
+        lines.append("Skipped videos (kept):")
+        preview = protected_videos[:6]
+        for fname in preview:
+            profs = ", ".join(video_refs_map.get(fname, []))
+            lines.append(f"  - {fname}  (profiles: {profs})")
+        if len(protected_videos) > len(preview):
+            lines.append(f"  …and {len(protected_videos) - len(preview)} more")
+    lines.append("")
+    lines.append("Delete these now?")
+
+    from aqt.utils import askUser
+    if not askUser("\n".join(lines), title="Clean Non-Active Profile Data"):
+        return
+
+    deleted_pdfs = 0
+    deleted_videos = 0
+    errors: list[str] = []
+
+    for fname in orphan_pdfs:
+        fpath = os.path.join(pdf_dir, fname)
+        try:
+            os.remove(fpath)
+            deleted_pdfs += 1
+        except OSError as e:
+            errors.append(f"PDF {fname}: {e}")
+
+    for fname in orphan_videos:
+        fpath = os.path.join(videos_dir, fname)
+        try:
+            os.remove(fpath)
+            deleted_videos += 1
+        except OSError as e:
+            errors.append(f"Video {fname}: {e}")
+
+    try:
+        pruned_counts = _prune_stale_progress_rows()
+    except Exception as e:
+        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
+        errors.append(f"Rows: {e}")
+
+    summary = [
+        f"Deleted PDF files: {deleted_pdfs}/{len(orphan_pdfs)}",
+        f"Deleted video files: {deleted_videos}/{len(orphan_videos)}",
+    ]
+    pruned_summary = _format_pruned_progress_summary(pruned_counts)
+    if pruned_summary:
+        summary.append("")
+        summary.append(pruned_summary)
+    if total_bytes > 0:
+        summary.append("")
+        summary.append(f"Potential recovered space: {total_str}")
+    if errors:
+        summary.append("")
+        summary.append("Errors:")
+        summary.extend([f"• {e}" for e in errors[:20]])
+        if len(errors) > 20:
+            summary.append(f"• …and {len(errors) - 20} more")
+
+    showInfo("\n".join(summary))
 
 
 def cleanupStaleProgressFunction() -> None:
@@ -978,6 +1334,7 @@ def cleanupOrphanPdfsFunction() -> None:
         return
 
     orphans = sorted(disk_files - referenced)
+    deletable, protected, refs_map = _partition_any_profile_ties(orphans, "pdf")
 
     try:
         pruned_counts = _prune_stale_progress_rows()
@@ -985,11 +1342,16 @@ def cleanupOrphanPdfsFunction() -> None:
         pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
     pruned_summary = _format_pruned_progress_summary(pruned_counts)
 
-    if not orphans:
+    if not deletable:
         msg = (
-            f"No orphaned PDFs found.\n\n"
-            f"{len(disk_files)} file(s) on disk, all referenced by a card."
+            f"No deletable orphaned PDFs found.\n\n"
+            f"{len(disk_files)} file(s) on disk; none are safe to delete."
         )
+        if protected:
+            msg += (
+                f"\n\nSkipped {len(protected)} file(s) because they are "
+                "referenced by another profile."
+            )
         if pruned_summary:
             msg += f"\n\n{pruned_summary}"
         showInfo(msg)
@@ -1002,15 +1364,23 @@ def cleanupOrphanPdfsFunction() -> None:
         except OSError:
             return "?"
 
-    lines = [f"Found {len(orphans)} orphaned PDF(s) (no card references them):\n"]
+    lines = [f"Found {len(deletable)} deletable orphaned PDF(s):\n"]
     total_bytes = 0
-    for fname in orphans:
+    for fname in deletable:
         fpath = os.path.join(pdf_dir, fname)
         try:
             total_bytes += os.path.getsize(fpath)
         except OSError:
             pass
         lines.append(f"• {fname}  ({_fmt_size(fpath)})")
+    if protected:
+        lines.append(f"\nSkipped {len(protected)} file(s) tied to other profile(s).")
+        preview = protected[:8]
+        for fname in preview:
+            profs = ", ".join(refs_map.get(fname, []))
+            lines.append(f"  - {fname}  (profiles: {profs})")
+        if len(protected) > len(preview):
+            lines.append(f"  …and {len(protected) - len(preview)} more")
     total_str = f"{total_bytes / 1_048_576:.1f} MB" if total_bytes >= 1_048_576 else f"{total_bytes // 1024} KB"
     lines.append(f"\nTotal: {total_str}")
     lines.append("\nDelete these files?")
@@ -1021,7 +1391,7 @@ def cleanupOrphanPdfsFunction() -> None:
 
     deleted = 0
     errors: list[str] = []
-    for fname in orphans:
+    for fname in deletable:
         fpath = os.path.join(pdf_dir, fname)
         try:
             os.remove(fpath)
@@ -1031,12 +1401,14 @@ def cleanupOrphanPdfsFunction() -> None:
 
     if not errors:
         msg = f"Deleted {deleted} orphaned PDF file(s).\nRecovered {total_str}."
+        if protected:
+            msg += f"\nSkipped {len(protected)} file(s) tied to other profile(s)."
         if pruned_summary:
             msg += f"\n\n{pruned_summary}"
         showInfo(msg)
     else:
         showInfo(
-            f"Deleted {deleted} of {len(orphans)} file(s).\n\nErrors:\n" + "\n".join(errors)
+            f"Deleted {deleted} of {len(deletable)} file(s).\n\nErrors:\n" + "\n".join(errors)
         )
 
 
@@ -1087,11 +1459,17 @@ def cleanupOrphanVideosFunction() -> None:
     pruned_summary = _format_pruned_progress_summary(pruned_counts)
 
     orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
-    if not orphans:
+    deletable, protected, refs_map = _partition_any_profile_ties(orphans, "video")
+    if not deletable:
         msg = (
-            f"No orphaned local videos found.\n\n"
-            f"{len(disk_files)} file(s) on disk, all referenced by an existing card."
+            f"No deletable orphaned local videos found.\n\n"
+            f"{len(disk_files)} file(s) on disk; none are safe to delete."
         )
+        if protected:
+            msg += (
+                f"\n\nSkipped {len(protected)} file(s) because they are "
+                "referenced by another profile."
+            )
         if pruned_summary:
             msg += f"\n\n{pruned_summary}"
         showInfo(msg)
@@ -1105,14 +1483,22 @@ def cleanupOrphanVideosFunction() -> None:
             return "?"
 
     total_bytes = 0
-    lines = [f"Found {len(orphans)} orphaned local video file(s):\n"]
-    for fname in orphans:
+    lines = [f"Found {len(deletable)} deletable orphaned local video file(s):\n"]
+    for fname in deletable:
         fpath = os.path.join(videos_dir, fname)
         try:
             total_bytes += os.path.getsize(fpath)
         except OSError:
             pass
         lines.append(f"• {fname}  ({_fmt_size(fpath)})")
+    if protected:
+        lines.append(f"\nSkipped {len(protected)} file(s) tied to other profile(s).")
+        preview = protected[:8]
+        for fname in preview:
+            profs = ", ".join(refs_map.get(fname, []))
+            lines.append(f"  - {fname}  (profiles: {profs})")
+        if len(protected) > len(preview):
+            lines.append(f"  …and {len(protected) - len(preview)} more")
     total_str = (
         f"{total_bytes / 1_048_576:.1f} MB"
         if total_bytes >= 1_048_576
@@ -1127,7 +1513,7 @@ def cleanupOrphanVideosFunction() -> None:
 
     deleted = 0
     errors: list[str] = []
-    for fname in orphans:
+    for fname in deletable:
         fpath = os.path.join(videos_dir, fname)
         try:
             os.remove(fpath)
@@ -1137,12 +1523,14 @@ def cleanupOrphanVideosFunction() -> None:
 
     if not errors:
         msg = f"Deleted {deleted} orphaned video file(s).\nRecovered {total_str}."
+        if protected:
+            msg += f"\nSkipped {len(protected)} file(s) tied to other profile(s)."
         if pruned_summary:
             msg += f"\n\n{pruned_summary}"
         showInfo(msg)
     else:
         showInfo(
-            f"Deleted {deleted} of {len(orphans)} file(s).\n\nErrors:\n" + "\n".join(errors)
+            f"Deleted {deleted} of {len(deletable)} file(s).\n\nErrors:\n" + "\n".join(errors)
         )
 
 
@@ -1259,6 +1647,12 @@ _utilsMenu.addSeparator()
 _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
 qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
 _utilsMenu.addAction(_reindexPdfTextAction)
+
+_cleanupNonActiveProfileDataAction = QAction("Clean Non-Active Profile Data…", mw)
+qconnect(_cleanupNonActiveProfileDataAction.triggered, cleanupNonActiveProfileDataFunction)
+_utilsMenu.addAction(_cleanupNonActiveProfileDataAction)
+
+_utilsMenu.addSeparator()
 
 _cleanupOrphanPdfsAction = QAction("Clean Up Orphaned PDF Files…", mw)
 qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)

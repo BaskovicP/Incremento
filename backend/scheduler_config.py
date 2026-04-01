@@ -72,11 +72,15 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     tag_rows = d.get("tag_rows", [])
     no_tags_checked = d.get("no_tags_checked", True)
 
-    real_rows = [r for r in tag_rows if r["tag"] != NO_TAGS_KEY]
+    other_rows = [r for r in tag_rows if r.get("tag") == NO_TAGS_KEY]
+    real_rows = [r for r in tag_rows if r.get("tag") != NO_TAGS_KEY]
     raw = {r["tag"]: r["weight"] for r in real_rows}
     # Each slider value is an absolute % of the session (0–100).
     # Do NOT normalise across tags — the remainder goes to "other cards".
     tag_weights = {tag: v / 100.0 for tag, v in raw.items()}
+    include_rest = no_tags_checked
+    if other_rows:
+        include_rest = float(other_rows[0].get("weight", 0) or 0) > 0.0
 
     priority_order    = d.get("priority_order", ["tags", "type", "mode"])
     enforce_priority  = d.get("enforce_priority", True)
@@ -110,7 +114,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         random_rate=random_rate,
         use_tags=bool(real_rows),
         tag_weights=tag_weights,
-        include_rest=no_tags_checked,
+        include_rest=include_rest,
         scheduler_scope=scheduler_scope,
         day_end_time=day_end_time,
         priority_order=priority_order,
