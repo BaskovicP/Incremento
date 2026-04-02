@@ -32,3 +32,5 @@ frontend/node_modules/
 
 # ── Build outputs ───────────────────────────────────────────────────────────
 dist/
+!chrome_extensions/incremento_companion/dist/
+!chrome_extensions/incremento_companion/dist/**

@@ -1,0 +1,1 @@
+chrome.runtime.onMessage.addListener((t,a,e)=>{if(!t||t.type!=="offscreen-copy")return;const r=String(t.text??"");return(async()=>{try{await navigator.clipboard.writeText(r),e({ok:!0})}catch{e({ok:!1})}})(),!0});

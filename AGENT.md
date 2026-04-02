@@ -58,6 +58,10 @@ npm run build
 ## Chrome Extension
 
 - Folder: `chrome_extensions/incremento_companion/`
+- React source lives in:
+  - `chrome_extensions/incremento_companion/src/`
+- Built extension bundles are written to:
+  - `chrome_extensions/incremento_companion/dist/`
 - Popup can import current page as:
   - `pdf`
   - `video`
@@ -65,9 +69,21 @@ npm run build
   - `writing`
 - Bookmark importer lives in:
   - `bookmarks.html`
-  - `bookmarks.js`
   - `bookmarks.css`
-- PDF bookmark/current-page import may fetch PDF bytes in-browser (`pdf_fetch.js`) and send `pdfBase64` to bypass sites that return bot/captcha HTML to Python.
+- Runtime scripts referenced by manifest/HTML now come from `dist/`:
+  - `dist/background.js`
+  - `dist/content.js`
+  - `dist/offscreen.js`
+  - `dist/popup.js`
+  - `dist/bookmarks.js`
+- PDF bookmark/current-page import is implemented in the shared source module:
+  - `src/shared/pdfFetch.js`
+- If you change extension React source, rebuild it:
+
+```bash
+cd frontend
+npm run build:extension
+```
 
 ## Deck/Card Creation Rules
 
@@ -97,9 +113,11 @@ python3 -m pytest tests/test_browser_bridge.py tests/test_pdf_manager.py
 Useful JS syntax checks:
 
 ```bash
-node --check chrome_extensions/incremento_companion/popup.js
-node --check chrome_extensions/incremento_companion/bookmarks.js
-node --check chrome_extensions/incremento_companion/pdf_fetch.js
+node --check chrome_extensions/incremento_companion/dist/background.js
+node --check chrome_extensions/incremento_companion/dist/content.js
+node --check chrome_extensions/incremento_companion/dist/offscreen.js
+node --check chrome_extensions/incremento_companion/dist/popup.js
+node --check chrome_extensions/incremento_companion/dist/bookmarks.js
 ```
 
 ## Editing Guidance

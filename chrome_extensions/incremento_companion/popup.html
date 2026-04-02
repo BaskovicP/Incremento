@@ -7,34 +7,7 @@
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
-    <main class="popup">
-      <section class="panel">
-        <div class="eyebrow">Current page</div>
-        <h1>Send to Incremento</h1>
-        <p id="page-url" class="muted"></p>
-        <label class="field">
-          <span>Title</span>
-          <input id="title-input" type="text" spellcheck="false">
-        </label>
-        <p id="selection-note" class="note"></p>
-        <div class="actions">
-          <button class="kind-btn" data-kind="pdf">Add as PDF</button>
-          <button class="kind-btn" data-kind="video">Add as Video</button>
-          <button class="kind-btn" data-kind="webpage">Add as Webpage</button>
-          <button class="kind-btn" data-kind="writing">Add as Writing</button>
-        </div>
-        <p id="status" class="status" role="status" aria-live="polite"></p>
-      </section>
-
-      <section class="panel panel-secondary">
-        <button id="open-bookmarks" class="ghost-btn">Download bookmarks</button>
-      </section>
-
-      <section class="panel panel-secondary">
-        <button id="copy-video-time" class="ghost-btn">Copy last video time</button>
-      </section>
-    </main>
-    <script src="pdf_fetch.js"></script>
-    <script src="popup.js"></script>
+    <div id="root"></div>
+    <script type="module" src="dist/popup.js"></script>
   </body>
   </html>

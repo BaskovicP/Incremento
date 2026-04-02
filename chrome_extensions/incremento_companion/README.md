@@ -46,6 +46,19 @@ For video time capture:
 If clipboard was not updated in an edge case, click the extension icon once to copy the last captured time from storage.
 You can also press `Alt+Shift+V`.
 
+## Development
+
+The extension popup and bookmark importer are implemented in React source under `src/`.
+Other extension scripts such as the background worker, content script, and offscreen clipboard helper also live under `src/`.
+The compiled runtime bundles live under `dist/`.
+
+Rebuild the extension UI with:
+
+```bash
+cd frontend
+npm run build:extension
+```
+
 ## Notes
 
 - Requires Anki running with AnkiConnect on `http://127.0.0.1:8765`.

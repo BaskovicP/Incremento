@@ -22,7 +22,7 @@
     "http://127.0.0.1:8766/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "dist/background.js"
   },
   "icons": {
     "16": "icons/icon-16.png",
@@ -47,7 +47,7 @@
         "*://*.vimeo.com/*"
       ],
       "js": [
-        "content.js"
+        "dist/content.js"
       ],
       "run_at": "document_idle"
     }

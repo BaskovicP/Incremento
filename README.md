@@ -84,6 +84,15 @@ npm run build
 
 The frontend build writes the shipped PDF viewer bundle to `web/dist/pdf_viewer.js`.
 
+Chrome extension UI build:
+
+```bash
+cd frontend
+npm run build:extension
+```
+
+This writes the React-based extension UI bundles into `chrome_extensions/incremento_companion/dist/`.
+
 ## Release Packaging
 
 Build a clean addon ZIP with:

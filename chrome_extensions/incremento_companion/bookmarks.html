@@ -7,52 +7,7 @@
     <link rel="stylesheet" href="bookmarks.css">
   </head>
   <body>
-    <main class="page">
-      <section class="hero">
-        <div class="eyebrow">Bookmark Import</div>
-        <h1>Send Chrome bookmarks to Incremento</h1>
-        <p class="hero-copy">
-          Select folders or individual bookmarks, edit tags per row, choose whether each item
-          becomes a PDF, YouTube/Video, Webpage, or Writing card, then import them in one run.
-        </p>
-      </section>
-
-      <section id="progress-panel" class="progress-panel is-hidden" aria-live="polite">
-        <div class="progress-head">
-          <strong id="progress-title">Import progress</strong>
-          <span id="progress-count">0 / 0</span>
-        </div>
-        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="progress-title">
-          <div id="progress-fill" class="progress-fill"></div>
-        </div>
-        <p id="progress-note" class="muted">Waiting to start.</p>
-      </section>
-
-      <section class="workspace">
-        <aside class="panel tree-panel">
-          <div class="panel-head">
-            <h2>Bookmarks</h2>
-            <button id="reload-bookmarks" class="ghost-btn ghost-btn-inline">Reload</button>
-          </div>
-          <p class="muted">Checking a folder includes all nested bookmark links.</p>
-          <div id="bookmark-tree" class="bookmark-tree"></div>
-        </aside>
-
-        <section class="panel rows-panel">
-          <div class="panel-head">
-            <div>
-              <h2>Import list</h2>
-              <p id="selection-summary" class="muted">0 bookmarks selected</p>
-            </div>
-            <button id="import-selected" class="primary-btn">Import selected</button>
-          </div>
-          <div id="import-rows" class="import-rows"></div>
-          <p id="status" class="status" role="status" aria-live="polite"></p>
-          <div id="results" class="results"></div>
-        </section>
-      </section>
-    </main>
-    <script src="pdf_fetch.js"></script>
-    <script src="bookmarks.js"></script>
+    <div id="root"></div>
+    <script type="module" src="dist/bookmarks.js"></script>
   </body>
 </html>
