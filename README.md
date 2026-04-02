@@ -84,6 +84,29 @@ npm run build
 
 The frontend build writes the shipped PDF viewer bundle to `web/dist/pdf_viewer.js`.
 
+## Release Packaging
+
+Build a clean addon ZIP with:
+
+```bash
+python3 scripts/package_addon.py
+```
+
+Useful variants:
+
+```bash
+# Rebuild the frontend bundle first
+python3 scripts/package_addon.py --build-frontend
+
+# Run tests before packaging
+python3 scripts/package_addon.py --run-tests
+
+# Include local meta.json for a manual/private package
+python3 scripts/package_addon.py --include-meta
+```
+
+The script writes a publishable ZIP into `dist/`, stages the exact packaged folder next to it for inspection, and creates the initial `user_files/` directory structure expected on first run.
+
 ## Repository Hygiene
 
 - `meta.json` is ignored because it contains the private Anki add-on package ID
