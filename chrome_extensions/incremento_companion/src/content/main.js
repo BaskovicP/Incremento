@@ -40,6 +40,79 @@
     }, 2400);
   }
 
+  function ensureTrackingBadge() {
+    let badge = document.getElementById("incremento-tracking-badge");
+    if (badge) {
+      return badge;
+    }
+    badge = document.createElement("div");
+    badge.id = "incremento-tracking-badge";
+    Object.assign(badge.style, {
+      position: "fixed",
+      zIndex: 2147483646,
+      top: "52px",
+      right: "10px",
+      display: "none",
+      alignItems: "center",
+      gap: "8px",
+      padding: "8px 12px",
+      background: "linear-gradient(135deg, rgba(10, 34, 64, 0.94), rgba(17, 83, 126, 0.94))",
+      color: "#fff",
+      fontSize: "12px",
+      fontWeight: "700",
+      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      borderRadius: "999px",
+      boxShadow: "0 4px 14px rgba(0, 0, 0, 0.28)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      pointerEvents: "none",
+    });
+
+    const dot = document.createElement("span");
+    dot.textContent = "●";
+    Object.assign(dot.style, {
+      color: "#53f2a5",
+      fontSize: "13px",
+      lineHeight: "1",
+      textShadow: "0 0 8px rgba(83, 242, 165, 0.85)",
+    });
+    badge.appendChild(dot);
+
+    const warning = document.createElement("span");
+    warning.textContent = "⚠";
+    Object.assign(warning.style, {
+      color: "#ffd166",
+      fontSize: "13px",
+      lineHeight: "1",
+      textShadow: "0 0 8px rgba(255, 209, 102, 0.55)",
+    });
+    badge.appendChild(warning);
+
+    const label = document.createElement("span");
+    label.id = "incremento-tracking-badge-label";
+    label.textContent = "Tracking";
+    badge.appendChild(label);
+
+    document.documentElement.appendChild(badge);
+    return badge;
+  }
+
+  function setTrackingBadge(visible, mode = "") {
+    const badge = ensureTrackingBadge();
+    const label = document.getElementById("incremento-tracking-badge-label");
+    if (!badge || !label) {
+      return;
+    }
+    if (!visible) {
+      badge.style.display = "none";
+      return;
+    }
+    label.textContent = mode === "web" ? "Tracking Web Card" : "Tracking";
+    badge.style.display = "inline-flex";
+  }
+
   function getRuntime() {
     try {
       return chrome?.runtime || null;
@@ -169,6 +242,8 @@
   let lastSentAt = 0;
   let extensionAlive = true;
   let periodic = null;
+  let badgePoll = null;
+  let lastSeenHref = window.location.href || "";
 
   function deactivateExtensionContext() {
     extensionAlive = false;
@@ -200,6 +275,41 @@
     } catch (_err) {
       deactivateExtensionContext();
       return false;
+    }
+  }
+
+  function fetchTrackingStatus() {
+    if (!extensionAlive) {
+      setTrackingBadge(false);
+      return;
+    }
+    try {
+      const rt = getRuntime();
+      if (!rt?.id) {
+        setTrackingBadge(false);
+        return;
+      }
+      rt.sendMessage(
+        {
+          type: "GET_TRACKING_STATUS",
+          url: window.location.href || "",
+        },
+        (response) => {
+          try {
+            const err = rt?.lastError;
+            if (err) {
+              setTrackingBadge(false);
+              return;
+            }
+          } catch (_err) {
+            setTrackingBadge(false);
+            return;
+          }
+          setTrackingBadge(Boolean(response?.tracked), String(response?.mode || ""));
+        }
+      );
+    } catch (_err) {
+      setTrackingBadge(false);
     }
   }
 
@@ -246,6 +356,13 @@
   }
 
   periodic = window.setInterval(() => sendHeartbeat(false, false), 1000);
+  badgePoll = window.setInterval(() => {
+    const nextHref = window.location.href || "";
+    if (nextHref !== lastSeenHref) {
+      lastSeenHref = nextHref;
+      fetchTrackingStatus();
+    }
+  }, 750);
   window.addEventListener("pagehide", () => sendHeartbeat(true, true), { capture: true });
   window.addEventListener("beforeunload", () => sendHeartbeat(true, true), { capture: true });
   document.addEventListener("visibilitychange", () => {
@@ -259,9 +376,11 @@
   document.addEventListener("ended", () => sendHeartbeat(true, true), true);
 
   window.setTimeout(() => sendHeartbeat(true, false), 1200);
+  window.setTimeout(fetchTrackingStatus, 300);
   window.addEventListener("unload", () => {
     try {
       clearInterval(periodic);
+      clearInterval(badgePoll);
     } catch (_err) {
       // noop
     }

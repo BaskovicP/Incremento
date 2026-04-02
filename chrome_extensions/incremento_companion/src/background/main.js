@@ -71,6 +71,28 @@ function parseTrackedWebRegistration(rawUrl) {
   }
 }
 
+function extractTrackedVideoCardId(rawUrl) {
+  try {
+    const decoded = htmlDecodeUrl(rawUrl);
+    const u = new URL(decoded);
+    const host = String(u.hostname || "").toLowerCase();
+    const isVideoHost =
+      host === "youtu.be"
+      || host.endsWith(".youtu.be")
+      || host === "youtube.com"
+      || host.endsWith(".youtube.com")
+      || host === "vimeo.com"
+      || host.endsWith(".vimeo.com");
+    if (!isVideoHost) {
+      return 0;
+    }
+    const cid = Number(u.searchParams.get(INC_CARD_ID_PARAM) || 0);
+    return Number.isFinite(cid) && cid > 0 ? Math.floor(cid) : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
 async function loadTrackedWebState(tabId) {
   if (typeof tabId !== "number") {
     return null;
@@ -238,6 +260,24 @@ async function maybeSyncTrackedWebTab(tabId, rawUrl, title = "") {
   }
   state.lastUrl = cleanUrl;
   await saveTrackedWebState(tabId, state);
+}
+
+async function getTrackingStatusForTab(tabId, rawUrl) {
+  const videoCardId = extractTrackedVideoCardId(rawUrl);
+  if (videoCardId > 0) {
+    return { tracked: true, mode: "video", cardId: videoCardId };
+  }
+
+  const webState = await loadTrackedWebState(tabId);
+  if (webState && Number(webState.cardId) > 0) {
+    return {
+      tracked: true,
+      mode: "web",
+      cardId: Math.max(0, Math.floor(Number(webState.cardId) || 0)),
+    };
+  }
+
+  return { tracked: false, mode: "", cardId: 0 };
 }
 
 async function callAnki(action, params = {}) {
@@ -583,6 +623,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     void (async () => {
       const copied = await copyLatestStoredTime(Boolean(msg.showFeedback));
       sendResponse?.({ ok: copied });
+    })();
+    return true;
+  }
+
+  if (msg.type === "GET_TRACKING_STATUS") {
+    void (async () => {
+      const tabId = sender?.tab?.id;
+      if (typeof tabId !== "number") {
+        sendResponse?.({ tracked: false, mode: "" });
+        return;
+      }
+      const status = await getTrackingStatusForTab(tabId, String(msg.url || ""));
+      sendResponse?.(status);
     })();
     return true;
   }

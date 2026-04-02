@@ -43,9 +43,8 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/*",
-        "*://youtu.be/*",
-        "*://*.vimeo.com/*"
+        "http://*/*",
+        "https://*/*"
       ],
       "js": [
         "dist/content.js"
