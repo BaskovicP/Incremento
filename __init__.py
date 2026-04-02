@@ -109,10 +109,29 @@ def _on_js_message(handled, message, context) -> tuple:
         _add_card_dock_mod.open_add_card_dock()
         return (True, None)
 
+    if message.startswith("incremento_selection_state:"):
+        try:
+            data = json.loads(message[len("incremento_selection_state:") :])
+            _add_card_dock_mod.update_selection_state(
+                str(data.get("source") or ""),
+                has_text=bool(data.get("hasText")),
+            )
+        except Exception:
+            pass
+        return (True, None)
+
     if message.startswith("incremento_fill_field:"):
         try:
             data = json.loads(message[len("incremento_fill_field:") :])
             _add_card_dock_mod.fill_dock_field(int(data["idx"]), data["text"])
+        except Exception:
+            pass
+        return (True, None)
+
+    if message.startswith("incremento_transfer_selection:"):
+        try:
+            idx = int(message[len("incremento_transfer_selection:") :])
+            _add_card_dock_mod.transfer_selection_to_field(idx)
         except Exception:
             pass
         return (True, None)
@@ -217,6 +236,33 @@ gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
 gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
+
+
+def _install_reviewer_selection_bridge(_card=None) -> None:
+    reviewer = getattr(mw, "reviewer", None)
+    web = getattr(reviewer, "web", None)
+    if web is None:
+        return
+    try:
+        web.eval(
+            "(function() {"
+            "  if (window._incrementoSelectionBridgeInstalled) { return; }"
+            "  window._incrementoSelectionBridgeInstalled = true;"
+            "  document.addEventListener('selectionchange', function() {"
+            "    var sel = window.getSelection ? window.getSelection() : null;"
+            "    var text = sel ? sel.toString().trim() : '';"
+            "    if (!text) { return; }"
+            "    window._incrementoLastSelection = text;"
+            "    pycmd('incremento_selection_state:' + JSON.stringify({source: 'reviewer', hasText: true}));"
+            "  });"
+            "})();"
+        )
+    except Exception:
+        pass
+
+
+gui_hooks.reviewer_did_show_question.append(_install_reviewer_selection_bridge)
+gui_hooks.reviewer_did_show_answer.append(_install_reviewer_selection_bridge)
 
 
 def _check_deps_first_run() -> None:

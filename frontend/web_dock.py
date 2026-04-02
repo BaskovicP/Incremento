@@ -12,6 +12,7 @@ Public API:
     add_web_function()
 """
 
+import json
 import os
 
 from aqt import mw
@@ -20,6 +21,7 @@ from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, Qt, qconnect)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
+from PyQt6.QtWebEngineCore import QWebEnginePage
 
 try:
     from ..backend.web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
@@ -34,14 +36,34 @@ _web_dock             = None
 _current_web_card_id  = None
 _current_web_home_url = None  # original URL from the card's URL field
 _web_profile          = None  # module-level singleton
+_PYCMD_BRIDGE = "__incremento_webdock_pycmd__:"
+_MSG_SELECTION_STATE = "incremento_selection_state:"
+
+
+class _WebDockPage(QWebEnginePage):
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        if not message.startswith(_PYCMD_BRIDGE):
+            return
+        msg = message[len(_PYCMD_BRIDGE):]
+        if not msg.startswith(_MSG_SELECTION_STATE):
+            return
+        try:
+            data = json.loads(msg[len(_MSG_SELECTION_STATE):])
+            from . import add_card_dock as _add_card_dock_mod
+
+            _add_card_dock_mod.update_selection_state(
+                "web",
+                has_text=bool(data.get("hasText")),
+            )
+        except Exception:
+            pass
 
 
 def _build_web_dock():
     global _web_dock, _web_profile
 
     from PyQt6.QtWebEngineCore import (QWebEngineSettings as _WES,
-                                       QWebEngineProfile as _WEProf,
-                                       QWebEnginePage as _WEPage)
+                                       QWebEngineProfile as _WEProf)
 
     dock = QDockWidget("Web", mw)
     dock.setObjectName("incremento_web_dock")
@@ -71,7 +93,7 @@ def _build_web_dock():
             _WES.WebAttribute.PlaybackRequiresUserGesture, False
         )
 
-    _page = _WEPage(_web_profile)
+    _page = _WebDockPage(_web_profile)
     view.setPage(_page)
 
     vbox.addWidget(view, 1)
@@ -117,6 +139,25 @@ def _build_web_dock():
                 set_web_url(_ADDON_DIR, _current_web_card_id, url_str)
             except Exception:
                 pass
+        try:
+            view.page().runJavaScript(
+                f"window.pycmd = function(msg) {{"
+                f"  console.log('{_PYCMD_BRIDGE}' + msg);"
+                f"}};"
+                "(function() {"
+                "  if (window._incrementoSelectionBridgeInstalled) { return; }"
+                "  window._incrementoSelectionBridgeInstalled = true;"
+                "  document.addEventListener('selectionchange', function() {"
+                "    var sel = window.getSelection ? window.getSelection() : null;"
+                "    var text = sel ? sel.toString().trim() : '';"
+                "    if (!text) { return; }"
+                "    window._incrementoLastSelection = text;"
+                "    window.pycmd('incremento_selection_state:' + JSON.stringify({source: 'web', hasText: true}));"
+                "  });"
+                "})();"
+            )
+        except Exception:
+            pass
 
     view.urlChanged.connect(_on_url_changed)
     view.loadFinished.connect(_on_load_finished)
@@ -218,3 +259,17 @@ def add_web_function() -> None:
         tooltip(f"Web card '{title}' added to {dlg.deck_name}.")
     except Exception as e:
         showInfo(f"Failed to add web card:\n{e}")
+
+
+def get_selected_text(callback) -> None:
+    if _web_dock is None:
+        callback("")
+        return
+    try:
+        _web_dock._view.page().runJavaScript(
+            "(function(){ return (window._incrementoLastSelection || "
+            "(window.getSelection && window.getSelection().toString()) || '').trim(); })();",
+            lambda text: callback(text or ""),
+        )
+    except Exception:
+        callback("")

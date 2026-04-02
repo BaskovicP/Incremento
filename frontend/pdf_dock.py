@@ -151,6 +151,7 @@ _MSG_FILL_FIELD = "incremento_fill_field:"
 _MSG_SNAPSHOT = "incremento_pdf_snapshot:"
 _MSG_FINISHED = "incremento_pdf_finished:"
 _MSG_OPEN_CARD = "incremento_open_card:"
+_MSG_SELECTION_STATE = "incremento_selection_state:"
 
 
 # ── pycmd bridge (console.log interceptor) ───────────────────────────────────
@@ -214,6 +215,17 @@ class _PdfDockPage(QWebEnginePage):
                 data = json.loads(msg[len(_MSG_FILL_FIELD) :])
                 if _cb_fill_dock_field:
                     _cb_fill_dock_field(int(data["idx"]), data["text"])
+            except Exception:
+                pass
+        elif msg.startswith(_MSG_SELECTION_STATE):
+            try:
+                data = json.loads(msg[len(_MSG_SELECTION_STATE) :])
+                from . import add_card_dock as _add_card_dock_mod
+
+                _add_card_dock_mod.update_selection_state(
+                    "pdf",
+                    has_text=bool(data.get("hasText")),
+                )
             except Exception:
                 pass
         elif msg.startswith(_MSG_SNAPSHOT):
@@ -480,7 +492,11 @@ def _build_pdf_dock():
                 # Cache selection on change so the keydown handler can read it.
                 "document.addEventListener('selectionchange', function() {"
                 "  var s = window.getSelection();"
-                "  window._lastPdfSelection = s ? s.toString() : '';"
+                "  var text = s ? s.toString().trim() : '';"
+                "  if (text) {"
+                "    window._lastPdfSelection = text;"
+                "    window.pycmd('incremento_selection_state:' + JSON.stringify({source: 'pdf', hasText: true}));"
+                "  }"
                 "});"
                 # Cmd/Ctrl+1 inside the webview.
                 "document.addEventListener('keydown', function(e) {"
@@ -690,3 +706,16 @@ def on_add_cards_did_add_note(note) -> None:
         _pdf_dock._view.page().runJavaScript(js)
     except Exception:
         pass
+
+
+def get_selected_text(callback) -> None:
+    if _pdf_dock is None:
+        callback("")
+        return
+    try:
+        _pdf_dock._view.page().runJavaScript(
+            "(function(){ return (window._lastPdfSelection || '').trim(); })();",
+            lambda text: callback(text or ""),
+        )
+    except Exception:
+        callback("")

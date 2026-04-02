@@ -153,6 +153,7 @@ def _build_writing_dock():
     qconnect(_autosave_timer.timeout, _autosave_from_editor)
 
     qconnect(editor.textChanged, _on_editor_text_changed)
+    qconnect(editor.selectionChanged, _on_editor_selection_changed)
     qconnect(open_dir_btn.clicked, _open_writing_folder)
 
     _writing_dock = dock
@@ -204,6 +205,20 @@ def _autosave_from_editor() -> None:
         return
     _set_status("Autosave on typing")
     _set_saved_time()
+
+
+def _on_editor_selection_changed() -> None:
+    if _writing_dock is None:
+        return
+    try:
+        selected = _writing_dock._editor.textCursor().selectedText()
+        if not (selected or "").strip():
+            return
+        from . import add_card_dock as _add_card_dock_mod
+
+        _add_card_dock_mod.update_selection_state("writing", text=selected)
+    except Exception:
+        pass
 
 
 def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
@@ -283,6 +298,15 @@ def on_writing_reviewer_will_end() -> None:
             _writing_dock.hide()
         except RuntimeError:
             pass
+
+
+def get_selected_text() -> str:
+    if _writing_dock is None:
+        return ""
+    try:
+        return _writing_dock._editor.textCursor().selectedText()
+    except Exception:
+        return ""
 
 
 def sync_writing_note_type() -> None:
