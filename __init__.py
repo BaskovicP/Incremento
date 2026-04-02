@@ -1654,6 +1654,7 @@ def openAboutFunction() -> None:
           <li>Track PDF position, highlights, video progress, and study statistics.</li>
           <li>Use the Chrome extension to send the current webpage as PDF, webpage, or writing.</li>
         </ul>
+        <p><b>License:</b> All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.</p>
         """
     )
 

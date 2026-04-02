@@ -2,6 +2,8 @@
 
 Copies the last watched YouTube/Vimeo time to your clipboard when a video tab closes, and can send the current page to Incremento as a PDF, webpage card, or writing card.
 
+License: all rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+
 ## What it does
 
 - Runs on `youtube.com`, `youtu.be`, and `vimeo.com` / `player.vimeo.com`.
