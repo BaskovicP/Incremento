@@ -93,6 +93,13 @@ npm run build:extension
 
 This writes the React-based extension UI bundles into `chrome_extensions/incremento_companion/dist/`.
 
+Chrome extension tests:
+
+```bash
+cd frontend
+npm run test:extension
+```
+
 ## Release Packaging
 
 Build a clean addon ZIP with:

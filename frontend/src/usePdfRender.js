@@ -17,6 +17,19 @@ const ZOOM_MAX  = 4.0;
 const POLL_MS   = 100;
 const POLL_MAX  = 20;
 
+function resolveWorkerSrc(rawWorkerSrc) {
+  const fallback = DEFAULT_WORKER_SRC;
+  const candidate = String(rawWorkerSrc || fallback).trim();
+  if (!candidate) {
+    return fallback;
+  }
+  try {
+    return new URL(candidate, window.location.href).toString();
+  } catch (_err) {
+    return fallback;
+  }
+}
+
 export function usePdfRender() {
   const [page,       setPage]       = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -134,7 +147,7 @@ export function usePdfRender() {
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
     const lib = window.pdfjsLib;
-    lib.GlobalWorkerOptions.workerSrc = window._pdfWorkerSrc || DEFAULT_WORKER_SRC;
+    lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
     window._pdfWorkerSrc = null;
     const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
     window._pdfFileUrl = null;

@@ -120,6 +120,12 @@ node --check chrome_extensions/incremento_companion/dist/popup.js
 node --check chrome_extensions/incremento_companion/dist/bookmarks.js
 ```
 
+Extension unit tests:
+
+```bash
+npm --prefix chrome_extensions/incremento_companion test
+```
+
 ## Editing Guidance
 
 - Prefer small, isolated fixes.

@@ -6,7 +6,8 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "build:extension": "vite build --config vite.extension.config.js",
-    "dev:extension": "vite build --watch --config vite.extension.config.js"
+    "dev:extension": "vite build --watch --config vite.extension.config.js",
+    "test:extension": "npm --prefix ../chrome_extensions/incremento_companion test"
   },
   "dependencies": {
     "react": "^18.3.1",

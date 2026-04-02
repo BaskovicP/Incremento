@@ -59,6 +59,12 @@ cd frontend
 npm run build:extension
 ```
 
+Run the extension unit tests with:
+
+```bash
+npm test
+```
+
 ## Notes
 
 - Requires Anki running with AnkiConnect on `http://127.0.0.1:8765`.
