@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 try:
     from .db import get_connection
 except ImportError:
-    from db import get_connection  # test environment (utils/ on sys.path)
+    from db import get_connection  # test environment (backend/ on sys.path)
 
 
 def _empty() -> dict:

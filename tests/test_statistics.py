@@ -1,4 +1,4 @@
-"""Tests for StatsManager in utils/statistics.py.
+"""Tests for StatsManager in backend/statistics.py.
 
 Imports the module via importlib to avoid shadowing the stdlib `statistics` module.
 No Anki mocking needed — statistics.py has no Anki imports.

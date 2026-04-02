@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 NO_TAGS_KEY = "__no_tags__"
 
 # Derive the addon package name from this module's path so getConfig works
-# regardless of which submodule calls it (e.g. "incremento.utils.scheduler_config"
+# regardless of which submodule calls it (e.g. "incremento.backend.scheduler_config"
 # → "incremento").
 _ADDON_PKG = __name__.split(".")[0]
 

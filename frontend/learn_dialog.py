@@ -28,7 +28,7 @@ except ImportError:
     from pdf_manager import get_page, get_read_page, get_pdf_dir
     from statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 
-# Addon root: one level above this file (utils/)
+# Addon root: one level above this file (frontend/)
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 

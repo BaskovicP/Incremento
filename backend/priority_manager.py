@@ -1,7 +1,7 @@
 try:
     from .db import get_connection
 except ImportError:
-    from db import get_connection  # test environment (utils/ on sys.path)
+    from db import get_connection  # test environment (backend/ on sys.path)
 
 
 def get_priority(addon_dir: str, card_id: int) -> float:
