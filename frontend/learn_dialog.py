@@ -1737,6 +1737,27 @@ class SchedulerConfigDialog(QDialog):
                 return row
         return None
 
+    def _move_other_tag_row_to_bottom(self) -> None:
+        """Keep the always-present Other row visually and logically last."""
+        other_row = self._find_other_tag_row()
+        if other_row is None:
+            return
+
+        # Keep model ordering aligned with on-screen ordering.
+        if self._linked_rows and self._linked_rows[-1] is not other_row:
+            try:
+                self._linked_rows.remove(other_row)
+            except ValueError:
+                pass
+            self._linked_rows.append(other_row)
+
+        # Re-add widget at the end of the layout so it renders last.
+        try:
+            self._tags_layout.removeWidget(other_row["widget"])
+        except Exception:
+            return
+        self._tags_layout.addWidget(other_row["widget"])
+
     def _current_include_rest_from_other_slider(self) -> bool:
         other_row = self._find_other_tag_row()
         if other_row is None:
@@ -1751,6 +1772,7 @@ class SchedulerConfigDialog(QDialog):
 
     def _ensure_other_tag_row(self, default_enabled: bool = True) -> None:
         if self._find_other_tag_row() is not None:
+            self._move_other_tag_row_to_bottom()
             return
         real_total = sum(
             int(r["slider"].value())
@@ -1842,6 +1864,7 @@ class SchedulerConfigDialog(QDialog):
 
         self._tags_layout.addWidget(row_widget)
         self._linked_rows.append(row_dict)
+        self._move_other_tag_row_to_bottom()
 
         # Hide this tag in the picker so it can't be added twice
         idx = self._tag_combo.findText(tag)
@@ -1849,6 +1872,7 @@ class SchedulerConfigDialog(QDialog):
             self._tag_combo.removeItem(idx)
 
         self._rebalance_tag_groups(changed_row=None)
+        self._move_other_tag_row_to_bottom()
         for row in self._linked_rows:
             row["pct_label"].setText(f"{row['slider'].value()}%")
         self._sync_no_tags_checkbox_from_other_slider()
