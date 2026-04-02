@@ -60,13 +60,15 @@ def normalize_add_content_payload(payload) -> dict:
     raw_kind = _collapse_ws(payload.get("kind", "")).casefold()
     kind_aliases = {
         "pdf": "pdf",
+        "video": "video",
+        "youtube": "video",
         "web": "webpage",
         "webpage": "webpage",
         "writing": "writing",
     }
     kind = kind_aliases.get(raw_kind)
     if not kind:
-        raise ValueError("Kind must be one of: pdf, webpage, writing.")
+        raise ValueError("Kind must be one of: pdf, video, webpage, writing.")
 
     url = normalize_http_url(payload.get("url", ""))
     title = _collapse_ws(payload.get("title", "")) or url
@@ -119,6 +121,7 @@ def _add_content_on_main(payload: dict) -> dict:
     from aqt import mw
 
     from .pdf_manager import add_pdf_card
+    from .video_manager import add_video_card, is_supported_video_url, resolve_video_url_for_embed
     from .web_manager import add_web_card
     from .writing_manager import add_writing_card
     from ..frontend.webpage_dialog import render_webpage_to_pdf
@@ -132,7 +135,18 @@ def _add_content_on_main(payload: dict) -> dict:
     selected_text = normalized["selected_text"]
     html = normalized["html"]
 
-    if kind == "webpage":
+    if kind == "video":
+        video_url = resolve_video_url_for_embed(url)
+        if not is_supported_video_url(video_url):
+            raise ValueError("Video URL must be a supported YouTube or Vimeo page.")
+        card_id = add_video_card(
+            mw.col,
+            youtube_url=video_url,
+            title=title,
+            deck_name=deck_name,
+            tags=tags,
+        )
+    elif kind == "webpage":
         card_id = add_web_card(
             mw.col,
             url=url,

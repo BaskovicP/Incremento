@@ -34,6 +34,29 @@ function isHttpUrl(url) {
   return /^https?:\/\//i.test(String(url || ""));
 }
 
+function isSupportedVideoUrl(url) {
+  try {
+    const u = new URL(String(url || ""));
+    const host = String(u.hostname || "").toLowerCase();
+    if (host === "youtu.be" || host.endsWith(".youtu.be")) {
+      return Boolean(u.pathname.split("/").filter(Boolean)[0]);
+    }
+    if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+      if (u.searchParams.get("v")) {
+        return true;
+      }
+      const parts = u.pathname.split("/").filter(Boolean);
+      return ["embed", "shorts", "live"].includes(parts[0]) && Boolean(parts[1]);
+    }
+    if (host === "vimeo.com" || host.endsWith(".vimeo.com")) {
+      return /(?:\/video\/|\/)(\d{5,})(?:[/?#]|$)/.test(u.pathname);
+    }
+  } catch (_err) {
+    return false;
+  }
+  return false;
+}
+
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs && tabs[0] ? tabs[0] : null;
@@ -72,7 +95,9 @@ function updatePageUi() {
   }
 
   const selectionText = String(snapshot.selectionText || "");
-  if (selectionText) {
+  if (isSupportedVideoUrl(url)) {
+    selectionNote.textContent = "Video cards use the current YouTube or Vimeo URL.";
+  } else if (selectionText) {
     selectionNote.textContent = `Writing cards will include the current selection (${selectionText.length} chars).`;
   } else {
     selectionNote.textContent = "Writing cards will start with the page title and source link.";
@@ -80,7 +105,9 @@ function updatePageUi() {
 
   const enabled = Boolean(tab && isHttpUrl(url));
   for (const btn of kindButtons) {
-    btn.disabled = !enabled || state.busy;
+    const kind = String(btn.dataset.kind || "");
+    const needsVideoPage = kind === "video";
+    btn.disabled = !enabled || state.busy || (needsVideoPage && !isSupportedVideoUrl(url));
   }
   if (!enabled) {
     setStatus("Open a normal http(s) page first.", "error");
@@ -115,6 +142,10 @@ async function addCurrentPage(kind) {
     setStatus("Only http(s) pages can be sent to Incremento.", "error");
     return;
   }
+  if (kind === "video" && !isSupportedVideoUrl(url)) {
+    setStatus("Open a YouTube or Vimeo page to add a video card.", "error");
+    return;
+  }
 
   const payload = {
     kind,
@@ -127,7 +158,8 @@ async function addCurrentPage(kind) {
   }
 
   setBusy(true);
-  setStatus(`Adding ${kind} card...`);
+  const label = kind === "video" ? "video" : kind;
+  setStatus(`Adding ${label} card...`);
 
   try {
     const response = await fetch(BRIDGE_URL, {

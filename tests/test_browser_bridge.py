@@ -32,3 +32,15 @@ def test_normalize_add_content_payload_defaults_and_aliases():
     assert payload["deck_name"] == "Topics"
     assert payload["tags"] == ["alpha", "beta"]
     assert payload["html"] == "<html></html>"
+
+
+def test_normalize_add_content_payload_accepts_video_alias():
+    payload = normalize_add_content_payload(
+        {
+            "kind": "youtube",
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "title": "  Demo video  ",
+        }
+    )
+    assert payload["kind"] == "video"
+    assert payload["title"] == "Demo video"
