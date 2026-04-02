@@ -263,7 +263,7 @@ Fields: `Title`, `PDF_Filename`.
 ### Card template (`CARD_TEMPLATE_FRONT`)
 
 Structure (top to bottom):
-1. `<script src="/_addons/incremento/user_files/pdfjs/pdf.min.js">` — loaded **first** so it's ready before the inline script runs
+1. `<script src="pdfjs/pdf.min.js">` — loaded **first** so it's ready before the inline script runs
 2. CSS block — `.textLayer` styles: absolute overlay, transparent text, blue `::selection`
 3. Hidden `<div id="incremento-pdf-meta" data-filename="{{PDF_Filename}}">{{PDF_Filename}}</div>` — satisfies Anki's "must have a field on front" validator; also carries the filename for potential DOM reads
 4. `#pdf-canvas-wrapper` (relative-positioned) containing `<canvas>` + `<div id="pdf-text-layer">`
@@ -298,7 +298,7 @@ Fix: Python always sets `window._incPdfPending = {cardId, filename, page}` befor
 | `reviewer_did_show_question(card)` | Sets `_incPdfPending` + calls `incrementoPdfStart` via `mw.reviewer.web.eval` |
 | `webview_did_receive_js_message` | Intercepts `incremento_pdf_nav:` messages, calls `set_page` |
 
-`setWebExports(__name__, r"user_files/.*")` makes `user_files/pdfjs/*.js` accessible at `/_addons/incremento/user_files/pdfjs/…`.
+`setWebExports(__name__, r"web/.*")` makes `web/pdfjs/*.js` accessible at `/_addons/incremento/web/pdfjs/…`.
 
 ### Page progress (`user_files/pdf_progress.json`)
 
@@ -313,4 +313,4 @@ Fix: Python always sets `window._incPdfPending = {cardId, filename, page}` befor
 - **High-DPI**: multiply canvas dimensions by `window.devicePixelRatio`, apply inverse CSS transform — not yet implemented
 - **PDF.js workerSrc** must be an absolute URL (full `http://…` or absolute path) — relative paths fail in some Qt WebEngine versions
 - **Progress tracked per-note** in reference addon; Incremento tracks per-card (card ID key)
-- Reference addon uses PDF.js 2.4.456; Incremento ships its own copy in `user_files/pdfjs/` — version unknown but includes `pdf.sandbox.min.js` (≥ 2.10)
+- Reference addon uses PDF.js 2.4.456; Incremento ships its own copy in `web/pdfjs/`, with the built viewer bundle in `web/dist/` — version unknown but includes `pdf.sandbox.min.js` (≥ 2.10)

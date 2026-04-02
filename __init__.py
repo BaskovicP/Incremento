@@ -89,7 +89,7 @@ def _apply_shortcuts_from_config() -> None:
             action_obj.setKey(seq)
 
 
-mw.addonManager.setWebExports(__name__, r"user_files/.*")
+mw.addonManager.setWebExports(__name__, r"web/.*")
 
 # Last PDF card opened via the Quick Open dialog (used by Ctrl+L).
 _last_opened_pdf_cid: int | None = None

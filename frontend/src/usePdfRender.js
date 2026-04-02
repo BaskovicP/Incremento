@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const DEFAULT_WORKER_SRC = '/_addons/incremento/user_files/pdfjs/pdf.worker.min.js';
+const DEFAULT_WORKER_SRC = '/_addons/incremento/web/pdfjs/pdf.worker.min.js';
 const ZOOM_STEP = 0.1;
 const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4.0;

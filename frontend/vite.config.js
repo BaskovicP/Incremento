@@ -7,7 +7,7 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify('production'),
   },
   build: {
-    outDir: '../user_files/dist',
+    outDir: '../web/dist',
     emptyOutDir: true,
     lib: {
       entry: 'src/main.jsx',

@@ -73,11 +73,11 @@ _ADDON_DIR = os.path.normpath(
 )
 
 _DOCK_HTML = QUrl.fromLocalFile(
-    os.path.join(_ADDON_DIR, "user_files", "pdf_dock.html")
+    os.path.join(_ADDON_DIR, "web", "pdf_dock.html")
 ).toString()
 
 _WORKER_URL = QUrl.fromLocalFile(
-    os.path.join(_ADDON_DIR, "user_files", "pdfjs", "pdf.worker.min.js")
+    os.path.join(_ADDON_DIR, "web", "pdfjs", "pdf.worker.min.js")
 ).toString()
 
 # ── Module state ──────────────────────────────────────────────────────────────
