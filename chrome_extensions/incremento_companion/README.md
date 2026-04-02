@@ -1,4 +1,4 @@
-# Incremento Video Time Clipboard (Chrome/Brave)
+# Incremento Companion (Chrome/Brave)
 
 Copies the last watched YouTube/Vimeo time to your clipboard when a video tab closes, and can send the current page to Incremento as a PDF, video, webpage card, or writing card.
 
@@ -28,7 +28,7 @@ License: all rights reserved. Using, copying, modifying, or distributing this co
 2. Enable `Developer mode`.
 3. Click `Load unpacked`.
 4. Select this folder:
-   - `.../incremento/chrome_extensions/incremento_video_time_clipboard`
+   - `.../incremento/chrome_extensions/incremento_companion`
 5. Pin the extension (optional, recommended).
 
 ## Usage

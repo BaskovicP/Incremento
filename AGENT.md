@@ -7,7 +7,7 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 - `__init__.py`: addon entry point, hook registration, menu actions, web exports.
 - `backend/`: card creation, bridge/API logic, persistence helpers, scheduler/config logic.
 - `frontend/`: Qt dialogs/docks plus React source for the PDF viewer.
-- `chrome_extensions/incremento_video_time_clipboard/`: Chrome extension for page import, bookmark import, and video time capture.
+- `chrome_extensions/incremento_companion/`: Chrome extension for page import, bookmark import, and video time capture.
 - `web/`: shipped web assets served by Anki web exports.
   - `web/pdf_dock.html`
   - `web/pdfjs/*`
@@ -57,7 +57,7 @@ npm run build
 
 ## Chrome Extension
 
-- Folder: `chrome_extensions/incremento_video_time_clipboard/`
+- Folder: `chrome_extensions/incremento_companion/`
 - Popup can import current page as:
   - `pdf`
   - `video`
@@ -97,9 +97,9 @@ python3 -m pytest tests/test_browser_bridge.py tests/test_pdf_manager.py
 Useful JS syntax checks:
 
 ```bash
-node --check chrome_extensions/incremento_video_time_clipboard/popup.js
-node --check chrome_extensions/incremento_video_time_clipboard/bookmarks.js
-node --check chrome_extensions/incremento_video_time_clipboard/pdf_fetch.js
+node --check chrome_extensions/incremento_companion/popup.js
+node --check chrome_extensions/incremento_companion/bookmarks.js
+node --check chrome_extensions/incremento_companion/pdf_fetch.js
 ```
 
 ## Editing Guidance

@@ -84,7 +84,7 @@ REQUIRED_RUNTIME_PATHS = (
     "web/dist/pdf_viewer.js",
     "web/pdfjs/pdf.min.js",
     "web/pdfjs/pdf.worker.min.js",
-    "chrome_extensions/incremento_video_time_clipboard/manifest.json",
+    "chrome_extensions/incremento_companion/manifest.json",
 )
 EXCLUDE_DIR_NAMES = {
     ".git",

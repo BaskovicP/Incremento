@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Incremento Video Time Clipboard",
+  "name": "Incremento Companion",
   "version": "0.2.0",
-  "description": "Tracks YouTube/Vimeo playback time and copies last stop time to clipboard when the tab closes.",
+  "description": "Imports PDFs, videos, webpages, writing notes, and bookmarks into Incremento while tracking video stop times.",
   "permissions": [
     "storage",
     "offscreen",
@@ -53,7 +53,7 @@
     }
   ],
   "action": {
-    "default_title": "Incremento Video Time Clipboard",
+    "default_title": "Incremento Companion",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

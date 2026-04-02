@@ -47,18 +47,18 @@ For a full walkthrough, see [MANUAL.md](MANUAL.md).
 
 ## Companion Extension
 
-The optional Chrome/Brave extension lives in `chrome_extensions/incremento_video_time_clipboard/`. It can send PDFs, videos, web pages, and writing notes into Incremento, and it can capture watched video time.
+The optional Chrome/Brave extension lives in `chrome_extensions/incremento_companion/`. It can send PDFs, videos, web pages, and writing notes into Incremento, and it can capture watched video time.
 
 Extension details and install steps:
 
-- [chrome_extensions/incremento_video_time_clipboard/README.md](chrome_extensions/incremento_video_time_clipboard/README.md)
+- [chrome_extensions/incremento_companion/README.md](chrome_extensions/incremento_companion/README.md)
 
 ## Main Components
 
 - `backend/`: scheduling, persistence, import logic, browser bridge, and content managers
 - `frontend/`: Qt dialogs/docks plus React source for the PDF viewer
 - `web/`: shipped web assets used inside Anki
-- `chrome_extensions/incremento_video_time_clipboard/`: companion Chrome extension
+- `chrome_extensions/incremento_companion/`: companion Chrome extension
 - `tests/`: Python test suite
 
 ## Documentation
