@@ -35,6 +35,7 @@ from .backend.video_manager import (
 )
 from .backend.writing_manager import add_writing_card
 from .backend.priority_manager import get_priority, set_priority, get_all_priorities
+from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
 from .backend.topic_scheduler import on_topic_card_answered as _on_topic_card_answered
@@ -61,6 +62,11 @@ from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.search_all import _SearchAllDialog
 
 _ADDON_DIR = os.path.dirname(__file__)
+
+try:
+    _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
+except Exception:
+    pass
 
 _shortcut_actions: dict[str, object] = {}
 
@@ -236,6 +242,10 @@ gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
 gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
+gui_hooks.main_window_did_init.append(
+    lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
+)
+gui_hooks.profile_will_close.append(_browser_bridge_mod.stop_browser_bridge)
 
 
 def _install_reviewer_selection_bridge(_card=None) -> None:
@@ -1627,6 +1637,27 @@ def openSettingsFunction() -> None:
     tooltip("Incremento shortcuts updated.")
 
 
+def openAboutFunction() -> None:
+    showInfo(
+        """
+        <h2>Incremento</h2>
+        <p><b>Author:</b> Paulo Baskovic</p>
+        <p>
+          Incremento is an Anki add-on for incremental reading and study workflows.
+          It keeps long-form material and review cards in one place inside Anki.
+        </p>
+        <p><b>General information</b></p>
+        <ul>
+          <li>Add and review PDFs, webpages, videos, and writing notes.</li>
+          <li>Open PDF, webpage, video, and writing docks while reviewing cards.</li>
+          <li>Extract selections into new cards and keep context linked to the source.</li>
+          <li>Track PDF position, highlights, video progress, and study statistics.</li>
+          <li>Use the Chrome extension to send the current webpage as PDF, webpage, or writing.</li>
+        </ul>
+        """
+    )
+
+
 def _ensure_settings_menu_action() -> None:
     for act in _menu.actions():
         if act.text() == "Settings":
@@ -1664,6 +1695,11 @@ _settingsAction.setMenuRole(QAction.MenuRole.NoRole)
 qconnect(_settingsAction.triggered, openSettingsFunction)
 _menu.addAction(_settingsAction)
 _register_shortcut_action("open_settings", _settingsAction)
+
+_aboutAction = QAction("About", mw)
+_aboutAction.setMenuRole(QAction.MenuRole.NoRole)
+qconnect(_aboutAction.triggered, openAboutFunction)
+_menu.addAction(_aboutAction)
 
 _menu.addSeparator()
 

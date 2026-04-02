@@ -389,30 +389,44 @@ async function copyLatestStoredTime(showFeedback) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.type !== "heartbeat") {
-    return;
+  if (!msg || !msg.type) {
+    return false;
   }
-  const tabId = sender?.tab?.id;
-  if (typeof tabId !== "number") {
-    sendResponse?.({ ok: false });
-    return;
+
+  if (msg.type === "heartbeat") {
+    const tabId = sender?.tab?.id;
+    if (typeof tabId !== "number") {
+      sendResponse?.({ ok: false });
+      return false;
+    }
+    const state = {
+      provider: typeof msg.provider === "string" ? msg.provider : "",
+      videoId: typeof msg.videoId === "string" ? msg.videoId : "",
+      cardId: Math.max(0, Math.floor(Number(msg.cardId) || 0)),
+      seconds: Number(msg.seconds) || 0,
+      flush: !!msg.flush,
+      title: typeof msg.title === "string" ? msg.title : "",
+      url: typeof msg.url === "string" ? msg.url : "",
+      updatedAt: Date.now(),
+    };
+    TAB_STATE.set(tabId, state);
+    updateActionState(state);
+    if (state.flush) {
+      void persistAndCopy(state, { copyToClipboard: false });
+    }
+    sendResponse?.({ ok: true });
+    return false;
   }
-  const state = {
-    provider: typeof msg.provider === "string" ? msg.provider : "",
-    videoId: typeof msg.videoId === "string" ? msg.videoId : "",
-    cardId: Math.max(0, Math.floor(Number(msg.cardId) || 0)),
-    seconds: Number(msg.seconds) || 0,
-    flush: !!msg.flush,
-    title: typeof msg.title === "string" ? msg.title : "",
-    url: typeof msg.url === "string" ? msg.url : "",
-    updatedAt: Date.now(),
-  };
-  TAB_STATE.set(tabId, state);
-  updateActionState(state);
-  if (state.flush) {
-    void persistAndCopy(state, { copyToClipboard: false });
+
+  if (msg.type === "COPY_LATEST_VIDEO_TIME") {
+    void (async () => {
+      const copied = await copyLatestStoredTime(Boolean(msg.showFeedback));
+      sendResponse?.({ ok: copied });
+    })();
+    return true;
   }
-  sendResponse?.({ ok: true });
+
+  return false;
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

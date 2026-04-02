@@ -10,6 +10,7 @@ from aqt.qt import (
     QPushButton,
     QProgressBar,
     QApplication,
+    QTimer,
     Qt,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -20,6 +21,68 @@ try:
     from .tag_edit import QuickTagEdit
 except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
+
+
+def render_webpage_to_pdf(
+    pdf_path: str,
+    *,
+    url: str = "",
+    html: str = "",
+    wait_ms: int = 1200,
+) -> None:
+    source_url = str(url or "").strip()
+    html_text = str(html or "")
+    if not source_url and not html_text:
+        raise ValueError("Missing webpage source.")
+
+    view = QWebEngineView()
+    view.setFixedSize(1280, 960)
+    view.hide()
+
+    loop = QEventLoop()
+    state: dict[str, object] = {"ok": False, "error": ""}
+
+    def _finish_error(message: str) -> None:
+        state["ok"] = False
+        state["error"] = message
+        loop.quit()
+
+    def _on_pdf_done(_path: str, ok: bool) -> None:
+        if not ok:
+            _finish_error("Failed to generate PDF.")
+            return
+        state["ok"] = True
+        state["error"] = ""
+        loop.quit()
+
+    def _start_print() -> None:
+        layout = QPageLayout(
+            QPageSize(QPageSize.PageSizeId.A4),
+            QPageLayout.Orientation.Portrait,
+            QMarginsF(15, 15, 15, 15),
+        )
+        try:
+            view.page().pdfPrintingFinished.connect(_on_pdf_done)
+            view.page().printToPdf(pdf_path, layout)
+        except Exception as exc:
+            _finish_error(str(exc))
+
+    def _on_load_finished(ok: bool) -> None:
+        if not ok:
+            _finish_error("Failed to load page.")
+            return
+        QTimer.singleShot(max(0, int(wait_ms)), _start_print)
+
+    view.loadFinished.connect(_on_load_finished)
+    if html_text:
+        view.setHtml(html_text, QUrl(source_url or "about:blank"))
+    else:
+        view.load(QUrl(source_url))
+    loop.exec()
+    view.deleteLater()
+
+    if not state["ok"]:
+        raise RuntimeError(str(state["error"] or "Failed to generate PDF."))
 
 
 class WebpageToPdfDialog(QDialog):
@@ -89,52 +152,21 @@ class WebpageToPdfDialog(QDialog):
 
         self._import_btn.setEnabled(False)
         self._progress.setVisible(True)
-        self._status_lbl.setText("Loading page…")
+        self._status_lbl.setText("Generating PDF…")
         QApplication.processEvents()
 
         pdf_path = os.path.join(tempfile.gettempdir(), "incremento_webpage.pdf")
+        try:
+            render_webpage_to_pdf(pdf_path, url=url)
+        except Exception as exc:
+            self._status_lbl.setText(str(exc))
+            self._import_btn.setEnabled(True)
+            self._progress.setVisible(False)
+            return
 
-        # Hidden webview — must be sized so Qt renders the page properly
-        view = QWebEngineView()
-        view.setFixedSize(1280, 960)
-        view.hide()
-        self._view = view  # prevent garbage collection during async chain
-
-        loop = QEventLoop()
-
-        def on_pdf_done(path: str, ok: bool):
-            loop.quit()
-            self._view = None
-            if ok:
-                self._pdf_path = path
-                self._title = title
-                self.accept()
-            else:
-                self._status_lbl.setText("Failed to generate PDF.")
-                self._import_btn.setEnabled(True)
-                self._progress.setVisible(False)
-
-        def on_load_finished(ok: bool):
-            if not ok:
-                loop.quit()
-                self._view = None
-                self._status_lbl.setText("Failed to load page.")
-                self._import_btn.setEnabled(True)
-                self._progress.setVisible(False)
-                return
-            self._status_lbl.setText("Generating PDF…")
-            QApplication.processEvents()
-            layout = QPageLayout(
-                QPageSize(QPageSize.PageSizeId.A4),
-                QPageLayout.Orientation.Portrait,
-                QMarginsF(15, 15, 15, 15),
-            )
-            view.page().pdfPrintingFinished.connect(on_pdf_done)
-            view.page().printToPdf(pdf_path, layout)
-
-        view.loadFinished.connect(on_load_finished)
-        view.load(QUrl(url))
-        loop.exec()
+        self._pdf_path = pdf_path
+        self._title = title
+        self.accept()
 
     # ── Public properties ─────────────────────────────────────────────────────
 

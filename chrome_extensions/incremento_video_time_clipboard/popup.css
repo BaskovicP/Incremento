@@ -1,0 +1,150 @@
+:root {
+  color-scheme: light;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(255, 214, 153, 0.65), transparent 46%),
+    linear-gradient(160deg, #f7f3ea 0%, #ebe4d7 100%);
+  color: #1f2328;
+}
+
+body {
+  margin: 0;
+  min-width: 360px;
+}
+
+.popup {
+  padding: 14px;
+}
+
+.panel {
+  border: 1px solid rgba(71, 58, 36, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 252, 246, 0.9);
+  box-shadow: 0 16px 34px rgba(91, 70, 33, 0.14);
+  padding: 14px;
+}
+
+.panel + .panel {
+  margin-top: 10px;
+}
+
+.panel-secondary {
+  padding: 10px 14px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8f5a1e;
+}
+
+h1 {
+  margin: 6px 0 8px;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.muted,
+.note,
+.status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #5d5b57;
+}
+
+#page-url {
+  word-break: break-all;
+  margin-bottom: 12px;
+}
+
+.field {
+  display: block;
+}
+
+.field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(83, 72, 54, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
+}
+
+.field input:focus {
+  outline: 2px solid rgba(201, 118, 18, 0.24);
+  border-color: rgba(201, 118, 18, 0.42);
+}
+
+.note {
+  min-height: 18px;
+  margin-top: 10px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.kind-btn,
+.ghost-btn {
+  border: 0;
+  border-radius: 14px;
+  padding: 11px 12px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.kind-btn {
+  background: linear-gradient(135deg, #9e5d12 0%, #d88219 100%);
+  color: #fffdf8;
+  font-weight: 700;
+  box-shadow: 0 10px 18px rgba(158, 93, 18, 0.2);
+}
+
+.kind-btn:hover,
+.ghost-btn:hover {
+  transform: translateY(-1px);
+}
+
+.kind-btn:disabled,
+.ghost-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
+}
+
+.ghost-btn {
+  width: 100%;
+  background: rgba(88, 73, 44, 0.08);
+  color: #473a24;
+  font-weight: 600;
+}
+
+.status {
+  min-height: 18px;
+  margin-top: 10px;
+}
+
+.status.is-error {
+  color: #ab2f2f;
+}
+
+.status.is-success {
+  color: #216c3f;
+}
