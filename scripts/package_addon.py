@@ -96,7 +96,6 @@ EXCLUDE_DIR_NAMES = {
     "__pycache__",
     "node_modules",
     "tests",
-    "utils",
     ".claude",
 }
 EXCLUDE_FILE_NAMES = {

@@ -1,5 +1,5 @@
 [tool.coverage.run]
-omit = ["tests/*", "utils/*"]
+omit = ["tests/*"]
 
 [tool.coverage.report]
 exclude_lines = [
