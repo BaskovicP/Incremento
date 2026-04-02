@@ -1,11 +1,20 @@
 "use strict";
 
 const TAB_STATE = new Map();
+const WEB_TRACK_TAB_STATE = new Map();
 const STORAGE_KEY = "incremento_last_video_time";
+const WEB_TRACK_STORAGE_KEY = "incremento_tracked_web_tabs";
 const OFFSCREEN_PATH = "offscreen.html";
 const ANKICONNECT_URL = "http://127.0.0.1:8765";
 const ANKICONNECT_VERSION = 6;
 const INCREMENTO_NOTE_TYPE = "Incremento Video";
+const WEB_TRACK_BRIDGE_URL = "http://127.0.0.1:8766/incremento/update-web-card";
+const INC_CARD_ID_PARAM = "inc_card_id";
+const INC_TRACK_WEB_PARAM = "inc_track_web";
+
+function isHttpUrl(rawUrl) {
+  return /^https?:\/\//i.test(String(rawUrl || ""));
+}
 
 function formatTime(totalSeconds) {
   const t = Math.max(0, Math.floor(Number(totalSeconds) || 0));
@@ -27,6 +36,101 @@ function isFresh(state, maxAgeMs = 60_000) {
 
 function htmlDecodeUrl(raw) {
   return String(raw || "").replaceAll("&amp;", "&").trim();
+}
+
+function stripIncrementoTrackingParams(rawUrl) {
+  const decoded = htmlDecodeUrl(rawUrl);
+  try {
+    const u = new URL(decoded);
+    u.searchParams.delete(INC_CARD_ID_PARAM);
+    u.searchParams.delete(INC_TRACK_WEB_PARAM);
+    return u.toString();
+  } catch (_err) {
+    return decoded;
+  }
+}
+
+function parseTrackedWebRegistration(rawUrl) {
+  const decoded = htmlDecodeUrl(rawUrl);
+  try {
+    const u = new URL(decoded);
+    const trackRaw = String(u.searchParams.get(INC_TRACK_WEB_PARAM) || "").trim().toLowerCase();
+    const trackEnabled = trackRaw === "1" || trackRaw === "true" || trackRaw === "yes" || trackRaw === "on";
+    const cid = Number(u.searchParams.get(INC_CARD_ID_PARAM) || 0);
+    return {
+      trackEnabled,
+      cardId: Number.isFinite(cid) && cid > 0 ? Math.floor(cid) : 0,
+      cleanUrl: stripIncrementoTrackingParams(decoded),
+    };
+  } catch (_err) {
+    return {
+      trackEnabled: false,
+      cardId: 0,
+      cleanUrl: stripIncrementoTrackingParams(decoded),
+    };
+  }
+}
+
+async function loadTrackedWebState(tabId) {
+  if (typeof tabId !== "number") {
+    return null;
+  }
+  const inMemory = WEB_TRACK_TAB_STATE.get(tabId);
+  if (inMemory) {
+    return inMemory;
+  }
+  try {
+    const data = await chrome.storage.session.get(WEB_TRACK_STORAGE_KEY);
+    const all = data?.[WEB_TRACK_STORAGE_KEY];
+    const saved = all ? all[String(tabId)] : null;
+    if (saved && Number(saved.cardId) > 0) {
+      const state = {
+        cardId: Math.max(0, Math.floor(Number(saved.cardId) || 0)),
+        lastUrl: String(saved.lastUrl || ""),
+      };
+      WEB_TRACK_TAB_STATE.set(tabId, state);
+      return state;
+    }
+  } catch (_err) {
+    // noop
+  }
+  return null;
+}
+
+async function saveTrackedWebState(tabId, state) {
+  if (typeof tabId !== "number" || !state || Number(state.cardId) <= 0) {
+    return;
+  }
+  WEB_TRACK_TAB_STATE.set(tabId, state);
+  try {
+    const data = await chrome.storage.session.get(WEB_TRACK_STORAGE_KEY);
+    const all = data?.[WEB_TRACK_STORAGE_KEY] || {};
+    all[String(tabId)] = {
+      cardId: Math.max(0, Math.floor(Number(state.cardId) || 0)),
+      lastUrl: String(state.lastUrl || ""),
+    };
+    await chrome.storage.session.set({ [WEB_TRACK_STORAGE_KEY]: all });
+  } catch (_err) {
+    // noop
+  }
+}
+
+async function clearTrackedWebState(tabId) {
+  if (typeof tabId !== "number") {
+    return;
+  }
+  WEB_TRACK_TAB_STATE.delete(tabId);
+  try {
+    const data = await chrome.storage.session.get(WEB_TRACK_STORAGE_KEY);
+    const all = data?.[WEB_TRACK_STORAGE_KEY];
+    if (!all || typeof all !== "object") {
+      return;
+    }
+    delete all[String(tabId)];
+    await chrome.storage.session.set({ [WEB_TRACK_STORAGE_KEY]: all });
+  } catch (_err) {
+    // noop
+  }
 }
 
 function setTimestampInVideoUrl(rawUrl, provider, videoId, seconds) {
@@ -77,6 +181,63 @@ function setTimestampInVideoUrl(rawUrl, provider, videoId, seconds) {
   }
 
   return decoded;
+}
+
+async function updateTrackedWebCard(cardId, url, title = "") {
+  const cid = Math.max(0, Math.floor(Number(cardId) || 0));
+  const cleanUrl = stripIncrementoTrackingParams(url);
+  if (cid <= 0 || !isHttpUrl(cleanUrl)) {
+    return { ok: false };
+  }
+  try {
+    const response = await fetch(WEB_TRACK_BRIDGE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cardId: cid,
+        url: cleanUrl,
+        title: String(title || ""),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) {
+      throw new Error(String(data?.error || `Request failed (${response.status})`));
+    }
+    return { ok: true, data };
+  } catch (_err) {
+    return { ok: false };
+  }
+}
+
+async function maybeSyncTrackedWebTab(tabId, rawUrl, title = "") {
+  if (typeof tabId !== "number") {
+    return;
+  }
+
+  const registration = parseTrackedWebRegistration(rawUrl);
+  let state = await loadTrackedWebState(tabId);
+  if (registration.trackEnabled && registration.cardId > 0) {
+    state = {
+      cardId: registration.cardId,
+      lastUrl: "",
+    };
+    await saveTrackedWebState(tabId, state);
+  }
+  if (!state) {
+    return;
+  }
+
+  const cleanUrl = registration.cleanUrl || stripIncrementoTrackingParams(rawUrl);
+  if (!isHttpUrl(cleanUrl) || state.lastUrl === cleanUrl) {
+    return;
+  }
+
+  const synced = await updateTrackedWebCard(state.cardId, cleanUrl, title);
+  if (!synced.ok) {
+    return;
+  }
+  state.lastUrl = cleanUrl;
+  await saveTrackedWebState(tabId, state);
 }
 
 async function callAnki(action, params = {}) {
@@ -432,11 +593,61 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   const state = TAB_STATE.get(tabId);
   TAB_STATE.delete(tabId);
+  void clearTrackedWebState(tabId);
   if (!state || !isFresh(state)) {
     return;
   }
   void persistAndCopy(state);
 });
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const nextUrl =
+    (typeof changeInfo?.url === "string" && changeInfo.url)
+    || (changeInfo?.status === "complete" ? String(tab?.url || "") : "");
+  if (!nextUrl) {
+    return;
+  }
+  void maybeSyncTrackedWebTab(tabId, nextUrl, String(tab?.title || ""));
+});
+
+if (chrome.webNavigation?.onCommitted) {
+  chrome.webNavigation.onCommitted.addListener((details) => {
+    if (details?.frameId !== 0) {
+      return;
+    }
+    void maybeSyncTrackedWebTab(
+      Number(details.tabId),
+      String(details.url || ""),
+      "",
+    );
+  });
+}
+
+if (chrome.webNavigation?.onHistoryStateUpdated) {
+  chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+    if (details?.frameId !== 0) {
+      return;
+    }
+    void maybeSyncTrackedWebTab(
+      Number(details.tabId),
+      String(details.url || ""),
+      "",
+    );
+  });
+}
+
+if (chrome.webNavigation?.onReferenceFragmentUpdated) {
+  chrome.webNavigation.onReferenceFragmentUpdated.addListener((details) => {
+    if (details?.frameId !== 0) {
+      return;
+    }
+    void maybeSyncTrackedWebTab(
+      Number(details.tabId),
+      String(details.url || ""),
+      "",
+    );
+  });
+}
 
 chrome.action.onClicked.addListener(() => {
   void copyLatestStoredTime(true);

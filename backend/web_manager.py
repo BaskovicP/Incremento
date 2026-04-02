@@ -2,8 +2,11 @@ try:
     from .db import get_connection
 except ImportError:
     from db import get_connection
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 WEB_NOTE_TYPE = "Incremento Web"
+TRACK_CARD_ID_PARAM = "inc_card_id"
+TRACK_WEB_FLAG_PARAM = "inc_track_web"
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -32,6 +35,41 @@ def set_web_url(addon_dir: str, card_id: int, url: str) -> None:
         (card_id, url),
     )
     conn.commit()
+
+
+def build_external_web_url(
+    url: str,
+    *,
+    card_id: int | None = None,
+    track_with_extension: bool = False,
+) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+
+    if not track_with_extension:
+        return raw
+
+    try:
+        cid = int(card_id) if card_id is not None else 0
+    except Exception:
+        cid = 0
+    if cid <= 0:
+        return raw
+
+    try:
+        parsed = urlparse(raw)
+        query_items = [
+            (k, v)
+            for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+            if k not in {TRACK_CARD_ID_PARAM, TRACK_WEB_FLAG_PARAM}
+        ]
+        query_items.append((TRACK_CARD_ID_PARAM, str(cid)))
+        query_items.append((TRACK_WEB_FLAG_PARAM, "1"))
+        return urlunparse(parsed._replace(query=urlencode(query_items, doseq=True)))
+    except Exception:
+        sep = "&" if "?" in raw else "?"
+        return f"{raw}{sep}{TRACK_CARD_ID_PARAM}={cid}&{TRACK_WEB_FLAG_PARAM}=1"
 
 
 def ensure_web_note_type(col) -> None:

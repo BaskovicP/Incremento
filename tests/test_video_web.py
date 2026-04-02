@@ -43,6 +43,7 @@ supported_local_video_extensions = _vm.supported_local_video_extensions
 
 get_web_url = _wm.get_web_url
 set_web_url = _wm.set_web_url
+build_external_web_url = _wm.build_external_web_url
 
 
 # ── extract_video_id ──────────────────────────────────────────────────────────
@@ -366,6 +367,36 @@ class TestWebUrl:
         set_web_url(str(tmp_path), 1, "https://example.com")
         set_web_url(str(tmp_path), 1, "")
         assert get_web_url(str(tmp_path), 1) == ""
+
+    def test_build_external_web_url_leaves_plain_url_unchanged_when_tracking_disabled(self):
+        assert (
+            build_external_web_url(
+                "https://example.com/article?x=1",
+                card_id=42,
+                track_with_extension=False,
+            )
+            == "https://example.com/article?x=1"
+        )
+
+    def test_build_external_web_url_appends_tracking_params(self):
+        assert (
+            build_external_web_url(
+                "https://example.com/article?x=1",
+                card_id=42,
+                track_with_extension=True,
+            )
+            == "https://example.com/article?x=1&inc_card_id=42&inc_track_web=1"
+        )
+
+    def test_build_external_web_url_replaces_stale_tracking_params(self):
+        assert (
+            build_external_web_url(
+                "https://example.com/article?inc_card_id=1&inc_track_web=0&x=1",
+                card_id=42,
+                track_with_extension=True,
+            )
+            == "https://example.com/article?x=1&inc_card_id=42&inc_track_web=1"
+        )
 
 
 # ── ensure_video_note_type ────────────────────────────────────────────────────

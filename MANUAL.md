@@ -1,24 +1,26 @@
-# Incremento — User Manual
+# Incremento - User Manual
 
-Incremento is an Anki addon for **incremental reading and learning**. It schedules a balanced mix of topic cards (concept notes, articles, PDFs) and item cards (flashcards, Q&A), lets you read and annotate PDFs directly inside Anki, and tracks your study statistics over time.
+Incremento is an Anki add-on for incremental learning from mixed content. It combines long-form material such as PDFs, videos, webpages, and writing notes with normal flashcards, then builds balanced study sessions inside Anki.
 
 ---
 
 ## Table of Contents
 
 1. [Core Concepts](#1-core-concepts)
-2. [Starting a Study Session](#2-starting-a-study-session)
-3. [Scheduler Settings — Reference](#3-scheduler-settings--reference)
-4. [Adding a PDF Card](#4-adding-a-pdf-card)
-5. [The PDF Viewer](#5-the-pdf-viewer)
-6. [Extracting Text to Cards (Ctrl+1–4)](#6-extracting-text-to-cards-ctrl14)
-7. [Highlighting](#7-highlighting)
-8. [Cross-References — Linking to a PDF Page](#8-cross-references--linking-to-a-pdf-page)
-9. [Searching for PDF Content in the Card Browser](#9-searching-for-pdf-content-in-the-card-browser)
-10. [Viewing Statistics](#10-viewing-statistics)
-11. [Exporting Your Data (Backup)](#11-exporting-your-data-backup)
-12. [Keyboard Shortcuts Reference](#12-keyboard-shortcuts-reference)
-13. [Common Workflows](#13-common-workflows)
+2. [Incremento Menu Overview](#2-incremento-menu-overview)
+3. [Starting a Study Session](#3-starting-a-study-session)
+4. [Scheduler Settings](#4-scheduler-settings)
+5. [Adding Content Cards](#5-adding-content-cards)
+6. [PDF Cards and Viewer](#6-pdf-cards-and-viewer)
+7. [Video Cards](#7-video-cards)
+8. [Web and Writing Cards](#8-web-and-writing-cards)
+9. [Search and Navigation Tools](#9-search-and-navigation-tools)
+10. [Statistics and Focus Timer](#10-statistics-and-focus-timer)
+11. [Priorities, Extraction, and the Add Card Dock](#11-priorities-extraction-and-the-add-card-dock)
+12. [Export and Restore Notes](#12-export-and-restore-notes)
+13. [Utilities and Dependencies](#13-utilities-and-dependencies)
+14. [Keyboard Shortcuts](#14-keyboard-shortcuts)
+15. [Common Workflows](#15-common-workflows)
 
 ---
 
@@ -26,463 +28,626 @@ Incremento is an Anki addon for **incremental reading and learning**. It schedul
 
 ### Topics vs Items
 
-Incremento distinguishes two types of cards:
+Incremento works with two broad card groups:
 
-| Type | What it is | Example |
-|------|-----------|---------|
-| **Topics** | Long-form reading, concept notes, PDFs | A note about neural networks; a PDF chapter |
-| **Items** | Fact cards, flashcards, Q&A | "What is the capital of France? → Paris" |
+| Type | What it means | Examples |
+|---|---|---|
+| **Topics** | Long-form material you work through gradually | PDFs, videos, webpages, writing notes, article notes |
+| **Items** | Normal fact/review cards | Basic, cloze, Q&A, vocabulary |
 
-By default, cards in the `Topics` deck are treated as topics, and everything else as items. You can customise this with filters (see §3).
+By default, cards in `deck:Topics` count as topics and everything else counts as items. You can change that in the scheduler filters.
 
-### Incremental Learning
+### Incremental learning
 
-Rather than studying everything at once, Incremento selects a balanced session for you — mixing new topics to read with items to review. The scheduler tracks what you have already studied and ensures you make progress across all areas without over-studying one thing.
+Instead of reviewing one deck in isolation, Incremento builds a temporary filtered deck called **Incremento Session**. It mixes topics and items according to your settings, keeps track of what you studied, and lets you continue long-form material where you left off.
 
-### Filtered Deck
+### Persistent side docks
 
-When you start a session, Incremento creates a temporary Anki filtered deck called **Incremento Session** containing exactly the cards it selected. After reviewing, cards return to their original decks with normal scheduling intact.
+When you review Incremento cards, the source opens in a dock:
+
+- PDF cards open the PDF viewer
+- Video cards open the video dock
+- Web cards open the web browser dock
+- Writing cards open the markdown editor dock
+
+These docks persist across reviews and save progress automatically.
 
 ---
 
-## 2. Starting a Study Session
+## 2. Incremento Menu Overview
+
+The add-on menu lives under **Tools -> Incremento**.
+
+### Main actions
+
+| Menu item | What it does |
+|---|---|
+| **Start Incremental Learning** | Build a new Incremento session |
+| **About** | Show a summary of addon capabilities |
+| **Add Content -> Add PDF** | Import a PDF as a topic card |
+| **Add Content -> Webpage to PDF** | Render a webpage into a PDF card |
+| **Add Content -> Add Video** | Add a YouTube, Vimeo, or local video card |
+| **Add Content -> Add Writing** | Create a writing card backed by a markdown file |
+| **Add Content -> Web Page** | Create a browsable web page card |
+| **Show Focus Timer** | Show or hide the timer toolbar |
+| **Statistics** | Open study statistics |
+| **Search ALL** | Search highlights, PDF sources, PDF content, and cards |
+| **Export User Data** | Create a backup ZIP |
+| **Settings** | Configure Incremento keyboard shortcuts |
+
+### Utils submenu
+
+| Menu item | What it does |
+|---|---|
+| **Check Dependencies...** | Check/install optional PDF tools |
+| **Reindex PDF Text (Existing Cards)** | Rebuild searchable PDF text index |
+| **Clean Non-Active Profile Data...** | Remove orphaned data not tied to live cards |
+| **Clean Up Orphaned PDF Files...** | Delete unreferenced PDF files |
+| **Clean Up Orphaned Video Files...** | Delete unreferenced video files |
+| **Clean Up Stale Progress Rows...** | Remove saved progress for deleted cards |
+
+---
+
+## 3. Starting a Study Session
 
 1. Open Anki.
-2. Go to **Tools → Start Incremental Learning**.
-3. The **Scheduler Settings** dialog opens. Adjust your settings (see §3) or just click **OK** with the defaults.
-4. Anki opens the **Incremento Session** filtered deck and the reviewer starts.
+2. Go to **Tools -> Incremento -> Start Incremental Learning**.
+3. Adjust the scheduler settings or accept the defaults.
+4. Incremento builds the **Incremento Session** filtered deck and opens the reviewer.
 
-> **First time?** The defaults work well: 50 cards per session, 10% topics / 90% items, 99% random mode. Just click OK.
+Good first-run defaults:
 
----
-
-## 3. Scheduler Settings — Reference
-
-### Cards Per Session
-
-How many cards to put in the session. Default: **50**.
-
-> **Example:** If you have 200 due items and set this to 30, Incremento picks 30 cards according to your balance settings.
+- 50 cards
+- 10% topics / 90% items
+- 99% random / 1% priority
+- all card states enabled
 
 ---
 
-### Card Types to Include
+## 4. Scheduler Settings
 
-Three checkboxes control which card states are eligible:
+### Cards per session
 
-| Checkbox | Includes |
-|----------|---------|
-| **New** | Cards you have never studied |
-| **Learning** | Cards still in learning steps |
-| **Due / Review** | Cards past their review date |
+Controls how many cards Incremento puts into the session.
 
-All three are checked by default. Uncheck **New** if you only want to review existing cards, or uncheck **Due / Review** to focus only on new material.
+### Card states to include
 
----
+You can include any combination of:
 
-### Topics ↔ Items Balance
+- **New**
+- **Learning**
+- **Due / Review**
 
-A slider from 0 to 100 controlling what fraction of your session is topic cards vs item cards.
+### Topics <-> Items balance
 
-- Slide **left** → more topics (reading, notes, PDFs)
-- Slide **right** → more items (flashcards, Q&A)
-- Default: **10% topics / 90% items**
+Controls what share of the session goes to topics versus normal review cards.
 
-A live count shows how many cards of each type are currently available: `Topics: 12 ready  Items: 84 ready`.
+- Move left for more topics
+- Move right for more items
 
-> **Example:** You are reading a long PDF book and want to spend half your session reading and half reviewing vocabulary. Set the slider to 50%.
+Incremento also shows the current number of ready topic and item cards.
 
----
+### Priority <-> Random balance
 
-### Priority ↔ Random Balance
+Controls how cards are selected within each bucket.
 
-Controls how cards are selected within each type:
+- **Priority** favors more urgent cards
+- **Random** samples more freely from eligible cards
 
-- **Priority** — picks the most overdue / highest-urgency cards first
-- **Random** — picks randomly from all eligible cards
+### Scheduler scope
 
-Default: **99% random / 1% priority**. For spaced repetition purists, slide towards priority.
+The balancing memory can apply to:
 
-> **Example:** You have an exam tomorrow and want to see your most overdue cards. Set this to 100% priority.
+- **This session**
+- **Today**
+- **All time**
 
----
+If you use **Today**, the **Day ends at** setting lets you define a late-night cutoff like `04:00`.
 
-### Scheduler Scope
+### Scheduling priority order
 
-Determines the time window the scheduler uses when balancing topics vs items and tag quotas:
+With **Strict enforcement** enabled, Incremento fills quotas in the order you choose:
 
-| Scope | Behaviour |
-|-------|-----------|
-| **This session** | Resets every time you open the dialog. Good for one-off sessions. |
-| **Today** | Remembers picks across multiple same-day sessions. Good if you study in short bursts. |
-| **All time** | Balances over your entire history. Good for long-term even coverage. |
+- **Tags**
+- **Type**
+- **Mode**
 
-**Day ends at** (visible when scope is Today) — sets the logical day boundary. If you study past midnight, set this to e.g. `04:00` so late-night sessions still count as "today".
+This is useful when you need exact tag coverage or strict topic/item ratios.
 
----
+### Tag quotas
 
-### Scheduling Priority Order
+You can allocate part of each session to specific tags:
 
-Controls the order in which the scheduler enforces its quotas when **Strict enforcement** is on.
+1. Add one or more tags.
+2. Set each tag percentage.
+3. Lock any tag whose share should stay fixed.
+4. Use **After exhausting tag groups, fill with rest of cards** if you want leftover slots topped up automatically.
 
-Three dropdowns let you put any of the three dimensions first:
+### Filters
 
-- **Tags** — fill tag quotas first (e.g. "give Biology 30% before anything else")
-- **Type** — fill the topics/items balance first
-- **Mode** — fill the priority/random balance first
+These are standard Anki search filters:
 
-Default order: **Tags → Type → Mode**.
+- **Topics filter**: what counts as a topic card
+- **Items filter**: what counts as an item card
 
-**Strict enforcement** (checkbox):
-- **Checked (default)** — each quota is filled completely before moving to the next. Hard guarantees.
-- **Unchecked** — soft debt-based scheduling; all dimensions are interleaved. More natural-feeling.
+Default setup:
 
-> **Example:** You have tags for Biology, Chemistry, and Physics and want strict 30/30/30 coverage. Set scope to Today, add tag quotas of 30% each, and keep strict enforcement on.
+- Topics: `deck:Topics`
+- Items: `-deck:Topics`
 
----
+Use the **Test** buttons to see how many cards currently match.
 
-### Tag Quotas
+### Debug mode
 
-Add tags to give them a dedicated share of the session.
+**Show debug information** displays the exact selected cards before the session starts.
 
-1. Choose a tag from the dropdown and click **Add**.
-2. Use the per-tag slider to set its percentage (e.g. 25%).
-3. Use the **🔒 lock** checkbox to fix a tag's percentage so other sliders don't affect it.
-4. The **Other cards** label shows the remaining percentage for untagged cards.
+### Statistics history buttons
 
-**After exhausting tag groups, fill with rest of cards** — if checked, any remaining slots after all tag quotas are filled are topped up with any available card. Uncheck if you want strict tag-only sessions.
-
-> **Example:** You study three subjects. Add `Biology`, `Chemistry`, `Physics` as tag rows, set each to 33%, and lock them all. Every session will be exactly one-third each subject.
+The dialog also has buttons to delete session, daily, and lifetime statistics or export them as JSON.
 
 ---
 
-### Advanced: Filters
+## 5. Adding Content Cards
 
-- **Topics filter** (default: `deck:Topics`) — Anki search query that defines what counts as a topic card. You can use any valid Anki search like `tag:reading` or `deck:Articles`.
-- **Items filter** (default: `-deck:Topics`) — defines item cards. The `-` prefix means "not in Topics deck".
+Incremento now supports several kinds of topic material.
 
-Click **Test** next to either filter to see how many cards currently match it.
+### Add PDF
 
-> **Example:** You organise topics by tag rather than deck. Set Topics filter to `tag:topic` and Items filter to `-tag:topic`.
+Use **Add Content -> Add PDF** to import a PDF file into Incremento.
 
----
+This creates an **Incremento PDF** note and copies the PDF into `user_files/pdfs/`.
 
-### Debug Mode
+### Webpage to PDF
 
-Check **Show debug information** to see the exact list of cards Incremento selected before the session starts. Useful for understanding the scheduler's choices.
+Use **Add Content -> Webpage to PDF** when you want a normal PDF-style reading workflow for an online article.
 
----
+Incremento loads the page in a hidden browser view, renders it to PDF, and imports the result as a PDF card.
 
-### Statistics History Buttons
+This is useful when you want:
 
-At the bottom of the dialog:
+- page-based reading progress
+- PDF highlighting
+- PDF extraction shortcuts
+- a stable offline snapshot of the article
 
-| Button | Effect |
-|--------|--------|
-| **Delete Today** | Removes today's statistics |
-| **Delete Session** | Clears last session's in-memory stats |
-| **Delete All Time** | Removes lifetime statistics |
-| **Delete All History** | Removes all statistics (irreversible) |
-| **Export JSON** | Saves all statistics to a JSON file |
+### Add Video
 
----
+Use **Add Content -> Add Video** for:
 
-## 4. Adding a PDF Card
+- YouTube URLs
+- Vimeo URLs
+- local video files
 
-Any PDF can become a topic card in Anki. Incremento stores the PDF in your Anki media folder and creates a card that shows the PDF in a sidebar dock while you review.
+For remote videos, you can keep them as streaming links or download/compress a local copy into `user_files/videos/`.
 
-### Steps
+For local files, Incremento can either:
 
-1. Go to **Tools → Add PDF to Topics**.
-2. Click **Browse** and choose a PDF file.
-3. Enter a **Title** (auto-filled from the filename — edit it if you want).
-4. Click **OK**. The card is added to your `Topics` deck.
+- keep original quality
+- encode H.264 high quality
+- encode H.264 smaller size
 
-### What gets created
+### Add Writing
 
-A note with three fields:
-- **Title** — the name you entered
-- **PDF_Filename** — the media filename (internal)
-- **Content** — full extracted text from the PDF (used for search; not shown on the card face)
+Use **Add Content -> Add Writing** to create an **Incremento Writing** note backed by a markdown file under `user_files/writing/`.
 
-The card face shows the title and a note saying the PDF is open in the sidebar.
+You can provide:
 
-> **Example:** You have a research paper `attention_is_all_you_need.pdf`. Add it via the menu, title it "Transformer Architecture Paper", and it appears in your Topics deck ready for incremental reading.
+- title
+- optional filename
+- tags
+- deck
+- initial markdown
 
----
+### Web Page
 
-## 5. The PDF Viewer
+Use **Add Content -> Web Page** to create a browsable **Incremento Web** card.
 
-When you review a PDF card, the **PDF Viewer dock** opens automatically on the right side of Anki's main window. It stays open between cards.
+Unlike **Webpage to PDF**, this keeps the content as a live webpage inside the dock instead of converting it into a PDF.
 
-### Controls
+### Browser extension import
 
-```
-← Prev   Page 3 / 42   Next →   −  75%  +   🟡🟢🔵🩷   + Add Card   ☐ Highlight when extracting
-```
+If you install the optional companion extension in Chrome/Brave, it can send the current page to Incremento as:
 
-| Control | Action |
-|---------|--------|
-| **← Prev / Next →** | Navigate pages |
-| **Page N / M** | Current page and total pages |
-| **− / +** | Zoom out / in (25%–400%) |
-| **Colour buttons** | Select highlight colour (yellow, green, blue, pink) |
-| **+ Add Card** | Open the Add Card panel |
-| **Highlight when extracting** | If checked, auto-highlight text when using Ctrl+1–4 |
+- a PDF
+- a video
+- a web page card
+- a writing card
 
-### Page & Zoom Memory
-
-Incremento automatically saves your **page number** and **zoom level** for each PDF card. When you return to a card later, the viewer reopens exactly where you left off.
-
-### Text Selection
-
-Click and drag over any text in the PDF to select it. The text layer is fully selectable — you can copy text normally with Cmd/Ctrl+C.
+It can also sync watched YouTube/Vimeo time back into Incremento video cards.
 
 ---
 
-## 6. Extracting Text to Cards (Ctrl+1–4)
+## 6. PDF Cards and Viewer
 
-This is the core workflow for building new cards while reading a PDF.
+PDF cards remain the most feature-rich workflow in Incremento.
 
-### How it works
+### What a PDF card stores
 
-1. While reviewing a PDF card, select text in the PDF viewer.
-2. Press **Cmd+1** (Mac) or **Ctrl+1** (Windows/Linux).
-3. The **Add Card** panel opens on the left side of Anki.
-4. The selected text is pasted into **Field 1** of the new card.
-5. A citation link is automatically appended below the text.
+Each PDF note includes:
 
-Use **Cmd+2 / 3 / 4** to fill Fields 2, 3, 4 respectively.
+- **Title**
+- **PDF_Filename**
+- **Content** for searchable extracted PDF text
 
-### The Citation Link
+### PDF viewer basics
 
-Every extraction appends a clickable link in this format:
+When a PDF card is reviewed, the PDF dock opens on the right.
 
-```
-Page 4. of attention_is_all_you_need
-```
+Main controls include:
 
-Clicking this link while reviewing **any** card opens the PDF viewer at exactly that page. This creates a permanent cross-reference between your new card and its source.
+- previous / next page
+- zoom out / zoom in
+- highlight color selection
+- **Add Card**
+- **Highlight when extracting**
+- **Mark this PDF as finished reading**
 
-> **Use case:** You create a flashcard "What is multi-head attention?" with the answer extracted from page 4 of the paper. The citation link at the bottom is a clickable reference. Months later, when you review the flashcard and want context, one click takes you back to that exact page.
+Incremento remembers:
 
-### Appending vs Overwriting
+- current page
+- zoom level
+- finished/read state used by the scheduler
 
-If a field already has content, the new text is **appended** with a blank line — it never overwrites. This lets you build up a field from multiple extractions.
-
-> **Example:**
-> - Press Ctrl+1 on "Attention is a mechanism that..."
-> - Press Ctrl+1 again on "Multi-head attention allows..."
-> - Field 1 now contains both excerpts separated by a blank line, each with its own citation.
-
-### Auto-Highlight
-
-Check **"Highlight when extracting"** in the viewer controls. Now every time you press Ctrl+1–4, the selected text is also highlighted in the PDF in the currently selected colour. This gives you a visual record of what you have already extracted.
-
----
-
-## 7. Highlighting
-
-Highlights are saved permanently to each PDF card and reappear every time you open that card.
-
-### Creating a Highlight
+### Extracting text to cards
 
 1. Select text in the PDF viewer.
-2. Press **Option+H** (Mac) or **Alt+H** (Windows/Linux).
-3. The text is highlighted in the currently selected colour.
+2. Press `Cmd+1..4` on macOS or `Ctrl+1..4` on Windows/Linux.
+3. The selected text is inserted into the matching field in the Add Card dock.
+4. Incremento appends a clickable citation link to the PDF page.
 
-### Choosing a Colour
+If the target field already contains text, the new excerpt is appended rather than replacing the old content.
 
-Click one of the four colour buttons in the controls bar. The active colour has a white border:
+### Highlights
 
-- 🟡 **Yellow** — general highlights
-- 🟢 **Green** — important concepts
-- 🔵 **Blue** — definitions / terms
-- 🩷 **Pink** — questions / uncertainties
+You can highlight text in the current color with:
 
-### Deleting a Highlight
+- `Option+H` on macOS
+- `Alt+H` on Windows/Linux
 
-Each highlight has a small **×** button in its top-right corner. Click it to remove the highlight.
+Highlights are saved per PDF and reappear whenever you reopen the card.
 
-### Auto-Highlight on Extract
+### Cross-references
 
-Enable the **"Highlight when extracting"** checkbox. Now Ctrl+1–4 highlights the selection in the current colour automatically, so your extraction and annotation happen in one step.
+Citations added from PDF extraction link back to the exact PDF page. Clicking one while reviewing any card opens that PDF in the dock at the cited page.
 
-> **Use case:** You are reading a chapter on machine learning. You highlight key definitions in blue, important formulas in yellow, and things you don't understand in pink. When you return to the chapter next week, your annotations are all there.
+### Searchable PDF text
 
----
+Incremento stores searchable PDF content in two ways:
 
-## 8. Cross-References — Linking to a PDF Page
+- the note's `Content` field for normal Anki browser search
+- a page-level PDF text index used by **Search ALL**
 
-### Creating a link
-
-Every time you use Ctrl+1–4 to extract text, a citation link is added automatically:
-
-```
-Page 4. of transformer-paper
-```
-
-This is an HTML hyperlink stored in the card field.
-
-### Following a link
-
-Click the blue citation text while reviewing **any card** in Anki (not just PDF cards). The PDF dock opens showing the exact page referenced.
-
-**Importantly:** following a link does **not** change the reading position of the original PDF card. If you were on page 10, navigate around via the link, your next review of the PDF card still resumes at page 10.
-
-> **Use case — study notes:**
-> You create a "Machine Learning Concepts" note type with a `Source` field. Every time you read a relevant part of a paper, you Ctrl+1 the text and the citation appears in the Source field. Your notes are now hyperlinked back to their original sources.
-
-> **Use case — Cloze cards:**
-> You extract a key sentence into a cloze card. The citation at the bottom gives you one-click access to the full context paragraph whenever you want to check your understanding.
+If old cards are missing page-level search results, run **Utils -> Reindex PDF Text (Existing Cards)**.
 
 ---
 
-## 9. Searching for PDF Content in the Card Browser
+## 7. Video Cards
 
-When you add a PDF card, Incremento extracts all text from the PDF and stores it in a hidden **Content** field. This makes the full text of every PDF searchable in Anki's card browser.
+Video cards use the **Incremento Video** note type and open in the video dock.
 
-### How to search
+### Supported sources
 
-1. Open the **Card Browser** (B in Anki).
-2. Type your search query. Examples:
-   - `attention mechanism` — finds any PDF card containing that phrase
-   - `Content:transformer` — explicitly searches the Content field
-   - `Content:gradient descent note:"Incremento PDF"` — combined search
+- YouTube
+- Vimeo
+- local video files
 
-> **Use case:** You vaguely remember reading something about "positional encoding" in one of your PDFs but can't remember which one. Search `positional encoding` in the browser and all matching PDF cards appear immediately.
+### Remembered progress
 
-> **Note:** Scanned PDFs (image-only) produce no text and won't be searchable. This only works for PDFs with embedded text layers.
+Incremento saves the last watched position for each video card and resumes from there later.
+
+### Video dock tools
+
+The dock includes:
+
+- current time display
+- seek bar
+- **Add Card at this point**
+- **Open in Browser**
+
+For local playback, extra controls appear:
+
+- play / pause
+- skip back 10s
+- skip forward 10s
+- playback speed
+- volume
+
+### Creating cards from videos
+
+Use **Add Card at this point** to create a new card tied to the current video moment. This is useful for note-taking and timestamp-based review prompts.
+
+### Browser sync
+
+If you use the companion browser extension, watched YouTube/Vimeo time can be pushed back into Incremento video cards automatically.
 
 ---
 
-## 10. Viewing Statistics
+## 8. Web and Writing Cards
 
-Go to **Tools → Incremento Statistics** to see your study history.
+### Web cards
 
-### Scopes
+Web cards open a persistent browser dock with:
 
-| Radio button | Shows |
+- the card's home URL
+- a **Home** button
+- an **Open in Window** fallback
+- a **Track via Chrome extension** checkbox for that external window flow
+- saved last visited URL
+- persistent cookies/session storage under `user_files/web_profile/`
+
+This works well for long-form websites, documentation, and pages that you want to revisit in-place inside Anki.
+
+Selected text from the web dock can be transferred into the Add Card dock.
+
+If a page does not behave properly inside Anki's built-in web view, use **Open in Window** to open the current page externally. When **Track via Chrome extension** is checked, the companion extension keeps syncing the same web card to the latest page visited in that browser tab.
+
+### Writing cards
+
+Writing cards open a markdown editor and live preview side by side.
+
+Features:
+
+- autosave while typing
+- markdown file stored in `user_files/writing/`
+- live rendered preview
+- **Open Folder** button
+- text selection transfer into the Add Card dock
+
+If a writing card does not yet have a file path, Incremento generates one automatically the first time the card is opened.
+
+---
+
+## 9. Search and Navigation Tools
+
+### Search ALL
+
+Open **Search ALL** from the menu or use its shortcut.
+
+It searches across:
+
+- PDF Highlights
+- PDF Sources
+- PDF File Content
+- Cards
+
+Search results include a preview panel. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
+
+### Quick Open PDFs
+
+Use **Quick Open PDFs** to fuzzy-search PDF cards by title.
+
+It shows:
+
+- title
+- type
+- priority
+
+It also supports fast actions inside the dialog:
+
+- `Ctrl+F` -> open first in priority queue
+- `Ctrl+R` -> open a random PDF
+- `Ctrl+L` -> reopen the last opened PDF
+
+---
+
+## 10. Statistics and Focus Timer
+
+### Statistics
+
+Open **Statistics** to view study history.
+
+Scopes:
+
+- **This Session**
+- **Today**
+- **All Time**
+
+Current statistics include both count-based and time-based views:
+
+- card types
+- selection mode
+- tags
+- review time by card type
+- review time by tag
+
+### Focus timer
+
+Enable **Show Focus Timer** to keep the toolbar visible at the top of Anki.
+
+Features:
+
+- presets from 5 to 60 minutes
+- start / pause / resume
+- reset
+- end-of-session summary
+
+The summary shows:
+
+- cards reviewed
+- unique PDF pages read
+- number of PDFs touched during that timer session
+
+---
+
+## 11. Priorities, Extraction, and the Add Card Dock
+
+### Per-card priority
+
+Press `Alt+P` to open the priority dialog for the current review card.
+
+Priority scale:
+
+- `0` = highest importance
+- `50` = default
+- `100` = lowest importance
+
+For topic cards, the dialog can also expose **A-Factor**, which adjusts the topic's interval behavior.
+
+### Extract Card from the current reviewer card
+
+Press `Alt+X` to open the **Extract Card** dialog.
+
+This is separate from PDF field-filling. It lets you:
+
+- take the currently selected reviewer text
+- choose any note type
+- choose any deck
+- create a new note directly
+
+Incremento appends a parent-card backlink to the first field so the new card can point back to its source.
+
+### Add Card dock
+
+The Add Card dock is a persistent docked version of Anki's Add dialog.
+
+It is used by:
+
+- PDF extraction shortcuts
+- selected text transfers from web pages
+- selected text transfers from writing cards
+- timestamp-based video note creation
+
+When text is selected in a supported source, transfer buttons appear next to Add Card fields so you can insert the selection directly.
+
+---
+
+## 12. Export and Restore Notes
+
+Use **Export User Data** to create a ZIP backup.
+
+### What the export currently includes
+
+- `data/incremento.db` - the main SQLite user-data database
+- `data/priorities.json`
+- `data/pdf_progress.json`
+- `data/highlights.json`
+- `data/stats.json`
+- `config.json`
+- `manifest.json`
+- all referenced PDFs under `pdfs/`
+
+### Important limitation
+
+The current export focuses on database-backed user data, settings, and PDFs.
+
+It does **not** package every file under `user_files/`. In particular, if you rely on them, back these up separately:
+
+- `user_files/videos/`
+- `user_files/writing/`
+- `user_files/web_profile/`
+- `user_files/video_profile/`
+
+For full restore guidance, see `EXPORTING.md`.
+
+---
+
+## 13. Utilities and Dependencies
+
+### Dependency setup
+
+On first run, Incremento can show a dependency setup dialog.
+
+Optional tools:
+
+- **PyMuPDF** for stronger PDF rendering and text extraction
+- **Tesseract OCR** for scanned/image-only PDFs
+
+PyMuPDF can be installed automatically from inside Anki. Tesseract must be installed at the system level.
+
+### Reindex PDF text
+
+Use this if:
+
+- Search ALL does not find text in older PDFs
+- you rebuilt or replaced PDF files
+- you added cards before page-level indexing existed
+
+### Cleanup tools
+
+The cleanup utilities help remove:
+
+- files no current card references
+- saved progress rows for deleted cards
+- data tied to non-active profiles
+
+These are maintenance tools, not normal daily workflow tools.
+
+---
+
+## 14. Keyboard Shortcuts
+
+All Incremento shortcuts can be changed in **Tools -> Incremento -> Settings**.
+
+### Default shortcuts
+
+| Shortcut | Action |
 |---|---|
-| **This Session** | Cards studied in the last session (resets each time you open the scheduler dialog) |
-| **Today** | Cards studied today (respects the Day Ends At boundary) |
-| **All Time** | Cumulative totals since you started using Incremento |
+| `Cmd+1..4` / `Ctrl+1..4` | PDF extraction into Add Card fields 1-4 |
+| `Option+H` / `Alt+H` | Highlight selected PDF text |
+| `Alt+P` | Set priority for current card |
+| `Alt+X` | Open Extract Card dialog |
+| `Ctrl+Alt+S` | Open Search ALL |
+| `Ctrl+Alt+P` | Quick Open PDFs |
+| `Ctrl+Alt+Left` | PDF viewer previous page |
+| `Ctrl+Alt+Right` | PDF viewer next page |
+| `Ctrl+Alt+-` | PDF viewer zoom out |
+| `Ctrl+Alt+=` | PDF viewer zoom in |
+| `Ctrl+Alt+M` | Mark current PDF as finished reading |
 
-### Charts
+### Quick Open PDFs dialog shortcuts
 
-- **Card Types** — Topics vs Items breakdown
-- **Selection Mode** — Priority vs Random breakdown
-- **Tags** — Per-tag counts sorted from most to least studied
+Inside the quick-open dialog:
 
-Each bar shows the count and percentage.
-
-> **Use case:** After a month of studying, switch to "All Time" to see whether you are actually covering all three subjects equally. If Chemistry shows 60% and the others 20% each, consider adding tag quotas (see §3) to rebalance.
-
----
-
-## 11. Exporting Your Data (Backup)
-
-Go to **Tools → Export All Incremento User Data** to create a complete backup ZIP.
-
-### What is included
-
-| File | Contents |
-|------|----------|
-| `custom_learn_stats.json` | All study statistics (session, daily, lifetime) |
-| `pdf_progress.json` | Last-read page and zoom level for every PDF card |
-| `pdf_highlights.json` | All highlights (positions, colours, text) |
-| `config.json` | All your scheduler settings |
-| `pdfs/` folder | Every PDF file referenced in an Incremento PDF note |
-
-### When to use this
-
-- **Moving to a new computer** — export the ZIP, install Anki + Incremento on the new machine, import your Anki collection (via AnkiWeb sync or `.apkg`), then copy the JSON files back into the addon's `user_files/` folder and the PDFs into Anki's media folder.
-- **Regular backup** — run this monthly alongside Anki's built-in backup.
-
-### Restoring on a new machine
-
-1. Install Anki and the Incremento addon.
-2. Sync your Anki collection via AnkiWeb, or import your `.apkg` file.
-3. From the ZIP:
-   - Copy `*.json` files → `[Anki profile folder]/addons21/incremento/user_files/`
-   - Copy `pdfs/*.pdf` → `[Anki profile folder]/collection.media/`
-4. Restart Anki. All progress, highlights, and settings are restored.
+| Shortcut | Action |
+|---|---|
+| `Ctrl+F` | Open first in priority queue |
+| `Ctrl+R` | Open random PDF |
+| `Ctrl+L` | Open last opened PDF |
 
 ---
 
-## 12. Keyboard Shortcuts Reference
+## 15. Common Workflows
 
-| Shortcut | Where | Action |
-|----------|-------|--------|
-| **Cmd+1** / **Ctrl+1** | PDF Viewer | Extract selection → fill Field 1 of new card |
-| **Cmd+2** / **Ctrl+2** | PDF Viewer | Extract selection → fill Field 2 |
-| **Cmd+3** / **Ctrl+3** | PDF Viewer | Extract selection → fill Field 3 |
-| **Cmd+4** / **Ctrl+4** | PDF Viewer | Extract selection → fill Field 4 |
-| **Option+H** / **Alt+H** | PDF Viewer | Highlight current text selection |
+### Workflow A: Classic incremental reading from PDFs
 
----
+1. Add a PDF with **Add Content -> Add PDF**.
+2. Start a session with some topic share.
+3. Read in the PDF dock.
+4. Use `Ctrl/Cmd+1..4` to extract key text into new cards.
+5. Use highlights to mark processed passages.
+6. Resume later exactly where you left off.
 
-## 13. Common Workflows
+### Workflow B: Turn articles into durable reading material
 
-### Workflow A: Incremental Reading + Flashcard Creation
+1. Open an online article.
+2. Use **Add Content -> Webpage to PDF**.
+3. Review it like a normal PDF card.
+4. Highlight and extract passages as you read.
 
-**Goal:** Read a PDF book chapter by chapter while creating flashcards from key content.
+### Workflow C: Learn from videos
 
-1. **Add PDF to Topics** via Tools menu.
-2. Start a session with 20% topics / 80% items.
-3. When the PDF card comes up, read through the pages using Next →.
-4. Select an important sentence, press **Cmd+1** to extract it to a new flashcard.
-5. The citation link is automatically added — you can click back to the source anytime.
-6. Check **"Highlight when extracting"** to mark everything you have already processed.
-7. Next session, Incremento resumes the PDF at exactly the page you left off.
+1. Add a YouTube, Vimeo, or local video with **Add Video**.
+2. Review the video card.
+3. Pause at key moments and use **Add Card at this point**.
+4. Resume later from the saved timestamp.
 
----
+### Workflow D: Incremental web reading
 
-### Workflow B: Multi-Subject Balanced Study
+1. Add a site or document as **Web Page**.
+2. Browse it inside the web dock while reviewing.
+3. Select useful text and transfer it into the Add Card dock.
+4. Return later to the last visited URL, not just the original home page.
 
-**Goal:** Study Biology, Chemistry, and Physics equally every day.
+### Workflow E: Writing-first study
 
-1. Tag your cards with `Biology`, `Chemistry`, `Physics`.
-2. Open scheduler settings, add all three tags as tag quotas with 33% each.
-3. Lock all three (🔒) so they are always equal.
-4. Set scope to **Today** so Incremento remembers the balance across sessions.
-5. Every session has equal coverage of all three subjects.
+1. Create a writing card with **Add Writing**.
+2. Draft notes in markdown while reviewing the card.
+3. Let Incremento autosave continuously.
+4. Select passages from your writing and turn them into review cards.
 
----
+### Workflow F: Balanced multi-subject study
 
-### Workflow C: Research Paper Annotation
-
-**Goal:** Read academic PDFs, annotate them, and create a linked knowledge base.
-
-1. Add each paper as a PDF card.
-2. While reading, highlight key claims in **yellow**, definitions in **blue**, and uncertainties in **pink**.
-3. Use **Cmd+1** to extract important quotes into new cards. Citation links connect each card back to its source page.
-4. When reviewing a derived card and wanting context, click the citation link — PDF opens at the exact page.
-5. Search across all papers in the card browser using keywords.
-
----
-
-### Workflow D: Exam Preparation
-
-**Goal:** Review the most overdue material intensively.
-
-1. Set **Priority ↔ Random** to 100% Priority.
-2. Set **Scheduler scope** to All Time (so lifetime counts drive the scheduler).
-3. Include only **Due / Review** cards (uncheck New and Learning).
-4. Start session — you see only cards that are most overdue.
-
----
-
-### Workflow E: New Course Onboarding
-
-**Goal:** Work through all new material in a new subject without reviewing old material.
-
-1. Tag all new course cards with `Neuroscience2025`.
-2. Add a tag quota for `Neuroscience2025` at 80%.
-3. Include only **New** cards.
-4. Set session to 30 cards.
-5. Each session works through new content until the tag is exhausted, then fills remaining slots with other cards.
-
----
-
-*For questions or issues, visit the Incremento GitHub page or the Anki add-ons forum.*
+1. Tag cards by subject.
+2. Add tag quotas in the scheduler.
+3. Use **Today** scope to preserve balance across multiple sessions.
+4. Check **Statistics** to verify both counts and time are balanced.

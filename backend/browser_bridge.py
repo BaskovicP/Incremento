@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 BRIDGE_HOST = "127.0.0.1"
 BRIDGE_PORT = 8766
 BRIDGE_PATH = "/incremento/add-content"
+WEB_TRACK_PATH = "/incremento/update-web-card"
 _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
 _MAX_HTML_CHARS = 2_000_000
 
@@ -186,6 +187,26 @@ def normalize_add_content_request(payload) -> dict:
         items = normalize_add_content_batch_payload(payload)
         return {"batch": True, "items": items}
     return {"batch": False, "items": [normalize_add_content_payload(payload)]}
+
+
+def normalize_update_web_card_payload(payload) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object.")
+
+    try:
+        card_id = int(payload.get("cardId") or 0)
+    except Exception as exc:
+        raise ValueError("cardId must be a positive integer.") from exc
+    if card_id <= 0:
+        raise ValueError("cardId must be a positive integer.")
+
+    url = normalize_http_url(payload.get("url", ""))
+    title = _collapse_ws(payload.get("title", ""))
+    return {
+        "card_id": card_id,
+        "url": url,
+        "title": title,
+    }
 
 
 def _run_on_main_and_wait(fn, timeout_sec: float = 180.0):
@@ -363,6 +384,45 @@ def _add_content_on_main(payload: dict) -> dict:
     }
 
 
+def _update_web_card_on_main(payload: dict) -> dict:
+    from aqt import mw
+
+    from .web_manager import WEB_NOTE_TYPE, set_web_url
+
+    normalized = normalize_update_web_card_payload(payload)
+    card_id = int(normalized["card_id"])
+    url = normalized["url"]
+
+    try:
+        card = mw.col.get_card(card_id)
+    except Exception as exc:
+        raise ValueError(f"Could not load card {card_id}.") from exc
+    if card is None:
+        raise ValueError(f"Card {card_id} was not found.")
+
+    try:
+        note = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+    except Exception as exc:
+        raise ValueError(f"Could not inspect card {card_id}.") from exc
+    if model is None or model.get("name") != WEB_NOTE_TYPE:
+        raise ValueError(f"Card {card_id} is not an Incremento Web card.")
+
+    set_web_url(_addon_dir, card_id, url)
+    try:
+        from ..frontend.web_dock import sync_external_web_url
+
+        sync_external_web_url(card_id, url)
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "cardId": card_id,
+        "url": url,
+        "title": normalized["title"],
+    }
+
+
 class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
     server_version = "IncrementoBrowserBridge/1.0"
 
@@ -391,7 +451,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self) -> None:
-        if self.path != BRIDGE_PATH:
+        if self.path not in {BRIDGE_PATH, WEB_TRACK_PATH}:
             self.send_error(404)
             return
         if not self._request_origin_allowed():
@@ -403,7 +463,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
-        if self.path != BRIDGE_PATH:
+        if self.path not in {BRIDGE_PATH, WEB_TRACK_PATH}:
             self._send_json(404, {"ok": False, "error": "Unknown path."})
             return
         if not self._request_origin_allowed():
@@ -423,7 +483,10 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            result = _run_on_main_and_wait(lambda: _add_content_on_main(payload))
+            if self.path == BRIDGE_PATH:
+                result = _run_on_main_and_wait(lambda: _add_content_on_main(payload))
+            else:
+                result = _run_on_main_and_wait(lambda: _update_web_card_on_main(payload))
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})
             return

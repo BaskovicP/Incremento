@@ -17,18 +17,21 @@ import os
 
 from aqt import mw
 from aqt.utils import showInfo, tooltip
-from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
+from aqt.qt import (QCheckBox, QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, Qt, qconnect)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6.QtGui import QDesktopServices
 
 try:
     from ..backend.web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
-                                       ensure_web_note_type, add_web_card)
+                                       ensure_web_note_type, add_web_card,
+                                       build_external_web_url)
 except ImportError:
     from web_manager import (WEB_NOTE_TYPE, get_web_url, set_web_url,
-                              ensure_web_note_type, add_web_card)
+                              ensure_web_note_type, add_web_card,
+                              build_external_web_url)
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -38,6 +41,7 @@ _current_web_home_url = None  # original URL from the card's URL field
 _web_profile          = None  # module-level singleton
 _PYCMD_BRIDGE = "__incremento_webdock_pycmd__:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
+_track_web_window_with_extension = False
 
 
 class _WebDockPage(QWebEnginePage):
@@ -107,12 +111,23 @@ def _build_web_dock():
     url_lbl = QLabel("")
     url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
     url_lbl.setWordWrap(False)
-    url_lbl.setMaximumWidth(500)
+    url_lbl.setMaximumWidth(360)
     ctrl_layout.addWidget(url_lbl, 1)
 
     home_btn = QPushButton("⌂ Home")
     home_btn.setFixedWidth(70)
     ctrl_layout.addWidget(home_btn)
+
+    track_cb = QCheckBox("Track via Chrome extension")
+    track_cb.setChecked(bool(_track_web_window_with_extension))
+    track_cb.setToolTip(
+        "When checked, opening this page externally lets the Incremento Companion "
+        "extension keep the web card synced to the latest page visited in that tab."
+    )
+    ctrl_layout.addWidget(track_cb)
+
+    window_btn = QPushButton("Open in Window")
+    ctrl_layout.addWidget(window_btn)
 
     vbox.addWidget(ctrl)
 
@@ -121,6 +136,7 @@ def _build_web_dock():
 
     dock._view    = view
     dock._url_lbl = url_lbl
+    dock._track_cb = track_cb
 
     def _on_url_changed(qurl):
         url_str = qurl.toString()
@@ -162,9 +178,69 @@ def _build_web_dock():
     view.urlChanged.connect(_on_url_changed)
     view.loadFinished.connect(_on_load_finished)
     qconnect(home_btn.clicked, _web_go_home)
+    qconnect(window_btn.clicked, _open_web_in_window)
+    qconnect(track_cb.toggled, _on_track_web_window_toggled)
 
     _web_dock = dock
     return dock
+
+
+def _on_track_web_window_toggled(checked: bool) -> None:
+    global _track_web_window_with_extension
+    _track_web_window_with_extension = bool(checked)
+
+
+def _current_web_display_url() -> str:
+    if _web_dock is not None:
+        try:
+            current = (_web_dock._view.url().toString() or "").strip()
+            if current and current != "about:blank":
+                return current
+        except Exception:
+            pass
+    return str(_current_web_home_url or "").strip()
+
+
+def _open_web_in_window() -> None:
+    if _current_web_card_id is None:
+        tooltip("Incremento: no web card is currently open.")
+        return
+
+    current_url = _current_web_display_url()
+    if not current_url:
+        tooltip("Incremento: this web card has no valid URL.")
+        return
+
+    track_enabled = False
+    if _web_dock is not None:
+        try:
+            track_enabled = bool(_web_dock._track_cb.isChecked())
+        except Exception:
+            track_enabled = False
+
+    open_url = build_external_web_url(
+        current_url,
+        card_id=int(_current_web_card_id),
+        track_with_extension=track_enabled,
+    )
+    try:
+        set_web_url(_ADDON_DIR, _current_web_card_id, current_url)
+    except Exception:
+        pass
+
+    try:
+        ok = bool(QDesktopServices.openUrl(QUrl(open_url)))
+    except Exception:
+        ok = False
+    if not ok:
+        tooltip("Incremento: failed to open system browser.")
+        return
+
+    if track_enabled:
+        tooltip(
+            "Incremento: browser tracking enabled for this web card tab "
+            "(requires the Incremento Companion extension)."
+        )
 
 
 def _web_go_home() -> None:
@@ -195,6 +271,36 @@ def show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
     _web_dock.show()
     _web_dock.raise_()
     _web_dock._view.load(QUrl(load_url))
+
+
+def sync_external_web_url(card_id: int, url: str) -> bool:
+    """If this web card is currently open, load the latest externally synced URL."""
+    global _web_dock
+
+    try:
+        target_card_id = int(card_id)
+    except Exception:
+        return False
+    target_url = str(url or "").strip()
+    if target_card_id <= 0 or not target_url:
+        return False
+    if _current_web_card_id != target_card_id:
+        return False
+    if _web_dock is None:
+        return False
+
+    try:
+        current_url = (_web_dock._view.url().toString() or "").strip()
+    except Exception:
+        current_url = ""
+    if current_url == target_url:
+        return False
+
+    try:
+        _web_dock._view.load(QUrl(target_url))
+        return True
+    except Exception:
+        return False
 
 
 def on_web_question_shown(card) -> None:

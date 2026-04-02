@@ -6,6 +6,7 @@ from browser_bridge import (
     normalize_add_content_payload,
     normalize_add_content_batch_payload,
     normalize_add_content_request,
+    normalize_update_web_card_payload,
     url_looks_like_pdf,
 )
 
@@ -112,6 +113,34 @@ def test_url_looks_like_pdf_checks_url_path():
     assert url_looks_like_pdf("https://example.com/files/doc.pdf")
     assert url_looks_like_pdf("https://example.com/files/doc.PDF?download=1")
     assert not url_looks_like_pdf("https://example.com/article")
+
+
+def test_normalize_update_web_card_payload_accepts_valid_payload():
+    payload = normalize_update_web_card_payload(
+        {
+            "cardId": 123,
+            "url": "https://example.com/next/page",
+            "title": "  New title  ",
+        }
+    )
+    assert payload == {
+        "card_id": 123,
+        "url": "https://example.com/next/page",
+        "title": "New title",
+    }
+
+
+def test_normalize_update_web_card_payload_rejects_invalid_card_id():
+    try:
+        normalize_update_web_card_payload(
+            {
+                "cardId": 0,
+                "url": "https://example.com/next/page",
+            }
+        )
+        assert False, "Expected normalize_update_web_card_payload to reject invalid card IDs"
+    except ValueError as exc:
+        assert "cardId" in str(exc)
 
 
 def test_download_pdf_from_url_writes_pdf(monkeypatch, tmp_path):
