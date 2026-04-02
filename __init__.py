@@ -33,6 +33,7 @@ from .backend.video_manager import (
     download_and_compress_video,
     import_local_video_file,
 )
+from .backend.writing_manager import add_writing_card
 from .backend.priority_manager import get_priority, set_priority, get_all_priorities
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
@@ -45,6 +46,7 @@ from .frontend.timer_widget import (
 from .frontend import pdf_dock as _pdf_dock_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
+from .frontend import writing_dock as _writing_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import get_connection, replace_pdf_text_index, search_pdf_text_index
@@ -185,6 +187,7 @@ gui_hooks.reviewer_did_show_question.append(_review_time_mod.on_reviewer_questio
 gui_hooks.reviewer_did_show_question.append(_pdf_dock_mod.on_pdf_question_shown)
 gui_hooks.reviewer_did_show_question.append(_video_dock_mod.on_video_question_shown)
 gui_hooks.reviewer_did_show_question.append(_web_dock_mod.on_web_question_shown)
+gui_hooks.reviewer_did_show_question.append(_writing_dock_mod.on_writing_question_shown)
 gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_shown)
 gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
@@ -192,6 +195,7 @@ gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_writing_dock_mod.on_writing_reviewer_will_end)
 gui_hooks.profile_will_close.append(_video_dock_mod.flush_video_progress)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
@@ -212,6 +216,7 @@ def _sync_pdf_note_type() -> None:
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
 gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
+gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
 
 
 def _check_deps_first_run() -> None:
@@ -799,6 +804,36 @@ def addVideoFunction() -> None:
         _add_card(local_relpath=local_relpath)
 
     mw.taskman.run_in_background(_task, _on_done)
+
+
+def addWritingFunction() -> None:
+    """Incremento -> Add Content -> Add Writing"""
+    from .frontend.add_writing_dialog import AddWritingDialog
+
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    dlg = AddWritingDialog(deck_names, default_deck="Topics", parent=mw)
+    if not dlg.exec():
+        return
+
+    title = dlg.title.strip()
+    if not title:
+        showInfo("Please enter a title.")
+        return
+
+    try:
+        add_writing_card(
+            _ADDON_DIR,
+            mw.col,
+            title=title,
+            deck_name=dlg.deck_name,
+            tags=dlg.tags,
+            initial_markdown=dlg.initial_markdown,
+            preferred_filename=dlg.filename,
+        )
+        mw.col.reset()
+        tooltip(f"Writing card '{title}' added to {dlg.deck_name}.")
+    except Exception as e:
+        showInfo(f"Failed to add writing card:\n{e}")
 
 
 def addWebpageFunction() -> None:
@@ -1603,6 +1638,11 @@ _addVideoAction = QAction("Add Video", mw)
 qconnect(_addVideoAction.triggered, addVideoFunction)
 _addContentMenu.addAction(_addVideoAction)
 _register_shortcut_action("youtube_video", _addVideoAction)
+
+_addWritingAction = QAction("Add Writing", mw)
+qconnect(_addWritingAction.triggered, addWritingFunction)
+_addContentMenu.addAction(_addWritingAction)
+_register_shortcut_action("add_writing", _addWritingAction)
 
 _addWebAction = QAction("Web Page", mw)
 qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
