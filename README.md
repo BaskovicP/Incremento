@@ -1,56 +1,91 @@
-# Incremento Add-on - AI Agent Guide
+# Incremento
 
-This repository is an Anki add-on. Use this file as the working agreement for AI agents.
+Incremento is an Anki add-on for incremental learning from mixed content. It combines topic-style material such as PDFs, videos, web pages, and writing notes with normal flashcards, then builds study sessions that balance reading, review, priority, and randomness.
 
-## Goals
-- Keep the add-on stable and backwards-compatible with existing Anki data.
-- Prefer small, safe changes with clear reasoning.
-- Avoid breaking user configuration and settings.
+## What It Does
 
-## Project Context
-- Entry points: `__init__.py` and modules under `utils/`.
-- User data: stored under `user_files/`.
-- Configuration: `config.json`.
+- Builds filtered Anki study sessions with configurable topic/item balance
+- Supports PDF-based topic cards with an in-app viewer, highlights, and extraction into new cards
+- Supports video, web page, and writing cards
+- Tracks reading progress, priorities, highlights, and study statistics
+- Includes a browser bridge and Chrome extension for importing content from the web
 
-## Working Rules
-- Favor small, isolated edits. Avoid large refactors unless requested.
-- Do not delete or overwrite user data in `user_files/`.
-- Do not change `config.json` defaults unless explicitly requested.
-- Use `rg` for search when possible.
-- Keep changes ASCII unless the file already uses Unicode.
+## Install
 
-## Quality Checklist (Before Finishing)
-- Run tests or at least a basic import check if feasible.
-- Ensure new code paths handle missing config gracefully.
-- Avoid network access unless explicitly required.
-- Confirm the add-on still loads by verifying module imports.
+This repository is set up for source installation, not direct AnkiWeb distribution. The repo intentionally does not ship `meta.json`, because that file contains the private add-on package ID.
 
-## Running Tests
+1. Clone or copy this repo into your Anki add-ons folder as `incremento`.
+2. Make sure the final path ends with `addons21/incremento`.
+3. Restart Anki.
+
+Common add-on paths:
+
+| Platform | Add-on path |
+|---|---|
+| macOS | `~/Library/Application Support/Anki2/addons21/incremento/` |
+| Windows | `%APPDATA%\Anki2\addons21\incremento\` |
+| Linux | `~/.local/share/Anki2/addons21/incremento/` |
+
+## Optional Dependencies
+
+Core functionality works without extra system setup, but some PDF features improve when these are available:
+
+- `PyMuPDF`: PDF rendering and text extraction
+- `Tesseract`: OCR for image-only PDFs
+
+Incremento can guide first-run setup from inside Anki. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
+
+## Quick Start
+
+After installing and restarting Anki:
+
+1. Open **Tools → Start Incremental Learning** to build a study session.
+2. Use **Tools → Add PDF to Topics** to add a PDF-backed topic card.
+3. Use **Tools → Export All Incremento User Data** to create a backup ZIP.
+
+For a full walkthrough, see [MANUAL.md](MANUAL.md).
+
+## Companion Extension
+
+The optional Chrome/Brave extension lives in `chrome_extensions/incremento_video_time_clipboard/`. It can send PDFs, videos, web pages, and writing notes into Incremento, and it can capture watched video time.
+
+Extension details and install steps:
+
+- [chrome_extensions/incremento_video_time_clipboard/README.md](chrome_extensions/incremento_video_time_clipboard/README.md)
+
+## Main Components
+
+- `backend/`: scheduling, persistence, import logic, browser bridge, and content managers
+- `frontend/`: Qt dialogs/docks plus React source for the PDF viewer
+- `web/`: shipped web assets used inside Anki
+- `chrome_extensions/incremento_video_time_clipboard/`: companion Chrome extension
+- `tests/`: Python test suite
+
+## Documentation
+
+- User manual: [MANUAL.md](MANUAL.md)
+- Export and restore guide: [EXPORTING.md](EXPORTING.md)
+- Internal agent/developer notes: [AGENT.md](AGENT.md)
+
+## Development
+
+Python tests:
 
 ```bash
-cd "/Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento"
 .venv/bin/python -m pytest tests/ -v
 ```
 
-Or activate the venv first:
+Frontend build:
 
 ```bash
-source .venv/bin/activate
-pytest tests/ -v
+cd frontend
+npm run build
 ```
 
-Common variants:
+The frontend build writes the shipped PDF viewer bundle to `web/dist/pdf_viewer.js`.
 
-```bash
-# Single test file
-.venv/bin/python -m pytest tests/test_scheduler.py -v
+## Repository Hygiene
 
-# Single test
-.venv/bin/python -m pytest tests/test_scheduler.py::TestEdgeCases::test_returns_none_when_no_topic_cards -v
-```
-
-## When Unsure
-- Ask for clarification before making irreversible changes.
-- Prefer a safe, conservative implementation over cleverness.
-
-
+- `meta.json` is ignored because it contains the private Anki add-on package ID
+- `user_files/` is ignored because it contains local runtime data, imported media, and user databases
+- Generated viewer assets in `web/` are intentionally tracked because they are shipped with the add-on

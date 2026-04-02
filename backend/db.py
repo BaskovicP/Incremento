@@ -13,6 +13,7 @@ priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 """
 
+import atexit
 import json
 import sqlite3
 from pathlib import Path
@@ -23,17 +24,24 @@ _initialized_for: str | None = None
 DB_NAME = "incremento.db"
 
 
+def close_connection() -> None:
+    global _connection, _initialized_for
+    if _connection is not None:
+        try:
+            _connection.close()
+        except Exception:
+            pass
+    _connection = None
+    _initialized_for = None
+
+
 # ── Connection ────────────────────────────────────────────────────────────────
 
 
 def get_connection(addon_dir: str) -> sqlite3.Connection:
     global _connection, _initialized_for
     if _connection is None or _initialized_for != addon_dir:
-        if _connection is not None:
-            try:
-                _connection.close()
-            except Exception:
-                pass
+        close_connection()
         p = Path(addon_dir) / "user_files" / DB_NAME
         p.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(p), check_same_thread=False)
@@ -43,6 +51,9 @@ def get_connection(addon_dir: str) -> sqlite3.Connection:
         _connection = conn
         _initialized_for = addon_dir
     return _connection
+
+
+atexit.register(close_connection)
 
 
 # ── Schema ────────────────────────────────────────────────────────────────────

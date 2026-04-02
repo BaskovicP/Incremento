@@ -8,6 +8,7 @@ user_files/*.db-wal
 user_files/*.json
 user_files/*.tmp
 user_files/pdfs/
+user_files/*
 
 # ── macOS ────────────────────────────────────────────────────────────────────
 .DS_Store

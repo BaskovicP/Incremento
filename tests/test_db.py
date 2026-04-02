@@ -18,8 +18,7 @@ def _fresh_dir():
 
 def _reset_db_module():
     """Reset module-level connection state between tests."""
-    db._connection = None
-    db._initialized_for = None
+    db.close_connection()
 
 
 # ---------------------------------------------------------------------------

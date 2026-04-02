@@ -358,14 +358,12 @@ class TestOcrPdfInPlace:
 class TestGetSetPage:
     def setup_method(self):
         import db as _db
-        _db._connection = None
-        _db._initialized_for = None
+        _db.close_connection()
         self.addon_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
         import db as _db
-        _db._connection = None
-        _db._initialized_for = None
+        _db.close_connection()
 
     def test_default_page_is_one(self):
         assert pdf_manager.get_page(self.addon_dir, card_id=42) == 1
