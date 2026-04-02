@@ -12,6 +12,7 @@ const pageUrl = document.getElementById("page-url");
 const selectionNote = document.getElementById("selection-note");
 const statusEl = document.getElementById("status");
 const kindButtons = Array.from(document.querySelectorAll(".kind-btn"));
+const openBookmarksBtn = document.getElementById("open-bookmarks");
 const copyVideoTimeBtn = document.getElementById("copy-video-time");
 
 function setStatus(text, kind = "") {
@@ -28,6 +29,9 @@ function setBusy(nextBusy) {
     btn.disabled = state.busy || !state.activeTab;
   }
   copyVideoTimeBtn.disabled = state.busy;
+  if (openBookmarksBtn) {
+    openBookmarksBtn.disabled = state.busy;
+  }
 }
 
 function isHttpUrl(url) {
@@ -157,6 +161,16 @@ async function addCurrentPage(kind) {
     payload.html = String(snapshot.html);
   }
 
+  if (kind === "pdf" && typeof fetchPdfPayloadForImport === "function" && pdfUrlLooksLikePdf(url)) {
+    try {
+      const pdfPayload = await fetchPdfPayloadForImport(url);
+      payload.pdfBase64 = pdfPayload.pdfBase64;
+      payload.pdfFilename = pdfPayload.pdfFilename;
+    } catch (_err) {
+      // Fall back to addon-side retrieval if browser-side fetch is blocked or unnecessary.
+    }
+  }
+
   setBusy(true);
   const label = kind === "video" ? "video" : kind;
   setStatus(`Adding ${label} card...`);
@@ -205,5 +219,18 @@ copyVideoTimeBtn.addEventListener("click", () => {
     updatePageUi();
   });
 });
+
+if (openBookmarksBtn) {
+  openBookmarksBtn.addEventListener("click", async () => {
+    try {
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL("bookmarks.html"),
+      });
+      window.close();
+    } catch (err) {
+      setStatus(err?.message || "Failed to open bookmark importer.", "error");
+    }
+  });
+}
 
 void initialize();

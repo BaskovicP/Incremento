@@ -9,9 +9,12 @@
     "clipboardWrite",
     "tabs",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "bookmarks"
   ],
   "host_permissions": [
+    "http://*/*",
+    "https://*/*",
     "*://*.youtube.com/*",
     "*://youtu.be/*",
     "*://*.vimeo.com/*",
