@@ -5,6 +5,7 @@ import zipfile
 from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
+from aqt.reviewer import Reviewer
 from aqt.utils import showInfo, tooltip
 from aqt.qt import (
     QAction,
@@ -36,6 +37,7 @@ from .backend.video_manager import (
 )
 from .backend.writing_manager import add_writing_card
 from .backend.priority_manager import (
+    configured_show_priority_dialog_after_answer,
     configured_priority_lower_is_more_important,
     get_priority,
     set_priority,
@@ -93,6 +95,38 @@ def _apply_shortcuts_from_config() -> None:
             action_obj.setShortcut(seq)
         elif hasattr(action_obj, "setKey"):
             action_obj.setKey(seq)
+
+
+_ORIGINAL_REVIEWER_AFTER_ANSWERING = getattr(
+    Reviewer._after_answering,
+    "_incremento_original",
+    Reviewer._after_answering,
+)
+
+
+def _incremento_after_answering(self, ease: int) -> None:
+    if not configured_show_priority_dialog_after_answer():
+        _ORIGINAL_REVIEWER_AFTER_ANSWERING(self, ease)
+        return
+
+    original_next_card = self.nextCard
+
+    def _next_card_with_priority_dialog() -> None:
+        try:
+            _open_priority_dialog_for_card(getattr(self, "card", None))
+        except Exception as e:
+            print(f"[Incremento] post-answer priority dialog error: {e}")
+        original_next_card()
+
+    self.nextCard = _next_card_with_priority_dialog
+    try:
+        _ORIGINAL_REVIEWER_AFTER_ANSWERING(self, ease)
+    finally:
+        self.nextCard = original_next_card
+
+
+_incremento_after_answering._incremento_original = _ORIGINAL_REVIEWER_AFTER_ANSWERING
+Reviewer._after_answering = _incremento_after_answering
 
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
@@ -728,15 +762,12 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         showInfo(f"Failed to create card:\n{e}")
 
 
-def _open_priority_dialog() -> None:
-    """Open the priority assignment dialog for the currently reviewed card."""
+def _open_priority_dialog_for_card(card) -> None:
+    """Open the priority assignment dialog for a specific card."""
     from .backend.topic_scheduler import is_topic_card
     from .backend.db import get_topic_schedule, set_topic_schedule
 
-    reviewer = getattr(mw, "reviewer", None)
-    card = getattr(reviewer, "card", None) if reviewer else None
     if card is None:
-        showInfo("No card is currently being reviewed.")
         return
 
     current = get_priority(_ADDON_DIR, card.id)
@@ -763,6 +794,16 @@ def _open_priority_dialog() -> None:
             set_topic_schedule(_ADDON_DIR, card.id, dlg.a_factor, interval or 1)
             msg += f"  ·  A-Factor {dlg.a_factor:.3f}"
         tooltip(msg)
+
+
+def _open_priority_dialog() -> None:
+    """Open the priority assignment dialog for the currently reviewed card."""
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer else None
+    if card is None:
+        showInfo("No card is currently being reviewed.")
+        return
+    _open_priority_dialog_for_card(card)
 
 
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
@@ -969,7 +1010,7 @@ def addVideoFunction() -> None:
 
 
 def addWritingFunction() -> None:
-    """Incremento -> Add Content -> Add Writing"""
+    """Incremento -> Add Content -> Add to Markdown"""
     from .frontend.add_writing_dialog import AddWritingDialog
 
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
@@ -993,9 +1034,9 @@ def addWritingFunction() -> None:
             preferred_filename=dlg.filename,
         )
         mw.col.reset()
-        tooltip(f"Writing card '{title}' added to {dlg.deck_name}.")
+        tooltip(f"Markdown card '{title}' added to {dlg.deck_name}.")
     except Exception as e:
-        showInfo(f"Failed to add writing card:\n{e}")
+        showInfo(f"Failed to add markdown card:\n{e}")
 
 
 def addWebpageFunction() -> None:
@@ -1740,6 +1781,7 @@ def openSettingsFunction() -> None:
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
+        current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
         parent=mw,
     )
     if not dlg.exec():
@@ -1749,6 +1791,7 @@ def openSettingsFunction() -> None:
     cfg["extract_notetype"] = dlg.extract_notetype_name
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
+    cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     tooltip("Incremento settings updated.")
@@ -1839,7 +1882,7 @@ qconnect(_addVideoAction.triggered, addVideoFunction)
 _addContentMenu.addAction(_addVideoAction)
 _register_shortcut_action("youtube_video", _addVideoAction)
 
-_addWritingAction = QAction("Add Writing", mw)
+_addWritingAction = QAction("Add to Markdown", mw)
 qconnect(_addWritingAction.triggered, addWritingFunction)
 _addContentMenu.addAction(_addWritingAction)
 _register_shortcut_action("add_writing", _addWritingAction)

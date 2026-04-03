@@ -5,22 +5,39 @@ except ImportError:
 
 
 _DEFAULT_PRIORITY_LOWER_IS_MORE_IMPORTANT = True
+_DEFAULT_SHOW_PRIORITY_DIALOG_AFTER_ANSWER = False
+
+
+def _resolved_config(config: dict | None = None) -> dict:
+    if config is not None:
+        return config or {}
+    try:
+        from aqt import mw
+
+        addon_name = __name__.split(".")[0]
+        return mw.addonManager.getConfig(addon_name) or {}
+    except Exception:
+        return {}
 
 
 def configured_priority_lower_is_more_important(config: dict | None = None) -> bool:
     """Return whether lower stored priority values should rank ahead of higher ones."""
-    if config is None:
-        try:
-            from aqt import mw
-
-            addon_name = __name__.split(".")[0]
-            config = mw.addonManager.getConfig(addon_name) or {}
-        except Exception:
-            config = {}
+    config = _resolved_config(config)
     return bool(
         (config or {}).get(
             "priority_lower_is_more_important",
             _DEFAULT_PRIORITY_LOWER_IS_MORE_IMPORTANT,
+        )
+    )
+
+
+def configured_show_priority_dialog_after_answer(config: dict | None = None) -> bool:
+    """Return whether answered cards should prompt for priority before advancing."""
+    config = _resolved_config(config)
+    return bool(
+        (config or {}).get(
+            "show_priority_dialog_after_answer",
+            _DEFAULT_SHOW_PRIORITY_DIALOG_AFTER_ANSWER,
         )
     )
 

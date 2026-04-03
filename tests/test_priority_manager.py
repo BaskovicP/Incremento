@@ -13,6 +13,7 @@ get_priority = _mod.get_priority
 set_priority = _mod.set_priority
 get_all_priorities = _mod.get_all_priorities
 configured_priority_lower_is_more_important = _mod.configured_priority_lower_is_more_important
+configured_show_priority_dialog_after_answer = _mod.configured_show_priority_dialog_after_answer
 
 
 class TestGetPriority:
@@ -75,3 +76,13 @@ class TestConfiguredPriorityDirection:
         assert configured_priority_lower_is_more_important(
             {"priority_lower_is_more_important": False}
         ) is False
+
+
+class TestConfiguredPriorityDialogAfterAnswer:
+    def test_defaults_to_disabled(self):
+        assert configured_show_priority_dialog_after_answer({}) is False
+
+    def test_reads_true_from_config(self):
+        assert configured_show_priority_dialog_after_answer(
+            {"show_priority_dialog_after_answer": True}
+        ) is True
