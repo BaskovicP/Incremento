@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   captureSnapshot,
+  getCommandShortcuts,
   copyLatestVideoTime,
   getActiveTab,
+  openExtensionShortcutsPage,
   openBookmarksPage,
+  triggerBrowserCaptureForTab,
 } from "../shared/chromeApi.js";
 import { formatBridgeError, importIntoIncremento } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
@@ -19,6 +22,7 @@ export function PopupApp() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialStatus);
   const [title, setTitle] = useState("");
+  const [commandShortcuts, setCommandShortcuts] = useState([]);
 
   const pageUrl = String(snapshot?.url || activeTab?.url || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
@@ -60,6 +64,11 @@ export function PopupApp() {
         const nextTitle = String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || tab?.url || "").trim();
         if (nextTitle) {
           setTitle(nextTitle);
+        }
+
+        const commands = await getCommandShortcuts();
+        if (!cancelled) {
+          setCommandShortcuts(Array.isArray(commands) ? commands : []);
         }
       } catch (error) {
         if (!cancelled) {
@@ -165,6 +174,63 @@ export function PopupApp() {
     }
   }
 
+  async function handleOpenShortcutsPage() {
+    try {
+      await openExtensionShortcutsPage();
+    } catch (error) {
+      setStatus({
+        text: error?.message || "Failed to open Chrome shortcut settings.",
+        kind: "error",
+      });
+    }
+  }
+
+  async function handleTriggerBrowserCapture(mode) {
+    if (!activeTab?.id) {
+      setStatus({
+        text: "No active tab found.",
+        kind: "error",
+      });
+      return;
+    }
+    setBusy(true);
+    setStatus({
+      text: mode === "snapshot" ? "Starting snapshot capture..." : "Starting text capture...",
+      kind: "",
+    });
+    try {
+      const response = await triggerBrowserCaptureForTab(activeTab.id, mode);
+      if (response?.ok) {
+        setStatus({
+          text: mode === "snapshot" ? "Snapshot capture opened in the page." : "Text capture opened in the page.",
+          kind: "success",
+        });
+        window.close();
+        return;
+      }
+      setStatus({
+        text: String(
+          response?.error || (
+            mode === "snapshot"
+              ? "Snapshot capture did not start on this tab."
+              : "Text capture did not start. Select text on the page first."
+          )
+        ),
+        kind: "error",
+      });
+    } catch (error) {
+      setStatus({
+        text: error?.message || "Failed to trigger browser capture.",
+        kind: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const selectionShortcut = commandShortcuts.find((command) => command.name === "browser-capture-selection")?.shortcut || "";
+  const snapshotShortcut = commandShortcuts.find((command) => command.name === "browser-capture-snapshot")?.shortcut || "";
+
   return (
     <main className="popup">
       <section className="panel">
@@ -229,6 +295,47 @@ export function PopupApp() {
           onClick={() => void handleOpenBookmarks()}
         >
           Download bookmarks
+        </button>
+      </section>
+
+      <section className="panel panel-secondary">
+        <div className="actions">
+          <button
+            className="kind-btn"
+            type="button"
+            disabled={busy || !hasSupportedPage}
+            onClick={() => void handleTriggerBrowserCapture("selection")}
+          >
+            Trigger text capture
+          </button>
+          <button
+            className="kind-btn"
+            type="button"
+            disabled={busy || !hasSupportedPage}
+            onClick={() => void handleTriggerBrowserCapture("snapshot")}
+          >
+            Trigger snapshot capture
+          </button>
+        </div>
+      </section>
+
+      <section className="panel panel-secondary">
+        <div className="shortcut-status">
+          <div>
+            <strong>Text capture</strong>
+            <span>{selectionShortcut || "Not assigned in Chrome"}</span>
+          </div>
+          <div>
+            <strong>Snapshot capture</strong>
+            <span>{snapshotShortcut || "Not assigned in Chrome"}</span>
+          </div>
+        </div>
+        <button
+          className="ghost-btn"
+          type="button"
+          onClick={() => void handleOpenShortcutsPage()}
+        >
+          Open shortcut settings
         </button>
       </section>
 

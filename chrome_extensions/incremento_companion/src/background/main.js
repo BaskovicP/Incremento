@@ -1,5 +1,3 @@
-"use strict";
-
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
 const STORAGE_KEY = "incremento_last_video_time";
@@ -11,9 +9,69 @@ const INCREMENTO_NOTE_TYPE = "Incremento Video";
 const WEB_TRACK_BRIDGE_URL = "http://127.0.0.1:8766/incremento/update-web-card";
 const INC_CARD_ID_PARAM = "inc_card_id";
 const INC_TRACK_WEB_PARAM = "inc_track_web";
+const CONTENT_SCRIPT_FILE = "dist/content.js";
+const COMMAND_BROWSER_CAPTURE_SELECTION = "browser-capture-selection";
+const COMMAND_BROWSER_CAPTURE_SNAPSHOT = "browser-capture-snapshot";
+const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
+const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 
 function isHttpUrl(rawUrl) {
   return /^https?:\/\//i.test(String(rawUrl || ""));
+}
+
+async function parseBridgeResponse(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `Request failed (${response.status})`));
+  }
+  return data;
+}
+
+async function loadBrowserCaptureMeta() {
+  const response = await fetch(BROWSER_CAPTURE_META_URL, {
+    method: "GET",
+  });
+  return parseBridgeResponse(response);
+}
+
+async function submitBrowserCapture(payload) {
+  const response = await fetch(BRIDGE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: "browser_capture",
+      ...payload,
+    }),
+  });
+  return parseBridgeResponse(response);
+}
+
+async function injectContentScriptIntoOpenTabs() {
+  if (!chrome.scripting?.executeScript || !chrome.tabs?.query) {
+    return;
+  }
+  let tabs = [];
+  try {
+    tabs = await chrome.tabs.query({});
+  } catch (_err) {
+    return;
+  }
+  await Promise.all(
+    tabs.map(async (tab) => {
+      const tabId = Number(tab?.id);
+      if (!Number.isFinite(tabId) || tabId <= 0 || !isHttpUrl(tab?.url || "")) {
+        return;
+      }
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: [CONTENT_SCRIPT_FILE],
+        });
+      } catch (_err) {
+        // ignore tabs where injection is not allowed
+      }
+    })
+  );
 }
 
 function formatTime(totalSeconds) {
@@ -374,6 +432,80 @@ async function getActiveTab() {
   }
 }
 
+async function ensureContentScriptInjected(tabId) {
+  if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
+    return false;
+  }
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [CONTENT_SCRIPT_FILE],
+    });
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+async function invokeBrowserCaptureInTab(tabId, mode) {
+  if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
+    return { ok: false };
+  }
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (captureMode) => {
+        const trigger = globalThis.__incrementoTriggerBrowserCapture;
+        if (typeof trigger !== "function") {
+          return { ok: false, error: "Browser capture script is not available on this page." };
+        }
+        try {
+          return trigger(captureMode);
+        } catch (error) {
+          return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
+        }
+      },
+      args: [mode],
+    });
+    return results?.[0]?.result || { ok: false };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
+  }
+}
+
+async function triggerBrowserCapture(mode) {
+  const tab = await getActiveTab();
+  if (!tab?.id || !isHttpUrl(tab.url || "")) {
+    return false;
+  }
+
+  await ensureContentScriptInjected(tab.id);
+  const response = await invokeBrowserCaptureInTab(tab.id, mode);
+  return !!response?.ok;
+}
+
+async function triggerBrowserCaptureOnTab(tab, mode) {
+  if (!tab?.id || !isHttpUrl(tab.url || "")) {
+    return false;
+  }
+  await ensureContentScriptInjected(tab.id);
+  const response = await invokeBrowserCaptureInTab(tab.id, mode);
+  return !!response?.ok;
+}
+
+async function reportBrowserCaptureTrigger(tabId, ok, fallbackMessage = "") {
+  if (typeof tabId !== "number") {
+    return;
+  }
+  const text = ok
+    ? ""
+    : (fallbackMessage || "Browser capture could not start on this tab.");
+  if (!text) {
+    return;
+  }
+  await showToastInTab(tabId, text);
+}
+
 async function ensureOffscreen() {
   if (!chrome.offscreen?.createDocument) {
     return false;
@@ -589,6 +721,12 @@ async function copyLatestStoredTime(showFeedback) {
   return copied;
 }
 
+async function captureVisibleTabForSender(sender) {
+  const windowId = Number(sender?.tab?.windowId);
+  const captureWindowId = Number.isFinite(windowId) && windowId >= 0 ? windowId : undefined;
+  return chrome.tabs.captureVisibleTab(captureWindowId, { format: "png" });
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) {
     return false;
@@ -636,6 +774,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       const status = await getTrackingStatusForTab(tabId, String(msg.url || ""));
       sendResponse?.(status);
+    })();
+    return true;
+  }
+
+  if (msg.type === "LOAD_BROWSER_CAPTURE_META") {
+    void (async () => {
+      try {
+        const result = await loadBrowserCaptureMeta();
+        sendResponse?.(result);
+      } catch (error) {
+        sendResponse?.({ ok: false, error: String(error?.message || "Failed to load browser capture metadata.") });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === "SUBMIT_BROWSER_CAPTURE") {
+    void (async () => {
+      try {
+        const result = await submitBrowserCapture(msg.payload || {});
+        sendResponse?.(result);
+      } catch (error) {
+        sendResponse?.({ ok: false, error: String(error?.message || "Failed to submit browser capture.") });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === "CAPTURE_VISIBLE_TAB") {
+    void (async () => {
+      try {
+        const dataUrl = await captureVisibleTabForSender(sender);
+        sendResponse?.({ ok: true, dataUrl });
+      } catch (error) {
+        sendResponse?.({ ok: false, error: String(error?.message || "Failed to capture the current tab.") });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === "TRIGGER_BROWSER_CAPTURE") {
+    void (async () => {
+      const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
+      const mode = String(msg.mode || "").trim().toLowerCase();
+      const ok = await triggerBrowserCapture(mode === "snapshot" ? "snapshot" : "selection");
+      if (typeof tabId === "number") {
+        await reportBrowserCaptureTrigger(tabId, ok, "Browser capture could not start on this tab.");
+      }
+      sendResponse?.({ ok });
     })();
     return true;
   }
@@ -706,9 +893,25 @@ chrome.action.onClicked.addListener(() => {
   void copyLatestStoredTime(true);
 });
 
-chrome.commands.onCommand.addListener((command) => {
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === COMMAND_BROWSER_CAPTURE_SELECTION) {
+    void (tab ? triggerBrowserCaptureOnTab(tab, "selection") : triggerBrowserCapture("selection"));
+    return;
+  }
+  if (command === COMMAND_BROWSER_CAPTURE_SNAPSHOT) {
+    void (tab ? triggerBrowserCaptureOnTab(tab, "snapshot") : triggerBrowserCapture("snapshot"));
+    return;
+  }
   if (command !== "copy-last-video-time") {
     return;
   }
   void copyLatestStoredTime(true);
 });
+
+void injectContentScriptIntoOpenTabs();
+
+if (chrome.runtime?.onInstalled) {
+  chrome.runtime.onInstalled.addListener(() => {
+    void injectContentScriptIntoOpenTabs();
+  });
+}

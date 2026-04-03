@@ -43,6 +43,61 @@ export async function openBookmarksPage() {
   });
 }
 
+export async function openExtensionShortcutsPage() {
+  await chrome.tabs.create({
+    url: "chrome://extensions/shortcuts",
+  });
+}
+
+export async function getCommandShortcuts() {
+  if (!chrome.commands?.getAll) {
+    return [];
+  }
+  return chrome.commands.getAll();
+}
+
+export async function triggerBrowserCaptureForTab(tabId, mode) {
+  if (!Number.isFinite(Number(tabId)) || Number(tabId) <= 0) {
+    throw new Error("No active tab found for browser capture.");
+  }
+
+  let injectionError = "";
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: Number(tabId) },
+      files: ["dist/content.js"],
+    });
+  } catch (error) {
+    injectionError = String(
+      error?.message || "Chrome did not allow script injection on this tab."
+    );
+  }
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: Number(tabId) },
+    func: (captureMode) => {
+      const trigger = globalThis.__incrementoTriggerBrowserCapture;
+      if (typeof trigger !== "function") {
+        return { ok: false, error: "Browser capture script is not available on this page." };
+      }
+      try {
+        return trigger(captureMode);
+      } catch (error) {
+        return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
+      }
+    },
+    args: [mode],
+  });
+  const result = results?.[0]?.result || { ok: false };
+  if (!result.ok && injectionError && !result.error) {
+    return { ok: false, error: injectionError };
+  }
+  if (!result.ok && injectionError && result.error === "Browser capture script is not available on this page.") {
+    return { ok: false, error: injectionError };
+  }
+  return result;
+}
+
 export async function loadBookmarksTree() {
   const tree = await chrome.bookmarks.getTree();
   return Array.isArray(tree) ? tree : [];

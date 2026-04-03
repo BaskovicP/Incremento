@@ -3,6 +3,7 @@ import os
 import tempfile
 import threading
 from base64 import b64decode
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -12,9 +13,12 @@ from urllib.request import Request, urlopen
 BRIDGE_HOST = "127.0.0.1"
 BRIDGE_PORT = 8766
 BRIDGE_PATH = "/incremento/add-content"
+BROWSER_CAPTURE_META_PATH = "/incremento/browser-capture-meta"
 WEB_TRACK_PATH = "/incremento/update-web-card"
 _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
 _MAX_HTML_CHARS = 2_000_000
+_MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
+_MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000
 
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
@@ -136,6 +140,82 @@ def _normalize_priority(raw_priority) -> float:
     return priority
 
 
+def _normalize_browser_capture_field_name(raw_name) -> str:
+    return _collapse_ws(raw_name)
+
+
+def _normalize_browser_capture_field_mappings(raw_mappings) -> dict[str, str]:
+    if raw_mappings is None:
+        raw_mappings = {}
+    if not isinstance(raw_mappings, dict):
+        raise ValueError("fieldMappings must be a JSON object.")
+    return {
+        "selected_text_field": _normalize_browser_capture_field_name(raw_mappings.get("selectedTextField")),
+        "url_field": _normalize_browser_capture_field_name(raw_mappings.get("urlField")),
+        "snapshot_field": _normalize_browser_capture_field_name(raw_mappings.get("snapshotField")),
+    }
+
+
+def _normalize_browser_capture_snapshots(raw_snapshots) -> list[dict]:
+    if raw_snapshots is None:
+        return []
+    if not isinstance(raw_snapshots, list):
+        raise ValueError("snapshots must be an array.")
+    if len(raw_snapshots) > _MAX_BROWSER_CAPTURE_SNAPSHOTS:
+        raise ValueError(f"Too many snapshots. Maximum is {_MAX_BROWSER_CAPTURE_SNAPSHOTS}.")
+
+    normalized = []
+    for idx, raw_snapshot in enumerate(raw_snapshots):
+        if not isinstance(raw_snapshot, dict):
+            raise ValueError("Each snapshot must be a JSON object.")
+        mime_type = _collapse_ws(raw_snapshot.get("mimeType", "")).lower() or "image/png"
+        if mime_type != "image/png":
+            raise ValueError("Only PNG snapshots are supported.")
+        filename = _collapse_ws(raw_snapshot.get("filename", "")) or f"browser-capture-{idx + 1}.png"
+        base64_data = str(raw_snapshot.get("base64", "") or "").strip()
+        if not base64_data:
+            raise ValueError("Each snapshot must include base64 image data.")
+        try:
+            raw_bytes = b64decode(base64_data, validate=True)
+        except Exception as exc:
+            raise ValueError(f"Invalid snapshot payload: {exc}") from exc
+        if not raw_bytes:
+            raise ValueError("Snapshot payload cannot be empty.")
+        if len(raw_bytes) > _MAX_BROWSER_CAPTURE_IMAGE_BYTES:
+            raise ValueError("Snapshot image is too large.")
+        normalized.append(
+            {
+                "mime_type": mime_type,
+                "filename": filename,
+                "base64": base64_data,
+                "bytes": raw_bytes,
+            }
+        )
+    return normalized
+
+
+def normalize_browser_capture_payload(payload) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object.")
+
+    note_type_name = _collapse_ws(payload.get("noteTypeName", ""))
+    if not note_type_name:
+        raise ValueError("noteTypeName is required.")
+
+    return {
+        "type": "browser_capture",
+        "url": normalize_http_url(payload.get("url", "")),
+        "title": _collapse_ws(payload.get("title", "")) or "Untitled",
+        "deck_name": _collapse_ws(payload.get("deckName", "")) or "Default",
+        "note_type_name": note_type_name,
+        "tags": _normalize_tags(payload.get("tags")),
+        "priority": _normalize_priority(payload.get("priority")),
+        "selected_text": str(payload.get("selectedText", "") or "").strip(),
+        "field_mappings": _normalize_browser_capture_field_mappings(payload.get("fieldMappings")),
+        "snapshots": _normalize_browser_capture_snapshots(payload.get("snapshots")),
+    }
+
+
 def normalize_add_content_payload(payload) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object.")
@@ -196,10 +276,12 @@ def normalize_add_content_batch_payload(payload) -> list[dict]:
 
 
 def normalize_add_content_request(payload) -> dict:
+    if isinstance(payload, dict) and str(payload.get("type") or "").strip().lower() == "browser_capture":
+        return {"batch": False, "browser_capture": True, "items": [normalize_browser_capture_payload(payload)]}
     if isinstance(payload, dict) and payload.get("items") is not None:
         items = normalize_add_content_batch_payload(payload)
-        return {"batch": True, "items": items}
-    return {"batch": False, "items": [normalize_add_content_payload(payload)]}
+        return {"batch": True, "browser_capture": False, "items": items}
+    return {"batch": False, "browser_capture": False, "items": [normalize_add_content_payload(payload)]}
 
 
 def normalize_update_web_card_payload(payload) -> dict:
@@ -262,6 +344,183 @@ def _refresh_anki_after_import() -> None:
             mw.deckBrowser.refresh()
     except Exception:
         pass
+
+
+def _browser_capture_meta_on_main() -> dict:
+    from aqt import mw
+
+    note_types = []
+    try:
+        for model in mw.col.models.all():
+            if not isinstance(model, dict):
+                continue
+            fields = []
+            for field in model.get("flds") or []:
+                if isinstance(field, dict):
+                    name = _collapse_ws(field.get("name", ""))
+                    if name:
+                        fields.append(name)
+            note_name = _collapse_ws(model.get("name", ""))
+            if note_name and fields:
+                note_types.append({"name": note_name, "fields": fields})
+    except Exception:
+        note_types = []
+
+    deck_names = []
+    try:
+        deck_names = sorted(
+            {
+                _collapse_ws(deck.name)
+                for deck in mw.col.decks.all_names_and_ids()
+                if _collapse_ws(getattr(deck, "name", ""))
+            }
+        )
+    except Exception:
+        deck_names = []
+
+    return {
+        "ok": True,
+        "noteTypes": sorted(note_types, key=lambda item: item["name"].casefold()),
+        "deckNames": deck_names,
+    }
+
+
+def _append_browser_capture_html(existing: str, chunk: str) -> str:
+    left = str(existing or "").strip()
+    right = str(chunk or "").strip()
+    if not right:
+        return left
+    if not left:
+        return right
+    return f"{left}<br><br>{right}"
+
+
+def _plain_text_to_html(text: str) -> str:
+    safe = escape(str(text or ""))
+    return safe.replace("\n", "<br>")
+
+
+def _browser_capture_source_html(url: str) -> str:
+    safe_url = escape(url, quote=True)
+    return f'Source: <a href="{safe_url}">{safe_url}</a>'
+
+
+def _sanitize_media_filename(raw_name: str, fallback_stem: str) -> str:
+    stem, ext = os.path.splitext(os.path.basename(str(raw_name or "").strip()))
+    stem = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in stem).strip(".-_")
+    if not stem:
+        stem = fallback_stem
+    ext = ".png"
+    return f"{stem}{ext}"
+
+
+def _store_browser_capture_snapshot(col, snapshot: dict, title: str, index: int) -> str:
+    fd, temp_path = tempfile.mkstemp(prefix="incremento-browser-capture-", suffix=".png")
+    os.close(fd)
+    try:
+        with open(temp_path, "wb") as handle:
+            handle.write(snapshot["bytes"])
+        filename = _sanitize_media_filename(
+            snapshot.get("filename", ""),
+            fallback_stem=f"{_collapse_ws(title).replace(' ', '-') or 'browser-capture'}-{index}",
+        )
+        stored_path = temp_path
+        desired_path = os.path.join(os.path.dirname(temp_path), filename)
+        if desired_path != temp_path:
+            try:
+                os.replace(temp_path, desired_path)
+                stored_path = desired_path
+            except OSError:
+                stored_path = temp_path
+        return col.media.add_file(stored_path)
+    finally:
+        for path in {temp_path, locals().get("desired_path", "")}:
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+
+def _create_browser_capture_note_on_main(normalized: dict) -> dict:
+    from aqt import mw
+
+    try:
+        from .priority_manager import set_priority
+    except ImportError:
+        from priority_manager import set_priority
+
+    note_type_name = normalized["note_type_name"]
+    model = mw.col.models.by_name(note_type_name)
+    if model is None:
+        raise ValueError(f"Note type '{note_type_name}' was not found.")
+
+    field_names = [str(field.get("name") or "") for field in model.get("flds") or [] if str(field.get("name") or "").strip()]
+    if not field_names:
+        raise ValueError(f"Note type '{note_type_name}' has no writable fields.")
+
+    deck_name = normalized["deck_name"]
+    deck = mw.col.decks.by_name(deck_name)
+    if deck is None:
+        deck_id = mw.col.decks.add_normal_deck_with_name(deck_name).id
+    else:
+        deck_id = deck["id"]
+
+    mappings = normalized["field_mappings"]
+    for mapping_name, field_name in mappings.items():
+        if field_name and field_name not in field_names:
+            raise ValueError(f"Field '{field_name}' was not found in note type '{note_type_name}'.")
+
+    note = mw.col.new_note(model)
+    field_html: dict[str, str] = {}
+
+    selected_text = normalized["selected_text"]
+    if selected_text and mappings["selected_text_field"]:
+        field_name = mappings["selected_text_field"]
+        field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _plain_text_to_html(selected_text))
+
+    if mappings["url_field"]:
+        field_name = mappings["url_field"]
+        field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _browser_capture_source_html(normalized["url"]))
+
+    if mappings["snapshot_field"]:
+        field_name = mappings["snapshot_field"]
+        snapshot_html = ""
+        for idx, snapshot in enumerate(normalized["snapshots"], start=1):
+            media_filename = _store_browser_capture_snapshot(mw.col, snapshot, normalized["title"], idx)
+            snapshot_html = _append_browser_capture_html(snapshot_html, f'<img src="{escape(media_filename, quote=True)}">')
+        field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), snapshot_html)
+
+    if not any(value for value in field_html.values()):
+        raise ValueError("Nothing to insert. Choose at least one mapped destination field.")
+
+    for field_name, value in field_html.items():
+        note[field_name] = value
+
+    for tag in ["Incremento"] + [t for t in normalized["tags"] if t != "Incremento"]:
+        if not tag:
+            continue
+        if hasattr(note, "add_tag"):
+            note.add_tag(tag)
+        elif hasattr(note, "tags"):
+            note.tags.append(tag)
+
+    note.note_type()["did"] = deck_id
+    mw.col.add_note(note, deck_id)
+    try:
+        card_id = mw.col.find_cards(f"nid:{note.id}")[0]
+    except Exception as exc:
+        raise RuntimeError("Created note but could not resolve its card id.") from exc
+    set_priority(_addon_dir, int(card_id), normalized["priority"])
+    return {
+        "ok": True,
+        "type": "browser_capture",
+        "cardId": int(card_id),
+        "noteId": int(note.id),
+        "noteTypeName": note_type_name,
+        "deckName": deck_name,
+        "title": normalized["title"],
+    }
 
 
 def _add_content_item_on_main(normalized: dict) -> dict:
@@ -360,9 +619,12 @@ def _add_content_item_on_main(normalized: dict) -> dict:
 
 
 def _add_content_on_main(payload: dict) -> dict:
-    from aqt import mw
-
     request = normalize_add_content_request(payload)
+    if request.get("browser_capture"):
+        result = _create_browser_capture_note_on_main(request["items"][0])
+        _refresh_anki_after_import()
+        return result
+
     batch = bool(request["batch"])
     results = []
     any_success = False
@@ -455,7 +717,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         if origin.startswith(_ALLOWED_ORIGIN_PREFIX):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def _send_json(self, status: int, payload: dict) -> None:
@@ -468,7 +730,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self) -> None:
-        if self.path not in {BRIDGE_PATH, WEB_TRACK_PATH}:
+        if self.path not in {BRIDGE_PATH, BROWSER_CAPTURE_META_PATH, WEB_TRACK_PATH}:
             self.send_error(404)
             return
         if not self._request_origin_allowed():
@@ -478,6 +740,22 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def do_GET(self) -> None:
+        if self.path != BROWSER_CAPTURE_META_PATH:
+            self._send_json(404, {"ok": False, "error": "Unknown path."})
+            return
+        if not self._request_origin_allowed():
+            self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+            return
+
+        try:
+            result = _run_on_main_and_wait(_browser_capture_meta_on_main)
+        except Exception as exc:
+            self._send_json(500, {"ok": False, "error": str(exc)})
+            return
+
+        self._send_json(200, result)
 
     def do_POST(self) -> None:
         if self.path not in {BRIDGE_PATH, WEB_TRACK_PATH}:

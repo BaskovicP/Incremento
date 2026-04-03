@@ -38,6 +38,18 @@
         "mac": "Alt+Shift+V"
       },
       "description": "Copy latest tracked video time to clipboard"
+    },
+    "browser-capture-selection": {
+      "suggested_key": {
+        "default": "Alt+X"
+      },
+      "description": "Capture selected browser text into Anki"
+    },
+    "browser-capture-snapshot": {
+      "suggested_key": {
+        "default": "Alt+Shift+X"
+      },
+      "description": "Capture browser snapshots into Anki"
     }
   },
   "content_scripts": [

@@ -8,14 +8,96 @@ from aqt.qt import (
     QEvent,
     QFrame,
     QHBoxLayout,
+    QLayout,
     QLabel,
     QLineEdit,
+    QRect,
+    QSize,
     QSizePolicy,
     Qt,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
+
+
+class _TagFlowLayout(QLayout):
+    """Simple wrapping layout so tag chips stay readable instead of shrinking."""
+
+    def __init__(self, parent: QWidget | None = None, spacing: int = 6):
+        super().__init__(parent)
+        self._items = []
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setSpacing(spacing)
+
+    def addItem(self, item) -> None:
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index: int):
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._do_layout(QRect(0, 0, max(0, width), 0), test_only=True)
+
+    def setGeometry(self, rect: QRect) -> None:
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self) -> QSize:
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        return size
+
+    def _do_layout(self, rect: QRect, *, test_only: bool) -> int:
+        margins = self.contentsMargins()
+        effective = rect.adjusted(
+            margins.left(),
+            margins.top(),
+            -margins.right(),
+            -margins.bottom(),
+        )
+        x = effective.x()
+        y = effective.y()
+        line_height = 0
+        max_right = effective.right()
+
+        for item in self._items:
+            hint = item.sizeHint()
+            next_x = x + hint.width()
+            if line_height > 0 and next_x > max_right and effective.width() > 0:
+                x = effective.x()
+                y += line_height + self.spacing()
+                next_x = x + hint.width()
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QRect(x, y, hint.width(), hint.height()))
+            x = next_x + self.spacing()
+            line_height = max(line_height, hint.height())
+
+        used_height = (y - effective.y()) + line_height
+        return used_height + margins.top() + margins.bottom()
 
 
 class QuickTagEdit(QWidget):
@@ -64,7 +146,11 @@ class QuickTagEdit(QWidget):
         row.addWidget(icon)
 
         self._chip_host = QWidget(self._frame)
-        self._chip_layout = QHBoxLayout(self._chip_host)
+        self._chip_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        if compact:
+            self._chip_layout = QHBoxLayout(self._chip_host)
+        else:
+            self._chip_layout = _TagFlowLayout(self._chip_host)
         self._chip_layout.setContentsMargins(0, 0, 0, 0)
         self._chip_layout.setSpacing(6)
         row.addWidget(self._chip_host, 1)
@@ -84,7 +170,10 @@ class QuickTagEdit(QWidget):
             }
             """
         )
-        self._chip_layout.addWidget(self._input, 1)
+        if compact:
+            self._chip_layout.addWidget(self._input, 1)
+        else:
+            self._chip_layout.addWidget(self._input)
 
         self._completer = QCompleter(self._all_tags, self._input)
         self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
@@ -140,16 +229,18 @@ class QuickTagEdit(QWidget):
         return [t for t in self._all_tags if q in t.lower()]
 
     def _rebuild_chips(self) -> None:
-        while self._chip_layout.count() > 1:
+        while self._chip_layout.count() > 0:
             item = self._chip_layout.takeAt(0)
             w = item.widget()
-            if w:
+            if w and w is not self._input:
                 w.deleteLater()
 
         for idx, tag in enumerate(self._tags):
             btn = QToolButton(self._chip_host)
             btn.setText(f"{tag}  \N{WASTEBASKET}")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             btn.setStyleSheet(
                 """
                 QToolButton {
@@ -162,9 +253,17 @@ class QuickTagEdit(QWidget):
                 """
             )
             btn.clicked.connect(lambda _=False, i=idx: self._remove_tag_index(i))
-            self._chip_layout.insertWidget(self._chip_layout.count() - 1, btn)
+            self._chip_layout.addWidget(btn)
+
+        if self._compact:
+            self._chip_layout.addWidget(self._input, 1)
+        else:
+            self._chip_layout.addWidget(self._input)
 
         self._update_title()
+        self._chip_host.updateGeometry()
+        self._frame.updateGeometry()
+        self.updateGeometry()
 
     def _add_tag(self, tag: str) -> bool:
         t = tag.strip().lstrip("#")

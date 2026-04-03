@@ -1,11 +1,17 @@
+import base64
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+import sys
 
 from browser_bridge import (
+    _create_browser_capture_note_on_main,
     build_writing_markdown,
     download_pdf_from_url,
     normalize_add_content_payload,
     normalize_add_content_batch_payload,
     normalize_add_content_request,
+    normalize_browser_capture_payload,
     normalize_update_web_card_payload,
     url_looks_like_pdf,
 )
@@ -127,6 +133,70 @@ def test_normalize_add_content_request_detects_batch_mode():
     assert payload["items"][0]["kind"] == "webpage"
 
 
+def test_normalize_add_content_request_detects_browser_capture_mode():
+    payload = normalize_add_content_request(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "deckName": "Default",
+            "fieldMappings": {"selectedTextField": "Front"},
+        }
+    )
+    assert payload["batch"] is False
+    assert payload["browser_capture"] is True
+    assert payload["items"][0]["note_type_name"] == "Basic"
+
+
+def test_normalize_browser_capture_payload_accepts_snapshots_and_mappings():
+    image_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode("ascii")
+    payload = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "  Example Article  ",
+            "noteTypeName": "Basic",
+            "deckName": "Research",
+            "selectedText": "  Selected text  ",
+            "fieldMappings": {
+                "selectedTextField": "Front",
+                "urlField": "Back",
+                "snapshotField": "Extra",
+            },
+            "snapshots": [
+                {
+                    "mimeType": "image/png",
+                    "filename": "capture.png",
+                    "base64": image_b64,
+                }
+            ],
+        }
+    )
+    assert payload["note_type_name"] == "Basic"
+    assert payload["deck_name"] == "Research"
+    assert payload["selected_text"] == "Selected text"
+    assert payload["field_mappings"]["snapshot_field"] == "Extra"
+    assert payload["snapshots"][0]["bytes"].startswith(b"\x89PNG")
+
+
+def test_normalize_browser_capture_payload_rejects_unknown_snapshot_mime_type():
+    try:
+        normalize_browser_capture_payload(
+            {
+                "type": "browser_capture",
+                "url": "https://example.com/article",
+                "title": "Example",
+                "noteTypeName": "Basic",
+                "deckName": "Default",
+                "snapshots": [{"mimeType": "image/jpeg", "base64": "abcd"}],
+            }
+        )
+        assert False, "Expected normalize_browser_capture_payload to reject non-PNG snapshot payloads"
+    except ValueError as exc:
+        assert "PNG" in str(exc)
+
+
 def test_url_looks_like_pdf_checks_url_path():
     assert url_looks_like_pdf("https://example.com/files/doc.pdf")
     assert url_looks_like_pdf("https://example.com/files/doc.PDF?download=1")
@@ -223,3 +293,78 @@ def test_download_pdf_from_url_accepts_pdf_url_with_generic_content_type(monkeyp
     dest = tmp_path / "downloaded.pdf"
     download_pdf_from_url("https://example.com/file.pdf", str(dest))
     assert dest.read_bytes().startswith(b"\n\n%PDF-")
+
+
+def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
+    image_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode("ascii")
+    normalized = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "deckName": "Research",
+            "tags": ["alpha"],
+            "priority": 12.5,
+            "selectedText": "Selected\ntext",
+            "fieldMappings": {
+                "selectedTextField": "Front",
+                "urlField": "Front",
+                "snapshotField": "Back",
+            },
+            "snapshots": [
+                {
+                    "mimeType": "image/png",
+                    "filename": "capture.png",
+                    "base64": image_b64,
+                }
+            ],
+        }
+    )
+
+    class FakeNote(dict):
+        def __init__(self):
+            super().__init__()
+            self.id = 444
+            self.tags = []
+            self._note_type = {"did": 0}
+
+        def note_type(self):
+            return self._note_type
+
+        def add_tag(self, tag):
+            self.tags.append(tag)
+
+    note = FakeNote()
+    col = MagicMock()
+    col.models.by_name.return_value = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    col.decks.by_name.return_value = {"id": 9}
+    col.new_note.return_value = note
+    col.find_cards.return_value = [321]
+    col.media.add_file.return_value = "capture.png"
+
+    mw = SimpleNamespace(col=col)
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+
+    priority_calls = []
+    priority_module = MagicMock()
+    priority_module.set_priority.side_effect = lambda addon_dir, card_id, priority: priority_calls.append(
+        (addon_dir, card_id, priority)
+    )
+    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+    monkeypatch.setitem(sys.modules, "priority_manager", priority_module)
+
+    result = _create_browser_capture_note_on_main(normalized)
+
+    assert result["ok"] is True
+    assert result["cardId"] == 321
+    assert "Selected<br>text" in note["Front"]
+    assert "Source:" in note["Front"]
+    assert '<img src="capture.png">' in note["Back"]
+    assert note.tags == ["Incremento", "alpha"]
+    assert priority_calls == [("/tmp/incremento-test", 321, 12.5)]

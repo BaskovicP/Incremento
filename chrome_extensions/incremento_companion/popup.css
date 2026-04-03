@@ -32,6 +32,30 @@ body {
   padding: 10px 14px;
 }
 
+.shortcut-status {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.shortcut-status div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcut-status strong,
+.shortcut-status span {
+  font-size: 12px;
+}
+
+.shortcut-status span {
+  color: #5d5b57;
+  text-align: right;
+  word-break: break-word;
+}
+
 .eyebrow {
   font-size: 11px;
   font-weight: 700;
