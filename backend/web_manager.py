@@ -3,6 +3,7 @@ try:
 except ImportError:
     from db import get_connection
 import json
+from typing import Literal, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 _INVISIBLE_DUPLICATE_MARK = "\u200b"
@@ -21,6 +22,32 @@ CARD_TEMPLATE_FRONT = """
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
+
+
+class WebBookmarkPayload(TypedDict, total=False):
+    mode: Literal["element", "selection"]
+    path: list[int]
+    offsetRatio: float
+    scrollRatio: float
+    tag: str
+    text: str
+    selectionStartPath: list[int]
+    selectionStartOffset: int
+    selectionEndPath: list[int]
+    selectionEndOffset: int
+
+
+class WebProgressState(TypedDict):
+    url: str
+    scroll_ratio: float
+    bookmark_url: str
+    bookmark_payload: WebBookmarkPayload
+
+
+class WebRestorePayload(TypedDict):
+    rememberScroll: bool
+    scrollRatio: float
+    bookmark: WebBookmarkPayload | None
 
 
 def _resolved_config(config: dict | None = None) -> dict:
@@ -45,7 +72,7 @@ def configured_remember_browser_card_scroll(config: dict | None = None) -> bool:
     )
 
 
-def _default_web_progress() -> dict:
+def _default_web_progress() -> WebProgressState:
     return {
         "url": "",
         "scroll_ratio": 0.0,
@@ -62,7 +89,7 @@ def _normalize_scroll_ratio(value) -> float:
     return max(0.0, min(ratio, 1.0))
 
 
-def _normalize_bookmark_payload(payload) -> dict:
+def _normalize_bookmark_payload(payload) -> WebBookmarkPayload:
     if not isinstance(payload, dict):
         return {}
     path = payload.get("path")
@@ -113,7 +140,7 @@ def _normalize_bookmark_payload(payload) -> dict:
     except Exception:
         scroll_ratio = 0.0
 
-    result = {
+    result: WebBookmarkPayload = {
         "path": normalized_path,
         "offsetRatio": max(0.0, min(offset_ratio, 1.0)),
         "scrollRatio": max(0.0, min(scroll_ratio, 1.0)),
@@ -138,7 +165,7 @@ def _normalize_bookmark_payload(payload) -> dict:
     return result
 
 
-def get_web_progress(addon_dir: str, card_id: int) -> dict:
+def get_web_progress(addon_dir: str, card_id: int) -> WebProgressState:
     row = get_connection(addon_dir).execute(
         "SELECT url, scroll_ratio, bookmark_url, bookmark_payload "
         "FROM web_progress WHERE card_id = ?",
@@ -158,49 +185,69 @@ def get_web_progress(addon_dir: str, card_id: int) -> dict:
     }
 
 
-def _write_web_progress(
+def build_web_restore_payload(
+    progress: WebProgressState,
+    current_url: str,
+    *,
+    allow_bookmark: bool,
+    allow_scroll: bool,
+    remember_scroll: bool,
+) -> WebRestorePayload:
+    bookmark_url = str(progress.get("bookmark_url") or "").strip()
+    bookmark_payload = progress.get("bookmark_payload") or {}
+    bookmark = None
+    if allow_bookmark and bookmark_url and bookmark_payload and current_url == bookmark_url:
+        bookmark = bookmark_payload
+    return {
+        "rememberScroll": bool(allow_scroll and remember_scroll),
+        "scrollRatio": _normalize_scroll_ratio(progress.get("scroll_ratio")),
+        "bookmark": bookmark,
+    }
+
+
+def _ensure_web_progress_row(addon_dir: str, card_id: int) -> None:
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO web_progress "
+        "(card_id, url, scroll_ratio, bookmark_url, bookmark_payload) "
+        "VALUES (?, '', 0.0, '', '') "
+        "ON CONFLICT(card_id) DO NOTHING",
+        (card_id,),
+    )
+    conn.commit()
+
+
+def _update_web_progress_columns(
     addon_dir: str,
     card_id: int,
     *,
     url: str | None = None,
     scroll_ratio: float | None = None,
     bookmark_url: str | None = None,
-    bookmark_payload: dict | None = None,
+    bookmark_payload: WebBookmarkPayload | None = None,
 ) -> None:
-    current = get_web_progress(addon_dir, card_id)
-    final_url = current["url"] if url is None else str(url or "").strip()
-    final_scroll_ratio = (
-        current["scroll_ratio"]
-        if scroll_ratio is None
-        else _normalize_scroll_ratio(scroll_ratio)
-    )
-    final_bookmark_url = (
-        current["bookmark_url"]
-        if bookmark_url is None
-        else str(bookmark_url or "").strip()
-    )
-    final_bookmark_payload = (
-        current["bookmark_payload"]
-        if bookmark_payload is None
-        else _normalize_bookmark_payload(bookmark_payload)
-    )
+    _ensure_web_progress_row(addon_dir, card_id)
+    assignments: list[str] = []
+    values: list[object] = []
+    if url is not None:
+        assignments.append("url = ?")
+        values.append(str(url or "").strip())
+    if scroll_ratio is not None:
+        assignments.append("scroll_ratio = ?")
+        values.append(_normalize_scroll_ratio(scroll_ratio))
+    if bookmark_url is not None:
+        assignments.append("bookmark_url = ?")
+        values.append(str(bookmark_url or "").strip())
+    if bookmark_payload is not None:
+        assignments.append("bookmark_payload = ?")
+        values.append(json.dumps(bookmark_payload, ensure_ascii=False))
+    if not assignments:
+        return
+    values.append(card_id)
     conn = get_connection(addon_dir)
     conn.execute(
-        "INSERT INTO web_progress "
-        "(card_id, url, scroll_ratio, bookmark_url, bookmark_payload) "
-        "VALUES (?, ?, ?, ?, ?) "
-        "ON CONFLICT(card_id) DO UPDATE SET "
-        "url = excluded.url, "
-        "scroll_ratio = excluded.scroll_ratio, "
-        "bookmark_url = excluded.bookmark_url, "
-        "bookmark_payload = excluded.bookmark_payload",
-        (
-            card_id,
-            final_url,
-            final_scroll_ratio,
-            final_bookmark_url,
-            json.dumps(final_bookmark_payload, ensure_ascii=False),
-        ),
+        f"UPDATE web_progress SET {', '.join(assignments)} WHERE card_id = ?",
+        tuple(values),
     )
     conn.commit()
 
@@ -211,7 +258,7 @@ def get_web_url(addon_dir: str, card_id: int) -> str:
 
 
 def set_web_url(addon_dir: str, card_id: int, url: str) -> None:
-    _write_web_progress(addon_dir, card_id, url=url)
+    _update_web_progress_columns(addon_dir, card_id, url=url)
 
 
 def set_web_scroll_position(
@@ -220,7 +267,7 @@ def set_web_scroll_position(
     url: str,
     scroll_ratio: float,
 ) -> None:
-    _write_web_progress(
+    _update_web_progress_columns(
         addon_dir,
         card_id,
         url=url,
@@ -233,11 +280,11 @@ def set_web_bookmark(
     card_id: int,
     *,
     url: str,
-    bookmark_payload: dict | None,
+    bookmark_payload: WebBookmarkPayload | None,
 ) -> None:
     normalized = _normalize_bookmark_payload(bookmark_payload)
     if normalized:
-        _write_web_progress(
+        _update_web_progress_columns(
             addon_dir,
             card_id,
             url=url,
@@ -245,7 +292,7 @@ def set_web_bookmark(
             bookmark_payload=normalized,
         )
         return
-    _write_web_progress(
+    _update_web_progress_columns(
         addon_dir,
         card_id,
         url=url,

@@ -48,6 +48,7 @@ get_web_progress = _wm.get_web_progress
 set_web_scroll_position = _wm.set_web_scroll_position
 set_web_bookmark = _wm.set_web_bookmark
 configured_remember_browser_card_scroll = _wm.configured_remember_browser_card_scroll
+build_web_restore_payload = _wm.build_web_restore_payload
 
 
 # ── extract_video_id ──────────────────────────────────────────────────────────
@@ -466,6 +467,57 @@ class TestWebUrl:
 
     def test_scroll_setting_respects_config_override(self):
         assert configured_remember_browser_card_scroll({"remember_browser_card_scroll": False}) is False
+
+    def test_restore_payload_prefers_matching_bookmark(self):
+        payload = build_web_restore_payload(
+            {
+                "url": "https://example.com/last",
+                "scroll_ratio": 0.55,
+                "bookmark_url": "https://example.com/chapter",
+                "bookmark_payload": {"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
+            },
+            "https://example.com/chapter",
+            allow_bookmark=True,
+            allow_scroll=True,
+            remember_scroll=True,
+        )
+        assert payload["rememberScroll"] is True
+        assert payload["scrollRatio"] == pytest.approx(0.55)
+        assert payload["bookmark"] == {"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2}
+
+    def test_restore_payload_skips_bookmark_when_url_differs(self):
+        payload = build_web_restore_payload(
+            {
+                "url": "https://example.com/last",
+                "scroll_ratio": 0.55,
+                "bookmark_url": "https://example.com/chapter",
+                "bookmark_payload": {"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
+            },
+            "https://example.com/other",
+            allow_bookmark=True,
+            allow_scroll=True,
+            remember_scroll=True,
+        )
+        assert payload["bookmark"] is None
+        assert payload["rememberScroll"] is True
+
+    def test_restore_payload_can_disable_scroll_and_bookmark_independently(self):
+        progress = {
+            "url": "https://example.com/last",
+            "scroll_ratio": 0.55,
+            "bookmark_url": "https://example.com/chapter",
+            "bookmark_payload": {"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
+        }
+        payload = build_web_restore_payload(
+            progress,
+            "https://example.com/chapter",
+            allow_bookmark=False,
+            allow_scroll=False,
+            remember_scroll=True,
+        )
+        assert payload["bookmark"] is None
+        assert payload["rememberScroll"] is False
+        assert payload["scrollRatio"] == pytest.approx(0.55)
 
     def test_build_external_web_url_leaves_plain_url_unchanged_when_tracking_disabled(self):
         assert (
