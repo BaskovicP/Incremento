@@ -89,6 +89,7 @@ _shortcuts_registered = False
 _current_pdf_card_id = None
 _current_pdf_filename = None
 _pdf_via_link = False  # True when dock was opened via a cross-reference link
+_pdf_preserve_history = False
 _pdf_shortcuts = []
 _pdf_key_filter = None
 
@@ -173,7 +174,7 @@ class _PdfDockPage(QWebEnginePage):
                 try:
                     cid = int(parts[1])
                     pg = int(parts[2])
-                    if not _pdf_via_link:
+                    if not _pdf_via_link and not _pdf_preserve_history:
                         set_page(_ADDON_DIR, cid, pg)
                     if _timer_mod._timer_running:
                         _timer_mod._timer_pdf_pages.add((cid, pg))
@@ -183,7 +184,8 @@ class _PdfDockPage(QWebEnginePage):
             parts = msg.split(":")
             if len(parts) == 3:
                 try:
-                    set_zoom(_ADDON_DIR, int(parts[1]), float(parts[2]))
+                    if not _pdf_preserve_history:
+                        set_zoom(_ADDON_DIR, int(parts[1]), float(parts[2]))
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_HL_ADD):
@@ -202,7 +204,8 @@ class _PdfDockPage(QWebEnginePage):
             parts = msg.split(":")
             if len(parts) == 3:
                 try:
-                    set_read_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
+                    if not _pdf_preserve_history:
+                        set_read_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_CMD1):
@@ -579,12 +582,20 @@ def trigger_viewer_action(action: str) -> None:
 
 
 def show_pdf_in_dock(
-    card_id, filename, page, zoom=1.0, via_link=False, read_page=0, search_query=""
+    card_id,
+    filename,
+    page,
+    zoom=1.0,
+    via_link=False,
+    read_page=0,
+    search_query="",
+    preserve_history=False,
 ) -> None:
-    global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link
+    global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     _current_pdf_card_id = card_id
     _current_pdf_filename = filename
     _pdf_via_link = via_link
+    _pdf_preserve_history = bool(preserve_history)
     if _pdf_dock is None:
         _build_pdf_dock()
     else:

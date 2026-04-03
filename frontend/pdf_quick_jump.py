@@ -7,6 +7,7 @@ import random as _random
 from aqt import mw
 from aqt.qt import (
     QAbstractItemView,
+    QCheckBox,
     QColor,
     QDialog,
     QEvent,
@@ -82,6 +83,13 @@ class _PdfQuickJumpDialog(QDialog):
             lbl = QLabel(f"<b>{key}</b>: {desc}")
             lbl.setStyleSheet("font-size: 13px; padding: 2px 0;")
             layout.addWidget(lbl)
+        layout.addSpacing(6)
+
+        self._preserve_history_cb = QCheckBox(
+            "Don't change cards attached to PDF reading history"
+        )
+        self._preserve_history_cb.setChecked(False)
+        layout.addWidget(self._preserve_history_cb)
         layout.addSpacing(10)
 
         # ── Cancel button ──────────────────────────────────────────────────────
@@ -219,3 +227,7 @@ class _PdfQuickJumpDialog(QDialog):
     def selected_card_id(self) -> int | None:
         item = self._table.item(self._table.currentRow(), 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @property
+    def preserve_history(self) -> bool:
+        return bool(self._preserve_history_cb.isChecked())

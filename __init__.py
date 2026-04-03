@@ -340,13 +340,16 @@ def _open_pdf_quick_jump() -> None:
     if cid is None:
         return
     try:
-        _open_pdf_card(cid)
+        _open_pdf_card(cid, preserve_history=dlg.preserve_history)
     except Exception as e:
         showInfo(f"Could not open PDF:\n{e}")
 
 
 def _open_pdf_card(
-    card_id: int, page: int | None = None, search_query: str = ""
+    card_id: int,
+    page: int | None = None,
+    search_query: str = "",
+    preserve_history: bool = False,
 ) -> None:
     global _last_opened_pdf_cid
     card = mw.col.get_card(card_id)
@@ -363,6 +366,7 @@ def _open_pdf_card(
         zoom,
         read_page=read_page,
         search_query=search_query,
+        preserve_history=preserve_history,
     )
 
 
@@ -1906,6 +1910,10 @@ _statsAction = QAction("Statistics", mw)
 qconnect(_statsAction.triggered, showStatsFunction)
 _menu.addAction(_statsAction)
 _register_shortcut_action("statistics", _statsAction)
+
+_quickOpenPdfAction = QAction("Quick Open PDFs", mw)
+qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
+_menu.addAction(_quickOpenPdfAction)
 
 _searchAllAction = QAction("Search ALL", mw)
 qconnect(_searchAllAction.triggered, _open_search_all)
