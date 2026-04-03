@@ -7,6 +7,7 @@ from aqt.qt import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -17,6 +18,7 @@ from aqt.qt import (
     QPushButton,
     QSize,
     QSizePolicy,
+    QSlider,
     QSplitter,
     Qt,
     QTableWidget,
@@ -28,8 +30,20 @@ from PyQt6.QtPdf import QPdfDocument
 
 try:
     from .tag_edit import QuickTagEdit
+    from .priority_dialog import (
+        SLIDER_MAX,
+        _priority_mid,
+        _priority_to_slider,
+        _slider_to_priority,
+    )
 except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
+    from incremento.frontend.priority_dialog import (
+        SLIDER_MAX,
+        _priority_mid,
+        _priority_to_slider,
+        _slider_to_priority,
+    )
 
 
 class AddPdfDialog(QDialog):
@@ -47,10 +61,13 @@ class AddPdfDialog(QDialog):
 
         self._pdf_paths: list[str] = []
         self._tag_edits: dict[str, QuickTagEdit] = {}
+        self._row_heights: dict[str, int] = {}
         self._preview_cache: dict[str, QPixmap] = {}
         self._preview_inflight: set[str] = set()
         self._has_text: dict[str, bool | None] = {}  # None=detecting
         self._ocr_checks: dict[str, QCheckBox] = {}
+        self._priority_building = False
+        self._lower_priority_more_important = self._load_priority_direction()
 
         # Populated by _process_files; read by addPdfFunction after exec()
         self.created: list[tuple[str, str]] = []  # (path, title)
@@ -96,6 +113,7 @@ class AddPdfDialog(QDialog):
         self._table.setColumnWidth(1, 260)
         self._table.setColumnWidth(2, 155)
         self._table.setColumnWidth(3, 90)
+        self._table.verticalHeader().setDefaultSectionSize(42)
 
         self._table.currentCellChanged.connect(lambda row, *_: self._on_row_changed(row))
         left_layout.addWidget(self._table, stretch=1)
@@ -122,6 +140,42 @@ class AddPdfDialog(QDialog):
         if idx >= 0:
             self._deck_combo.setCurrentIndex(idx)
         form.addRow("Deck:", self._deck_combo)
+
+        priority_wrap = QWidget()
+        priority_layout = QVBoxLayout(priority_wrap)
+        priority_layout.setContentsMargins(0, 0, 0, 0)
+        priority_layout.setSpacing(4)
+
+        self._priority_slider = QSlider(Qt.Orientation.Horizontal)
+        self._priority_slider.setRange(0, SLIDER_MAX)
+        self._priority_slider.setTickInterval(SLIDER_MAX // 10)
+        self._priority_slider.setTickPosition(QSlider.TickPosition.NoTicks)
+        priority_layout.addWidget(self._priority_slider)
+
+        priority_bottom = QHBoxLayout()
+        priority_bottom.setContentsMargins(0, 0, 0, 0)
+        self._priority_spin = QDoubleSpinBox()
+        self._priority_spin.setRange(0.0, 100.0)
+        self._priority_spin.setDecimals(4)
+        self._priority_spin.setSingleStep(0.1)
+        self._priority_spin.setFixedWidth(110)
+        priority_bottom.addWidget(self._priority_spin)
+        priority_bottom.addStretch()
+        important_end = "0" if self._lower_priority_more_important else "100"
+        priority_hint = QLabel(f"{important_end} = highest importance, 50 = default")
+        priority_hint.setStyleSheet("font-size: 11px; color: gray;")
+        priority_bottom.addWidget(priority_hint)
+        priority_layout.addLayout(priority_bottom)
+
+        scale_row = QHBoxLayout()
+        scale_row.setContentsMargins(0, 0, 0, 0)
+        scale_row.addWidget(QLabel("0"))
+        scale_row.addStretch()
+        scale_row.addWidget(QLabel(str(int(_priority_mid(self._lower_priority_more_important)))))
+        scale_row.addStretch()
+        scale_row.addWidget(QLabel("100"))
+        priority_layout.addLayout(scale_row)
+        form.addRow("Priority:", priority_wrap)
 
         left_layout.addWidget(options_widget)
         splitter.addWidget(left)
@@ -172,6 +226,9 @@ class AddPdfDialog(QDialog):
         self._buttons.rejected.connect(self.reject)
         main_layout.addWidget(self._buttons)
 
+        self._priority_slider.valueChanged.connect(self._on_priority_slider_changed)
+        self._priority_spin.valueChanged.connect(self._on_priority_spin_changed)
+        self._set_priority_value(50.0)
         self._on_title_mode_changed(True)
 
     # ── File management ───────────────────────────────────────────────────────
@@ -206,7 +263,7 @@ class AddPdfDialog(QDialog):
 
         row_idx = self._table.rowCount()
         self._table.insertRow(row_idx)
-        self._table.setRowHeight(row_idx, 28)
+        self._table.setRowHeight(row_idx, 42)
 
         # Column 0: ✕ remove
         remove_btn = QPushButton("✕")
@@ -214,24 +271,29 @@ class AddPdfDialog(QDialog):
         remove_btn.setFlat(True)
         remove_btn.setToolTip("Remove this file")
         remove_btn.clicked.connect(lambda _=False, p=path: self._remove_row(p))
-        self._table.setCellWidget(row_idx, 0, remove_btn)
+        self._table.setCellWidget(row_idx, 0, self._wrap_cell_widget(remove_btn))
 
         # Column 1: filename
         name_item = QTableWidgetItem(Path(path).name)
         name_item.setData(Qt.ItemDataRole.UserRole, path)
         name_item.setToolTip(path)
+        name_item.setTextAlignment(
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        )
         self._table.setItem(row_idx, 1, name_item)
 
         # Column 2: per-file tags
         tag_edit = QuickTagEdit(compact=True)
-        self._table.setCellWidget(row_idx, 2, tag_edit)
+        tag_edit.setMinimumHeight(34)
+        self._table.setCellWidget(row_idx, 2, self._wrap_cell_widget(tag_edit, fill_width=True))
         self._tag_edits[path] = tag_edit
+        self._row_heights[path] = 42
 
         # Column 3: OCR detection placeholder
         lbl = QLabel("Detecting…")
         lbl.setStyleSheet("font-size: 10px; color: gray;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._table.setCellWidget(row_idx, 3, lbl)
+        self._table.setCellWidget(row_idx, 3, self._wrap_cell_widget(lbl))
         self._has_text[path] = None
 
         # Start background tasks
@@ -271,7 +333,7 @@ class AddPdfDialog(QDialog):
                 lbl = QLabel("—")
                 lbl.setStyleSheet("font-size: 10px; color: gray;")
                 lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setCellWidget(row, 3, lbl)
+                self._table.setCellWidget(row, 3, self._wrap_cell_widget(lbl))
             else:
                 try:
                     from ..backend.deps import has_tesseract, tesseract_instructions
@@ -282,7 +344,7 @@ class AddPdfDialog(QDialog):
                     cb.setChecked(True)
                     cb.setToolTip("Run Tesseract OCR to embed a text layer")
                     cb.setStyleSheet("font-size: 10px;")
-                    self._table.setCellWidget(row, 3, cb)
+                    self._table.setCellWidget(row, 3, self._wrap_cell_widget(cb))
                     self._ocr_checks[path] = cb
                 else:
                     lbl = QLabel("No OCR ⚠")
@@ -292,7 +354,7 @@ class AddPdfDialog(QDialog):
                         "This PDF has no selectable text and Tesseract is not installed.\n\n"
                         + tesseract_instructions()
                     )
-                    self._table.setCellWidget(row, 3, lbl)
+                    self._table.setCellWidget(row, 3, self._wrap_cell_widget(lbl))
 
         mw.taskman.run_in_background(check, on_done)
 
@@ -310,6 +372,7 @@ class AddPdfDialog(QDialog):
                 self._table.removeRow(row)
                 break
         self._tag_edits.pop(path, None)
+        self._row_heights.pop(path, None)
         self._preview_cache.pop(path, None)
         self._preview_inflight.discard(path)
         self._has_text.pop(path, None)
@@ -409,6 +472,7 @@ class AddPdfDialog(QDialog):
         self._error_lbl.setVisible(False)
 
         global_tags = self._global_tag_edit.tags()
+        priority = self.priority
         entries = []
         for path in self._pdf_paths:
             title = (
@@ -421,7 +485,7 @@ class AddPdfDialog(QDialog):
             merged = global_tags + [t for t in file_tags if t not in global_tags]
             ocr_check = self._ocr_checks.get(path)
             do_ocr = ocr_check is not None and ocr_check.isChecked()
-            entries.append((path, title, merged, do_ocr))
+            entries.append((path, title, merged, do_ocr, priority))
 
         # Lock the UI during adding
         self._ok_btn.setEnabled(False)
@@ -435,20 +499,21 @@ class AddPdfDialog(QDialog):
         row = self._find_row(path)
         if row < 0:
             return
+        self._table.setRowHeight(row, self._row_heights.get(path, 42))
         lbl = QLabel(text)
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         style = "font-size: 10px;"
         if color:
             style += f" color: {color};"
         lbl.setStyleSheet(style)
-        self._table.setCellWidget(row, 3, lbl)
+        self._table.setCellWidget(row, 3, self._wrap_cell_widget(lbl))
 
     def _process_files(self, entries: list, idx: int) -> None:
         if idx >= len(entries):
             self.accept()
             return
 
-        path, title, tags, do_ocr = entries[idx]
+        path, title, tags, do_ocr, priority = entries[idx]
         deck = self._deck_combo.currentText()
 
         try:
@@ -459,14 +524,17 @@ class AddPdfDialog(QDialog):
                 get_pdf_dir,
             )
             from ..backend.db import replace_pdf_text_index
+            from ..backend.priority_manager import set_priority
         except Exception:
             from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
             from db import replace_pdf_text_index
+            from priority_manager import set_priority
 
         self._set_row_status(path, "OCR…" if do_ocr else "Adding…")
 
         try:
             cid = add_pdf_card(self._addon_dir, mw.col, path, title, deck_name=deck, tags=tags)
+            set_priority(self._addon_dir, cid, priority)
         except Exception as e:
             self.failed.append((path, str(e)))
             self._set_row_status(path, "✗", color="red")
@@ -519,6 +587,52 @@ class AddPdfDialog(QDialog):
             "Derived from each file name" if checked else "Card title"
         )
 
+    def _wrap_cell_widget(self, widget: QWidget, *, fill_width: bool = False) -> QWidget:
+        host = QWidget(self._table)
+        layout = QHBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        if fill_width:
+            layout.addWidget(widget, 1, Qt.AlignmentFlag.AlignVCenter)
+        else:
+            layout.addStretch()
+            layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
+            layout.addStretch()
+        return host
+
+    def _load_priority_direction(self) -> bool:
+        try:
+            from ..backend.priority_manager import configured_priority_lower_is_more_important
+        except Exception:
+            from priority_manager import configured_priority_lower_is_more_important
+        return bool(configured_priority_lower_is_more_important())
+
+    def _set_priority_value(self, priority: float) -> None:
+        self._priority_building = True
+        self._priority_spin.setValue(round(float(priority), 4))
+        self._priority_slider.setValue(
+            _priority_to_slider(priority, self._lower_priority_more_important)
+        )
+        self._priority_building = False
+
+    def _on_priority_slider_changed(self, slider_value: int) -> None:
+        if self._priority_building:
+            return
+        self._priority_building = True
+        self._priority_spin.setValue(
+            _slider_to_priority(slider_value, self._lower_priority_more_important)
+        )
+        self._priority_building = False
+
+    def _on_priority_spin_changed(self, priority: float) -> None:
+        if self._priority_building:
+            return
+        self._priority_building = True
+        self._priority_slider.setValue(
+            _priority_to_slider(priority, self._lower_priority_more_important)
+        )
+        self._priority_building = False
+
     def _show_error(self, msg: str) -> None:
         self._error_lbl.setText(msg)
         self._error_lbl.setVisible(True)
@@ -544,6 +658,10 @@ class AddPdfDialog(QDialog):
     @property
     def deck_name(self) -> str:
         return self._deck_combo.currentText()
+
+    @property
+    def priority(self) -> float:
+        return round(self._priority_spin.value(), 4)
 
     def selected_entries(self) -> list[tuple[str, str, list[str]]]:
         """Return (path, title, tags) — kept for API compatibility."""

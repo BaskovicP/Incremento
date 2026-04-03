@@ -130,6 +130,7 @@ class QuickTagEdit(QWidget):
                 border: 1px solid #4b4f57;
                 border-radius: 10px;
                 padding: 4px;
+                background: #2a2d33;
             }
             """
         )
@@ -139,8 +140,8 @@ class QuickTagEdit(QWidget):
         row.setContentsMargins(8, 6, 8, 6)
         row.setSpacing(6)
 
-        icon = QLabel("\N{LABEL}")
-        icon.setStyleSheet("color: #b7b7b7;")
+        icon = QLabel("#")
+        icon.setStyleSheet("color: #d0d4db; font-weight: 700; font-size: 13px;")
         icon.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
         icon.setFixedWidth(16)
         row.addWidget(icon)
@@ -167,6 +168,9 @@ class QuickTagEdit(QWidget):
                 border: none;
                 background: transparent;
                 min-height: 24px;
+                color: #f1f3f5;
+                selection-background-color: #4a7ab5;
+                selection-color: #ffffff;
             }
             """
         )
@@ -248,6 +252,7 @@ class QuickTagEdit(QWidget):
                     border-radius: 9px;
                     padding: 2px 8px;
                     background: #3a3d43;
+                    color: #f1f3f5;
                 }
                 QToolButton:hover { background: #454952; }
                 """
