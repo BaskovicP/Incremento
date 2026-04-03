@@ -15,6 +15,8 @@ from browser_bridge import (
     normalize_update_web_card_payload,
     url_looks_like_pdf,
 )
+from webpage_markdown import convert_webpage_html_to_markdown
+from writing_manager import build_writing_relpath
 
 
 def test_build_writing_markdown_includes_source_and_selection():
@@ -27,6 +29,18 @@ def test_build_writing_markdown_includes_source_and_selection():
     assert "Source: https://example.com/article" in md
     assert "## Selected text" in md
     assert "Quoted passage" in md
+
+
+def test_build_writing_markdown_includes_page_markdown_body():
+    md = build_writing_markdown(
+        "Article Title",
+        "https://example.com/article",
+        page_markdown="## Body\n\nMain content",
+    )
+    assert md.startswith("# Article Title\n")
+    assert "Source: https://example.com/article" in md
+    assert "## Body" in md
+    assert "Main content" in md
 
 
 def test_normalize_add_content_payload_defaults_and_aliases():
@@ -46,6 +60,25 @@ def test_normalize_add_content_payload_defaults_and_aliases():
     assert payload["tags"] == ["alpha", "beta"]
     assert payload["priority"] == 50.0
     assert payload["html"] == "<html></html>"
+
+
+def test_normalize_add_content_payload_accepts_webpage_markdown_fields():
+    payload = normalize_add_content_payload(
+        {
+            "kind": "writing",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "writingMode": "webpage_markdown",
+            "pageContentScope": "full",
+            "preferredFilename": "example-123.md",
+            "html": "<html><body><main>Body</main></body></html>",
+        }
+    )
+    assert payload["kind"] == "writing"
+    assert payload["writing_mode"] == "webpage_markdown"
+    assert payload["page_content_scope"] == "full"
+    assert payload["preferred_filename"] == "example-123.md"
+    assert "main" in payload["html"].lower()
 
 
 def test_normalize_add_content_payload_accepts_video_alias():
@@ -201,6 +234,44 @@ def test_url_looks_like_pdf_checks_url_path():
     assert url_looks_like_pdf("https://example.com/files/doc.pdf")
     assert url_looks_like_pdf("https://example.com/files/doc.PDF?download=1")
     assert not url_looks_like_pdf("https://example.com/article")
+
+
+def test_convert_webpage_html_to_markdown_prefers_main_content():
+    result = convert_webpage_html_to_markdown(
+        "https://example.com/article",
+        """
+        <html>
+          <head><title>Example Article</title></head>
+          <body>
+            <header>Site header</header>
+            <nav>Navigation links</nav>
+            <article>
+              <h1>Article heading</h1>
+              <p>Paragraph one.</p>
+              <p>Paragraph two with <a href="/more">a link</a>.</p>
+            </article>
+            <footer>Footer text</footer>
+          </body>
+        </html>
+        """,
+        content_scope="main",
+    )
+    assert result["title"] == "Example Article"
+    assert "Article heading" in result["markdown"]
+    assert "Paragraph one." in result["markdown"]
+    assert "[a link](https://example.com/more)" in result["markdown"]
+    assert "Navigation links" not in result["markdown"]
+    assert "Footer text" not in result["markdown"]
+
+
+def test_build_writing_relpath_uses_uuid_suffix_for_repeated_titles():
+    path1 = build_writing_relpath("Repeated Title")
+    path2 = build_writing_relpath("Repeated Title")
+    assert path1.startswith("writing/Repeated_Title-")
+    assert path2.startswith("writing/Repeated_Title-")
+    assert path1.endswith(".md")
+    assert path2.endswith(".md")
+    assert path1 != path2
 
 
 def test_normalize_update_web_card_payload_accepts_valid_payload():

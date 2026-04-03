@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from collections import deque
 from collections.abc import Callable
 from html import unescape as _html_unescape
@@ -43,6 +44,7 @@ except ImportError:
 
 VIDEO_NOTE_TYPE = "Incremento Video"
 LOCAL_VIDEO_FIELD = "Local_Video_File"
+_INVISIBLE_DUPLICATE_MARK = "\u200b"
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -794,15 +796,7 @@ def _unique_target_path(out_dir: Path, stem: str, ext: str) -> Path:
     ext_norm = ext if ext.startswith(".") else f".{ext}"
     ext_norm = ext_norm.lower()
     base = _safe_video_slug(stem)
-    candidate = out_dir / f"{base}{ext_norm}"
-    if not candidate.exists():
-        return candidate
-    i = 2
-    while True:
-        candidate = out_dir / f"{base}_{i}{ext_norm}"
-        if not candidate.exists():
-            return candidate
-        i += 1
+    return out_dir / f"{base}-{uuid.uuid4().hex}{ext_norm}"
 
 
 def _copy_with_progress(
@@ -990,17 +984,6 @@ def download_and_compress_video(
     out_dir = Path(addon_dir) / "user_files" / "videos"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Reuse any existing local copy regardless of extension.
-    existing = None
-    for ext in _VIDEO_EXTS:
-        p = out_dir / f"{video_key}{ext}"
-        if p.exists() and p.stat().st_size > 0:
-            existing = p
-            break
-    if existing is not None and not overwrite:
-        _emit_progress(progress_cb, 100, "Using existing local video copy.")
-        return local_video_relpath(video_key, existing.suffix)
-
     yt_dlp_cmd, ffmpeg_bin = _video_tools()
     if not yt_dlp_cmd:
         raise RuntimeError(
@@ -1033,29 +1016,23 @@ def download_and_compress_video(
 
         if original_quality:
             final_ext = source_path.suffix.lower() or ".mp4"
-            final_path = out_dir / f"{video_key}{final_ext}"
-            if final_path.exists():
-                final_path.unlink()
+            final_path = _unique_target_path(out_dir, video_key, final_ext)
             source_path.replace(final_path)
             _emit_progress(progress_cb, 100, "Video ready (original quality).")
-            return local_video_relpath(video_key, final_path.suffix)
+            return f"videos/{final_path.name}"
 
         final_ext = ".mp4"
-        final_path = out_dir / f"{video_key}{final_ext}"
+        final_path = _unique_target_path(out_dir, video_key, final_ext)
         if ffmpeg_bin:
             encoded_path = tmp / f"{video_key}.compressed.mp4"
             _compress_video(ffmpeg_bin, source_path, encoded_path, progress_cb=progress_cb)
-            if final_path.exists():
-                final_path.unlink()
             encoded_path.replace(final_path)
         else:
             final_ext = source_path.suffix.lower() or ".mp4"
-            final_path = out_dir / f"{video_key}{final_ext}"
-            if final_path.exists():
-                final_path.unlink()
+            final_path = _unique_target_path(out_dir, video_key, final_ext)
             source_path.replace(final_path)
     _emit_progress(progress_cb, 100, "Video ready.")
-    return local_video_relpath(video_key, final_path.suffix)
+    return f"videos/{final_path.name}"
 
 
 def download_and_compress_youtube_video(
@@ -1195,20 +1172,32 @@ def add_video_card(
     else:
         deck_id = deck["id"]
     model = col.models.by_name(VIDEO_NOTE_TYPE)
-    note = col.new_note(model)
-    note["Title"] = title
-    note["YouTube_URL"] = youtube_url
-    try:
-        note[LOCAL_VIDEO_FIELD] = (local_video_file or "").strip()
-    except Exception:
-        pass
-    for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
-        if not tag:
+
+    def _build_note(stored_title: str):
+        note = col.new_note(model)
+        note["Title"] = stored_title
+        note["YouTube_URL"] = youtube_url
+        try:
+            note[LOCAL_VIDEO_FIELD] = (local_video_file or "").strip()
+        except Exception:
+            pass
+        for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
+            if not tag:
+                continue
+            if hasattr(note, "add_tag"):
+                note.add_tag(tag)
+            elif hasattr(note, "tags"):
+                note.tags.append(tag)
+        note.note_type()["did"] = deck_id
+        return note
+
+    for attempt in range(6):
+        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+        note = _build_note(stored_title)
+        added = col.add_note(note, deck_id)
+        if not added:
             continue
-        if hasattr(note, "add_tag"):
-            note.add_tag(tag)
-        elif hasattr(note, "tags"):
-            note.tags.append(tag)
-    note.note_type()["did"] = deck_id
-    col.add_note(note, deck_id)
-    return col.find_cards(f"nid:{note.id}")[0]
+        cards = col.find_cards(f"nid:{note.id}")
+        if cards:
+            return cards[0]
+    raise RuntimeError("Failed to add video card. Anki rejected the note.")

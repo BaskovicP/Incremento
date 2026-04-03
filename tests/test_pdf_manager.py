@@ -69,53 +69,31 @@ class TestCopyToPdfDir:
         src = _make_temp_pdf()
         try:
             dest_name = pdf_manager._copy_to_pdf_dir(src)
-            assert dest_name == os.path.basename(src)
+            assert dest_name.endswith(".pdf")
+            assert os.path.basename(src).replace(".pdf", "") in dest_name
         finally:
             os.unlink(src)
 
-    def test_same_content_reuses_existing_file(self):
-        """Copying the same file twice returns the same dest name, no suffix."""
+    def test_same_content_still_gets_distinct_uuid_names(self):
         src = _make_temp_pdf(b"%PDF-1.4 identical content")
         try:
             name1 = pdf_manager._copy_to_pdf_dir(src)
             name2 = pdf_manager._copy_to_pdf_dir(src)
-            assert name1 == name2
-            # Only one file should exist in the dest dir
+            assert name1 != name2
             pdfs = [f for f in os.listdir(self._tmp_pdf_dir) if f.endswith(".pdf")]
-            assert len(pdfs) == 1
+            assert len(pdfs) == 2
         finally:
             os.unlink(src)
 
-    def test_different_content_same_name_gets_numbered_suffix(self):
-        """Two files with the same name but different content → numbered suffix."""
-        # Pre-place a file in the dest dir
-        dest_name = "document.pdf"
-        dest_path = os.path.join(self._tmp_pdf_dir, dest_name)
-        with open(dest_path, "wb") as f:
-            f.write(b"%PDF original")
-
-        # Create source with same name but different content
+    def test_different_content_same_name_gets_uuid_suffix(self):
         src = os.path.join(tempfile.mkdtemp(), "document.pdf")
         with open(src, "wb") as f:
             f.write(b"%PDF different content abc123")
 
         result = pdf_manager._copy_to_pdf_dir(src)
-        assert result == "document (1).pdf"
-        assert os.path.isfile(os.path.join(self._tmp_pdf_dir, "document (1).pdf"))
-
-    def test_sequential_suffixes_increment(self):
-        """If (1) already exists, next conflict should produce (2)."""
-        for label in ("", " (1)"):
-            path = os.path.join(self._tmp_pdf_dir, f"report{label}.pdf")
-            with open(path, "wb") as f:
-                f.write(f"content {label}".encode())
-
-        src = os.path.join(tempfile.mkdtemp(), "report.pdf")
-        with open(src, "wb") as f:
-            f.write(b"completely new content xyz")
-
-        result = pdf_manager._copy_to_pdf_dir(src)
-        assert result == "report (2).pdf"
+        assert result.startswith("document-")
+        assert result.endswith(".pdf")
+        assert os.path.isfile(os.path.join(self._tmp_pdf_dir, result))
 
 
 # ---------------------------------------------------------------------------

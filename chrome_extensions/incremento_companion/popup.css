@@ -95,7 +95,8 @@ h1 {
   font-weight: 600;
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid rgba(83, 72, 54, 0.18);
@@ -106,7 +107,8 @@ h1 {
   color: inherit;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: 2px solid rgba(201, 118, 18, 0.24);
   border-color: rgba(201, 118, 18, 0.42);
 }

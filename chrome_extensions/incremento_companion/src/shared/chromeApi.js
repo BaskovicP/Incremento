@@ -5,11 +5,43 @@ export async function getActiveTab() {
 
 export async function captureSnapshot(tabId) {
   try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["dist/content.js"],
+    });
+  } catch (_err) {
+    // Ignore injection failures here; the direct page read below may still succeed.
+  }
+  try {
+    const fromContentScript = await new Promise((resolve) => {
+      try {
+        chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_CONTEXT" }, (response) => {
+          const error = chrome.runtime.lastError;
+          if (error || !response?.ok) {
+            resolve(null);
+            return;
+          }
+          resolve(response);
+        });
+      } catch (_err) {
+        resolve(null);
+      }
+    });
+    if (fromContentScript) {
+      return fromContentScript;
+    }
+  } catch (_err) {
+    // fall through to direct executeScript snapshot
+  }
+  try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
         const html = document.documentElement?.outerHTML || "";
-        const selectionText = (window.getSelection?.().toString() || "").trim();
+        const selectionText = (
+          (window.getSelection?.().toString() || "").trim()
+          || String(globalThis.__incrementoLastSelectedText || "").trim()
+        );
         return {
           html,
           selectionText,

@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ CARD_TEMPLATE_FRONT = """
 CARD_TEMPLATE_BACK = "{{Title}}"
 
 _SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+_INVISIBLE_DUPLICATE_MARK = "\u200b"
 
 
 def get_writing_dir() -> str:
@@ -42,21 +44,15 @@ def _sanitize_filename(raw: str, fallback: str = "writing-note") -> str:
     return f"{stem}{ext}"
 
 
-def _unique_filename_in_writing_dir(filename: str) -> str:
-    writing_dir = get_writing_dir()
+def _uuid_filename(filename: str) -> str:
     stem, ext = os.path.splitext(filename)
-    candidate = filename
-    i = 1
-    while os.path.exists(os.path.join(writing_dir, candidate)):
-        candidate = f"{stem} ({i}){ext}"
-        i += 1
-    return candidate
+    return f"{stem}-{uuid.uuid4().hex}{ext}"
 
 
 def build_writing_relpath(title: str, preferred_filename: str | None = None) -> str:
     base = preferred_filename if preferred_filename else title
     cleaned = _sanitize_filename(base, fallback="writing-note")
-    unique = _unique_filename_in_writing_dir(cleaned)
+    unique = _uuid_filename(cleaned)
     return f"writing/{unique}"
 
 
@@ -146,16 +142,27 @@ def add_writing_card(
         deck_id = deck["id"]
 
     model = col.models.by_name(WRITING_NOTE_TYPE)
-    note = col.new_note(model)
-    note["Title"] = title
-    note[WRITING_FILE_FIELD] = relpath
-    for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
-        if not tag:
+    def _build_note(stored_title: str):
+        note = col.new_note(model)
+        note["Title"] = stored_title
+        note[WRITING_FILE_FIELD] = relpath
+        for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
+            if not tag:
+                continue
+            if hasattr(note, "add_tag"):
+                note.add_tag(tag)
+            elif hasattr(note, "tags"):
+                note.tags.append(tag)
+        note.note_type()["did"] = deck_id
+        return note
+
+    for attempt in range(6):
+        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+        note = _build_note(stored_title)
+        added = col.add_note(note, deck_id)
+        if not added:
             continue
-        if hasattr(note, "add_tag"):
-            note.add_tag(tag)
-        elif hasattr(note, "tags"):
-            note.tags.append(tag)
-    note.note_type()["did"] = deck_id
-    col.add_note(note, deck_id)
-    return col.find_cards(f"nid:{note.id}")[0]
+        cards = col.find_cards(f"nid:{note.id}")
+        if cards:
+            return cards[0]
+    raise RuntimeError("Failed to add writing card. Anki rejected the note.")

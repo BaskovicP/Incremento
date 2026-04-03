@@ -216,6 +216,12 @@ class TestLocalVideoHelpers:
     def test_relpath_uses_videos_subfolder(self):
         assert local_video_relpath("dQw4w9WgXcQ") == "videos/dQw4w9WgXcQ.mp4"
 
+    def test_unique_target_path_uses_uuid_suffix(self, tmp_path):
+        got = _vm._unique_target_path(tmp_path, "lesson clip", ".mp4")
+        assert got.parent == tmp_path
+        assert got.name.startswith("lesson_clip-")
+        assert got.suffix == ".mp4"
+
     def test_abspath_accepts_user_files_prefix(self, tmp_path):
         got = local_video_abspath(str(tmp_path), "user_files/videos/a.mp4")
         assert got == os.path.join(str(tmp_path), "user_files", "videos", "a.mp4")

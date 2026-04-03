@@ -1,7 +1,7 @@
-import hashlib
 import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 
 from PyQt6.QtPdf import QPdfDocument
@@ -29,37 +29,22 @@ def get_pdf_dir() -> str:
 def _copy_to_pdf_dir(pdf_path: str) -> str:
     """Copy *pdf_path* into the profile PDF dir; return the stored filename.
 
-    If a file with the same name already exists and has identical content the
-    existing file is reused.  If the names collide but the content differs a
-    numeric suffix is appended (e.g. ``report (1).pdf``).
+    Stored filenames always get a UUID suffix so repeated imports never reuse
+    an older file just because the basename matches.
     """
     pdf_dir = get_pdf_dir()
-    dest_name = os.path.basename(pdf_path)
+    raw_name = os.path.basename(pdf_path)
+    stem, ext = os.path.splitext(raw_name)
+    stem = stem.strip() or "document"
+    ext = ext if ext.lower() == ".pdf" else ".pdf"
+    dest_name = f"{stem}-{uuid.uuid4().hex}{ext}"
     dest_path = os.path.join(pdf_dir, dest_name)
-
-    def _md5(path: str) -> str:
-        h = hashlib.md5()
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
-
-    if os.path.exists(dest_path):
-        if _md5(pdf_path) == _md5(dest_path):
-            return dest_name
-        stem, ext = os.path.splitext(dest_name)
-        n = 1
-        while True:
-            dest_name = f"{stem} ({n}){ext}"
-            dest_path = os.path.join(pdf_dir, dest_name)
-            if not os.path.exists(dest_path):
-                break
-            n += 1
 
     shutil.copy2(pdf_path, dest_path)
     return dest_name
 
 PDF_NOTE_TYPE = "Incremento PDF"
+_INVISIBLE_DUPLICATE_MARK = "\u200b"
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -400,23 +385,37 @@ def add_pdf_card(
         deck_id = deck["id"]
 
     model = col.models.by_name(PDF_NOTE_TYPE)
-    note = col.new_note(model)
-    note["Title"] = title
-    note["PDF_Filename"] = media_filename
 
     page_texts = extract_pdf_pages_text(dest_path)
-    for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
-        if not tag:
-            continue
-        if hasattr(note, "add_tag"):
-            note.add_tag(tag)
-        elif hasattr(note, "tags"):
-            note.tags.append(tag)
-    note.note_type()["did"] = deck_id
-    col.add_note(note, deck_id)
 
-    # Return the id of the first (and only) card created
-    cid = col.find_cards(f"nid:{note.id}")[0]
+    def _build_note(stored_title: str):
+        note = col.new_note(model)
+        note["Title"] = stored_title
+        note["PDF_Filename"] = media_filename
+        for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
+            if not tag:
+                continue
+            if hasattr(note, "add_tag"):
+                note.add_tag(tag)
+            elif hasattr(note, "tags"):
+                note.tags.append(tag)
+        note.note_type()["did"] = deck_id
+        return note
+
+    cid = 0
+    for attempt in range(6):
+        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+        note = _build_note(stored_title)
+        added = col.add_note(note, deck_id)
+        if not added:
+            continue
+        cards = col.find_cards(f"nid:{note.id}")
+        if cards:
+            cid = cards[0]
+            break
+    if not cid:
+        raise RuntimeError("Failed to add PDF card. Anki rejected the note.")
+
     try:
         replace_pdf_text_index(addon_dir, cid, page_texts)
     except Exception:

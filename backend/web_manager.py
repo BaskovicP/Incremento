@@ -4,6 +4,8 @@ except ImportError:
     from db import get_connection
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+_INVISIBLE_DUPLICATE_MARK = "\u200b"
+
 WEB_NOTE_TYPE = "Incremento Web"
 TRACK_CARD_ID_PARAM = "inc_card_id"
 TRACK_WEB_FLAG_PARAM = "inc_track_web"
@@ -109,16 +111,28 @@ def add_web_card(
     else:
         deck_id = deck["id"]
     model = col.models.by_name(WEB_NOTE_TYPE)
-    note = col.new_note(model)
-    note["Title"] = title
-    note["URL"] = url
-    for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
-        if not tag:
+
+    def _build_note(stored_title: str):
+        note = col.new_note(model)
+        note["Title"] = stored_title
+        note["URL"] = url
+        for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
+            if not tag:
+                continue
+            if hasattr(note, "add_tag"):
+                note.add_tag(tag)
+            elif hasattr(note, "tags"):
+                note.tags.append(tag)
+        note.note_type()["did"] = deck_id
+        return note
+
+    for attempt in range(6):
+        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+        note = _build_note(stored_title)
+        added = col.add_note(note, deck_id)
+        if not added:
             continue
-        if hasattr(note, "add_tag"):
-            note.add_tag(tag)
-        elif hasattr(note, "tags"):
-            note.tags.append(tag)
-    note.note_type()["did"] = deck_id
-    col.add_note(note, deck_id)
-    return col.find_cards(f"nid:{note.id}")[0]
+        cards = col.find_cards(f"nid:{note.id}")
+        if cards:
+            return cards[0]
+    raise RuntimeError("Failed to add web card. Anki rejected the note.")

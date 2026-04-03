@@ -1,5 +1,5 @@
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v2";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v3";
   if (window.__incrementoContentScriptVersion === CONTENT_SCRIPT_VERSION) {
     return;
   }
@@ -9,6 +9,16 @@
   const DEFAULT_PRIORITY = 50;
   const PRIORITY_MIN = 0;
   const PRIORITY_MAX = 100;
+  globalThis.__incrementoLastSelectedText = String(globalThis.__incrementoLastSelectedText || "").trim();
+
+  function getTrackedSelectionText() {
+    const current = String(window.getSelection?.().toString() || "").trim();
+    if (current) {
+      globalThis.__incrementoLastSelectedText = current;
+      return current;
+    }
+    return String(globalThis.__incrementoLastSelectedText || "").trim();
+  }
 
   function clampPriority(value) {
     const numeric = Number(value);
@@ -241,7 +251,7 @@
           sendResponse?.({ ok: true });
           return false;
         }
-        const selectedText = String(window.getSelection?.().toString() || "").trim();
+        const selectedText = getTrackedSelectionText();
         if (!selectedText) {
           showToast("Select text on the page first.");
           sendResponse?.({ ok: false });
@@ -256,6 +266,16 @@
           }
         );
         return true;
+      }
+      if (msg.type === "GET_PAGE_CONTEXT") {
+        sendResponse?.({
+          ok: true,
+          html: document.documentElement?.outerHTML || "",
+          selectionText: getTrackedSelectionText(),
+          title: document.title || "",
+          url: window.location.href || "",
+        });
+        return false;
       }
       return false;
     });
@@ -1225,7 +1245,7 @@
       context: {
         url: window.location.href || "",
         title: document.title || "",
-        selectedText: String(selectedText || "").trim(),
+        selectedText: String(selectedText || getTrackedSelectionText()).trim(),
       },
       snapshots: Array.isArray(snapshots) ? snapshots : [],
       statusKind: "",
@@ -1241,7 +1261,7 @@
       void startSnapshotCapture();
       return { ok: true };
     }
-    const selectedText = String(window.getSelection?.().toString() || "").trim();
+    const selectedText = getTrackedSelectionText();
     if (!selectedText) {
       showToast("Select text on the page first.");
       return { ok: false, error: "Select text on the page first." };
@@ -1275,7 +1295,7 @@
       return;
     }
 
-    const selectedText = String(window.getSelection?.().toString() || "").trim();
+    const selectedText = getTrackedSelectionText();
     if (!selectedText) {
       return;
     }
@@ -1285,6 +1305,27 @@
       showToast(error?.message || "Failed to open browser capture.");
       closeBrowserCaptureUi();
     });
+  }, true);
+
+  document.addEventListener("selectionchange", () => {
+    const selectedText = String(window.getSelection?.().toString() || "").trim();
+    if (selectedText) {
+      globalThis.__incrementoLastSelectedText = selectedText;
+    }
+  }, true);
+
+  document.addEventListener("mouseup", () => {
+    const selectedText = String(window.getSelection?.().toString() || "").trim();
+    if (selectedText) {
+      globalThis.__incrementoLastSelectedText = selectedText;
+    }
+  }, true);
+
+  document.addEventListener("keyup", () => {
+    const selectedText = String(window.getSelection?.().toString() || "").trim();
+    if (selectedText) {
+      globalThis.__incrementoLastSelectedText = selectedText;
+    }
   }, true);
 
   document.addEventListener("keydown", (event) => {

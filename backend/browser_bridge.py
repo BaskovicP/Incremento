@@ -2,12 +2,18 @@ import json
 import os
 import tempfile
 import threading
+import uuid
 from base64 import b64decode
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+
+try:
+    from .webpage_markdown import convert_webpage_html_to_markdown
+except ImportError:
+    from webpage_markdown import convert_webpage_html_to_markdown
 
 
 BRIDGE_HOST = "127.0.0.1"
@@ -17,6 +23,7 @@ BROWSER_CAPTURE_META_PATH = "/incremento/browser-capture-meta"
 WEB_TRACK_PATH = "/incremento/update-web-card"
 _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
 _MAX_HTML_CHARS = 2_000_000
+_MAX_MARKDOWN_CHARS = 2_000_000
 _MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
 _MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000
 
@@ -90,10 +97,16 @@ def download_pdf_from_url(url: str, dest_path: str, timeout_sec: float = 20.0) -
         handle.write(payload)
 
 
-def build_writing_markdown(title: str, url: str, selected_text: str = "") -> str:
+def build_writing_markdown(
+    title: str,
+    url: str,
+    selected_text: str = "",
+    page_markdown: str = "",
+) -> str:
     clean_title = _collapse_ws(title) or "Untitled"
     clean_url = normalize_http_url(url)
     clean_selection = str(selected_text or "").strip()
+    clean_page_markdown = str(page_markdown or "").strip()
 
     lines = [
         f"# {clean_title}",
@@ -101,6 +114,11 @@ def build_writing_markdown(title: str, url: str, selected_text: str = "") -> str
         f"Source: {clean_url}",
         "",
     ]
+    if clean_page_markdown:
+        lines.extend([
+            clean_page_markdown,
+            "",
+        ])
     if clean_selection:
         lines.extend([
             "## Selected text",
@@ -240,6 +258,16 @@ def normalize_add_content_payload(payload) -> dict:
     html = str(payload.get("html", "") or "")
     if len(html) > _MAX_HTML_CHARS:
         html = ""
+    markdown = str(payload.get("markdown", "") or "")
+    if len(markdown) > _MAX_MARKDOWN_CHARS:
+        raise ValueError("Markdown payload is too large.")
+    preferred_filename = _collapse_ws(payload.get("preferredFilename", ""))
+    raw_writing_mode = _collapse_ws(payload.get("writingMode", "")).lower()
+    if raw_writing_mode not in {"", "selection", "webpage_markdown"}:
+        raise ValueError("writingMode must be 'selection' or 'webpage_markdown'.")
+    raw_page_content_scope = _collapse_ws(payload.get("pageContentScope", "")).lower()
+    if raw_page_content_scope not in {"", "main", "full"}:
+        raise ValueError("pageContentScope must be 'main' or 'full'.")
     pdf_base64 = str(payload.get("pdfBase64", "") or "").strip()
     pdf_filename = _collapse_ws(payload.get("pdfFilename", ""))
 
@@ -252,6 +280,10 @@ def normalize_add_content_payload(payload) -> dict:
         "priority": _normalize_priority(payload.get("priority")),
         "selected_text": selected_text,
         "html": html,
+        "markdown": markdown,
+        "preferred_filename": preferred_filename,
+        "writing_mode": raw_writing_mode or "selection",
+        "page_content_scope": raw_page_content_scope or "main",
         "pdf_base64": pdf_base64,
         "pdf_filename": pdf_filename,
     }
@@ -411,7 +443,7 @@ def _sanitize_media_filename(raw_name: str, fallback_stem: str) -> str:
     if not stem:
         stem = fallback_stem
     ext = ".png"
-    return f"{stem}{ext}"
+    return f"{stem}-{uuid.uuid4().hex}{ext}"
 
 
 def _store_browser_capture_snapshot(col, snapshot: dict, title: str, index: int) -> str:
@@ -541,6 +573,10 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     priority = normalized["priority"]
     selected_text = normalized["selected_text"]
     html = normalized["html"]
+    markdown = normalized["markdown"]
+    preferred_filename = normalized["preferred_filename"]
+    writing_mode = normalized["writing_mode"]
+    page_content_scope = normalized["page_content_scope"]
     pdf_base64 = normalized["pdf_base64"]
 
     if kind == "video":
@@ -563,7 +599,22 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             tags=tags,
         )
     elif kind == "writing":
-        initial_markdown = build_writing_markdown(title, url, selected_text)
+        initial_markdown = str(markdown or "").strip()
+        if not initial_markdown and writing_mode == "webpage_markdown":
+            page_result = convert_webpage_html_to_markdown(
+                url,
+                html,
+                title=title,
+                content_scope=page_content_scope,
+            )
+            title = _collapse_ws(page_result.get("title", "")) or title
+            initial_markdown = build_writing_markdown(
+                title,
+                url,
+                page_markdown=page_result.get("markdown", ""),
+            )
+        if not initial_markdown:
+            initial_markdown = build_writing_markdown(title, url, selected_text)
         card_id = add_writing_card(
             _addon_dir,
             mw.col,
@@ -571,6 +622,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             deck_name=deck_name,
             tags=tags,
             initial_markdown=initial_markdown,
+            preferred_filename=preferred_filename,
         )
     else:
         fd, temp_pdf_path = tempfile.mkstemp(prefix="incremento-webpage-", suffix=".pdf")

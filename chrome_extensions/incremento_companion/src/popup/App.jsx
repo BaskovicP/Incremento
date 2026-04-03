@@ -16,6 +16,16 @@ function initialStatus() {
   return { text: "", kind: "" };
 }
 
+function buildPreferredWritingFilename(title, url) {
+  const base = String(title || url || "writing-note")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-._]+|[-._]+$/g, "")
+    || "writing-note";
+  return `${base}-${Date.now()}.md`;
+}
+
 export function PopupApp() {
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
@@ -23,6 +33,7 @@ export function PopupApp() {
   const [status, setStatus] = useState(initialStatus);
   const [title, setTitle] = useState("");
   const [commandShortcuts, setCommandShortcuts] = useState([]);
+  const [pageContentScope, setPageContentScope] = useState("main");
 
   const pageUrl = String(snapshot?.url || activeTab?.url || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
@@ -30,14 +41,14 @@ export function PopupApp() {
   const hasSupportedPage = Boolean(activeTab && isHttpUrl(pageUrl));
   const onVideoPage = isSupportedVideoUrl(pageUrl);
 
-  const selectionNote = useMemo(() => {
+  const writingNote = useMemo(() => {
     if (onVideoPage) {
       return "Video cards use the current YouTube or Vimeo URL.";
     }
     if (selectionText) {
-      return `Writing cards will include the current selection (${selectionText.length} chars).`;
+      return `Selection writing will use the current selection (${selectionText.length} chars). Page writing imports webpage content as markdown.`;
     }
-    return "Writing cards will start with the page title and source link.";
+    return "Selection writing uses the current selection when present. Page writing imports webpage content as markdown.";
   }, [onVideoPage, selectionText]);
 
   useEffect(() => {
@@ -90,6 +101,25 @@ export function PopupApp() {
     };
   }, []);
 
+  async function readCurrentPageContext() {
+    const tab = await getActiveTab();
+    let nextSnapshot = null;
+    if (tab?.id && isHttpUrl(String(tab.url || "").trim())) {
+      nextSnapshot = await captureSnapshot(tab.id);
+    }
+    if (tab) {
+      setActiveTab(tab);
+    }
+    setSnapshot(nextSnapshot);
+    return {
+      tab,
+      snapshot: nextSnapshot,
+      pageUrl: String(nextSnapshot?.url || tab?.url || "").trim(),
+      pageTitle: String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || tab?.url || "").trim(),
+      selectionText: String(nextSnapshot?.selectionText || ""),
+    };
+  }
+
   useEffect(() => {
     if (!busy && !hasSupportedPage) {
       setStatus({
@@ -99,31 +129,61 @@ export function PopupApp() {
     }
   }, [busy, hasSupportedPage]);
 
-  async function handleAdd(kind) {
-    if (!activeTab) {
+  async function handleAdd(kind, options = {}) {
+    const context = await readCurrentPageContext();
+    const currentTab = context.tab;
+    const currentSnapshot = context.snapshot;
+    const currentPageUrl = context.pageUrl;
+    const currentPageTitle = context.pageTitle;
+    const currentSelectionText = context.selectionText;
+
+    if (!currentTab) {
       setStatus({ text: "No active tab found.", kind: "error" });
       return;
     }
-    if (!isHttpUrl(pageUrl)) {
+    if (!isHttpUrl(currentPageUrl)) {
       setStatus({ text: "Only http(s) pages can be sent to Incremento.", kind: "error" });
       return;
     }
-    if (kind === "video" && !onVideoPage) {
+    if (kind === "video" && !isSupportedVideoUrl(currentPageUrl)) {
       setStatus({ text: "Open a YouTube or Vimeo page to add a video card.", kind: "error" });
       return;
     }
 
     const payload = {
       kind,
-      url: pageUrl,
-      title: title.trim() || pageTitle || pageUrl,
-      selectedText: selectionText,
+      url: currentPageUrl,
+      title: title.trim() || currentPageTitle || currentPageUrl,
+      selectedText: currentSelectionText,
     };
-    if (kind === "pdf" && snapshot?.html) {
-      payload.html = String(snapshot.html);
+    if (kind === "pdf" && currentSnapshot?.html) {
+      payload.html = String(currentSnapshot.html);
+    }
+    if (kind === "writing") {
+      const writingMode = String(options.writingMode || "selection");
+      payload.writingMode = writingMode;
+      payload.preferredFilename = buildPreferredWritingFilename(payload.title, currentPageUrl);
+      if (writingMode === "selection" && !currentSelectionText) {
+        setStatus({
+          text: "Select text on the page first.",
+          kind: "error",
+        });
+        return;
+      }
+      if (writingMode === "webpage_markdown") {
+        payload.pageContentScope = String(pageContentScope || "main");
+        if (!currentSnapshot?.html) {
+          setStatus({
+            text: "Could not read webpage content from this tab.",
+            kind: "error",
+          });
+          return;
+        }
+        payload.html = String(currentSnapshot.html);
+      }
     }
     if (kind === "pdf") {
-      const pdfPayload = await getPdfPayloadForUrl(pageUrl);
+      const pdfPayload = await getPdfPayloadForUrl(currentPageUrl);
       if (pdfPayload) {
         payload.pdfBase64 = pdfPayload.pdfBase64;
         payload.pdfFilename = pdfPayload.pdfFilename;
@@ -131,7 +191,12 @@ export function PopupApp() {
     }
 
     setBusy(true);
-    setStatus({ text: `Adding ${kind} card...`, kind: "" });
+    const statusLabel = (
+      kind === "writing" && payload.writingMode === "webpage_markdown"
+        ? "Adding writing card from webpage markdown..."
+        : `Adding ${kind} card...`
+    );
+    setStatus({ text: statusLabel, kind: "" });
     try {
       const result = await importIntoIncremento(payload);
       setStatus({ text: `Added ${result.kind} card: ${result.title}`, kind: "success" });
@@ -247,7 +312,18 @@ export function PopupApp() {
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
-        <p className="note" id="selection-note">{selectionNote}</p>
+        <p className="note" id="selection-note">{writingNote}</p>
+        <label className="field">
+          <span>Webpage markdown scope</span>
+          <select
+            id="writing-scope"
+            value={pageContentScope}
+            onChange={(event) => setPageContentScope(event.target.value)}
+          >
+            <option value="main">Main content</option>
+            <option value="full">Entire page</option>
+          </select>
+        </label>
         <div className="actions">
           <button
             className="kind-btn"
@@ -277,9 +353,17 @@ export function PopupApp() {
             className="kind-btn"
             data-kind="writing"
             disabled={busy || !hasSupportedPage}
-            onClick={() => void handleAdd("writing")}
+            onClick={() => void handleAdd("writing", { writingMode: "selection" })}
           >
-            Add as Writing
+            Add Selection as Writing
+          </button>
+          <button
+            className="kind-btn"
+            data-kind="writing-page"
+            disabled={busy || !hasSupportedPage}
+            onClick={() => void handleAdd("writing", { writingMode: "webpage_markdown" })}
+          >
+            Add Page as Writing
           </button>
         </div>
         <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
