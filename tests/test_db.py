@@ -93,6 +93,17 @@ class TestGetConnection:
         }
         assert "web_card_sources" in tables
 
+    def test_creates_web_progress_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir)
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "web_progress" in tables
+
     def test_db_file_created_inside_user_files(self):
         addon_dir = _fresh_dir()
         db.get_connection(addon_dir)
@@ -270,6 +281,46 @@ class TestWebCardSources:
         )
         assert [row["note_id"] for row in intro] == [1]
         assert [row["note_id"] for row in advanced] == [2]
+
+
+class TestWebProgressMigration:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_existing_url_only_web_progress_table_gets_new_columns(self):
+        db_path = os.path.join(self.addon_dir, "user_files", db.DB_NAME)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE web_progress (card_id INTEGER PRIMARY KEY, url TEXT NOT NULL DEFAULT '')"
+        )
+        conn.execute(
+            "INSERT INTO web_progress (card_id, url) VALUES (?, ?)",
+            (7, "https://example.com/legacy"),
+        )
+        conn.commit()
+        conn.close()
+
+        reopened = db.get_connection(self.addon_dir)
+        columns = {
+            row[1]
+            for row in reopened.execute("PRAGMA table_info(web_progress)").fetchall()
+        }
+        assert "url" in columns
+        assert "scroll_ratio" in columns
+        assert "bookmark_url" in columns
+        assert "bookmark_payload" in columns
+
+        row = reopened.execute(
+            "SELECT url, scroll_ratio, bookmark_url, bookmark_payload "
+            "FROM web_progress WHERE card_id = ?",
+            (7,),
+        ).fetchone()
+        assert row == ("https://example.com/legacy", 0.0, "", "")
 
 
 # ---------------------------------------------------------------------------

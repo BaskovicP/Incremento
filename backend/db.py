@@ -15,6 +15,7 @@ priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
+web_progress    — last URL, scroll position, and bookmark state per web card
 """
 
 import atexit
@@ -119,8 +120,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS web_progress (
-            card_id INTEGER PRIMARY KEY,
-            url     TEXT    NOT NULL DEFAULT ''
+            card_id          INTEGER PRIMARY KEY,
+            url              TEXT    NOT NULL DEFAULT '',
+            scroll_ratio     REAL    NOT NULL DEFAULT 0.0,
+            bookmark_url     TEXT    NOT NULL DEFAULT '',
+            bookmark_payload TEXT    NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS pdf_card_sources (
@@ -186,6 +190,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         conn.commit()
     except Exception:
         pass  # column already exists
+    for statement in (
+        "ALTER TABLE web_progress ADD COLUMN scroll_ratio REAL NOT NULL DEFAULT 0.0",
+        "ALTER TABLE web_progress ADD COLUMN bookmark_url TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE web_progress ADD COLUMN bookmark_payload TEXT NOT NULL DEFAULT ''",
+    ):
+        try:
+            conn.execute(statement)
+            conn.commit()
+        except Exception:
+            pass
 
 
 # ── Export helpers (called by the export function in __init__.py) ─────────────

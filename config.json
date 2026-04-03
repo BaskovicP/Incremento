@@ -6,6 +6,7 @@
     },
     "extract_notetype": "",
     "priority_lower_is_more_important": true,
+    "remember_browser_card_scroll": true,
     "show_priority_dialog_after_answer": false,
     "scheduler_scope": "session"
 }

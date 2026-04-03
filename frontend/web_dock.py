@@ -37,6 +37,7 @@ from aqt.qt import (
     QShortcut,
     QKeySequence,
     QTextBrowser,
+    QTimer,
     QVBoxLayout,
     QWidget,
     Qt,
@@ -53,8 +54,12 @@ try:
         WEB_NOTE_TYPE,
         add_web_card,
         build_external_web_url,
+        configured_remember_browser_card_scroll,
         ensure_web_note_type,
+        get_web_progress,
         get_web_url,
+        set_web_bookmark,
+        set_web_scroll_position,
         set_web_url,
     )
 except ImportError:
@@ -63,8 +68,12 @@ except ImportError:
         WEB_NOTE_TYPE,
         add_web_card,
         build_external_web_url,
+        configured_remember_browser_card_scroll,
         ensure_web_note_type,
+        get_web_progress,
         get_web_url,
+        set_web_bookmark,
+        set_web_scroll_position,
         set_web_url,
     )
 
@@ -80,6 +89,7 @@ _PYCMD_BRIDGE = "__incremento_webdock_pycmd__:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MSG_FILL_FIELD = "incremento_web_fill_field:"
 _MSG_SNAPSHOT = "incremento_web_snapshot:"
+_MSG_PROGRESS = "incremento_web_progress:"
 _track_web_window_with_extension = False
 _web_shortcuts_registered = False
 _web_shortcuts = []
@@ -89,6 +99,55 @@ _web_snapshot_origin = None
 _web_snapshot_shield = None
 _web_snapshot_overlay = None
 _web_snapshot_override_cursor = False
+_pending_web_restore = None
+
+
+def _remember_browser_card_scroll() -> bool:
+    try:
+        return bool(configured_remember_browser_card_scroll())
+    except Exception:
+        return True
+
+
+def _web_progress_state(card_id: int | None = None) -> dict:
+    try:
+        target_card_id = int(card_id if card_id is not None else _current_web_card_id)
+    except Exception:
+        target_card_id = 0
+    if target_card_id <= 0:
+        return {
+            "url": "",
+            "scroll_ratio": 0.0,
+            "bookmark_url": "",
+            "bookmark_payload": {},
+        }
+    try:
+        return get_web_progress(_ADDON_DIR, target_card_id)
+    except Exception:
+        return {
+            "url": "",
+            "scroll_ratio": 0.0,
+            "bookmark_url": "",
+            "bookmark_payload": {},
+        }
+
+
+def _refresh_web_bookmark_button() -> None:
+    if _web_dock is None:
+        return
+    progress = _web_progress_state()
+    has_bookmark = bool(progress.get("bookmark_url")) and bool(
+        progress.get("bookmark_payload")
+    )
+    try:
+        _web_dock._bookmark_btn.setText("Bookmark")
+        _web_dock._bookmark_btn.setToolTip(
+            "Replace the saved browser-card bookmark with the current reading position."
+            if has_bookmark
+            else "Save the current reading position as the browser-card bookmark."
+        )
+    except Exception:
+        pass
 
 
 def _persist_web_url(card_id: int | None, url: str | None) -> None:
@@ -101,6 +160,59 @@ def _persist_web_url(card_id: int | None, url: str | None) -> None:
         return
     try:
         set_web_url(_ADDON_DIR, target_card_id, target_url)
+    except Exception:
+        pass
+
+
+def _persist_web_scroll(card_id: int | None, data) -> None:
+    if not _remember_browser_card_scroll():
+        return
+    try:
+        target_card_id = int(card_id if card_id is not None else _current_web_card_id)
+    except Exception:
+        target_card_id = 0
+    if target_card_id <= 0 or not isinstance(data, dict):
+        return
+    target_url = str(data.get("url") or "").strip()
+    if not target_url or target_url == "about:blank":
+        return
+    try:
+        scroll_ratio = float(data.get("scrollRatio", 0.0) or 0.0)
+    except Exception:
+        scroll_ratio = 0.0
+    try:
+        set_web_scroll_position(
+            _ADDON_DIR,
+            target_card_id,
+            target_url,
+            max(0.0, min(scroll_ratio, 1.0)),
+        )
+    except Exception:
+        pass
+
+
+def _persist_current_web_state() -> None:
+    try:
+        target_card_id = int(_current_web_card_id) if _current_web_card_id is not None else 0
+    except Exception:
+        target_card_id = 0
+    if _web_dock is None:
+        _persist_web_url(target_card_id, _current_web_display_url())
+        return
+    current_url = _current_web_display_url()
+    _persist_web_url(target_card_id, current_url)
+    if not _remember_browser_card_scroll():
+        return
+    try:
+        _web_dock._view.page().runJavaScript(
+            "(function(){"
+            "  if (window.incrementoGetProgressPayload) {"
+            "    return window.incrementoGetProgressPayload();"
+            "  }"
+            "  return {url: window.location.href || '', scrollRatio: 0};"
+            "})();",
+            lambda data, card_id=target_card_id: _persist_web_scroll(card_id, data),
+        )
     except Exception:
         pass
 
@@ -179,6 +291,13 @@ class _WebDockPage(QWebEnginePage):
                 _handle_web_snapshot(data)
             except Exception as exc:
                 showInfo(f"Web snapshot failed:\n{exc}")
+            return
+        if msg.startswith(_MSG_PROGRESS):
+            try:
+                data = json.loads(msg[len(_MSG_PROGRESS) :])
+                _persist_web_scroll(_current_web_card_id, data)
+            except Exception:
+                pass
 
 
 class _WebInteractionFilter(QObject):
@@ -292,158 +411,583 @@ class _WebInteractionFilter(QObject):
 
 
 def _build_web_bridge_js() -> str:
+    script = """
+window.pycmd = function(msg) {
+  console.log(__PYCMD_PREFIX__ + msg);
+};
+(function() {
+  if (window._incrementoWebBridgeInstalled) {
+    return;
+  }
+  window._incrementoWebBridgeInstalled = true;
+  window._incrementoLastSelection = '';
+  window._incrementoWebSnapshotActive = false;
+  window._incrementoWebSnapshotBox = null;
+  window._incrementoWebSnapshotStart = null;
+  window._incrementoWebBookmarkTarget = null;
+  window._incrementoWebProgressTimer = null;
+
+  function clamp(value, minValue, maxValue) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) {
+      n = minValue;
+    }
+    return Math.max(minValue, Math.min(maxValue, n));
+  }
+
+  function maxScroll() {
+    var doc = document.documentElement || document.body;
+    return Math.max(0, ((doc && doc.scrollHeight) || 0) - window.innerHeight);
+  }
+
+  function currentScrollRatio() {
+    var limit = maxScroll();
+    return limit > 0 ? clamp(window.scrollY / limit, 0, 1) : 0;
+  }
+
+  function progressPayload() {
+    return {
+      url: window.location.href || '',
+      scrollRatio: currentScrollRatio()
+    };
+  }
+
+  function emitProgress() {
+    window.pycmd(__MSG_PROGRESS__ + JSON.stringify(progressPayload()));
+  }
+
+  function scheduleProgress() {
+    if (window._incrementoWebProgressTimer) {
+      clearTimeout(window._incrementoWebProgressTimer);
+    }
+    window._incrementoWebProgressTimer = setTimeout(function() {
+      window._incrementoWebProgressTimer = null;
+      emitProgress();
+    }, 180);
+  }
+
+  function rootElement() {
+    if (document.body) {
+      return document.body;
+    }
+    if (document.documentElement) {
+      return document.documentElement;
+    }
+    return null;
+  }
+
+  function bookmarkProbeY() {
+    return Math.min(Math.max(72, window.innerHeight * 0.22), Math.max(0, window.innerHeight - 6));
+  }
+
+  function bookmarkProbeX() {
+    return Math.min(Math.max(12, window.innerWidth * 0.5), Math.max(0, window.innerWidth - 12));
+  }
+
+  function buildNodePath(el) {
+    var root = rootElement();
+    if (!root || !el) {
+      return [];
+    }
+    var path = [];
+    var node = el;
+    while (node && node !== root) {
+      var parent = node.parentElement;
+      if (!parent) {
+        return [];
+      }
+      var index = Array.prototype.indexOf.call(parent.children, node);
+      if (index < 0) {
+        return [];
+      }
+      path.unshift(index);
+      node = parent;
+    }
+    return path;
+  }
+
+  function buildDomPath(node) {
+    var root = rootElement();
+    if (!root || !node) {
+      return [];
+    }
+    var path = [];
+    var current = node;
+    while (current && current !== root) {
+      var parent = current.parentNode;
+      if (!parent) {
+        return [];
+      }
+      var index = Array.prototype.indexOf.call(parent.childNodes, current);
+      if (index < 0) {
+        return [];
+      }
+      path.unshift(index);
+      current = parent;
+    }
+    return path;
+  }
+
+  function nodeFromPath(path) {
+    var root = rootElement();
+    if (!root || !Array.isArray(path)) {
+      return null;
+    }
+    var node = root;
+    for (var i = 0; i < path.length; i += 1) {
+      var index = Number(path[i]);
+      if (!Number.isInteger(index) || index < 0 || index >= node.children.length) {
+        return null;
+      }
+      node = node.children[index];
+    }
+    return node;
+  }
+
+  function nodeFromDomPath(path) {
+    var root = rootElement();
+    if (!root || !Array.isArray(path)) {
+      return null;
+    }
+    var node = root;
+    for (var i = 0; i < path.length; i += 1) {
+      var index = Number(path[i]);
+      if (!Number.isInteger(index) || index < 0 || index >= node.childNodes.length) {
+        return null;
+      }
+      node = node.childNodes[index];
+    }
+    return node;
+  }
+
+  function isIgnorableElement(el) {
+    if (!el || !el.tagName) {
+      return true;
+    }
+    return ['HTML', 'BODY', 'SCRIPT', 'STYLE', 'NOSCRIPT'].indexOf(el.tagName) >= 0;
+  }
+
+  function pickBookmarkElement() {
+    var el = document.elementFromPoint(bookmarkProbeX(), bookmarkProbeY());
+    if (!el) {
+      return null;
+    }
+    if (el.nodeType === Node.TEXT_NODE) {
+      el = el.parentElement;
+    }
+    while (el && isIgnorableElement(el)) {
+      el = el.parentElement;
+    }
+    while (el && el.parentElement && el.getBoundingClientRect) {
+      var rect = el.getBoundingClientRect();
+      if (rect.height >= 18 && rect.width >= 18) {
+        break;
+      }
+      el = el.parentElement;
+      if (isIgnorableElement(el)) {
+        break;
+      }
+    }
+    return el && !isIgnorableElement(el) ? el : null;
+  }
+
+  function clearBookmarkMarker() {
+    var target = window._incrementoWebBookmarkTarget;
+    try {
+      if (window._incrementoWebBookmarkSelectionApplied) {
+        var sel = window.getSelection ? window.getSelection() : null;
+        if (sel) {
+          sel.removeAllRanges();
+        }
+      }
+    } catch (_err) {}
+    window._incrementoWebBookmarkSelectionApplied = false;
+    if (!target) {
+      return;
+    }
+    try {
+      if (Object.prototype.hasOwnProperty.call(target, '__incrementoBookmarkPrevOutline')) {
+        target.style.outline = target.__incrementoBookmarkPrevOutline;
+      }
+      if (Object.prototype.hasOwnProperty.call(target, '__incrementoBookmarkPrevOutlineOffset')) {
+        target.style.outlineOffset = target.__incrementoBookmarkPrevOutlineOffset;
+      }
+      if (Object.prototype.hasOwnProperty.call(target, '__incrementoBookmarkPrevBoxShadow')) {
+        target.style.boxShadow = target.__incrementoBookmarkPrevBoxShadow;
+      }
+      if (Object.prototype.hasOwnProperty.call(target, '__incrementoBookmarkPrevBackground')) {
+        target.style.backgroundColor = target.__incrementoBookmarkPrevBackground;
+      }
+      if (Object.prototype.hasOwnProperty.call(target, '__incrementoBookmarkPrevTransition')) {
+        target.style.transition = target.__incrementoBookmarkPrevTransition;
+      }
+    } catch (_err) {}
+    window._incrementoWebBookmarkTarget = null;
+  }
+
+  function clampRangeOffset(node, offset) {
+    var n = Number(offset);
+    if (!Number.isFinite(n)) {
+      n = 0;
+    }
+    n = Math.max(0, Math.floor(n));
+    if (!node) {
+      return 0;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      return Math.min(n, (node.textContent || '').length);
+    }
+    return Math.min(n, node.childNodes ? node.childNodes.length : 0);
+  }
+
+  function bookmarkRange(bookmark) {
+    if (
+      !bookmark ||
+      !Array.isArray(bookmark.selectionStartPath) ||
+      !Array.isArray(bookmark.selectionEndPath)
+    ) {
+      return null;
+    }
+    var startNode = nodeFromDomPath(bookmark.selectionStartPath);
+    var endNode = nodeFromDomPath(bookmark.selectionEndPath);
+    if (!startNode || !endNode) {
+      return null;
+    }
+    try {
+      var range = document.createRange();
+      range.setStart(startNode, clampRangeOffset(startNode, bookmark.selectionStartOffset));
+      range.setEnd(endNode, clampRangeOffset(endNode, bookmark.selectionEndOffset));
+      return range;
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function applyBookmarkMarker(bookmark) {
+    clearBookmarkMarker();
+    if (!bookmark || !Array.isArray(bookmark.path)) {
+      return false;
+    }
+    var range = bookmarkRange(bookmark);
+    if (range) {
+      try {
+        var sel = window.getSelection ? window.getSelection() : null;
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range.cloneRange());
+          window._incrementoWebBookmarkSelectionApplied = true;
+        }
+      } catch (_err) {}
+    }
+    var el = nodeFromPath(bookmark.path);
+    if (!el || !el.style) {
+      return false;
+    }
+    try {
+      el.__incrementoBookmarkPrevOutline = el.style.outline;
+      el.__incrementoBookmarkPrevOutlineOffset = el.style.outlineOffset;
+      el.__incrementoBookmarkPrevBoxShadow = el.style.boxShadow;
+      el.__incrementoBookmarkPrevBackground = el.style.backgroundColor;
+      el.__incrementoBookmarkPrevTransition = el.style.transition;
+      el.style.transition = 'outline-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease';
+      el.style.outline = '3px solid rgba(245, 158, 11, 0.96)';
+      el.style.outlineOffset = '2px';
+      el.style.boxShadow = '0 0 0 6px rgba(245, 158, 11, 0.18)';
+      el.style.backgroundColor = 'rgba(245, 158, 11, 0.08)';
+      window._incrementoWebBookmarkTarget = el;
+      return true;
+    } catch (_err) {
+      window._incrementoWebBookmarkTarget = null;
+      return false;
+    }
+  }
+
+  function scrollToBookmark(bookmark) {
+    if (!bookmark || !Array.isArray(bookmark.path)) {
+      return false;
+    }
+    var range = bookmarkRange(bookmark);
+    if (range) {
+      try {
+        var rangeRect = range.getBoundingClientRect();
+        if (rangeRect && (rangeRect.height > 0 || rangeRect.width > 0)) {
+          var rangeTop = window.scrollY + rangeRect.top - Math.min(140, window.innerHeight * 0.22);
+          window.scrollTo(0, Math.max(0, rangeTop));
+          applyBookmarkMarker(bookmark);
+          scheduleProgress();
+          return true;
+        }
+      } catch (_err) {}
+    }
+    var el = nodeFromPath(bookmark.path);
+    if (!el || !el.getBoundingClientRect) {
+      return false;
+    }
+    var rect = el.getBoundingClientRect();
+    var offsetRatio = clamp(bookmark.offsetRatio || 0, 0, 1);
+    var desiredTop = window.scrollY + rect.top + (rect.height * offsetRatio) - Math.min(140, window.innerHeight * 0.22);
+    window.scrollTo(0, Math.max(0, desiredTop));
+    applyBookmarkMarker(bookmark);
+    scheduleProgress();
+    return true;
+  }
+
+  window.incrementoGetProgressPayload = function() {
+    return progressPayload();
+  };
+
+  window.incrementoCaptureBookmark = function() {
+    var sel = window.getSelection ? window.getSelection() : null;
+    var selectedText = sel ? sel.toString().trim() : '';
+    if (sel && sel.rangeCount > 0 && selectedText) {
+      try {
+        var range = sel.getRangeAt(0).cloneRange();
+        var startNode = range.startContainer;
+        var endNode = range.endContainer;
+        var anchorEl =
+          startNode && startNode.nodeType === Node.TEXT_NODE
+            ? startNode.parentElement
+            : startNode;
+        while (anchorEl && isIgnorableElement(anchorEl)) {
+          anchorEl = anchorEl.parentElement;
+        }
+        if (anchorEl) {
+          var anchorRect = anchorEl.getBoundingClientRect();
+          var selectionBookmark = {
+            mode: 'selection',
+            path: buildNodePath(anchorEl),
+            offsetRatio: anchorRect.height > 1 ? clamp((range.getBoundingClientRect().top - anchorRect.top) / anchorRect.height, 0, 1) : 0,
+            scrollRatio: currentScrollRatio(),
+            tag: ((anchorEl.tagName || '').toLowerCase()),
+            text: selectedText.slice(0, 240),
+            selectionStartPath: buildDomPath(startNode),
+            selectionStartOffset: range.startOffset,
+            selectionEndPath: buildDomPath(endNode),
+            selectionEndOffset: range.endOffset
+          };
+          if (selectionBookmark.path.length && selectionBookmark.selectionStartPath.length && selectionBookmark.selectionEndPath.length) {
+            applyBookmarkMarker(selectionBookmark);
+            return {
+              url: window.location.href || '',
+              bookmark: selectionBookmark
+            };
+          }
+        }
+      } catch (_err) {}
+    }
+    var el = pickBookmarkElement();
+    if (!el) {
+      return null;
+    }
+    var rect = el.getBoundingClientRect();
+    var offsetRatio = rect.height > 1 ? clamp((bookmarkProbeY() - rect.top) / rect.height, 0, 1) : 0;
+    var bookmark = {
+      path: buildNodePath(el),
+      offsetRatio: offsetRatio,
+      scrollRatio: currentScrollRatio(),
+      tag: ((el.tagName || '').toLowerCase()),
+      text: ((el.innerText || el.textContent || '').trim().slice(0, 240))
+    };
+    if (!bookmark.path.length) {
+      return null;
+    }
+    applyBookmarkMarker(bookmark);
+    return {
+      url: window.location.href || '',
+      bookmark: bookmark
+    };
+  };
+
+  window.incrementoApplyBookmarkMarker = function(bookmark) {
+    return applyBookmarkMarker(bookmark);
+  };
+
+  window.incrementoApplyRestoreState = function(state) {
+    var restore = state || {};
+    var bookmark = restore.bookmark || null;
+    var rememberScroll = !!restore.rememberScroll;
+    var scrollRatio = clamp(restore.scrollRatio || 0, 0, 1);
+
+    function attemptRestore() {
+      if (bookmark && scrollToBookmark(bookmark)) {
+        return true;
+      }
+      if (bookmark) {
+        applyBookmarkMarker(bookmark);
+      }
+      if (rememberScroll) {
+        window.scrollTo(0, maxScroll() * scrollRatio);
+        scheduleProgress();
+      }
+      return false;
+    }
+
+    setTimeout(attemptRestore, 60);
+    setTimeout(attemptRestore, 220);
+    return true;
+  };
+
+  window.incrementoDisableSnapshotMode = function() {
+    return setSnapshotActive(false);
+  };
+
+  function ensureBox() {
+    if (window._incrementoWebSnapshotBox && document.documentElement && document.documentElement.contains(window._incrementoWebSnapshotBox)) {
+      return window._incrementoWebSnapshotBox;
+    }
+    var box = document.createElement('div');
+    box.style.position = 'fixed';
+    box.style.zIndex = '2147483647';
+    box.style.border = '2px solid rgba(37,99,235,0.95)';
+    box.style.background = 'rgba(37,99,235,0.16)';
+    box.style.pointerEvents = 'none';
+    box.style.display = 'none';
+    box.style.boxSizing = 'border-box';
+    document.documentElement.appendChild(box);
+    window._incrementoWebSnapshotBox = box;
+    return box;
+  }
+
+  function hideBox() {
+    var box = ensureBox();
+    box.style.display = 'none';
+  }
+
+  function drawBox(a, b) {
+    var box = ensureBox();
+    var left = Math.min(a.x, b.x);
+    var top = Math.min(a.y, b.y);
+    var width = Math.abs(a.x - b.x);
+    var height = Math.abs(a.y - b.y);
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+    box.style.width = width + 'px';
+    box.style.height = height + 'px';
+    box.style.display = 'block';
+  }
+
+  function setSnapshotActive(active) {
+    window._incrementoWebSnapshotActive = !!active;
+    if (!window._incrementoWebSnapshotActive) {
+      window._incrementoWebSnapshotStart = null;
+      hideBox();
+    }
+    try {
+      document.documentElement.style.cursor = window._incrementoWebSnapshotActive ? 'crosshair' : '';
+      if (document.body) {
+        document.body.style.cursor = window._incrementoWebSnapshotActive ? 'crosshair' : '';
+      }
+    } catch (_err) {}
+    return window._incrementoWebSnapshotActive;
+  }
+
+  window.incrementoToggleSnapshotMode = function() {
+    return setSnapshotActive(!window._incrementoWebSnapshotActive);
+  };
+
+  document.addEventListener('selectionchange', function() {
+    var sel = window.getSelection ? window.getSelection() : null;
+    var text = sel ? sel.toString().trim() : '';
+    if (!text) {
+      return;
+    }
+    window._incrementoLastSelection = text;
+    window.pycmd(__MSG_SELECTION__ + JSON.stringify({source: 'web', hasText: true}));
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && window._incrementoWebSnapshotActive) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSnapshotActive(false);
+      return;
+    }
+    if (!(e.metaKey || e.ctrlKey)) {
+      return;
+    }
+    var map = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 };
+    var idx = Object.prototype.hasOwnProperty.call(map, e.code) ? map[e.code] : null;
+    if (idx === null) {
+      var n = parseInt(e.key, 10);
+      if (!Number.isNaN(n) && n >= 1 && n <= 4) {
+        idx = n - 1;
+      }
+    }
+    if (idx === null) {
+      return;
+    }
+    var sel = window.getSelection ? window.getSelection() : null;
+    var text = sel ? sel.toString().trim() : '';
+    if (!text) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    window._incrementoLastSelection = text;
+    window.pycmd(__MSG_FILL__ + JSON.stringify({
+      idx: idx,
+      text: text,
+      url: window.location.href || ''
+    }));
+  }, true);
+
+  document.addEventListener('mousedown', function(e) {
+    if (!window._incrementoWebSnapshotActive || e.button !== 0) {
+      return;
+    }
+    window._incrementoWebSnapshotStart = { x: e.clientX, y: e.clientY };
+    drawBox(window._incrementoWebSnapshotStart, window._incrementoWebSnapshotStart);
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  document.addEventListener('mousemove', function(e) {
+    if (!window._incrementoWebSnapshotActive || !window._incrementoWebSnapshotStart) {
+      return;
+    }
+    drawBox(window._incrementoWebSnapshotStart, { x: e.clientX, y: e.clientY });
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  document.addEventListener('mouseup', function(e) {
+    if (!window._incrementoWebSnapshotActive || !window._incrementoWebSnapshotStart || e.button !== 0) {
+      return;
+    }
+    var start = window._incrementoWebSnapshotStart;
+    var end = { x: e.clientX, y: e.clientY };
+    var left = Math.min(start.x, end.x);
+    var top = Math.min(start.y, end.y);
+    var width = Math.abs(start.x - end.x);
+    var height = Math.abs(start.y - end.y);
+    window._incrementoWebSnapshotStart = null;
+    setSnapshotActive(false);
+    if (width < 6 || height < 6) {
+      return;
+    }
+    window.pycmd(__MSG_SNAPSHOT__ + JSON.stringify({
+      x: left,
+      y: top,
+      width: width,
+      height: height,
+      url: window.location.href || ''
+    }));
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
+  window.addEventListener('scroll', scheduleProgress, { passive: true });
+  window.addEventListener('resize', scheduleProgress);
+  window.addEventListener('beforeunload', emitProgress);
+  window.addEventListener('pagehide', emitProgress);
+})();
+"""
     return (
-        f"window.pycmd = function(msg) {{"
-        f"  console.log('{_PYCMD_BRIDGE}' + msg);"
-        f"}};"
-        "(function() {"
-        "  if (window._incrementoWebBridgeInstalled) {"
-        "    return;"
-        "  }"
-        "  window._incrementoWebBridgeInstalled = true;"
-        "  window._incrementoLastSelection = '';"
-        "  window._incrementoWebSnapshotActive = false;"
-        "  window._incrementoWebSnapshotBox = null;"
-        "  window._incrementoWebSnapshotStart = null;"
-        "  function ensureBox() {"
-        "    if (window._incrementoWebSnapshotBox && document.documentElement && document.documentElement.contains(window._incrementoWebSnapshotBox)) {"
-        "      return window._incrementoWebSnapshotBox;"
-        "    }"
-        "    var box = document.createElement('div');"
-        "    box.style.position = 'fixed';"
-        "    box.style.zIndex = '2147483647';"
-        "    box.style.border = '2px solid rgba(37,99,235,0.95)';"
-        "    box.style.background = 'rgba(37,99,235,0.16)';"
-        "    box.style.pointerEvents = 'none';"
-        "    box.style.display = 'none';"
-        "    box.style.boxSizing = 'border-box';"
-        "    document.documentElement.appendChild(box);"
-        "    window._incrementoWebSnapshotBox = box;"
-        "    return box;"
-        "  }"
-        "  function hideBox() {"
-        "    var box = ensureBox();"
-        "    box.style.display = 'none';"
-        "  }"
-        "  function drawBox(a, b) {"
-        "    var box = ensureBox();"
-        "    var left = Math.min(a.x, b.x);"
-        "    var top = Math.min(a.y, b.y);"
-        "    var width = Math.abs(a.x - b.x);"
-        "    var height = Math.abs(a.y - b.y);"
-        "    box.style.left = left + 'px';"
-        "    box.style.top = top + 'px';"
-        "    box.style.width = width + 'px';"
-        "    box.style.height = height + 'px';"
-        "    box.style.display = 'block';"
-        "  }"
-        "  function setSnapshotActive(active) {"
-        "    window._incrementoWebSnapshotActive = !!active;"
-        "    if (!window._incrementoWebSnapshotActive) {"
-        "      window._incrementoWebSnapshotStart = null;"
-        "      hideBox();"
-        "    }"
-        "    try {"
-        "      document.documentElement.style.cursor = window._incrementoWebSnapshotActive ? 'crosshair' : '';"
-        "      if (document.body) {"
-        "        document.body.style.cursor = window._incrementoWebSnapshotActive ? 'crosshair' : '';"
-        "      }"
-        "    } catch (_err) {}"
-        "    return window._incrementoWebSnapshotActive;"
-        "  }"
-        "  window.incrementoToggleSnapshotMode = function() {"
-        "    return setSnapshotActive(!window._incrementoWebSnapshotActive);"
-        "  };"
-        "  window.incrementoDisableSnapshotMode = function() {"
-        "    return setSnapshotActive(false);"
-        "  };"
-        "  document.addEventListener('selectionchange', function() {"
-        "    var sel = window.getSelection ? window.getSelection() : null;"
-        "    var text = sel ? sel.toString().trim() : '';"
-        "    if (!text) {"
-        "      return;"
-        "    }"
-        "    window._incrementoLastSelection = text;"
-        "    window.pycmd('incremento_selection_state:' + JSON.stringify({source: 'web', hasText: true}));"
-        "  });"
-        "  document.addEventListener('keydown', function(e) {"
-        "    if (e.key === 'Escape' && window._incrementoWebSnapshotActive) {"
-        "      e.preventDefault();"
-        "      e.stopPropagation();"
-        "      setSnapshotActive(false);"
-        "      return;"
-        "    }"
-        "    if (!(e.metaKey || e.ctrlKey)) {"
-        "      return;"
-        "    }"
-        "    var map = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 };"
-        "    var idx = Object.prototype.hasOwnProperty.call(map, e.code) ? map[e.code] : null;"
-        "    if (idx === null) {"
-        "      var n = parseInt(e.key, 10);"
-        "      if (!Number.isNaN(n) && n >= 1 && n <= 4) {"
-        "        idx = n - 1;"
-        "      }"
-        "    }"
-        "    if (idx === null) {"
-        "      return;"
-        "    }"
-        "    var sel = window.getSelection ? window.getSelection() : null;"
-        "    var text = sel ? sel.toString().trim() : '';"
-        "    if (!text) {"
-        "      return;"
-        "    }"
-        "    e.preventDefault();"
-        "    e.stopPropagation();"
-        "    window._incrementoLastSelection = text;"
-        "    window.pycmd('incremento_web_fill_field:' + JSON.stringify({"
-        "      idx: idx,"
-        "      text: text,"
-        "      url: window.location.href || ''"
-        "    }));"
-        "  }, true);"
-        "  document.addEventListener('mousedown', function(e) {"
-        "    if (!window._incrementoWebSnapshotActive || e.button !== 0) {"
-        "      return;"
-        "    }"
-        "    window._incrementoWebSnapshotStart = { x: e.clientX, y: e.clientY };"
-        "    drawBox(window._incrementoWebSnapshotStart, window._incrementoWebSnapshotStart);"
-        "    e.preventDefault();"
-        "    e.stopPropagation();"
-        "  }, true);"
-        "  document.addEventListener('mousemove', function(e) {"
-        "    if (!window._incrementoWebSnapshotActive || !window._incrementoWebSnapshotStart) {"
-        "      return;"
-        "    }"
-        "    drawBox(window._incrementoWebSnapshotStart, { x: e.clientX, y: e.clientY });"
-        "    e.preventDefault();"
-        "    e.stopPropagation();"
-        "  }, true);"
-        "  document.addEventListener('mouseup', function(e) {"
-        "    if (!window._incrementoWebSnapshotActive || !window._incrementoWebSnapshotStart || e.button !== 0) {"
-        "      return;"
-        "    }"
-        "    var start = window._incrementoWebSnapshotStart;"
-        "    var end = { x: e.clientX, y: e.clientY };"
-        "    var left = Math.min(start.x, end.x);"
-        "    var top = Math.min(start.y, end.y);"
-        "    var width = Math.abs(start.x - end.x);"
-        "    var height = Math.abs(start.y - end.y);"
-        "    window._incrementoWebSnapshotStart = null;"
-        "    setSnapshotActive(false);"
-        "    if (width < 6 || height < 6) {"
-        "      return;"
-        "    }"
-        "    window.pycmd('incremento_web_snapshot:' + JSON.stringify({"
-        "      x: left,"
-        "      y: top,"
-        "      width: width,"
-        "      height: height,"
-        "      url: window.location.href || ''"
-        "    }));"
-        "    e.preventDefault();"
-        "    e.stopPropagation();"
-        "  }, true);"
-        "})();"
+        script.replace("__PYCMD_PREFIX__", json.dumps(_PYCMD_BRIDGE))
+        .replace("__MSG_SELECTION__", json.dumps(_MSG_SELECTION_STATE))
+        .replace("__MSG_FILL__", json.dumps(_MSG_FILL_FIELD))
+        .replace("__MSG_SNAPSHOT__", json.dumps(_MSG_SNAPSHOT))
+        .replace("__MSG_PROGRESS__", json.dumps(_MSG_PROGRESS))
     )
 
 
@@ -469,6 +1013,110 @@ def _current_selected_text() -> str:
     except Exception:
         pass
     return ""
+
+
+def _bookmark_restore_state(current_url: str) -> dict:
+    return _bookmark_restore_state_for_url(
+        current_url,
+        allow_bookmark=True,
+        allow_scroll=True,
+    )
+
+
+def _bookmark_restore_state_for_url(
+    current_url: str,
+    *,
+    allow_bookmark: bool,
+    allow_scroll: bool,
+) -> dict:
+    progress = _web_progress_state()
+    bookmark_url = str(progress.get("bookmark_url") or "").strip()
+    bookmark_payload = progress.get("bookmark_payload") or {}
+    bookmark = None
+    if allow_bookmark and bookmark_url and bookmark_payload and current_url == bookmark_url:
+        bookmark = bookmark_payload
+    return {
+        "rememberScroll": bool(allow_scroll and _remember_browser_card_scroll()),
+        "scrollRatio": float(progress.get("scroll_ratio") or 0.0),
+        "bookmark": bookmark,
+    }
+
+
+def _set_pending_web_restore(
+    card_id: int,
+    *,
+    allow_bookmark: bool,
+    allow_scroll: bool,
+) -> None:
+    global _pending_web_restore
+    _pending_web_restore = {
+        "card_id": int(card_id),
+        "allow_bookmark": bool(allow_bookmark),
+        "allow_scroll": bool(allow_scroll),
+    }
+
+
+def _apply_web_restore_state(
+    current_url: str,
+    *,
+    allow_bookmark: bool,
+    allow_scroll: bool,
+) -> None:
+    if _web_dock is None or not current_url or current_url == "about:blank":
+        return
+    payload = _bookmark_restore_state_for_url(
+        current_url,
+        allow_bookmark=allow_bookmark,
+        allow_scroll=allow_scroll,
+    )
+    try:
+        _web_dock._view.page().runJavaScript(
+            "window.incrementoApplyRestoreState && "
+            f"window.incrementoApplyRestoreState({json.dumps(payload)});"
+        )
+    except Exception:
+        pass
+
+
+def _save_web_bookmark() -> None:
+    if _web_dock is None or _current_web_card_id is None:
+        tooltip("Incremento: no browser card is currently open.")
+        return
+    try:
+        target_card_id = int(_current_web_card_id)
+    except Exception:
+        tooltip("Incremento: no browser card is currently open.")
+        return
+
+    def _handle(payload) -> None:
+        if not isinstance(payload, dict):
+            tooltip("Incremento: couldn't place a bookmark here.")
+            return
+        current_url = str(payload.get("url") or "").strip()
+        bookmark = payload.get("bookmark")
+        if not current_url or not isinstance(bookmark, dict):
+            tooltip("Incremento: couldn't place a bookmark here.")
+            return
+        try:
+            set_web_bookmark(
+                _ADDON_DIR,
+                target_card_id,
+                url=current_url,
+                bookmark_payload=bookmark,
+            )
+        except Exception as exc:
+            showInfo(f"Failed to save bookmark:\n{exc}")
+            return
+        _refresh_web_bookmark_button()
+        tooltip("Incremento: bookmark saved.")
+
+    try:
+        _web_dock._view.page().runJavaScript(
+            "window.incrementoCaptureBookmark && window.incrementoCaptureBookmark();",
+            _handle,
+        )
+    except Exception as exc:
+        showInfo(f"Failed to save bookmark:\n{exc}")
 
 
 def _resolve_web_selection(callback) -> None:
@@ -960,6 +1608,9 @@ def _build_web_dock():
     )
     ctrl_layout.addWidget(snapshot_btn)
 
+    bookmark_btn = QPushButton("Bookmark")
+    ctrl_layout.addWidget(bookmark_btn)
+
     cards_btn = QPushButton("Cards 0")
     cards_btn.setVisible(False)
     ctrl_layout.addWidget(cards_btn)
@@ -1000,6 +1651,7 @@ def _build_web_dock():
     dock._track_cb = track_cb
     dock._extract_btn = extract_btn
     dock._snapshot_btn = snapshot_btn
+    dock._bookmark_btn = bookmark_btn
     dock._cards_btn = cards_btn
     dock._cards_panel = cards_panel
 
@@ -1018,8 +1670,10 @@ def _build_web_dock():
             pass
         _persist_web_url(_current_web_card_id, url_str)
         _refresh_web_cards_panel()
+        _refresh_web_bookmark_button()
 
     def _on_load_finished(ok):
+        global _pending_web_restore
         if not ok or _current_web_card_id is None:
             return
         url_str = view.url().toString()
@@ -1029,7 +1683,19 @@ def _build_web_dock():
             view.page().runJavaScript(_build_web_bridge_js())
         except Exception:
             pass
+        restore_cfg = _pending_web_restore or {}
+        if int(restore_cfg.get("card_id") or 0) == int(_current_web_card_id):
+            QTimer.singleShot(
+                0,
+                lambda url=url_str, cfg=dict(restore_cfg): _apply_web_restore_state(
+                    url,
+                    allow_bookmark=bool(cfg.get("allow_bookmark", True)),
+                    allow_scroll=bool(cfg.get("allow_scroll", True)),
+                ),
+            )
+        _pending_web_restore = None
         _refresh_web_cards_panel()
+        _refresh_web_bookmark_button()
 
     def _on_selection_changed():
         _update_native_selection_state()
@@ -1040,6 +1706,7 @@ def _build_web_dock():
     qconnect(home_btn.clicked, _web_go_home)
     qconnect(extract_btn.clicked, _extract_web_selection_with_picker)
     qconnect(snapshot_btn.clicked, _toggle_snapshot_mode)
+    qconnect(bookmark_btn.clicked, _save_web_bookmark)
     qconnect(cards_btn.clicked, _toggle_web_cards_panel)
     qconnect(window_btn.clicked, _open_web_in_window)
     qconnect(track_cb.toggled, _on_track_web_window_toggled)
@@ -1073,6 +1740,7 @@ def _build_web_dock():
         _web_shortcuts_registered = True
 
     _web_dock = dock
+    _refresh_web_bookmark_button()
     return dock
 
 
@@ -1132,8 +1800,15 @@ def _web_go_home() -> None:
         pass
 
 
-def show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
-    global _web_dock, _current_web_card_id, _current_web_home_url
+def show_web_in_dock(
+    card_id: int,
+    home_url: str,
+    last_url: str,
+    *,
+    prefer_bookmark: bool = True,
+    restore_scroll: bool = True,
+) -> None:
+    global _web_dock, _current_web_card_id, _current_web_home_url, _pending_web_restore
 
     _current_web_card_id = card_id
     _current_web_home_url = home_url
@@ -1147,7 +1822,13 @@ def show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
             _web_dock = None
             _build_web_dock()
 
-    load_url = last_url if last_url else home_url
+    progress = _web_progress_state(card_id)
+    bookmark_url = str(progress.get("bookmark_url") or "").strip()
+    load_url = (
+        bookmark_url
+        if prefer_bookmark and bookmark_url
+        else (last_url if last_url else home_url)
+    )
     current_url = ""
     try:
         current_url = (_web_dock._view.url().toString() or "").strip()
@@ -1163,8 +1844,23 @@ def show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
         _web_dock._cards_btn.setText("Cards 0")
     except Exception:
         pass
+    _refresh_web_bookmark_button()
+    _set_pending_web_restore(
+        card_id,
+        allow_bookmark=prefer_bookmark,
+        allow_scroll=restore_scroll,
+    )
     if load_url and current_url != load_url:
         _web_dock._view.load(QUrl(load_url))
+    elif load_url:
+        _apply_web_restore_state(
+            load_url,
+            allow_bookmark=prefer_bookmark,
+            allow_scroll=restore_scroll,
+        )
+        _pending_web_restore = None
+    else:
+        _pending_web_restore = None
 
 
 def open_web_location(card_id: int, target_url: str) -> bool:
@@ -1181,7 +1877,13 @@ def open_web_location(card_id: int, target_url: str) -> bool:
         set_web_url(_ADDON_DIR, int(card_id), target)
     except Exception:
         pass
-    show_web_in_dock(int(card_id), home_url, target)
+    show_web_in_dock(
+        int(card_id),
+        home_url,
+        target,
+        prefer_bookmark=False,
+        restore_scroll=False,
+    )
     return True
 
 
@@ -1209,6 +1911,11 @@ def sync_external_web_url(card_id: int, url: str) -> bool:
         return False
 
     try:
+        _set_pending_web_restore(
+            target_card_id,
+            allow_bookmark=False,
+            allow_scroll=False,
+        )
         _web_dock._view.load(QUrl(target_url))
         return True
     except Exception:
@@ -1227,7 +1934,7 @@ def on_web_question_shown(card) -> None:
             return
         if model is None or model.get("name") != WEB_NOTE_TYPE:
             if _web_dock is not None:
-                _persist_web_url(_current_web_card_id, _current_web_display_url())
+                _persist_current_web_state()
                 try:
                     _web_dock.hide()
                 except RuntimeError:
@@ -1247,7 +1954,7 @@ def on_web_question_shown(card) -> None:
 
 def on_web_reviewer_will_end() -> None:
     _set_web_snapshot_mode(False)
-    _persist_web_url(_current_web_card_id, _current_web_display_url())
+    _persist_current_web_state()
     if _web_dock is not None:
         try:
             _web_dock.hide()

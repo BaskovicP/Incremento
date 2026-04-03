@@ -2,6 +2,7 @@ try:
     from .db import get_connection
 except ImportError:
     from db import get_connection
+import json
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 _INVISIBLE_DUPLICATE_MARK = "\u200b"
@@ -9,6 +10,7 @@ _INVISIBLE_DUPLICATE_MARK = "\u200b"
 WEB_NOTE_TYPE = "Incremento Web"
 TRACK_CARD_ID_PARAM = "inc_card_id"
 TRACK_WEB_FLAG_PARAM = "inc_track_web"
+_DEFAULT_REMEMBER_BROWSER_CARD_SCROLL = True
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -21,22 +23,235 @@ CARD_TEMPLATE_FRONT = """
 CARD_TEMPLATE_BACK = "{{Title}}"
 
 
+def _resolved_config(config: dict | None = None) -> dict:
+    if config is not None:
+        return config or {}
+    try:
+        from aqt import mw
+
+        addon_name = __name__.split(".")[0]
+        return mw.addonManager.getConfig(addon_name) or {}
+    except Exception:
+        return {}
+
+
+def configured_remember_browser_card_scroll(config: dict | None = None) -> bool:
+    config = _resolved_config(config)
+    return bool(
+        (config or {}).get(
+            "remember_browser_card_scroll",
+            _DEFAULT_REMEMBER_BROWSER_CARD_SCROLL,
+        )
+    )
+
+
+def _default_web_progress() -> dict:
+    return {
+        "url": "",
+        "scroll_ratio": 0.0,
+        "bookmark_url": "",
+        "bookmark_payload": {},
+    }
+
+
+def _normalize_scroll_ratio(value) -> float:
+    try:
+        ratio = float(value or 0.0)
+    except Exception:
+        ratio = 0.0
+    return max(0.0, min(ratio, 1.0))
+
+
+def _normalize_bookmark_payload(payload) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+    path = payload.get("path")
+    if not isinstance(path, list):
+        return {}
+    normalized_path: list[int] = []
+    for item in path:
+        try:
+            idx = int(item)
+        except Exception:
+            return {}
+        if idx < 0:
+            return {}
+        normalized_path.append(idx)
+
+    def _normalize_node_path(value) -> list[int]:
+        if not isinstance(value, list):
+            return []
+        result: list[int] = []
+        for item in value:
+            try:
+                idx = int(item)
+            except Exception:
+                return []
+            if idx < 0:
+                return []
+            result.append(idx)
+        return result
+
+    def _normalize_offset(value) -> int:
+        try:
+            offset = int(value or 0)
+        except Exception:
+            offset = 0
+        return max(0, offset)
+
+    text = str(payload.get("text") or "").strip()[:240]
+    tag = str(payload.get("tag") or "").strip().lower()[:40]
+    mode = str(payload.get("mode") or "").strip().lower()
+    if mode not in {"", "element", "selection"}:
+        mode = ""
+    try:
+        offset_ratio = float(payload.get("offsetRatio", 0.0) or 0.0)
+    except Exception:
+        offset_ratio = 0.0
+    try:
+        scroll_ratio = float(payload.get("scrollRatio", 0.0) or 0.0)
+    except Exception:
+        scroll_ratio = 0.0
+
+    result = {
+        "path": normalized_path,
+        "offsetRatio": max(0.0, min(offset_ratio, 1.0)),
+        "scrollRatio": max(0.0, min(scroll_ratio, 1.0)),
+        "tag": tag,
+        "text": text,
+    }
+    if mode:
+        result["mode"] = mode
+
+    start_path = _normalize_node_path(payload.get("selectionStartPath"))
+    end_path = _normalize_node_path(payload.get("selectionEndPath"))
+    if start_path and end_path:
+        result["selectionStartPath"] = start_path
+        result["selectionStartOffset"] = _normalize_offset(
+            payload.get("selectionStartOffset")
+        )
+        result["selectionEndPath"] = end_path
+        result["selectionEndOffset"] = _normalize_offset(
+            payload.get("selectionEndOffset")
+        )
+
+    return result
+
+
+def get_web_progress(addon_dir: str, card_id: int) -> dict:
+    row = get_connection(addon_dir).execute(
+        "SELECT url, scroll_ratio, bookmark_url, bookmark_payload "
+        "FROM web_progress WHERE card_id = ?",
+        (card_id,),
+    ).fetchone()
+    if not row:
+        return _default_web_progress()
+    try:
+        bookmark_payload = json.loads(row[3] or "{}")
+    except Exception:
+        bookmark_payload = {}
+    return {
+        "url": str(row[0] or "").strip(),
+        "scroll_ratio": _normalize_scroll_ratio(row[1]),
+        "bookmark_url": str(row[2] or "").strip(),
+        "bookmark_payload": _normalize_bookmark_payload(bookmark_payload),
+    }
+
+
+def _write_web_progress(
+    addon_dir: str,
+    card_id: int,
+    *,
+    url: str | None = None,
+    scroll_ratio: float | None = None,
+    bookmark_url: str | None = None,
+    bookmark_payload: dict | None = None,
+) -> None:
+    current = get_web_progress(addon_dir, card_id)
+    final_url = current["url"] if url is None else str(url or "").strip()
+    final_scroll_ratio = (
+        current["scroll_ratio"]
+        if scroll_ratio is None
+        else _normalize_scroll_ratio(scroll_ratio)
+    )
+    final_bookmark_url = (
+        current["bookmark_url"]
+        if bookmark_url is None
+        else str(bookmark_url or "").strip()
+    )
+    final_bookmark_payload = (
+        current["bookmark_payload"]
+        if bookmark_payload is None
+        else _normalize_bookmark_payload(bookmark_payload)
+    )
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO web_progress "
+        "(card_id, url, scroll_ratio, bookmark_url, bookmark_payload) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "url = excluded.url, "
+        "scroll_ratio = excluded.scroll_ratio, "
+        "bookmark_url = excluded.bookmark_url, "
+        "bookmark_payload = excluded.bookmark_payload",
+        (
+            card_id,
+            final_url,
+            final_scroll_ratio,
+            final_bookmark_url,
+            json.dumps(final_bookmark_payload, ensure_ascii=False),
+        ),
+    )
+    conn.commit()
+
+
 def get_web_url(addon_dir: str, card_id: int) -> str:
     """Return the last visited URL for this card, or '' if never saved."""
-    row = get_connection(addon_dir).execute(
-        "SELECT url FROM web_progress WHERE card_id = ?", (card_id,)
-    ).fetchone()
-    return row[0] if row else ""
+    return str(get_web_progress(addon_dir, card_id).get("url") or "")
 
 
 def set_web_url(addon_dir: str, card_id: int, url: str) -> None:
-    conn = get_connection(addon_dir)
-    conn.execute(
-        "INSERT INTO web_progress (card_id, url) VALUES (?, ?) "
-        "ON CONFLICT(card_id) DO UPDATE SET url = excluded.url",
-        (card_id, url),
+    _write_web_progress(addon_dir, card_id, url=url)
+
+
+def set_web_scroll_position(
+    addon_dir: str,
+    card_id: int,
+    url: str,
+    scroll_ratio: float,
+) -> None:
+    _write_web_progress(
+        addon_dir,
+        card_id,
+        url=url,
+        scroll_ratio=scroll_ratio,
     )
-    conn.commit()
+
+
+def set_web_bookmark(
+    addon_dir: str,
+    card_id: int,
+    *,
+    url: str,
+    bookmark_payload: dict | None,
+) -> None:
+    normalized = _normalize_bookmark_payload(bookmark_payload)
+    if normalized:
+        _write_web_progress(
+            addon_dir,
+            card_id,
+            url=url,
+            bookmark_url=url,
+            bookmark_payload=normalized,
+        )
+        return
+    _write_web_progress(
+        addon_dir,
+        card_id,
+        url=url,
+        bookmark_url="",
+        bookmark_payload={},
+    )
 
 
 def build_external_web_url(

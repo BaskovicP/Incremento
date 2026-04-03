@@ -129,6 +129,7 @@ class IncrementoSettingsDialog(QDialog):
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
+        current_remember_browser_card_scroll: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -151,7 +152,8 @@ class IncrementoSettingsDialog(QDialog):
             " This applies to the Add Card dock and Extract Card dialog."
             " You can also choose which source links should be appended while extracting,"
             " how incremental learning interprets stored priority numbers,"
-            " and whether to prompt for priority after answering a card."
+            " whether to prompt for priority after answering a card,"
+            " and whether browser cards remember scroll position."
         )
         general_hint.setWordWrap(True)
         general_layout.addWidget(general_hint)
@@ -224,6 +226,14 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_show_priority_dialog_after_answer)
         )
         general_form.addRow("", self._show_priority_dialog_after_answer_cb)
+
+        self._remember_browser_card_scroll_cb = QCheckBox(
+            "Remember scrolling position in browser cards"
+        )
+        self._remember_browser_card_scroll_cb.setChecked(
+            bool(current_remember_browser_card_scroll)
+        )
+        general_form.addRow("", self._remember_browser_card_scroll_cb)
 
         general_layout.addLayout(general_form)
         general_layout.addStretch(1)
@@ -326,3 +336,7 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def show_priority_dialog_after_answer(self) -> bool:
         return bool(self._show_priority_dialog_after_answer_cb.isChecked())
+
+    @property
+    def remember_browser_card_scroll(self) -> bool:
+        return bool(self._remember_browser_card_scroll_cb.isChecked())

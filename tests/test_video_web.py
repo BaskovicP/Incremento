@@ -44,6 +44,10 @@ supported_local_video_extensions = _vm.supported_local_video_extensions
 get_web_url = _wm.get_web_url
 set_web_url = _wm.set_web_url
 build_external_web_url = _wm.build_external_web_url
+get_web_progress = _wm.get_web_progress
+set_web_scroll_position = _wm.set_web_scroll_position
+set_web_bookmark = _wm.set_web_bookmark
+configured_remember_browser_card_scroll = _wm.configured_remember_browser_card_scroll
 
 
 # ── extract_video_id ──────────────────────────────────────────────────────────
@@ -353,10 +357,17 @@ class TestVideoPosition:
 class TestWebUrl:
     def test_default_when_not_set(self, tmp_path):
         assert get_web_url(str(tmp_path), 1) == ""
+        assert get_web_progress(str(tmp_path), 1) == {
+            "url": "",
+            "scroll_ratio": 0.0,
+            "bookmark_url": "",
+            "bookmark_payload": {},
+        }
 
     def test_stores_and_retrieves_url(self, tmp_path):
         set_web_url(str(tmp_path), 1, "https://example.com")
         assert get_web_url(str(tmp_path), 1) == "https://example.com"
+        assert get_web_progress(str(tmp_path), 1)["url"] == "https://example.com"
 
     def test_overwrites_existing(self, tmp_path):
         set_web_url(str(tmp_path), 1, "https://old.com")
@@ -373,6 +384,88 @@ class TestWebUrl:
         set_web_url(str(tmp_path), 1, "https://example.com")
         set_web_url(str(tmp_path), 1, "")
         assert get_web_url(str(tmp_path), 1) == ""
+
+    def test_scroll_position_updates_url_and_ratio_without_clearing_bookmark(self, tmp_path):
+        set_web_bookmark(
+            str(tmp_path),
+            1,
+            url="https://example.com/ch1",
+            bookmark_payload={
+                "path": [0, 1],
+                "offsetRatio": 0.25,
+                "scrollRatio": 0.4,
+                "tag": "p",
+                "text": "Chapter 1",
+            },
+        )
+        set_web_scroll_position(str(tmp_path), 1, "https://example.com/ch2", 0.65)
+        progress = get_web_progress(str(tmp_path), 1)
+        assert progress["url"] == "https://example.com/ch2"
+        assert progress["scroll_ratio"] == pytest.approx(0.65)
+        assert progress["bookmark_url"] == "https://example.com/ch1"
+        assert progress["bookmark_payload"]["path"] == [0, 1]
+
+    def test_bookmark_overwrites_existing_bookmark(self, tmp_path):
+        set_web_bookmark(
+            str(tmp_path),
+            1,
+            url="https://example.com/first",
+            bookmark_payload={"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
+        )
+        set_web_bookmark(
+            str(tmp_path),
+            1,
+            url="https://example.com/second",
+            bookmark_payload={"path": [2, 3], "offsetRatio": 0.7, "scrollRatio": 0.8},
+        )
+        progress = get_web_progress(str(tmp_path), 1)
+        assert progress["bookmark_url"] == "https://example.com/second"
+        assert progress["bookmark_payload"]["path"] == [2, 3]
+        assert progress["bookmark_payload"]["offsetRatio"] == pytest.approx(0.7)
+
+    def test_selection_bookmark_round_trips_selection_fields(self, tmp_path):
+        set_web_bookmark(
+            str(tmp_path),
+            1,
+            url="https://example.com/selection",
+            bookmark_payload={
+                "mode": "selection",
+                "path": [1, 2],
+                "offsetRatio": 0.3,
+                "scrollRatio": 0.4,
+                "tag": "span",
+                "text": "selected text",
+                "selectionStartPath": [1, 2, 0],
+                "selectionStartOffset": 5,
+                "selectionEndPath": [1, 2, 1],
+                "selectionEndOffset": 9,
+            },
+        )
+        progress = get_web_progress(str(tmp_path), 1)
+        assert progress["bookmark_url"] == "https://example.com/selection"
+        assert progress["bookmark_payload"]["mode"] == "selection"
+        assert progress["bookmark_payload"]["selectionStartPath"] == [1, 2, 0]
+        assert progress["bookmark_payload"]["selectionStartOffset"] == 5
+        assert progress["bookmark_payload"]["selectionEndPath"] == [1, 2, 1]
+        assert progress["bookmark_payload"]["selectionEndOffset"] == 9
+
+    def test_can_clear_bookmark(self, tmp_path):
+        set_web_bookmark(
+            str(tmp_path),
+            1,
+            url="https://example.com/first",
+            bookmark_payload={"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
+        )
+        set_web_bookmark(str(tmp_path), 1, url="https://example.com/first", bookmark_payload=None)
+        progress = get_web_progress(str(tmp_path), 1)
+        assert progress["bookmark_url"] == ""
+        assert progress["bookmark_payload"] == {}
+
+    def test_scroll_setting_defaults_true(self):
+        assert configured_remember_browser_card_scroll({}) is True
+
+    def test_scroll_setting_respects_config_override(self):
+        assert configured_remember_browser_card_scroll({"remember_browser_card_scroll": False}) is False
 
     def test_build_external_web_url_leaves_plain_url_unchanged_when_tracking_disabled(self):
         assert (

@@ -370,14 +370,18 @@ Web cards open a persistent browser dock with:
 
 - the card's home URL
 - a **Home** button
+- a **Bookmark** button for saving one highlighted return point
 - an **Open in Window** fallback
 - a **Track via Chrome extension** checkbox for that external window flow
 - saved last visited URL
+- optional remembered scroll position for browser cards
 - persistent cookies/session storage under `user_files/web_profile/`
 
 This works well for long-form websites, documentation, and pages that you want to revisit in-place inside Anki.
 
 Selected text from the web dock can be transferred into the Add Card dock.
+
+When a bookmark is saved, Incremento reopens that web card at the bookmarked point and highlights it. If no bookmark is saved, the web card can restore the last scroll position when the browser-card scroll setting is enabled.
 
 If a page does not behave properly inside Anki's built-in web view, use **Open in Window** to open the current page externally. When **Track via Chrome extension** is checked, the companion extension keeps syncing the same web card to the latest page visited in that browser tab.
 

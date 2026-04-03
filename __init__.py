@@ -48,6 +48,7 @@ from .backend.priority_manager import (
     set_priority,
     get_all_priorities,
 )
+from .backend.web_manager import configured_remember_browser_card_scroll
 from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
@@ -1877,6 +1878,7 @@ def openSettingsFunction() -> None:
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
+        current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         parent=mw,
     )
     if not dlg.exec():
@@ -1887,6 +1889,7 @@ def openSettingsFunction() -> None:
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
+    cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     tooltip("Incremento settings updated.")
