@@ -82,6 +82,17 @@ class TestGetConnection:
         }
         assert "pdf_text_index" in tables
 
+    def test_creates_web_card_sources_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir)
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "web_card_sources" in tables
+
     def test_db_file_created_inside_user_files(self):
         addon_dir = _fresh_dir()
         db.get_connection(addon_dir)
@@ -205,6 +216,60 @@ class TestPdfCardSources:
         counts = db.get_pdf_page_card_counts(self.addon_dir, pdf_card_id=2)
         assert counts[1] == 2
         assert counts[2] == 1
+
+
+class TestWebCardSources:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_add_and_retrieve_card_source(self):
+        db.add_web_card_source(
+            self.addon_dir,
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+            note_id=777,
+            excerpt="api summary",
+        )
+        sources = db.get_web_card_sources(
+            self.addon_dir,
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+        assert len(sources) == 1
+        assert sources[0]["note_id"] == 777
+        assert sources[0]["excerpt"] == "api summary"
+
+    def test_sources_are_scoped_to_exact_url(self):
+        db.add_web_card_source(
+            self.addon_dir,
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+            note_id=1,
+            excerpt="intro",
+        )
+        db.add_web_card_source(
+            self.addon_dir,
+            web_card_id=5,
+            url="https://example.com/docs/advanced",
+            note_id=2,
+            excerpt="advanced",
+        )
+        intro = db.get_web_card_sources(
+            self.addon_dir,
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+        advanced = db.get_web_card_sources(
+            self.addon_dir,
+            web_card_id=5,
+            url="https://example.com/docs/advanced",
+        )
+        assert [row["note_id"] for row in intro] == [1]
+        assert [row["note_id"] for row in advanced] == [2]
 
 
 # ---------------------------------------------------------------------------
@@ -368,11 +433,44 @@ class TestSearchEdgeCases:
         result = db.search_pdf_text_index(self.addon_dir, "a b c")
         assert result == []
 
-    def test_partial_multi_token_match(self):
-        """Multiple tokens where not all appear → partial match via token count."""
-        # "quick lazy" — both words appear in the text → match
+    def test_all_query_terms_are_required(self):
+        """Broader partial matches should be rejected."""
+        result = db.search_pdf_text_index(self.addon_dir, "quick zebra")
+        assert result == []
+
+    def test_multi_token_match(self):
+        """Multiple tokens still match when they all appear."""
         result = db.search_pdf_text_index(self.addon_dir, "quick lazy")
         assert len(result) == 1
+
+    def test_longer_prefix_query_narrows_results(self):
+        db.replace_pdf_text_index(
+            self.addon_dir,
+            2,
+            [
+                "Cell membrane transport controls diffusion",
+                "Each team member owns a different task",
+            ],
+        )
+        broad = db.search_pdf_text_index(self.addon_dir, "memb", limit=10)
+        narrow = db.search_pdf_text_index(self.addon_dir, "membra", limit=10)
+        assert {cid for cid, _, _ in broad} == {2}
+        assert len(broad) == 2
+        assert len(narrow) == 1
+        assert narrow[0][2].startswith("Cell membrane")
+
+    def test_ordered_matches_rank_ahead_of_looser_matches(self):
+        db.replace_pdf_text_index(
+            self.addon_dir,
+            2,
+            [
+                "Cell membrane transport is tightly regulated",
+                "Membrane transport happens after the cell adapts",
+            ],
+        )
+        results = db.search_pdf_text_index(self.addon_dir, "cell transp", limit=5)
+        assert len(results) >= 2
+        assert results[0][2].startswith("Cell membrane transport")
 
     def test_limit_stops_early(self):
         """Results are truncated at the limit."""

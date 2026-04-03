@@ -72,7 +72,7 @@ The add-on menu lives under **Tools -> Incremento**.
 | **Show Focus Timer** | Show or hide the timer toolbar |
 | **Statistics** | Open study statistics |
 | **Search ALL** | Search highlights, PDF sources, PDF content, and cards |
-| **Export User Data** | Create a backup ZIP |
+| **Export Full Backup** | Create a backup ZIP |
 | **Settings** | Configure Incremento keyboard shortcuts |
 
 ### Utils submenu
@@ -513,29 +513,16 @@ When text is selected in a supported source, transfer buttons appear next to Add
 
 ## 12. Export and Restore Notes
 
-Use **Export User Data** to create a ZIP backup.
+Use **Export Full Backup** to create a single ZIP for migration to a new computer.
 
-### What the export currently includes
+The backup includes:
 
-- `data/incremento.db` - the main SQLite user-data database
-- `data/priorities.json`
-- `data/pdf_progress.json`
-- `data/highlights.json`
-- `data/stats.json`
+- `anki/all_decks.apkg` for the currently open Anki profile
+- the full `user_files/` tree
 - `config.json`
 - `manifest.json`
-- all referenced PDFs under `pdfs/`
-
-### Important limitation
-
-The current export focuses on database-backed user data, settings, and PDFs.
-
-It does **not** package every file under `user_files/`. In particular, if you rely on them, back these up separately:
-
-- `user_files/videos/`
-- `user_files/writing/`
-- `user_files/web_profile/`
-- `user_files/video_profile/`
+- JSON copies of priorities, PDF progress, highlights, and stats
+- `restore.txt` with the restore order
 
 For full restore guidance, see `EXPORTING.md`.
 

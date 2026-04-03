@@ -24,10 +24,22 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 
 try:
-    from ..backend.db import get_connection, replace_pdf_text_index, search_pdf_text_index
+    from ..backend.db import (
+        get_connection,
+        replace_pdf_text_index,
+        search_pdf_text_index,
+        search_text_match_score,
+        split_search_terms,
+    )
     from ..backend.pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir
 except ImportError:
-    from db import get_connection, replace_pdf_text_index, search_pdf_text_index  # type: ignore
+    from db import (  # type: ignore
+        get_connection,
+        replace_pdf_text_index,
+        search_pdf_text_index,
+        search_text_match_score,
+        split_search_terms,
+    )
     from pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir  # type: ignore
 
 
@@ -36,6 +48,7 @@ class _SearchAllDialog(QDialog):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._open_pdf_card = open_pdf_card
+        self._current_profile_card_ids = self._load_current_profile_card_ids()
         self.setWindowTitle("Search ALL")
         self.resize(1280, 700)
 
@@ -52,10 +65,14 @@ class _SearchAllDialog(QDialog):
         self._cb_sources = QCheckBox("PDF Sources")
         self._cb_content = QCheckBox("PDF Content")
         self._cb_cards = QCheckBox("Cards")
+        self._cb_current_profile = QCheckBox("Current Anki Profile Only")
         for cb in (self._cb_highlights, self._cb_sources, self._cb_content, self._cb_cards):
             cb.setChecked(True)
             cb.toggled.connect(lambda _: self._refresh(self._search.text()))
             filter_row.addWidget(cb)
+        self._cb_current_profile.setChecked(True)
+        self._cb_current_profile.toggled.connect(lambda _: self._refresh(self._search.text()))
+        filter_row.addWidget(self._cb_current_profile)
         filter_row.addStretch()
         layout.addLayout(filter_row)
 
@@ -110,6 +127,12 @@ class _SearchAllDialog(QDialog):
             return plain[:max_len]
         i = plain.lower().find(q.lower())
         if i < 0:
+            for tok in split_search_terms(q):
+                match = re.search(rf"(?i)\b{re.escape(tok)}\w*", plain)
+                if match is not None:
+                    i = match.start()
+                    break
+        if i < 0:
             return plain[:max_len]
         start = max(0, i - max_len // 3)
         end = min(len(plain), start + max_len)
@@ -119,6 +142,28 @@ class _SearchAllDialog(QDialog):
         if end < len(plain):
             s = s + "..."
         return s
+
+    @staticmethod
+    def _load_current_profile_card_ids() -> set[int]:
+        try:
+            return {int(cid) for cid in mw.col.db.list("SELECT id FROM cards")}
+        except Exception:
+            return set()
+
+    def _is_current_profile_card(self, card_id: int) -> bool:
+        return int(card_id) in self._current_profile_card_ids
+
+    def _filter_current_profile_rows(self, rows: list[tuple]) -> list[tuple]:
+        if not self._cb_current_profile.isChecked():
+            return rows
+        out: list[tuple] = []
+        for row in rows:
+            try:
+                if self._is_current_profile_card(row[0]):
+                    out.append(row)
+            except Exception:
+                continue
+        return out
 
     def _safe_find_notes(self, query: str) -> list[int]:
         try:
@@ -167,17 +212,21 @@ class _SearchAllDialog(QDialog):
             cids.update(int(r[0]) for r in rows)
         except Exception:
             pass
+        if self._cb_current_profile.isChecked():
+            cids = {cid for cid in cids if self._is_current_profile_card(cid)}
         return sorted(cids)
 
     def _search_pdf_file_hits(
         self, q: str, limit: int = 120
     ) -> list[tuple[int, int, str]]:
         """Search SQLite-backed PDF page-text index; build missing index on demand."""
-        hits = search_pdf_text_index(self._addon_dir, q, limit=limit)
+        search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
+        hits = search_pdf_text_index(self._addon_dir, q, limit=search_limit)
+        hits = self._filter_current_profile_rows(hits)
         if hits:
             return [
                 (cid, page, self._snippet(text or "", q, max_len=180))
-                for cid, page, text in hits
+                for cid, page, text in hits[:limit]
             ]
 
         pdf_dir = get_pdf_dir()
@@ -192,10 +241,11 @@ class _SearchAllDialog(QDialog):
             except Exception:
                 continue
 
-        hits = search_pdf_text_index(self._addon_dir, q, limit=limit)
+        hits = search_pdf_text_index(self._addon_dir, q, limit=search_limit)
+        hits = self._filter_current_profile_rows(hits)
         return [
             (cid, page, self._snippet(text or "", q, max_len=180))
-            for cid, page, text in hits
+            for cid, page, text in hits[:limit]
         ]
 
     def _refresh(self, query: str) -> None:
@@ -209,19 +259,18 @@ class _SearchAllDialog(QDialog):
         html = ["<div style='font-family:sans-serif'>"]
         total = 0
 
-        def _normalize(s: str) -> str:
-            return " ".join((s or "").casefold().split())
+        def _score_text(text: str):
+            return search_text_match_score(text or "", q)
 
-        q_norm = _normalize(q)
-        q_tokens = [t for t in q_norm.split(" ") if len(t) >= 2]
-
-        def _matches(text: str) -> bool:
-            norm = _normalize(text)
-            if q_norm and q_norm in norm:
-                return True
-            if not q_tokens:
-                return False
-            return all(tok in norm for tok in q_tokens)
+        def _rank_rows(rows: list[tuple], *, text_index: int, limit: int = 120) -> list[tuple]:
+            ranked: list[tuple[tuple[int, int, int, int], tuple]] = []
+            for row in rows:
+                score = _score_text(row[text_index] or "")
+                if score is None:
+                    continue
+                ranked.append((score, row))
+            ranked.sort(key=lambda item: (item[0],) + tuple(item[1][:2]))
+            return [row for _, row in ranked[:limit]]
 
         # PDF highlights (go directly to page)
         if self._cb_highlights.isChecked():
@@ -233,7 +282,8 @@ class _SearchAllDialog(QDialog):
                     )
                     .fetchall()
                 )
-                rows = [r for r in rows if _matches(r[2] or "")][:120]
+                rows = self._filter_current_profile_rows(rows)
+                rows = _rank_rows(rows, text_index=2)
             except Exception:
                 rows = []
 
@@ -264,7 +314,8 @@ class _SearchAllDialog(QDialog):
                     )
                     .fetchall()
                 )
-                rows = [r for r in rows if _matches(r[2] or "")][:120]
+                rows = self._filter_current_profile_rows(rows)
+                rows = _rank_rows(rows, text_index=2)
             except Exception:
                 rows = []
 
@@ -309,21 +360,29 @@ class _SearchAllDialog(QDialog):
         if self._cb_cards.isChecked():
             note_ids = self._safe_find_notes(q)
             if note_ids:
-                html.append("<h3>Cards</h3><ul>")
-                for nid in note_ids[:160]:
+                ranked_notes: list[tuple[tuple[int, int, int, int], int, object, str]] = []
+                for nid in note_ids:
                     try:
                         note = mw.col.get_note(nid)
                         model = mw.col.models.get(note.mid)
                         model_name = model.get("name") if model else "Note"
-                        text = " ".join((note.fields or [])[:2])
-                        snippet = escape(self._snippet(text, q))
-                        html.append(
-                            f"<li><a href='inc://card/{nid}'>{escape(model_name)} — note {nid}</a>"
-                            f"<br><span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
+                        text = " ".join(note.fields or [])
+                        score = _score_text(text)
+                        if score is None:
+                            continue
+                        ranked_notes.append((score, int(nid), note, model_name))
                     except Exception:
-                        pass
+                        continue
+                ranked_notes.sort(key=lambda item: (item[0], item[1]))
+                html.append("<h3>Cards</h3><ul>")
+                for _, nid, note, model_name in ranked_notes[:160]:
+                    text = " ".join((note.fields or [])[:2])
+                    snippet = escape(self._snippet(text, q))
+                    html.append(
+                        f"<li><a href='inc://card/{nid}'>{escape(model_name)} — note {nid}</a>"
+                        f"<br><span style='color:#888'>{snippet}</span></li>"
+                    )
+                    total += 1
                 html.append("</ul>")
 
         if total == 0:
@@ -364,13 +423,12 @@ class _SearchAllDialog(QDialog):
         out = escape(text)
         if not q:
             return out
-        for tok in q.split():
-            if len(tok) >= 2:
-                out = re.sub(
-                    f"(?i)({re.escape(escape(tok))})",
-                    r"<mark style='background:#ffe08a'>\1</mark>",
-                    out,
-                )
+        for tok in split_search_terms(q):
+            out = re.sub(
+                rf"(?i)\b({re.escape(escape(tok))}\w*)",
+                r"<mark style='background:#ffe08a'>\1</mark>",
+                out,
+            )
         return out
 
     def _preview_pdf_page(self, cid: int, page: int, q: str) -> None:

@@ -41,7 +41,7 @@ After installing and restarting Anki:
 
 1. Open **Tools → Start Incremental Learning** to build a study session.
 2. Use **Tools → Add PDF to Topics** to add a PDF-backed topic card.
-3. Use **Tools → Export All Incremento User Data** to create a backup ZIP.
+3. Use **Tools → Export Full Backup** to create a migration/backup ZIP.
 
 For a full walkthrough, see [MANUAL.md](MANUAL.md).
 

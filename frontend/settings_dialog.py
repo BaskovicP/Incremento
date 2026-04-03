@@ -1,4 +1,5 @@
 from aqt.qt import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -61,7 +62,7 @@ SHORTCUT_ACTION_SPECS = [
     },
     {
         "id": "export_user_data",
-        "label": "Export User Data",
+        "label": "Export Full Backup",
         "default": "",
     },
     {
@@ -112,7 +113,13 @@ def default_shortcuts() -> dict[str, str]:
 
 
 class IncrementoSettingsDialog(QDialog):
-    def __init__(self, current_shortcuts: dict[str, str], parent=None):
+    def __init__(
+        self,
+        current_shortcuts: dict[str, str],
+        note_type_names: list[str] | None = None,
+        current_extract_notetype: str = "",
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Incremento Settings")
         self.setMinimumWidth(620)
@@ -123,6 +130,37 @@ class IncrementoSettingsDialog(QDialog):
 
         tabs = QTabWidget()
         root.addWidget(tabs)
+
+        general_tab = QWidget()
+        general_layout = QVBoxLayout(general_tab)
+        general_layout.setSpacing(8)
+
+        general_hint = QLabel(
+            "Choose which card type extraction opens in by default."
+            " This applies to the Add Card dock and Extract Card dialog."
+        )
+        general_hint.setWordWrap(True)
+        general_layout.addWidget(general_hint)
+
+        general_form = QFormLayout()
+        general_form.setHorizontalSpacing(16)
+        general_form.setVerticalSpacing(8)
+
+        self._extract_notetype_combo = QComboBox()
+        self._extract_notetype_combo.addItem("Use current Add Card type", "")
+        for name in note_type_names or []:
+            self._extract_notetype_combo.addItem(name, name)
+
+        selected_value = str(current_extract_notetype or "").strip()
+        for idx in range(self._extract_notetype_combo.count()):
+            if self._extract_notetype_combo.itemData(idx) == selected_value:
+                self._extract_notetype_combo.setCurrentIndex(idx)
+                break
+
+        general_form.addRow("Default extract card type:", self._extract_notetype_combo)
+        general_layout.addLayout(general_form)
+        general_layout.addStretch(1)
+        tabs.addTab(general_tab, "General")
 
         shortcuts_tab = QWidget()
         shortcuts_layout = QVBoxLayout(shortcuts_tab)
@@ -201,3 +239,7 @@ class IncrementoSettingsDialog(QDialog):
                 QKeySequence.SequenceFormat.PortableText
             )
         return result
+
+    @property
+    def extract_notetype_name(self) -> str:
+        return str(self._extract_notetype_combo.currentData() or "").strip()

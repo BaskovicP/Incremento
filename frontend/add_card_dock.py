@@ -28,6 +28,7 @@ _SELECTION_TTL_SEC = 20.0
 _last_selection_source = ""
 _last_selection_text = ""
 _last_selection_seen = 0.0
+_ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 
 
 def _normalize_text(text) -> str:
@@ -68,6 +69,95 @@ def _dock_editor():
         return dock.widget().editor
     except Exception:
         return None
+
+
+def configured_extract_notetype_name(config: dict | None = None) -> str:
+    cfg = config
+    if cfg is None:
+        try:
+            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
+        except Exception:
+            cfg = {}
+    return str((cfg or {}).get("extract_notetype") or "").strip()
+
+
+def _note_has_content(note) -> bool:
+    if note is None:
+        return False
+    try:
+        if any(str(val or "").strip() for val in list(getattr(note, "fields", []) or [])):
+            return True
+    except Exception:
+        pass
+    try:
+        if any(str(tag or "").strip() for tag in list(getattr(note, "tags", []) or [])):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def should_apply_extract_notetype(
+    configured_name: str,
+    current_name: str,
+    *,
+    note_has_content: bool,
+) -> bool:
+    target = str(configured_name or "").strip()
+    current = str(current_name or "").strip()
+    return bool(target) and target != current and not note_has_content
+
+
+def _apply_configured_extract_notetype() -> None:
+    dock = get_add_card_dock()
+    if dock is None:
+        return
+
+    dlg = getattr(dock, "_addcards_dialog", None)
+    editor = getattr(dlg, "editor", None) if dlg is not None else None
+    if dlg is None or editor is None:
+        return
+
+    configured_name = configured_extract_notetype_name()
+    if not configured_name:
+        return
+
+    try:
+        model = mw.col.models.by_name(configured_name)
+    except Exception:
+        model = None
+    if model is None:
+        return
+
+    note = getattr(editor, "note", None)
+    current_name = ""
+    try:
+        if note is not None:
+            current_name = str(note.note_type().get("name") or "")
+    except Exception:
+        current_name = ""
+
+    if not should_apply_extract_notetype(
+        configured_name,
+        current_name,
+        note_has_content=_note_has_content(note),
+    ):
+        return
+
+    deck_id = None
+    try:
+        deck_id = dlg.deck_chooser.selected_deck_id
+    except Exception:
+        deck_id = None
+
+    try:
+        dlg.set_note_type(model["id"])
+        if deck_id is not None:
+            dlg.set_deck(deck_id)
+    except Exception:
+        return
+
+    _set_transfer_buttons_visible(editor, _has_recent_selection())
 
 
 def _inject_transfer_buttons(editor) -> None:
@@ -270,6 +360,7 @@ def build_add_card_dock():
     mw.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
     _add_card_dock = dock
     dlg.show()
+    _apply_configured_extract_notetype()
     _inject_transfer_buttons(dlg.editor)
 
     def _set_field(idx, text):
@@ -293,6 +384,7 @@ def open_add_card_dock():
         try:
             _add_card_dock.show()
             _add_card_dock.raise_()
+            _apply_configured_extract_notetype()
             editor = _dock_editor()
             if editor is not None:
                 _set_transfer_buttons_visible(editor, _has_recent_selection())
@@ -302,10 +394,15 @@ def open_add_card_dock():
     build_add_card_dock()
 
 
-def fill_dock_field(idx, text, include_pdf_citation: bool = True):
+def fill_dock_field(
+    idx,
+    text,
+    include_pdf_citation: bool = True,
+    citation_html: str | None = None,
+):
     global _add_card_dock
-    citation = None
-    if include_pdf_citation:
+    citation = citation_html
+    if citation is None and include_pdf_citation:
         try:
             from .pdf_dock import pdf_citation
 
@@ -321,6 +418,7 @@ def fill_dock_field(idx, text, include_pdf_citation: bool = True):
     try:
         _add_card_dock.show()
         _add_card_dock.raise_()
+        _apply_configured_extract_notetype()
         do_fill(idx, text)
     except RuntimeError:
         _add_card_dock = None
@@ -443,6 +541,19 @@ def transfer_selection_to_field(idx: int) -> None:
             idx,
             text,
             include_pdf_citation=(resolved_source == "pdf"),
+            citation_html=(
+                _web_citation()
+                if resolved_source == "web"
+                else None
+            ),
         )
+
+    def _web_citation() -> str | None:
+        try:
+            from .web_dock import web_citation
+
+            return web_citation()
+        except Exception:
+            return None
 
     _resolve_selection_from_source(source, _apply)

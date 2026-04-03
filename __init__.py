@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import zipfile
+from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo, tooltip
@@ -173,6 +174,17 @@ def _on_js_message(handled, message, context) -> tuple:
                 pass
         return (True, None)
 
+    if message.startswith("incremento_open_web:"):
+        parts = message.split(":", 2)
+        if len(parts) == 3:
+            try:
+                card_id = int(parts[1])
+                target_url = unquote(parts[2])
+                _web_dock_mod.open_web_location(card_id, target_url)
+            except Exception:
+                pass
+        return (True, None)
+
     if message.startswith("incremento_open_video:"):
         parts = message.split(":")
         if len(parts) == 3:
@@ -206,6 +218,7 @@ def _on_js_message(handled, message, context) -> tuple:
 
 
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
+gui_hooks.add_cards_did_add_note.append(_web_dock_mod.on_add_cards_did_add_note)
 
 gui_hooks.reviewer_did_show_question.append(_on_timer_question_shown)
 gui_hooks.reviewer_did_show_question.append(_review_time_mod.on_reviewer_question_shown)
@@ -429,6 +442,11 @@ def addPdfFunction() -> None:
 
 def exportFunction() -> None:
     import datetime
+    import tempfile
+    from pathlib import Path
+
+    from anki import hooks
+    from anki.exporting import AnkiPackageExporter
     from aqt.qt import QFileDialog
     from .backend.db import (
         get_connection,
@@ -438,115 +456,184 @@ def exportFunction() -> None:
         export_highlights_json,
         export_stats_json,
     )
+    from .backend.export_bundle import snapshot_tree
 
     today = datetime.date.today().isoformat()
-    default_name = os.path.expanduser(f"~/incremento_export_{today}.zip")
+    default_name = os.path.expanduser(f"~/incremento_full_backup_{today}.zip")
 
     path, _ = QFileDialog.getSaveFileName(
         mw,
-        "Export Incremento User Data",
+        "Export Incremento Full Backup",
         default_name,
         "ZIP files (*.zip)",
     )
     if not path:
         return
+    if not path.lower().endswith(".zip"):
+        path += ".zip"
 
     user_files_dir = os.path.join(_ADDON_DIR, "user_files")
-    from .backend.pdf_manager import get_pdf_dir
-    pdf_dir = get_pdf_dir()
+    config = mw.addonManager.getConfig(__name__) or {}
 
-    # Gather PDF filenames from all Incremento PDF notes
-    pdf_filenames = []
-    try:
-        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
-        for nid in note_ids:
-            try:
-                fname = mw.col.get_note(nid)["PDF_Filename"]
-                if fname:
-                    pdf_filenames.append(fname)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    try:
-        # Snapshot counts before opening the ZIP
-        conn = get_connection(_ADDON_DIR)
-        priority_count = conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0]
-
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # ── data/incremento.db — main SQLite database (direct restore) ──
-            db_path = os.path.join(user_files_dir, DB_NAME)
-            if os.path.exists(db_path):
-                zf.write(db_path, f"data/{DB_NAME}")
-
-            # ── data/*.json — human-readable copies of each dataset ──────────
-            zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR))
-            zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR))
-            zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR))
-            zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR))
-
-            # ── config.json — scheduler settings ─────────────────────────────
-            config = mw.addonManager.getConfig(__name__) or {}
-            zf.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
-
-            # ── pdfs/ — PDF media files ───────────────────────────────────────
-            pdf_count = 0
-            pdf_missing = []
-            for fname in pdf_filenames:
-                pdf_path = os.path.join(pdf_dir, fname)
-                if os.path.exists(pdf_path):
-                    zf.write(pdf_path, f"pdfs/{fname}")
-                    pdf_count += 1
-                else:
-                    pdf_missing.append(fname)
-
-            # ── manifest.json — export metadata ──────────────────────────────
-            manifest = {
-                "export_date": today,
-                "addon": "Incremento",
-                "anki_version": getattr(mw.pm, "meta", {}).get(
-                    "ankiVersion", "unknown"
-                ),
-                "counts": {
-                    "pdf_notes": len(pdf_filenames),
-                    "pdfs_exported": pdf_count,
-                    "pdfs_missing": len(pdf_missing),
-                    "priorities": priority_count,
-                },
-                "files": {
-                    f"data/{DB_NAME}": "All user data (SQLite, for direct restore)",
-                    "data/priorities.json": "Card priorities (human-readable copy)",
-                    "data/pdf_progress.json": "PDF reading positions and zoom levels",
-                    "data/highlights.json": "PDF text highlights",
-                    "data/stats.json": "Session, daily and lifetime statistics",
-                    "config.json": "Scheduler and session settings",
-                    "pdfs/": "PDF files referenced by Incremento cards",
-                },
-            }
-            if pdf_missing:
-                manifest["pdfs_missing_filenames"] = pdf_missing
-
-            zf.writestr(
-                "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
-            )
-
-        # ── Success dialog ────────────────────────────────────────────────────
-        missing_note = (
-            f"\n\n  ⚠ {len(pdf_missing)} PDF file(s) not found in media folder"
-            if pdf_missing
-            else ""
+    def _restore_instructions() -> str:
+        return "\n".join(
+            [
+                "Incremento Full Backup Restore",
+                "==============================",
+                "",
+                "This archive contains:",
+                "1. anki/all_decks.apkg  -> import this into a fresh Anki profile",
+                "2. user_files/          -> copy into addons21/incremento/user_files/",
+                "3. config.json          -> restore Incremento add-on config if needed",
+                "",
+                "Recommended restore order:",
+                "1. Install Anki.",
+                "2. Install the Incremento add-on.",
+                "3. Import anki/all_decks.apkg in Anki.",
+                "4. Close Anki.",
+                "5. Replace the add-on's user_files/ folder with the exported user_files/ folder.",
+                "6. If needed, paste config.json into Tools -> Add-ons -> Incremento -> Config.",
+                "7. Start Anki and verify PDFs, videos, writing notes, highlights, and progress.",
+                "",
+                "Notes:",
+                "- The APKG is generated from the currently open Anki profile.",
+                "- The user_files snapshot contains Incremento runtime data such as PDFs, videos, writing files, and browser profiles.",
+            ]
         )
+
+    def _progress(label: str) -> None:
+        mw.taskman.run_on_main(lambda: mw.progress.update(label=label))
+
+    mw.progress.start(label="Preparing full backup…", immediate=True)
+
+    def _task():
+        _video_dock_mod.flush_video_progress()
+        conn = get_connection(_ADDON_DIR)
+        conn.commit()
+
+        priority_count = conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0]
+        highlight_count = conn.execute("SELECT COUNT(*) FROM pdf_highlights").fetchone()[0]
+        pdf_progress_count = conn.execute("SELECT COUNT(*) FROM pdf_progress").fetchone()[0]
+        stats_count = conn.execute("SELECT COUNT(*) FROM stats").fetchone()[0]
+
+        with tempfile.TemporaryDirectory(prefix="incremento_export_") as tmp_dir:
+            tmp_root = Path(tmp_dir)
+            apkg_path = tmp_root / "all_decks.apkg"
+            db_snapshot_path = tmp_root / DB_NAME
+
+            _progress("Creating Anki package…")
+            exporter = AnkiPackageExporter(mw.col)
+            exporter.includeSched = True
+            exporter.includeMedia = True
+            exporter.did = None
+            exporter.cids = None
+
+            def _exported_media_count(cnt: int) -> None:
+                _progress(f"Creating Anki package… exported media {cnt}")
+
+            hooks.media_files_did_export.append(_exported_media_count)
+            try:
+                exporter.exportInto(str(apkg_path))
+            finally:
+                hooks.media_files_did_export.remove(_exported_media_count)
+
+            _progress("Snapshotting Incremento user_files…")
+            snapshot_conn = sqlite3.connect(str(db_snapshot_path))
+            try:
+                conn.backup(snapshot_conn)
+            finally:
+                snapshot_conn.close()
+
+            stage_root = tmp_root / "bundle"
+            user_files_stage = stage_root / "user_files"
+            user_files_stage.mkdir(parents=True, exist_ok=True)
+
+            user_files_stats = snapshot_tree(
+                user_files_dir,
+                str(user_files_stage),
+                skip_relpaths={DB_NAME, f"{DB_NAME}-wal", f"{DB_NAME}-shm"},
+            )
+            db_stage_path = user_files_stage / DB_NAME
+            db_stage_path.write_bytes(db_snapshot_path.read_bytes())
+
+            _progress("Writing backup ZIP…")
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(apkg_path, "anki/all_decks.apkg")
+                zf.write(db_stage_path, f"user_files/{DB_NAME}")
+
+                for root, _, filenames in os.walk(user_files_stage):
+                    for filename in filenames:
+                        file_path = Path(root) / filename
+                        if file_path == db_stage_path:
+                            continue
+                        arcname = file_path.relative_to(stage_root).as_posix()
+                        zf.write(file_path, arcname)
+
+                zf.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
+                zf.writestr("restore.txt", _restore_instructions())
+                zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR))
+                zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR))
+                zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR))
+                zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR))
+
+                manifest = {
+                    "export_date": today,
+                    "addon": "Incremento",
+                    "anki_version": getattr(mw.pm, "meta", {}).get(
+                        "ankiVersion", "unknown"
+                    ),
+                    "profile": _current_profile_name(),
+                    "counts": {
+                        "anki_cards_exported": int(getattr(exporter, "count", 0) or 0),
+                        "priorities": int(priority_count or 0),
+                        "pdf_progress": int(pdf_progress_count or 0),
+                        "highlights": int(highlight_count or 0),
+                        "stats_rows": int(stats_count or 0),
+                        "user_files_copied": int(user_files_stats["files_copied"]) + 1,
+                        "user_files_skipped": int(user_files_stats["files_skipped"]),
+                        "user_files_bytes": int(user_files_stats["bytes_copied"])
+                        + int(db_stage_path.stat().st_size),
+                    },
+                    "files": {
+                        "anki/all_decks.apkg": "All decks from the current Anki profile, including scheduling and media",
+                        "user_files/": "Full Incremento runtime snapshot (PDFs, videos, writing, browser profiles, database)",
+                        "config.json": "Incremento add-on config",
+                        "restore.txt": "Restore instructions for a fresh install",
+                        "data/priorities.json": "Card priorities (human-readable copy)",
+                        "data/pdf_progress.json": "PDF reading positions and zoom levels",
+                        "data/highlights.json": "PDF text highlights",
+                        "data/stats.json": "Session, daily and lifetime statistics",
+                    },
+                }
+                zf.writestr(
+                    "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
+                )
+
+            return {
+                "anki_cards_exported": int(getattr(exporter, "count", 0) or 0),
+                "priority_count": int(priority_count or 0),
+                "user_files_copied": int(user_files_stats["files_copied"]) + 1,
+                "user_files_skipped": int(user_files_stats["files_skipped"]),
+            }
+
+    def _on_done(fut) -> None:
+        mw.progress.finish()
+        try:
+            result = fut.result()
+        except Exception as e:
+            showInfo(f"Export failed:\n{e}")
+            return
+
         showInfo(
-            f"Export complete.\n\n"
-            f"  • {pdf_count} of {len(pdf_filenames)} PDF file(s)\n"
-            f"  • {priority_count} card priorit{'y' if priority_count == 1 else 'ies'}\n"
-            f"  • Statistics, highlights, progress, config"
-            f"{missing_note}\n\n"
+            f"Full backup complete.\n\n"
+            f"  • {result['anki_cards_exported']} card(s) exported to anki/all_decks.apkg\n"
+            f"  • {result['user_files_copied']} user_files item(s) copied\n"
+            f"  • {result['priority_count']} card priorit{'y' if result['priority_count'] == 1 else 'ies'}\n"
+            f"  • {result['user_files_skipped']} transient runtime file(s) skipped\n\n"
             f"Saved to:\n{path}"
         )
-    except Exception as e:
-        showInfo(f"Export failed:\n{e}")
+
+    mw.taskman.run_in_background(_task, _on_done)
 
 
 def _extract_card() -> None:
@@ -569,13 +656,20 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         {"name": m["name"], "fields": [f["name"] for f in m["flds"]]}
         for m in mw.col.models.all()
     ]
+    notetype_names = [nt["name"] for nt in notetypes]
 
     # Build deck list
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
 
-    # Defaults: same note type and deck as the parent card
+    # Defaults: configured extract note type if present, otherwise the parent note type.
     parent_note = parent_card.note()
-    default_notetype = parent_note.note_type()["name"]
+    configured_notetype = _add_card_dock_mod.configured_extract_notetype_name()
+    parent_notetype = parent_note.note_type()["name"]
+    default_notetype = (
+        configured_notetype
+        if configured_notetype in notetype_names
+        else parent_notetype
+    )
     parent_deck = mw.col.decks.get(parent_card.did)
     default_deck = parent_deck["name"] if parent_deck else ""
 
@@ -1627,14 +1721,21 @@ def cleanupOrphanVideosFunction() -> None:
 
 def openSettingsFunction() -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
-    dlg = IncrementoSettingsDialog(cfg.get("shortcuts") or {}, parent=mw)
+    note_type_names = sorted(m.name for m in mw.col.models.all_names_and_ids())
+    dlg = IncrementoSettingsDialog(
+        cfg.get("shortcuts") or {},
+        note_type_names=note_type_names,
+        current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
+        parent=mw,
+    )
     if not dlg.exec():
         return
 
     cfg["shortcuts"] = dlg.shortcuts_map
+    cfg["extract_notetype"] = dlg.extract_notetype_name
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
-    tooltip("Incremento shortcuts updated.")
+    tooltip("Incremento settings updated.")
 
 
 def openAboutFunction() -> None:
@@ -1799,7 +1900,7 @@ qconnect(_searchAllAction.triggered, _open_search_all)
 _menu.addAction(_searchAllAction)
 _register_shortcut_action("search_all", _searchAllAction)
 
-_exportAction = QAction("Export User Data", mw)
+_exportAction = QAction("Export Full Backup", mw)
 qconnect(_exportAction.triggered, exportFunction)
 _menu.addAction(_exportAction)
 _register_shortcut_action("export_user_data", _exportAction)

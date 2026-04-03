@@ -11,10 +11,12 @@ pdf_highlights  — highlighted passages per card
 stats           — daily and lifetime review statistics (JSON blobs per scope)
 priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
+web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 """
 
 import atexit
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -22,6 +24,7 @@ _connection: sqlite3.Connection | None = None
 _initialized_for: str | None = None
 
 DB_NAME = "incremento.db"
+_SEARCH_WORD_RE = re.compile(r"\w+", re.UNICODE)
 
 
 def close_connection() -> None:
@@ -108,6 +111,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_pcs_card_page
             ON pdf_card_sources (pdf_card_id, page);
+
+        CREATE TABLE IF NOT EXISTS web_card_sources (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            web_card_id INTEGER NOT NULL,
+            url         TEXT    NOT NULL DEFAULT '',
+            note_id     INTEGER NOT NULL,
+            excerpt     TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_wcs_card_url
+            ON web_card_sources (web_card_id, url);
 
         CREATE TABLE IF NOT EXISTS pdf_text_index (
             card_id INTEGER NOT NULL,
@@ -217,6 +230,32 @@ def get_pdf_page_card_counts(addon_dir: str, pdf_card_id: int) -> dict:
     return {r[0]: r[1] for r in rows}
 
 
+def add_web_card_source(
+    addon_dir: str, web_card_id: int, url: str, note_id: int, excerpt: str = ""
+) -> None:
+    """Record that note_id was created while viewing web_card_id at url."""
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO web_card_sources (web_card_id, url, note_id, excerpt) VALUES (?, ?, ?, ?)",
+        (web_card_id, str(url or "").strip(), note_id, excerpt),
+    )
+    conn.commit()
+
+
+def get_web_card_sources(addon_dir: str, web_card_id: int, url: str) -> list:
+    """Return list of {note_id, excerpt} for cards created at this web-card URL."""
+    rows = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT note_id, excerpt FROM web_card_sources "
+            "WHERE web_card_id = ? AND url = ? ORDER BY id",
+            (web_card_id, str(url or "").strip()),
+        )
+        .fetchall()
+    )
+    return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
+
+
 def export_stats_json(addon_dir: str) -> str:
     rows = (
         get_connection(addon_dir)
@@ -230,6 +269,90 @@ def export_stats_json(addon_dir: str) -> str:
         else:
             result[scope] = json.loads(data)
     return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+def normalize_search_text(text: str) -> str:
+    return " ".join((text or "").casefold().split())
+
+
+def split_search_terms(text: str, *, min_len: int = 2) -> list[str]:
+    return [
+        tok
+        for tok in _SEARCH_WORD_RE.findall(normalize_search_text(text))
+        if len(tok) >= min_len
+    ]
+
+
+def _find_consecutive_prefix_match(
+    query_terms: list[str], text_terms: list[str]
+) -> tuple[int, int] | None:
+    if not query_terms or len(query_terms) > len(text_terms):
+        return None
+    window = len(query_terms)
+    for start in range(len(text_terms) - window + 1):
+        if all(text_terms[start + idx].startswith(tok) for idx, tok in enumerate(query_terms)):
+            return (start, start + window - 1)
+    return None
+
+
+def _find_ordered_prefix_match(
+    query_terms: list[str], text_terms: list[str]
+) -> list[int] | None:
+    positions: list[int] = []
+    start = 0
+    for tok in query_terms:
+        for idx in range(start, len(text_terms)):
+            if text_terms[idx].startswith(tok):
+                positions.append(idx)
+                start = idx + 1
+                break
+        else:
+            return None
+    return positions
+
+
+def _find_unordered_prefix_match(
+    query_terms: list[str], text_terms: list[str]
+) -> list[int] | None:
+    positions: list[int] = []
+    used: set[int] = set()
+    for tok in query_terms:
+        for idx, term in enumerate(text_terms):
+            if idx in used:
+                continue
+            if term.startswith(tok):
+                used.add(idx)
+                positions.append(idx)
+                break
+        else:
+            return None
+    return sorted(positions)
+
+
+def search_text_match_score(
+    text: str, query: str
+) -> tuple[int, int, int, int] | None:
+    query_terms = split_search_terms(query)
+    if not query_terms:
+        return None
+    text_terms = split_search_terms(text, min_len=1)
+    if not text_terms:
+        return None
+
+    consecutive = _find_consecutive_prefix_match(query_terms, text_terms)
+    if consecutive is not None:
+        start, end = consecutive
+        return (0, end - start, start, len(text_terms))
+
+    ordered = _find_ordered_prefix_match(query_terms, text_terms)
+    if ordered is not None:
+        return (1, ordered[-1] - ordered[0], ordered[0], len(text_terms))
+
+    unordered = _find_unordered_prefix_match(query_terms, text_terms)
+    if unordered is not None:
+        return (2, unordered[-1] - unordered[0], unordered[0], len(text_terms))
+
+    return None
 
 
 def replace_pdf_text_index(addon_dir: str, card_id: int, page_texts: list[str]) -> None:
@@ -253,38 +376,27 @@ def search_pdf_text_index(
     addon_dir: str, query: str, limit: int = 120
 ) -> list[tuple[int, int, str]]:
     """Search indexed per-page PDF text. Returns [(card_id, page, text), ...]."""
-    q_norm = " ".join((query or "").casefold().split())
-    if len(q_norm) < 2:
-        return []
-    tokens = [t for t in q_norm.split(" ") if len(t) >= 2]
-    if not tokens:
+    query_terms = split_search_terms(query)
+    if not query_terms:
         return []
 
     conn = get_connection(addon_dir)
-    pre = tokens[0]
+    pre = query_terms[0]
     rows = conn.execute(
         "SELECT card_id, page, text FROM pdf_text_index "
         "WHERE lower(text) LIKE lower(?) ORDER BY card_id, page LIMIT ?",
         (f"%{pre}%", max(500, limit * 25)),
     ).fetchall()
 
-    def _normalize(s: str) -> str:
-        return " ".join((s or "").casefold().split())
-
-    out: list[tuple[int, int, str]] = []
+    ranked: list[tuple[tuple[int, int, int, int], int, int, str]] = []
     for cid, page, text in rows:
-        norm = _normalize(text or "")
-        if not norm:
+        score = search_text_match_score(text or "", query)
+        if score is None:
             continue
-        if q_norm in norm:
-            out.append((cid, page, text))
-        else:
-            hits = sum(1 for t in tokens if t in norm)
-            if hits >= max(1, int(len(tokens) * 0.7)):
-                out.append((cid, page, text))
-        if len(out) >= limit:
-            break
-    return out
+        ranked.append((score, int(cid), int(page), text))
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [(cid, page, text) for _, cid, page, text in ranked[:limit]]
 
 
 # ── Topic A-factor schedule ───────────────────────────────────────────────────
