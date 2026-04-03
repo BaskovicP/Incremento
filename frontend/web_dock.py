@@ -91,6 +91,20 @@ _web_snapshot_overlay = None
 _web_snapshot_override_cursor = False
 
 
+def _persist_web_url(card_id: int | None, url: str | None) -> None:
+    try:
+        target_card_id = int(card_id) if card_id is not None else 0
+    except Exception:
+        target_card_id = 0
+    target_url = str(url or "").strip()
+    if target_card_id <= 0 or not target_url or target_url == "about:blank":
+        return
+    try:
+        set_web_url(_ADDON_DIR, target_card_id, target_url)
+    except Exception:
+        pass
+
+
 def _source_url_label(url: str) -> str:
     raw = str(url or "").strip()
     if not raw:
@@ -457,6 +471,24 @@ def _current_selected_text() -> str:
     return ""
 
 
+def _resolve_web_selection(callback) -> None:
+    text = _current_selected_text()
+    if text:
+        callback(text)
+        return
+    if _web_dock is None:
+        callback("")
+        return
+    try:
+        _web_dock._view.page().runJavaScript(
+            "(function(){ return (window._incrementoLastSelection || "
+            "(window.getSelection && window.getSelection().toString()) || '').trim(); })();",
+            lambda text: callback(str(text or "").strip()),
+        )
+    except Exception:
+        callback("")
+
+
 def _update_native_selection_state() -> None:
     try:
         from . import add_card_dock as _add_card_dock_mod
@@ -470,22 +502,86 @@ def _update_native_selection_state() -> None:
 
 
 def _extract_web_selection_to_field(idx: int) -> None:
-    text = _current_selected_text()
-    if not text:
-        tooltip("Select some text first.")
-        return
-    try:
-        from . import add_card_dock as _add_card_dock_mod
+    def _apply(text: str) -> None:
+        if not text:
+            tooltip("Select some text first.")
+            return
+        try:
+            from . import add_card_dock as _add_card_dock_mod
 
-        _add_card_dock_mod.fill_dock_field(
-            idx,
-            text,
-            include_pdf_citation=False,
-            citation_html=web_citation(),
-            source_link_kind="web",
-        )
-    except Exception as exc:
-        showInfo(f"Web extraction failed:\n{exc}")
+            _add_card_dock_mod.fill_dock_field(
+                idx,
+                text,
+                include_pdf_citation=False,
+                citation_html=web_citation(),
+                source_link_kind="web",
+            )
+        except Exception as exc:
+            showInfo(f"Web extraction failed:\n{exc}")
+
+    _resolve_web_selection(_apply)
+
+
+def _get_add_card_field_names() -> list[str]:
+    from . import add_card_dock as _add_card_dock_mod
+
+    _add_card_dock_mod.open_add_card_dock()
+    try:
+        dock = _add_card_dock_mod.get_add_card_dock()
+        if dock:
+            note = dock.widget().editor.note
+            if note:
+                field_names = [f["name"] for f in note.note_type()["flds"]]
+                if field_names:
+                    return field_names
+    except Exception:
+        pass
+    return [f"Field {i + 1}" for i in range(4)]
+
+
+def _prompt_extract_target_field() -> int:
+    field_names = _get_add_card_field_names()
+    picker = QDialog(mw)
+    picker.setWindowTitle("Extract selection into field")
+    picker.setFixedWidth(340)
+    layout = QVBoxLayout(picker)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(0)
+
+    layout.addWidget(QLabel("Insert selected text into:"))
+    layout.addSpacing(12)
+
+    chosen_idx = [-1]
+
+    def _make_handler(idx):
+        def _handler():
+            chosen_idx[0] = idx
+            picker.accept()
+
+        return _handler
+
+    for i, name in enumerate(field_names):
+        btn = QPushButton(name)
+        btn.setStyleSheet("text-align: left; padding: 7px 12px;")
+        btn.clicked.connect(_make_handler(i))
+        layout.addWidget(btn)
+        layout.addSpacing(4)
+
+    layout.addSpacing(8)
+    cancel_btn = QPushButton("Cancel")
+    cancel_btn.clicked.connect(picker.reject)
+    layout.addWidget(cancel_btn)
+
+    if not picker.exec():
+        return -1
+    return chosen_idx[0]
+
+
+def _extract_web_selection_with_picker() -> None:
+    target_idx = _prompt_extract_target_field()
+    if target_idx < 0:
+        return
+    _extract_web_selection_to_field(target_idx)
 
 
 def _ensure_snapshot_band(view) -> None:
@@ -852,6 +948,12 @@ def _build_web_dock():
     add_card_btn = QPushButton("+ Add Card")
     ctrl_layout.addWidget(add_card_btn)
 
+    extract_btn = QPushButton("Extract")
+    extract_btn.setToolTip(
+        "Copy the current text selection into a field in the Add Card dock."
+    )
+    ctrl_layout.addWidget(extract_btn)
+
     snapshot_btn = QPushButton("Snapshot")
     snapshot_btn.setToolTip(
         "Capture an image from the current viewport, like the PDF snapshot tool."
@@ -896,6 +998,7 @@ def _build_web_dock():
     dock._view = view
     dock._url_lbl = url_lbl
     dock._track_cb = track_cb
+    dock._extract_btn = extract_btn
     dock._snapshot_btn = snapshot_btn
     dock._cards_btn = cards_btn
     dock._cards_panel = cards_panel
@@ -913,17 +1016,14 @@ def _build_web_dock():
             url_lbl.setText(display)
         except RuntimeError:
             pass
+        _persist_web_url(_current_web_card_id, url_str)
         _refresh_web_cards_panel()
 
     def _on_load_finished(ok):
         if not ok or _current_web_card_id is None:
             return
         url_str = view.url().toString()
-        if url_str and url_str != "about:blank":
-            try:
-                set_web_url(_ADDON_DIR, _current_web_card_id, url_str)
-            except Exception:
-                pass
+        _persist_web_url(_current_web_card_id, url_str)
         _set_web_snapshot_mode(False)
         try:
             view.page().runJavaScript(_build_web_bridge_js())
@@ -938,6 +1038,7 @@ def _build_web_dock():
     view.loadFinished.connect(_on_load_finished)
     view.page().selectionChanged.connect(_on_selection_changed)
     qconnect(home_btn.clicked, _web_go_home)
+    qconnect(extract_btn.clicked, _extract_web_selection_with_picker)
     qconnect(snapshot_btn.clicked, _toggle_snapshot_mode)
     qconnect(cards_btn.clicked, _toggle_web_cards_panel)
     qconnect(window_btn.clicked, _open_web_in_window)
@@ -1047,6 +1148,11 @@ def show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
             _build_web_dock()
 
     load_url = last_url if last_url else home_url
+    current_url = ""
+    try:
+        current_url = (_web_dock._view.url().toString() or "").strip()
+    except Exception:
+        current_url = ""
     _web_dock.show()
     _web_dock.raise_()
     _set_web_snapshot_mode(False)
@@ -1057,7 +1163,8 @@ def show_web_in_dock(card_id: int, home_url: str, last_url: str) -> None:
         _web_dock._cards_btn.setText("Cards 0")
     except Exception:
         pass
-    _web_dock._view.load(QUrl(load_url))
+    if load_url and current_url != load_url:
+        _web_dock._view.load(QUrl(load_url))
 
 
 def open_web_location(card_id: int, target_url: str) -> bool:
@@ -1120,6 +1227,7 @@ def on_web_question_shown(card) -> None:
             return
         if model is None or model.get("name") != WEB_NOTE_TYPE:
             if _web_dock is not None:
+                _persist_web_url(_current_web_card_id, _current_web_display_url())
                 try:
                     _web_dock.hide()
                 except RuntimeError:
@@ -1139,6 +1247,7 @@ def on_web_question_shown(card) -> None:
 
 def on_web_reviewer_will_end() -> None:
     _set_web_snapshot_mode(False)
+    _persist_web_url(_current_web_card_id, _current_web_display_url())
     if _web_dock is not None:
         try:
             _web_dock.hide()
@@ -1210,18 +1319,4 @@ def add_web_function() -> None:
 
 
 def get_selected_text(callback) -> None:
-    text = _current_selected_text()
-    if text:
-        callback(text)
-        return
-    if _web_dock is None:
-        callback("")
-        return
-    try:
-        _web_dock._view.page().runJavaScript(
-            "(function(){ return (window._incrementoLastSelection || "
-            "(window.getSelection && window.getSelection().toString()) || '').trim(); })();",
-            lambda text: callback(text or ""),
-        )
-    except Exception:
-        callback("")
+    _resolve_web_selection(callback)
