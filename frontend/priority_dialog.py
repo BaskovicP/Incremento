@@ -266,6 +266,18 @@ class PriorityDialog(QDialog):
                 return True
         return super().eventFilter(watched, event)
 
+    def keyPressEvent(self, event):
+        allowed_modifiers = (
+            Qt.KeyboardModifier.NoModifier | Qt.KeyboardModifier.KeypadModifier
+        )
+        if (
+            event.key() == Qt.Key.Key_Space
+            and not (event.modifiers() & ~allowed_modifiers)
+        ):
+            self.accept()
+            return
+        super().keyPressEvent(event)
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _set_priority(self, p: float):
@@ -308,6 +320,10 @@ class PriorityDialog(QDialog):
         if event.modifiers() & ~allowed_modifiers:
             self._clear_priority_digit_buffer()
             return False
+
+        if event.key() == Qt.Key.Key_Space:
+            self.accept()
+            return True
 
         text = event.text()
         if text.isdigit():
