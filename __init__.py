@@ -35,7 +35,12 @@ from .backend.video_manager import (
     import_local_video_file,
 )
 from .backend.writing_manager import add_writing_card
-from .backend.priority_manager import get_priority, set_priority, get_all_priorities
+from .backend.priority_manager import (
+    configured_priority_lower_is_more_important,
+    get_priority,
+    set_priority,
+    get_all_priorities,
+)
 from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
@@ -744,6 +749,7 @@ def _open_priority_dialog() -> None:
         card_label=label_text,
         current_a_factor=a_factor,
         current_interval=interval,
+        lower_is_more_important=configured_priority_lower_is_more_important(),
         parent=mw,
     )
     if dlg.exec():
@@ -1729,6 +1735,7 @@ def openSettingsFunction() -> None:
         note_type_names=note_type_names,
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
+        current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         parent=mw,
     )
     if not dlg.exec():
@@ -1737,6 +1744,7 @@ def openSettingsFunction() -> None:
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
     cfg["extract_source_links"] = dlg.extract_source_links
+    cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     tooltip("Incremento settings updated.")

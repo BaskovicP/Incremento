@@ -12,6 +12,7 @@ _spec.loader.exec_module(_mod)
 get_priority = _mod.get_priority
 set_priority = _mod.set_priority
 get_all_priorities = _mod.get_all_priorities
+configured_priority_lower_is_more_important = _mod.configured_priority_lower_is_more_important
 
 
 class TestGetPriority:
@@ -64,3 +65,13 @@ class TestGetAllPriorities:
         result = get_all_priorities(str(tmp_path))
         key = list(result.keys())[0]
         assert isinstance(key, int)
+
+
+class TestConfiguredPriorityDirection:
+    def test_defaults_to_lower_priority_more_important(self):
+        assert configured_priority_lower_is_more_important({}) is True
+
+    def test_reads_false_from_config(self):
+        assert configured_priority_lower_is_more_important(
+            {"priority_lower_is_more_important": False}
+        ) is False

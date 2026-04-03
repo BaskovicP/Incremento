@@ -65,6 +65,7 @@ class TestConfigFromDialogDict:
         assert cfg.preserve_order is True
         assert cfg.show_debug is False
         assert cfg.pdf_rate == pytest.approx(0.0)
+        assert cfg.priority_lower_is_more_important is True
 
     def test_session_card_count(self):
         cfg = _config_from_dialog_dict({"session_card_count": 100})
@@ -126,6 +127,10 @@ class TestConfigFromDialogDict:
     def test_enforce_priority_false(self):
         cfg = _config_from_dialog_dict({"enforce_priority": False})
         assert cfg.enforce_priority is False
+
+    def test_priority_direction_false(self):
+        cfg = _config_from_dialog_dict({"priority_lower_is_more_important": False})
+        assert cfg.priority_lower_is_more_important is False
 
     def test_include_flags(self):
         cfg = _config_from_dialog_dict({"include_new": False, "include_due": False})

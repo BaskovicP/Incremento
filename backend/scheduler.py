@@ -51,6 +51,8 @@ def get_card_from_scheduler(
         pdf_filter: str = 'note:"Incremento PDF"',
         youtube_filter: str = 'note:"Incremento Video"',
         webpage_filter: str = 'note:"Incremento Web"',
+        addon_dir: str | None = None,
+        priority_lower_is_more_important: bool = True,
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
@@ -79,6 +81,13 @@ def get_card_from_scheduler(
 
     def available(raw):
         return [c for c in raw if c not in exclude]
+
+    def priority_ordered(raw):
+        return card_utils.sort_cards_for_priority_mode(
+            raw,
+            addon_dir=addon_dir,
+            lower_is_more_important=priority_lower_is_more_important,
+        )
 
     # When PDF cards are scheduled separately, exclude them from topics/items pools
     pdf_exclusion = f" -({pdf_filter})" if pdf_rate > 0 else ""
@@ -114,7 +123,8 @@ def get_card_from_scheduler(
             {"pdf_filter": pdf_filter},
         )
         if pdf_cards:
-            card = random.choice(pdf_cards) if mode == "random" else pdf_cards[0]
+            ordered = priority_ordered(pdf_cards) if mode == "priority" else pdf_cards
+            card = random.choice(ordered) if mode == "random" else ordered[0]
             return SchedulerResult(card=card, card_type="pdf", tag=pdf_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
@@ -127,7 +137,8 @@ def get_card_from_scheduler(
             {"youtube_filter": youtube_filter},
         )
         if yt_cards:
-            card = random.choice(yt_cards) if mode == "random" else yt_cards[0]
+            ordered = priority_ordered(yt_cards) if mode == "priority" else yt_cards
+            card = random.choice(ordered) if mode == "random" else ordered[0]
             return SchedulerResult(card=card, card_type="youtube", tag=yt_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
@@ -140,7 +151,8 @@ def get_card_from_scheduler(
             {"webpage_filter": webpage_filter},
         )
         if wp_cards:
-            card = random.choice(wp_cards) if mode == "random" else wp_cards[0]
+            ordered = priority_ordered(wp_cards) if mode == "priority" else wp_cards
+            card = random.choice(ordered) if mode == "random" else ordered[0]
             return SchedulerResult(card=card, card_type="webpage", tag=wp_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
@@ -220,5 +232,6 @@ def get_card_from_scheduler(
         if not cards:
             return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
 
-    card = random.choice(cards) if mode == "random" else cards[0]
+    ordered = priority_ordered(cards) if mode == "priority" else cards
+    card = random.choice(ordered) if mode == "random" else ordered[0]
     return SchedulerResult(card=card, card_type=actual_type, tag=actual_tag, mode=mode)

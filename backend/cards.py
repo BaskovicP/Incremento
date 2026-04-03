@@ -4,6 +4,11 @@ from typing import Any, Sequence
 from anki.cards import Card, CardId
 from aqt import mw
 
+try:
+    from .priority_manager import get_all_priorities
+except ImportError:
+    from priority_manager import get_all_priorities  # type: ignore
+
 all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
 
 
@@ -22,6 +27,42 @@ def _sort_by_due(card_ids):
     )
     due_map = {row[0]: row[1] for row in rows}
     ids.sort(key=lambda cid: due_map.get(cid, 0))
+    return ids
+
+
+def sort_cards_for_priority_mode(
+    card_ids,
+    addon_dir: str | None = None,
+    lower_is_more_important: bool = True,
+):
+    """Return card_ids ordered for priority mode using priority first, due second."""
+    if not card_ids:
+        return list(card_ids)
+
+    ids = list(card_ids)
+    placeholders = ",".join("?" * len(ids))
+    rows = mw.col.db.all(
+        f"SELECT id, due FROM cards WHERE id IN ({placeholders})", *ids
+    )
+    due_map = {row[0]: row[1] for row in rows}
+    priority_map = get_all_priorities(addon_dir) if addon_dir else {}
+
+    if lower_is_more_important:
+        ids.sort(
+            key=lambda cid: (
+                priority_map.get(cid, 50.0),
+                due_map.get(cid, 0),
+                cid,
+            )
+        )
+    else:
+        ids.sort(
+            key=lambda cid: (
+                -priority_map.get(cid, 50.0),
+                due_map.get(cid, 0),
+                cid,
+            )
+        )
     return ids
 
 

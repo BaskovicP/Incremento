@@ -83,3 +83,29 @@ def test_strict_content_type_phase_forces_requested_card_type():
 
     assert result.selected_ids == [201, 202]
     assert calls == ["pdf", "pdf"]
+
+
+def test_priority_direction_is_forwarded_to_scheduler():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        priority_lower_is_more_important=False,
+    )
+    captured = {}
+
+    def _fake_get(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(card=10, card_type="items", tag=None, mode="priority")
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=_fake_get
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [10]
+    assert captured["priority_lower_is_more_important"] is False
+    assert captured["addon_dir"] == "/tmp/unused"

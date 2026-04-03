@@ -5,38 +5,47 @@ from aqt.qt import (
 from PyQt6.QtGui import QPainter, QLinearGradient, QColor
 
 # ── Non-linear mapping ────────────────────────────────────────────────────────
-# Slider range 0–10000.  First half (0–5000) maps to priority 0–30 (fine-grained).
-# Second half (5000–10000) maps to priority 30–100.
-# Lower priority value = more important.
+# Slider range 0–10000. The important end gets finer control.
 
 SLIDER_MAX   = 10_000
 SLIDER_HALF  = 5_000
-PRIORITY_MID = 30.0
+LOWER_PRIORITY_MID = 30.0
+HIGHER_PRIORITY_MID = 70.0
 
 
-def _slider_to_priority(s: int) -> float:
+def _priority_mid(lower_is_more_important: bool) -> float:
+    return LOWER_PRIORITY_MID if lower_is_more_important else HIGHER_PRIORITY_MID
+
+
+def _slider_to_priority(s: int, lower_is_more_important: bool = True) -> float:
+    priority_mid = _priority_mid(lower_is_more_important)
     if s <= SLIDER_HALF:
-        return round(s * PRIORITY_MID / SLIDER_HALF, 4)
-    else:
-        return round(PRIORITY_MID + (s - SLIDER_HALF) * (100.0 - PRIORITY_MID) / SLIDER_HALF, 4)
+        return round(s * priority_mid / SLIDER_HALF, 4)
+    return round(
+        priority_mid + (s - SLIDER_HALF) * (100.0 - priority_mid) / SLIDER_HALF,
+        4,
+    )
 
 
-def _priority_to_slider(p: float) -> int:
-    if p <= PRIORITY_MID:
-        return round(p * SLIDER_HALF / PRIORITY_MID)
-    else:
-        return round(SLIDER_HALF + (p - PRIORITY_MID) * SLIDER_HALF / (100.0 - PRIORITY_MID))
+def _priority_to_slider(p: float, lower_is_more_important: bool = True) -> int:
+    priority_mid = _priority_mid(lower_is_more_important)
+    if p <= priority_mid:
+        return round(p * SLIDER_HALF / priority_mid)
+    return round(
+        SLIDER_HALF + (p - priority_mid) * SLIDER_HALF / (100.0 - priority_mid)
+    )
 
 
 # ── Gradient bar widget ───────────────────────────────────────────────────────
 
 class _GradientBar(QWidget):
-    """Horizontal rainbow bar: red (0, most important) → violet (100, least)."""
+    """Horizontal importance bar, reversed when higher numbers are more important."""
 
-    def __init__(self, parent=None):
+    def __init__(self, lower_is_more_important: bool = True, parent=None):
         super().__init__(parent)
         self.setFixedHeight(14)
         self._marker = 0.0  # 0.0–1.0 position
+        self._lower_is_more_important = bool(lower_is_more_important)
 
     def set_fraction(self, f: float):
         self._marker = max(0.0, min(1.0, f))
@@ -48,15 +57,23 @@ class _GradientBar(QWidget):
 
         w, h = self.width(), self.height()
 
-        # Rainbow gradient: red → orange → yellow → green → cyan → blue → violet
+        # Red marks the important end of the scale.
         grad = QLinearGradient(0, 0, w, 0)
-        grad.setColorAt(0.00, QColor("#ff0000"))
-        grad.setColorAt(0.17, QColor("#ff8800"))
-        grad.setColorAt(0.33, QColor("#ffff00"))
-        grad.setColorAt(0.50, QColor("#00cc00"))
-        grad.setColorAt(0.67, QColor("#00cccc"))
-        grad.setColorAt(0.83, QColor("#0000ff"))
-        grad.setColorAt(1.00, QColor("#8800cc"))
+        stops = [
+            (0.00, QColor("#ff0000")),
+            (0.17, QColor("#ff8800")),
+            (0.33, QColor("#ffff00")),
+            (0.50, QColor("#00cc00")),
+            (0.67, QColor("#00cccc")),
+            (0.83, QColor("#0000ff")),
+            (1.00, QColor("#8800cc")),
+        ]
+        if self._lower_is_more_important:
+            for pos, color in stops:
+                grad.setColorAt(pos, color)
+        else:
+            for pos, color in stops:
+                grad.setColorAt(1.0 - pos, color)
 
         from PyQt6.QtGui import QBrush
         p.fillRect(0, 0, w, h, QBrush(grad))
@@ -92,6 +109,7 @@ class PriorityDialog(QDialog):
         card_label: str = "",
         current_a_factor: float | None = None,
         current_interval: int | None = None,
+        lower_is_more_important: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -100,6 +118,7 @@ class PriorityDialog(QDialog):
 
         self._building = False  # guard against recursive signal loops
         self._a_spin: QDoubleSpinBox | None = None
+        self._lower_is_more_important = bool(lower_is_more_important)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -111,16 +130,26 @@ class PriorityDialog(QDialog):
             layout.addWidget(lbl)
 
         # Hint
+        important_end = "0" if self._lower_is_more_important else "100"
+        less_important_end = "100" if self._lower_is_more_important else "0"
+        slider_side_hint = (
+            "First half of slider (0–30)"
+            if self._lower_is_more_important
+            else "Second half of slider (70–100)"
+        )
         hint = QLabel(
-            "<small><i>0 = highest importance &nbsp;·&nbsp; "
-            "50 = default &nbsp;·&nbsp; 100 = lowest importance<br>"
-            "First half of slider (0–30) gives finer control over important cards.</i></small>"
+            "<small><i>"
+            f"{important_end} = highest importance &nbsp;·&nbsp; "
+            "50 = default &nbsp;·&nbsp; "
+            f"{less_important_end} = lowest importance<br>"
+            f"{slider_side_hint} gives finer control over important cards."
+            "</i></small>"
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
         # Gradient bar
-        self._bar = _GradientBar()
+        self._bar = _GradientBar(lower_is_more_important=self._lower_is_more_important)
         layout.addWidget(self._bar)
 
         # Slider
@@ -134,7 +163,7 @@ class PriorityDialog(QDialog):
         scale_row = QHBoxLayout()
         scale_row.addWidget(QLabel("0"))
         scale_row.addStretch()
-        scale_row.addWidget(QLabel("30"))
+        scale_row.addWidget(QLabel(str(int(_priority_mid(self._lower_is_more_important)))))
         scale_row.addStretch()
         scale_row.addWidget(QLabel("100"))
         layout.addLayout(scale_row)
@@ -199,7 +228,7 @@ class PriorityDialog(QDialog):
     def _set_priority(self, p: float):
         """Set both widgets to the given priority (0–100) without recursion."""
         self._building = True
-        s = _priority_to_slider(p)
+        s = _priority_to_slider(p, self._lower_is_more_important)
         self._spin.setValue(p)
         self._slider.setValue(s)
         self._bar.set_fraction(s / SLIDER_MAX)
@@ -208,7 +237,7 @@ class PriorityDialog(QDialog):
     def _on_slider_changed(self, s: int):
         if self._building:
             return
-        p = _slider_to_priority(s)
+        p = _slider_to_priority(s, self._lower_is_more_important)
         self._building = True
         self._spin.setValue(p)
         self._bar.set_fraction(s / SLIDER_MAX)
@@ -217,7 +246,7 @@ class PriorityDialog(QDialog):
     def _on_spin_changed(self, p: float):
         if self._building:
             return
-        s = _priority_to_slider(p)
+        s = _priority_to_slider(p, self._lower_is_more_important)
         self._building = True
         self._slider.setValue(s)
         self._bar.set_fraction(s / SLIDER_MAX)

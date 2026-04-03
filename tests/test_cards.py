@@ -78,6 +78,49 @@ class TestSortByDue:
         assert sql_arg.count("?") == 3
 
 
+class TestSortCardsForPriorityMode:
+    def test_lower_priority_more_important_sorts_by_priority_then_due(self):
+        card_ids = [101, 102, 103]
+        db_rows = [(101, 30), (102, 10), (103, 20)]
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.get_all_priorities",
+            return_value={101: 70.0, 102: 20.0, 103: 20.0},
+        ):
+            mock_mw.col.db.all.return_value = db_rows
+            result = cards.sort_cards_for_priority_mode(
+                card_ids,
+                addon_dir="/tmp/unused",
+                lower_is_more_important=True,
+            )
+        assert result == [102, 103, 101]
+
+    def test_higher_priority_more_important_sorts_by_priority_then_due(self):
+        card_ids = [101, 102, 103]
+        db_rows = [(101, 30), (102, 10), (103, 20)]
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.get_all_priorities",
+            return_value={101: 70.0, 102: 20.0, 103: 70.0},
+        ):
+            mock_mw.col.db.all.return_value = db_rows
+            result = cards.sort_cards_for_priority_mode(
+                card_ids,
+                addon_dir="/tmp/unused",
+                lower_is_more_important=False,
+            )
+        assert result == [103, 101, 102]
+
+    def test_without_addon_dir_falls_back_to_due_order(self):
+        card_ids = [101, 102, 103]
+        db_rows = [(101, 30), (102, 10), (103, 20)]
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.get_all_priorities"
+        ) as mock_get_all_priorities:
+            mock_mw.col.db.all.return_value = db_rows
+            result = cards.sort_cards_for_priority_mode(card_ids, addon_dir=None)
+        mock_get_all_priorities.assert_not_called()
+        assert result == [102, 103, 101]
+
+
 # ---------------------------------------------------------------------------
 # get_all_topic_cards
 # ---------------------------------------------------------------------------

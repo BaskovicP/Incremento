@@ -521,6 +521,34 @@ class TestPriorityModeSort:
         assert result.card == 403  # random.choice result, not most overdue (402)
         assert result.mode == "random"
 
+    def test_priority_mode_prefers_lower_numeric_priority_when_configured(self):
+        with patch("cards.mw", self._make_db_mock({201: 10, 202: 1, 203: 5})), patch(
+            "cards.get_all_priorities",
+            return_value={201: 5.0, 202: 90.0, 203: 5.0},
+        ):
+            with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=False,
+                    addon_dir="/tmp/unused",
+                    priority_lower_is_more_important=True,
+                )
+        assert result.card == 203  # lowest priority value wins, due breaks the tie
+        assert result.mode == "priority"
+
+    def test_priority_mode_prefers_higher_numeric_priority_when_configured(self):
+        with patch("cards.mw", self._make_db_mock({201: 10, 202: 1, 203: 5})), patch(
+            "cards.get_all_priorities",
+            return_value={201: 95.0, 202: 20.0, 203: 95.0},
+        ):
+            with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
+                result = scheduler.get_card_from_scheduler(
+                    use_tags=False,
+                    addon_dir="/tmp/unused",
+                    priority_lower_is_more_important=False,
+                )
+        assert result.card == 203  # highest priority value wins, due breaks the tie
+        assert result.mode == "priority"
+
 
 # ---------------------------------------------------------------------------
 # PDF rate paths

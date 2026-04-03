@@ -1,4 +1,5 @@
 from aqt.qt import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -9,6 +10,7 @@ from aqt.qt import (
     QKeySequence,
     QKeySequenceEdit,
     QPushButton,
+    QRadioButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -120,6 +122,7 @@ class IncrementoSettingsDialog(QDialog):
         note_type_names: list[str] | None = None,
         current_extract_notetype: str = "",
         extract_source_links: dict[str, bool] | bool | None = None,
+        current_priority_lower_is_more_important: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -140,7 +143,8 @@ class IncrementoSettingsDialog(QDialog):
         general_hint = QLabel(
             "Choose which card type extraction opens in by default."
             " This applies to the Add Card dock and Extract Card dialog."
-            " You can also choose which source links should be appended while extracting."
+            " You can also choose which source links should be appended while extracting"
+            " and how incremental learning interprets stored priority numbers."
         )
         general_hint.setWordWrap(True)
         general_layout.addWidget(general_hint)
@@ -188,6 +192,23 @@ class IncrementoSettingsDialog(QDialog):
         self._extract_parent_links_cb = QCheckBox("Parent cards in Extract Card")
         self._extract_parent_links_cb.setChecked(source_link_cfg["parent"])
         general_form.addRow("", self._extract_parent_links_cb)
+
+        priority_direction_wrap = QWidget()
+        priority_direction_layout = QVBoxLayout(priority_direction_wrap)
+        priority_direction_layout.setContentsMargins(0, 0, 0, 0)
+        priority_direction_layout.setSpacing(4)
+
+        self._priority_direction_group = QButtonGroup(self)
+        self._priority_lower_radio = QRadioButton("Lower priority number is more important")
+        self._priority_higher_radio = QRadioButton("Higher priority number is more important")
+        self._priority_direction_group.addButton(self._priority_lower_radio)
+        self._priority_direction_group.addButton(self._priority_higher_radio)
+        self._priority_lower_radio.setChecked(bool(current_priority_lower_is_more_important))
+        self._priority_higher_radio.setChecked(not bool(current_priority_lower_is_more_important))
+
+        priority_direction_layout.addWidget(self._priority_lower_radio)
+        priority_direction_layout.addWidget(self._priority_higher_radio)
+        general_form.addRow("Incremental learning priority:", priority_direction_wrap)
 
         general_layout.addLayout(general_form)
         general_layout.addStretch(1)
@@ -282,3 +303,7 @@ class IncrementoSettingsDialog(QDialog):
             "web": bool(self._extract_web_links_cb.isChecked()),
             "parent": bool(self._extract_parent_links_cb.isChecked()),
         }
+
+    @property
+    def priority_lower_is_more_important(self) -> bool:
+        return bool(self._priority_lower_radio.isChecked())

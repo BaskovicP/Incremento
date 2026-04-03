@@ -4,8 +4,29 @@ except ImportError:
     from db import get_connection  # test environment (backend/ on sys.path)
 
 
+_DEFAULT_PRIORITY_LOWER_IS_MORE_IMPORTANT = True
+
+
+def configured_priority_lower_is_more_important(config: dict | None = None) -> bool:
+    """Return whether lower stored priority values should rank ahead of higher ones."""
+    if config is None:
+        try:
+            from aqt import mw
+
+            addon_name = __name__.split(".")[0]
+            config = mw.addonManager.getConfig(addon_name) or {}
+        except Exception:
+            config = {}
+    return bool(
+        (config or {}).get(
+            "priority_lower_is_more_important",
+            _DEFAULT_PRIORITY_LOWER_IS_MORE_IMPORTANT,
+        )
+    )
+
+
 def get_priority(addon_dir: str, card_id: int) -> float:
-    """Return card priority (0.0 = most important, 100.0 = least). Default 50.0."""
+    """Return stored card priority (0.0–100.0). Default 50.0."""
     row = get_connection(addon_dir).execute(
         "SELECT priority FROM priorities WHERE card_id = ?", (card_id,)
     ).fetchone()

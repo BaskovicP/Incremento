@@ -44,6 +44,8 @@ def select_session_cards(cfg, addon_dir: str) -> SessionSelectionResult:
             items_filter=cfg.items_filter,
             ready_filter=cfg.ready_filter,
             pdf_rate=cfg.pdf_rate,
+            addon_dir=addon_dir,
+            priority_lower_is_more_important=cfg.priority_lower_is_more_important,
         )
         if result.card is None:
             return False
