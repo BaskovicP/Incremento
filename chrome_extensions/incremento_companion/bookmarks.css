@@ -131,6 +131,25 @@ h1 {
   margin-bottom: 8px;
 }
 
+.global-controls {
+  margin-bottom: 14px;
+}
+
+.deck-field {
+  max-width: 360px;
+}
+
+.deck-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6b675f;
+}
+
+.deck-hint.is-error {
+  color: #ab2f2f;
+}
+
 .bookmark-tree {
   max-height: calc(70vh - 80px);
   overflow: auto;

@@ -22,7 +22,12 @@ test("importIntoIncremento posts JSON payload and returns successful response", 
   };
 
   try {
-    const payload = { kind: "pdf", title: "Example", url: "https://example.com/file.pdf" };
+    const payload = {
+      kind: "pdf",
+      title: "Example",
+      url: "https://example.com/file.pdf",
+      deckName: "Research::Bookmarks",
+    };
     const result = await importIntoIncremento(payload);
 
     assert.deepEqual(result, { ok: true, kind: "pdf", title: "Example" });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadBookmarksTree } from "../shared/chromeApi.js";
-import { formatBridgeError, importIntoIncremento } from "../shared/bridge.js";
+import { formatBridgeError, importIntoIncremento, loadBrowserCaptureMeta } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
   DEFAULT_PRIORITY,
@@ -38,6 +38,9 @@ function makeProgress(total = 0, completed = 0, note = "Waiting to start.") {
 export function BookmarksApp() {
   const [tree, setTree] = useState([]);
   const [itemsById, setItemsById] = useState({});
+  const [deckNames, setDeckNames] = useState(["Topics"]);
+  const [deckName, setDeckName] = useState("Topics");
+  const [deckLoadError, setDeckLoadError] = useState("");
   const [treeLoadError, setTreeLoadError] = useState(false);
   const [treeLoaded, setTreeLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -74,8 +77,38 @@ export function BookmarksApp() {
     }
   }
 
+  async function loadDecks() {
+    try {
+      const meta = await loadBrowserCaptureMeta();
+      const nextDeckNames = Array.from(
+        new Set(
+          Array.isArray(meta?.deckNames)
+            ? meta.deckNames.map((value) => String(value || "").trim()).filter(Boolean)
+            : []
+        )
+      );
+      const availableDecks = nextDeckNames.length > 0 ? nextDeckNames : ["Topics"];
+      setDeckNames(availableDecks);
+      setDeckName((currentDeck) => {
+        if (availableDecks.includes(currentDeck)) {
+          return currentDeck;
+        }
+        if (availableDecks.includes("Topics")) {
+          return "Topics";
+        }
+        return availableDecks[0] || "Topics";
+      });
+      setDeckLoadError("");
+    } catch (error) {
+      setDeckNames(["Topics"]);
+      setDeckName((currentDeck) => currentDeck || "Topics");
+      setDeckLoadError(formatBridgeError(error, "Failed to load decks from Anki. Using Topics."));
+    }
+  }
+
   useEffect(() => {
     void loadBookmarks();
+    void loadDecks();
   }, []);
 
   function toggleFolder(folderId, checked) {
@@ -193,6 +226,7 @@ export function BookmarksApp() {
             kind: item.kind,
             url: item.url,
             title: item.title,
+            deckName,
             tags: item.tags,
             priority: item.priority,
           };
@@ -260,8 +294,8 @@ export function BookmarksApp() {
         <h1>Send Chrome bookmarks to Incremento</h1>
         <p className="hero-copy">
           Select folders or individual bookmarks, edit tags per row, choose whether each item
-          becomes a PDF, YouTube/Video, Webpage, or Writing card, and set each card priority
-          before importing them in one run.
+          becomes a PDF, YouTube/Video, Webpage, or Writing card, choose a target deck, and set
+          each card priority before importing them in one run.
         </p>
       </section>
 
@@ -314,6 +348,27 @@ export function BookmarksApp() {
             >
               Import selected
             </button>
+          </div>
+          <div className="global-controls">
+            <div className="field deck-field">
+              <span className="field-label">Import deck</span>
+              <select
+                id="bookmark-deck-select"
+                value={deckName}
+                disabled={busy}
+                onChange={(event) => setDeckName(event.target.value)}
+              >
+                {deckNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <p className="deck-hint">All selected bookmarks will be imported into this deck.</p>
+              {deckLoadError ? (
+                <p className="deck-hint is-error">{deckLoadError}</p>
+              ) : null}
+            </div>
           </div>
           <ImportRows
             items={selectedItems}
