@@ -2,13 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEFAULT_PRIORITY,
   buildBookmarkItems,
   collectBookmarkIds,
   countSelected,
   findNodeById,
+  formatPriority,
   getSelectedItems,
   parseTags,
+  parsePriorityText,
+  priorityToSliderValue,
   setSelectedForIds,
+  sliderValueToPriority,
   updateBookmarkItem,
 } from "../src/bookmarks/bookmarkModel.js";
 
@@ -61,6 +66,8 @@ test("buildBookmarkItems indexes bookmarks with folder path and detected kind", 
     folderPath: "Programming",
     kind: "video",
     tagsText: "",
+    priority: DEFAULT_PRIORITY,
+    priorityText: "50.0000",
     selected: false,
     importState: "",
     importError: "",
@@ -121,4 +128,20 @@ test("updateBookmarkItem applies targeted updates", () => {
 test("parseTags normalizes whitespace, commas, and duplicates", () => {
   assert.deepEqual(parseTags("anki, pdf  browser   anki"), ["anki", "pdf", "browser"]);
   assert.deepEqual(parseTags(""), []);
+});
+
+test("priority helpers preserve four-decimal priority values", () => {
+  assert.equal(formatPriority(50), "50.0000");
+  assert.equal(parsePriorityText("12.34567"), null);
+  assert.equal(parsePriorityText("12.3456"), 12.3456);
+  assert.equal(parsePriorityText(""), DEFAULT_PRIORITY);
+});
+
+test("priority slider mapping matches a linear 0-100 priority scale", () => {
+  assert.equal(sliderValueToPriority(0), 0);
+  assert.equal(sliderValueToPriority(5000), 50);
+  assert.equal(sliderValueToPriority(10000), 100);
+  assert.equal(priorityToSliderValue(0), 0);
+  assert.equal(priorityToSliderValue(50), 5000);
+  assert.equal(priorityToSliderValue(100), 10000);
 });

@@ -124,6 +124,18 @@ def _normalize_tags(raw_tags) -> list[str]:
     return tags
 
 
+def _normalize_priority(raw_priority) -> float:
+    if raw_priority is None or raw_priority == "":
+        return 50.0
+    try:
+        priority = round(float(raw_priority), 4)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Priority must be a decimal number between 0.0000 and 100.0000.") from exc
+    if not (0.0 <= priority <= 100.0):
+        raise ValueError("Priority must be between 0.0000 and 100.0000.")
+    return priority
+
+
 def normalize_add_content_payload(payload) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object.")
@@ -157,6 +169,7 @@ def normalize_add_content_payload(payload) -> dict:
         "title": title,
         "deck_name": deck_name,
         "tags": _normalize_tags(payload.get("tags")),
+        "priority": _normalize_priority(payload.get("priority")),
         "selected_text": selected_text,
         "html": html,
         "pdf_base64": pdf_base64,
@@ -255,6 +268,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     from aqt import mw
 
     from .pdf_manager import add_pdf_card
+    from .priority_manager import set_priority
     from .video_manager import add_video_card, is_supported_video_url, resolve_video_url_for_embed
     from .web_manager import add_web_card
     from .writing_manager import add_writing_card
@@ -265,6 +279,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     title = normalized["title"]
     deck_name = normalized["deck_name"]
     tags = normalized["tags"]
+    priority = normalized["priority"]
     selected_text = normalized["selected_text"]
     html = normalized["html"]
     pdf_base64 = normalized["pdf_base64"]
@@ -332,6 +347,8 @@ def _add_content_item_on_main(normalized: dict) -> dict:
                 os.remove(temp_pdf_path)
             except OSError:
                 pass
+
+    set_priority(_addon_dir, int(card_id), priority)
 
     return {
         "ok": True,

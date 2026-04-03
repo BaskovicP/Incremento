@@ -38,6 +38,7 @@ def test_normalize_add_content_payload_defaults_and_aliases():
     assert payload["title"] == "Example Title"
     assert payload["deck_name"] == "Topics"
     assert payload["tags"] == ["alpha", "beta"]
+    assert payload["priority"] == 50.0
     assert payload["html"] == "<html></html>"
 
 
@@ -59,12 +60,29 @@ def test_normalize_add_content_payload_keeps_pdf_base64_payload():
             "kind": "pdf",
             "url": "https://example.com/file.pdf",
             "title": "Example PDF",
+            "priority": "12.34567",
             "pdfBase64": "JVBERi0xLjQK",
             "pdfFilename": "file.pdf",
         }
     )
+    assert payload["priority"] == 12.3457
     assert payload["pdf_base64"] == "JVBERi0xLjQK"
     assert payload["pdf_filename"] == "file.pdf"
+
+
+def test_normalize_add_content_payload_rejects_invalid_priority():
+    try:
+        normalize_add_content_payload(
+            {
+                "kind": "webpage",
+                "url": "https://example.com",
+                "title": "Example",
+                "priority": "100.0001",
+            }
+        )
+        assert False, "Expected normalize_add_content_payload to reject out-of-range priorities"
+    except ValueError as exc:
+        assert "Priority" in str(exc)
 
 
 def test_normalize_add_content_batch_payload_merges_defaults():

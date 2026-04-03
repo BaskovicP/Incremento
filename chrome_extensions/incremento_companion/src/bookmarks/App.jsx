@@ -3,12 +3,16 @@ import { loadBookmarksTree } from "../shared/chromeApi.js";
 import { formatBridgeError, importIntoIncremento } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
+  DEFAULT_PRIORITY,
   buildBookmarkItems,
   collectBookmarkIds,
   findNodeById,
+  formatPriority,
   getSelectedItems,
   parseTags,
+  parsePriorityText,
   setSelectedForIds,
+  sliderValueToPriority,
   updateBookmarkItem,
 } from "./bookmarkModel.js";
 import { BookmarkTree } from "./components/BookmarkTree.jsx";
@@ -103,6 +107,47 @@ export function BookmarksApp() {
     setItemsById((currentItems) => updateBookmarkItem(currentItems, bookmarkId, { tagsText: value }));
   }
 
+  function updatePrioritySlider(bookmarkId, sliderValue) {
+    const priority = sliderValueToPriority(sliderValue);
+    setItemsById((currentItems) => updateBookmarkItem(currentItems, bookmarkId, {
+      priority,
+      priorityText: formatPriority(priority),
+    }));
+  }
+
+  function updatePriorityText(bookmarkId, value) {
+    const text = String(value ?? "");
+    if (!/^\d{0,3}(\.\d{0,4})?$/.test(text)) {
+      return;
+    }
+    setItemsById((currentItems) => {
+      const item = currentItems[bookmarkId];
+      if (!item) {
+        return currentItems;
+      }
+      const parsed = parsePriorityText(text, item.priority);
+      return updateBookmarkItem(currentItems, bookmarkId, {
+        priorityText: text,
+        priority: parsed ?? item.priority,
+      });
+    });
+  }
+
+  function commitPriorityText(bookmarkId) {
+    setItemsById((currentItems) => {
+      const item = currentItems[bookmarkId];
+      if (!item) {
+        return currentItems;
+      }
+      const parsed = parsePriorityText(item.priorityText, item.priority ?? DEFAULT_PRIORITY);
+      const priority = parsed ?? item.priority ?? DEFAULT_PRIORITY;
+      return updateBookmarkItem(currentItems, bookmarkId, {
+        priority,
+        priorityText: formatPriority(priority),
+      });
+    });
+  }
+
   async function importSelected() {
     const items = selectedItems.map((item) => ({
       id: item.id,
@@ -110,6 +155,7 @@ export function BookmarksApp() {
       url: item.url,
       title: item.title,
       tags: parseTags(item.tagsText),
+      priority: item.priority,
     }));
     if (items.length === 0) {
       setStatus(makeStatus("Select at least one bookmark before importing.", "error"));
@@ -148,6 +194,7 @@ export function BookmarksApp() {
             url: item.url,
             title: item.title,
             tags: item.tags,
+            priority: item.priority,
           };
           if (item.kind === "pdf") {
             const pdfPayload = await getPdfPayloadForUrl(item.url);
@@ -213,7 +260,8 @@ export function BookmarksApp() {
         <h1>Send Chrome bookmarks to Incremento</h1>
         <p className="hero-copy">
           Select folders or individual bookmarks, edit tags per row, choose whether each item
-          becomes a PDF, YouTube/Video, Webpage, or Writing card, then import them in one run.
+          becomes a PDF, YouTube/Video, Webpage, or Writing card, and set each card priority
+          before importing them in one run.
         </p>
       </section>
 
@@ -274,6 +322,9 @@ export function BookmarksApp() {
             onUpdateTitle={updateTitle}
             onUpdateKind={updateKind}
             onUpdateTags={updateTags}
+            onUpdatePrioritySlider={updatePrioritySlider}
+            onUpdatePriorityText={updatePriorityText}
+            onCommitPriorityText={commitPriorityText}
           />
           <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
             {status.text}

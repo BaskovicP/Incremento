@@ -1,4 +1,20 @@
-export function ImportRows({ items, disabled, onToggleSelected, onUpdateTitle, onUpdateKind, onUpdateTags }) {
+import {
+  PRIORITY_SLIDER_MAX,
+  formatPriority,
+  priorityToSliderValue,
+} from "../bookmarkModel.js";
+
+export function ImportRows({
+  items,
+  disabled,
+  onToggleSelected,
+  onUpdateTitle,
+  onUpdateKind,
+  onUpdateTags,
+  onUpdatePrioritySlider,
+  onUpdatePriorityText,
+  onCommitPriorityText,
+}) {
   if (items.length === 0) {
     return (
       <div className="empty-state">
@@ -55,6 +71,39 @@ export function ImportRows({ items, disabled, onToggleSelected, onUpdateTitle, o
                 disabled={disabled}
                 onChange={(event) => onUpdateTags(item.id, event.target.value)}
               />
+            </div>
+            <div className="field priority-field">
+              <span className="field-label">Priority</span>
+              <div className="priority-controls">
+                <div className="priority-slider-wrap">
+                  <input
+                    className="priority-slider"
+                    type="range"
+                    min="0"
+                    max={String(PRIORITY_SLIDER_MAX)}
+                    step="1"
+                    value={String(priorityToSliderValue(item.priority))}
+                    disabled={disabled}
+                    onChange={(event) => onUpdatePrioritySlider(item.id, event.target.value)}
+                  />
+                  <div className="priority-scale">
+                    <span>0</span>
+                    <span>100</span>
+                  </div>
+                </div>
+                <input
+                  className="priority-number"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\\d{1,3}(\\.\\d{0,4})?$"
+                  value={item.priorityText || formatPriority(item.priority)}
+                  placeholder="50.0000"
+                  spellCheck="false"
+                  disabled={disabled}
+                  onChange={(event) => onUpdatePriorityText(item.id, event.target.value)}
+                  onBlur={() => onCommitPriorityText(item.id)}
+                />
+              </div>
             </div>
           </div>
           <div className="row-meta">

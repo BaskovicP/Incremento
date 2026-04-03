@@ -249,7 +249,7 @@ h1 {
 
 .row-top {
   display: grid;
-  grid-template-columns: auto minmax(0, 1.3fr) 180px 220px;
+  grid-template-columns: auto minmax(0, 1.2fr) 180px 220px minmax(250px, 0.9fr);
   gap: 10px;
   align-items: start;
 }
@@ -275,6 +275,7 @@ h1 {
 }
 
 input[type="text"],
+input[type="number"],
 select {
   width: 100%;
   border: 1px solid rgba(83, 72, 54, 0.18);
@@ -286,9 +287,47 @@ select {
 }
 
 input[type="text"]:focus,
+input[type="number"]:focus,
 select:focus {
   outline: 2px solid rgba(201, 118, 18, 0.24);
   border-color: rgba(201, 118, 18, 0.42);
+}
+
+.priority-field {
+  min-width: 0;
+}
+
+.priority-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px;
+  gap: 10px;
+  align-items: start;
+}
+
+.priority-slider-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.priority-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: #b86814;
+}
+
+.priority-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.priority-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8a7d66;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .row-meta {
