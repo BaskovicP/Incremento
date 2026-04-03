@@ -1,4 +1,5 @@
 from aqt.qt import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -118,6 +119,7 @@ class IncrementoSettingsDialog(QDialog):
         current_shortcuts: dict[str, str],
         note_type_names: list[str] | None = None,
         current_extract_notetype: str = "",
+        extract_source_links: dict[str, bool] | bool | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -138,6 +140,7 @@ class IncrementoSettingsDialog(QDialog):
         general_hint = QLabel(
             "Choose which card type extraction opens in by default."
             " This applies to the Add Card dock and Extract Card dialog."
+            " You can also choose which source links should be appended while extracting."
         )
         general_hint.setWordWrap(True)
         general_layout.addWidget(general_hint)
@@ -158,6 +161,34 @@ class IncrementoSettingsDialog(QDialog):
                 break
 
         general_form.addRow("Default extract card type:", self._extract_notetype_combo)
+
+        if isinstance(extract_source_links, dict):
+            source_link_cfg = {
+                "pdf": bool(extract_source_links.get("pdf", True)),
+                "web": bool(extract_source_links.get("web", True)),
+                "parent": bool(extract_source_links.get("parent", True)),
+            }
+        elif isinstance(extract_source_links, bool):
+            source_link_cfg = {
+                "pdf": bool(extract_source_links),
+                "web": bool(extract_source_links),
+                "parent": bool(extract_source_links),
+            }
+        else:
+            source_link_cfg = {"pdf": True, "web": True, "parent": True}
+
+        self._extract_pdf_links_cb = QCheckBox("PDF pages")
+        self._extract_pdf_links_cb.setChecked(source_link_cfg["pdf"])
+        general_form.addRow("Should add links to:", self._extract_pdf_links_cb)
+
+        self._extract_web_links_cb = QCheckBox("Web pages / URLs")
+        self._extract_web_links_cb.setChecked(source_link_cfg["web"])
+        general_form.addRow("", self._extract_web_links_cb)
+
+        self._extract_parent_links_cb = QCheckBox("Parent cards in Extract Card")
+        self._extract_parent_links_cb.setChecked(source_link_cfg["parent"])
+        general_form.addRow("", self._extract_parent_links_cb)
+
         general_layout.addLayout(general_form)
         general_layout.addStretch(1)
         tabs.addTab(general_tab, "General")
@@ -243,3 +274,11 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def extract_notetype_name(self) -> str:
         return str(self._extract_notetype_combo.currentData() or "").strip()
+
+    @property
+    def extract_source_links(self) -> dict[str, bool]:
+        return {
+            "pdf": bool(self._extract_pdf_links_cb.isChecked()),
+            "web": bool(self._extract_web_links_cb.isChecked()),
+            "parent": bool(self._extract_parent_links_cb.isChecked()),
+        }

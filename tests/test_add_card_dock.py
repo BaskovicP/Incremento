@@ -7,6 +7,37 @@ def test_configured_extract_notetype_name_reads_config_value():
     assert dock.configured_extract_notetype_name({}) == ""
 
 
+def test_configured_extract_source_links_supports_bool_backcompat():
+    assert dock.configured_extract_source_links({"extract_source_links": True}) == {
+        "pdf": True,
+        "web": True,
+        "parent": True,
+    }
+    assert dock.configured_extract_source_links({"extract_source_links": False}) == {
+        "pdf": False,
+        "web": False,
+        "parent": False,
+    }
+
+
+def test_configured_extract_source_links_merges_partial_dict():
+    assert dock.configured_extract_source_links(
+        {"extract_source_links": {"pdf": False, "web": True}}
+    ) == {
+        "pdf": False,
+        "web": True,
+        "parent": True,
+    }
+
+
+def test_should_add_extract_source_link_reads_specific_kind():
+    cfg = {"extract_source_links": {"pdf": False, "web": True, "parent": False}}
+    assert dock.should_add_extract_source_link("pdf", cfg) is False
+    assert dock.should_add_extract_source_link("web", cfg) is True
+    assert dock.should_add_extract_source_link("parent", cfg) is False
+    assert dock.should_add_extract_source_link("unknown", cfg) is True
+
+
 def test_should_apply_extract_notetype_only_for_blank_mismatched_note():
     assert dock.should_apply_extract_notetype(
         "Basic",

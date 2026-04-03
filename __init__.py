@@ -683,6 +683,8 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         f'<a href="#" onclick="pycmd(\'incremento_open_card:{parent_card.id}\')" '
         f'style="font-size:0.85em;color:#888;">↩ {parent_label}</a>'
     )
+    if not _add_card_dock_mod.should_add_extract_source_link("parent"):
+        parent_link = ""
 
     dlg = ExtractCardDialog(
         selected_text=selected_text,
@@ -1726,6 +1728,7 @@ def openSettingsFunction() -> None:
         cfg.get("shortcuts") or {},
         note_type_names=note_type_names,
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
+        extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         parent=mw,
     )
     if not dlg.exec():
@@ -1733,6 +1736,7 @@ def openSettingsFunction() -> None:
 
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
+    cfg["extract_source_links"] = dlg.extract_source_links
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     tooltip("Incremento settings updated.")

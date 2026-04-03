@@ -29,6 +29,11 @@ _last_selection_source = ""
 _last_selection_text = ""
 _last_selection_seen = 0.0
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
+_DEFAULT_EXTRACT_SOURCE_LINKS = {
+    "pdf": True,
+    "web": True,
+    "parent": True,
+}
 
 
 def _normalize_text(text) -> str:
@@ -79,6 +84,29 @@ def configured_extract_notetype_name(config: dict | None = None) -> str:
         except Exception:
             cfg = {}
     return str((cfg or {}).get("extract_notetype") or "").strip()
+
+
+def configured_extract_source_links(config: dict | None = None) -> dict[str, bool]:
+    cfg = config
+    if cfg is None:
+        try:
+            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
+        except Exception:
+            cfg = {}
+    raw = (cfg or {}).get("extract_source_links", _DEFAULT_EXTRACT_SOURCE_LINKS)
+    if isinstance(raw, bool):
+        return {key: bool(raw) for key in _DEFAULT_EXTRACT_SOURCE_LINKS}
+    if not isinstance(raw, dict):
+        return dict(_DEFAULT_EXTRACT_SOURCE_LINKS)
+    merged = dict(_DEFAULT_EXTRACT_SOURCE_LINKS)
+    for key in merged:
+        if key in raw:
+            merged[key] = bool(raw.get(key))
+    return merged
+
+
+def should_add_extract_source_link(kind: str, config: dict | None = None) -> bool:
+    return bool(configured_extract_source_links(config).get(str(kind or "").strip(), True))
 
 
 def _note_has_content(note) -> bool:
@@ -399,17 +427,20 @@ def fill_dock_field(
     text,
     include_pdf_citation: bool = True,
     citation_html: str | None = None,
+    source_link_kind: str | None = None,
 ):
     global _add_card_dock
     citation = citation_html
+    link_kind = str(source_link_kind or "").strip()
     if citation is None and include_pdf_citation:
+        link_kind = link_kind or "pdf"
         try:
             from .pdf_dock import pdf_citation
 
             citation = pdf_citation()
         except Exception:
             citation = None
-    if citation:
+    if citation and (not link_kind or should_add_extract_source_link(link_kind)):
         text = text + '<br>' + citation
     if _add_card_dock is None:
         build_add_card_dock()
@@ -541,6 +572,7 @@ def transfer_selection_to_field(idx: int) -> None:
             idx,
             text,
             include_pdf_citation=(resolved_source == "pdf"),
+            source_link_kind=resolved_source if resolved_source in {"pdf", "web"} else None,
             citation_html=(
                 _web_citation()
                 if resolved_source == "web"

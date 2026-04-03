@@ -1,4 +1,9 @@
 {
+    "extract_source_links": {
+        "parent": true,
+        "pdf": true,
+        "web": true
+    },
     "extract_notetype": "",
     "scheduler_scope": "session"
 }

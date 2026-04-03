@@ -154,6 +154,7 @@ class _WebDockPage(QWebEnginePage):
                     str(data.get("text") or ""),
                     include_pdf_citation=False,
                     citation_html=web_citation(data.get("url")),
+                    source_link_kind="web",
                 )
             except Exception:
                 pass
@@ -481,6 +482,7 @@ def _extract_web_selection_to_field(idx: int) -> None:
             text,
             include_pdf_citation=False,
             citation_html=web_citation(),
+            source_link_kind="web",
         )
     except Exception as exc:
         showInfo(f"Web extraction failed:\n{exc}")
@@ -727,12 +729,12 @@ def _insert_snapshot_into_field(pixmap: QPixmap, current_url: str) -> None:
 
     citation = web_citation(current_url)
     html = f'<img src="{media_filename}">'
-    if citation:
-        html += "<br>" + citation
     _add_card_dock_mod.fill_dock_field(
         chosen_idx[0],
         html,
         include_pdf_citation=False,
+        citation_html=citation,
+        source_link_kind="web",
     )
 
 
