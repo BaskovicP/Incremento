@@ -8,9 +8,12 @@ Tables
 ------
 pdf_progress    — reading position and zoom per card
 pdf_highlights  — highlighted passages per card
+epub_progress   — reading section/scroll state per card
+epub_highlights — highlighted passages per EPUB section
 stats           — daily and lifetime review statistics (JSON blobs per scope)
 priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
+epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 """
 
@@ -81,6 +84,24 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (id, card_id)
         );
 
+        CREATE TABLE IF NOT EXISTS epub_progress (
+            card_id       INTEGER PRIMARY KEY,
+            section_index INTEGER NOT NULL DEFAULT 0,
+            scroll_ratio  REAL    NOT NULL DEFAULT 0.0,
+            is_finished   INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS epub_highlights (
+            id            TEXT    NOT NULL,
+            card_id       INTEGER NOT NULL,
+            section_index INTEGER NOT NULL DEFAULT 0,
+            color         TEXT    NOT NULL DEFAULT 'yellow',
+            text          TEXT    NOT NULL DEFAULT '',
+            start_offset  INTEGER NOT NULL DEFAULT 0,
+            end_offset    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (id, card_id)
+        );
+
         CREATE TABLE IF NOT EXISTS stats (
             scope TEXT PRIMARY KEY,
             date  TEXT,
@@ -112,6 +133,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_pcs_card_page
             ON pdf_card_sources (pdf_card_id, page);
 
+        CREATE TABLE IF NOT EXISTS epub_card_sources (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            epub_card_id  INTEGER NOT NULL,
+            section_index INTEGER NOT NULL,
+            note_id       INTEGER NOT NULL,
+            excerpt       TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_ecs_card_section
+            ON epub_card_sources (epub_card_id, section_index);
+
         CREATE TABLE IF NOT EXISTS web_card_sources (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             web_card_id INTEGER NOT NULL,
@@ -130,6 +161,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_pti_card_page
             ON pdf_text_index (card_id, page);
+
+        CREATE TABLE IF NOT EXISTS epub_text_index (
+            card_id       INTEGER NOT NULL,
+            section_index INTEGER NOT NULL,
+            title         TEXT    NOT NULL DEFAULT '',
+            text          TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (card_id, section_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_eti_card_section
+            ON epub_text_index (card_id, section_index);
 
         CREATE TABLE IF NOT EXISTS topic_schedule (
             card_id  INTEGER PRIMARY KEY,
@@ -228,6 +269,43 @@ def get_pdf_page_card_counts(addon_dir: str, pdf_card_id: int) -> dict:
         .fetchall()
     )
     return {r[0]: r[1] for r in rows}
+
+
+def add_epub_card_source(
+    addon_dir: str, epub_card_id: int, section_index: int, note_id: int, excerpt: str = ""
+) -> None:
+    conn = get_connection(addon_dir)
+    conn.execute(
+        "INSERT INTO epub_card_sources (epub_card_id, section_index, note_id, excerpt) VALUES (?, ?, ?, ?)",
+        (epub_card_id, int(section_index), note_id, excerpt),
+    )
+    conn.commit()
+
+
+def get_epub_card_sources(addon_dir: str, epub_card_id: int, section_index: int) -> list:
+    rows = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT note_id, excerpt FROM epub_card_sources "
+            "WHERE epub_card_id = ? AND section_index = ? ORDER BY id",
+            (epub_card_id, int(section_index)),
+        )
+        .fetchall()
+    )
+    return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
+
+
+def get_epub_section_card_counts(addon_dir: str, epub_card_id: int) -> dict:
+    rows = (
+        get_connection(addon_dir)
+        .execute(
+            "SELECT section_index, COUNT(*) FROM epub_card_sources "
+            "WHERE epub_card_id = ? GROUP BY section_index",
+            (epub_card_id,),
+        )
+        .fetchall()
+    )
+    return {int(r[0]): int(r[1]) for r in rows}
 
 
 def add_web_card_source(
@@ -397,6 +475,52 @@ def search_pdf_text_index(
 
     ranked.sort(key=lambda item: (item[0], item[1], item[2]))
     return [(cid, page, text) for _, cid, page, text in ranked[:limit]]
+
+
+def replace_epub_text_index(
+    addon_dir: str, card_id: int, sections: list[tuple[str, str]]
+) -> None:
+    conn = get_connection(addon_dir)
+    conn.execute("DELETE FROM epub_text_index WHERE card_id = ?", (card_id,))
+    rows = [
+        (card_id, idx, str(title or "").strip(), (text or "").strip())
+        for idx, (title, text) in enumerate(sections)
+        if (title or "").strip() or (text or "").strip()
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO epub_text_index (card_id, section_index, title, text) VALUES (?, ?, ?, ?)",
+            rows,
+        )
+    conn.commit()
+
+
+def search_epub_text_index(
+    addon_dir: str, query: str, limit: int = 120
+) -> list[tuple[int, int, str, str]]:
+    query_terms = split_search_terms(query)
+    if not query_terms:
+        return []
+
+    conn = get_connection(addon_dir)
+    pre = query_terms[0]
+    rows = conn.execute(
+        "SELECT card_id, section_index, title, text FROM epub_text_index "
+        "WHERE lower(title || ' ' || text) LIKE lower(?) "
+        "ORDER BY card_id, section_index LIMIT ?",
+        (f"%{pre}%", max(500, limit * 25)),
+    ).fetchall()
+
+    ranked: list[tuple[tuple[int, int, int, int], int, int, str, str]] = []
+    for cid, section_index, title, text in rows:
+        combined = " ".join(part for part in (title or "", text or "") if part)
+        score = search_text_match_score(combined, query)
+        if score is None:
+            continue
+        ranked.append((score, int(cid), int(section_index), str(title or ""), str(text or "")))
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [(cid, section_index, title, text) for _, cid, section_index, title, text in ranked[:limit]]
 
 
 # ── Topic A-factor schedule ───────────────────────────────────────────────────

@@ -6,8 +6,10 @@ from aqt import mw
 
 try:
     from .priority_manager import get_all_priorities
+    from .epub_manager import DOCUMENT_FILTER
 except ImportError:
     from priority_manager import get_all_priorities  # type: ignore
+    from epub_manager import DOCUMENT_FILTER  # type: ignore
 
 all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
 
@@ -141,8 +143,8 @@ def get_item_cards_by_tag(
     return _sort_by_due(mw.col.find_cards(f"{items_filter} tag:{tag} {ready_filter}"))
 
 
-def get_all_pdf_cards(pdf_filter: str = 'note:"Incremento PDF"'):
-    """Return all non-suspended PDF cards, always eligible regardless of due state."""
+def get_all_pdf_cards(pdf_filter: str = DOCUMENT_FILTER):
+    """Return all non-suspended document cards, always eligible regardless of due state."""
     return _sort_by_due(mw.col.find_cards(f"{pdf_filter} -is:suspended"))
 
 
@@ -156,7 +158,7 @@ def get_all_webpage_cards(webpage_filter: str = 'note:"Incremento Web"'):
     return _sort_by_due(mw.col.find_cards(f"{webpage_filter} -is:suspended"))
 
 
-def get_pdf_cards_by_tag(tag: str, pdf_filter: str = 'note:"Incremento PDF"'):
+def get_pdf_cards_by_tag(tag: str, pdf_filter: str = DOCUMENT_FILTER):
     return _sort_by_due(mw.col.find_cards(f"{pdf_filter} tag:{tag} -is:suspended"))
 
 

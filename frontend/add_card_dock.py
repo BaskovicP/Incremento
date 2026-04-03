@@ -31,6 +31,7 @@ _last_selection_seen = 0.0
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _DEFAULT_EXTRACT_SOURCE_LINKS = {
     "pdf": True,
+    "epub": True,
     "web": True,
     "parent": True,
 }
@@ -532,6 +533,14 @@ def _resolve_selection_from_source(source: str, callback) -> None:
             return
         except Exception:
             pass
+    elif source == "epub":
+        try:
+            from .epub_dock import get_selected_text
+
+            get_selected_text(lambda text: callback(source, _normalize_text(text)))
+            return
+        except Exception:
+            pass
     elif source == "reviewer":
         _resolve_reviewer_selection(lambda text: callback(source, text))
         return
@@ -572,11 +581,11 @@ def transfer_selection_to_field(idx: int) -> None:
             idx,
             text,
             include_pdf_citation=(resolved_source == "pdf"),
-            source_link_kind=resolved_source if resolved_source in {"pdf", "web"} else None,
+            source_link_kind=resolved_source if resolved_source in {"pdf", "epub", "web"} else None,
             citation_html=(
                 _web_citation()
                 if resolved_source == "web"
-                else None
+                else _epub_citation()
             ),
         )
 
@@ -585,6 +594,16 @@ def transfer_selection_to_field(idx: int) -> None:
             from .web_dock import web_citation
 
             return web_citation()
+        except Exception:
+            return None
+
+    def _epub_citation() -> str | None:
+        if source != "epub":
+            return None
+        try:
+            from .epub_dock import epub_citation
+
+            return epub_citation()
         except Exception:
             return None
 

@@ -34,6 +34,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "",
     },
     {
+        "id": "add_epub",
+        "label": "Add EPUB",
+        "default": "",
+    },
+    {
         "id": "youtube_video",
         "label": "Add Video",
         "default": "",
@@ -70,7 +75,7 @@ SHORTCUT_ACTION_SPECS = [
     },
     {
         "id": "quick_open_pdf",
-        "label": "Quick Open PDFs",
+        "label": "Quick Open Docs",
         "default": "Ctrl+Alt+P",
     },
     {

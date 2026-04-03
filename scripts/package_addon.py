@@ -47,6 +47,8 @@ OPTIONAL_ROOT_FILES = (
 FRONTEND_RUNTIME_FILES = (
     "frontend/__init__.py",
     "frontend/add_card_dock.py",
+    "frontend/epub_dialog.py",
+    "frontend/epub_dock.py",
     "frontend/add_video_dialog.py",
     "frontend/add_web_dialog.py",
     "frontend/add_writing_dialog.py",
@@ -69,6 +71,8 @@ FRONTEND_RUNTIME_FILES = (
 )
 USER_DIRS = (
     "user_files",
+    "user_files/epubs",
+    "user_files/epub_extracted",
     "user_files/pdfs",
     "user_files/videos",
     "user_files/writing",

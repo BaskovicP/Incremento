@@ -26,6 +26,11 @@ from .backend.pdf_manager import (
     get_read_page,
     extract_pdf_pages_text,
 )
+from .backend.epub_manager import (
+    EPUB_NOTE_TYPE,
+    EPUB_FILE_FIELD,
+    get_epub_progress,
+)
 from .backend.video_manager import (
     VIDEO_NOTE_TYPE,
     LOCAL_VIDEO_FIELD,
@@ -53,6 +58,7 @@ from .frontend.timer_widget import (
     timer_on_card_answered as _timer_on_card_answered,
 )
 from .frontend import pdf_dock as _pdf_dock_mod
+from .frontend import epub_dock as _epub_dock_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
@@ -141,6 +147,11 @@ _pdf_dock_mod.register_add_card_callbacks(
     _add_card_dock_mod.fill_dock_field,
     _add_card_dock_mod.get_add_card_dock,
 )
+_epub_dock_mod.register_add_card_callbacks(
+    _add_card_dock_mod.open_add_card_dock,
+    _add_card_dock_mod.fill_dock_field,
+    _add_card_dock_mod.get_add_card_dock,
+)
 _pdf_dock_mod.register_pdf_view_callbacks(
     _review_time_mod.on_pdf_view_started,
     _review_time_mod.on_pdf_view_stopped,
@@ -224,6 +235,22 @@ def _on_js_message(handled, message, context) -> tuple:
                 pass
         return (True, None)
 
+    if message.startswith("incremento_open_epub:"):
+        parts = message.split(":")
+        if len(parts) >= 4:
+            try:
+                card_id = int(parts[1])
+                section_index = int(parts[2])
+                focus_offset = int(parts[3])
+                _epub_dock_mod.open_epub_location(
+                    card_id,
+                    section_index,
+                    focus_offset=focus_offset,
+                )
+            except Exception:
+                pass
+        return (True, None)
+
     if message.startswith("incremento_open_video:"):
         parts = message.split(":")
         if len(parts) == 3:
@@ -257,11 +284,13 @@ def _on_js_message(handled, message, context) -> tuple:
 
 
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
+gui_hooks.add_cards_did_add_note.append(_epub_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_web_dock_mod.on_add_cards_did_add_note)
 
 gui_hooks.reviewer_did_show_question.append(_on_timer_question_shown)
 gui_hooks.reviewer_did_show_question.append(_review_time_mod.on_reviewer_question_shown)
 gui_hooks.reviewer_did_show_question.append(_pdf_dock_mod.on_pdf_question_shown)
+gui_hooks.reviewer_did_show_question.append(_epub_dock_mod.on_epub_question_shown)
 gui_hooks.reviewer_did_show_question.append(_video_dock_mod.on_video_question_shown)
 gui_hooks.reviewer_did_show_question.append(_web_dock_mod.on_web_question_shown)
 gui_hooks.reviewer_did_show_question.append(_writing_dock_mod.on_writing_question_shown)
@@ -270,6 +299,7 @@ gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_epub_dock_mod.on_epub_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_writing_dock_mod.on_writing_reviewer_will_end)
@@ -291,6 +321,7 @@ def _sync_pdf_note_type() -> None:
 
 
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
+gui_hooks.main_window_did_init.append(_epub_dock_mod.sync_epub_note_type)
 gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
@@ -374,9 +405,12 @@ def _open_pdf_quick_jump() -> None:
     if cid is None:
         return
     try:
-        _open_pdf_card(cid, preserve_history=dlg.preserve_history)
+        if dlg.selected_card_type == "EPUB":
+            _open_epub_card(cid)
+        else:
+            _open_pdf_card(cid, preserve_history=dlg.preserve_history)
     except Exception as e:
-        showInfo(f"Could not open PDF:\n{e}")
+        showInfo(f"Could not open document:\n{e}")
 
 
 def _open_pdf_card(
@@ -404,8 +438,34 @@ def _open_pdf_card(
     )
 
 
+def _open_epub_card(
+    card_id: int,
+    section_index: int | None = None,
+    *,
+    focus_offset: int = -1,
+    search_query: str = "",
+) -> None:
+    card = mw.col.get_card(card_id)
+    note = mw.col.get_note(card.nid)
+    filename = note[EPUB_FILE_FIELD]
+    current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, card_id)
+    _epub_dock_mod.show_epub_in_dock(
+        card_id,
+        filename,
+        section_index=current_section if section_index is None else int(section_index),
+        scroll_ratio=current_ratio,
+        focus_offset=focus_offset,
+        search_query=search_query,
+    )
+
+
 def _open_search_all() -> None:
-    _SearchAllDialog(mw, addon_dir=_ADDON_DIR, open_pdf_card=_open_pdf_card).exec()
+    _SearchAllDialog(
+        mw,
+        addon_dir=_ADDON_DIR,
+        open_pdf_card=_open_pdf_card,
+        open_epub_card=_open_epub_card,
+    ).exec()
 
 
 def _trigger_pdf_viewer_action(action: str) -> None:
@@ -481,6 +541,41 @@ def addPdfFunction() -> None:
         )
         extra = f"\n…and {len(failed) - 10} more" if len(failed) > 10 else ""
         showInfo(f"All imports failed ({len(failed)}):\n\n{failed_lines}{extra}")
+
+
+def addEpubFunction() -> None:
+    from .frontend.epub_dialog import AddEpubDialog
+
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    dlg = AddEpubDialog(addon_dir=_ADDON_DIR, deck_names=deck_names, default_deck="Topics", parent=mw)
+    if not dlg.exec():
+        return
+
+    created = dlg.created
+    failed = dlg.failed
+    deck = dlg.deck_name
+
+    if not created and not failed:
+        return
+
+    if created:
+        lines = [f"Added {len(created)} EPUB card(s) → {deck}\n"]
+        for path, title in created:
+            lines.append(f"• {title}")
+            lines.append(f"  {os.path.basename(path)}")
+        if failed:
+            lines.append(f"\nFailed: {len(failed)}")
+            for path, msg in failed[:10]:
+                lines.append(f"• {os.path.basename(path)}: {msg}")
+            if len(failed) > 10:
+                lines.append(f"  …and {len(failed) - 10} more")
+        showInfo("\n".join(lines))
+    else:
+        failed_lines = "\n".join(
+            f"• {os.path.basename(p)}: {msg}" for p, msg in failed[:10]
+        )
+        extra = f"\n…and {len(failed) - 10} more" if len(failed) > 10 else ""
+        showInfo(f"All EPUB imports failed ({len(failed)}):\n\n{failed_lines}{extra}")
 
 
 def exportFunction() -> None:
@@ -1872,6 +1967,11 @@ qconnect(_addPdfAction.triggered, addPdfFunction)
 _addContentMenu.addAction(_addPdfAction)
 _register_shortcut_action("add_pdf", _addPdfAction)
 
+_addEpubAction = QAction("Add EPUB", mw)
+qconnect(_addEpubAction.triggered, addEpubFunction)
+_addContentMenu.addAction(_addEpubAction)
+_register_shortcut_action("add_epub", _addEpubAction)
+
 _addWebpageAction = QAction("Webpage to PDF", mw)
 qconnect(_addWebpageAction.triggered, addWebpageFunction)
 _addContentMenu.addAction(_addWebpageAction)
@@ -1954,7 +2054,7 @@ qconnect(_statsAction.triggered, showStatsFunction)
 _menu.addAction(_statsAction)
 _register_shortcut_action("statistics", _statsAction)
 
-_quickOpenPdfAction = QAction("Quick Open PDFs", mw)
+_quickOpenPdfAction = QAction("Quick Open Docs", mw)
 qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
 _menu.addAction(_quickOpenPdfAction)
 

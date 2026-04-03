@@ -3,8 +3,10 @@ from typing import NamedTuple
 
 try:
     from . import cards as card_utils  # package context
+    from .epub_manager import DOCUMENT_FILTER
 except ImportError:
     import cards as card_utils          # sys.path context (tests)
+    from epub_manager import DOCUMENT_FILTER  # type: ignore
 
 # Synthetic key used when soft_pick selects the "other cards" bucket (the
 # untagged remainder).  Returned as result.tag so the caller can track its
@@ -48,7 +50,7 @@ def get_card_from_scheduler(
         items_filter: str = "-deck:Topics",
         ready_filter: str = "(is:due OR is:learn OR is:new)",
         pdf_rate: float = 0.0,
-        pdf_filter: str = 'note:"Incremento PDF"',
+        pdf_filter: str = DOCUMENT_FILTER,
         youtube_filter: str = 'note:"Incremento Video"',
         webpage_filter: str = 'note:"Incremento Web"',
         addon_dir: str | None = None,

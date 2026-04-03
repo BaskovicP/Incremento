@@ -955,15 +955,15 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_left_lbl = QLabel(f"{100 - pdf_val}%")
         self._pdf_left_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_left_lbl)
-        _lbl_pdf = QLabel("PDF")
-        _lbl_pdf.setToolTip("Incremento PDF reading cards — always eligible regardless of scheduling state")
+        _lbl_pdf = QLabel("Docs")
+        _lbl_pdf.setToolTip("Incremento PDF and EPUB reading cards — always eligible regardless of scheduling state")
         pdf_row.addWidget(_lbl_pdf)
         self._pdf_slider = QSlider(Qt.Orientation.Horizontal)
         self._pdf_slider.setRange(0, 100)
         self._pdf_slider.setValue(pdf_val)
         pdf_row.addWidget(self._pdf_slider)
         _lbl_other = QLabel("Other")
-        _lbl_other.setToolTip("All non-PDF cards (topics and items)")
+        _lbl_other.setToolTip("All non-document cards (topics and items)")
         pdf_row.addWidget(_lbl_other)
         self._pdf_right_lbl = QLabel(f"{pdf_val}%")
         self._pdf_right_lbl.setFixedWidth(36)
@@ -982,13 +982,13 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_group_edit.setToolTip("Rows with the same group name are constrained together.")
         pdf_row.addWidget(self._pdf_group_edit)
         pdf_row.addWidget(_info_icon(
-            "Soft PDF mix rate — how often a PDF card is picked during normal scheduling.\n\n"
+            "Soft document mix rate — how often a PDF or EPUB card is picked during normal scheduling.\n\n"
             "Unlike Content type priorities (which fill a hard quota first), this is a\n"
-            "stochastic target: PDF cards are woven throughout the session.\n\n"
-            "Example: PDF = 20 % → roughly 1 in 5 picks targets a PDF card.\n"
-            "Set to 0 % (slider fully right) to exclude PDFs from soft mixing.\n\n"
+            "stochastic target: document cards are woven throughout the session.\n\n"
+            "Example: Docs = 20 % → roughly 1 in 5 picks targets a PDF/EPUB card.\n"
+            "Set to 0 % (slider fully right) to exclude documents from soft mixing.\n\n"
             "You can use both: priority fills a hard quota first, then soft mixing\n"
-            "adds more PDFs in the remaining slots."
+            "adds more document cards in the remaining slots."
         ))
         layout.addLayout(pdf_row)
 
@@ -2451,7 +2451,7 @@ class SchedulerConfigDialog(QDialog):
     def _refresh_ct_counts(self) -> None:
         """Update available-card counts on all content type rows."""
         _ct_filter_map = {
-            "pdf":     'note:"Incremento PDF" -is:suspended',
+            "pdf":     '(note:"Incremento PDF" OR note:"Incremento EPUB") -is:suspended',
             "youtube": 'note:"Incremento Video" -is:suspended',
             "webpage": 'note:"Incremento Web" -is:suspended',
         }

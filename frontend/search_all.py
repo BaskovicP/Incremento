@@ -1,4 +1,4 @@
-"""Search ALL dialog — searches PDF highlights, sources, content, and cards."""
+"""Search ALL dialog — searches PDF/EPUB highlights, sources, content, and cards."""
 
 from __future__ import annotations
 
@@ -26,28 +26,33 @@ from PyQt6.QtCore import QUrl
 try:
     from ..backend.db import (
         get_connection,
+        search_epub_text_index,
         replace_pdf_text_index,
         search_pdf_text_index,
         search_text_match_score,
         split_search_terms,
     )
+    from ..backend.epub_manager import EPUB_NOTE_TYPE, load_epub_metadata
     from ..backend.pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir
 except ImportError:
     from db import (  # type: ignore
         get_connection,
+        search_epub_text_index,
         replace_pdf_text_index,
         search_pdf_text_index,
         search_text_match_score,
         split_search_terms,
     )
+    from epub_manager import EPUB_NOTE_TYPE, load_epub_metadata  # type: ignore
     from pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir  # type: ignore
 
 
 class _SearchAllDialog(QDialog):
-    def __init__(self, parent=None, *, addon_dir: str, open_pdf_card):
+    def __init__(self, parent=None, *, addon_dir: str, open_pdf_card, open_epub_card):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._open_pdf_card = open_pdf_card
+        self._open_epub_card = open_epub_card
         self._current_profile_card_ids = self._load_current_profile_card_ids()
         self.setWindowTitle("Search ALL")
         self.resize(1280, 700)
@@ -62,11 +67,22 @@ class _SearchAllDialog(QDialog):
         filter_row = QHBoxLayout()
         filter_row.setSpacing(16)
         self._cb_highlights = QCheckBox("PDF Highlights")
+        self._cb_epub_highlights = QCheckBox("EPUB Highlights")
         self._cb_sources = QCheckBox("PDF Sources")
+        self._cb_epub_sources = QCheckBox("EPUB Sources")
         self._cb_content = QCheckBox("PDF Content")
+        self._cb_epub_content = QCheckBox("EPUB Content")
         self._cb_cards = QCheckBox("Cards")
         self._cb_current_profile = QCheckBox("Current Anki Profile Only")
-        for cb in (self._cb_highlights, self._cb_sources, self._cb_content, self._cb_cards):
+        for cb in (
+            self._cb_highlights,
+            self._cb_epub_highlights,
+            self._cb_sources,
+            self._cb_epub_sources,
+            self._cb_content,
+            self._cb_epub_content,
+            self._cb_cards,
+        ):
             cb.setChecked(True)
             cb.toggled.connect(lambda _: self._refresh(self._search.text()))
             filter_row.addWidget(cb)
@@ -115,7 +131,7 @@ class _SearchAllDialog(QDialog):
     def _make_search_box():
         from aqt.qt import QLineEdit
         w = QLineEdit()
-        w.setPlaceholderText("Search PDFs and cards...")
+        w.setPlaceholderText("Search PDFs, EPUBs, and cards...")
         return w
 
     @staticmethod
@@ -184,6 +200,14 @@ class _SearchAllDialog(QDialog):
         except Exception:
             return f"PDF card {card_id}"
 
+    def _epub_title(self, card_id: int) -> str:
+        try:
+            card = mw.col.get_card(card_id)
+            note = mw.col.get_note(card.nid)
+            return note.fields[0] if note.fields else f"EPUB card {card_id}"
+        except Exception:
+            return f"EPUB card {card_id}"
+
     def _candidate_pdf_card_ids(self) -> list[int]:
         cids: set[int] = set()
         try:
@@ -246,6 +270,17 @@ class _SearchAllDialog(QDialog):
         return [
             (cid, page, self._snippet(text or "", q, max_len=180))
             for cid, page, text in hits[:limit]
+        ]
+
+    def _search_epub_file_hits(
+        self, q: str, limit: int = 120
+    ) -> list[tuple[int, int, str, str]]:
+        search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
+        hits = search_epub_text_index(self._addon_dir, q, limit=search_limit)
+        hits = self._filter_current_profile_rows(hits)
+        return [
+            (cid, section_index, title, self._snippet(text or title or "", q, max_len=180))
+            for cid, section_index, title, text in hits[:limit]
         ]
 
     def _refresh(self, query: str) -> None:
@@ -336,6 +371,68 @@ class _SearchAllDialog(QDialog):
                         total += 1
                     html.append("</ul>")
 
+        if self._cb_epub_highlights.isChecked():
+            try:
+                rows = (
+                    get_connection(self._addon_dir)
+                    .execute(
+                        "SELECT card_id, section_index, text FROM epub_highlights ORDER BY card_id, section_index"
+                    )
+                    .fetchall()
+                )
+                rows = self._filter_current_profile_rows(rows)
+                rows = _rank_rows(rows, text_index=2)
+            except Exception:
+                rows = []
+
+            if rows:
+                html.append("<h3>EPUB Highlights</h3>")
+                by_file: dict = {}
+                for cid, section_index, text in rows:
+                    by_file.setdefault(cid, []).append((section_index, text))
+                for cid, entries in by_file.items():
+                    title = escape(self._epub_title(cid))
+                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
+                    for section_index, text in entries:
+                        snippet = escape(self._snippet(text or "", q))
+                        html.append(
+                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>Section {int(section_index) + 1}</a>"
+                            f" — <span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    html.append("</ul>")
+
+        if self._cb_epub_sources.isChecked():
+            try:
+                rows = (
+                    get_connection(self._addon_dir)
+                    .execute(
+                        "SELECT epub_card_id, section_index, excerpt FROM epub_card_sources ORDER BY id DESC"
+                    )
+                    .fetchall()
+                )
+                rows = self._filter_current_profile_rows(rows)
+                rows = _rank_rows(rows, text_index=2)
+            except Exception:
+                rows = []
+
+            if rows:
+                html.append("<h3>EPUB Sources</h3>")
+                by_file: dict = {}
+                for cid, section_index, excerpt in rows:
+                    by_file.setdefault(cid, []).append((section_index, excerpt))
+                for cid, entries in by_file.items():
+                    title = escape(self._epub_title(cid))
+                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
+                    for section_index, excerpt in entries:
+                        snippet = escape(self._snippet(excerpt or "", q))
+                        html.append(
+                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>Section {int(section_index) + 1}</a>"
+                            f" — <span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    html.append("</ul>")
+
         # Actual PDF file text (page-level)
         if self._cb_content.isChecked():
             pdf_page_hits = self._search_pdf_file_hits(q, limit=120)
@@ -351,6 +448,26 @@ class _SearchAllDialog(QDialog):
                         snippet = escape(snippet_text)
                         html.append(
                             f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f" — <span style='color:#888'>{snippet}</span></li>"
+                        )
+                        total += 1
+                    html.append("</ul>")
+
+        if self._cb_epub_content.isChecked():
+            epub_section_hits = self._search_epub_file_hits(q, limit=120)
+            if epub_section_hits:
+                html.append("<h3>EPUB File Content</h3>")
+                by_file: dict = {}
+                for cid, section_index, title, snippet_text in epub_section_hits:
+                    by_file.setdefault(cid, []).append((section_index, title, snippet_text))
+                for cid, entries in by_file.items():
+                    title = escape(self._epub_title(cid))
+                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
+                    for section_index, section_title, snippet_text in entries:
+                        snippet = escape(snippet_text)
+                        section_label = escape(section_title or f"Section {int(section_index) + 1}")
+                        html.append(
+                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>{section_label}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -412,6 +529,13 @@ class _SearchAllDialog(QDialog):
                     cid, page = int(parts[0]), int(parts[1])
                     q = (parse_qs(parsed.query).get("q") or [""])[0]
                     self._preview_pdf_page(cid, page, q)
+            elif url_str.startswith("inc://epub/"):
+                parsed = urlparse(url_str)
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 2:
+                    cid, section_index = int(parts[0]), int(parts[1])
+                    q = (parse_qs(parsed.query).get("q") or [""])[0]
+                    self._preview_epub_section(cid, section_index, q)
             elif url_str.startswith("inc://card/"):
                 nid = int(url_str.rsplit("/", 1)[1])
                 self._preview_card(nid)
@@ -475,6 +599,31 @@ class _SearchAllDialog(QDialog):
         except Exception:
             pass
 
+    def _preview_epub_section(self, cid: int, section_index: int, q: str) -> None:
+        title = self._epub_title(cid)
+        try:
+            row = (
+                get_connection(self._addon_dir)
+                .execute(
+                    "SELECT title, text FROM epub_text_index WHERE card_id=? AND section_index=?",
+                    (cid, section_index),
+                )
+                .fetchone()
+            )
+            section_title = str((row[0] or "") if row else "")
+            text = str((row[1] or "") if row else "")
+        except Exception:
+            section_title = ""
+            text = ""
+
+        body = self._highlight_terms(text or section_title, q) if (text or section_title) else "<i style='color:#aaa'>No text index for this section.</i>"
+        label = section_title or f"Section {section_index + 1}"
+        self._preview_header.setText(f"EPUB: {title} — {label}")
+        self._preview.setHtml(
+            f"<html><body style='font-family:sans-serif;font-size:13px;"
+            f"padding:14px;line-height:1.6;white-space:pre-wrap'>{body}</body></html>"
+        )
+
     def _open_link(self, qurl) -> None:
         s = qurl.toString()
         try:
@@ -486,6 +635,15 @@ class _SearchAllDialog(QDialog):
                     page = int(parts[1])
                     q = (parse_qs(parsed.query).get("q") or [""])[0]
                     self._open_pdf_card(cid, page, search_query=q)
+                return
+            if s.startswith("inc://epub/"):
+                parsed = urlparse(s)
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 2:
+                    cid = int(parts[0])
+                    section_index = int(parts[1])
+                    q = (parse_qs(parsed.query).get("q") or [""])[0]
+                    self._open_epub_card(cid, section_index, search_query=q)
                 return
             if s.startswith("inc://card/"):
                 nid = int(s.rsplit("/", 1)[1])

@@ -14,6 +14,7 @@ import types
 from aqt import mw
 
 from .pdf_manager import PDF_NOTE_TYPE
+from .epub_manager import EPUB_NOTE_TYPE
 from .scheduler import NO_TAGS_KEY
 from .session import INCREMENTO_DECK
 from .statistics import StatsManager
@@ -73,7 +74,7 @@ def _record_pdf_time(card_id: int, seconds: float) -> None:
         card = mw.col.get_card(card_id)
         note = mw.col.get_note(card.nid)
         model = mw.col.models.get(note.mid)
-        if not model or model.get("name") != PDF_NOTE_TYPE:
+        if not model or model.get("name") not in {PDF_NOTE_TYPE, EPUB_NOTE_TYPE}:
             return
 
         cfg = load_scheduler_config()

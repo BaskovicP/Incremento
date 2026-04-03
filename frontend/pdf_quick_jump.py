@@ -26,9 +26,11 @@ from aqt.qt import (
 
 try:
     from ..backend.pdf_manager import PDF_NOTE_TYPE, get_page
+    from ..backend.epub_manager import EPUB_NOTE_TYPE
     from ..backend.priority_manager import get_all_priorities
 except ImportError:
     from pdf_manager import PDF_NOTE_TYPE, get_page  # type: ignore
+    from epub_manager import EPUB_NOTE_TYPE  # type: ignore
     from priority_manager import get_all_priorities  # type: ignore
 
 
@@ -103,7 +105,7 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addWidget(cancel_btn)
 
         # ── Load data ──────────────────────────────────────────────────────────
-        self._all_entries: list[tuple[str, int, int, float | None]] = []
+        self._all_entries: list[tuple[str, int, str, float | None]] = []
         self._load_entries()
         self._refresh("")
 
@@ -120,19 +122,19 @@ class _PdfQuickJumpDialog(QDialog):
     def _load_entries(self) -> None:
         all_prios = get_all_priorities(self._addon_dir)  # {cid: priority}
         try:
-            note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}" -is:suspended')
-            for nid in note_ids:
-                try:
-                    note = mw.col.get_note(nid)
-                    title = note.fields[0] if note.fields else str(nid)
-                    cids = mw.col.find_cards(f"nid:{nid}")
-                    if cids:
-                        cid = cids[0]
-                        page = get_page(self._addon_dir, cid)
-                        prio = all_prios.get(cid)  # None = not explicitly set
-                        self._all_entries.append((title, cid, page, prio))
-                except Exception:
-                    pass
+            for note_type_name, kind in ((PDF_NOTE_TYPE, "PDF"), (EPUB_NOTE_TYPE, "EPUB")):
+                note_ids = mw.col.find_notes(f'note:"{note_type_name}" -is:suspended')
+                for nid in note_ids:
+                    try:
+                        note = mw.col.get_note(nid)
+                        title = note.fields[0] if note.fields else str(nid)
+                        cids = mw.col.find_cards(f"nid:{nid}")
+                        if cids:
+                            cid = cids[0]
+                            prio = all_prios.get(cid)  # None = not explicitly set
+                            self._all_entries.append((title, cid, kind, prio))
+                    except Exception:
+                        pass
         except Exception:
             pass
         self._all_entries.sort(key=lambda e: e[0].lower())
@@ -153,7 +155,7 @@ class _PdfQuickJumpDialog(QDialog):
         self._table.setRowCount(0)
         q = query.lower()
         n = 0
-        for title, cid, page, prio in self._all_entries:
+        for title, cid, kind, prio in self._all_entries:
             if q in title.lower():
                 n += 1
                 row = self._table.rowCount()
@@ -163,7 +165,7 @@ class _PdfQuickJumpDialog(QDialog):
                 title_item.setData(Qt.ItemDataRole.UserRole, cid)
                 self._table.setItem(row, 0, title_item)
 
-                type_item = QTableWidgetItem("PDF")
+                type_item = QTableWidgetItem(kind)
                 type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row, 1, type_item)
 
@@ -227,6 +229,11 @@ class _PdfQuickJumpDialog(QDialog):
     def selected_card_id(self) -> int | None:
         item = self._table.item(self._table.currentRow(), 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @property
+    def selected_card_type(self) -> str:
+        item = self._table.item(self._table.currentRow(), 1)
+        return str(item.text() if item else "PDF").upper()
 
     @property
     def preserve_history(self) -> bool:
