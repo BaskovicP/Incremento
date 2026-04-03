@@ -1,6 +1,6 @@
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QDoubleSpinBox,
-    QPushButton, QWidget, Qt,
+    QPushButton, QWidget, Qt, QTimer, QEvent,
 )
 from PyQt6.QtGui import QPainter, QLinearGradient, QColor
 
@@ -11,6 +11,8 @@ SLIDER_MAX   = 10_000
 SLIDER_HALF  = 5_000
 LOWER_PRIORITY_MID = 30.0
 HIGHER_PRIORITY_MID = 70.0
+MAX_TYPED_PRIORITY_DIGITS = 6
+TYPED_PRIORITY_RESET_MS = 1500
 
 
 def _priority_mid(lower_is_more_important: bool) -> float:
@@ -34,6 +36,25 @@ def _priority_to_slider(p: float, lower_is_more_important: bool = True) -> int:
     return round(
         SLIDER_HALF + (p - priority_mid) * SLIDER_HALF / (100.0 - priority_mid)
     )
+
+
+def _typed_digits_to_priority(digits: str) -> float:
+    """Map digit-only entry to priority.
+
+    The first two digits form the integer part. Additional digits fill tenths,
+    hundredths, thousandths, and ten-thousandths.
+    """
+    cleaned = "".join(ch for ch in digits if ch.isdigit())[:MAX_TYPED_PRIORITY_DIGITS]
+    if not cleaned:
+        return 0.0
+    if cleaned.startswith("100"):
+        return 100.0
+    if len(cleaned) <= 2:
+        return float(int(cleaned))
+
+    whole = int(cleaned[:2])
+    frac = cleaned[2:].ljust(4, "0")
+    return round(whole + int(frac) / 10_000, 4)
 
 
 # ── Gradient bar widget ───────────────────────────────────────────────────────
@@ -119,6 +140,11 @@ class PriorityDialog(QDialog):
         self._building = False  # guard against recursive signal loops
         self._a_spin: QDoubleSpinBox | None = None
         self._lower_is_more_important = bool(lower_is_more_important)
+        self._typed_priority_digits = ""
+        self._typed_priority_timer = QTimer(self)
+        self._typed_priority_timer.setSingleShot(True)
+        self._typed_priority_timer.setInterval(TYPED_PRIORITY_RESET_MS)
+        self._typed_priority_timer.timeout.connect(self._clear_priority_digit_buffer)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -219,9 +245,26 @@ class PriorityDialog(QDialog):
         # Wire slider ↔ spinbox
         self._slider.valueChanged.connect(self._on_slider_changed)
         self._spin.valueChanged.connect(self._on_spin_changed)
+        self._spin.installEventFilter(self)
+        if self._spin.lineEdit() is not None:
+            self._spin.lineEdit().installEventFilter(self)
 
         # Initialise to current priority
         self._set_priority(current_priority)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._clear_priority_digit_buffer()
+
+        # Let users type a new numeric priority immediately when the dialog opens.
+        QTimer.singleShot(0, self._focus_priority_input)
+
+    def eventFilter(self, watched, event):
+        line_edit = self._spin.lineEdit()
+        if watched in (self._spin, line_edit) and event.type() == QEvent.Type.KeyPress:
+            if self._handle_priority_keypress(event):
+                return True
+        return super().eventFilter(watched, event)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -237,6 +280,7 @@ class PriorityDialog(QDialog):
     def _on_slider_changed(self, s: int):
         if self._building:
             return
+        self._clear_priority_digit_buffer()
         p = _slider_to_priority(s, self._lower_is_more_important)
         self._building = True
         self._spin.setValue(p)
@@ -246,11 +290,67 @@ class PriorityDialog(QDialog):
     def _on_spin_changed(self, p: float):
         if self._building:
             return
+        self._clear_priority_digit_buffer()
         s = _priority_to_slider(p, self._lower_is_more_important)
         self._building = True
         self._slider.setValue(s)
         self._bar.set_fraction(s / SLIDER_MAX)
         self._building = False
+
+    def _focus_priority_input(self) -> None:
+        self._spin.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        self._spin.selectAll()
+
+    def _handle_priority_keypress(self, event) -> bool:
+        allowed_modifiers = (
+            Qt.KeyboardModifier.NoModifier | Qt.KeyboardModifier.KeypadModifier
+        )
+        if event.modifiers() & ~allowed_modifiers:
+            self._clear_priority_digit_buffer()
+            return False
+
+        text = event.text()
+        if text.isdigit():
+            self._append_priority_digit(text)
+            return True
+
+        if event.key() == Qt.Key.Key_Backspace:
+            self._delete_priority_digit()
+            return True
+
+        if event.key() == Qt.Key.Key_Delete:
+            self._typed_priority_digits = ""
+            self._typed_priority_timer.stop()
+            self._set_priority(0.0)
+            self._spin.selectAll()
+            return True
+
+        if text:
+            self._clear_priority_digit_buffer()
+        return False
+
+    def _append_priority_digit(self, digit: str) -> None:
+        if len(self._typed_priority_digits) >= MAX_TYPED_PRIORITY_DIGITS:
+            return
+        self._typed_priority_digits += digit
+        self._set_priority(_typed_digits_to_priority(self._typed_priority_digits))
+        self._typed_priority_timer.start()
+
+    def _delete_priority_digit(self) -> None:
+        if self._typed_priority_digits:
+            self._typed_priority_digits = self._typed_priority_digits[:-1]
+            self._set_priority(_typed_digits_to_priority(self._typed_priority_digits))
+        else:
+            self._spin.selectAll()
+
+        if self._typed_priority_digits:
+            self._typed_priority_timer.start()
+        else:
+            self._typed_priority_timer.stop()
+
+    def _clear_priority_digit_buffer(self) -> None:
+        self._typed_priority_digits = ""
+        self._typed_priority_timer.stop()
 
     # ── Public ────────────────────────────────────────────────────────────────
 
