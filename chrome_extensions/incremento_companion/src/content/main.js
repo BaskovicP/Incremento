@@ -992,37 +992,42 @@
     };
   }
 
-  async function finalizeSnapshotCapture(regions, existingSnapshots = []) {
-    if (!regions.length) {
-      showToast("Draw at least one region first.");
-      return;
-    }
+  function waitForNextPaint(frames = 2) {
+    return new Promise((resolve) => {
+      const remaining = Math.max(1, Number(frames) || 1);
+      let count = 0;
+      const step = () => {
+        count += 1;
+        if (count >= remaining) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  async function captureSnapshotRegion(region, existingSnapshots = []) {
     const ui = ensureBrowserCaptureUiRoot();
     ui.shell.style.display = "none";
     try {
+      await waitForNextPaint(2);
       const dataUrl = await captureVisibleTabPng();
-      const snapshots = [];
-      for (let i = 0; i < regions.length; i += 1) {
-        const region = normalizeSelectionRect(regions[i]);
-        const croppedDataUrl = await cropScreenshotDataUrl(dataUrl, region);
-        snapshots.push({
-          id: `${Date.now()}-${i}-${Math.random().toString(16).slice(2, 8)}`,
-          filename: `browser-capture-${existingSnapshots.length + i + 1}.png`,
-          dataUrl: croppedDataUrl,
-          base64: dataUrlToBase64(croppedDataUrl),
-        });
-      }
-      await openBrowserCaptureDialog({
-        mode: "snapshot",
-        selectedText: browserCaptureState?.context?.selectedText || "",
-        snapshots: [...existingSnapshots, ...snapshots],
-      });
+      const normalizedRegion = normalizeSelectionRect(region);
+      const croppedDataUrl = await cropScreenshotDataUrl(dataUrl, normalizedRegion);
+      return {
+        id: `${Date.now()}-${existingSnapshots.length}-${Math.random().toString(16).slice(2, 8)}`,
+        filename: `browser-capture-${existingSnapshots.length + 1}.png`,
+        dataUrl: croppedDataUrl,
+        base64: dataUrlToBase64(croppedDataUrl),
+      };
     } catch (error) {
-      showToast(error?.message || "Failed to capture the current tab.");
-      closeBrowserCaptureUi();
+      throw new Error(error?.message || "Failed to capture the current tab.");
     } finally {
       if (browserCaptureUi?.shell) {
         browserCaptureUi.shell.style.display = "";
+        await waitForNextPaint(1);
       }
     }
   }
@@ -1063,28 +1068,30 @@
     `;
     shell.appendChild(toolbar);
 
-    const regions = [];
+    const snapshots = [...existingSnapshots];
     let activeRect = null;
     let activeRegion = null;
+    let captureInFlight = false;
 
     const updateToolbar = () => {
       toolbar.innerHTML = `
         <strong>Snapshot Mode</strong>
-        <span>Draw one or more rectangles on the page. The capture is limited to the current viewport.</span>
+        <span>Draw a rectangle to capture it immediately, then scroll and capture another area if needed.</span>
         <span class="spacer"></span>
       `;
       const count = document.createElement("span");
-      count.textContent = `${regions.length} region${regions.length === 1 ? "" : "s"} ready`;
+      count.textContent = captureInFlight
+        ? "Capturing..."
+        : `${snapshots.length} snapshot${snapshots.length === 1 ? "" : "s"} ready`;
       toolbar.appendChild(count);
 
       const undoButton = document.createElement("button");
       undoButton.type = "button";
       undoButton.className = "toolbar-btn";
       undoButton.textContent = "Undo";
-      undoButton.disabled = regions.length === 0;
+      undoButton.disabled = captureInFlight || snapshots.length === 0;
       undoButton.addEventListener("click", () => {
-        const last = regions.pop();
-        last?.el?.remove();
+        snapshots.pop();
         updateToolbar();
       });
       toolbar.appendChild(undoButton);
@@ -1093,11 +1100,9 @@
       clearButton.type = "button";
       clearButton.className = "toolbar-btn";
       clearButton.textContent = "Clear";
-      clearButton.disabled = regions.length === 0;
+      clearButton.disabled = captureInFlight || snapshots.length === 0;
       clearButton.addEventListener("click", () => {
-        while (regions.length > 0) {
-          regions.pop()?.el?.remove();
-        }
+        snapshots.splice(0, snapshots.length);
         updateToolbar();
       });
       toolbar.appendChild(clearButton);
@@ -1114,7 +1119,18 @@
       doneButton.className = "toolbar-btn primary";
       doneButton.textContent = "Continue";
       doneButton.addEventListener("click", () => {
-        void finalizeSnapshotCapture(regions.map((item) => item.region), existingSnapshots);
+        if (captureInFlight) {
+          return;
+        }
+        if (!snapshots.length) {
+          showToast("Draw at least one region first.");
+          return;
+        }
+        void openBrowserCaptureDialog({
+          mode: "snapshot",
+          selectedText: browserCaptureState?.context?.selectedText || "",
+          snapshots: [...snapshots],
+        });
       });
       toolbar.appendChild(doneButton);
     };
@@ -1123,7 +1139,7 @@
       activeRegion = { x, y, width: 0, height: 0 };
       activeRect = document.createElement("div");
       activeRect.className = "selection-rect";
-      activeRect.dataset.label = `Region ${regions.length + 1}`;
+      activeRect.dataset.label = `Capture ${snapshots.length + 1}`;
       captureShell.appendChild(activeRect);
     };
 
@@ -1141,7 +1157,7 @@
     };
 
     captureShell.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 || event.target !== captureShell) {
+      if (captureInFlight || event.button !== 0 || event.target !== captureShell) {
         return;
       }
       event.preventDefault();
@@ -1159,24 +1175,37 @@
       syncActiveRect();
     });
 
-    const finishActiveRect = () => {
+    const finishActiveRect = async () => {
       if (!activeRect || !activeRegion) {
         return;
       }
       const normalized = normalizeSelectionRect(activeRegion);
+      const rectToRemove = activeRect;
       if (normalized.width >= 24 && normalized.height >= 24) {
-        activeRect.dataset.label = `Region ${regions.length + 1}`;
-        regions.push({ region: normalized, el: activeRect });
+        captureInFlight = true;
+        updateToolbar();
+        try {
+          const snapshot = await captureSnapshotRegion(normalized, snapshots);
+          snapshots.push(snapshot);
+        } catch (error) {
+          showToast(error?.message || "Failed to capture the current tab.");
+        }
       } else {
-        activeRect.remove();
+        rectToRemove.remove();
       }
+      rectToRemove.remove();
       activeRect = null;
       activeRegion = null;
+      captureInFlight = false;
       updateToolbar();
     };
 
-    captureShell.addEventListener("pointerup", finishActiveRect);
-    captureShell.addEventListener("pointercancel", finishActiveRect);
+    captureShell.addEventListener("pointerup", () => {
+      void finishActiveRect();
+    });
+    captureShell.addEventListener("pointercancel", () => {
+      void finishActiveRect();
+    });
     updateToolbar();
   }
 
