@@ -318,4 +318,4 @@ def sync_writing_note_type() -> None:
 
 def add_writing_function() -> None:
     """Legacy entry point kept for parity with other dock modules."""
-    tooltip("Use Incremento → Add Content → Add Writing.")
+    tooltip("Use Incremento → Add Content → Add to Markdown.")

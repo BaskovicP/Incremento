@@ -27,7 +27,7 @@ class AddWritingDialog(QDialog):
 
     def __init__(self, deck_names: list[str], default_deck: str = "Topics", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add Writing")
+        self.setWindowTitle("Add to Markdown")
         self.setMinimumWidth(560)
         self.resize(640, 520)
 
@@ -37,7 +37,7 @@ class AddWritingDialog(QDialog):
 
         layout.addWidget(QLabel("Title:"))
         self._title_edit = QLineEdit()
-        self._title_edit.setPlaceholderText("Writing topic title")
+        self._title_edit.setPlaceholderText("Markdown note title")
         layout.addWidget(self._title_edit)
 
         layout.addWidget(QLabel("Filename (optional):"))
@@ -107,7 +107,7 @@ class AddWritingDialog(QDialog):
         layout.addWidget(hint)
 
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Add Writing Card")
+        ok_btn = QPushButton("Add Markdown Card")
         ok_btn.setDefault(True)
         cancel_btn = QPushButton("Cancel")
         btn_row.addStretch()

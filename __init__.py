@@ -40,7 +40,7 @@ from .backend.video_manager import (
     download_and_compress_video,
     import_local_video_file,
 )
-from .backend.writing_manager import add_writing_card
+from .backend.writing_manager import WRITING_NOTE_TYPE, add_writing_card
 from .backend.priority_manager import (
     configured_show_priority_dialog_after_answer,
     configured_priority_lower_is_more_important,
@@ -48,11 +48,19 @@ from .backend.priority_manager import (
     set_priority,
     get_all_priorities,
 )
-from .backend.web_manager import configured_remember_browser_card_scroll
+from .backend.web_manager import WEB_NOTE_TYPE, configured_remember_browser_card_scroll
 from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
-from .backend.topic_scheduler import on_topic_card_answered as _on_topic_card_answered
+from .backend.topic_scheduler import (
+    TOPIC_REVIEW_BUTTONS,
+    configured_topic_card_tags as _configured_topic_card_tags,
+    configured_topic_card_types as _configured_topic_card_types,
+    is_topic_card as _is_topic_card,
+    on_topic_card_answered as _on_topic_card_answered,
+    remap_topic_review_ease as _remap_topic_review_ease,
+    topic_due_label as _topic_due_label,
+)
 from .frontend.timer_widget import (
     build_timer_toolbar,
     on_timer_question_shown as _on_timer_question_shown,
@@ -134,6 +142,99 @@ def _incremento_after_answering(self, ease: int) -> None:
 
 _incremento_after_answering._incremento_original = _ORIGINAL_REVIEWER_AFTER_ANSWERING
 Reviewer._after_answering = _incremento_after_answering
+
+_ORIGINAL_REVIEWER_BUTTON_TIME = getattr(
+    Reviewer._buttonTime,
+    "_incremento_original",
+    Reviewer._buttonTime,
+)
+_ORIGINAL_REVIEWER_DEFAULT_EASE = getattr(
+    Reviewer._defaultEase,
+    "_incremento_original",
+    Reviewer._defaultEase,
+)
+_ORIGINAL_REVIEWER_SHORTCUT_KEYS = getattr(
+    Reviewer._shortcutKeys,
+    "_incremento_original",
+    Reviewer._shortcutKeys,
+)
+_ORIGINAL_REVIEWER_ON_ENTER_KEY = getattr(
+    Reviewer.onEnterKey,
+    "_incremento_original",
+    Reviewer.onEnterKey,
+)
+
+
+def _reviewer_topic_card(card) -> bool:
+    return bool(card is not None and _is_topic_card(card))
+
+
+def _topic_review_buttons(_buttons, _reviewer, card):
+    if not _reviewer_topic_card(card):
+        return _buttons
+    return TOPIC_REVIEW_BUTTONS
+
+
+def _topic_reviewer_will_answer_card(response, _reviewer, card):
+    proceed, ease = response
+    if not proceed or not _reviewer_topic_card(card):
+        return response
+    return (proceed, _remap_topic_review_ease(ease))
+
+
+def _incremento_button_time(self, ease: int, v3_labels) -> str:
+    card = getattr(self, "card", None)
+    if not _reviewer_topic_card(card):
+        return _ORIGINAL_REVIEWER_BUTTON_TIME(self, ease, v3_labels)
+    if not self.mw.col.conf.get("estTimes"):
+        return ""
+    label = _topic_due_label(card, ease)
+    return f'<span class="nobold">{label}</span>' if label else ""
+
+
+def _incremento_default_ease(self) -> int:
+    if _reviewer_topic_card(getattr(self, "card", None)):
+        return 2
+    return _ORIGINAL_REVIEWER_DEFAULT_EASE(self)
+
+def _incremento_shortcut_keys(self):
+    shortcuts = list(_ORIGINAL_REVIEWER_SHORTCUT_KEYS(self))
+    if not _reviewer_topic_card(getattr(self, "card", None)):
+        return shortcuts
+
+    answer_key_4 = ""
+    try:
+        answer_key_4 = str(mw.pm.get_answer_key(4) or "")
+    except Exception:
+        answer_key_4 = "4"
+
+    filtered = []
+    for key, callback in shortcuts:
+        if isinstance(key, str) and answer_key_4 and key == answer_key_4:
+            continue
+        filtered.append((key, callback))
+    return filtered
+
+
+def _incremento_on_enter_key(self) -> None:
+    if (
+        self.state == "answer"
+        and _reviewer_topic_card(getattr(self, "card", None))
+        and mw.pm.spacebar_rates_card()
+    ):
+        self._answerCard(2)
+        return
+    _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
+
+
+_incremento_button_time._incremento_original = _ORIGINAL_REVIEWER_BUTTON_TIME
+Reviewer._buttonTime = _incremento_button_time
+_incremento_default_ease._incremento_original = _ORIGINAL_REVIEWER_DEFAULT_EASE
+Reviewer._defaultEase = _incremento_default_ease
+_incremento_shortcut_keys._incremento_original = _ORIGINAL_REVIEWER_SHORTCUT_KEYS
+Reviewer._shortcutKeys = _incremento_shortcut_keys
+_incremento_on_enter_key._incremento_original = _ORIGINAL_REVIEWER_ON_ENTER_KEY
+Reviewer.onEnterKey = _incremento_on_enter_key
 
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
@@ -299,6 +400,8 @@ gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_sh
 gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
+gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
+gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_epub_dock_mod.on_epub_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
@@ -1879,6 +1982,8 @@ def openSettingsFunction() -> None:
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
+        current_topic_card_types=_configured_topic_card_types(cfg),
+        current_topic_card_tags=_configured_topic_card_tags(cfg),
         parent=mw,
     )
     if not dlg.exec():
@@ -1890,6 +1995,8 @@ def openSettingsFunction() -> None:
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
+    cfg["topic_card_types"] = dlg.topic_card_types
+    cfg["topic_card_tags"] = dlg.topic_card_tags
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     tooltip("Incremento settings updated.")

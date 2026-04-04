@@ -355,7 +355,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleAdd("writing", { writingMode: "selection" })}
           >
-            Add Selection as Writing
+            Add Selection to Markdown
           </button>
           <button
             className="kind-btn"
@@ -363,7 +363,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleAdd("writing", { writingMode: "webpage_markdown" })}
           >
-            Add Page as Writing
+            Add Page to Markdown
           </button>
         </div>
         <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">

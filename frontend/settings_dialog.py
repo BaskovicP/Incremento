@@ -7,6 +7,7 @@ from aqt.qt import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QKeySequence,
     QKeySequenceEdit,
     QPushButton,
@@ -130,6 +131,8 @@ class IncrementoSettingsDialog(QDialog):
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
         current_remember_browser_card_scroll: bool = True,
+        current_topic_card_types: dict[str, bool] | None = None,
+        current_topic_card_tags: list[str] | str | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -153,7 +156,8 @@ class IncrementoSettingsDialog(QDialog):
             " You can also choose which source links should be appended while extracting,"
             " how incremental learning interprets stored priority numbers,"
             " whether to prompt for priority after answering a card,"
-            " and whether browser cards remember scroll position."
+            " whether browser cards remember scroll position,"
+            " and which card types or tags should be treated as topics."
         )
         general_hint.setWordWrap(True)
         general_layout.addWidget(general_hint)
@@ -234,6 +238,61 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_remember_browser_card_scroll)
         )
         general_form.addRow("", self._remember_browser_card_scroll_cb)
+
+        topic_types = {
+            "pdf_epub": True,
+            "video": True,
+            "writing": True,
+            "web": False,
+        }
+        if isinstance(current_topic_card_types, dict):
+            for key in topic_types:
+                if key in current_topic_card_types:
+                    topic_types[key] = bool(current_topic_card_types.get(key))
+
+        topic_wrap = QWidget()
+        topic_layout = QVBoxLayout(topic_wrap)
+        topic_layout.setContentsMargins(0, 0, 0, 0)
+        topic_layout.setSpacing(4)
+
+        self._topic_pdf_epub_cb = QCheckBox("PDF / EPUB")
+        self._topic_pdf_epub_cb.setChecked(topic_types["pdf_epub"])
+        topic_layout.addWidget(self._topic_pdf_epub_cb)
+
+        self._topic_video_cb = QCheckBox("Video")
+        self._topic_video_cb.setChecked(topic_types["video"])
+        topic_layout.addWidget(self._topic_video_cb)
+
+        self._topic_writing_cb = QCheckBox("Writing")
+        self._topic_writing_cb.setChecked(topic_types["writing"])
+        topic_layout.addWidget(self._topic_writing_cb)
+
+        self._topic_web_cb = QCheckBox("Web")
+        self._topic_web_cb.setChecked(topic_types["web"])
+        topic_layout.addWidget(self._topic_web_cb)
+
+        general_form.addRow("Consider these as topics:", topic_wrap)
+
+        tags_text = ""
+        if isinstance(current_topic_card_tags, str):
+            tags_text = current_topic_card_tags
+        elif isinstance(current_topic_card_tags, (list, tuple, set)):
+            tags_text = ", ".join(
+                str(tag).strip()
+                for tag in current_topic_card_tags
+                if str(tag).strip()
+            )
+
+        self._topic_tags_edit = QLineEdit()
+        self._topic_tags_edit.setPlaceholderText("tag1, tag2")
+        self._topic_tags_edit.setText(tags_text)
+        general_form.addRow("Topic tags:", self._topic_tags_edit)
+
+        topic_hint = QLabel(
+            "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
+        )
+        topic_hint.setWordWrap(True)
+        general_form.addRow("", topic_hint)
 
         general_layout.addLayout(general_form)
         general_layout.addStretch(1)
@@ -340,3 +399,28 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def remember_browser_card_scroll(self) -> bool:
         return bool(self._remember_browser_card_scroll_cb.isChecked())
+
+    @property
+    def topic_card_types(self) -> dict[str, bool]:
+        return {
+            "pdf_epub": bool(self._topic_pdf_epub_cb.isChecked()),
+            "video": bool(self._topic_video_cb.isChecked()),
+            "writing": bool(self._topic_writing_cb.isChecked()),
+            "web": bool(self._topic_web_cb.isChecked()),
+        }
+
+    @property
+    def topic_card_tags(self) -> list[str]:
+        raw = str(self._topic_tags_edit.text() or "")
+        tags: list[str] = []
+        seen: set[str] = set()
+        for chunk in raw.replace("\n", ",").split(","):
+            tag = chunk.strip()
+            if not tag:
+                continue
+            normalized = tag.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            tags.append(tag)
+        return tags

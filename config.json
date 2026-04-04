@@ -8,5 +8,12 @@
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "show_priority_dialog_after_answer": false,
-    "scheduler_scope": "session"
+    "scheduler_scope": "session",
+    "topic_card_tags": [],
+    "topic_card_types": {
+        "pdf_epub": true,
+        "video": true,
+        "web": false,
+        "writing": true
+    }
 }

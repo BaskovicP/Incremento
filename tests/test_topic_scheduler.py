@@ -8,7 +8,11 @@ import topic_scheduler
 
 _next_interval_and_afactor = topic_scheduler._next_interval_and_afactor
 _topics_deck_name = topic_scheduler._topics_deck_name
+configured_topic_card_tags = topic_scheduler.configured_topic_card_tags
+configured_topic_card_types = topic_scheduler.configured_topic_card_types
 is_topic_card = topic_scheduler.is_topic_card
+remap_topic_review_ease = topic_scheduler.remap_topic_review_ease
+topic_due_label = topic_scheduler.topic_due_label
 _A_MIN = topic_scheduler._A_MIN
 _A_MAX = topic_scheduler._A_MAX
 
@@ -130,14 +134,56 @@ class TestTopicsDeckName:
         assert result == "Topics"
 
 
+class TestTopicConfigHelpers:
+    def test_configured_topic_card_types_uses_defaults(self):
+        assert configured_topic_card_types({}) == {
+            "pdf_epub": True,
+            "video": True,
+            "writing": True,
+            "web": False,
+        }
+
+    def test_configured_topic_card_types_merges_overrides(self):
+        cfg = {"topic_card_types": {"video": False, "web": True}}
+        assert configured_topic_card_types(cfg) == {
+            "pdf_epub": True,
+            "video": False,
+            "writing": True,
+            "web": True,
+        }
+
+    def test_configured_topic_card_tags_parses_string_and_deduplicates(self):
+        cfg = {"topic_card_tags": "Topic, topic,  reading "}
+        assert configured_topic_card_tags(cfg) == ["Topic", "reading"]
+
+    def test_configured_topic_card_tags_accepts_list(self):
+        cfg = {"topic_card_tags": ["Topic", "reading", "Topic"]}
+        assert configured_topic_card_tags(cfg) == ["Topic", "reading"]
+
+
+class TestTopicReviewEaseRemap:
+    def test_remaps_custom_topic_buttons_to_scheduler_eases(self):
+        assert remap_topic_review_ease(1) == 2
+        assert remap_topic_review_ease(2) == 3
+        assert remap_topic_review_ease(3) == 4
+
+    def test_leaves_non_custom_eases_alone(self):
+        assert remap_topic_review_ease(4) == 4
+
+
 # ── is_topic_card ─────────────────────────────────────────────────────────────
 
 
 class TestIsTopicCard:
-    def _make_card(self, did, odid=0):
+    def _make_card(self, did, odid=0, note_type_name="", tags=None):
         card = MagicMock()
         card.did = did
         card.odid = odid
+        if note_type_name or tags is not None:
+            note = MagicMock()
+            note.note_type.return_value = {"name": note_type_name}
+            note.tags = list(tags or [])
+            card.note.return_value = note
         return card
 
     def test_returns_true_for_card_in_topics_deck(self):
@@ -157,6 +203,30 @@ class TestIsTopicCard:
             mock_mw.col.decks.get.return_value = {"name": "Default"}
             result = is_topic_card(card)
         assert result is False
+
+    def test_returns_true_for_enabled_pdf_epub_type(self):
+        card = self._make_card(did=2, note_type_name="Incremento PDF")
+        with patch("topic_scheduler.configured_topic_card_types", return_value={
+            "pdf_epub": True,
+            "video": False,
+            "writing": False,
+            "web": False,
+        }), patch("topic_scheduler.configured_topic_card_tags", return_value=[]), \
+             patch("topic_scheduler._card_in_topics_deck", return_value=False):
+            result = is_topic_card(card)
+        assert result is True
+
+    def test_returns_true_for_matching_topic_tag(self):
+        card = self._make_card(did=2, note_type_name="Basic", tags=["reading"])
+        with patch("topic_scheduler.configured_topic_card_types", return_value={
+            "pdf_epub": False,
+            "video": False,
+            "writing": False,
+            "web": False,
+        }), patch("topic_scheduler.configured_topic_card_tags", return_value=["Reading"]), \
+             patch("topic_scheduler._card_in_topics_deck", return_value=False):
+            result = is_topic_card(card)
+        assert result is True
 
     def test_uses_odid_when_in_filtered_deck(self):
         """When odid != 0, use odid (original deck) instead of did."""
@@ -185,6 +255,14 @@ class TestIsTopicCard:
             mock_mw.col.decks.get.side_effect = Exception("db error")
             result = is_topic_card(card)
         assert result is False
+
+
+class TestTopicDueLabel:
+    def test_uses_remapped_topic_button_ease(self):
+        card = MagicMock()
+        card.id = 42
+        with patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)):
+            assert topic_due_label(card, 1) == "24d"
 
 
 # ── on_topic_card_answered ────────────────────────────────────────────────────
@@ -216,6 +294,18 @@ class TestOnTopicCardAnswered:
             on_topic_card_answered(MagicMock(), card, ease=3)
         mock_set.assert_called_once()
         mock_mw.col.sched.set_due_date.assert_called_once()
+
+    def test_remaps_more_button_to_hard_scheduling(self):
+        card = self._make_card()
+        with patch("topic_scheduler.is_topic_card", return_value=True), \
+             patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
+             patch("topic_scheduler.set_topic_schedule") as mock_set, \
+             patch("topic_scheduler.mw") as mock_mw:
+            on_topic_card_answered(MagicMock(), card, ease=1)
+        args = mock_set.call_args.args
+        assert args[1] == card.id
+        assert args[2] == pytest.approx(round(3.5 * 0.9, 3))
+        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
 
     def test_handles_exception_gracefully(self):
         card = self._make_card()
