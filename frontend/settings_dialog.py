@@ -164,9 +164,25 @@ class IncrementoSettingsDialog(QDialog):
         general_hint.setWordWrap(True)
         general_layout.addWidget(general_hint)
 
-        general_form = QFormLayout()
-        general_form.setHorizontalSpacing(16)
-        general_form.setVerticalSpacing(8)
+        def _section_title(text: str) -> QLabel:
+            lbl = QLabel(f"<b>{text}</b>")
+            lbl.setWordWrap(True)
+            return lbl
+
+        def _section_form() -> QFormLayout:
+            form = QFormLayout()
+            form.setHorizontalSpacing(16)
+            form.setVerticalSpacing(8)
+            return form
+
+        general_layout.addWidget(_section_title("Extraction"))
+        extraction_hint = QLabel(
+            "Controls how extracted text opens in Add Card and which source links are appended."
+        )
+        extraction_hint.setWordWrap(True)
+        general_layout.addWidget(extraction_hint)
+
+        extraction_form = _section_form()
 
         self._extract_notetype_combo = QComboBox()
         self._extract_notetype_combo.addItem("Use current Add Card type", "")
@@ -179,7 +195,7 @@ class IncrementoSettingsDialog(QDialog):
                 self._extract_notetype_combo.setCurrentIndex(idx)
                 break
 
-        general_form.addRow("Default extract card type:", self._extract_notetype_combo)
+        extraction_form.addRow("Default extract card type:", self._extract_notetype_combo)
 
         if isinstance(extract_source_links, dict):
             source_link_cfg = {
@@ -198,15 +214,26 @@ class IncrementoSettingsDialog(QDialog):
 
         self._extract_pdf_links_cb = QCheckBox("PDF pages")
         self._extract_pdf_links_cb.setChecked(source_link_cfg["pdf"])
-        general_form.addRow("Should add links to:", self._extract_pdf_links_cb)
+        extraction_form.addRow("Should add links to:", self._extract_pdf_links_cb)
 
         self._extract_web_links_cb = QCheckBox("Web pages / URLs")
         self._extract_web_links_cb.setChecked(source_link_cfg["web"])
-        general_form.addRow("", self._extract_web_links_cb)
+        extraction_form.addRow("", self._extract_web_links_cb)
 
         self._extract_parent_links_cb = QCheckBox("Parent cards in Extract Card")
         self._extract_parent_links_cb.setChecked(source_link_cfg["parent"])
-        general_form.addRow("", self._extract_parent_links_cb)
+        extraction_form.addRow("", self._extract_parent_links_cb)
+
+        general_layout.addLayout(extraction_form)
+
+        general_layout.addWidget(_section_title("Review Behavior"))
+        review_hint = QLabel(
+            "Controls how review buttons behave and whether review flow asks for extra input after answering."
+        )
+        review_hint.setWordWrap(True)
+        general_layout.addWidget(review_hint)
+
+        review_form = _section_form()
 
         priority_direction_wrap = QWidget()
         priority_direction_layout = QVBoxLayout(priority_direction_wrap)
@@ -223,7 +250,7 @@ class IncrementoSettingsDialog(QDialog):
 
         priority_direction_layout.addWidget(self._priority_lower_radio)
         priority_direction_layout.addWidget(self._priority_higher_radio)
-        general_form.addRow("Incremental learning priority:", priority_direction_wrap)
+        review_form.addRow("Incremental learning priority:", priority_direction_wrap)
 
         self._show_priority_dialog_after_answer_cb = QCheckBox(
             "Show priority dialog after each card is done before moving forward"
@@ -231,7 +258,7 @@ class IncrementoSettingsDialog(QDialog):
         self._show_priority_dialog_after_answer_cb.setChecked(
             bool(current_show_priority_dialog_after_answer)
         )
-        general_form.addRow("", self._show_priority_dialog_after_answer_cb)
+        review_form.addRow("", self._show_priority_dialog_after_answer_cb)
 
         self._remember_browser_card_scroll_cb = QCheckBox(
             "Remember scrolling position in browser cards"
@@ -239,7 +266,7 @@ class IncrementoSettingsDialog(QDialog):
         self._remember_browser_card_scroll_cb.setChecked(
             bool(current_remember_browser_card_scroll)
         )
-        general_form.addRow("", self._remember_browser_card_scroll_cb)
+        review_form.addRow("", self._remember_browser_card_scroll_cb)
 
         self._use_fail_pass_on_items_cb = QCheckBox(
             "Use Fail / Pass buttons on items"
@@ -247,7 +274,18 @@ class IncrementoSettingsDialog(QDialog):
         self._use_fail_pass_on_items_cb.setChecked(
             bool(current_use_fail_pass_on_items)
         )
-        general_form.addRow("", self._use_fail_pass_on_items_cb)
+        review_form.addRow("", self._use_fail_pass_on_items_cb)
+
+        general_layout.addLayout(review_form)
+
+        general_layout.addWidget(_section_title("Topic Cards"))
+        topic_section_hint = QLabel(
+            "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
+        )
+        topic_section_hint.setWordWrap(True)
+        general_layout.addWidget(topic_section_hint)
+
+        topic_form = _section_form()
 
         topic_types = {
             "pdf_epub": True,
@@ -281,7 +319,7 @@ class IncrementoSettingsDialog(QDialog):
         self._topic_web_cb.setChecked(topic_types["web"])
         topic_layout.addWidget(self._topic_web_cb)
 
-        general_form.addRow("Consider these as topics:", topic_wrap)
+        topic_form.addRow("Consider these as topics:", topic_wrap)
 
         tags_text = ""
         if isinstance(current_topic_card_tags, str):
@@ -296,15 +334,9 @@ class IncrementoSettingsDialog(QDialog):
         self._topic_tags_edit = QLineEdit()
         self._topic_tags_edit.setPlaceholderText("tag1, tag2")
         self._topic_tags_edit.setText(tags_text)
-        general_form.addRow("Topic tags:", self._topic_tags_edit)
+        topic_form.addRow("Topic tags:", self._topic_tags_edit)
 
-        topic_hint = QLabel(
-            "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
-        )
-        topic_hint.setWordWrap(True)
-        general_form.addRow("", topic_hint)
-
-        general_layout.addLayout(general_form)
+        general_layout.addLayout(topic_form)
         general_layout.addStretch(1)
         tabs.addTab(general_tab, "General")
 
