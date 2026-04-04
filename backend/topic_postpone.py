@@ -1,19 +1,24 @@
 from __future__ import annotations
 
-import json
 import time
+from pathlib import Path
 from typing import Literal
 
 from aqt import mw
 
+try:
+    from .db import get_connection
+except ImportError:
+    from db import get_connection
+
 TOPIC_POSTPONE_EASE = 4
-_TOPIC_POSTPONE_CUSTOM_KEY = "_incremento_topic_postpone"
 _DEFAULT_TOPIC_POSTPONE_ENABLED = False
 _DEFAULT_TOPIC_POSTPONE_MODE: Literal["timed", "session"] = "timed"
 _DEFAULT_TOPIC_POSTPONE_MINUTES = 30
 _MIN_TOPIC_POSTPONE_MINUTES = 1
 _MAX_TOPIC_POSTPONE_MINUTES = 24 * 60
 _session_postponed_card_ids: set[int] = set()
+_ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 
 
 def _resolved_config(config: dict | None = None) -> dict:
@@ -26,11 +31,13 @@ def _resolved_config(config: dict | None = None) -> dict:
         return {}
 
 
+def _db():
+    return get_connection(_ADDON_DIR)
+
+
 def configured_topic_postpone_enabled(config: dict | None = None) -> bool:
     cfg = _resolved_config(config)
-    return bool(
-        cfg.get("topic_postpone_enabled", _DEFAULT_TOPIC_POSTPONE_ENABLED)
-    )
+    return bool(cfg.get("topic_postpone_enabled", _DEFAULT_TOPIC_POSTPONE_ENABLED))
 
 
 def configured_topic_postpone_mode(
@@ -61,41 +68,6 @@ def _normalize_mode(mode: str | None) -> Literal["timed", "session"]:
     return "session" if str(mode or "").strip().lower() == "session" else "timed"
 
 
-def _load_custom_data(raw) -> dict:
-    if isinstance(raw, dict):
-        return dict(raw)
-    text = str(raw or "").strip()
-    if not text:
-        return {}
-    try:
-        parsed = json.loads(text)
-    except Exception:
-        return {}
-    return dict(parsed) if isinstance(parsed, dict) else {}
-
-
-def _write_custom_data(card, payload: dict) -> None:
-    if payload:
-        card.custom_data = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
-    else:
-        card.custom_data = ""
-
-
-def _update_cards(cards: list) -> None:
-    if not cards:
-        return
-    try:
-        mw.col.update_cards(cards)
-        return
-    except Exception:
-        pass
-    for card in cards:
-        try:
-            mw.col.update_card(card)
-        except Exception:
-            pass
-
-
 def _bury_card_ids(card_ids: list[int]) -> None:
     if not card_ids:
         return
@@ -112,15 +84,6 @@ def _unbury_card_ids(card_ids: list[int]) -> None:
         mw.col.sched.unbury_cards(card_ids)
     except Exception:
         pass
-
-
-def _postpone_payload_until(payload) -> int | None:
-    if not isinstance(payload, dict):
-        return None
-    try:
-        return int(payload.get("until"))
-    except Exception:
-        return None
 
 
 def postpone_topic_card(
@@ -172,6 +135,11 @@ def store_timed_topic_postpone(
 ) -> int | None:
     if card is None:
         return None
+    try:
+        card_id = int(card.id)
+    except Exception:
+        return None
+
     resolved_minutes = (
         configured_topic_postpone_minutes()
         if minutes is None
@@ -179,47 +147,64 @@ def store_timed_topic_postpone(
     )
     until_ts = int((time.time() if now is None else float(now)) + (resolved_minutes * 60))
     try:
-        payload = _load_custom_data(getattr(card, "custom_data", ""))
-        payload[_TOPIC_POSTPONE_CUSTOM_KEY] = {
-            "mode": "timed",
-            "until": until_ts,
-        }
-        _write_custom_data(card, payload)
-        mw.col.update_card(card)
+        conn = _db()
+        conn.execute(
+            "INSERT OR REPLACE INTO topic_postpones (card_id, until_ts) VALUES (?, ?)",
+            (card_id, until_ts),
+        )
+        conn.commit()
     except Exception:
         return None
     if bury:
-        _bury_card_ids([int(card.id)])
+        _bury_card_ids([card_id])
     return until_ts
 
 
-def release_expired_timed_postpones(now: float | None = None) -> list[int]:
+def release_expired_timed_postpones(
+    now: float | None = None,
+    *,
+    unbury: bool = True,
+) -> list[int]:
     now_ts = int(time.time() if now is None else float(now))
     try:
-        rows = mw.col.db.all(
-            "SELECT id, custom_data FROM cards WHERE custom_data LIKE ?",
-            f'%"{_TOPIC_POSTPONE_CUSTOM_KEY}"%',
-        )
+        conn = _db()
+        rows = conn.execute(
+            "SELECT card_id FROM topic_postpones WHERE until_ts <= ? ORDER BY until_ts, card_id",
+            (now_ts,),
+        ).fetchall()
     except Exception:
         return []
 
-    restored_ids: list[int] = []
-    changed_cards: list = []
-    for card_id, raw in rows:
-        payload = _load_custom_data(raw)
-        postpone = payload.get(_TOPIC_POSTPONE_CUSTOM_KEY)
-        until_ts = _postpone_payload_until(postpone)
-        if until_ts is not None and until_ts > now_ts:
-            continue
-        payload.pop(_TOPIC_POSTPONE_CUSTOM_KEY, None)
-        try:
-            card = mw.col.get_card(int(card_id))
-        except Exception:
-            continue
-        _write_custom_data(card, payload)
-        changed_cards.append(card)
-        restored_ids.append(int(card_id))
+    restored_ids = [int(row[0]) for row in rows]
+    if not restored_ids:
+        return []
 
-    _update_cards(changed_cards)
-    _unbury_card_ids(restored_ids)
+    try:
+        conn.executemany(
+            "DELETE FROM topic_postpones WHERE card_id = ?",
+            [(card_id,) for card_id in restored_ids],
+        )
+        conn.commit()
+    except Exception:
+        return []
+
+    if unbury:
+        _unbury_card_ids(restored_ids)
     return restored_ids
+
+
+def next_timed_postpone_at(now: float | None = None) -> int | None:
+    now_ts = int(time.time() if now is None else float(now))
+    try:
+        row = _db().execute(
+            "SELECT MIN(until_ts) FROM topic_postpones WHERE until_ts > ?",
+            (now_ts,),
+        ).fetchone()
+    except Exception:
+        return None
+    if not row or row[0] is None:
+        return None
+    try:
+        return int(row[0])
+    except Exception:
+        return None

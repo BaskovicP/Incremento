@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import time
 import zipfile
 from urllib.parse import unquote
 
@@ -71,11 +72,14 @@ from .backend.topic_scheduler import (
 from .backend.topic_postpone import (
     TOPIC_POSTPONE_EASE as _TOPIC_POSTPONE_EASE,
     configured_topic_postpone_enabled as _configured_topic_postpone_enabled,
+    configured_topic_postpone_mode as _configured_topic_postpone_mode,
     configured_topic_postpone_minutes as _configured_topic_postpone_minutes,
     has_session_postponed_cards as _has_session_postponed_cards,
+    next_timed_postpone_at as _next_timed_postpone_at,
     postpone_topic_card as _postpone_topic_card,
     release_expired_timed_postpones as _release_expired_timed_postpones,
     release_session_postponed_cards as _release_session_postponed_cards,
+    store_timed_topic_postpone as _store_timed_topic_postpone,
     topic_postpone_due_label as _topic_postpone_due_label,
 )
 from .frontend.timer_widget import (
@@ -109,6 +113,7 @@ except Exception:
     pass
 
 _shortcut_actions: dict[str, object] = {}
+_topic_postpone_timer: QTimer | None = None
 
 
 def _register_shortcut_action(action_id: str, action_obj) -> None:
@@ -228,7 +233,9 @@ def _topic_review_buttons(_buttons, _reviewer, card):
 
 def _perform_topic_postpone(reviewer, card) -> None:
     try:
-        mode = _postpone_topic_card(card, bury=False)
+        mode = _configured_topic_postpone_mode()
+        if mode == "session":
+            _postpone_topic_card(card, mode="session", bury=False)
     except Exception as e:
         print(f"[Incremento] topic postpone error: {e}")
         try:
@@ -238,6 +245,16 @@ def _perform_topic_postpone(reviewer, card) -> None:
         return
 
     def _after_bury(_changes) -> None:
+        if mode == "timed":
+            try:
+                _store_timed_topic_postpone(
+                    card,
+                    minutes=_configured_topic_postpone_minutes(),
+                    bury=False,
+                )
+                _schedule_topic_postpone_timer()
+            except Exception as e:
+                print(f"[Incremento] topic postpone timed save error: {e}")
         try:
             if mode == "session":
                 tooltip("Topic postponed to later in this review.")
@@ -264,11 +281,70 @@ def _perform_topic_postpone(reviewer, card) -> None:
             pass
 
 
+def _release_expired_topic_postpones_now() -> list[int]:
+    try:
+        restored_ids = _release_expired_timed_postpones()
+    except Exception:
+        restored_ids = []
+    if not restored_ids:
+        return []
+    try:
+        mw.reset()
+    except Exception:
+        pass
+    return restored_ids
+
+
+def _ensure_topic_postpone_timer() -> QTimer:
+    global _topic_postpone_timer
+    if _topic_postpone_timer is None:
+        _topic_postpone_timer = QTimer(mw)
+        _topic_postpone_timer.setSingleShot(False)
+        _topic_postpone_timer.setInterval(1000)
+        _topic_postpone_timer.timeout.connect(_on_topic_postpone_timer_timeout)
+    return _topic_postpone_timer
+
+
+def _schedule_topic_postpone_timer() -> None:
+    try:
+        next_until = _next_timed_postpone_at()
+    except Exception:
+        next_until = None
+
+    timer = _ensure_topic_postpone_timer()
+    if next_until is None:
+        timer.stop()
+        return
+
+    if not timer.isActive():
+        timer.start()
+
+
+def _on_topic_postpone_timer_timeout() -> None:
+    try:
+        restored_ids = _release_expired_topic_postpones_now()
+    except Exception:
+        restored_ids = []
+
+    try:
+        if _next_timed_postpone_at() is None:
+            _ensure_topic_postpone_timer().stop()
+    except Exception:
+        pass
+
+    if not restored_ids:
+        return
+
+
 def _release_expired_topic_postpones_on_overview(new_state: str, _old_state: str) -> None:
     if new_state != "overview":
         return
     try:
-        _release_expired_timed_postpones()
+        _release_expired_topic_postpones_now()
+    except Exception:
+        pass
+    try:
+        _schedule_topic_postpone_timer()
     except Exception:
         pass
 
@@ -357,7 +433,11 @@ def _incremento_on_enter_key(self) -> None:
 
 def _incremento_next_card(self) -> None:
     try:
-        _release_expired_timed_postpones()
+        _release_expired_topic_postpones_now()
+    except Exception:
+        pass
+    try:
+        _schedule_topic_postpone_timer()
     except Exception:
         pass
 
@@ -645,7 +725,18 @@ gui_hooks.main_window_did_init.append(_epub_dock_mod.sync_epub_note_type)
 gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
-gui_hooks.main_window_did_init.append(lambda: _release_expired_timed_postpones())
+def _initialize_topic_postpone_runtime() -> None:
+    try:
+        _release_expired_topic_postpones_now()
+    except Exception:
+        pass
+    try:
+        _schedule_topic_postpone_timer()
+    except Exception:
+        pass
+
+
+gui_hooks.main_window_did_init.append(_initialize_topic_postpone_runtime)
 gui_hooks.main_window_did_init.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )

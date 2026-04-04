@@ -16,6 +16,7 @@ pdf_card_sources — notes created while reading a PDF page (for per-page card p
 epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 web_progress    — last URL, scroll position, and bookmark state per web card
+topic_postpones — timed postpone expiry timestamps per topic card
 """
 
 import atexit
@@ -181,6 +182,13 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             a_factor REAL    NOT NULL DEFAULT 3.5,
             interval INTEGER NOT NULL DEFAULT 1
         );
+
+        CREATE TABLE IF NOT EXISTS topic_postpones (
+            card_id  INTEGER PRIMARY KEY,
+            until_ts INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_topic_postpones_until
+            ON topic_postpones (until_ts);
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:

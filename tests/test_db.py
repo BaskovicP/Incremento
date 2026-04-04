@@ -104,6 +104,17 @@ class TestGetConnection:
         }
         assert "web_progress" in tables
 
+    def test_creates_topic_postpones_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir)
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "topic_postpones" in tables
+
     def test_db_file_created_inside_user_files(self):
         addon_dir = _fresh_dir()
         db.get_connection(addon_dir)

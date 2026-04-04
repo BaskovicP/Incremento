@@ -1,11 +1,20 @@
-import json
 from unittest.mock import MagicMock, patch
 
+import db
 import topic_postpone
 
 
 def setup_function():
     topic_postpone.release_session_postponed_cards()
+    db.close_connection()
+
+
+def teardown_function():
+    db.close_connection()
+
+
+def _patch_topic_postpone_db(tmp_path):
+    return patch("topic_postpone.get_connection", side_effect=lambda _addon_dir: db.get_connection(str(tmp_path)))
 
 
 def test_topic_postpone_config_defaults():
@@ -40,12 +49,11 @@ def test_topic_postpone_due_label_uses_mode():
     )
 
 
-def test_store_timed_topic_postpone_updates_custom_data_and_buries():
+def test_store_timed_topic_postpone_writes_db_and_buries(tmp_path):
     card = MagicMock()
     card.id = 42
-    card.custom_data = json.dumps({"existing": 1})
 
-    with patch("topic_postpone.mw") as mock_mw:
+    with _patch_topic_postpone_db(tmp_path), patch("topic_postpone.mw") as mock_mw:
         until_ts = topic_postpone.store_timed_topic_postpone(
             card,
             minutes=30,
@@ -53,39 +61,47 @@ def test_store_timed_topic_postpone_updates_custom_data_and_buries():
         )
 
     assert until_ts == 2_800
-    payload = json.loads(card.custom_data)
-    assert payload["existing"] == 1
-    assert payload["_incremento_topic_postpone"]["until"] == 2_800
-    mock_mw.col.update_card.assert_called_once_with(card)
+    row = db.get_connection(str(tmp_path)).execute(
+        "SELECT until_ts FROM topic_postpones WHERE card_id = ?",
+        (42,),
+    ).fetchone()
+    assert row == (2_800,)
     mock_mw.col.sched.bury_cards.assert_called_once_with([42])
 
 
-def test_release_expired_timed_postpones_clears_and_unburies():
-    expired = json.dumps(
-        {
-            "_incremento_topic_postpone": {"mode": "timed", "until": 100},
-            "keep": "x",
-        }
-    )
-    active = json.dumps(
-        {
-            "_incremento_topic_postpone": {"mode": "timed", "until": 9_999},
-        }
-    )
-    card = MagicMock()
-    card.id = 42
-    card.custom_data = expired
+def test_release_expired_timed_postpones_clears_db_and_unburies(tmp_path):
+    with _patch_topic_postpone_db(tmp_path), patch("topic_postpone.mw") as mock_mw:
+        conn = db.get_connection(str(tmp_path))
+        conn.execute(
+            "INSERT INTO topic_postpones (card_id, until_ts) VALUES (?, ?)",
+            (42, 100),
+        )
+        conn.execute(
+            "INSERT INTO topic_postpones (card_id, until_ts) VALUES (?, ?)",
+            (43, 9_999),
+        )
+        conn.commit()
 
-    with patch("topic_postpone.mw") as mock_mw:
-        mock_mw.col.db.all.return_value = [(42, expired), (43, active)]
-        mock_mw.col.get_card.return_value = card
         restored = topic_postpone.release_expired_timed_postpones(now=500.0)
 
     assert restored == [42]
-    payload = json.loads(card.custom_data)
-    assert payload == {"keep": "x"}
-    mock_mw.col.update_cards.assert_called_once()
+    rows = db.get_connection(str(tmp_path)).execute(
+        "SELECT card_id, until_ts FROM topic_postpones ORDER BY card_id"
+    ).fetchall()
+    assert rows == [(43, 9_999)]
     mock_mw.col.sched.unbury_cards.assert_called_once_with([42])
+
+
+def test_next_timed_postpone_at_returns_earliest_future_timestamp(tmp_path):
+    with _patch_topic_postpone_db(tmp_path):
+        conn = db.get_connection(str(tmp_path))
+        conn.executemany(
+            "INSERT INTO topic_postpones (card_id, until_ts) VALUES (?, ?)",
+            [(1, 100), (2, 900), (3, 700)],
+        )
+        conn.commit()
+
+        assert topic_postpone.next_timed_postpone_at(now=500.0) == 700
 
 
 def test_session_postpone_round_trips_runtime_ids():
