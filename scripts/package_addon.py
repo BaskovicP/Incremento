@@ -57,7 +57,6 @@ FRONTEND_RUNTIME_FILES = (
     "frontend/pdf_dialog.py",
     "frontend/pdf_dock.py",
     "frontend/pdf_quick_jump.py",
-    "frontend/pin_dialog.py",
     "frontend/priority_dialog.py",
     "frontend/search_all.py",
     "frontend/settings_dialog.py",
