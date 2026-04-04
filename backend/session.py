@@ -23,6 +23,7 @@ from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton
 from .scheduler import NO_TAGS_KEY
 from .statistics import StatsManager, _empty_time
 from .session_selection import select_session_cards
+from .topic_postpone import release_expired_timed_postpones
 try:
     from ..frontend.learn_dialog import SchedulerConfigDialog
 except ImportError:
@@ -96,6 +97,11 @@ def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> fl
 
 
 def learnFunction() -> None:
+    try:
+        release_expired_timed_postpones()
+    except Exception:
+        pass
+
     config = mw.addonManager.getConfig(_ADDON_PKG) or {}
 
     dlg = SchedulerConfigDialog(mw, on_clear_session=reset_session_counts)

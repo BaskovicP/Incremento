@@ -6,7 +6,8 @@ from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
 from aqt.reviewer import Reviewer
-from aqt.utils import showInfo, tooltip
+from aqt.utils import showInfo, tooltip, tr
+from aqt.operations.scheduling import bury_cards as _bury_cards_op
 from aqt.qt import (
     QAction,
     QMenu,
@@ -66,6 +67,16 @@ from .backend.topic_scheduler import (
     on_topic_card_answered as _on_topic_card_answered,
     remap_topic_review_ease as _remap_topic_review_ease,
     topic_due_label as _topic_due_label,
+)
+from .backend.topic_postpone import (
+    TOPIC_POSTPONE_EASE as _TOPIC_POSTPONE_EASE,
+    configured_topic_postpone_enabled as _configured_topic_postpone_enabled,
+    configured_topic_postpone_minutes as _configured_topic_postpone_minutes,
+    has_session_postponed_cards as _has_session_postponed_cards,
+    postpone_topic_card as _postpone_topic_card,
+    release_expired_timed_postpones as _release_expired_timed_postpones,
+    release_session_postponed_cards as _release_session_postponed_cards,
+    topic_postpone_due_label as _topic_postpone_due_label,
 )
 from .frontend.timer_widget import (
     build_timer_toolbar,
@@ -169,6 +180,21 @@ _ORIGINAL_REVIEWER_ON_ENTER_KEY = getattr(
     "_incremento_original",
     Reviewer.onEnterKey,
 )
+_ORIGINAL_REVIEWER_NEXT_CARD = getattr(
+    Reviewer.nextCard,
+    "_incremento_original",
+    Reviewer.nextCard,
+)
+_ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON = getattr(
+    Reviewer._showAnswerButton,
+    "_incremento_original",
+    Reviewer._showAnswerButton,
+)
+_ORIGINAL_REVIEWER_LINK_HANDLER = getattr(
+    Reviewer._linkHandler,
+    "_incremento_original",
+    Reviewer._linkHandler,
+)
 
 
 def _reviewer_topic_card(card) -> bool:
@@ -177,6 +203,10 @@ def _reviewer_topic_card(card) -> bool:
 
 def _reviewer_items_fail_pass(card) -> bool:
     return _reviewer_button_mode_for_card(card) == "items_fail_pass"
+
+
+def _reviewer_topic_postpone_enabled(card) -> bool:
+    return _reviewer_topic_card(card) and _configured_topic_postpone_enabled()
 
 
 def _current_answer_button_count(card) -> int:
@@ -196,10 +226,63 @@ def _topic_review_buttons(_buttons, _reviewer, card):
     return _buttons
 
 
+def _perform_topic_postpone(reviewer, card) -> None:
+    try:
+        mode = _postpone_topic_card(card, bury=False)
+    except Exception as e:
+        print(f"[Incremento] topic postpone error: {e}")
+        try:
+            reviewer.nextCard()
+        except Exception:
+            pass
+        return
+
+    def _after_bury(_changes) -> None:
+        try:
+            if mode == "session":
+                tooltip("Topic postponed to later in this review.")
+            else:
+                tooltip(
+                    f"Topic postponed for {_configured_topic_postpone_minutes()} minutes."
+                )
+        except Exception:
+            pass
+        try:
+            current = getattr(reviewer, "card", None)
+            if current is not None and getattr(current, "id", None) == getattr(card, "id", None):
+                reviewer.nextCard()
+        except Exception as e:
+            print(f"[Incremento] topic postpone nextCard error: {e}")
+
+    try:
+        _bury_cards_op(parent=reviewer.mw, card_ids=[card.id]).success(_after_bury).run_in_background()
+    except Exception as e:
+        print(f"[Incremento] topic postpone bury error: {e}")
+        try:
+            reviewer.nextCard()
+        except Exception:
+            pass
+
+
+def _release_expired_topic_postpones_on_overview(new_state: str, _old_state: str) -> None:
+    if new_state != "overview":
+        return
+    try:
+        _release_expired_timed_postpones()
+    except Exception:
+        pass
+
+
 def _topic_reviewer_will_answer_card(response, _reviewer, card):
     proceed, ease = response
     if not proceed or not _reviewer_topic_card(card):
         return response
+    if (
+        _configured_topic_postpone_enabled()
+        and int(ease) == _TOPIC_POSTPONE_EASE
+    ):
+        QTimer.singleShot(0, lambda r=_reviewer, c=card: _perform_topic_postpone(r, c))
+        return (False, ease)
     return (proceed, _remap_topic_review_ease(ease))
 
 
@@ -272,6 +355,86 @@ def _incremento_on_enter_key(self) -> None:
     _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
 
 
+def _incremento_next_card(self) -> None:
+    try:
+        _release_expired_timed_postpones()
+    except Exception:
+        pass
+
+    self.previous_card = self.card
+    self.card = None
+    self._v3 = None
+    self._get_next_v3_card()
+
+    if not self.card and _has_session_postponed_cards():
+        try:
+            restored_ids = _release_session_postponed_cards()
+        except Exception:
+            restored_ids = []
+        if restored_ids:
+            self._get_next_v3_card()
+
+    self._previous_card_info.set_card(self.previous_card)
+    self._card_info.set_card(self.card)
+
+    if not self.card:
+        self.mw.moveToState("overview")
+        return
+
+    if self._reps is None:
+        self._initWeb()
+
+    self._showQuestion()
+
+
+def _incremento_show_answer_button(self) -> None:
+    card = getattr(self, "card", None)
+    if not _reviewer_topic_postpone_enabled(card):
+        _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON(self)
+        return
+
+    show_answer_key = tr.actions_shortcut_key(val=tr.studying_space())
+    postpone_key = ""
+    try:
+        raw_key = str(mw.pm.get_answer_key(_TOPIC_POSTPONE_EASE) or "")
+        if raw_key:
+            postpone_key = tr.actions_shortcut_key(val=raw_key)
+    except Exception:
+        postpone_key = ""
+
+    postpone_due = _topic_postpone_due_label()
+    middle = """
+<table cellpadding=0 cellspacing=8><tr>
+<td class=stat2 align=center>
+<button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
+</td>
+<td class=stat2 align=center>
+<button title="{postpone_key}" id="incremento-postpone-but" onclick='pycmd("incremento_topic_postpone");' style="border-color:#a34747;color:#ffb3b3;">Postpone<span class=stattxt>{postpone_due}</span></button>
+</td>
+</tr></table>
+""".format(
+        show_answer_key=show_answer_key,
+        show_answer=tr.studying_show_answer(),
+        remaining=self._remaining(),
+        postpone_key=postpone_key,
+        postpone_due=postpone_due,
+    )
+    if self.card.should_show_timer():
+        maxTime = self.card.time_limit() / 1000
+    else:
+        maxTime = 0
+    self.bottom.web.eval("showQuestion(%s,%d);" % (json.dumps(middle), maxTime))
+
+
+def _incremento_link_handler(self, url: str) -> None:
+    if url == "incremento_topic_postpone":
+        card = getattr(self, "card", None)
+        if self.state == "question" and _reviewer_topic_postpone_enabled(card):
+            _perform_topic_postpone(self, card)
+            return
+    _ORIGINAL_REVIEWER_LINK_HANDLER(self, url)
+
+
 _incremento_button_time._incremento_original = _ORIGINAL_REVIEWER_BUTTON_TIME
 Reviewer._buttonTime = _incremento_button_time
 _incremento_default_ease._incremento_original = _ORIGINAL_REVIEWER_DEFAULT_EASE
@@ -280,6 +443,12 @@ _incremento_shortcut_keys._incremento_original = _ORIGINAL_REVIEWER_SHORTCUT_KEY
 Reviewer._shortcutKeys = _incremento_shortcut_keys
 _incremento_on_enter_key._incremento_original = _ORIGINAL_REVIEWER_ON_ENTER_KEY
 Reviewer.onEnterKey = _incremento_on_enter_key
+_incremento_next_card._incremento_original = _ORIGINAL_REVIEWER_NEXT_CARD
+Reviewer.nextCard = _incremento_next_card
+_incremento_show_answer_button._incremento_original = _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON
+Reviewer._showAnswerButton = _incremento_show_answer_button
+_incremento_link_handler._incremento_original = _ORIGINAL_REVIEWER_LINK_HANDLER
+Reviewer._linkHandler = _incremento_link_handler
 
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
@@ -447,6 +616,8 @@ gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
+gui_hooks.reviewer_will_end.append(lambda: _release_session_postponed_cards())
+gui_hooks.state_did_change.append(_release_expired_topic_postpones_on_overview)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_epub_dock_mod.on_epub_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
@@ -474,6 +645,7 @@ gui_hooks.main_window_did_init.append(_epub_dock_mod.sync_epub_note_type)
 gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
 gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
 gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
+gui_hooks.main_window_did_init.append(lambda: _release_expired_timed_postpones())
 gui_hooks.main_window_did_init.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )
@@ -2030,6 +2202,9 @@ def openSettingsFunction() -> None:
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
+        current_topic_postpone_enabled=_configured_topic_postpone_enabled(cfg),
+        current_topic_postpone_mode=cfg.get("topic_postpone_mode", "timed"),
+        current_topic_postpone_minutes=cfg.get("topic_postpone_minutes", 30),
         parent=mw,
     )
     if not dlg.exec():
@@ -2044,6 +2219,9 @@ def openSettingsFunction() -> None:
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
+    cfg["topic_postpone_enabled"] = dlg.topic_postpone_enabled
+    cfg["topic_postpone_mode"] = dlg.topic_postpone_mode
+    cfg["topic_postpone_minutes"] = dlg.topic_postpone_minutes
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     tooltip("Incremento settings updated.")

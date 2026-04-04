@@ -12,6 +12,7 @@ from aqt.qt import (
     QKeySequenceEdit,
     QPushButton,
     QRadioButton,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -134,6 +135,9 @@ class IncrementoSettingsDialog(QDialog):
         current_use_fail_pass_on_items: bool = False,
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
+        current_topic_postpone_enabled: bool = False,
+        current_topic_postpone_mode: str = "timed",
+        current_topic_postpone_minutes: int = 30,
         parent=None,
     ):
         super().__init__(parent)
@@ -281,6 +285,7 @@ class IncrementoSettingsDialog(QDialog):
         general_layout.addWidget(_section_title("Topic Cards"))
         topic_section_hint = QLabel(
             "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
+            " You can also add a red Postpone button for difficult topics."
         )
         topic_section_hint.setWordWrap(True)
         general_layout.addWidget(topic_section_hint)
@@ -335,6 +340,50 @@ class IncrementoSettingsDialog(QDialog):
         self._topic_tags_edit.setPlaceholderText("tag1, tag2")
         self._topic_tags_edit.setText(tags_text)
         topic_form.addRow("Topic tags:", self._topic_tags_edit)
+
+        self._topic_postpone_enabled_cb = QCheckBox(
+            "Enable red Postpone button on topic cards"
+        )
+        self._topic_postpone_enabled_cb.setChecked(bool(current_topic_postpone_enabled))
+        topic_form.addRow("", self._topic_postpone_enabled_cb)
+
+        self._topic_postpone_mode_combo = QComboBox()
+        self._topic_postpone_mode_combo.addItem("Timed snooze", "timed")
+        self._topic_postpone_mode_combo.addItem("Session only", "session")
+        selected_mode = (
+            "session"
+            if str(current_topic_postpone_mode or "").strip().lower() == "session"
+            else "timed"
+        )
+        for idx in range(self._topic_postpone_mode_combo.count()):
+            if self._topic_postpone_mode_combo.itemData(idx) == selected_mode:
+                self._topic_postpone_mode_combo.setCurrentIndex(idx)
+                break
+        topic_form.addRow("Postpone mode:", self._topic_postpone_mode_combo)
+
+        self._topic_postpone_minutes_spin = QSpinBox()
+        self._topic_postpone_minutes_spin.setRange(1, 1440)
+        try:
+            postpone_minutes = int(current_topic_postpone_minutes)
+        except Exception:
+            postpone_minutes = 30
+        self._topic_postpone_minutes_spin.setValue(max(1, min(1440, postpone_minutes)))
+        self._topic_postpone_minutes_spin.setSuffix(" min")
+        topic_form.addRow("Timed snooze duration:", self._topic_postpone_minutes_spin)
+
+        def _sync_topic_postpone_widgets() -> None:
+            enabled = bool(self._topic_postpone_enabled_cb.isChecked())
+            self._topic_postpone_mode_combo.setEnabled(enabled)
+            mode = str(self._topic_postpone_mode_combo.currentData() or "timed")
+            self._topic_postpone_minutes_spin.setEnabled(enabled and mode == "timed")
+
+        self._topic_postpone_enabled_cb.toggled.connect(
+            lambda _checked: _sync_topic_postpone_widgets()
+        )
+        self._topic_postpone_mode_combo.currentIndexChanged.connect(
+            lambda _idx: _sync_topic_postpone_widgets()
+        )
+        _sync_topic_postpone_widgets()
 
         general_layout.addLayout(topic_form)
         general_layout.addStretch(1)
@@ -470,3 +519,15 @@ class IncrementoSettingsDialog(QDialog):
             seen.add(normalized)
             tags.append(tag)
         return tags
+
+    @property
+    def topic_postpone_enabled(self) -> bool:
+        return bool(self._topic_postpone_enabled_cb.isChecked())
+
+    @property
+    def topic_postpone_mode(self) -> str:
+        return str(self._topic_postpone_mode_combo.currentData() or "timed")
+
+    @property
+    def topic_postpone_minutes(self) -> int:
+        return int(self._topic_postpone_minutes_spin.value())
