@@ -49,6 +49,12 @@ from .backend.priority_manager import (
     get_all_priorities,
 )
 from .backend.web_manager import WEB_NOTE_TYPE, configured_remember_browser_card_scroll
+from .backend.reviewer_buttons import (
+    configured_use_fail_pass_on_items as _configured_use_fail_pass_on_items,
+    item_fail_pass_buttons as _item_fail_pass_buttons,
+    item_pass_ease_for_button_count as _item_pass_ease_for_button_count,
+    reviewer_button_mode as _reviewer_button_mode_for_card,
+)
 from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
 from .frontend import timer_widget as _timer_mod
@@ -166,13 +172,28 @@ _ORIGINAL_REVIEWER_ON_ENTER_KEY = getattr(
 
 
 def _reviewer_topic_card(card) -> bool:
-    return bool(card is not None and _is_topic_card(card))
+    return _reviewer_button_mode_for_card(card) == "topic"
+
+
+def _reviewer_items_fail_pass(card) -> bool:
+    return _reviewer_button_mode_for_card(card) == "items_fail_pass"
+
+
+def _current_answer_button_count(card) -> int:
+    if card is None:
+        return 4
+    try:
+        return int(mw.col.sched.answerButtons(card))
+    except Exception:
+        return 4
 
 
 def _topic_review_buttons(_buttons, _reviewer, card):
-    if not _reviewer_topic_card(card):
-        return _buttons
-    return TOPIC_REVIEW_BUTTONS
+    if _reviewer_topic_card(card):
+        return TOPIC_REVIEW_BUTTONS
+    if _reviewer_items_fail_pass(card):
+        return _item_fail_pass_buttons(_current_answer_button_count(card))
+    return _buttons
 
 
 def _topic_reviewer_will_answer_card(response, _reviewer, card):
@@ -193,36 +214,60 @@ def _incremento_button_time(self, ease: int, v3_labels) -> str:
 
 
 def _incremento_default_ease(self) -> int:
-    if _reviewer_topic_card(getattr(self, "card", None)):
+    card = getattr(self, "card", None)
+    if _reviewer_topic_card(card):
         return 2
+    if _reviewer_items_fail_pass(card):
+        return _item_pass_ease_for_button_count(_current_answer_button_count(card))
     return _ORIGINAL_REVIEWER_DEFAULT_EASE(self)
 
 def _incremento_shortcut_keys(self):
     shortcuts = list(_ORIGINAL_REVIEWER_SHORTCUT_KEYS(self))
-    if not _reviewer_topic_card(getattr(self, "card", None)):
+    card = getattr(self, "card", None)
+    if not (_reviewer_topic_card(card) or _reviewer_items_fail_pass(card)):
         return shortcuts
 
-    answer_key_4 = ""
+    hidden_answer_keys: set[str] = set()
     try:
-        answer_key_4 = str(mw.pm.get_answer_key(4) or "")
+        if _reviewer_topic_card(card):
+            key = str(mw.pm.get_answer_key(4) or "")
+            if key:
+                hidden_answer_keys.add(key)
+        elif _reviewer_items_fail_pass(card):
+            visible_eases = {
+                1,
+                _item_pass_ease_for_button_count(_current_answer_button_count(card)),
+            }
+            for ease in (1, 2, 3, 4):
+                key = str(mw.pm.get_answer_key(ease) or "")
+                if key and ease not in visible_eases:
+                    hidden_answer_keys.add(key)
     except Exception:
-        answer_key_4 = "4"
+        hidden_answer_keys = set()
 
     filtered = []
     for key, callback in shortcuts:
-        if isinstance(key, str) and answer_key_4 and key == answer_key_4:
+        if isinstance(key, str) and key in hidden_answer_keys:
             continue
         filtered.append((key, callback))
     return filtered
 
 
 def _incremento_on_enter_key(self) -> None:
+    card = getattr(self, "card", None)
     if (
         self.state == "answer"
-        and _reviewer_topic_card(getattr(self, "card", None))
+        and _reviewer_topic_card(card)
         and mw.pm.spacebar_rates_card()
     ):
         self._answerCard(2)
+        return
+    if (
+        self.state == "answer"
+        and _reviewer_items_fail_pass(card)
+        and mw.pm.spacebar_rates_card()
+    ):
+        self._answerCard(_item_pass_ease_for_button_count(_current_answer_button_count(card)))
         return
     _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
 
@@ -1982,6 +2027,7 @@ def openSettingsFunction() -> None:
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
+        current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
         parent=mw,
@@ -1995,6 +2041,7 @@ def openSettingsFunction() -> None:
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
+    cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
     mw.addonManager.writeConfig(__name__, cfg)

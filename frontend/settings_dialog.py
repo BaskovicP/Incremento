@@ -131,6 +131,7 @@ class IncrementoSettingsDialog(QDialog):
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
         current_remember_browser_card_scroll: bool = True,
+        current_use_fail_pass_on_items: bool = False,
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
         parent=None,
@@ -157,6 +158,7 @@ class IncrementoSettingsDialog(QDialog):
             " how incremental learning interprets stored priority numbers,"
             " whether to prompt for priority after answering a card,"
             " whether browser cards remember scroll position,"
+            " whether item cards use Fail / Pass instead of standard ease buttons,"
             " and which card types or tags should be treated as topics."
         )
         general_hint.setWordWrap(True)
@@ -238,6 +240,14 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_remember_browser_card_scroll)
         )
         general_form.addRow("", self._remember_browser_card_scroll_cb)
+
+        self._use_fail_pass_on_items_cb = QCheckBox(
+            "Use Fail / Pass buttons on items"
+        )
+        self._use_fail_pass_on_items_cb.setChecked(
+            bool(current_use_fail_pass_on_items)
+        )
+        general_form.addRow("", self._use_fail_pass_on_items_cb)
 
         topic_types = {
             "pdf_epub": True,
@@ -399,6 +409,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def remember_browser_card_scroll(self) -> bool:
         return bool(self._remember_browser_card_scroll_cb.isChecked())
+
+    @property
+    def use_fail_pass_on_items(self) -> bool:
+        return bool(self._use_fail_pass_on_items_cb.isChecked())
 
     @property
     def topic_card_types(self) -> dict[str, bool]:
