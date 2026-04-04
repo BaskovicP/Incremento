@@ -6,8 +6,8 @@ except ImportError:
     from db import get_connection  # test environment (backend/ on sys.path)
 
 
-def load_highlights(addon_dir: str, card_id: int) -> list:
-    rows = get_connection(addon_dir).execute(
+def load_highlights(addon_dir: str, profile: str, card_id: int) -> list:
+    rows = get_connection(addon_dir, profile).execute(
         "SELECT id, page, color, text, rects FROM pdf_highlights WHERE card_id = ?",
         (card_id,),
     ).fetchall()
@@ -17,8 +17,8 @@ def load_highlights(addon_dir: str, card_id: int) -> list:
     ]
 
 
-def add_highlight(addon_dir: str, card_id: int, hl: dict) -> None:
-    conn = get_connection(addon_dir)
+def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT OR REPLACE INTO pdf_highlights (id, card_id, page, color, text, rects) "
         "VALUES (?, ?, ?, ?, ?, ?)",
@@ -34,8 +34,8 @@ def add_highlight(addon_dir: str, card_id: int, hl: dict) -> None:
     conn.commit()
 
 
-def remove_highlight(addon_dir: str, card_id: int, hl_id: str) -> None:
-    conn = get_connection(addon_dir)
+def remove_highlight(addon_dir: str, profile: str, card_id: int, hl_id: str) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "DELETE FROM pdf_highlights WHERE card_id = ? AND id = ?",
         (card_id, hl_id),

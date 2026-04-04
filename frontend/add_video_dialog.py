@@ -19,6 +19,15 @@ except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
 
 try:
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    try:
+        from backend.paths import get_active_profile as _active_profile  # type: ignore
+    except Exception:
+        def _active_profile() -> str:  # type: ignore
+            return "Default"
+
+try:
     from ..backend.video_manager import (
         video_download_requirements,
         is_supported_video_url,
@@ -45,7 +54,7 @@ except ImportError:
         def canonicalize_video_url(url: str) -> str:
             return (url or "").strip()
 
-        def list_available_video_resolutions(_addon_dir: str, _url: str) -> list[int]:
+        def list_available_video_resolutions(_addon_dir: str, _profile: str, _url: str) -> list[int]:
             return []
 
         def supported_local_video_extensions() -> tuple[str, ...]:
@@ -295,7 +304,7 @@ class AddVideoDialog(QDialog):
         self._resolution_hint.setText("Fetching available resolutions…")
 
         def _task():
-            return list_available_video_resolutions(self._addon_dir, url)
+            return list_available_video_resolutions(self._addon_dir, _active_profile(), url)
 
         def _on_done(fut) -> None:
             if token != self._resolution_fetch_token:

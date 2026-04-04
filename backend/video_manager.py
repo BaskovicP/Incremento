@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 try:
     from .db import get_connection
+    from . import paths as _paths
     from .video_providers import (
         extract_youtube_id as _extract_youtube_id,
         extract_vimeo_id,
@@ -29,6 +30,7 @@ try:
     )
 except ImportError:
     from db import get_connection
+    import paths as _paths
     from video_providers import (
         extract_youtube_id as _extract_youtube_id,
         extract_vimeo_id,
@@ -163,11 +165,11 @@ def local_video_relpath(video_id: str, ext: str = ".mp4") -> str:
     return f"videos/{video_id}{e.lower()}"
 
 
-def local_video_abspath(addon_dir: str, relpath: str) -> str:
+def local_video_abspath(addon_dir: str, profile: str, relpath: str) -> str:
     rel = (relpath or "").strip().replace("\\", "/")
     if rel.startswith("user_files/"):
-        rel = rel[len("user_files/") :]
-    return str((Path(addon_dir) / "user_files" / rel).resolve())
+        rel = rel[len("user_files/"):]
+    return str((_paths.get_user_files_dir(addon_dir, profile) / rel).resolve())
 
 
 def supported_local_video_extensions() -> tuple[str, ...]:
@@ -244,10 +246,6 @@ def _emit_progress(progress_cb: Callable[[int, str], None] | None, percent: floa
         progress_cb(p, label)
     except Exception:
         pass
-
-
-def _video_profile_dir(addon_dir: str) -> Path:
-    return Path(addon_dir) / "user_files" / "video_profile"
 
 
 def _has_chromium_cookies(profile_dir: Path) -> bool:
@@ -469,7 +467,7 @@ def _extract_resolutions_from_info(info: dict) -> list[int]:
     return sorted(heights, reverse=True)
 
 
-def list_available_video_resolutions(addon_dir: str, video_url: str) -> list[int]:
+def list_available_video_resolutions(addon_dir: str, profile: str, video_url: str) -> list[int]:
     """Return sorted available video heights (e.g. [2160, 1440, 1080, 720])."""
     if not is_supported_video_url(video_url or ""):
         raise ValueError("Enter a valid YouTube or Vimeo URL first.")
@@ -489,7 +487,7 @@ def list_available_video_resolutions(addon_dir: str, video_url: str) -> list[int
         "-J",
         video_url,
     ]
-    profile_dir = _video_profile_dir(addon_dir)
+    profile_dir = _paths.get_video_profile_dir(addon_dir, profile)
     cookie_attempt = (
         _has_chromium_cookies(profile_dir)
         and supports_browser_cookie_auth(video_url)
@@ -528,6 +526,7 @@ def list_available_video_resolutions(addon_dir: str, video_url: str) -> list[int
 
 def _run_yt_dlp_with_progress(
     addon_dir: str,
+    profile: str,
     yt_dlp_cmd: list[str],
     video_url: str,
     output_template: Path,
@@ -537,7 +536,7 @@ def _run_yt_dlp_with_progress(
 ) -> None:
     merge_mode = mode in ("compressible", "original")
 
-    profile_dir = _video_profile_dir(addon_dir)
+    profile_dir = _paths.get_video_profile_dir(addon_dir, profile)
     cookie_attempt = (
         _has_chromium_cookies(profile_dir)
         and supports_browser_cookie_auth(video_url)
@@ -906,6 +905,7 @@ def _encode_local_video_h264(
 
 def import_local_video_file(
     addon_dir: str,
+    profile: str,
     source_path: str,
     *,
     encode_mode: str = "h264_high",
@@ -926,7 +926,7 @@ def import_local_video_file(
         supported = ", ".join(sorted(_VIDEO_EXTS))
         raise ValueError(f"Unsupported local video format: {ext or '(none)'} (supported: {supported})")
 
-    out_dir = Path(addon_dir) / "user_files" / "videos"
+    out_dir = _paths.get_videos_dir(addon_dir, profile)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     mode = (encode_mode or "h264_high").strip().lower()
@@ -965,6 +965,7 @@ def import_local_video_file(
 
 def download_and_compress_video(
     addon_dir: str,
+    profile: str,
     video_url: str,
     *,
     overwrite: bool = False,
@@ -981,7 +982,7 @@ def download_and_compress_video(
     if not video_key:
         raise ValueError("Could not extract a valid YouTube or Vimeo video ID.")
 
-    out_dir = Path(addon_dir) / "user_files" / "videos"
+    out_dir = _paths.get_videos_dir(addon_dir, profile)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     yt_dlp_cmd, ffmpeg_bin = _video_tools()
@@ -1001,6 +1002,7 @@ def download_and_compress_video(
             dl_mode = "compressible" if ffmpeg_bin else "download"
         _run_yt_dlp_with_progress(
             addon_dir,
+            profile,
             yt_dlp_cmd,
             video_url,
             dl_template,
@@ -1035,24 +1037,6 @@ def download_and_compress_video(
     return f"videos/{final_path.name}"
 
 
-def download_and_compress_youtube_video(
-    addon_dir: str,
-    youtube_url: str,
-    *,
-    overwrite: bool = False,
-    progress_cb: Callable[[int, str], None] | None = None,
-    max_height: int | None = None,
-    original_quality: bool = False,
-) -> str:
-    """Backward-compatible wrapper for older callers."""
-    return download_and_compress_video(
-        addon_dir,
-        youtube_url,
-        overwrite=overwrite,
-        progress_cb=progress_cb,
-        max_height=max_height,
-        original_quality=original_quality,
-    )
 
 
 def fmt_time(seconds: float) -> str:
@@ -1063,15 +1047,15 @@ def fmt_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def get_video_position(addon_dir: str, card_id: int) -> float:
-    row = get_connection(addon_dir).execute(
+def get_video_position(addon_dir: str, profile: str, card_id: int) -> float:
+    row = get_connection(addon_dir, profile).execute(
         "SELECT position FROM video_progress WHERE card_id = ?", (card_id,)
     ).fetchone()
     return row[0] if row else 0.0
 
 
-def set_video_position(addon_dir: str, card_id: int, position: float) -> None:
-    conn = get_connection(addon_dir)
+def set_video_position(addon_dir: str, profile: str, card_id: int, position: float) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO video_progress (card_id, position) VALUES (?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET position = excluded.position",

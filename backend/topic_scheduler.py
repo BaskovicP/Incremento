@@ -23,9 +23,11 @@ from aqt import mw
 try:
     from .db import get_topic_schedule, set_topic_schedule
     from .scheduler_config import load_scheduler_config
+    from .paths import get_active_profile as _active_profile
 except ImportError:
     from db import get_topic_schedule, set_topic_schedule  # type: ignore
     from scheduler_config import load_scheduler_config  # type: ignore
+    from paths import get_active_profile as _active_profile  # type: ignore
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -247,7 +249,7 @@ def topic_due_label(card, review_button_ease: int) -> str:
     if card is None:
         return ""
     try:
-        a_factor, last_interval = get_topic_schedule(_ADDON_DIR, card.id)
+        a_factor, last_interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card.id)
         new_interval, _ = _next_interval_and_afactor(
             last_interval,
             a_factor,
@@ -263,13 +265,13 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
     if not is_topic_card(card):
         return
     try:
-        a_factor, last_interval = get_topic_schedule(_ADDON_DIR, card.id)
+        a_factor, last_interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card.id)
         new_interval, new_a = _next_interval_and_afactor(
             last_interval,
             a_factor,
             remap_topic_review_ease(ease),
         )
-        set_topic_schedule(_ADDON_DIR, card.id, new_a, new_interval)
+        set_topic_schedule(_ADDON_DIR, _active_profile(), card.id, new_a, new_interval)
         mw.col.sched.set_due_date([card.id], str(new_interval))
     except Exception as e:
         print(f"[Incremento] A-factor scheduling error: {e}")

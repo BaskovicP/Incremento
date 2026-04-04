@@ -30,6 +30,7 @@ try:
         _is_valid_counts_block,
         _is_valid_time_block,
     )
+    from ..backend.paths import get_active_profile as _active_profile
 except ImportError:
     from statistics import (
         load_stats,
@@ -39,6 +40,7 @@ except ImportError:
         _is_valid_counts_block,
         _is_valid_time_block,
     )
+    from paths import get_active_profile as _active_profile  # type: ignore
 
 # ── colour palettes ────────────────────────────────────────────────────────────
 _TYPE_COLORS = ["#4a90d9", "#7bc67e"]  # Topics, Items
@@ -197,7 +199,7 @@ class StatsDialog(QDialog):
         self._day_end_time = day_end_time
         self._session_counts = session_counts or _empty()
         self._session_time = session_time or _empty_time()
-        self._raw = load_stats(addon_dir)
+        self._raw = load_stats(addon_dir, _active_profile())
 
         self.setWindowTitle("Incremento — Statistics")
         self.setMinimumWidth(540)

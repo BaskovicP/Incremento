@@ -8,22 +8,20 @@ from PyQt6.QtPdf import QPdfDocument
 
 try:
     from .db import get_connection, replace_pdf_text_index
+    from . import paths as _paths
 except ImportError:
     from db import get_connection, replace_pdf_text_index  # test environment
+    import paths as _paths
 
 
 def get_pdf_dir() -> str:
-    """Return (and create) the addon's user_files/pdfs/ folder.
-
-    Stored inside the addon directory — outside Anki's media collection
-    so PDFs are never uploaded to AnkiWeb.
-    """
+    """Return (and create) the addon's user_files/<profile>/pdfs/ folder."""
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    pdf_dir = os.path.join(addon_dir, "user_files", "pdfs")
-    os.makedirs(pdf_dir, exist_ok=True)
-    return pdf_dir
+    d = str(_paths.get_pdf_dir(addon_dir, _paths.get_active_profile()))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def _copy_to_pdf_dir(pdf_path: str) -> str:
@@ -62,26 +60,26 @@ CARD_TEMPLATE_BACK = "{{Title}}"
 # ---------------------------------------------------------------------------
 
 
-def get_page(addon_dir: str, card_id: int) -> int:
+def get_page(addon_dir: str, profile: str, card_id: int) -> int:
     row = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute("SELECT page FROM pdf_progress WHERE card_id = ?", (card_id,))
         .fetchone()
     )
     return row[0] if row else 1
 
 
-def get_zoom(addon_dir: str, card_id: int) -> float:
+def get_zoom(addon_dir: str, profile: str, card_id: int) -> float:
     row = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute("SELECT zoom FROM pdf_progress WHERE card_id = ?", (card_id,))
         .fetchone()
     )
     return row[0] if row else 1.0
 
 
-def set_page(addon_dir: str, card_id: int, page: int) -> None:
-    conn = get_connection(addon_dir)
+def set_page(addon_dir: str, profile: str, card_id: int, page: int) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO pdf_progress (card_id, page, zoom) VALUES (?, ?, 1.0) "
         "ON CONFLICT(card_id) DO UPDATE SET page = excluded.page",
@@ -90,8 +88,8 @@ def set_page(addon_dir: str, card_id: int, page: int) -> None:
     conn.commit()
 
 
-def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
-    conn = get_connection(addon_dir)
+def set_zoom(addon_dir: str, profile: str, card_id: int, zoom: float) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO pdf_progress (card_id, page, zoom) VALUES (?, 1, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET zoom = excluded.zoom",
@@ -100,18 +98,18 @@ def set_zoom(addon_dir: str, card_id: int, zoom: float) -> None:
     conn.commit()
 
 
-def get_read_page(addon_dir: str, card_id: int) -> int:
+def get_read_page(addon_dir: str, profile: str, card_id: int) -> int:
     """Return the highest page marked as read (0 = nothing marked yet)."""
     row = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute("SELECT read_page FROM pdf_progress WHERE card_id = ?", (card_id,))
         .fetchone()
     )
     return row[0] if row else 0
 
 
-def set_read_page(addon_dir: str, card_id: int, read_page: int) -> None:
-    conn = get_connection(addon_dir)
+def set_read_page(addon_dir: str, profile: str, card_id: int, read_page: int) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO pdf_progress (card_id, page, zoom, read_page) VALUES (?, 1, 1.0, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET read_page = excluded.read_page",
@@ -417,7 +415,7 @@ def add_pdf_card(
         raise RuntimeError("Failed to add PDF card. Anki rejected the note.")
 
     try:
-        replace_pdf_text_index(addon_dir, cid, page_texts)
+        replace_pdf_text_index(addon_dir, _paths.get_active_profile(), cid, page_texts)
     except Exception:
         pass
     return cid

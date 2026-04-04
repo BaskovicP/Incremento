@@ -303,8 +303,8 @@ class TestOnTopicCardAnswered:
              patch("topic_scheduler.mw") as mock_mw:
             on_topic_card_answered(MagicMock(), card, ease=1)
         args = mock_set.call_args.args
-        assert args[1] == card.id
-        assert args[2] == pytest.approx(round(3.5 * 0.9, 3))
+        assert args[2] == card.id
+        assert args[3] == pytest.approx(round(3.5 * 0.9, 3))
         mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
 
     def test_handles_exception_gracefully(self):

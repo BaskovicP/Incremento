@@ -228,9 +228,11 @@ class AddEpubDialog(QDialog):
         try:
             from ..backend.epub_manager import add_epub_card
             from ..backend.priority_manager import set_priority
+            from ..backend.paths import get_active_profile as _active_profile
         except Exception:
             from epub_manager import add_epub_card  # type: ignore
             from priority_manager import set_priority  # type: ignore
+            from paths import get_active_profile as _active_profile  # type: ignore
 
         deck = self._deck_combo.currentText()
         tags = self._global_tag_edit.tags()
@@ -252,7 +254,7 @@ class AddEpubDialog(QDialog):
                     deck_name=deck,
                     tags=tags,
                 )
-                set_priority(self._addon_dir, cid, priority)
+                set_priority(self._addon_dir, _active_profile(), cid, priority)
                 self.created.append((path, title))
                 self._set_row_status(path, "✓")
             except Exception as exc:

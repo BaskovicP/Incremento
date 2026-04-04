@@ -50,6 +50,13 @@ from PyQt6.QtWebEngineCore import QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
+    from ..backend import paths as _paths
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from backend import paths as _paths  # type: ignore
+    from paths import get_active_profile as _active_profile  # type: ignore
+
+try:
     from ..backend.db import add_web_card_source, get_web_card_sources
     from ..backend.web_manager import (
         WEB_NOTE_TYPE,
@@ -138,7 +145,7 @@ def _persist_web_url(card_id: int | None, url: str | None) -> None:
     if target_card_id <= 0 or not target_url or target_url == "about:blank":
         return
     try:
-        set_web_url(_ADDON_DIR, target_card_id, target_url)
+        set_web_url(_ADDON_DIR, _active_profile(), target_card_id, target_url)
     except Exception:
         pass
 
@@ -162,6 +169,7 @@ def _persist_web_scroll(card_id: int | None, data) -> None:
     try:
         set_web_scroll_position(
             _ADDON_DIR,
+            _active_profile(),
             target_card_id,
             target_url,
             max(0.0, min(scroll_ratio, 1.0)),
@@ -217,7 +225,7 @@ class _WebDockController:
                 "bookmark_payload": {},
             }
         try:
-            return get_web_progress(_ADDON_DIR, target_card_id)
+            return get_web_progress(_ADDON_DIR, _active_profile(), target_card_id)
         except Exception:
             return {
                 "url": "",
@@ -309,6 +317,7 @@ class _WebDockController:
         try:
             return get_web_card_sources(
                 _ADDON_DIR,
+                _active_profile(),
                 int(self.runtime.current_card_id),
                 current_url,
             )
@@ -403,6 +412,7 @@ class _WebDockController:
             try:
                 set_web_bookmark(
                     _ADDON_DIR,
+                    _active_profile(),
                     target_card_id,
                     url=current_url,
                     bookmark_payload=bookmark,
@@ -592,9 +602,8 @@ class _WebDockController:
 
         if self.runtime.profile is None:
             self.runtime.profile = _WEProf("incremento_web")
-            self.runtime.profile.setPersistentStoragePath(
-                os.path.join(_ADDON_DIR, "user_files", "web_profile")
-            )
+            _web_profile_dir = str(_paths.get_web_profile_dir(_ADDON_DIR, _active_profile()))
+            self.runtime.profile.setPersistentStoragePath(_web_profile_dir)
             self.runtime.profile.setPersistentCookiesPolicy(
                 _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
             )
@@ -794,7 +803,7 @@ class _WebDockController:
             track_with_extension=track_enabled,
         )
         try:
-            set_web_url(_ADDON_DIR, self.runtime.current_card_id, current_url)
+            set_web_url(_ADDON_DIR, _active_profile(), self.runtime.current_card_id, current_url)
         except Exception:
             pass
 
@@ -890,9 +899,9 @@ class _WebDockController:
             return False
         target = str(target_url or "").strip()
         if not target:
-            target = get_web_url(_ADDON_DIR, int(card_id)) or home_url
+            target = get_web_url(_ADDON_DIR, _active_profile(), int(card_id)) or home_url
         try:
-            set_web_url(_ADDON_DIR, int(card_id), target)
+            set_web_url(_ADDON_DIR, _active_profile(), int(card_id), target)
         except Exception:
             pass
         self.show_in_dock(
@@ -958,7 +967,7 @@ class _WebDockController:
                 return
             if not home_url:
                 return
-            last_url = get_web_url(_ADDON_DIR, card.id)
+            last_url = get_web_url(_ADDON_DIR, _active_profile(), card.id)
             self.show_in_dock(card.id, home_url, last_url)
         except Exception as e:
             print(f"[Incremento] on_web_question_shown error: {e}")
@@ -992,6 +1001,7 @@ class _WebDockController:
         try:
             add_web_card_source(
                 _ADDON_DIR,
+                _active_profile(),
                 int(self.runtime.current_card_id),
                 current_url,
                 note.id,
@@ -1501,6 +1511,22 @@ def _open_web_in_window() -> None:
 
 def _web_go_home() -> None:
     _controller.go_home()
+
+
+def reset_for_profile_switch() -> None:
+    """Reset Qt WebEngine profile singleton on Anki profile switch.
+
+    Must be called before migrate_to_profile_dir so the new profile is created
+    with the correct per-profile storage path on next dock open.
+    """
+    _runtime.profile = None
+    if _runtime.dock is not None:
+        try:
+            _runtime.dock.hide()
+            _runtime.dock.deleteLater()
+        except Exception:
+            pass
+        _runtime.dock = None
 
 
 def show_web_in_dock(

@@ -6,9 +6,9 @@ except ImportError:
     from db import get_connection  # type: ignore
 
 
-def load_highlights(addon_dir: str, card_id: int) -> list[dict]:
+def load_highlights(addon_dir: str, profile: str, card_id: int) -> list[dict]:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT id, section_index, color, text, start_offset, end_offset "
             "FROM epub_highlights WHERE card_id = ? ORDER BY section_index, start_offset, id",
@@ -29,8 +29,8 @@ def load_highlights(addon_dir: str, card_id: int) -> list[dict]:
     ]
 
 
-def add_highlight(addon_dir: str, card_id: int, hl: dict) -> None:
-    conn = get_connection(addon_dir)
+def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT OR REPLACE INTO epub_highlights "
         "(id, card_id, section_index, color, text, start_offset, end_offset) "
@@ -48,8 +48,8 @@ def add_highlight(addon_dir: str, card_id: int, hl: dict) -> None:
     conn.commit()
 
 
-def remove_highlight(addon_dir: str, card_id: int, hl_id: str) -> None:
-    conn = get_connection(addon_dir)
+def remove_highlight(addon_dir: str, profile: str, card_id: int, hl_id: str) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "DELETE FROM epub_highlights WHERE card_id = ? AND id = ?",
         (int(card_id), str(hl_id or "")),

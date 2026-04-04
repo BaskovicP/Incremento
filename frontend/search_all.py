@@ -24,6 +24,11 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 
 try:
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from paths import get_active_profile as _active_profile
+
+try:
     from ..backend.db import (
         get_connection,
         search_epub_text_index,
@@ -220,7 +225,7 @@ class _SearchAllDialog(QDialog):
             pass
         try:
             rows = (
-                get_connection(self._addon_dir)
+                get_connection(self._addon_dir, _active_profile())
                 .execute("SELECT DISTINCT card_id FROM pdf_highlights")
                 .fetchall()
             )
@@ -229,7 +234,7 @@ class _SearchAllDialog(QDialog):
             pass
         try:
             rows = (
-                get_connection(self._addon_dir)
+                get_connection(self._addon_dir, _active_profile())
                 .execute("SELECT DISTINCT card_id FROM pdf_progress")
                 .fetchall()
             )
@@ -245,7 +250,7 @@ class _SearchAllDialog(QDialog):
     ) -> list[tuple[int, int, str]]:
         """Search SQLite-backed PDF page-text index; build missing index on demand."""
         search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
-        hits = search_pdf_text_index(self._addon_dir, q, limit=search_limit)
+        hits = search_pdf_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
         hits = self._filter_current_profile_rows(hits)
         if hits:
             return [
@@ -261,11 +266,11 @@ class _SearchAllDialog(QDialog):
                 filename = note["PDF_Filename"]
                 pdf_path = os.path.join(pdf_dir, filename)
                 page_texts = extract_pdf_pages_text(pdf_path)
-                replace_pdf_text_index(self._addon_dir, cid, page_texts)
+                replace_pdf_text_index(self._addon_dir, _active_profile(), cid, page_texts)
             except Exception:
                 continue
 
-        hits = search_pdf_text_index(self._addon_dir, q, limit=search_limit)
+        hits = search_pdf_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
         hits = self._filter_current_profile_rows(hits)
         return [
             (cid, page, self._snippet(text or "", q, max_len=180))
@@ -276,7 +281,7 @@ class _SearchAllDialog(QDialog):
         self, q: str, limit: int = 120
     ) -> list[tuple[int, int, str, str]]:
         search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
-        hits = search_epub_text_index(self._addon_dir, q, limit=search_limit)
+        hits = search_epub_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
         hits = self._filter_current_profile_rows(hits)
         return [
             (cid, section_index, title, self._snippet(text or title or "", q, max_len=180))
@@ -311,7 +316,7 @@ class _SearchAllDialog(QDialog):
         if self._cb_highlights.isChecked():
             try:
                 rows = (
-                    get_connection(self._addon_dir)
+                    get_connection(self._addon_dir, _active_profile())
                     .execute(
                         "SELECT card_id, page, text FROM pdf_highlights ORDER BY card_id, page"
                     )
@@ -343,7 +348,7 @@ class _SearchAllDialog(QDialog):
         if self._cb_sources.isChecked():
             try:
                 rows = (
-                    get_connection(self._addon_dir)
+                    get_connection(self._addon_dir, _active_profile())
                     .execute(
                         "SELECT pdf_card_id, page, excerpt FROM pdf_card_sources ORDER BY id DESC"
                     )
@@ -374,7 +379,7 @@ class _SearchAllDialog(QDialog):
         if self._cb_epub_highlights.isChecked():
             try:
                 rows = (
-                    get_connection(self._addon_dir)
+                    get_connection(self._addon_dir, _active_profile())
                     .execute(
                         "SELECT card_id, section_index, text FROM epub_highlights ORDER BY card_id, section_index"
                     )
@@ -405,7 +410,7 @@ class _SearchAllDialog(QDialog):
         if self._cb_epub_sources.isChecked():
             try:
                 rows = (
-                    get_connection(self._addon_dir)
+                    get_connection(self._addon_dir, _active_profile())
                     .execute(
                         "SELECT epub_card_id, section_index, excerpt FROM epub_card_sources ORDER BY id DESC"
                     )
@@ -559,7 +564,7 @@ class _SearchAllDialog(QDialog):
         title = self._pdf_title(cid)
         try:
             row = (
-                get_connection(self._addon_dir)
+                get_connection(self._addon_dir, _active_profile())
                 .execute(
                     "SELECT text FROM pdf_text_index WHERE card_id=? AND page=?",
                     (cid, page),
@@ -603,7 +608,7 @@ class _SearchAllDialog(QDialog):
         title = self._epub_title(cid)
         try:
             row = (
-                get_connection(self._addon_dir)
+                get_connection(self._addon_dir, _active_profile())
                 .execute(
                     "SELECT title, text FROM epub_text_index WHERE card_id=? AND section_index=?",
                     (cid, section_index),

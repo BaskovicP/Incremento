@@ -16,8 +16,10 @@ try:
         get_connection,
         replace_epub_text_index,
     )
+    from . import paths as _paths
 except ImportError:
     from db import get_connection, replace_epub_text_index  # type: ignore
+    import paths as _paths
 
 
 EPUB_NOTE_TYPE = "Incremento EPUB"
@@ -45,18 +47,18 @@ def get_epub_dir() -> str:
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    epub_dir = os.path.join(addon_dir, "user_files", "epubs")
-    os.makedirs(epub_dir, exist_ok=True)
-    return epub_dir
+    d = str(_paths.get_epub_dir(addon_dir, _paths.get_active_profile()))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def get_epub_extract_root() -> str:
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    root = os.path.join(addon_dir, "user_files", "epub_extracted")
-    os.makedirs(root, exist_ok=True)
-    return root
+    d = str(_paths.get_epub_extract_root(addon_dir, _paths.get_active_profile()))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def get_epub_extract_dir(stored_filename: str) -> str:
@@ -330,9 +332,9 @@ def get_epub_section_path(addon_dir: str, stored_filename: str, section_index: i
     return os.path.join(get_epub_extract_dir(stored_filename), sections[idx]["href"])
 
 
-def get_epub_progress(addon_dir: str, card_id: int) -> tuple[int, float, bool]:
+def get_epub_progress(addon_dir: str, profile: str, card_id: int) -> tuple[int, float, bool]:
     row = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT section_index, scroll_ratio, is_finished FROM epub_progress WHERE card_id = ?",
             (card_id,),
@@ -346,16 +348,17 @@ def get_epub_progress(addon_dir: str, card_id: int) -> tuple[int, float, bool]:
 
 def set_epub_progress(
     addon_dir: str,
+    profile: str,
     card_id: int,
     *,
     section_index: int,
     scroll_ratio: float | None = None,
     is_finished: bool | None = None,
 ) -> None:
-    current_section, current_ratio, current_finished = get_epub_progress(addon_dir, card_id)
+    current_section, current_ratio, current_finished = get_epub_progress(addon_dir, profile, card_id)
     ratio = current_ratio if scroll_ratio is None else max(0.0, min(float(scroll_ratio), 1.0))
     finished = current_finished if is_finished is None else bool(is_finished)
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished) "
         "VALUES (?, ?, ?, ?) "
@@ -447,6 +450,7 @@ def add_epub_card(
     try:
         replace_epub_text_index(
             addon_dir,
+            _paths.get_active_profile(),
             cid,
             [(section["title"], section["text"]) for section in (metadata.get("sections") or [])],
         )

@@ -479,8 +479,10 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
 
     try:
         from .priority_manager import set_priority
+        from .paths import get_active_profile as _active_profile
     except ImportError:
-        from priority_manager import set_priority
+        from priority_manager import set_priority  # type: ignore
+        from paths import get_active_profile as _active_profile  # type: ignore
 
     note_type_name = normalized["note_type_name"]
     model = mw.col.models.by_name(note_type_name)
@@ -543,7 +545,7 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
         card_id = mw.col.find_cards(f"nid:{note.id}")[0]
     except Exception as exc:
         raise RuntimeError("Created note but could not resolve its card id.") from exc
-    set_priority(_addon_dir, int(card_id), normalized["priority"])
+    set_priority(_addon_dir, _active_profile(), int(card_id), normalized["priority"])
     return {
         "ok": True,
         "type": "browser_capture",
@@ -560,6 +562,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
 
     from .pdf_manager import add_pdf_card
     from .priority_manager import set_priority
+    from .paths import get_active_profile as _active_profile
     from .video_manager import add_video_card, is_supported_video_url, resolve_video_url_for_embed
     from .web_manager import add_web_card
     from .writing_manager import add_writing_card
@@ -659,7 +662,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             except OSError:
                 pass
 
-    set_priority(_addon_dir, int(card_id), priority)
+    set_priority(_addon_dir, _active_profile(), int(card_id), priority)
 
     return {
         "ok": True,
@@ -719,6 +722,7 @@ def _update_web_card_on_main(payload: dict) -> dict:
     from aqt import mw
 
     from .web_manager import WEB_NOTE_TYPE, set_web_url
+    from .paths import get_active_profile as _active_profile
 
     normalized = normalize_update_web_card_payload(payload)
     card_id = int(normalized["card_id"])
@@ -739,7 +743,7 @@ def _update_web_card_on_main(payload: dict) -> dict:
     if model is None or model.get("name") != WEB_NOTE_TYPE:
         raise ValueError(f"Card {card_id} is not an Incremento Web card.")
 
-    set_web_url(_addon_dir, card_id, url)
+    set_web_url(_addon_dir, _active_profile(), card_id, url)
     try:
         from ..frontend.web_dock import sync_external_web_url
 

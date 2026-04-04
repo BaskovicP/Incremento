@@ -25,6 +25,11 @@ import re
 import sqlite3
 from pathlib import Path
 
+try:
+    from .paths import get_db_path
+except ImportError:
+    from paths import get_db_path  # test environment
+
 _connection: sqlite3.Connection | None = None
 _initialized_for: str | None = None
 
@@ -46,18 +51,19 @@ def close_connection() -> None:
 # ── Connection ────────────────────────────────────────────────────────────────
 
 
-def get_connection(addon_dir: str) -> sqlite3.Connection:
+def get_connection(addon_dir: str, profile: str) -> sqlite3.Connection:
     global _connection, _initialized_for
-    if _connection is None or _initialized_for != addon_dir:
+    cache_key = f"{addon_dir}::{profile}"
+    if _connection is None or _initialized_for != cache_key:
         close_connection()
-        p = Path(addon_dir) / "user_files" / DB_NAME
+        p = get_db_path(addon_dir, profile)
         p.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(p), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         _create_tables(conn)
         _connection = conn
-        _initialized_for = addon_dir
+        _initialized_for = cache_key
     return _connection
 
 
@@ -213,27 +219,27 @@ def _create_tables(conn: sqlite3.Connection) -> None:
 # ── Export helpers (called by the export function in __init__.py) ─────────────
 
 
-def export_priorities_json(addon_dir: str) -> str:
+def export_priorities_json(addon_dir: str, profile: str) -> str:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute("SELECT card_id, priority FROM priorities ORDER BY card_id")
         .fetchall()
     )
     return json.dumps({str(r[0]): r[1] for r in rows}, indent=2)
 
 
-def export_pdf_progress_json(addon_dir: str) -> str:
+def export_pdf_progress_json(addon_dir: str, profile: str) -> str:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute("SELECT card_id, page, zoom FROM pdf_progress ORDER BY card_id")
         .fetchall()
     )
     return json.dumps({str(r[0]): {"page": r[1], "zoom": r[2]} for r in rows}, indent=2)
 
 
-def export_highlights_json(addon_dir: str) -> str:
+def export_highlights_json(addon_dir: str, profile: str) -> str:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT card_id, id, page, color, text, rects FROM pdf_highlights ORDER BY card_id"
         )
@@ -255,10 +261,10 @@ def export_highlights_json(addon_dir: str) -> str:
 
 
 def add_pdf_card_source(
-    addon_dir: str, pdf_card_id: int, page: int, note_id: int, excerpt: str = ""
+    addon_dir: str, profile: str, pdf_card_id: int, page: int, note_id: int, excerpt: str = ""
 ) -> None:
     """Record that note_id was created while reading pdf_card_id at page."""
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO pdf_card_sources (pdf_card_id, page, note_id, excerpt) VALUES (?, ?, ?, ?)",
         (pdf_card_id, page, note_id, excerpt),
@@ -266,10 +272,10 @@ def add_pdf_card_source(
     conn.commit()
 
 
-def get_pdf_card_sources(addon_dir: str, pdf_card_id: int, page: int) -> list:
+def get_pdf_card_sources(addon_dir: str, profile: str, pdf_card_id: int, page: int) -> list:
     """Return list of {note_id, excerpt} for cards created on this PDF page."""
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT note_id, excerpt FROM pdf_card_sources "
             "WHERE pdf_card_id = ? AND page = ? ORDER BY id",
@@ -280,10 +286,10 @@ def get_pdf_card_sources(addon_dir: str, pdf_card_id: int, page: int) -> list:
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
 
 
-def get_pdf_page_card_counts(addon_dir: str, pdf_card_id: int) -> dict:
+def get_pdf_page_card_counts(addon_dir: str, profile: str, pdf_card_id: int) -> dict:
     """Return {page: count} for all pages that have at least one card."""
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT page, COUNT(*) FROM pdf_card_sources WHERE pdf_card_id = ? GROUP BY page",
             (pdf_card_id,),
@@ -294,9 +300,9 @@ def get_pdf_page_card_counts(addon_dir: str, pdf_card_id: int) -> dict:
 
 
 def add_epub_card_source(
-    addon_dir: str, epub_card_id: int, section_index: int, note_id: int, excerpt: str = ""
+    addon_dir: str, profile: str, epub_card_id: int, section_index: int, note_id: int, excerpt: str = ""
 ) -> None:
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO epub_card_sources (epub_card_id, section_index, note_id, excerpt) VALUES (?, ?, ?, ?)",
         (epub_card_id, int(section_index), note_id, excerpt),
@@ -304,9 +310,9 @@ def add_epub_card_source(
     conn.commit()
 
 
-def get_epub_card_sources(addon_dir: str, epub_card_id: int, section_index: int) -> list:
+def get_epub_card_sources(addon_dir: str, profile: str, epub_card_id: int, section_index: int) -> list:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT note_id, excerpt FROM epub_card_sources "
             "WHERE epub_card_id = ? AND section_index = ? ORDER BY id",
@@ -317,9 +323,9 @@ def get_epub_card_sources(addon_dir: str, epub_card_id: int, section_index: int)
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
 
 
-def get_epub_section_card_counts(addon_dir: str, epub_card_id: int) -> dict:
+def get_epub_section_card_counts(addon_dir: str, profile: str, epub_card_id: int) -> dict:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT section_index, COUNT(*) FROM epub_card_sources "
             "WHERE epub_card_id = ? GROUP BY section_index",
@@ -331,10 +337,10 @@ def get_epub_section_card_counts(addon_dir: str, epub_card_id: int) -> dict:
 
 
 def add_web_card_source(
-    addon_dir: str, web_card_id: int, url: str, note_id: int, excerpt: str = ""
+    addon_dir: str, profile: str, web_card_id: int, url: str, note_id: int, excerpt: str = ""
 ) -> None:
     """Record that note_id was created while viewing web_card_id at url."""
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO web_card_sources (web_card_id, url, note_id, excerpt) VALUES (?, ?, ?, ?)",
         (web_card_id, str(url or "").strip(), note_id, excerpt),
@@ -342,10 +348,10 @@ def add_web_card_source(
     conn.commit()
 
 
-def get_web_card_sources(addon_dir: str, web_card_id: int, url: str) -> list:
+def get_web_card_sources(addon_dir: str, profile: str, web_card_id: int, url: str) -> list:
     """Return list of {note_id, excerpt} for cards created at this web-card URL."""
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT note_id, excerpt FROM web_card_sources "
             "WHERE web_card_id = ? AND url = ? ORDER BY id",
@@ -356,9 +362,9 @@ def get_web_card_sources(addon_dir: str, web_card_id: int, url: str) -> list:
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
 
 
-def export_stats_json(addon_dir: str) -> str:
+def export_stats_json(addon_dir: str, profile: str) -> str:
     rows = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute("SELECT scope, date, data FROM stats")
         .fetchall()
     )
@@ -455,9 +461,9 @@ def search_text_match_score(
     return None
 
 
-def replace_pdf_text_index(addon_dir: str, card_id: int, page_texts: list[str]) -> None:
+def replace_pdf_text_index(addon_dir: str, profile: str, card_id: int, page_texts: list[str]) -> None:
     """Replace stored per-page extracted text for a PDF card."""
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute("DELETE FROM pdf_text_index WHERE card_id = ?", (card_id,))
     rows = [
         (card_id, i + 1, (txt or "").strip())
@@ -473,14 +479,14 @@ def replace_pdf_text_index(addon_dir: str, card_id: int, page_texts: list[str]) 
 
 
 def search_pdf_text_index(
-    addon_dir: str, query: str, limit: int = 120
+    addon_dir: str, profile: str, query: str, limit: int = 120
 ) -> list[tuple[int, int, str]]:
     """Search indexed per-page PDF text. Returns [(card_id, page, text), ...]."""
     query_terms = split_search_terms(query)
     if not query_terms:
         return []
 
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     pre = query_terms[0]
     rows = conn.execute(
         "SELECT card_id, page, text FROM pdf_text_index "
@@ -500,9 +506,9 @@ def search_pdf_text_index(
 
 
 def replace_epub_text_index(
-    addon_dir: str, card_id: int, sections: list[tuple[str, str]]
+    addon_dir: str, profile: str, card_id: int, sections: list[tuple[str, str]]
 ) -> None:
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute("DELETE FROM epub_text_index WHERE card_id = ?", (card_id,))
     rows = [
         (card_id, idx, str(title or "").strip(), (text or "").strip())
@@ -518,13 +524,13 @@ def replace_epub_text_index(
 
 
 def search_epub_text_index(
-    addon_dir: str, query: str, limit: int = 120
+    addon_dir: str, profile: str, query: str, limit: int = 120
 ) -> list[tuple[int, int, str, str]]:
     query_terms = split_search_terms(query)
     if not query_terms:
         return []
 
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     pre = query_terms[0]
     rows = conn.execute(
         "SELECT card_id, section_index, title, text FROM epub_text_index "
@@ -548,10 +554,10 @@ def search_epub_text_index(
 # ── Topic A-factor schedule ───────────────────────────────────────────────────
 
 
-def get_topic_schedule(addon_dir: str, card_id: int) -> tuple[float, int]:
+def get_topic_schedule(addon_dir: str, profile: str, card_id: int) -> tuple[float, int]:
     """Return (a_factor, last_interval) for a topic card, or defaults if unseen."""
     row = (
-        get_connection(addon_dir)
+        get_connection(addon_dir, profile)
         .execute(
             "SELECT a_factor, interval FROM topic_schedule WHERE card_id = ?",
             (card_id,),
@@ -562,9 +568,9 @@ def get_topic_schedule(addon_dir: str, card_id: int) -> tuple[float, int]:
 
 
 def set_topic_schedule(
-    addon_dir: str, card_id: int, a_factor: float, interval: int
+    addon_dir: str, profile: str, card_id: int, a_factor: float, interval: int
 ) -> None:
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO topic_schedule (card_id, a_factor, interval) VALUES (?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "

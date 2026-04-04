@@ -95,6 +95,8 @@ from .frontend import writing_dock as _writing_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import get_connection, replace_pdf_text_index, search_pdf_text_index
+from .backend.paths import get_active_profile as _active_profile
+from .backend import paths as _paths
 from .backend.session import (
     learnFunction,
     reset_session_counts,
@@ -612,7 +614,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 card = mw.col.get_card(card_id)
                 note = mw.col.get_note(card.nid)
                 filename = note["PDF_Filename"]
-                zoom = get_zoom(_ADDON_DIR, card_id)
+                zoom = get_zoom(_ADDON_DIR, _active_profile(), card_id)
                 _pdf_dock_mod.show_pdf_in_dock(
                     card_id, filename, page, zoom, via_link=True
                 )
@@ -705,6 +707,21 @@ gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_writing_dock_mod.on_writing_reviewer_will_end)
 gui_hooks.profile_will_close.append(_video_dock_mod.flush_video_progress)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
+
+
+def _on_profile_did_open() -> None:
+    """Activate per-profile paths and run one-time migration on first load."""
+    from .backend.migration import migrate_to_profile_dir
+    profile = _current_profile_name()
+    # Reset Qt WebEngine profile singletons before migration so they are
+    # recreated with the correct per-profile storage path on next use.
+    _video_dock_mod.reset_for_profile_switch()
+    _web_dock_mod.reset_for_profile_switch()
+    _paths.set_active_profile(profile)
+    migrate_to_profile_dir(_ADDON_DIR, profile)
+
+
+gui_hooks.profile_did_open.append(_on_profile_did_open)
 
 
 def _sync_pdf_note_type() -> None:
@@ -835,9 +852,9 @@ def _open_pdf_card(
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
     filename = note["PDF_Filename"]
-    open_page = page if page is not None else get_page(_ADDON_DIR, card_id)
-    zoom = get_zoom(_ADDON_DIR, card_id)
-    read_page = get_read_page(_ADDON_DIR, card_id)
+    open_page = page if page is not None else get_page(_ADDON_DIR, _active_profile(), card_id)
+    zoom = get_zoom(_ADDON_DIR, _active_profile(), card_id)
+    read_page = get_read_page(_ADDON_DIR, _active_profile(), card_id)
     _last_opened_pdf_cid = card_id
     _pdf_dock_mod.show_pdf_in_dock(
         card_id,
@@ -860,7 +877,7 @@ def _open_epub_card(
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
     filename = note[EPUB_FILE_FIELD]
-    current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, card_id)
+    current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, _active_profile(), card_id)
     _epub_dock_mod.show_epub_in_dock(
         card_id,
         filename,
@@ -1022,7 +1039,7 @@ def exportFunction() -> None:
     if not path.lower().endswith(".zip"):
         path += ".zip"
 
-    user_files_dir = os.path.join(_ADDON_DIR, "user_files")
+    user_files_dir = str(_paths.get_user_files_dir(_ADDON_DIR, _active_profile()))
     config = mw.addonManager.getConfig(__name__) or {}
 
     def _restore_instructions() -> str:
@@ -1058,7 +1075,7 @@ def exportFunction() -> None:
 
     def _task():
         _video_dock_mod.flush_video_progress()
-        conn = get_connection(_ADDON_DIR)
+        conn = get_connection(_ADDON_DIR, _active_profile())
         conn.commit()
 
         priority_count = conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0]
@@ -1121,10 +1138,10 @@ def exportFunction() -> None:
 
                 zf.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
                 zf.writestr("restore.txt", _restore_instructions())
-                zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR))
-                zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR))
-                zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR))
-                zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR))
+                zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR, _active_profile()))
+                zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR, _active_profile()))
+                zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR, _active_profile()))
+                zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR, _active_profile()))
 
                 manifest = {
                     "export_date": today,
@@ -1277,14 +1294,14 @@ def _open_priority_dialog_for_card(card) -> None:
     if card is None:
         return
 
-    current = get_priority(_ADDON_DIR, card.id)
+    current = get_priority(_ADDON_DIR, _active_profile(), card.id)
     note = card.note()
     label_text = note.fields[0][:80].strip() if note.fields else ""
 
     a_factor = None
     interval = None
     if is_topic_card(card):
-        a_factor, interval = get_topic_schedule(_ADDON_DIR, card.id)
+        a_factor, interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card.id)
 
     dlg = PriorityDialog(
         current_priority=current,
@@ -1295,10 +1312,10 @@ def _open_priority_dialog_for_card(card) -> None:
         parent=mw,
     )
     if dlg.exec():
-        set_priority(_ADDON_DIR, card.id, dlg.priority)
+        set_priority(_ADDON_DIR, _active_profile(), card.id, dlg.priority)
         msg = f"Priority set to {dlg.priority:.0f}"
         if dlg.a_factor is not None:
-            set_topic_schedule(_ADDON_DIR, card.id, dlg.a_factor, interval or 1)
+            set_topic_schedule(_ADDON_DIR, _active_profile(), card.id, dlg.a_factor, interval or 1)
             msg += f"  ·  A-Factor {dlg.a_factor:.3f}"
         tooltip(msg)
 
@@ -1449,6 +1466,7 @@ def addVideoFunction() -> None:
         def _task():
             return import_local_video_file(
                 _ADDON_DIR,
+                _active_profile(),
                 local_path,
                 encode_mode=local_encode_mode,
                 progress_cb=_progress_cb,
@@ -1497,6 +1515,7 @@ def addVideoFunction() -> None:
     def _task():
         return download_and_compress_video(
             _ADDON_DIR,
+            _active_profile(),
             url,
             overwrite=(max_height is not None) or original_quality,
             progress_cb=_progress_cb,
@@ -1604,7 +1623,7 @@ def reindexPdfTextFunction() -> None:
                     skipped += 1
                     continue
                 for cid in mw.col.find_cards(f"nid:{nid}"):
-                    replace_pdf_text_index(_ADDON_DIR, cid, page_texts)
+                    replace_pdf_text_index(_ADDON_DIR, _active_profile(), cid, page_texts)
                 indexed += 1
             except Exception as e:
                 failed.append((str(nid), str(e)))
@@ -1628,7 +1647,7 @@ def _prune_stale_progress_rows() -> dict[str, int]:
     Remove progress rows whose card_id no longer exists.
     Returns per-table deleted counts.
     """
-    conn = get_connection(_ADDON_DIR)
+    conn = get_connection(_ADDON_DIR, _active_profile())
     counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
     live_ids = _all_live_card_ids_any_profile()
     total_deleted = 0
@@ -1804,7 +1823,7 @@ def _partition_any_profile_ties(candidates: list[str], kind: str) -> tuple[list[
 
 def _count_stale_progress_rows() -> dict[str, int]:
     """Return per-table stale row counts without deleting."""
-    conn = get_connection(_ADDON_DIR)
+    conn = get_connection(_ADDON_DIR, _active_profile())
     counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
     live_ids = _all_live_card_ids_any_profile()
     for table in ("pdf_progress", "video_progress", "web_progress"):
@@ -1855,7 +1874,7 @@ def _scan_orphan_pdfs() -> tuple[str, list[str], int]:
 
 
 def _scan_orphan_videos() -> tuple[str, list[str], int]:
-    videos_dir = os.path.join(_ADDON_DIR, "user_files", "videos")
+    videos_dir = str(_paths.get_videos_dir(_ADDON_DIR, _active_profile()))
     if not os.path.isdir(videos_dir):
         return videos_dir, [], 0
 
@@ -2046,7 +2065,7 @@ def cleanupStaleProgressFunction() -> None:
 
 
 def cleanupOrphanPdfsFunction() -> None:
-    """Delete PDF files in user_files/pdfs/ that no card references."""
+    """Delete PDF files in user_files/<profile>/pdfs/ that no card references."""
     from .backend.pdf_manager import get_pdf_dir
 
     pdf_dir = get_pdf_dir()
@@ -2062,7 +2081,7 @@ def cleanupOrphanPdfsFunction() -> None:
         return
 
     if not disk_files:
-        showInfo("No PDF files found in user_files/pdfs/.")
+        showInfo(f"No PDF files found in {pdf_dir}.")
         return
 
     # All filenames referenced by an Incremento PDF note
@@ -2158,10 +2177,10 @@ def cleanupOrphanPdfsFunction() -> None:
 
 
 def cleanupOrphanVideosFunction() -> None:
-    """Delete local videos in user_files/videos/ that no video card references."""
-    videos_dir = os.path.join(_ADDON_DIR, "user_files", "videos")
+    """Delete local videos in user_files/<profile>/videos/ that no video card references."""
+    videos_dir = str(_paths.get_videos_dir(_ADDON_DIR, _active_profile()))
     if not os.path.isdir(videos_dir):
-        showInfo("No local videos found in user_files/videos/.")
+        showInfo(f"No local videos found in {videos_dir}.")
         return
 
     try:
@@ -2176,7 +2195,8 @@ def cleanupOrphanVideosFunction() -> None:
         return
 
     if not disk_files:
-        showInfo("No local videos found in user_files/videos/.")
+        showInfo(f"No local videos found in {videos_dir}.")
+        return
     disk_map = {f.lower(): f for f in disk_files}
 
     try:

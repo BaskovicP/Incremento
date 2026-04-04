@@ -37,6 +37,13 @@ except Exception:
     QVideoWidget = None
 
 try:
+    from ..backend import paths as _paths
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from backend import paths as _paths  # type: ignore
+    from paths import get_active_profile as _active_profile  # type: ignore
+
+try:
     from ..backend.video_manager import (
         VIDEO_NOTE_TYPE,
         build_remote_video_watch_url,
@@ -147,9 +154,8 @@ def _build_video_dock():
     # Persistent named profile so video-site cookies survive across restarts.
     if _video_profile is None:
         _video_profile = _WEProf("incremento_video")
-        _video_profile.setPersistentStoragePath(
-            os.path.join(_ADDON_DIR, "user_files", "video_profile")
-        )
+        _video_profile_dir = str(_paths.get_video_profile_dir(_ADDON_DIR, _active_profile()))
+        _video_profile.setPersistentStoragePath(_video_profile_dir)
         _video_profile.setPersistentCookiesPolicy(
             _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
         )
@@ -439,7 +445,7 @@ def _on_seek_slider_released() -> None:
     _set_seek_ui(target, _last_known_duration if _last_known_duration > 0 else None)
     if _current_video_card_id is not None and target > 0:
         try:
-            set_video_position(_ADDON_DIR, _current_video_card_id, target)
+            set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, target)
         except Exception:
             pass
 
@@ -567,9 +573,26 @@ def _persist_position_now() -> None:
     if t <= 0.0:
         return
     try:
-        set_video_position(_ADDON_DIR, _current_video_card_id, t)
+        set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, t)
     except Exception:
         pass
+
+
+def reset_for_profile_switch() -> None:
+    """Reset Qt WebEngine profile singleton on Anki profile switch.
+
+    Must be called before migrate_to_profile_dir so the new profile is created
+    with the correct per-profile storage path on next dock open.
+    """
+    global _video_profile, _video_dock
+    _video_profile = None
+    if _video_dock is not None:
+        try:
+            _video_dock.hide()
+            _video_dock.deleteLater()
+        except Exception:
+            pass
+        _video_dock = None
 
 
 def show_video_in_dock(
@@ -616,7 +639,7 @@ def show_video_in_dock(
     local_relpath = (local_video_file or "").strip()
     start_sec = int(position)
     if local_relpath:
-        local_abs = local_video_abspath(_ADDON_DIR, local_relpath)
+        local_abs = local_video_abspath(_ADDON_DIR, _active_profile(), local_relpath)
         if os.path.exists(local_abs):
             local_path = Path(local_abs)
             _current_local_relpath = local_relpath
@@ -843,7 +866,7 @@ def _on_video_time(t) -> None:
         if persist_t <= 0.0:
             return
         try:
-            set_video_position(_ADDON_DIR, _current_video_card_id, persist_t)
+            set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, persist_t)
         except Exception:
             pass
 
@@ -1054,7 +1077,7 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
         tooltip("Incremento: no remote URL is available for browser fallback.")
         return
     try:
-        set_video_position(_ADDON_DIR, _current_video_card_id, float(sec))
+        set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, float(sec))
     except Exception:
         pass
     _last_known_position = float(sec)
@@ -1109,7 +1132,7 @@ def _prompt_browser_stop_time() -> None:
     if not ok:
         return
     try:
-        set_video_position(_ADDON_DIR, card_id, float(sec))
+        set_video_position(_ADDON_DIR, _active_profile(), card_id, float(sec))
     except Exception:
         return
     if _current_video_card_id == card_id:
@@ -1130,7 +1153,7 @@ def _do_video_add_card(t) -> None:
     if _current_video_card_id is None:
         return
     try:
-        set_video_position(_ADDON_DIR, _current_video_card_id, t)
+        set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, t)
     except Exception:
         pass
     ts = fmt_time(t)
@@ -1228,7 +1251,7 @@ def on_video_question_shown(card) -> None:
                     except RuntimeError:
                         _video_dock = None
                 return
-        position = float(get_video_position(_ADDON_DIR, card.id) or 0.0)
+        position = float(get_video_position(_ADDON_DIR, _active_profile(), card.id) or 0.0)
         try:
             url_position = float(extract_start_seconds(youtube_url) or 0.0)
         except Exception:
@@ -1238,7 +1261,7 @@ def on_video_question_shown(card) -> None:
         if url_position > 0.0 and abs(url_position - position) >= 1.0:
             position = url_position
             try:
-                set_video_position(_ADDON_DIR, card.id, position)
+                set_video_position(_ADDON_DIR, _active_profile(), card.id, position)
             except Exception:
                 pass
         show_video_in_dock(card.id, youtube_url, position, local_video_file)

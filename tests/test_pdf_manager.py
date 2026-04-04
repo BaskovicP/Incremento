@@ -344,13 +344,13 @@ class TestGetSetPage:
         _db.close_connection()
 
     def test_default_page_is_one(self):
-        assert pdf_manager.get_page(self.addon_dir, card_id=42) == 1
+        assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=42) == 1
 
     def test_set_and_get_page(self):
-        pdf_manager.set_page(self.addon_dir, card_id=5, page=7)
-        assert pdf_manager.get_page(self.addon_dir, card_id=5) == 7
+        pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=5, page=7)
+        assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=5) == 7
 
     def test_update_page_overwrites(self):
-        pdf_manager.set_page(self.addon_dir, card_id=10, page=3)
-        pdf_manager.set_page(self.addon_dir, card_id=10, page=12)
-        assert pdf_manager.get_page(self.addon_dir, card_id=10) == 12
+        pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=10, page=3)
+        pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=10, page=12)
+        assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=10) == 12

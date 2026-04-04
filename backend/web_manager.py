@@ -165,8 +165,8 @@ def _normalize_bookmark_payload(payload) -> WebBookmarkPayload:
     return result
 
 
-def get_web_progress(addon_dir: str, card_id: int) -> WebProgressState:
-    row = get_connection(addon_dir).execute(
+def get_web_progress(addon_dir: str, profile: str, card_id: int) -> WebProgressState:
+    row = get_connection(addon_dir, profile).execute(
         "SELECT url, scroll_ratio, bookmark_url, bookmark_payload "
         "FROM web_progress WHERE card_id = ?",
         (card_id,),
@@ -205,8 +205,8 @@ def build_web_restore_payload(
     }
 
 
-def _ensure_web_progress_row(addon_dir: str, card_id: int) -> None:
-    conn = get_connection(addon_dir)
+def _ensure_web_progress_row(addon_dir: str, profile: str, card_id: int) -> None:
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO web_progress "
         "(card_id, url, scroll_ratio, bookmark_url, bookmark_payload) "
@@ -219,6 +219,7 @@ def _ensure_web_progress_row(addon_dir: str, card_id: int) -> None:
 
 def _update_web_progress_columns(
     addon_dir: str,
+    profile: str,
     card_id: int,
     *,
     url: str | None = None,
@@ -226,7 +227,7 @@ def _update_web_progress_columns(
     bookmark_url: str | None = None,
     bookmark_payload: WebBookmarkPayload | None = None,
 ) -> None:
-    _ensure_web_progress_row(addon_dir, card_id)
+    _ensure_web_progress_row(addon_dir, profile, card_id)
     assignments: list[str] = []
     values: list[object] = []
     if url is not None:
@@ -244,7 +245,7 @@ def _update_web_progress_columns(
     if not assignments:
         return
     values.append(card_id)
-    conn = get_connection(addon_dir)
+    conn = get_connection(addon_dir, profile)
     conn.execute(
         f"UPDATE web_progress SET {', '.join(assignments)} WHERE card_id = ?",
         tuple(values),
@@ -252,23 +253,25 @@ def _update_web_progress_columns(
     conn.commit()
 
 
-def get_web_url(addon_dir: str, card_id: int) -> str:
+def get_web_url(addon_dir: str, profile: str, card_id: int) -> str:
     """Return the last visited URL for this card, or '' if never saved."""
-    return str(get_web_progress(addon_dir, card_id).get("url") or "")
+    return str(get_web_progress(addon_dir, profile, card_id).get("url") or "")
 
 
-def set_web_url(addon_dir: str, card_id: int, url: str) -> None:
-    _update_web_progress_columns(addon_dir, card_id, url=url)
+def set_web_url(addon_dir: str, profile: str, card_id: int, url: str) -> None:
+    _update_web_progress_columns(addon_dir, profile, card_id, url=url)
 
 
 def set_web_scroll_position(
     addon_dir: str,
+    profile: str,
     card_id: int,
     url: str,
     scroll_ratio: float,
 ) -> None:
     _update_web_progress_columns(
         addon_dir,
+        profile,
         card_id,
         url=url,
         scroll_ratio=scroll_ratio,
@@ -277,6 +280,7 @@ def set_web_scroll_position(
 
 def set_web_bookmark(
     addon_dir: str,
+    profile: str,
     card_id: int,
     *,
     url: str,
@@ -286,6 +290,7 @@ def set_web_bookmark(
     if normalized:
         _update_web_progress_columns(
             addon_dir,
+            profile,
             card_id,
             url=url,
             bookmark_url=url,
@@ -294,6 +299,7 @@ def set_web_bookmark(
         return
     _update_web_progress_columns(
         addon_dir,
+        profile,
         card_id,
         url=url,
         bookmark_url="",

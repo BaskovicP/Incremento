@@ -225,12 +225,14 @@ def on_timer_question_shown(card) -> None:
     try:
         try:
             from ..backend.pdf_manager import PDF_NOTE_TYPE, get_page
+            from ..backend.paths import get_active_profile as _active_profile
         except Exception:
             from pdf_manager import PDF_NOTE_TYPE, get_page
+            from paths import get_active_profile as _active_profile
         note  = mw.col.get_note(card.nid)
         model = mw.col.models.get(note.mid)
         if model and model.get("name") == PDF_NOTE_TYPE:
-            page = get_page(_ADDON_DIR, card.id)
+            page = get_page(_ADDON_DIR, _active_profile(), card.id)
             _timer_pdf_pages.add((card.id, page))
     except Exception:
         pass

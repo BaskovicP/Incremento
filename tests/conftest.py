@@ -27,3 +27,6 @@ for subdir in ("frontend", "backend"):
     if path not in sys.path:
         sys.path.insert(0, path)
 # Final sys.path order: backend/ → frontend/ → …
+
+import paths as _paths
+_paths.set_active_profile("TestProfile")

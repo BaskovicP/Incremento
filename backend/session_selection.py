@@ -7,9 +7,11 @@ from typing import NamedTuple
 try:
     from .scheduler import get_card_from_scheduler
     from .statistics import StatsManager
+    from .paths import get_active_profile as _active_profile
 except ImportError:
     from scheduler import get_card_from_scheduler  # type: ignore
     from statistics import StatsManager  # type: ignore
+    from paths import get_active_profile as _active_profile  # type: ignore
 
 
 class SessionSelectionResult(NamedTuple):
@@ -21,7 +23,7 @@ class SessionSelectionResult(NamedTuple):
 def select_session_cards(cfg, addon_dir: str) -> SessionSelectionResult:
     """Run the scheduler pick loop and return selected card IDs + pick metadata."""
     target_count = cfg.session_card_count
-    stats = StatsManager(addon_dir, day_end_time=cfg.day_end_time)
+    stats = StatsManager(addon_dir, _active_profile(), day_end_time=cfg.day_end_time)
 
     selected_ids: list[int] = []
     added_to_filtered: set[int] = set()

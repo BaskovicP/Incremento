@@ -19,6 +19,7 @@ from .scheduler import NO_TAGS_KEY
 from .session import INCREMENTO_DECK
 from .statistics import StatsManager
 from .scheduler_config import load_scheduler_config
+from .paths import get_active_profile as _active_profile
 
 
 _ADDON_DIR = os.path.normpath(
@@ -78,7 +79,7 @@ def _record_pdf_time(card_id: int, seconds: float) -> None:
             return
 
         cfg = load_scheduler_config()
-        sm = StatsManager(_ADDON_DIR, day_end_time=cfg.day_end_time)
+        sm = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=cfg.day_end_time)
         fake = types.SimpleNamespace(
             card=card_id,
             card_type="topics",

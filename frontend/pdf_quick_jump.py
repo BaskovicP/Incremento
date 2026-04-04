@@ -25,6 +25,11 @@ from aqt.qt import (
 )
 
 try:
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from paths import get_active_profile as _active_profile
+
+try:
     from ..backend.pdf_manager import PDF_NOTE_TYPE, get_page
     from ..backend.epub_manager import EPUB_NOTE_TYPE
     from ..backend.priority_manager import get_all_priorities
@@ -120,7 +125,7 @@ class _PdfQuickJumpDialog(QDialog):
         QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self._open_last)
 
     def _load_entries(self) -> None:
-        all_prios = get_all_priorities(self._addon_dir)  # {cid: priority}
+        all_prios = get_all_priorities(self._addon_dir, _active_profile())  # {cid: priority}
         try:
             for note_type_name, kind in ((PDF_NOTE_TYPE, "PDF"), (EPUB_NOTE_TYPE, "EPUB")):
                 note_ids = mw.col.find_notes(f'note:"{note_type_name}" -is:suspended')

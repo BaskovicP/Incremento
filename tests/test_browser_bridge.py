@@ -424,7 +424,7 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
 
     priority_calls = []
     priority_module = MagicMock()
-    priority_module.set_priority.side_effect = lambda addon_dir, card_id, priority: priority_calls.append(
+    priority_module.set_priority.side_effect = lambda addon_dir, profile, card_id, priority: priority_calls.append(
         (addon_dir, card_id, priority)
     )
     monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")

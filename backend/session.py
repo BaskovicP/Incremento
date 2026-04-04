@@ -23,6 +23,7 @@ from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton
 from .scheduler import NO_TAGS_KEY
 from .statistics import StatsManager, _empty_time
 from .session_selection import select_session_cards
+from .paths import get_active_profile as _active_profile
 from .topic_postpone import release_expired_timed_postpones
 try:
     from ..frontend.learn_dialog import SchedulerConfigDialog
@@ -112,7 +113,7 @@ def learnFunction() -> None:
     cfg = dlg.to_config()
     preview_override = dlg.get_preview_override() if hasattr(dlg, "get_preview_override") else None
     if preview_override:
-        stats = StatsManager(_ADDON_DIR, day_end_time=cfg.day_end_time)
+        stats = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=cfg.day_end_time)
         selected_ids = preview_override.get("selected_ids", [])
         _picked_meta: dict[int, dict] = preview_override.get("picked_meta", {})
         session_counts_snapshot = preview_override.get("session_counts", {"type": {}, "tags": {}, "mode": {}})

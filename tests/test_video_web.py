@@ -228,8 +228,9 @@ class TestLocalVideoHelpers:
         assert got.suffix == ".mp4"
 
     def test_abspath_accepts_user_files_prefix(self, tmp_path):
-        got = local_video_abspath(str(tmp_path), "user_files/videos/a.mp4")
-        assert got == os.path.join(str(tmp_path), "user_files", "videos", "a.mp4")
+        # "user_files/" prefix is stripped; path resolves under user_files/<profile>/
+        got = local_video_abspath(str(tmp_path), "TestProfile", "user_files/videos/a.mp4")
+        assert got == os.path.join(str(tmp_path), "user_files", "TestProfile", "videos", "a.mp4")
 
     def test_video_download_requirements_reports_missing_tools(self, monkeypatch):
         monkeypatch.setattr(_vm, "_yt_dlp_cmd", lambda allow_auto_install=False: None)
@@ -331,34 +332,34 @@ class TestFmtTime:
 
 class TestVideoPosition:
     def test_default_when_not_set(self, tmp_path):
-        assert get_video_position(str(tmp_path), 1) == 0.0
+        assert get_video_position(str(tmp_path), "TestProfile", 1) == 0.0
 
     def test_stores_and_retrieves_position(self, tmp_path):
-        set_video_position(str(tmp_path), 1, 123.4)
-        assert get_video_position(str(tmp_path), 1) == pytest.approx(123.4)
+        set_video_position(str(tmp_path), "TestProfile", 1, 123.4)
+        assert get_video_position(str(tmp_path), "TestProfile", 1) == pytest.approx(123.4)
 
     def test_overwrites_existing(self, tmp_path):
-        set_video_position(str(tmp_path), 1, 10.0)
-        set_video_position(str(tmp_path), 1, 99.9)
-        assert get_video_position(str(tmp_path), 1) == pytest.approx(99.9)
+        set_video_position(str(tmp_path), "TestProfile", 1, 10.0)
+        set_video_position(str(tmp_path), "TestProfile", 1, 99.9)
+        assert get_video_position(str(tmp_path), "TestProfile", 1) == pytest.approx(99.9)
 
     def test_rounds_to_one_decimal(self, tmp_path):
-        set_video_position(str(tmp_path), 2, 55.555)
-        assert get_video_position(str(tmp_path), 2) == pytest.approx(round(55.555, 1))
+        set_video_position(str(tmp_path), "TestProfile", 2, 55.555)
+        assert get_video_position(str(tmp_path), "TestProfile", 2) == pytest.approx(round(55.555, 1))
 
     def test_different_cards_independent(self, tmp_path):
-        set_video_position(str(tmp_path), 1, 10.0)
-        set_video_position(str(tmp_path), 2, 20.0)
-        assert get_video_position(str(tmp_path), 1) == pytest.approx(10.0)
-        assert get_video_position(str(tmp_path), 2) == pytest.approx(20.0)
+        set_video_position(str(tmp_path), "TestProfile", 1, 10.0)
+        set_video_position(str(tmp_path), "TestProfile", 2, 20.0)
+        assert get_video_position(str(tmp_path), "TestProfile", 1) == pytest.approx(10.0)
+        assert get_video_position(str(tmp_path), "TestProfile", 2) == pytest.approx(20.0)
 
 
 # ── get/set_web_url ───────────────────────────────────────────────────────────
 
 class TestWebUrl:
     def test_default_when_not_set(self, tmp_path):
-        assert get_web_url(str(tmp_path), 1) == ""
-        assert get_web_progress(str(tmp_path), 1) == {
+        assert get_web_url(str(tmp_path), "TestProfile", 1) == ""
+        assert get_web_progress(str(tmp_path), "TestProfile", 1) == {
             "url": "",
             "scroll_ratio": 0.0,
             "bookmark_url": "",
@@ -366,30 +367,28 @@ class TestWebUrl:
         }
 
     def test_stores_and_retrieves_url(self, tmp_path):
-        set_web_url(str(tmp_path), 1, "https://example.com")
-        assert get_web_url(str(tmp_path), 1) == "https://example.com"
-        assert get_web_progress(str(tmp_path), 1)["url"] == "https://example.com"
+        set_web_url(str(tmp_path), "TestProfile", 1, "https://example.com")
+        assert get_web_url(str(tmp_path), "TestProfile", 1) == "https://example.com"
+        assert get_web_progress(str(tmp_path), "TestProfile", 1)["url"] == "https://example.com"
 
     def test_overwrites_existing(self, tmp_path):
-        set_web_url(str(tmp_path), 1, "https://old.com")
-        set_web_url(str(tmp_path), 1, "https://new.com")
-        assert get_web_url(str(tmp_path), 1) == "https://new.com"
+        set_web_url(str(tmp_path), "TestProfile", 1, "https://old.com")
+        set_web_url(str(tmp_path), "TestProfile", 1, "https://new.com")
+        assert get_web_url(str(tmp_path), "TestProfile", 1) == "https://new.com"
 
     def test_different_cards_independent(self, tmp_path):
-        set_web_url(str(tmp_path), 1, "https://a.com")
-        set_web_url(str(tmp_path), 2, "https://b.com")
-        assert get_web_url(str(tmp_path), 1) == "https://a.com"
-        assert get_web_url(str(tmp_path), 2) == "https://b.com"
+        set_web_url(str(tmp_path), "TestProfile", 1, "https://a.com")
+        set_web_url(str(tmp_path), "TestProfile", 2, "https://b.com")
+        assert get_web_url(str(tmp_path), "TestProfile", 1) == "https://a.com"
+        assert get_web_url(str(tmp_path), "TestProfile", 2) == "https://b.com"
 
     def test_empty_string_stored(self, tmp_path):
-        set_web_url(str(tmp_path), 1, "https://example.com")
-        set_web_url(str(tmp_path), 1, "")
-        assert get_web_url(str(tmp_path), 1) == ""
+        set_web_url(str(tmp_path), "TestProfile", 1, "https://example.com")
+        set_web_url(str(tmp_path), "TestProfile", 1, "")
+        assert get_web_url(str(tmp_path), "TestProfile", 1) == ""
 
     def test_scroll_position_updates_url_and_ratio_without_clearing_bookmark(self, tmp_path):
-        set_web_bookmark(
-            str(tmp_path),
-            1,
+        set_web_bookmark(str(tmp_path), "TestProfile", 1,
             url="https://example.com/ch1",
             bookmark_payload={
                 "path": [0, 1],
@@ -399,35 +398,29 @@ class TestWebUrl:
                 "text": "Chapter 1",
             },
         )
-        set_web_scroll_position(str(tmp_path), 1, "https://example.com/ch2", 0.65)
-        progress = get_web_progress(str(tmp_path), 1)
+        set_web_scroll_position(str(tmp_path), "TestProfile", 1, "https://example.com/ch2", 0.65)
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
         assert progress["url"] == "https://example.com/ch2"
         assert progress["scroll_ratio"] == pytest.approx(0.65)
         assert progress["bookmark_url"] == "https://example.com/ch1"
         assert progress["bookmark_payload"]["path"] == [0, 1]
 
     def test_bookmark_overwrites_existing_bookmark(self, tmp_path):
-        set_web_bookmark(
-            str(tmp_path),
-            1,
+        set_web_bookmark(str(tmp_path), "TestProfile", 1,
             url="https://example.com/first",
             bookmark_payload={"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
         )
-        set_web_bookmark(
-            str(tmp_path),
-            1,
+        set_web_bookmark(str(tmp_path), "TestProfile", 1,
             url="https://example.com/second",
             bookmark_payload={"path": [2, 3], "offsetRatio": 0.7, "scrollRatio": 0.8},
         )
-        progress = get_web_progress(str(tmp_path), 1)
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
         assert progress["bookmark_url"] == "https://example.com/second"
         assert progress["bookmark_payload"]["path"] == [2, 3]
         assert progress["bookmark_payload"]["offsetRatio"] == pytest.approx(0.7)
 
     def test_selection_bookmark_round_trips_selection_fields(self, tmp_path):
-        set_web_bookmark(
-            str(tmp_path),
-            1,
+        set_web_bookmark(str(tmp_path), "TestProfile", 1,
             url="https://example.com/selection",
             bookmark_payload={
                 "mode": "selection",
@@ -442,7 +435,7 @@ class TestWebUrl:
                 "selectionEndOffset": 9,
             },
         )
-        progress = get_web_progress(str(tmp_path), 1)
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
         assert progress["bookmark_url"] == "https://example.com/selection"
         assert progress["bookmark_payload"]["mode"] == "selection"
         assert progress["bookmark_payload"]["selectionStartPath"] == [1, 2, 0]
@@ -451,14 +444,12 @@ class TestWebUrl:
         assert progress["bookmark_payload"]["selectionEndOffset"] == 9
 
     def test_can_clear_bookmark(self, tmp_path):
-        set_web_bookmark(
-            str(tmp_path),
-            1,
+        set_web_bookmark(str(tmp_path), "TestProfile", 1,
             url="https://example.com/first",
             bookmark_payload={"path": [0], "offsetRatio": 0.1, "scrollRatio": 0.2},
         )
-        set_web_bookmark(str(tmp_path), 1, url="https://example.com/first", bookmark_payload=None)
-        progress = get_web_progress(str(tmp_path), 1)
+        set_web_bookmark(str(tmp_path), "TestProfile", 1, url="https://example.com/first", bookmark_payload=None)
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
         assert progress["bookmark_url"] == ""
         assert progress["bookmark_payload"] == {}
 

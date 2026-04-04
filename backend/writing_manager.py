@@ -3,6 +3,11 @@ import re
 import uuid
 from pathlib import Path
 
+try:
+    from . import paths as _paths
+except ImportError:
+    import paths as _paths
+
 
 WRITING_NOTE_TYPE = "Incremento Writing"
 WRITING_FILE_FIELD = "Markdown_File"
@@ -25,9 +30,9 @@ def get_writing_dir() -> str:
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    out = os.path.join(addon_dir, "user_files", "writing")
-    os.makedirs(out, exist_ok=True)
-    return out
+    d = str(_paths.get_writing_dir(addon_dir, _paths.get_active_profile()))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def _sanitize_filename(raw: str, fallback: str = "writing-note") -> str:
@@ -58,13 +63,14 @@ def build_writing_relpath(title: str, preferred_filename: str | None = None) -> 
 
 def writing_file_abspath(addon_dir: str, relpath: str) -> str:
     rel = (relpath or "").strip().replace("\\", "/")
-    if rel.startswith("user_files/"):
-        rel = rel[len("user_files/") :]
-    if rel.startswith("writing/"):
-        rel = rel[len("writing/") :]
+    # Strip any user_files/…/writing/ prefix (handles both legacy and new paths)
+    _, found, after = rel.partition("writing/")
+    if found:
+        rel = after
     rel = os.path.basename(rel)
     rel = _sanitize_filename(rel, fallback="writing-note")
-    path = (Path(addon_dir) / "user_files" / "writing" / rel).resolve()
+    writing_dir = _paths.get_writing_dir(addon_dir, _paths.get_active_profile())
+    path = (writing_dir / rel).resolve()
     return str(path)
 
 

@@ -8,8 +8,10 @@ from aqt import mw
 
 try:
     from .db import get_connection
+    from .paths import get_active_profile as _active_profile
 except ImportError:
-    from db import get_connection
+    from db import get_connection  # type: ignore
+    from paths import get_active_profile as _active_profile  # type: ignore
 
 TOPIC_POSTPONE_EASE = 4
 _DEFAULT_TOPIC_POSTPONE_ENABLED = False
@@ -32,7 +34,7 @@ def _resolved_config(config: dict | None = None) -> dict:
 
 
 def _db():
-    return get_connection(_ADDON_DIR)
+    return get_connection(_ADDON_DIR, _active_profile())
 
 
 def configured_topic_postpone_enabled(config: dict | None = None) -> bool:

@@ -35,12 +35,12 @@ class TestGetConnection:
 
     def test_returns_sqlite_connection(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         assert isinstance(conn, sqlite3.Connection)
 
     def test_creates_pdf_progress_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -51,7 +51,7 @@ class TestGetConnection:
 
     def test_creates_pdf_highlights_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -62,7 +62,7 @@ class TestGetConnection:
 
     def test_creates_priorities_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -73,7 +73,7 @@ class TestGetConnection:
 
     def test_creates_pdf_text_index_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -84,7 +84,7 @@ class TestGetConnection:
 
     def test_creates_web_card_sources_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -95,7 +95,7 @@ class TestGetConnection:
 
     def test_creates_web_progress_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -106,7 +106,7 @@ class TestGetConnection:
 
     def test_creates_topic_postpones_table(self):
         addon_dir = _fresh_dir()
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         tables = {
             row[0]
             for row in conn.execute(
@@ -117,22 +117,22 @@ class TestGetConnection:
 
     def test_db_file_created_inside_user_files(self):
         addon_dir = _fresh_dir()
-        db.get_connection(addon_dir)
-        expected = os.path.join(addon_dir, "user_files", db.DB_NAME)
+        db.get_connection(addon_dir, "TestProfile")
+        expected = os.path.join(addon_dir, "user_files", "TestProfile", db.DB_NAME)
         assert os.path.isfile(expected)
 
     def test_idempotent_same_dir_reuses_connection(self):
         addon_dir = _fresh_dir()
-        conn1 = db.get_connection(addon_dir)
-        conn2 = db.get_connection(addon_dir)
+        conn1 = db.get_connection(addon_dir, "TestProfile")
+        conn2 = db.get_connection(addon_dir, "TestProfile")
         assert conn1 is conn2
 
     def test_different_dir_creates_new_connection(self):
         dir1 = _fresh_dir()
         dir2 = _fresh_dir()
-        conn1 = db.get_connection(dir1)
+        conn1 = db.get_connection(dir1, "TestProfile")
         _reset_db_module()
-        conn2 = db.get_connection(dir2)
+        conn2 = db.get_connection(dir2, "TestProfile")
         # Both are valid connections but to different files
         assert isinstance(conn1, sqlite3.Connection)
         assert isinstance(conn2, sqlite3.Connection)
@@ -153,8 +153,8 @@ class TestPdfTextIndex:
         _reset_db_module()
 
     def test_insert_and_search_finds_term(self):
-        db.replace_pdf_text_index(self.addon_dir, 1, ["Hello world", "Goodbye world"])
-        results = db.search_pdf_text_index(self.addon_dir, "hello")
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 1, ["Hello world", "Goodbye world"])
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "hello")
         assert len(results) == 1
         card_id, page, text = results[0]
         assert card_id == 1
@@ -162,22 +162,22 @@ class TestPdfTextIndex:
         assert "Hello" in text
 
     def test_search_returns_correct_page_number(self):
-        db.replace_pdf_text_index(self.addon_dir, 2, ["first page", "second page with needle"])
-        results = db.search_pdf_text_index(self.addon_dir, "needle")
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 2, ["first page", "second page with needle"])
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "needle")
         assert len(results) == 1
         assert results[0][1] == 2  # page 2
 
     def test_replace_removes_old_entries(self):
-        db.replace_pdf_text_index(self.addon_dir, 3, ["old content about cats"])
-        db.replace_pdf_text_index(self.addon_dir, 3, ["new content about dogs"])
-        cats = db.search_pdf_text_index(self.addon_dir, "cats")
-        dogs = db.search_pdf_text_index(self.addon_dir, "dogs")
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 3, ["old content about cats"])
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 3, ["new content about dogs"])
+        cats = db.search_pdf_text_index(self.addon_dir, "TestProfile", "cats")
+        dogs = db.search_pdf_text_index(self.addon_dir, "TestProfile", "dogs")
         assert cats == []
         assert len(dogs) == 1
 
     def test_empty_pages_not_stored(self):
-        db.replace_pdf_text_index(self.addon_dir, 4, ["", "   ", "real content here"])
-        conn = db.get_connection(self.addon_dir)
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 4, ["", "   ", "real content here"])
+        conn = db.get_connection(self.addon_dir, "TestProfile")
         rows = conn.execute(
             "SELECT page FROM pdf_text_index WHERE card_id = 4 ORDER BY page"
         ).fetchall()
@@ -185,26 +185,26 @@ class TestPdfTextIndex:
         assert rows == [(3,)]
 
     def test_short_query_returns_empty(self):
-        db.replace_pdf_text_index(self.addon_dir, 5, ["some text here"])
-        results = db.search_pdf_text_index(self.addon_dir, "a")
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 5, ["some text here"])
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "a")
         assert results == []
 
     def test_search_across_multiple_cards(self):
-        db.replace_pdf_text_index(self.addon_dir, 10, ["python programming language"])
-        db.replace_pdf_text_index(self.addon_dir, 11, ["python snake species"])
-        results = db.search_pdf_text_index(self.addon_dir, "python")
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 10, ["python programming language"])
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 11, ["python snake species"])
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "python")
         card_ids = {r[0] for r in results}
         assert card_ids == {10, 11}
 
     def test_case_insensitive_search(self):
-        db.replace_pdf_text_index(self.addon_dir, 6, ["The Quick Brown Fox"])
-        results = db.search_pdf_text_index(self.addon_dir, "quick brown")
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 6, ["The Quick Brown Fox"])
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "quick brown")
         assert len(results) == 1
 
     def test_replace_with_empty_list_clears_index(self):
-        db.replace_pdf_text_index(self.addon_dir, 7, ["some content"])
-        db.replace_pdf_text_index(self.addon_dir, 7, [])
-        conn = db.get_connection(self.addon_dir)
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 7, ["some content"])
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 7, [])
+        conn = db.get_connection(self.addon_dir, "TestProfile")
         count = conn.execute(
             "SELECT COUNT(*) FROM pdf_text_index WHERE card_id = 7"
         ).fetchone()[0]
@@ -225,17 +225,17 @@ class TestPdfCardSources:
         _reset_db_module()
 
     def test_add_and_retrieve_card_source(self):
-        db.add_pdf_card_source(self.addon_dir, pdf_card_id=1, page=3, note_id=999, excerpt="test excerpt")
-        sources = db.get_pdf_card_sources(self.addon_dir, pdf_card_id=1, page=3)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=1, page=3, note_id=999, excerpt="test excerpt")
+        sources = db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=1, page=3)
         assert len(sources) == 1
         assert sources[0]["note_id"] == 999
         assert sources[0]["excerpt"] == "test excerpt"
 
     def test_get_pdf_page_card_counts(self):
-        db.add_pdf_card_source(self.addon_dir, pdf_card_id=2, page=1, note_id=101)
-        db.add_pdf_card_source(self.addon_dir, pdf_card_id=2, page=1, note_id=102)
-        db.add_pdf_card_source(self.addon_dir, pdf_card_id=2, page=2, note_id=103)
-        counts = db.get_pdf_page_card_counts(self.addon_dir, pdf_card_id=2)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=1, note_id=101)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=1, note_id=102)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=2, note_id=103)
+        counts = db.get_pdf_page_card_counts(self.addon_dir, "TestProfile", pdf_card_id=2)
         assert counts[1] == 2
         assert counts[2] == 1
 
@@ -250,14 +250,14 @@ class TestWebCardSources:
 
     def test_add_and_retrieve_card_source(self):
         db.add_web_card_source(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             web_card_id=5,
             url="https://example.com/docs/intro",
             note_id=777,
             excerpt="api summary",
         )
         sources = db.get_web_card_sources(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             web_card_id=5,
             url="https://example.com/docs/intro",
         )
@@ -267,26 +267,26 @@ class TestWebCardSources:
 
     def test_sources_are_scoped_to_exact_url(self):
         db.add_web_card_source(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             web_card_id=5,
             url="https://example.com/docs/intro",
             note_id=1,
             excerpt="intro",
         )
         db.add_web_card_source(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             web_card_id=5,
             url="https://example.com/docs/advanced",
             note_id=2,
             excerpt="advanced",
         )
         intro = db.get_web_card_sources(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             web_card_id=5,
             url="https://example.com/docs/intro",
         )
         advanced = db.get_web_card_sources(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             web_card_id=5,
             url="https://example.com/docs/advanced",
         )
@@ -303,7 +303,7 @@ class TestWebProgressMigration:
         _reset_db_module()
 
     def test_existing_url_only_web_progress_table_gets_new_columns(self):
-        db_path = os.path.join(self.addon_dir, "user_files", db.DB_NAME)
+        db_path = os.path.join(self.addon_dir, "user_files", "TestProfile", db.DB_NAME)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         conn = sqlite3.connect(db_path)
         conn.execute(
@@ -316,7 +316,7 @@ class TestWebProgressMigration:
         conn.commit()
         conn.close()
 
-        reopened = db.get_connection(self.addon_dir)
+        reopened = db.get_connection(self.addon_dir, "TestProfile")
         columns = {
             row[1]
             for row in reopened.execute("PRAGMA table_info(web_progress)").fetchall()
@@ -350,11 +350,22 @@ class TestConnectionSwitching:
         """Getting a connection with a new dir should close the previous one."""
         dir1 = _fresh_dir()
         dir2 = _fresh_dir()
-        conn1 = db.get_connection(dir1)
+        conn1 = db.get_connection(dir1, "TestProfile")
         # Now request a connection for a different dir — lines 32-36 execute
-        conn2 = db.get_connection(dir2)
+        conn2 = db.get_connection(dir2, "TestProfile")
         assert conn1 is not conn2
         assert isinstance(conn2, sqlite3.Connection)
+
+    def test_switching_profile_closes_old_connection(self):
+        """Getting a connection with a different profile should open a new DB."""
+        addon_dir = _fresh_dir()
+        conn1 = db.get_connection(addon_dir, "Profile1")
+        conn2 = db.get_connection(addon_dir, "Profile2")
+        assert conn1 is not conn2
+        # Each profile gets its own DB file
+        import os
+        assert os.path.exists(os.path.join(addon_dir, "user_files", "Profile1", db.DB_NAME))
+        assert os.path.exists(os.path.join(addon_dir, "user_files", "Profile2", db.DB_NAME))
 
     def test_close_exception_is_swallowed(self):
         """If the old connection's close() raises, get_connection still succeeds."""
@@ -366,7 +377,7 @@ class TestConnectionSwitching:
         db._connection = fake_conn
         db._initialized_for = "/some/stale/path"
         # Requesting a new dir should try close() on the fake conn, swallow the error
-        conn = db.get_connection(dir1)
+        conn = db.get_connection(dir1, "TestProfile")
         fake_conn.close.assert_called_once()
         assert isinstance(conn, sqlite3.Connection)
 
@@ -376,7 +387,7 @@ class TestConnectionSwitching:
         import sqlite3 as _sqlite3
 
         addon_dir = _fresh_dir()
-        db_path = os.path.join(addon_dir, "user_files", db.DB_NAME)
+        db_path = os.path.join(addon_dir, "user_files", "TestProfile", db.DB_NAME)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
         # Create DB with old schema (no read_page column)
@@ -391,7 +402,7 @@ class TestConnectionSwitching:
         old_conn.close()
 
         # get_connection should ADD the read_page column and commit (line 121)
-        conn = db.get_connection(addon_dir)
+        conn = db.get_connection(addon_dir, "TestProfile")
         columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
         assert "read_page" in columns
 
@@ -411,57 +422,57 @@ class TestExportHelpers:
 
     def test_export_priorities_json_empty(self):
         import json
-        result = json.loads(db.export_priorities_json(self.addon_dir))
+        result = json.loads(db.export_priorities_json(self.addon_dir, "TestProfile"))
         assert result == {}
 
     def test_export_priorities_json_with_data(self):
         import json
-        conn = db.get_connection(self.addon_dir)
+        conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute("INSERT INTO priorities VALUES (1, 25.0)")
         conn.execute("INSERT INTO priorities VALUES (2, 75.0)")
         conn.commit()
-        result = json.loads(db.export_priorities_json(self.addon_dir))
+        result = json.loads(db.export_priorities_json(self.addon_dir, "TestProfile"))
         assert result == {"1": 25.0, "2": 75.0}
 
     def test_export_pdf_progress_json_empty(self):
         import json
-        result = json.loads(db.export_pdf_progress_json(self.addon_dir))
+        result = json.loads(db.export_pdf_progress_json(self.addon_dir, "TestProfile"))
         assert result == {}
 
     def test_export_pdf_progress_json_with_data(self):
         import json
-        conn = db.get_connection(self.addon_dir)
+        conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute("INSERT INTO pdf_progress (card_id, page, zoom) VALUES (10, 3, 1.5)")
         conn.commit()
-        result = json.loads(db.export_pdf_progress_json(self.addon_dir))
+        result = json.loads(db.export_pdf_progress_json(self.addon_dir, "TestProfile"))
         assert "10" in result
         assert result["10"]["page"] == 3
         assert result["10"]["zoom"] == 1.5
 
     def test_export_highlights_json_empty(self):
         import json
-        result = json.loads(db.export_highlights_json(self.addon_dir))
+        result = json.loads(db.export_highlights_json(self.addon_dir, "TestProfile"))
         assert result == {}
 
     def test_export_highlights_json_with_data(self):
         import json
-        conn = db.get_connection(self.addon_dir)
+        conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute(
             "INSERT INTO pdf_highlights VALUES ('h1', 5, 2, 'blue', 'some text', '[]')"
         )
         conn.commit()
-        result = json.loads(db.export_highlights_json(self.addon_dir))
+        result = json.loads(db.export_highlights_json(self.addon_dir, "TestProfile"))
         assert "5" in result
         assert result["5"][0]["id"] == "h1"
 
     def test_export_stats_json_empty(self):
         import json
-        result = json.loads(db.export_stats_json(self.addon_dir))
+        result = json.loads(db.export_stats_json(self.addon_dir, "TestProfile"))
         assert result == {}
 
     def test_export_stats_json_with_daily_and_lifetime(self):
         import json
-        conn = db.get_connection(self.addon_dir)
+        conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute(
             "INSERT INTO stats VALUES ('daily', '2026-01-01', '{\"type\": {}}')"
         )
@@ -469,7 +480,7 @@ class TestExportHelpers:
             "INSERT INTO stats VALUES ('lifetime', NULL, '{\"type\": {\"topics\": 3}}')"
         )
         conn.commit()
-        result = json.loads(db.export_stats_json(self.addon_dir))
+        result = json.loads(db.export_stats_json(self.addon_dir, "TestProfile"))
         assert "daily" in result
         assert result["daily"]["date"] == "2026-01-01"
         assert result["lifetime"]["type"]["topics"] == 3
@@ -485,37 +496,37 @@ class TestSearchEdgeCases:
         _reset_db_module()
         self.addon_dir = _fresh_dir()
         # Pre-populate with some data
-        db.replace_pdf_text_index(self.addon_dir, 1, ["The quick brown fox jumps over the lazy dog"])
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 1, ["The quick brown fox jumps over the lazy dog"])
 
     def teardown_method(self):
         _reset_db_module()
 
     def test_query_with_only_single_char_tokens_returns_empty(self):
         """All tokens are 1 char — filtered out → return []."""
-        result = db.search_pdf_text_index(self.addon_dir, "a b c")
+        result = db.search_pdf_text_index(self.addon_dir, "TestProfile", "a b c")
         assert result == []
 
     def test_all_query_terms_are_required(self):
         """Broader partial matches should be rejected."""
-        result = db.search_pdf_text_index(self.addon_dir, "quick zebra")
+        result = db.search_pdf_text_index(self.addon_dir, "TestProfile", "quick zebra")
         assert result == []
 
     def test_multi_token_match(self):
         """Multiple tokens still match when they all appear."""
-        result = db.search_pdf_text_index(self.addon_dir, "quick lazy")
+        result = db.search_pdf_text_index(self.addon_dir, "TestProfile", "quick lazy")
         assert len(result) == 1
 
     def test_longer_prefix_query_narrows_results(self):
         db.replace_pdf_text_index(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             2,
             [
                 "Cell membrane transport controls diffusion",
                 "Each team member owns a different task",
             ],
         )
-        broad = db.search_pdf_text_index(self.addon_dir, "memb", limit=10)
-        narrow = db.search_pdf_text_index(self.addon_dir, "membra", limit=10)
+        broad = db.search_pdf_text_index(self.addon_dir, "TestProfile", "memb", limit=10)
+        narrow = db.search_pdf_text_index(self.addon_dir, "TestProfile", "membra", limit=10)
         assert {cid for cid, _, _ in broad} == {2}
         assert len(broad) == 2
         assert len(narrow) == 1
@@ -523,22 +534,22 @@ class TestSearchEdgeCases:
 
     def test_ordered_matches_rank_ahead_of_looser_matches(self):
         db.replace_pdf_text_index(
-            self.addon_dir,
+            self.addon_dir, "TestProfile",
             2,
             [
                 "Cell membrane transport is tightly regulated",
                 "Membrane transport happens after the cell adapts",
             ],
         )
-        results = db.search_pdf_text_index(self.addon_dir, "cell transp", limit=5)
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "cell transp", limit=5)
         assert len(results) >= 2
         assert results[0][2].startswith("Cell membrane transport")
 
     def test_limit_stops_early(self):
         """Results are truncated at the limit."""
         for cid in range(1, 10):
-            db.replace_pdf_text_index(self.addon_dir, cid, [f"needle appears here page {cid}"])
-        results = db.search_pdf_text_index(self.addon_dir, "needle", limit=3)
+            db.replace_pdf_text_index(self.addon_dir, "TestProfile", cid, [f"needle appears here page {cid}"])
+        results = db.search_pdf_text_index(self.addon_dir, "TestProfile", "needle", limit=3)
         assert len(results) <= 3
 
 
@@ -556,24 +567,24 @@ class TestTopicSchedule:
         _reset_db_module()
 
     def test_get_default_when_not_set(self):
-        a_factor, interval = db.get_topic_schedule(self.addon_dir, 42)
+        a_factor, interval = db.get_topic_schedule(self.addon_dir, "TestProfile", 42)
         assert a_factor == 3.5
         assert interval == 1
 
     def test_set_and_get_topic_schedule(self):
-        db.set_topic_schedule(self.addon_dir, 42, 2.0, 7)
-        a_factor, interval = db.get_topic_schedule(self.addon_dir, 42)
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 42, 2.0, 7)
+        a_factor, interval = db.get_topic_schedule(self.addon_dir, "TestProfile", 42)
         assert a_factor == 2.0
         assert interval == 7
 
     def test_overwrite_existing_schedule(self):
-        db.set_topic_schedule(self.addon_dir, 10, 3.0, 5)
-        db.set_topic_schedule(self.addon_dir, 10, 4.5, 14)
-        a_factor, interval = db.get_topic_schedule(self.addon_dir, 10)
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 10, 3.0, 5)
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 10, 4.5, 14)
+        a_factor, interval = db.get_topic_schedule(self.addon_dir, "TestProfile", 10)
         assert a_factor == 4.5
         assert interval == 14
 
     def test_rounds_a_factor_to_three_decimals(self):
-        db.set_topic_schedule(self.addon_dir, 7, 2.12345, 3)
-        a_factor, _ = db.get_topic_schedule(self.addon_dir, 7)
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 7, 2.12345, 3)
+        a_factor, _ = db.get_topic_schedule(self.addon_dir, "TestProfile", 7)
         assert a_factor == round(2.12345, 3)

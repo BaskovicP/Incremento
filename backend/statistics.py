@@ -5,8 +5,10 @@ from datetime import datetime, timedelta
 
 try:
     from .db import get_connection
+    from .paths import get_stats_path as _get_stats_path
 except ImportError:
     from db import get_connection  # test environment (backend/ on sys.path)
+    from paths import get_stats_path as _get_stats_path
 
 
 def _empty() -> dict:
@@ -53,12 +55,8 @@ def _is_valid_time_block(d) -> bool:
     )
 
 
-def _stats_path(addon_dir: str) -> str:
-    return os.path.join(addon_dir, "user_files", "custom_learn_stats.json")
-
-
-def load_stats(addon_dir: str) -> dict:
-    path = _stats_path(addon_dir)
+def load_stats(addon_dir: str, profile: str) -> dict:
+    path = str(_get_stats_path(addon_dir, profile))
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -70,7 +68,7 @@ def load_stats(addon_dir: str) -> dict:
     # Backward-compatible fallback for users that only have DB-backed stats.
     try:
         rows = (
-            get_connection(addon_dir)
+            get_connection(addon_dir, profile)
             .execute("SELECT scope, date, data FROM stats")
             .fetchall()
         )
@@ -86,8 +84,8 @@ def load_stats(addon_dir: str) -> dict:
     return result
 
 
-def save_stats(addon_dir: str, stats: dict) -> None:
-    path = _stats_path(addon_dir)
+def save_stats(addon_dir: str, profile: str, stats: dict) -> None:
+    path = str(_get_stats_path(addon_dir, profile))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -96,7 +94,7 @@ def save_stats(addon_dir: str, stats: dict) -> None:
 
     # Keep DB export path functional (best effort).
     try:
-        conn = get_connection(addon_dir)
+        conn = get_connection(addon_dir, profile)
         if "daily" in stats:
             d = stats["daily"]
             conn.execute(
@@ -118,9 +116,9 @@ def save_stats(addon_dir: str, stats: dict) -> None:
         pass
 
 
-def delete_daily_stats(addon_dir: str) -> None:
+def delete_daily_stats(addon_dir: str, profile: str) -> None:
     """Remove today's statistics."""
-    stats = load_stats(addon_dir)
+    stats = load_stats(addon_dir, profile)
     if "daily" in stats:
         del stats["daily"]
     if isinstance(stats.get("time"), dict) and "daily" in stats["time"]:
@@ -128,19 +126,19 @@ def delete_daily_stats(addon_dir: str) -> None:
         if not stats["time"]:
             del stats["time"]
     if "daily" in stats or "time" in stats:
-        save_stats(addon_dir, stats)
+        save_stats(addon_dir, profile, stats)
 
     try:
-        conn = get_connection(addon_dir)
+        conn = get_connection(addon_dir, profile)
         conn.execute("DELETE FROM stats WHERE scope = 'daily'")
         conn.commit()
     except Exception:
         pass
 
 
-def delete_lifetime_stats(addon_dir: str) -> None:
+def delete_lifetime_stats(addon_dir: str, profile: str) -> None:
     """Remove lifetime statistics."""
-    stats = load_stats(addon_dir)
+    stats = load_stats(addon_dir, profile)
     if "lifetime" in stats:
         del stats["lifetime"]
     if isinstance(stats.get("time"), dict) and "lifetime" in stats["time"]:
@@ -148,24 +146,24 @@ def delete_lifetime_stats(addon_dir: str) -> None:
         if not stats["time"]:
             del stats["time"]
     if "lifetime" in stats or "time" in stats:
-        save_stats(addon_dir, stats)
+        save_stats(addon_dir, profile, stats)
 
     try:
-        conn = get_connection(addon_dir)
+        conn = get_connection(addon_dir, profile)
         conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
         conn.commit()
     except Exception:
         pass
 
 
-def delete_all_stats(addon_dir: str) -> None:
+def delete_all_stats(addon_dir: str, profile: str) -> None:
     """Delete all statistics data."""
-    path = _stats_path(addon_dir)
+    path = str(_get_stats_path(addon_dir, profile))
     if os.path.exists(path):
         os.remove(path)
 
     try:
-        conn = get_connection(addon_dir)
+        conn = get_connection(addon_dir, profile)
         conn.execute("DELETE FROM stats")
         conn.commit()
     except Exception:
@@ -173,13 +171,14 @@ def delete_all_stats(addon_dir: str) -> None:
 
 
 class StatsManager:
-    def __init__(self, addon_dir: str, day_end_time: str = "00:00"):
+    def __init__(self, addon_dir: str, profile: str, day_end_time: str = "00:00"):
         self._addon_dir = addon_dir
+        self._profile = profile
         self._day_end_time = day_end_time
         self.session = _empty()
         self.session_time = _empty_time()
 
-        raw = load_stats(addon_dir)
+        raw = load_stats(addon_dir, profile)
 
         lt = raw.get("lifetime")
         self.lifetime = lt if _is_valid_counts_block(lt) else _empty()
@@ -278,4 +277,4 @@ class StatsManager:
                 "lifetime": self.lifetime_time,
             },
         }
-        save_stats(self._addon_dir, stats)
+        save_stats(self._addon_dir, self._profile, stats)

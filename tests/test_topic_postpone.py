@@ -14,7 +14,7 @@ def teardown_function():
 
 
 def _patch_topic_postpone_db(tmp_path):
-    return patch("topic_postpone.get_connection", side_effect=lambda _addon_dir: db.get_connection(str(tmp_path)))
+    return patch("topic_postpone.get_connection", side_effect=lambda _addon_dir, _profile="TestProfile": db.get_connection(str(tmp_path), "TestProfile"))
 
 
 def test_topic_postpone_config_defaults():
@@ -61,7 +61,7 @@ def test_store_timed_topic_postpone_writes_db_and_buries(tmp_path):
         )
 
     assert until_ts == 2_800
-    row = db.get_connection(str(tmp_path)).execute(
+    row = db.get_connection(str(tmp_path), "TestProfile").execute(
         "SELECT until_ts FROM topic_postpones WHERE card_id = ?",
         (42,),
     ).fetchone()
@@ -71,7 +71,7 @@ def test_store_timed_topic_postpone_writes_db_and_buries(tmp_path):
 
 def test_release_expired_timed_postpones_clears_db_and_unburies(tmp_path):
     with _patch_topic_postpone_db(tmp_path), patch("topic_postpone.mw") as mock_mw:
-        conn = db.get_connection(str(tmp_path))
+        conn = db.get_connection(str(tmp_path), "TestProfile")
         conn.execute(
             "INSERT INTO topic_postpones (card_id, until_ts) VALUES (?, ?)",
             (42, 100),
@@ -85,7 +85,7 @@ def test_release_expired_timed_postpones_clears_db_and_unburies(tmp_path):
         restored = topic_postpone.release_expired_timed_postpones(now=500.0)
 
     assert restored == [42]
-    rows = db.get_connection(str(tmp_path)).execute(
+    rows = db.get_connection(str(tmp_path), "TestProfile").execute(
         "SELECT card_id, until_ts FROM topic_postpones ORDER BY card_id"
     ).fetchall()
     assert rows == [(43, 9_999)]
@@ -94,7 +94,7 @@ def test_release_expired_timed_postpones_clears_db_and_unburies(tmp_path):
 
 def test_next_timed_postpone_at_returns_earliest_future_timestamp(tmp_path):
     with _patch_topic_postpone_db(tmp_path):
-        conn = db.get_connection(str(tmp_path))
+        conn = db.get_connection(str(tmp_path), "TestProfile")
         conn.executemany(
             "INSERT INTO topic_postpones (card_id, until_ts) VALUES (?, ?)",
             [(1, 100), (2, 900), (3, 700)],

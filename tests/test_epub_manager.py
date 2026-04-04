@@ -97,24 +97,22 @@ class TestEnsureEpubExtracted:
 class TestEpubProgressAndIndex:
     def test_progress_round_trip(self, tmp_path):
         addon_dir = str(tmp_path)
-        assert epub_manager.get_epub_progress(addon_dir, 10) == (0, 0.0, False)
+        assert epub_manager.get_epub_progress(addon_dir, "TestProfile", 10) == (0, 0.0, False)
 
         epub_manager.set_epub_progress(
-            addon_dir,
-            10,
+            addon_dir, "TestProfile", 10,
             section_index=3,
             scroll_ratio=0.45,
             is_finished=True,
         )
 
-        assert epub_manager.get_epub_progress(addon_dir, 10) == (3, 0.45, True)
+        assert epub_manager.get_epub_progress(addon_dir, "TestProfile", 10) == (3, 0.45, True)
 
     def test_replace_and_search_epub_text_index(self, tmp_path):
         db.replace_epub_text_index(
-            str(tmp_path),
-            42,
+            str(tmp_path), "TestProfile", 42,
             [("Intro", "Alpha beta gamma"), ("Deep Dive", "Second chapter text")],
         )
 
-        hits = db.search_epub_text_index(str(tmp_path), "second cha", limit=10)
+        hits = db.search_epub_text_index(str(tmp_path), "TestProfile", "second cha", limit=10)
         assert hits == [(42, 1, "Deep Dive", "Second chapter text")]

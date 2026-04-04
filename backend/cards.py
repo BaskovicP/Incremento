@@ -3,9 +3,11 @@ from aqt import mw
 try:
     from .priority_manager import get_all_priorities
     from .epub_manager import DOCUMENT_FILTER
+    from .paths import get_active_profile as _active_profile
 except ImportError:
     from priority_manager import get_all_priorities  # type: ignore
     from epub_manager import DOCUMENT_FILTER  # type: ignore
+    from paths import get_active_profile as _active_profile  # type: ignore
 
 all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
 
@@ -43,7 +45,7 @@ def sort_cards_for_priority_mode(
         f"SELECT id, due FROM cards WHERE id IN ({placeholders})", *ids
     )
     due_map = {row[0]: row[1] for row in rows}
-    priority_map = get_all_priorities(addon_dir) if addon_dir else {}
+    priority_map = get_all_priorities(addon_dir, _active_profile()) if addon_dir else {}
 
     if lower_is_more_important:
         ids.sort(

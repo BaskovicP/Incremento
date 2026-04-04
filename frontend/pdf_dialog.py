@@ -525,16 +525,18 @@ class AddPdfDialog(QDialog):
             )
             from ..backend.db import replace_pdf_text_index
             from ..backend.priority_manager import set_priority
+            from ..backend.paths import get_active_profile as _active_profile
         except Exception:
             from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
             from db import replace_pdf_text_index
             from priority_manager import set_priority
+            from paths import get_active_profile as _active_profile
 
         self._set_row_status(path, "OCR…" if do_ocr else "Adding…")
 
         try:
             cid = add_pdf_card(self._addon_dir, mw.col, path, title, deck_name=deck, tags=tags)
-            set_priority(self._addon_dir, cid, priority)
+            set_priority(self._addon_dir, _active_profile(), cid, priority)
         except Exception as e:
             self.failed.append((path, str(e)))
             self._set_row_status(path, "✗", color="red")
@@ -567,7 +569,7 @@ class AddPdfDialog(QDialog):
             try:
                 page_texts = fut.result()
                 if page_texts:
-                    replace_pdf_text_index(self._addon_dir, cid, page_texts)
+                    replace_pdf_text_index(self._addon_dir, _active_profile(), cid, page_texts)
                     ocr_ok = True
             except Exception:
                 pass

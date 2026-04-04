@@ -16,6 +16,11 @@ from aqt.qt import (
 from aqt.utils import showInfo, tooltip
 
 try:
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from paths import get_active_profile as _active_profile
+
+try:
     from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from ..backend.scheduler_preview import compute_expected_mix
     from ..backend.session_selection import select_session_cards
@@ -251,7 +256,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
             parts.append(f"<div><b>PDF file:</b> {escape(entry['pdf_filename'])}</div>")
             if entry.get("pdf_exists") is not None:
                 parts.append(
-                    f"<div><b>PDF status:</b> {'found' if entry['pdf_exists'] else 'missing in user_files/pdfs'}</div>"
+                    f"<div><b>PDF status:</b> {'found' if entry['pdf_exists'] else 'missing in user_files/' + _active_profile() + '/pdfs'}</div>"
                 )
             if entry.get("pdf_page") is not None:
                 parts.append(f"<div><b>Current page:</b> {entry['pdf_page']}</div>")
@@ -326,11 +331,11 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 if card_type == "pdf":
                     pdf_filename = self._safe_note_field(note, "PDF_Filename")
                     try:
-                        pdf_page = int(get_page(_ADDON_DIR, cid))
+                        pdf_page = int(get_page(_ADDON_DIR, _active_profile(), cid))
                     except Exception:
                         pdf_page = None
                     try:
-                        pdf_read_page = int(get_read_page(_ADDON_DIR, cid))
+                        pdf_read_page = int(get_read_page(_ADDON_DIR, _active_profile(), cid))
                     except Exception:
                         pdf_read_page = None
                     if pdf_filename:
@@ -2518,7 +2523,7 @@ class SchedulerConfigDialog(QDialog):
         if not self._confirm("Delete Today's Data",
                              "Delete all statistics for today?\nThis cannot be undone."):
             return
-        delete_daily_stats(_ADDON_DIR)
+        delete_daily_stats(_ADDON_DIR, _active_profile())
         showInfo("Today's statistics have been deleted.")
 
     def _delete_session(self) -> None:
@@ -2533,7 +2538,7 @@ class SchedulerConfigDialog(QDialog):
         if not self._confirm("Delete All-Time Data",
                              "Delete all lifetime statistics?\nThis cannot be undone."):
             return
-        delete_lifetime_stats(_ADDON_DIR)
+        delete_lifetime_stats(_ADDON_DIR, _active_profile())
         showInfo("All-time statistics have been deleted.")
 
     def _delete_all(self) -> None:
@@ -2541,13 +2546,13 @@ class SchedulerConfigDialog(QDialog):
                              "Delete ALL statistics (today, all time, and session)?\n"
                              "This cannot be undone."):
             return
-        delete_all_stats(_ADDON_DIR)
+        delete_all_stats(_ADDON_DIR, _active_profile())
         if self._on_clear_session:
             self._on_clear_session()
         showInfo("All statistics history has been deleted.")
 
     def _export_json(self) -> None:
-        raw = load_stats(_ADDON_DIR)
+        raw = load_stats(_ADDON_DIR, _active_profile())
         if not raw:
             showInfo("No statistics data to export.")
             return

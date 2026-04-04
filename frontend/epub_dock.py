@@ -21,6 +21,11 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from paths import get_active_profile as _active_profile
+
+try:
     from ..backend.epub_manager import (
         EPUB_FILE_FIELD,
         EPUB_NOTE_TYPE,
@@ -137,14 +142,14 @@ class _EpubDockPage(QWebEnginePage):
         if msg.startswith(_MSG_HL_ADD):
             try:
                 data = json.loads(msg[len(_MSG_HL_ADD) :])
-                add_highlight(_ADDON_DIR, int(data["cardId"]), data["highlight"])
+                add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight add failed: {exc}")
             return
         if msg.startswith(_MSG_HL_DEL):
             try:
                 data = json.loads(msg[len(_MSG_HL_DEL) :])
-                remove_highlight(_ADDON_DIR, int(data["cardId"]), str(data["id"]))
+                remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), str(data["id"]))
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight remove failed: {exc}")
             return
@@ -517,8 +522,8 @@ def _update_title_and_buttons() -> None:
 def _update_sources_panel() -> None:
     if _epub_dock is None or _current_epub_card_id is None:
         return
-    cards = get_epub_card_sources(_ADDON_DIR, _current_epub_card_id, _current_epub_section_index)
-    counts = get_epub_section_card_counts(_ADDON_DIR, _current_epub_card_id)
+    cards = get_epub_card_sources(_ADDON_DIR, _active_profile(), _current_epub_card_id, _current_epub_section_index)
+    counts = get_epub_section_card_counts(_ADDON_DIR, _active_profile(), _current_epub_card_id)
     count = int(counts.get(_current_epub_section_index, 0) or 0)
     _epub_dock._source_lbl.setText(f"Cards here: {count}")
     if not cards:
@@ -547,6 +552,7 @@ def _record_progress(section_index: int, scroll_ratio: float) -> None:
     try:
         set_epub_progress(
             _ADDON_DIR,
+            _active_profile(),
             _current_epub_card_id,
             section_index=_current_epub_section_index,
             scroll_ratio=_current_epub_scroll_ratio,
@@ -589,7 +595,7 @@ def _on_load_finished(ok: bool) -> None:
         return
     highlights = [
         hl
-        for hl in load_highlights(_ADDON_DIR, _current_epub_card_id)
+        for hl in load_highlights(_ADDON_DIR, _active_profile(), _current_epub_card_id)
         if int(hl.get("sectionIndex", -1)) == int(_current_epub_section_index)
     ]
     js = _build_page_script(
@@ -644,7 +650,7 @@ def show_epub_in_dock(
     _pending_search_query = str(search_query or "")
     _pending_explicit_navigation = True
     _last_selection_meta = {}
-    _, _, _current_epub_finished = get_epub_progress(_ADDON_DIR, _current_epub_card_id)
+    _, _, _current_epub_finished = get_epub_progress(_ADDON_DIR, _active_profile(), _current_epub_card_id)
 
     _update_title_and_buttons()
     _update_sources_panel()
@@ -663,7 +669,7 @@ def open_epub_location(
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
     filename = note[EPUB_FILE_FIELD]
-    current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, card_id)
+    current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, _active_profile(), card_id)
     show_epub_in_dock(
         card_id,
         filename,
@@ -725,6 +731,7 @@ def _toggle_finished(checked: bool) -> None:
     try:
         set_epub_progress(
             _ADDON_DIR,
+            _active_profile(),
             _current_epub_card_id,
             section_index=_current_epub_section_index,
             scroll_ratio=_current_epub_scroll_ratio,
@@ -749,7 +756,7 @@ def on_epub_question_shown(card) -> None:
                     _epub_dock = None
             return
         filename = note[EPUB_FILE_FIELD]
-        section_index, scroll_ratio, _is_finished = get_epub_progress(_ADDON_DIR, card.id)
+        section_index, scroll_ratio, _is_finished = get_epub_progress(_ADDON_DIR, _active_profile(), card.id)
         show_epub_in_dock(
             card.id,
             filename,

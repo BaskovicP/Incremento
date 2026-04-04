@@ -35,6 +35,11 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtCore import QEvent, QObject, QUrl
 
 try:
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from paths import get_active_profile as _active_profile
+
+try:
     from ..backend.pdf_manager import (
         PDF_NOTE_TYPE,
         get_page,
@@ -128,7 +133,7 @@ def pdf_citation() -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
     if not _current_pdf_card_id or not _current_pdf_filename:
         return ""
-    page = get_page(_ADDON_DIR, _current_pdf_card_id)
+    page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
     name = os.path.splitext(_current_pdf_filename)[0]
     cmd = f"incremento_open_pdf:{_current_pdf_card_id}:{page}"
     return (
@@ -175,7 +180,7 @@ class _PdfDockPage(QWebEnginePage):
                     cid = int(parts[1])
                     pg = int(parts[2])
                     if not _pdf_via_link and not _pdf_preserve_history:
-                        set_page(_ADDON_DIR, cid, pg)
+                        set_page(_ADDON_DIR, _active_profile(), cid, pg)
                     if _timer_mod._timer_running:
                         _timer_mod._timer_pdf_pages.add((cid, pg))
                 except ValueError:
@@ -185,19 +190,19 @@ class _PdfDockPage(QWebEnginePage):
             if len(parts) == 3:
                 try:
                     if not _pdf_preserve_history:
-                        set_zoom(_ADDON_DIR, int(parts[1]), float(parts[2]))
+                        set_zoom(_ADDON_DIR, _active_profile(), int(parts[1]), float(parts[2]))
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_HL_ADD):
             try:
                 data = json.loads(msg[len(_MSG_HL_ADD) :])
-                add_highlight(_ADDON_DIR, int(data["cardId"]), data["highlight"])
+                add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
             except Exception as e:
                 print(f"[Incremento] pdf_dock: highlight add failed: {e}")
         elif msg.startswith(_MSG_HL_DEL):
             try:
                 data = json.loads(msg[len(_MSG_HL_DEL) :])
-                remove_highlight(_ADDON_DIR, int(data["cardId"]), data["id"])
+                remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["id"])
             except Exception as e:
                 print(f"[Incremento] pdf_dock: highlight delete failed: {e}")
         elif msg.startswith(_MSG_MARK_READ):
@@ -205,7 +210,7 @@ class _PdfDockPage(QWebEnginePage):
             if len(parts) == 3:
                 try:
                     if not _pdf_preserve_history:
-                        set_read_page(_ADDON_DIR, int(parts[1]), int(parts[2]))
+                        set_read_page(_ADDON_DIR, _active_profile(), int(parts[1]), int(parts[2]))
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_CMD1):
@@ -263,8 +268,8 @@ class _PdfDockPage(QWebEnginePage):
                 if len(parts) == 3:
                     cid = int(parts[1])
                     page = int(parts[2])
-                    cards = get_pdf_card_sources(_ADDON_DIR, cid, page)
-                    counts = get_pdf_page_card_counts(_ADDON_DIR, cid)
+                    cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), cid, page)
+                    counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), cid)
                     data = {"page": page, "cards": cards, "pageCounts": counts}
                     js = (
                         "window.incrementoReceivePageCards && "
@@ -618,7 +623,7 @@ def show_pdf_in_dock(
         os.path.join(get_pdf_dir(), filename)
     ).toString()
 
-    hls = load_highlights(_ADDON_DIR, card_id)
+    hls = load_highlights(_ADDON_DIR, _active_profile(), card_id)
 
     js = (
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
@@ -670,9 +675,9 @@ def on_pdf_question_shown(card) -> None:
             filename = note["PDF_Filename"]
         except (KeyError, TypeError):
             return
-        page = get_page(_ADDON_DIR, card.id)
-        zoom = get_zoom(_ADDON_DIR, card.id)
-        read_page = get_read_page(_ADDON_DIR, card.id)
+        page = get_page(_ADDON_DIR, _active_profile(), card.id)
+        zoom = get_zoom(_ADDON_DIR, _active_profile(), card.id)
+        read_page = get_read_page(_ADDON_DIR, _active_profile(), card.id)
         show_pdf_in_dock(card.id, filename, page, zoom, read_page=read_page)
     except Exception as e:
         print(f"[Incremento] on_pdf_question_shown error: {e}")
@@ -693,7 +698,7 @@ def on_add_cards_did_add_note(note) -> None:
     """When a card is saved in the AddCards dock, record it against the current PDF page."""
     if _current_pdf_card_id is None:
         return
-    page = get_page(_ADDON_DIR, _current_pdf_card_id)
+    page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
     import re as _re
 
     parts = []
@@ -703,14 +708,14 @@ def on_add_cards_did_add_note(note) -> None:
             parts.append(plain)
     excerpt = " / ".join(parts)[:200]
     try:
-        add_pdf_card_source(_ADDON_DIR, _current_pdf_card_id, page, note.id, excerpt)
+        add_pdf_card_source(_ADDON_DIR, _active_profile(), _current_pdf_card_id, page, note.id, excerpt)
     except Exception:
         pass
     if _pdf_dock is None:
         return
     try:
-        cards = get_pdf_card_sources(_ADDON_DIR, _current_pdf_card_id, page)
-        counts = get_pdf_page_card_counts(_ADDON_DIR, _current_pdf_card_id)
+        cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), _current_pdf_card_id, page)
+        counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
         data = {"page": page, "cards": cards, "pageCounts": counts}
         js = (
             "window.incrementoReceivePageCards && "
