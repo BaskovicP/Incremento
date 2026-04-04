@@ -7,9 +7,10 @@ to user_files/writing/<file>.md while typing.
 
 import datetime
 import os
+import subprocess
+import sys
 
 from aqt import mw
-from aqt.utils import tooltip
 from aqt.qt import (
     QDockWidget,
     QWidget,
@@ -87,15 +88,15 @@ def _build_writing_dock():
     layout.setContentsMargins(8, 6, 8, 8)
     layout.setSpacing(6)
 
-    top = QHBoxLayout()
+    top = QVBoxLayout()
     title_lbl = QLabel("")
     title_lbl.setStyleSheet("font-size: 13px; font-weight: 600;")
     file_lbl = QLabel("")
     file_lbl.setStyleSheet("font-family: monospace; color: #8a8f99;")
-    open_dir_btn = QPushButton("Open Folder")
-    top.addWidget(title_lbl, 1)
-    top.addWidget(file_lbl, 2)
-    top.addWidget(open_dir_btn)
+    file_lbl.setWordWrap(True)
+    open_dir_btn = QPushButton("Reveal File")
+    top.addWidget(title_lbl)
+    top.addWidget(file_lbl)
     layout.addLayout(top)
 
     split = QSplitter(Qt.Orientation.Horizontal, root)
@@ -127,6 +128,11 @@ def _build_writing_dock():
     split.setStretchFactor(0, 1)
     split.setStretchFactor(1, 1)
     layout.addWidget(split, 1)
+
+    action_row = QHBoxLayout()
+    action_row.addStretch(1)
+    action_row.addWidget(open_dir_btn)
+    layout.addLayout(action_row)
 
     bottom = QHBoxLayout()
     status_lbl = QLabel("Idle")
@@ -161,7 +167,22 @@ def _build_writing_dock():
 
 
 def _open_writing_folder() -> None:
-    QDesktopServices.openUrl(QUrl.fromLocalFile(get_writing_dir()))
+    path = ""
+    if _current_writing_relpath:
+        path = ensure_writing_file(_ADDON_DIR, _current_writing_relpath)
+    if not path:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(get_writing_dir()))
+        return
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", path])
+            return
+        if sys.platform.startswith("win"):
+            subprocess.Popen(["explorer", f"/select,{os.path.normpath(path)}"])
+            return
+    except Exception:
+        pass
+    QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
 
 def _set_status(text: str) -> None:
