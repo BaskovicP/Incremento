@@ -37,6 +37,14 @@ _DEFAULT_EXTRACT_SOURCE_LINKS = {
 }
 
 
+def _detach_embedded_window_menu_bar(window) -> None:
+    """Prevent an embedded QMainWindow from overriding Anki's native menu bar."""
+    try:
+        window.setMenuBar(None)
+    except Exception:
+        pass
+
+
 def _normalize_text(text) -> str:
     return str(text or "").replace("\u2029", "\n").strip()
 
@@ -381,6 +389,7 @@ def build_add_card_dock():
     # floating window, then reparent it into the dock as a plain widget.
     dlg = AddCards(mw)
     dlg.hide()
+    _detach_embedded_window_menu_bar(dlg)
     dlg.setParent(dock)
     dlg.setWindowFlags(Qt.WindowType.Widget)
     dock.setWidget(dlg)

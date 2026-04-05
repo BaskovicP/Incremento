@@ -116,6 +116,8 @@ except Exception:
 
 _shortcut_actions: dict[str, object] = {}
 _topic_postpone_timer: QTimer | None = None
+_menu: QMenu | None = None
+_timerToggleAction: QAction | None = None
 
 
 def _register_shortcut_action(action_id: str, action_obj) -> None:
@@ -817,9 +819,6 @@ gui_hooks.main_window_did_init.append(_check_deps_first_run)
 
 def _build_timer_toolbar() -> None:
     build_timer_toolbar(_timerToggleAction)
-
-
-gui_hooks.main_window_did_init.append(_build_timer_toolbar)
 
 
 # ── Option+P quick-jump to PDF ────────────────────────────────────────────────
@@ -2361,6 +2360,8 @@ def openAboutFunction() -> None:
 
 
 def _ensure_settings_menu_action() -> None:
+    if _menu is None:
+        return
     for act in _menu.actions():
         if act.text() == "Settings":
             return
@@ -2384,135 +2385,154 @@ def _ensure_settings_menu_action() -> None:
 
 # ── Incremento top-level menu ─────────────────────────────────────────────────
 
-_menu = QMenu("Incremento", mw)
-mw.menuBar().addMenu(_menu)
+def _build_incremento_menu() -> None:
+    """Build and attach the Incremento menu, or re-attach it if Anki removed it."""
+    global _menu, _timerToggleAction
 
-_startAction = QAction("Start Incremental Learning", mw)
-qconnect(_startAction.triggered, learnFunction)
-_menu.addAction(_startAction)
-_register_shortcut_action("start_learning", _startAction)
+    menubar = mw.menuBar()
+    if menubar is None:
+        return
 
-_settingsAction = QAction("Settings", mw)
-_settingsAction.setMenuRole(QAction.MenuRole.NoRole)
-qconnect(_settingsAction.triggered, openSettingsFunction)
-_menu.addAction(_settingsAction)
-_register_shortcut_action("open_settings", _settingsAction)
+    # Already attached — nothing to do.
+    for act in menubar.actions():
+        if act.text() == "Incremento":
+            _menu = act.menu()
+            menubar.update()
+            return
 
-_aboutAction = QAction("About", mw)
-_aboutAction.setMenuRole(QAction.MenuRole.NoRole)
-qconnect(_aboutAction.triggered, openAboutFunction)
-_menu.addAction(_aboutAction)
+    _menu = QMenu("Incremento", menubar)
+    menubar.addMenu(_menu)
 
-_menu.addSeparator()
+    _startAction = QAction("Start Incremental Learning", mw)
+    qconnect(_startAction.triggered, learnFunction)
+    _menu.addAction(_startAction)
+    _register_shortcut_action("start_learning", _startAction)
 
-_addContentMenu = QMenu("Add Content", mw)
-_menu.addMenu(_addContentMenu)
+    _settingsAction = QAction("Settings", mw)
+    _settingsAction.setMenuRole(QAction.MenuRole.NoRole)
+    qconnect(_settingsAction.triggered, openSettingsFunction)
+    _menu.addAction(_settingsAction)
+    _register_shortcut_action("open_settings", _settingsAction)
 
-_addPdfAction = QAction("Add PDF", mw)
-qconnect(_addPdfAction.triggered, addPdfFunction)
-_addContentMenu.addAction(_addPdfAction)
-_register_shortcut_action("add_pdf", _addPdfAction)
+    _aboutAction = QAction("About", mw)
+    _aboutAction.setMenuRole(QAction.MenuRole.NoRole)
+    qconnect(_aboutAction.triggered, openAboutFunction)
+    _menu.addAction(_aboutAction)
 
-_addEpubAction = QAction("Add EPUB", mw)
-qconnect(_addEpubAction.triggered, addEpubFunction)
-_addContentMenu.addAction(_addEpubAction)
-_register_shortcut_action("add_epub", _addEpubAction)
+    _menu.addSeparator()
 
-_addWebpageAction = QAction("Webpage to PDF", mw)
-qconnect(_addWebpageAction.triggered, addWebpageFunction)
-_addContentMenu.addAction(_addWebpageAction)
-_register_shortcut_action("webpage_to_pdf", _addWebpageAction)
+    _addContentMenu = QMenu("Add Content", _menu)
+    _menu.addMenu(_addContentMenu)
 
-_addVideoAction = QAction("Add Video", mw)
-qconnect(_addVideoAction.triggered, addVideoFunction)
-_addContentMenu.addAction(_addVideoAction)
-_register_shortcut_action("youtube_video", _addVideoAction)
+    _addPdfAction = QAction("Add PDF", mw)
+    qconnect(_addPdfAction.triggered, addPdfFunction)
+    _addContentMenu.addAction(_addPdfAction)
+    _register_shortcut_action("add_pdf", _addPdfAction)
 
-_addWritingAction = QAction("Add to Markdown", mw)
-qconnect(_addWritingAction.triggered, addWritingFunction)
-_addContentMenu.addAction(_addWritingAction)
-_register_shortcut_action("add_writing", _addWritingAction)
+    _addEpubAction = QAction("Add EPUB", mw)
+    qconnect(_addEpubAction.triggered, addEpubFunction)
+    _addContentMenu.addAction(_addEpubAction)
+    _register_shortcut_action("add_epub", _addEpubAction)
 
-_addWebAction = QAction("Web Page", mw)
-qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
-_addContentMenu.addAction(_addWebAction)
-_register_shortcut_action("add_web_page", _addWebAction)
+    _addWebpageAction = QAction("Webpage to PDF", mw)
+    qconnect(_addWebpageAction.triggered, addWebpageFunction)
+    _addContentMenu.addAction(_addWebpageAction)
+    _register_shortcut_action("webpage_to_pdf", _addWebpageAction)
 
-_menu.addSeparator()
+    _addVideoAction = QAction("Add Video", mw)
+    qconnect(_addVideoAction.triggered, addVideoFunction)
+    _addContentMenu.addAction(_addVideoAction)
+    _register_shortcut_action("youtube_video", _addVideoAction)
 
-_timerToggleAction = QAction("Show Focus Timer", mw)
-_timerToggleAction.setCheckable(True)
-_timerToggleAction.setChecked(True)  # default; corrected by _build_timer_toolbar
+    _addWritingAction = QAction("Add to Markdown", mw)
+    qconnect(_addWritingAction.triggered, addWritingFunction)
+    _addContentMenu.addAction(_addWritingAction)
+    _register_shortcut_action("add_writing", _addWritingAction)
+
+    _addWebAction = QAction("Web Page", mw)
+    qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
+    _addContentMenu.addAction(_addWebAction)
+    _register_shortcut_action("add_web_page", _addWebAction)
+
+    _menu.addSeparator()
+
+    _timerToggleAction = QAction("Show Focus Timer", mw)
+    _timerToggleAction.setCheckable(True)
+    _timerToggleAction.setChecked(True)  # default; corrected by _build_timer_toolbar
+
+    def _on_timer_toggle(checked: bool) -> None:
+        if _timer_mod._timer_toolbar is not None:
+            _timer_mod._timer_toolbar.setVisible(checked)
+        cfg = mw.addonManager.getConfig(__name__) or {}
+        cfg["show_timer"] = checked
+        mw.addonManager.writeConfig(__name__, cfg)
+
+    qconnect(_timerToggleAction.triggered, _on_timer_toggle)
+    _menu.addAction(_timerToggleAction)
+    _register_shortcut_action("toggle_focus_timer", _timerToggleAction)
+
+    _menu.addSeparator()
+
+    _utilsMenu = QMenu("Utils", _menu)
+    _menu.addMenu(_utilsMenu)
+
+    def _check_deps_manual() -> None:
+        from .backend.deps import show_setup_dialog
+        show_setup_dialog(mw, force=True)
+
+    _checkDepsAction = QAction("Check Dependencies…", mw)
+    qconnect(_checkDepsAction.triggered, _check_deps_manual)
+    _utilsMenu.addAction(_checkDepsAction)
+
+    _utilsMenu.addSeparator()
+
+    _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
+    qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
+    _utilsMenu.addAction(_reindexPdfTextAction)
+
+    _cleanupNonActiveProfileDataAction = QAction("Clean Non-Active Profile Data…", mw)
+    qconnect(_cleanupNonActiveProfileDataAction.triggered, cleanupNonActiveProfileDataFunction)
+    _utilsMenu.addAction(_cleanupNonActiveProfileDataAction)
+
+    _utilsMenu.addSeparator()
+
+    _cleanupOrphanPdfsAction = QAction("Clean Up Orphaned PDF Files…", mw)
+    qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)
+    _utilsMenu.addAction(_cleanupOrphanPdfsAction)
+
+    _cleanupOrphanVideosAction = QAction("Clean Up Orphaned Video Files…", mw)
+    qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
+    _utilsMenu.addAction(_cleanupOrphanVideosAction)
+
+    _cleanupStaleProgressAction = QAction("Clean Up Stale Progress Rows…", mw)
+    qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
+    _utilsMenu.addAction(_cleanupStaleProgressAction)
+
+    _statsAction = QAction("Statistics", mw)
+    qconnect(_statsAction.triggered, showStatsFunction)
+    _menu.addAction(_statsAction)
+    _register_shortcut_action("statistics", _statsAction)
+
+    _quickOpenPdfAction = QAction("Quick Open Docs", mw)
+    qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
+    _menu.addAction(_quickOpenPdfAction)
+
+    _searchAllAction = QAction("Search ALL", mw)
+    qconnect(_searchAllAction.triggered, _open_search_all)
+    _menu.addAction(_searchAllAction)
+    _register_shortcut_action("search_all", _searchAllAction)
+
+    _exportAction = QAction("Export Full Backup", mw)
+    qconnect(_exportAction.triggered, exportFunction)
+    _menu.addAction(_exportAction)
+    _register_shortcut_action("export_user_data", _exportAction)
+
+    _apply_shortcuts_from_config()
+    _ensure_settings_menu_action()
+    menubar.update()
 
 
-def _on_timer_toggle(checked: bool) -> None:
-    if _timer_mod._timer_toolbar is not None:
-        _timer_mod._timer_toolbar.setVisible(checked)
-    cfg = mw.addonManager.getConfig(__name__) or {}
-    cfg["show_timer"] = checked
-    mw.addonManager.writeConfig(__name__, cfg)
-
-
-qconnect(_timerToggleAction.triggered, _on_timer_toggle)
-_menu.addAction(_timerToggleAction)
-_register_shortcut_action("toggle_focus_timer", _timerToggleAction)
-
-_menu.addSeparator()
-
-_utilsMenu = QMenu("Utils", mw)
-_menu.addMenu(_utilsMenu)
-
-def _check_deps_manual() -> None:
-    from .backend.deps import show_setup_dialog
-    show_setup_dialog(mw, force=True)
-
-
-_checkDepsAction = QAction("Check Dependencies…", mw)
-qconnect(_checkDepsAction.triggered, _check_deps_manual)
-_utilsMenu.addAction(_checkDepsAction)
-
-_utilsMenu.addSeparator()
-
-_reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
-qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
-_utilsMenu.addAction(_reindexPdfTextAction)
-
-_cleanupNonActiveProfileDataAction = QAction("Clean Non-Active Profile Data…", mw)
-qconnect(_cleanupNonActiveProfileDataAction.triggered, cleanupNonActiveProfileDataFunction)
-_utilsMenu.addAction(_cleanupNonActiveProfileDataAction)
-
-_utilsMenu.addSeparator()
-
-_cleanupOrphanPdfsAction = QAction("Clean Up Orphaned PDF Files…", mw)
-qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)
-_utilsMenu.addAction(_cleanupOrphanPdfsAction)
-
-_cleanupOrphanVideosAction = QAction("Clean Up Orphaned Video Files…", mw)
-qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
-_utilsMenu.addAction(_cleanupOrphanVideosAction)
-
-_cleanupStaleProgressAction = QAction("Clean Up Stale Progress Rows…", mw)
-qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
-_utilsMenu.addAction(_cleanupStaleProgressAction)
-
-_statsAction = QAction("Statistics", mw)
-qconnect(_statsAction.triggered, showStatsFunction)
-_menu.addAction(_statsAction)
-_register_shortcut_action("statistics", _statsAction)
-
-_quickOpenPdfAction = QAction("Quick Open Docs", mw)
-qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
-_menu.addAction(_quickOpenPdfAction)
-
-_searchAllAction = QAction("Search ALL", mw)
-qconnect(_searchAllAction.triggered, _open_search_all)
-_menu.addAction(_searchAllAction)
-_register_shortcut_action("search_all", _searchAllAction)
-
-_exportAction = QAction("Export Full Backup", mw)
-qconnect(_exportAction.triggered, exportFunction)
-_menu.addAction(_exportAction)
-_register_shortcut_action("export_user_data", _exportAction)
-
-_apply_shortcuts_from_config()
-_ensure_settings_menu_action()
+# Build menu first (sets _timerToggleAction), then build timer toolbar which uses it.
+gui_hooks.main_window_did_init.append(_build_incremento_menu)
+gui_hooks.main_window_did_init.append(_build_timer_toolbar)
+gui_hooks.state_did_change.append(lambda *_: _build_incremento_menu())
