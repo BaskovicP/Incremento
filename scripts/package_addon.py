@@ -107,6 +107,7 @@ EXCLUDE_FILE_NAMES = {
     ".DS_Store",
     ".coverage",
     "AGENT.md",
+    "AGENTS.md",
     "PLAN.md",
     "plan.drawio.xml",
     "pytest.ini",

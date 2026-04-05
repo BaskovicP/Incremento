@@ -65,7 +65,7 @@ Extension details and install steps:
 
 - User manual: [MANUAL.md](MANUAL.md)
 - Export and restore guide: [EXPORTING.md](EXPORTING.md)
-- Internal agent/developer notes: [AGENT.md](AGENT.md)
+- Internal agent/developer notes: [AGENTS.md](AGENTS.md)
 
 ## Development
 
