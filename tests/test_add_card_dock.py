@@ -9,6 +9,33 @@ class _FakeWindow:
         self.set_menu_bar_args.append(menu_bar)
 
 
+class _FakeNote:
+    def __init__(self, tags=None, note_id=0):
+        self.tags = list(tags or [])
+        self.id = note_id
+
+
+class _FakeEditor:
+    def __init__(self, note=None, add_mode=False):
+        self.note = note
+        self.addMode = add_mode
+        self.web = None
+        self.added_buttons = []
+
+    def addButton(self, icon, cmd, func, tip, label, id, disables):
+        button = {
+            "icon": icon,
+            "cmd": cmd,
+            "func": func,
+            "tip": tip,
+            "label": label,
+            "id": id,
+            "disables": disables,
+        }
+        self.added_buttons.append(button)
+        return button
+
+
 def test_detach_embedded_window_menu_bar_removes_native_menu():
     window = _FakeWindow()
 
@@ -21,6 +48,23 @@ def test_configured_extract_notetype_name_reads_config_value():
     assert dock.configured_extract_notetype_name({"extract_notetype": "Basic"}) == "Basic"
     assert dock.configured_extract_notetype_name({"extract_notetype": ""}) == ""
     assert dock.configured_extract_notetype_name({}) == ""
+
+
+def test_configured_add_card_topic_tags_defaults_to_topic():
+    assert dock.configured_add_card_topic_tags({}) == ["topic"]
+
+
+def test_configured_add_card_item_tags_defaults_to_item():
+    assert dock.configured_add_card_item_tags({}) == ["item"]
+
+
+def test_configured_add_card_tag_lists_dedupe_case_insensitively():
+    cfg = {
+        "add_card_topic_tags": "Topic, topic, Focus",
+        "add_card_item_tags": ["Item", "item", "Atom"],
+    }
+    assert dock.configured_add_card_topic_tags(cfg) == ["Topic", "Focus"]
+    assert dock.configured_add_card_item_tags(cfg) == ["Item", "Atom"]
 
 
 def test_configured_extract_source_links_supports_bool_backcompat():
@@ -78,3 +122,79 @@ def test_should_apply_extract_notetype_only_for_blank_mismatched_note():
         "Cloze",
         note_has_content=False,
     )
+
+
+def test_note_has_all_tags_matches_case_insensitively():
+    note = _FakeNote(["Topic", "extra"])
+
+    assert dock._note_has_all_tags(note, ["topic"])
+    assert not dock._note_has_all_tags(note, ["topic", "item"])
+
+
+def test_toggle_note_tag_set_adds_all_missing_tags():
+    note = _FakeNote(["existing"])
+
+    active = dock._toggle_note_tag_set(note, ["topic", "item"])
+
+    assert active is True
+    assert note.tags == ["existing", "topic", "item"]
+
+
+def test_toggle_note_tag_set_removes_existing_tags_case_insensitively():
+    note = _FakeNote(["Topic", "ITEM", "keep"])
+
+    active = dock._toggle_note_tag_set(note, ["topic", "item"])
+
+    assert active is False
+    assert note.tags == ["keep"]
+
+
+def test_toggle_note_tag_set_preserves_unrelated_tags_and_avoids_duplicates():
+    note = _FakeNote(["topic", "keep"])
+
+    active = dock._toggle_note_tag_set(note, ["topic", "custom"])
+
+    assert active is True
+    assert note.tags == ["topic", "keep", "custom"]
+
+
+def test_refresh_add_card_tag_buttons_updates_tracked_editors(monkeypatch):
+    calls = []
+    editor = _FakeEditor(_FakeNote(["topic"], note_id=1))
+    dock._tracked_tag_button_editors.clear()
+    dock._track_tag_button_editor(editor)
+    monkeypatch.setattr(
+        dock,
+        "_refresh_add_card_tag_buttons_for_editor",
+        lambda current_editor: calls.append(current_editor),
+    )
+
+    dock.refresh_add_card_tag_buttons()
+
+    assert calls == [editor]
+
+
+def test_on_editor_did_update_tags_refreshes_matching_edit_note(monkeypatch):
+    calls = []
+    matching_note = _FakeNote(["topic"], note_id=42)
+    editor = _FakeEditor(matching_note, add_mode=False)
+    dock._tracked_tag_button_editors.clear()
+    dock._track_tag_button_editor(editor)
+    monkeypatch.setattr(
+        dock,
+        "_refresh_add_card_tag_buttons_for_editor",
+        lambda current_editor: calls.append(current_editor),
+    )
+
+    dock._on_editor_did_update_tags(_FakeNote(["item"], note_id=42))
+
+    assert calls == [editor]
+
+
+def test_toolbar_buttons_register_even_before_note_is_loaded():
+    buttons = []
+    editor = _FakeEditor(note=None, add_mode=False)
+
+    dock._add_add_card_tag_toolbar_buttons(buttons, editor)
+
+    assert [button["label"] for button in buttons] == ["T", "I"]

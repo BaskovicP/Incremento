@@ -2312,6 +2312,8 @@ def openSettingsFunction() -> None:
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
+        current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
+        current_add_card_item_tags=_add_card_dock_mod.configured_add_card_item_tags(cfg),
         current_topic_postpone_enabled=_configured_topic_postpone_enabled(cfg),
         current_topic_postpone_mode=cfg.get("topic_postpone_mode", "timed"),
         current_topic_postpone_minutes=cfg.get("topic_postpone_minutes", 30),
@@ -2329,11 +2331,14 @@ def openSettingsFunction() -> None:
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
+    cfg["add_card_topic_tags"] = dlg.add_card_topic_tags
+    cfg["add_card_item_tags"] = dlg.add_card_item_tags
     cfg["topic_postpone_enabled"] = dlg.topic_postpone_enabled
     cfg["topic_postpone_mode"] = dlg.topic_postpone_mode
     cfg["topic_postpone_minutes"] = dlg.topic_postpone_minutes
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
+    _add_card_dock_mod.refresh_add_card_dock_controls()
     tooltip("Incremento settings updated.")
 
 

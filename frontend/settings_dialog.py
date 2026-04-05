@@ -122,6 +122,32 @@ def default_shortcuts() -> dict[str, str]:
     return {spec["id"]: spec["default"] for spec in SHORTCUT_ACTION_SPECS}
 
 
+def _normalize_tag_list(raw: list[str] | str | tuple[str, ...] | set[str] | None) -> list[str]:
+    if isinstance(raw, str):
+        parts = raw.replace("\n", ",").split(",")
+    elif isinstance(raw, (list, tuple, set)):
+        parts = list(raw)
+    else:
+        parts = []
+
+    tags: list[str] = []
+    seen: set[str] = set()
+    for item in parts:
+        tag = str(item or "").strip()
+        if not tag:
+            continue
+        normalized = tag.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        tags.append(tag)
+    return tags
+
+
+def _tag_list_text(raw: list[str] | str | tuple[str, ...] | set[str] | None) -> str:
+    return ", ".join(_normalize_tag_list(raw))
+
+
 class IncrementoSettingsDialog(QDialog):
     def __init__(
         self,
@@ -135,6 +161,8 @@ class IncrementoSettingsDialog(QDialog):
         current_use_fail_pass_on_items: bool = False,
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
+        current_add_card_topic_tags: list[str] | str | None = None,
+        current_add_card_item_tags: list[str] | str | None = None,
         current_topic_postpone_enabled: bool = False,
         current_topic_postpone_mode: str = "timed",
         current_topic_postpone_minutes: int = 30,
@@ -326,20 +354,20 @@ class IncrementoSettingsDialog(QDialog):
 
         topic_form.addRow("Consider these as topics:", topic_wrap)
 
-        tags_text = ""
-        if isinstance(current_topic_card_tags, str):
-            tags_text = current_topic_card_tags
-        elif isinstance(current_topic_card_tags, (list, tuple, set)):
-            tags_text = ", ".join(
-                str(tag).strip()
-                for tag in current_topic_card_tags
-                if str(tag).strip()
-            )
-
         self._topic_tags_edit = QLineEdit()
         self._topic_tags_edit.setPlaceholderText("tag1, tag2")
-        self._topic_tags_edit.setText(tags_text)
+        self._topic_tags_edit.setText(_tag_list_text(current_topic_card_tags))
         topic_form.addRow("Topic tags:", self._topic_tags_edit)
+
+        self._add_card_topic_tags_edit = QLineEdit()
+        self._add_card_topic_tags_edit.setPlaceholderText("topic")
+        self._add_card_topic_tags_edit.setText(_tag_list_text(current_add_card_topic_tags))
+        topic_form.addRow("Add Card topic-button tags:", self._add_card_topic_tags_edit)
+
+        self._add_card_item_tags_edit = QLineEdit()
+        self._add_card_item_tags_edit.setPlaceholderText("item")
+        self._add_card_item_tags_edit.setText(_tag_list_text(current_add_card_item_tags))
+        topic_form.addRow("Add Card item-button tags:", self._add_card_item_tags_edit)
 
         self._topic_postpone_enabled_cb = QCheckBox(
             "Enable red Postpone button on topic cards"
@@ -506,19 +534,15 @@ class IncrementoSettingsDialog(QDialog):
 
     @property
     def topic_card_tags(self) -> list[str]:
-        raw = str(self._topic_tags_edit.text() or "")
-        tags: list[str] = []
-        seen: set[str] = set()
-        for chunk in raw.replace("\n", ",").split(","):
-            tag = chunk.strip()
-            if not tag:
-                continue
-            normalized = tag.lower()
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            tags.append(tag)
-        return tags
+        return _normalize_tag_list(self._topic_tags_edit.text())
+
+    @property
+    def add_card_topic_tags(self) -> list[str]:
+        return _normalize_tag_list(self._add_card_topic_tags_edit.text())
+
+    @property
+    def add_card_item_tags(self) -> list[str]:
+        return _normalize_tag_list(self._add_card_item_tags_edit.text())
 
     @property
     def topic_postpone_enabled(self) -> bool:

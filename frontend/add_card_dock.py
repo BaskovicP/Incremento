@@ -13,6 +13,7 @@ Public API:
 
 import json
 import time
+import weakref
 
 from aqt import mw
 from aqt import gui_hooks
@@ -28,6 +29,8 @@ _SELECTION_TTL_SEC = 20.0
 _last_selection_source = ""
 _last_selection_text = ""
 _last_selection_seen = 0.0
+_last_add_mode_editor = None
+_tracked_tag_button_editors: list[weakref.ReferenceType] = []
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _DEFAULT_EXTRACT_SOURCE_LINKS = {
     "pdf": True,
@@ -35,6 +38,10 @@ _DEFAULT_EXTRACT_SOURCE_LINKS = {
     "web": True,
     "parent": True,
 }
+_DEFAULT_ADD_CARD_TOPIC_TAGS = ["topic"]
+_DEFAULT_ADD_CARD_ITEM_TAGS = ["item"]
+_TOPIC_TAG_BUTTON_ID = "incremento-add-card-topic-tag"
+_ITEM_TAG_BUTTON_ID = "incremento-add-card-item-tag"
 
 
 def _detach_embedded_window_menu_bar(window) -> None:
@@ -47,6 +54,30 @@ def _detach_embedded_window_menu_bar(window) -> None:
 
 def _normalize_text(text) -> str:
     return str(text or "").replace("\u2029", "\n").strip()
+
+
+def _normalize_tag_list(raw_tags, default: list[str] | None = None) -> list[str]:
+    if isinstance(raw_tags, str):
+        parts = raw_tags.replace("\n", ",").split(",")
+    elif isinstance(raw_tags, (list, tuple, set)):
+        parts = list(raw_tags)
+    elif default is not None:
+        parts = list(default)
+    else:
+        parts = []
+
+    tags: list[str] = []
+    seen: set[str] = set()
+    for item in parts:
+        tag = str(item or "").strip()
+        if not tag:
+            continue
+        normalized = tag.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        tags.append(tag)
+    return tags
 
 
 def _has_recent_selection() -> bool:
@@ -85,6 +116,46 @@ def _dock_editor():
         return None
 
 
+def _current_add_mode_editor():
+    editor = _dock_editor()
+    if editor is not None:
+        return editor
+    global _last_add_mode_editor
+    try:
+        if _last_add_mode_editor is not None and getattr(_last_add_mode_editor, "note", None) is not None:
+            return _last_add_mode_editor
+    except Exception:
+        _last_add_mode_editor = None
+    return None
+
+
+def _iter_tracked_tag_button_editors():
+    alive: list[weakref.ReferenceType] = []
+    editors = []
+    for ref in _tracked_tag_button_editors:
+        try:
+            editor = ref()
+        except Exception:
+            editor = None
+        if editor is None:
+            continue
+        alive.append(ref)
+        editors.append(editor)
+    if len(alive) != len(_tracked_tag_button_editors):
+        _tracked_tag_button_editors[:] = alive
+    return editors
+
+
+def _track_tag_button_editor(editor) -> None:
+    for existing in _iter_tracked_tag_button_editors():
+        if existing is editor:
+            return
+    try:
+        _tracked_tag_button_editors.append(weakref.ref(editor))
+    except Exception:
+        pass
+
+
 def configured_extract_notetype_name(config: dict | None = None) -> str:
     cfg = config
     if cfg is None:
@@ -93,6 +164,32 @@ def configured_extract_notetype_name(config: dict | None = None) -> str:
         except Exception:
             cfg = {}
     return str((cfg or {}).get("extract_notetype") or "").strip()
+
+
+def configured_add_card_topic_tags(config: dict | None = None) -> list[str]:
+    cfg = config
+    if cfg is None:
+        try:
+            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
+        except Exception:
+            cfg = {}
+    return _normalize_tag_list(
+        (cfg or {}).get("add_card_topic_tags"),
+        default=_DEFAULT_ADD_CARD_TOPIC_TAGS,
+    )
+
+
+def configured_add_card_item_tags(config: dict | None = None) -> list[str]:
+    cfg = config
+    if cfg is None:
+        try:
+            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
+        except Exception:
+            cfg = {}
+    return _normalize_tag_list(
+        (cfg or {}).get("add_card_item_tags"),
+        default=_DEFAULT_ADD_CARD_ITEM_TAGS,
+    )
 
 
 def configured_extract_source_links(config: dict | None = None) -> dict[str, bool]:
@@ -367,13 +464,242 @@ def _inject_transfer_buttons(editor) -> None:
         pass
 
 
-def _on_editor_did_load_note(editor) -> None:
-    if not getattr(editor, "addMode", False):
+def _note_tags(note) -> list[str]:
+    try:
+        return [
+            str(tag or "").strip()
+            for tag in list(getattr(note, "tags", []) or [])
+            if str(tag or "").strip()
+        ]
+    except Exception:
+        return []
+
+
+def _set_note_tags(note, tags: list[str]) -> None:
+    try:
+        note.tags = list(tags)
+    except Exception:
+        pass
+
+
+def _note_has_all_tags(note, wanted_tags: list[str]) -> bool:
+    normalized_wanted = {tag.lower() for tag in _normalize_tag_list(wanted_tags)}
+    if not normalized_wanted:
+        return False
+    note_tag_set = {tag.lower() for tag in _note_tags(note)}
+    return normalized_wanted.issubset(note_tag_set)
+
+
+def _toggle_note_tag_set(note, wanted_tags: list[str]) -> bool:
+    normalized_wanted = _normalize_tag_list(wanted_tags)
+    if not normalized_wanted:
+        return False
+
+    wanted_set = {tag.lower() for tag in normalized_wanted}
+    existing_tags = _note_tags(note)
+    existing_set = {tag.lower() for tag in existing_tags}
+    has_all = wanted_set.issubset(existing_set)
+
+    if has_all:
+        updated = [tag for tag in existing_tags if tag.lower() not in wanted_set]
+        _set_note_tags(note, updated)
+        return False
+
+    updated = list(existing_tags)
+    for tag in normalized_wanted:
+        lowered = tag.lower()
+        if lowered not in existing_set:
+            updated.append(tag)
+            existing_set.add(lowered)
+    _set_note_tags(note, updated)
+    return True
+
+
+def _ensure_add_card_tag_button_styles(editor) -> None:
+    try:
+        editor.web.eval(
+            """
+            (function() {
+              var styleId = 'incremento-add-card-tag-buttons-style';
+              if (document.getElementById(styleId)) {
+                return;
+              }
+              var style = document.createElement('style');
+              style.id = styleId;
+              style.textContent = `
+                button#incremento-add-card-topic-tag,
+                button#incremento-add-card-item-tag {
+                  min-width: 28px;
+                  padding: 0 9px;
+                  font-weight: 800;
+                  letter-spacing: 0.02em;
+                }
+                button#incremento-add-card-topic-tag {
+                  margin-left: 10px;
+                  color: #5cff95;
+                  border-color: rgba(92, 255, 149, 0.25);
+                }
+                button#incremento-add-card-item-tag {
+                  margin-left: 6px;
+                  color: #5aa8ff;
+                  border-color: rgba(90, 168, 255, 0.25);
+                }
+                button#incremento-add-card-topic-tag[data-incremento-active="1"] {
+                  background: rgba(55, 255, 132, 0.18);
+                  color: #72ffab;
+                  border-color: rgba(92, 255, 149, 0.58);
+                  box-shadow: inset 0 0 0 1px rgba(92, 255, 149, 0.18);
+                }
+                button#incremento-add-card-item-tag[data-incremento-active="1"] {
+                  background: rgba(74, 149, 255, 0.18);
+                  color: #76b8ff;
+                  border-color: rgba(90, 168, 255, 0.58);
+                  box-shadow: inset 0 0 0 1px rgba(90, 168, 255, 0.18);
+                }
+              `;
+              document.head.appendChild(style);
+            })();
+            """
+        )
+    except Exception:
+        pass
+
+
+def _set_add_card_tag_button_state(editor, button_id: str, active: bool) -> None:
+    try:
+        editor.web.eval(
+            f"""
+            (function() {{
+              var attempts = 0;
+              function apply() {{
+                var btn = document.getElementById({json.dumps(button_id)});
+                if (!btn) {{
+                  attempts += 1;
+                  if (attempts < 8) {{
+                    setTimeout(apply, 60);
+                  }}
+                  return;
+                }}
+                btn.setAttribute('data-incremento-active', {json.dumps("1" if active else "0")});
+                btn.setAttribute('aria-pressed', {json.dumps("true" if active else "false")});
+              }}
+              apply();
+            }})();
+            """
+        )
+    except Exception:
+        pass
+
+
+def _refresh_add_card_tag_buttons_for_editor(editor) -> None:
+    note = getattr(editor, "note", None)
+    if note is None:
         return
-    _inject_transfer_buttons(editor)
+    _ensure_add_card_tag_button_styles(editor)
+    _set_add_card_tag_button_state(
+        editor,
+        _TOPIC_TAG_BUTTON_ID,
+        _note_has_all_tags(note, configured_add_card_topic_tags()),
+    )
+    _set_add_card_tag_button_state(
+        editor,
+        _ITEM_TAG_BUTTON_ID,
+        _note_has_all_tags(note, configured_add_card_item_tags()),
+    )
+
+
+def refresh_add_card_tag_buttons() -> None:
+    for editor in _iter_tracked_tag_button_editors():
+        _refresh_add_card_tag_buttons_for_editor(editor)
+
+
+def refresh_add_card_dock_controls() -> None:
+    _refresh_transfer_buttons()
+    refresh_add_card_tag_buttons()
+
+
+def _toggle_editor_tag_button(editor, tags: list[str], empty_message: str) -> None:
+    note = getattr(editor, "note", None)
+    if note is None:
+        return
+    normalized_tags = _normalize_tag_list(tags)
+    if not normalized_tags:
+        tooltip(empty_message)
+        _refresh_add_card_tag_buttons_for_editor(editor)
+        return
+    _toggle_note_tag_set(note, normalized_tags)
+    try:
+        editor.updateTags()
+    except Exception:
+        pass
+    _refresh_add_card_tag_buttons_for_editor(editor)
+
+
+def _on_topic_tag_button(editor) -> None:
+    _toggle_editor_tag_button(
+        editor,
+        configured_add_card_topic_tags(),
+        "No Add Card topic-button tags configured.",
+    )
+
+
+def _on_item_tag_button(editor) -> None:
+    _toggle_editor_tag_button(
+        editor,
+        configured_add_card_item_tags(),
+        "No Add Card item-button tags configured.",
+    )
+
+
+def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
+    buttons.append(
+        editor.addButton(
+            None,
+            "incrementoToggleTopicTag",
+            _on_topic_tag_button,
+            tip="Toggle configured topic tags",
+            label="T",
+            id=_TOPIC_TAG_BUTTON_ID,
+            disables=False,
+        )
+    )
+    buttons.append(
+        editor.addButton(
+            None,
+            "incrementoToggleItemTag",
+            _on_item_tag_button,
+            tip="Toggle configured item tags",
+            label="I",
+            id=_ITEM_TAG_BUTTON_ID,
+            disables=False,
+        )
+    )
+
+
+def _on_editor_did_load_note(editor) -> None:
+    global _last_add_mode_editor
+    note = getattr(editor, "note", None)
+    if note is None:
+        return
+    _track_tag_button_editor(editor)
+    if getattr(editor, "addMode", False):
+        _last_add_mode_editor = editor
+        _inject_transfer_buttons(editor)
+    _refresh_add_card_tag_buttons_for_editor(editor)
+
+
+def _on_editor_did_update_tags(note) -> None:
+    for editor in _iter_tracked_tag_button_editors():
+        current_note = getattr(editor, "note", None)
+        if current_note is None:
+            continue
+        if current_note is note or getattr(current_note, "id", None) == getattr(note, "id", None):
+            _refresh_add_card_tag_buttons_for_editor(editor)
 
 
 gui_hooks.editor_did_load_note.append(_on_editor_did_load_note)
+gui_hooks.editor_did_init_buttons.append(_add_add_card_tag_toolbar_buttons)
+gui_hooks.editor_did_update_tags.append(_on_editor_did_update_tags)
 
 
 def build_add_card_dock():
