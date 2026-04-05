@@ -46,7 +46,7 @@ except ImportError:
 
 VIDEO_NOTE_TYPE = "Incremento Video"
 LOCAL_VIDEO_FIELD = "Local_Video_File"
-_INVISIBLE_DUPLICATE_MARK = "\u200b"
+_MAX_VIDEO_STEM = 80
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -57,6 +57,13 @@ CARD_TEMPLATE_FRONT = """
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
+
+
+def _stored_video_title(title: str, attempt: int) -> str:
+    base_title = str(title or "").strip() or "Untitled"
+    if attempt <= 0:
+        return base_title
+    return f"{base_title} [{attempt + 1}]"
 
 _VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".mov", ".m4v"}
 _YTDLP_PERCENT_RE = re.compile(r"\[download\]\s+(\d+(?:\.\d+)?)%")
@@ -788,6 +795,7 @@ def _safe_video_slug(name: str) -> str:
     if not raw:
         return "local_video"
     slug = re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("._-")
+    slug = slug[:_MAX_VIDEO_STEM].strip("._-")
     return slug or "local_video"
 
 
@@ -1175,8 +1183,8 @@ def add_video_card(
         note.note_type()["did"] = deck_id
         return note
 
-    for attempt in range(6):
-        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+    for attempt in range(25):
+        stored_title = _stored_video_title(title, attempt)
         note = _build_note(stored_title)
         added = col.add_note(note, deck_id)
         if not added:

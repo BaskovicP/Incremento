@@ -4,6 +4,7 @@ import tempfile
 import threading
 import uuid
 from base64 import b64decode
+from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
@@ -26,6 +27,7 @@ _MAX_HTML_CHARS = 2_000_000
 _MAX_MARKDOWN_CHARS = 2_000_000
 _MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
 _MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000
+_MAX_MEDIA_FILENAME_STEM = 80
 
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
@@ -168,6 +170,7 @@ def _normalize_browser_capture_field_mappings(raw_mappings) -> dict[str, str]:
     if not isinstance(raw_mappings, dict):
         raise ValueError("fieldMappings must be a JSON object.")
     return {
+        "title_field": _normalize_browser_capture_field_name(raw_mappings.get("titleField")),
         "selected_text_field": _normalize_browser_capture_field_name(raw_mappings.get("selectedTextField")),
         "url_field": _normalize_browser_capture_field_name(raw_mappings.get("urlField")),
         "snapshot_field": _normalize_browser_capture_field_name(raw_mappings.get("snapshotField")),
@@ -437,11 +440,24 @@ def _browser_capture_source_html(url: str) -> str:
     return f'Source: <a href="{safe_url}">{safe_url}</a>'
 
 
+def _browser_capture_unique_label_suffix() -> str:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"{timestamp}-{uuid.uuid4().hex[:8]}"
+
+
+def _browser_capture_note_title(title: str, url: str, *, unique: bool) -> str:
+    base_title = _collapse_ws(title) or _collapse_ws(url) or "Untitled"
+    if not unique:
+        return base_title
+    return f"{base_title} [snapshot {_browser_capture_unique_label_suffix()}]"
+
+
 def _sanitize_media_filename(raw_name: str, fallback_stem: str) -> str:
     stem, ext = os.path.splitext(os.path.basename(str(raw_name or "").strip()))
     stem = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in stem).strip(".-_")
     if not stem:
         stem = fallback_stem
+    stem = stem[:_MAX_MEDIA_FILENAME_STEM].strip(".-_") or "browser-capture"
     ext = ".png"
     return f"{stem}-{uuid.uuid4().hex}{ext}"
 
@@ -509,6 +525,20 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
     field_html: dict[str, str] = {}
 
     selected_text = normalized["selected_text"]
+    first_field_name = field_names[0]
+    title_field = mappings["title_field"]
+
+    if title_field:
+        capture_title = _browser_capture_note_title(
+            normalized["title"],
+            normalized["url"],
+            unique=title_field == first_field_name,
+        )
+        field_html[title_field] = _append_browser_capture_html(
+            field_html.get(title_field, ""),
+            _plain_text_to_html(capture_title),
+        )
+
     if selected_text and mappings["selected_text_field"]:
         field_name = mappings["selected_text_field"]
         field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _plain_text_to_html(selected_text))
@@ -540,7 +570,17 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
             note.tags.append(tag)
 
     note.note_type()["did"] = deck_id
-    mw.col.add_note(note, deck_id)
+    added = mw.col.add_note(note, deck_id)
+    if not added:
+        try:
+            first_field_value = _collapse_ws(note[first_field_name])
+        except Exception:
+            first_field_value = ""
+        if not first_field_value:
+            raise ValueError(f"Could not create note. The first field '{first_field_name}' is empty.")
+        raise ValueError(
+            f"Could not create note. The first field '{first_field_name}' duplicates an existing note: {first_field_value}"
+        )
     try:
         card_id = mw.col.find_cards(f"nid:{note.id}")[0]
     except Exception as exc:

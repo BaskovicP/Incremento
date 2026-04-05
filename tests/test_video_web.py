@@ -227,6 +227,12 @@ class TestLocalVideoHelpers:
         assert got.name.startswith("lesson_clip-")
         assert got.suffix == ".mp4"
 
+    def test_unique_target_path_truncates_long_stem_before_uuid_suffix(self, tmp_path):
+        got = _vm._unique_target_path(tmp_path, "x" * 140, ".mp4")
+        base, _, suffix = got.stem.rpartition("-")
+        assert len(base) <= 80
+        assert len(suffix) == 32
+
     def test_abspath_accepts_user_files_prefix(self, tmp_path):
         # "user_files/" prefix is stripped; path resolves under user_files/<profile>/
         got = local_video_abspath(str(tmp_path), "TestProfile", "user_files/videos/a.mp4")
@@ -686,6 +692,20 @@ class TestAddVideoCard:
             for c in setitem_calls
         )
 
+    def test_uses_visible_duplicate_suffix_when_title_collides(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+        first_note = col.new_note.return_value
+        second_note = type(first_note)()
+        second_note.id = 1000
+        col.new_note.side_effect = [first_note, second_note]
+        col.add_note.side_effect = [0, 1]
+
+        result = add_video_card(col, "https://youtube.com/watch?v=abc", "My Video")
+
+        assert result == 12345
+        setitem_calls = second_note.__setitem__.call_args_list
+        assert any(c.args == ("Title", "My Video [2]") for c in setitem_calls)
+
 
 class TestAddWebCard:
     def test_returns_card_id(self):
@@ -702,6 +722,20 @@ class TestAddWebCard:
         col = _make_mock_col_for_add(deck_exists=True)
         add_web_card(col, "https://example.com", "Page")
         col.decks.add_normal_deck_with_name.assert_not_called()
+
+    def test_uses_visible_duplicate_suffix_when_title_collides(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+        first_note = col.new_note.return_value
+        second_note = type(first_note)()
+        second_note.id = 1000
+        col.new_note.side_effect = [first_note, second_note]
+        col.add_note.side_effect = [0, 1]
+
+        result = add_web_card(col, "https://example.com", "Page")
+
+        assert result == 12345
+        setitem_calls = second_note.__setitem__.call_args_list
+        assert any(c.args == ("Title", "Page [2]") for c in setitem_calls)
 
 
 # ── Tag handling edge cases ───────────────────────────────────────────────────

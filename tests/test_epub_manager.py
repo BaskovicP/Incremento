@@ -94,6 +94,22 @@ class TestEnsureEpubExtracted:
         assert meta["sections"][1]["href"] == "OEBPS/chapter2.xhtml"
 
 
+class TestCopyToEpubDir:
+    def test_long_filename_stem_is_truncated_before_uuid_suffix(self, tmp_path):
+        src = tmp_path / f'{"b" * 140}.epub'
+        src.write_bytes(b"epub")
+        epub_dir = tmp_path / "epubs"
+        epub_dir.mkdir()
+
+        with patch("epub_manager.get_epub_dir", return_value=str(epub_dir)):
+            stored = epub_manager._copy_to_epub_dir(str(src))
+
+        stem = Path(stored).stem
+        base, _, suffix = stem.rpartition("-")
+        assert len(base) <= 80
+        assert len(suffix) == 32
+
+
 class TestEpubProgressAndIndex:
     def test_progress_round_trip(self, tmp_path):
         addon_dir = str(tmp_path)

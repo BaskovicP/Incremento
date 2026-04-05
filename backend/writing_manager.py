@@ -23,7 +23,7 @@ CARD_TEMPLATE_FRONT = """
 CARD_TEMPLATE_BACK = "{{Title}}"
 
 _SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
-_INVISIBLE_DUPLICATE_MARK = "\u200b"
+_MAX_FILENAME_STEM = 80
 
 
 def get_writing_dir() -> str:
@@ -42,6 +42,7 @@ def _sanitize_filename(raw: str, fallback: str = "writing-note") -> str:
     base = base.replace("\\", "/").split("/")[-1]
     stem, ext = os.path.splitext(base)
     stem = _SAFE_NAME_RE.sub("_", stem).strip("._-")
+    stem = stem[:_MAX_FILENAME_STEM].strip("._-")
     if not stem:
         stem = fallback
     if ext.lower() != ".md":
@@ -59,6 +60,13 @@ def build_writing_relpath(title: str, preferred_filename: str | None = None) -> 
     cleaned = _sanitize_filename(base, fallback="writing-note")
     unique = _uuid_filename(cleaned)
     return f"writing/{unique}"
+
+
+def _stored_writing_title(title: str, attempt: int) -> str:
+    base_title = str(title or "").strip() or "Untitled"
+    if attempt <= 0:
+        return base_title
+    return f"{base_title} [{attempt + 1}]"
 
 
 def writing_file_abspath(addon_dir: str, relpath: str) -> str:
@@ -162,8 +170,8 @@ def add_writing_card(
         note.note_type()["did"] = deck_id
         return note
 
-    for attempt in range(6):
-        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+    for attempt in range(25):
+        stored_title = _stored_writing_title(title, attempt)
         note = _build_note(stored_title)
         added = col.add_note(note, deck_id)
         if not added:

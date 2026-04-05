@@ -16,10 +16,10 @@ test("parseTags splits on whitespace and commas", () => {
 test("normalizeFieldMappings keeps blank explicit mappings and defaults unknown values", () => {
   assert.deepEqual(
     normalizeFieldMappings(
-      { selectedTextField: "", urlField: "Missing", snapshotField: "Back" },
+      { titleField: "Missing", selectedTextField: "", urlField: "Missing", snapshotField: "Back" },
       ["Front", "Back"]
     ),
-    { selectedTextField: "", urlField: "Front", snapshotField: "Back" }
+    { titleField: "Front", selectedTextField: "", urlField: "Front", snapshotField: "Back" }
   );
 });
 
@@ -38,7 +38,7 @@ test("normalizeBrowserCaptureSettings selects saved note type and deck when pres
       priority: 12.5,
       tagsText: "alpha beta",
       mappingsByNoteType: {
-        Cloze: { selectedTextField: "Text", urlField: "Extra", snapshotField: "" },
+        Cloze: { titleField: "Text", selectedTextField: "Text", urlField: "Extra", snapshotField: "" },
       },
     },
     meta
@@ -46,6 +46,7 @@ test("normalizeBrowserCaptureSettings selects saved note type and deck when pres
   assert.equal(settings.noteTypeName, "Cloze");
   assert.equal(settings.deckName, "Research");
   assert.equal(settings.priority, 12.5);
+  assert.equal(settings.fieldMappings.titleField, "Text");
   assert.equal(settings.fieldMappings.urlField, "Extra");
   assert.equal(settings.fieldMappings.snapshotField, "");
 });
@@ -54,9 +55,10 @@ test("updateMappingsForNoteType stores mappings by note type", () => {
   const updated = updateMappingsForNoteType(
     { mappingsByNoteType: {}, noteTypeName: "Basic", fieldMappings: {} },
     "Basic",
-    { selectedTextField: "Front", urlField: "Back", snapshotField: "Back" }
+    { titleField: "Front", selectedTextField: "Front", urlField: "Back", snapshotField: "Back" }
   );
   assert.deepEqual(updated.mappingsByNoteType.Basic, {
+    titleField: "Front",
     selectedTextField: "Front",
     urlField: "Back",
     snapshotField: "Back",
@@ -77,6 +79,7 @@ test("buildBrowserCapturePayload serializes snapshots and form state", () => {
       tagsText: "alpha beta",
       priority: 9.5,
       fieldMappings: {
+        titleField: "Front",
         selectedTextField: "Front",
         urlField: "Back",
         snapshotField: "Back",
@@ -87,5 +90,6 @@ test("buildBrowserCapturePayload serializes snapshots and form state", () => {
   assert.equal(payload.deckName, "Default");
   assert.deepEqual(payload.tags, ["alpha", "beta"]);
   assert.equal(payload.snapshots[0].filename, "snap-1.png");
+  assert.equal(payload.fieldMappings.titleField, "Front");
   assert.equal(payload.fieldMappings.snapshotField, "Back");
 });

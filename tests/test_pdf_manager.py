@@ -95,6 +95,42 @@ class TestCopyToPdfDir:
         assert result.endswith(".pdf")
         assert os.path.isfile(os.path.join(self._tmp_pdf_dir, result))
 
+    def test_long_filename_stem_is_truncated_before_uuid_suffix(self):
+        src = os.path.join(tempfile.mkdtemp(), f'{"a" * 140}.pdf')
+        with open(src, "wb") as f:
+            f.write(b"%PDF long name")
+
+        result = pdf_manager._copy_to_pdf_dir(src)
+
+        stem = os.path.splitext(result)[0]
+        base, _, suffix = stem.rpartition("-")
+        assert len(base) <= 80
+        assert len(suffix) == 32
+
+
+class TestAddPdfCard:
+    def test_uses_visible_duplicate_suffix_when_title_collides(self):
+        col = MagicMock()
+        first_note = MagicMock()
+        first_note.id = 999
+        second_note = MagicMock()
+        second_note.id = 1000
+        col.new_note.side_effect = [first_note, second_note]
+        col.add_note.side_effect = [0, 1]
+        col.find_cards.return_value = [12345]
+        col.models.by_name.return_value = {"name": pdf_manager.PDF_NOTE_TYPE}
+        col.decks.by_name.return_value = {"id": 1}
+
+        with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
+             patch("pdf_manager._copy_to_pdf_dir", return_value="stored-file.pdf"), \
+             patch("pdf_manager.extract_pdf_pages_text", return_value=["page one"]), \
+             patch("pdf_manager.replace_pdf_text_index", return_value=None):
+            result = pdf_manager.add_pdf_card("/tmp/incremento-test", col, "/tmp/source.pdf", "Guide")
+
+        assert result == 12345
+        setitem_calls = second_note.__setitem__.call_args_list
+        assert any(c.args == ("Title", "Guide [2]") for c in setitem_calls)
+
 
 # ---------------------------------------------------------------------------
 # extract_pdf_pages_text — PyMuPDF path

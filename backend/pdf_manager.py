@@ -1,10 +1,20 @@
 import os
+import re
 import shutil
 import subprocess
 import uuid
 from pathlib import Path
 
 from PyQt6.QtPdf import QPdfDocument
+
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_MAX_FILENAME_STEM = 80
+
+
+def _safe_pdf_stem(raw_name: str, fallback: str = "document") -> str:
+    stem = _SAFE_FILENAME_RE.sub("_", str(raw_name or "").strip()).strip("._-")
+    stem = stem[:_MAX_FILENAME_STEM].strip("._-")
+    return stem or fallback
 
 try:
     from .db import get_connection, replace_pdf_text_index
@@ -33,7 +43,7 @@ def _copy_to_pdf_dir(pdf_path: str) -> str:
     pdf_dir = get_pdf_dir()
     raw_name = os.path.basename(pdf_path)
     stem, ext = os.path.splitext(raw_name)
-    stem = stem.strip() or "document"
+    stem = _safe_pdf_stem(stem, fallback="document")
     ext = ext if ext.lower() == ".pdf" else ".pdf"
     dest_name = f"{stem}-{uuid.uuid4().hex}{ext}"
     dest_path = os.path.join(pdf_dir, dest_name)
@@ -42,7 +52,6 @@ def _copy_to_pdf_dir(pdf_path: str) -> str:
     return dest_name
 
 PDF_NOTE_TYPE = "Incremento PDF"
-_INVISIBLE_DUPLICATE_MARK = "\u200b"
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -53,6 +62,13 @@ CARD_TEMPLATE_FRONT = """
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
+
+
+def _stored_pdf_title(title: str, attempt: int) -> str:
+    base_title = str(title or "").strip() or "Untitled"
+    if attempt <= 0:
+        return base_title
+    return f"{base_title} [{attempt + 1}]"
 
 
 # ---------------------------------------------------------------------------
@@ -401,8 +417,8 @@ def add_pdf_card(
         return note
 
     cid = 0
-    for attempt in range(6):
-        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+    for attempt in range(25):
+        stored_title = _stored_pdf_title(title, attempt)
         note = _build_note(stored_title)
         added = col.add_note(note, deck_id)
         if not added:

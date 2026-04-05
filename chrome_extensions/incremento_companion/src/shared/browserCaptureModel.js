@@ -37,6 +37,7 @@ export function normalizeFieldMappings(rawMappings, fields) {
     return firstField;
   };
   return {
+    titleField: pick(String(rawMappings?.titleField || "")),
     selectedTextField: pick(String(rawMappings?.selectedTextField || "")),
     urlField: pick(String(rawMappings?.urlField || "")),
     snapshotField: pick(String(rawMappings?.snapshotField || "")),
@@ -92,6 +93,7 @@ export function buildBrowserCapturePayload(context, formState) {
     tags: parseTags(formState?.tagsText),
     priority: clampPriority(formState?.priority),
     fieldMappings: {
+      titleField: String(formState?.fieldMappings?.titleField || "").trim(),
       selectedTextField: String(formState?.fieldMappings?.selectedTextField || "").trim(),
       urlField: String(formState?.fieldMappings?.urlField || "").trim(),
       snapshotField: String(formState?.fieldMappings?.snapshotField || "").trim(),

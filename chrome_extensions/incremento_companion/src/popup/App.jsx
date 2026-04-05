@@ -11,19 +11,14 @@ import {
 import { formatBridgeError, importIntoIncremento } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import { isHttpUrl, isSupportedVideoUrl } from "../shared/url.js";
+import {
+  buildAutomaticWritingTitle,
+  buildPreferredWritingFilename,
+  shouldAutoGenerateWritingTitle,
+} from "../shared/writingTitle.js";
 
 function initialStatus() {
   return { text: "", kind: "" };
-}
-
-function buildPreferredWritingFilename(title, url) {
-  const base = String(title || url || "writing-note")
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-._]+|[-._]+$/g, "")
-    || "writing-note";
-  return `${base}-${Date.now()}.md`;
 }
 
 export function PopupApp() {
@@ -161,8 +156,20 @@ export function PopupApp() {
     }
     if (kind === "writing") {
       const writingMode = String(options.writingMode || "selection");
+      const shouldAutoTitle = shouldAutoGenerateWritingTitle(title, currentPageTitle, currentPageUrl);
+      if (shouldAutoTitle) {
+        payload.title = buildAutomaticWritingTitle(
+          currentPageTitle,
+          currentPageUrl,
+          writingMode,
+          currentSelectionText
+        );
+      }
       payload.writingMode = writingMode;
-      payload.preferredFilename = buildPreferredWritingFilename(payload.title, currentPageUrl);
+      payload.preferredFilename = buildPreferredWritingFilename(
+        shouldAutoTitle ? currentPageTitle : payload.title,
+        currentPageUrl
+      );
       if (writingMode === "selection" && !currentSelectionText) {
         setStatus({
           text: "Select text on the page first.",

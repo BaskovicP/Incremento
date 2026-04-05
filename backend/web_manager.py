@@ -6,8 +6,6 @@ import json
 from typing import Literal, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-_INVISIBLE_DUPLICATE_MARK = "\u200b"
-
 WEB_NOTE_TYPE = "Incremento Web"
 TRACK_CARD_ID_PARAM = "inc_card_id"
 TRACK_WEB_FLAG_PARAM = "inc_track_web"
@@ -22,6 +20,13 @@ CARD_TEMPLATE_FRONT = """
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
+
+
+def _stored_web_title(title: str, attempt: int) -> str:
+    base_title = str(title or "").strip() or "Untitled"
+    if attempt <= 0:
+        return base_title
+    return f"{base_title} [{attempt + 1}]"
 
 
 class WebBookmarkPayload(TypedDict, total=False):
@@ -394,8 +399,8 @@ def add_web_card(
         note.note_type()["did"] = deck_id
         return note
 
-    for attempt in range(6):
-        stored_title = title if attempt == 0 else f"{title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+    for attempt in range(25):
+        stored_title = _stored_web_title(title, attempt)
         note = _build_note(stored_title)
         added = col.add_note(note, deck_id)
         if not added:

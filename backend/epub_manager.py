@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import posixpath
+import re
 import shutil
 import uuid
 import zipfile
@@ -31,6 +32,8 @@ _HTML_MEDIA_TYPES = {
     "text/html",
     "application/x-dtbook+xml",
 }
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+_MAX_FILENAME_STEM = 80
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -71,7 +74,8 @@ def _copy_to_epub_dir(epub_path: str) -> str:
     epub_dir = get_epub_dir()
     raw_name = os.path.basename(epub_path)
     stem, ext = os.path.splitext(raw_name)
-    stem = stem.strip() or "book"
+    stem = _SAFE_FILENAME_RE.sub("_", stem).strip("._-")
+    stem = stem[:_MAX_FILENAME_STEM].strip("._-") or "book"
     ext = ext if ext.lower() == ".epub" else ".epub"
     dest_name = f"{stem}-{uuid.uuid4().hex}{ext}"
     dest_path = os.path.join(epub_dir, dest_name)

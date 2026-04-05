@@ -53,6 +53,7 @@
       return firstField;
     };
     return {
+      titleField: pick(String(rawMappings?.titleField || "")),
       selectedTextField: pick(String(rawMappings?.selectedTextField || "")),
       urlField: pick(String(rawMappings?.urlField || "")),
       snapshotField: pick(String(rawMappings?.snapshotField || "")),
@@ -104,6 +105,7 @@
       tags: parseTags(formState?.tagsText),
       priority: clampPriority(formState?.priority),
       fieldMappings: {
+        titleField: String(formState?.fieldMappings?.titleField || "").trim(),
         selectedTextField: String(formState?.fieldMappings?.selectedTextField || "").trim(),
         urlField: String(formState?.fieldMappings?.urlField || "").trim(),
         snapshotField: String(formState?.fieldMappings?.snapshotField || "").trim(),
@@ -823,6 +825,18 @@
 
     const hasTextContent = Boolean(state.context.selectedText);
     grid.appendChild(createField(
+      "Page title field",
+      makeMappingSelect(state.form.fieldMappings.titleField, (value) => {
+        state.form = updateMappingsForNoteType(state.form, state.form.noteTypeName, {
+          ...state.form.fieldMappings,
+          titleField: value,
+        });
+      }),
+      false,
+      "The current page title is always available. First-field mappings get a unique snapshot suffix."
+    ));
+
+    grid.appendChild(createField(
       "Selected text field",
       makeMappingSelect(state.form.fieldMappings.selectedTextField, (value) => {
         state.form = updateMappingsForNoteType(state.form, state.form.noteTypeName, {
@@ -933,7 +947,8 @@
         state.form
       );
       const hasMappedContent = Boolean(
-        (payload.selectedText && payload.fieldMappings.selectedTextField)
+        payload.fieldMappings.titleField
+        || (payload.selectedText && payload.fieldMappings.selectedTextField)
         || payload.fieldMappings.urlField
         || (payload.snapshots.length > 0 && payload.fieldMappings.snapshotField)
       );

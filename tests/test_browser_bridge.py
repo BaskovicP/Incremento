@@ -1,4 +1,5 @@
 import base64
+import browser_bridge
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -6,6 +7,7 @@ import sys
 
 from browser_bridge import (
     _create_browser_capture_note_on_main,
+    _sanitize_media_filename,
     build_writing_markdown,
     download_pdf_from_url,
     normalize_add_content_payload,
@@ -16,7 +18,7 @@ from browser_bridge import (
     url_looks_like_pdf,
 )
 from webpage_markdown import convert_webpage_html_to_markdown
-from writing_manager import build_writing_relpath
+from writing_manager import build_writing_relpath, add_writing_card, _stored_writing_title
 
 
 def test_build_writing_markdown_includes_source_and_selection():
@@ -193,6 +195,7 @@ def test_normalize_browser_capture_payload_accepts_snapshots_and_mappings():
             "deckName": "Research",
             "selectedText": "  Selected text  ",
             "fieldMappings": {
+                "titleField": "Back",
                 "selectedTextField": "Front",
                 "urlField": "Back",
                 "snapshotField": "Extra",
@@ -209,6 +212,7 @@ def test_normalize_browser_capture_payload_accepts_snapshots_and_mappings():
     assert payload["note_type_name"] == "Basic"
     assert payload["deck_name"] == "Research"
     assert payload["selected_text"] == "Selected text"
+    assert payload["field_mappings"]["title_field"] == "Back"
     assert payload["field_mappings"]["snapshot_field"] == "Extra"
     assert payload["snapshots"][0]["bytes"].startswith(b"\x89PNG")
 
@@ -272,6 +276,56 @@ def test_build_writing_relpath_uses_uuid_suffix_for_repeated_titles():
     assert path1.endswith(".md")
     assert path2.endswith(".md")
     assert path1 != path2
+
+
+def test_stored_writing_title_uses_visible_duplicate_suffix():
+    assert _stored_writing_title("Repeated Title", 0) == "Repeated Title"
+    assert _stored_writing_title("Repeated Title", 1) == "Repeated Title [2]"
+    assert _stored_writing_title("Repeated Title", 2) == "Repeated Title [3]"
+
+
+def test_add_writing_card_uses_visible_duplicate_title(monkeypatch):
+    class FakeNote(dict):
+        def __init__(self):
+            super().__init__()
+            self.id = 501
+            self.tags = []
+            self._note_type = {"did": 0}
+
+        def note_type(self):
+            return self._note_type
+
+        def add_tag(self, tag):
+            self.tags.append(tag)
+
+    note1 = FakeNote()
+    note2 = FakeNote()
+
+    col = MagicMock()
+    col.models.by_name.return_value = {"name": "Incremento Writing"}
+    col.decks.by_name.return_value = {"id": 9}
+    col.new_note.side_effect = [note1, note2]
+    col.add_note.side_effect = [0, 1]
+    col.find_cards.return_value = [777]
+
+    monkeypatch.setattr("writing_manager.ensure_writing_note_type", lambda _col: None)
+    monkeypatch.setattr("writing_manager.build_writing_relpath", lambda **_kwargs: "writing/example.md")
+    monkeypatch.setattr("writing_manager.ensure_writing_file", lambda *_args, **_kwargs: "/tmp/example.md")
+
+    card_id = add_writing_card(
+        "/tmp/incremento-test",
+        col,
+        "Repeated Title",
+        deck_name="Topics",
+        tags=["alpha"],
+        initial_markdown="# Repeated Title\n\n",
+        preferred_filename="example.md",
+    )
+
+    assert card_id == 777
+    assert note1["Title"] == "Repeated Title"
+    assert note2["Title"] == "Repeated Title [2]"
+    assert note2["Markdown_File"] == "writing/example.md"
 
 
 def test_normalize_update_web_card_payload_accepts_valid_payload():
@@ -366,6 +420,14 @@ def test_download_pdf_from_url_accepts_pdf_url_with_generic_content_type(monkeyp
     assert dest.read_bytes().startswith(b"\n\n%PDF-")
 
 
+def test_sanitize_media_filename_truncates_long_stem_before_uuid_suffix():
+    filename = _sanitize_media_filename(f'{"c" * 140}.png', "fallback")
+    stem = Path(filename).stem
+    base, _, suffix = stem.rpartition("-")
+    assert len(base) <= 80
+    assert len(suffix) == 32
+
+
 def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     image_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode("ascii")
     normalized = normalize_browser_capture_payload(
@@ -379,6 +441,7 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
             "priority": 12.5,
             "selectedText": "Selected\ntext",
             "fieldMappings": {
+                "titleField": "Back",
                 "selectedTextField": "Front",
                 "urlField": "Front",
                 "snapshotField": "Back",
@@ -436,6 +499,111 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     assert result["cardId"] == 321
     assert "Selected<br>text" in note["Front"]
     assert "Source:" in note["Front"]
+    assert "Example" in note["Back"]
     assert '<img src="capture.png">' in note["Back"]
     assert note.tags == ["Incremento", "alpha"]
     assert priority_calls == [("/tmp/incremento-test", 321, 12.5)]
+
+
+def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypatch):
+    normalized = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "deckName": "Research",
+            "fieldMappings": {
+                "titleField": "Front",
+            },
+        }
+    )
+
+    class FakeNote(dict):
+        def __init__(self):
+            super().__init__()
+            self.id = 445
+            self.tags = []
+            self._note_type = {"did": 0}
+
+        def note_type(self):
+            return self._note_type
+
+        def add_tag(self, tag):
+            self.tags.append(tag)
+
+    note = FakeNote()
+    col = MagicMock()
+    col.models.by_name.return_value = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    col.decks.by_name.return_value = {"id": 9}
+    col.new_note.return_value = note
+    col.find_cards.return_value = [654]
+    monkeypatch.setattr(browser_bridge, "_browser_capture_unique_label_suffix", lambda: "20260405-120000-abcd1234")
+
+    mw = SimpleNamespace(col=col)
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+
+    priority_module = MagicMock()
+    monkeypatch.setitem(sys.modules, "priority_manager", priority_module)
+    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+
+    result = _create_browser_capture_note_on_main(normalized)
+
+    assert result["ok"] is True
+    assert note["Front"] == "Example [snapshot 20260405-120000-abcd1234]"
+
+
+def test_create_browser_capture_note_raises_clear_duplicate_error(monkeypatch):
+    normalized = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "deckName": "Research",
+            "selectedText": "Duplicate front field",
+            "fieldMappings": {
+                "selectedTextField": "Front",
+            },
+        }
+    )
+
+    class FakeNote(dict):
+        def __init__(self):
+            super().__init__()
+            self.id = 446
+            self.tags = []
+            self._note_type = {"did": 0}
+
+        def note_type(self):
+            return self._note_type
+
+        def add_tag(self, tag):
+            self.tags.append(tag)
+
+    note = FakeNote()
+    col = MagicMock()
+    col.models.by_name.return_value = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    col.decks.by_name.return_value = {"id": 9}
+    col.new_note.return_value = note
+    col.add_note.return_value = 0
+
+    mw = SimpleNamespace(col=col)
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+
+    try:
+        _create_browser_capture_note_on_main(normalized)
+        assert False, "Expected duplicate browser capture note creation to raise"
+    except ValueError as exc:
+        assert "first field 'Front'" in str(exc)
+        assert "Duplicate front field" in str(exc)
