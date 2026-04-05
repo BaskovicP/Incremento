@@ -657,6 +657,12 @@ class _WebDockController:
         home_btn.setFixedWidth(70)
         ctrl_layout.addWidget(home_btn)
 
+        homepage_window_btn = QPushButton("Open in Window (Home)")
+        homepage_window_btn.setToolTip(
+            "Open the original homepage for this web card in your system browser."
+        )
+        ctrl_layout.addWidget(homepage_window_btn)
+
         track_cb = QCheckBox("Track via Chrome extension")
         track_cb.setChecked(bool(self.runtime.track_window_with_extension))
         track_cb.setToolTip(
@@ -741,6 +747,7 @@ class _WebDockController:
         view.loadFinished.connect(_on_load_finished)
         view.page().selectionChanged.connect(_on_selection_changed)
         qconnect(home_btn.clicked, self.go_home)
+        qconnect(homepage_window_btn.clicked, self.open_homepage_in_window)
         qconnect(extract_btn.clicked, self.extract_selection_with_picker)
         qconnect(snapshot_btn.clicked, _toggle_snapshot_mode)
         qconnect(bookmark_btn.clicked, self.save_bookmark)
@@ -818,6 +825,43 @@ class _WebDockController:
         if track_enabled:
             tooltip(
                 "Incremento: browser tracking enabled for this web card tab "
+                "(requires the Incremento Companion extension)."
+            )
+
+    def open_homepage_in_window(self) -> None:
+        if self.runtime.current_card_id is None:
+            tooltip("Incremento: no web card is currently open.")
+            return
+
+        home_url = str(self.runtime.current_home_url or "").strip()
+        if not home_url:
+            tooltip("Incremento: this web card has no homepage URL.")
+            return
+
+        track_enabled = False
+        if self.runtime.dock is not None:
+            try:
+                track_enabled = bool(self.runtime.dock._track_cb.isChecked())
+            except Exception:
+                track_enabled = False
+
+        open_url = build_external_web_url(
+            home_url,
+            card_id=int(self.runtime.current_card_id),
+            track_with_extension=track_enabled,
+        )
+
+        try:
+            ok = bool(QDesktopServices.openUrl(QUrl(open_url)))
+        except Exception:
+            ok = False
+        if not ok:
+            tooltip("Incremento: failed to open system browser.")
+            return
+
+        if track_enabled:
+            tooltip(
+                "Incremento: browser tracking enabled for this web card homepage "
                 "(requires the Incremento Companion extension)."
             )
 

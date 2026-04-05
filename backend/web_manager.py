@@ -29,6 +29,119 @@ def _stored_web_title(title: str, attempt: int) -> str:
     return f"{base_title} [{attempt + 1}]"
 
 
+def is_web_note_type_name(name: str) -> bool:
+    return str(name or "").strip() == WEB_NOTE_TYPE
+
+
+def reviewer_web_homepage_action(col, reviewer_card, *, open_location) -> bool:
+    if col is None or reviewer_card is None:
+        return False
+    try:
+        card_id = int(getattr(reviewer_card, "id", 0) or 0)
+        note_id = int(getattr(reviewer_card, "nid", 0) or 0)
+    except Exception:
+        return False
+    if card_id <= 0 or note_id <= 0:
+        return False
+    try:
+        note = col.get_note(note_id)
+    except Exception:
+        return False
+    try:
+        note_type = note.note_type() or {}
+    except Exception:
+        note_type = {}
+    if not is_web_note_type_name(note_type.get("name")):
+        return False
+    try:
+        homepage = str(note["URL"] or "").strip()
+    except Exception:
+        homepage = ""
+    if not homepage:
+        return False
+    try:
+        return bool(open_location(card_id, homepage))
+    except Exception:
+        return False
+
+
+def build_reviewer_web_home_button_js(
+    enabled: bool,
+    *,
+    label: str = "Open Homepage",
+) -> str:
+    safe_label = json.dumps(str(label or "Open Homepage"))
+    enabled_js = "true" if enabled else "false"
+    return f"""
+(function() {{
+  var enabled = {enabled_js};
+  var wrapId = "incremento-web-homepage-wrap";
+  var buttonId = "incremento-web-homepage-button";
+  var styleId = "incremento-web-homepage-style";
+  var existingWrap = document.getElementById(wrapId);
+  if (existingWrap) {{
+    existingWrap.remove();
+  }}
+  var style = document.getElementById(styleId);
+  if (!enabled) {{
+    if (style) {{
+      style.remove();
+    }}
+    return;
+  }}
+  if (!document.body) {{
+    return;
+  }}
+  if (!style) {{
+    style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      #${{wrapId}} {{
+        display: flex;
+        justify-content: center;
+        margin: 0 0 16px 0;
+      }}
+      #${{buttonId}} {{
+        appearance: none;
+        border: 1px solid rgba(74, 144, 217, 0.36);
+        border-radius: 999px;
+        background: rgba(74, 144, 217, 0.10);
+        color: #8fbce9;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.1;
+        padding: 8px 14px;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+      }}
+      #${{buttonId}}:hover,
+      #${{buttonId}}:focus {{
+        background: rgba(74, 144, 217, 0.16);
+        border-color: rgba(74, 144, 217, 0.52);
+        color: #c0daf4;
+      }}
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }}
+  var wrap = document.createElement("div");
+  wrap.id = wrapId;
+  var button = document.createElement("button");
+  button.id = buttonId;
+  button.type = "button";
+  button.textContent = {safe_label};
+  button.addEventListener("click", function() {{
+    pycmd("incremento_open_web_home");
+  }});
+  wrap.appendChild(button);
+  if (document.body.firstChild) {{
+    document.body.insertBefore(wrap, document.body.firstChild);
+  }} else {{
+    document.body.appendChild(wrap);
+  }}
+}})();
+""".strip()
+
+
 class WebBookmarkPayload(TypedDict, total=False):
     mode: Literal["element", "selection"]
     path: list[int]

@@ -50,7 +50,9 @@ from .backend.priority_manager import (
     set_priority,
     get_all_priorities,
 )
-from .backend.web_manager import WEB_NOTE_TYPE, configured_remember_browser_card_scroll
+from .backend.web_manager import (
+    configured_remember_browser_card_scroll,
+)
 from .backend.reviewer_buttons import (
     configured_use_fail_pass_on_items as _configured_use_fail_pass_on_items,
     item_fail_pass_buttons as _item_fail_pass_buttons,

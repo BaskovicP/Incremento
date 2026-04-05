@@ -49,6 +49,8 @@ set_web_scroll_position = _wm.set_web_scroll_position
 set_web_bookmark = _wm.set_web_bookmark
 configured_remember_browser_card_scroll = _wm.configured_remember_browser_card_scroll
 build_web_restore_payload = _wm.build_web_restore_payload
+reviewer_web_homepage_action = _wm.reviewer_web_homepage_action
+build_reviewer_web_home_button_js = _wm.build_reviewer_web_home_button_js
 
 
 # ── extract_video_id ──────────────────────────────────────────────────────────
@@ -545,6 +547,67 @@ class TestWebUrl:
             )
             == "https://example.com/article?x=1&inc_card_id=42&inc_track_web=1"
         )
+
+    def test_reviewer_web_homepage_action_opens_homepage_for_web_cards(self):
+        class _Card:
+            id = 42
+            nid = 420
+
+        class _Note(dict):
+            def note_type(self):
+                return {"name": _wm.WEB_NOTE_TYPE}
+
+        class _Col:
+            def get_note(self, nid):
+                assert nid == 420
+                return _Note(URL="https://example.com/home")
+
+        opened = []
+
+        result = reviewer_web_homepage_action(
+            _Col(),
+            _Card(),
+            open_location=lambda card_id, url: opened.append((card_id, url)) or True,
+        )
+
+        assert result is True
+        assert opened == [(42, "https://example.com/home")]
+
+    def test_reviewer_web_homepage_action_ignores_non_web_cards(self):
+        class _Card:
+            id = 42
+            nid = 420
+
+        class _Note(dict):
+            def note_type(self):
+                return {"name": "Basic"}
+
+        class _Col:
+            def get_note(self, nid):
+                assert nid == 420
+                return _Note(URL="https://example.com/home")
+
+        opened = []
+
+        result = reviewer_web_homepage_action(
+            _Col(),
+            _Card(),
+            open_location=lambda card_id, url: opened.append((card_id, url)) or True,
+        )
+
+        assert result is False
+        assert opened == []
+
+    def test_build_reviewer_web_home_button_js_contains_expected_command(self):
+        js = build_reviewer_web_home_button_js(True)
+
+        assert "incremento_open_web_home" in js
+        assert "Open Homepage" in js
+
+    def test_build_reviewer_web_home_button_js_can_disable_button(self):
+        js = build_reviewer_web_home_button_js(False)
+
+        assert 'var enabled = false;' in js
 
 
 # ── ensure_video_note_type ────────────────────────────────────────────────────
