@@ -1086,10 +1086,6 @@
     };
 
     const shell = ui.shell;
-    const backdrop = document.createElement("div");
-    backdrop.className = "backdrop";
-    shell.appendChild(backdrop);
-
     const captureShell = document.createElement("div");
     captureShell.className = "capture-shell";
     shell.appendChild(captureShell);
