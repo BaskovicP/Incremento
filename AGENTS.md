@@ -90,6 +90,7 @@ The bridge currently supports:
 - direct PDF bytes via `pdfBase64`
 - generic browser-capture note creation
 - writing imports in `selection` and `webpage_markdown` modes
+- tracked web-card media progress updates for external browser playback
 
 Current browser-capture rules:
 
@@ -121,6 +122,9 @@ Current extension-specific behavior to keep in mind:
 - popup writing imports auto-generate a unique title only when the user leaves the default page title unchanged
 - auto-generated writing titles use a microsecond-resolution timestamp suffix
 - markdown preferred filenames are kept short and slug-based; do not feed the full generated note title back into the filename
+- tracked web-card playback can come from iframe players; content/background reinjection must preserve `allFrames: true`
+- web-card resume handoff for original-page resume is passed through a URL fragment marker, not server-visible query params
+- content scripts sanitize temporary Incremento tracking/resume markers back out of the visible URL after load
 - bookmark importer runtime files also come from `dist/`
 
 If you change extension source:
@@ -147,6 +151,29 @@ node --check chrome_extensions/incremento_companion/dist/bookmarks.js
 - PDF, video, webpage, and writing imports now use visible duplicate-title suffixes such as `Title [2]`; do not reintroduce zero-width duplicate markers.
 - UUID-backed saved filenames should keep a short sanitized stem first, then append the UUID.
 - The current stem cap is `80` characters across writing, PDF, EPUB, video, and browser-capture media helpers.
+
+## Web Dock and Web Cards
+
+Main files:
+
+- `frontend/web_dock.py`
+- `backend/web_manager.py`
+
+Current behavior:
+
+- the dock toolbar is split into two rows to keep the control bar usable
+- the dock has both `Open in Window` and `Open in Window (Home)`
+- `Home` keeps navigation inside the dock; `Open in Window (Home)` opens the card's stored homepage externally
+- tracked `Incremento Web` cards persist the latest embedded-media resume state per card
+- the dock shows a `Resume mm:ss` button only when resume state exists for the current web card
+- if `prefer_web_card_resume_in_original_page` is enabled, `Resume` reopens the original page and asks the extension to seek there
+- otherwise `Resume` prefers a direct resumable media URL when one can be built
+- original-page resume should not depend on the live `Track via Chrome extension` checkbox being enabled in the dock at click time
+- avoid putting resume metadata in the server-facing query string; use the fragment-based Incremento marker instead
+
+Relevant config key:
+
+- `prefer_web_card_resume_in_original_page`
 
 ## Add Card and Note Editors
 
