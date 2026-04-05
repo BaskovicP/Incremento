@@ -725,6 +725,23 @@ def on_add_cards_did_add_note(note) -> None:
     except Exception:
         pass
 
+    # Adding a note sets study_queues=True in OpChanges, which causes the reviewer
+    # to call nextCard() via op_executed. If the next card is not a PDF card,
+    # on_pdf_question_shown hides the PDF dock. Re-show it so the user can
+    # continue reading without interruption.
+    cid = _current_pdf_card_id
+
+    def _restore_pdf_dock() -> None:
+        if _current_pdf_card_id != cid:
+            return  # a different PDF card became active; don't interfere
+        try:
+            if _pdf_dock is not None and not _pdf_dock.isVisible():
+                _pdf_dock.show()
+        except RuntimeError:
+            pass
+
+    QTimer.singleShot(0, _restore_pdf_dock)
+
 
 def get_selected_text(callback) -> None:
     if _pdf_dock is None:
