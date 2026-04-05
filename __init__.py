@@ -199,6 +199,11 @@ _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON = getattr(
     "_incremento_original",
     Reviewer._showAnswerButton,
 )
+_ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS = getattr(
+    Reviewer._showEaseButtons,
+    "_incremento_original",
+    Reviewer._showEaseButtons,
+)
 _ORIGINAL_REVIEWER_LINK_HANDLER = getattr(
     Reviewer._linkHandler,
     "_incremento_original",
@@ -510,6 +515,81 @@ def _incremento_show_answer_button(self) -> None:
     self.bottom.web.eval("showQuestion(%s,%d);" % (json.dumps(middle), maxTime))
 
 
+def _sync_topic_answer_button_style(reviewer) -> None:
+    try:
+        enabled = json.dumps(_reviewer_topic_card(getattr(reviewer, "card", None)))
+        reviewer.bottom.web.eval(
+            """
+            (function() {
+              var enabled = %s;
+              var styleId = "incremento-topic-answer-button-style";
+              var style = document.getElementById(styleId);
+              var attempts = 0;
+              function apply() {
+                var buttons = document.querySelectorAll('button[data-ease]');
+                if (!buttons.length) {
+                  attempts += 1;
+                  if (attempts < 10) {
+                    setTimeout(apply, 40);
+                  }
+                  return;
+                }
+                if (!enabled) {
+                  if (style) {
+                    style.remove();
+                  }
+                  return;
+                }
+                if (!style) {
+                  style = document.createElement("style");
+                  style.id = styleId;
+                  style.textContent = `
+                    button[data-ease="1"] {
+                      background: rgba(160, 92, 92, 0.12) !important;
+                      border-color: rgba(160, 92, 92, 0.32) !important;
+                      color: #d8b0b0 !important;
+                    }
+                    button[data-ease="1"]:hover,
+                    button[data-ease="1"]:focus {
+                      background: rgba(160, 92, 92, 0.18) !important;
+                      border-color: rgba(160, 92, 92, 0.42) !important;
+                      color: #e3bebe !important;
+                    }
+                    button[data-ease="3"] {
+                      background: rgba(92, 124, 170, 0.12) !important;
+                      border-color: rgba(92, 124, 170, 0.32) !important;
+                      color: #b7c7df !important;
+                    }
+                    button[data-ease="3"]:hover,
+                    button[data-ease="3"]:focus {
+                      background: rgba(92, 124, 170, 0.18) !important;
+                      border-color: rgba(92, 124, 170, 0.42) !important;
+                      color: #c7d5ea !important;
+                    }
+                  `;
+                  document.head.appendChild(style);
+                }
+              }
+              if (!enabled) {
+                if (style) {
+                  style.remove();
+                }
+                return;
+              }
+              apply();
+            })();
+            """
+            % enabled
+        )
+    except Exception:
+        pass
+
+
+def _incremento_show_ease_buttons(self) -> None:
+    _ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS(self)
+    _sync_topic_answer_button_style(self)
+
+
 def _incremento_link_handler(self, url: str) -> None:
     if url == "incremento_topic_postpone":
         card = getattr(self, "card", None)
@@ -531,6 +611,8 @@ _incremento_next_card._incremento_original = _ORIGINAL_REVIEWER_NEXT_CARD
 Reviewer.nextCard = _incremento_next_card
 _incremento_show_answer_button._incremento_original = _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON
 Reviewer._showAnswerButton = _incremento_show_answer_button
+_incremento_show_ease_buttons._incremento_original = _ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS
+Reviewer._showEaseButtons = _incremento_show_ease_buttons
 _incremento_link_handler._incremento_original = _ORIGINAL_REVIEWER_LINK_HANDLER
 Reviewer._linkHandler = _incremento_link_handler
 

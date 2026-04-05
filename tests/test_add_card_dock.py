@@ -14,6 +14,9 @@ class _FakeNote:
         self.tags = list(tags or [])
         self.id = note_id
 
+    def string_tags(self):
+        return " ".join(self.tags)
+
 
 class _FakeEditor:
     def __init__(self, note=None, add_mode=False):
@@ -21,6 +24,12 @@ class _FakeEditor:
         self.addMode = add_mode
         self.web = None
         self.added_buttons = []
+        self.tags = _FakeTagsWidget()
+        if note is not None:
+            self.tags.setText(note.string_tags())
+        self.saved_current_note = 0
+        self.tag_focus_lost_calls = 0
+        self.load_note_calls = 0
 
     def addButton(self, icon, cmd, func, tip, label, id, disables):
         button = {
@@ -34,6 +43,41 @@ class _FakeEditor:
         }
         self.added_buttons.append(button)
         return button
+
+    def _save_current_note(self):
+        self.saved_current_note += 1
+
+    def on_tag_focus_lost(self):
+        self.tag_focus_lost_calls += 1
+        self.note.tags = self.tags.text().split()
+        if not self.addMode:
+            self._save_current_note()
+
+    def loadNote(self):
+        self.load_note_calls += 1
+
+
+class _FakeTagsWidget:
+    def __init__(self):
+        self.col = None
+        self.text_value = None
+        self.updated = 0
+        self.repainted = 0
+
+    def setCol(self, col):
+        self.col = col
+
+    def setText(self, text):
+        self.text_value = text
+
+    def text(self):
+        return self.text_value or ""
+
+    def update(self):
+        self.updated += 1
+
+    def repaint(self):
+        self.repainted += 1
 
 
 def test_detach_embedded_window_menu_bar_removes_native_menu():
@@ -198,3 +242,26 @@ def test_toolbar_buttons_register_even_before_note_is_loaded():
     dock._add_add_card_tag_toolbar_buttons(buttons, editor)
 
     assert [button["label"] for button in buttons] == ["T", "I"]
+
+
+def test_toggle_editor_tag_button_saves_edit_current_note(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep"], note_id=9), add_mode=False)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": object()})())
+    calls = []
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: (calls.append(delay), func()),
+    )
+
+    dock._toggle_editor_tag_button(editor, ["topic"], "unused")
+
+    assert editor.note.tags == ["keep", "topic"]
+    assert editor.tags.text_value == "keep topic"
+    assert editor.tags.updated >= 1
+    assert editor.tags.repainted >= 1
+    assert calls == [0, 40, 0, 60]
+    assert editor.tag_focus_lost_calls == 1
+    assert editor.load_note_calls == 2
+    assert editor.saved_current_note == 1

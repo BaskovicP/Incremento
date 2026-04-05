@@ -482,6 +482,74 @@ def _set_note_tags(note, tags: list[str]) -> None:
         pass
 
 
+def _editor_tags(editor, note) -> list[str]:
+    try:
+        tags_widget = getattr(editor, "tags", None)
+        if tags_widget is not None and hasattr(tags_widget, "text"):
+            raw = str(tags_widget.text() or "")
+            if hasattr(mw.col, "tags"):
+                return _normalize_tag_list(mw.col.tags.split(raw))
+            return _normalize_tag_list(raw)
+    except Exception:
+        pass
+    return _note_tags(note)
+
+
+def _set_editor_tags(editor, tags: list[str]) -> None:
+    note = getattr(editor, "note", None)
+    if note is not None:
+        _set_note_tags(note, tags)
+    try:
+        tags_widget = getattr(editor, "tags", None)
+        if tags_widget is None:
+            return
+        if getattr(tags_widget, "col", None) != mw.col:
+            tags_widget.setCol(mw.col)
+        tags_widget.setText(" ".join(tags))
+        if hasattr(tags_widget, "update"):
+            tags_widget.update()
+        if hasattr(tags_widget, "repaint"):
+            tags_widget.repaint()
+    except Exception:
+        pass
+
+
+def _sync_editor_tag_widget(editor) -> None:
+    try:
+        tags_widget = getattr(editor, "tags", None)
+        note = getattr(editor, "note", None)
+        if tags_widget is None or note is None:
+            return
+        if getattr(tags_widget, "col", None) != mw.col:
+            tags_widget.setCol(mw.col)
+        tags_widget.setText(note.string_tags().strip())
+        if hasattr(tags_widget, "update"):
+            tags_widget.update()
+        if hasattr(tags_widget, "repaint"):
+            tags_widget.repaint()
+    except Exception:
+        pass
+
+
+def _schedule_editor_tag_widget_sync(editor) -> None:
+    _sync_editor_tag_widget(editor)
+    try:
+        QTimer.singleShot(0, lambda editor=editor: _sync_editor_tag_widget(editor))
+        QTimer.singleShot(40, lambda editor=editor: _sync_editor_tag_widget(editor))
+    except Exception:
+        pass
+
+
+def _schedule_editor_note_reload(editor) -> None:
+    if getattr(editor, "addMode", False):
+        return
+    try:
+        QTimer.singleShot(0, lambda editor=editor: editor.loadNote())
+        QTimer.singleShot(60, lambda editor=editor: editor.loadNote())
+    except Exception:
+        pass
+
+
 def _note_has_all_tags(note, wanted_tags: list[str]) -> bool:
     normalized_wanted = {tag.lower() for tag in _normalize_tag_list(wanted_tags)}
     if not normalized_wanted:
@@ -627,9 +695,19 @@ def _toggle_editor_tag_button(editor, tags: list[str], empty_message: str) -> No
         tooltip(empty_message)
         _refresh_add_card_tag_buttons_for_editor(editor)
         return
-    _toggle_note_tag_set(note, normalized_tags)
+    tag_state = type("_TagState", (), {"tags": _editor_tags(editor, note)})()
+    _toggle_note_tag_set(tag_state, normalized_tags)
+    _set_editor_tags(editor, _note_tags(tag_state))
+    _schedule_editor_tag_widget_sync(editor)
     try:
-        editor.updateTags()
+        if getattr(editor, "tags", None) is not None and hasattr(editor, "on_tag_focus_lost"):
+            editor.on_tag_focus_lost()
+            _schedule_editor_note_reload(editor)
+        elif not getattr(editor, "addMode", False) and hasattr(editor, "_save_current_note"):
+            editor._save_current_note()
+            _schedule_editor_note_reload(editor)
+        else:
+            gui_hooks.editor_did_update_tags(note)
     except Exception:
         pass
     _refresh_add_card_tag_buttons_for_editor(editor)
