@@ -19,7 +19,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from aqt import mw
 from aqt.utils import showInfo, tooltip
@@ -30,6 +30,7 @@ from aqt.qt import (
     QDockWidget,
     QEvent,
     QHBoxLayout,
+    QGridLayout,
     QLabel,
     QObject,
     QPoint,
@@ -52,17 +53,21 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 try:
     from ..backend import paths as _paths
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.video_manager import fmt_time as _fmt_media_time
 except ImportError:
     from backend import paths as _paths  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
+    from video_manager import fmt_time as _fmt_media_time  # type: ignore
 
 try:
     from ..backend.db import add_web_card_source, get_web_card_sources
     from ..backend.web_manager import (
         WEB_NOTE_TYPE,
         add_web_card,
+        build_web_media_resume_target,
         build_web_restore_payload,
         build_external_web_url,
+        configured_prefer_web_card_resume_in_original_page,
         configured_remember_browser_card_scroll,
         ensure_web_note_type,
         get_web_progress,
@@ -76,8 +81,10 @@ except ImportError:
     from web_manager import (
         WEB_NOTE_TYPE,
         add_web_card,
+        build_web_media_resume_target,
         build_web_restore_payload,
         build_external_web_url,
+        configured_prefer_web_card_resume_in_original_page,
         configured_remember_browser_card_scroll,
         ensure_web_note_type,
         get_web_progress,
@@ -128,12 +135,23 @@ def _remember_browser_card_scroll() -> bool:
         return True
 
 
+def _prefer_web_card_resume_in_original_page() -> bool:
+    try:
+        return bool(configured_prefer_web_card_resume_in_original_page())
+    except Exception:
+        return True
+
+
 def _web_progress_state(card_id: int | None = None) -> dict:
     return _controller.progress_state(card_id)
 
 
 def _refresh_web_bookmark_button() -> None:
     _controller.refresh_bookmark_button()
+
+
+def _refresh_web_resume_button() -> None:
+    _controller.refresh_resume_button()
 
 
 def _persist_web_url(card_id: int | None, url: str | None) -> None:
@@ -199,6 +217,52 @@ def _source_url_label(url: str) -> str:
     return label if len(label) <= 72 else label[:69] + "..."
 
 
+def _strip_resume_fragment(fragment: str) -> str:
+    raw = str(fragment or "").lstrip("#").strip()
+    if not raw:
+        return ""
+    marker = "__incremento_resume__=1"
+    idx = raw.find(marker)
+    if idx < 0:
+        return raw
+    return raw[:idx].rstrip("&?")
+
+
+def _build_resume_tracking_url(
+    url: str,
+    *,
+    card_id: int,
+    seconds: float,
+    media_url: str = "",
+) -> str:
+    raw = str(url or "").strip()
+    if not raw:
+        return ""
+    sec = max(0, int(float(seconds or 0.0)))
+    base = build_external_web_url(raw, card_id=card_id, track_with_extension=True)
+    if sec <= 0:
+        return base
+
+    clean_media_url = str(media_url or "").strip()
+    try:
+        parsed = urlparse(base)
+        fragment_parts = []
+        existing_fragment = _strip_resume_fragment(parsed.fragment)
+        if existing_fragment:
+            fragment_parts.append(existing_fragment)
+        fragment_parts.append("__incremento_resume__=1")
+        fragment_parts.append(f"inc_resume_sec={sec}")
+        if clean_media_url:
+            fragment_parts.append(f"inc_resume_media={quote(clean_media_url, safe='')}")
+        return urlunparse(parsed._replace(fragment="&".join(fragment_parts)))
+    except Exception:
+        fragment = f"__incremento_resume__=1&inc_resume_sec={sec}"
+        if clean_media_url:
+            fragment += f"&inc_resume_media={quote(clean_media_url, safe='')}"
+        sep = "#" if "#" not in base else "&"
+        return f"{base}{sep}{fragment}"
+
+
 def _load_web_bridge_js_template() -> str:
     if _runtime.bridge_js_template is None:
         with open(_WEB_BRIDGE_JS_PATH, "r", encoding="utf-8") as fh:
@@ -223,6 +287,10 @@ class _WebDockController:
                 "scroll_ratio": 0.0,
                 "bookmark_url": "",
                 "bookmark_payload": {},
+                "media_url": "",
+                "media_title": "",
+                "media_seconds": 0.0,
+                "media_updated_at": 0,
             }
         try:
             return get_web_progress(_ADDON_DIR, _active_profile(), target_card_id)
@@ -232,6 +300,10 @@ class _WebDockController:
                 "scroll_ratio": 0.0,
                 "bookmark_url": "",
                 "bookmark_payload": {},
+                "media_url": "",
+                "media_title": "",
+                "media_seconds": 0.0,
+                "media_updated_at": 0,
             }
 
     def current_display_url(self) -> str:
@@ -305,6 +377,45 @@ class _WebDockController:
                 if has_bookmark
                 else "Save the current reading position as the browser-card bookmark."
             )
+        except Exception:
+            pass
+
+    def refresh_resume_button(self) -> None:
+        if self.runtime.dock is None:
+            return
+        button = getattr(self.runtime.dock, "_resume_btn", None)
+        if button is None:
+            return
+        progress = self.progress_state()
+        seconds = float(progress.get("media_seconds") or 0.0)
+        if seconds <= 0:
+            try:
+                button.setVisible(False)
+                button.setText("Resume")
+                button.setToolTip("")
+            except Exception:
+                pass
+            return
+
+        time_text = _fmt_media_time(seconds)
+        current_url = self.current_display_url() or str(progress.get("url") or "").strip()
+        media_url = str(progress.get("media_url") or "").strip()
+        resume_url = build_web_media_resume_target(current_url, media_url, seconds)
+        media_title = str(progress.get("media_title") or "").strip()
+        prefer_original_page = _prefer_web_card_resume_in_original_page()
+        tooltip_parts = [f"Last saved media time: {time_text}."]
+        if media_title:
+            tooltip_parts.append(media_title)
+        if prefer_original_page:
+            tooltip_parts.append("Reopens the original page and asks the browser extension to resume there.")
+        elif resume_url:
+            tooltip_parts.append("Opens the saved media at that time.")
+        else:
+            tooltip_parts.append("Opens the page and copies the saved time to your clipboard.")
+        try:
+            button.setText(f"Resume {time_text}")
+            button.setToolTip(" ".join(tooltip_parts))
+            button.setVisible(True)
         except Exception:
             pass
 
@@ -621,47 +732,47 @@ class _WebDockController:
         vbox.addWidget(view, 1)
 
         ctrl = QWidget(container)
-        ctrl_layout = QHBoxLayout(ctrl)
+        ctrl_layout = QGridLayout(ctrl)
         ctrl_layout.setContentsMargins(8, 4, 8, 4)
-        ctrl_layout.setSpacing(6)
+        ctrl_layout.setHorizontalSpacing(6)
+        ctrl_layout.setVerticalSpacing(6)
 
         url_lbl = QLabel("")
         url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
         url_lbl.setWordWrap(False)
-        url_lbl.setMaximumWidth(360)
-        ctrl_layout.addWidget(url_lbl, 1)
+        ctrl_layout.addWidget(url_lbl, 0, 0, 1, 5)
 
         add_card_btn = QPushButton("+ Add Card")
-        ctrl_layout.addWidget(add_card_btn)
+        ctrl_layout.addWidget(add_card_btn, 0, 5)
 
         extract_btn = QPushButton("Extract")
         extract_btn.setToolTip(
             "Copy the current text selection into a field in the Add Card dock."
         )
-        ctrl_layout.addWidget(extract_btn)
+        ctrl_layout.addWidget(extract_btn, 0, 6)
 
         snapshot_btn = QPushButton("Snapshot")
         snapshot_btn.setToolTip(
             "Capture an image from the current viewport, like the PDF snapshot tool."
         )
-        ctrl_layout.addWidget(snapshot_btn)
+        ctrl_layout.addWidget(snapshot_btn, 0, 7)
 
         bookmark_btn = QPushButton("Bookmark")
-        ctrl_layout.addWidget(bookmark_btn)
+        ctrl_layout.addWidget(bookmark_btn, 0, 8)
 
         cards_btn = QPushButton("Cards 0")
         cards_btn.setVisible(False)
-        ctrl_layout.addWidget(cards_btn)
+        ctrl_layout.addWidget(cards_btn, 0, 9)
 
         home_btn = QPushButton("Home")
         home_btn.setFixedWidth(70)
-        ctrl_layout.addWidget(home_btn)
+        ctrl_layout.addWidget(home_btn, 1, 0)
 
         homepage_window_btn = QPushButton("Open in Window (Home)")
         homepage_window_btn.setToolTip(
             "Open the original homepage for this web card in your system browser."
         )
-        ctrl_layout.addWidget(homepage_window_btn)
+        ctrl_layout.addWidget(homepage_window_btn, 1, 1)
 
         track_cb = QCheckBox("Track via Chrome extension")
         track_cb.setChecked(bool(self.runtime.track_window_with_extension))
@@ -669,10 +780,16 @@ class _WebDockController:
             "When checked, opening this page externally lets the Incremento Companion "
             "extension keep the web card synced to the latest page visited in that tab."
         )
-        ctrl_layout.addWidget(track_cb)
+        ctrl_layout.addWidget(track_cb, 1, 2)
 
         window_btn = QPushButton("Open in Window")
-        ctrl_layout.addWidget(window_btn)
+        ctrl_layout.addWidget(window_btn, 1, 3)
+
+        resume_btn = QPushButton("Resume")
+        resume_btn.setVisible(False)
+        ctrl_layout.addWidget(resume_btn, 1, 4)
+
+        ctrl_layout.setColumnStretch(0, 1)
 
         vbox.addWidget(ctrl)
 
@@ -698,6 +815,7 @@ class _WebDockController:
         dock._bookmark_btn = bookmark_btn
         dock._cards_btn = cards_btn
         dock._cards_panel = cards_panel
+        dock._resume_btn = resume_btn
 
         if self.runtime.interaction_filter is None:
             self.runtime.interaction_filter = _WebInteractionFilter(self.runtime, mw)
@@ -715,6 +833,7 @@ class _WebDockController:
             _persist_web_url(self.runtime.current_card_id, url_str)
             self.refresh_cards_panel()
             self.refresh_bookmark_button()
+            self.refresh_resume_button()
 
         def _on_load_finished(ok):
             if not ok or self.runtime.current_card_id is None:
@@ -739,6 +858,7 @@ class _WebDockController:
             self.runtime.pending_restore = None
             self.refresh_cards_panel()
             self.refresh_bookmark_button()
+            self.refresh_resume_button()
 
         def _on_selection_changed():
             _update_native_selection_state()
@@ -753,6 +873,7 @@ class _WebDockController:
         qconnect(bookmark_btn.clicked, self.save_bookmark)
         qconnect(cards_btn.clicked, self.toggle_cards_panel)
         qconnect(window_btn.clicked, self.open_in_window)
+        qconnect(resume_btn.clicked, self.open_media_resume_in_window)
         qconnect(track_cb.toggled, _on_track_web_window_toggled)
 
         def _open_add_card():
@@ -827,6 +948,98 @@ class _WebDockController:
                 "Incremento: browser tracking enabled for this web card tab "
                 "(requires the Incremento Companion extension)."
             )
+
+    def _copy_text_to_clipboard(self, text: str) -> bool:
+        raw = str(text or "")
+        if not raw:
+            return False
+        try:
+            app = QApplication.instance()
+            if app is None:
+                return False
+            clipboard = app.clipboard()
+            if clipboard is None:
+                return False
+            clipboard.setText(raw)
+            return True
+        except Exception:
+            return False
+
+    def open_media_resume_in_window(self) -> None:
+        if self.runtime.current_card_id is None:
+            tooltip("Incremento: no web card is currently open.")
+            return
+
+        progress = self.progress_state()
+        seconds = float(progress.get("media_seconds") or 0.0)
+        if seconds <= 0:
+            tooltip("Incremento: no saved media time for this web card yet.")
+            return
+
+        current_url = self.current_display_url() or str(progress.get("url") or "").strip()
+        if not current_url:
+            current_url = str(self.runtime.current_home_url or "").strip()
+        if not current_url:
+            tooltip("Incremento: this web card has no valid URL.")
+            return
+
+        media_url = str(progress.get("media_url") or "").strip()
+        resume_url = build_web_media_resume_target(current_url, media_url, seconds)
+        time_text = _fmt_media_time(seconds)
+
+        track_enabled = False
+        if self.runtime.dock is not None:
+            try:
+                track_enabled = bool(self.runtime.dock._track_cb.isChecked())
+            except Exception:
+                track_enabled = False
+
+        prefer_original_page = _prefer_web_card_resume_in_original_page()
+
+        copied_time = False
+        if prefer_original_page:
+            open_url = _build_resume_tracking_url(
+                current_url,
+                card_id=int(self.runtime.current_card_id),
+                seconds=seconds,
+                media_url=media_url,
+            )
+        elif resume_url:
+            open_url = build_external_web_url(
+                resume_url,
+                card_id=int(self.runtime.current_card_id),
+                track_with_extension=False,
+            )
+            copied_time = self._copy_text_to_clipboard(time_text)
+        else:
+            open_url = build_external_web_url(
+                current_url,
+                card_id=int(self.runtime.current_card_id),
+                track_with_extension=track_enabled,
+            )
+            copied_time = self._copy_text_to_clipboard(time_text)
+            try:
+                set_web_url(_ADDON_DIR, _active_profile(), self.runtime.current_card_id, current_url)
+            except Exception:
+                pass
+
+        try:
+            ok = bool(QDesktopServices.openUrl(QUrl(open_url)))
+        except Exception:
+            ok = False
+        if not ok:
+            tooltip("Incremento: failed to open system browser.")
+            return
+
+        if prefer_original_page:
+            tooltip(
+                "Incremento: reopening the original page and resuming the embedded media there "
+                "(requires the Incremento Companion extension)."
+            )
+            return
+
+        if copied_time:
+            tooltip(f"Incremento: copied saved media time {time_text}.")
 
     def open_homepage_in_window(self) -> None:
         if self.runtime.current_card_id is None:
@@ -917,6 +1130,7 @@ class _WebDockController:
         except Exception:
             pass
         self.refresh_bookmark_button()
+        self.refresh_resume_button()
         _set_pending_web_restore(
             card_id,
             allow_bookmark=prefer_bookmark,
@@ -987,6 +1201,27 @@ class _WebDockController:
             return True
         except Exception:
             return False
+
+    def sync_external_media_state(
+        self,
+        card_id: int,
+        url: str,
+        media_url: str,
+        media_title: str,
+        media_seconds: float,
+    ) -> bool:
+        try:
+            target_card_id = int(card_id)
+        except Exception:
+            return False
+        if target_card_id <= 0 or float(media_seconds or 0.0) <= 0:
+            return False
+        if self.runtime.current_card_id != target_card_id:
+            return False
+        if self.runtime.dock is None:
+            return False
+        self.refresh_resume_button()
+        return True
 
     def on_question_shown(self, card) -> None:
         try:
@@ -1597,6 +1832,22 @@ def open_web_location(card_id: int, target_url: str) -> bool:
 def sync_external_web_url(card_id: int, url: str) -> bool:
     """If this web card is currently open, load the latest externally synced URL."""
     return _controller.sync_external_url(card_id, url)
+
+
+def sync_external_web_media_state(
+    card_id: int,
+    url: str,
+    media_url: str,
+    media_title: str,
+    media_seconds: float,
+) -> bool:
+    return _controller.sync_external_media_state(
+        card_id,
+        url,
+        media_url,
+        media_title,
+        media_seconds,
+    )
 
 
 def on_web_question_shown(card) -> None:

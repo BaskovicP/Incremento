@@ -3,6 +3,7 @@ try:
 except ImportError:
     from db import get_connection
 import json
+import time
 from typing import Literal, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -10,6 +11,7 @@ WEB_NOTE_TYPE = "Incremento Web"
 TRACK_CARD_ID_PARAM = "inc_card_id"
 TRACK_WEB_FLAG_PARAM = "inc_track_web"
 _DEFAULT_REMEMBER_BROWSER_CARD_SCROLL = True
+_DEFAULT_PREFER_WEB_CARD_RESUME_IN_ORIGINAL_PAGE = True
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -160,6 +162,10 @@ class WebProgressState(TypedDict):
     scroll_ratio: float
     bookmark_url: str
     bookmark_payload: WebBookmarkPayload
+    media_url: str
+    media_title: str
+    media_seconds: float
+    media_updated_at: int
 
 
 class WebRestorePayload(TypedDict):
@@ -190,12 +196,28 @@ def configured_remember_browser_card_scroll(config: dict | None = None) -> bool:
     )
 
 
+def configured_prefer_web_card_resume_in_original_page(
+    config: dict | None = None,
+) -> bool:
+    config = _resolved_config(config)
+    return bool(
+        (config or {}).get(
+            "prefer_web_card_resume_in_original_page",
+            _DEFAULT_PREFER_WEB_CARD_RESUME_IN_ORIGINAL_PAGE,
+        )
+    )
+
+
 def _default_web_progress() -> WebProgressState:
     return {
         "url": "",
         "scroll_ratio": 0.0,
         "bookmark_url": "",
         "bookmark_payload": {},
+        "media_url": "",
+        "media_title": "",
+        "media_seconds": 0.0,
+        "media_updated_at": 0,
     }
 
 
@@ -205,6 +227,45 @@ def _normalize_scroll_ratio(value) -> float:
     except Exception:
         ratio = 0.0
     return max(0.0, min(ratio, 1.0))
+
+
+def _collapse_ws(value) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def _normalize_media_url(value) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return raw
+
+
+def _normalize_media_title(value) -> str:
+    return _collapse_ws(value)[:240]
+
+
+def _normalize_media_seconds(value) -> float:
+    try:
+        seconds = float(value or 0.0)
+    except Exception:
+        seconds = 0.0
+    if seconds <= 0:
+        return 0.0
+    return round(seconds, 1)
+
+
+def _normalize_media_updated_at(value) -> int:
+    try:
+        ts = int(value or 0)
+    except Exception:
+        ts = 0
+    return max(0, ts)
 
 
 def _normalize_bookmark_payload(payload) -> WebBookmarkPayload:
@@ -285,7 +346,7 @@ def _normalize_bookmark_payload(payload) -> WebBookmarkPayload:
 
 def get_web_progress(addon_dir: str, profile: str, card_id: int) -> WebProgressState:
     row = get_connection(addon_dir, profile).execute(
-        "SELECT url, scroll_ratio, bookmark_url, bookmark_payload "
+        "SELECT url, scroll_ratio, bookmark_url, bookmark_payload, media_url, media_title, media_seconds, media_updated_at "
         "FROM web_progress WHERE card_id = ?",
         (card_id,),
     ).fetchone()
@@ -300,6 +361,10 @@ def get_web_progress(addon_dir: str, profile: str, card_id: int) -> WebProgressS
         "scroll_ratio": _normalize_scroll_ratio(row[1]),
         "bookmark_url": str(row[2] or "").strip(),
         "bookmark_payload": _normalize_bookmark_payload(bookmark_payload),
+        "media_url": _normalize_media_url(row[4]),
+        "media_title": _normalize_media_title(row[5]),
+        "media_seconds": _normalize_media_seconds(row[6]),
+        "media_updated_at": _normalize_media_updated_at(row[7]),
     }
 
 
@@ -344,6 +409,10 @@ def _update_web_progress_columns(
     scroll_ratio: float | None = None,
     bookmark_url: str | None = None,
     bookmark_payload: WebBookmarkPayload | None = None,
+    media_url: str | None = None,
+    media_title: str | None = None,
+    media_seconds: float | None = None,
+    media_updated_at: int | None = None,
 ) -> None:
     _ensure_web_progress_row(addon_dir, profile, card_id)
     assignments: list[str] = []
@@ -360,6 +429,18 @@ def _update_web_progress_columns(
     if bookmark_payload is not None:
         assignments.append("bookmark_payload = ?")
         values.append(json.dumps(bookmark_payload, ensure_ascii=False))
+    if media_url is not None:
+        assignments.append("media_url = ?")
+        values.append(_normalize_media_url(media_url))
+    if media_title is not None:
+        assignments.append("media_title = ?")
+        values.append(_normalize_media_title(media_title))
+    if media_seconds is not None:
+        assignments.append("media_seconds = ?")
+        values.append(_normalize_media_seconds(media_seconds))
+    if media_updated_at is not None:
+        assignments.append("media_updated_at = ?")
+        values.append(_normalize_media_updated_at(media_updated_at))
     if not assignments:
         return
     values.append(card_id)
@@ -423,6 +504,66 @@ def set_web_bookmark(
         bookmark_url="",
         bookmark_payload={},
     )
+
+
+def set_web_media_progress(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    url: str,
+    media_seconds: float,
+    media_url: str = "",
+    media_title: str = "",
+    media_updated_at: int | None = None,
+) -> None:
+    normalized_seconds = _normalize_media_seconds(media_seconds)
+    if normalized_seconds <= 0:
+        return
+    if media_updated_at is None:
+        media_updated_at = int(time.time())
+    _update_web_progress_columns(
+        addon_dir,
+        profile,
+        card_id,
+        url=url,
+        media_url=media_url,
+        media_title=media_title,
+        media_seconds=normalized_seconds,
+        media_updated_at=media_updated_at,
+    )
+
+
+def build_web_media_resume_target(
+    page_url: str,
+    media_url: str,
+    media_seconds: float,
+) -> str:
+    seconds = max(0, int(_normalize_media_seconds(media_seconds)))
+    if seconds <= 0:
+        return ""
+
+    try:
+        from .video_manager import build_remote_video_watch_url as _build_remote_video_watch_url
+    except ImportError:
+        from video_manager import build_remote_video_watch_url as _build_remote_video_watch_url
+
+    candidates = []
+    page = str(page_url or "").strip()
+    media = _normalize_media_url(media_url)
+    if page:
+        candidates.append(page)
+    if media and media not in candidates:
+        candidates.append(media)
+
+    for candidate in candidates:
+        try:
+            resume_url = _build_remote_video_watch_url(candidate, start_sec=seconds)
+        except Exception:
+            resume_url = None
+        if resume_url:
+            return str(resume_url).strip()
+    return ""
 
 
 def build_external_web_url(

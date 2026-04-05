@@ -58,6 +58,7 @@
         "http://*/*",
         "https://*/*"
       ],
+      "all_frames": true,
       "js": [
         "dist/content.js"
       ],

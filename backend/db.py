@@ -15,7 +15,7 @@ priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
-web_progress    — last URL, scroll position, and bookmark state per web card
+web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
 topic_postpones — timed postpone expiry timestamps per topic card
 """
 
@@ -131,7 +131,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             url              TEXT    NOT NULL DEFAULT '',
             scroll_ratio     REAL    NOT NULL DEFAULT 0.0,
             bookmark_url     TEXT    NOT NULL DEFAULT '',
-            bookmark_payload TEXT    NOT NULL DEFAULT ''
+            bookmark_payload TEXT    NOT NULL DEFAULT '',
+            media_url        TEXT    NOT NULL DEFAULT '',
+            media_title      TEXT    NOT NULL DEFAULT '',
+            media_seconds    REAL    NOT NULL DEFAULT 0.0,
+            media_updated_at INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS pdf_card_sources (
@@ -208,6 +212,10 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "ALTER TABLE web_progress ADD COLUMN scroll_ratio REAL NOT NULL DEFAULT 0.0",
         "ALTER TABLE web_progress ADD COLUMN bookmark_url TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE web_progress ADD COLUMN bookmark_payload TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE web_progress ADD COLUMN media_url TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE web_progress ADD COLUMN media_title TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE web_progress ADD COLUMN media_seconds REAL NOT NULL DEFAULT 0.0",
+        "ALTER TABLE web_progress ADD COLUMN media_updated_at INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             conn.execute(statement)

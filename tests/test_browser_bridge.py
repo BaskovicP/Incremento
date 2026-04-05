@@ -15,6 +15,7 @@ from browser_bridge import (
     normalize_add_content_request,
     normalize_browser_capture_payload,
     normalize_update_web_card_payload,
+    normalize_update_web_card_media_payload,
     url_looks_like_pdf,
 )
 from webpage_markdown import convert_webpage_html_to_markdown
@@ -354,6 +355,52 @@ def test_normalize_update_web_card_payload_rejects_invalid_card_id():
         assert False, "Expected normalize_update_web_card_payload to reject invalid card IDs"
     except ValueError as exc:
         assert "cardId" in str(exc)
+
+
+def test_normalize_update_web_card_media_payload_accepts_valid_payload():
+    payload = normalize_update_web_card_media_payload(
+        {
+            "cardId": 123,
+            "url": "https://example.com/next/page",
+            "mediaUrl": "https://player.vimeo.com/video/148751763",
+            "mediaTitle": "  Demo clip  ",
+            "seconds": 83.2,
+        }
+    )
+    assert payload == {
+        "card_id": 123,
+        "url": "https://example.com/next/page",
+        "media_url": "https://player.vimeo.com/video/148751763",
+        "media_title": "Demo clip",
+        "seconds": 83.2,
+    }
+
+
+def test_normalize_update_web_card_media_payload_allows_missing_media_url():
+    payload = normalize_update_web_card_media_payload(
+        {
+            "cardId": 123,
+            "url": "https://example.com/next/page",
+            "mediaUrl": "blob:https://example.com/not-storable",
+            "seconds": 44,
+        }
+    )
+    assert payload["media_url"] == ""
+    assert payload["seconds"] == 44.0
+
+
+def test_normalize_update_web_card_media_payload_rejects_non_positive_seconds():
+    try:
+        normalize_update_web_card_media_payload(
+            {
+                "cardId": 123,
+                "url": "https://example.com/next/page",
+                "seconds": 0,
+            }
+        )
+        assert False, "Expected normalize_update_web_card_media_payload to reject non-positive seconds"
+    except ValueError as exc:
+        assert "seconds" in str(exc)
 
 
 def test_download_pdf_from_url_writes_pdf(monkeypatch, tmp_path):

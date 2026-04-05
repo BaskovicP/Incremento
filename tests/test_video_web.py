@@ -47,8 +47,10 @@ build_external_web_url = _wm.build_external_web_url
 get_web_progress = _wm.get_web_progress
 set_web_scroll_position = _wm.set_web_scroll_position
 set_web_bookmark = _wm.set_web_bookmark
+set_web_media_progress = _wm.set_web_media_progress
 configured_remember_browser_card_scroll = _wm.configured_remember_browser_card_scroll
 build_web_restore_payload = _wm.build_web_restore_payload
+build_web_media_resume_target = _wm.build_web_media_resume_target
 reviewer_web_homepage_action = _wm.reviewer_web_homepage_action
 build_reviewer_web_home_button_js = _wm.build_reviewer_web_home_button_js
 
@@ -372,6 +374,10 @@ class TestWebUrl:
             "scroll_ratio": 0.0,
             "bookmark_url": "",
             "bookmark_payload": {},
+            "media_url": "",
+            "media_title": "",
+            "media_seconds": 0.0,
+            "media_updated_at": 0,
         }
 
     def test_stores_and_retrieves_url(self, tmp_path):
@@ -460,6 +466,62 @@ class TestWebUrl:
         progress = get_web_progress(str(tmp_path), "TestProfile", 1)
         assert progress["bookmark_url"] == ""
         assert progress["bookmark_payload"] == {}
+
+    def test_media_progress_round_trips(self, tmp_path):
+        set_web_media_progress(
+            str(tmp_path),
+            "TestProfile",
+            1,
+            url="https://example.com/article",
+            media_url="https://player.vimeo.com/video/148751763",
+            media_title="Example clip",
+            media_seconds=83.2,
+            media_updated_at=1234567890,
+        )
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
+        assert progress["url"] == "https://example.com/article"
+        assert progress["media_url"] == "https://player.vimeo.com/video/148751763"
+        assert progress["media_title"] == "Example clip"
+        assert progress["media_seconds"] == pytest.approx(83.2)
+        assert progress["media_updated_at"] == 1234567890
+
+    def test_media_progress_ignores_non_positive_seconds(self, tmp_path):
+        set_web_media_progress(
+            str(tmp_path),
+            "TestProfile",
+            1,
+            url="https://example.com/article",
+            media_seconds=44,
+        )
+        set_web_media_progress(
+            str(tmp_path),
+            "TestProfile",
+            1,
+            url="https://example.com/article",
+            media_seconds=0,
+        )
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
+        assert progress["media_seconds"] == pytest.approx(44.0)
+
+    def test_build_web_media_resume_target_prefers_page_provider_url(self):
+        assert (
+            build_web_media_resume_target(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "https://player.vimeo.com/video/148751763",
+                44,
+            )
+            == "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=44s&autoplay=0"
+        )
+
+    def test_build_web_media_resume_target_falls_back_to_media_url(self):
+        assert (
+            build_web_media_resume_target(
+                "https://example.com/article",
+                "https://player.vimeo.com/video/148751763",
+                44,
+            )
+            == "https://player.vimeo.com/video/148751763#t=44s"
+        )
 
     def test_scroll_setting_defaults_true(self):
         assert configured_remember_browser_card_scroll({}) is True

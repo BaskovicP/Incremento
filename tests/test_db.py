@@ -325,13 +325,17 @@ class TestWebProgressMigration:
         assert "scroll_ratio" in columns
         assert "bookmark_url" in columns
         assert "bookmark_payload" in columns
+        assert "media_url" in columns
+        assert "media_title" in columns
+        assert "media_seconds" in columns
+        assert "media_updated_at" in columns
 
         row = reopened.execute(
-            "SELECT url, scroll_ratio, bookmark_url, bookmark_payload "
+            "SELECT url, scroll_ratio, bookmark_url, bookmark_payload, media_url, media_title, media_seconds, media_updated_at "
             "FROM web_progress WHERE card_id = ?",
             (7,),
         ).fetchone()
-        assert row == ("https://example.com/legacy", 0.0, "", "")
+        assert row == ("https://example.com/legacy", 0.0, "", "", "", "", 0.0, 0)
 
 
 # ---------------------------------------------------------------------------

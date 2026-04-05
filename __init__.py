@@ -52,6 +52,7 @@ from .backend.priority_manager import (
 )
 from .backend.web_manager import (
     configured_remember_browser_card_scroll,
+    configured_prefer_web_card_resume_in_original_page,
 )
 from .backend.reviewer_buttons import (
     configured_use_fail_pass_on_items as _configured_use_fail_pass_on_items,
@@ -2393,6 +2394,7 @@ def openSettingsFunction() -> None:
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
+        current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
@@ -2412,6 +2414,7 @@ def openSettingsFunction() -> None:
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
+    cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
