@@ -23,7 +23,8 @@
     "http://127.0.0.1:8766/*"
   ],
   "background": {
-    "service_worker": "dist/background.js"
+    "service_worker": "dist/background.js",
+    "type": "module"
   },
   "icons": {
     "16": "icons/icon-16.png",
@@ -38,6 +39,21 @@
         "mac": "Alt+Shift+V"
       },
       "description": "Copy latest tracked video time to clipboard"
+    },
+    "add-current-page-as-pdf": {
+      "description": "Add current page to Incremento as PDF"
+    },
+    "add-current-page-as-video": {
+      "description": "Add current page to Incremento as video"
+    },
+    "add-current-page-as-webpage": {
+      "description": "Add current page to Incremento as webpage"
+    },
+    "add-selection-to-markdown": {
+      "description": "Add current selection to Incremento as markdown"
+    },
+    "add-page-to-markdown": {
+      "description": "Add current page to Incremento as markdown"
     },
     "browser-capture-selection": {
       "suggested_key": {

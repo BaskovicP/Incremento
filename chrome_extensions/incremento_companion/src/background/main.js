@@ -1,3 +1,11 @@
+import { importIntoIncremento } from "../shared/bridge.js";
+import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
+import { isSupportedVideoUrl } from "../shared/url.js";
+import {
+  buildAutomaticWritingTitle,
+  buildPreferredWritingFilename,
+} from "../shared/writingTitle.js";
+
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
 const WEB_MEDIA_SYNC_STATE = new Map();
@@ -17,6 +25,11 @@ const INC_RESUME_HASH_MARKER = "__incremento_resume__=1";
 const CONTENT_SCRIPT_FILE = "dist/content.js";
 const COMMAND_BROWSER_CAPTURE_SELECTION = "browser-capture-selection";
 const COMMAND_BROWSER_CAPTURE_SNAPSHOT = "browser-capture-snapshot";
+const COMMAND_ADD_CURRENT_PAGE_AS_PDF = "add-current-page-as-pdf";
+const COMMAND_ADD_CURRENT_PAGE_AS_VIDEO = "add-current-page-as-video";
+const COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE = "add-current-page-as-webpage";
+const COMMAND_ADD_SELECTION_TO_MARKDOWN = "add-selection-to-markdown";
+const COMMAND_ADD_PAGE_TO_MARKDOWN = "add-page-to-markdown";
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 
@@ -675,6 +688,161 @@ async function triggerBrowserCaptureOnTab(tab, mode) {
   return !!response?.ok;
 }
 
+async function capturePageContext(tabId) {
+  if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
+    return null;
+  }
+  await ensureContentScriptInjected(tabId);
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_CONTEXT" });
+    if (response?.ok) {
+      return response;
+    }
+  } catch (_err) {
+    // fall through to direct snapshot
+  }
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const html = document.documentElement?.outerHTML || "";
+        const selectionText = (
+          (window.getSelection?.().toString() || "").trim()
+          || String(globalThis.__incrementoLastSelectedText || "").trim()
+        );
+        return {
+          html,
+          selectionText,
+          title: document.title || "",
+          url: window.location.href || "",
+        };
+      },
+    });
+    return results?.[0]?.result || null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+function buildImportPayload(kind, context, options = {}) {
+  const pageUrl = String(context?.url || "").trim();
+  const pageTitle = String(context?.title || pageUrl).trim();
+  const selectionText = String(context?.selectionText || "");
+  const payload = {
+    kind,
+    url: pageUrl,
+    title: pageTitle || pageUrl,
+    selectedText: selectionText,
+  };
+
+  if (kind === "pdf" && context?.html) {
+    payload.html = String(context.html);
+  }
+
+  if (kind === "writing") {
+    const writingMode = String(options.writingMode || "selection");
+    payload.title = buildAutomaticWritingTitle(
+      pageTitle,
+      pageUrl,
+      writingMode,
+      selectionText,
+    );
+    payload.writingMode = writingMode;
+    payload.preferredFilename = buildPreferredWritingFilename(pageTitle || payload.title, pageUrl);
+    if (writingMode === "webpage_markdown") {
+      payload.pageContentScope = String(options.pageContentScope || "main");
+      if (context?.html) {
+        payload.html = String(context.html);
+      }
+    }
+  }
+
+  return payload;
+}
+
+async function addCurrentPageToIncremento(command) {
+  const tab = await getActiveTab();
+  if (!tab?.id) {
+    return {ok: false, error: "No active tab found."};
+  }
+  if (!isHttpUrl(tab.url || "")) {
+    return {ok: false, error: "Only http(s) pages can be sent to Incremento."};
+  }
+
+  const context = await capturePageContext(tab.id);
+  const pageUrl = String(context?.url || tab.url || "").trim();
+  const pageTitle = String(context?.title || tab.title || pageUrl).trim();
+  const selectionText = String(context?.selectionText || "");
+  const html = String(context?.html || "");
+
+  if (!isHttpUrl(pageUrl)) {
+    return {ok: false, error: "Only http(s) pages can be sent to Incremento."};
+  }
+
+  let payload = null;
+  let progressMessage = "";
+
+  if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF) {
+    payload = buildImportPayload("pdf", {url: pageUrl, title: pageTitle, selectionText, html});
+    progressMessage = "Adding PDF card...";
+    const pdfPayload = await getPdfPayloadForUrl(pageUrl);
+    if (pdfPayload) {
+      payload.pdfBase64 = pdfPayload.pdfBase64;
+      payload.pdfFilename = pdfPayload.pdfFilename;
+    }
+  }
+  if (command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO) {
+    if (!isSupportedVideoUrl(pageUrl)) {
+      return {ok: false, error: "Open a YouTube or Vimeo page to add a video card."};
+    }
+    payload = buildImportPayload("video", {url: pageUrl, title: pageTitle, selectionText, html});
+    progressMessage = "Adding video card...";
+    const state = TAB_STATE.get(tab.id);
+    const startSeconds = Math.max(0, Math.floor(Number(state?.seconds || 0)));
+    if (startSeconds > 0) {
+      payload.startSeconds = startSeconds;
+    }
+  }
+  if (command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE) {
+    payload = buildImportPayload("webpage", {url: pageUrl, title: pageTitle, selectionText, html});
+    progressMessage = "Adding webpage card...";
+  }
+  if (command === COMMAND_ADD_SELECTION_TO_MARKDOWN) {
+    if (!selectionText) {
+      return {ok: false, error: "Select text on the page first."};
+    }
+    payload = buildImportPayload("writing", {
+      url: pageUrl,
+      title: pageTitle,
+      selectionText,
+      html
+    }, {writingMode: "selection"});
+    progressMessage = "Adding writing card from selection...";
+  }
+  if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
+    if (!html) {
+      return {ok: false, error: "Could not read webpage content from this tab."};
+    }
+    payload = buildImportPayload("writing", {url: pageUrl, title: pageTitle, selectionText, html}, {
+      writingMode: "webpage_markdown",
+      pageContentScope: "main",
+    });
+    progressMessage = "Adding writing card from webpage markdown...";
+  } else {
+    return {ok: false, error: "Unsupported command."};
+  }
+
+  try {
+    const result = await importIntoIncremento(payload);
+    await showToastInTab(tab.id, `Added ${result.kind} card: ${result.title}`);
+    return {ok: true, result};
+  } catch (error) {
+    const message = String(error?.message || progressMessage || "Failed to add content.");
+    await showToastInTab(tab.id, message);
+    return {ok: false, error: message};
+  }
+}
+
 async function reportBrowserCaptureTrigger(tabId, ok, fallbackMessage = "") {
   if (typeof tabId !== "number") {
     return;
@@ -1099,6 +1267,15 @@ chrome.commands.onCommand.addListener((command, tab) => {
     return;
   }
   if (command !== "copy-last-video-time") {
+    if (
+      command === COMMAND_ADD_CURRENT_PAGE_AS_PDF
+      || command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO
+      || command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE
+      || command === COMMAND_ADD_SELECTION_TO_MARKDOWN
+      || command === COMMAND_ADD_PAGE_TO_MARKDOWN
+    ) {
+      void addCurrentPageToIncremento(command);
+    }
     return;
   }
   void copyLatestStoredTime(true);

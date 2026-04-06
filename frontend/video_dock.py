@@ -126,6 +126,8 @@ _CURRENT_TIME_JS = (
     "})()"
 )
 
+_HMS_INPUT_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?$")
+
 
 def _build_video_dock():
     global _video_dock, _video_profile, _app_state_connected
@@ -213,6 +215,21 @@ def _build_video_dock():
     ctrl_layout.addWidget(browser_btn)
     vbox.addWidget(ctrl)
 
+    manual_ctrl = QWidget(container)
+    manual_layout = QHBoxLayout(manual_ctrl)
+    manual_layout.setContentsMargins(8, 0, 8, 4)
+    manual_layout.setSpacing(4)
+    resume_lbl = QLabel("Resume at")
+    resume_input = QLineEdit()
+    resume_input.setPlaceholderText("mm:ss or 123s")
+    resume_input.setMaximumWidth(150)
+    resume_btn = QPushButton("Set time")
+    manual_layout.addWidget(resume_lbl)
+    manual_layout.addWidget(resume_input, 1)
+    manual_layout.addWidget(resume_btn)
+    manual_layout.addStretch()
+    vbox.addWidget(manual_ctrl)
+
     local_ctrl = QWidget(container)
     local_layout = QHBoxLayout(local_ctrl)
     local_layout.setContentsMargins(8, 0, 8, 8)
@@ -259,8 +276,12 @@ def _build_video_dock():
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
     dock._browser_btn = browser_btn
+    dock._resume_input = resume_input
+    dock._resume_btn = resume_btn
     qconnect(add_btn.clicked, _video_add_card_at_point)
     qconnect(browser_btn.clicked, _open_video_in_browser)
+    qconnect(resume_btn.clicked, _on_manual_time_submit)
+    qconnect(resume_input.returnPressed, _on_manual_time_submit)
     qconnect(seek_slider.sliderPressed, _on_seek_slider_pressed)
     qconnect(seek_slider.sliderReleased, _on_seek_slider_released)
     qconnect(seek_slider.valueChanged, _on_seek_slider_value_changed)
@@ -393,6 +414,84 @@ def _reset_seek_ui() -> None:
         pass
     finally:
         _seek_ui_updating = False
+
+
+def _parse_manual_time(text: str) -> float | None:
+    raw = (text or "").strip().lower()
+    if not raw:
+        return None
+    if ":" in raw:
+        parts = raw.split(":")
+        if len(parts) not in (2, 3):
+            return None
+        values: list[float] = []
+        for part in parts:
+            if not part:
+                return None
+            try:
+                values.append(float(part))
+            except Exception:
+                return None
+        if len(values) == 2:
+            return max(0.0, values[0] * 60.0 + values[1])
+        return max(0.0, values[0] * 3600.0 + values[1] * 60.0 + values[2])
+    match = _HMS_INPUT_RE.fullmatch(raw)
+    if match and any(match.groups()):
+        h = int(match.group(1) or 0)
+        m = int(match.group(2) or 0)
+        try:
+            s = float(match.group(3) or 0.0)
+        except Exception:
+            s = 0.0
+        return max(0.0, h * 3600.0 + m * 60.0 + s)
+    if raw.endswith("s"):
+        candidate = raw[:-1]
+        if candidate:
+            try:
+                return max(0.0, float(candidate))
+            except Exception:
+                return None
+        return None
+    try:
+        return max(0.0, float(raw))
+    except Exception:
+        return None
+
+
+def _apply_manual_time(seconds: float) -> None:
+    global _last_known_position
+    if _current_video_card_id is None:
+        tooltip("Incremento: no active video card.")
+        return
+    target = max(0.0, float(seconds or 0.0))
+    _last_known_position = target
+    _seek_to_seconds(target)
+    _set_seek_ui(target, _last_known_duration if _last_known_duration > 0 else None)
+    try:
+        set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, target)
+    except Exception:
+        pass
+    tooltip(f"Incremento: stored resume time at {fmt_time(target)}.")
+    if _video_dock is not None:
+        try:
+            inp = getattr(_video_dock, "_resume_input", None)
+            if inp is not None:
+                inp.setText(fmt_time(target))
+        except Exception:
+            pass
+
+
+def _on_manual_time_submit() -> None:
+    if _video_dock is None:
+        return
+    inp = getattr(_video_dock, "_resume_input", None)
+    if inp is None:
+        return
+    seconds = _parse_manual_time(inp.text())
+    if seconds is None:
+        tooltip("Incremento: enter a time like mm:ss, 1m30s, or 90s.")
+        return
+    _apply_manual_time(seconds)
 
 
 def _seek_to_seconds(seconds: float) -> None:
