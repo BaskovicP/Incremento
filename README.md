@@ -65,7 +65,7 @@ Extension details and install steps:
 
 - User manual: [MANUAL.md](MANUAL.md)
 - Export and restore guide: [EXPORTING.md](EXPORTING.md)
-- Internal agent/developer notes: [AGENTS.md](AGENTS.md)
+- Internal agent/developer notes: [AGENTS.md](AGENTS.md) with nested area-specific guides under `backend/`, `frontend/`, `chrome_extensions/incremento_companion/`, and `tests/`
 
 ## Development
 
