@@ -1048,6 +1048,66 @@
     });
   }
 
+  function isScrollableElement(element, axis) {
+    if (!(element instanceof Element)) {
+      return false;
+    }
+    const style = window.getComputedStyle(element);
+    const overflow = axis === "x" ? style.overflowX : style.overflowY;
+    if (!/(auto|scroll|overlay)/.test(String(overflow || ""))) {
+      return false;
+    }
+    if (axis === "x") {
+      return element.scrollWidth > element.clientWidth;
+    }
+    return element.scrollHeight > element.clientHeight;
+  }
+
+  function findScrollableAncestor(startElement, axis) {
+    let current = startElement instanceof Element ? startElement : null;
+    while (current) {
+      if (isScrollableElement(current, axis)) {
+        return current;
+      }
+      current = current.parentElement;
+    }
+    const scrollingElement = document.scrollingElement;
+    return scrollingElement instanceof Element ? scrollingElement : document.documentElement;
+  }
+
+  function forwardSnapshotWheel(event, host) {
+    if (!event) {
+      return;
+    }
+    const previousPointerEvents = host?.style?.pointerEvents || "";
+    if (host?.style) {
+      host.style.pointerEvents = "none";
+    }
+    let target = null;
+    try {
+      target = document.elementFromPoint(event.clientX, event.clientY);
+    } finally {
+      if (host?.style) {
+        host.style.pointerEvents = previousPointerEvents;
+      }
+    }
+
+    const deltaX = Number(event.deltaX) || 0;
+    const deltaY = Number(event.deltaY) || 0;
+    const scrollerX = deltaX ? findScrollableAncestor(target, "x") : null;
+    const scrollerY = deltaY ? findScrollableAncestor(target, "y") : null;
+    const fallbackScroller = document.scrollingElement instanceof Element
+      ? document.scrollingElement
+      : document.documentElement;
+
+    if (deltaX) {
+      (scrollerX || fallbackScroller).scrollBy({ left: deltaX, top: 0, behavior: "auto" });
+    }
+    if (deltaY) {
+      (scrollerY || fallbackScroller).scrollBy({ left: 0, top: deltaY, behavior: "auto" });
+    }
+  }
+
   async function captureSnapshotRegion(region, existingSnapshots = []) {
     const ui = ensureBrowserCaptureUiRoot();
     ui.shell.style.display = "none";
@@ -1210,6 +1270,17 @@
       activeRegion.height = event.clientY - activeRegion.y;
       syncActiveRect();
     });
+
+    const handleWheel = (event) => {
+      if (activeRegion || captureInFlight) {
+        return;
+      }
+      event.preventDefault();
+      forwardSnapshotWheel(event, ui.host);
+    };
+
+    captureShell.addEventListener("wheel", handleWheel, { passive: false });
+    toolbar.addEventListener("wheel", handleWheel, { passive: false });
 
     const finishActiveRect = async () => {
       if (!activeRect || !activeRegion) {
