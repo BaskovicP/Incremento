@@ -17,12 +17,14 @@ epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
 topic_postpones — timed postpone expiry timestamps per topic card
+knowledge_tree_nodes — per-profile hierarchy of linked card ids
 """
 
 import atexit
 import json
 import re
 import sqlite3
+import time
 from pathlib import Path
 
 try:
@@ -199,6 +201,17 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_topic_postpones_until
             ON topic_postpones (until_ts);
+
+        CREATE TABLE IF NOT EXISTS knowledge_tree_nodes (
+            card_id        INTEGER PRIMARY KEY,
+            parent_card_id INTEGER,
+            node_kind      TEXT    NOT NULL DEFAULT 'topic',
+            sort_order     INTEGER NOT NULL DEFAULT 0,
+            created_at     INTEGER NOT NULL DEFAULT 0,
+            updated_at     INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_ktn_parent_order
+            ON knowledge_tree_nodes (parent_card_id, sort_order, card_id);
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
@@ -586,3 +599,135 @@ def set_topic_schedule(
         (card_id, round(float(a_factor), 3), int(interval)),
     )
     conn.commit()
+
+
+# ── Knowledge tree ────────────────────────────────────────────────────────────
+
+
+def get_knowledge_tree_nodes(addon_dir: str, profile: str) -> list[dict]:
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT card_id, parent_card_id, node_kind, sort_order, created_at, updated_at "
+            "FROM knowledge_tree_nodes "
+            "ORDER BY CASE WHEN parent_card_id IS NULL THEN 0 ELSE 1 END, "
+            "parent_card_id, sort_order, card_id"
+        )
+        .fetchall()
+    )
+    return [
+        {
+            "card_id": int(card_id),
+            "parent_card_id": None if parent_card_id is None else int(parent_card_id),
+            "node_kind": str(node_kind or "topic"),
+            "sort_order": int(sort_order or 0),
+            "created_at": int(created_at or 0),
+            "updated_at": int(updated_at or 0),
+        }
+        for card_id, parent_card_id, node_kind, sort_order, created_at, updated_at in rows
+    ]
+
+
+def get_knowledge_tree_node(addon_dir: str, profile: str, card_id: int) -> dict | None:
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT card_id, parent_card_id, node_kind, sort_order, created_at, updated_at "
+            "FROM knowledge_tree_nodes WHERE card_id = ?",
+            (int(card_id),),
+        )
+        .fetchone()
+    )
+    if not row:
+        return None
+    return {
+        "card_id": int(row[0]),
+        "parent_card_id": None if row[1] is None else int(row[1]),
+        "node_kind": str(row[2] or "topic"),
+        "sort_order": int(row[3] or 0),
+        "created_at": int(row[4] or 0),
+        "updated_at": int(row[5] or 0),
+    }
+
+
+def set_knowledge_tree_structure(
+    addon_dir: str,
+    profile: str,
+    rows: list[dict],
+) -> None:
+    conn = get_connection(addon_dir, profile)
+    normalized_rows: list[tuple[int, int | None, str, int]] = []
+    seen: set[int] = set()
+
+    for index, row in enumerate(rows):
+        card_id = int(row["card_id"])
+        if card_id in seen:
+            raise ValueError(f"Duplicate knowledge-tree card id: {card_id}")
+        seen.add(card_id)
+
+        parent_card_id = row.get("parent_card_id")
+        if parent_card_id is not None:
+            parent_card_id = int(parent_card_id)
+        if parent_card_id == card_id:
+            raise ValueError("Knowledge-tree node cannot be its own parent.")
+
+        node_kind = str(row.get("node_kind") or "topic").strip().lower()
+        if node_kind not in {"topic", "item"}:
+            raise ValueError(f"Unsupported knowledge-tree node kind: {node_kind}")
+
+        sort_order = int(row.get("sort_order", index))
+        normalized_rows.append((card_id, parent_card_id, node_kind, sort_order))
+
+    valid_ids = {card_id for card_id, _, _, _ in normalized_rows}
+    for card_id, parent_card_id, _, _ in normalized_rows:
+        if parent_card_id is not None and parent_card_id not in valid_ids:
+            raise ValueError(
+                f"Knowledge-tree parent {parent_card_id} for card {card_id} is missing."
+            )
+
+    parent_map = {card_id: parent_card_id for card_id, parent_card_id, _, _ in normalized_rows}
+    for card_id in valid_ids:
+        seen_chain: set[int] = set()
+        current = card_id
+        while current is not None:
+            if current in seen_chain:
+                raise ValueError("Knowledge-tree structure contains a cycle.")
+            seen_chain.add(current)
+            current = parent_map.get(current)
+
+    existing = {
+        row["card_id"]: row
+        for row in get_knowledge_tree_nodes(addon_dir, profile)
+    }
+    now = int(time.time())
+
+    conn.execute("BEGIN")
+    try:
+        conn.execute(
+            "DELETE FROM knowledge_tree_nodes WHERE card_id NOT IN (%s)" % ",".join("?" for _ in valid_ids),
+            tuple(valid_ids),
+        ) if valid_ids else conn.execute("DELETE FROM knowledge_tree_nodes")
+
+        grouped: dict[int | None, list[tuple[int, str, int]]] = {}
+        for card_id, parent_card_id, node_kind, sort_order in normalized_rows:
+            grouped.setdefault(parent_card_id, []).append((card_id, node_kind, sort_order))
+
+        for parent_card_id, items in grouped.items():
+            items.sort(key=lambda item: (item[2], item[0]))
+            for sort_order, (card_id, node_kind, _raw_sort) in enumerate(items):
+                created_at = int(existing.get(card_id, {}).get("created_at") or now)
+                conn.execute(
+                    "INSERT INTO knowledge_tree_nodes "
+                    "(card_id, parent_card_id, node_kind, sort_order, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(card_id) DO UPDATE SET "
+                    "parent_card_id = excluded.parent_card_id, "
+                    "node_kind = excluded.node_kind, "
+                    "sort_order = excluded.sort_order, "
+                    "updated_at = excluded.updated_at",
+                    (card_id, parent_card_id, node_kind, sort_order, created_at, now),
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise

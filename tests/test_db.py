@@ -115,6 +115,17 @@ class TestGetConnection:
         }
         assert "topic_postpones" in tables
 
+    def test_creates_knowledge_tree_nodes_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "knowledge_tree_nodes" in tables
+
     def test_db_file_created_inside_user_files(self):
         addon_dir = _fresh_dir()
         db.get_connection(addon_dir, "TestProfile")
@@ -592,3 +603,98 @@ class TestTopicSchedule:
         db.set_topic_schedule(self.addon_dir, "TestProfile", 7, 2.12345, 3)
         a_factor, _ = db.get_topic_schedule(self.addon_dir, "TestProfile", 7)
         assert a_factor == round(2.12345, 3)
+
+
+# ---------------------------------------------------------------------------
+# Knowledge tree
+# ---------------------------------------------------------------------------
+
+
+class TestKnowledgeTree:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_set_and_get_knowledge_tree_nodes(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 11, "parent_card_id": 10, "node_kind": "item", "sort_order": 0},
+                {"card_id": 12, "parent_card_id": 10, "node_kind": "topic", "sort_order": 1},
+            ],
+        )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+
+        assert rows == [
+            {
+                "card_id": 10,
+                "parent_card_id": None,
+                "node_kind": "topic",
+                "sort_order": 0,
+                "created_at": rows[0]["created_at"],
+                "updated_at": rows[0]["updated_at"],
+            },
+            {
+                "card_id": 11,
+                "parent_card_id": 10,
+                "node_kind": "item",
+                "sort_order": 0,
+                "created_at": rows[1]["created_at"],
+                "updated_at": rows[1]["updated_at"],
+            },
+            {
+                "card_id": 12,
+                "parent_card_id": 10,
+                "node_kind": "topic",
+                "sort_order": 1,
+                "created_at": rows[2]["created_at"],
+                "updated_at": rows[2]["updated_at"],
+            },
+        ]
+
+    def test_set_structure_rejects_duplicate_card_ids(self):
+        try:
+            db.set_knowledge_tree_structure(
+                self.addon_dir,
+                "TestProfile",
+                [
+                    {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                    {"card_id": 10, "parent_card_id": None, "node_kind": "item", "sort_order": 1},
+                ],
+            )
+            assert False, "Expected duplicate-card-id validation error"
+        except ValueError as exc:
+            assert "Duplicate knowledge-tree card id" in str(exc)
+
+    def test_set_structure_rejects_missing_parent(self):
+        try:
+            db.set_knowledge_tree_structure(
+                self.addon_dir,
+                "TestProfile",
+                [
+                    {"card_id": 11, "parent_card_id": 99, "node_kind": "item", "sort_order": 0},
+                ],
+            )
+            assert False, "Expected missing-parent validation error"
+        except ValueError as exc:
+            assert "is missing" in str(exc)
+
+    def test_set_structure_rejects_cycles(self):
+        try:
+            db.set_knowledge_tree_structure(
+                self.addon_dir,
+                "TestProfile",
+                [
+                    {"card_id": 10, "parent_card_id": 11, "node_kind": "topic", "sort_order": 0},
+                    {"card_id": 11, "parent_card_id": 10, "node_kind": "item", "sort_order": 0},
+                ],
+            )
+            assert False, "Expected cycle validation error"
+        except ValueError as exc:
+            assert "cycle" in str(exc).lower()
