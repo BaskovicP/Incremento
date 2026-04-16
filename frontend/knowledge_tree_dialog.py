@@ -61,6 +61,17 @@ except ImportError:
     )
 
 try:
+    from .knowledge_tree_postpone_dialog import (
+        KnowledgeTreePostponeDialog,
+        resolve_current_browser_card_ids,
+    )
+except ImportError:
+    from knowledge_tree_postpone_dialog import (  # type: ignore
+        KnowledgeTreePostponeDialog,
+        resolve_current_browser_card_ids,
+    )
+
+try:
     from ..backend.knowledge_tree import (
         NODE_KIND_ITEM,
         NODE_KIND_TOPIC,
@@ -659,6 +670,12 @@ class KnowledgeTreeDialog(QDialog):
             self._study_selected_branch,
             tool_tip="Open the learning dialog and study only this subtree.",
         )
+        self._postpone_btn = self._build_toolbar_button(
+            "Postpone",
+            self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
+            self._open_postpone_dialog,
+            tool_tip="Open bulk postpone tools for all outstanding cards, this branch, or the current Browser.",
+        )
         self._browser_btn = self._build_toolbar_button(
             "Browser",
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
@@ -704,6 +721,7 @@ class KnowledgeTreeDialog(QDialog):
             self._rename_btn,
             self._priority_btn,
             self._study_btn,
+            self._postpone_btn,
             self._browser_btn,
             self._parent_btn,
             self._remove_btn,
@@ -912,6 +930,11 @@ class KnowledgeTreeDialog(QDialog):
             self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
             self._study_selected_branch,
         )
+        self._inspector_postpone_btn = self._build_action_button(
+            "Postpone…",
+            self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
+            self._open_postpone_dialog,
+        )
         self._inspector_priority_btn = self._build_action_button(
             "Priority…",
             self._standard_icon(QStyle.StandardPixmap.SP_ArrowRight),
@@ -938,7 +961,8 @@ class KnowledgeTreeDialog(QDialog):
             self._remove_selected_node,
             object_name="KnowledgeDangerAction",
         )
-        action_grid.addWidget(self._inspector_study_btn, 0, 0, 1, 2)
+        action_grid.addWidget(self._inspector_study_btn, 0, 0)
+        action_grid.addWidget(self._inspector_postpone_btn, 0, 1)
         action_grid.addWidget(self._inspector_priority_btn, 1, 0)
         action_grid.addWidget(self._inspector_browser_btn, 1, 1)
         action_grid.addWidget(self._inspector_parent_btn, 2, 0)
@@ -948,6 +972,7 @@ class KnowledgeTreeDialog(QDialog):
 
         self._action_hint = QLabel(
             "Study Branch opens the normal Incremento learning dialog, but limits scheduling to this subtree. "
+            "Postpone opens SuperMemo-style bulk delay tools for this branch, all outstanding cards, or the current Browser. "
             "Branch tools change the selected node and its descendants. Browser opens the linked note for editing."
         )
         self._action_hint.setObjectName("KnowledgeHint")
@@ -1074,6 +1099,11 @@ class KnowledgeTreeDialog(QDialog):
             "Priority…",
             menu,
         )
+        postpone_action = QAction(
+            self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
+            "Postpone…",
+            menu,
+        )
         study_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
             "Study Branch…",
@@ -1111,6 +1141,7 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(link_item.triggered, lambda _checked=False: self._link_node(NODE_KIND_ITEM))
         qconnect(rename_action.triggered, lambda _checked=False: self._rename_selected_node())
         qconnect(priority_action.triggered, lambda _checked=False: self._change_selected_priority())
+        qconnect(postpone_action.triggered, lambda _checked=False: self._open_postpone_dialog())
         qconnect(study_action.triggered, lambda _checked=False: self._study_selected_branch())
         qconnect(browser_action.triggered, lambda _checked=False: self._open_selected_in_browser())
         qconnect(parent_action.triggered, lambda _checked=False: self._go_to_parent())
@@ -1134,6 +1165,7 @@ class KnowledgeTreeDialog(QDialog):
         menu.addSeparator()
         menu.addAction(rename_action)
         menu.addAction(priority_action)
+        menu.addAction(postpone_action)
         menu.addAction(study_action)
         menu.addAction(browser_action)
         menu.addAction(parent_action)
@@ -1415,8 +1447,10 @@ class KnowledgeTreeDialog(QDialog):
         self._study_btn.setEnabled(has_selection)
         self._browser_btn.setEnabled(has_selection)
         self._parent_btn.setEnabled(has_parent)
+        self._postpone_btn.setEnabled(True)
 
         self._inspector_study_btn.setEnabled(has_selection)
+        self._inspector_postpone_btn.setEnabled(True)
         self._inspector_priority_btn.setEnabled(has_selection)
         self._inspector_browser_btn.setEnabled(has_selection)
         self._inspector_parent_btn.setEnabled(has_parent)
@@ -1449,7 +1483,8 @@ class KnowledgeTreeDialog(QDialog):
             self._desc_tile.set_value("0")
             self._depth_tile.set_value("0")
             self._branch_hint.setText(
-                "No node is selected. Study Branch, branch priority, browser edit, rename, and remove actions become available after selection."
+                "No node is selected. Postpone is still available for all outstanding cards or the current Browser. "
+                "Study Branch, branch priority, browser edit, rename, and remove actions become available after selection."
             )
             return
 
@@ -1496,7 +1531,8 @@ class KnowledgeTreeDialog(QDialog):
         priority_summary = _priority_text(current_priority) or "Default"
         self._selection_note.setText(
             f"{_kind_label(node_kind)} node with priority {priority_summary}. "
-            "Use Study Branch to review only this subtree, or open branch tools to spread, randomize, or focus its priority."
+            "Use Study Branch to review only this subtree, Postpone to delay cards in this branch, "
+            "or open branch tools to spread, randomize, or focus its priority."
         )
 
         parent_text = self._title_for_card_id(parent_card_id) if has_parent else "Root level"
@@ -1511,11 +1547,13 @@ class KnowledgeTreeDialog(QDialog):
         if descendants:
             self._branch_hint.setText(
                 f"Study Branch will schedule this node plus {descendants} descendant "
-                f"card{'' if descendants == 1 else 's'} using the normal Incremento scheduler."
+                f"card{'' if descendants == 1 else 's'} using the normal Incremento scheduler. "
+                "Postpone can delay the same subtree with saved branch presets."
             )
         else:
             self._branch_hint.setText(
-                "This node does not have descendants yet. Studying this branch will schedule just this card unless you add children."
+                "This node does not have descendants yet. Studying this branch will schedule just this card unless you add children. "
+                "Postpone can still delay this single card or switch to a broader scope."
             )
 
     def _update_insert_buttons(self, selected_title: str) -> None:
@@ -1825,6 +1863,18 @@ class KnowledgeTreeDialog(QDialog):
             handler(int(card_id))
         except Exception as exc:
             showInfo(f"Could not open the branch study session:\n{exc}")
+
+    def _open_postpone_dialog(self) -> None:
+        browser_card_ids = resolve_current_browser_card_ids()
+        dlg = KnowledgeTreePostponeDialog(
+            self._addon_dir,
+            profile=self._profile,
+            branch_root_card_id=self._selected_card_id(),
+            browser_card_ids=browser_card_ids,
+            parent=self,
+        )
+        if dlg.exec():
+            self.reload(select_card_id=self._selected_card_id())
 
     def _go_to_parent(self) -> None:
         card_id = self._selected_card_id()

@@ -18,6 +18,7 @@ web_card_sources — notes created while viewing a web-card URL (for per-URL car
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
 topic_postpones — timed postpone expiry timestamps per topic card
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
+knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
 """
 
 import atexit
@@ -212,6 +213,17 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_ktn_parent_order
             ON knowledge_tree_nodes (parent_card_id, sort_order, card_id);
+
+        CREATE TABLE IF NOT EXISTS knowledge_tree_postpone_presets (
+            name               TEXT    PRIMARY KEY,
+            branch_root_card_id INTEGER,
+            config_json        TEXT    NOT NULL DEFAULT '{}',
+            is_default         INTEGER NOT NULL DEFAULT 0,
+            created_at         INTEGER NOT NULL DEFAULT 0,
+            updated_at         INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_ktpp_branch
+            ON knowledge_tree_postpone_presets (branch_root_card_id, name);
     """)
     # Add read_page to existing pdf_progress tables that predate this column
     try:
@@ -731,3 +743,168 @@ def set_knowledge_tree_structure(
     except Exception:
         conn.rollback()
         raise
+
+
+def get_knowledge_tree_postpone_presets(addon_dir: str, profile: str) -> list[dict]:
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT name, branch_root_card_id, config_json, is_default, created_at, updated_at "
+            "FROM knowledge_tree_postpone_presets "
+            "ORDER BY is_default DESC, lower(name), name"
+        )
+        .fetchall()
+    )
+    presets: list[dict] = []
+    for name, branch_root_card_id, config_json, is_default, created_at, updated_at in rows:
+        try:
+            config = json.loads(str(config_json or "{}"))
+            if not isinstance(config, dict):
+                config = {}
+        except Exception:
+            config = {}
+        presets.append(
+            {
+                "name": str(name or "").strip(),
+                "branch_root_card_id": (
+                    None if branch_root_card_id is None else int(branch_root_card_id)
+                ),
+                "config": config,
+                "is_default": bool(is_default),
+                "created_at": int(created_at or 0),
+                "updated_at": int(updated_at or 0),
+            }
+        )
+    return presets
+
+
+def get_knowledge_tree_postpone_preset(
+    addon_dir: str,
+    profile: str,
+    name: str,
+) -> dict | None:
+    target = str(name or "").strip()
+    if not target:
+        return None
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT name, branch_root_card_id, config_json, is_default, created_at, updated_at "
+            "FROM knowledge_tree_postpone_presets WHERE name = ?",
+            (target,),
+        )
+        .fetchone()
+    )
+    if not row:
+        return None
+    try:
+        config = json.loads(str(row[2] or "{}"))
+        if not isinstance(config, dict):
+            config = {}
+    except Exception:
+        config = {}
+    return {
+        "name": str(row[0] or "").strip(),
+        "branch_root_card_id": None if row[1] is None else int(row[1]),
+        "config": config,
+        "is_default": bool(row[3]),
+        "created_at": int(row[4] or 0),
+        "updated_at": int(row[5] or 0),
+    }
+
+
+def save_knowledge_tree_postpone_preset(
+    addon_dir: str,
+    profile: str,
+    name: str,
+    config: dict,
+    *,
+    branch_root_card_id: int | None = None,
+    is_default: bool = False,
+) -> None:
+    preset_name = str(name or "").strip()
+    if not preset_name:
+        raise ValueError("Knowledge-tree postpone preset name cannot be empty.")
+    if branch_root_card_id is not None:
+        branch_root_card_id = int(branch_root_card_id)
+    if not isinstance(config, dict):
+        raise ValueError("Knowledge-tree postpone preset config must be a dictionary.")
+
+    conn = get_connection(addon_dir, profile)
+    existing = get_knowledge_tree_postpone_preset(addon_dir, profile, preset_name) or {}
+    created_at = int(existing.get("created_at") or time.time())
+    updated_at = int(time.time())
+
+    conn.execute("BEGIN")
+    try:
+        if is_default:
+            conn.execute("UPDATE knowledge_tree_postpone_presets SET is_default = 0")
+        conn.execute(
+            "INSERT INTO knowledge_tree_postpone_presets "
+            "(name, branch_root_card_id, config_json, is_default, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET "
+            "branch_root_card_id = excluded.branch_root_card_id, "
+            "config_json = excluded.config_json, "
+            "is_default = excluded.is_default, "
+            "updated_at = excluded.updated_at",
+            (
+                preset_name,
+                branch_root_card_id,
+                json.dumps(config, sort_keys=True),
+                1 if is_default else 0,
+                created_at,
+                updated_at,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def delete_knowledge_tree_postpone_preset(
+    addon_dir: str,
+    profile: str,
+    name: str,
+) -> bool:
+    preset_name = str(name or "").strip()
+    if not preset_name:
+        return False
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        "DELETE FROM knowledge_tree_postpone_presets WHERE name = ?",
+        (preset_name,),
+    )
+    conn.commit()
+    return int(getattr(cursor, "rowcount", 0) or 0) > 0
+
+
+def set_default_knowledge_tree_postpone_preset(
+    addon_dir: str,
+    profile: str,
+    name: str,
+) -> bool:
+    preset_name = str(name or "").strip()
+    if not preset_name:
+        return False
+    conn = get_connection(addon_dir, profile)
+    row = conn.execute(
+        "SELECT 1 FROM knowledge_tree_postpone_presets WHERE name = ?",
+        (preset_name,),
+    ).fetchone()
+    if not row:
+        return False
+
+    conn.execute("BEGIN")
+    try:
+        conn.execute("UPDATE knowledge_tree_postpone_presets SET is_default = 0")
+        conn.execute(
+            "UPDATE knowledge_tree_postpone_presets SET is_default = 1, updated_at = ? WHERE name = ?",
+            (int(time.time()), preset_name),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return True

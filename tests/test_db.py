@@ -126,6 +126,17 @@ class TestGetConnection:
         }
         assert "knowledge_tree_nodes" in tables
 
+    def test_creates_knowledge_tree_postpone_presets_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "knowledge_tree_postpone_presets" in tables
+
     def test_db_file_created_inside_user_files(self):
         addon_dir = _fresh_dir()
         db.get_connection(addon_dir, "TestProfile")
@@ -698,3 +709,85 @@ class TestKnowledgeTree:
             assert False, "Expected cycle validation error"
         except ValueError as exc:
             assert "cycle" in str(exc).lower()
+
+
+class TestKnowledgeTreePostponePresets:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_save_and_get_postpone_preset(self):
+        db.save_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Medicine",
+            {"scope": "selected_branch", "item": {"delay_factor": 1.4}},
+            branch_root_card_id=10,
+            is_default=True,
+        )
+
+        preset = db.get_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Medicine",
+        )
+
+        assert preset is not None
+        assert preset["name"] == "Medicine"
+        assert preset["branch_root_card_id"] == 10
+        assert preset["config"]["scope"] == "selected_branch"
+        assert preset["config"]["item"]["delay_factor"] == 1.4
+        assert preset["is_default"] is True
+
+    def test_set_default_postpone_preset_clears_previous_default(self):
+        db.save_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Default",
+            {"scope": "all_outstanding"},
+            is_default=True,
+        )
+        db.save_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Branch",
+            {"scope": "selected_branch"},
+            branch_root_card_id=20,
+            is_default=False,
+        )
+
+        changed = db.set_default_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Branch",
+        )
+
+        presets = db.get_knowledge_tree_postpone_presets(self.addon_dir, "TestProfile")
+        default_flags = {preset["name"]: preset["is_default"] for preset in presets}
+
+        assert changed is True
+        assert default_flags == {"Branch": True, "Default": False}
+
+    def test_delete_postpone_preset_removes_row(self):
+        db.save_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Temporary",
+            {"scope": "current_browser"},
+        )
+
+        deleted = db.delete_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Temporary",
+        )
+
+        assert deleted is True
+        assert db.get_knowledge_tree_postpone_preset(
+            self.addon_dir,
+            "TestProfile",
+            "Temporary",
+        ) is None
