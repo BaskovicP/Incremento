@@ -18,9 +18,19 @@ try:
         replace_epub_text_index,
     )
     from . import paths as _paths
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 except ImportError:
     from db import get_connection, replace_epub_text_index  # type: ignore
     import paths as _paths
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 
 
 EPUB_NOTE_TYPE = "Incremento EPUB"
@@ -384,6 +394,7 @@ def ensure_epub_note_type(col) -> None:
         for field_name in ("Title", EPUB_FILE_FIELD):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
+        ensure_incremento_metadata_fields(models, m)
         tmpl = models.new_template("Card 1")
         tmpl["qfmt"] = CARD_TEMPLATE_FRONT
         tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -392,6 +403,8 @@ def ensure_epub_note_type(col) -> None:
     else:
         tmpl = m["tmpls"][0]
         changed = False
+        if ensure_incremento_metadata_fields(models, m):
+            changed = True
         if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
             tmpl["qfmt"] = CARD_TEMPLATE_FRONT
             tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -421,11 +434,20 @@ def add_epub_card(
         deck_id = deck["id"]
 
     model = col.models.by_name(EPUB_NOTE_TYPE)
+    base_title = str(title or "").strip() or str(metadata.get("title") or "").strip() or Path(epub_path).stem
 
     def _build_note(stored_title: str):
         note = col.new_note(model)
         note["Title"] = stored_title
         note[EPUB_FILE_FIELD] = stored_filename
+        apply_incremento_metadata(
+            note,
+            build_incremento_metadata(
+                source_type="EPUB",
+                source_title=base_title,
+                source_link=f"epubs/{stored_filename}",
+            ),
+        )
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue
@@ -436,7 +458,6 @@ def add_epub_card(
         note.note_type()["did"] = deck_id
         return note
 
-    base_title = str(title or "").strip() or str(metadata.get("title") or "").strip() or Path(epub_path).stem
     cid = 0
     for attempt in range(6):
         stored_title = base_title if attempt == 0 else f"{base_title}{_INVISIBLE_DUPLICATE_MARK * attempt}"

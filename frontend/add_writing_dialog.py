@@ -196,8 +196,8 @@ class AddWritingDialog(QDialog):
                     self._title_edit.setText(fetched_title)
                 self._markdown_edit.setPlainText(
                     str(
-                        result.get("markdown_document")
-                        or fetched_markdown
+                        fetched_markdown
+                        or result.get("markdown_document")
                     )
                 )
                 self._set_fetch_busy(False, "Webpage markdown loaded into the editor.")

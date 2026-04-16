@@ -1,7 +1,16 @@
 import tempfile
+from datetime import date, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import db
 import knowledge_tree
+from note_metadata import (
+    INCREMENTO_PARENT_CARD_ID_FIELD,
+    INCREMENTO_PARENT_FIELD,
+    INCREMENTO_SOURCE_TYPE_FIELD,
+    build_incremento_metadata,
+)
 import priority_manager
 
 
@@ -209,6 +218,46 @@ def test_describe_branch_summary_for_empty_selection():
     assert summary["selected_priority_line"] == ""
     assert summary["range_line"] == ""
     assert "once a node is selected" in summary["impact_line"]
+
+
+def test_create_card_for_node_applies_metadata_payload():
+    note = MagicMock()
+    note.id = 501
+    note.note_type.return_value = {"did": 0}
+    model = {"flds": [{"name": "Front"}]}
+    fake_models = MagicMock()
+    fake_models.by_name.return_value = model
+    fake_decks = MagicMock()
+    fake_decks.by_name.return_value = {"id": 9}
+    fake_col = MagicMock(models=fake_models, decks=fake_decks)
+    fake_col.new_note.return_value = note
+    fake_col.add_note.return_value = 1
+    fake_col.find_cards.return_value = [777]
+    fake_mw = SimpleNamespace(col=fake_col)
+    metadata = build_incremento_metadata(
+        source_type="Knowledge Tree",
+        parent="Parent Topic",
+        parent_card_id=123,
+    )
+
+    with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+        knowledge_tree, "ensure_incremento_metadata_fields", return_value=False
+    ):
+        card_id = knowledge_tree.create_card_for_node(
+            "Basic",
+            "Topics",
+            "Child Topic",
+            "topic",
+            field_values={"Front": "Child Topic"},
+            metadata=metadata,
+        )
+
+    assert card_id == 777
+    setitem_calls = note.__setitem__.call_args_list
+    assert any(call.args == ("Front", "Child Topic") for call in setitem_calls)
+    assert any(call.args == (INCREMENTO_SOURCE_TYPE_FIELD, "Knowledge Tree") for call in setitem_calls)
+    assert any(call.args == (INCREMENTO_PARENT_FIELD, "Parent Topic") for call in setitem_calls)
+    assert any(call.args == (INCREMENTO_PARENT_CARD_ID_FIELD, "123") for call in setitem_calls)
 
 
 class TestPrioritySpread:

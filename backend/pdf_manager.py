@@ -19,9 +19,19 @@ def _safe_pdf_stem(raw_name: str, fallback: str = "document") -> str:
 try:
     from .db import get_connection, replace_pdf_text_index
     from . import paths as _paths
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 except ImportError:
     from db import get_connection, replace_pdf_text_index  # test environment
     import paths as _paths
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 
 
 def get_pdf_dir() -> str:
@@ -220,6 +230,7 @@ def ensure_pdf_note_type(col) -> None:
         for field_name in ("Title", "PDF_Filename"):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
+        ensure_incremento_metadata_fields(models, m)
         tmpl = models.new_template("Card 1")
         tmpl["qfmt"] = CARD_TEMPLATE_FRONT
         tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -227,6 +238,8 @@ def ensure_pdf_note_type(col) -> None:
         models.add(m)
     else:
         changed = False
+        if ensure_incremento_metadata_fields(models, m):
+            changed = True
         # Sync template
         tmpl = m["tmpls"][0]
         if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
@@ -384,6 +397,7 @@ def add_pdf_card(
     title: str,
     deck_name: str = "Topics",
     tags: list[str] | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> int:
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
@@ -406,6 +420,15 @@ def add_pdf_card(
         note = col.new_note(model)
         note["Title"] = stored_title
         note["PDF_Filename"] = media_filename
+        apply_incremento_metadata(
+            note,
+            metadata
+            or build_incremento_metadata(
+                source_type="PDF",
+                source_title=title,
+                source_link=f"pdfs/{media_filename}",
+            ),
+        )
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue

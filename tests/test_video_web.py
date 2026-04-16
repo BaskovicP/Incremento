@@ -18,6 +18,7 @@ def _load(name, relpath):
 
 _vm = _load("_incremento_video_manager", "backend/video_manager.py")
 _wm = _load("_incremento_web_manager", "backend/web_manager.py")
+_nm = _load("_incremento_note_metadata", "backend/note_metadata.py")
 
 extract_video_id = _vm.extract_video_id
 extract_vimeo_id = _vm.extract_vimeo_id
@@ -53,6 +54,8 @@ build_web_restore_payload = _wm.build_web_restore_payload
 build_web_media_resume_target = _wm.build_web_media_resume_target
 reviewer_web_homepage_action = _wm.reviewer_web_homepage_action
 build_reviewer_web_home_button_js = _wm.build_reviewer_web_home_button_js
+SOURCE_LINK_FIELD = _nm.INCREMENTO_SOURCE_LINK_FIELD
+SOURCE_TYPE_FIELD = _nm.INCREMENTO_SOURCE_TYPE_FIELD
 
 
 # ── extract_video_id ──────────────────────────────────────────────────────────
@@ -816,6 +819,22 @@ class TestAddVideoCard:
             c.args == (_vm.LOCAL_VIDEO_FIELD, "videos/abc12345678.mp4")
             for c in setitem_calls
         )
+        assert any(
+            c.args == (SOURCE_LINK_FIELD, "videos/abc12345678.mp4")
+            for c in setitem_calls
+        )
+
+    def test_sets_video_metadata_fields(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+
+        add_video_card(col, "https://youtube.com/watch?v=abc", "My Video")
+
+        setitem_calls = col.new_note.return_value.__setitem__.call_args_list
+        assert any(c.args == (SOURCE_TYPE_FIELD, "Video") for c in setitem_calls)
+        assert any(
+            c.args == (SOURCE_LINK_FIELD, "https://youtube.com/watch?v=abc")
+            for c in setitem_calls
+        )
 
     def test_uses_visible_duplicate_suffix_when_title_collides(self):
         col = _make_mock_col_for_add(deck_exists=True)
@@ -861,6 +880,15 @@ class TestAddWebCard:
         assert result == 12345
         setitem_calls = second_note.__setitem__.call_args_list
         assert any(c.args == ("Title", "Page [2]") for c in setitem_calls)
+
+    def test_sets_web_metadata_fields(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+
+        add_web_card(col, "https://example.com", "Page")
+
+        setitem_calls = col.new_note.return_value.__setitem__.call_args_list
+        assert any(c.args == (SOURCE_TYPE_FIELD, "Web") for c in setitem_calls)
+        assert any(c.args == (SOURCE_LINK_FIELD, "https://example.com") for c in setitem_calls)
 
 
 # ── Tag handling edge cases ───────────────────────────────────────────────────

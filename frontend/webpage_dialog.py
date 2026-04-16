@@ -95,6 +95,7 @@ class WebpageToPdfDialog(QDialog):
 
         self._pdf_path: str | None = None
         self._title: str | None = None
+        self._source_url: str | None = None
         self._view: QWebEngineView | None = None  # keep reference alive during async
 
         layout = QVBoxLayout(self)
@@ -166,6 +167,7 @@ class WebpageToPdfDialog(QDialog):
 
         self._pdf_path = pdf_path
         self._title = title
+        self._source_url = url
         self.accept()
 
     # ── Public properties ─────────────────────────────────────────────────────
@@ -177,6 +179,10 @@ class WebpageToPdfDialog(QDialog):
     @property
     def title_text(self) -> str | None:
         return self._title
+
+    @property
+    def source_url(self) -> str | None:
+        return self._source_url
 
     @property
     def tags_to_apply(self) -> list[str]:

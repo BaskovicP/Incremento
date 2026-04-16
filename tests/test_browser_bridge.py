@@ -4,6 +4,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 import sys
+from note_metadata import (
+    INCREMENTO_IMPORTED_AT_FIELD,
+    INCREMENTO_PARENT_CARD_ID_FIELD,
+    INCREMENTO_PARENT_FIELD,
+    INCREMENTO_SOURCE_AUTHOR_FIELD,
+    INCREMENTO_SOURCE_LINK_FIELD,
+    INCREMENTO_SOURCE_TITLE_FIELD,
+    INCREMENTO_SOURCE_TYPE_FIELD,
+)
 
 from browser_bridge import (
     _create_browser_capture_note_on_main,
@@ -29,7 +38,6 @@ def test_build_writing_markdown_includes_source_and_selection():
         "Quoted passage",
     )
     assert md.startswith("# Article Title\n")
-    assert "Source: https://example.com/article" in md
     assert "## Selected text" in md
     assert "Quoted passage" in md
 
@@ -41,7 +49,6 @@ def test_build_writing_markdown_includes_page_markdown_body():
         page_markdown="## Body\n\nMain content",
     )
     assert md.startswith("# Article Title\n")
-    assert "Source: https://example.com/article" in md
     assert "## Body" in md
     assert "Main content" in md
 
@@ -327,6 +334,8 @@ def test_add_writing_card_uses_visible_duplicate_title(monkeypatch):
     assert note1["Title"] == "Repeated Title"
     assert note2["Title"] == "Repeated Title [2]"
     assert note2["Markdown_File"] == "writing/example.md"
+    assert note2[INCREMENTO_SOURCE_TYPE_FIELD] == "Writing"
+    assert note2[INCREMENTO_SOURCE_LINK_FIELD] == "writing/example.md"
 
 
 def test_normalize_update_web_card_payload_accepts_valid_payload():
@@ -545,11 +554,40 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     assert result["ok"] is True
     assert result["cardId"] == 321
     assert "Selected<br>text" in note["Front"]
-    assert "Source:" in note["Front"]
+    assert "Source:" not in note["Front"]
     assert "Example" in note["Back"]
     assert '<img src="capture.png">' in note["Back"]
+    assert note[INCREMENTO_SOURCE_TYPE_FIELD] == "Browser Capture"
+    assert note[INCREMENTO_SOURCE_TITLE_FIELD] == "Example"
+    assert note[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com/article"
     assert note.tags == ["Incremento", "alpha"]
     assert priority_calls == [("/tmp/incremento-test", 321, 12.5)]
+
+
+def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):
+    col = MagicMock()
+    col.models.all.return_value = [
+        {
+            "name": "Basic",
+            "flds": [
+                {"name": "Front"},
+                {"name": "Back"},
+                {"name": INCREMENTO_SOURCE_LINK_FIELD},
+                {"name": INCREMENTO_PARENT_FIELD},
+            ],
+        }
+    ]
+    col.decks.all_names_and_ids.return_value = [SimpleNamespace(name="Topics")]
+
+    mw = SimpleNamespace(col=col)
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+
+    result = browser_bridge._browser_capture_meta_on_main()
+
+    assert result["ok"] is True
+    assert result["noteTypes"] == [{"name": "Basic", "fields": ["Front", "Back"]}]
 
 
 def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypatch):

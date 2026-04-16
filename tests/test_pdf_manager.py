@@ -24,6 +24,11 @@ sys.modules["PyQt6.QtPdf"] = _qt_pdf_mock
 # The conftest already puts backend/ on sys.path, but we need to ensure
 # pdf_manager's relative-import fallback resolves to the real db module.
 import db  # noqa: E402  (db is on sys.path via conftest)
+from note_metadata import (
+    INCREMENTO_SOURCE_LINK_FIELD,
+    INCREMENTO_SOURCE_TITLE_FIELD,
+    INCREMENTO_SOURCE_TYPE_FIELD,
+)
 sys.modules.setdefault("db", db)
 
 import pdf_manager  # noqa: E402
@@ -130,6 +135,12 @@ class TestAddPdfCard:
         assert result == 12345
         setitem_calls = second_note.__setitem__.call_args_list
         assert any(c.args == ("Title", "Guide [2]") for c in setitem_calls)
+        assert any(c.args == (INCREMENTO_SOURCE_TYPE_FIELD, "PDF") for c in setitem_calls)
+        assert any(c.args == (INCREMENTO_SOURCE_TITLE_FIELD, "Guide") for c in setitem_calls)
+        assert any(
+            c.args == (INCREMENTO_SOURCE_LINK_FIELD, "pdfs/stored-file.pdf")
+            for c in setitem_calls
+        )
 
 
 # ---------------------------------------------------------------------------

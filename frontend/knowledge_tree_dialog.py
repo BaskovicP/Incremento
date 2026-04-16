@@ -40,6 +40,11 @@ except ImportError:
     from priority_manager import configured_priority_lower_is_more_important  # type: ignore
 
 try:
+    from ..backend.note_metadata import build_incremento_metadata
+except ImportError:
+    from note_metadata import build_incremento_metadata  # type: ignore
+
+try:
     from .knowledge_tree_priority_dialog import (
         KnowledgeTreePriorityDialog,
         OP_FADE_CHILDREN,
@@ -1682,6 +1687,16 @@ class KnowledgeTreeDialog(QDialog):
         if not dlg.exec():
             return
 
+        parent_label = ""
+        if parent_card_id is not None:
+            parent_label = self._title_for_card_id(parent_card_id)
+        metadata = build_incremento_metadata(
+            source_type="Knowledge Tree",
+            source_title=dlg.title,
+            parent=parent_label,
+            parent_card_id=parent_card_id,
+        )
+
         try:
             card_id = create_card_for_node(
                 dlg.note_type_name,
@@ -1689,6 +1704,7 @@ class KnowledgeTreeDialog(QDialog):
                 dlg.title,
                 kind,
                 field_values=dlg.field_values,
+                metadata=metadata,
             )
             link_card_to_tree(
                 self._addon_dir,

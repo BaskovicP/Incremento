@@ -43,6 +43,13 @@ from .backend.video_manager import (
     import_local_video_file,
 )
 from .backend.writing_manager import WRITING_NOTE_TYPE, add_writing_card
+from .backend.note_metadata import (
+    apply_incremento_metadata,
+    build_incremento_metadata,
+    derive_note_source_metadata,
+    ensure_incremento_metadata_fields,
+    visible_field_names,
+)
 from .backend.priority_manager import (
     configured_show_priority_dialog_after_answer,
     configured_priority_lower_is_more_important,
@@ -1413,7 +1420,10 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
 
     # Build note-type list
     notetypes = [
-        {"name": m["name"], "fields": [f["name"] for f in m["flds"]]}
+        {
+            "name": m["name"],
+            "fields": visible_field_names([f["name"] for f in m["flds"]]),
+        }
         for m in mw.col.models.all()
     ]
     notetype_names = [nt["name"] for nt in notetypes]
@@ -1433,22 +1443,23 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
     parent_deck = mw.col.decks.get(parent_card.did)
     default_deck = parent_deck["name"] if parent_deck else ""
 
-    # Parent card link (appended to field 0 of the new card)
     parent_label = (
         parent_note.fields[0][:60].strip()
         if parent_note.fields
         else f"Card {parent_card.id}"
     )
-    parent_link = (
-        f'<a href="#" onclick="pycmd(\'incremento_open_card:{parent_card.id}\')" '
-        f'style="font-size:0.85em;color:#888;">↩ {parent_label}</a>'
+    parent_source = derive_note_source_metadata(parent_note)
+    metadata = build_incremento_metadata(
+        source_type="Extract",
+        source_title=parent_source.get("source_title") or parent_label,
+        source_link=parent_source.get("source_link") or "",
+        source_author=parent_source.get("source_author") or "",
+        parent=parent_label,
+        parent_card_id=getattr(parent_card, "id", None),
     )
-    if not _add_card_dock_mod.should_add_extract_source_link("parent"):
-        parent_link = ""
 
     dlg = ExtractCardDialog(
         selected_text=selected_text,
-        parent_link_html=parent_link,
         notetypes=notetypes,
         deck_names=deck_names,
         default_notetype=default_notetype,
@@ -1463,6 +1474,7 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         if model is None:
             showInfo(f"Note type '{dlg.notetype_name}' not found.")
             return
+        ensure_incremento_metadata_fields(mw.col.models, model)
         deck = mw.col.decks.by_name(dlg.deck_name)
         deck_id = (
             mw.col.decks.add_normal_deck_with_name(dlg.deck_name).id
@@ -1473,6 +1485,7 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         for fname, val in dlg.field_values.items():
             if fname in note:
                 note[fname] = val
+        apply_incremento_metadata(note, metadata)
         mw.col.add_note(note, deck_id)
         showInfo(f"Card created in '{dlg.deck_name}'.")
     except Exception as e:
@@ -1743,6 +1756,13 @@ def addWritingFunction() -> None:
         return
 
     try:
+        metadata = None
+        if dlg.import_mode == "webpage_markdown" and dlg.source_url:
+            metadata = build_incremento_metadata(
+                source_type="Web",
+                source_title=title,
+                source_link=dlg.source_url,
+            )
         add_writing_card(
             _ADDON_DIR,
             mw.col,
@@ -1751,6 +1771,7 @@ def addWritingFunction() -> None:
             tags=dlg.tags,
             initial_markdown=dlg.initial_markdown,
             preferred_filename=dlg.filename,
+            metadata=metadata,
         )
         mw.col.reset()
         tooltip(f"Markdown card '{title}' added to {dlg.deck_name}.")
@@ -1772,6 +1793,11 @@ def addWebpageFunction() -> None:
             dlg.pdf_path,
             dlg.title_text,
             tags=dlg.tags_to_apply,
+            metadata=build_incremento_metadata(
+                source_type="Web",
+                source_title=dlg.title_text,
+                source_link=dlg.source_url or "",
+            ),
         )
         showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
     except Exception as e:

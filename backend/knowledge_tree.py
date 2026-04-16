@@ -16,6 +16,12 @@ try:
         get_knowledge_tree_nodes,
         set_knowledge_tree_structure,
     )
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+        visible_field_names,
+    )
     from .paths import get_active_profile as _active_profile
     from .priority_manager import get_priority, set_priority
 except ImportError:
@@ -23,6 +29,12 @@ except ImportError:
         get_knowledge_tree_node,
         get_knowledge_tree_nodes,
         set_knowledge_tree_structure,
+    )
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+        visible_field_names,
     )
     from paths import get_active_profile as _active_profile  # type: ignore
     from priority_manager import get_priority, set_priority  # type: ignore
@@ -422,6 +434,7 @@ def available_note_types() -> list[dict]:
                 for field in list(model.get("flds") or [])
                 if str(field.get("name") or "").strip()
             ]
+            fields = visible_field_names(fields)
             out.append({"name": name, "fields": fields})
         out.sort(key=lambda item: item["name"].casefold())
         return out
@@ -492,6 +505,7 @@ def create_card_for_node(
     title: str,
     node_kind: str,
     field_values: dict[str, str] | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> int:
     kind = normalize_node_kind(node_kind)
     if mw is None or getattr(mw, "col", None) is None:
@@ -500,6 +514,7 @@ def create_card_for_node(
     model = mw.col.models.by_name(str(note_type_name or "").strip())
     if model is None:
         raise RuntimeError(f"Note type '{note_type_name}' was not found.")
+    ensure_incremento_metadata_fields(mw.col.models, model)
 
     deck = mw.col.decks.by_name(str(deck_name or "").strip())
     if deck is None:
@@ -533,6 +548,14 @@ def create_card_for_node(
         for field_name, value in normalized_fields.items():
             note[field_name] = value
         note[first_field] = stored_title
+        apply_incremento_metadata(
+            note,
+            metadata
+            or build_incremento_metadata(
+                source_type="Knowledge Tree",
+                source_title=title,
+            ),
+        )
         sync_note_kind_tags(
             note,
             kind,

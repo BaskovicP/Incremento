@@ -5,8 +5,18 @@ from pathlib import Path
 
 try:
     from . import paths as _paths
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 except ImportError:
     import paths as _paths
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 
 
 WRITING_NOTE_TYPE = "Incremento Writing"
@@ -117,6 +127,7 @@ def ensure_writing_note_type(col) -> None:
         for field_name in ("Title", WRITING_FILE_FIELD):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
+        ensure_incremento_metadata_fields(models, m)
         tmpl = models.new_template("Card 1")
         tmpl["qfmt"] = CARD_TEMPLATE_FRONT
         tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -125,6 +136,8 @@ def ensure_writing_note_type(col) -> None:
         return
 
     changed = False
+    if ensure_incremento_metadata_fields(models, m):
+        changed = True
     tmpl = m["tmpls"][0]
     if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
         tmpl["qfmt"] = CARD_TEMPLATE_FRONT
@@ -142,6 +155,7 @@ def add_writing_card(
     tags: list[str] | None = None,
     initial_markdown: str = "",
     preferred_filename: str = "",
+    metadata: dict[str, str] | None = None,
 ) -> int:
     ensure_writing_note_type(col)
 
@@ -160,6 +174,15 @@ def add_writing_card(
         note = col.new_note(model)
         note["Title"] = stored_title
         note[WRITING_FILE_FIELD] = relpath
+        apply_incremento_metadata(
+            note,
+            metadata
+            or build_incremento_metadata(
+                source_type="Writing",
+                source_title=title,
+                source_link=relpath,
+            ),
+        )
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue

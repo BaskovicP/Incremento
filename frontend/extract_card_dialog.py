@@ -9,14 +9,13 @@ class ExtractCardDialog(QDialog):
 
     Args:
         selected_text:        text selected by the user (may be empty)
-        parent_link_html:     HTML anchor linking back to the parent card
         notetypes:            [{"name": str, "fields": [str, ...]}]
         deck_names:           [str]
         default_notetype:     name of the note type to pre-select
         default_deck:         name of the deck to pre-select
     """
 
-    def __init__(self, selected_text: str, parent_link_html: str,
+    def __init__(self, selected_text: str,
                  notetypes: list, deck_names: list,
                  default_notetype: str = "", default_deck: str = "",
                  parent=None):
@@ -27,7 +26,6 @@ class ExtractCardDialog(QDialog):
 
         self._notetypes = notetypes
         self._selected_text = selected_text
-        self._parent_link_html = parent_link_html
         self._field_widgets: list[QTextEdit] = []
 
         layout = QVBoxLayout(self)
@@ -128,16 +126,13 @@ class ExtractCardDialog(QDialog):
 
     @property
     def field_values(self) -> dict[str, str]:
-        """Return {field_name: html_content}. Parent link is appended to field 0."""
+        """Return the plain-text field values entered by the user."""
         idx = self._nt_combo.currentIndex()
         if idx < 0:
             return {}
         fields = self._notetypes[idx]["fields"]
         result = {}
-        for i, (fname, widget) in enumerate(zip(fields, self._field_widgets)):
+        for fname, widget in zip(fields, self._field_widgets):
             text = widget.toPlainText().strip()
-            if i == 0 and self._parent_link_html:
-                sep = "<br><br>" if text else ""
-                text = text + sep + self._parent_link_html
             result[fname] = text
         return result

@@ -1,7 +1,17 @@
 try:
     from .db import get_connection
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 except ImportError:
     from db import get_connection
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
 import json
 import time
 from typing import Literal, TypedDict
@@ -610,6 +620,7 @@ def ensure_web_note_type(col) -> None:
         for field_name in ("Title", "URL"):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
+        ensure_incremento_metadata_fields(models, m)
         tmpl = models.new_template("Card 1")
         tmpl["qfmt"] = CARD_TEMPLATE_FRONT
         tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -617,9 +628,14 @@ def ensure_web_note_type(col) -> None:
         models.add(m)
     else:
         tmpl = m["tmpls"][0]
+        changed = False
+        if ensure_incremento_metadata_fields(models, m):
+            changed = True
         if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
             tmpl["qfmt"] = CARD_TEMPLATE_FRONT
             tmpl["afmt"] = CARD_TEMPLATE_BACK
+            changed = True
+        if changed:
             models.update_dict(m)
 
 
@@ -643,6 +659,14 @@ def add_web_card(
         note = col.new_note(model)
         note["Title"] = stored_title
         note["URL"] = url
+        apply_incremento_metadata(
+            note,
+            build_incremento_metadata(
+                source_type="Web",
+                source_title=title,
+                source_link=url,
+            ),
+        )
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue

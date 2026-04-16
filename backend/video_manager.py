@@ -16,6 +16,11 @@ from urllib.request import Request, urlopen
 try:
     from .db import get_connection
     from . import paths as _paths
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
     from .video_providers import (
         extract_youtube_id as _extract_youtube_id,
         extract_vimeo_id,
@@ -31,6 +36,11 @@ try:
 except ImportError:
     from db import get_connection
     import paths as _paths
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+    )
     from video_providers import (
         extract_youtube_id as _extract_youtube_id,
         extract_vimeo_id,
@@ -1114,6 +1124,7 @@ def ensure_video_note_type(col) -> None:
         for field_name in ("Title", "YouTube_URL", LOCAL_VIDEO_FIELD):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
+        ensure_incremento_metadata_fields(models, m)
         tmpl = models.new_template("Card 1")
         tmpl["qfmt"] = CARD_TEMPLATE_FRONT
         tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -1121,6 +1132,8 @@ def ensure_video_note_type(col) -> None:
         models.add(m)
     else:
         changed = False
+        if ensure_incremento_metadata_fields(models, m):
+            changed = True
         # Keep old collections forward-compatible by adding new fields lazily.
         try:
             fields = m["flds"]
@@ -1173,6 +1186,14 @@ def add_video_card(
             note[LOCAL_VIDEO_FIELD] = (local_video_file or "").strip()
         except Exception:
             pass
+        apply_incremento_metadata(
+            note,
+            build_incremento_metadata(
+                source_type="Video",
+                source_title=title,
+                source_link=(local_video_file or "").strip() or youtube_url,
+            ),
+        )
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue

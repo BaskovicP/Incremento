@@ -13,8 +13,20 @@ from urllib.request import Request, urlopen
 
 try:
     from .webpage_markdown import convert_webpage_html_to_markdown
+    from .note_metadata import (
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+        visible_field_names,
+    )
 except ImportError:
     from webpage_markdown import convert_webpage_html_to_markdown
+    from note_metadata import (  # type: ignore
+        apply_incremento_metadata,
+        build_incremento_metadata,
+        ensure_incremento_metadata_fields,
+        visible_field_names,
+    )
 
 
 BRIDGE_HOST = "127.0.0.1"
@@ -107,14 +119,12 @@ def build_writing_markdown(
     page_markdown: str = "",
 ) -> str:
     clean_title = _collapse_ws(title) or "Untitled"
-    clean_url = normalize_http_url(url)
+    normalize_http_url(url)
     clean_selection = str(selected_text or "").strip()
     clean_page_markdown = str(page_markdown or "").strip()
 
     lines = [
         f"# {clean_title}",
-        "",
-        f"Source: {clean_url}",
         "",
     ]
     if clean_page_markdown:
@@ -434,6 +444,7 @@ def _browser_capture_meta_on_main() -> dict:
                     name = _collapse_ws(field.get("name", ""))
                     if name:
                         fields.append(name)
+            fields = visible_field_names(fields)
             note_name = _collapse_ws(model.get("name", ""))
             if note_name and fields:
                 note_types.append({"name": note_name, "fields": fields})
@@ -543,6 +554,7 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
     model = mw.col.models.by_name(note_type_name)
     if model is None:
         raise ValueError(f"Note type '{note_type_name}' was not found.")
+    ensure_incremento_metadata_fields(mw.col.models, model)
 
     field_names = [str(field.get("name") or "") for field in model.get("flds") or [] if str(field.get("name") or "").strip()]
     if not field_names:
@@ -582,10 +594,6 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
         field_name = mappings["selected_text_field"]
         field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _plain_text_to_html(selected_text))
 
-    if mappings["url_field"]:
-        field_name = mappings["url_field"]
-        field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _browser_capture_source_html(normalized["url"]))
-
     if mappings["snapshot_field"]:
         field_name = mappings["snapshot_field"]
         snapshot_html = ""
@@ -595,10 +603,21 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
         field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), snapshot_html)
 
     if not any(value for value in field_html.values()):
-        raise ValueError("Nothing to insert. Choose at least one mapped destination field.")
+        raise ValueError(
+            "Nothing to insert. Choose at least one title, selected text, or snapshot destination field."
+        )
 
     for field_name, value in field_html.items():
         note[field_name] = value
+
+    apply_incremento_metadata(
+        note,
+        build_incremento_metadata(
+            source_type="Browser Capture",
+            source_title=normalized["title"],
+            source_link=normalized["url"],
+        ),
+    )
 
     for tag in ["Incremento"] + [t for t in normalized["tags"] if t != "Incremento"]:
         if not tag:
@@ -705,6 +724,11 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             tags=tags,
             initial_markdown=initial_markdown,
             preferred_filename=preferred_filename,
+            metadata=build_incremento_metadata(
+                source_type="Web",
+                source_title=title,
+                source_link=url,
+            ),
         )
     else:
         fd, temp_pdf_path = tempfile.mkstemp(prefix="incremento-webpage-", suffix=".pdf")
@@ -734,6 +758,11 @@ def _add_content_item_on_main(normalized: dict) -> dict:
                 title,
                 deck_name=deck_name,
                 tags=tags,
+                metadata=build_incremento_metadata(
+                    source_type="PDF",
+                    source_title=title,
+                    source_link=url,
+                ),
             )
         finally:
             try:
