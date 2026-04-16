@@ -155,6 +155,62 @@ def test_ancestor_card_ids_returns_root_to_parent_chain():
     assert knowledge_tree.ancestor_card_ids(rows, 12) == [10, 11]
 
 
+def test_describe_branch_summary_for_branch_with_descendants():
+    summary = knowledge_tree.describe_branch_summary(
+        {
+            "total_count": 4,
+            "descendant_count": 3,
+            "direct_child_count": 2,
+            "max_depth": 2,
+            "selected_priority": 58.0,
+            "min_priority": 40.0,
+            "max_priority": 82.0,
+        }
+    )
+
+    assert summary["size_line"] == "This branch contains 4 cards total."
+    assert summary["children_line"] == "Children: 2 direct children and 1 deeper descendant."
+    assert summary["levels_line"] == "Levels below this node: 2."
+    assert summary["selected_priority_line"] == "Selected node priority: 58."
+    assert summary["range_line"] == "Priority range across this branch: 40 to 82."
+    assert summary["impact_line"] == "Study Branch and Postpone can affect 4 cards in this branch."
+
+
+def test_describe_branch_summary_for_leaf_branch():
+    summary = knowledge_tree.describe_branch_summary(
+        {
+            "total_count": 1,
+            "descendant_count": 0,
+            "direct_child_count": 0,
+            "max_depth": 0,
+            "selected_priority": 58.0,
+            "min_priority": 58.0,
+            "max_priority": 58.0,
+        }
+    )
+
+    assert summary["size_line"] == "This branch contains 1 card total."
+    assert summary["children_line"] == "Children: no child cards yet."
+    assert summary["levels_line"] == "Levels below this node: 0."
+    assert summary["selected_priority_line"] == "Selected node priority: 58."
+    assert summary["range_line"] == ""
+    assert (
+        summary["impact_line"]
+        == "Study Branch and Postpone will affect only this card until you add children."
+    )
+
+
+def test_describe_branch_summary_for_empty_selection():
+    summary = knowledge_tree.describe_branch_summary({})
+
+    assert summary["size_line"] == "Select a topic or item to inspect this branch."
+    assert summary["children_line"] == ""
+    assert summary["levels_line"] == ""
+    assert summary["selected_priority_line"] == ""
+    assert summary["range_line"] == ""
+    assert "once a node is selected" in summary["impact_line"]
+
+
 class TestPrioritySpread:
     def setup_method(self):
         _reset_db()

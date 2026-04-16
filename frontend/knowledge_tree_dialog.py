@@ -78,6 +78,7 @@ try:
         active_profile,
         available_deck_names,
         available_note_types,
+        describe_branch_summary,
         create_card_for_node,
         default_deck_name,
         default_note_type_name,
@@ -106,6 +107,7 @@ except ImportError:
         active_profile,
         available_deck_names,
         available_note_types,
+        describe_branch_summary,
         create_card_for_node,
         default_deck_name,
         default_note_type_name,
@@ -203,6 +205,12 @@ def _set_badge_style(
     )
 
 
+def _set_optional_label_text(label: QLabel, text: str) -> None:
+    value = str(text or "")
+    label.setText(value)
+    label.setVisible(bool(value))
+
+
 def _row_title(row: dict | None, card_id: int | None = None) -> str:
     if row:
         title = str(row.get("title") or "").strip()
@@ -214,29 +222,6 @@ def _row_title(row: dict | None, card_id: int | None = None) -> str:
     if card_id is not None:
         return f"Card {int(card_id)}"
     return "Unknown card"
-
-
-class _StatTile(QFrame):
-    def __init__(self, label: str, parent=None):
-        super().__init__(parent)
-        self.setObjectName("KnowledgeStatTile")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(2)
-
-        self._value = QLabel("—")
-        self._value.setObjectName("KnowledgeStatValue")
-        self._value.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self._value)
-
-        self._label = QLabel(label)
-        self._label.setObjectName("KnowledgeMeta")
-        self._label.setWordWrap(True)
-        layout.addWidget(self._label)
-
-    def set_value(self, text: str, *, tip: str | None = None) -> None:
-        self._value.setText(text or "—")
-        self.setToolTip(tip or "")
 
 
 class _KnowledgeTreeWidget(QTreeWidget):
@@ -564,11 +549,6 @@ class KnowledgeTreeDialog(QDialog):
               min-width: 1px;
               max-width: 1px;
             }
-            QFrame#KnowledgeStatTile {
-              background: rgba(128,128,128,0.05);
-              border: 1px solid rgba(128,128,128,0.16);
-              border-radius: 10px;
-            }
             QLabel#KnowledgeTitle {
               font-size: 16px;
               font-weight: 600;
@@ -576,10 +556,6 @@ class KnowledgeTreeDialog(QDialog):
             QLabel#KnowledgeInspectorTitle {
               font-size: 18px;
               font-weight: 600;
-            }
-            QLabel#KnowledgeStatValue {
-              font-size: 18px;
-              font-weight: 700;
             }
             QLabel#KnowledgeMeta {
               color: palette(mid);
@@ -589,6 +565,10 @@ class KnowledgeTreeDialog(QDialog):
               color: palette(mid);
               font-size: 11px;
               line-height: 1.3em;
+            }
+            QLabel#KnowledgeSummaryLine {
+              font-size: 12px;
+              line-height: 1.35em;
             }
             QTreeWidget#KnowledgeTreeView {
               background: palette(base);
@@ -856,23 +836,39 @@ class KnowledgeTreeDialog(QDialog):
         branch_title.setObjectName("KnowledgeTitle")
         branch_layout.addWidget(branch_title)
 
-        self._parent_value = QLabel("Root level")
+        self._parent_value = QLabel("Parent branch: Select a node first.")
+        self._parent_value.setObjectName("KnowledgeSummaryLine")
         self._parent_value.setWordWrap(True)
         branch_layout.addWidget(self._parent_value)
 
-        stats_grid = QGridLayout()
-        stats_grid.setContentsMargins(0, 0, 0, 0)
-        stats_grid.setHorizontalSpacing(8)
-        stats_grid.setVerticalSpacing(8)
-        self._priority_tile = _StatTile("Priority", branch_card)
-        self._child_tile = _StatTile("Direct Children", branch_card)
-        self._desc_tile = _StatTile("Descendants", branch_card)
-        self._depth_tile = _StatTile("Depth", branch_card)
-        stats_grid.addWidget(self._priority_tile, 0, 0)
-        stats_grid.addWidget(self._child_tile, 0, 1)
-        stats_grid.addWidget(self._desc_tile, 1, 0)
-        stats_grid.addWidget(self._depth_tile, 1, 1)
-        branch_layout.addLayout(stats_grid)
+        self._branch_size_value = QLabel("Select a topic or item to inspect this branch.")
+        self._branch_size_value.setObjectName("KnowledgeSummaryLine")
+        self._branch_size_value.setWordWrap(True)
+        branch_layout.addWidget(self._branch_size_value)
+
+        self._branch_children_value = QLabel("")
+        self._branch_children_value.setObjectName("KnowledgeSummaryLine")
+        self._branch_children_value.setWordWrap(True)
+        self._branch_children_value.setVisible(False)
+        branch_layout.addWidget(self._branch_children_value)
+
+        self._branch_depth_value = QLabel("")
+        self._branch_depth_value.setObjectName("KnowledgeSummaryLine")
+        self._branch_depth_value.setWordWrap(True)
+        self._branch_depth_value.setVisible(False)
+        branch_layout.addWidget(self._branch_depth_value)
+
+        self._branch_priority_value = QLabel("")
+        self._branch_priority_value.setObjectName("KnowledgeSummaryLine")
+        self._branch_priority_value.setWordWrap(True)
+        self._branch_priority_value.setVisible(False)
+        branch_layout.addWidget(self._branch_priority_value)
+
+        self._branch_range_value = QLabel("")
+        self._branch_range_value.setObjectName("KnowledgeSummaryLine")
+        self._branch_range_value.setWordWrap(True)
+        self._branch_range_value.setVisible(False)
+        branch_layout.addWidget(self._branch_range_value)
 
         self._branch_hint = QLabel("")
         self._branch_hint.setObjectName("KnowledgeHint")
@@ -1477,15 +1473,29 @@ class KnowledgeTreeDialog(QDialog):
                 "Use the toolbar or the add buttons here to create root topics/items. "
                 "Once a node is selected, new cards are appended beneath it and you can study that whole branch."
             )
-            self._parent_value.setText("Parent: root level")
-            self._priority_tile.set_value("—")
-            self._child_tile.set_value("0")
-            self._desc_tile.set_value("0")
-            self._depth_tile.set_value("0")
-            self._branch_hint.setText(
-                "No node is selected. Postpone is still available for all outstanding cards or the current Browser. "
-                "Study Branch, branch priority, browser edit, rename, and remove actions become available after selection."
+            empty_summary = describe_branch_summary({})
+            self._parent_value.setText("Parent branch: Select a node first.")
+            _set_optional_label_text(
+                self._branch_size_value,
+                str(empty_summary.get("size_line") or ""),
             )
+            _set_optional_label_text(
+                self._branch_children_value,
+                str(empty_summary.get("children_line") or ""),
+            )
+            _set_optional_label_text(
+                self._branch_depth_value,
+                str(empty_summary.get("levels_line") or ""),
+            )
+            _set_optional_label_text(
+                self._branch_priority_value,
+                str(empty_summary.get("selected_priority_line") or ""),
+            )
+            _set_optional_label_text(
+                self._branch_range_value,
+                str(empty_summary.get("range_line") or ""),
+            )
+            self._branch_hint.setText(str(empty_summary.get("impact_line") or ""))
             return
 
         meta = get_card_metadata(
@@ -1536,25 +1546,29 @@ class KnowledgeTreeDialog(QDialog):
         )
 
         parent_text = self._title_for_card_id(parent_card_id) if has_parent else "Root level"
-        self._parent_value.setText(f"Parent: {parent_text}")
-
-        self._priority_tile.set_value(priority_summary)
-        self._child_tile.set_value(str(int(stats.get("direct_child_count") or 0)))
-        self._desc_tile.set_value(str(int(stats.get("descendant_count") or 0)))
-        self._depth_tile.set_value(str(int(stats.get("max_depth") or 0)))
-
-        descendants = int(stats.get("descendant_count") or 0)
-        if descendants:
-            self._branch_hint.setText(
-                f"Study Branch will schedule this node plus {descendants} descendant "
-                f"card{'' if descendants == 1 else 's'} using the normal Incremento scheduler. "
-                "Postpone can delay the same subtree with saved branch presets."
-            )
-        else:
-            self._branch_hint.setText(
-                "This node does not have descendants yet. Studying this branch will schedule just this card unless you add children. "
-                "Postpone can still delay this single card or switch to a broader scope."
-            )
+        summary = describe_branch_summary(stats)
+        self._parent_value.setText(f"Parent branch: {parent_text}")
+        _set_optional_label_text(
+            self._branch_size_value,
+            str(summary.get("size_line") or ""),
+        )
+        _set_optional_label_text(
+            self._branch_children_value,
+            str(summary.get("children_line") or ""),
+        )
+        _set_optional_label_text(
+            self._branch_depth_value,
+            str(summary.get("levels_line") or ""),
+        )
+        _set_optional_label_text(
+            self._branch_priority_value,
+            str(summary.get("selected_priority_line") or ""),
+        )
+        _set_optional_label_text(
+            self._branch_range_value,
+            str(summary.get("range_line") or ""),
+        )
+        self._branch_hint.setText(str(summary.get("impact_line") or ""))
 
     def _update_insert_buttons(self, selected_title: str) -> None:
         if selected_title:

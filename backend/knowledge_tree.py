@@ -741,6 +741,84 @@ def subtree_priority_stats(addon_dir: str, profile: str, root_card_id: int) -> d
     }
 
 
+def _summary_priority_text(value) -> str:
+    if value is None:
+        return "Default"
+    try:
+        return f"{float(value):.0f}"
+    except Exception:
+        return "Default"
+
+
+def describe_branch_summary(stats: dict | None) -> dict[str, str]:
+    raw = stats or {}
+    total_count = max(0, int(raw.get("total_count") or 0))
+    direct_child_count = max(0, int(raw.get("direct_child_count") or 0))
+    descendant_count = max(0, int(raw.get("descendant_count") or 0))
+    nested_descendant_count = max(0, descendant_count - direct_child_count)
+    levels_below = max(0, int(raw.get("max_depth") or 0))
+
+    selected_priority = _summary_priority_text(raw.get("selected_priority"))
+    min_priority = raw.get("min_priority")
+    max_priority = raw.get("max_priority")
+
+    if total_count <= 0:
+        return {
+            "size_line": "Select a topic or item to inspect this branch.",
+            "children_line": "",
+            "levels_line": "",
+            "selected_priority_line": "",
+            "range_line": "",
+            "impact_line": (
+                "Study Branch and Postpone will explain how many cards are affected "
+                "once a node is selected."
+            ),
+        }
+
+    size_line = f"This branch contains {total_count} card{'s' if total_count != 1 else ''} total."
+    if descendant_count <= 0:
+        children_line = "Children: no child cards yet."
+        impact_line = (
+            "Study Branch and Postpone will affect only this card until you add children."
+        )
+    else:
+        child_parts = [
+            f"{direct_child_count} direct {'child' if direct_child_count == 1 else 'children'}"
+        ]
+        if nested_descendant_count:
+            child_parts.append(
+                f"{nested_descendant_count} deeper descendant"
+                f"{'' if nested_descendant_count == 1 else 's'}"
+            )
+        children_line = "Children: " + " and ".join(child_parts) + "."
+        impact_line = (
+            f"Study Branch and Postpone can affect {total_count} "
+            f"card{'' if total_count == 1 else 's'} in this branch."
+        )
+
+    levels_line = f"Levels below this node: {levels_below}."
+    selected_priority_line = f"Selected node priority: {selected_priority}."
+
+    if total_count <= 1 or min_priority is None or max_priority is None:
+        range_line = ""
+    else:
+        low = _summary_priority_text(min_priority)
+        high = _summary_priority_text(max_priority)
+        if low == high:
+            range_line = f"Priority across this branch: {low}."
+        else:
+            range_line = f"Priority range across this branch: {low} to {high}."
+
+    return {
+        "size_line": size_line,
+        "children_line": children_line,
+        "levels_line": levels_line,
+        "selected_priority_line": selected_priority_line,
+        "range_line": range_line,
+        "impact_line": impact_line,
+    }
+
+
 def build_branch_study_scope(
     addon_dir: str,
     profile: str,
