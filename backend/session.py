@@ -97,7 +97,7 @@ def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> fl
     return 0.0
 
 
-def learnFunction() -> None:
+def learnFunction(*, branch_scope: dict | None = None) -> None:
     try:
         release_expired_timed_postpones()
     except Exception:
@@ -105,7 +105,11 @@ def learnFunction() -> None:
 
     config = mw.addonManager.getConfig(_ADDON_PKG) or {}
 
-    dlg = SchedulerConfigDialog(mw, on_clear_session=reset_session_counts)
+    dlg = SchedulerConfigDialog(
+        mw,
+        on_clear_session=reset_session_counts,
+        branch_scope=branch_scope,
+    )
     if not dlg.exec():
         return
 
@@ -119,7 +123,7 @@ def learnFunction() -> None:
         session_counts_snapshot = preview_override.get("session_counts", {"type": {}, "tags": {}, "mode": {}})
         session_time_snapshot = preview_override.get("session_time", {"type": {}, "tags": {}})
     else:
-        selection = select_session_cards(cfg, _ADDON_DIR)
+        selection = select_session_cards(cfg, _ADDON_DIR, branch_scope=branch_scope)
         stats = selection.stats
         selected_ids = selection.selected_ids
         # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
@@ -133,15 +137,21 @@ def learnFunction() -> None:
     _session_times = copy.deepcopy(session_time_snapshot)
 
     if not selected_ids:
-        showInfo("No cards available to study.")
+        branch_title = str((branch_scope or {}).get("root_title") or "").strip()
+        if branch_title:
+            showInfo(f'No cards available to study in branch "{branch_title}".')
+        else:
+            showInfo("No cards available to study.")
         return
 
     # DEBUG: show scheduled card order before building the filtered deck
     if cfg.show_debug:
         _debug_dlg = QDialog(mw)
-        _debug_dlg.setWindowTitle(
-            f"DEBUG — Scheduled order ({len(selected_ids)} cards)"
-        )
+        branch_title = str((branch_scope or {}).get("root_title") or "").strip()
+        debug_title = f"DEBUG — Scheduled order ({len(selected_ids)} cards)"
+        if branch_title:
+            debug_title += f" — {branch_title}"
+        _debug_dlg.setWindowTitle(debug_title)
         _debug_dlg.resize(700, 500)
         _debug_layout = QVBoxLayout(_debug_dlg)
         _debug_txt = QTextEdit()

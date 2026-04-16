@@ -109,3 +109,65 @@ def test_priority_direction_is_forwarded_to_scheduler():
     assert result.selected_ids == [10]
     assert captured["priority_lower_is_more_important"] is False
     assert captured["addon_dir"] == "/tmp/unused"
+
+
+def test_branch_scope_restricts_all_scheduler_pools_to_subtree_card_ids():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        topics_filter="deck:Topics",
+        items_filter="-deck:Topics",
+    )
+    captured = {}
+
+    def _fake_get(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(card=10, card_type="items", tag=None, mode="priority")
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=_fake_get
+    ):
+        result = session_selection.select_session_cards(
+            cfg,
+            addon_dir="/tmp/unused",
+            branch_scope={
+                "root_card_id": 10,
+                "root_title": "Medicine",
+                "card_ids": [10, 11, 12],
+            },
+        )
+
+    assert result.selected_ids == [10]
+    assert "cid:10" in captured["topics_filter"]
+    assert "cid:11" in captured["topics_filter"]
+    assert "cid:12" in captured["items_filter"]
+    assert "cid:10" in captured["pdf_filter"]
+    assert "cid:10" in captured["youtube_filter"]
+    assert "cid:10" in captured["webpage_filter"]
+
+
+def test_empty_branch_scope_returns_no_selected_cards():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler"
+    ) as mock_get:
+        result = session_selection.select_session_cards(
+            cfg,
+            addon_dir="/tmp/unused",
+            branch_scope={"root_card_id": 10, "root_title": "Medicine", "card_ids": []},
+        )
+
+    assert result.selected_ids == []
+    mock_get.assert_not_called()

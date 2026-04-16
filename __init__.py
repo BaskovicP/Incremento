@@ -97,7 +97,12 @@ from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
 from .backend import review_time_tracker as _review_time_mod
-from .backend.db import get_connection, replace_pdf_text_index, search_pdf_text_index
+from .backend.db import (
+    get_connection,
+    get_knowledge_tree_node,
+    replace_pdf_text_index,
+    search_pdf_text_index,
+)
 from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
 from .backend.session import (
@@ -121,6 +126,7 @@ _shortcut_actions: dict[str, object] = {}
 _topic_postpone_timer: QTimer | None = None
 _menu: QMenu | None = None
 _timerToggleAction: QAction | None = None
+_knowledge_tree_dialog = None
 
 
 def _register_shortcut_action(action_id: str, action_obj) -> None:
@@ -979,6 +985,109 @@ def _open_search_all() -> None:
         open_pdf_card=_open_pdf_card,
         open_epub_card=_open_epub_card,
     ).exec()
+
+
+def _current_reviewer_card_id() -> int | None:
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer else None
+    if card is None:
+        return None
+    try:
+        return int(card.id)
+    except Exception:
+        return None
+
+
+def _open_knowledge_tree(*, select_card_id: int | None = None) -> None:
+    global _knowledge_tree_dialog
+
+    if select_card_id is None:
+        select_card_id = _current_reviewer_card_id()
+
+    current_profile = _active_profile()
+    if _knowledge_tree_dialog is not None:
+        try:
+            if getattr(_knowledge_tree_dialog, "_profile", None) == current_profile:
+                _knowledge_tree_dialog.reload(
+                    select_card_id=select_card_id,
+                    focus_card_id=select_card_id,
+                )
+                _knowledge_tree_dialog.show()
+                _knowledge_tree_dialog.raise_()
+                _knowledge_tree_dialog.activateWindow()
+                return
+            _knowledge_tree_dialog.close()
+        except RuntimeError:
+            _knowledge_tree_dialog = None
+
+    from .frontend.knowledge_tree_dialog import KnowledgeTreeDialog
+
+    dlg = KnowledgeTreeDialog(
+        _ADDON_DIR,
+        profile=current_profile,
+        select_card_id=select_card_id,
+        focus_card_id=select_card_id,
+        open_priority_for_card=_open_priority_dialog_for_card,
+        open_branch_study=_study_knowledge_tree_branch,
+        parent=mw,
+    )
+
+    def _on_closed(*_args) -> None:
+        global _knowledge_tree_dialog
+        _knowledge_tree_dialog = None
+
+    qconnect(dlg.finished, _on_closed)
+    _knowledge_tree_dialog = dlg
+    dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+
+
+def _reveal_current_card_in_knowledge_tree() -> None:
+    card_id = _current_reviewer_card_id()
+    if card_id is None:
+        tooltip("No review card is currently active.")
+        return
+    _open_knowledge_tree(select_card_id=card_id)
+
+
+def _go_to_parent_in_knowledge_tree() -> None:
+    card_id = _current_reviewer_card_id()
+    if card_id is None:
+        tooltip("No review card is currently active.")
+        return
+
+    row = get_knowledge_tree_node(_ADDON_DIR, _active_profile(), int(card_id))
+    if row is None:
+        tooltip("Current card is not linked in the knowledge tree.")
+        return
+
+    parent_card_id = row.get("parent_card_id")
+    if parent_card_id is None:
+        tooltip("Current card is already at the top of the knowledge tree.")
+        return
+
+    _open_knowledge_tree(select_card_id=int(parent_card_id))
+
+
+def _study_knowledge_tree_branch(card_id: int) -> None:
+    try:
+        from .backend.knowledge_tree import build_branch_study_scope
+
+        branch_scope = build_branch_study_scope(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+        )
+    except Exception as exc:
+        showInfo(f"Could not prepare branch study session:\n{exc}")
+        return
+
+    if not branch_scope or not list(branch_scope.get("card_ids") or []):
+        tooltip("Selected branch does not contain any knowledge-tree cards.")
+        return
+
+    learnFunction(branch_scope=branch_scope)
 
 
 def _trigger_pdf_viewer_action(action: str) -> None:
@@ -2545,6 +2654,26 @@ def _build_incremento_menu() -> None:
     qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
     _addContentMenu.addAction(_addWebAction)
     _register_shortcut_action("add_web_page", _addWebAction)
+
+    _knowledgeTreeAction = QAction("Open Knowledge tree", mw)
+    qconnect(_knowledgeTreeAction.triggered, lambda _checked=False: _open_knowledge_tree())
+    _menu.addAction(_knowledgeTreeAction)
+
+    _revealCurrentTreeAction = QAction("Reveal Current Card In Knowledge Tree", mw)
+    qconnect(
+        _revealCurrentTreeAction.triggered,
+        lambda _checked=False: _reveal_current_card_in_knowledge_tree(),
+    )
+    _menu.addAction(_revealCurrentTreeAction)
+    _register_shortcut_action("reveal_current_knowledge_tree", _revealCurrentTreeAction)
+
+    _goToParentTreeAction = QAction("Go To Parent In Knowledge Tree", mw)
+    qconnect(
+        _goToParentTreeAction.triggered,
+        lambda _checked=False: _go_to_parent_in_knowledge_tree(),
+    )
+    _menu.addAction(_goToParentTreeAction)
+    _register_shortcut_action("go_to_parent_knowledge_tree", _goToParentTreeAction)
 
     _menu.addSeparator()
 

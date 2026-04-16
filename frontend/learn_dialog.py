@@ -90,6 +90,49 @@ def _compact_text(text: str, max_len: int = 120) -> str:
     return flat[: max_len - 1] + "…"
 
 
+def _normalize_branch_scope(branch_scope: dict | None) -> dict | None:
+    if not isinstance(branch_scope, dict):
+        return None
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for raw_card_id in list(branch_scope.get("card_ids") or []):
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            continue
+        if card_id in seen:
+            continue
+        seen.add(card_id)
+        normalized_ids.append(card_id)
+
+    return {
+        "root_card_id": (
+            None
+            if branch_scope.get("root_card_id") is None
+            else int(branch_scope["root_card_id"])
+        ),
+        "root_title": str(branch_scope.get("root_title") or "").strip(),
+        "card_ids": normalized_ids,
+    }
+
+
+def _cid_clause(card_ids: list[int]) -> str:
+    if not card_ids:
+        return ""
+    return "(" + " OR ".join(f"cid:{int(card_id)}" for card_id in card_ids) + ")"
+
+
+def _compose_branch_query(query: str, branch_clause: str) -> str:
+    base = str(query or "").strip()
+    branch = str(branch_clause or "").strip()
+    if base and branch:
+        return f"({base}) {branch}"
+    if branch:
+        return branch
+    return base
+
+
 class _SortTableWidgetItem(QTableWidgetItem):
     """Table item that sorts by explicit key when provided."""
 
@@ -288,7 +331,11 @@ class _LiveSchedulerPreviewDialog(QDialog):
         self._refresh_btn.setEnabled(False)
         try:
             cfg = self._owner.to_config()
-            result = select_session_cards(cfg, _ADDON_DIR)
+            result = select_session_cards(
+                cfg,
+                _ADDON_DIR,
+                branch_scope=self._owner._branch_scope,
+            )
             selected_ids = result.selected_ids
             picked_meta = result.picked_meta
             self._update_summary(selected_ids, picked_meta, cfg.session_card_count)
@@ -764,13 +811,17 @@ _DEFAULT_MAIN_GROUPS = {
 
 
 class SchedulerConfigDialog(QDialog):
-    def __init__(self, parent=None, on_clear_session=None):
+    def __init__(self, parent=None, on_clear_session=None, branch_scope: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Scheduler Settings")
         self.setMinimumWidth(520)
         self._linked_rows: list[dict] = []
         self._updating = False
         self._on_clear_session = on_clear_session
+        self._branch_scope = _normalize_branch_scope(branch_scope)
+        self._branch_clause = _cid_clause(
+            list((self._branch_scope or {}).get("card_ids") or [])
+        )
         self._live_preview_dialog: _LiveSchedulerPreviewDialog | None = None
         self._live_preview_cache: dict | None = None
         self._live_preview_signature: str | None = None
@@ -824,6 +875,34 @@ class SchedulerConfigDialog(QDialog):
         intro.setWordWrap(True)
         intro.setStyleSheet("color: gray;")
         layout.addWidget(intro)
+
+        if self._branch_scope:
+            branch_card = QFrame()
+            branch_card.setStyleSheet(
+                "QFrame {"
+                "  background: rgba(74,122,181,0.08);"
+                "  border: 1px solid rgba(74,122,181,0.25);"
+                "  border-radius: 8px;"
+                "}"
+            )
+            branch_layout = QVBoxLayout(branch_card)
+            branch_layout.setContentsMargins(10, 8, 10, 8)
+            branch_layout.setSpacing(4)
+
+            branch_title = QLabel(
+                f"Branch study: {self._branch_scope_label()}"
+            )
+            branch_title.setStyleSheet("font-weight: bold; color: #4a7ab5;")
+            branch_layout.addWidget(branch_title)
+
+            branch_note = QLabel(
+                "This session uses the normal Incremento scheduler, but only cards "
+                "from the selected knowledge-tree subtree are eligible."
+            )
+            branch_note.setWordWrap(True)
+            branch_note.setStyleSheet("color: gray;")
+            branch_layout.addWidget(branch_note)
+            layout.addWidget(branch_card)
 
         # -- Profiles --
         profile_row = QHBoxLayout()
@@ -2321,6 +2400,16 @@ class SchedulerConfigDialog(QDialog):
             cc=cc,
         )
 
+    def _branch_scope_label(self) -> str:
+        if not self._branch_scope:
+            return ""
+        title = str(self._branch_scope.get("root_title") or "").strip() or "Selected branch"
+        card_count = len(list(self._branch_scope.get("card_ids") or []))
+        return f"{title} · {card_count} subtree card{'' if card_count == 1 else 's'}"
+
+    def _apply_branch_scope_query(self, query: str) -> str:
+        return _compose_branch_query(query, self._branch_clause)
+
     def _selection_signature_payload(self) -> dict:
         d = self._build_current_dict()
         return {
@@ -2343,6 +2432,8 @@ class SchedulerConfigDialog(QDialog):
             "include_new": d.get("include_new"),
             "include_learning": d.get("include_learning"),
             "include_due": d.get("include_due"),
+            "branch_scope_root_card_id": (self._branch_scope or {}).get("root_card_id"),
+            "branch_scope_card_ids": list((self._branch_scope or {}).get("card_ids") or []),
         }
 
     def _selection_signature(self) -> str:
@@ -2429,8 +2520,8 @@ class SchedulerConfigDialog(QDialog):
         itf_widget = getattr(self, "_items_filter_edit",  None)
         tf  = (tf_widget.text().strip()  or "deck:Topics")  if tf_widget  else "deck:Topics"
         itf = (itf_widget.text().strip() or "-deck:Topics") if itf_widget else "-deck:Topics"
-        n_topics = len(mw.col.find_cards(f"{tf} tag:{tag} {ready}"))
-        n_items  = len(mw.col.find_cards(f"{itf} tag:{tag} {ready}"))
+        n_topics = len(mw.col.find_cards(self._apply_branch_scope_query(f"{tf} tag:{tag} {ready}")))
+        n_items  = len(mw.col.find_cards(self._apply_branch_scope_query(f"{itf} tag:{tag} {ready}")))
         color = "#e0a020" if (n_topics == 0 or n_items == 0) else "gray"
         row_dict["name_label"].setText(
             f'{tag} <span style="color: {color}; font-size: small;">'
@@ -2442,13 +2533,15 @@ class SchedulerConfigDialog(QDialog):
         ready = self._ready_filter_from_checks()
         tf  = self._topics_filter_edit.text().strip() or "deck:Topics"
         itf = self._items_filter_edit.text().strip()  or "-deck:Topics"
-        n_topics = len(mw.col.find_cards(f"{tf} {ready}"))
-        n_items  = len(mw.col.find_cards(f"{itf} {ready}"))
+        n_topics = len(mw.col.find_cards(self._apply_branch_scope_query(f"{tf} {ready}")))
+        n_items  = len(mw.col.find_cards(self._apply_branch_scope_query(f"{itf} {ready}")))
         t_color = "#e0a020" if n_topics == 0 else "#c8a800"
         i_color = "#e0a020" if n_items  == 0 else "gray"
+        topic_suffix = " ready in branch" if self._branch_scope else " ready"
+        item_suffix = " ready in branch" if self._branch_scope else " ready"
         self._counts_lbl.setText(
-            f'<span style="color: {t_color};">Topics: {n_topics} ready</span>'
-            f'  <span style="color: {i_color};">Items: {n_items} ready</span>'
+            f'<span style="color: {t_color};">Topics: {n_topics}{topic_suffix}</span>'
+            f'  <span style="color: {i_color};">Items: {n_items}{item_suffix}</span>'
         )
         for row in self._linked_rows:
             self._refresh_tag_count(row)
@@ -2462,7 +2555,7 @@ class SchedulerConfigDialog(QDialog):
         }
         for row in getattr(self, "_ct_rows", []):
             try:
-                n = len(mw.col.find_cards(_ct_filter_map[row["type"]]))
+                n = len(mw.col.find_cards(self._apply_branch_scope_query(_ct_filter_map[row["type"]])))
                 row["count_label"].setText(f"({n} available)")
             except Exception:
                 row["count_label"].setText("")
@@ -2470,8 +2563,9 @@ class SchedulerConfigDialog(QDialog):
     def _test_filter(self, query: str) -> None:
         """Show the card count for a filter string."""
         ready = self._ready_filter_from_checks()
-        count = len(mw.col.find_cards(f"{query} {ready}"))
-        showInfo(f'Filter "{query}" matches {count} ready card(s).')
+        count = len(mw.col.find_cards(self._apply_branch_scope_query(f"{query} {ready}")))
+        scope_note = " in the active branch" if self._branch_scope else ""
+        showInfo(f'Filter "{query}" matches {count} ready card(s){scope_note}.')
 
     def accept(self) -> None:
         """Warn if both filters return no cards, then accept."""
@@ -2479,14 +2573,21 @@ class SchedulerConfigDialog(QDialog):
             ready = self._ready_filter_from_checks()
             tf  = self._topics_filter_edit.text().strip() or "deck:Topics"
             itf = self._items_filter_edit.text().strip()  or "-deck:Topics"
-            n_topics = len(mw.col.find_cards(f"{tf} {ready}"))
-            n_items  = len(mw.col.find_cards(f"{itf} {ready}"))
+            n_topics = len(mw.col.find_cards(self._apply_branch_scope_query(f"{tf} {ready}")))
+            n_items  = len(mw.col.find_cards(self._apply_branch_scope_query(f"{itf} {ready}")))
             if n_topics == 0 and n_items == 0:
                 from aqt.qt import QMessageBox
+                no_cards_msg = (
+                    "Both filters returned 0 ready cards inside the active branch.\n"
+                    "The session will be empty.\n\nContinue anyway?"
+                    if self._branch_scope
+                    else
+                    "Both filters returned 0 ready cards.\n"
+                    "The session will be empty.\n\nContinue anyway?"
+                )
                 r = QMessageBox.warning(
                     self, "No Cards Found",
-                    "Both filters returned 0 ready cards.\n"
-                    "The session will be empty.\n\nContinue anyway?",
+                    no_cards_msg,
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if r != QMessageBox.StandardButton.Yes:

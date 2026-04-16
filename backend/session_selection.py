@@ -5,13 +5,17 @@ from __future__ import annotations
 from typing import NamedTuple
 
 try:
-    from .scheduler import get_card_from_scheduler
+    from .scheduler import DOCUMENT_FILTER, get_card_from_scheduler
     from .statistics import StatsManager
     from .paths import get_active_profile as _active_profile
 except ImportError:
-    from scheduler import get_card_from_scheduler  # type: ignore
+    from scheduler import DOCUMENT_FILTER, get_card_from_scheduler  # type: ignore
     from statistics import StatsManager  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
+
+
+_YOUTUBE_FILTER = 'note:"Incremento Video"'
+_WEBPAGE_FILTER = 'note:"Incremento Web"'
 
 
 class SessionSelectionResult(NamedTuple):
@@ -20,10 +24,76 @@ class SessionSelectionResult(NamedTuple):
     stats: StatsManager
 
 
-def select_session_cards(cfg, addon_dir: str) -> SessionSelectionResult:
+def _normalize_branch_scope(branch_scope: dict | None) -> dict | None:
+    if not isinstance(branch_scope, dict):
+        return None
+
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for raw_card_id in list(branch_scope.get("card_ids") or []):
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            continue
+        if card_id in seen:
+            continue
+        seen.add(card_id)
+        normalized_ids.append(card_id)
+
+    return {
+        "root_card_id": (
+            None
+            if branch_scope.get("root_card_id") is None
+            else int(branch_scope["root_card_id"])
+        ),
+        "root_title": str(branch_scope.get("root_title") or "").strip(),
+        "card_ids": normalized_ids,
+    }
+
+
+def _cid_clause(card_ids: list[int]) -> str:
+    if not card_ids:
+        return ""
+    return "(" + " OR ".join(f"cid:{int(card_id)}" for card_id in card_ids) + ")"
+
+
+def _compose_filter(base_filter: str, branch_clause: str) -> str:
+    base = str(base_filter or "").strip()
+    branch = str(branch_clause or "").strip()
+    if base and branch:
+        return f"({base}) {branch}"
+    if branch:
+        return branch
+    return base
+
+
+def select_session_cards(
+    cfg,
+    addon_dir: str,
+    *,
+    branch_scope: dict | None = None,
+) -> SessionSelectionResult:
     """Run the scheduler pick loop and return selected card IDs + pick metadata."""
     target_count = cfg.session_card_count
     stats = StatsManager(addon_dir, _active_profile(), day_end_time=cfg.day_end_time)
+    normalized_branch_scope = _normalize_branch_scope(branch_scope)
+    if branch_scope is not None and (
+        normalized_branch_scope is None or not normalized_branch_scope["card_ids"]
+    ):
+        return SessionSelectionResult(
+            selected_ids=[],
+            picked_meta={},
+            stats=stats,
+        )
+
+    branch_clause = _cid_clause(
+        list((normalized_branch_scope or {}).get("card_ids") or [])
+    )
+    topics_filter = _compose_filter(cfg.topics_filter, branch_clause)
+    items_filter = _compose_filter(cfg.items_filter, branch_clause)
+    pdf_filter = _compose_filter(DOCUMENT_FILTER, branch_clause)
+    youtube_filter = _compose_filter(_YOUTUBE_FILTER, branch_clause)
+    webpage_filter = _compose_filter(_WEBPAGE_FILTER, branch_clause)
 
     selected_ids: list[int] = []
     added_to_filtered: set[int] = set()
@@ -42,10 +112,13 @@ def select_session_cards(cfg, addon_dir: str) -> SessionSelectionResult:
             exclude_ids=added_to_filtered,
             force_card_type=force_card_type,
             force_mode=force_mode,
-            topics_filter=cfg.topics_filter,
-            items_filter=cfg.items_filter,
+            topics_filter=topics_filter,
+            items_filter=items_filter,
             ready_filter=cfg.ready_filter,
             pdf_rate=cfg.pdf_rate,
+            pdf_filter=pdf_filter,
+            youtube_filter=youtube_filter,
+            webpage_filter=webpage_filter,
             addon_dir=addon_dir,
             priority_lower_is_more_important=cfg.priority_lower_is_more_important,
         )

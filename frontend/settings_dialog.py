@@ -86,6 +86,16 @@ SHORTCUT_ACTION_SPECS = [
         "default": "Alt+P",
     },
     {
+        "id": "reveal_current_knowledge_tree",
+        "label": "Reveal Current Card In Knowledge Tree",
+        "default": "Ctrl+Alt+K",
+    },
+    {
+        "id": "go_to_parent_knowledge_tree",
+        "label": "Go To Parent In Knowledge Tree",
+        "default": "Ctrl+Alt+Up",
+    },
+    {
         "id": "extract_card",
         "label": "Extract Card",
         "default": "Alt+X",
