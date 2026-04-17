@@ -221,6 +221,8 @@ class KnowledgeTreePostponeDialog(QDialog):
         profile: str,
         branch_root_card_id: int | None = None,
         browser_card_ids: Iterable[int] | None = None,
+        browser_scope_name: str | None = None,
+        initial_scope: str | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -228,6 +230,8 @@ class KnowledgeTreePostponeDialog(QDialog):
         self._profile = profile
         self._branch_root_card_id = None if branch_root_card_id is None else int(branch_root_card_id)
         self._browser_card_ids = _unique_ints(browser_card_ids)
+        self._browser_scope_name = str(browser_scope_name or "").strip()
+        self._initial_scope = str(initial_scope or "").strip()
         self._presets: list[dict] = []
         self._loading_preset = False
         self._last_simulation: dict | None = None
@@ -313,7 +317,7 @@ class KnowledgeTreePostponeDialog(QDialog):
         self._scope_group = QButtonGroup(self)
         self._scope_all = QRadioButton("All outstanding repetitions")
         self._scope_branch = QRadioButton("Selected branch or category")
-        self._scope_browser = QRadioButton("Current browser")
+        self._scope_browser = QRadioButton(self._browser_scope_name or "Current browser")
         self._scope_group.addButton(self._scope_all)
         self._scope_group.addButton(self._scope_branch)
         self._scope_group.addButton(self._scope_browser)
@@ -538,10 +542,16 @@ class KnowledgeTreePostponeDialog(QDialog):
                 self._branch_root_card_id,
             )
         elif self._scope_browser.isChecked():
-            label = browser_scope_label(self._browser_card_ids)
+            label = self._browser_scope_label()
         else:
             label = "Global"
         self._branch_scope_edit.setText(label)
+
+    def _browser_scope_label(self) -> str:
+        if self._browser_scope_name:
+            count = len(self._browser_card_ids)
+            return f"{self._browser_scope_name} ({count} card{'s' if count != 1 else ''})"
+        return browser_scope_label(self._browser_card_ids)
 
     def _refresh_presets(self) -> None:
         current_name = self._preset_combo.currentText().strip()
@@ -571,8 +581,20 @@ class KnowledgeTreePostponeDialog(QDialog):
         if preset is not None:
             self._preset_combo.setEditText(str(preset.get("name") or ""))
             self._apply_preset_config(preset.get("config") or {})
+            self._apply_initial_scope_override()
             return
         self._apply_preset_config(default_postpone_preset(branch_root_card_id=self._branch_root_card_id))
+        self._apply_initial_scope_override()
+
+    def _apply_initial_scope_override(self) -> None:
+        scope = self._initial_scope
+        if scope == SCOPE_SELECTED_BRANCH and self._branch_root_card_id is not None:
+            self._scope_branch.setChecked(True)
+        elif scope == SCOPE_CURRENT_BROWSER and self._browser_card_ids:
+            self._scope_browser.setChecked(True)
+        elif scope == SCOPE_ALL_OUTSTANDING:
+            self._scope_all.setChecked(True)
+        self._refresh_scope_state()
 
     def _load_selected_preset(self) -> None:
         if self._loading_preset:
@@ -761,7 +783,7 @@ class KnowledgeTreePostponeDialog(QDialog):
             showInfo("Selected branch scope is only available when a knowledge-tree node is selected.")
             return False
         if self._scope_browser.isChecked() and not self._browser_card_ids:
-            showInfo("Current browser scope needs an open Browser with selected rows or an active search result.")
+            showInfo(f"{self._scope_browser.text()} scope needs at least one card.")
             return False
         return True
 

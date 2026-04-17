@@ -36,6 +36,7 @@ from .backend.epub_manager import (
 from .backend.video_manager import (
     VIDEO_NOTE_TYPE,
     LOCAL_VIDEO_FIELD,
+    get_video_note_media,
     is_supported_video_url,
     resolve_video_url_for_embed,
     add_video_card,
@@ -120,6 +121,7 @@ from .backend.session import (
 )
 from .frontend.settings_dialog import IncrementoSettingsDialog, default_shortcuts
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
+from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.search_all import _SearchAllDialog
 
 _ADDON_DIR = os.path.dirname(__file__)
@@ -761,17 +763,18 @@ def _on_js_message(handled, message, context) -> tuple:
                     url = note["YouTube_URL"]
                 except Exception:
                     url = ""
-                try:
-                    local_video_file = note["Local_Video_File"]
-                except Exception:
-                    local_video_file = ""
+                media = get_video_note_media(note)
                 QTimer.singleShot(
                     0,
                     lambda: _video_dock_mod.show_video_in_dock(
                         card_id,
                         url,
                         position,
-                        local_video_file,
+                        media.get("local_video_file") or "",
+                        target_subtitle_file=media.get("target_subtitle_file") or "",
+                        target_subtitle_label=media.get("target_subtitle_label") or "",
+                        reference_subtitle_file=media.get("reference_subtitle_file") or "",
+                        reference_subtitle_label=media.get("reference_subtitle_label") or "",
                     ),
                 )
             except Exception:
@@ -883,8 +886,42 @@ def _install_reviewer_selection_bridge(_card=None) -> None:
         pass
 
 
+def _sync_reviewer_priority_badge(_card=None) -> None:
+    reviewer = getattr(mw, "reviewer", None)
+    web = getattr(reviewer, "web", None)
+    if web is None:
+        return
+
+    priority = None
+    a_factor = None
+    card = getattr(reviewer, "card", None)
+    if card is not None:
+        try:
+            priority = get_priority(_ADDON_DIR, _active_profile(), int(card.id))
+        except Exception:
+            priority = None
+        try:
+            if _is_topic_card(card):
+                from .backend.db import get_topic_schedule
+
+                a_factor, _interval = get_topic_schedule(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    int(card.id),
+                )
+        except Exception:
+            a_factor = None
+
+    try:
+        web.eval(build_reviewer_priority_badge_js(priority, a_factor=a_factor))
+    except Exception:
+        pass
+
+
 gui_hooks.reviewer_did_show_question.append(_install_reviewer_selection_bridge)
 gui_hooks.reviewer_did_show_answer.append(_install_reviewer_selection_bridge)
+gui_hooks.reviewer_did_show_question.append(_sync_reviewer_priority_badge)
+gui_hooks.reviewer_did_show_answer.append(_sync_reviewer_priority_badge)
 
 
 def _check_deps_first_run() -> None:
@@ -1003,6 +1040,35 @@ def _current_reviewer_card_id() -> int | None:
         return int(card.id)
     except Exception:
         return None
+
+
+def _current_reviewer_video_card():
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer else None
+    if card is None:
+        return None
+    try:
+        note = card.note()
+        model = mw.col.models.get(note.mid)
+    except Exception:
+        return None
+    if model is None or model.get("name") != VIDEO_NOTE_TYPE:
+        return None
+    return card
+
+
+def _download_current_reviewer_video_locally() -> None:
+    if _current_reviewer_video_card() is None:
+        tooltip("No video review card is currently active.")
+        return
+    _video_dock_mod.download_current_video_locally()
+
+
+def _configure_current_reviewer_video_captions() -> None:
+    if _current_reviewer_video_card() is None:
+        tooltip("No video review card is currently active.")
+        return
+    _video_dock_mod.configure_current_video_captions()
 
 
 def _open_knowledge_tree(*, select_card_id: int | None = None) -> None:
@@ -1523,6 +1589,10 @@ def _open_priority_dialog_for_card(card) -> None:
         if dlg.a_factor is not None:
             set_topic_schedule(_ADDON_DIR, _active_profile(), card.id, dlg.a_factor, interval or 1)
             msg += f"  ·  A-Factor {dlg.a_factor:.3f}"
+        reviewer = getattr(mw, "reviewer", None)
+        current_card = getattr(reviewer, "card", None) if reviewer else None
+        if current_card is not None and getattr(current_card, "id", None) == getattr(card, "id", None):
+            _sync_reviewer_priority_badge()
         tooltip(msg)
 
 
@@ -2680,6 +2750,20 @@ def _build_incremento_menu() -> None:
     qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
     _addContentMenu.addAction(_addWebAction)
     _register_shortcut_action("add_web_page", _addWebAction)
+
+    _downloadCurrentVideoAction = QAction("Download Current Video Locally", mw)
+    qconnect(
+        _downloadCurrentVideoAction.triggered,
+        lambda _checked=False: _download_current_reviewer_video_locally(),
+    )
+    _menu.addAction(_downloadCurrentVideoAction)
+
+    _configureCurrentVideoCaptionsAction = QAction("Configure Current Video Captions…", mw)
+    qconnect(
+        _configureCurrentVideoCaptionsAction.triggered,
+        lambda _checked=False: _configure_current_reviewer_video_captions(),
+    )
+    _menu.addAction(_configureCurrentVideoCaptionsAction)
 
     _knowledgeTreeAction = QAction("Open Knowledge tree", mw)
     qconnect(_knowledgeTreeAction.triggered, lambda _checked=False: _open_knowledge_tree())

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -56,6 +57,16 @@ except ImportError:
 
 VIDEO_NOTE_TYPE = "Incremento Video"
 LOCAL_VIDEO_FIELD = "Local_Video_File"
+TARGET_SUBTITLE_FILE_FIELD = "Target_Subtitle_File"
+TARGET_SUBTITLE_LABEL_FIELD = "Target_Subtitle_Label"
+REFERENCE_SUBTITLE_FILE_FIELD = "Reference_Subtitle_File"
+REFERENCE_SUBTITLE_LABEL_FIELD = "Reference_Subtitle_Label"
+VIDEO_SUBTITLE_FIELDS = (
+    TARGET_SUBTITLE_FILE_FIELD,
+    TARGET_SUBTITLE_LABEL_FIELD,
+    REFERENCE_SUBTITLE_FILE_FIELD,
+    REFERENCE_SUBTITLE_LABEL_FIELD,
+)
 _MAX_VIDEO_STEM = 80
 
 CARD_TEMPLATE_FRONT = """
@@ -76,9 +87,11 @@ def _stored_video_title(title: str, attempt: int) -> str:
     return f"{base_title} [{attempt + 1}]"
 
 _VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".mov", ".m4v"}
+_SUBTITLE_EXTS = {".srt", ".vtt"}
 _YTDLP_PERCENT_RE = re.compile(r"\[download\]\s+(\d+(?:\.\d+)?)%")
 _VIMEO_EMBED_URL_RE = re.compile(r"https?://player\.vimeo\.com/video/\d+[^\s\"'<>]*")
 _VIMEO_EMBED_CACHE: dict[str, str] = {}
+_UNSET = object()
 
 
 def extract_video_id(url: str) -> str | None:
@@ -192,6 +205,60 @@ def local_video_abspath(addon_dir: str, profile: str, relpath: str) -> str:
 def supported_local_video_extensions() -> tuple[str, ...]:
     """Extensions accepted by local video import (lowercase, sorted)."""
     return tuple(sorted(_VIDEO_EXTS))
+
+
+def supported_subtitle_extensions() -> tuple[str, ...]:
+    """Extensions accepted for managed video subtitles (lowercase, sorted)."""
+    return tuple(sorted(_SUBTITLE_EXTS))
+
+
+def _safe_note_field(note, field_name: str) -> str:
+    try:
+        return str(note[field_name] or "").strip()
+    except Exception:
+        return ""
+
+
+def get_video_note_media(note) -> dict[str, str]:
+    return {
+        "local_video_file": _safe_note_field(note, LOCAL_VIDEO_FIELD),
+        "target_subtitle_file": _safe_note_field(note, TARGET_SUBTITLE_FILE_FIELD),
+        "target_subtitle_label": _safe_note_field(note, TARGET_SUBTITLE_LABEL_FIELD),
+        "reference_subtitle_file": _safe_note_field(note, REFERENCE_SUBTITLE_FILE_FIELD),
+        "reference_subtitle_label": _safe_note_field(note, REFERENCE_SUBTITLE_LABEL_FIELD),
+    }
+
+
+def update_video_note_media(
+    note,
+    *,
+    local_video_file=_UNSET,
+    target_subtitle_file=_UNSET,
+    target_subtitle_label=_UNSET,
+    reference_subtitle_file=_UNSET,
+    reference_subtitle_label=_UNSET,
+) -> bool:
+    updates = {
+        LOCAL_VIDEO_FIELD: local_video_file,
+        TARGET_SUBTITLE_FILE_FIELD: target_subtitle_file,
+        TARGET_SUBTITLE_LABEL_FIELD: target_subtitle_label,
+        REFERENCE_SUBTITLE_FILE_FIELD: reference_subtitle_file,
+        REFERENCE_SUBTITLE_LABEL_FIELD: reference_subtitle_label,
+    }
+    changed = False
+    for field_name, value in updates.items():
+        if value is _UNSET:
+            continue
+        next_value = str(value or "").strip()
+        try:
+            current_value = str(note[field_name] or "").strip()
+        except Exception:
+            continue
+        if current_value == next_value:
+            continue
+        note[field_name] = next_value
+        changed = True
+    return changed
 
 
 def _yt_dlp_cmd(allow_auto_install: bool = True) -> list[str] | None:
@@ -539,6 +606,247 @@ def list_available_video_resolutions(addon_dir: str, profile: str, video_url: st
         last_err = _ytdlp_error_message(lines[-10:]) if lines else "yt-dlp metadata fetch failed."
 
     raise RuntimeError(last_err or "Could not fetch available resolutions.")
+
+
+def _subtitle_track_id(language: str, automatic: bool) -> str:
+    kind = "auto" if automatic else "manual"
+    return f"{kind}:{str(language or '').strip().lower()}"
+
+
+def _subtitle_track_label(language: str, automatic: bool, name: str = "") -> str:
+    lang = str(language or "").strip() or "unknown"
+    base = str(name or "").strip() or lang
+    suffix = "auto" if automatic else "manual"
+    if base.casefold() == lang.casefold():
+        return f"{base} ({suffix})"
+    return f"{base} [{lang}] ({suffix})"
+
+
+def _extract_subtitle_tracks_from_info(info: dict) -> list[dict]:
+    tracks: list[dict] = []
+    seen: set[str] = set()
+    for automatic, key in ((False, "subtitles"), (True, "automatic_captions")):
+        raw = info.get(key)
+        if not isinstance(raw, dict):
+            continue
+        for language, variants in raw.items():
+            if not language:
+                continue
+            preferred_ext = ""
+            display_name = ""
+            if isinstance(variants, list):
+                for entry in variants:
+                    if not isinstance(entry, dict):
+                        continue
+                    ext = str(entry.get("ext") or "").strip().lower()
+                    name = str(entry.get("name") or "").strip()
+                    if name and not display_name:
+                        display_name = name
+                    if not preferred_ext or preferred_ext not in {"vtt", "srt"}:
+                        preferred_ext = ext
+                    if ext == "vtt":
+                        preferred_ext = ext
+                        break
+                    if ext == "srt" and preferred_ext != "vtt":
+                        preferred_ext = ext
+            track_id = _subtitle_track_id(str(language), automatic)
+            if track_id in seen:
+                continue
+            seen.add(track_id)
+            tracks.append(
+                {
+                    "track_id": track_id,
+                    "language": str(language).strip(),
+                    "automatic": bool(automatic),
+                    "name": display_name,
+                    "preferred_ext": preferred_ext or "vtt",
+                    "label": _subtitle_track_label(str(language), automatic, display_name),
+                }
+            )
+    tracks.sort(
+        key=lambda item: (
+            item.get("automatic", False),
+            str(item.get("language") or "").casefold(),
+            str(item.get("name") or "").casefold(),
+        )
+    )
+    return tracks
+
+
+def list_available_video_subtitles(addon_dir: str, profile: str, video_url: str) -> list[dict]:
+    if not is_supported_video_url(video_url or ""):
+        raise ValueError("Enter a valid YouTube or Vimeo URL first.")
+
+    yt_dlp_cmd = _yt_dlp_cmd()
+    if not yt_dlp_cmd:
+        raise RuntimeError(
+            "Missing required tool: yt-dlp.\n"
+            "Automatic install failed. Install manually with:\n"
+            f"{sys.executable} -m pip install yt-dlp"
+        )
+
+    base_cmd = [
+        *yt_dlp_cmd,
+        "--no-playlist",
+        "--no-warnings",
+        "--skip-download",
+        "-J",
+        video_url,
+    ]
+    profile_dir = _paths.get_video_profile_dir(addon_dir, profile)
+    cookie_attempt = (
+        _has_chromium_cookies(profile_dir)
+        and supports_browser_cookie_auth(video_url)
+    )
+    attempts: list[list[str]] = []
+    if cookie_attempt:
+        attempts.append(
+            [
+                *base_cmd,
+                "--cookies-from-browser",
+                f"chromium:{profile_dir}",
+            ]
+        )
+    attempts.append(base_cmd)
+
+    last_err = ""
+    for cmd in attempts:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        if proc.returncode == 0:
+            try:
+                info = json.loads(proc.stdout or "{}")
+            except Exception as e:
+                raise RuntimeError(f"Could not parse yt-dlp metadata output: {e}") from e
+            return _extract_subtitle_tracks_from_info(info)
+        lines = (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines()
+        lines = [ln.strip() for ln in lines if ln.strip()]
+        last_err = _ytdlp_error_message(lines[-10:]) if lines else "yt-dlp subtitle fetch failed."
+
+    raise RuntimeError(last_err or "Could not fetch subtitles.")
+
+
+def _run_ytdlp_subtitle_download(
+    addon_dir: str,
+    profile: str,
+    video_url: str,
+    *,
+    language: str,
+    automatic: bool = False,
+) -> Path:
+    yt_dlp_cmd = _yt_dlp_cmd()
+    if not yt_dlp_cmd:
+        raise RuntimeError(
+            "Missing required tool: yt-dlp.\n"
+            "Automatic install failed. Install manually with:\n"
+            f"{sys.executable} -m pip install yt-dlp"
+        )
+
+    video_key = extract_video_key(video_url or "")
+    if not video_key:
+        raise ValueError("Could not extract a valid YouTube or Vimeo video ID.")
+
+    with tempfile.TemporaryDirectory(prefix="incremento_video_subtitles_") as tmp_dir:
+        tmp = Path(tmp_dir)
+        output_template = tmp / f"{video_key}.%(ext)s"
+        base_cmd = [
+            *yt_dlp_cmd,
+            "--no-playlist",
+            "--no-warnings",
+            "--skip-download",
+            "--sub-format",
+            "vtt/srt/best",
+            "--sub-langs",
+            str(language or "").strip(),
+            "-o",
+            str(output_template),
+            video_url,
+        ]
+        if automatic:
+            base_cmd.append("--write-auto-subs")
+        else:
+            base_cmd.append("--write-subs")
+
+        profile_dir = _paths.get_video_profile_dir(addon_dir, profile)
+        cookie_attempt = (
+            _has_chromium_cookies(profile_dir)
+            and supports_browser_cookie_auth(video_url)
+        )
+        attempts: list[list[str]] = []
+        if cookie_attempt:
+            attempts.append(
+                [
+                    *base_cmd,
+                    "--cookies-from-browser",
+                    f"chromium:{profile_dir}",
+                ]
+            )
+        attempts.append(base_cmd)
+
+        last_err = ""
+        for cmd in attempts:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if proc.returncode == 0:
+                candidates = [
+                    path
+                    for path in tmp.iterdir()
+                    if path.is_file() and path.suffix.lower() in _SUBTITLE_EXTS
+                ]
+                if not candidates:
+                    break
+                preferred = sorted(
+                    candidates,
+                    key=lambda path: (
+                        path.suffix.lower() != ".vtt",
+                        path.suffix.lower() != ".srt",
+                        path.name,
+                    ),
+                )[0]
+                final_relpath = import_local_subtitle_file(
+                    addon_dir,
+                    profile,
+                    str(preferred),
+                    preferred_stem=f"{video_key}-{language or 'sub'}",
+                )
+                return Path(final_relpath)
+            lines = (proc.stdout or "").splitlines() + (proc.stderr or "").splitlines()
+            lines = [ln.strip() for ln in lines if ln.strip()]
+            last_err = _ytdlp_error_message(lines[-10:]) if lines else "yt-dlp subtitle download failed."
+
+    raise RuntimeError(last_err or "No subtitle file was downloaded.")
+
+
+def download_video_subtitle(
+    addon_dir: str,
+    profile: str,
+    video_url: str,
+    *,
+    language: str,
+    automatic: bool = False,
+) -> dict[str, str]:
+    relpath = str(
+        _run_ytdlp_subtitle_download(
+            addon_dir,
+            profile,
+            video_url,
+            language=str(language or "").strip(),
+            automatic=bool(automatic),
+        )
+    ).replace("\\", "/")
+    label = _subtitle_track_label(str(language or "").strip(), bool(automatic))
+    return {
+        "relpath": relpath,
+        "label": label,
+    }
 
 
 def _run_yt_dlp_with_progress(
@@ -981,6 +1289,120 @@ def import_local_video_file(
     return f"videos/{target.name}"
 
 
+def import_local_subtitle_file(
+    addon_dir: str,
+    profile: str,
+    source_path: str,
+    *,
+    preferred_stem: str = "subtitle",
+) -> str:
+    src = Path((source_path or "").strip()).expanduser()
+    if not src.exists() or not src.is_file():
+        raise ValueError("Selected subtitle file does not exist.")
+    ext = src.suffix.lower()
+    if ext not in _SUBTITLE_EXTS:
+        supported = ", ".join(sorted(_SUBTITLE_EXTS))
+        raise ValueError(
+            f"Unsupported subtitle format: {ext or '(none)'} (supported: {supported})"
+        )
+
+    out_dir = _paths.get_videos_dir(addon_dir, profile)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = _unique_target_path(out_dir, preferred_stem or src.stem, ext)
+    shutil.copyfile(src, target)
+    return f"videos/{target.name}"
+
+
+_SUBTITLE_TIME_RE = re.compile(
+    r"^\s*(?:(?P<h>\d+):)?(?P<m>\d{1,2}):(?P<s>\d{2})(?P<frac>[.,]\d+)?\s*$"
+)
+
+
+def _parse_subtitle_timestamp(value: str) -> float | None:
+    match = _SUBTITLE_TIME_RE.match(str(value or "").strip())
+    if not match:
+        return None
+    try:
+        hours = int(match.group("h") or 0)
+        minutes = int(match.group("m") or 0)
+        seconds = int(match.group("s") or 0)
+        fraction = float(f"0{(match.group('frac') or '').replace(',', '.')}")
+    except Exception:
+        return None
+    return hours * 3600.0 + minutes * 60.0 + seconds + fraction
+
+
+def parse_subtitle_cues(text: str, *, format_hint: str = "") -> list[dict]:
+    raw = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not raw.strip():
+        return []
+
+    lines = raw.split("\n")
+    cues: list[dict] = []
+    block: list[str] = []
+
+    def _flush_block(parts: list[str]) -> None:
+        body = [line.rstrip("\n") for line in parts if line.strip()]
+        if not body:
+            return
+        if body and body[0].strip().isdigit():
+            body = body[1:]
+        if not body:
+            return
+        timing = body[0].strip()
+        if "-->" not in timing:
+            return
+        start_raw, end_raw = timing.split("-->", 1)
+        end_token = end_raw.strip().split(" ", 1)[0]
+        start = _parse_subtitle_timestamp(start_raw.strip())
+        end = _parse_subtitle_timestamp(end_token.strip())
+        if start is None or end is None or end < start:
+            return
+        text_lines = body[1:]
+        if not text_lines:
+            return
+        cue_text = "\n".join(line.strip() for line in text_lines if line.strip()).strip()
+        if not cue_text:
+            return
+        cues.append(
+            {
+                "start": round(float(start), 3),
+                "end": round(float(end), 3),
+                "text": cue_text,
+            }
+        )
+
+    for line in lines:
+        if not line.strip():
+            _flush_block(block)
+            block = []
+            continue
+        if not block and line.strip().upper() == "WEBVTT":
+            continue
+        if not block and line.strip().startswith("NOTE"):
+            continue
+        block.append(line)
+    _flush_block(block)
+    return cues
+
+
+def load_subtitle_cues(addon_dir: str, profile: str, relpath: str) -> list[dict]:
+    rel = str(relpath or "").strip()
+    if not rel:
+        return []
+    subtitle_path = local_video_abspath(addon_dir, profile, rel)
+    if not subtitle_path or not os.path.exists(subtitle_path):
+        return []
+    try:
+        with open(subtitle_path, "r", encoding="utf-8-sig", errors="replace") as handle:
+            return parse_subtitle_cues(
+                handle.read(),
+                format_hint=Path(subtitle_path).suffix.lower(),
+            )
+    except Exception:
+        return []
+
+
 def download_and_compress_video(
     addon_dir: str,
     profile: str,
@@ -1121,7 +1543,12 @@ def ensure_video_note_type(col) -> None:
     m = models.by_name(VIDEO_NOTE_TYPE)
     if m is None:
         m = models.new(VIDEO_NOTE_TYPE)
-        for field_name in ("Title", "YouTube_URL", LOCAL_VIDEO_FIELD):
+        for field_name in (
+            "Title",
+            "YouTube_URL",
+            LOCAL_VIDEO_FIELD,
+            *VIDEO_SUBTITLE_FIELDS,
+        ):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
         ensure_incremento_metadata_fields(models, m)
@@ -1143,8 +1570,10 @@ def ensure_video_note_type(col) -> None:
                 existing = set()
         except Exception:
             existing = set()
-        if LOCAL_VIDEO_FIELD not in existing:
-            fld = models.new_field(LOCAL_VIDEO_FIELD)
+        for field_name in (LOCAL_VIDEO_FIELD, *VIDEO_SUBTITLE_FIELDS):
+            if field_name in existing:
+                continue
+            fld = models.new_field(field_name)
             models.add_field(m, fld)
             changed = True
 
@@ -1182,10 +1611,14 @@ def add_video_card(
         note = col.new_note(model)
         note["Title"] = stored_title
         note["YouTube_URL"] = youtube_url
-        try:
-            note[LOCAL_VIDEO_FIELD] = (local_video_file or "").strip()
-        except Exception:
-            pass
+        update_video_note_media(
+            note,
+            local_video_file=(local_video_file or "").strip(),
+            target_subtitle_file="",
+            target_subtitle_label="",
+            reference_subtitle_file="",
+            reference_subtitle_label="",
+        )
         apply_incremento_metadata(
             note,
             build_incremento_metadata(

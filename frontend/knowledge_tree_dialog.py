@@ -77,6 +77,11 @@ except ImportError:
     )
 
 try:
+    from .knowledge_tree_subset_dialog import KnowledgeTreeSubsetDialog
+except ImportError:
+    from knowledge_tree_subset_dialog import KnowledgeTreeSubsetDialog  # type: ignore
+
+try:
     from ..backend.knowledge_tree import (
         NODE_KIND_ITEM,
         NODE_KIND_TOPIC,
@@ -501,6 +506,7 @@ class KnowledgeTreeDialog(QDialog):
         )
         self._rows_cache: list[dict] = []
         self._row_by_card_id: dict[int, dict] = {}
+        self._subset_review_dialogs: list[KnowledgeTreeSubsetDialog] = []
 
         self.setWindowTitle("Incremento — Knowledge tree")
         self.resize(1120, 720)
@@ -655,6 +661,12 @@ class KnowledgeTreeDialog(QDialog):
             self._study_selected_branch,
             tool_tip="Open the learning dialog and study only this subtree.",
         )
+        self._subset_btn = self._build_toolbar_button(
+            "Subset",
+            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
+            self._open_subset_review_dialog,
+            tool_tip="Open a detailed subset table for the selected node and its descendants.",
+        )
         self._postpone_btn = self._build_toolbar_button(
             "Postpone",
             self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
@@ -706,6 +718,7 @@ class KnowledgeTreeDialog(QDialog):
             self._rename_btn,
             self._priority_btn,
             self._study_btn,
+            self._subset_btn,
             self._postpone_btn,
             self._browser_btn,
             self._parent_btn,
@@ -931,6 +944,11 @@ class KnowledgeTreeDialog(QDialog):
             self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
             self._study_selected_branch,
         )
+        self._inspector_subset_btn = self._build_action_button(
+            "Subset Review…",
+            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
+            self._open_subset_review_dialog,
+        )
         self._inspector_postpone_btn = self._build_action_button(
             "Postpone…",
             self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
@@ -963,18 +981,20 @@ class KnowledgeTreeDialog(QDialog):
             object_name="KnowledgeDangerAction",
         )
         action_grid.addWidget(self._inspector_study_btn, 0, 0)
-        action_grid.addWidget(self._inspector_postpone_btn, 0, 1)
-        action_grid.addWidget(self._inspector_priority_btn, 1, 0)
-        action_grid.addWidget(self._inspector_browser_btn, 1, 1)
-        action_grid.addWidget(self._inspector_parent_btn, 2, 0)
-        action_grid.addWidget(self._inspector_rename_btn, 2, 1)
-        action_grid.addWidget(self._inspector_remove_btn, 3, 0, 1, 2)
+        action_grid.addWidget(self._inspector_subset_btn, 0, 1)
+        action_grid.addWidget(self._inspector_postpone_btn, 1, 0)
+        action_grid.addWidget(self._inspector_priority_btn, 1, 1)
+        action_grid.addWidget(self._inspector_browser_btn, 2, 0)
+        action_grid.addWidget(self._inspector_parent_btn, 2, 1)
+        action_grid.addWidget(self._inspector_rename_btn, 3, 0)
+        action_grid.addWidget(self._inspector_remove_btn, 3, 1)
         action_layout.addLayout(action_grid)
 
         self._action_hint = QLabel(
             "Study Branch opens the normal Incremento learning dialog, but limits scheduling to this subtree. "
+            "Subset Review opens a detailed table for this node and every descendant. "
             "Postpone opens SuperMemo-style bulk delay tools for this branch, all outstanding cards, or the current Browser. "
-            "Branch tools change the selected node and its descendants. Browser opens the linked note for editing."
+            "Browser opens the linked note for editing."
         )
         self._action_hint.setObjectName("KnowledgeHint")
         self._action_hint.setWordWrap(True)
@@ -1110,6 +1130,11 @@ class KnowledgeTreeDialog(QDialog):
             "Study Branch…",
             menu,
         )
+        subset_action = QAction(
+            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
+            "Subset Review…",
+            menu,
+        )
         browser_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
             "Edit In Browser",
@@ -1144,6 +1169,7 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(priority_action.triggered, lambda _checked=False: self._change_selected_priority())
         qconnect(postpone_action.triggered, lambda _checked=False: self._open_postpone_dialog())
         qconnect(study_action.triggered, lambda _checked=False: self._study_selected_branch())
+        qconnect(subset_action.triggered, lambda _checked=False: self._open_subset_review_dialog())
         qconnect(browser_action.triggered, lambda _checked=False: self._open_selected_in_browser())
         qconnect(parent_action.triggered, lambda _checked=False: self._go_to_parent())
         qconnect(expand_action.triggered, lambda _checked=False: self._expand_selected_branch())
@@ -1153,6 +1179,7 @@ class KnowledgeTreeDialog(QDialog):
         rename_action.setEnabled(has_selection)
         priority_action.setEnabled(has_selection)
         study_action.setEnabled(has_selection)
+        subset_action.setEnabled(has_selection)
         browser_action.setEnabled(has_selection)
         parent_action.setEnabled(has_parent)
         expand_action.setEnabled(has_selection)
@@ -1168,6 +1195,7 @@ class KnowledgeTreeDialog(QDialog):
         menu.addAction(priority_action)
         menu.addAction(postpone_action)
         menu.addAction(study_action)
+        menu.addAction(subset_action)
         menu.addAction(browser_action)
         menu.addAction(parent_action)
         menu.addSeparator()
@@ -1446,11 +1474,13 @@ class KnowledgeTreeDialog(QDialog):
         self._remove_btn.setEnabled(has_selection)
         self._priority_btn.setEnabled(has_selection)
         self._study_btn.setEnabled(has_selection)
+        self._subset_btn.setEnabled(has_selection)
         self._browser_btn.setEnabled(has_selection)
         self._parent_btn.setEnabled(has_parent)
         self._postpone_btn.setEnabled(True)
 
         self._inspector_study_btn.setEnabled(has_selection)
+        self._inspector_subset_btn.setEnabled(has_selection)
         self._inspector_postpone_btn.setEnabled(True)
         self._inspector_priority_btn.setEnabled(has_selection)
         self._inspector_browser_btn.setEnabled(has_selection)
@@ -1476,7 +1506,7 @@ class KnowledgeTreeDialog(QDialog):
             )
             self._selection_note.setText(
                 "Use the toolbar or the add buttons here to create root topics/items. "
-                "Once a node is selected, new cards are appended beneath it and you can study that whole branch."
+                "Once a node is selected, new cards are appended beneath it and you can study or inspect that whole branch."
             )
             empty_summary = describe_branch_summary({})
             self._parent_value.setText("Parent branch: Select a node first.")
@@ -1546,8 +1576,8 @@ class KnowledgeTreeDialog(QDialog):
         priority_summary = _priority_text(current_priority) or "Default"
         self._selection_note.setText(
             f"{_kind_label(node_kind)} node with priority {priority_summary}. "
-            "Use Study Branch to review only this subtree, Postpone to delay cards in this branch, "
-            "or open branch tools to spread, randomize, or focus its priority."
+            "Use Study Branch to review only this subtree, Subset Review to inspect every card in detail, "
+            "Postpone to delay cards in this branch, or branch tools to spread, randomize, or focus its priority."
         )
 
         parent_text = self._title_for_card_id(parent_card_id) if has_parent else "Root level"
@@ -1893,6 +1923,37 @@ class KnowledgeTreeDialog(QDialog):
             handler(int(card_id))
         except Exception as exc:
             showInfo(f"Could not open the branch study session:\n{exc}")
+
+    def _open_subset_review_dialog(self) -> None:
+        card_id = self._selected_card_id()
+        if card_id is None:
+            return
+
+        dlg = KnowledgeTreeSubsetDialog(
+            self._addon_dir,
+            profile=self._profile,
+            root_card_id=int(card_id),
+            reveal_in_tree=self._reveal_card_from_subset,
+            parent=self,
+        )
+
+        def _forget_dialog(*_args) -> None:
+            try:
+                self._subset_review_dialogs.remove(dlg)
+            except ValueError:
+                pass
+
+        self._subset_review_dialogs.append(dlg)
+        qconnect(dlg.finished, _forget_dialog)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def _reveal_card_from_subset(self, card_id: int) -> None:
+        self.reload(select_card_id=int(card_id), focus_card_id=int(card_id))
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _open_postpone_dialog(self) -> None:
         browser_card_ids = resolve_current_browser_card_ids()

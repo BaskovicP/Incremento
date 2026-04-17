@@ -7,6 +7,7 @@ Use this file for work in `tests/`.
 - Use `.venv/bin/python`.
 - `tests/conftest.py` sets the active profile to `TestProfile`, so test DB and path helpers use `user_files/TestProfile/`.
 - Prefer focused regression tests for the subsystem you change, then run the full suite when the change is broad enough to justify it.
+- Many focused runs need `-o addopts=` because local `pytest.ini` may expect plugins not present in the environment.
 
 ## Useful Suites
 
@@ -27,6 +28,9 @@ Focused suites for common hotspots:
 ```bash
 .venv/bin/python -m pytest -o addopts= tests/test_add_card_dock.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_knowledge_tree_postpone.py tests/test_db.py tests/test_session_selection.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py -q
 ```
 
 ## Expectations
@@ -34,3 +38,10 @@ Focused suites for common hotspots:
 - If you change browser import behavior, cover backend normalization and extension-facing behavior.
 - If you change profile-aware paths or migration behavior, keep assertions explicitly profile-scoped.
 - If you change reviewer or dock behavior, prefer regression tests that exercise the user-visible state transition instead of only helper internals.
+- If you change note creation or import provenance, assert that metadata lands in dedicated `Incremento_*` note fields and not inline in the main content field.
+- If you change knowledge-tree behavior, cover both raw structure helpers and a user-facing consumer such as branch study, postpone, subset review, or branch-summary formatting.
+- If you change video-card behavior, cover both backend media helpers and the frontend-facing flow that consumes them.
+
+## Current Baseline
+
+- As of 2026-04-18, the full suite has one known unrelated failure in `tests/test_epub_manager.py` around section-title casing (`chapter1` vs `Chapter 1`). Treat that as existing baseline noise unless your change touches EPUB extraction.

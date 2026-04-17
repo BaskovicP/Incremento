@@ -419,6 +419,7 @@ def _refresh_anki_after_import() -> None:
         pass
 
     try:
+        # TODO: New code should use CollectionOp() instead.
         mw.reset()
     except Exception:
         pass

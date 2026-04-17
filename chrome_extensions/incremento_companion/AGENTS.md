@@ -19,6 +19,7 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - Popup writing imports auto-generate a unique title only when the user leaves the default page title unchanged.
 - Auto-generated writing titles use a microsecond-resolution timestamp suffix.
 - Markdown preferred filenames are kept short and slug-based; do not feed the full generated note title back into the filename.
+- Browser-capture provenance now lands in dedicated Incremento note metadata fields on the backend. The extension should continue sending raw title, URL, selection, and snapshot payloads instead of trying to format source metadata into content fields itself.
 
 ## Playback and Reinjection Rules
 

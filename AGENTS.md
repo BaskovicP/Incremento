@@ -12,6 +12,13 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 - `tests/`: Python regression suite.
 - `user_files/`: runtime data only. All user data is per-profile.
 
+Important newer hotspots:
+
+- `backend/knowledge_tree.py`, `backend/knowledge_tree_postpone.py`, `frontend/knowledge_tree_dialog.py`: the knowledge-tree workspace, branch study, branch priority tools, postpone flow, and subset review.
+- `backend/note_metadata.py`: shared Incremento provenance fields and helpers. New note-creation paths should use this instead of appending source/parent text into content fields.
+- `backend/video_manager.py`, `frontend/video_dock.py`: video import, deferred local download, subtitle management, and local dual-caption playback.
+- `frontend/reviewer_priority_badge.py`: reviewer overlay that shows priority and topic A-factor at a glance.
+
 ## Read The Local Guide
 
 - If you work in `backend/`, read `backend/AGENTS.md`.
@@ -67,6 +74,9 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - Avoid touching `user_files/` unless the task is explicitly about migration or cleanup.
 - When moving shipped assets, update both source references and generated or runtime references.
 - If you change PDF viewer React source or extension source, rebuild before finishing.
+- Keep provenance in dedicated `Incremento_*` note fields. Do not reintroduce inline `Source:` / parent blocks into the main content field for new notes.
+- Knowledge-tree nodes are card-backed. One tree node maps to one `card_id`, with at most one parent and any number of children.
+- If a knowledge-tree action is exposed in multiple places such as toolbar, inspector, and context menu, keep those entry points aligned.
 
 ## Tests / Checks
 
@@ -76,6 +86,14 @@ Full suite:
 
 ```bash
 .venv/bin/python -m pytest tests/ -q
+```
+
+Useful focused suites:
+
+```bash
+.venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_db.py tests/test_session_selection.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py -q
 ```
 
 If the local environment lacks `pytest-cov` but `pytest.ini` expects it, use:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 import re
+from datetime import date, datetime, timedelta
 from collections import defaultdict
 
 try:
@@ -840,6 +841,185 @@ def describe_branch_summary(stats: dict | None) -> dict[str, str]:
         "range_line": range_line,
         "impact_line": impact_line,
     }
+
+
+def _collection_available() -> bool:
+    return mw is not None and getattr(mw, "col", None) is not None
+
+
+def _format_calendar_day(value: date | datetime) -> str:
+    if isinstance(value, datetime):
+        return value.strftime("%b %d, %Y")
+    return value.strftime("%b %d, %Y")
+
+
+def _latest_revlog_by_card_id(card_ids: list[int]) -> dict[int, int]:
+    if not card_ids or not _collection_available():
+        return {}
+    db = getattr(mw.col, "db", None)
+    if db is None or not hasattr(db, "all"):
+        return {}
+
+    placeholders = ",".join("?" * len(card_ids))
+    sql = (
+        f"SELECT cid, MAX(id) "
+        f"FROM revlog "
+        f"WHERE cid IN ({placeholders}) "
+        f"GROUP BY cid"
+    )
+    try:
+        rows = list(db.all(sql, *card_ids) or [])
+    except Exception:
+        return {}
+
+    latest: dict[int, int] = {}
+    for cid, review_id in rows:
+        try:
+            latest[int(cid)] = int(review_id or 0)
+        except Exception:
+            continue
+    return latest
+
+
+def _last_review_label(review_id: int | None) -> tuple[str, float]:
+    if not review_id:
+        return ("", float("-inf"))
+    try:
+        dt = datetime.fromtimestamp(int(review_id) / 1000.0)
+    except Exception:
+        return ("", float("-inf"))
+    return (_format_calendar_day(dt), dt.timestamp())
+
+
+def _next_review_label(card) -> tuple[str, float]:
+    if card is None:
+        return ("", float("inf"))
+
+    queue = int(getattr(card, "queue", getattr(card, "type", 0)) or 0)
+    card_type = int(getattr(card, "type", 0) or 0)
+    due = getattr(card, "due", None)
+
+    if queue == -1:
+        return ("Suspended", float("inf"))
+    if queue in {-2, -3}:
+        return ("Buried", float("inf"))
+    if card_type == 0 or queue == 0:
+        return ("New", float("inf"))
+    if due in (None, ""):
+        return ("", float("inf"))
+
+    try:
+        due_value = int(due)
+    except Exception:
+        return (str(due), float("inf"))
+
+    # Learning cards typically store an absolute timestamp in seconds.
+    if abs(due_value) >= 100000000:
+        try:
+            due_dt = datetime.fromtimestamp(due_value)
+            return (_format_calendar_day(due_dt), due_dt.timestamp())
+        except Exception:
+            return (str(due_value), float(due_value))
+
+    today = getattr(getattr(mw.col, "sched", None), "today", None) if _collection_available() else None
+    if today is None:
+        return (str(due_value), float(due_value))
+
+    try:
+        delta_days = int(due_value) - int(today)
+        due_day = date.today() + timedelta(days=delta_days)
+    except Exception:
+        return (str(due_value), float(due_value))
+    return (_format_calendar_day(due_day), float(due_day.toordinal()))
+
+
+def build_subset_review_rows(
+    addon_dir: str,
+    profile: str,
+    root_card_id: int,
+    *,
+    include_descendants: bool = True,
+) -> list[dict]:
+    if not _collection_available():
+        return []
+
+    rows = get_knowledge_tree_nodes(addon_dir, profile)
+    infos = subtree_node_infos(rows, int(root_card_id))
+    if not include_descendants and infos:
+        infos = infos[:1]
+    if not infos:
+        return []
+
+    card_ids = [int(info["card_id"]) for info in infos]
+    latest_reviews = _latest_revlog_by_card_id(card_ids)
+    subset_rows: list[dict] = []
+
+    try:
+        from .db import get_topic_schedule
+    except ImportError:
+        from db import get_topic_schedule  # type: ignore
+
+    for tree_index, info in enumerate(infos, start=1):
+        card_id = int(info["card_id"])
+        meta = get_card_metadata(card_id, addon_dir=addon_dir, profile=profile)
+        if meta is None:
+            continue
+        try:
+            card = mw.col.get_card(card_id)
+        except Exception:
+            continue
+
+        node_kind = normalize_node_kind(info.get("node_kind") or NODE_KIND_TOPIC)
+        priority = meta.get("priority")
+        try:
+            priority_value = None if priority is None else float(priority)
+        except Exception:
+            priority_value = None
+
+        a_factor = None
+        interval = max(0, int(getattr(card, "ivl", 0) or 0))
+        if node_kind == NODE_KIND_TOPIC:
+            try:
+                a_factor, topic_interval = get_topic_schedule(addon_dir, profile, card_id)
+                interval = max(interval, max(0, int(topic_interval or 0)))
+            except Exception:
+                a_factor = None
+
+        next_review_text, next_review_sort = _next_review_label(card)
+        last_review_text, last_review_sort = _last_review_label(latest_reviews.get(card_id))
+        title = str(meta.get("title") or f"Card {card_id}")
+        depth = max(0, int(info.get("depth", 0) or 0))
+        display_title = f"{'  ' * depth}{title}" if depth else title
+
+        subset_rows.append(
+            {
+                "row_number": tree_index,
+                "tree_index": tree_index,
+                "depth": depth,
+                "card_id": card_id,
+                "note_id": int(meta.get("note_id") or 0),
+                "title": title,
+                "display_title": display_title,
+                "node_kind": node_kind,
+                "priority": priority_value,
+                "interval": int(interval),
+                "next_review": next_review_text,
+                "next_review_sort": next_review_sort,
+                "last_review": last_review_text,
+                "last_review_sort": last_review_sort,
+                "reps": int(getattr(card, "reps", 0) or 0),
+                "lapses": int(getattr(card, "lapses", 0) or 0),
+                "a_factor": (
+                    None
+                    if a_factor is None
+                    else round(float(a_factor), 3)
+                ),
+                "deck_name": str(meta.get("deck_name") or ""),
+                "note_type_name": str(meta.get("note_type_name") or ""),
+            }
+        )
+
+    return subset_rows
 
 
 def build_branch_study_scope(

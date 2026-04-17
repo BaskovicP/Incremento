@@ -5,6 +5,7 @@ Use this file for work in `backend/`.
 ## Ownership
 
 - Scheduling, persistence, browser bridge, content managers, profile-aware file handling, and migration logic live here.
+- Knowledge-tree persistence, branch postpone logic, note provenance helpers, and video media/subtitle management also live here.
 
 ## Profile and Path Rules
 
@@ -13,6 +14,20 @@ Use this file for work in `backend/`.
 - Keep `backend/paths.py` pure. Do not import Anki there.
 - Use the preferred import pattern for `_active_profile` from `paths.py`.
 - Keep `backend/migration.py` idempotent. It owns migration from legacy flat `user_files/` into per-profile layout.
+
+## Note Metadata
+
+- Shared provenance lives in `backend/note_metadata.py`.
+- Canonical fields are:
+  - `Incremento_Source_Type`
+  - `Incremento_Source_Title`
+  - `Incremento_Source_Link`
+  - `Incremento_Source_Author`
+  - `Incremento_Imported_At`
+  - `Incremento_Parent`
+  - `Incremento_Parent_Card_ID`
+- New note-creation paths should call `ensure_incremento_metadata_fields()` and `apply_incremento_metadata()` instead of appending source or parent text into content fields.
+- If a frontend field picker or editor should hide those fields, use `visible_field_names()` rather than duplicating field-name filtering logic.
 
 ## Browser Bridge
 
@@ -25,6 +40,19 @@ Use this file for work in `backend/`.
 - Duplicate first-field failures must raise an explicit error instead of relying on Anki rejection.
 - Stored browser-capture image filenames must stay sanitized and capped before the UUID suffix.
 - Refresh the Anki UI after successful imports.
+- Browser-capture provenance now belongs in Incremento metadata fields. Do not reintroduce URL or source blocks into mapped content fields when the backend can write metadata separately.
+
+## Knowledge Tree
+
+- Main files: `backend/knowledge_tree.py`, `backend/knowledge_tree_postpone.py`, and the related tables in `backend/db.py`.
+- Tree rows are card-backed, not note-backed:
+  - one node = one `card_id`
+  - one parent max
+  - many children allowed
+- Use `load_knowledge_tree_nodes()` when the caller needs enriched rows with card metadata. Use raw DB rows only when working on structure persistence.
+- Branch-scoped study, subset review, and postpone features all work by resolving subtree card ids from the selected root.
+- Child creation and other tree-driven note creation should preserve provenance through `build_incremento_metadata(...)`.
+- If you change subtree behavior, cover both selection helpers and the caller that consumes them.
 
 ## Card and Media Rules
 
@@ -34,6 +62,15 @@ Use this file for work in `backend/`.
 - UUID-backed saved filenames keep a short sanitized stem first, then the UUID.
 - The current stem cap is `80` characters across writing, PDF, EPUB, video, and browser-capture media helpers.
 - Some `.pdf` URLs return HTML challenge pages to Python; extension-side PDF fetch is the correct fallback there.
+
+## Video Cards
+
+- Main backend file: `backend/video_manager.py`.
+- `ensure_video_note_type()` now owns both local-video and subtitle fields. Reuse it instead of adding video fields ad hoc.
+- Use `get_video_note_media()` and `update_video_note_media()` for note-field reads and writes rather than poking subtitle fields by hand.
+- Managed subtitle files live under the profile `videos/` area beside local video assets.
+- Deferred local download should reuse the existing download/compression pipeline; do not create a second downloader path.
+- Dual-caption playback is currently a local-playback feature. Backend subtitle acquisition should not assume remote providers can host the overlay reliably.
 
 ## Web Cards
 
@@ -50,4 +87,6 @@ Use this file for work in `backend/`.
 
 ```bash
 .venv/bin/python -m pytest -o addopts= tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_knowledge_tree_postpone.py tests/test_db.py tests/test_session_selection.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py -q
 ```

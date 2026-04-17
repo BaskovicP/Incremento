@@ -24,6 +24,7 @@ from aqt.utils import tooltip
 from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout,
                     QComboBox, QSlider, QApplication, QDialog, QLineEdit,
+                    QFileDialog,
                     QSpinBox, QDialogButtonBox)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
@@ -53,9 +54,22 @@ try:
         extract_start_seconds,
         fmt_time,
         get_video_position,
+        get_video_note_media,
+        import_local_subtitle_file,
         set_video_position,
+        list_available_video_subtitles,
+        load_subtitle_cues,
         ensure_video_note_type,
         local_video_abspath,
+        TARGET_SUBTITLE_FILE_FIELD,
+        TARGET_SUBTITLE_LABEL_FIELD,
+        REFERENCE_SUBTITLE_FILE_FIELD,
+        REFERENCE_SUBTITLE_LABEL_FIELD,
+        LOCAL_VIDEO_FIELD,
+        download_and_compress_video,
+        download_video_subtitle,
+        supported_subtitle_extensions,
+        update_video_note_media,
     )
 except ImportError:
     from video_manager import (
@@ -67,9 +81,22 @@ except ImportError:
         extract_start_seconds,
         fmt_time,
         get_video_position,
+        get_video_note_media,
+        import_local_subtitle_file,
         set_video_position,
+        list_available_video_subtitles,
+        load_subtitle_cues,
         ensure_video_note_type,
         local_video_abspath,
+        TARGET_SUBTITLE_FILE_FIELD,
+        TARGET_SUBTITLE_LABEL_FIELD,
+        REFERENCE_SUBTITLE_FILE_FIELD,
+        REFERENCE_SUBTITLE_LABEL_FIELD,
+        LOCAL_VIDEO_FIELD,
+        download_and_compress_video,
+        download_video_subtitle,
+        supported_subtitle_extensions,
+        update_video_note_media,
     )
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -100,6 +127,13 @@ _position_lock_until   = 0.0
 _position_lock_sec     = 0.0
 _remote_resume_target  = 0.0
 _remote_resume_attempts = 0
+_using_local_web_player = False
+_target_caption_enabled = True
+_reference_caption_enabled = True
+_current_target_subtitle_relpath = ""
+_current_target_subtitle_label = ""
+_current_reference_subtitle_relpath = ""
+_current_reference_subtitle_label = ""
 
 _PLAYBACK_STATUS_JS = (
     "(function(){"
@@ -213,6 +247,12 @@ def _build_video_dock():
     browser_btn = QPushButton("Open in Browser")
     browser_btn.setEnabled(False)
     ctrl_layout.addWidget(browser_btn)
+    download_btn = QPushButton("Download Local Copy…")
+    download_btn.setEnabled(False)
+    ctrl_layout.addWidget(download_btn)
+    captions_btn = QPushButton("Captions…")
+    captions_btn.setEnabled(False)
+    ctrl_layout.addWidget(captions_btn)
     vbox.addWidget(ctrl)
 
     manual_ctrl = QWidget(container)
@@ -257,6 +297,25 @@ def _build_video_dock():
     local_ctrl.setVisible(False)
     vbox.addWidget(local_ctrl)
 
+    caption_ctrl = QWidget(container)
+    caption_layout = QHBoxLayout(caption_ctrl)
+    caption_layout.setContentsMargins(8, 0, 8, 8)
+    caption_layout.setSpacing(6)
+    target_cc_btn = QPushButton("Target CC")
+    target_cc_btn.setCheckable(True)
+    target_cc_btn.setChecked(True)
+    reference_cc_btn = QPushButton("Reference CC")
+    reference_cc_btn.setCheckable(True)
+    reference_cc_btn.setChecked(True)
+    caption_status = QLabel("")
+    caption_status.setWordWrap(True)
+    caption_status.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+    caption_layout.addWidget(target_cc_btn)
+    caption_layout.addWidget(reference_cc_btn)
+    caption_layout.addWidget(caption_status, 1)
+    caption_ctrl.setVisible(False)
+    vbox.addWidget(caption_ctrl)
+
     dock.setWidget(container)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
@@ -276,10 +335,18 @@ def _build_video_dock():
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
     dock._browser_btn = browser_btn
+    dock._download_btn = download_btn
+    dock._captions_btn = captions_btn
     dock._resume_input = resume_input
     dock._resume_btn = resume_btn
+    dock._caption_ctrl = caption_ctrl
+    dock._target_cc_btn = target_cc_btn
+    dock._reference_cc_btn = reference_cc_btn
+    dock._caption_status = caption_status
     qconnect(add_btn.clicked, _video_add_card_at_point)
     qconnect(browser_btn.clicked, _open_video_in_browser)
+    qconnect(download_btn.clicked, download_current_video_locally)
+    qconnect(captions_btn.clicked, configure_current_video_captions)
     qconnect(resume_btn.clicked, _on_manual_time_submit)
     qconnect(resume_input.returnPressed, _on_manual_time_submit)
     qconnect(seek_slider.sliderPressed, _on_seek_slider_pressed)
@@ -290,6 +357,8 @@ def _build_video_dock():
     qconnect(fwd_btn.clicked, lambda: _local_seek(10))
     qconnect(rate_combo.currentTextChanged, _set_local_rate)
     qconnect(vol_slider.valueChanged, _set_local_volume)
+    qconnect(target_cc_btn.clicked, lambda checked: _set_caption_visibility("target", checked))
+    qconnect(reference_cc_btn.clicked, lambda checked: _set_caption_visibility("reference", checked))
     if local_player is not None:
         qconnect(local_player.errorOccurred, _on_local_player_error)
         qconnect(local_player.playbackStateChanged, _on_local_playback_state_changed)
@@ -304,9 +373,22 @@ def _build_video_dock():
     return dock
 
 
-def _local_video_html(video_src: str, mime_type: str, start_sec: int) -> str:
+def _local_video_html(
+    video_src: str,
+    mime_type: str,
+    start_sec: int,
+    *,
+    target_cues: list[dict] | None = None,
+    reference_cues: list[dict] | None = None,
+    target_enabled: bool = True,
+    reference_enabled: bool = True,
+) -> str:
     src = html.escape(video_src, quote=True)
     mime = html.escape(mime_type or "video/mp4", quote=True)
+    target_payload = json.dumps(target_cues or [])
+    reference_payload = json.dumps(reference_cues or [])
+    target_visible = "true" if target_enabled else "false"
+    reference_visible = "true" if reference_enabled else "false"
     return f"""<!doctype html>
 <html>
 <head>
@@ -314,20 +396,113 @@ def _local_video_html(video_src: str, mime_type: str, start_sec: int) -> str:
 <style>
 html, body {{ margin:0; padding:0; background:#000; width:100%; height:100%; overflow:hidden; }}
 #player {{ width:100vw; height:100vh; background:#000; }}
+#caption-root {{
+  position: fixed;
+  left: 3vw;
+  right: 3vw;
+  bottom: 8vh;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}}
+.caption-line {{
+  max-width: 90vw;
+  padding: 8px 14px;
+  border-radius: 12px;
+  text-align: center;
+  white-space: pre-line;
+  font-family: sans-serif;
+  font-size: 22px;
+  line-height: 1.35;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}}
+#target-caption {{
+  background: rgba(15, 20, 28, 0.78);
+  color: #ffffff;
+  border: 1px solid rgba(255,255,255,0.1);
+}}
+#reference-caption {{
+  background: rgba(18, 59, 44, 0.72);
+  color: #ecfff7;
+  border: 1px solid rgba(176, 255, 220, 0.2);
+  font-size: 18px;
+}}
 </style>
 </head>
 <body>
 <video id="player" controls playsinline>
   <source src="{src}" type="{mime}">
 </video>
+<div id="caption-root">
+  <div id="target-caption" class="caption-line" style="display:none;"></div>
+  <div id="reference-caption" class="caption-line" style="display:none;"></div>
+</div>
 <script>
 const startSec = {max(0, int(start_sec))};
 const v = document.getElementById("player");
+const targetCues = {target_payload};
+const referenceCues = {reference_payload};
+let showTarget = {target_visible};
+let showReference = {reference_visible};
+
+function cueAtTime(cues, timeSec) {{
+  if(!Array.isArray(cues) || !cues.length) return "";
+  for(const cue of cues) {{
+    const start = Number(cue.start || 0);
+    const end = Number(cue.end || 0);
+    if(timeSec >= start && timeSec <= end) {{
+      return String(cue.text || "");
+    }}
+  }}
+  return "";
+}}
+
+function renderCaption(elementId, text, visible) {{
+  const el = document.getElementById(elementId);
+  if(!el) return;
+  if(!visible || !text) {{
+    el.style.display = "none";
+    el.textContent = "";
+    return;
+  }}
+  el.style.display = "block";
+  el.textContent = text;
+}}
+
+function updateCaptions() {{
+  const timeSec = Number.isFinite(v.currentTime) ? v.currentTime : 0;
+  renderCaption("target-caption", cueAtTime(targetCues, timeSec), showTarget);
+  renderCaption("reference-caption", cueAtTime(referenceCues, timeSec), showReference);
+}}
+
+window.__incrementoSetCaptionVisibility = function(slot, visible) {{
+  if(slot === "target") showTarget = !!visible;
+  if(slot === "reference") showReference = !!visible;
+  updateCaptions();
+  return true;
+}};
+
+window.__incrementoGetCaptionState = function() {{
+  return {{
+    hasTarget: targetCues.length > 0,
+    hasReference: referenceCues.length > 0,
+    showTarget,
+    showReference
+  }};
+}};
+
 v.addEventListener("loadedmetadata", () => {{
   if (startSec > 0) {{
     try {{ v.currentTime = startSec; }} catch (_e) {{}}
   }}
+  updateCaptions();
 }});
+v.addEventListener("timeupdate", updateCaptions);
+setInterval(updateCaptions, 150);
 </script>
 </body>
 </html>"""
@@ -349,6 +524,94 @@ def _set_browser_button_enabled(enabled: bool) -> None:
         return
     try:
         btn.setEnabled(bool(enabled))
+    except Exception:
+        pass
+
+
+def _set_download_button_enabled(enabled: bool, *, has_local_copy: bool = False) -> None:
+    if _video_dock is None:
+        return
+    btn = getattr(_video_dock, "_download_btn", None)
+    if btn is None:
+        return
+    try:
+        btn.setEnabled(bool(enabled))
+        btn.setText("Re-download Local Copy…" if has_local_copy else "Download Local Copy…")
+    except Exception:
+        pass
+
+
+def _set_captions_button_enabled(enabled: bool) -> None:
+    if _video_dock is None:
+        return
+    btn = getattr(_video_dock, "_captions_btn", None)
+    if btn is None:
+        return
+    try:
+        btn.setEnabled(bool(enabled))
+    except Exception:
+        pass
+
+
+def _set_caption_controls_state(
+    *,
+    has_target: bool,
+    has_reference: bool,
+    use_local_player: bool,
+) -> None:
+    if _video_dock is None:
+        return
+    ctrl = getattr(_video_dock, "_caption_ctrl", None)
+    target_btn = getattr(_video_dock, "_target_cc_btn", None)
+    reference_btn = getattr(_video_dock, "_reference_cc_btn", None)
+    status_lbl = getattr(_video_dock, "_caption_status", None)
+    if ctrl is None or target_btn is None or reference_btn is None or status_lbl is None:
+        return
+
+    any_captions = bool(has_target or has_reference)
+    try:
+        ctrl.setVisible(any_captions)
+        target_btn.setEnabled(bool(has_target and use_local_player))
+        target_btn.setVisible(bool(has_target))
+        target_btn.setChecked(bool(_target_caption_enabled))
+        reference_btn.setEnabled(bool(has_reference and use_local_player))
+        reference_btn.setVisible(bool(has_reference))
+        reference_btn.setChecked(bool(_reference_caption_enabled))
+        if not any_captions:
+            status_lbl.setText("")
+        elif use_local_player:
+            parts = []
+            if has_target:
+                parts.append("target")
+            if has_reference:
+                parts.append("reference")
+            status_lbl.setText(f"Local subtitle overlays active: {', '.join(parts)}.")
+        else:
+            status_lbl.setText("Subtitles are configured. Download a local copy to use dual caption overlays.")
+    except Exception:
+        pass
+
+
+def _set_caption_visibility(slot: str, enabled: bool) -> None:
+    global _target_caption_enabled, _reference_caption_enabled
+    slot_name = str(slot or "").strip().lower()
+    if slot_name == "target":
+        _target_caption_enabled = bool(enabled)
+    elif slot_name == "reference":
+        _reference_caption_enabled = bool(enabled)
+    else:
+        return
+
+    if _video_dock is None or not _using_local_web_player:
+        return
+    js = (
+        "(function(slot, visible){"
+        "if(typeof window.__incrementoSetCaptionVisibility!=='function'){return false;}"
+        "try{return !!window.__incrementoSetCaptionVisibility(slot, visible);}catch(_e){return false;}"
+        f"}})({json.dumps(slot_name)}, {str(bool(enabled)).lower()})"
+    )
+    try:
+        _video_dock._view.page().runJavaScript(js)
     except Exception:
         pass
 
@@ -414,6 +677,45 @@ def _reset_seek_ui() -> None:
         pass
     finally:
         _seek_ui_updating = False
+
+
+def _current_video_card():
+    if _current_video_card_id is None or getattr(mw, "col", None) is None:
+        return None
+    try:
+        return mw.col.get_card(int(_current_video_card_id))
+    except Exception:
+        return None
+
+
+def _current_video_note():
+    card = _current_video_card()
+    if card is None:
+        return None
+    try:
+        note = card.note()
+        model = mw.col.models.get(note.mid)
+    except Exception:
+        return None
+    if model is None or model.get("name") != VIDEO_NOTE_TYPE:
+        return None
+    return note
+
+
+def _persist_current_video_note_media(**updates) -> bool:
+    note = _current_video_note()
+    if note is None:
+        return False
+    if not update_video_note_media(note, **updates):
+        return True
+    try:
+        mw.col.update_note(note)
+    except Exception:
+        try:
+            note.flush()
+        except Exception:
+            return False
+    return True
 
 
 def _parse_manual_time(text: str) -> float | None:
@@ -699,6 +1001,11 @@ def show_video_in_dock(
     video_url: str,
     position: float = 0.0,
     local_video_file: str = "",
+    *,
+    target_subtitle_file: str = "",
+    target_subtitle_label: str = "",
+    reference_subtitle_file: str = "",
+    reference_subtitle_label: str = "",
 ) -> None:
     global _video_dock, _current_video_card_id, _current_video_url
     global _current_local_relpath, _local_fallback_done, _using_local_qt_player
@@ -706,6 +1013,10 @@ def show_video_in_dock(
     global _local_resume_attempts, _last_known_duration
     global _position_lock_card_id, _position_lock_until, _position_lock_sec
     global _remote_resume_target, _remote_resume_attempts
+    global _using_local_web_player
+    global _current_target_subtitle_relpath, _current_target_subtitle_label
+    global _current_reference_subtitle_relpath, _current_reference_subtitle_label
+    global _target_caption_enabled, _reference_caption_enabled
 
     normalized_url = (video_url or "").strip()
     if detect_video_provider(normalized_url) == "vimeo":
@@ -720,6 +1031,13 @@ def show_video_in_dock(
     _last_known_duration = 0.0
     _remote_resume_target = 0.0
     _remote_resume_attempts = 0
+    _using_local_web_player = False
+    _current_target_subtitle_relpath = str(target_subtitle_file or "").strip()
+    _current_target_subtitle_label = str(target_subtitle_label or "").strip()
+    _current_reference_subtitle_relpath = str(reference_subtitle_file or "").strip()
+    _current_reference_subtitle_label = str(reference_subtitle_label or "").strip()
+    _target_caption_enabled = True
+    _reference_caption_enabled = True
     if _position_lock_card_id is not None and _position_lock_card_id != int(card_id):
         _position_lock_card_id = None
         _position_lock_until = 0.0
@@ -734,6 +1052,11 @@ def show_video_in_dock(
             _video_dock = None
             _build_video_dock()
     _set_browser_button_enabled(bool(build_remote_video_watch_url(_current_video_url, start_sec=0)))
+    _set_download_button_enabled(
+        bool(is_supported_video_url(_current_video_url)),
+        has_local_copy=bool(local_video_file),
+    )
+    _set_captions_button_enabled(True)
 
     local_relpath = (local_video_file or "").strip()
     start_sec = int(position)
@@ -745,11 +1068,62 @@ def show_video_in_dock(
             _local_fallback_done = False
             _video_dock.show()
             _video_dock.raise_()
+            target_cues = load_subtitle_cues(
+                _ADDON_DIR,
+                _active_profile(),
+                _current_target_subtitle_relpath,
+            )
+            reference_cues = load_subtitle_cues(
+                _ADDON_DIR,
+                _active_profile(),
+                _current_reference_subtitle_relpath,
+            )
+            use_local_web_player = bool(target_cues or reference_cues)
             local_player = getattr(_video_dock, "_local_player", None)
             local_index = getattr(_video_dock, "_local_index", None)
             media_stack = getattr(_video_dock, "_media_stack", None)
+            if use_local_web_player and media_stack is not None:
+                _using_local_qt_player = False
+                _using_local_web_player = True
+                _set_local_controls_visible(False)
+                _local_resume_pending = False
+                _local_resume_ms = 0
+                _local_resume_attempts = 0
+                try:
+                    mime_type = mimetypes.guess_type(str(local_path))[0] or "video/mp4"
+                except Exception:
+                    mime_type = "video/mp4"
+                html_text = _local_video_html(
+                    QUrl.fromLocalFile(str(local_path)).toString(),
+                    mime_type,
+                    start_sec,
+                    target_cues=target_cues,
+                    reference_cues=reference_cues,
+                    target_enabled=_target_caption_enabled,
+                    reference_enabled=_reference_caption_enabled,
+                )
+                web_index = getattr(_video_dock, "_web_index", None)
+                if local_player is not None:
+                    try:
+                        local_player.stop()
+                    except Exception:
+                        pass
+                if web_index is not None:
+                    media_stack.setCurrentIndex(web_index)
+                _video_dock._view.setHtml(
+                    html_text,
+                    QUrl.fromLocalFile(str(local_path.parent) + os.sep),
+                )
+                _set_caption_controls_state(
+                    has_target=bool(target_cues),
+                    has_reference=bool(reference_cues),
+                    use_local_player=True,
+                )
+                _start_video_timer()
+                return
             if local_player is not None and local_index is not None and media_stack is not None:
                 _using_local_qt_player = True
+                _using_local_web_player = False
                 _set_local_controls_visible(True)
                 try:
                     local_player.stop()
@@ -778,6 +1152,11 @@ def show_video_in_dock(
                         pass
             else:
                 tooltip("Incremento: local playback requires Qt multimedia support; falling back to web playback.")
+            _set_caption_controls_state(
+                has_target=bool(target_cues),
+                has_reference=bool(reference_cues),
+                use_local_player=False,
+            )
             _start_video_timer()
             if _using_local_qt_player:
                 return
@@ -789,6 +1168,7 @@ def show_video_in_dock(
         _current_local_relpath = ""
         _local_fallback_done = False
         _using_local_qt_player = False
+        _using_local_web_player = False
         _local_resume_pending = False
         _local_resume_ms = 0
         _local_resume_attempts = 0
@@ -797,6 +1177,11 @@ def show_video_in_dock(
         _remote_resume_attempts = 0
         _set_local_controls_visible(False)
         _reset_seek_ui()
+        _set_caption_controls_state(
+            has_target=bool(_current_target_subtitle_relpath),
+            has_reference=bool(_current_reference_subtitle_relpath),
+            use_local_player=False,
+        )
         if _remote_resume_target > 0:
             _set_seek_ui(_remote_resume_target, None)
 
@@ -818,6 +1203,11 @@ def show_video_in_dock(
         return
 
     tooltip("Incremento: This video card has no valid video URL.")
+    _set_caption_controls_state(
+        has_target=bool(_current_target_subtitle_relpath),
+        has_reference=bool(_current_reference_subtitle_relpath),
+        use_local_player=False,
+    )
     print(f"[Incremento] Invalid video URL for card {card_id}: {video_url!r}")
 
 
@@ -1195,6 +1585,367 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
     _browser_sync_seed_sec = sec
 
 
+class _VideoCaptionDialog(QDialog):
+    def __init__(self, *, parent=None):
+        super().__init__(parent or mw)
+        self.setWindowTitle("Video Captions")
+        self.setMinimumWidth(520)
+        self._tracks: list[dict] = []
+
+        note = _current_video_note()
+        media = get_video_note_media(note) if note is not None else {}
+        self._video_url = ""
+        if note is not None:
+            try:
+                self._video_url = str(note["YouTube_URL"] or "").strip()
+            except Exception:
+                self._video_url = ""
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        intro = QLabel(
+            "Choose target and reference subtitles for this video card. "
+            "Remote subtitles can be fetched with yt-dlp; manual .srt/.vtt files are also supported."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        self._current_target = QLabel("")
+        self._current_reference = QLabel("")
+        self._current_target.setWordWrap(True)
+        self._current_reference.setWordWrap(True)
+        layout.addWidget(self._current_target)
+        layout.addWidget(self._current_reference)
+
+        remote_row = QHBoxLayout()
+        remote_row.addWidget(QLabel("Available remote tracks:"))
+        self._refresh_btn = QPushButton("Refresh")
+        remote_row.addStretch()
+        remote_row.addWidget(self._refresh_btn)
+        layout.addLayout(remote_row)
+
+        self._remote_hint = QLabel("")
+        self._remote_hint.setWordWrap(True)
+        self._remote_hint.setStyleSheet("font-size: 11px; color: #9aa0a6;")
+        layout.addWidget(self._remote_hint)
+
+        self._target_combo = QComboBox()
+        self._reference_combo = QComboBox()
+        target_row = QHBoxLayout()
+        target_row.addWidget(QLabel("Target track:"))
+        target_row.addWidget(self._target_combo, 1)
+        self._download_target_btn = QPushButton("Download To Target")
+        target_row.addWidget(self._download_target_btn)
+        layout.addLayout(target_row)
+
+        reference_row = QHBoxLayout()
+        reference_row.addWidget(QLabel("Reference track:"))
+        reference_row.addWidget(self._reference_combo, 1)
+        self._download_reference_btn = QPushButton("Download To Reference")
+        reference_row.addWidget(self._download_reference_btn)
+        layout.addLayout(reference_row)
+
+        manual_row = QHBoxLayout()
+        self._import_target_btn = QPushButton("Import Target File…")
+        self._import_reference_btn = QPushButton("Import Reference File…")
+        self._clear_target_btn = QPushButton("Clear Target")
+        self._clear_reference_btn = QPushButton("Clear Reference")
+        manual_row.addWidget(self._import_target_btn)
+        manual_row.addWidget(self._import_reference_btn)
+        manual_row.addWidget(self._clear_target_btn)
+        manual_row.addWidget(self._clear_reference_btn)
+        layout.addLayout(manual_row)
+
+        close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        qconnect(close_box.rejected, self.reject)
+        qconnect(close_box.accepted, self.accept)
+        layout.addWidget(close_box)
+
+        qconnect(self._refresh_btn.clicked, self._refresh_tracks)
+        qconnect(self._download_target_btn.clicked, lambda: self._download_track("target"))
+        qconnect(self._download_reference_btn.clicked, lambda: self._download_track("reference"))
+        qconnect(self._import_target_btn.clicked, lambda: self._import_manual("target"))
+        qconnect(self._import_reference_btn.clicked, lambda: self._import_manual("reference"))
+        qconnect(self._clear_target_btn.clicked, lambda: self._clear_slot("target"))
+        qconnect(self._clear_reference_btn.clicked, lambda: self._clear_slot("reference"))
+
+        self._refresh_current_labels(media)
+        self._populate_track_combos([])
+        self._refresh_tracks()
+
+    def _refresh_current_labels(self, media: dict | None = None) -> None:
+        current = media or get_video_note_media(_current_video_note())
+        target_label = str(current.get("target_subtitle_label") or "").strip()
+        target_file = str(current.get("target_subtitle_file") or "").strip()
+        reference_label = str(current.get("reference_subtitle_label") or "").strip()
+        reference_file = str(current.get("reference_subtitle_file") or "").strip()
+        self._current_target.setText(
+            f"Target: {target_label or 'Not set'}"
+            + (f"  [{target_file}]" if target_file else "")
+        )
+        self._current_reference.setText(
+            f"Reference: {reference_label or 'Not set'}"
+            + (f"  [{reference_file}]" if reference_file else "")
+        )
+
+    def _populate_track_combos(self, tracks: list[dict]) -> None:
+        self._tracks = list(tracks or [])
+        for combo in (self._target_combo, self._reference_combo):
+            combo.clear()
+            combo.addItem("Select a track…", "")
+            for track in self._tracks:
+                combo.addItem(str(track.get("label") or ""), str(track.get("track_id") or ""))
+        has_tracks = bool(self._tracks)
+        self._download_target_btn.setEnabled(has_tracks)
+        self._download_reference_btn.setEnabled(has_tracks)
+
+    def _track_for_combo(self, combo: QComboBox) -> dict | None:
+        track_id = str(combo.currentData() or "").strip()
+        if not track_id:
+            return None
+        for track in self._tracks:
+            if str(track.get("track_id") or "") == track_id:
+                return dict(track)
+        return None
+
+    def _refresh_tracks(self) -> None:
+        if not self._video_url or not is_supported_video_url(self._video_url):
+            self._remote_hint.setText(
+                "This card has no supported remote URL. You can still attach manual subtitle files."
+            )
+            self._populate_track_combos([])
+            return
+
+        self._refresh_btn.setEnabled(False)
+        self._remote_hint.setText("Loading remote subtitle tracks…")
+
+        def _task():
+            return list_available_video_subtitles(_ADDON_DIR, _active_profile(), self._video_url)
+
+        def _on_done(fut) -> None:
+            self._refresh_btn.setEnabled(True)
+            try:
+                tracks = fut.result()
+            except Exception as exc:
+                self._populate_track_combos([])
+                self._remote_hint.setText(f"Could not load subtitles: {exc}")
+                return
+            self._populate_track_combos(tracks)
+            if tracks:
+                self._remote_hint.setText(
+                    f"Found {len(tracks)} remote subtitle track(s). Download one into target or reference."
+                )
+            else:
+                self._remote_hint.setText(
+                    "No remote subtitle tracks were found. You can still import manual subtitle files."
+                )
+
+        mw.taskman.run_in_background(_task, _on_done)
+
+    def _apply_slot(self, slot: str, *, relpath: str, label: str) -> None:
+        slot_name = str(slot or "").strip().lower()
+        updates = {}
+        if slot_name == "target":
+            updates = {
+                "target_subtitle_file": relpath,
+                "target_subtitle_label": label,
+            }
+        elif slot_name == "reference":
+            updates = {
+                "reference_subtitle_file": relpath,
+                "reference_subtitle_label": label,
+            }
+        if not updates:
+            return
+        if _persist_current_video_note_media(**updates):
+            self._refresh_current_labels()
+            _reload_current_video_card()
+
+    def _download_track(self, slot: str) -> None:
+        combo = self._target_combo if slot == "target" else self._reference_combo
+        track = self._track_for_combo(combo)
+        if track is None:
+            tooltip("Incremento: select a subtitle track first.")
+            return
+        if not self._video_url:
+            tooltip("Incremento: this video card has no remote URL.")
+            return
+        label = str(track.get("label") or "").strip()
+        language = str(track.get("language") or "").strip()
+        automatic = bool(track.get("automatic"))
+        self._remote_hint.setText(f"Downloading {label}…")
+
+        note = _current_video_note()
+        preferred_stem = ""
+        if note is not None:
+            try:
+                preferred_stem = str(note["Title"] or "").strip()
+            except Exception:
+                preferred_stem = ""
+
+        def _task():
+            return download_video_subtitle(
+                _ADDON_DIR,
+                _active_profile(),
+                self._video_url,
+                language=language,
+                automatic=automatic,
+            )
+
+        def _on_done(fut) -> None:
+            try:
+                result = fut.result()
+            except Exception as exc:
+                self._remote_hint.setText(f"Subtitle download failed: {exc}")
+                return
+            relpath = str(result.get("relpath") or "").strip()
+            applied_label = str(result.get("label") or label or language).strip()
+            self._apply_slot(slot, relpath=relpath, label=applied_label)
+            self._remote_hint.setText(f"Saved {applied_label} to {slot}.")
+
+        mw.taskman.run_in_background(_task, _on_done)
+
+    def _import_manual(self, slot: str) -> None:
+        exts = supported_subtitle_extensions()
+        patterns = " ".join(f"*{ext}" for ext in exts)
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"Choose {slot.title()} Subtitle",
+            "",
+            f"Subtitle files ({patterns});;All files (*)",
+        )
+        if not path:
+            return
+        note = _current_video_note()
+        preferred_stem = ""
+        if note is not None:
+            try:
+                preferred_stem = str(note["Title"] or "").strip()
+            except Exception:
+                preferred_stem = ""
+        try:
+            relpath = import_local_subtitle_file(
+                _ADDON_DIR,
+                _active_profile(),
+                path,
+                preferred_stem=f"{preferred_stem or 'video'}-{slot}",
+            )
+        except Exception as exc:
+            tooltip(f"Incremento: could not import subtitle file ({exc}).")
+            return
+        label = os.path.basename(path)
+        self._apply_slot(slot, relpath=relpath, label=label)
+        self._remote_hint.setText(f"Imported {label} into {slot}.")
+
+    def _clear_slot(self, slot: str) -> None:
+        self._apply_slot(slot, relpath="", label="")
+        self._remote_hint.setText(f"Cleared {slot} subtitles.")
+
+
+def _reload_current_video_card() -> None:
+    card = _current_video_card()
+    note = _current_video_note()
+    if card is None or note is None:
+        return
+    media = get_video_note_media(note)
+    try:
+        youtube_url = str(note["YouTube_URL"] or "").strip()
+    except Exception:
+        youtube_url = ""
+    show_video_in_dock(
+        int(card.id),
+        youtube_url,
+        float(_last_known_position or 0.0),
+        media.get("local_video_file") or "",
+        target_subtitle_file=media.get("target_subtitle_file") or "",
+        target_subtitle_label=media.get("target_subtitle_label") or "",
+        reference_subtitle_file=media.get("reference_subtitle_file") or "",
+        reference_subtitle_label=media.get("reference_subtitle_label") or "",
+    )
+
+
+def configure_current_video_captions() -> None:
+    note = _current_video_note()
+    if note is None:
+        tooltip("Incremento: no active video card.")
+        return
+    dlg = _VideoCaptionDialog(parent=mw)
+    dlg.exec()
+
+
+def download_current_video_locally() -> None:
+    note = _current_video_note()
+    if note is None:
+        tooltip("Incremento: no active video card.")
+        return
+    try:
+        video_url = str(note["YouTube_URL"] or "").strip()
+    except Exception:
+        video_url = ""
+    if not is_supported_video_url(video_url):
+        tooltip("Incremento: this video card has no supported remote URL.")
+        return
+
+    current_media = get_video_note_media(note)
+    has_existing_local = bool(current_media.get("local_video_file"))
+    _set_download_button_enabled(False, has_local_copy=has_existing_local)
+
+    try:
+        mw.progress.start(
+            label=(
+                "Re-downloading local video copy…"
+                if has_existing_local
+                else "Downloading local video copy…"
+            ),
+            immediate=True,
+            value=0,
+            max=100,
+        )
+    except TypeError:
+        mw.progress.start(
+            label=(
+                "Re-downloading local video copy…"
+                if has_existing_local
+                else "Downloading local video copy…"
+            ),
+            immediate=True,
+        )
+
+    def _progress_main(percent: int, label: str) -> None:
+        try:
+            mw.progress.update(label=label, value=int(percent), max=100)
+        except TypeError:
+            mw.progress.update(label=label)
+
+    def _progress_cb(percent: int, label: str) -> None:
+        mw.taskman.run_on_main(lambda p=percent, l=label: _progress_main(p, l))
+
+    def _task():
+        return download_and_compress_video(
+            _ADDON_DIR,
+            _active_profile(),
+            video_url,
+            progress_cb=_progress_cb,
+        )
+
+    def _on_done(fut) -> None:
+        mw.progress.finish()
+        _set_download_button_enabled(True, has_local_copy=has_existing_local)
+        try:
+            local_relpath = fut.result()
+        except Exception as exc:
+            tooltip(f"Incremento: local download failed ({exc}).")
+            return
+        if not _persist_current_video_note_media(local_video_file=local_relpath):
+            tooltip("Incremento: video downloaded, but the card could not be updated.")
+            return
+        tooltip("Incremento: local video copy is ready.")
+        _reload_current_video_card()
+
+    mw.taskman.run_in_background(_task, _on_done)
+
+
 def _on_application_state_changed(state) -> None:
     global _browser_sync_wait_bg
     if not _browser_sync_pending:
@@ -1278,6 +2029,9 @@ def on_video_question_shown(card) -> None:
     global _browser_sync_card_id, _browser_sync_seed_sec
     global _position_lock_card_id, _position_lock_until, _position_lock_sec
     global _remote_resume_target, _remote_resume_attempts
+    global _using_local_web_player
+    global _current_target_subtitle_relpath, _current_target_subtitle_label
+    global _current_reference_subtitle_relpath, _current_reference_subtitle_label
     try:
         if card is None:
             return
@@ -1292,6 +2046,7 @@ def on_video_question_shown(card) -> None:
             _current_video_url = ""
             _local_fallback_done = False
             _using_local_qt_player = False
+            _using_local_web_player = False
             _local_resume_pending = False
             _local_resume_ms = 0
             _local_resume_attempts = 0
@@ -1306,8 +2061,19 @@ def on_video_question_shown(card) -> None:
             _position_lock_sec = 0.0
             _remote_resume_target = 0.0
             _remote_resume_attempts = 0
+            _current_target_subtitle_relpath = ""
+            _current_target_subtitle_label = ""
+            _current_reference_subtitle_relpath = ""
+            _current_reference_subtitle_label = ""
             _set_local_controls_visible(False)
             _set_browser_button_enabled(False)
+            _set_download_button_enabled(False, has_local_copy=False)
+            _set_captions_button_enabled(False)
+            _set_caption_controls_state(
+                has_target=False,
+                has_reference=False,
+                use_local_player=False,
+            )
             _reset_seek_ui()
             if _video_dock is not None:
                 local_player = getattr(_video_dock, "_local_player", None)
@@ -1331,8 +2097,10 @@ def on_video_question_shown(card) -> None:
         except (KeyError, TypeError):
             return
         try:
-            local_video_file = (note["Local_Video_File"] or "").strip()
+            media = get_video_note_media(note)
+            local_video_file = str(media.get("local_video_file") or "").strip()
         except Exception:
+            media = {}
             local_video_file = ""
         # Fallback for malformed cards where URL was accidentally saved in Title.
         # Skip this when local video exists: local playback does not need the URL.
@@ -1363,7 +2131,16 @@ def on_video_question_shown(card) -> None:
                 set_video_position(_ADDON_DIR, _active_profile(), card.id, position)
             except Exception:
                 pass
-        show_video_in_dock(card.id, youtube_url, position, local_video_file)
+        show_video_in_dock(
+            card.id,
+            youtube_url,
+            position,
+            local_video_file,
+            target_subtitle_file=str(media.get("target_subtitle_file") or ""),
+            target_subtitle_label=str(media.get("target_subtitle_label") or ""),
+            reference_subtitle_file=str(media.get("reference_subtitle_file") or ""),
+            reference_subtitle_label=str(media.get("reference_subtitle_label") or ""),
+        )
     except Exception as e:
         print(f"[Incremento] on_video_question_shown error: {e}")
 
@@ -1376,11 +2153,15 @@ def on_video_reviewer_will_end() -> None:
     global _browser_sync_card_id, _browser_sync_seed_sec
     global _position_lock_card_id, _position_lock_until, _position_lock_sec
     global _remote_resume_target, _remote_resume_attempts
+    global _using_local_web_player
+    global _current_target_subtitle_relpath, _current_target_subtitle_label
+    global _current_reference_subtitle_relpath, _current_reference_subtitle_label
     _persist_position_now()
     _current_local_relpath = ""
     _current_video_url = ""
     _local_fallback_done = False
     _using_local_qt_player = False
+    _using_local_web_player = False
     _local_resume_pending = False
     _local_resume_ms = 0
     _local_resume_attempts = 0
@@ -1395,8 +2176,19 @@ def on_video_reviewer_will_end() -> None:
     _position_lock_sec = 0.0
     _remote_resume_target = 0.0
     _remote_resume_attempts = 0
+    _current_target_subtitle_relpath = ""
+    _current_target_subtitle_label = ""
+    _current_reference_subtitle_relpath = ""
+    _current_reference_subtitle_label = ""
     _set_local_controls_visible(False)
     _set_browser_button_enabled(False)
+    _set_download_button_enabled(False, has_local_copy=False)
+    _set_captions_button_enabled(False)
+    _set_caption_controls_state(
+        has_target=False,
+        has_reference=False,
+        use_local_player=False,
+    )
     _reset_seek_ui()
     if _video_timer is not None:
         try:

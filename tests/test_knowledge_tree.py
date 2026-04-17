@@ -375,6 +375,7 @@ class TestBranchPriorityOperations:
         assert priority_manager.get_priority(self.addon_dir, "TestProfile", 12) == 25.0
         assert priority_manager.get_priority(self.addon_dir, "TestProfile", 13) == 15.0
 
+
     def test_spread_subtree_priorities_uses_leaf_end_value_when_root_excluded(self):
         changed = knowledge_tree.spread_subtree_priorities(
             self.addon_dir,
@@ -435,3 +436,159 @@ class TestBranchPriorityOperations:
         assert priority_manager.get_priority(self.addon_dir, "TestProfile", 11) == 62.5
         assert priority_manager.get_priority(self.addon_dir, "TestProfile", 12) == 55.0
         assert priority_manager.get_priority(self.addon_dir, "TestProfile", 13) == 58.0
+
+
+class _FakeSubsetCard:
+    def __init__(
+        self,
+        card_id: int,
+        *,
+        ivl: int,
+        due: int,
+        reps: int = 0,
+        lapses: int = 0,
+        queue: int = 2,
+        card_type: int = 2,
+    ):
+        self.id = int(card_id)
+        self.ivl = int(ivl)
+        self.due = int(due)
+        self.reps = int(reps)
+        self.lapses = int(lapses)
+        self.queue = int(queue)
+        self.type = int(card_type)
+
+
+class _FakeSubsetDb:
+    def __init__(self, latest_review_by_card: dict[int, int]):
+        self._latest_review_by_card = {
+            int(card_id): int(review_id)
+            for card_id, review_id in dict(latest_review_by_card or {}).items()
+        }
+
+    def all(self, sql: str, *params):
+        if "FROM revlog" not in str(sql):
+            return []
+        rows = []
+        for card_id in params:
+            value = self._latest_review_by_card.get(int(card_id))
+            if value is not None:
+                rows.append((int(card_id), int(value)))
+        return rows
+
+
+class _FakeSubsetSched:
+    def __init__(self, today: int):
+        self.today = int(today)
+
+
+class _FakeSubsetCol:
+    def __init__(self, cards: dict[int, _FakeSubsetCard], latest_review_by_card: dict[int, int], *, today: int):
+        self._cards = {int(card_id): card for card_id, card in dict(cards).items()}
+        self.db = _FakeSubsetDb(latest_review_by_card)
+        self.sched = _FakeSubsetSched(today)
+
+    def get_card(self, card_id: int):
+        return self._cards[int(card_id)]
+
+
+class _FakeSubsetMw:
+    def __init__(self, cards: dict[int, _FakeSubsetCard], latest_review_by_card: dict[int, int], *, today: int):
+        self.col = _FakeSubsetCol(cards, latest_review_by_card, today=today)
+
+
+class TestSubsetReviewRows:
+    def setup_method(self):
+        _reset_db()
+        self.addon_dir = _fresh_dir()
+        self.cards = {
+            10: _FakeSubsetCard(10, ivl=18, due=120, reps=4, lapses=1),
+            11: _FakeSubsetCard(11, ivl=7, due=130, reps=2, lapses=0),
+        }
+        self.latest_reviews = {
+            10: 1700000000000,
+            11: 1705000000000,
+        }
+        self.fake_mw = _FakeSubsetMw(self.cards, self.latest_reviews, today=100)
+        self._patchers = [
+            patch.object(knowledge_tree, "mw", self.fake_mw),
+            patch.object(knowledge_tree, "get_card_metadata", side_effect=self._card_metadata),
+        ]
+        for patcher in self._patchers:
+            patcher.start()
+
+    def teardown_method(self):
+        for patcher in reversed(self._patchers):
+            patcher.stop()
+        _reset_db()
+
+    def _card_metadata(self, card_id: int, *, addon_dir=None, profile=None):
+        return {
+            "card_id": int(card_id),
+            "note_id": int(card_id) + 1000,
+            "title": "Root Topic" if int(card_id) == 10 else "Child Item",
+            "deck_name": "Default",
+            "note_type_name": "Basic",
+            "priority": priority_manager.get_priority(self.addon_dir, "TestProfile", int(card_id)),
+        }
+
+    def test_build_subset_review_rows_returns_real_card_and_review_data(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 11, "parent_card_id": 10, "node_kind": "item", "sort_order": 0},
+            ],
+        )
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 10, 1.2, 20)
+        priority_manager.set_priority(self.addon_dir, "TestProfile", 10, 58.0)
+        priority_manager.set_priority(self.addon_dir, "TestProfile", 11, 82.0)
+
+        rows = knowledge_tree.build_subset_review_rows(
+            self.addon_dir,
+            "TestProfile",
+            10,
+        )
+
+        expected_root_due = (date.today() + timedelta(days=20)).strftime("%b %d, %Y")
+        expected_child_due = (date.today() + timedelta(days=30)).strftime("%b %d, %Y")
+        expected_root_last = datetime.fromtimestamp(self.latest_reviews[10] / 1000.0).strftime("%b %d, %Y")
+        expected_child_last = datetime.fromtimestamp(self.latest_reviews[11] / 1000.0).strftime("%b %d, %Y")
+
+        assert [row["card_id"] for row in rows] == [10, 11]
+        assert rows[0]["display_title"] == "Root Topic"
+        assert rows[1]["display_title"] == "  Child Item"
+        assert rows[0]["priority"] == 58.0
+        assert rows[0]["interval"] == 20
+        assert rows[0]["next_review"] == expected_root_due
+        assert rows[0]["last_review"] == expected_root_last
+        assert rows[0]["reps"] == 4
+        assert rows[0]["lapses"] == 1
+        assert rows[0]["a_factor"] == 1.2
+        assert rows[1]["priority"] == 82.0
+        assert rows[1]["interval"] == 7
+        assert rows[1]["next_review"] == expected_child_due
+        assert rows[1]["last_review"] == expected_child_last
+        assert rows[1]["a_factor"] is None
+
+    def test_build_subset_review_rows_can_limit_to_selected_node_only(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 11, "parent_card_id": 10, "node_kind": "item", "sort_order": 0},
+            ],
+        )
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 10, 1.2, 20)
+
+        rows = knowledge_tree.build_subset_review_rows(
+            self.addon_dir,
+            "TestProfile",
+            10,
+            include_descendants=False,
+        )
+
+        assert len(rows) == 1
+        assert rows[0]["card_id"] == 10

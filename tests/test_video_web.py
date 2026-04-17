@@ -41,6 +41,18 @@ hms_to_seconds = _vm._hms_to_seconds
 ytdlp_format_selector = _vm._ytdlp_format_selector
 extract_resolutions_from_info = _vm._extract_resolutions_from_info
 supported_local_video_extensions = _vm.supported_local_video_extensions
+supported_subtitle_extensions = _vm.supported_subtitle_extensions
+extract_subtitle_tracks_from_info = _vm._extract_subtitle_tracks_from_info
+parse_subtitle_cues = _vm.parse_subtitle_cues
+import_local_subtitle_file = _vm.import_local_subtitle_file
+load_subtitle_cues = _vm.load_subtitle_cues
+get_video_note_media = _vm.get_video_note_media
+update_video_note_media = _vm.update_video_note_media
+TARGET_SUBTITLE_FILE_FIELD = _vm.TARGET_SUBTITLE_FILE_FIELD
+TARGET_SUBTITLE_LABEL_FIELD = _vm.TARGET_SUBTITLE_LABEL_FIELD
+REFERENCE_SUBTITLE_FILE_FIELD = _vm.REFERENCE_SUBTITLE_FILE_FIELD
+REFERENCE_SUBTITLE_LABEL_FIELD = _vm.REFERENCE_SUBTITLE_LABEL_FIELD
+VIDEO_SUBTITLE_FIELDS = _vm.VIDEO_SUBTITLE_FIELDS
 
 get_web_url = _wm.get_web_url
 set_web_url = _wm.set_web_url
@@ -314,6 +326,88 @@ class TestLocalVideoHelpers:
         exts = supported_local_video_extensions()
         assert ".mp4" in exts
         assert ".mkv" in exts
+
+
+class TestSubtitleHelpers:
+    def test_supported_subtitle_extensions(self):
+        assert supported_subtitle_extensions() == (".srt", ".vtt")
+
+    def test_extract_subtitle_tracks_from_info_prefers_manual_then_auto(self):
+        info = {
+            "subtitles": {
+                "en": [{"ext": "vtt", "name": "English"}],
+                "de": [{"ext": "srt"}],
+            },
+            "automatic_captions": {
+                "en": [{"ext": "vtt", "name": "English auto"}],
+            },
+        }
+        tracks = extract_subtitle_tracks_from_info(info)
+        assert [track["track_id"] for track in tracks] == ["manual:de", "manual:en", "auto:en"]
+        assert tracks[1]["label"] == "English [en] (manual)"
+        assert tracks[2]["label"] == "English auto [en] (auto)"
+
+    def test_parse_subtitle_cues_handles_srt(self):
+        text = (
+            "1\n"
+            "00:00:01,000 --> 00:00:02,500\n"
+            "Hello there\n\n"
+            "2\n"
+            "00:00:03,000 --> 00:00:05,000\n"
+            "General Kenobi\n"
+        )
+        cues = parse_subtitle_cues(text, format_hint=".srt")
+        assert cues == [
+            {"start": 1.0, "end": 2.5, "text": "Hello there"},
+            {"start": 3.0, "end": 5.0, "text": "General Kenobi"},
+        ]
+
+    def test_parse_subtitle_cues_handles_vtt_header_and_settings(self):
+        text = (
+            "WEBVTT\n\n"
+            "00:00:01.000 --> 00:00:04.000 line:85%\n"
+            "Target line\n"
+        )
+        cues = parse_subtitle_cues(text, format_hint=".vtt")
+        assert cues == [{"start": 1.0, "end": 4.0, "text": "Target line"}]
+
+    def test_import_local_subtitle_file_copies_into_profile_videos_dir(self, tmp_path):
+        src = tmp_path / "lesson.srt"
+        src.write_text("1\n00:00:01,000 --> 00:00:02,000\nHola\n", encoding="utf-8")
+        relpath = import_local_subtitle_file(str(tmp_path), "TestProfile", str(src), preferred_stem="lesson-target")
+        assert relpath.startswith("videos/lesson-target-")
+        stored = load_subtitle_cues(str(tmp_path), "TestProfile", relpath)
+        assert stored == [{"start": 1.0, "end": 2.0, "text": "Hola"}]
+
+    def test_get_and_update_video_note_media_round_trip(self):
+        class _Note(dict):
+            pass
+
+        note = _Note(
+            {
+                "Local_Video_File": "",
+                TARGET_SUBTITLE_FILE_FIELD: "",
+                TARGET_SUBTITLE_LABEL_FIELD: "",
+                REFERENCE_SUBTITLE_FILE_FIELD: "",
+                REFERENCE_SUBTITLE_LABEL_FIELD: "",
+            }
+        )
+        changed = update_video_note_media(
+            note,
+            local_video_file="videos/example.mp4",
+            target_subtitle_file="videos/example-target.vtt",
+            target_subtitle_label="English",
+            reference_subtitle_file="videos/example-reference.vtt",
+            reference_subtitle_label="Croatian",
+        )
+        assert changed is True
+        assert get_video_note_media(note) == {
+            "local_video_file": "videos/example.mp4",
+            "target_subtitle_file": "videos/example-target.vtt",
+            "target_subtitle_label": "English",
+            "reference_subtitle_file": "videos/example-reference.vtt",
+            "reference_subtitle_label": "Croatian",
+        }
 
 
 # ── fmt_time ──────────────────────────────────────────────────────────────────
@@ -709,6 +803,27 @@ class TestEnsureVideoNoteType:
         ensure_video_note_type(col)
         col.models.add.assert_called_once()
 
+    def test_adds_subtitle_fields_to_existing_model_when_missing(self):
+        from unittest.mock import MagicMock
+        col = MagicMock()
+        col.models.new_field.side_effect = lambda name: {"name": name}
+        model = {
+            "flds": [
+                {"name": "Title", "ord": 0},
+                {"name": "YouTube_URL", "ord": 1},
+                {"name": _vm.LOCAL_VIDEO_FIELD, "ord": 2},
+            ],
+            "tmpls": [{"qfmt": _vm.CARD_TEMPLATE_FRONT, "afmt": _vm.CARD_TEMPLATE_BACK}],
+        }
+        col.models.by_name.return_value = model
+
+        ensure_video_note_type(col)
+
+        added_field_names = [call.args[1]["name"] for call in col.models.add_field.call_args_list]
+        for field_name in VIDEO_SUBTITLE_FIELDS:
+            assert field_name in added_field_names
+        col.models.update_dict.assert_called_once()
+
     def test_does_not_create_when_already_exists_with_matching_template(self):
         col = _make_mock_col(note_type_exists=True, template_matches=True)
         ensure_video_note_type(col)
@@ -835,6 +950,17 @@ class TestAddVideoCard:
             c.args == (SOURCE_LINK_FIELD, "https://youtube.com/watch?v=abc")
             for c in setitem_calls
         )
+
+    def test_initializes_subtitle_fields_as_empty(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+
+        add_video_card(col, "https://youtube.com/watch?v=abc", "My Video")
+
+        setitem_calls = col.new_note.return_value.__setitem__.call_args_list
+        assert any(c.args == (TARGET_SUBTITLE_FILE_FIELD, "") for c in setitem_calls)
+        assert any(c.args == (TARGET_SUBTITLE_LABEL_FIELD, "") for c in setitem_calls)
+        assert any(c.args == (REFERENCE_SUBTITLE_FILE_FIELD, "") for c in setitem_calls)
+        assert any(c.args == (REFERENCE_SUBTITLE_LABEL_FIELD, "") for c in setitem_calls)
 
     def test_uses_visible_duplicate_suffix_when_title_collides(self):
         col = _make_mock_col_for_add(deck_exists=True)
