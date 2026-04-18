@@ -69,6 +69,78 @@ export function copyLatestVideoTime() {
   });
 }
 
+export function getLinkedCardContextForTab(tabId, url = "") {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: "GET_LINKED_CARD_CONTEXT",
+        tabId: Number(tabId),
+        url: String(url || ""),
+      },
+      (response) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message || "Failed to load linked card context."));
+          return;
+        }
+        resolve(response || null);
+      }
+    );
+  });
+}
+
+export async function getCurrentMediaContextForTab(tabId) {
+  if (!Number.isFinite(Number(tabId)) || Number(tabId) <= 0) {
+    throw new Error("No active tab found for media detection.");
+  }
+
+  let injectionError = "";
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: Number(tabId) },
+      files: ["dist/content.js"],
+    });
+  } catch (error) {
+    injectionError = String(
+      error?.message || "Chrome did not allow script injection on this tab."
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.tabs.sendMessage(Number(tabId), { type: "GET_CURRENT_MEDIA_CONTEXT" }, (response) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(injectionError || error.message || "Failed to inspect the current page media."));
+          return;
+        }
+        if (!response?.ok && injectionError && !response?.error) {
+          reject(new Error(injectionError));
+          return;
+        }
+        resolve(response || null);
+      });
+    } catch (error) {
+      reject(new Error(String(error?.message || injectionError || "Failed to inspect the current page media.")));
+    }
+  });
+}
+
+export async function updateBrowserMediaRefBadgeForTab(tabId, reference) {
+  if (!Number.isFinite(Number(tabId)) || Number(tabId) <= 0) {
+    return false;
+  }
+  try {
+    await chrome.tabs.sendMessage(Number(tabId), {
+      type: "UPDATE_BROWSER_MEDIA_REF_BADGE",
+      reference: reference || null,
+    });
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
 export async function openBookmarksPage() {
   await chrome.tabs.create({
     url: chrome.runtime.getURL("bookmarks.html"),

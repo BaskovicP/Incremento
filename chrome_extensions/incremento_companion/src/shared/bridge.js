@@ -1,5 +1,6 @@
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
+const BROWSER_MEDIA_REF_URL = "http://127.0.0.1:8766/incremento/browser-media-ref";
 const BRIDGE_UNAVAILABLE_MESSAGE = "Failed to reach Incremento in Anki. Keep Anki open and reload the addon.";
 
 async function parseBridgeResponse(response) {
@@ -22,6 +23,22 @@ export async function importIntoIncremento(payload) {
 export async function loadBrowserCaptureMeta() {
   const response = await fetch(BROWSER_CAPTURE_META_URL, {
     method: "GET",
+  });
+  return parseBridgeResponse(response);
+}
+
+export async function loadBrowserMediaRef(cardId) {
+  const response = await fetch(`${BROWSER_MEDIA_REF_URL}?cardId=${encodeURIComponent(String(cardId || ""))}`, {
+    method: "GET",
+  });
+  return parseBridgeResponse(response);
+}
+
+export async function saveBrowserMediaRef(payload) {
+  const response = await fetch(BROWSER_MEDIA_REF_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
   return parseBridgeResponse(response);
 }

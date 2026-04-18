@@ -1,5 +1,5 @@
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v3";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v4";
   if (window.__incrementoContentScriptVersion === CONTENT_SCRIPT_VERSION) {
     return;
   }
@@ -227,6 +227,112 @@
     badge.style.display = "inline-flex";
   }
 
+  function formatMediaTime(totalSeconds) {
+    const t = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function ensureSavedBrowserMediaBadge() {
+    let badge = document.getElementById("incremento-browser-media-ref-badge");
+    if (badge) {
+      return badge;
+    }
+    badge = document.createElement("div");
+    badge.id = "incremento-browser-media-ref-badge";
+    Object.assign(badge.style, {
+      position: "fixed",
+      zIndex: 2147483645,
+      top: "96px",
+      right: "10px",
+      display: "none",
+      alignItems: "center",
+      gap: "8px",
+      maxWidth: "320px",
+      padding: "9px 12px",
+      background: "linear-gradient(135deg, rgba(28, 32, 48, 0.96), rgba(34, 62, 96, 0.96))",
+      color: "#eef5ff",
+      fontSize: "12px",
+      fontWeight: "700",
+      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      borderRadius: "14px",
+      boxShadow: "0 5px 18px rgba(0, 0, 0, 0.30)",
+      backdropFilter: "blur(6px)",
+      WebkitBackdropFilter: "blur(6px)",
+      pointerEvents: "auto",
+    });
+
+    const icon = document.createElement("span");
+    icon.textContent = "▶";
+    Object.assign(icon.style, {
+      color: "#8fd3ff",
+      fontSize: "11px",
+      lineHeight: "1",
+    });
+    badge.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.id = "incremento-browser-media-ref-badge-label";
+    label.textContent = "";
+    Object.assign(label.style, {
+      flex: "1 1 auto",
+      minWidth: "0",
+    });
+    badge.appendChild(label);
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Dismiss saved browser time badge");
+    Object.assign(close.style, {
+      appearance: "none",
+      border: "0",
+      background: "transparent",
+      color: "#a9bfdc",
+      cursor: "pointer",
+      fontSize: "16px",
+      fontWeight: "700",
+      lineHeight: "1",
+      padding: "0 0 0 4px",
+      margin: "0",
+      pointerEvents: "auto",
+    });
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      savedBrowserMediaBadgeDismissed = true;
+      badge.style.display = "none";
+    });
+    badge.appendChild(close);
+
+    document.documentElement.appendChild(badge);
+    return badge;
+  }
+
+  function setSavedBrowserMediaBadge(reference) {
+    const badge = ensureSavedBrowserMediaBadge();
+    const label = document.getElementById("incremento-browser-media-ref-badge-label");
+    if (!badge || !label) {
+      return;
+    }
+    const hasReference = Boolean(reference?.hasReference);
+    if (!hasReference) {
+      badge.style.display = "none";
+      return;
+    }
+    if (savedBrowserMediaBadgeDismissed) {
+      return;
+    }
+    const timeText = String(reference?.timeText || formatMediaTime(reference?.seconds));
+    label.textContent = timeText ? `Last saved ${timeText}` : "Last saved";
+    badge.style.display = "inline-flex";
+  }
+
   function getRuntime() {
     try {
       return chrome?.runtime || null;
@@ -279,9 +385,19 @@
         });
         return false;
       }
+      if (msg.type === "GET_CURRENT_MEDIA_CONTEXT") {
+        sendResponse?.(getCurrentMediaContext());
+        return false;
+      }
       if (msg.type === "APPLY_MEDIA_RESUME") {
         const ok = applyMediaResume(msg.seconds);
         sendResponse?.({ ok });
+        return false;
+      }
+      if (msg.type === "UPDATE_BROWSER_MEDIA_REF_BADGE") {
+        savedBrowserMediaBadgeDismissed = false;
+        setSavedBrowserMediaBadge(msg.reference || null);
+        sendResponse?.({ ok: true });
         return false;
       }
       return false;
@@ -1586,6 +1702,52 @@
     };
   }
 
+  function detectCurrentMediaSeconds() {
+    const { provider, video } = currentTrackedMedia();
+    let sec = -1;
+    let found = false;
+    if (video) {
+      sec = Math.max(0, Math.floor(Number(video.currentTime) || 0));
+      found = true;
+    }
+    if (provider === "youtube" && sec <= 0) {
+      const ytSec = readYouTubeTimecodeSeconds();
+      if (ytSec >= 0) {
+        sec = ytSec;
+        found = true;
+      }
+    }
+    if (provider === "vimeo" && sec <= 0) {
+      const vimeoSec = readVimeoTimecodeSeconds();
+      if (vimeoSec >= 0) {
+        sec = vimeoSec;
+        found = true;
+      }
+    }
+    return {
+      found,
+      seconds: found ? Math.max(0, sec) : 0,
+    };
+  }
+
+  function getCurrentMediaContext() {
+    const href = window.location.href || "";
+    const { provider, videoId, mediaUrl, mediaTitle } = currentTrackedMedia();
+    const detected = detectCurrentMediaSeconds();
+    return {
+      ok: true,
+      pageUrl: href,
+      pageTitle: document.title || "",
+      provider,
+      videoId,
+      mediaUrl,
+      mediaTitle,
+      hasDetectedTime: Boolean(detected.found),
+      seconds: Math.max(0, Math.floor(Number(detected.seconds) || 0)),
+      timeText: detected.found ? formatMediaTime(detected.seconds) : "",
+    };
+  }
+
   function parseClockToSeconds(text) {
     const raw = String(text || "").trim();
     if (!raw) return -1;
@@ -1632,10 +1794,32 @@
     return -1;
   }
 
+  async function refreshSavedBrowserMediaBadge() {
+    try {
+      const linked = await runtimeRequest({
+        type: "GET_LINKED_CARD_CONTEXT",
+        url: window.location.href || "",
+      });
+      if (!linked?.linked || Number(linked.cardId) <= 0) {
+        setSavedBrowserMediaBadge(null);
+        return;
+      }
+      const reference = await runtimeRequest({ type: "LOAD_BROWSER_MEDIA_REF" });
+      if (!reference?.ok || !reference?.hasReference) {
+        setSavedBrowserMediaBadge(null);
+        return;
+      }
+      setSavedBrowserMediaBadge(reference);
+    } catch (_err) {
+      setSavedBrowserMediaBadge(null);
+    }
+  }
+
   let lastSentSec = -1;
   let lastSentAt = 0;
   let lastWebMediaSentSec = -1;
   let lastWebMediaSentAt = 0;
+  let savedBrowserMediaBadgeDismissed = false;
   let extensionAlive = true;
   let periodic = null;
   let badgePoll = null;
@@ -1805,7 +1989,9 @@
     const nextHref = window.location.href || "";
     if (nextHref !== lastSeenHref) {
       lastSeenHref = nextHref;
+      savedBrowserMediaBadgeDismissed = false;
       fetchTrackingStatus();
+      void refreshSavedBrowserMediaBadge();
     }
   }, 750);
   window.addEventListener("pagehide", () => {
@@ -1839,6 +2025,9 @@
   window.setTimeout(() => sendHeartbeat(true, false), 1200);
   window.setTimeout(sanitizeIncrementoTrackingUrl, 1200);
   window.setTimeout(fetchTrackingStatus, 300);
+  window.setTimeout(() => {
+    void refreshSavedBrowserMediaBadge();
+  }, 320);
   window.addEventListener("unload", () => {
     try {
       clearInterval(periodic);

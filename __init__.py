@@ -107,6 +107,7 @@ from .frontend import add_card_dock as _add_card_dock_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
     get_connection,
+    get_card_browser_media_ref,
     get_knowledge_tree_node,
     replace_pdf_text_index,
     search_pdf_text_index,
@@ -894,6 +895,7 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
 
     priority = None
     a_factor = None
+    browser_time_seconds = None
     card = getattr(reviewer, "card", None)
     if card is not None:
         try:
@@ -911,9 +913,26 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
                 )
         except Exception:
             a_factor = None
+        try:
+            browser_ref = get_card_browser_media_ref(
+                _ADDON_DIR,
+                _active_profile(),
+                int(card.id),
+            )
+            seconds = float(browser_ref.get("media_seconds") or 0.0)
+            if seconds > 0:
+                browser_time_seconds = seconds
+        except Exception:
+            browser_time_seconds = None
 
     try:
-        web.eval(build_reviewer_priority_badge_js(priority, a_factor=a_factor))
+        web.eval(
+            build_reviewer_priority_badge_js(
+                priority,
+                a_factor=a_factor,
+                browser_time_seconds=browser_time_seconds,
+            )
+        )
     except Exception:
         pass
 

@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   captureSnapshot,
+  getCurrentMediaContextForTab,
+  getLinkedCardContextForTab,
   getCommandShortcuts,
   copyLatestVideoTime,
   getActiveTab,
   openExtensionShortcutsPage,
   openBookmarksPage,
   triggerBrowserCaptureForTab,
+  updateBrowserMediaRefBadgeForTab,
 } from "../shared/chromeApi.js";
-import { formatBridgeError, importIntoIncremento } from "../shared/bridge.js";
+import {
+  formatBridgeError,
+  importIntoIncremento,
+  saveBrowserMediaRef,
+} from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import { isHttpUrl, isSupportedVideoUrl } from "../shared/url.js";
 import {
@@ -21,6 +28,53 @@ function initialStatus() {
   return { text: "", kind: "" };
 }
 
+function formatMediaTime(totalSeconds) {
+  const t = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = t % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function parseManualTimeInput(rawValue) {
+  const raw = String(rawValue || "").trim().toLowerCase();
+  if (!raw) {
+    return null;
+  }
+  if (/^\d+$/.test(raw)) {
+    return Math.max(0, Number(raw));
+  }
+  const clockParts = raw.split(":").map((part) => part.trim());
+  if (clockParts.length >= 2 && clockParts.length <= 3 && clockParts.every((part) => /^\d+$/.test(part))) {
+    if (clockParts.length === 2) {
+      return Number(clockParts[0]) * 60 + Number(clockParts[1]);
+    }
+    return Number(clockParts[0]) * 3600 + Number(clockParts[1]) * 60 + Number(clockParts[2]);
+  }
+  const matches = Array.from(raw.matchAll(/(\d+)\s*([hms])/g));
+  if (!matches.length) {
+    return null;
+  }
+  let total = 0;
+  let consumed = "";
+  for (const match of matches) {
+    const value = Number(match[1] || 0);
+    const unit = String(match[2] || "");
+    consumed += match[0] || "";
+    if (unit === "h") {
+      total += value * 3600;
+    } else if (unit === "m") {
+      total += value * 60;
+    } else if (unit === "s") {
+      total += value;
+    }
+  }
+  return consumed.replace(/\s+/g, "") === raw.replace(/\s+/g, "") ? total : null;
+}
+
 export function PopupApp() {
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
@@ -29,12 +83,16 @@ export function PopupApp() {
   const [title, setTitle] = useState("");
   const [commandShortcuts, setCommandShortcuts] = useState([]);
   const [pageContentScope, setPageContentScope] = useState("main");
+  const [linkedCard, setLinkedCard] = useState({ linked: false, cardId: 0 });
+  const [mediaContext, setMediaContext] = useState(null);
+  const [manualTime, setManualTime] = useState("");
 
   const pageUrl = String(snapshot?.url || activeTab?.url || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
   const selectionText = String(snapshot?.selectionText || "");
   const hasSupportedPage = Boolean(activeTab && isHttpUrl(pageUrl));
   const onVideoPage = isSupportedVideoUrl(pageUrl);
+  const detectedTimeText = mediaContext?.hasDetectedTime ? formatMediaTime(mediaContext.seconds) : "";
 
   const writingNote = useMemo(() => {
     if (onVideoPage) {
@@ -72,6 +130,37 @@ export function PopupApp() {
           setTitle(nextTitle);
         }
 
+        if (tab?.id) {
+          try {
+            const linked = await getLinkedCardContextForTab(tab.id, tab.url || "");
+            if (!cancelled) {
+              setLinkedCard(linked?.linked ? {
+                linked: true,
+                cardId: Number(linked.cardId) || 0,
+              } : { linked: false, cardId: 0 });
+            }
+          } catch (_error) {
+            if (!cancelled) {
+              setLinkedCard({ linked: false, cardId: 0 });
+            }
+          }
+
+          if (isHttpUrl(String(tab.url || "").trim())) {
+            try {
+              const media = await getCurrentMediaContextForTab(tab.id);
+              if (!cancelled) {
+                setMediaContext(media?.ok ? media : null);
+              }
+            } catch (_error) {
+              if (!cancelled) {
+                setMediaContext(null);
+              }
+            }
+          } else if (!cancelled) {
+            setMediaContext(null);
+          }
+        }
+
         const commands = await getCommandShortcuts();
         if (!cancelled) {
           setCommandShortcuts(Array.isArray(commands) ? commands : []);
@@ -95,6 +184,44 @@ export function PopupApp() {
       cancelled = true;
     };
   }, []);
+
+  async function refreshManualTimeContext(currentTab = null) {
+    const tab = currentTab || await getActiveTab();
+    if (!tab?.id) {
+      setLinkedCard({ linked: false, cardId: 0 });
+      setMediaContext(null);
+      return { tab: null, linked: { linked: false, cardId: 0 }, media: null };
+    }
+
+    let linked = { linked: false, cardId: 0 };
+    try {
+      const result = await getLinkedCardContextForTab(tab.id, tab.url || "");
+      if (result?.linked && Number(result.cardId) > 0) {
+        linked = {
+          linked: true,
+          cardId: Number(result.cardId) || 0,
+        };
+      }
+    } catch (_error) {
+      linked = { linked: false, cardId: 0 };
+    }
+    setLinkedCard(linked);
+
+    let media = null;
+    if (isHttpUrl(String(tab.url || "").trim())) {
+      try {
+        const result = await getCurrentMediaContextForTab(tab.id);
+        media = result?.ok ? result : null;
+      } catch (_error) {
+        media = null;
+      }
+    }
+    setMediaContext(media);
+    if (currentTab) {
+      setActiveTab(currentTab);
+    }
+    return { tab, linked, media };
+  }
 
   async function readCurrentPageContext() {
     const tab = await getActiveTab();
@@ -229,6 +356,77 @@ export function PopupApp() {
       }
     } catch (error) {
       setStatus({ text: error?.message || "Failed to copy video time.", kind: "error" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveManualTime() {
+    setBusy(true);
+    setStatus({ text: "Saving browser time to the linked card...", kind: "" });
+    try {
+      const tab = await getActiveTab();
+      if (!tab?.id) {
+        setStatus({ text: "No active tab found.", kind: "error" });
+        return;
+      }
+
+      const { linked, media } = await refreshManualTimeContext(tab);
+      if (!linked?.linked || Number(linked.cardId) <= 0) {
+        setStatus({
+          text: "This tab is not linked to an Incremento card. Open the page from a card first.",
+          kind: "error",
+        });
+        return;
+      }
+
+      const rawManualTime = String(manualTime || "").trim();
+      const parsedManualTime = rawManualTime ? parseManualTimeInput(rawManualTime) : null;
+      if (rawManualTime && parsedManualTime === null) {
+        setStatus({
+          text: "Enter a valid time like 12:34, 1:02:03, 90, or 1m30s.",
+          kind: "error",
+        });
+        return;
+      }
+
+      const detectedSeconds = media?.hasDetectedTime ? Number(media.seconds) : null;
+      const seconds = parsedManualTime ?? detectedSeconds;
+      if (seconds === null || !Number.isFinite(Number(seconds)) || Number(seconds) < 0) {
+        setStatus({
+          text: "No current video time was detected. Enter a time manually to save it.",
+          kind: "error",
+        });
+        return;
+      }
+
+      const pageUrlForSave = String(media?.pageUrl || tab.url || "").trim();
+      if (!isHttpUrl(pageUrlForSave)) {
+        setStatus({
+          text: "Only normal http(s) pages can store browser times.",
+          kind: "error",
+        });
+        return;
+      }
+
+      const saved = await saveBrowserMediaRef({
+        cardId: Number(linked.cardId),
+        pageUrl: pageUrlForSave,
+        mediaUrl: String(media?.mediaUrl || "").trim(),
+        mediaTitle: String(media?.mediaTitle || media?.pageTitle || tab.title || "").trim(),
+        seconds: Number(seconds),
+      });
+      await updateBrowserMediaRefBadgeForTab(tab.id, saved);
+      setManualTime("");
+      setStatus({
+        text: `Saved ${saved.timeText || formatMediaTime(saved.seconds)} to card ${saved.cardId}.`,
+        kind: "success",
+      });
+    } catch (error) {
+      setStatus({
+        text: formatBridgeError(error, "Failed to save browser time."),
+        kind: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -427,6 +625,39 @@ export function PopupApp() {
           onClick={() => void handleOpenShortcutsPage()}
         >
           Open shortcut settings
+        </button>
+      </section>
+
+      <section className="panel panel-secondary">
+        <div className="eyebrow">Linked card</div>
+        <p className="note">
+          {linkedCard.linked && linkedCard.cardId > 0
+            ? `This tab is linked to card ${linkedCard.cardId}.`
+            : "This tab is not linked to an Incremento card yet. Open it from a card's browser action first."}
+        </p>
+        <p className="note">
+          {detectedTimeText
+            ? `Detected current video time: ${detectedTimeText}`
+            : "No current video time detected on this page right now."}
+        </p>
+        <label className="field">
+          <span>Manual time</span>
+          <input
+            id="manual-time-input"
+            type="text"
+            spellCheck="false"
+            placeholder="12:34, 1:02:03, 90, or 1m30s"
+            value={manualTime}
+            onChange={(event) => setManualTime(event.target.value)}
+          />
+        </label>
+        <button
+          className="kind-btn"
+          type="button"
+          disabled={busy || !activeTab || !hasSupportedPage}
+          onClick={() => void handleSaveManualTime()}
+        >
+          Save manual time
         </button>
       </section>
 

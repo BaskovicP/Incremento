@@ -586,15 +586,10 @@ def build_external_web_url(
     if not raw:
         return ""
 
-    if not track_with_extension:
-        return raw
-
     try:
         cid = int(card_id) if card_id is not None else 0
     except Exception:
         cid = 0
-    if cid <= 0:
-        return raw
 
     try:
         parsed = urlparse(raw)
@@ -603,12 +598,19 @@ def build_external_web_url(
             for k, v in parse_qsl(parsed.query, keep_blank_values=True)
             if k not in {TRACK_CARD_ID_PARAM, TRACK_WEB_FLAG_PARAM}
         ]
-        query_items.append((TRACK_CARD_ID_PARAM, str(cid)))
-        query_items.append((TRACK_WEB_FLAG_PARAM, "1"))
+        if cid > 0:
+            query_items.append((TRACK_CARD_ID_PARAM, str(cid)))
+        if track_with_extension and cid > 0:
+            query_items.append((TRACK_WEB_FLAG_PARAM, "1"))
         return urlunparse(parsed._replace(query=urlencode(query_items, doseq=True)))
     except Exception:
+        if cid <= 0:
+            return raw
         sep = "&" if "?" in raw else "?"
-        return f"{raw}{sep}{TRACK_CARD_ID_PARAM}={cid}&{TRACK_WEB_FLAG_PARAM}=1"
+        out = f"{raw}{sep}{TRACK_CARD_ID_PARAM}={cid}"
+        if track_with_extension:
+            out += f"&{TRACK_WEB_FLAG_PARAM}=1"
+        return out
 
 
 def ensure_web_note_type(col) -> None:

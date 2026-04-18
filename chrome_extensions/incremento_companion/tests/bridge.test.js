@@ -5,6 +5,8 @@ import {
   formatBridgeError,
   importIntoIncremento,
   loadBrowserCaptureMeta,
+  loadBrowserMediaRef,
+  saveBrowserMediaRef,
   submitBrowserCapture,
 } from "../src/shared/bridge.js";
 
@@ -115,6 +117,62 @@ test("submitBrowserCapture posts a browser_capture payload", async () => {
     });
     assert.equal(calls.length, 1);
     assert.equal(JSON.parse(calls[0].options.body).type, "browser_capture");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loadBrowserMediaRef loads the saved browser media record for a card", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, cardId: 42, hasReference: true, timeText: "12:34" }),
+    };
+  };
+
+  try {
+    const result = await loadBrowserMediaRef(42);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "http://127.0.0.1:8766/incremento/browser-media-ref?cardId=42");
+    assert.equal(calls[0].options.method, "GET");
+    assert.equal(result.timeText, "12:34");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("saveBrowserMediaRef posts a browser media payload", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, cardId: 42, timeText: "12:34" }),
+    };
+  };
+
+  try {
+    const payload = {
+      cardId: 42,
+      pageUrl: "https://example.com/article",
+      mediaUrl: "https://player.example.com/video",
+      mediaTitle: "Clip",
+      seconds: 754,
+    };
+    const result = await saveBrowserMediaRef(payload);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "http://127.0.0.1:8766/incremento/browser-media-ref");
+    assert.equal(calls[0].options.method, "POST");
+    assert.deepEqual(JSON.parse(calls[0].options.body), payload);
+    assert.equal(result.cardId, 42);
   } finally {
     globalThis.fetch = originalFetch;
   }

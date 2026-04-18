@@ -16,6 +16,7 @@ pdf_card_sources — notes created while reading a PDF page (for per-page card p
 epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
+browser_media_refs — latest manually saved browser media reference per card
 topic_postpones — timed postpone expiry timestamps per topic card
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
 knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
@@ -27,6 +28,7 @@ import re
 import sqlite3
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     from .paths import get_db_path
@@ -141,6 +143,15 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             media_updated_at INTEGER NOT NULL DEFAULT 0
         );
 
+        CREATE TABLE IF NOT EXISTS browser_media_refs (
+            card_id       INTEGER PRIMARY KEY,
+            page_url      TEXT    NOT NULL DEFAULT '',
+            media_url     TEXT    NOT NULL DEFAULT '',
+            media_title   TEXT    NOT NULL DEFAULT '',
+            media_seconds REAL    NOT NULL DEFAULT 0.0,
+            updated_at    INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS pdf_card_sources (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             pdf_card_id INTEGER NOT NULL,
@@ -247,6 +258,108 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             conn.commit()
         except Exception:
             pass
+
+
+# ── Browser media refs ────────────────────────────────────────────────────────
+
+
+def _default_browser_media_ref() -> dict:
+    return {
+        "page_url": "",
+        "media_url": "",
+        "media_title": "",
+        "media_seconds": 0.0,
+        "updated_at": 0,
+    }
+
+
+def _normalize_browser_media_ref_url(value) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return raw
+
+
+def _normalize_browser_media_ref_title(value) -> str:
+    return " ".join(str(value or "").split()).strip()[:240]
+
+
+def _normalize_browser_media_ref_seconds(value) -> float:
+    try:
+        seconds = float(value or 0.0)
+    except Exception:
+        seconds = 0.0
+    if seconds < 0:
+        seconds = 0.0
+    return round(seconds, 1)
+
+
+def _normalize_browser_media_ref_updated_at(value) -> int:
+    try:
+        ts = int(value or 0)
+    except Exception:
+        ts = 0
+    return max(0, ts)
+
+
+def get_card_browser_media_ref(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT page_url, media_url, media_title, media_seconds, updated_at "
+        "FROM browser_media_refs WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_browser_media_ref()
+    return {
+        "page_url": _normalize_browser_media_ref_url(row[0]),
+        "media_url": _normalize_browser_media_ref_url(row[1]),
+        "media_title": _normalize_browser_media_ref_title(row[2]),
+        "media_seconds": _normalize_browser_media_ref_seconds(row[3]),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[4]),
+    }
+
+
+def set_card_browser_media_ref(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    page_url: str,
+    media_seconds: float,
+    media_url: str = "",
+    media_title: str = "",
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    if updated_at is None:
+        updated_at = int(time.time())
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO browser_media_refs "
+        "(card_id, page_url, media_url, media_title, media_seconds, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "page_url = excluded.page_url, "
+        "media_url = excluded.media_url, "
+        "media_title = excluded.media_title, "
+        "media_seconds = excluded.media_seconds, "
+        "updated_at = excluded.updated_at",
+        (
+            cid,
+            _normalize_browser_media_ref_url(page_url),
+            _normalize_browser_media_ref_url(media_url),
+            _normalize_browser_media_ref_title(media_title),
+            _normalize_browser_media_ref_seconds(media_seconds),
+            _normalize_browser_media_ref_updated_at(updated_at),
+        ),
+    )
+    conn.commit()
 
 
 # ── Export helpers (called by the export function in __init__.py) ─────────────

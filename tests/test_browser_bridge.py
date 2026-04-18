@@ -1,5 +1,6 @@
 import base64
 import browser_bridge
+import db
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -16,12 +17,16 @@ from note_metadata import (
 
 from browser_bridge import (
     _create_browser_capture_note_on_main,
+    _load_browser_media_ref_on_main,
+    _save_browser_media_ref_on_main,
     _sanitize_media_filename,
     build_writing_markdown,
     download_pdf_from_url,
     normalize_add_content_payload,
     normalize_add_content_batch_payload,
     normalize_add_content_request,
+    normalize_browser_media_ref_payload,
+    normalize_browser_media_ref_query,
     normalize_browser_capture_payload,
     normalize_update_web_card_payload,
     normalize_update_web_card_media_payload,
@@ -412,6 +417,57 @@ def test_normalize_update_web_card_media_payload_rejects_non_positive_seconds():
         assert "seconds" in str(exc)
 
 
+def test_normalize_browser_media_ref_payload_accepts_valid_payload():
+    payload = normalize_browser_media_ref_payload(
+        {
+            "cardId": 123,
+            "pageUrl": "https://example.com/article",
+            "mediaUrl": "https://player.vimeo.com/video/148751763",
+            "mediaTitle": "  Example clip  ",
+            "seconds": 0,
+        }
+    )
+    assert payload == {
+        "card_id": 123,
+        "page_url": "https://example.com/article",
+        "media_url": "https://player.vimeo.com/video/148751763",
+        "media_title": "Example clip",
+        "seconds": 0.0,
+    }
+
+
+def test_normalize_browser_media_ref_payload_allows_invalid_media_url_as_blank():
+    payload = normalize_browser_media_ref_payload(
+        {
+            "cardId": 123,
+            "pageUrl": "https://example.com/article",
+            "mediaUrl": "blob:https://example.com/not-storable",
+            "seconds": 12.4,
+        }
+    )
+    assert payload["media_url"] == ""
+    assert payload["seconds"] == 12.4
+
+
+def test_normalize_browser_media_ref_payload_rejects_negative_seconds():
+    try:
+        normalize_browser_media_ref_payload(
+            {
+                "cardId": 123,
+                "pageUrl": "https://example.com/article",
+                "seconds": -1,
+            }
+        )
+        assert False, "Expected normalize_browser_media_ref_payload to reject negative seconds"
+    except ValueError as exc:
+        assert "seconds" in str(exc)
+
+
+def test_normalize_browser_media_ref_query_accepts_card_id():
+    payload = normalize_browser_media_ref_query({"cardId": ["123"]})
+    assert payload == {"card_id": 123}
+
+
 def test_download_pdf_from_url_writes_pdf(monkeypatch, tmp_path):
     class _Resp:
         headers = {"Content-Type": "application/pdf"}
@@ -692,3 +748,52 @@ def test_create_browser_capture_note_raises_clear_duplicate_error(monkeypatch):
     except ValueError as exc:
         assert "first field 'Front'" in str(exc)
         assert "Duplicate front field" in str(exc)
+
+
+def test_save_browser_media_ref_on_main_persists_latest_reference(monkeypatch, tmp_path):
+    class _Card:
+        id = 123
+        nid = 456
+
+    class _Col:
+        def get_card(self, card_id):
+            assert card_id == 123
+            return _Card()
+
+    mw = SimpleNamespace(col=_Col())
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
+    monkeypatch.setitem(sys.modules, "db", db)
+
+    result = _save_browser_media_ref_on_main(
+        {
+            "cardId": 123,
+            "pageUrl": "https://example.com/article",
+            "mediaUrl": "https://player.example.com/video",
+            "mediaTitle": "Example clip",
+            "seconds": 83.2,
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["cardId"] == 123
+    assert result["timeText"] == "1:23"
+    stored = db.get_card_browser_media_ref(str(tmp_path), "TestProfile", 123)
+    assert stored["page_url"] == "https://example.com/article"
+    assert stored["media_url"] == "https://player.example.com/video"
+    assert stored["media_title"] == "Example clip"
+    assert stored["media_seconds"] == 83.2
+
+
+def test_load_browser_media_ref_on_main_returns_empty_state_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
+    monkeypatch.setitem(sys.modules, "db", db)
+
+    result = _load_browser_media_ref_on_main(999)
+
+    assert result["ok"] is True
+    assert result["cardId"] == 999
+    assert result["hasReference"] is False
+    assert result["timeText"] == ""

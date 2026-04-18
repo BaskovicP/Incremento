@@ -104,6 +104,17 @@ class TestGetConnection:
         }
         assert "web_progress" in tables
 
+    def test_creates_browser_media_refs_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "browser_media_refs" in tables
+
     def test_creates_topic_postpones_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
@@ -231,6 +242,56 @@ class TestPdfTextIndex:
             "SELECT COUNT(*) FROM pdf_text_index WHERE card_id = 7"
         ).fetchone()[0]
         assert count == 0
+
+
+class TestBrowserMediaRefs:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_set_and_get_card_browser_media_ref(self):
+        db.set_card_browser_media_ref(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            page_url="https://example.com/article",
+            media_url="https://player.example.com/video",
+            media_title="Example clip",
+            media_seconds=83.2,
+            updated_at=1234567890,
+        )
+        ref = db.get_card_browser_media_ref(self.addon_dir, "TestProfile", 42)
+        assert ref["page_url"] == "https://example.com/article"
+        assert ref["media_url"] == "https://player.example.com/video"
+        assert ref["media_title"] == "Example clip"
+        assert ref["media_seconds"] == 83.2
+        assert ref["updated_at"] == 1234567890
+
+    def test_get_card_browser_media_ref_defaults_when_missing(self):
+        ref = db.get_card_browser_media_ref(self.addon_dir, "TestProfile", 999)
+        assert ref == {
+            "page_url": "",
+            "media_url": "",
+            "media_title": "",
+            "media_seconds": 0.0,
+            "updated_at": 0,
+        }
+
+    def test_set_card_browser_media_ref_clamps_negative_seconds(self):
+        db.set_card_browser_media_ref(
+            self.addon_dir,
+            "TestProfile",
+            7,
+            page_url="https://example.com/article",
+            media_seconds=-5,
+            updated_at=99,
+        )
+        ref = db.get_card_browser_media_ref(self.addon_dir, "TestProfile", 7)
+        assert ref["media_seconds"] == 0.0
+        assert ref["updated_at"] == 99
 
 
 # ---------------------------------------------------------------------------

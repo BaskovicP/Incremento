@@ -677,14 +677,14 @@ class TestWebUrl:
         assert payload["rememberScroll"] is False
         assert payload["scrollRatio"] == pytest.approx(0.55)
 
-    def test_build_external_web_url_leaves_plain_url_unchanged_when_tracking_disabled(self):
+    def test_build_external_web_url_keeps_card_context_when_tracking_disabled(self):
         assert (
             build_external_web_url(
                 "https://example.com/article?x=1",
                 card_id=42,
                 track_with_extension=False,
             )
-            == "https://example.com/article?x=1"
+            == "https://example.com/article?x=1&inc_card_id=42"
         )
 
     def test_build_external_web_url_appends_tracking_params(self):

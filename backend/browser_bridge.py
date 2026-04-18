@@ -2,13 +2,14 @@ import json
 import os
 import tempfile
 import threading
+import time
 import uuid
 from base64 import b64decode
 from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
 
 try:
@@ -35,6 +36,7 @@ BRIDGE_PATH = "/incremento/add-content"
 BROWSER_CAPTURE_META_PATH = "/incremento/browser-capture-meta"
 WEB_TRACK_PATH = "/incremento/update-web-card"
 WEB_TRACK_MEDIA_PATH = "/incremento/update-web-card-media"
+BROWSER_MEDIA_REF_PATH = "/incremento/browser-media-ref"
 _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
 _MAX_HTML_CHARS = 2_000_000
 _MAX_MARKDOWN_CHARS = 2_000_000
@@ -386,6 +388,59 @@ def normalize_update_web_card_media_payload(payload) -> dict:
         "media_title": media_title,
         "seconds": round(seconds, 1),
     }
+
+
+def normalize_browser_media_ref_payload(payload) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object.")
+
+    try:
+        card_id = int(payload.get("cardId") or 0)
+    except Exception as exc:
+        raise ValueError("cardId must be a positive integer.") from exc
+    if card_id <= 0:
+        raise ValueError("cardId must be a positive integer.")
+
+    page_url = normalize_http_url(payload.get("pageUrl", payload.get("url", "")))
+
+    raw_media_url = str(payload.get("mediaUrl", "") or "").strip()
+    media_url = ""
+    if raw_media_url:
+        try:
+            media_url = normalize_http_url(raw_media_url)
+        except ValueError:
+            media_url = ""
+
+    media_title = _collapse_ws(payload.get("mediaTitle", payload.get("title", "")))
+    try:
+        seconds = float(payload.get("seconds") or 0.0)
+    except Exception as exc:
+        raise ValueError("seconds must be a non-negative number.") from exc
+    if seconds < 0:
+        raise ValueError("seconds must be a non-negative number.")
+
+    return {
+        "card_id": card_id,
+        "page_url": page_url,
+        "media_url": media_url,
+        "media_title": media_title,
+        "seconds": round(seconds, 1),
+    }
+
+
+def normalize_browser_media_ref_query(payload) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Query must be a mapping.")
+    raw_card_id = payload.get("cardId")
+    if isinstance(raw_card_id, list):
+        raw_card_id = raw_card_id[0] if raw_card_id else 0
+    try:
+        card_id = int(raw_card_id or 0)
+    except Exception as exc:
+        raise ValueError("cardId must be a positive integer.") from exc
+    if card_id <= 0:
+        raise ValueError("cardId must be a positive integer.")
+    return {"card_id": card_id}
 
 
 def _run_on_main_and_wait(fn, timeout_sec: float = 180.0):
@@ -922,6 +977,95 @@ def _update_web_card_media_on_main(payload: dict) -> dict:
     }
 
 
+def _save_browser_media_ref_on_main(payload: dict) -> dict:
+    from aqt import mw
+
+    try:
+        from .db import set_card_browser_media_ref
+        from .paths import get_active_profile as _active_profile
+    except ImportError:
+        from db import set_card_browser_media_ref  # type: ignore
+        from paths import get_active_profile as _active_profile  # type: ignore
+
+    normalized = normalize_browser_media_ref_payload(payload)
+    card_id = int(normalized["card_id"])
+
+    try:
+        card = mw.col.get_card(card_id)
+    except Exception as exc:
+        raise ValueError(f"Could not load card {card_id}.") from exc
+    if card is None:
+        raise ValueError(f"Card {card_id} was not found.")
+
+    updated_at = int(time.time())
+    set_card_browser_media_ref(
+        _addon_dir,
+        _active_profile(),
+        card_id,
+        page_url=normalized["page_url"],
+        media_url=normalized["media_url"],
+        media_title=normalized["media_title"],
+        media_seconds=normalized["seconds"],
+        updated_at=updated_at,
+    )
+
+    try:
+        from .video_manager import fmt_time
+    except ImportError:
+        from video_manager import fmt_time  # type: ignore
+        time_text = fmt_time(float(normalized["seconds"]))
+    except Exception:
+        time_text = str(normalized["seconds"])
+    else:
+        time_text = fmt_time(float(normalized["seconds"]))
+
+    return {
+        "ok": True,
+        "cardId": card_id,
+        "pageUrl": normalized["page_url"],
+        "mediaUrl": normalized["media_url"],
+        "mediaTitle": normalized["media_title"],
+        "seconds": normalized["seconds"],
+        "timeText": time_text,
+        "updatedAt": updated_at,
+        "hasReference": True,
+    }
+
+
+def _load_browser_media_ref_on_main(card_id: int) -> dict:
+    try:
+        from .db import get_card_browser_media_ref
+        from .paths import get_active_profile as _active_profile
+    except ImportError:
+        from db import get_card_browser_media_ref  # type: ignore
+        from paths import get_active_profile as _active_profile  # type: ignore
+
+    ref = get_card_browser_media_ref(_addon_dir, _active_profile(), int(card_id))
+    seconds = float(ref.get("media_seconds") or 0.0)
+    has_reference = bool(ref.get("updated_at"))
+    try:
+        from .video_manager import fmt_time
+    except ImportError:
+        from video_manager import fmt_time  # type: ignore
+        time_text = fmt_time(seconds) if has_reference else ""
+    except Exception:
+        time_text = str(seconds) if has_reference else ""
+    else:
+        time_text = fmt_time(seconds) if has_reference else ""
+
+    return {
+        "ok": True,
+        "cardId": int(card_id),
+        "pageUrl": str(ref.get("page_url") or ""),
+        "mediaUrl": str(ref.get("media_url") or ""),
+        "mediaTitle": str(ref.get("media_title") or ""),
+        "seconds": seconds,
+        "timeText": time_text,
+        "updatedAt": int(ref.get("updated_at") or 0),
+        "hasReference": has_reference,
+    }
+
+
 class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
     server_version = "IncrementoBrowserBridge/1.0"
 
@@ -950,7 +1094,14 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_OPTIONS(self) -> None:
-        if self.path not in {BRIDGE_PATH, BROWSER_CAPTURE_META_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH}:
+        request_path = urlsplit(self.path).path
+        if request_path not in {
+            BRIDGE_PATH,
+            BROWSER_CAPTURE_META_PATH,
+            WEB_TRACK_PATH,
+            WEB_TRACK_MEDIA_PATH,
+            BROWSER_MEDIA_REF_PATH,
+        }:
             self.send_error(404)
             return
         if not self._request_origin_allowed():
@@ -962,7 +1113,9 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
-        if self.path != BROWSER_CAPTURE_META_PATH:
+        parsed = urlsplit(self.path)
+        request_path = parsed.path
+        if request_path not in {BROWSER_CAPTURE_META_PATH, BROWSER_MEDIA_REF_PATH}:
             self._send_json(404, {"ok": False, "error": "Unknown path."})
             return
         if not self._request_origin_allowed():
@@ -970,7 +1123,13 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            result = _run_on_main_and_wait(_browser_capture_meta_on_main)
+            if request_path == BROWSER_CAPTURE_META_PATH:
+                result = _run_on_main_and_wait(_browser_capture_meta_on_main)
+            else:
+                query = normalize_browser_media_ref_query(parse_qs(parsed.query, keep_blank_values=True))
+                result = _run_on_main_and_wait(
+                    lambda: _load_browser_media_ref_on_main(int(query["card_id"]))
+                )
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})
             return
@@ -978,7 +1137,8 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self._send_json(200, result)
 
     def do_POST(self) -> None:
-        if self.path not in {BRIDGE_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH}:
+        request_path = urlsplit(self.path).path
+        if request_path not in {BRIDGE_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH, BROWSER_MEDIA_REF_PATH}:
             self._send_json(404, {"ok": False, "error": "Unknown path."})
             return
         if not self._request_origin_allowed():
@@ -998,12 +1158,14 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if self.path == BRIDGE_PATH:
+            if request_path == BRIDGE_PATH:
                 result = _run_on_main_and_wait(lambda: _add_content_on_main(payload))
-            elif self.path == WEB_TRACK_MEDIA_PATH:
+            elif request_path == WEB_TRACK_MEDIA_PATH:
                 result = _run_on_main_and_wait(lambda: _update_web_card_media_on_main(payload))
-            else:
+            elif request_path == WEB_TRACK_PATH:
                 result = _run_on_main_and_wait(lambda: _update_web_card_on_main(payload))
+            else:
+                result = _run_on_main_and_wait(lambda: _save_browser_media_ref_on_main(payload))
         except Exception as exc:
             self._send_json(500, {"ok": False, "error": str(exc)})
             return

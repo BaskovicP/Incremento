@@ -24,16 +24,32 @@ def format_reviewer_a_factor_value(a_factor: float | int | None) -> str:
     return f"{value:.3f}"
 
 
+def format_reviewer_saved_time_value(seconds: float | int | None) -> str:
+    """Return a reviewer-friendly saved browser time label."""
+    try:
+        total = max(0, int(round(float(seconds))))
+    except Exception:
+        return ""
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
 def build_reviewer_priority_badge_js(
     priority: float | int | None,
     *,
     a_factor: float | int | None = None,
+    browser_time_seconds: float | int | None = None,
 ) -> str:
     enabled = priority is not None
     value_text = format_reviewer_priority_value(priority) if enabled else ""
     a_factor_text = format_reviewer_a_factor_value(a_factor) if enabled else ""
+    browser_time_text = format_reviewer_saved_time_value(browser_time_seconds) if enabled else ""
     safe_value = json.dumps(value_text)
     safe_a_factor = json.dumps(a_factor_text)
+    safe_browser_time = json.dumps(browser_time_text)
     return f"""
 (function() {{
   var enabled = {"true" if enabled else "false"};
@@ -99,6 +115,14 @@ def build_reviewer_priority_badge_js(
       #${{badgeId}}.has-a-factor .incremento-a-factor-wrap {{
         display: flex;
       }}
+      #${{badgeId}} .incremento-browser-time-wrap {{
+        display: none;
+        padding-left: 12px;
+        border-left: 1px solid rgba(143, 164, 194, 0.24);
+      }}
+      #${{badgeId}}.has-browser-time .incremento-browser-time-wrap {{
+        display: flex;
+      }}
     `;
     (document.head || document.documentElement).appendChild(style);
   }}
@@ -113,12 +137,17 @@ def build_reviewer_priority_badge_js(
       '<div class="incremento-priority-metric incremento-a-factor-wrap">' +
         '<span class="incremento-priority-label">A-Factor</span>' +
         '<span class="incremento-priority-value incremento-a-factor-value"></span>' +
+      '</div>' +
+      '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
+        '<span class="incremento-priority-label">Saved</span>' +
+        '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
       '</div>';
     document.body.appendChild(badge);
   }}
   var valueNode = badge.querySelector(".incremento-priority-value");
   var aFactorNode = badge.querySelector(".incremento-a-factor-value");
-  if (!valueNode || !aFactorNode) {{
+  var browserTimeNode = badge.querySelector(".incremento-browser-time-value");
+  if (!valueNode || !aFactorNode || !browserTimeNode) {{
     badge.innerHTML =
       '<div class="incremento-priority-metric incremento-priority-wrap">' +
         '<span class="incremento-priority-label">Priority</span>' +
@@ -127,9 +156,14 @@ def build_reviewer_priority_badge_js(
       '<div class="incremento-priority-metric incremento-a-factor-wrap">' +
         '<span class="incremento-priority-label">A-Factor</span>' +
         '<span class="incremento-priority-value incremento-a-factor-value"></span>' +
+      '</div>' +
+      '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
+        '<span class="incremento-priority-label">Saved</span>' +
+        '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
       '</div>';
     valueNode = badge.querySelector(".incremento-priority-value");
     aFactorNode = badge.querySelector(".incremento-a-factor-value");
+    browserTimeNode = badge.querySelector(".incremento-browser-time-value");
   }}
   if (valueNode) {{
     valueNode.textContent = {safe_value};
@@ -141,6 +175,14 @@ def build_reviewer_priority_badge_js(
   }}
   if (aFactorNode) {{
     aFactorNode.textContent = {safe_a_factor};
+  }}
+  if ({safe_browser_time}) {{
+    badge.classList.add("has-browser-time");
+  }} else {{
+    badge.classList.remove("has-browser-time");
+  }}
+  if (browserTimeNode) {{
+    browserTimeNode.textContent = {safe_browser_time};
   }}
 }})();
 """.strip()

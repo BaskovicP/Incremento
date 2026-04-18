@@ -1,4 +1,4 @@
-import { importIntoIncremento } from "../shared/bridge.js";
+import { importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import { isSupportedVideoUrl } from "../shared/url.js";
 import {
@@ -9,8 +9,10 @@ import {
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
 const WEB_MEDIA_SYNC_STATE = new Map();
+const LINKED_CARD_TAB_STATE = new Map();
 const STORAGE_KEY = "incremento_last_video_time";
 const WEB_TRACK_STORAGE_KEY = "incremento_tracked_web_tabs";
+const LINKED_CARD_STORAGE_KEY = "incremento_linked_card_tabs";
 const OFFSCREEN_PATH = "offscreen.html";
 const ANKICONNECT_URL = "http://127.0.0.1:8765";
 const ANKICONNECT_VERSION = 6;
@@ -211,6 +213,115 @@ function extractTrackedVideoCardId(rawUrl) {
   } catch (_err) {
     return 0;
   }
+}
+
+function extractIncrementoCardIdFromUrl(rawUrl) {
+  try {
+    const decoded = htmlDecodeUrl(rawUrl);
+    const u = new URL(decoded);
+    const cid = Number(u.searchParams.get(INC_CARD_ID_PARAM) || 0);
+    return Number.isFinite(cid) && cid > 0 ? Math.floor(cid) : 0;
+  } catch (_err) {
+    return 0;
+  }
+}
+
+async function loadLinkedCardContext(tabId) {
+  if (typeof tabId !== "number") {
+    return null;
+  }
+  const inMemory = LINKED_CARD_TAB_STATE.get(tabId);
+  if (inMemory && Number(inMemory.cardId) > 0) {
+    return inMemory;
+  }
+  try {
+    const data = await chrome.storage.session.get(LINKED_CARD_STORAGE_KEY);
+    const all = data?.[LINKED_CARD_STORAGE_KEY];
+    const saved = all ? all[String(tabId)] : null;
+    if (saved && Number(saved.cardId) > 0) {
+      const state = {
+        cardId: Math.max(0, Math.floor(Number(saved.cardId) || 0)),
+        sourceUrl: String(saved.sourceUrl || ""),
+        updatedAt: Math.max(0, Math.floor(Number(saved.updatedAt) || 0)),
+      };
+      LINKED_CARD_TAB_STATE.set(tabId, state);
+      return state;
+    }
+  } catch (_err) {
+    // noop
+  }
+  return null;
+}
+
+async function saveLinkedCardContext(tabId, state) {
+  if (typeof tabId !== "number" || !state || Number(state.cardId) <= 0) {
+    return;
+  }
+  const normalized = {
+    cardId: Math.max(0, Math.floor(Number(state.cardId) || 0)),
+    sourceUrl: stripIncrementoTrackingParams(String(state.sourceUrl || "")),
+    updatedAt: Math.max(0, Math.floor(Number(state.updatedAt) || Date.now())),
+  };
+  LINKED_CARD_TAB_STATE.set(tabId, normalized);
+  try {
+    const data = await chrome.storage.session.get(LINKED_CARD_STORAGE_KEY);
+    const all = data?.[LINKED_CARD_STORAGE_KEY] || {};
+    all[String(tabId)] = normalized;
+    await chrome.storage.session.set({ [LINKED_CARD_STORAGE_KEY]: all });
+  } catch (_err) {
+    // noop
+  }
+}
+
+async function clearLinkedCardContext(tabId) {
+  if (typeof tabId !== "number") {
+    return;
+  }
+  LINKED_CARD_TAB_STATE.delete(tabId);
+  try {
+    const data = await chrome.storage.session.get(LINKED_CARD_STORAGE_KEY);
+    const all = data?.[LINKED_CARD_STORAGE_KEY];
+    if (!all || typeof all !== "object") {
+      return;
+    }
+    delete all[String(tabId)];
+    await chrome.storage.session.set({ [LINKED_CARD_STORAGE_KEY]: all });
+  } catch (_err) {
+    // noop
+  }
+}
+
+async function registerLinkedCardContextFromUrl(tabId, rawUrl) {
+  if (typeof tabId !== "number") {
+    return null;
+  }
+  const cardId = extractIncrementoCardIdFromUrl(rawUrl);
+  if (cardId <= 0) {
+    return loadLinkedCardContext(tabId);
+  }
+  const state = {
+    cardId,
+    sourceUrl: stripIncrementoTrackingParams(rawUrl),
+    updatedAt: Date.now(),
+  };
+  await saveLinkedCardContext(tabId, state);
+  return state;
+}
+
+async function getLinkedCardContextForTab(tabId, rawUrl = "") {
+  let state = await loadLinkedCardContext(tabId);
+  if ((!state || Number(state.cardId) <= 0) && rawUrl) {
+    state = await registerLinkedCardContextFromUrl(tabId, rawUrl);
+  }
+  if (!state || Number(state.cardId) <= 0) {
+    return { linked: false, cardId: 0 };
+  }
+  return {
+    linked: true,
+    cardId: Math.max(0, Math.floor(Number(state.cardId) || 0)),
+    sourceUrl: String(state.sourceUrl || ""),
+    updatedAt: Math.max(0, Math.floor(Number(state.updatedAt) || 0)),
+  };
 }
 
 async function loadTrackedWebState(tabId) {
@@ -1128,6 +1239,49 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "GET_LINKED_CARD_CONTEXT") {
+    void (async () => {
+      const senderTabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
+      const requestedTabId = Number(msg.tabId);
+      const tabId = Number.isFinite(requestedTabId) && requestedTabId > 0
+        ? requestedTabId
+        : senderTabId;
+      if (typeof tabId !== "number") {
+        sendResponse?.({ linked: false, cardId: 0 });
+        return;
+      }
+      const status = await getLinkedCardContextForTab(tabId, String(msg.url || sender?.tab?.url || ""));
+      sendResponse?.(status);
+    })();
+    return true;
+  }
+
+  if (msg.type === "LOAD_BROWSER_MEDIA_REF") {
+    void (async () => {
+      const senderTabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
+      const requestedCardId = Math.max(0, Math.floor(Number(msg.cardId) || 0));
+      let cardId = requestedCardId;
+      if (cardId <= 0 && typeof senderTabId === "number") {
+        const linked = await getLinkedCardContextForTab(senderTabId, String(sender?.tab?.url || ""));
+        cardId = Math.max(0, Math.floor(Number(linked?.cardId) || 0));
+      }
+      if (cardId <= 0) {
+        sendResponse?.({ ok: true, hasReference: false, cardId: 0 });
+        return;
+      }
+      try {
+        const result = await loadBrowserMediaRef(cardId);
+        sendResponse?.(result);
+      } catch (error) {
+        sendResponse?.({
+          ok: false,
+          error: String(error?.message || "Failed to load browser media reference."),
+        });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === "GET_TRACKING_STATUS") {
     void (async () => {
       const tabId = sender?.tab?.id;
@@ -1197,6 +1351,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   const state = TAB_STATE.get(tabId);
   TAB_STATE.delete(tabId);
   void clearTrackedWebState(tabId);
+  void clearLinkedCardContext(tabId);
   WEB_MEDIA_SYNC_STATE.delete(tabId);
   if (!state || !isFresh(state)) {
     return;
@@ -1211,6 +1366,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!nextUrl) {
     return;
   }
+  void registerLinkedCardContextFromUrl(tabId, nextUrl);
   void maybeSyncTrackedWebTab(tabId, nextUrl, String(tab?.title || ""));
 });
 
@@ -1219,6 +1375,10 @@ if (chrome.webNavigation?.onCommitted) {
     if (details?.frameId !== 0) {
       return;
     }
+    void registerLinkedCardContextFromUrl(
+      Number(details.tabId),
+      String(details.url || ""),
+    );
     void maybeSyncTrackedWebTab(
       Number(details.tabId),
       String(details.url || ""),
@@ -1232,6 +1392,10 @@ if (chrome.webNavigation?.onHistoryStateUpdated) {
     if (details?.frameId !== 0) {
       return;
     }
+    void registerLinkedCardContextFromUrl(
+      Number(details.tabId),
+      String(details.url || ""),
+    );
     void maybeSyncTrackedWebTab(
       Number(details.tabId),
       String(details.url || ""),
@@ -1245,6 +1409,10 @@ if (chrome.webNavigation?.onReferenceFragmentUpdated) {
     if (details?.frameId !== 0) {
       return;
     }
+    void registerLinkedCardContextFromUrl(
+      Number(details.tabId),
+      String(details.url || ""),
+    );
     void maybeSyncTrackedWebTab(
       Number(details.tabId),
       String(details.url || ""),
