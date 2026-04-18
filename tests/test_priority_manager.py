@@ -12,6 +12,7 @@ _spec.loader.exec_module(_mod)
 get_priority = _mod.get_priority
 set_priority = _mod.set_priority
 get_all_priorities = _mod.get_all_priorities
+invert_all_priorities = _mod.invert_all_priorities
 configured_priority_lower_is_more_important = _mod.configured_priority_lower_is_more_important
 configured_show_priority_dialog_after_answer = _mod.configured_show_priority_dialog_after_answer
 
@@ -66,6 +67,32 @@ class TestGetAllPriorities:
         result = get_all_priorities(str(tmp_path), "TestProfile")
         key = list(result.keys())[0]
         assert isinstance(key, int)
+
+
+class TestInvertAllPriorities:
+    def test_inverts_all_stored_values(self, tmp_path):
+        set_priority(str(tmp_path), "TestProfile", 1, 20.0)
+        set_priority(str(tmp_path), "TestProfile", 2, 95.0)
+        set_priority(str(tmp_path), "TestProfile", 3, 50.0)
+
+        updated = invert_all_priorities(str(tmp_path), "TestProfile")
+
+        assert updated == 3
+        assert get_all_priorities(str(tmp_path), "TestProfile") == {
+            1: 80.0,
+            2: 5.0,
+            3: 50.0,
+        }
+
+    def test_returns_zero_when_no_priorities_exist(self, tmp_path):
+        assert invert_all_priorities(str(tmp_path), "TestProfile") == 0
+
+    def test_rounds_to_four_decimals(self, tmp_path):
+        set_priority(str(tmp_path), "TestProfile", 4, 33.3333)
+
+        invert_all_priorities(str(tmp_path), "TestProfile")
+
+        assert get_priority(str(tmp_path), "TestProfile", 4) == 66.6667
 
 
 class TestConfiguredPriorityDirection:

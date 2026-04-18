@@ -294,6 +294,11 @@ class IncrementoSettingsDialog(QDialog):
 
         priority_direction_layout.addWidget(self._priority_lower_radio)
         priority_direction_layout.addWidget(self._priority_higher_radio)
+        priority_direction_hint = QLabel(
+            "If you switch this direction, Incremento can optionally invert stored priorities for the current profile on save."
+        )
+        priority_direction_hint.setWordWrap(True)
+        priority_direction_layout.addWidget(priority_direction_hint)
         review_form.addRow("Incremental learning priority:", priority_direction_wrap)
 
         self._show_priority_dialog_after_answer_cb = QCheckBox(

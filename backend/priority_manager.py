@@ -60,6 +60,30 @@ def set_priority(addon_dir: str, profile: str, card_id: int, priority: float) ->
     conn.commit()
 
 
+def invert_all_priorities(addon_dir: str, profile: str) -> int:
+    """Invert all stored priorities for the profile using `100 - priority`.
+
+    Returns the number of stored priority rows that were updated.
+    """
+    conn = get_connection(addon_dir, profile)
+    rows = conn.execute("SELECT card_id, priority FROM priorities").fetchall()
+    if not rows:
+        return 0
+
+    updates = []
+    for card_id, priority in rows:
+        try:
+            value = float(priority)
+        except Exception:
+            value = 50.0
+        inverted = max(0.0, min(100.0, round(100.0 - value, 4)))
+        updates.append((inverted, int(card_id)))
+
+    conn.executemany("UPDATE priorities SET priority = ? WHERE card_id = ?", updates)
+    conn.commit()
+    return len(updates)
+
+
 def get_all_priorities(addon_dir: str, profile: str) -> dict[int, float]:
     """Return all stored priorities as {card_id: priority}. Useful for bulk scheduler reads."""
     rows = get_connection(addon_dir, profile).execute(

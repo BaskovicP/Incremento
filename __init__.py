@@ -57,6 +57,7 @@ from .backend.priority_manager import (
     get_priority,
     set_priority,
     get_all_priorities,
+    invert_all_priorities,
 )
 from .backend.web_manager import (
     configured_remember_browser_card_scroll,
@@ -2609,6 +2610,7 @@ def cleanupOrphanVideosFunction() -> None:
 
 def openSettingsFunction() -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
+    previous_priority_direction = configured_priority_lower_is_more_important(cfg)
     note_type_names = sorted(m.name for m in mw.col.models.all_names_and_ids())
     dlg = IncrementoSettingsDialog(
         cfg.get("shortcuts") or {},
@@ -2650,6 +2652,36 @@ def openSettingsFunction() -> None:
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     _add_card_dock_mod.refresh_add_card_dock_controls()
+    if dlg.priority_lower_is_more_important != previous_priority_direction:
+        from aqt.utils import askUser
+
+        direction_label = (
+            "lower numbers are more important"
+            if dlg.priority_lower_is_more_important
+            else "higher numbers are more important"
+        )
+        if askUser(
+            "\n".join(
+                [
+                    "You changed how Incremento interprets stored priority numbers.",
+                    f"New direction: {direction_label}.",
+                    "",
+                    "Do you also want to invert all existing stored priorities for the current profile?",
+                    "This rewrites each saved priority as 100 - priority.",
+                    "Example: 20 -> 80, 95 -> 5.",
+                ]
+            ),
+            title="Invert Existing Priorities?",
+        ):
+            try:
+                updated = invert_all_priorities(_ADDON_DIR, _active_profile())
+            except Exception as exc:
+                showInfo(f"Could not invert stored priorities:\n{exc}")
+            else:
+                tooltip(
+                    f"Incremento settings updated. Inverted {updated} stored priorit{'y' if updated == 1 else 'ies'}."
+                )
+                return
     tooltip("Incremento settings updated.")
 
 
