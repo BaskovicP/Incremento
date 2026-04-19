@@ -15,7 +15,24 @@ const HL_SOLID = {
   blue:   '#1E90FF',
   pink:   '#FF508C',
 };
-const CONTROLS_HEIGHT = 192;
+const CONTROLS_HEIGHT = 250;
+
+const DEFAULT_LIMIT_STATUS = {
+  enabled: false,
+  daily_page_limit: 0,
+  enforcement_mode: 'warning',
+  enforcement_label: 'Warning',
+  current_page: 1,
+  baseline_page: 0,
+  highest_page: 0,
+  pages_used: 0,
+  pages_remaining: 0,
+  allowed_max_page: null,
+  override_enabled: false,
+  limit_reached: false,
+  blocking_active: false,
+  can_override: false,
+};
 
 function calculateTextWidth(text, font) {
   const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement('canvas'));
@@ -151,7 +168,7 @@ export default function PdfViewer() {
     page, totalPages, zoom, error, renderInfo, readPage,
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
-    startViewer, nav, adjustZoom, markRead,
+    startViewer, nav: rawNav, adjustZoom, markRead: rawMarkRead,
   } = usePdfRender();
 
   // ── Highlight state ────────────────────────────────────────────────────────
@@ -171,6 +188,8 @@ export default function PdfViewer() {
   const [showCardPanel, setShowCardPanel] = useState(false);
   const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
+  const [limitNotice, setLimitNotice] = useState(null);
   const [highlightsScope, setHighlightsScope] = useState('all');
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
@@ -191,6 +210,93 @@ export default function PdfViewer() {
   const highlightsForPanel = highlightsScope === 'page'
     ? sortedHighlights.filter((h) => h.page === page)
     : sortedHighlights;
+  const limitEnabled = !!limitStatus?.enabled;
+  const limitMode = String(limitStatus?.enforcement_mode || 'warning');
+  const limitUsed = Number(limitStatus?.pages_used || 0);
+  const limitTotal = Number(limitStatus?.daily_page_limit || 0);
+  const limitRemaining = Number(limitStatus?.pages_remaining || 0);
+  const allowedMaxPage = limitStatus?.allowed_max_page == null ? null : Number(limitStatus.allowed_max_page);
+  const limitReached = !!limitStatus?.limit_reached;
+  const overrideEnabled = !!limitStatus?.override_enabled;
+
+  const clearLimitNotice = useCallback(() => setLimitNotice(null), []);
+
+  const describeLimitReached = useCallback(() => {
+    const prefix = limitTotal > 0
+      ? `Daily limit reached: ${Math.max(limitUsed, limitTotal)}/${limitTotal} pages today.`
+      : 'Daily limit reached for this PDF.';
+    if (limitMode === 'hard_stop') {
+      return `${prefix} Come back after your next Incremento day reset.`;
+    }
+    return `${prefix} Use override to keep reading today.`;
+  }, [limitMode, limitTotal, limitUsed]);
+
+  const canMoveToPage = useCallback((targetPage) => {
+    if (!limitEnabled || targetPage <= pageRef.current) {
+      return true;
+    }
+    if (overrideEnabled || allowedMaxPage == null) {
+      return true;
+    }
+    if (targetPage <= allowedMaxPage) {
+      return true;
+    }
+    if (limitMode === 'warning') {
+      setLimitNotice({
+        kind: 'warning',
+        text: `You are moving past today's ${limitTotal}-page limit for this PDF.`,
+      });
+      return true;
+    }
+    setLimitNotice({
+      kind: limitMode === 'soft_lock' ? 'soft_lock' : 'hard_stop',
+      text: describeLimitReached(),
+    });
+    return false;
+  }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, pageRef]);
+
+  const canMarkReadAtPage = useCallback((targetPage) => {
+    if (!limitEnabled) {
+      return true;
+    }
+    if (overrideEnabled || allowedMaxPage == null || targetPage <= allowedMaxPage) {
+      return true;
+    }
+    if (limitMode === 'warning') {
+      setLimitNotice({
+        kind: 'warning',
+        text: `Read-through can go past today's ${limitTotal}-page limit for this PDF.`,
+      });
+      return true;
+    }
+    setLimitNotice({
+      kind: limitMode === 'soft_lock' ? 'soft_lock' : 'hard_stop',
+      text: describeLimitReached(),
+    });
+    return false;
+  }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled]);
+
+  const requestLimitOverride = useCallback(() => {
+    if (!cardIdRef.current) return;
+    window.pycmd(`incremento_pdf_limit_override:${cardIdRef.current}`);
+  }, [cardIdRef]);
+
+  useEffect(() => {
+    if (!limitEnabled) {
+      setLimitNotice(null);
+      return;
+    }
+    if (overrideEnabled && limitReached) {
+      setLimitNotice({
+        kind: 'info',
+        text: 'Daily reading limit override is active for this PDF until the next day reset.',
+      });
+      return;
+    }
+    if (!limitReached && limitNotice?.kind !== 'warning') {
+      setLimitNotice(null);
+    }
+  }, [limitEnabled, limitNotice?.kind, limitReached, overrideEnabled]);
 
   useEffect(() => {
     const pendingId = pendingHighlightScrollRef.current;
@@ -367,25 +473,55 @@ export default function PdfViewer() {
     }
   }, [makeHighlight]);
 
+  const limitAwareNav = useCallback((delta) => {
+    if (delta > 0) {
+      const nextPage = pageRef.current + delta;
+      if (!canMoveToPage(nextPage)) {
+        return;
+      }
+    }
+    rawNav(delta);
+  }, [canMoveToPage, pageRef, rawNav]);
+
+  const limitAwareMarkRead = useCallback(() => {
+    if (!canMarkReadAtPage(pageRef.current)) {
+      return;
+    }
+    rawMarkRead();
+  }, [canMarkReadAtPage, pageRef, rawMarkRead]);
+
   // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
     // Wrap startViewer to also consume pending highlights.
-    const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = '') => {
+    const startWithHighlights = (
+      cardId,
+      filename,
+      startPage,
+      startZoom,
+      startReadPage = 0,
+      startSearchQuery = '',
+      startLimitStatus = null,
+    ) => {
       setHighlights(window._incPdfHighlights || []);
       window._incPdfHighlights = null;
       setSearchQuery(startSearchQuery || '');
+      setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
+      setLimitNotice(null);
       startViewer(cardId, filename, startPage, startZoom, startReadPage);
     };
 
     window.incrementoPdfStart = startWithHighlights;
-    window.incrementoPdfNav   = nav;
+    window.incrementoPdfNav   = limitAwareNav;
     window.incrementoPdfZoom  = adjustZoom;
-    window.incrementoPdfMarkRead = markRead;
+    window.incrementoPdfMarkRead = limitAwareMarkRead;
 
     window.incrementoReceivePageCards = (data) => {
       if (data.page === pageRef.current) {
         setPageCards(data.cards || []);
       }
+    };
+    window.incrementoReceivePdfLimitStatus = (status) => {
+      setLimitStatus(status || DEFAULT_LIMIT_STATUS);
     };
 
     const pending = window._incPdfPending;
@@ -398,6 +534,7 @@ export default function PdfViewer() {
         pending.zoom,
         pending.readPage || 0,
         pending.searchQuery || '',
+        pending.limitStatus || DEFAULT_LIMIT_STATUS,
       );
     }
     return () => {
@@ -406,8 +543,9 @@ export default function PdfViewer() {
       delete window.incrementoPdfZoom;
       delete window.incrementoPdfMarkRead;
       delete window.incrementoReceivePageCards;
+      delete window.incrementoReceivePdfLimitStatus;
     };
-  }, [startViewer, nav, adjustZoom, markRead, pageRef]);
+  }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef]);
 
   // ── Request card sources for current page ─────────────────────────────────
   useEffect(() => {
@@ -530,11 +668,11 @@ export default function PdfViewer() {
 
         {/* ── Row 1: Navigation + Zoom ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
-          <button onClick={() => nav(-1)}>&#8592; Prev</button>
+          <button onClick={() => limitAwareNav(-1)}>&#8592; Prev</button>
           <span style={{ margin: '0 4px' }}>
             {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
           </span>
-          <button onClick={() => nav(1)}>Next &#8594;</button>
+          <button onClick={() => limitAwareNav(1)}>Next &#8594;</button>
           <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', margin: '0 4px', display: 'inline-block' }} />
           <button onClick={() => adjustZoom(-1)}>&#8722;</button>
           <span style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
@@ -552,7 +690,7 @@ export default function PdfViewer() {
               cursor:      'pointer', padding: '2px 8px', fontSize: 12,
               fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
             }}
-            onClick={markRead}
+            onClick={limitAwareMarkRead}
           >
             ✓ Read to here
           </button>
@@ -594,7 +732,83 @@ export default function PdfViewer() {
           </span>
         </div>
 
-        {/* ── Row 3: Tools + card management ── */}
+        {/* ── Row 3: Daily reading limit ── */}
+        {limitEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 10px',
+                borderRadius: 999,
+                background: limitReached ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.12)',
+                border: limitReached ? '1px solid rgba(245,158,11,0.45)' : '1px solid rgba(34,197,94,0.35)',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+              title="Daily PDF reading limit for this card"
+            >
+              <span>{`Today: ${limitUsed}/${limitTotal} pages`}</span>
+              <span style={{ opacity: 0.72 }}>•</span>
+              <span>{`${Math.max(0, limitRemaining)} remaining`}</span>
+              <span style={{ opacity: 0.72 }}>•</span>
+              <span>{limitStatus?.enforcement_label || 'Warning'}</span>
+              {overrideEnabled && (
+                <>
+                  <span style={{ opacity: 0.72 }}>•</span>
+                  <span style={{ color: 'rgb(96,165,250)' }}>Override active</span>
+                </>
+              )}
+            </span>
+            {allowedMaxPage != null && (
+              <span style={{ fontSize: 11, color: '#c8c8c8' }}>
+                Stop point today: page {allowedMaxPage}
+              </span>
+            )}
+          </div>
+        )}
+
+        {limitNotice && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 6,
+              padding: '6px 10px',
+              borderRadius: 8,
+              background:
+                limitNotice.kind === 'warning'
+                  ? 'rgba(245,158,11,0.16)'
+                  : limitNotice.kind === 'info'
+                    ? 'rgba(59,130,246,0.15)'
+                    : 'rgba(239,68,68,0.14)',
+              border:
+                limitNotice.kind === 'warning'
+                  ? '1px solid rgba(245,158,11,0.40)'
+                  : limitNotice.kind === 'info'
+                    ? '1px solid rgba(59,130,246,0.40)'
+                    : '1px solid rgba(239,68,68,0.40)',
+              fontSize: 12,
+            }}
+          >
+            <span>{limitNotice.text}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {limitNotice.kind === 'soft_lock' && !overrideEnabled && (
+                <button onClick={requestLimitOverride}>
+                  Override today
+                </button>
+              )}
+              <button onClick={clearLimitNotice}>
+                Dismiss
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* ── Row 4: Tools + card management ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             {Object.keys(HL_COLORS).map(c => (
@@ -658,6 +872,9 @@ export default function PdfViewer() {
           </span>
           <span style={{ width: 1, height: 20, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
+            &#x1F4D6; Reading Limit
+          </button>
           <button onClick={() => window.pycmd('incremento_open_add_card')}>
             &#43; Add Card
           </button>
