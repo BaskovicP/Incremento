@@ -260,7 +260,6 @@ class AddPdfDialog(QDialog):
 
     def _add_row(self, path: str) -> None:
         self._pdf_paths.append(path)
-
         row_idx = self._table.rowCount()
         self._table.insertRow(row_idx)
         self._table.setRowHeight(row_idx, 42)
@@ -391,7 +390,8 @@ class AddPdfDialog(QDialog):
             return
         item = self._table.item(row, 1)
         if item:
-            self._show_preview(item.data(Qt.ItemDataRole.UserRole))
+            path = item.data(Qt.ItemDataRole.UserRole)
+            self._show_preview(path)
 
     def _apply_preview_pixmap(self, pixmap: QPixmap) -> None:
         lbl_w = max(self._preview_lbl.width(), 240)
@@ -535,7 +535,14 @@ class AddPdfDialog(QDialog):
         self._set_row_status(path, "OCR…" if do_ocr else "Adding…")
 
         try:
-            cid = add_pdf_card(self._addon_dir, mw.col, path, title, deck_name=deck, tags=tags)
+            cid = add_pdf_card(
+                self._addon_dir,
+                mw.col,
+                path,
+                title,
+                deck_name=deck,
+                tags=tags,
+            )
             set_priority(self._addon_dir, _active_profile(), cid, priority)
         except Exception as e:
             self.failed.append((path, str(e)))

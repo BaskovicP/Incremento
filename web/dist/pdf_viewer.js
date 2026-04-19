@@ -8232,6 +8232,7 @@
                   ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 1, height: 20, background: "rgba(128,128,128,0.4)", display: "inline-block" } }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" }),
                     pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(

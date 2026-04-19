@@ -872,6 +872,9 @@ export default function PdfViewer() {
           </span>
           <span style={{ width: 1, height: 20, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
+            &#x1F9E0; Review Due
+          </button>
           <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
             &#x1F4D6; Reading Limit
           </button>

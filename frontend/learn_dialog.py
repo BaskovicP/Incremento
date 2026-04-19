@@ -8,6 +8,7 @@ from html import escape, unescape
 from aqt import mw
 from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
+    QFormLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
     QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
     QInputDialog, QScrollArea, QObject, QEvent, QGraphicsOpacityEffect, QSplitter,
@@ -24,13 +25,29 @@ try:
     from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from ..backend.scheduler_preview import compute_expected_mix
     from ..backend.session_selection import select_session_cards
-    from ..backend.pdf_manager import get_page, get_read_page, get_pdf_dir
+    from ..backend.pdf_manager import (
+        PDF_NOTE_TYPE,
+        get_page,
+        get_pdf_daily_limit_settings,
+        get_pdf_daily_limit_status,
+        get_pdf_dir,
+        get_read_page,
+        save_pdf_daily_limit_settings,
+    )
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
     from scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from scheduler_preview import compute_expected_mix
     from session_selection import select_session_cards
-    from pdf_manager import get_page, get_read_page, get_pdf_dir
+    from pdf_manager import (
+        PDF_NOTE_TYPE,
+        get_page,
+        get_pdf_daily_limit_settings,
+        get_pdf_daily_limit_status,
+        get_pdf_dir,
+        get_read_page,
+        save_pdf_daily_limit_settings,
+    )
     from statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 
 # Addon root: one level above this file (frontend/)
@@ -159,6 +176,8 @@ class _LiveSchedulerPreviewDialog(QDialog):
 
         self.setWindowTitle("Live Scheduler Preview")
         self.resize(980, 620)
+        self._current_entry: dict | None = None
+        self._pdf_limit_loading = False
 
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
@@ -210,9 +229,68 @@ class _LiveSchedulerPreviewDialog(QDialog):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         splitter.addWidget(self._table)
 
+        right = QWidget(self)
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(8)
+
         self._preview = QTextBrowser()
         self._preview.setOpenExternalLinks(False)
-        splitter.addWidget(self._preview)
+        right_layout.addWidget(self._preview, 1)
+
+        self._pdf_limit_box = QFrame(self)
+        self._pdf_limit_box.setStyleSheet(
+            "QFrame { border: 1px solid rgba(120,120,120,0.35); border-radius: 6px; padding: 4px; }"
+        )
+        pdf_limit_layout = QVBoxLayout(self._pdf_limit_box)
+        pdf_limit_layout.setContentsMargins(8, 8, 8, 8)
+        pdf_limit_layout.setSpacing(6)
+
+        pdf_limit_title = QLabel("PDF Daily Reading Limit")
+        pdf_limit_title.setStyleSheet("font-weight: 600;")
+        pdf_limit_layout.addWidget(pdf_limit_title)
+
+        self._pdf_limit_summary = QLabel("Select a PDF card to edit its daily page limit.")
+        self._pdf_limit_summary.setWordWrap(True)
+        self._pdf_limit_summary.setStyleSheet("color: gray;")
+        pdf_limit_layout.addWidget(self._pdf_limit_summary)
+
+        pdf_limit_form = QFormLayout()
+        pdf_limit_form.setContentsMargins(0, 0, 0, 0)
+        pdf_limit_form.setSpacing(6)
+
+        self._pdf_limit_enabled = QCheckBox("Enable daily page limit for this PDF")
+        qconnect(self._pdf_limit_enabled.toggled, self._on_pdf_limit_form_changed)
+        pdf_limit_form.addRow("Enabled:", self._pdf_limit_enabled)
+
+        limit_row = QWidget(self)
+        limit_row_layout = QHBoxLayout(limit_row)
+        limit_row_layout.setContentsMargins(0, 0, 0, 0)
+        limit_row_layout.setSpacing(6)
+        self._pdf_limit_spin = QSpinBox(self)
+        self._pdf_limit_spin.setRange(1, 5000)
+        self._pdf_limit_spin.setValue(10)
+        qconnect(self._pdf_limit_spin.valueChanged, self._on_pdf_limit_form_changed)
+        limit_row_layout.addWidget(self._pdf_limit_spin)
+        self._pdf_limit_mode = QComboBox(self)
+        self._pdf_limit_mode.addItem("Warning only", "warning")
+        self._pdf_limit_mode.addItem("Soft lock + override", "soft_lock")
+        self._pdf_limit_mode.addItem("Hard stop", "hard_stop")
+        qconnect(self._pdf_limit_mode.currentIndexChanged, self._on_pdf_limit_form_changed)
+        limit_row_layout.addWidget(self._pdf_limit_mode, 1)
+        pdf_limit_form.addRow("Limit:", limit_row)
+        pdf_limit_layout.addLayout(pdf_limit_form)
+
+        pdf_limit_actions = QHBoxLayout()
+        pdf_limit_actions.setContentsMargins(0, 0, 0, 0)
+        pdf_limit_actions.addStretch()
+        self._pdf_limit_save_btn = QPushButton("Save PDF limit")
+        qconnect(self._pdf_limit_save_btn.clicked, self._save_selected_pdf_limit)
+        pdf_limit_actions.addWidget(self._pdf_limit_save_btn)
+        pdf_limit_layout.addLayout(pdf_limit_actions)
+
+        right_layout.addWidget(self._pdf_limit_box)
+        splitter.addWidget(right)
 
         splitter.setSizes([520, 460])
         root.addWidget(splitter, 1)
@@ -228,28 +306,126 @@ class _LiveSchedulerPreviewDialog(QDialog):
         root.addLayout(row)
 
         qconnect(self._table.currentCellChanged, self._on_row_changed)
+        self._set_pdf_limit_editor_visible(False)
 
     def sync_use_preview_checkbox(self) -> None:
         self._use_live_preview_cb.blockSignals(True)
         self._use_live_preview_cb.setChecked(self._owner._use_live_preview_enabled)
         self._use_live_preview_cb.blockSignals(False)
 
+    def _set_pdf_limit_editor_visible(self, visible: bool) -> None:
+        self._pdf_limit_box.setVisible(bool(visible))
+
+    def _set_pdf_limit_form_enabled_state(self) -> None:
+        enabled = self._pdf_limit_enabled.isChecked()
+        self._pdf_limit_spin.setEnabled(enabled)
+        self._pdf_limit_mode.setEnabled(enabled)
+        self._pdf_limit_save_btn.setEnabled(self._current_entry is not None)
+
+    def _on_pdf_limit_form_changed(self, *_args) -> None:
+        if self._pdf_limit_loading:
+            return
+        self._set_pdf_limit_form_enabled_state()
+
+    def _load_pdf_limit_editor(self, entry: dict | None) -> None:
+        self._current_entry = entry
+        if not entry or entry.get("card_type") != "pdf":
+            self._set_pdf_limit_editor_visible(False)
+            self._set_pdf_limit_form_enabled_state()
+            return
+
+        self._set_pdf_limit_editor_visible(True)
+        settings = dict(entry.get("pdf_limit_settings") or {
+            "enabled": False,
+            "daily_page_limit": 10,
+            "enforcement_mode": "warning",
+        })
+        status = entry.get("pdf_limit_status") or {}
+
+        self._pdf_limit_loading = True
+        self._pdf_limit_enabled.setChecked(bool(settings.get("enabled")))
+        self._pdf_limit_spin.setValue(max(1, int(settings.get("daily_page_limit", 10) or 10)))
+        idx = self._pdf_limit_mode.findData(str(settings.get("enforcement_mode") or "warning"))
+        self._pdf_limit_mode.setCurrentIndex(max(0, idx))
+        self._pdf_limit_loading = False
+
+        if status:
+            self._pdf_limit_summary.setText(
+                f"Today: {status['pages_used']}/{status['daily_page_limit']} pages, "
+                f"{status['pages_remaining']} remaining. "
+                f"Current page {entry.get('pdf_page') or 1}, read-through {entry.get('pdf_read_page') or 0}."
+            )
+        else:
+            self._pdf_limit_summary.setText(
+                "No daily limit is set for this PDF yet."
+            )
+        self._set_pdf_limit_form_enabled_state()
+
+    def _selected_entry_index(self) -> int | None:
+        row = self._table.currentRow()
+        if row < 0:
+            return None
+        item = self._table.item(row, 0)
+        if item is None:
+            return None
+        idx = item.data(Qt.ItemDataRole.UserRole + 1)
+        try:
+            return int(idx)
+        except Exception:
+            return None
+
+    def _save_selected_pdf_limit(self) -> None:
+        entry = self._current_entry
+        if not entry or entry.get("card_type") != "pdf":
+            return
+        cid = int(entry["card_id"])
+        save_pdf_daily_limit_settings(
+            _ADDON_DIR,
+            _active_profile(),
+            cid,
+            enabled=self._pdf_limit_enabled.isChecked(),
+            daily_page_limit=int(self._pdf_limit_spin.value()),
+            enforcement_mode=str(self._pdf_limit_mode.currentData() or "warning"),
+        )
+        try:
+            status = get_pdf_daily_limit_status(
+                _ADDON_DIR,
+                _active_profile(),
+                cid,
+                current_page=entry.get("pdf_page"),
+                persist_usage=False,
+            )
+        except Exception:
+            status = None
+        settings = get_pdf_daily_limit_settings(_ADDON_DIR, _active_profile(), cid)
+        entry["pdf_limit_status"] = status if status and status.get("enabled") else None
+        entry["pdf_limit_settings"] = settings
+        self._show_entry(entry)
+        self._load_pdf_limit_editor(entry)
+        tooltip("PDF daily reading limit saved.")
+
     def _on_row_changed(self, row: int, _old_row: int, _col: int, _old_col: int) -> None:
         if row < 0:
+            self._load_pdf_limit_editor(None)
             return
         first_item = self._table.item(row, 0)
         if first_item is None:
+            self._load_pdf_limit_editor(None)
             return
         entry_idx = first_item.data(Qt.ItemDataRole.UserRole + 1)
         if entry_idx is None:
+            self._load_pdf_limit_editor(None)
             return
         try:
             idx = int(entry_idx)
         except Exception:
+            self._load_pdf_limit_editor(None)
             return
         if idx < 0 or idx >= len(self._entries):
+            self._load_pdf_limit_editor(None)
             return
         self._show_entry(self._entries[idx])
+        self._load_pdf_limit_editor(self._entries[idx])
 
     @staticmethod
     def _fmt_counts(counts: dict) -> str:
@@ -305,6 +481,12 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 parts.append(f"<div><b>Current page:</b> {entry['pdf_page']}</div>")
             if entry.get("pdf_read_page") is not None:
                 parts.append(f"<div><b>Read-through page:</b> {entry['pdf_read_page']}</div>")
+            if entry.get("pdf_limit_status"):
+                limit_status = entry["pdf_limit_status"]
+                parts.append(
+                    f"<div><b>Daily limit:</b> {limit_status['pages_used']}/{limit_status['daily_page_limit']} pages today"
+                    f" ({limit_status['pages_remaining']} remaining, {escape(limit_status['enforcement_label'])})</div>"
+                )
         if entry.get("tags"):
             parts.append(f"<div><b>Note tags:</b> {escape(entry['tags'])}</div>")
 
@@ -375,6 +557,8 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 pdf_page = None
                 pdf_read_page = None
                 pdf_exists = None
+                pdf_limit_status = None
+                pdf_limit_settings = None
                 if card_type == "pdf":
                     pdf_filename = self._safe_note_field(note, "PDF_Filename")
                     try:
@@ -390,6 +574,26 @@ class _LiveSchedulerPreviewDialog(QDialog):
                             pdf_exists = os.path.exists(os.path.join(get_pdf_dir(), pdf_filename))
                         except Exception:
                             pdf_exists = None
+                    try:
+                        pdf_limit_settings = get_pdf_daily_limit_settings(
+                            _ADDON_DIR,
+                            _active_profile(),
+                            cid,
+                        )
+                    except Exception:
+                        pdf_limit_settings = None
+                    try:
+                        status = get_pdf_daily_limit_status(
+                            _ADDON_DIR,
+                            _active_profile(),
+                            cid,
+                            current_page=pdf_page,
+                            persist_usage=False,
+                        )
+                        if status.get("enabled"):
+                            pdf_limit_status = status
+                    except Exception:
+                        pdf_limit_status = None
 
                 entries.append(
                     {
@@ -404,6 +608,8 @@ class _LiveSchedulerPreviewDialog(QDialog):
                         "pdf_page": pdf_page,
                         "pdf_read_page": pdf_read_page,
                         "pdf_exists": pdf_exists,
+                        "pdf_limit_status": pdf_limit_status,
+                        "pdf_limit_settings": pdf_limit_settings,
                     }
                 )
 
@@ -445,12 +651,14 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 self._preview.setHtml(
                     "<div style='color:#666; padding:10px;'>No cards available for the current settings.</div>"
                 )
+                self._load_pdf_limit_editor(None)
         except Exception as e:
             self._summary_lbl.setText(f"Preview failed: {e}")
             self._preview.setHtml("")
             self._table.setRowCount(0)
             self._entries = []
             self._owner._clear_live_preview_cache()
+            self._load_pdf_limit_editor(None)
         finally:
             self._refresh_btn.setEnabled(True)
 
@@ -833,7 +1041,10 @@ class SchedulerConfigDialog(QDialog):
         self._saved = config.get("dialog", {})
         self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._profiles: dict[str, dict] = config.get("profiles", {})
+        self._pdf_limit_targets: list[dict] = []
+        self._pdf_limit_main_loading = False
         self._setup_ui()
+        self._refresh_pdf_limit_targets()
         self._apply_initial_size()
 
     def _apply_initial_size(self) -> None:
@@ -1033,6 +1244,67 @@ class SchedulerConfigDialog(QDialog):
         self._counts_lbl = QLabel("")
         layout.addWidget(self._counts_lbl)
 
+        pdf_limit_card = QFrame()
+        pdf_limit_card.setStyleSheet(
+            "QFrame {"
+            "  background: rgba(74,122,181,0.06);"
+            "  border: 1px solid rgba(74,122,181,0.20);"
+            "  border-radius: 8px;"
+            "}"
+        )
+        pdf_limit_layout = QVBoxLayout(pdf_limit_card)
+        pdf_limit_layout.setContentsMargins(10, 8, 10, 8)
+        pdf_limit_layout.setSpacing(6)
+
+        pdf_limit_header = QLabel("PDF Daily Reading Limit")
+        pdf_limit_header.setStyleSheet("font-weight: bold; color: #4a7ab5;")
+        pdf_limit_layout.addWidget(pdf_limit_header)
+
+        pdf_limit_intro = QLabel(
+            "Set a per-PDF daily page cap directly from Incremental Learning."
+        )
+        pdf_limit_intro.setWordWrap(True)
+        pdf_limit_intro.setStyleSheet("color: gray;")
+        pdf_limit_layout.addWidget(pdf_limit_intro)
+
+        pdf_limit_pick_row = QHBoxLayout()
+        pdf_limit_pick_row.addWidget(QLabel("Find PDF:"))
+        self._pdf_limit_search_edit = QLineEdit()
+        self._pdf_limit_search_edit.setPlaceholderText("Search by PDF title…")
+        pdf_limit_pick_row.addWidget(self._pdf_limit_search_edit, 1)
+        pdf_limit_pick_row.addWidget(QLabel("PDF:"))
+        self._pdf_limit_combo = QComboBox()
+        self._pdf_limit_combo.setMinimumWidth(280)
+        pdf_limit_pick_row.addWidget(self._pdf_limit_combo, 2)
+        self._pdf_limit_refresh_btn = QPushButton("Refresh PDFs")
+        pdf_limit_pick_row.addWidget(self._pdf_limit_refresh_btn)
+        pdf_limit_layout.addLayout(pdf_limit_pick_row)
+
+        pdf_limit_form_row = QHBoxLayout()
+        self._pdf_limit_main_enabled = QCheckBox("Enable")
+        pdf_limit_form_row.addWidget(self._pdf_limit_main_enabled)
+        self._pdf_limit_main_spin = QSpinBox()
+        self._pdf_limit_main_spin.setRange(1, 5000)
+        self._pdf_limit_main_spin.setValue(10)
+        self._pdf_limit_main_spin.setFixedWidth(90)
+        pdf_limit_form_row.addWidget(self._pdf_limit_main_spin)
+        pdf_limit_form_row.addWidget(QLabel("pages / day"))
+        self._pdf_limit_main_mode = QComboBox()
+        self._pdf_limit_main_mode.addItem("Warning only", "warning")
+        self._pdf_limit_main_mode.addItem("Soft lock + override", "soft_lock")
+        self._pdf_limit_main_mode.addItem("Hard stop", "hard_stop")
+        pdf_limit_form_row.addWidget(self._pdf_limit_main_mode)
+        self._pdf_limit_main_save_btn = QPushButton("Save PDF limit")
+        pdf_limit_form_row.addWidget(self._pdf_limit_main_save_btn)
+        pdf_limit_form_row.addStretch()
+        pdf_limit_layout.addLayout(pdf_limit_form_row)
+
+        self._pdf_limit_main_status_lbl = QLabel("")
+        self._pdf_limit_main_status_lbl.setWordWrap(True)
+        self._pdf_limit_main_status_lbl.setStyleSheet("color: gray; font-size: 11px;")
+        pdf_limit_layout.addWidget(self._pdf_limit_main_status_lbl)
+        layout.addWidget(pdf_limit_card)
+
         # ── 5. PDF soft-mix rate ──────────────────────────────────────────────
         pdf_val = self._saved.get("pdf_slider", 0)
         pdf_row = QHBoxLayout()
@@ -1079,6 +1351,13 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._pdf_slider.valueChanged,
                  lambda v: (self._pdf_left_lbl.setText(f"{100 - v}%"),
                              self._pdf_right_lbl.setText(f"{v}%")))
+        qconnect(self._pdf_limit_search_edit.textChanged, lambda _: self._refresh_pdf_limit_combo())
+        qconnect(self._pdf_limit_combo.currentIndexChanged, lambda _: self._load_main_pdf_limit_editor())
+        qconnect(self._pdf_limit_refresh_btn.clicked, self._refresh_pdf_limit_targets)
+        qconnect(self._pdf_limit_main_enabled.toggled, self._on_main_pdf_limit_form_changed)
+        qconnect(self._pdf_limit_main_spin.valueChanged, self._on_main_pdf_limit_form_changed)
+        qconnect(self._pdf_limit_main_mode.currentIndexChanged, self._on_main_pdf_limit_form_changed)
+        qconnect(self._pdf_limit_main_save_btn.clicked, self._save_main_pdf_limit)
 
         # ── 6. Priority / Random selection mode ───────────────────────────────
         random_val = self._saved.get("random_slider", 99)
@@ -2087,6 +2366,145 @@ class SchedulerConfigDialog(QDialog):
             "pdf": self._pdf_lock_cb.isChecked(),
             "priority": self._priority_lock_cb.isChecked(),
         }
+
+    def _selected_main_pdf_limit_card_id(self) -> int | None:
+        data = self._pdf_limit_combo.currentData()
+        try:
+            return int(data)
+        except Exception:
+            return None
+
+    def _set_main_pdf_limit_form_enabled_state(self) -> None:
+        has_card = self._selected_main_pdf_limit_card_id() is not None
+        enabled = has_card and self._pdf_limit_main_enabled.isChecked()
+        self._pdf_limit_search_edit.setEnabled(bool(self._pdf_limit_targets))
+        self._pdf_limit_combo.setEnabled(bool(self._pdf_limit_targets))
+        self._pdf_limit_refresh_btn.setEnabled(True)
+        self._pdf_limit_main_enabled.setEnabled(has_card)
+        self._pdf_limit_main_spin.setEnabled(enabled)
+        self._pdf_limit_main_mode.setEnabled(enabled)
+        self._pdf_limit_main_save_btn.setEnabled(has_card)
+
+    def _refresh_pdf_limit_combo(self) -> None:
+        query = " ".join(self._pdf_limit_search_edit.text().strip().lower().split())
+        selected_card_id = self._selected_main_pdf_limit_card_id()
+        self._pdf_limit_combo.blockSignals(True)
+        self._pdf_limit_combo.clear()
+
+        matches = []
+        for target in self._pdf_limit_targets:
+            hay = target.get("search", "")
+            if query and query not in hay:
+                continue
+            matches.append(target)
+
+        for target in matches:
+            self._pdf_limit_combo.addItem(target["label"], target["card_id"])
+
+        if not self._pdf_limit_targets:
+            self._pdf_limit_combo.addItem("No Incremento PDF cards found", None)
+        elif not matches:
+            self._pdf_limit_combo.addItem("No PDFs match this search", None)
+
+        if selected_card_id is not None:
+            idx = self._pdf_limit_combo.findData(selected_card_id)
+            if idx >= 0:
+                self._pdf_limit_combo.setCurrentIndex(idx)
+        self._pdf_limit_combo.blockSignals(False)
+        self._load_main_pdf_limit_editor()
+
+    def _refresh_pdf_limit_targets(self) -> None:
+        targets: list[dict] = []
+        try:
+            for cid in mw.col.find_cards(f'note:"{PDF_NOTE_TYPE}"'):
+                try:
+                    card = mw.col.get_card(cid)
+                    note = mw.col.get_note(card.nid)
+                    title = _compact_text((getattr(note, "fields", []) or [""])[0], max_len=110) or f"PDF {cid}"
+                    current_page = int(get_page(_ADDON_DIR, _active_profile(), cid))
+                    label = f"{title} · p.{current_page} · card {cid}"
+                    targets.append(
+                        {
+                            "card_id": int(cid),
+                            "title": title,
+                            "label": label,
+                            "search": f"{title} {cid}".lower(),
+                        }
+                    )
+                except Exception:
+                    continue
+        except Exception:
+            targets = []
+        targets.sort(key=lambda item: (item["title"].lower(), item["card_id"]))
+        self._pdf_limit_targets = targets
+        self._refresh_pdf_limit_combo()
+
+    def _on_main_pdf_limit_form_changed(self, *_args) -> None:
+        if self._pdf_limit_main_loading:
+            return
+        self._set_main_pdf_limit_form_enabled_state()
+
+    def _load_main_pdf_limit_editor(self) -> None:
+        cid = self._selected_main_pdf_limit_card_id()
+        self._pdf_limit_main_loading = True
+        if cid is None:
+            self._pdf_limit_main_enabled.setChecked(False)
+            self._pdf_limit_main_spin.setValue(10)
+            idx = self._pdf_limit_main_mode.findData("warning")
+            self._pdf_limit_main_mode.setCurrentIndex(max(0, idx))
+            if self._pdf_limit_targets:
+                self._pdf_limit_main_status_lbl.setText("Choose a PDF to edit its daily page limit.")
+            else:
+                self._pdf_limit_main_status_lbl.setText("No Incremento PDF cards exist yet.")
+            self._pdf_limit_main_loading = False
+            self._set_main_pdf_limit_form_enabled_state()
+            return
+
+        settings = get_pdf_daily_limit_settings(_ADDON_DIR, _active_profile(), cid)
+        current_page = get_page(_ADDON_DIR, _active_profile(), cid)
+        status = get_pdf_daily_limit_status(
+            _ADDON_DIR,
+            _active_profile(),
+            cid,
+            current_page=current_page,
+            persist_usage=False,
+        )
+
+        self._pdf_limit_main_enabled.setChecked(bool(settings.get("enabled")))
+        self._pdf_limit_main_spin.setValue(max(1, int(settings.get("daily_page_limit", 10) or 10)))
+        idx = self._pdf_limit_main_mode.findData(str(settings.get("enforcement_mode") or "warning"))
+        self._pdf_limit_main_mode.setCurrentIndex(max(0, idx))
+        if status.get("enabled"):
+            self._pdf_limit_main_status_lbl.setText(
+                f"Today: {status['pages_used']}/{status['daily_page_limit']} pages, "
+                f"{status['pages_remaining']} remaining. "
+                f"Current page {current_page}, stop point today page {status['allowed_max_page']}."
+            )
+        else:
+            self._pdf_limit_main_status_lbl.setText(
+                f"No daily limit set for this PDF. Current page {current_page}."
+            )
+        self._pdf_limit_main_loading = False
+        self._set_main_pdf_limit_form_enabled_state()
+
+    def _save_main_pdf_limit(self) -> None:
+        cid = self._selected_main_pdf_limit_card_id()
+        if cid is None:
+            return
+        save_pdf_daily_limit_settings(
+            _ADDON_DIR,
+            _active_profile(),
+            cid,
+            enabled=self._pdf_limit_main_enabled.isChecked(),
+            daily_page_limit=int(self._pdf_limit_main_spin.value()),
+            enforcement_mode=str(self._pdf_limit_main_mode.currentData() or "warning"),
+        )
+        self._refresh_pdf_limit_targets()
+        idx = self._pdf_limit_combo.findData(cid)
+        if idx >= 0:
+            self._pdf_limit_combo.setCurrentIndex(idx)
+        self._load_main_pdf_limit_editor()
+        tooltip("PDF daily reading limit saved.")
 
     @staticmethod
     def _normalize_group_name(name: str) -> str:

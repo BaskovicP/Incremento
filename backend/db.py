@@ -7,6 +7,9 @@ WAL mode + NORMAL synchronous gives fast writes while staying crash-safe.
 Tables
 ------
 pdf_progress    — reading position and zoom per card
+pdf_daily_limits — per-card daily reading limit config for PDFs
+pdf_due_review_prompts — per-card on-open due-review prompt config for PDFs
+pdf_daily_limit_usage — per-card per-day PDF reading usage and overrides
 pdf_highlights  — highlighted passages per card
 epub_progress   — reading section/scroll state per card
 epub_highlights — highlighted passages per EPUB section
@@ -86,6 +89,31 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             zoom      REAL    NOT NULL DEFAULT 1.0,
             read_page INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS pdf_daily_limits (
+            card_id          INTEGER PRIMARY KEY,
+            daily_page_limit INTEGER NOT NULL DEFAULT 0,
+            enforcement_mode TEXT    NOT NULL DEFAULT 'warning',
+            updated_at       INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS pdf_due_review_prompts (
+            card_id    INTEGER PRIMARY KEY,
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS pdf_daily_limit_usage (
+            card_id          INTEGER NOT NULL,
+            logical_date     TEXT    NOT NULL DEFAULT '',
+            baseline_page    INTEGER NOT NULL DEFAULT 0,
+            highest_page     INTEGER NOT NULL DEFAULT 0,
+            override_enabled INTEGER NOT NULL DEFAULT 0,
+            updated_at       INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (card_id, logical_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_pdlu_date
+            ON pdf_daily_limit_usage (logical_date, card_id);
 
         CREATE TABLE IF NOT EXISTS pdf_highlights (
             id      TEXT    NOT NULL,
@@ -263,6 +291,221 @@ def _create_tables(conn: sqlite3.Connection) -> None:
 # ── Browser media refs ────────────────────────────────────────────────────────
 
 
+_PDF_LIMIT_MODES = {"warning", "soft_lock", "hard_stop"}
+
+
+def _default_pdf_daily_limit_config() -> dict:
+    return {
+        "daily_page_limit": 0,
+        "enforcement_mode": "warning",
+        "updated_at": 0,
+    }
+
+
+def _normalize_pdf_daily_limit(value) -> int:
+    try:
+        limit = int(value or 0)
+    except Exception:
+        limit = 0
+    return max(0, limit)
+
+
+def _normalize_pdf_limit_mode(value) -> str:
+    mode = str(value or "warning").strip().lower()
+    if mode not in _PDF_LIMIT_MODES:
+        return "warning"
+    return mode
+
+
+def _default_pdf_daily_limit_usage(logical_date: str = "") -> dict:
+    return {
+        "logical_date": str(logical_date or "").strip(),
+        "baseline_page": 0,
+        "highest_page": 0,
+        "override_enabled": False,
+        "updated_at": 0,
+    }
+
+
+def _default_pdf_due_review_prompt_config() -> dict:
+    return {
+        "enabled": True,
+        "updated_at": 0,
+    }
+
+
+def _normalize_pdf_daily_limit_page(value) -> int:
+    try:
+        page = int(value or 0)
+    except Exception:
+        page = 0
+    return max(0, page)
+
+
+def _normalize_pdf_daily_limit_logical_date(value) -> str:
+    return str(value or "").strip()[:32]
+
+
+def get_pdf_daily_limit_config(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT daily_page_limit, enforcement_mode, updated_at "
+        "FROM pdf_daily_limits WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_pdf_daily_limit_config()
+    return {
+        "daily_page_limit": _normalize_pdf_daily_limit(row[0]),
+        "enforcement_mode": _normalize_pdf_limit_mode(row[1]),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[2]),
+    }
+
+
+def set_pdf_daily_limit_config(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    daily_page_limit: int,
+    enforcement_mode: str = "warning",
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    limit = _normalize_pdf_daily_limit(daily_page_limit)
+    mode = _normalize_pdf_limit_mode(enforcement_mode)
+    ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if updated_at is None else updated_at
+    )
+    conn = get_connection(addon_dir, profile)
+    if limit <= 0:
+        conn.execute("DELETE FROM pdf_daily_limits WHERE card_id = ?", (cid,))
+        conn.commit()
+        return
+    conn.execute(
+        "INSERT INTO pdf_daily_limits (card_id, daily_page_limit, enforcement_mode, updated_at) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "daily_page_limit = excluded.daily_page_limit, "
+        "enforcement_mode = excluded.enforcement_mode, "
+        "updated_at = excluded.updated_at",
+        (cid, limit, mode, ts),
+    )
+    conn.commit()
+
+
+def get_pdf_daily_limit_usage(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    logical_date: str,
+) -> dict:
+    date_key = _normalize_pdf_daily_limit_logical_date(logical_date)
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT baseline_page, highest_page, override_enabled, updated_at "
+        "FROM pdf_daily_limit_usage WHERE card_id = ? AND logical_date = ?",
+        (int(card_id), date_key),
+    ).fetchone()
+    if not row:
+        return _default_pdf_daily_limit_usage(date_key)
+    baseline_page = _normalize_pdf_daily_limit_page(row[0])
+    highest_page = max(baseline_page, _normalize_pdf_daily_limit_page(row[1]))
+    return {
+        "logical_date": date_key,
+        "baseline_page": baseline_page,
+        "highest_page": highest_page,
+        "override_enabled": bool(int(row[2] or 0)),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[3]),
+    }
+
+
+def set_pdf_daily_limit_usage(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    logical_date: str,
+    *,
+    baseline_page: int,
+    highest_page: int,
+    override_enabled: bool = False,
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    date_key = _normalize_pdf_daily_limit_logical_date(logical_date)
+    baseline = _normalize_pdf_daily_limit_page(baseline_page)
+    highest = max(baseline, _normalize_pdf_daily_limit_page(highest_page))
+    ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if updated_at is None else updated_at
+    )
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO pdf_daily_limit_usage "
+        "(card_id, logical_date, baseline_page, highest_page, override_enabled, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id, logical_date) DO UPDATE SET "
+        "baseline_page = excluded.baseline_page, "
+        "highest_page = excluded.highest_page, "
+        "override_enabled = excluded.override_enabled, "
+        "updated_at = excluded.updated_at",
+        (cid, date_key, baseline, highest, 1 if override_enabled else 0, ts),
+    )
+    conn.commit()
+
+
+def clear_pdf_daily_limit_usage(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    logical_date: str | None = None,
+) -> None:
+    cid = int(card_id)
+    conn = get_connection(addon_dir, profile)
+    if logical_date is None:
+        conn.execute("DELETE FROM pdf_daily_limit_usage WHERE card_id = ?", (cid,))
+    else:
+        conn.execute(
+            "DELETE FROM pdf_daily_limit_usage WHERE card_id = ? AND logical_date = ?",
+            (cid, _normalize_pdf_daily_limit_logical_date(logical_date)),
+        )
+    conn.commit()
+
+
+def get_pdf_due_review_prompt_config(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT enabled, updated_at FROM pdf_due_review_prompts WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_pdf_due_review_prompt_config()
+    return {
+        "enabled": bool(int(row[0] or 0)),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[1]),
+    }
+
+
+def set_pdf_due_review_prompt_config(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    enabled: bool,
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if updated_at is None else updated_at
+    )
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO pdf_due_review_prompts (card_id, enabled, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "enabled = excluded.enabled, "
+        "updated_at = excluded.updated_at",
+        (cid, 1 if enabled else 0, ts),
+    )
+    conn.commit()
+
+
 def _default_browser_media_ref() -> dict:
     return {
         "page_url": "",
@@ -430,6 +673,32 @@ def get_pdf_card_sources(addon_dir: str, profile: str, pdf_card_id: int, page: i
         .fetchall()
     )
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
+
+
+def get_pdf_card_sources_up_to_page(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    max_page: int,
+) -> list[dict]:
+    """Return source-note rows for this PDF from page 1 through max_page."""
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT page, note_id, excerpt FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? AND page <= ? ORDER BY page, id",
+            (int(pdf_card_id), int(max_page)),
+        )
+        .fetchall()
+    )
+    return [
+        {
+            "page": int(row[0]),
+            "note_id": int(row[1]),
+            "excerpt": row[2],
+        }
+        for row in rows
+    ]
 
 
 def get_pdf_page_card_counts(addon_dir: str, profile: str, pdf_card_id: int) -> dict:

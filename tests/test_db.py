@@ -49,6 +49,18 @@ class TestGetConnection:
         }
         assert "pdf_progress" in tables
 
+    def test_creates_pdf_daily_limits_tables(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "pdf_daily_limits" in tables
+        assert "pdf_daily_limit_usage" in tables
+
     def test_creates_pdf_highlights_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
@@ -294,6 +306,108 @@ class TestBrowserMediaRefs:
         assert ref["updated_at"] == 99
 
 
+class TestPdfDailyLimits:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_pdf_daily_limit_config_defaults_when_missing(self):
+        config = db.get_pdf_daily_limit_config(self.addon_dir, "TestProfile", 77)
+        assert config == {
+            "daily_page_limit": 0,
+            "enforcement_mode": "warning",
+            "updated_at": 0,
+        }
+
+    def test_set_and_get_pdf_daily_limit_config(self):
+        db.set_pdf_daily_limit_config(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            daily_page_limit=12,
+            enforcement_mode="soft_lock",
+            updated_at=123,
+        )
+        config = db.get_pdf_daily_limit_config(self.addon_dir, "TestProfile", 77)
+        assert config == {
+            "daily_page_limit": 12,
+            "enforcement_mode": "soft_lock",
+            "updated_at": 123,
+        }
+
+    def test_zero_limit_deletes_pdf_daily_limit_config(self):
+        db.set_pdf_daily_limit_config(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            daily_page_limit=9,
+            enforcement_mode="hard_stop",
+        )
+        db.set_pdf_daily_limit_config(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            daily_page_limit=0,
+            enforcement_mode="warning",
+        )
+        assert db.get_pdf_daily_limit_config(self.addon_dir, "TestProfile", 77) == {
+            "daily_page_limit": 0,
+            "enforcement_mode": "warning",
+            "updated_at": 0,
+        }
+
+    def test_pdf_daily_limit_usage_defaults_when_missing(self):
+        usage = db.get_pdf_daily_limit_usage(self.addon_dir, "TestProfile", 9, "2026-04-18")
+        assert usage == {
+            "logical_date": "2026-04-18",
+            "baseline_page": 0,
+            "highest_page": 0,
+            "override_enabled": False,
+            "updated_at": 0,
+        }
+
+    def test_set_and_get_pdf_daily_limit_usage(self):
+        db.set_pdf_daily_limit_usage(
+            self.addon_dir,
+            "TestProfile",
+            9,
+            "2026-04-18",
+            baseline_page=14,
+            highest_page=20,
+            override_enabled=True,
+            updated_at=999,
+        )
+        usage = db.get_pdf_daily_limit_usage(self.addon_dir, "TestProfile", 9, "2026-04-18")
+        assert usage == {
+            "logical_date": "2026-04-18",
+            "baseline_page": 14,
+            "highest_page": 20,
+            "override_enabled": True,
+            "updated_at": 999,
+        }
+
+    def test_clear_pdf_daily_limit_usage(self):
+        db.set_pdf_daily_limit_usage(
+            self.addon_dir,
+            "TestProfile",
+            9,
+            "2026-04-18",
+            baseline_page=2,
+            highest_page=6,
+        )
+        db.clear_pdf_daily_limit_usage(
+            self.addon_dir,
+            "TestProfile",
+            9,
+            logical_date="2026-04-18",
+        )
+        usage = db.get_pdf_daily_limit_usage(self.addon_dir, "TestProfile", 9, "2026-04-18")
+        assert usage["highest_page"] == 0
+
+
 # ---------------------------------------------------------------------------
 # add_pdf_card_source + get_pdf_card_sources
 # ---------------------------------------------------------------------------
@@ -321,6 +435,47 @@ class TestPdfCardSources:
         counts = db.get_pdf_page_card_counts(self.addon_dir, "TestProfile", pdf_card_id=2)
         assert counts[1] == 2
         assert counts[2] == 1
+
+    def test_get_pdf_card_sources_up_to_page(self):
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=4, page=2, note_id=201, excerpt="two")
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=4, page=4, note_id=202, excerpt="four")
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=4, page=7, note_id=203, excerpt="seven")
+
+        rows = db.get_pdf_card_sources_up_to_page(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=4,
+            max_page=4,
+        )
+
+        assert rows == [
+            {"page": 2, "note_id": 201, "excerpt": "two"},
+            {"page": 4, "note_id": 202, "excerpt": "four"},
+        ]
+
+
+class TestPdfDueReviewPromptConfig:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_defaults_to_enabled(self):
+        cfg = db.get_pdf_due_review_prompt_config(self.addon_dir, "TestProfile", 99)
+        assert cfg == {"enabled": True, "updated_at": 0}
+
+    def test_set_and_get_prompt_config(self):
+        db.set_pdf_due_review_prompt_config(
+            self.addon_dir,
+            "TestProfile",
+            99,
+            enabled=False,
+            updated_at=321,
+        )
+        cfg = db.get_pdf_due_review_prompt_config(self.addon_dir, "TestProfile", 99)
+        assert cfg == {"enabled": False, "updated_at": 321}
 
 
 class TestWebCardSources:

@@ -36,6 +36,7 @@ _ADDON_DIR = os.path.normpath(
 _ADDON_PKG = __name__.split(".")[0]  # "incremento"
 
 INCREMENTO_DECK = "Incremento Session"
+INCREMENTO_PDF_REVIEW_DECK = "Incremento PDF Review"
 
 # Most-recent session counts — updated after each learnFunction picking loop.
 # Accessed via get_session_counts() from __init__.py for the stats dialog.
@@ -57,6 +58,111 @@ def get_session_counts() -> dict:
 def get_session_times() -> dict:
     """Return review-time stats for the last/active session."""
     return _session_times
+
+
+def _prepare_filtered_review_deck(
+    selected_ids: list[int],
+    *,
+    deck_name: str,
+    preserve_order: bool,
+) -> int:
+    search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
+
+    existing = mw.col.decks.by_name(deck_name)
+    if existing:
+        if not existing.get("dyn"):
+            raise RuntimeError(f"'{deck_name}' is a normal deck. Delete or rename it first.")
+        did = existing["id"]
+        mw.col.sched.empty_filtered_deck(did)
+    else:
+        did = mw.col.decks.new_filtered(deck_name)
+
+    fdu = mw.col.sched.get_or_create_filtered_deck(did)
+    fdu.config.reschedule = True
+    del fdu.config.search_terms[:]
+    fdu.config.search_terms.add(
+        search=search,
+        limit=len(selected_ids),
+        order=0 if preserve_order else 1,
+    )
+    op = mw.col.sched.add_or_update_filtered_deck(fdu)
+    mw.col.sched.rebuild_filtered_deck(op.id)
+
+    if preserve_order:
+        for i, cid in enumerate(selected_ids):
+            card = mw.col.get_card(cid)
+            card.due = i
+            mw.col.update_card(card)
+
+    mw.col.decks.select(op.id)
+    return int(op.id)
+
+
+def start_explicit_review(
+    selected_ids: list[int],
+    *,
+    deck_name: str = INCREMENTO_DECK,
+    preserve_order: bool = True,
+    empty_message: str = "No cards available to review.",
+    on_finished=None,
+) -> bool:
+    normalized_ids: list[int] = []
+    for cid in selected_ids or []:
+        try:
+            value = int(cid)
+        except Exception:
+            continue
+        if value > 0:
+            normalized_ids.append(value)
+
+    if not normalized_ids:
+        if empty_message:
+            showInfo(empty_message)
+        return False
+
+    try:
+        _prepare_filtered_review_deck(
+            normalized_ids,
+            deck_name=deck_name,
+            preserve_order=preserve_order,
+        )
+    except Exception as e:
+        showInfo(str(e))
+        return False
+
+    if on_finished is not None:
+        finished = False
+
+        def _finish_once() -> None:
+            nonlocal finished
+            if finished:
+                return
+            finished = True
+            for hook_list, fn in (
+                (gui_hooks.reviewer_will_end, _on_reviewer_end),
+                (gui_hooks.state_did_change, _on_state_did_change),
+            ):
+                try:
+                    hook_list.remove(fn)
+                except ValueError:
+                    pass
+            try:
+                on_finished()
+            except Exception as e:
+                print(f"[Incremento] explicit review finish callback error: {e}")
+
+        def _on_reviewer_end() -> None:
+            _finish_once()
+
+        def _on_state_did_change(new_state: str, old_state: str) -> None:
+            if old_state == "review" and new_state != "review":
+                _finish_once()
+
+        gui_hooks.reviewer_will_end.append(_on_reviewer_end)
+        gui_hooks.state_did_change.append(_on_state_did_change)
+
+    mw.moveToState("review")
+    return True
 
 
 def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> float:
@@ -177,45 +283,15 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         _debug_layout.addWidget(_debug_btn)
         _debug_dlg.exec()
 
-    search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
-
-    # Get or create the filtered deck
-    existing = mw.col.decks.by_name(INCREMENTO_DECK)
-    if existing:
-        if not existing.get("dyn"):
-            showInfo(
-                f"'{INCREMENTO_DECK}' is a normal deck. Delete or rename it first."
-            )
-            return
-        did = existing["id"]
-        mw.col.sched.empty_filtered_deck(did)
-    else:
-        did = mw.col.decks.new_filtered(INCREMENTO_DECK)
-
-    # Configure via protobuf API (Anki 2.1.45+)
-    fdu = mw.col.sched.get_or_create_filtered_deck(did)
-    fdu.config.reschedule = True
-    del fdu.config.search_terms[:]
-    # Always a single SearchTerm — Anki only processes the first 2 SearchTerms
-    # so N-per-card terms silently truncate. order=0 when preserving order
-    # (due values get stamped post-rebuild anyway); order=1 (RANDOM) otherwise.
-    fdu.config.search_terms.add(
-        search=search,
-        limit=len(selected_ids),
-        order=0 if cfg.preserve_order else 1,
-    )
-    op = mw.col.sched.add_or_update_filtered_deck(fdu)
-
-    mw.col.sched.rebuild_filtered_deck(op.id)
-
-    if cfg.preserve_order:
-        # odue is already saved by rebuild — original scheduling is safe.
-        # Stamp due = position so the scheduler presents cards in selected_ids order.
-        for i, cid in enumerate(selected_ids):
-            card = mw.col.get_card(cid)
-            card.due = i
-            mw.col.update_card(card)
-    mw.col.decks.select(op.id)
+    try:
+        _prepare_filtered_review_deck(
+            selected_ids,
+            deck_name=INCREMENTO_DECK,
+            preserve_order=cfg.preserve_order,
+        )
+    except Exception as e:
+        showInfo(str(e))
+        return
 
     # Hook: record each card to daily/lifetime the first time it is answered.
     # This ensures only actually reviewed cards count — not just scheduled ones.

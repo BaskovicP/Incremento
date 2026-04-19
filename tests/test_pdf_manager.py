@@ -142,6 +142,39 @@ class TestAddPdfCard:
             for c in setitem_calls
         )
 
+    def test_persists_pdf_daily_limit_settings_after_create(self):
+        col = MagicMock()
+        note = MagicMock()
+        note.id = 999
+        col.new_note.return_value = note
+        col.add_note.return_value = 1
+        col.find_cards.return_value = [12345]
+        col.models.by_name.return_value = {"name": pdf_manager.PDF_NOTE_TYPE}
+        col.decks.by_name.return_value = {"id": 1}
+
+        with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
+             patch("pdf_manager._copy_to_pdf_dir", return_value="stored-file.pdf"), \
+             patch("pdf_manager.extract_pdf_pages_text", return_value=["page one"]), \
+             patch("pdf_manager.replace_pdf_text_index", return_value=None), \
+             patch("pdf_manager.save_pdf_daily_limit_settings") as save_limit:
+            pdf_manager.add_pdf_card(
+                "/tmp/incremento-test",
+                col,
+                "/tmp/source.pdf",
+                "Guide",
+                daily_page_limit=8,
+                enforcement_mode="soft_lock",
+            )
+
+        save_limit.assert_called_once_with(
+            "/tmp/incremento-test",
+            pdf_manager._paths.get_active_profile(),
+            12345,
+            enabled=True,
+            daily_page_limit=8,
+            enforcement_mode="soft_lock",
+        )
+
 
 # ---------------------------------------------------------------------------
 # extract_pdf_pages_text — PyMuPDF path
@@ -401,3 +434,225 @@ class TestGetSetPage:
         pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=10, page=3)
         pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=10, page=12)
         assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=10) == 12
+
+
+class TestPdfDailyLimitStatus:
+    def setup_method(self):
+        import db as _db
+        _db.close_connection()
+        self.addon_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        import db as _db
+        _db.close_connection()
+        shutil.rmtree(self.addon_dir, ignore_errors=True)
+
+    def test_status_counts_current_page_and_remaining(self):
+        pdf_manager.save_pdf_daily_limit_settings(
+            self.addon_dir,
+            "TestProfile",
+            101,
+            enabled=True,
+            daily_page_limit=10,
+            enforcement_mode="soft_lock",
+        )
+        with patch("pdf_manager.load_scheduler_config", return_value=MagicMock(day_end_time="04:00")), \
+             patch("pdf_manager._effective_date", return_value="2026-04-18"):
+            status = pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                101,
+                current_page=5,
+            )
+
+        assert status["enabled"] is True
+        assert status["baseline_page"] == 4
+        assert status["highest_page"] == 5
+        assert status["pages_used"] == 1
+        assert status["pages_remaining"] == 9
+        assert status["allowed_max_page"] == 14
+        assert status["blocking_active"] is False
+
+    def test_status_only_grows_with_furthest_page_reached(self):
+        pdf_manager.save_pdf_daily_limit_settings(
+            self.addon_dir,
+            "TestProfile",
+            102,
+            enabled=True,
+            daily_page_limit=5,
+            enforcement_mode="warning",
+        )
+        with patch("pdf_manager.load_scheduler_config", return_value=MagicMock(day_end_time="00:00")), \
+             patch("pdf_manager._effective_date", return_value="2026-04-18"):
+            pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                102,
+                current_page=3,
+            )
+            advanced = pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                102,
+                current_page=6,
+            )
+            backed_up = pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                102,
+                current_page=4,
+            )
+
+        assert advanced["pages_used"] == 4
+        assert backed_up["pages_used"] == 4
+        assert backed_up["highest_page"] == 6
+
+    def test_status_with_persist_usage_false_does_not_create_usage_row(self):
+        pdf_manager.save_pdf_daily_limit_settings(
+            self.addon_dir,
+            "TestProfile",
+            103,
+            enabled=True,
+            daily_page_limit=7,
+            enforcement_mode="warning",
+        )
+        with patch("pdf_manager.load_scheduler_config", return_value=MagicMock(day_end_time="00:00")), \
+             patch("pdf_manager._effective_date", return_value="2026-04-18"):
+            status = pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                103,
+                current_page=2,
+                persist_usage=False,
+            )
+
+        assert status["pages_used"] == 1
+        usage = db.get_pdf_daily_limit_usage(self.addon_dir, "TestProfile", 103, "2026-04-18")
+        assert usage["highest_page"] == 0
+
+    def test_soft_lock_override_disables_blocking_for_the_day(self):
+        pdf_manager.save_pdf_daily_limit_settings(
+            self.addon_dir,
+            "TestProfile",
+            104,
+            enabled=True,
+            daily_page_limit=3,
+            enforcement_mode="soft_lock",
+        )
+        with patch("pdf_manager.load_scheduler_config", return_value=MagicMock(day_end_time="00:00")), \
+             patch("pdf_manager._effective_date", return_value="2026-04-18"):
+            pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                104,
+                current_page=1,
+            )
+            blocked = pdf_manager.get_pdf_daily_limit_status(
+                self.addon_dir,
+                "TestProfile",
+                104,
+                current_page=3,
+            )
+            overridden = pdf_manager.set_pdf_daily_limit_override(
+                self.addon_dir,
+                "TestProfile",
+                104,
+                enabled=True,
+                current_page=3,
+            )
+
+        assert blocked["limit_reached"] is True
+        assert blocked["blocking_active"] is True
+        assert overridden["override_enabled"] is True
+        assert overridden["blocking_active"] is False
+
+
+class _FakeCard:
+    def __init__(self, card_id, nid, *, queue=2, due=0):
+        self.id = int(card_id)
+        self.nid = int(nid)
+        self.queue = int(queue)
+        self.due = int(due)
+
+
+class _FakeNote:
+    def __init__(self, nid, first_field):
+        self.id = int(nid)
+        self.fields = [first_field]
+
+
+class _FakeCollection:
+    def __init__(self, *, due_ids, cards, notes):
+        self._due_ids = list(due_ids)
+        self._cards = dict(cards)
+        self._notes = dict(notes)
+        self.searches: list[str] = []
+
+    def find_cards(self, query):
+        self.searches.append(query)
+        return list(self._due_ids)
+
+    def get_card(self, card_id):
+        return self._cards[int(card_id)]
+
+    def get_note(self, note_id):
+        return self._notes[int(note_id)]
+
+
+class TestPdfDueSourceCards:
+    def setup_method(self):
+        import db as _db
+        _db.close_connection()
+        self.addon_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        import db as _db
+        _db.close_connection()
+        shutil.rmtree(self.addon_dir, ignore_errors=True)
+
+    def test_returns_due_cards_only_up_to_current_page_sorted_by_source_page(self):
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=77, page=21, note_id=201, excerpt="page 21")
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=77, page=33, note_id=202, excerpt="page 33")
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=77, page=50, note_id=203, excerpt="page 50")
+
+        col = _FakeCollection(
+            due_ids=[502, 501],
+            cards={
+                501: _FakeCard(501, 201, queue=2, due=9),
+                502: _FakeCard(502, 202, queue=1, due=3),
+            },
+            notes={
+                201: _FakeNote(201, "<b>Earlier</b> card"),
+                202: _FakeNote(202, "Later card"),
+            },
+        )
+
+        rows = pdf_manager.get_due_pdf_source_cards(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            33,
+            col=col,
+        )
+
+        assert [row["card_id"] for row in rows] == [501, 502]
+        assert [row["page"] for row in rows] == [21, 33]
+        assert rows[0]["title"] == "Earlier card"
+        assert rows[1]["due_state"] == "learning"
+        assert "nid:203" not in col.searches[0]
+
+    def test_due_review_prompt_settings_round_trip(self):
+        initial = pdf_manager.get_pdf_due_review_prompt_settings(
+            self.addon_dir,
+            "TestProfile",
+            88,
+        )
+        assert initial["enabled"] is True
+
+        updated = pdf_manager.save_pdf_due_review_prompt_settings(
+            self.addon_dir,
+            "TestProfile",
+            88,
+            enabled=False,
+        )
+        assert updated["enabled"] is False

@@ -15,7 +15,11 @@ import os
 from aqt import mw
 from aqt.qt import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QDockWidget,
+    QDialogButtonBox,
+    QFormLayout,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -27,6 +31,8 @@ from aqt.qt import (
     QLabel,
     QPushButton,
     QPixmap,
+    QSpinBox,
+    QTextEdit,
     qconnect,
 )
 from aqt.utils import showInfo, tooltip
@@ -43,10 +49,18 @@ try:
     from ..backend.pdf_manager import (
         PDF_NOTE_TYPE,
         get_page,
+        get_due_pdf_source_cards,
+        get_pdf_daily_limit_settings,
+        get_pdf_due_review_prompt_settings,
+        get_pdf_daily_limit_status,
+        get_pdf_limit_mode_label,
         get_pdf_dir,
         get_zoom,
         get_read_page,
+        save_pdf_daily_limit_settings,
+        save_pdf_due_review_prompt_settings,
         set_page,
+        set_pdf_daily_limit_override,
         set_zoom,
         set_read_page,
     )
@@ -54,10 +68,18 @@ except ImportError:
     from pdf_manager import (
         PDF_NOTE_TYPE,
         get_page,
+        get_due_pdf_source_cards,
+        get_pdf_daily_limit_settings,
+        get_pdf_due_review_prompt_settings,
+        get_pdf_daily_limit_status,
+        get_pdf_limit_mode_label,
         get_pdf_dir,
         get_zoom,
         get_read_page,
+        save_pdf_daily_limit_settings,
+        save_pdf_due_review_prompt_settings,
         set_page,
+        set_pdf_daily_limit_override,
         set_zoom,
         set_read_page,
     )
@@ -70,6 +92,10 @@ try:
 except ImportError:
     from db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
 from . import timer_widget as _timer_mod
+try:
+    from ..backend.session import INCREMENTO_PDF_REVIEW_DECK, start_explicit_review
+except ImportError:
+    from session import INCREMENTO_PDF_REVIEW_DECK, start_explicit_review  # type: ignore
 
 # ── Addon root ────────────────────────────────────────────────────────────────
 
@@ -97,6 +123,180 @@ _pdf_via_link = False  # True when dock was opened via a cross-reference link
 _pdf_preserve_history = False
 _pdf_shortcuts = []
 _pdf_key_filter = None
+
+
+class _PdfReadingLimitDialog(QDialog):
+    def __init__(self, parent, *, settings: dict, status: dict):
+        super().__init__(parent)
+        self.setWindowTitle("PDF Reading Limit")
+        self.setModal(True)
+        self.resize(430, 220)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        summary = QLabel(self._summary_text(status))
+        summary.setWordWrap(True)
+        summary.setStyleSheet(
+            "QLabel { background: rgba(74,144,217,0.10); border: 1px solid rgba(74,144,217,0.35); "
+            "border-radius: 6px; padding: 8px; }"
+        )
+        layout.addWidget(summary)
+
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(8)
+
+        self._enabled = QCheckBox("Limit pages read per day for this PDF")
+        self._enabled.setChecked(bool(settings.get("enabled")))
+        form.addRow("Enabled:", self._enabled)
+
+        row = QWidget(self)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+
+        self._limit_spin = QSpinBox(self)
+        self._limit_spin.setRange(1, 5000)
+        self._limit_spin.setValue(max(1, int(settings.get("daily_page_limit", 10) or 10)))
+        row_layout.addWidget(self._limit_spin)
+
+        self._mode = QComboBox(self)
+        self._mode.addItem("Warning only", "warning")
+        self._mode.addItem("Soft lock + override", "soft_lock")
+        self._mode.addItem("Hard stop", "hard_stop")
+        idx = self._mode.findData(str(settings.get("enforcement_mode") or "warning"))
+        self._mode.setCurrentIndex(max(0, idx))
+        row_layout.addWidget(self._mode, 1)
+        form.addRow("Limit:", row)
+
+        hint = QLabel("Uses Incremento's day-end setting for daily reset.")
+        hint.setStyleSheet("color: gray; font-size: 11px;")
+        hint.setWordWrap(True)
+        form.addRow("", hint)
+        layout.addLayout(form)
+
+        self._buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        qconnect(self._buttons.accepted, self.accept)
+        qconnect(self._buttons.rejected, self.reject)
+        layout.addWidget(self._buttons)
+
+        qconnect(self._enabled.toggled, self._sync_enabled_state)
+        self._sync_enabled_state()
+
+    @staticmethod
+    def _summary_text(status: dict) -> str:
+        if not status.get("enabled"):
+            return "No daily reading limit is set for this PDF."
+        limit = int(status.get("daily_page_limit", 0) or 0)
+        used = int(status.get("pages_used", 0) or 0)
+        remaining = int(status.get("pages_remaining", 0) or 0)
+        mode_label = get_pdf_limit_mode_label(status.get("enforcement_mode"))
+        return (
+            f"Today: {used}/{limit} pages used, {remaining} remaining. "
+            f"Mode: {mode_label}."
+        )
+
+    def _sync_enabled_state(self) -> None:
+        enabled = self._enabled.isChecked()
+        self._limit_spin.setEnabled(enabled)
+        self._mode.setEnabled(enabled)
+
+    def result_settings(self) -> dict:
+        return {
+            "enabled": self._enabled.isChecked(),
+            "daily_page_limit": int(self._limit_spin.value()),
+            "enforcement_mode": str(self._mode.currentData() or "warning"),
+        }
+
+
+def _summarize_due_review_pages(due_cards: list[dict]) -> str:
+    pages = sorted({int(row.get("page", 0) or 0) for row in due_cards if int(row.get("page", 0) or 0) > 0})
+    if not pages:
+        return "earlier pages"
+    if len(pages) <= 6:
+        return ", ".join(str(page) for page in pages)
+    preview = ", ".join(str(page) for page in pages[:6])
+    return f"{preview}, +{len(pages) - 6} more"
+
+
+class _PdfDueReviewPromptDialog(QDialog):
+    def __init__(self, parent, *, due_cards: list[dict], settings: dict, current_page: int):
+        super().__init__(parent)
+        self._review_now = False
+        self.setWindowTitle("Review Due PDF Cards")
+        self.setModal(True)
+        self.resize(520, 360)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        count = len(due_cards)
+        earlier_pages = _summarize_due_review_pages(due_cards)
+        summary = QLabel(
+            f"You have {count} due card{'s' if count != 1 else ''} from this PDF on pages up to {current_page}.\n"
+            f"Pages: {earlier_pages}"
+        )
+        summary.setWordWrap(True)
+        summary.setStyleSheet(
+            "QLabel { background: rgba(74,144,217,0.10); border: 1px solid rgba(74,144,217,0.35); "
+            "border-radius: 6px; padding: 8px; }"
+        )
+        layout.addWidget(summary)
+
+        detail_label = QLabel("Reviewing them first can refresh earlier context before you continue reading.")
+        detail_label.setWordWrap(True)
+        layout.addWidget(detail_label)
+
+        details = QTextEdit(self)
+        details.setReadOnly(True)
+        details.setMinimumHeight(180)
+        details.setHtml(self._details_html(due_cards))
+        layout.addWidget(details, 1)
+
+        self._offer_on_open = QCheckBox("Offer this due-card review automatically when opening this PDF")
+        self._offer_on_open.setChecked(bool(settings.get("enabled", True)))
+        layout.addWidget(self._offer_on_open)
+
+        buttons = QDialogButtonBox(parent=self)
+        self._review_btn = buttons.addButton("Review Now", QDialogButtonBox.ButtonRole.AcceptRole)
+        self._skip_btn = buttons.addButton("Not Now", QDialogButtonBox.ButtonRole.RejectRole)
+        qconnect(self._review_btn.clicked, self._accept_review)
+        qconnect(self._skip_btn.clicked, self.reject)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def _details_html(due_cards: list[dict]) -> str:
+        lines = []
+        for row in due_cards[:20]:
+            title = str(row.get("title") or f"Card {row.get('card_id')}")
+            excerpt = str(row.get("excerpt") or "").strip()
+            state = str(row.get("due_state") or "due").capitalize()
+            detail = f"p.{int(row.get('page', 0) or 0)} — {title} <span style='color:#8892a0;'>({state})</span>"
+            if excerpt:
+                detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
+            lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
+        if len(due_cards) > 20:
+            lines.append(
+                f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
+                f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
+            )
+        return "".join(lines)
+
+    def _accept_review(self) -> None:
+        self._review_now = True
+        self.accept()
+
+    def review_requested(self) -> bool:
+        return self._review_now
+
+    def offer_on_open_enabled(self) -> bool:
+        return bool(self._offer_on_open.isChecked())
 
 # ── Callback injection (breaks circular import with __init__.py) ──────────────
 
@@ -160,6 +360,161 @@ _MSG_SNAPSHOT = "incremento_pdf_snapshot:"
 _MSG_FINISHED = "incremento_pdf_finished:"
 _MSG_OPEN_CARD = "incremento_open_card:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
+_MSG_LIMIT_SETTINGS = "incremento_pdf_limit_settings:"
+_MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
+_MSG_DUE_REVIEW = "incremento_pdf_due_review:"
+
+
+def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
+    try:
+        return get_pdf_daily_limit_status(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            current_page=current_page,
+        )
+    except Exception:
+        return {"enabled": False}
+
+
+def _push_pdf_limit_status(status: dict) -> None:
+    if _pdf_dock is None:
+        return
+    try:
+        _pdf_dock._view.page().runJavaScript(
+            "window.incrementoReceivePdfLimitStatus && "
+            f"window.incrementoReceivePdfLimitStatus({json.dumps(status)});"
+        )
+    except Exception:
+        pass
+
+
+def _open_pdf_limit_dialog(card_id: int) -> None:
+    settings = get_pdf_daily_limit_settings(_ADDON_DIR, _active_profile(), int(card_id))
+    status = _current_pdf_limit_status(
+        int(card_id),
+        current_page=get_page(_ADDON_DIR, _active_profile(), int(card_id)),
+    )
+    dlg = _PdfReadingLimitDialog(mw, settings=settings, status=status)
+    if not dlg.exec():
+        return
+    new_settings = dlg.result_settings()
+    save_pdf_daily_limit_settings(
+        _ADDON_DIR,
+        _active_profile(),
+        int(card_id),
+        enabled=bool(new_settings.get("enabled")),
+        daily_page_limit=int(new_settings.get("daily_page_limit", 0) or 0),
+        enforcement_mode=str(new_settings.get("enforcement_mode") or "warning"),
+    )
+    refreshed = _current_pdf_limit_status(
+        int(card_id),
+        current_page=get_page(_ADDON_DIR, _active_profile(), int(card_id)),
+    )
+    _push_pdf_limit_status(refreshed)
+    if refreshed.get("enabled"):
+        tooltip(
+            f"PDF limit saved: {refreshed['daily_page_limit']} pages/day "
+            f"({refreshed['enforcement_label']})."
+        )
+    else:
+        tooltip("PDF daily reading limit disabled.")
+
+
+def _start_due_pdf_review(card_id: int, *, current_page: int, due_cards: list[dict]) -> None:
+    selected_ids = [int(row["card_id"]) for row in due_cards if int(row.get("card_id", 0) or 0) > 0]
+    if not selected_ids:
+        tooltip("No due extracted cards to review for this PDF.")
+        return
+
+    try:
+        note = mw.col.get_note(mw.col.get_card(int(card_id)).nid)
+        filename = str(note["PDF_Filename"])
+    except Exception:
+        filename = str(_current_pdf_filename or "")
+    if not filename:
+        showInfo("Could not reopen this PDF after review.")
+        return
+
+    zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
+    read_page = get_read_page(_ADDON_DIR, _active_profile(), int(card_id))
+
+    current_deck = {}
+    try:
+        current_deck = mw.col.decks.current() or {}
+    except Exception:
+        current_deck = {}
+    previous_did = current_deck.get("id")
+
+    def _restore_pdf() -> None:
+        try:
+            if previous_did:
+                mw.col.decks.select(previous_did)
+        except Exception:
+            pass
+        QTimer.singleShot(
+            0,
+            lambda: show_pdf_in_dock(
+                int(card_id),
+                filename,
+                int(current_page),
+                zoom,
+                read_page=read_page,
+                preserve_history=False,
+                offer_due_review_prompt=False,
+            ),
+        )
+
+    started = start_explicit_review(
+        selected_ids,
+        deck_name=INCREMENTO_PDF_REVIEW_DECK,
+        preserve_order=True,
+        empty_message="No due extracted cards are available to review for this PDF.",
+        on_finished=_restore_pdf,
+    )
+    if not started:
+        return
+
+
+def _offer_due_review_for_pdf(
+    card_id: int,
+    *,
+    current_page: int | None = None,
+    force: bool = False,
+) -> None:
+    page = max(1, int(current_page or get_page(_ADDON_DIR, _active_profile(), int(card_id)) or 1))
+    settings = get_pdf_due_review_prompt_settings(_ADDON_DIR, _active_profile(), int(card_id))
+    if not force and not settings.get("enabled", True):
+        return
+
+    due_cards = get_due_pdf_source_cards(
+        _ADDON_DIR,
+        _active_profile(),
+        int(card_id),
+        page,
+    )
+    if not due_cards:
+        if force:
+            tooltip("No due extracted cards from this PDF up to the current page.")
+        return
+
+    dlg = _PdfDueReviewPromptDialog(
+        mw,
+        due_cards=due_cards,
+        settings=settings,
+        current_page=page,
+    )
+    result = dlg.exec()
+    new_enabled = dlg.offer_on_open_enabled()
+    if new_enabled != bool(settings.get("enabled", True)):
+        save_pdf_due_review_prompt_settings(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            enabled=new_enabled,
+        )
+    if result and dlg.review_requested():
+        _start_due_pdf_review(int(card_id), current_page=page, due_cards=due_cards)
 
 
 # ── pycmd bridge (console.log interceptor) ───────────────────────────────────
@@ -179,10 +534,25 @@ class _PdfDockPage(QWebEnginePage):
                 try:
                     cid = int(parts[1])
                     pg = int(parts[2])
+                    current_pg = get_page(_ADDON_DIR, _active_profile(), cid)
+                    status_before = _current_pdf_limit_status(cid, current_page=current_pg)
+                    allowed_max = status_before.get("allowed_max_page")
+                    is_blocking = bool(
+                        status_before.get("enabled")
+                        and status_before.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                        and not status_before.get("override_enabled")
+                        and allowed_max is not None
+                        and pg > current_pg
+                        and pg > int(allowed_max)
+                    )
+                    if is_blocking:
+                        _push_pdf_limit_status(status_before)
+                        return
                     if not _pdf_via_link and not _pdf_preserve_history:
                         set_page(_ADDON_DIR, _active_profile(), cid, pg)
                     if _timer_mod._timer_running:
                         _timer_mod._timer_pdf_pages.add((cid, pg))
+                    _push_pdf_limit_status(_current_pdf_limit_status(cid, current_page=pg))
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_ZOOM):
@@ -209,8 +579,23 @@ class _PdfDockPage(QWebEnginePage):
             parts = msg.split(":")
             if len(parts) == 3:
                 try:
+                    cid = int(parts[1])
+                    read_page = int(parts[2])
+                    status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
+                    allowed_max = status.get("allowed_max_page")
+                    is_blocking = bool(
+                        status.get("enabled")
+                        and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                        and not status.get("override_enabled")
+                        and allowed_max is not None
+                        and read_page > int(allowed_max)
+                    )
+                    if is_blocking:
+                        _push_pdf_limit_status(status)
+                        return
                     if not _pdf_preserve_history:
-                        set_read_page(_ADDON_DIR, _active_profile(), int(parts[1]), int(parts[2]))
+                        set_read_page(_ADDON_DIR, _active_profile(), cid, read_page)
+                    _push_pdf_limit_status(status)
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_CMD1):
@@ -238,6 +623,36 @@ class _PdfDockPage(QWebEnginePage):
                 )
             except Exception:
                 pass
+        elif msg.startswith(_MSG_LIMIT_SETTINGS):
+            try:
+                _open_pdf_limit_dialog(int(msg[len(_MSG_LIMIT_SETTINGS) :]))
+            except Exception as e:
+                showInfo(f"Could not edit PDF reading limit:\n{e}")
+        elif msg.startswith(_MSG_LIMIT_OVERRIDE):
+            try:
+                cid = int(msg[len(_MSG_LIMIT_OVERRIDE) :])
+                status = set_pdf_daily_limit_override(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    cid,
+                    enabled=True,
+                    current_page=get_page(_ADDON_DIR, _active_profile(), cid),
+                )
+                _push_pdf_limit_status(status)
+                tooltip("PDF reading limit overridden for today.")
+            except Exception as e:
+                showInfo(f"Could not override PDF reading limit:\n{e}")
+        elif msg.startswith(_MSG_DUE_REVIEW):
+            try:
+                parts = msg.split(":")
+                if len(parts) == 3:
+                    _offer_due_review_for_pdf(
+                        int(parts[1]),
+                        current_page=int(parts[2]),
+                        force=True,
+                    )
+            except Exception as e:
+                showInfo(f"Could not open PDF due-card review:\n{e}")
         elif msg.startswith(_MSG_SNAPSHOT):
             QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
         elif msg.startswith(_MSG_FINISHED):
@@ -595,6 +1010,7 @@ def show_pdf_in_dock(
     read_page=0,
     search_query="",
     preserve_history=False,
+    offer_due_review_prompt=True,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     _current_pdf_card_id = card_id
@@ -624,15 +1040,16 @@ def show_pdf_in_dock(
     ).toString()
 
     hls = load_highlights(_ADDON_DIR, _active_profile(), card_id)
+    limit_status = _current_pdf_limit_status(card_id, current_page=page)
 
     js = (
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}}};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}));"
     )
 
     current = _pdf_dock._view.url().toString()
@@ -647,6 +1064,16 @@ def show_pdf_in_dock(
         _pdf_dock._view.load(QUrl(_DOCK_HTML))
     else:
         _pdf_dock._view.page().runJavaScript(js)
+
+    if offer_due_review_prompt:
+        QTimer.singleShot(
+            0,
+            lambda cid=int(card_id), pg=int(page): _offer_due_review_for_pdf(
+                cid,
+                current_page=pg,
+                force=False,
+            ),
+        )
 
 
 # ── Reviewer hooks ────────────────────────────────────────────────────────────

@@ -17,21 +17,45 @@ def _safe_pdf_stem(raw_name: str, fallback: str = "document") -> str:
     return stem or fallback
 
 try:
-    from .db import get_connection, replace_pdf_text_index
+    from .db import (
+        get_connection,
+        get_pdf_card_sources_up_to_page,
+        get_pdf_daily_limit_config,
+        get_pdf_due_review_prompt_config,
+        get_pdf_daily_limit_usage,
+        replace_pdf_text_index,
+        set_pdf_daily_limit_config,
+        set_pdf_due_review_prompt_config,
+        set_pdf_daily_limit_usage,
+    )
     from . import paths as _paths
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
     )
+    from .scheduler_config import load_scheduler_config
+    from .statistics import _effective_date
 except ImportError:
-    from db import get_connection, replace_pdf_text_index  # test environment
+    from db import (  # test environment
+        get_connection,
+        get_pdf_card_sources_up_to_page,
+        get_pdf_daily_limit_config,
+        get_pdf_due_review_prompt_config,
+        get_pdf_daily_limit_usage,
+        replace_pdf_text_index,
+        set_pdf_daily_limit_config,
+        set_pdf_due_review_prompt_config,
+        set_pdf_daily_limit_usage,
+    )
     import paths as _paths
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
     )
+    from scheduler_config import load_scheduler_config  # type: ignore
+    from statistics import _effective_date  # type: ignore
 
 
 def get_pdf_dir() -> str:
@@ -142,6 +166,323 @@ def set_read_page(addon_dir: str, profile: str, card_id: int, read_page: int) ->
         (card_id, read_page),
     )
     conn.commit()
+
+
+_PDF_LIMIT_MODE_LABELS = {
+    "warning": "Warning",
+    "soft_lock": "Soft Lock",
+    "hard_stop": "Hard Stop",
+}
+
+
+def _current_day_end_time() -> str:
+    try:
+        cfg = load_scheduler_config()
+        day_end_time = str(getattr(cfg, "day_end_time", "00:00") or "00:00").strip()
+    except Exception:
+        day_end_time = "00:00"
+    return day_end_time or "00:00"
+
+
+def get_pdf_limit_mode_label(mode: str) -> str:
+    return _PDF_LIMIT_MODE_LABELS.get(str(mode or "").strip().lower(), "Warning")
+
+
+def get_pdf_daily_limit_settings(addon_dir: str, profile: str, card_id: int) -> dict:
+    config = get_pdf_daily_limit_config(addon_dir, profile, card_id)
+    limit = int(config.get("daily_page_limit", 0) or 0)
+    mode = str(config.get("enforcement_mode") or "warning").strip().lower()
+    if mode not in _PDF_LIMIT_MODE_LABELS:
+        mode = "warning"
+    return {
+        "enabled": limit > 0,
+        "daily_page_limit": limit,
+        "enforcement_mode": mode,
+        "enforcement_label": get_pdf_limit_mode_label(mode),
+        "updated_at": int(config.get("updated_at", 0) or 0),
+    }
+
+
+def save_pdf_daily_limit_settings(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    enabled: bool,
+    daily_page_limit: int,
+    enforcement_mode: str,
+) -> dict:
+    limit = int(daily_page_limit or 0)
+    if not enabled or limit <= 0:
+        set_pdf_daily_limit_config(
+            addon_dir,
+            profile,
+            card_id,
+            daily_page_limit=0,
+            enforcement_mode=enforcement_mode,
+        )
+        return get_pdf_daily_limit_settings(addon_dir, profile, card_id)
+
+    set_pdf_daily_limit_config(
+        addon_dir,
+        profile,
+        card_id,
+        daily_page_limit=limit,
+        enforcement_mode=enforcement_mode,
+    )
+    return get_pdf_daily_limit_settings(addon_dir, profile, card_id)
+
+
+def get_pdf_due_review_prompt_settings(addon_dir: str, profile: str, card_id: int) -> dict:
+    config = get_pdf_due_review_prompt_config(addon_dir, profile, card_id)
+    return {
+        "enabled": bool(config.get("enabled", True)),
+        "updated_at": int(config.get("updated_at", 0) or 0),
+    }
+
+
+def save_pdf_due_review_prompt_settings(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    enabled: bool,
+) -> dict:
+    set_pdf_due_review_prompt_config(
+        addon_dir,
+        profile,
+        card_id,
+        enabled=bool(enabled),
+    )
+    return get_pdf_due_review_prompt_settings(addon_dir, profile, card_id)
+
+
+def _plain_first_field(value: str) -> str:
+    text = re.sub(r"<[^>]+>", "", str(value or ""))
+    return " ".join(text.split()).strip()
+
+
+def get_due_pdf_source_cards(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    max_page: int,
+    *,
+    col=None,
+) -> list[dict]:
+    """Return due/learning extracted cards from this PDF up to max_page."""
+    max_pg = max(0, int(max_page or 0))
+    if max_pg <= 0:
+        return []
+
+    source_rows = get_pdf_card_sources_up_to_page(addon_dir, profile, int(pdf_card_id), max_pg)
+    if not source_rows:
+        return []
+
+    source_by_note: dict[int, dict] = {}
+    for row in source_rows:
+        note_id = int(row.get("note_id", 0) or 0)
+        if note_id <= 0 or note_id in source_by_note:
+            continue
+        source_by_note[note_id] = {
+            "page": int(row.get("page", 0) or 0),
+            "excerpt": str(row.get("excerpt") or "").strip(),
+        }
+    if not source_by_note:
+        return []
+
+    if col is None:
+        from aqt import mw
+
+        col = mw.col
+
+    note_ids = sorted(source_by_note)
+    note_query = " OR ".join(f"nid:{nid}" for nid in note_ids)
+    try:
+        due_card_ids = list(col.find_cards(f"({note_query}) (is:due OR is:learn) -is:suspended"))
+    except Exception:
+        return []
+
+    rows: list[dict] = []
+    for card_id in due_card_ids:
+        try:
+            card = col.get_card(int(card_id))
+        except Exception:
+            continue
+        if card is None:
+            continue
+        source = source_by_note.get(int(getattr(card, "nid", 0) or 0))
+        if not source:
+            continue
+        try:
+            note = col.get_note(card.nid)
+        except Exception:
+            continue
+        if note is None:
+            continue
+        fields = getattr(note, "fields", []) or []
+        title = _plain_first_field(fields[0] if fields else f"Card {card.id}") or f"Card {card.id}"
+        queue = int(getattr(card, "queue", 0) or 0)
+        due_value = getattr(card, "due", 0)
+        try:
+            due_value = int(due_value or 0)
+        except Exception:
+            due_value = 0
+        rows.append(
+            {
+                "card_id": int(card.id),
+                "note_id": int(card.nid),
+                "page": int(source["page"]),
+                "title": title,
+                "excerpt": str(source["excerpt"] or ""),
+                "queue": queue,
+                "due": due_value,
+                "due_state": "learning" if queue in {1, 3} else "due",
+            }
+        )
+
+    rows.sort(key=lambda row: (int(row["page"]), int(row["due"]), int(row["card_id"])))
+    return rows
+
+
+def get_pdf_daily_limit_status(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    current_page: int | None = None,
+    count_current_page: bool = True,
+    persist_usage: bool = True,
+) -> dict:
+    settings = get_pdf_daily_limit_settings(addon_dir, profile, card_id)
+    page = max(1, int(current_page or get_page(addon_dir, profile, card_id) or 1))
+    day_end_time = _current_day_end_time()
+    logical_date = _effective_date(day_end_time)
+
+    status = {
+        "enabled": settings["enabled"],
+        "daily_page_limit": settings["daily_page_limit"],
+        "enforcement_mode": settings["enforcement_mode"],
+        "enforcement_label": settings["enforcement_label"],
+        "logical_date": logical_date,
+        "day_end_time": day_end_time,
+        "current_page": page,
+        "baseline_page": max(0, page - 1),
+        "highest_page": page if count_current_page else max(0, page - 1),
+        "pages_used": 0,
+        "pages_remaining": 0,
+        "allowed_max_page": None,
+        "override_enabled": False,
+        "limit_reached": False,
+        "blocking_active": False,
+        "can_override": False,
+    }
+
+    if not settings["enabled"]:
+        return status
+
+    usage = get_pdf_daily_limit_usage(addon_dir, profile, card_id, logical_date)
+    baseline_page = int(usage.get("baseline_page", 0) or 0)
+    highest_page = int(usage.get("highest_page", 0) or 0)
+    override_enabled = bool(usage.get("override_enabled"))
+
+    if baseline_page <= 0 and highest_page <= 0:
+        baseline_page = max(0, page - 1)
+        highest_page = page if count_current_page else baseline_page
+        if persist_usage:
+            set_pdf_daily_limit_usage(
+                addon_dir,
+                profile,
+                card_id,
+                logical_date,
+                baseline_page=baseline_page,
+                highest_page=highest_page,
+                override_enabled=override_enabled,
+            )
+    elif count_current_page and page > highest_page:
+        highest_page = page
+        if persist_usage:
+            set_pdf_daily_limit_usage(
+                addon_dir,
+                profile,
+                card_id,
+                logical_date,
+                baseline_page=baseline_page,
+                highest_page=highest_page,
+                override_enabled=override_enabled,
+            )
+
+    daily_limit = int(settings["daily_page_limit"] or 0)
+    pages_used = max(0, highest_page - baseline_page)
+    allowed_max_page = baseline_page + daily_limit if daily_limit > 0 else None
+    pages_remaining = max(0, daily_limit - pages_used) if daily_limit > 0 else 0
+    limit_reached = bool(daily_limit > 0 and pages_used >= daily_limit)
+    blocking_active = bool(
+        daily_limit > 0
+        and settings["enforcement_mode"] in {"soft_lock", "hard_stop"}
+        and not override_enabled
+        and limit_reached
+    )
+
+    status.update(
+        {
+            "baseline_page": baseline_page,
+            "highest_page": highest_page,
+            "pages_used": pages_used,
+            "pages_remaining": pages_remaining,
+            "allowed_max_page": allowed_max_page,
+            "override_enabled": override_enabled,
+            "limit_reached": limit_reached,
+            "blocking_active": blocking_active,
+            "can_override": bool(
+                settings["enforcement_mode"] == "soft_lock"
+                and daily_limit > 0
+                and not override_enabled
+            ),
+        }
+    )
+    return status
+
+
+def set_pdf_daily_limit_override(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    enabled: bool,
+    current_page: int | None = None,
+) -> dict:
+    settings = get_pdf_daily_limit_settings(addon_dir, profile, card_id)
+    if not settings["enabled"]:
+        return get_pdf_daily_limit_status(
+            addon_dir,
+            profile,
+            card_id,
+            current_page=current_page,
+        )
+
+    page = max(1, int(current_page or get_page(addon_dir, profile, card_id) or 1))
+    logical_date = _effective_date(_current_day_end_time())
+    usage = get_pdf_daily_limit_usage(addon_dir, profile, card_id, logical_date)
+    baseline_page = int(usage.get("baseline_page", 0) or max(0, page - 1))
+    highest_page = int(usage.get("highest_page", 0) or page)
+    if page > highest_page:
+        highest_page = page
+    set_pdf_daily_limit_usage(
+        addon_dir,
+        profile,
+        card_id,
+        logical_date,
+        baseline_page=baseline_page,
+        highest_page=highest_page,
+        override_enabled=bool(enabled),
+    )
+    return get_pdf_daily_limit_status(
+        addon_dir,
+        profile,
+        card_id,
+        current_page=page,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +739,8 @@ def add_pdf_card(
     deck_name: str = "Topics",
     tags: list[str] | None = None,
     metadata: dict[str, str] | None = None,
+    daily_page_limit: int | None = None,
+    enforcement_mode: str = "warning",
 ) -> int:
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
@@ -455,6 +798,17 @@ def add_pdf_card(
 
     try:
         replace_pdf_text_index(addon_dir, _paths.get_active_profile(), cid, page_texts)
+    except Exception:
+        pass
+    try:
+        save_pdf_daily_limit_settings(
+            addon_dir,
+            _paths.get_active_profile(),
+            cid,
+            enabled=bool(int(daily_page_limit or 0) > 0),
+            daily_page_limit=int(daily_page_limit or 0),
+            enforcement_mode=enforcement_mode,
+        )
     except Exception:
         pass
     return cid
