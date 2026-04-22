@@ -4,10 +4,12 @@ import {
   getCurrentMediaContextForTab,
   getLinkedCardContextForTab,
   getCommandShortcuts,
+  getLocalExtensionSetting,
   copyLatestVideoTime,
   getActiveTab,
   openExtensionShortcutsPage,
   openBookmarksPage,
+  setLocalExtensionSetting,
   triggerBrowserCaptureForTab,
   updateBrowserMediaRefBadgeForTab,
 } from "../shared/chromeApi.js";
@@ -23,6 +25,12 @@ import {
   buildPreferredWritingFilename,
   shouldAutoGenerateWritingTitle,
 } from "../shared/writingTitle.js";
+import {
+  DEFAULT_LINK_SAVE_SETTINGS,
+  LINK_SAVE_SETTINGS_KEY,
+  MODIFIER_OPTIONS,
+  normalizeLinkSaveSettings,
+} from "../shared/linkSaveModel.js";
 
 function initialStatus() {
   return { text: "", kind: "" };
@@ -86,6 +94,7 @@ export function PopupApp() {
   const [linkedCard, setLinkedCard] = useState({ linked: false, cardId: 0 });
   const [mediaContext, setMediaContext] = useState(null);
   const [manualTime, setManualTime] = useState("");
+  const [linkSaveSettings, setLinkSaveSettings] = useState(DEFAULT_LINK_SAVE_SETTINGS);
 
   const pageUrl = String(snapshot?.url || activeTab?.url || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
@@ -164,6 +173,14 @@ export function PopupApp() {
         const commands = await getCommandShortcuts();
         if (!cancelled) {
           setCommandShortcuts(Array.isArray(commands) ? commands : []);
+        }
+
+        const storedLinkSaveSettings = await getLocalExtensionSetting(
+          LINK_SAVE_SETTINGS_KEY,
+          DEFAULT_LINK_SAVE_SETTINGS,
+        );
+        if (!cancelled) {
+          setLinkSaveSettings(normalizeLinkSaveSettings(storedLinkSaveSettings));
         }
       } catch (error) {
         if (!cancelled) {
@@ -498,6 +515,24 @@ export function PopupApp() {
     }
   }
 
+  async function handleSaveLinkSettings() {
+    setBusy(true);
+    setStatus({ text: "Saving quick link settings...", kind: "" });
+    try {
+      const normalized = normalizeLinkSaveSettings(linkSaveSettings);
+      await setLocalExtensionSetting(LINK_SAVE_SETTINGS_KEY, normalized);
+      setLinkSaveSettings(normalized);
+      setStatus({ text: "Saved quick link settings.", kind: "success" });
+    } catch (error) {
+      setStatus({
+        text: error?.message || "Failed to save quick link settings.",
+        kind: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const selectionShortcut = commandShortcuts.find((command) => command.name === "browser-capture-selection")?.shortcut || "";
   const snapshotShortcut = commandShortcuts.find((command) => command.name === "browser-capture-snapshot")?.shortcut || "";
 
@@ -574,6 +609,70 @@ export function PopupApp() {
         <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
           {status.text}
         </p>
+      </section>
+
+      <section className="panel panel-secondary">
+        <div className="eyebrow">Quick link save</div>
+        <p className="note">
+          Save clicked links directly to Incremento as webpage cards and optionally keep navigating.
+        </p>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={linkSaveSettings.modifierClickEnabled}
+            onChange={(event) => setLinkSaveSettings((current) => ({
+              ...current,
+              modifierClickEnabled: event.target.checked,
+            }))}
+          />
+          <span>Enable modifier-click save on links</span>
+        </label>
+        <label className="field">
+          <span>Modifier key</span>
+          <select
+            value={linkSaveSettings.modifierKey}
+            onChange={(event) => setLinkSaveSettings((current) => ({
+              ...current,
+              modifierKey: event.target.value,
+            }))}
+          >
+            {MODIFIER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={linkSaveSettings.navigateAfterSave}
+            onChange={(event) => setLinkSaveSettings((current) => ({
+              ...current,
+              navigateAfterSave: event.target.checked,
+            }))}
+          />
+          <span>Continue following the link after saving</span>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={linkSaveSettings.contextMenuEnabled}
+            onChange={(event) => setLinkSaveSettings((current) => ({
+              ...current,
+              contextMenuEnabled: event.target.checked,
+            }))}
+          />
+          <span>Enable right-click link action</span>
+        </label>
+        <button
+          className="ghost-btn"
+          type="button"
+          disabled={busy}
+          onClick={() => void handleSaveLinkSettings()}
+        >
+          Save quick link settings
+        </button>
       </section>
 
       <section className="panel panel-secondary">

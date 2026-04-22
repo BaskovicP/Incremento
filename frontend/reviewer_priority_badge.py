@@ -3,6 +3,7 @@ import json
 
 _BADGE_ID = "incremento-reviewer-priority-badge"
 _STYLE_ID = "incremento-reviewer-priority-badge-style"
+_SPACER_ID = "incremento-reviewer-priority-badge-spacer"
 
 
 def format_reviewer_priority_value(priority: float | int | None) -> str:
@@ -55,10 +56,15 @@ def build_reviewer_priority_badge_js(
   var enabled = {"true" if enabled else "false"};
   var badgeId = {_BADGE_ID!r};
   var styleId = {_STYLE_ID!r};
+  var spacerId = {_SPACER_ID!r};
   var badge = document.getElementById(badgeId);
+  var spacer = document.getElementById(spacerId);
   if (!enabled) {{
     if (badge) {{
       badge.remove();
+    }}
+    if (spacer) {{
+      spacer.remove();
     }}
     return;
   }}
@@ -87,6 +93,12 @@ def build_reviewer_priority_badge_js(
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         pointer-events: none;
         backdrop-filter: blur(10px);
+      }}
+      #${{spacerId}} {{
+        display: block;
+        width: 100%;
+        height: 82px;
+        pointer-events: none;
       }}
       #${{badgeId}} .incremento-priority-metric {{
         display: flex;
@@ -143,6 +155,14 @@ def build_reviewer_priority_badge_js(
         '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
       '</div>';
     document.body.appendChild(badge);
+  }}
+  if (!spacer) {{
+    spacer = document.createElement("div");
+    spacer.id = spacerId;
+    spacer.setAttribute("aria-hidden", "true");
+    document.body.insertBefore(spacer, document.body.firstChild);
+  }} else if (spacer.parentNode !== document.body || spacer !== document.body.firstChild) {{
+    document.body.insertBefore(spacer, document.body.firstChild);
   }}
   var valueNode = badge.querySelector(".incremento-priority-value");
   var aFactorNode = badge.querySelector(".incremento-a-factor-value");

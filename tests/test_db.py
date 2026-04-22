@@ -127,6 +127,17 @@ class TestGetConnection:
         }
         assert "browser_media_refs" in tables
 
+    def test_creates_reviewer_recent_tags_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "reviewer_recent_tags" in tables
+
     def test_creates_topic_postpones_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
@@ -1007,3 +1018,56 @@ class TestKnowledgeTreePostponePresets:
             "TestProfile",
             "Temporary",
         ) is None
+
+
+class TestReviewerRecentTags:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_returns_empty_list_by_default(self):
+        assert db.get_recent_reviewer_tags(self.addon_dir, "TestProfile") == []
+
+    def test_touch_and_get_recent_tags_uses_newest_first(self):
+        db.touch_recent_reviewer_tags(
+            self.addon_dir,
+            "TestProfile",
+            ["biology", "chemistry"],
+            used_at=100,
+        )
+        db.touch_recent_reviewer_tags(
+            self.addon_dir,
+            "TestProfile",
+            ["physics"],
+            used_at=200,
+        )
+
+        assert db.get_recent_reviewer_tags(self.addon_dir, "TestProfile") == [
+            "physics",
+            "chemistry",
+            "biology",
+        ]
+
+    def test_touch_updates_existing_tag_and_trims_limit(self):
+        db.touch_recent_reviewer_tags(
+            self.addon_dir,
+            "TestProfile",
+            ["one", "two", "three"],
+            used_at=100,
+            limit=2,
+        )
+        db.touch_recent_reviewer_tags(
+            self.addon_dir,
+            "TestProfile",
+            ["One"],
+            used_at=300,
+            limit=2,
+        )
+
+        assert db.get_recent_reviewer_tags(self.addon_dir, "TestProfile", limit=5) == [
+            "One",
+            "three",
+        ]

@@ -128,6 +128,13 @@ class _WebDockRuntime:
 _runtime = _WebDockRuntime()
 
 
+def current_web_card_id() -> int | None:
+    try:
+        return int(_runtime.current_card_id) if _runtime.current_card_id is not None else None
+    except Exception:
+        return None
+
+
 def _remember_browser_card_scroll() -> bool:
     try:
         return bool(configured_remember_browser_card_scroll())

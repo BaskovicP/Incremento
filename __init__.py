@@ -110,9 +110,12 @@ from .backend.db import (
     get_connection,
     get_card_browser_media_ref,
     get_knowledge_tree_node,
+    get_recent_reviewer_tags,
     replace_pdf_text_index,
     search_pdf_text_index,
+    touch_recent_reviewer_tags,
 )
+from .backend.reviewer_tags import append_missing_tags, normalize_tag_list
 from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
 from .backend.session import (
@@ -124,6 +127,7 @@ from .backend.session import (
 from .frontend.settings_dialog import IncrementoSettingsDialog, default_shortcuts
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
+from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.search_all import _SearchAllDialog
 
 _ADDON_DIR = os.path.dirname(__file__)
@@ -695,6 +699,17 @@ def _on_js_message(handled, message, context) -> tuple:
             pass
         return (True, None)
 
+    if message.startswith("incremento_extract_options:"):
+        try:
+            data = json.loads(message[len("incremento_extract_options:") :])
+            _add_card_dock_mod.set_current_extract_options(
+                priority=data.get("priority"),
+                mark_topic=bool(data.get("markTopic")),
+            )
+        except Exception:
+            pass
+        return (True, None)
+
     if message.startswith("incremento_open_card:"):
         try:
             note_id = int(message[len("incremento_open_card:") :])
@@ -789,6 +804,7 @@ def _on_js_message(handled, message, context) -> tuple:
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_epub_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_web_dock_mod.on_add_cards_did_add_note)
+gui_hooks.add_cards_did_add_note.append(_add_card_dock_mod.on_add_cards_did_add_note)
 
 gui_hooks.reviewer_did_show_question.append(_on_timer_question_shown)
 gui_hooks.reviewer_did_show_question.append(_review_time_mod.on_reviewer_question_shown)
@@ -1550,6 +1566,11 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         deck_names=deck_names,
         default_notetype=default_notetype,
         default_deck=default_deck,
+        default_priority=_add_card_dock_mod.source_relative_extract_priority_for_card(
+            getattr(parent_card, "id", None)
+        ),
+        default_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(),
+        lower_is_more_important=configured_priority_lower_is_more_important(),
         parent=mw,
     )
     if not dlg.exec():
@@ -1572,8 +1593,14 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
             if fname in note:
                 note[fname] = val
         apply_incremento_metadata(note, metadata)
+        if dlg.mark_topic:
+            _add_card_dock_mod.add_topic_tags_to_note(note)
         mw.col.add_note(note, deck_id)
-        showInfo(f"Card created in '{dlg.deck_name}'.")
+        priority_cards = _add_card_dock_mod.apply_priority_to_note_cards(note, dlg.priority)
+        showInfo(
+            f"Card created in '{dlg.deck_name}'."
+            + (f"\nPriority {dlg.priority:.1f} applied to {priority_cards} card(s)." if priority_cards else "")
+        )
     except Exception as e:
         showInfo(f"Failed to create card:\n{e}")
 
@@ -1626,6 +1653,65 @@ def _open_priority_dialog() -> None:
     _open_priority_dialog_for_card(card)
 
 
+def _save_note_tags(note, tags: list[str]) -> None:
+    note.tags = list(tags)
+    try:
+        mw.col.update_note(note)
+        return
+    except Exception:
+        pass
+    try:
+        note.flush()
+    except Exception:
+        pass
+
+
+def _open_reviewer_tag_dialog() -> None:
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer else None
+    if card is None:
+        showInfo("No card is currently being reviewed.")
+        return
+    try:
+        note = card.note()
+    except Exception:
+        note = None
+    if note is None:
+        showInfo("Could not load the current note.")
+        return
+
+    try:
+        all_tags = sorted(mw.col.tags.all(), key=lambda value: (str(value).lower(), str(value)))
+    except Exception:
+        all_tags = []
+    current_tags = normalize_tag_list(getattr(note, "tags", []) or [])
+    recent_tags = get_recent_reviewer_tags(_ADDON_DIR, _active_profile(), limit=10)
+    if not all_tags and not recent_tags:
+        showInfo("No tags exist in this collection yet.")
+        return
+    dlg = ReviewerTagDialog(
+        current_tags=current_tags,
+        recent_tags=recent_tags,
+        all_tags=all_tags,
+        parent=mw,
+    )
+    if not dlg.exec():
+        return
+
+    selected_tags = dlg.selected_tags()
+    updated_tags, added_tags = append_missing_tags(current_tags, selected_tags)
+    if not added_tags:
+        tooltip("All selected tags are already on this note.")
+        return
+
+    _save_note_tags(note, updated_tags)
+    touch_recent_reviewer_tags(_ADDON_DIR, _active_profile(), added_tags, limit=10)
+    summary = ", ".join(added_tags[:4])
+    if len(added_tags) > 4:
+        summary += ", ..."
+    tooltip(f"Added tags: {summary}")
+
+
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
 _priority_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_priority_shortcut.activated, _open_priority_dialog)
@@ -1635,6 +1721,11 @@ _extract_shortcut = QShortcut(QKeySequence("Alt+X"), mw)
 _extract_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_extract_shortcut.activated, _extract_card)
 _register_shortcut_action("extract_card", _extract_shortcut)
+
+_reviewer_tag_shortcut = QShortcut(QKeySequence("Alt+T"), mw)
+_reviewer_tag_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(_reviewer_tag_shortcut.activated, _open_reviewer_tag_dialog)
+_register_shortcut_action("append_tags_reviewer", _reviewer_tag_shortcut)
 
 _pdf_prev_page_shortcut = QShortcut(QKeySequence("Ctrl+Alt+Left"), mw)
 _pdf_prev_page_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
@@ -2616,6 +2707,9 @@ def openSettingsFunction() -> None:
         cfg.get("shortcuts") or {},
         note_type_names=note_type_names,
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
+        current_extract_priority=_add_card_dock_mod.configured_extract_priority(cfg),
+        current_extract_priority_multiplier=_add_card_dock_mod.configured_extract_priority_multiplier(cfg),
+        current_extract_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
@@ -2636,6 +2730,9 @@ def openSettingsFunction() -> None:
 
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
+    cfg["extract_priority"] = dlg.extract_priority
+    cfg["extract_priority_multiplier"] = dlg.extract_priority_multiplier
+    cfg["extract_mark_topic"] = dlg.extract_mark_topic
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer

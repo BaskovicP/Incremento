@@ -88,6 +88,23 @@ h1 {
   display: block;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #473a24;
+}
+
+.toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #b46817;
+}
+
 .field span {
   display: block;
   margin-bottom: 6px;

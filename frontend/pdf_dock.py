@@ -121,6 +121,13 @@ _current_pdf_card_id = None
 _current_pdf_filename = None
 _pdf_via_link = False  # True when dock was opened via a cross-reference link
 _pdf_preserve_history = False
+
+
+def current_pdf_card_id() -> int | None:
+    try:
+        return int(_current_pdf_card_id) if _current_pdf_card_id is not None else None
+    except Exception:
+        return None
 _pdf_shortcuts = []
 _pdf_key_filter = None
 

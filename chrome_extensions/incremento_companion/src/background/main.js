@@ -1,5 +1,11 @@
 import { importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
+import {
+  buildLinkSaveTitle,
+  isSupportedLinkSaveUrl,
+  LINK_SAVE_SETTINGS_KEY,
+  normalizeLinkSaveSettings,
+} from "../shared/linkSaveModel.js";
 import { isSupportedVideoUrl } from "../shared/url.js";
 import {
   buildAutomaticWritingTitle,
@@ -34,6 +40,7 @@ const COMMAND_ADD_SELECTION_TO_MARKDOWN = "add-selection-to-markdown";
 const COMMAND_ADD_PAGE_TO_MARKDOWN = "add-page-to-markdown";
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
+const CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID = "incremento-save-link-as-webpage";
 
 function isHttpUrl(rawUrl) {
   return /^https?:\/\//i.test(String(rawUrl || ""));
@@ -871,6 +878,97 @@ function buildImportPayload(kind, context, options = {}) {
   return payload;
 }
 
+async function loadLinkSaveSettings() {
+  try {
+    const data = await chrome.storage.local.get(LINK_SAVE_SETTINGS_KEY);
+    return normalizeLinkSaveSettings(data?.[LINK_SAVE_SETTINGS_KEY]);
+  } catch (_error) {
+    return normalizeLinkSaveSettings(null);
+  }
+}
+
+async function syncLinkSaveContextMenu() {
+  if (!chrome.contextMenus?.removeAll || !chrome.contextMenus?.create) {
+    return;
+  }
+  const settings = await loadLinkSaveSettings();
+  await new Promise((resolve) => {
+    try {
+      chrome.contextMenus.removeAll(() => resolve());
+    } catch (_error) {
+      resolve();
+    }
+  });
+  if (!settings.contextMenuEnabled) {
+    return;
+  }
+  await new Promise((resolve) => {
+    try {
+      chrome.contextMenus.create({
+        id: CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID,
+        title: "Save link to Incremento as webpage",
+        contexts: ["link"],
+      }, () => resolve());
+    } catch (_error) {
+      resolve();
+    }
+  });
+}
+
+async function loadContextMenuLinkInfo(tabId, linkUrl) {
+  if (typeof tabId !== "number" || !chrome.tabs?.sendMessage) {
+    return null;
+  }
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_CONTEXT_LINK_INFO" });
+    if (!response?.ok) {
+      return null;
+    }
+    const url = String(response.url || "").trim();
+    if (url && linkUrl && url !== linkUrl) {
+      return null;
+    }
+    return {
+      url,
+      title: String(response.title || "").trim(),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
+  const url = String(rawUrl || "").trim();
+  if (!isSupportedLinkSaveUrl(url)) {
+    const message = "Only http(s) links can be saved to Incremento.";
+    if (typeof tabId === "number") {
+      await showToastInTab(tabId, message);
+    }
+    return { ok: false, error: message };
+  }
+
+  const payload = buildImportPayload("webpage", {
+    url,
+    title: buildLinkSaveTitle(rawTitle, url),
+    selectionText: "",
+    html: "",
+  });
+
+  try {
+    const result = await importIntoIncremento(payload);
+    if (typeof tabId === "number") {
+      await showToastInTab(tabId, `Added ${result.kind} card: ${result.title}`);
+    }
+    return { ok: true, result };
+  } catch (error) {
+    const message = String(error?.message || "Failed to add webpage card.");
+    if (typeof tabId === "number") {
+      await showToastInTab(tabId, message);
+    }
+    return { ok: false, error: message };
+  }
+}
+
 async function addCurrentPageToIncremento(command) {
   const tab = await getActiveTab();
   if (!tab?.id) {
@@ -1307,6 +1405,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "SAVE_CLICKED_LINK_AS_WEBPAGE") {
+    void (async () => {
+      const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
+      const result = await addExplicitWebpageToIncremento(
+        tabId,
+        String(msg.url || ""),
+        String(msg.title || ""),
+      );
+      sendResponse?.(result);
+    })();
+    return true;
+  }
+
   if (msg.type === "SUBMIT_BROWSER_CAPTURE") {
     void (async () => {
       try {
@@ -1425,6 +1536,21 @@ chrome.action.onClicked.addListener(() => {
   void copyLatestStoredTime(true);
 });
 
+if (chrome.contextMenus?.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID) {
+      return;
+    }
+    void (async () => {
+      const tabId = typeof tab?.id === "number" ? tab.id : null;
+      const linkUrl = String(info.linkUrl || "").trim();
+      const contextLink = tabId !== null ? await loadContextMenuLinkInfo(tabId, linkUrl) : null;
+      const title = String(contextLink?.title || "").trim();
+      await addExplicitWebpageToIncremento(tabId, linkUrl, title);
+    })();
+  });
+}
+
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === COMMAND_BROWSER_CAPTURE_SELECTION) {
     void (tab ? triggerBrowserCaptureOnTab(tab, "selection") : triggerBrowserCapture("selection"));
@@ -1450,9 +1576,26 @@ chrome.commands.onCommand.addListener((command, tab) => {
 });
 
 void injectContentScriptIntoOpenTabs();
+void syncLinkSaveContextMenu();
 
 if (chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(() => {
     void injectContentScriptIntoOpenTabs();
+    void syncLinkSaveContextMenu();
+  });
+}
+
+if (chrome.runtime?.onStartup) {
+  chrome.runtime.onStartup.addListener(() => {
+    void syncLinkSaveContextMenu();
+  });
+}
+
+if (chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes || !Object.prototype.hasOwnProperty.call(changes, LINK_SAVE_SETTINGS_KEY)) {
+      return;
+    }
+    void syncLinkSaveContextMenu();
   });
 }

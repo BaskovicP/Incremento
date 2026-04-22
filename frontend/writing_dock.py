@@ -61,6 +61,13 @@ _loading_editor = False
 _autosave_timer = None
 
 
+def current_writing_card_id() -> int | None:
+    try:
+        return int(_current_writing_card_id) if _current_writing_card_id is not None else None
+    except Exception:
+        return None
+
+
 def _refresh_markdown_preview(text: str | None = None) -> None:
     if _writing_dock is None:
         return

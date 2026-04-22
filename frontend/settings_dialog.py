@@ -12,6 +12,8 @@ from aqt.qt import (
     QKeySequenceEdit,
     QPushButton,
     QRadioButton,
+    QScrollArea,
+    QDoubleSpinBox,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -101,6 +103,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "Alt+X",
     },
     {
+        "id": "append_tags_reviewer",
+        "label": "Append Tags To Reviewed Card",
+        "default": "Alt+T",
+    },
+    {
         "id": "pdf_prev_page",
         "label": "PDF Viewer: Previous Page",
         "default": "Ctrl+Alt+Left",
@@ -164,6 +171,9 @@ class IncrementoSettingsDialog(QDialog):
         current_shortcuts: dict[str, str],
         note_type_names: list[str] | None = None,
         current_extract_notetype: str = "",
+        current_extract_priority: float = 40.0,
+        current_extract_priority_multiplier: float = 0.98,
+        current_extract_mark_topic: bool = True,
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
@@ -182,6 +192,7 @@ class IncrementoSettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Incremento Settings")
         self.setMinimumWidth(620)
+        self.resize(720, 640)
         self._defaults = default_shortcuts()
         self._editors: dict[str, QKeySequenceEdit] = {}
 
@@ -189,6 +200,13 @@ class IncrementoSettingsDialog(QDialog):
 
         tabs = QTabWidget()
         root.addWidget(tabs)
+
+        def _scrollable_tab(content: QWidget) -> QScrollArea:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            scroll.setWidget(content)
+            return scroll
 
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
@@ -240,6 +258,45 @@ class IncrementoSettingsDialog(QDialog):
                 break
 
         extraction_form.addRow("Default extract card type:", self._extract_notetype_combo)
+
+        self._extract_priority_spin = QDoubleSpinBox()
+        self._extract_priority_spin.setRange(0.0, 100.0)
+        self._extract_priority_spin.setDecimals(1)
+        self._extract_priority_spin.setSingleStep(1.0)
+        try:
+            extract_priority = float(current_extract_priority)
+        except Exception:
+            extract_priority = 40.0 if current_priority_lower_is_more_important else 60.0
+        self._extract_priority_spin.setValue(max(0.0, min(100.0, extract_priority)))
+        important_end = "0" if current_priority_lower_is_more_important else "100"
+        self._extract_priority_spin.setToolTip(
+            f"Priority assigned to newly extracted cards. {important_end} is the most important end."
+        )
+        extraction_form.addRow("Fallback extract priority:", self._extract_priority_spin)
+
+        self._extract_priority_multiplier_spin = QDoubleSpinBox()
+        self._extract_priority_multiplier_spin.setRange(0.01, 10.0)
+        self._extract_priority_multiplier_spin.setDecimals(4)
+        self._extract_priority_multiplier_spin.setSingleStep(0.01)
+        try:
+            extract_multiplier = float(current_extract_priority_multiplier)
+        except Exception:
+            extract_multiplier = 0.98 if current_priority_lower_is_more_important else 1.02
+        self._extract_priority_multiplier_spin.setValue(max(0.01, min(10.0, extract_multiplier)))
+        multiplier_hint = (
+            "For a source priority of 6, multiplier 0.98 creates extract priority 5.88."
+            if current_priority_lower_is_more_important
+            else "For a source priority of 60, multiplier 1.02 creates extract priority 61.2."
+        )
+        self._extract_priority_multiplier_spin.setToolTip(
+            "New extracts use source priority × this value when the source card is known. "
+            + multiplier_hint
+        )
+        extraction_form.addRow("Source priority multiplier:", self._extract_priority_multiplier_spin)
+
+        self._extract_mark_topic_cb = QCheckBox("Mark extracted cards as topics")
+        self._extract_mark_topic_cb.setChecked(bool(current_extract_mark_topic))
+        extraction_form.addRow("", self._extract_mark_topic_cb)
 
         if isinstance(extract_source_links, dict):
             source_link_cfg = {
@@ -440,7 +497,7 @@ class IncrementoSettingsDialog(QDialog):
 
         general_layout.addLayout(topic_form)
         general_layout.addStretch(1)
-        tabs.addTab(general_tab, "General")
+        tabs.addTab(_scrollable_tab(general_tab), "General")
 
         shortcuts_tab = QWidget()
         shortcuts_layout = QVBoxLayout(shortcuts_tab)
@@ -494,7 +551,7 @@ class IncrementoSettingsDialog(QDialog):
         shortcuts_layout.addLayout(action_row)
         shortcuts_layout.addStretch(1)
 
-        tabs.addTab(shortcuts_tab, "Shortcuts")
+        tabs.addTab(_scrollable_tab(shortcuts_tab), "Shortcuts")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -523,6 +580,18 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def extract_notetype_name(self) -> str:
         return str(self._extract_notetype_combo.currentData() or "").strip()
+
+    @property
+    def extract_priority(self) -> float:
+        return round(float(self._extract_priority_spin.value()), 4)
+
+    @property
+    def extract_priority_multiplier(self) -> float:
+        return round(float(self._extract_priority_multiplier_spin.value()), 4)
+
+    @property
+    def extract_mark_topic(self) -> bool:
+        return bool(self._extract_mark_topic_cb.isChecked())
 
     @property
     def extract_source_links(self) -> dict[str, bool]:

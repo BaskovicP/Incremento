@@ -1,5 +1,14 @@
+import {
+  buildLinkSaveTitle,
+  DEFAULT_LINK_SAVE_SETTINGS,
+  eventMatchesLinkSaveModifier,
+  isSupportedLinkSaveUrl,
+  LINK_SAVE_SETTINGS_KEY,
+  normalizeLinkSaveSettings,
+} from "../shared/linkSaveModel.js";
+
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v4";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v5";
   if (window.__incrementoContentScriptVersion === CONTENT_SCRIPT_VERSION) {
     return;
   }
@@ -9,6 +18,8 @@
   const DEFAULT_PRIORITY = 50;
   const PRIORITY_MIN = 0;
   const PRIORITY_MAX = 100;
+  let linkSaveSettings = DEFAULT_LINK_SAVE_SETTINGS;
+  let lastContextLinkInfo = null;
   globalThis.__incrementoLastSelectedText = String(globalThis.__incrementoLastSelectedText || "").trim();
 
   function getTrackedSelectionText() {
@@ -152,6 +163,42 @@
       toast.style.opacity = "0";
       setTimeout(() => toast.remove(), 220);
     }, 2400);
+  }
+
+  async function loadLinkSaveSettings() {
+    try {
+      const data = await chrome.storage.local.get(LINK_SAVE_SETTINGS_KEY);
+      linkSaveSettings = normalizeLinkSaveSettings(data?.[LINK_SAVE_SETTINGS_KEY]);
+    } catch (_error) {
+      linkSaveSettings = normalizeLinkSaveSettings(null);
+    }
+  }
+
+  function findSupportedAnchor(target) {
+    const element = target instanceof Element ? target : target?.parentElement || null;
+    const anchor = element?.closest?.("a[href]");
+    if (!anchor) {
+      return null;
+    }
+    const href = String(anchor.href || anchor.getAttribute?.("href") || "").trim();
+    if (!isSupportedLinkSaveUrl(href)) {
+      return null;
+    }
+    return anchor;
+  }
+
+  function buildAnchorLinkInfo(anchor) {
+    if (!anchor) {
+      return null;
+    }
+    const url = String(anchor.href || anchor.getAttribute?.("href") || "").trim();
+    if (!isSupportedLinkSaveUrl(url)) {
+      return null;
+    }
+    return {
+      url,
+      title: buildLinkSaveTitle(anchor.textContent || "", url),
+    };
   }
 
   function ensureTrackingBadge() {
@@ -341,6 +388,18 @@
     }
   }
 
+  void loadLinkSaveSettings();
+  try {
+    chrome?.storage?.onChanged?.addListener((changes, areaName) => {
+      if (areaName !== "local" || !changes || !Object.prototype.hasOwnProperty.call(changes, LINK_SAVE_SETTINGS_KEY)) {
+        return;
+      }
+      linkSaveSettings = normalizeLinkSaveSettings(changes[LINK_SAVE_SETTINGS_KEY]?.newValue);
+    });
+  } catch (_error) {
+    // stale/invalidated context
+  }
+
   try {
     const rt = getRuntime();
     rt?.onMessage?.addListener((msg, _sender, sendResponse) => {
@@ -382,6 +441,14 @@
           selectionText: getTrackedSelectionText(),
           title: document.title || "",
           url: window.location.href || "",
+        });
+        return false;
+      }
+      if (msg.type === "GET_CONTEXT_LINK_INFO") {
+        sendResponse?.({
+          ok: true,
+          url: String(lastContextLinkInfo?.url || ""),
+          title: String(lastContextLinkInfo?.title || ""),
         });
         return false;
       }
@@ -479,13 +546,14 @@
   }
 
   function isEditableTarget(target) {
-    if (!target || !(target instanceof Element)) {
+    const element = target instanceof Element ? target : target?.parentElement || null;
+    if (!element) {
       return false;
     }
-    if (target.closest("input, textarea, select")) {
+    if (element.closest("input, textarea, select")) {
       return true;
     }
-    return !!target.closest('[contenteditable=""], [contenteditable="true"]');
+    return !!element.closest('[contenteditable=""], [contenteditable="true"]');
   }
 
   function isBrowserCaptureOpen() {
@@ -1508,6 +1576,47 @@
       showToast(error?.message || "Failed to open browser capture.");
       closeBrowserCaptureUi();
     });
+  }, true);
+
+  document.addEventListener("contextmenu", (event) => {
+    const anchor = findSupportedAnchor(event.target);
+    lastContextLinkInfo = buildAnchorLinkInfo(anchor);
+  }, true);
+
+  document.addEventListener("click", (event) => {
+    if (!linkSaveSettings.modifierClickEnabled) {
+      return;
+    }
+    if (event.defaultPrevented || Number(event.button) !== 0) {
+      return;
+    }
+    if (isBrowserCaptureOpen() || isEditableTarget(event.target)) {
+      return;
+    }
+    const anchor = findSupportedAnchor(event.target);
+    if (!anchor || !eventMatchesLinkSaveModifier(event, linkSaveSettings)) {
+      return;
+    }
+    const linkInfo = buildAnchorLinkInfo(anchor);
+    if (!linkInfo) {
+      return;
+    }
+    if (!linkSaveSettings.navigateAfterSave) {
+      event.preventDefault();
+    }
+    const rt = getRuntime();
+    rt?.sendMessage(
+      {
+        type: "SAVE_CLICKED_LINK_AS_WEBPAGE",
+        url: linkInfo.url,
+        title: linkInfo.title,
+        sourcePageUrl: window.location.href || "",
+        sourcePageTitle: document.title || "",
+      },
+      (_response) => {
+        void chrome?.runtime?.lastError;
+      }
+    );
   }, true);
 
   document.addEventListener("selectionchange", () => {

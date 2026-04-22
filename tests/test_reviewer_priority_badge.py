@@ -47,6 +47,7 @@ def test_build_reviewer_priority_badge_js_includes_priority_and_topic_a_factor()
     js = build_reviewer_priority_badge_js(57.6, a_factor=1.2374, browser_time_seconds=83.2)
     assert "incremento-reviewer-priority-badge" in js
     assert "incremento-reviewer-priority-badge-style" in js
+    assert "incremento-reviewer-priority-badge-spacer" in js
     assert "Priority" in js
     assert "A-Factor" in js
     assert "Saved" in js
@@ -54,6 +55,7 @@ def test_build_reviewer_priority_badge_js_includes_priority_and_topic_a_factor()
     assert '"1.237"' in js
     assert '"1:23"' in js
     assert "position: fixed;" in js
+    assert "height: 82px;" in js
     assert 'badge.classList.add("has-a-factor")' in js
     assert 'badge.classList.add("has-browser-time")' in js
 
@@ -69,3 +71,4 @@ def test_build_reviewer_priority_badge_js_can_disable_existing_badge():
     js = build_reviewer_priority_badge_js(None)
     assert "var enabled = false;" in js
     assert "badge.remove();" in js
+    assert "spacer.remove();" in js

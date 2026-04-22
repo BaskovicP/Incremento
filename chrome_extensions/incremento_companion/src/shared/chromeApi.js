@@ -160,6 +160,15 @@ export async function getCommandShortcuts() {
   return chrome.commands.getAll();
 }
 
+export async function getLocalExtensionSetting(key, fallbackValue = null) {
+  const data = await chrome.storage.local.get(key);
+  return data && Object.prototype.hasOwnProperty.call(data, key) ? data[key] : fallbackValue;
+}
+
+export async function setLocalExtensionSetting(key, value) {
+  await chrome.storage.local.set({ [key]: value });
+}
+
 export async function triggerBrowserCaptureForTab(tabId, mode) {
   if (!Number.isFinite(Number(tabId)) || Number(tabId) <= 0) {
     throw new Error("No active tab found for browser capture.");

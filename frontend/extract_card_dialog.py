@@ -1,6 +1,7 @@
 from aqt.qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QTextEdit, QPushButton, QScrollArea, QWidget, Qt,
+    QCheckBox, QDoubleSpinBox,
 )
 
 
@@ -18,6 +19,9 @@ class ExtractCardDialog(QDialog):
     def __init__(self, selected_text: str,
                  notetypes: list, deck_names: list,
                  default_notetype: str = "", default_deck: str = "",
+                 default_priority: float = 50.0,
+                 default_mark_topic: bool = True,
+                 lower_is_more_important: bool = True,
                  parent=None):
         super().__init__(parent)
         self.setWindowTitle("Extract Card")
@@ -48,6 +52,30 @@ class ExtractCardDialog(QDialog):
             self._dk_combo.addItem(d)
         dk_row.addWidget(self._dk_combo, 1)
         layout.addLayout(dk_row)
+
+        # ── Extract defaults ─────────────────────────────────────────────────
+        options_row = QHBoxLayout()
+        options_row.addWidget(QLabel("Priority:"))
+        self._priority_spin = QDoubleSpinBox()
+        self._priority_spin.setRange(0.0, 100.0)
+        self._priority_spin.setDecimals(1)
+        self._priority_spin.setSingleStep(1.0)
+        try:
+            priority = float(default_priority)
+        except Exception:
+            priority = 50.0
+        self._priority_spin.setValue(max(0.0, min(100.0, priority)))
+        important_end = "0" if lower_is_more_important else "100"
+        self._priority_spin.setToolTip(
+            f"Priority for the extracted card. {important_end} is the most important end."
+        )
+        options_row.addWidget(self._priority_spin)
+        self._mark_topic_cb = QCheckBox("Topic")
+        self._mark_topic_cb.setChecked(bool(default_mark_topic))
+        self._mark_topic_cb.setToolTip("Add the configured topic tags to this extracted card.")
+        options_row.addWidget(self._mark_topic_cb)
+        options_row.addStretch()
+        layout.addLayout(options_row)
 
         # ── Scrollable fields area ────────────────────────────────────────────
         scroll = QScrollArea()
@@ -136,3 +164,11 @@ class ExtractCardDialog(QDialog):
             text = widget.toPlainText().strip()
             result[fname] = text
         return result
+
+    @property
+    def priority(self) -> float:
+        return round(float(self._priority_spin.value()), 4)
+
+    @property
+    def mark_topic(self) -> bool:
+        return bool(self._mark_topic_cb.isChecked())

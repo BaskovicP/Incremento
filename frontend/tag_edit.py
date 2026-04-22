@@ -19,6 +19,7 @@ from aqt.qt import (
     QVBoxLayout,
     QWidget,
 )
+from PyQt6.QtCore import pyqtSignal
 
 
 class _TagFlowLayout(QLayout):
@@ -102,6 +103,8 @@ class _TagFlowLayout(QLayout):
 
 class QuickTagEdit(QWidget):
     """Tag editor with removable chips and Tab-driven autocomplete."""
+
+    tagsChanged = pyqtSignal(list)
 
     def __init__(self, parent=None, compact: bool = False):
         super().__init__(parent)
@@ -278,12 +281,14 @@ class QuickTagEdit(QWidget):
             return False
         self._tags.append(t)
         self._rebuild_chips()
+        self.tagsChanged.emit(list(self._tags))
         return True
 
     def _remove_tag_index(self, idx: int) -> None:
         if 0 <= idx < len(self._tags):
             self._tags.pop(idx)
             self._rebuild_chips()
+            self.tagsChanged.emit(list(self._tags))
 
     def _commit_input_tokens(self) -> bool:
         text = self._input.text().strip()
@@ -408,3 +413,16 @@ class QuickTagEdit(QWidget):
     def tags(self) -> list[str]:
         self._commit_input_tokens()
         return list(self._tags)
+
+    def setTags(self, tags: list[str]) -> None:
+        cleaned: list[str] = []
+        for tag in tags or []:
+            value = str(tag).strip().lstrip("#")
+            if not value:
+                continue
+            if any(existing.lower() == value.lower() for existing in cleaned):
+                continue
+            cleaned.append(value)
+        self._tags = cleaned
+        self._rebuild_chips()
+        self.tagsChanged.emit(list(self._tags))

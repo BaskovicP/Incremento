@@ -1,4 +1,6 @@
 import add_card_dock as dock
+import sys
+import types
 
 
 class _FakeWindow:
@@ -13,9 +15,13 @@ class _FakeNote:
     def __init__(self, tags=None, note_id=0):
         self.tags = list(tags or [])
         self.id = note_id
+        self.flush_calls = 0
 
     def string_tags(self):
         return " ".join(self.tags)
+
+    def flush(self):
+        self.flush_calls += 1
 
 
 class _FakeEditor:
@@ -55,6 +61,15 @@ class _FakeEditor:
 
     def loadNote(self):
         self.load_note_calls += 1
+
+
+class _FakeDock:
+    def __init__(self, editor):
+        self.editor = editor
+        self.calls = []
+
+    def _set_field(self, idx, text, mark_topic=False):
+        self.calls.append((idx, text, mark_topic))
 
 
 class _FakeTagsWidget:
@@ -145,6 +160,36 @@ def test_should_add_extract_source_link_reads_specific_kind():
     assert dock.should_add_extract_source_link("unknown", cfg) is True
 
 
+def test_configured_extract_priority_defaults_to_more_important_end():
+    assert dock.configured_extract_priority({}) == 40.0
+    assert dock.configured_extract_priority({"priority_lower_is_more_important": False}) == 60.0
+
+
+def test_configured_extract_priority_clamps_values():
+    assert dock.configured_extract_priority({"extract_priority": -5}) == 0.0
+    assert dock.configured_extract_priority({"extract_priority": 120}) == 100.0
+    assert dock.configured_extract_priority({"extract_priority": "37.125"}) == 37.125
+
+
+def test_configured_extract_priority_multiplier_defaults_by_direction():
+    assert dock.configured_extract_priority_multiplier({}) == 0.98
+    assert dock.configured_extract_priority_multiplier({"priority_lower_is_more_important": False}) == 1.02
+
+
+def test_calculate_extract_priority_uses_source_multiplier():
+    assert dock.calculate_extract_priority(6, {"extract_priority_multiplier": 0.98}) == 5.88
+    assert dock.calculate_extract_priority(60, {"extract_priority_multiplier": 1.02}) == 61.2
+
+
+def test_calculate_extract_priority_falls_back_without_source():
+    assert dock.calculate_extract_priority(None, {"extract_priority": 33}) == 33.0
+
+
+def test_configured_extract_mark_topic_defaults_enabled():
+    assert dock.configured_extract_mark_topic({}) is True
+    assert dock.configured_extract_mark_topic({"extract_mark_topic": False}) is False
+
+
 def test_should_apply_extract_notetype_only_for_blank_mismatched_note():
     assert dock.should_apply_extract_notetype(
         "Basic",
@@ -200,6 +245,40 @@ def test_toggle_note_tag_set_preserves_unrelated_tags_and_avoids_duplicates():
 
     assert active is True
     assert note.tags == ["topic", "keep", "custom"]
+
+
+def test_pending_extract_options_are_consumed_once(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    priority_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [101, 102])
+    monkeypatch.setitem(
+        sys.modules,
+        "priority_manager",
+        types.SimpleNamespace(
+            set_priority=lambda addon_dir, profile, card_id, priority: priority_calls.append((card_id, priority))
+        ),
+    )
+
+    dock.set_pending_extract_options(priority=25, mark_topic=True, source="pdf")
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert result["source"] == "pdf"
+    assert result["priority_cards_changed"] == 2
+    assert note.tags == ["existing", "topic"]
+    assert priority_calls == [(101, 25.0), (102, 25.0)]
+    assert dock.pending_extract_options() is None
+    assert dock.consume_pending_extract_options_for_note(note) is None
+
+
+def test_do_fill_forwards_mark_topic_to_embedded_dock(monkeypatch):
+    fake_dock = _FakeDock(_FakeEditor(_FakeNote()))
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+
+    dock.do_fill(1, "extract text", mark_topic=True)
+
+    assert fake_dock.calls == [(1, "extract text", True)]
 
 
 def test_refresh_add_card_tag_buttons_updates_tracked_editors(monkeypatch):

@@ -12,6 +12,7 @@ Public API:
 """
 
 import json
+import os
 import time
 import weakref
 
@@ -30,8 +31,12 @@ _last_selection_source = ""
 _last_selection_text = ""
 _last_selection_seen = 0.0
 _last_add_mode_editor = None
+_current_extract_priority: float | None = None
+_current_extract_mark_topic: bool | None = None
+_pending_extract_options: dict | None = None
 _tracked_tag_button_editors: list[weakref.ReferenceType] = []
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
+_ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
 _DEFAULT_EXTRACT_SOURCE_LINKS = {
     "pdf": True,
     "epub": True,
@@ -42,6 +47,23 @@ _DEFAULT_ADD_CARD_TOPIC_TAGS = ["topic"]
 _DEFAULT_ADD_CARD_ITEM_TAGS = ["item"]
 _TOPIC_TAG_BUTTON_ID = "incremento-add-card-topic-tag"
 _ITEM_TAG_BUTTON_ID = "incremento-add-card-item-tag"
+
+
+def _clamp_priority(value) -> float:
+    try:
+        number = float(value)
+    except Exception:
+        number = 50.0
+    return round(max(0.0, min(100.0, number)), 4)
+
+
+def _config(config: dict | None = None) -> dict:
+    if config is not None:
+        return config or {}
+    try:
+        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+    except Exception:
+        return {}
 
 
 def _detach_embedded_window_menu_bar(window) -> None:
@@ -157,22 +179,51 @@ def _track_tag_button_editor(editor) -> None:
 
 
 def configured_extract_notetype_name(config: dict | None = None) -> str:
-    cfg = config
-    if cfg is None:
-        try:
-            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
-        except Exception:
-            cfg = {}
+    cfg = _config(config)
     return str((cfg or {}).get("extract_notetype") or "").strip()
 
 
+def configured_extract_priority(config: dict | None = None) -> float:
+    cfg = _config(config)
+    if "extract_priority" in cfg:
+        return _clamp_priority(cfg.get("extract_priority"))
+    lower_is_more_important = bool(cfg.get("priority_lower_is_more_important", True))
+    return 40.0 if lower_is_more_important else 60.0
+
+
+def configured_extract_priority_multiplier(config: dict | None = None) -> float:
+    cfg = _config(config)
+    lower_is_more_important = bool(cfg.get("priority_lower_is_more_important", True))
+    default = 0.98 if lower_is_more_important else 1.02
+    try:
+        value = float(cfg.get("extract_priority_multiplier", default))
+    except Exception:
+        value = default
+    return round(max(0.01, min(10.0, value)), 4)
+
+
+def calculate_extract_priority(
+    source_priority,
+    config: dict | None = None,
+    *,
+    fallback_priority=None,
+) -> float:
+    cfg = _config(config)
+    fallback = configured_extract_priority(cfg) if fallback_priority is None else _clamp_priority(fallback_priority)
+    try:
+        source = float(source_priority)
+    except Exception:
+        return fallback
+    return _clamp_priority(source * configured_extract_priority_multiplier(cfg))
+
+
+def configured_extract_mark_topic(config: dict | None = None) -> bool:
+    cfg = _config(config)
+    return bool(cfg.get("extract_mark_topic", True))
+
+
 def configured_add_card_topic_tags(config: dict | None = None) -> list[str]:
-    cfg = config
-    if cfg is None:
-        try:
-            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
-        except Exception:
-            cfg = {}
+    cfg = _config(config)
     return _normalize_tag_list(
         (cfg or {}).get("add_card_topic_tags"),
         default=_DEFAULT_ADD_CARD_TOPIC_TAGS,
@@ -180,12 +231,7 @@ def configured_add_card_topic_tags(config: dict | None = None) -> list[str]:
 
 
 def configured_add_card_item_tags(config: dict | None = None) -> list[str]:
-    cfg = config
-    if cfg is None:
-        try:
-            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
-        except Exception:
-            cfg = {}
+    cfg = _config(config)
     return _normalize_tag_list(
         (cfg or {}).get("add_card_item_tags"),
         default=_DEFAULT_ADD_CARD_ITEM_TAGS,
@@ -193,12 +239,7 @@ def configured_add_card_item_tags(config: dict | None = None) -> list[str]:
 
 
 def configured_extract_source_links(config: dict | None = None) -> dict[str, bool]:
-    cfg = config
-    if cfg is None:
-        try:
-            cfg = mw.addonManager.getConfig(_ADDON_PKG) or {}
-        except Exception:
-            cfg = {}
+    cfg = _config(config)
     raw = (cfg or {}).get("extract_source_links", _DEFAULT_EXTRACT_SOURCE_LINKS)
     if isinstance(raw, bool):
         return {key: bool(raw) for key in _DEFAULT_EXTRACT_SOURCE_LINKS}
@@ -303,11 +344,19 @@ def _inject_transfer_buttons(editor) -> None:
     except Exception:
         field_names = []
     try:
+        extract_priority = (
+            source_relative_extract_priority_for_source(_last_selection_source)
+            if _has_recent_selection()
+            else configured_extract_priority()
+        )
+        extract_mark_topic = configured_extract_mark_topic()
         editor.web.eval(
             f"""
             (function() {{
               var visible = {json.dumps(_has_recent_selection())};
               var fieldNames = {json.dumps(field_names)};
+              var defaultExtractPriority = {json.dumps(extract_priority)};
+              var defaultExtractTopic = {json.dumps(extract_mark_topic)};
               if (!window.incrementoTransferButtons) {{
                 var styleId = 'incremento-transfer-style';
                 if (!document.getElementById(styleId)) {{
@@ -335,6 +384,33 @@ def _inject_transfer_buttons(editor) -> None:
                       color: #7fb0ff;
                       border-color: rgba(45, 91, 209, 0.38);
                     }}
+                    .incremento-extract-options {{
+                      display: none;
+                      align-items: center;
+                      gap: 8px;
+                      margin: 7px 0 9px;
+                      padding: 7px 9px;
+                      border: 1px solid rgba(120, 132, 156, 0.28);
+                      border-radius: 10px;
+                      background: rgba(72, 128, 255, 0.08);
+                      color: inherit;
+                      font-size: 12px;
+                    }}
+                    .incremento-extract-options input[type="number"] {{
+                      width: 62px;
+                      padding: 2px 5px;
+                      border-radius: 6px;
+                      border: 1px solid rgba(120, 132, 156, 0.42);
+                      background: rgba(255, 255, 255, 0.92);
+                      color: #101828;
+                      font-weight: 700;
+                    }}
+                    .incremento-extract-options label {{
+                      display: inline-flex;
+                      align-items: center;
+                      gap: 4px;
+                      white-space: nowrap;
+                    }}
                   `;
                   document.head.appendChild(style);
                 }}
@@ -342,6 +418,14 @@ def _inject_transfer_buttons(editor) -> None:
                 window.incrementoTransferButtons = {{
                   visible: false,
                   fieldNames: [],
+                  extractPriority: defaultExtractPriority,
+                  extractTopic: defaultExtractTopic,
+                  syncExtractOptions: function() {{
+                    pycmd('incremento_extract_options:' + JSON.stringify({{
+                      priority: this.extractPriority,
+                      markTopic: this.extractTopic
+                    }}));
+                  }},
                   fieldNodes: function() {{
                     var explicit = Array.from(
                       document.querySelectorAll(
@@ -399,7 +483,53 @@ def _inject_transfer_buttons(editor) -> None:
                       .find(function(el) {{ return !!el; }});
                     return anyButtonParent || host;
                   }},
+                  ensureExtractOptions: function() {{
+                    var firstField = this.fieldNodes()[0];
+                    if (!firstField) {{
+                      return null;
+                    }}
+                    var host = this.fieldHost(firstField) || firstField.parentElement;
+                    if (!host) {{
+                      return null;
+                    }}
+                    var panel = document.getElementById('incremento-extract-options');
+                    if (!panel) {{
+                      panel = document.createElement('div');
+                      panel.id = 'incremento-extract-options';
+                      panel.className = 'incremento-extract-options';
+                      panel.innerHTML = [
+                        '<strong>Extract</strong>',
+                        '<label>Priority <input id="incremento-extract-priority" type="number" min="0" max="100" step="0.1"></label>',
+                        '<label><input id="incremento-extract-topic" type="checkbox"> Topic</label>'
+                      ].join('');
+                      host.parentElement.insertBefore(panel, host);
+                      var prio = panel.querySelector('#incremento-extract-priority');
+                      var topic = panel.querySelector('#incremento-extract-topic');
+                      prio.value = String(this.extractPriority);
+                      topic.checked = !!this.extractTopic;
+                      prio.addEventListener('change', function() {{
+                        var value = Number(prio.value);
+                        if (!Number.isFinite(value)) {{
+                          value = defaultExtractPriority;
+                        }}
+                        value = Math.max(0, Math.min(100, value));
+                        prio.value = String(value);
+                        window.incrementoTransferButtons.extractPriority = value;
+                        window.incrementoTransferButtons.syncExtractOptions();
+                      }});
+                      topic.addEventListener('change', function() {{
+                        window.incrementoTransferButtons.extractTopic = !!topic.checked;
+                        window.incrementoTransferButtons.syncExtractOptions();
+                      }});
+                      this.syncExtractOptions();
+                    }}
+                    return panel;
+                  }},
                   render: function() {{
+                    var panel = this.ensureExtractOptions();
+                    if (panel) {{
+                      panel.style.display = this.visible ? 'flex' : 'none';
+                    }}
                     this.fieldNodes().forEach(function(field, fallbackIdx) {{
                       var idx = window.incrementoTransferButtons.fieldIndex(field, fallbackIdx);
                       var host = window.incrementoTransferButtons.fieldHost(field);
@@ -455,11 +585,31 @@ def _inject_transfer_buttons(editor) -> None:
                 }}
               }}
 
+              if (window.incrementoTransferButtons) {{
+                window.incrementoTransferButtons.extractPriority = defaultExtractPriority;
+                window.incrementoTransferButtons.extractTopic = defaultExtractTopic;
+                var existingPanel = document.getElementById('incremento-extract-options');
+                if (existingPanel) {{
+                  var existingPrio = existingPanel.querySelector('#incremento-extract-priority');
+                  var existingTopic = existingPanel.querySelector('#incremento-extract-topic');
+                  if (existingPrio) {{
+                    existingPrio.value = String(defaultExtractPriority);
+                  }}
+                  if (existingTopic) {{
+                    existingTopic.checked = !!defaultExtractTopic;
+                  }}
+                  window.incrementoTransferButtons.syncExtractOptions();
+                }}
+              }}
               window.incrementoTransferButtons.setFieldNames(fieldNames);
               window.incrementoTransferButtons.setVisible(visible);
             }})();
             """
         )
+    except Exception:
+        pass
+    try:
+        _apply_extract_topic_default_to_editor(editor)
     except Exception:
         pass
 
@@ -540,6 +690,31 @@ def _schedule_editor_tag_widget_sync(editor) -> None:
         pass
 
 
+def _schedule_add_card_tag_button_refresh(editor) -> None:
+    _refresh_add_card_tag_buttons_for_editor(editor)
+    try:
+        QTimer.singleShot(0, lambda editor=editor: _refresh_add_card_tag_buttons_for_editor(editor))
+        QTimer.singleShot(80, lambda editor=editor: _refresh_add_card_tag_buttons_for_editor(editor))
+        QTimer.singleShot(180, lambda editor=editor: _refresh_add_card_tag_buttons_for_editor(editor))
+    except Exception:
+        pass
+
+
+def _apply_extract_topic_default_to_editor(editor) -> None:
+    if not _has_recent_selection() or not configured_extract_mark_topic():
+        return
+    note = getattr(editor, "note", None)
+    if note is None:
+        return
+    if not add_topic_tags_to_note(note):
+        _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
+        return
+    _set_editor_tags(editor, _note_tags(note))
+    _schedule_editor_tag_widget_sync(editor)
+    _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
+    _schedule_add_card_tag_button_refresh(editor)
+
+
 def _schedule_editor_note_reload(editor) -> None:
     if getattr(editor, "addMode", False):
         return
@@ -556,6 +731,26 @@ def _note_has_all_tags(note, wanted_tags: list[str]) -> bool:
         return False
     note_tag_set = {tag.lower() for tag in _note_tags(note)}
     return normalized_wanted.issubset(note_tag_set)
+
+
+def add_topic_tags_to_note(note) -> bool:
+    normalized_tags = configured_add_card_topic_tags()
+    if not normalized_tags or note is None:
+        return False
+    existing_tags = _note_tags(note)
+    existing_set = {tag.lower() for tag in existing_tags}
+    changed = False
+    updated = list(existing_tags)
+    for tag in normalized_tags:
+        lowered = tag.lower()
+        if lowered in existing_set:
+            continue
+        updated.append(tag)
+        existing_set.add(lowered)
+        changed = True
+    if changed:
+        _set_note_tags(note, updated)
+    return changed
 
 
 def _toggle_note_tag_set(note, wanted_tags: list[str]) -> bool:
@@ -635,12 +830,27 @@ def _ensure_add_card_tag_button_styles(editor) -> None:
 
 def _set_add_card_tag_button_state(editor, button_id: str, active: bool) -> None:
     try:
+        label = "T" if button_id == _TOPIC_TAG_BUTTON_ID else "I"
+        title = (
+            "Toggle configured topic tags"
+            if button_id == _TOPIC_TAG_BUTTON_ID
+            else "Toggle configured item tags"
+        )
         editor.web.eval(
             f"""
             (function() {{
               var attempts = 0;
               function apply() {{
                 var btn = document.getElementById({json.dumps(button_id)});
+                if (!btn) {{
+                  var buttons = Array.from(document.querySelectorAll('button'));
+                  btn = buttons.find(function(candidate) {{
+                    return (
+                      (candidate.getAttribute('title') || '').indexOf({json.dumps(title)}) !== -1
+                      || (candidate.textContent || '').trim() === {json.dumps(label)}
+                    );
+                  }});
+                }}
                 if (!btn) {{
                   attempts += 1;
                   if (attempts < 8) {{
@@ -650,6 +860,15 @@ def _set_add_card_tag_button_state(editor, button_id: str, active: bool) -> None
                 }}
                 btn.setAttribute('data-incremento-active', {json.dumps("1" if active else "0")});
                 btn.setAttribute('aria-pressed', {json.dumps("true" if active else "false")});
+                if ({json.dumps(bool(active))}) {{
+                  btn.style.background = {json.dumps("rgba(55, 255, 132, 0.18)" if button_id == _TOPIC_TAG_BUTTON_ID else "rgba(74, 149, 255, 0.18)")};
+                  btn.style.color = {json.dumps("#72ffab" if button_id == _TOPIC_TAG_BUTTON_ID else "#76b8ff")};
+                  btn.style.borderColor = {json.dumps("rgba(92, 255, 149, 0.58)" if button_id == _TOPIC_TAG_BUTTON_ID else "rgba(90, 168, 255, 0.58)")};
+                }} else {{
+                  btn.style.background = '';
+                  btn.style.color = '';
+                  btn.style.borderColor = '';
+                }}
               }}
               apply();
             }})();
@@ -674,6 +893,173 @@ def _refresh_add_card_tag_buttons_for_editor(editor) -> None:
         _ITEM_TAG_BUTTON_ID,
         _note_has_all_tags(note, configured_add_card_item_tags()),
     )
+
+
+def set_current_extract_options(priority=None, mark_topic=None) -> None:
+    global _current_extract_priority, _current_extract_mark_topic
+    if priority is not None:
+        _current_extract_priority = _clamp_priority(priority)
+    if mark_topic is not None:
+        _current_extract_mark_topic = bool(mark_topic)
+
+
+def _extract_priority_for_transfer() -> float:
+    if _current_extract_priority is not None:
+        return _clamp_priority(_current_extract_priority)
+    return configured_extract_priority()
+
+
+def _extract_mark_topic_for_transfer() -> bool:
+    if _current_extract_mark_topic is not None:
+        return bool(_current_extract_mark_topic)
+    return configured_extract_mark_topic()
+
+
+def _priority_for_card_id(card_id: int | None) -> float | None:
+    if card_id is None:
+        return None
+    try:
+        from ..backend.priority_manager import get_priority
+        from ..backend.paths import get_active_profile as _active_profile
+    except Exception:
+        try:
+            from priority_manager import get_priority  # type: ignore
+            from paths import get_active_profile as _active_profile  # type: ignore
+        except Exception:
+            return None
+    try:
+        return float(get_priority(_ADDON_DIR, _active_profile(), int(card_id)))
+    except Exception:
+        return None
+
+
+def _source_card_id_for_transfer(source: str) -> int | None:
+    source = str(source or "").strip()
+    try:
+        if source == "pdf":
+            from . import pdf_dock
+
+            return pdf_dock.current_pdf_card_id()
+        if source == "epub":
+            from . import epub_dock
+
+            return epub_dock.current_epub_card_id()
+        if source == "web":
+            from . import web_dock
+
+            return web_dock.current_web_card_id()
+        if source == "writing":
+            from . import writing_dock
+
+            return writing_dock.current_writing_card_id()
+        if source == "reviewer":
+            reviewer = getattr(mw, "reviewer", None)
+            card = getattr(reviewer, "card", None) if reviewer else None
+            return int(card.id) if card is not None else None
+    except Exception:
+        return None
+    return None
+
+
+def source_relative_extract_priority_for_card(card_id: int | None) -> float:
+    return calculate_extract_priority(_priority_for_card_id(card_id))
+
+
+def source_relative_extract_priority_for_source(source: str) -> float:
+    return source_relative_extract_priority_for_card(_source_card_id_for_transfer(source))
+
+
+def set_pending_extract_options(
+    *,
+    priority=None,
+    mark_topic: bool | None = None,
+    source: str = "",
+) -> dict:
+    global _pending_extract_options
+    _pending_extract_options = {
+        "priority": _clamp_priority(
+            configured_extract_priority() if priority is None else priority
+        ),
+        "mark_topic": configured_extract_mark_topic() if mark_topic is None else bool(mark_topic),
+        "source": str(source or ""),
+        "seen": time.monotonic(),
+    }
+    return dict(_pending_extract_options)
+
+
+def clear_pending_extract_options() -> None:
+    global _pending_extract_options
+    _pending_extract_options = None
+
+
+def pending_extract_options() -> dict | None:
+    return dict(_pending_extract_options) if _pending_extract_options else None
+
+
+def _card_ids_for_note(note) -> list[int]:
+    note_id = getattr(note, "id", None)
+    try:
+        cards = note.cards()
+        ids = [int(card.id) for card in cards if getattr(card, "id", None) is not None]
+        if ids:
+            return ids
+    except Exception:
+        pass
+    if note_id is None:
+        return []
+    try:
+        return [int(cid) for cid in mw.col.find_cards(f"nid:{int(note_id)}")]
+    except Exception:
+        return []
+
+
+def _save_note_tag_changes(note) -> None:
+    try:
+        mw.col.update_note(note)
+        return
+    except Exception:
+        pass
+    try:
+        note.flush()
+    except Exception:
+        pass
+
+
+def apply_priority_to_note_cards(note, priority: float) -> int:
+    try:
+        from ..backend.priority_manager import set_priority
+        from ..backend.paths import get_active_profile as _active_profile
+    except Exception:
+        try:
+            from priority_manager import set_priority  # type: ignore
+            from paths import get_active_profile as _active_profile  # type: ignore
+        except Exception:
+            return 0
+
+    changed = 0
+    for card_id in _card_ids_for_note(note):
+        try:
+            set_priority(_ADDON_DIR, _active_profile(), int(card_id), _clamp_priority(priority))
+            changed += 1
+        except Exception:
+            pass
+    return changed
+
+
+def consume_pending_extract_options_for_note(note) -> dict | None:
+    options = pending_extract_options()
+    if not options:
+        return None
+    clear_pending_extract_options()
+    if bool(options.get("mark_topic")) and add_topic_tags_to_note(note):
+        _save_note_tag_changes(note)
+    changed = apply_priority_to_note_cards(note, float(options.get("priority", 50.0)))
+    options["priority_cards_changed"] = changed
+    return options
+
+
+def on_add_cards_did_add_note(note) -> None:
+    consume_pending_extract_options_for_note(note)
 
 
 def refresh_add_card_tag_buttons() -> None:
@@ -805,16 +1191,23 @@ def build_add_card_dock():
     _apply_configured_extract_notetype()
     _inject_transfer_buttons(dlg.editor)
 
-    def _set_field(idx, text):
+    def _set_field(idx, text, mark_topic: bool = False):
         note = dlg.editor.note
         if note and idx < len(note.fields):
             existing = note.fields[idx]
             note.fields[idx] = (existing + '<br><br>' + text) if existing else text
+            if mark_topic:
+                add_topic_tags_to_note(note)
             try:
                 dlg.editor.loadNote()
             except Exception:
                 pass
             _set_transfer_buttons_visible(dlg.editor, _has_recent_selection())
+            if mark_topic:
+                _set_editor_tags(dlg.editor, _note_tags(note))
+                _schedule_editor_tag_widget_sync(dlg.editor)
+                _set_add_card_tag_button_state(dlg.editor, _TOPIC_TAG_BUTTON_ID, True)
+                _schedule_add_card_tag_button_refresh(dlg.editor)
 
     dock._set_field = _set_field
     return dock
@@ -842,6 +1235,7 @@ def fill_dock_field(
     include_pdf_citation: bool = True,
     citation_html: str | None = None,
     source_link_kind: str | None = None,
+    mark_topic: bool = False,
 ):
     global _add_card_dock
     citation = citation_html
@@ -858,22 +1252,22 @@ def fill_dock_field(
         text = text + '<br>' + citation
     if _add_card_dock is None:
         build_add_card_dock()
-        QTimer.singleShot(600, lambda: do_fill(idx, text))
+        QTimer.singleShot(600, lambda: do_fill(idx, text, mark_topic=mark_topic))
         return
     try:
         _add_card_dock.show()
         _add_card_dock.raise_()
         _apply_configured_extract_notetype()
-        do_fill(idx, text)
+        do_fill(idx, text, mark_topic=mark_topic)
     except RuntimeError:
         _add_card_dock = None
 
 
-def do_fill(idx, text):
+def do_fill(idx, text, *, mark_topic: bool = False):
     if _add_card_dock is None:
         return
     try:
-        _add_card_dock._set_field(idx, text)
+        _add_card_dock._set_field(idx, text, mark_topic=mark_topic)
     except (RuntimeError, AttributeError):
         pass
 
@@ -889,7 +1283,7 @@ def _refresh_transfer_buttons() -> None:
     try:
         editor = _dock_editor()
         if editor is not None:
-            _set_transfer_buttons_visible(editor, _has_recent_selection())
+            _inject_transfer_buttons(editor)
     except Exception:
         pass
 
@@ -990,6 +1384,12 @@ def transfer_selection_to_field(idx: int) -> None:
         if not text:
             tooltip("Select some text first.")
             return
+        priority = (
+            _extract_priority_for_transfer()
+            if _current_extract_priority is not None
+            else source_relative_extract_priority_for_source(resolved_source)
+        )
+        mark_topic = _extract_mark_topic_for_transfer()
         fill_dock_field(
             idx,
             text,
@@ -1000,6 +1400,12 @@ def transfer_selection_to_field(idx: int) -> None:
                 if resolved_source == "web"
                 else _epub_citation()
             ),
+            mark_topic=mark_topic,
+        )
+        set_pending_extract_options(
+            priority=priority,
+            mark_topic=mark_topic,
+            source=resolved_source,
         )
 
     def _web_citation() -> str | None:

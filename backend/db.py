@@ -20,6 +20,7 @@ epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
 browser_media_refs — latest manually saved browser media reference per card
+reviewer_recent_tags — latest reviewer-added tags for quick reuse
 topic_postpones — timed postpone expiry timestamps per topic card
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
 knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
@@ -179,6 +180,14 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             media_seconds REAL    NOT NULL DEFAULT 0.0,
             updated_at    INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS reviewer_recent_tags (
+            normalized_tag TEXT PRIMARY KEY,
+            display_tag    TEXT    NOT NULL DEFAULT '',
+            used_at        INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_rrt_used_at
+            ON reviewer_recent_tags (used_at DESC, normalized_tag);
 
         CREATE TABLE IF NOT EXISTS pdf_card_sources (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -551,6 +560,14 @@ def _normalize_browser_media_ref_updated_at(value) -> int:
     return max(0, ts)
 
 
+def _normalize_reviewer_recent_tag(value) -> str:
+    return str(value or "").strip()
+
+
+def _normalize_reviewer_recent_tag_key(value) -> str:
+    return _normalize_reviewer_recent_tag(value).lower()
+
+
 def get_card_browser_media_ref(addon_dir: str, profile: str, card_id: int) -> dict:
     row = get_connection(addon_dir, profile).execute(
         "SELECT page_url, media_url, media_title, media_seconds, updated_at "
@@ -601,6 +618,92 @@ def set_card_browser_media_ref(
             _normalize_browser_media_ref_seconds(media_seconds),
             _normalize_browser_media_ref_updated_at(updated_at),
         ),
+    )
+    conn.commit()
+
+
+def get_recent_reviewer_tags(
+    addon_dir: str,
+    profile: str,
+    *,
+    limit: int = 10,
+) -> list[str]:
+    try:
+        max_rows = max(1, int(limit or 10))
+    except Exception:
+        max_rows = 10
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT display_tag FROM reviewer_recent_tags "
+        "ORDER BY used_at DESC, normalized_tag ASC "
+        "LIMIT ?",
+        (max_rows,),
+    ).fetchall()
+    tags: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        tag = _normalize_reviewer_recent_tag(row[0] if row else "")
+        key = tag.lower()
+        if not tag or key in seen:
+            continue
+        seen.add(key)
+        tags.append(tag)
+    return tags
+
+
+def touch_recent_reviewer_tags(
+    addon_dir: str,
+    profile: str,
+    tags: list[str] | tuple[str, ...] | set[str] | str,
+    *,
+    limit: int = 10,
+    used_at: int | None = None,
+) -> None:
+    if isinstance(tags, str):
+        raw_tags = tags.replace("\n", " ").split()
+    elif isinstance(tags, (list, tuple, set)):
+        raw_tags = list(tags)
+    else:
+        raw_tags = []
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_tags:
+        tag = _normalize_reviewer_recent_tag(item)
+        key = tag.lower()
+        if not tag or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(tag)
+    if not cleaned:
+        return
+
+    try:
+        max_rows = max(1, int(limit or 10))
+    except Exception:
+        max_rows = 10
+    base_ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if used_at is None else used_at
+    )
+    conn = get_connection(addon_dir, profile)
+    for offset, tag in enumerate(cleaned):
+        conn.execute(
+            "INSERT INTO reviewer_recent_tags (normalized_tag, display_tag, used_at) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT(normalized_tag) DO UPDATE SET "
+            "display_tag = excluded.display_tag, "
+            "used_at = excluded.used_at",
+            (
+                _normalize_reviewer_recent_tag_key(tag),
+                tag,
+                max(1, base_ts + offset),
+            ),
+        )
+    conn.execute(
+        "DELETE FROM reviewer_recent_tags "
+        "WHERE normalized_tag NOT IN ("
+        "  SELECT normalized_tag FROM reviewer_recent_tags "
+        "  ORDER BY used_at DESC, normalized_tag ASC LIMIT ?"
+        ")",
+        (max_rows,),
     )
     conn.commit()
 

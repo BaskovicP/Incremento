@@ -83,6 +83,13 @@ _MSG_PROGRESS = "incremento_epub_progress:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
 
 
+def current_epub_card_id() -> int | None:
+    try:
+        return int(_current_epub_card_id) if _current_epub_card_id is not None else None
+    except Exception:
+        return None
+
+
 def register_add_card_callbacks(open_fn, fill_fn, get_dock_fn) -> None:
     global _cb_open_add_card_dock, _cb_fill_dock_field, _cb_get_add_card_dock
     _cb_open_add_card_dock = open_fn
