@@ -9,7 +9,6 @@ from aqt.qt import (
     QComboBox,
     QDialog,
     QFrame,
-    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -19,6 +18,7 @@ from aqt.qt import (
     QMenu,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStyle,
     QToolButton,
@@ -83,6 +83,8 @@ except ImportError:
 
 try:
     from ..backend.knowledge_tree import (
+        LINK_PLACEMENT_CHILDREN,
+        LINK_PLACEMENT_SIBLINGS,
         NODE_KIND_ITEM,
         NODE_KIND_TOPIC,
         active_profile,
@@ -98,7 +100,7 @@ try:
         get_card_metadata,
         get_card_priority_context,
         get_parent_card_id,
-        link_card_to_tree,
+        link_cards_to_tree,
         load_knowledge_tree_nodes,
         normalize_node_kind,
         randomize_subtree_priorities,
@@ -112,6 +114,8 @@ try:
     )
 except ImportError:
     from knowledge_tree import (  # type: ignore
+        LINK_PLACEMENT_CHILDREN,
+        LINK_PLACEMENT_SIBLINGS,
         NODE_KIND_ITEM,
         NODE_KIND_TOPIC,
         active_profile,
@@ -127,7 +131,7 @@ except ImportError:
         get_card_metadata,
         get_card_priority_context,
         get_parent_card_id,
-        link_card_to_tree,
+        link_cards_to_tree,
         load_knowledge_tree_nodes,
         normalize_node_kind,
         randomize_subtree_priorities,
@@ -401,9 +405,16 @@ class _CreateNodeDialog(QDialog):
 
 
 class _LinkExistingDialog(QDialog):
-    def __init__(self, exclude_card_ids: set[int], parent=None):
+    def __init__(
+        self,
+        exclude_card_ids: set[int],
+        *,
+        has_selected_node: bool,
+        parent=None,
+    ):
         super().__init__(parent)
         self._exclude_card_ids = {int(card_id) for card_id in exclude_card_ids}
+        self._has_selected_node = bool(has_selected_node)
         self.setWindowTitle("Link Existing Card")
         self.setMinimumWidth(640)
         self.setMinimumHeight(520)
@@ -411,7 +422,7 @@ class _LinkExistingDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        summary = QLabel("Search existing cards and link one into the knowledge tree.")
+        summary = QLabel("Search existing cards and link one or more into the knowledge tree.")
         summary.setWordWrap(True)
         layout.addWidget(summary)
 
@@ -423,7 +434,31 @@ class _LinkExistingDialog(QDialog):
         self._results_label.setStyleSheet("color:#666;font-size:11px;")
         layout.addWidget(self._results_label)
 
+        layout.addWidget(QLabel("Placement:"))
+        self._placement_combo = QComboBox()
+        self._placement_combo.addItem(
+            "As children of selected node",
+            LINK_PLACEMENT_CHILDREN,
+        )
+        self._placement_combo.addItem(
+            "At same level as selected node",
+            LINK_PLACEMENT_SIBLINGS,
+        )
+        sibling_index = self._placement_combo.findData(LINK_PLACEMENT_SIBLINGS)
+        if sibling_index >= 0:
+            sibling_item = self._placement_combo.model().item(sibling_index)
+            if sibling_item is not None and not self._has_selected_node:
+                sibling_item.setEnabled(False)
+                sibling_item.setToolTip("Select a node first to link cards beside it.")
+        layout.addWidget(self._placement_combo)
+
+        self._placement_hint = QLabel("")
+        self._placement_hint.setStyleSheet("color:#666;font-size:11px;")
+        self._placement_hint.setWordWrap(True)
+        layout.addWidget(self._placement_hint)
+
         self._list = QListWidget()
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         layout.addWidget(self._list, 1)
 
         btn_row = QHBoxLayout()
@@ -437,11 +472,28 @@ class _LinkExistingDialog(QDialog):
 
         qconnect(self._search_edit.textChanged, self._refresh_results)
         qconnect(self._list.itemDoubleClicked, lambda _item: self.accept())
+        qconnect(self._placement_combo.currentIndexChanged, self._refresh_placement_hint)
         qconnect(ok_btn.clicked, self.accept)
         qconnect(cancel_btn.clicked, self.reject)
 
         self._refresh_results()
+        self._refresh_placement_hint()
         self._search_edit.setFocus()
+
+    def _refresh_placement_hint(self) -> None:
+        placement = self.placement_mode
+        if placement == LINK_PLACEMENT_SIBLINGS:
+            self._placement_hint.setText(
+                "Selected cards will be linked beside the selected node, under the same parent."
+            )
+        elif self._has_selected_node:
+            self._placement_hint.setText(
+                "Selected cards will be linked under the selected node as siblings of each other."
+            )
+        else:
+            self._placement_hint.setText(
+                "No node is selected, so selected cards will be linked at the root level."
+            )
 
     def _refresh_results(self) -> None:
         query = self._search_edit.text().strip()
@@ -466,18 +518,27 @@ class _LinkExistingDialog(QDialog):
             self._list.setCurrentRow(0)
 
     def accept(self) -> None:
-        if self.selected_card_id is None:
-            showInfo("Choose an existing card to link into the knowledge tree.")
+        if not self.selected_card_ids:
+            showInfo("Choose one or more existing cards to link into the knowledge tree.")
             return
         super().accept()
 
     @property
-    def selected_card_id(self) -> int | None:
-        item = self._list.currentItem()
-        if item is None:
-            return None
-        value = item.data(_ROLE_CARD_ID)
-        return None if value is None else int(value)
+    def selected_card_ids(self) -> list[int]:
+        card_ids: list[int] = []
+        for item in self._list.selectedItems():
+            value = item.data(_ROLE_CARD_ID)
+            if value is None:
+                continue
+            card_ids.append(int(value))
+        return card_ids
+
+    @property
+    def placement_mode(self) -> str:
+        value = self._placement_combo.currentData()
+        if not value:
+            return LINK_PLACEMENT_CHILDREN
+        return str(value)
 
 
 class KnowledgeTreeDialog(QDialog):
@@ -606,6 +667,22 @@ class KnowledgeTreeDialog(QDialog):
               border: 1px solid rgba(128,128,128,0.20);
               border-radius: 8px;
               padding: 6px 10px;
+            }
+            QToolButton#KnowledgeToolbarButton[popupMode="1"] {
+              padding-right: 34px;
+            }
+            QToolButton#KnowledgeToolbarButton::menu-button {
+              width: 30px;
+              border-left: 1px solid rgba(128,128,128,0.22);
+              border-top-right-radius: 8px;
+              border-bottom-right-radius: 8px;
+            }
+            QToolButton#KnowledgeToolbarButton::menu-button:hover {
+              background: rgba(74,122,181,0.16);
+            }
+            QToolButton#KnowledgeToolbarButton::menu-arrow {
+              width: 12px;
+              height: 12px;
             }
             QToolButton#KnowledgeToolbarButton:hover, QPushButton#KnowledgeActionButton:hover {
               background: rgba(74,122,181,0.10);
@@ -928,6 +1005,7 @@ class KnowledgeTreeDialog(QDialog):
 
         action_card = QFrame(panel)
         action_card.setObjectName("KnowledgeSectionCard")
+        action_card.setMinimumHeight(300)
         action_layout = QVBoxLayout(action_card)
         action_layout.setContentsMargins(12, 12, 12, 12)
         action_layout.setSpacing(8)
@@ -935,10 +1013,6 @@ class KnowledgeTreeDialog(QDialog):
         action_title.setObjectName("KnowledgeTitle")
         action_layout.addWidget(action_title)
 
-        action_grid = QGridLayout()
-        action_grid.setContentsMargins(0, 0, 0, 0)
-        action_grid.setHorizontalSpacing(8)
-        action_grid.setVerticalSpacing(8)
         self._inspector_study_btn = self._build_action_button(
             "Study Branch…",
             self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
@@ -980,15 +1054,35 @@ class KnowledgeTreeDialog(QDialog):
             self._remove_selected_node,
             object_name="KnowledgeDangerAction",
         )
-        action_grid.addWidget(self._inspector_study_btn, 0, 0)
-        action_grid.addWidget(self._inspector_subset_btn, 0, 1)
-        action_grid.addWidget(self._inspector_postpone_btn, 1, 0)
-        action_grid.addWidget(self._inspector_priority_btn, 1, 1)
-        action_grid.addWidget(self._inspector_browser_btn, 2, 0)
-        action_grid.addWidget(self._inspector_parent_btn, 2, 1)
-        action_grid.addWidget(self._inspector_rename_btn, 3, 0)
-        action_grid.addWidget(self._inspector_remove_btn, 3, 1)
-        action_layout.addLayout(action_grid)
+
+        action_columns = QHBoxLayout()
+        action_columns.setContentsMargins(0, 0, 0, 0)
+        action_columns.setSpacing(10)
+        left_actions = QVBoxLayout()
+        left_actions.setContentsMargins(0, 0, 0, 0)
+        left_actions.setSpacing(8)
+        right_actions = QVBoxLayout()
+        right_actions.setContentsMargins(0, 0, 0, 0)
+        right_actions.setSpacing(8)
+
+        for button in (
+            self._inspector_study_btn,
+            self._inspector_postpone_btn,
+            self._inspector_browser_btn,
+            self._inspector_rename_btn,
+        ):
+            left_actions.addWidget(button)
+        for button in (
+            self._inspector_subset_btn,
+            self._inspector_priority_btn,
+            self._inspector_parent_btn,
+            self._inspector_remove_btn,
+        ):
+            right_actions.addWidget(button)
+
+        action_columns.addLayout(left_actions, 1)
+        action_columns.addLayout(right_actions, 1)
+        action_layout.addLayout(action_columns)
 
         self._action_hint = QLabel(
             "Study Branch opens the normal Incremento learning dialog, but limits scheduling to this subtree. "
@@ -1068,6 +1162,9 @@ class KnowledgeTreeDialog(QDialog):
         button = QPushButton(text, self)
         button.setObjectName(object_name)
         button.setIcon(icon)
+        button.setIconSize(QSize(18, 18))
+        button.setFixedHeight(42)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         qconnect(button.clicked, lambda _checked=False: slot())
         return button
 
@@ -1752,7 +1849,7 @@ class KnowledgeTreeDialog(QDialog):
 
     def _link_node(self, node_kind: str) -> None:
         kind = normalize_node_kind(node_kind)
-        parent_card_id = self._selected_parent_card_id_for_insert()
+        selected_card_id = self._selected_card_id()
         existing = {
             int(row["card_id"])
             for row in load_knowledge_tree_nodes(
@@ -1761,28 +1858,75 @@ class KnowledgeTreeDialog(QDialog):
                 cleanup_missing=False,
             )
         }
-        dlg = _LinkExistingDialog(existing, parent=self)
+        dlg = _LinkExistingDialog(
+            existing,
+            has_selected_node=selected_card_id is not None,
+            parent=self,
+        )
         if not dlg.exec():
             return
 
-        card_id = dlg.selected_card_id
-        if card_id is None:
+        card_ids = dlg.selected_card_ids
+        if not card_ids:
             return
 
-        try:
-            link_card_to_tree(
+        placement_mode = dlg.placement_mode
+        parent_card_id = selected_card_id
+        insert_after_card_id = None
+        if placement_mode == LINK_PLACEMENT_SIBLINGS:
+            if selected_card_id is None:
+                showInfo("Select a node before linking existing cards at the same level.")
+                return
+            parent_card_id = get_parent_card_id(
                 self._addon_dir,
                 self._profile,
-                int(card_id),
+                int(selected_card_id),
+            )
+            insert_after_card_id = int(selected_card_id)
+
+        try:
+            result = link_cards_to_tree(
+                self._addon_dir,
+                self._profile,
+                card_ids,
                 kind,
                 parent_card_id=parent_card_id,
+                insert_after_card_id=insert_after_card_id,
             )
         except Exception as exc:
-            showInfo(f"Failed to link the selected card:\n{exc}")
+            showInfo(f"Failed to link the selected cards:\n{exc}")
             return
 
-        self.reload(select_card_id=int(card_id))
-        tooltip(f"Existing card linked as {_kind_label(kind).lower()}.")
+        linked_card_ids = list(result.get("linked_card_ids") or [])
+        if linked_card_ids:
+            self.reload(select_card_id=int(linked_card_ids[0]))
+        else:
+            self.reload(select_card_id=selected_card_id)
+
+        linked_count = int(result.get("linked_count") or 0)
+        error_count = int(result.get("error_count") or 0)
+        kind_label = _kind_label(kind).lower()
+        if linked_count and not error_count:
+            noun = kind_label if linked_count == 1 else f"{kind_label}s"
+            tooltip(f"{linked_count} existing {noun} linked.")
+            return
+        if linked_count and error_count:
+            noun = kind_label if linked_count == 1 else f"{kind_label}s"
+            showInfo(
+                f"Linked {linked_count} existing {noun}, but {error_count} selection"
+                f"{'' if error_count == 1 else 's'} could not be linked.\n\n"
+                + "\n".join(
+                    f"Card {int(error.get('card_id') or 0)}: {error.get('error') or 'Unknown error'}"
+                    for error in list(result.get('errors') or [])[:10]
+                )
+            )
+            return
+        errors = list(result.get("errors") or [])
+        details = "\n".join(
+            f"Card {int(error.get('card_id') or 0)}: {error.get('error') or 'Unknown error'}"
+            for error in errors[:10]
+        )
+        showInfo("No selected cards could be linked." + (f"\n\n{details}" if details else ""))
 
     def _remove_selected_node(self) -> None:
         card_id = self._selected_card_id()

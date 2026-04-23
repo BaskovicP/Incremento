@@ -27,6 +27,67 @@ class _FakeNote:
         self.tags = list(tags or [])
 
 
+class _FakeLinkSearchDb:
+    def __init__(self):
+        self.queries: list[str] = []
+
+    def all(self, sql, *params):
+        self.queries.append(sql)
+        if "n.sfld" not in sql:
+            raise AssertionError("Knowledge-tree link search should use Anki's sfld column.")
+        assert params[-1] == 6
+        if "LIKE" in sql:
+            assert params[0] == "%physics%"
+        return [
+            (30, "Physics topic", 100, 200),
+            (20, "Already linked", 100, 200),
+            (10, "Older item", 101, 201),
+        ]
+
+
+class _FakeLinkSearchCol:
+    def __init__(self):
+        self.db = _FakeLinkSearchDb()
+
+    @property
+    def models(self):
+        return self
+
+    @property
+    def decks(self):
+        return self
+
+    def get(self, item_id):
+        if int(item_id) in {100, 101}:
+            return {"name": "Basic" if int(item_id) == 100 else "Cloze"}
+        return {"name": "Default" if int(item_id) == 200 else "Archive"}
+
+
+class _FakeKindCard:
+    def __init__(self, note):
+        self._note = note
+
+    def note(self):
+        return self._note
+
+
+class _FakeKindCol:
+    def __init__(self):
+        self.notes = {
+            10: _FakeNote(["item", "keep"]),
+            20: _FakeNote(["topic"]),
+        }
+        self.updated_notes = []
+
+    def get_card(self, card_id):
+        if int(card_id) not in self.notes:
+            raise KeyError(card_id)
+        return _FakeKindCard(self.notes[int(card_id)])
+
+    def update_note(self, note):
+        self.updated_notes.append(note)
+
+
 class TestTreeMutationHelpers:
     def setup_method(self):
         _reset_db()
@@ -115,6 +176,127 @@ class TestTreeMutationHelpers:
         except ValueError as exc:
             assert "already present" in str(exc)
 
+    def test_link_cards_to_tree_appends_multiple_children_under_parent(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 11, "parent_card_id": 10, "node_kind": "item", "sort_order": 0},
+            ],
+        )
+
+        with patch.object(knowledge_tree, "card_exists", side_effect=lambda card_id: int(card_id) in {12, 13}), patch.object(
+            knowledge_tree, "apply_node_kind_to_card"
+        ) as apply_kind:
+            result = knowledge_tree.link_cards_to_tree(
+                self.addon_dir,
+                "TestProfile",
+                [12, 13],
+                "topic",
+                parent_card_id=10,
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == [12, 13]
+        assert result["linked_count"] == 2
+        assert result["error_count"] == 0
+        assert [(row["card_id"], row["parent_card_id"], row["sort_order"]) for row in rows] == [
+            (10, None, 0),
+            (11, 10, 0),
+            (12, 10, 1),
+            (13, 10, 2),
+        ]
+        assert [call.args for call in apply_kind.call_args_list] == [(12, "topic"), (13, "topic")]
+
+    def test_link_cards_to_tree_inserts_siblings_after_anchor_in_selected_order(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 20, "parent_card_id": None, "node_kind": "topic", "sort_order": 1},
+                {"card_id": 30, "parent_card_id": None, "node_kind": "topic", "sort_order": 2},
+            ],
+        )
+
+        with patch.object(knowledge_tree, "card_exists", side_effect=lambda card_id: int(card_id) in {40, 50}), patch.object(
+            knowledge_tree, "apply_node_kind_to_card"
+        ):
+            result = knowledge_tree.link_cards_to_tree(
+                self.addon_dir,
+                "TestProfile",
+                [50, 40],
+                "topic",
+                parent_card_id=None,
+                insert_after_card_id=20,
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == [50, 40]
+        assert [(row["card_id"], row["parent_card_id"], row["sort_order"]) for row in rows] == [
+            (10, None, 0),
+            (20, None, 1),
+            (50, None, 2),
+            (40, None, 3),
+            (30, None, 4),
+        ]
+
+    def test_link_cards_to_tree_links_to_root_when_no_parent_is_selected(self):
+        with patch.object(knowledge_tree, "card_exists", return_value=True), patch.object(
+            knowledge_tree, "apply_node_kind_to_card"
+        ):
+            result = knowledge_tree.link_cards_to_tree(
+                self.addon_dir,
+                "TestProfile",
+                [70, 71],
+                "item",
+                parent_card_id=None,
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_count"] == 2
+        assert [(row["card_id"], row["parent_card_id"], row["sort_order"]) for row in rows] == [
+            (70, None, 0),
+            (71, None, 1),
+        ]
+
+    def test_link_cards_to_tree_reports_partial_failures_and_keeps_valid_cards(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+            ],
+        )
+
+        def _exists(card_id):
+            return int(card_id) in {10, 12}
+
+        with patch.object(knowledge_tree, "card_exists", side_effect=_exists), patch.object(
+            knowledge_tree, "apply_node_kind_to_card"
+        ):
+            result = knowledge_tree.link_cards_to_tree(
+                self.addon_dir,
+                "TestProfile",
+                [10, 11, 12],
+                "topic",
+                parent_card_id=None,
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == [12]
+        assert result["linked_count"] == 1
+        assert result["error_count"] == 2
+        assert result["errors"] == [
+            {"card_id": 10, "error": "Card 10 is already present in the knowledge tree."},
+            {"card_id": 11, "error": "Card 11 was not found in the current collection."},
+        ]
+        assert [(row["card_id"], row["parent_card_id"], row["sort_order"]) for row in rows] == [
+            (10, None, 0),
+            (12, None, 1),
+        ]
+
 
 def test_sync_note_kind_tags_adds_incremento_and_removes_opposite_kind():
     note = _FakeNote(["keep", "item", "Incremento"])
@@ -128,6 +310,51 @@ def test_sync_note_kind_tags_adds_incremento_and_removes_opposite_kind():
 
     assert tags == ["keep", "Incremento", "topic"]
     assert note.tags == ["keep", "Incremento", "topic"]
+
+
+def test_search_linkable_cards_uses_anki_sort_field_and_excludes_linked_cards():
+    fake_col = _FakeLinkSearchCol()
+    fake_mw = SimpleNamespace(col=fake_col)
+
+    with patch.object(knowledge_tree, "mw", fake_mw):
+        results = knowledge_tree.search_linkable_cards(
+            "physics",
+            exclude_card_ids={20},
+            limit=2,
+        )
+
+    assert "n.sfld" in fake_col.db.queries[0]
+    assert results == [
+        {
+            "card_id": 30,
+            "title": "Physics topic",
+            "note_type_name": "Basic",
+            "deck_name": "Default",
+        },
+        {
+            "card_id": 10,
+            "title": "Older item",
+            "note_type_name": "Cloze",
+            "deck_name": "Archive",
+        },
+    ]
+
+
+def test_apply_node_kind_to_cards_converts_multiple_cards_and_reports_errors():
+    fake_col = _FakeKindCol()
+    fake_mw = SimpleNamespace(col=fake_col)
+
+    with patch.object(knowledge_tree, "mw", fake_mw):
+        result = knowledge_tree.apply_node_kind_to_cards([10, 20, 10, 99], "topic")
+
+    assert result["node_kind"] == "topic"
+    assert result["changed_card_ids"] == [10, 20]
+    assert result["changed_count"] == 2
+    assert result["error_count"] == 1
+    assert result["errors"][0]["card_id"] == 99
+    assert fake_col.notes[10].tags == ["keep", "Incremento", "topic"]
+    assert fake_col.notes[20].tags == ["topic", "Incremento"]
+    assert len(fake_col.updated_notes) == 2
 
 
 def test_descendant_card_ids_returns_all_nested_children_in_tree_order():

@@ -5,18 +5,32 @@ import os
 
 from aqt import mw
 from aqt.qt import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
     QDockWidget,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QHBoxLayout,
+    QKeySequence,
     QLabel,
+    QPixmap,
     QPushButton,
+    QShortcut,
+    QSpinBox,
     QTextBrowser,
+    QTextEdit,
+    QTimer,
     QVBoxLayout,
     QWidget,
     Qt,
     QUrl,
+    QEvent,
     qconnect,
 )
-from aqt.utils import showInfo
+from aqt.utils import showInfo, tooltip
+from PyQt6.QtCore import QObject
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
@@ -29,20 +43,44 @@ try:
     from ..backend.epub_manager import (
         EPUB_FILE_FIELD,
         EPUB_NOTE_TYPE,
+        get_due_epub_source_cards,
+        get_epub_daily_limit_settings,
+        get_epub_due_review_prompt_settings,
+        get_epub_font_scale,
+        get_epub_daily_limit_status,
+        get_epub_limit_mode_label,
         get_epub_progress,
+        get_read_section_index,
         get_epub_section_path,
         load_epub_metadata,
+        save_epub_daily_limit_settings,
+        save_epub_due_review_prompt_settings,
         set_epub_progress,
+        set_epub_daily_limit_override,
+        set_epub_font_scale,
+        set_read_section_index,
         ensure_epub_note_type,
     )
 except ImportError:
     from epub_manager import (  # type: ignore
         EPUB_FILE_FIELD,
         EPUB_NOTE_TYPE,
+        get_due_epub_source_cards,
+        get_epub_daily_limit_settings,
+        get_epub_due_review_prompt_settings,
+        get_epub_font_scale,
+        get_epub_daily_limit_status,
+        get_epub_limit_mode_label,
         get_epub_progress,
+        get_read_section_index,
         get_epub_section_path,
         load_epub_metadata,
+        save_epub_daily_limit_settings,
+        save_epub_due_review_prompt_settings,
         set_epub_progress,
+        set_epub_daily_limit_override,
+        set_epub_font_scale,
+        set_read_section_index,
         ensure_epub_note_type,
     )
 try:
@@ -53,6 +91,10 @@ try:
     from ..backend.db import add_epub_card_source, get_epub_card_sources, get_epub_section_card_counts
 except ImportError:
     from db import add_epub_card_source, get_epub_card_sources, get_epub_section_card_counts  # type: ignore
+try:
+    from ..backend.session import start_explicit_review
+except ImportError:
+    from session import start_explicit_review  # type: ignore
 
 
 _ADDON_DIR = os.path.normpath(
@@ -65,6 +107,7 @@ _current_epub_filename: str | None = None
 _current_epub_section_index = 0
 _current_epub_scroll_ratio = 0.0
 _current_epub_finished = False
+_current_epub_font_scale = 1.0
 _last_selection_meta: dict[str, object] = {}
 _pending_focus_offset = -1
 _pending_restore_ratio = 0.0
@@ -74,12 +117,18 @@ _pending_explicit_navigation = False
 _cb_open_add_card_dock = None
 _cb_fill_dock_field = None
 _cb_get_add_card_dock = None
+_cb_epub_view_started = None
+_cb_epub_view_stopped = None
+_epub_shortcuts_registered = False
+_epub_shortcuts = []
+_epub_key_filter = None
 
 _PYCMD_BRIDGE = "__incremento_epub__:"
 _MSG_FILL_FIELD = "incremento_epub_fill_field:"
 _MSG_HL_ADD = "incremento_epub_hl_add:"
 _MSG_HL_DEL = "incremento_epub_hl_del:"
 _MSG_PROGRESS = "incremento_epub_progress:"
+_MSG_SNAPSHOT = "incremento_epub_snapshot:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
 
 
@@ -95,6 +144,12 @@ def register_add_card_callbacks(open_fn, fill_fn, get_dock_fn) -> None:
     _cb_open_add_card_dock = open_fn
     _cb_fill_dock_field = fill_fn
     _cb_get_add_card_dock = get_dock_fn
+
+
+def register_epub_view_callbacks(start_fn, stop_fn) -> None:
+    global _cb_epub_view_started, _cb_epub_view_stopped
+    _cb_epub_view_started = start_fn
+    _cb_epub_view_stopped = stop_fn
 
 
 def epub_citation() -> str:
@@ -114,6 +169,407 @@ def epub_citation() -> str:
         f"style=\"cursor:pointer; color:#4a90d9; text-decoration:none;\">"
         f"{title}</a>"
     )
+
+
+class _EpubReadingLimitDialog(QDialog):
+    def __init__(self, parent, *, settings: dict, status: dict):
+        super().__init__(parent)
+        self.setWindowTitle("EPUB Reading Limit")
+        self.setModal(True)
+        self.resize(430, 220)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        summary = QLabel(self._summary_text(status))
+        summary.setWordWrap(True)
+        summary.setStyleSheet(
+            "QLabel { background: rgba(74,144,217,0.10); border: 1px solid rgba(74,144,217,0.35); "
+            "border-radius: 6px; padding: 8px; }"
+        )
+        layout.addWidget(summary)
+
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setSpacing(8)
+
+        self._enabled = QCheckBox("Limit sections read per day for this EPUB")
+        self._enabled.setChecked(bool(settings.get("enabled")))
+        form.addRow("Enabled:", self._enabled)
+
+        row = QWidget(self)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+
+        self._limit_spin = QSpinBox(self)
+        self._limit_spin.setRange(1, 5000)
+        self._limit_spin.setValue(max(1, int(settings.get("daily_section_limit", 5) or 5)))
+        row_layout.addWidget(self._limit_spin)
+
+        self._mode = QComboBox(self)
+        self._mode.addItem("Warning only", "warning")
+        self._mode.addItem("Soft lock + override", "soft_lock")
+        self._mode.addItem("Hard stop", "hard_stop")
+        idx = self._mode.findData(str(settings.get("enforcement_mode") or "warning"))
+        self._mode.setCurrentIndex(max(0, idx))
+        row_layout.addWidget(self._mode, 1)
+        form.addRow("Limit:", row)
+
+        hint = QLabel("Uses Incremento's day-end setting for daily reset.")
+        hint.setStyleSheet("color: gray; font-size: 11px;")
+        hint.setWordWrap(True)
+        form.addRow("", hint)
+        layout.addLayout(form)
+
+        self._buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        qconnect(self._buttons.accepted, self.accept)
+        qconnect(self._buttons.rejected, self.reject)
+        layout.addWidget(self._buttons)
+
+        qconnect(self._enabled.toggled, self._sync_enabled_state)
+        self._sync_enabled_state()
+
+    @staticmethod
+    def _summary_text(status: dict) -> str:
+        if not status.get("enabled"):
+            return "No daily reading limit is set for this EPUB."
+        limit = int(status.get("daily_section_limit", 0) or 0)
+        used = int(status.get("sections_used", 0) or 0)
+        remaining = int(status.get("sections_remaining", 0) or 0)
+        mode_label = get_epub_limit_mode_label(status.get("enforcement_mode"))
+        return (
+            f"Today: {used}/{limit} sections used, {remaining} remaining. "
+            f"Mode: {mode_label}."
+        )
+
+    def _sync_enabled_state(self) -> None:
+        enabled = self._enabled.isChecked()
+        self._limit_spin.setEnabled(enabled)
+        self._mode.setEnabled(enabled)
+
+    def result_settings(self) -> dict:
+        return {
+            "enabled": self._enabled.isChecked(),
+            "daily_section_limit": int(self._limit_spin.value()),
+            "enforcement_mode": str(self._mode.currentData() or "warning"),
+        }
+
+
+def _summarize_due_review_sections(due_cards: list[dict]) -> str:
+    sections = sorted(
+        {
+            int(row.get("section_index", 0) or 0) + 1
+            for row in due_cards
+            if int(row.get("section_index", 0) or 0) >= 0
+        }
+    )
+    if not sections:
+        return "earlier sections"
+    if len(sections) <= 6:
+        return ", ".join(str(section) for section in sections)
+    preview = ", ".join(str(section) for section in sections[:6])
+    return f"{preview}, +{len(sections) - 6} more"
+
+
+class _EpubDueReviewPromptDialog(QDialog):
+    def __init__(self, parent, *, due_cards: list[dict], settings: dict, current_section_index: int):
+        super().__init__(parent)
+        self._review_now = False
+        self.setWindowTitle("Review Due EPUB Cards")
+        self.setModal(True)
+        self.resize(520, 360)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        count = len(due_cards)
+        earlier_sections = _summarize_due_review_sections(due_cards)
+        summary = QLabel(
+            f"You have {count} due card{'s' if count != 1 else ''} from this EPUB up to section {current_section_index + 1}.\n"
+            f"Sections: {earlier_sections}"
+        )
+        summary.setWordWrap(True)
+        summary.setStyleSheet(
+            "QLabel { background: rgba(74,144,217,0.10); border: 1px solid rgba(74,144,217,0.35); "
+            "border-radius: 6px; padding: 8px; }"
+        )
+        layout.addWidget(summary)
+
+        detail_label = QLabel("Reviewing them first can refresh earlier context before you continue reading.")
+        detail_label.setWordWrap(True)
+        layout.addWidget(detail_label)
+
+        details = QTextEdit(self)
+        details.setReadOnly(True)
+        details.setMinimumHeight(180)
+        details.setHtml(self._details_html(due_cards))
+        layout.addWidget(details, 1)
+
+        self._offer_on_open = QCheckBox("Offer this due-card review automatically when opening this EPUB")
+        self._offer_on_open.setChecked(bool(settings.get("enabled", True)))
+        layout.addWidget(self._offer_on_open)
+
+        buttons = QDialogButtonBox(parent=self)
+        self._review_btn = buttons.addButton("Review Now", QDialogButtonBox.ButtonRole.AcceptRole)
+        self._skip_btn = buttons.addButton("Not Now", QDialogButtonBox.ButtonRole.RejectRole)
+        qconnect(self._review_btn.clicked, self._accept_review)
+        qconnect(self._skip_btn.clicked, self.reject)
+        layout.addWidget(buttons)
+
+    @staticmethod
+    def _details_html(due_cards: list[dict]) -> str:
+        lines = []
+        for row in due_cards[:20]:
+            title = str(row.get("title") or f"Card {row.get('card_id')}")
+            excerpt = str(row.get("excerpt") or "").strip()
+            state = str(row.get("due_state") or "due").capitalize()
+            detail = (
+                f"s.{int(row.get('section_index', 0) or 0) + 1} — {title} "
+                f"<span style='color:#8892a0;'>({state})</span>"
+            )
+            if excerpt:
+                detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
+            lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
+        if len(due_cards) > 20:
+            lines.append(
+                f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
+                f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
+            )
+        return "".join(lines)
+
+    def _accept_review(self) -> None:
+        self._review_now = True
+        self.accept()
+
+    def review_requested(self) -> bool:
+        return self._review_now
+
+    def offer_on_open_enabled(self) -> bool:
+        return bool(self._offer_on_open.isChecked())
+
+
+class _EpubSoftLimitDialog(QDialog):
+    def __init__(self, parent, *, status: dict, target_section_index: int):
+        super().__init__(parent)
+        self._override = False
+        self.setWindowTitle("EPUB Reading Limit")
+        self.setModal(True)
+        self.resize(420, 180)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        allowed = int(status.get("allowed_max_section", 0) or 0) + 1
+        target = int(target_section_index) + 1
+        summary = QLabel(
+            f"You reached this EPUB's daily section limit.\n"
+            f"Allowed today: up to section {allowed}. Target: section {target}."
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        details = QLabel("You can stop here or override the limit for today.")
+        details.setWordWrap(True)
+        details.setStyleSheet("color: gray;")
+        layout.addWidget(details)
+
+        buttons = QDialogButtonBox(parent=self)
+        self._override_btn = buttons.addButton("Override Today", QDialogButtonBox.ButtonRole.AcceptRole)
+        self._cancel_btn = buttons.addButton("Cancel", QDialogButtonBox.ButtonRole.RejectRole)
+        qconnect(self._override_btn.clicked, self._accept_override)
+        qconnect(self._cancel_btn.clicked, self.reject)
+        layout.addWidget(buttons)
+
+    def _accept_override(self) -> None:
+        self._override = True
+        self.accept()
+
+    def override_requested(self) -> bool:
+        return self._override
+
+
+def _current_epub_limit_status(card_id: int, *, current_section_index: int | None = None) -> dict:
+    try:
+        return get_epub_daily_limit_status(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            current_section_index=current_section_index,
+        )
+    except Exception:
+        return {"enabled": False}
+
+
+def _open_epub_limit_dialog(card_id: int) -> None:
+    settings = get_epub_daily_limit_settings(_ADDON_DIR, _active_profile(), int(card_id))
+    status = _current_epub_limit_status(
+        int(card_id),
+        current_section_index=_current_epub_section_index,
+    )
+    dlg = _EpubReadingLimitDialog(mw, settings=settings, status=status)
+    if not dlg.exec():
+        return
+    new_settings = dlg.result_settings()
+    refreshed = save_epub_daily_limit_settings(
+        _ADDON_DIR,
+        _active_profile(),
+        int(card_id),
+        enabled=bool(new_settings.get("enabled")),
+        daily_section_limit=int(new_settings.get("daily_section_limit", 0) or 0),
+        enforcement_mode=str(new_settings.get("enforcement_mode") or "warning"),
+    )
+    if refreshed.get("enabled"):
+        tooltip(
+            f"EPUB limit saved: {refreshed['daily_section_limit']} sections/day "
+            f"({refreshed['enforcement_label']})."
+        )
+    else:
+        tooltip("EPUB daily reading limit disabled.")
+
+
+def _start_due_epub_review(card_id: int, *, current_section_index: int, due_cards: list[dict]) -> None:
+    selected_ids = [int(row["card_id"]) for row in due_cards if int(row.get("card_id", 0) or 0) > 0]
+    if not selected_ids:
+        tooltip("No due extracted cards to review for this EPUB.")
+        return
+
+    try:
+        note = mw.col.get_note(mw.col.get_card(int(card_id)).nid)
+        filename = str(note[EPUB_FILE_FIELD])
+    except Exception:
+        filename = str(_current_epub_filename or "")
+    if not filename:
+        showInfo("Could not reopen this EPUB after review.")
+        return
+
+    current_deck = {}
+    try:
+        current_deck = mw.col.decks.current() or {}
+    except Exception:
+        current_deck = {}
+    previous_did = current_deck.get("id")
+
+    scroll_ratio = _current_epub_scroll_ratio
+    read_section_index = get_read_section_index(_ADDON_DIR, _active_profile(), int(card_id))
+
+    def _restore_epub() -> None:
+        try:
+            if previous_did:
+                mw.col.decks.select(previous_did)
+        except Exception:
+            pass
+
+        def _restore() -> None:
+            show_epub_in_dock(
+                int(card_id),
+                filename,
+                section_index=int(current_section_index),
+                scroll_ratio=scroll_ratio,
+                offer_due_review_prompt=False,
+            )
+            try:
+                set_read_section_index(_ADDON_DIR, _active_profile(), int(card_id), read_section_index)
+            except Exception:
+                pass
+
+        QTimer.singleShot(0, _restore)
+
+    started = start_explicit_review(
+        selected_ids,
+        deck_name="Incremento EPUB Review",
+        preserve_order=True,
+        empty_message="No due extracted cards are available to review for this EPUB.",
+        on_finished=_restore_epub,
+    )
+    if not started:
+        return
+
+
+def _offer_due_review_for_epub(
+    card_id: int,
+    *,
+    current_section_index: int | None = None,
+    force: bool = False,
+) -> None:
+    section_index = max(
+        0,
+        int(current_section_index if current_section_index is not None else _current_epub_section_index),
+    )
+    settings = get_epub_due_review_prompt_settings(_ADDON_DIR, _active_profile(), int(card_id))
+    if not force and not settings.get("enabled", True):
+        return
+
+    due_cards = get_due_epub_source_cards(
+        _ADDON_DIR,
+        _active_profile(),
+        int(card_id),
+        section_index,
+    )
+    if not due_cards:
+        if force:
+            tooltip("No due extracted cards from this EPUB up to the current section.")
+        return
+
+    dlg = _EpubDueReviewPromptDialog(
+        mw,
+        due_cards=due_cards,
+        settings=settings,
+        current_section_index=section_index,
+    )
+    result = dlg.exec()
+    new_enabled = dlg.offer_on_open_enabled()
+    if new_enabled != bool(settings.get("enabled", True)):
+        save_epub_due_review_prompt_settings(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            enabled=new_enabled,
+        )
+    if result and dlg.review_requested():
+        _start_due_epub_review(int(card_id), current_section_index=section_index, due_cards=due_cards)
+
+
+def _check_epub_limit_before_navigation(target_section_index: int) -> bool:
+    if _current_epub_card_id is None:
+        return True
+    status = _current_epub_limit_status(
+        int(_current_epub_card_id),
+        current_section_index=_current_epub_section_index,
+    )
+    allowed_max = status.get("allowed_max_section")
+    is_blocking = bool(
+        status.get("enabled")
+        and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+        and not status.get("override_enabled")
+        and allowed_max is not None
+        and int(target_section_index) > int(allowed_max)
+    )
+    if not is_blocking:
+        return True
+    if status.get("enforcement_mode") == "soft_lock" and status.get("can_override"):
+        dlg = _EpubSoftLimitDialog(
+            mw,
+            status=status,
+            target_section_index=int(target_section_index),
+        )
+        if dlg.exec() and dlg.override_requested():
+            set_epub_daily_limit_override(
+                _ADDON_DIR,
+                _active_profile(),
+                int(_current_epub_card_id),
+                enabled=True,
+                current_section_index=_current_epub_section_index,
+            )
+            tooltip("EPUB reading limit overridden for today.")
+            return True
+    return False
 
 
 class _EpubDockPage(QWebEnginePage):
@@ -169,6 +625,9 @@ class _EpubDockPage(QWebEnginePage):
                 )
             except Exception:
                 pass
+            return
+        if msg.startswith(_MSG_SNAPSHOT):
+            QTimer.singleShot(0, lambda m=msg: _handle_epub_snapshot(m))
 
 
 def _build_page_script(
@@ -176,6 +635,7 @@ def _build_page_script(
     card_id: int,
     section_index: int,
     scroll_ratio: float,
+    text_scale: float,
     focus_offset: int,
     search_query: str,
     highlights: list[dict],
@@ -184,6 +644,7 @@ def _build_page_script(
         "cardId": int(card_id),
         "sectionIndex": int(section_index),
         "scrollRatio": max(0.0, min(float(scroll_ratio), 1.0)),
+        "textScale": max(0.7, min(float(text_scale), 2.2)),
         "focusOffset": int(focus_offset),
         "searchQuery": str(search_query or ""),
         "highlights": highlights,
@@ -203,6 +664,9 @@ def _build_page_script(
         const style = document.createElement('style');
         style.id = 'incremento-epub-style';
         style.textContent = `
+          html.incremento-epub-scaled body {{
+            font-size: var(--incremento-epub-font-size, 100%) !important;
+          }}
           span.incremento-epub-highlight {{
             background: rgba(255, 225, 120, 0.75);
             border-radius: 2px;
@@ -210,6 +674,15 @@ def _build_page_script(
           }}
         `;
         document.head.appendChild(style);
+      }}
+      function applyTextScale(scale) {{
+        const clamped = Math.max(0.7, Math.min(Number(scale) || 1, 2.2));
+        document.documentElement.classList.add('incremento-epub-scaled');
+        document.documentElement.style.setProperty(
+          '--incremento-epub-font-size',
+          (clamped * 100).toFixed(0) + '%'
+        );
+        window._incrementoEpubTextScale = clamped;
       }}
       function textNodes() {{
         const root = document.body || document.documentElement;
@@ -296,6 +769,20 @@ def _build_page_script(
           endOffset: offsetFromPoint(range.endContainer, range.endOffset),
         }};
       }}
+      function selectionRect() {{
+        const sel = window.getSelection ? window.getSelection() : null;
+        if (!sel || !sel.rangeCount) return null;
+        const range = sel.getRangeAt(0);
+        if (range.collapsed) return null;
+        const rect = range.getBoundingClientRect();
+        if (!rect || rect.width <= 1 || rect.height <= 1) return null;
+        return {{
+          x: Math.max(0, Math.round(rect.left)),
+          y: Math.max(0, Math.round(rect.top)),
+          width: Math.max(1, Math.round(rect.width)),
+          height: Math.max(1, Math.round(rect.height)),
+        }};
+      }}
       function reportSelection() {{
         const meta = selectionMeta();
         if (!meta) return;
@@ -337,7 +824,19 @@ def _build_page_script(
         window._lastEpubSelection = meta.text;
         return true;
       }};
+      window.incrementoSnapshotEpubSelection = function() {{
+        const meta = selectionMeta();
+        const rect = selectionRect();
+        if (!meta || !rect) return false;
+        send('incremento_epub_snapshot:' + JSON.stringify({{
+          cardId: STATE.cardId,
+          text: meta.text,
+          rect,
+        }}));
+        return true;
+      }};
       ensureStyle();
+      applyTextScale(STATE.textScale);
       document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);
       const highlights = Array.isArray(STATE.highlights) ? STATE.highlights.slice() : [];
       highlights.sort(function(a, b) {{ return Number(a.startOffset || 0) - Number(b.startOffset || 0); }});
@@ -365,6 +864,12 @@ def _build_page_script(
         }}
         if (event.altKey && !event.metaKey && !event.ctrlKey && /^h$/i.test(key)) {{
           if (window.incrementoAddEpubHighlight()) {{
+            event.preventDefault();
+          }}
+          return;
+        }}
+        if (event.altKey && !event.metaKey && !event.ctrlKey && /^s$/i.test(key)) {{
+          if (window.incrementoSnapshotEpubSelection && window.incrementoSnapshotEpubSelection()) {{
             event.preventDefault();
           }}
         }}
@@ -418,7 +923,7 @@ def _build_page_script(
 
 
 def _build_epub_dock() -> None:
-    global _epub_dock
+    global _epub_dock, _epub_shortcuts_registered, _epub_key_filter
 
     dock = QDockWidget("EPUB", mw)
     dock.setObjectName("incremento_epub_dock")
@@ -429,6 +934,13 @@ def _build_epub_dock() -> None:
     layout.setContentsMargins(6, 6, 6, 6)
     layout.setSpacing(6)
 
+    if _epub_key_filter is None:
+        _epub_key_filter = _EpubShortcutFilter(mw)
+    app = QApplication.instance()
+    if app is not None:
+        app.installEventFilter(_epub_key_filter)
+    mw.installEventFilter(_epub_key_filter)
+
     toolbar = QHBoxLayout()
     dock._prev_btn = QPushButton("Prev")
     dock._next_btn = QPushButton("Next")
@@ -438,7 +950,13 @@ def _build_epub_dock() -> None:
     dock._source_lbl = QLabel("")
     dock._source_lbl.setStyleSheet("font-size: 11px; color: gray;")
     dock._add_card_btn = QPushButton("Add Card")
+    dock._browser_btn = QPushButton("Browser")
+    dock._due_review_btn = QPushButton("Review Due")
+    dock._limit_btn = QPushButton("Limit")
+    dock._text_smaller_btn = QPushButton("A-")
+    dock._text_larger_btn = QPushButton("A+")
     dock._highlight_btn = QPushButton("Highlight")
+    dock._snapshot_btn = QPushButton("Snapshot")
     dock._finished_btn = QPushButton("Finished")
     dock._finished_btn.setCheckable(True)
     toolbar.addWidget(dock._prev_btn)
@@ -446,7 +964,13 @@ def _build_epub_dock() -> None:
     toolbar.addWidget(dock._title_lbl, 1)
     toolbar.addWidget(dock._source_lbl)
     toolbar.addWidget(dock._add_card_btn)
+    toolbar.addWidget(dock._browser_btn)
+    toolbar.addWidget(dock._due_review_btn)
+    toolbar.addWidget(dock._limit_btn)
+    toolbar.addWidget(dock._text_smaller_btn)
+    toolbar.addWidget(dock._text_larger_btn)
     toolbar.addWidget(dock._highlight_btn)
+    toolbar.addWidget(dock._snapshot_btn)
     toolbar.addWidget(dock._finished_btn)
     layout.addLayout(toolbar)
 
@@ -457,6 +981,8 @@ def _build_epub_dock() -> None:
 
     view = QWebEngineView(dock)
     view.setPage(page)
+    view.installEventFilter(_epub_key_filter)
+    page.installEventFilter(_epub_key_filter)
     dock._view = view
     layout.addWidget(view, stretch=1)
 
@@ -470,13 +996,47 @@ def _build_epub_dock() -> None:
     dock.setWidget(container)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
+    def _on_visibility_changed(visible: bool) -> None:
+        if visible:
+            return
+        if _cb_epub_view_stopped:
+            try:
+                _cb_epub_view_stopped(_current_epub_card_id)
+            except Exception:
+                pass
+
+    dock.visibilityChanged.connect(_on_visibility_changed)
+
     qconnect(dock._prev_btn.clicked, lambda: _jump_relative(-1))
     qconnect(dock._next_btn.clicked, lambda: _jump_relative(1))
     qconnect(dock._add_card_btn.clicked, lambda: _cb_open_add_card_dock and _cb_open_add_card_dock())
+    qconnect(dock._browser_btn.clicked, _browse_current_epub_note)
+    qconnect(dock._due_review_btn.clicked, lambda: _current_epub_card_id and _offer_due_review_for_epub(int(_current_epub_card_id), force=True))
+    qconnect(dock._limit_btn.clicked, lambda: _current_epub_card_id and _open_epub_limit_dialog(int(_current_epub_card_id)))
+    qconnect(dock._text_smaller_btn.clicked, lambda: _adjust_epub_text_scale(-0.1))
+    qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
     qconnect(dock._highlight_btn.clicked, _request_highlight)
+    qconnect(dock._snapshot_btn.clicked, _request_snapshot)
     qconnect(dock._finished_btn.clicked, _toggle_finished)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
+
+    if not _epub_shortcuts_registered:
+        for idx in range(4):
+            def _make_handler(field_idx: int):
+                return lambda: _trigger_epub_extract_shortcut(field_idx)
+
+            for seq in (f"Ctrl+{idx + 1}", f"Meta+{idx + 1}"):
+                sc = QShortcut(QKeySequence(seq), mw)
+                sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+                sc.activated.connect(_make_handler(idx))
+                _epub_shortcuts.append(sc)
+        for seq, delta in (("Ctrl+-", -0.1), ("Meta+-", -0.1), ("Ctrl+=", 0.1), ("Meta+=", 0.1)):
+            sc = QShortcut(QKeySequence(seq), mw)
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            sc.activated.connect(lambda d=delta: _adjust_epub_text_scale(d))
+            _epub_shortcuts.append(sc)
+        _epub_shortcuts_registered = True
 
     _epub_dock = dock
 
@@ -492,6 +1052,189 @@ def _open_source_link(url: QUrl) -> None:
             browser.search_for(f"nid:{note_id}")
     except Exception:
         pass
+
+
+def _browse_current_epub_note() -> None:
+    if _current_epub_card_id is None:
+        return
+    try:
+        card = mw.col.get_card(int(_current_epub_card_id))
+        note_id = int(card.nid)
+        from aqt import dialogs
+
+        browser = dialogs.open("Browser", mw)
+        browser.search_for(f"nid:{note_id}")
+    except Exception:
+        pass
+
+
+def _trigger_epub_extract_shortcut(idx: int) -> None:
+    if _epub_dock is None or not _epub_dock.isVisible():
+        return
+    try:
+        _epub_dock._view.page().runJavaScript(
+            """
+            (function(idx) {
+              var meta = window._lastEpubSelectionMeta || null;
+              if (!meta || !meta.text) { return false; }
+              console.log('__incremento_epub__:' + 'incremento_epub_fill_field:' + JSON.stringify({
+                idx: idx,
+                text: meta.text,
+                startOffset: Number(meta.startOffset || -1),
+                endOffset: Number(meta.endOffset || -1)
+              }));
+              return true;
+            })(%d);
+            """
+            % int(idx)
+        )
+    except Exception:
+        pass
+
+
+class _EpubShortcutFilter(QObject):
+    def eventFilter(self, watched, event):
+        try:
+            if event.type() not in (
+                QEvent.Type.ShortcutOverride,
+                QEvent.Type.KeyPress,
+            ):
+                return False
+            if _epub_dock is None or not _epub_dock.isVisible():
+                return False
+            mods = event.modifiers()
+            if not (
+                mods
+                & (
+                    Qt.KeyboardModifier.MetaModifier
+                    | Qt.KeyboardModifier.ControlModifier
+                )
+            ):
+                return False
+            key_to_idx = {
+                Qt.Key.Key_1: 0,
+                Qt.Key.Key_Exclam: 0,
+                Qt.Key.Key_2: 1,
+                Qt.Key.Key_At: 1,
+                Qt.Key.Key_3: 2,
+                Qt.Key.Key_NumberSign: 2,
+                Qt.Key.Key_4: 3,
+                Qt.Key.Key_Dollar: 3,
+            }
+            idx = key_to_idx.get(event.key())
+            if idx is None:
+                return False
+            event.accept()
+            if event.type() == QEvent.Type.KeyPress:
+                _trigger_epub_extract_shortcut(idx)
+            return True
+        except Exception:
+            return False
+
+
+def _handle_epub_snapshot(msg: str) -> None:
+    import tempfile as _tmp
+
+    if _epub_dock is None:
+        return
+    try:
+        data = json.loads(msg[len(_MSG_SNAPSHOT) :])
+        rect = data.get("rect") or {}
+        x = max(0, int(rect.get("x", 0) or 0))
+        y = max(0, int(rect.get("y", 0) or 0))
+        width = max(1, int(rect.get("width", 0) or 0))
+        height = max(1, int(rect.get("height", 0) or 0))
+
+        view_pixmap = _epub_dock._view.grab()
+        if view_pixmap.isNull():
+            raise RuntimeError("Could not capture EPUB snapshot.")
+
+        max_width = max(0, view_pixmap.width() - x)
+        max_height = max(0, view_pixmap.height() - y)
+        width = min(width, max_width)
+        height = min(height, max_height)
+        if width <= 1 or height <= 1:
+            raise RuntimeError("Selected text is outside the visible EPUB viewport.")
+
+        snapshot = view_pixmap.copy(x, y, width, height)
+        if snapshot.isNull():
+            raise RuntimeError("Could not crop EPUB snapshot.")
+
+        with _tmp.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            tmp_path = f.name
+        try:
+            if not snapshot.save(tmp_path, "PNG"):
+                raise RuntimeError("Could not encode EPUB snapshot.")
+            media_filename = mw.col.media.add_file(tmp_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+        if _cb_open_add_card_dock:
+            _cb_open_add_card_dock()
+
+        field_names = []
+        try:
+            dock = _cb_get_add_card_dock() if _cb_get_add_card_dock else None
+            if dock:
+                note = dock.widget().editor.note
+                if note:
+                    field_names = [f["name"] for f in note.note_type()["flds"]]
+        except Exception:
+            pass
+        if not field_names:
+            field_names = [f"Field {i + 1}" for i in range(4)]
+
+        scaled = snapshot.scaledToWidth(300, Qt.TransformationMode.SmoothTransformation)
+        if scaled.height() > 180:
+            scaled = snapshot.scaledToHeight(180, Qt.TransformationMode.SmoothTransformation)
+
+        picker = QDialog(mw)
+        picker.setWindowTitle("Insert snapshot into field")
+        picker.setFixedWidth(340)
+        layout = QVBoxLayout(picker)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(0)
+
+        preview_lbl = QLabel()
+        preview_lbl.setPixmap(scaled)
+        preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(preview_lbl)
+
+        layout.addSpacing(14)
+        layout.addWidget(QLabel("Insert image into:"))
+        layout.addSpacing(8)
+
+        chosen_idx = [-1]
+
+        def _make_handler(idx):
+            def _handler():
+                chosen_idx[0] = idx
+                picker.accept()
+
+            return _handler
+
+        for i, name in enumerate(field_names):
+            btn = QPushButton(name)
+            btn.setStyleSheet("text-align: left; padding: 7px 12px;")
+            btn.clicked.connect(_make_handler(i))
+            layout.addWidget(btn)
+            layout.addSpacing(4)
+
+        layout.addSpacing(8)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(picker.reject)
+        layout.addWidget(cancel_btn)
+
+        if not picker.exec() or chosen_idx[0] < 0:
+            return
+
+        if _cb_fill_dock_field:
+            _cb_fill_dock_field(chosen_idx[0], f'<img src="{media_filename}">')
+    except Exception as exc:
+        showInfo(f"EPUB snapshot failed:\n{exc}")
 
 
 def _current_metadata() -> dict:
@@ -521,6 +1264,13 @@ def _update_title_and_buttons() -> None:
         _epub_dock._title_lbl.setText("EPUB")
         _epub_dock._prev_btn.setEnabled(False)
         _epub_dock._next_btn.setEnabled(False)
+    has_card = _current_epub_card_id is not None
+    _epub_dock._browser_btn.setEnabled(has_card)
+    _epub_dock._due_review_btn.setEnabled(has_card)
+    _epub_dock._limit_btn.setEnabled(has_card)
+    _epub_dock._text_smaller_btn.setEnabled(has_card)
+    _epub_dock._text_larger_btn.setEnabled(has_card)
+    _epub_dock._snapshot_btn.setEnabled(has_card)
     _epub_dock._finished_btn.blockSignals(True)
     _epub_dock._finished_btn.setChecked(bool(_current_epub_finished))
     _epub_dock._finished_btn.blockSignals(False)
@@ -609,6 +1359,7 @@ def _on_load_finished(ok: bool) -> None:
         card_id=_current_epub_card_id,
         section_index=_current_epub_section_index,
         scroll_ratio=_pending_restore_ratio if _pending_focus_offset < 0 else 0.0,
+        text_scale=_current_epub_font_scale,
         focus_offset=_pending_focus_offset,
         search_query=_pending_search_query,
         highlights=highlights,
@@ -640,9 +1391,10 @@ def show_epub_in_dock(
     scroll_ratio: float = 0.0,
     focus_offset: int = -1,
     search_query: str = "",
+    offer_due_review_prompt: bool = True,
 ) -> None:
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _current_epub_section_index
-    global _current_epub_scroll_ratio, _current_epub_finished, _pending_focus_offset, _pending_restore_ratio
+    global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _pending_focus_offset, _pending_restore_ratio
     global _pending_search_query, _pending_explicit_navigation, _last_selection_meta
 
     if _epub_dock is None:
@@ -658,12 +1410,27 @@ def show_epub_in_dock(
     _pending_explicit_navigation = True
     _last_selection_meta = {}
     _, _, _current_epub_finished = get_epub_progress(_ADDON_DIR, _active_profile(), _current_epub_card_id)
+    _current_epub_font_scale = get_epub_font_scale(_ADDON_DIR, _active_profile(), _current_epub_card_id)
 
     _update_title_and_buttons()
     _update_sources_panel()
     _epub_dock.show()
     _epub_dock.raise_()
+    if _cb_epub_view_started:
+        try:
+            _cb_epub_view_started(int(card_id))
+        except Exception:
+            pass
     _load_current_section()
+    if offer_due_review_prompt:
+        QTimer.singleShot(
+            0,
+            lambda cid=int(card_id), idx=int(section_index): _offer_due_review_for_epub(
+                cid,
+                current_section_index=idx,
+                force=False,
+            ),
+        )
 
 
 def open_epub_location(
@@ -697,6 +1464,8 @@ def _on_epub_selection(idx: int, text: str, start_offset: int, end_offset: int) 
         "startOffset": int(start_offset),
         "endOffset": int(end_offset),
     }
+    if _cb_open_add_card_dock:
+        _cb_open_add_card_dock()
     _cb_fill_dock_field(
         idx,
         cleaned,
@@ -713,12 +1482,25 @@ def _jump_relative(delta: int) -> None:
     next_idx = max(0, min(_current_epub_section_index + int(delta), len(sections) - 1))
     if next_idx == _current_epub_section_index:
         return
+    if next_idx > _current_epub_section_index and not _check_epub_limit_before_navigation(next_idx):
+        return
     _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
+    if next_idx > _current_epub_section_index:
+        try:
+            set_read_section_index(
+                _ADDON_DIR,
+                _active_profile(),
+                int(_current_epub_card_id),
+                int(next_idx),
+            )
+        except Exception:
+            pass
     show_epub_in_dock(
         _current_epub_card_id,
         _current_epub_filename,
         section_index=next_idx,
         scroll_ratio=0.0,
+        offer_due_review_prompt=False,
     )
 
 
@@ -728,6 +1510,30 @@ def _request_highlight() -> None:
     _epub_dock._view.page().runJavaScript(
         "window.incrementoAddEpubHighlight && window.incrementoAddEpubHighlight();"
     )
+
+
+def _request_snapshot() -> None:
+    if _epub_dock is None:
+        return
+    _epub_dock._view.page().runJavaScript(
+        "window.incrementoSnapshotEpubSelection && window.incrementoSnapshotEpubSelection();"
+    )
+
+
+def _adjust_epub_text_scale(delta: float) -> None:
+    global _current_epub_font_scale
+    if _current_epub_card_id is None:
+        return
+    try:
+        _current_epub_font_scale = set_epub_font_scale(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_epub_card_id),
+            float(_current_epub_font_scale) + float(delta),
+        )
+        _load_current_section()
+    except Exception as exc:
+        showInfo(f"Could not change EPUB text size:\n{exc}")
 
 
 def _toggle_finished(checked: bool) -> None:
@@ -759,6 +1565,8 @@ def on_epub_question_shown(card) -> None:
             if _epub_dock is not None:
                 try:
                     _epub_dock.hide()
+                    if _cb_epub_view_stopped:
+                        _cb_epub_view_stopped(_current_epub_card_id)
                 except RuntimeError:
                     _epub_dock = None
             return
@@ -779,6 +1587,8 @@ def on_epub_reviewer_will_end() -> None:
     if _epub_dock is not None:
         try:
             _epub_dock.hide()
+            if _cb_epub_view_stopped:
+                _cb_epub_view_stopped(_current_epub_card_id)
         except RuntimeError:
             _epub_dock = None
 
@@ -805,6 +1615,19 @@ def on_add_cards_did_add_note(note) -> None:
     except Exception:
         pass
     _update_sources_panel()
+
+    cid = _current_epub_card_id
+
+    def _restore_epub_dock() -> None:
+        if _current_epub_card_id != cid:
+            return
+        try:
+            if _epub_dock is not None and not _epub_dock.isVisible():
+                _epub_dock.show()
+        except RuntimeError:
+            pass
+
+    QTimer.singleShot(0, _restore_epub_dock)
 
 
 def get_selected_text(callback) -> None:

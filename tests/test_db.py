@@ -127,6 +127,28 @@ class TestGetConnection:
         }
         assert "browser_media_refs" in tables
 
+    def test_creates_writing_progress_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "writing_progress" in tables
+
+    def test_creates_writing_word_stats_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "writing_word_stats" in tables
+
     def test_creates_reviewer_recent_tags_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
@@ -148,6 +170,17 @@ class TestGetConnection:
             ).fetchall()
         }
         assert "topic_postpones" in tables
+
+    def test_creates_custom_schedule_rules_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "custom_schedule_rules" in tables
 
     def test_creates_knowledge_tree_nodes_table(self):
         addon_dir = _fresh_dir()
@@ -317,6 +350,66 @@ class TestBrowserMediaRefs:
         assert ref["updated_at"] == 99
 
 
+class TestCustomScheduleRules:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_set_and_get_custom_schedule_rule_round_trip(self):
+        saved = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="fixed_repeat",
+            interval_value=2,
+            interval_unit="weeks",
+            preset_label="Every 2 weeks",
+        )
+        loaded = db.get_custom_schedule_rule(self.addon_dir, "TestProfile", 42)
+        assert saved["mode"] == "fixed_repeat"
+        assert loaded is not None
+        assert loaded["card_id"] == 42
+        assert loaded["interval_value"] == 2
+        assert loaded["interval_unit"] == "weeks"
+        assert loaded["preset_label"] == "Every 2 weeks"
+
+    def test_get_custom_schedule_rules_filters_to_requested_ids(self):
+        db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            1,
+            mode="minimum_cadence",
+            interval_value=2,
+            interval_unit="days",
+        )
+        db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            2,
+            mode="one_time",
+            interval_value=1,
+            interval_unit="months",
+        )
+        rules = db.get_custom_schedule_rules(self.addon_dir, "TestProfile", [2, 3])
+        assert set(rules) == {2}
+        assert rules[2]["mode"] == "one_time"
+
+    def test_clear_custom_schedule_rule_removes_row(self):
+        db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            9,
+            mode="minimum_cadence",
+            interval_value=2,
+            interval_unit="days",
+        )
+        assert db.clear_custom_schedule_rule(self.addon_dir, "TestProfile", 9) is True
+        assert db.get_custom_schedule_rule(self.addon_dir, "TestProfile", 9) is None
+
+
 class TestPdfDailyLimits:
     def setup_method(self):
         _reset_db_module()
@@ -379,6 +472,132 @@ class TestPdfDailyLimits:
             "override_enabled": False,
             "updated_at": 0,
         }
+
+
+class TestWritingProgress:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_defaults_when_missing(self):
+        progress = db.get_writing_progress(self.addon_dir, "TestProfile", 55)
+        assert progress == {
+            "cursor_position": 0,
+            "scroll_ratio": 0.0,
+            "font_scale": 1.0,
+            "wrap_enabled": True,
+            "focus_mode": False,
+            "highlight_current_line": True,
+            "bookmark_block_number": -1,
+            "updated_at": 0,
+        }
+
+    def test_round_trip(self):
+        saved = db.set_writing_progress(
+            self.addon_dir,
+            "TestProfile",
+            55,
+            cursor_position=120,
+            scroll_ratio=0.35,
+            font_scale=1.45,
+            wrap_enabled=False,
+            focus_mode=True,
+            highlight_current_line=False,
+            bookmark_block_number=17,
+        )
+        loaded = db.get_writing_progress(self.addon_dir, "TestProfile", 55)
+
+        assert loaded["cursor_position"] == 120
+        assert loaded["scroll_ratio"] == 0.35
+        assert loaded["font_scale"] == 1.45
+        assert loaded["wrap_enabled"] is False
+        assert loaded["focus_mode"] is True
+        assert loaded["highlight_current_line"] is False
+        assert loaded["bookmark_block_number"] == 17
+        assert loaded["updated_at"] >= saved["updated_at"] >= 1
+
+    def test_normalizes_values(self):
+        db.set_writing_progress(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            cursor_position=-4,
+            scroll_ratio=8,
+            font_scale=9,
+            wrap_enabled=1,
+            focus_mode=0,
+            highlight_current_line=2,
+            bookmark_block_number=-99,
+        )
+        loaded = db.get_writing_progress(self.addon_dir, "TestProfile", 77)
+
+        assert loaded["cursor_position"] == 0
+        assert loaded["scroll_ratio"] == 1.0
+        assert loaded["font_scale"] == 2.4
+        assert loaded["wrap_enabled"] is True
+        assert loaded["focus_mode"] is False
+        assert loaded["highlight_current_line"] is True
+        assert loaded["bookmark_block_number"] == -1
+
+
+class TestWritingWordStats:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_defaults_when_missing(self):
+        stats = db.get_writing_word_stats(self.addon_dir, "TestProfile", 55)
+        assert stats == {
+            "current_word_count": 0,
+            "daily_logical_date": "",
+            "daily_baseline_words": 0,
+            "updated_at": 0,
+        }
+
+    def test_round_trip(self):
+        saved = db.set_writing_word_stats(
+            self.addon_dir,
+            "TestProfile",
+            55,
+            current_word_count=320,
+            daily_logical_date="2026-04-23",
+            daily_baseline_words=180,
+        )
+        loaded = db.get_writing_word_stats(self.addon_dir, "TestProfile", 55)
+
+        assert loaded["current_word_count"] == 320
+        assert loaded["daily_logical_date"] == "2026-04-23"
+        assert loaded["daily_baseline_words"] == 180
+        assert loaded["updated_at"] >= saved["updated_at"] >= 1
+
+    def test_normalizes_values(self):
+        db.set_writing_word_stats(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            current_word_count=-20,
+            daily_logical_date=" 2026-04-23 ",
+            daily_baseline_words=-4,
+        )
+        loaded = db.get_writing_word_stats(self.addon_dir, "TestProfile", 77)
+        assert loaded["current_word_count"] == 0
+        assert loaded["daily_logical_date"] == "2026-04-23"
+        assert loaded["daily_baseline_words"] == 0
+
+
+class TestPdfDailyLimitUsage:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
 
     def test_set_and_get_pdf_daily_limit_usage(self):
         db.set_pdf_daily_limit_usage(
@@ -487,6 +706,109 @@ class TestPdfDueReviewPromptConfig:
         )
         cfg = db.get_pdf_due_review_prompt_config(self.addon_dir, "TestProfile", 99)
         assert cfg == {"enabled": False, "updated_at": 321}
+
+
+class TestEpubDailyLimits:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_epub_daily_limit_config_defaults_when_missing(self):
+        config = db.get_epub_daily_limit_config(self.addon_dir, "TestProfile", 77)
+        assert config == {
+            "daily_section_limit": 0,
+            "enforcement_mode": "warning",
+            "updated_at": 0,
+        }
+
+    def test_set_and_get_epub_daily_limit_config(self):
+        db.set_epub_daily_limit_config(
+            self.addon_dir,
+            "TestProfile",
+            77,
+            daily_section_limit=4,
+            enforcement_mode="soft_lock",
+            updated_at=123,
+        )
+        config = db.get_epub_daily_limit_config(self.addon_dir, "TestProfile", 77)
+        assert config == {
+            "daily_section_limit": 4,
+            "enforcement_mode": "soft_lock",
+            "updated_at": 123,
+        }
+
+    def test_epub_daily_limit_usage_round_trip(self):
+        db.set_epub_daily_limit_usage(
+            self.addon_dir,
+            "TestProfile",
+            9,
+            "2026-04-23",
+            baseline_section=1,
+            highest_section=3,
+            override_enabled=True,
+            updated_at=999,
+        )
+        usage = db.get_epub_daily_limit_usage(self.addon_dir, "TestProfile", 9, "2026-04-23")
+        assert usage == {
+            "logical_date": "2026-04-23",
+            "baseline_section": 1,
+            "highest_section": 3,
+            "override_enabled": True,
+            "updated_at": 999,
+        }
+
+
+class TestEpubDueReviewPromptConfig:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_defaults_to_enabled(self):
+        cfg = db.get_epub_due_review_prompt_config(self.addon_dir, "TestProfile", 99)
+        assert cfg == {"enabled": True, "updated_at": 0}
+
+    def test_set_and_get_prompt_config(self):
+        db.set_epub_due_review_prompt_config(
+            self.addon_dir,
+            "TestProfile",
+            99,
+            enabled=False,
+            updated_at=321,
+        )
+        cfg = db.get_epub_due_review_prompt_config(self.addon_dir, "TestProfile", 99)
+        assert cfg == {"enabled": False, "updated_at": 321}
+
+
+class TestEpubCardSources:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_get_epub_card_sources_up_to_section(self):
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=4, section_index=0, note_id=201, excerpt="zero")
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=4, section_index=2, note_id=202, excerpt="two")
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=4, section_index=4, note_id=203, excerpt="four")
+
+        rows = db.get_epub_card_sources_up_to_section(
+            self.addon_dir,
+            "TestProfile",
+            epub_card_id=4,
+            max_section_index=2,
+        )
+
+        assert rows == [
+            {"section_index": 0, "note_id": 201, "excerpt": "zero"},
+            {"section_index": 2, "note_id": 202, "excerpt": "two"},
+        ]
 
 
 class TestWebCardSources:

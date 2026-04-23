@@ -43,6 +43,8 @@ except ImportError:
 
 NODE_KIND_TOPIC = "topic"
 NODE_KIND_ITEM = "item"
+LINK_PLACEMENT_CHILDREN = "children"
+LINK_PLACEMENT_SIBLINGS = "siblings"
 _DEFAULT_TOPIC_TAGS = ["topic"]
 _DEFAULT_ITEM_TAGS = ["item"]
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -56,6 +58,13 @@ def normalize_node_kind(node_kind: str) -> str:
     if kind not in {NODE_KIND_TOPIC, NODE_KIND_ITEM}:
         raise ValueError(f"Unsupported knowledge-tree node kind: {node_kind}")
     return kind
+
+
+def normalize_link_placement(placement: str) -> str:
+    value = str(placement or "").strip().lower()
+    if value not in {LINK_PLACEMENT_CHILDREN, LINK_PLACEMENT_SIBLINGS}:
+        raise ValueError(f"Unsupported knowledge-tree link placement: {placement}")
+    return value
 
 
 def _normalize_tag_list(raw_tags, default: list[str] | None = None) -> list[str]:
@@ -385,6 +394,35 @@ def apply_node_kind_to_card(card_id: int, node_kind: str) -> list[str]:
     return tags
 
 
+def apply_node_kind_to_cards(card_ids, node_kind: str) -> dict:
+    kind = normalize_node_kind(node_kind)
+    changed_card_ids: list[int] = []
+    errors: list[dict] = []
+    seen: set[int] = set()
+
+    for raw_card_id in list(card_ids or []):
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            continue
+        if card_id in seen:
+            continue
+        seen.add(card_id)
+        try:
+            apply_node_kind_to_card(card_id, kind)
+            changed_card_ids.append(card_id)
+        except Exception as exc:
+            errors.append({"card_id": card_id, "error": str(exc)})
+
+    return {
+        "node_kind": kind,
+        "changed_card_ids": changed_card_ids,
+        "changed_count": len(changed_card_ids),
+        "errors": errors,
+        "error_count": len(errors),
+    }
+
+
 def rename_card_title(card_id: int, title: str) -> str:
     title = str(title or "").strip()
     if not title:
@@ -583,17 +621,105 @@ def link_card_to_tree(
     parent_card_id: int | None = None,
     sort_order: int | None = None,
 ) -> None:
-    if not card_exists(card_id):
-        raise RuntimeError(f"Card {card_id} was not found in the current collection.")
-    apply_node_kind_to_card(card_id, node_kind)
-    insert_knowledge_tree_node(
+    result = link_cards_to_tree(
         addon_dir,
         profile,
-        card_id,
+        [card_id],
         node_kind,
         parent_card_id=parent_card_id,
         sort_order=sort_order,
     )
+    if result["linked_count"] >= 1:
+        return
+    errors = result.get("errors") or []
+    if errors:
+        raise RuntimeError(str(errors[0].get("error") or "Failed to link the selected card."))
+    raise RuntimeError("Failed to link the selected card.")
+
+
+def link_cards_to_tree(
+    addon_dir: str,
+    profile: str,
+    card_ids,
+    node_kind: str,
+    *,
+    parent_card_id: int | None = None,
+    sort_order: int | None = None,
+    insert_after_card_id: int | None = None,
+) -> dict:
+    kind = normalize_node_kind(node_kind)
+    if parent_card_id is not None:
+        parent_card_id = int(parent_card_id)
+    if insert_after_card_id is not None:
+        insert_after_card_id = int(insert_after_card_id)
+
+    rows = get_knowledge_tree_nodes(addon_dir, profile)
+    grouped = _group_rows(rows)
+    siblings = list(grouped.get(parent_card_id, []))
+
+    insert_at = len(siblings) if sort_order is None else max(0, min(int(sort_order), len(siblings)))
+    if insert_after_card_id is not None:
+        insert_at = len(siblings)
+        for index, row in enumerate(siblings):
+            if int(row["card_id"]) == insert_after_card_id:
+                insert_at = index + 1
+                break
+
+    linked_card_ids: list[int] = []
+    errors: list[dict] = []
+    seen: set[int] = set()
+
+    for raw_card_id in list(card_ids or []):
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            continue
+        if card_id in seen:
+            continue
+        seen.add(card_id)
+
+        if parent_card_id == card_id:
+            errors.append(
+                {
+                    "card_id": card_id,
+                    "error": "Knowledge-tree node cannot be its own parent.",
+                }
+            )
+            continue
+
+        try:
+            if not card_exists(card_id):
+                raise RuntimeError(f"Card {card_id} was not found in the current collection.")
+            if get_knowledge_tree_node(addon_dir, profile, card_id) is not None:
+                raise RuntimeError(f"Card {card_id} is already present in the knowledge tree.")
+            apply_node_kind_to_card(card_id, kind)
+        except Exception as exc:
+            errors.append({"card_id": card_id, "error": str(exc)})
+            continue
+
+        linked_card_ids.append(card_id)
+
+    if linked_card_ids:
+        for offset, card_id in enumerate(linked_card_ids):
+            siblings.insert(
+                insert_at + offset,
+                {
+                    "card_id": int(card_id),
+                    "parent_card_id": parent_card_id,
+                    "node_kind": kind,
+                    "sort_order": insert_at + offset,
+                },
+            )
+        grouped[parent_card_id] = siblings
+        set_knowledge_tree_structure(addon_dir, profile, _flatten_grouped_rows(grouped))
+
+    return {
+        "node_kind": kind,
+        "linked_card_ids": linked_card_ids,
+        "linked_count": len(linked_card_ids),
+        "errors": errors,
+        "error_count": len(errors),
+    }
 
 
 def search_linkable_cards(
@@ -609,22 +735,26 @@ def search_linkable_cards(
     limit = max(1, int(limit))
     query = str(query or "").strip()
 
-    sql = (
-        "SELECT c.id, n.sf, n.mid, c.did "
-        "FROM cards c "
-        "JOIN notes n ON n.id = c.nid "
-    )
-    params: list[object] = []
-    if query:
-        sql += "WHERE lower(n.sf) LIKE lower(?) "
-        params.append(f"%{query}%")
-    sql += "ORDER BY c.id DESC LIMIT ?"
-    params.append(max(limit * 3, limit))
+    rows = []
+    for sort_field_column in ("sfld", "sf"):
+        sql = (
+            f"SELECT c.id, n.{sort_field_column}, n.mid, c.did "
+            "FROM cards c "
+            "JOIN notes n ON n.id = c.nid "
+        )
+        params: list[object] = []
+        if query:
+            sql += f"WHERE lower(n.{sort_field_column}) LIKE lower(?) "
+            params.append(f"%{query}%")
+        sql += "ORDER BY c.id DESC LIMIT ?"
+        params.append(max(limit * 3, limit))
 
-    try:
-        rows = list(mw.col.db.all(sql, *params) or [])
-    except Exception:
-        return []
+        try:
+            rows = list(mw.col.db.all(sql, *params) or [])
+            break
+        except Exception:
+            rows = []
+            continue
 
     results: list[dict] = []
     for card_id, title, mid, did in rows:

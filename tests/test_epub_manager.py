@@ -114,6 +114,8 @@ class TestEpubProgressAndIndex:
     def test_progress_round_trip(self, tmp_path):
         addon_dir = str(tmp_path)
         assert epub_manager.get_epub_progress(addon_dir, "TestProfile", 10) == (0, 0.0, False)
+        assert epub_manager.get_read_section_index(addon_dir, "TestProfile", 10) == 0
+        assert epub_manager.get_epub_font_scale(addon_dir, "TestProfile", 10) == 1.0
 
         epub_manager.set_epub_progress(
             addon_dir, "TestProfile", 10,
@@ -121,8 +123,12 @@ class TestEpubProgressAndIndex:
             scroll_ratio=0.45,
             is_finished=True,
         )
+        epub_manager.set_read_section_index(addon_dir, "TestProfile", 10, 2)
+        epub_manager.set_epub_font_scale(addon_dir, "TestProfile", 10, 1.35)
 
         assert epub_manager.get_epub_progress(addon_dir, "TestProfile", 10) == (3, 0.45, True)
+        assert epub_manager.get_read_section_index(addon_dir, "TestProfile", 10) == 2
+        assert epub_manager.get_epub_font_scale(addon_dir, "TestProfile", 10) == 1.35
 
     def test_replace_and_search_epub_text_index(self, tmp_path):
         db.replace_epub_text_index(
@@ -132,3 +138,101 @@ class TestEpubProgressAndIndex:
 
         hits = db.search_epub_text_index(str(tmp_path), "TestProfile", "second cha", limit=10)
         assert hits == [(42, 1, "Deep Dive", "Second chapter text")]
+
+
+class _FakeEpubCard:
+    def __init__(self, card_id: int, nid: int, queue: int, due: int):
+        self.id = int(card_id)
+        self.nid = int(nid)
+        self.queue = int(queue)
+        self.due = int(due)
+
+
+class _FakeEpubNote:
+    def __init__(self, title: str):
+        self.fields = [title]
+
+
+class _FakeEpubCol:
+    def __init__(self):
+        self._cards = {
+            101: _FakeEpubCard(101, 1001, queue=2, due=10),
+            102: _FakeEpubCard(102, 1002, queue=1, due=3),
+        }
+        self._notes = {
+            1001: _FakeEpubNote("Section One Card"),
+            1002: _FakeEpubNote("Section Two Card"),
+        }
+
+    def find_cards(self, _query: str):
+        return [101, 102]
+
+    def get_card(self, card_id: int):
+        return self._cards[int(card_id)]
+
+    def get_note(self, note_id: int):
+        return self._notes[int(note_id)]
+
+
+class TestEpubWorkflowHelpers:
+    def test_due_epub_source_cards_collects_due_cards_up_to_section(self, tmp_path):
+        addon_dir = str(tmp_path)
+        db.add_epub_card_source(addon_dir, "TestProfile", epub_card_id=5, section_index=0, note_id=1001, excerpt="earlier")
+        db.add_epub_card_source(addon_dir, "TestProfile", epub_card_id=5, section_index=2, note_id=1002, excerpt="later")
+
+        rows = epub_manager.get_due_epub_source_cards(
+            addon_dir,
+            "TestProfile",
+            epub_card_id=5,
+            max_section_index=2,
+            col=_FakeEpubCol(),
+        )
+
+        assert rows == [
+            {
+                "card_id": 101,
+                "note_id": 1001,
+                "section_index": 0,
+                "title": "Section One Card",
+                "excerpt": "earlier",
+                "queue": 2,
+                "due": 10,
+                "due_state": "due",
+            },
+            {
+                "card_id": 102,
+                "note_id": 1002,
+                "section_index": 2,
+                "title": "Section Two Card",
+                "excerpt": "later",
+                "queue": 1,
+                "due": 3,
+                "due_state": "learning",
+            },
+        ]
+
+    def test_epub_daily_limit_status_uses_sections(self, tmp_path):
+        addon_dir = str(tmp_path)
+        with patch("epub_manager.load_scheduler_config", return_value=type("Cfg", (), {"day_end_time": "00:00"})()), patch(
+            "epub_manager._effective_date", return_value="2026-04-23"
+        ):
+            epub_manager.save_epub_daily_limit_settings(
+                addon_dir,
+                "TestProfile",
+                10,
+                enabled=True,
+                daily_section_limit=2,
+                enforcement_mode="soft_lock",
+            )
+            status = epub_manager.get_epub_daily_limit_status(
+                addon_dir,
+                "TestProfile",
+                10,
+                current_section_index=1,
+            )
+
+        assert status["enabled"] is True
+        assert status["daily_section_limit"] == 2
+        assert status["sections_used"] == 1
+        assert status["sections_remaining"] == 1
+        assert status["allowed_max_section"] == 2

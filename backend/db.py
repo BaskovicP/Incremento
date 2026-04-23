@@ -12,7 +12,12 @@ pdf_due_review_prompts — per-card on-open due-review prompt config for PDFs
 pdf_daily_limit_usage — per-card per-day PDF reading usage and overrides
 pdf_highlights  — highlighted passages per card
 epub_progress   — reading section/scroll state per card
+epub_daily_limits — per-card daily reading limit config for EPUBs
+epub_due_review_prompts — per-card on-open due-review prompt config for EPUBs
+epub_daily_limit_usage — per-card per-day EPUB reading usage and overrides
 epub_highlights — highlighted passages per EPUB section
+writing_progress — per-card editor state for markdown writing notes
+writing_word_stats — per-card writing word-count baselines and totals
 stats           — daily and lifetime review statistics (JSON blobs per scope)
 priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
@@ -22,6 +27,7 @@ web_progress    — last URL, scroll position, bookmark state, and media resume 
 browser_media_refs — latest manually saved browser media reference per card
 reviewer_recent_tags — latest reviewer-added tags for quick reuse
 topic_postpones — timed postpone expiry timestamps per topic card
+custom_schedule_rules — per-card recurring custom scheduling rules
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
 knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
 """
@@ -127,11 +133,38 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS epub_progress (
-            card_id       INTEGER PRIMARY KEY,
-            section_index INTEGER NOT NULL DEFAULT 0,
-            scroll_ratio  REAL    NOT NULL DEFAULT 0.0,
-            is_finished   INTEGER NOT NULL DEFAULT 0
+            card_id            INTEGER PRIMARY KEY,
+            section_index      INTEGER NOT NULL DEFAULT 0,
+            scroll_ratio       REAL    NOT NULL DEFAULT 0.0,
+            is_finished        INTEGER NOT NULL DEFAULT 0,
+            read_section_index INTEGER NOT NULL DEFAULT 0,
+            font_scale         REAL    NOT NULL DEFAULT 1.0
         );
+
+        CREATE TABLE IF NOT EXISTS epub_daily_limits (
+            card_id             INTEGER PRIMARY KEY,
+            daily_section_limit INTEGER NOT NULL DEFAULT 0,
+            enforcement_mode    TEXT    NOT NULL DEFAULT 'warning',
+            updated_at          INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS epub_due_review_prompts (
+            card_id    INTEGER PRIMARY KEY,
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS epub_daily_limit_usage (
+            card_id              INTEGER NOT NULL,
+            logical_date         TEXT    NOT NULL DEFAULT '',
+            baseline_section     INTEGER NOT NULL DEFAULT 0,
+            highest_section      INTEGER NOT NULL DEFAULT 0,
+            override_enabled     INTEGER NOT NULL DEFAULT 0,
+            updated_at           INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (card_id, logical_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_edlu_date
+            ON epub_daily_limit_usage (logical_date, card_id);
 
         CREATE TABLE IF NOT EXISTS epub_highlights (
             id            TEXT    NOT NULL,
@@ -142,6 +175,26 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             start_offset  INTEGER NOT NULL DEFAULT 0,
             end_offset    INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (id, card_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS writing_progress (
+            card_id                INTEGER PRIMARY KEY,
+            cursor_position        INTEGER NOT NULL DEFAULT 0,
+            scroll_ratio           REAL    NOT NULL DEFAULT 0.0,
+            font_scale             REAL    NOT NULL DEFAULT 1.0,
+            wrap_enabled           INTEGER NOT NULL DEFAULT 1,
+            focus_mode             INTEGER NOT NULL DEFAULT 0,
+            highlight_current_line INTEGER NOT NULL DEFAULT 1,
+            bookmark_block_number  INTEGER NOT NULL DEFAULT -1,
+            updated_at             INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS writing_word_stats (
+            card_id                 INTEGER PRIMARY KEY,
+            current_word_count      INTEGER NOT NULL DEFAULT 0,
+            daily_logical_date      TEXT    NOT NULL DEFAULT '',
+            daily_baseline_words    INTEGER NOT NULL DEFAULT 0,
+            updated_at              INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS stats (
@@ -251,6 +304,19 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_topic_postpones_until
             ON topic_postpones (until_ts);
 
+        CREATE TABLE IF NOT EXISTS custom_schedule_rules (
+            card_id        INTEGER PRIMARY KEY,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            mode           TEXT    NOT NULL DEFAULT 'minimum_cadence',
+            interval_value INTEGER NOT NULL DEFAULT 2,
+            interval_unit  TEXT    NOT NULL DEFAULT 'days',
+            preset_label   TEXT    NOT NULL DEFAULT '',
+            created_at     INTEGER NOT NULL DEFAULT 0,
+            updated_at     INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_csr_enabled_mode
+            ON custom_schedule_rules (enabled, mode, interval_unit, interval_value);
+
         CREATE TABLE IF NOT EXISTS knowledge_tree_nodes (
             card_id        INTEGER PRIMARY KEY,
             parent_card_id INTEGER,
@@ -273,6 +339,85 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_ktpp_branch
             ON knowledge_tree_postpone_presets (branch_root_card_id, name);
     """)
+    _ensure_column(
+        conn,
+        "pdf_progress",
+        "read_page",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "epub_progress",
+        "read_section_index",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "epub_progress",
+        "font_scale",
+        "REAL NOT NULL DEFAULT 1.0",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "scroll_ratio",
+        "REAL NOT NULL DEFAULT 0.0",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "bookmark_url",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "bookmark_payload",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "media_url",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "media_title",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "media_seconds",
+        "REAL NOT NULL DEFAULT 0.0",
+    )
+    _ensure_column(
+        conn,
+        "web_progress",
+        "media_updated_at",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+
+
+def _ensure_column(
+    conn: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_sql: str,
+) -> None:
+    try:
+        columns = {
+            str(row[1])
+            for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+    except Exception:
+        columns = set()
+    if column_name in columns:
+        return
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
+    conn.commit()
     # Add read_page to existing pdf_progress tables that predate this column
     try:
         conn.execute(
@@ -343,6 +488,53 @@ def _default_pdf_due_review_prompt_config() -> dict:
     }
 
 
+def _default_epub_daily_limit_config() -> dict:
+    return {
+        "daily_section_limit": 0,
+        "enforcement_mode": "warning",
+        "updated_at": 0,
+    }
+
+
+def _default_epub_daily_limit_usage(logical_date: str) -> dict:
+    return {
+        "logical_date": str(logical_date or "").strip(),
+        "baseline_section": 0,
+        "highest_section": 0,
+        "override_enabled": False,
+        "updated_at": 0,
+    }
+
+
+def _default_epub_due_review_prompt_config() -> dict:
+    return {
+        "enabled": True,
+        "updated_at": 0,
+    }
+
+
+def _default_writing_progress() -> dict:
+    return {
+        "cursor_position": 0,
+        "scroll_ratio": 0.0,
+        "font_scale": 1.0,
+        "wrap_enabled": True,
+        "focus_mode": False,
+        "highlight_current_line": True,
+        "bookmark_block_number": -1,
+        "updated_at": 0,
+    }
+
+
+def _default_writing_word_stats() -> dict:
+    return {
+        "current_word_count": 0,
+        "daily_logical_date": "",
+        "daily_baseline_words": 0,
+        "updated_at": 0,
+    }
+
+
 def _normalize_pdf_daily_limit_page(value) -> int:
     try:
         page = int(value or 0)
@@ -351,8 +543,188 @@ def _normalize_pdf_daily_limit_page(value) -> int:
     return max(0, page)
 
 
+def _normalize_epub_daily_limit_section(value) -> int:
+    try:
+        section = int(value or 0)
+    except Exception:
+        section = 0
+    return max(0, section)
+
+
 def _normalize_pdf_daily_limit_logical_date(value) -> str:
     return str(value or "").strip()[:32]
+
+
+def _normalize_writing_progress_cursor_position(value) -> int:
+    try:
+        position = int(value or 0)
+    except Exception:
+        position = 0
+    return max(0, position)
+
+
+def _normalize_writing_progress_scroll_ratio(value) -> float:
+    try:
+        ratio = float(value or 0.0)
+    except Exception:
+        ratio = 0.0
+    return max(0.0, min(ratio, 1.0))
+
+
+def _normalize_writing_progress_font_scale(value) -> float:
+    try:
+        scale = float(value or 1.0)
+    except Exception:
+        scale = 1.0
+    return max(0.7, min(scale, 2.4))
+
+
+def _normalize_writing_progress_bookmark_block(value) -> int:
+    try:
+        block = int(value)
+    except Exception:
+        block = -1
+    return max(-1, block)
+
+
+def _normalize_writing_word_count(value) -> int:
+    try:
+        count = int(value or 0)
+    except Exception:
+        count = 0
+    return max(0, count)
+
+
+def _normalize_writing_logical_date(value) -> str:
+    return str(value or "").strip()[:32]
+
+
+def get_writing_progress(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT cursor_position, scroll_ratio, font_scale, wrap_enabled, focus_mode, "
+        "highlight_current_line, bookmark_block_number, updated_at "
+        "FROM writing_progress WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_writing_progress()
+    return {
+        "cursor_position": _normalize_writing_progress_cursor_position(row[0]),
+        "scroll_ratio": _normalize_writing_progress_scroll_ratio(row[1]),
+        "font_scale": _normalize_writing_progress_font_scale(row[2]),
+        "wrap_enabled": bool(row[3]),
+        "focus_mode": bool(row[4]),
+        "highlight_current_line": bool(row[5]),
+        "bookmark_block_number": _normalize_writing_progress_bookmark_block(row[6]),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[7]),
+    }
+
+
+def set_writing_progress(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    cursor_position: int,
+    scroll_ratio: float,
+    font_scale: float,
+    wrap_enabled: bool,
+    focus_mode: bool,
+    highlight_current_line: bool,
+    bookmark_block_number: int,
+) -> dict:
+    payload = {
+        "cursor_position": _normalize_writing_progress_cursor_position(cursor_position),
+        "scroll_ratio": _normalize_writing_progress_scroll_ratio(scroll_ratio),
+        "font_scale": _normalize_writing_progress_font_scale(font_scale),
+        "wrap_enabled": bool(wrap_enabled),
+        "focus_mode": bool(focus_mode),
+        "highlight_current_line": bool(highlight_current_line),
+        "bookmark_block_number": _normalize_writing_progress_bookmark_block(bookmark_block_number),
+        "updated_at": int(time.time()),
+    }
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO writing_progress "
+        "(card_id, cursor_position, scroll_ratio, font_scale, wrap_enabled, focus_mode, "
+        "highlight_current_line, bookmark_block_number, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "cursor_position = excluded.cursor_position, "
+        "scroll_ratio = excluded.scroll_ratio, "
+        "font_scale = excluded.font_scale, "
+        "wrap_enabled = excluded.wrap_enabled, "
+        "focus_mode = excluded.focus_mode, "
+        "highlight_current_line = excluded.highlight_current_line, "
+        "bookmark_block_number = excluded.bookmark_block_number, "
+        "updated_at = excluded.updated_at",
+        (
+            int(card_id),
+            payload["cursor_position"],
+            payload["scroll_ratio"],
+            payload["font_scale"],
+            1 if payload["wrap_enabled"] else 0,
+            1 if payload["focus_mode"] else 0,
+            1 if payload["highlight_current_line"] else 0,
+            payload["bookmark_block_number"],
+            payload["updated_at"],
+        ),
+    )
+    conn.commit()
+    return payload
+
+
+def get_writing_word_stats(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT current_word_count, daily_logical_date, daily_baseline_words, updated_at "
+        "FROM writing_word_stats WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_writing_word_stats()
+    return {
+        "current_word_count": _normalize_writing_word_count(row[0]),
+        "daily_logical_date": _normalize_writing_logical_date(row[1]),
+        "daily_baseline_words": _normalize_writing_word_count(row[2]),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[3]),
+    }
+
+
+def set_writing_word_stats(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    current_word_count: int,
+    daily_logical_date: str,
+    daily_baseline_words: int,
+) -> dict:
+    payload = {
+        "current_word_count": _normalize_writing_word_count(current_word_count),
+        "daily_logical_date": _normalize_writing_logical_date(daily_logical_date),
+        "daily_baseline_words": _normalize_writing_word_count(daily_baseline_words),
+        "updated_at": int(time.time()),
+    }
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO writing_word_stats "
+        "(card_id, current_word_count, daily_logical_date, daily_baseline_words, updated_at) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "current_word_count = excluded.current_word_count, "
+        "daily_logical_date = excluded.daily_logical_date, "
+        "daily_baseline_words = excluded.daily_baseline_words, "
+        "updated_at = excluded.updated_at",
+        (
+            int(card_id),
+            payload["current_word_count"],
+            payload["daily_logical_date"],
+            payload["daily_baseline_words"],
+            payload["updated_at"],
+        ),
+    )
+    conn.commit()
+    return payload
 
 
 def get_pdf_daily_limit_config(addon_dir: str, profile: str, card_id: int) -> dict:
@@ -507,6 +879,169 @@ def set_pdf_due_review_prompt_config(
     conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO pdf_due_review_prompts (card_id, enabled, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "enabled = excluded.enabled, "
+        "updated_at = excluded.updated_at",
+        (cid, 1 if enabled else 0, ts),
+    )
+    conn.commit()
+
+
+def get_epub_daily_limit_config(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT daily_section_limit, enforcement_mode, updated_at "
+        "FROM epub_daily_limits WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_epub_daily_limit_config()
+    return {
+        "daily_section_limit": _normalize_epub_daily_limit_section(row[0]),
+        "enforcement_mode": _normalize_pdf_limit_mode(row[1]),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[2]),
+    }
+
+
+def set_epub_daily_limit_config(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    daily_section_limit: int,
+    enforcement_mode: str = "warning",
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    limit = _normalize_epub_daily_limit_section(daily_section_limit)
+    mode = _normalize_pdf_limit_mode(enforcement_mode)
+    ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if updated_at is None else updated_at
+    )
+    conn = get_connection(addon_dir, profile)
+    if limit <= 0:
+        conn.execute("DELETE FROM epub_daily_limits WHERE card_id = ?", (cid,))
+        conn.commit()
+        return
+    conn.execute(
+        "INSERT INTO epub_daily_limits (card_id, daily_section_limit, enforcement_mode, updated_at) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "daily_section_limit = excluded.daily_section_limit, "
+        "enforcement_mode = excluded.enforcement_mode, "
+        "updated_at = excluded.updated_at",
+        (cid, limit, mode, ts),
+    )
+    conn.commit()
+
+
+def get_epub_daily_limit_usage(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    logical_date: str,
+) -> dict:
+    date_key = _normalize_pdf_daily_limit_logical_date(logical_date)
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT baseline_section, highest_section, override_enabled, updated_at "
+        "FROM epub_daily_limit_usage WHERE card_id = ? AND logical_date = ?",
+        (int(card_id), date_key),
+    ).fetchone()
+    if not row:
+        return _default_epub_daily_limit_usage(date_key)
+    baseline_section = _normalize_epub_daily_limit_section(row[0])
+    highest_section = max(
+        baseline_section,
+        _normalize_epub_daily_limit_section(row[1]),
+    )
+    return {
+        "logical_date": date_key,
+        "baseline_section": baseline_section,
+        "highest_section": highest_section,
+        "override_enabled": bool(int(row[2] or 0)),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[3]),
+    }
+
+
+def set_epub_daily_limit_usage(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    logical_date: str,
+    *,
+    baseline_section: int,
+    highest_section: int,
+    override_enabled: bool = False,
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    date_key = _normalize_pdf_daily_limit_logical_date(logical_date)
+    baseline = _normalize_epub_daily_limit_section(baseline_section)
+    highest = max(baseline, _normalize_epub_daily_limit_section(highest_section))
+    ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if updated_at is None else updated_at
+    )
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO epub_daily_limit_usage "
+        "(card_id, logical_date, baseline_section, highest_section, override_enabled, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id, logical_date) DO UPDATE SET "
+        "baseline_section = excluded.baseline_section, "
+        "highest_section = excluded.highest_section, "
+        "override_enabled = excluded.override_enabled, "
+        "updated_at = excluded.updated_at",
+        (cid, date_key, baseline, highest, 1 if override_enabled else 0, ts),
+    )
+    conn.commit()
+
+
+def clear_epub_daily_limit_usage(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    logical_date: str | None = None,
+) -> None:
+    cid = int(card_id)
+    conn = get_connection(addon_dir, profile)
+    if logical_date is None:
+        conn.execute("DELETE FROM epub_daily_limit_usage WHERE card_id = ?", (cid,))
+    else:
+        conn.execute(
+            "DELETE FROM epub_daily_limit_usage WHERE card_id = ? AND logical_date = ?",
+            (cid, _normalize_pdf_daily_limit_logical_date(logical_date)),
+        )
+    conn.commit()
+
+
+def get_epub_due_review_prompt_config(addon_dir: str, profile: str, card_id: int) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT enabled, updated_at FROM epub_due_review_prompts WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return _default_epub_due_review_prompt_config()
+    return {
+        "enabled": bool(int(row[0] or 0)),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[1]),
+    }
+
+
+def set_epub_due_review_prompt_config(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    enabled: bool,
+    updated_at: int | None = None,
+) -> None:
+    cid = int(card_id)
+    ts = _normalize_browser_media_ref_updated_at(
+        int(time.time()) if updated_at is None else updated_at
+    )
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO epub_due_review_prompts (card_id, enabled, updated_at) VALUES (?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "
         "enabled = excluded.enabled, "
         "updated_at = excluded.updated_at",
@@ -841,6 +1376,31 @@ def get_epub_card_sources(addon_dir: str, profile: str, epub_card_id: int, secti
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
 
 
+def get_epub_card_sources_up_to_section(
+    addon_dir: str,
+    profile: str,
+    epub_card_id: int,
+    max_section_index: int,
+) -> list[dict]:
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT section_index, note_id, excerpt FROM epub_card_sources "
+            "WHERE epub_card_id = ? AND section_index <= ? ORDER BY section_index, id",
+            (int(epub_card_id), int(max_section_index)),
+        )
+        .fetchall()
+    )
+    return [
+        {
+            "section_index": int(row[0]),
+            "note_id": int(row[1]),
+            "excerpt": row[2],
+        }
+        for row in rows
+    ]
+
+
 def get_epub_section_card_counts(addon_dir: str, profile: str, epub_card_id: int) -> dict:
     rows = (
         get_connection(addon_dir, profile)
@@ -1096,6 +1656,173 @@ def set_topic_schedule(
         (card_id, round(float(a_factor), 3), int(interval)),
     )
     conn.commit()
+
+
+# ── Custom schedule rules ────────────────────────────────────────────────────
+
+
+def _default_custom_schedule_rule() -> dict:
+    return {
+        "card_id": 0,
+        "enabled": True,
+        "mode": "minimum_cadence",
+        "interval_value": 2,
+        "interval_unit": "days",
+        "preset_label": "",
+        "created_at": 0,
+        "updated_at": 0,
+    }
+
+
+def _normalize_custom_schedule_mode(value) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"fixed_repeat", "minimum_cadence", "one_time"}:
+        return raw
+    return "minimum_cadence"
+
+
+def _normalize_custom_schedule_unit(value) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"days", "weeks", "months"}:
+        return raw
+    return "days"
+
+
+def _normalize_custom_schedule_interval_value(value) -> int:
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = 2
+    return max(1, min(999, parsed))
+
+
+def _normalize_custom_schedule_preset_label(value) -> str:
+    return str(value or "").strip()[:120]
+
+
+def get_custom_schedule_rule(addon_dir: str, profile: str, card_id: int) -> dict | None:
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT card_id, enabled, mode, interval_value, interval_unit, preset_label, "
+            "created_at, updated_at FROM custom_schedule_rules WHERE card_id = ?",
+            (int(card_id),),
+        )
+        .fetchone()
+    )
+    if not row:
+        return None
+    return {
+        "card_id": int(row[0] or 0),
+        "enabled": bool(row[1]),
+        "mode": _normalize_custom_schedule_mode(row[2]),
+        "interval_value": _normalize_custom_schedule_interval_value(row[3]),
+        "interval_unit": _normalize_custom_schedule_unit(row[4]),
+        "preset_label": _normalize_custom_schedule_preset_label(row[5]),
+        "created_at": int(row[6] or 0),
+        "updated_at": int(row[7] or 0),
+    }
+
+
+def get_custom_schedule_rules(
+    addon_dir: str,
+    profile: str,
+    card_ids: list[int] | tuple[int, ...] | set[int],
+) -> dict[int, dict]:
+    normalized_ids = sorted(
+        {
+            int(card_id)
+            for card_id in (card_ids or [])
+            if str(card_id).strip()
+        }
+    )
+    if not normalized_ids:
+        return {}
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT card_id, enabled, mode, interval_value, interval_unit, preset_label, "
+            "created_at, updated_at FROM custom_schedule_rules "
+            f"WHERE card_id IN ({','.join('?' for _ in normalized_ids)})",
+            tuple(normalized_ids),
+        )
+        .fetchall()
+    )
+    return {
+        int(row[0]): {
+            "card_id": int(row[0] or 0),
+            "enabled": bool(row[1]),
+            "mode": _normalize_custom_schedule_mode(row[2]),
+            "interval_value": _normalize_custom_schedule_interval_value(row[3]),
+            "interval_unit": _normalize_custom_schedule_unit(row[4]),
+            "preset_label": _normalize_custom_schedule_preset_label(row[5]),
+            "created_at": int(row[6] or 0),
+            "updated_at": int(row[7] or 0),
+        }
+        for row in rows
+    }
+
+
+def set_custom_schedule_rule(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    enabled: bool = True,
+    mode: str = "minimum_cadence",
+    interval_value: int = 2,
+    interval_unit: str = "days",
+    preset_label: str = "",
+) -> dict:
+    now = int(time.time())
+    card_id = int(card_id)
+    existing = get_custom_schedule_rule(addon_dir, profile, card_id) or {}
+    created_at = int(existing.get("created_at") or now)
+    normalized = {
+        "card_id": card_id,
+        "enabled": bool(enabled),
+        "mode": _normalize_custom_schedule_mode(mode),
+        "interval_value": _normalize_custom_schedule_interval_value(interval_value),
+        "interval_unit": _normalize_custom_schedule_unit(interval_unit),
+        "preset_label": _normalize_custom_schedule_preset_label(preset_label),
+        "created_at": created_at,
+        "updated_at": now,
+    }
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO custom_schedule_rules "
+        "(card_id, enabled, mode, interval_value, interval_unit, preset_label, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "enabled = excluded.enabled, "
+        "mode = excluded.mode, "
+        "interval_value = excluded.interval_value, "
+        "interval_unit = excluded.interval_unit, "
+        "preset_label = excluded.preset_label, "
+        "updated_at = excluded.updated_at",
+        (
+            normalized["card_id"],
+            1 if normalized["enabled"] else 0,
+            normalized["mode"],
+            normalized["interval_value"],
+            normalized["interval_unit"],
+            normalized["preset_label"],
+            normalized["created_at"],
+            normalized["updated_at"],
+        ),
+    )
+    conn.commit()
+    return dict(normalized)
+
+
+def clear_custom_schedule_rule(addon_dir: str, profile: str, card_id: int) -> bool:
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        "DELETE FROM custom_schedule_rules WHERE card_id = ?",
+        (int(card_id),),
+    )
+    conn.commit()
+    return int(getattr(cursor, "rowcount", 0) or 0) > 0
 
 
 # ── Knowledge tree ────────────────────────────────────────────────────────────

@@ -59,6 +59,15 @@ from .backend.priority_manager import (
     get_all_priorities,
     invert_all_priorities,
 )
+from .backend.custom_schedule import (
+    apply_custom_schedule_after_answer as _apply_custom_schedule_after_answer,
+    apply_rule_now_to_card as _apply_custom_schedule_now_to_card,
+    clear_custom_schedule_rules as _clear_custom_schedule_rules,
+    configured_custom_schedule_default_mode as _configured_custom_schedule_default_mode,
+    configured_custom_schedule_presets as _configured_custom_schedule_presets,
+    format_custom_schedule_rule as _format_custom_schedule_rule,
+    save_custom_schedule_rule as _save_custom_schedule_rule,
+)
 from .backend.web_manager import (
     configured_remember_browser_card_scroll,
     configured_prefer_web_card_resume_in_original_page,
@@ -71,6 +80,7 @@ from .backend.reviewer_buttons import (
 )
 from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
+from .frontend.custom_schedule_dialog import CustomScheduleDialog
 from .frontend import timer_widget as _timer_mod
 from .backend.topic_scheduler import (
     TOPIC_REVIEW_BUTTONS,
@@ -109,6 +119,7 @@ from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
     get_connection,
     get_card_browser_media_ref,
+    get_custom_schedule_rule,
     get_knowledge_tree_node,
     get_recent_reviewer_tags,
     replace_pdf_text_index,
@@ -129,6 +140,11 @@ from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.search_all import _SearchAllDialog
+from .backend.knowledge_tree import (
+    NODE_KIND_ITEM as _KT_NODE_KIND_ITEM,
+    NODE_KIND_TOPIC as _KT_NODE_KIND_TOPIC,
+    apply_node_kind_to_cards as _kt_apply_node_kind_to_cards,
+)
 
 _ADDON_DIR = os.path.dirname(__file__)
 
@@ -662,6 +678,176 @@ _pdf_dock_mod.register_pdf_view_callbacks(
     _review_time_mod.on_pdf_view_started,
     _review_time_mod.on_pdf_view_stopped,
 )
+_epub_dock_mod.register_epub_view_callbacks(
+    _review_time_mod.on_pdf_view_started,
+    _review_time_mod.on_pdf_view_stopped,
+)
+
+
+def _browser_selected_incremento_card_ids(browser) -> list[int]:
+    card_ids: list[int] = []
+    seen: set[int] = set()
+
+    def _add_card_id(raw_card_id) -> None:
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            return
+        if card_id in seen:
+            return
+        seen.add(card_id)
+        card_ids.append(card_id)
+
+    for method_name in ("selected_cards", "selectedCards"):
+        method = getattr(browser, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            for card_id in list(method() or []):
+                _add_card_id(card_id)
+        except Exception:
+            pass
+
+    for method_name in ("selected_notes", "selectedNotes"):
+        method = getattr(browser, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            note_ids = list(method() or [])
+        except Exception:
+            note_ids = []
+        for raw_note_id in note_ids:
+            try:
+                note_id = int(raw_note_id)
+                note_card_ids = mw.col.find_cards(f"nid:{note_id}")
+            except Exception:
+                note_card_ids = []
+            for card_id in note_card_ids:
+                _add_card_id(card_id)
+
+    return card_ids
+
+
+def _convert_browser_selection_to_knowledge_kind(browser, node_kind: str) -> None:
+    card_ids = _browser_selected_incremento_card_ids(browser)
+    if not card_ids:
+        showInfo("Select one or more Browser rows first.")
+        return
+
+    result = _kt_apply_node_kind_to_cards(card_ids, node_kind)
+    changed_count = int(result.get("changed_count") or 0)
+    error_count = int(result.get("error_count") or 0)
+    label = "topics" if node_kind == _KT_NODE_KIND_TOPIC else "items"
+
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+    try:
+        browser.search()
+    except Exception:
+        pass
+
+    if error_count:
+        showInfo(
+            f"Converted {changed_count} selected card{'s' if changed_count != 1 else ''} "
+            f"to {label}, but {error_count} failed."
+        )
+        return
+    tooltip(
+        f"Converted {changed_count} selected card{'s' if changed_count != 1 else ''} "
+        f"to {label}."
+    )
+
+
+def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
+    normalized_ids = sorted({int(card_id) for card_id in (card_ids or [])})
+    if not normalized_ids:
+        showInfo("Select one or more Browser rows first.")
+        return
+
+    cfg = mw.addonManager.getConfig(__name__) or {}
+    dlg = CustomScheduleDialog(
+        _ADDON_DIR,
+        normalized_ids,
+        config=cfg,
+        parent=mw,
+    )
+    if not dlg.exec():
+        return
+
+    if dlg.clear_requested:
+        cleared = _clear_custom_schedule_rules(normalized_ids)
+        tooltip(
+            f"Cleared custom schedule on {cleared} selected "
+            f"card{'s' if cleared != 1 else ''}."
+        )
+        return
+
+    rule = dlg.selected_rule
+    updated = _save_custom_schedule_rule(
+        normalized_ids,
+        mode=str(rule.get("mode") or ""),
+        interval_value=int(rule.get("interval_value") or 0),
+        interval_unit=str(rule.get("interval_unit") or ""),
+        preset_label=str(rule.get("preset_label") or ""),
+    )
+    applied_now = 0
+    if dlg.apply_now:
+        for card_id in normalized_ids:
+            try:
+                applied_now += 1 if _apply_custom_schedule_now_to_card(int(card_id), rule) else 0
+            except Exception:
+                pass
+
+    summary = _format_custom_schedule_rule(rule)
+    if dlg.apply_now:
+        tooltip(
+            f"Saved {summary} on {updated} card{'s' if updated != 1 else ''}. "
+            f"Applied now to {applied_now}."
+        )
+    else:
+        tooltip(
+            f"Saved {summary} on {updated} card{'s' if updated != 1 else ''}."
+        )
+
+
+def _on_browser_context_menu(browser, menu: QMenu) -> None:
+    card_ids = _browser_selected_incremento_card_ids(browser)
+    if not card_ids:
+        return
+
+    menu.addSeparator()
+    submenu = QMenu("Incremento", menu)
+    count_label = f"{len(card_ids)} selected card{'s' if len(card_ids) != 1 else ''}"
+    topic_action = QAction(f"Make Topic ({count_label})", submenu)
+    item_action = QAction(f"Make Item ({count_label})", submenu)
+    schedule_action = QAction(f"Custom Schedule… ({count_label})", submenu)
+
+    qconnect(
+        topic_action.triggered,
+        lambda _checked=False, b=browser: _convert_browser_selection_to_knowledge_kind(
+            b,
+            _KT_NODE_KIND_TOPIC,
+        ),
+    )
+    qconnect(
+        item_action.triggered,
+        lambda _checked=False, b=browser: _convert_browser_selection_to_knowledge_kind(
+            b,
+            _KT_NODE_KIND_ITEM,
+        ),
+    )
+    qconnect(
+        schedule_action.triggered,
+        lambda _checked=False, card_ids=list(card_ids): _open_custom_schedule_dialog(card_ids),
+    )
+
+    submenu.addAction(topic_action)
+    submenu.addAction(item_action)
+    submenu.addSeparator()
+    submenu.addAction(schedule_action)
+    menu.addMenu(submenu)
 
 
 def _on_js_message(handled, message, context) -> tuple:
@@ -817,6 +1003,7 @@ gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_sh
 gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
+gui_hooks.reviewer_did_answer_card.append(_apply_custom_schedule_after_answer)
 gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(lambda: _release_session_postponed_cards())
@@ -913,6 +1100,7 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
     priority = None
     a_factor = None
     browser_time_seconds = None
+    custom_schedule_text = ""
     card = getattr(reviewer, "card", None)
     if card is not None:
         try:
@@ -941,6 +1129,15 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
                 browser_time_seconds = seconds
         except Exception:
             browser_time_seconds = None
+        try:
+            rule = get_custom_schedule_rule(
+                _ADDON_DIR,
+                _active_profile(),
+                int(card.id),
+            )
+            custom_schedule_text = _format_custom_schedule_rule(rule)
+        except Exception:
+            custom_schedule_text = ""
 
     try:
         web.eval(
@@ -948,6 +1145,7 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
                 priority,
                 a_factor=a_factor,
                 browser_time_seconds=browser_time_seconds,
+                custom_schedule_text=custom_schedule_text,
             )
         )
     except Exception:
@@ -2723,6 +2921,15 @@ def openSettingsFunction() -> None:
         current_topic_postpone_enabled=_configured_topic_postpone_enabled(cfg),
         current_topic_postpone_mode=cfg.get("topic_postpone_mode", "timed"),
         current_topic_postpone_minutes=cfg.get("topic_postpone_minutes", 30),
+        current_writing_wrap_enabled=_writing_dock_mod.configured_writing_wrap_enabled(cfg),
+        current_writing_focus_mode=_writing_dock_mod.configured_writing_focus_mode(cfg),
+        current_writing_highlight_current_line=_writing_dock_mod.configured_writing_highlight_current_line(cfg),
+        current_writing_restore_bookmark=_writing_dock_mod.configured_writing_restore_bookmark(cfg),
+        current_writing_progress_visible=_writing_dock_mod.configured_writing_progress_visible(cfg),
+        current_writing_progress_default_scope=_writing_dock_mod.configured_writing_progress_default_scope(cfg),
+        current_writing_word_count_mode=_writing_dock_mod.configured_writing_word_count_mode(cfg),
+        current_custom_schedule_default_mode=_configured_custom_schedule_default_mode(cfg),
+        current_custom_schedule_presets=_configured_custom_schedule_presets(cfg),
         parent=mw,
     )
     if not dlg.exec():
@@ -2746,6 +2953,15 @@ def openSettingsFunction() -> None:
     cfg["topic_postpone_enabled"] = dlg.topic_postpone_enabled
     cfg["topic_postpone_mode"] = dlg.topic_postpone_mode
     cfg["topic_postpone_minutes"] = dlg.topic_postpone_minutes
+    cfg["writing_wrap_enabled"] = dlg.writing_wrap_enabled
+    cfg["writing_focus_mode"] = dlg.writing_focus_mode
+    cfg["writing_highlight_current_line"] = dlg.writing_highlight_current_line
+    cfg["writing_restore_bookmark"] = dlg.writing_restore_bookmark
+    cfg["writing_progress_visible"] = dlg.writing_progress_visible
+    cfg["writing_progress_default_scope"] = dlg.writing_progress_default_scope
+    cfg["writing_word_count_mode"] = dlg.writing_word_count_mode
+    cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
+    cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     mw.addonManager.writeConfig(__name__, cfg)
     _apply_shortcuts_from_config()
     _add_card_dock_mod.refresh_add_card_dock_controls()
@@ -3015,3 +3231,4 @@ def _build_incremento_menu() -> None:
 gui_hooks.main_window_did_init.append(_build_incremento_menu)
 gui_hooks.main_window_did_init.append(_build_timer_toolbar)
 gui_hooks.state_did_change.append(lambda *_: _build_incremento_menu())
+gui_hooks.browser_will_show_context_menu.append(_on_browser_context_menu)

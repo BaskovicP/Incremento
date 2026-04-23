@@ -43,14 +43,17 @@ def build_reviewer_priority_badge_js(
     *,
     a_factor: float | int | None = None,
     browser_time_seconds: float | int | None = None,
+    custom_schedule_text: str = "",
 ) -> str:
     enabled = priority is not None
     value_text = format_reviewer_priority_value(priority) if enabled else ""
     a_factor_text = format_reviewer_a_factor_value(a_factor) if enabled else ""
     browser_time_text = format_reviewer_saved_time_value(browser_time_seconds) if enabled else ""
+    schedule_text = str(custom_schedule_text or "").strip() if enabled else ""
     safe_value = json.dumps(value_text)
     safe_a_factor = json.dumps(a_factor_text)
     safe_browser_time = json.dumps(browser_time_text)
+    safe_schedule = json.dumps(schedule_text)
     return f"""
 (function() {{
   var enabled = {"true" if enabled else "false"};
@@ -135,6 +138,21 @@ def build_reviewer_priority_badge_js(
       #${{badgeId}}.has-browser-time .incremento-browser-time-wrap {{
         display: flex;
       }}
+      #${{badgeId}} .incremento-schedule-wrap {{
+        display: none;
+        padding-left: 12px;
+        border-left: 1px solid rgba(143, 164, 194, 0.24);
+        max-width: 240px;
+      }}
+      #${{badgeId}}.has-schedule .incremento-schedule-wrap {{
+        display: flex;
+      }}
+      #${{badgeId}} .incremento-schedule-value {{
+        line-height: 1.2;
+        font-size: 13px;
+        min-width: 0;
+        white-space: normal;
+      }}
     `;
     (document.head || document.documentElement).appendChild(style);
   }}
@@ -153,6 +171,10 @@ def build_reviewer_priority_badge_js(
       '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
         '<span class="incremento-priority-label">Saved</span>' +
         '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
+      '</div>' +
+      '<div class="incremento-priority-metric incremento-schedule-wrap">' +
+        '<span class="incremento-priority-label">Schedule</span>' +
+        '<span class="incremento-priority-value incremento-schedule-value"></span>' +
       '</div>';
     document.body.appendChild(badge);
   }}
@@ -167,7 +189,8 @@ def build_reviewer_priority_badge_js(
   var valueNode = badge.querySelector(".incremento-priority-value");
   var aFactorNode = badge.querySelector(".incremento-a-factor-value");
   var browserTimeNode = badge.querySelector(".incremento-browser-time-value");
-  if (!valueNode || !aFactorNode || !browserTimeNode) {{
+  var scheduleNode = badge.querySelector(".incremento-schedule-value");
+  if (!valueNode || !aFactorNode || !browserTimeNode || !scheduleNode) {{
     badge.innerHTML =
       '<div class="incremento-priority-metric incremento-priority-wrap">' +
         '<span class="incremento-priority-label">Priority</span>' +
@@ -180,10 +203,15 @@ def build_reviewer_priority_badge_js(
       '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
         '<span class="incremento-priority-label">Saved</span>' +
         '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
+      '</div>' +
+      '<div class="incremento-priority-metric incremento-schedule-wrap">' +
+        '<span class="incremento-priority-label">Schedule</span>' +
+        '<span class="incremento-priority-value incremento-schedule-value"></span>' +
       '</div>';
     valueNode = badge.querySelector(".incremento-priority-value");
     aFactorNode = badge.querySelector(".incremento-a-factor-value");
     browserTimeNode = badge.querySelector(".incremento-browser-time-value");
+    scheduleNode = badge.querySelector(".incremento-schedule-value");
   }}
   if (valueNode) {{
     valueNode.textContent = {safe_value};
@@ -203,6 +231,14 @@ def build_reviewer_priority_badge_js(
   }}
   if (browserTimeNode) {{
     browserTimeNode.textContent = {safe_browser_time};
+  }}
+  if ({safe_schedule}) {{
+    badge.classList.add("has-schedule");
+  }} else {{
+    badge.classList.remove("has-schedule");
+  }}
+  if (scheduleNode) {{
+    scheduleNode.textContent = {safe_schedule};
   }}
 }})();
 """.strip()
