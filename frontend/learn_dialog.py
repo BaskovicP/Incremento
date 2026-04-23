@@ -437,11 +437,14 @@ class _LiveSchedulerPreviewDialog(QDialog):
         type_counts: dict[str, int] = {}
         mode_counts: dict[str, int] = {}
         tag_counts: dict[str, int] = {}
+        prioritized_count = 0
         for cid in selected_ids:
             meta = picked_meta.get(cid, {})
             ct = meta.get("card_type", "?")
             md = meta.get("mode", "?")
             tg = meta.get("tag") or "no-tag"
+            if meta.get("selection_stage") == "prioritized_tags":
+                prioritized_count += 1
             if tg == NO_TAGS_KEY:
                 tg = "other"
             type_counts[ct] = type_counts.get(ct, 0) + 1
@@ -451,6 +454,8 @@ class _LiveSchedulerPreviewDialog(QDialog):
         status = f"Scheduled {len(selected_ids)} / {target} cards."
         if len(selected_ids) < target:
             status += " Limited by current availability."
+        if prioritized_count:
+            status += f" Tag-first: {prioritized_count}."
 
         self._summary_lbl.setText(
             status
@@ -471,6 +476,8 @@ class _LiveSchedulerPreviewDialog(QDialog):
             f"<div><b>Mode:</b> {escape(entry['mode'])}</div>",
             f"<div><b>Tag:</b> {escape(entry['tag'])}</div>",
         ]
+        if entry.get("selection_stage") == "prioritized_tags":
+            parts.append("<div><b>Selection stage:</b> prioritized tag-first pass</div>")
         if entry.get("pdf_filename"):
             parts.append(f"<div><b>PDF file:</b> {escape(entry['pdf_filename'])}</div>")
             if entry.get("pdf_exists") is not None:
@@ -601,6 +608,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
                         "card_type": card_type,
                         "mode": mode,
                         "tag": tag_text,
+                        "selection_stage": meta.get("selection_stage"),
                         "title": title or f"Card {cid}",
                         "tags": tags,
                         "fields": readable_fields,
@@ -661,6 +669,17 @@ class _LiveSchedulerPreviewDialog(QDialog):
             self._load_pdf_limit_editor(None)
         finally:
             self._refresh_btn.setEnabled(True)
+
+    def load_cached_or_refresh(self) -> None:
+        if self._owner._live_preview_cache_is_current() and self._entries:
+            self.sync_use_preview_checkbox()
+            return
+        if self._owner._live_preview_cache_is_current():
+            cached = self._owner._live_preview_cache or {}
+            if cached.get("selected_ids") is not None and cached.get("picked_meta") is not None:
+                self.refresh_now()
+                return
+        self.refresh_now()
 
 
 # ─── Phase funnel ─────────────────────────────────────────────────────────────
@@ -1024,6 +1043,7 @@ class SchedulerConfigDialog(QDialog):
         self.setWindowTitle("Scheduler Settings")
         self.setMinimumWidth(520)
         self._linked_rows: list[dict] = []
+        self._prioritized_tag_rows: list[dict] = []
         self._updating = False
         self._on_clear_session = on_clear_session
         self._branch_scope = _normalize_branch_scope(branch_scope)
@@ -1573,7 +1593,53 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._schedule_live_preview_refresh())
         qconnect(self._day_end_edit.timeChanged, lambda _: self._schedule_live_preview_refresh())
 
-        # ── 8. Tag quotas ─────────────────────────────────────────────────────
+        # ── 8. Prioritized tags first ─────────────────────────────────────────
+        _prio_tag_hrow = QHBoxLayout()
+        _prio_tag_header = QLabel("Prioritize Tags First")
+        _prio_tag_header.setStyleSheet("font-weight: bold;")
+        _prio_tag_hrow.addWidget(_prio_tag_header)
+        _prio_tag_hrow.addWidget(_info_icon(
+            "Exhaust these tags before normal session scheduling starts.\n\n"
+            "Cards with these tags are gathered first, ordered by Incremento priority,\n"
+            "and placed at the start of the session. After that, the normal scheduler\n"
+            "fills the remaining slots using your funnel, tag quotas, and ratios."
+        ))
+        _prio_tag_hrow.addStretch()
+        layout.addLayout(_prio_tag_hrow)
+
+        _prio_tag_desc = QLabel(
+            "Use this when a tag such as active_writing should always come before the rest of the session."
+        )
+        _prio_tag_desc.setWordWrap(True)
+        _prio_tag_desc.setStyleSheet("color: gray;")
+        layout.addWidget(_prio_tag_desc)
+
+        _prio_tag_row = QHBoxLayout()
+        self._prioritized_tag_combo = QComboBox()
+        self._current_profile_tags = sorted(set(mw.col.tags.all()))
+        self._current_profile_tags_map = {t.casefold(): t for t in self._current_profile_tags}
+        self._prioritized_tag_combo.addItems(self._current_profile_tags)
+        _prio_tag_row.addWidget(self._prioritized_tag_combo)
+        _prio_tag_add_btn = QPushButton("Add")
+        qconnect(_prio_tag_add_btn.clicked, lambda: self._add_prioritized_tag(self._prioritized_tag_combo.currentText()))
+        _prio_tag_row.addWidget(_prio_tag_add_btn)
+        _prio_tag_clear_btn = QPushButton("Clear")
+        qconnect(_prio_tag_clear_btn.clicked, self._clear_prioritized_tags)
+        _prio_tag_row.addWidget(_prio_tag_clear_btn)
+        _prio_tag_row.addStretch()
+        layout.addLayout(_prio_tag_row)
+
+        self._prioritized_tags_container = QWidget()
+        self._prioritized_tags_layout = QVBoxLayout(self._prioritized_tags_container)
+        self._prioritized_tags_layout.setContentsMargins(0, 0, 0, 0)
+        self._prioritized_tags_layout.setSpacing(4)
+        layout.addWidget(self._prioritized_tags_container)
+
+        for raw_tag in self._saved.get("prioritized_tags_first", []):
+            self._add_prioritized_tag(str(raw_tag or "").strip(), refresh=False)
+        self._refresh_prioritized_tag_hint()
+
+        # ── 9. Tag quotas ─────────────────────────────────────────────────────
         _tag_hrow = QHBoxLayout()
         _tag_header = QLabel("Tag quotas")
         _tag_header.setStyleSheet("font-weight: bold;")
@@ -1606,8 +1672,6 @@ class SchedulerConfigDialog(QDialog):
 
         add_tag_row = QHBoxLayout()
         self._tag_combo = QComboBox()
-        self._current_profile_tags = sorted(set(mw.col.tags.all()))
-        self._current_profile_tags_map = {t.casefold(): t for t in self._current_profile_tags}
         self._tag_combo.addItems(self._current_profile_tags)
         add_tag_row.addWidget(self._tag_combo)
         add_btn = QPushButton("Add")
@@ -1648,7 +1712,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._other_lbl)
         self._update_other_label()
 
-        # ── 9. Scheduling funnel (collapsible) ────────────────────────────────
+        # ── 10. Scheduling funnel (collapsible) ───────────────────────────────
         _funnel_sep = QFrame()
         _funnel_sep.setFrameShape(QFrame.Shape.HLine)
         _funnel_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
@@ -1873,7 +1937,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._enforce_cb.stateChanged, lambda _: _update_funnel_state())
         qconnect(self._enforce_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
-        # ── 10. Advanced (collapsible, starts collapsed) ──────────────────────
+        # ── 11. Advanced (collapsible, starts collapsed) ──────────────────────
         _adv_sep = QFrame()
         _adv_sep.setFrameShape(QFrame.Shape.HLine)
         _adv_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
@@ -2093,6 +2157,110 @@ class SchedulerConfigDialog(QDialog):
     @staticmethod
     def _tag_display_name(tag: str) -> str:
         return "Other" if tag == NO_TAGS_KEY else tag
+
+    def _prioritized_tag_values(self) -> list[str]:
+        return [str(row.get("tag") or "") for row in self._prioritized_tag_rows if row.get("tag")]
+
+    def _refresh_prioritized_tag_combo(self) -> None:
+        if not hasattr(self, "_prioritized_tag_combo"):
+            return
+        current = self._prioritized_tag_combo.currentText()
+        selected_keys = {tag.casefold() for tag in self._prioritized_tag_values()}
+        options = [
+            tag for tag in getattr(self, "_current_profile_tags", [])
+            if tag.casefold() not in selected_keys
+        ]
+        self._prioritized_tag_combo.blockSignals(True)
+        self._prioritized_tag_combo.clear()
+        self._prioritized_tag_combo.addItems(options)
+        idx = self._prioritized_tag_combo.findText(current)
+        if idx >= 0:
+            self._prioritized_tag_combo.setCurrentIndex(idx)
+        self._prioritized_tag_combo.blockSignals(False)
+
+    def _refresh_prioritized_tag_hint(self) -> None:
+        if not hasattr(self, "_prioritized_tags_container"):
+            return
+        hint_label = getattr(self, "_prioritized_tag_hint_lbl", None)
+        if hint_label is None:
+            hint_label = QLabel()
+            hint_label.setWordWrap(True)
+            hint_label.setStyleSheet("color: gray; font-size: small;")
+            self._prioritized_tags_layout.addWidget(hint_label)
+            self._prioritized_tag_hint_lbl = hint_label
+        tags = self._prioritized_tag_values()
+        if tags:
+            hint_label.setText(
+                "Current tag-first order: " + " → ".join(tags)
+            )
+        else:
+            hint_label.setText("No tags are prioritized first. The normal scheduler starts immediately.")
+        self._refresh_prioritized_tag_combo()
+
+    def _add_prioritized_tag(self, tag: str, *, refresh: bool = True) -> None:
+        resolved = self._resolve_tag_for_current_profile(tag)
+        if not resolved or resolved == NO_TAGS_KEY:
+            return
+        if any(str(row.get("tag") or "").casefold() == resolved.casefold() for row in self._prioritized_tag_rows):
+            return
+
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 2, 0, 2)
+        row_layout.setSpacing(6)
+
+        badge = QLabel("First")
+        badge.setStyleSheet(
+            "QLabel {"
+            " color: white;"
+            " background: #2f7ed8;"
+            " border-radius: 9px;"
+            " padding: 2px 8px;"
+            " font-weight: 600;"
+            "}"
+        )
+        row_layout.addWidget(badge)
+
+        label = QLabel(resolved)
+        label.setStyleSheet("font-weight: 500;")
+        row_layout.addWidget(label)
+        row_layout.addStretch()
+
+        remove_btn = QPushButton("Remove")
+        qconnect(remove_btn.clicked, lambda _checked=False, value=resolved: self._remove_prioritized_tag(value))
+        row_layout.addWidget(remove_btn)
+
+        row_dict = {"tag": resolved, "widget": row_widget}
+        hint_label = getattr(self, "_prioritized_tag_hint_lbl", None)
+        if hint_label is not None:
+            self._prioritized_tags_layout.insertWidget(self._prioritized_tags_layout.indexOf(hint_label), row_widget)
+        else:
+            self._prioritized_tags_layout.addWidget(row_widget)
+        self._prioritized_tag_rows.append(row_dict)
+
+        if refresh:
+            self._refresh_prioritized_tag_hint()
+            self._schedule_live_preview_refresh()
+
+    def _remove_prioritized_tag(self, tag: str) -> None:
+        remaining: list[dict] = []
+        for row in self._prioritized_tag_rows:
+            if str(row.get("tag") or "").casefold() == str(tag or "").casefold():
+                row["widget"].deleteLater()
+                continue
+            remaining.append(row)
+        self._prioritized_tag_rows = remaining
+        self._refresh_prioritized_tag_hint()
+        self._schedule_live_preview_refresh()
+
+    def _clear_prioritized_tags(self) -> None:
+        if not self._prioritized_tag_rows:
+            return
+        for row in self._prioritized_tag_rows:
+            row["widget"].deleteLater()
+        self._prioritized_tag_rows = []
+        self._refresh_prioritized_tag_hint()
+        self._schedule_live_preview_refresh()
 
     def _find_other_tag_row(self) -> dict | None:
         for row in self._linked_rows:
@@ -2789,6 +2957,7 @@ class SchedulerConfigDialog(QDialog):
             f"Random {mc['random']}, Priority {mc['priority']} "
             "(availability may shift actual results)"
         )
+        self._tag_content_title_lbl.setText("Tag × content estimate:")
         real_rows = [
             (str(r["tag"]), max(0.0, r["slider"].value() / 100.0))
             for r in self._linked_rows
@@ -2843,6 +3012,8 @@ class SchedulerConfigDialog(QDialog):
             "enforce_priority": d.get("enforce_priority"),
             "scheduler_scope": d.get("scheduler_scope"),
             "day_end_time": d.get("day_end_time"),
+            "prioritized_tags_first": d.get("prioritized_tags_first"),
+            "prioritized_tags_mode": d.get("prioritized_tags_mode"),
             "tag_rows": d.get("tag_rows"),
             "content_type_rows": d.get("content_type_rows"),
             "topics_filter": d.get("topics_filter"),
@@ -2892,7 +3063,7 @@ class SchedulerConfigDialog(QDialog):
         self._live_preview_dialog.show()
         self._live_preview_dialog.raise_()
         self._live_preview_dialog.activateWindow()
-        self._live_preview_dialog.refresh_now()
+        self._live_preview_dialog.load_cached_or_refresh()
 
     def _close_live_preview(self) -> None:
         if self._live_preview_dialog is None:
@@ -3114,6 +3285,8 @@ class SchedulerConfigDialog(QDialog):
             include_rest=self._current_include_rest_from_other_slider(),
             scheduler_scope=self._scope_combo.currentData(),
             day_end_time=self._get_day_end_time(),
+            prioritized_tags_first=self._prioritized_tag_values(),
+            prioritized_tags_mode="exhaust",
             phase_order=self._funnel.get_order(),
             phases_enabled=self._funnel.get_enabled(),
             enforce_priority=self._enforce_cb.isChecked(),
@@ -3154,6 +3327,8 @@ class SchedulerConfigDialog(QDialog):
             "enforce_priority":   self._enforce_cb.isChecked(),
             "scheduler_scope":    self._scope_combo.currentData(),
             "day_end_time":       self._get_day_end_time(),
+            "prioritized_tags_first": self._prioritized_tag_values(),
+            "prioritized_tags_mode": "exhaust",
             "tag_rows": [
                 {
                     "tag": r["tag"],
@@ -3303,6 +3478,11 @@ class SchedulerConfigDialog(QDialog):
             except Exception:
                 pass
         self._update_day_end_visibility()
+
+        self._clear_prioritized_tags()
+        for raw_tag in d.get("prioritized_tags_first", []):
+            self._add_prioritized_tag(str(raw_tag or "").strip(), refresh=False)
+        self._refresh_prioritized_tag_hint()
 
         self._funnel.set_order(
             d.get("phase_order", _DEFAULT_PHASE_ORDER),

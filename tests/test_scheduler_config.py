@@ -66,6 +66,8 @@ class TestConfigFromDialogDict:
         assert cfg.show_debug is False
         assert cfg.pdf_rate == pytest.approx(0.0)
         assert cfg.priority_lower_is_more_important is True
+        assert cfg.prioritized_tags_first == []
+        assert cfg.prioritized_tags_mode == "exhaust"
 
     def test_session_card_count(self):
         cfg = _config_from_dialog_dict({"session_card_count": 100})
@@ -137,3 +139,13 @@ class TestConfigFromDialogDict:
         assert cfg.include_new is False
         assert cfg.include_due is False
         assert cfg.include_learning is True  # default
+
+    def test_prioritized_tags_are_cleaned_and_deduped(self):
+        cfg = _config_from_dialog_dict(
+            {
+                "prioritized_tags_first": [" active_writing ", "Focus", "focus", ""],
+                "prioritized_tags_mode": "unsupported",
+            }
+        )
+        assert cfg.prioritized_tags_first == ["active_writing", "Focus"]
+        assert cfg.prioritized_tags_mode == "exhaust"

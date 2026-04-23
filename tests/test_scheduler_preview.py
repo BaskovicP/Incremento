@@ -44,3 +44,25 @@ def test_count_apportionment_preserves_total():
 
     assert sum(mix["content_counts"].values()) == 7
     assert sum(mix["mode_counts"].values()) == 7
+
+
+def test_summarize_selected_mix_uses_actual_preview_counts():
+    summary = scheduler_preview.summarize_selected_mix(
+        selected_ids=[11, 22, 33, 44],
+        picked_meta={
+            11: {"card_type": "pdf", "mode": "priority", "tag": "writing"},
+            22: {"card_type": "items", "mode": "random", "tag": "writing"},
+            33: {"card_type": "topics", "mode": "priority", "tag": "__no_tags__"},
+            44: {"card_type": "webpage", "mode": "priority", "tag": "psychology"},
+        },
+    )
+
+    assert summary["selected_total"] == 4
+    assert summary["content_counts"] == {"pdf": 1, "topics": 1, "items": 1}
+    assert summary["mode_counts"] == {"priority": 3, "random": 1}
+    assert summary["tag_content_counts"] == {
+        "writing": {"PDF": 1, "Topics": 0, "Items": 1, "Total": 2},
+        "Other": {"PDF": 0, "Topics": 1, "Items": 0, "Total": 1},
+        "psychology": {"PDF": 0, "Topics": 0, "Items": 0, "Total": 0},
+    }
+    assert summary["other_type_counts"] == {"webpage": 1}

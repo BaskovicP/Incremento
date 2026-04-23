@@ -171,3 +171,178 @@ def test_empty_branch_scope_returns_no_selected_cards():
 
     assert result.selected_ids == []
     mock_get.assert_not_called()
+
+
+def test_prioritized_tags_are_selected_before_scheduler_fill():
+    cfg = SchedulerConfig(
+        session_card_count=3,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        prioritized_tags_first=["active_writing"],
+    )
+    queue = iter(
+        [
+            types.SimpleNamespace(card=999, card_type="items", tag=None, mode="random"),
+        ]
+    )
+
+    def _fake_find_cards(query: str):
+        if "tag:active_writing" in query and 'note:"Incremento PDF"' in query:
+            return [302]
+        if "tag:active_writing" in query and "deck:Topics" in query:
+            return [301]
+        return []
+
+    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
+
+    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
+        "session_selection.StatsManager", _FakeStats
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler", side_effect=lambda **_: next(queue)
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [302, 301, 999]
+    assert result.picked_meta[302]["selection_stage"] == "prioritized_tags"
+    assert result.picked_meta[301]["selection_stage"] == "prioritized_tags"
+    assert result.picked_meta[999]["selection_stage"] == "scheduler"
+    assert result.stats.session["tags"] == {"active_writing": 2}
+
+
+def test_prioritized_tags_dedupe_cards_across_multiple_tags():
+    cfg = SchedulerConfig(
+        session_card_count=3,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        prioritized_tags_first=["alpha", "beta"],
+    )
+
+    def _fake_find_cards(query: str):
+        if "tag:alpha" in query and "deck:Topics" in query:
+            return [101]
+        if "tag:beta" in query and "deck:Topics" in query:
+            return [101, 102]
+        return []
+
+    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
+
+    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
+        "session_selection.StatsManager", _FakeStats
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler",
+        return_value=types.SimpleNamespace(card=None, card_type=None, tag=None, mode=None),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [101, 102]
+    assert result.picked_meta[101]["tag"] == "alpha"
+    assert result.picked_meta[102]["tag"] == "beta"
+
+
+def test_prioritized_tags_respect_session_card_count_cap():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        prioritized_tags_first=["alpha"],
+    )
+
+    def _fake_find_cards(query: str):
+        if "tag:alpha" in query and "deck:Topics" in query:
+            return [401, 402]
+        return []
+
+    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
+
+    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
+        "session_selection.StatsManager", _FakeStats
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler"
+    ) as mock_get:
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [401]
+    mock_get.assert_not_called()
+
+
+def test_prioritized_tags_use_branch_scope_in_queries():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        prioritized_tags_first=["medicine"],
+        topics_filter="deck:Topics",
+        items_filter="-deck:Topics",
+    )
+    seen_queries: list[str] = []
+
+    def _fake_find_cards(query: str):
+        seen_queries.append(query)
+        if "tag:medicine" in query and "cid:10" in query:
+            return [10]
+        return []
+
+    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
+
+    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
+        "session_selection.StatsManager", _FakeStats
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ):
+        result = session_selection.select_session_cards(
+            cfg,
+            addon_dir="/tmp/unused",
+            branch_scope={"root_card_id": 10, "root_title": "Medicine", "card_ids": [10, 11]},
+        )
+
+    assert result.selected_ids == [10]
+    assert any("tag:medicine" in query and "cid:10" in query and "cid:11" in query for query in seen_queries)
+
+
+def test_soft_mode_keeps_trying_after_a_scheduler_miss():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+    queue = iter(
+        [
+            types.SimpleNamespace(card=None, card_type="items", tag=None, mode="priority"),
+            types.SimpleNamespace(card=501, card_type="items", tag=None, mode="priority"),
+            types.SimpleNamespace(card=502, card_type="topics", tag="writing", mode="random"),
+        ]
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=lambda **_: next(queue)
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [501, 502]
+    assert result.picked_meta[501]["selection_stage"] == "scheduler"
+    assert result.picked_meta[502]["selection_stage"] == "scheduler"

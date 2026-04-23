@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from typing import NamedTuple
+from aqt import mw
 
 try:
+    from . import cards as card_utils
     from .scheduler import DOCUMENT_FILTER, get_card_from_scheduler
     from .statistics import StatsManager
     from .paths import get_active_profile as _active_profile
 except ImportError:
+    import cards as card_utils  # type: ignore
     from scheduler import DOCUMENT_FILTER, get_card_from_scheduler  # type: ignore
     from statistics import StatsManager  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
@@ -22,6 +25,109 @@ class SessionSelectionResult(NamedTuple):
     selected_ids: list[int]
     picked_meta: dict[int, dict]
     stats: StatsManager
+
+
+def _attempt_pick_loop(
+    *,
+    pick_fn,
+    target_reached_fn,
+    max_attempts: int,
+    max_consecutive_misses: int,
+) -> None:
+    attempts = 0
+    consecutive_misses = 0
+    while attempts < max_attempts and consecutive_misses < max_consecutive_misses:
+        if target_reached_fn():
+            break
+        attempts += 1
+        if pick_fn():
+            consecutive_misses = 0
+        else:
+            consecutive_misses += 1
+
+
+def _record_selected_card(
+    *,
+    card_id: int,
+    card_type: str,
+    tag: str | None,
+    mode: str,
+    stage: str,
+    selected_ids: list[int],
+    picked_meta: dict[int, dict],
+    added_to_filtered: set[int],
+    counts: dict,
+) -> None:
+    counts["type"][card_type] = counts["type"].get(card_type, 0) + 1
+    counts["mode"][mode] = counts["mode"].get(mode, 0) + 1
+    if tag:
+        counts["tags"][tag] = counts["tags"].get(tag, 0) + 1
+    picked_meta[card_id] = {
+        "card_type": card_type,
+        "tag": tag,
+        "mode": mode,
+        "selection_stage": stage,
+    }
+    added_to_filtered.add(card_id)
+    selected_ids.append(card_id)
+
+
+def _collect_prioritized_tag_candidates(
+    cfg,
+    addon_dir: str,
+    *,
+    prioritized_tags: list[str],
+    topics_filter: str,
+    items_filter: str,
+    pdf_filter: str,
+    youtube_filter: str,
+    webpage_filter: str,
+) -> list[tuple[int, str, str]]:
+    tag_to_candidates: dict[str, dict[int, str]] = {}
+    for tag in prioritized_tags:
+        tag_map = tag_to_candidates.setdefault(tag, {})
+        pool_queries = [
+            ("pdf", f"{pdf_filter} tag:{tag} -is:suspended"),
+            ("youtube", f'{youtube_filter} tag:{tag} -is:suspended'),
+            ("webpage", f'{webpage_filter} tag:{tag} -is:suspended'),
+            ("topics", f"{topics_filter} tag:{tag} {cfg.ready_filter}"),
+            ("items", f"{items_filter} tag:{tag} {cfg.ready_filter}"),
+        ]
+        for card_type, query in pool_queries:
+            try:
+                ids = mw.col.find_cards(query)
+            except Exception:
+                ids = []
+            for card_id in ids:
+                try:
+                    cid = int(card_id)
+                except Exception:
+                    continue
+                if cid <= 0 or cid in tag_map:
+                    continue
+                tag_map[cid] = card_type
+
+    ordered_ids = card_utils.sort_cards_for_priority_mode(
+        [
+            cid
+            for tag in prioritized_tags
+            for cid in tag_to_candidates.get(tag, {}).keys()
+        ],
+        addon_dir=addon_dir,
+        lower_is_more_important=cfg.priority_lower_is_more_important,
+    )
+    seen: set[int] = set()
+    ordered_candidates: list[tuple[int, str, str]] = []
+    for cid in ordered_ids:
+        if cid in seen:
+            continue
+        seen.add(cid)
+        for tag in prioritized_tags:
+            card_type = tag_to_candidates.get(tag, {}).get(cid)
+            if card_type:
+                ordered_candidates.append((cid, card_type, tag))
+                break
+    return ordered_candidates
 
 
 def _normalize_branch_scope(branch_scope: dict | None) -> dict | None:
@@ -98,11 +204,11 @@ def select_session_cards(
     selected_ids: list[int] = []
     added_to_filtered: set[int] = set()
     picked_meta: dict[int, dict] = {}
+    counts = stats.counts_for(cfg.scheduler_scope)
 
     def _pick(
         use_tags: bool, tag_weights: dict, force_card_type=None, force_mode=None
     ) -> bool:
-        counts = stats.counts_for(cfg.scheduler_scope)
         result = get_card_from_scheduler(
             counts=counts,
             topics_rate=cfg.topics_rate,
@@ -124,18 +230,51 @@ def select_session_cards(
         )
         if result.card is None:
             return False
-        counts["type"][result.card_type] = counts["type"].get(result.card_type, 0) + 1
-        counts["mode"][result.mode] = counts["mode"].get(result.mode, 0) + 1
-        if result.tag:
-            counts["tags"][result.tag] = counts["tags"].get(result.tag, 0) + 1
-        picked_meta[result.card] = {
-            "card_type": result.card_type,
-            "tag": result.tag,
-            "mode": result.mode,
-        }
-        added_to_filtered.add(result.card)
-        selected_ids.append(result.card)
+        _record_selected_card(
+            card_id=result.card,
+            card_type=result.card_type,
+            tag=result.tag,
+            mode=result.mode,
+            stage="scheduler",
+            selected_ids=selected_ids,
+            picked_meta=picked_meta,
+            added_to_filtered=added_to_filtered,
+            counts=counts,
+        )
         return True
+
+    prioritized_tags = [
+        str(tag or "").strip()
+        for tag in list(getattr(cfg, "prioritized_tags_first", []) or [])
+        if str(tag or "").strip()
+    ]
+    if prioritized_tags and len(selected_ids) < target_count:
+        prioritized_candidates = _collect_prioritized_tag_candidates(
+            cfg,
+            addon_dir,
+            prioritized_tags=prioritized_tags,
+            topics_filter=topics_filter,
+            items_filter=items_filter,
+            pdf_filter=pdf_filter,
+            youtube_filter=youtube_filter,
+            webpage_filter=webpage_filter,
+        )
+        for card_id, card_type, tag in prioritized_candidates:
+            if len(selected_ids) >= target_count:
+                break
+            if card_id in added_to_filtered:
+                continue
+            _record_selected_card(
+                card_id=card_id,
+                card_type=card_type,
+                tag=tag,
+                mode="priority",
+                stage="prioritized_tags",
+                selected_ids=selected_ids,
+                picked_meta=picked_meta,
+                added_to_filtered=added_to_filtered,
+                counts=counts,
+            )
 
     if cfg.enforce_priority:
         # Strict mode — run each funnel phase in order, filling its quota before the next.
@@ -151,28 +290,48 @@ def select_session_cards(
                         continue
                     ct_target = round(weight * target_count)
                     ct_picked = 0
-                    for _ in range(ct_target * 3):
+
+                    def _phase_pick() -> bool:
+                        nonlocal ct_picked
                         if ct_picked >= ct_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(
+                            return False
+                        ok = _pick(
                             use_tags=cfg.use_tags,
                             tag_weights=cfg.tag_weights,
                             force_card_type=ct,
-                        ):
-                            break
-                        ct_picked += 1
+                        )
+                        if ok:
+                            ct_picked += 1
+                        return ok
+
+                    _attempt_pick_loop(
+                        pick_fn=_phase_pick,
+                        target_reached_fn=lambda: ct_picked >= ct_target or len(selected_ids) >= target_count,
+                        max_attempts=max(ct_target * 12, 24),
+                        max_consecutive_misses=max(ct_target * 4, 8),
+                    )
 
             elif phase_id == "tags" and cfg.use_tags:
                 ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
                 for tag, weight in ordered:
                     tag_target = round(weight * target_count)
                     tag_picked = 0
-                    for _ in range(tag_target * 3):
+
+                    def _phase_pick() -> bool:
+                        nonlocal tag_picked
                         if tag_picked >= tag_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(use_tags=True, tag_weights={tag: 1.0}):
-                            break
-                        tag_picked += 1
+                            return False
+                        ok = _pick(use_tags=True, tag_weights={tag: 1.0})
+                        if ok:
+                            tag_picked += 1
+                        return ok
+
+                    _attempt_pick_loop(
+                        pick_fn=_phase_pick,
+                        target_reached_fn=lambda: tag_picked >= tag_target or len(selected_ids) >= target_count,
+                        max_attempts=max(tag_target * 12, 24),
+                        max_consecutive_misses=max(tag_target * 4, 8),
+                    )
 
             elif phase_id == "type":
                 topics_target = round(cfg.topics_rate * target_count)
@@ -182,16 +341,26 @@ def select_session_cards(
                     ("items", items_target),
                 ]:
                     type_picked = 0
-                    for _ in range(type_target * 3):
+
+                    def _phase_pick() -> bool:
+                        nonlocal type_picked
                         if type_picked >= type_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(
+                            return False
+                        ok = _pick(
                             use_tags=cfg.use_tags,
                             tag_weights=cfg.tag_weights,
                             force_card_type=forced_type,
-                        ):
-                            break
-                        type_picked += 1
+                        )
+                        if ok:
+                            type_picked += 1
+                        return ok
+
+                    _attempt_pick_loop(
+                        pick_fn=_phase_pick,
+                        target_reached_fn=lambda: type_picked >= type_target or len(selected_ids) >= target_count,
+                        max_attempts=max(type_target * 12, 24),
+                        max_consecutive_misses=max(type_target * 4, 8),
+                    )
 
             elif phase_id == "mode":
                 priority_target = round((1 - cfg.random_rate) * target_count)
@@ -201,39 +370,52 @@ def select_session_cards(
                     ("random", random_target),
                 ]:
                     mode_picked = 0
-                    for _ in range(mode_target * 3):
+
+                    def _phase_pick() -> bool:
+                        nonlocal mode_picked
                         if mode_picked >= mode_target or len(selected_ids) >= target_count:
-                            break
-                        if not _pick(
+                            return False
+                        ok = _pick(
                             use_tags=cfg.use_tags,
                             tag_weights=cfg.tag_weights,
                             force_mode=forced_mode,
-                        ):
-                            break
-                        mode_picked += 1
+                        )
+                        if ok:
+                            mode_picked += 1
+                        return ok
+
+                    _attempt_pick_loop(
+                        pick_fn=_phase_pick,
+                        target_reached_fn=lambda: mode_picked >= mode_target or len(selected_ids) >= target_count,
+                        max_attempts=max(mode_target * 12, 24),
+                        max_consecutive_misses=max(mode_target * 4, 8),
+                    )
 
         # Fill Remaining — always runs last in strict mode
         if cfg.include_rest or not cfg.use_tags:
-            for _ in range(target_count * 3):
-                if len(selected_ids) >= target_count:
-                    break
-                if not _pick(use_tags=False, tag_weights={}):
-                    break
+            _attempt_pick_loop(
+                pick_fn=lambda: _pick(use_tags=False, tag_weights={}),
+                target_reached_fn=lambda: len(selected_ids) >= target_count,
+                max_attempts=max(target_count * 12, 120),
+                max_consecutive_misses=max(target_count * 2, 20),
+            )
 
     else:
         # Soft mode — all dimensions handled by soft_pick (debt-based stochastic).
         # Phase order / enabled state is ignored; all weights blend together.
-        for _ in range(target_count * 3):
-            if len(selected_ids) >= target_count:
-                break
-            if not _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights):
-                break
+        _attempt_pick_loop(
+            pick_fn=lambda: _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights),
+            target_reached_fn=lambda: len(selected_ids) >= target_count,
+            max_attempts=max(target_count * 20, 200),
+            max_consecutive_misses=max(target_count * 3, 30),
+        )
         if cfg.use_tags and cfg.include_rest and len(selected_ids) < target_count:
-            for _ in range(target_count * 3):
-                if len(selected_ids) >= target_count:
-                    break
-                if not _pick(use_tags=False, tag_weights={}):
-                    break
+            _attempt_pick_loop(
+                pick_fn=lambda: _pick(use_tags=False, tag_weights={}),
+                target_reached_fn=lambda: len(selected_ids) >= target_count,
+                max_attempts=max(target_count * 12, 120),
+                max_consecutive_misses=max(target_count * 2, 20),
+            )
 
     return SessionSelectionResult(
         selected_ids=selected_ids,

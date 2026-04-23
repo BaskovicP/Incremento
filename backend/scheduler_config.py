@@ -32,6 +32,8 @@ class SchedulerConfig:
     pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
     content_type_weights: dict = field(default_factory=dict)  # {"pdf"|"youtube"|"webpage": fraction}
     priority_lower_is_more_important: bool = True
+    prioritized_tags_first: list[str] = field(default_factory=list)
+    prioritized_tags_mode: str = "exhaust"
     # Funnel: ordered list of phase IDs; phases_enabled gates each phase in strict mode
     phase_order: list = field(default_factory=lambda: ["content_types", "tags", "type", "mode"])
     phases_enabled: dict = field(default_factory=dict)  # {phase_id: bool}; True if absent
@@ -116,6 +118,15 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         for r in content_type_rows
         if r.get("enabled") and r.get("weight", 0) > 0
     }
+    prioritized_tags_first = []
+    for raw_tag in d.get("prioritized_tags_first", []):
+        tag = str(raw_tag or "").strip()
+        if not tag or tag.casefold() in {t.casefold() for t in prioritized_tags_first}:
+            continue
+        prioritized_tags_first.append(tag)
+    prioritized_tags_mode = str(d.get("prioritized_tags_mode") or "exhaust").strip().lower()
+    if prioritized_tags_mode != "exhaust":
+        prioritized_tags_mode = "exhaust"
 
     return SchedulerConfig(
         session_card_count=session_card_count,
@@ -138,6 +149,8 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         pdf_rate=pdf_rate,
         content_type_weights=content_type_weights,
         priority_lower_is_more_important=priority_lower_is_more_important,
+        prioritized_tags_first=prioritized_tags_first,
+        prioritized_tags_mode=prioritized_tags_mode,
         phase_order=d.get("phase_order", ["content_types", "tags", "type", "mode"]),
         phases_enabled=d.get("phases_enabled", {}),
     )
