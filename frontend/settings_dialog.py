@@ -64,6 +64,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "",
     },
     {
+        "id": "add_writing",
+        "label": "Add to Markdown",
+        "default": "",
+    },
+    {
         "id": "add_web_page",
         "label": "Web Page",
         "default": "",
@@ -91,6 +96,11 @@ SHORTCUT_ACTION_SPECS = [
     {
         "id": "export_user_data",
         "label": "Export Full Backup",
+        "default": "",
+    },
+    {
+        "id": "open_knowledge_tree",
+        "label": "Open Knowledge Tree",
         "default": "",
     },
     {

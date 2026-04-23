@@ -11,7 +11,10 @@ from aqt.utils import showInfo, tooltip, tr
 from aqt.operations.scheduling import bury_cards as _bury_cards_op
 from aqt.qt import (
     QAction,
+    QApplication,
+    QEvent,
     QMenu,
+    QObject,
     QShortcut,
     QKeySequence,
     QTimer,
@@ -153,15 +156,18 @@ try:
 except Exception:
     pass
 
-_shortcut_actions: dict[str, object] = {}
+_shortcut_actions: dict[str, list[object]] = {}
 _topic_postpone_timer: QTimer | None = None
 _menu: QMenu | None = None
 _timerToggleAction: QAction | None = None
 _knowledge_tree_dialog = None
+_configured_shortcut_filter = None
 
 
 def _register_shortcut_action(action_id: str, action_obj) -> None:
-    _shortcut_actions[action_id] = action_obj
+    targets = _shortcut_actions.setdefault(action_id, [])
+    if action_obj not in targets:
+        targets.append(action_obj)
 
 
 def _apply_shortcuts_from_config() -> None:
@@ -169,13 +175,137 @@ def _apply_shortcuts_from_config() -> None:
     defaults = default_shortcuts()
     user_shortcuts = cfg.get("shortcuts") or {}
 
-    for action_id, action_obj in _shortcut_actions.items():
+    for action_id, action_targets in _shortcut_actions.items():
         shortcut_text = user_shortcuts.get(action_id, defaults.get(action_id, ""))
         seq = QKeySequence(shortcut_text) if shortcut_text else QKeySequence()
-        if hasattr(action_obj, "setShortcut"):
-            action_obj.setShortcut(seq)
-        elif hasattr(action_obj, "setKey"):
-            action_obj.setKey(seq)
+        for action_obj in action_targets:
+            if hasattr(action_obj, "setShortcut"):
+                action_obj.setShortcut(seq)
+            elif hasattr(action_obj, "setKey"):
+                action_obj.setKey(seq)
+
+
+def _configured_shortcut_text(action_id: str) -> str:
+    cfg = mw.addonManager.getConfig(__name__) or {}
+    defaults = default_shortcuts()
+    user_shortcuts = cfg.get("shortcuts") or {}
+    return str(user_shortcuts.get(action_id, defaults.get(action_id, "")) or "").strip()
+
+
+def _event_matches_shortcut_text(event, shortcut_text: str) -> bool:
+    sequence = shortcut_text.strip()
+    if not sequence:
+        return False
+    primary = sequence.split(",", 1)[0].strip()
+    if not primary:
+        return False
+
+    parts = [part.strip() for part in primary.split("+") if part.strip()]
+    if not parts:
+        return False
+
+    required_modifiers = Qt.KeyboardModifier.NoModifier
+    key_name = ""
+    for part in parts:
+        normalized = part.lower()
+        if normalized in {"ctrl", "control"}:
+            required_modifiers |= Qt.KeyboardModifier.ControlModifier
+        elif normalized in {"alt", "option"}:
+            required_modifiers |= Qt.KeyboardModifier.AltModifier
+        elif normalized in {"shift"}:
+            required_modifiers |= Qt.KeyboardModifier.ShiftModifier
+        elif normalized in {"meta", "cmd", "command"}:
+            required_modifiers |= Qt.KeyboardModifier.MetaModifier
+        else:
+            key_name = part
+
+    if not key_name:
+        return False
+
+    relevant_modifiers = (
+        event.modifiers()
+        & (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.ShiftModifier
+            | Qt.KeyboardModifier.MetaModifier
+        )
+    )
+    if relevant_modifiers != required_modifiers:
+        return False
+
+    named_keys = {
+        "left": Qt.Key.Key_Left,
+        "right": Qt.Key.Key_Right,
+        "up": Qt.Key.Key_Up,
+        "down": Qt.Key.Key_Down,
+        "space": Qt.Key.Key_Space,
+        "escape": Qt.Key.Key_Escape,
+        "esc": Qt.Key.Key_Escape,
+        "enter": Qt.Key.Key_Return,
+        "return": Qt.Key.Key_Return,
+        "tab": Qt.Key.Key_Tab,
+    }
+    named = named_keys.get(key_name.lower())
+    if named is not None:
+        return event.key() == named
+
+    if len(key_name) == 1:
+        char = key_name.upper()
+        event_text = (event.text() or "").upper()
+        if event_text == char:
+            return True
+        code = ord(char)
+        if 65 <= code <= 90:
+            return event.key() == getattr(Qt.Key, f"Key_{char}", None)
+        if 48 <= code <= 57:
+            return event.key() == getattr(Qt.Key, f"Key_{char}", None)
+
+    return False
+
+
+def _invoke_shortcut_action(action_id: str) -> bool:
+    for action_obj in _shortcut_actions.get(action_id, []):
+        try:
+            if hasattr(action_obj, "trigger"):
+                action_obj.trigger()
+                return True
+            activated = getattr(action_obj, "activated", None)
+            if activated is not None and hasattr(activated, "emit"):
+                activated.emit()
+                return True
+            triggered = getattr(action_obj, "triggered", None)
+            if triggered is not None and hasattr(triggered, "emit"):
+                triggered.emit()
+                return True
+        except Exception:
+            continue
+    return False
+
+
+class _ConfiguredShortcutFilter(QObject):
+    def eventFilter(self, watched, event):
+        try:
+            if event.type() not in (
+                QEvent.Type.ShortcutOverride,
+                QEvent.Type.KeyPress,
+            ):
+                return False
+
+            for action_id in tuple(_shortcut_actions.keys()):
+                configured_text = _configured_shortcut_text(action_id)
+                if not configured_text:
+                    continue
+                if not _event_matches_shortcut_text(event, configured_text):
+                    continue
+
+                event.accept()
+                if event.type() == QEvent.Type.KeyPress:
+                    return _invoke_shortcut_action(action_id)
+                return True
+            return False
+        except Exception:
+            return False
 
 
 _ORIGINAL_REVIEWER_AFTER_ANSWERING = getattr(
@@ -1406,6 +1536,9 @@ _pdf_jump_shortcut = QShortcut(QKeySequence("Ctrl+Alt+P"), mw)
 _pdf_jump_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_pdf_jump_shortcut.activated, _open_pdf_quick_jump)
 _register_shortcut_action("quick_open_pdf", _pdf_jump_shortcut)
+
+_configured_shortcut_filter = _ConfiguredShortcutFilter(QApplication.instance() or mw)
+(QApplication.instance() or mw).installEventFilter(_configured_shortcut_filter)
 
 
 def showStatsFunction() -> None:
@@ -3133,6 +3266,7 @@ def _build_incremento_menu() -> None:
     _knowledgeTreeAction = QAction("Open Knowledge tree", mw)
     qconnect(_knowledgeTreeAction.triggered, lambda _checked=False: _open_knowledge_tree())
     _menu.addAction(_knowledgeTreeAction)
+    _register_shortcut_action("open_knowledge_tree", _knowledgeTreeAction)
 
     _revealCurrentTreeAction = QAction("Reveal Current Card In Knowledge Tree", mw)
     qconnect(
@@ -3212,6 +3346,7 @@ def _build_incremento_menu() -> None:
     _quickOpenPdfAction = QAction("Quick Open Docs", mw)
     qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
     _menu.addAction(_quickOpenPdfAction)
+    _register_shortcut_action("quick_open_pdf", _quickOpenPdfAction)
 
     _searchAllAction = QAction("Search ALL", mw)
     qconnect(_searchAllAction.triggered, _open_search_all)
