@@ -34,6 +34,14 @@ npm --prefix frontend run build
 - Settings UI lives in `frontend/settings_dialog.py`. Save and load wiring lives in `__init__.py`.
 - Generic note editors and field pickers should hide dedicated Incremento provenance fields. Reuse backend `visible_field_names()` behavior rather than duplicating a separate blocklist.
 
+## Writing Dock
+
+- Main file: `frontend/writing_dock.py`.
+- The dock remembers per-card cursor, scroll, zoom, wrap mode, focus mode, current-line highlight, and marker line.
+- The bottom bar also shows per-card writing progress. Scope options are `Today`, `Session`, and `All-time`.
+- `Session` means the current open session for that writing card, not the whole Anki run.
+- Word counting mode is configurable from the `Writing` settings tab. `Word-like` is only an approximation of Microsoft Word behavior, not a byte-for-byte clone.
+
 ## Knowledge Tree Workspace
 
 - Main files:
@@ -69,7 +77,8 @@ npm --prefix frontend run build
 - Topic review button styling is patched after `_showEaseButtons()`.
 - Current topic styling keeps yellow unchanged and uses more muted red and blue tones.
 - If you change reviewer button behavior, verify both scheduling logic and injected web styling.
-- Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority for all cards and topic A-factor when available. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
+- Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority for all cards and topic A-factor, saved browser time, and custom schedule when available. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
+- Custom schedule text must only render when a real schedule exists for the current card; stale default text is a regression.
 
 ## Frontend Checks
 
@@ -79,4 +88,5 @@ npm --prefix frontend run build
 .venv/bin/python -m pytest -o addopts= tests/test_add_card_dock.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_reviewer_priority_badge.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_video_web.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_writing_dock.py tests/test_reviewer_priority_badge.py -q
 ```

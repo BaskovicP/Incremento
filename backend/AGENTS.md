@@ -54,6 +54,13 @@ Use this file for work in `backend/`.
 - Child creation and other tree-driven note creation should preserve provenance through `build_incremento_metadata(...)`.
 - If you change subtree behavior, cover both selection helpers and the caller that consumes them.
 
+## Custom Scheduling
+
+- Main files: `backend/custom_schedule.py` and the `custom_schedule_rules` table in `backend/db.py`.
+- Browser-selected cards can get per-card custom scheduling rules such as `minimum_cadence`, `fixed_repeat`, and `one_time`.
+- `format_custom_schedule_rule(None)` must stay empty. Missing rules must not render as the default preset in the reviewer badge.
+- Topic cards may still keep their topic scheduler state; `fixed_repeat` also updates the stored topic interval so UI and due date stay aligned.
+
 ## Card and Media Rules
 
 - Default target deck for bridge and extension imports is usually `Topics`.
@@ -62,6 +69,12 @@ Use this file for work in `backend/`.
 - UUID-backed saved filenames keep a short sanitized stem first, then the UUID.
 - The current stem cap is `80` characters across writing, PDF, EPUB, video, and browser-capture media helpers.
 - Some `.pdf` URLs return HTML challenge pages to Python; extension-side PDF fetch is the correct fallback there.
+
+## Writing Cards
+
+- Writing editor state lives in `writing_progress`; writing word baselines/totals live in `writing_word_stats`.
+- Writing stats are per card, not global. Daily stats are baseline-based; session stats are runtime-only and reset when the card is reopened.
+- Keep logical-date handling local/profile-safe when changing writing stats. Do not derive progress from file history snapshots.
 
 ## Video Cards
 
@@ -89,4 +102,5 @@ Use this file for work in `backend/`.
 .venv/bin/python -m pytest -o addopts= tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_knowledge_tree_postpone.py tests/test_db.py tests/test_session_selection.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_custom_schedule.py tests/test_db.py -q
 ```

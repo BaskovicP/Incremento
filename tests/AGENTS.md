@@ -30,7 +30,8 @@ Focused suites for common hotspots:
 .venv/bin/python -m pytest -o addopts= tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_knowledge_tree_postpone.py tests/test_db.py tests/test_session_selection.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
-.venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py tests/test_custom_schedule.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_db.py tests/test_writing_dock.py -q
 ```
 
 ## Expectations
@@ -41,6 +42,8 @@ Focused suites for common hotspots:
 - If you change note creation or import provenance, assert that metadata lands in dedicated `Incremento_*` note fields and not inline in the main content field.
 - If you change knowledge-tree behavior, cover both raw structure helpers and a user-facing consumer such as branch study, postpone, subset review, or branch-summary formatting.
 - If you change video-card behavior, cover both backend media helpers and the frontend-facing flow that consumes them.
+- If you change writing-card behavior, cover both DB persistence and the dock-side helper/config behavior. Writing stats are per card, and the current-card session resets on reopen.
+- If you change custom scheduling or the reviewer badge, add a regression for the “missing rule” case so schedule text does not appear by default.
 
 ## Current Baseline
 

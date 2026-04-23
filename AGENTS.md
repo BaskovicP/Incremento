@@ -17,7 +17,9 @@ Important newer hotspots:
 - `backend/knowledge_tree.py`, `backend/knowledge_tree_postpone.py`, `frontend/knowledge_tree_dialog.py`: the knowledge-tree workspace, branch study, branch priority tools, postpone flow, and subset review.
 - `backend/note_metadata.py`: shared Incremento provenance fields and helpers. New note-creation paths should use this instead of appending source/parent text into content fields.
 - `backend/video_manager.py`, `frontend/video_dock.py`: video import, deferred local download, subtitle management, and local dual-caption playback.
-- `frontend/reviewer_priority_badge.py`: reviewer overlay that shows priority and topic A-factor at a glance.
+- `backend/custom_schedule.py`, `frontend/custom_schedule_dialog.py`: browser-side custom scheduling rules and their dialog/workflow.
+- `frontend/reviewer_priority_badge.py`: reviewer overlay that shows priority, topic A-factor, saved browser time, and active custom schedule at a glance.
+- `frontend/writing_dock.py`: markdown writing dock with per-card editor state, word-progress counters, and configurable word-count mode.
 
 ## Read The Local Guide
 
@@ -77,6 +79,8 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - Keep provenance in dedicated `Incremento_*` note fields. Do not reintroduce inline `Source:` / parent blocks into the main content field for new notes.
 - Knowledge-tree nodes are card-backed. One tree node maps to one `card_id`, with at most one parent and any number of children.
 - If a knowledge-tree action is exposed in multiple places such as toolbar, inspector, and context menu, keep those entry points aligned.
+- Writing-card editor state is per card and persisted in SQLite. Writing progress counters are also per card; `session` means the current open session for that writing card.
+- Custom-schedule badges in the reviewer should appear only when a real rule exists for that card; missing rules must not fall back to the default preset text.
 
 ## Tests / Checks
 
@@ -93,7 +97,8 @@ Useful focused suites:
 ```bash
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_db.py tests/test_session_selection.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
-.venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py tests/test_custom_schedule.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_db.py tests/test_writing_dock.py -q
 ```
 
 If the local environment lacks `pytest-cov` but `pytest.ini` expects it, use:
