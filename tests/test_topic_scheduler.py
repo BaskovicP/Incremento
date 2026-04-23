@@ -211,7 +211,7 @@ class TestIsTopicCard:
             "video": False,
             "writing": False,
             "web": False,
-        }), patch("topic_scheduler.configured_topic_card_tags", return_value=[]), \
+        }), patch("topic_scheduler.configured_effective_topic_tags", return_value=[]), \
              patch("topic_scheduler._card_in_topics_deck", return_value=False):
             result = is_topic_card(card)
         assert result is True
@@ -223,7 +223,19 @@ class TestIsTopicCard:
             "video": False,
             "writing": False,
             "web": False,
-        }), patch("topic_scheduler.configured_topic_card_tags", return_value=["Reading"]), \
+        }), patch("topic_scheduler.configured_effective_topic_tags", return_value=["Reading"]), \
+             patch("topic_scheduler._card_in_topics_deck", return_value=False):
+            result = is_topic_card(card)
+        assert result is True
+
+    def test_returns_true_for_add_card_topic_tag_from_t_button(self):
+        card = self._make_card(did=2, note_type_name="Basic", tags=["topic"])
+        with patch("topic_scheduler.configured_topic_card_types", return_value={
+            "pdf_epub": False,
+            "video": False,
+            "writing": False,
+            "web": False,
+        }), patch("topic_scheduler.configured_effective_topic_tags", return_value=["topic"]), \
              patch("topic_scheduler._card_in_topics_deck", return_value=False):
             result = is_topic_card(card)
         assert result is True

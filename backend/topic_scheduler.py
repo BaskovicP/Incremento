@@ -22,10 +22,12 @@ from aqt import mw
 
 try:
     from .db import get_topic_schedule, set_topic_schedule
+    from .knowledge_tree import configured_topic_tags as configured_add_card_topic_tags
     from .scheduler_config import load_scheduler_config
     from .paths import get_active_profile as _active_profile
 except ImportError:
     from db import get_topic_schedule, set_topic_schedule  # type: ignore
+    from knowledge_tree import configured_topic_tags as configured_add_card_topic_tags  # type: ignore
     from scheduler_config import load_scheduler_config  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
@@ -120,6 +122,25 @@ def configured_topic_card_tags(config: dict | None = None) -> list[str]:
     return out
 
 
+def configured_effective_topic_tags(config: dict | None = None) -> list[str]:
+    combined: list[str] = []
+    seen: set[str] = set()
+    for source in (
+        configured_topic_card_tags(config),
+        configured_add_card_topic_tags(config),
+    ):
+        for raw_tag in source:
+            tag = str(raw_tag or "").strip()
+            if not tag:
+                continue
+            normalized = tag.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            combined.append(tag)
+    return combined
+
+
 def remap_topic_review_ease(ease: int) -> int:
     try:
         value = int(ease)
@@ -208,7 +229,7 @@ def is_topic_card(card) -> bool:
         return False
     try:
         enabled_types = configured_topic_card_types()
-        topic_tags = configured_topic_card_tags()
+        topic_tags = configured_effective_topic_tags()
         return (
             _card_matches_enabled_type(card, enabled_types)
             or _card_matches_topic_tags(card, topic_tags)

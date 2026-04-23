@@ -22,6 +22,7 @@ except ImportError:
     from paths import get_active_profile as _active_profile
 
 try:
+    from ..backend import cards as _card_utils
     from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from ..backend.scheduler_preview import compute_expected_mix
     from ..backend.session_selection import select_session_cards
@@ -36,6 +37,7 @@ try:
     )
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
+    import cards as _card_utils
     from scheduler_config import SchedulerConfig, NO_TAGS_KEY
     from scheduler_preview import compute_expected_mix
     from session_selection import select_session_cards
@@ -1952,11 +1954,11 @@ class SchedulerConfigDialog(QDialog):
             "QPushButton:hover { color: palette(highlight); }"
         )
         _adv_toggle_info = _info_icon(
-            "Anki search filters that identify which cards are topics vs items.\n\n"
-            "Default topics filter: deck:Topics OR tag:Incremento\n"
-            "Default items filter:  -deck:Topics -tag:Incremento\n\n"
-            "Use 'Test' to check how many ready cards match each filter.\n"
-            "Changes here affect the counts shown next to Topics / Items above."
+            "Incremento now classifies topics using the same logic as the T button,\n"
+            "topic tags, configured topic note types, and the Topics deck.\n\n"
+            "These filters are optional extra narrowing on top of that classification.\n"
+            "Leave them empty to use the full Incremento topic/item pools.\n"
+            "Use 'Test' to check how many ready cards remain after narrowing."
         )
         _adv_hrow = QHBoxLayout()
         _adv_hrow.setContentsMargins(0, 0, 0, 0)
@@ -1974,34 +1976,34 @@ class SchedulerConfigDialog(QDialog):
         topics_filter_row = QHBoxLayout()
         topics_filter_row.addWidget(QLabel("Topics filter:"))
         self._topics_filter_edit = QLineEdit()
-        self._topics_filter_edit.setPlaceholderText("deck:Topics")
+        self._topics_filter_edit.setPlaceholderText("Optional extra narrowing")
         self._topics_filter_edit.setToolTip(
-            "Anki search query that identifies topic (concept) cards.\n"
-            "Default: deck:Topics OR tag:Incremento"
+            "Optional Anki search query that further narrows Incremento topic cards.\n"
+            "Leave empty to include all cards classified as topics."
         )
-        self._topics_filter_edit.setText(self._saved.get("topics_filter", "deck:Topics"))
+        self._topics_filter_edit.setText(self._normalized_saved_filter("topics_filter"))
         topics_filter_row.addWidget(self._topics_filter_edit)
         test_topics_btn = QPushButton("Test")
         test_topics_btn.setFixedWidth(48)
         qconnect(test_topics_btn.clicked,
-                 lambda: self._test_filter(self._topics_filter_edit.text().strip() or "deck:Topics"))
+                 lambda: self._test_filter("topics", self._topics_filter_edit.text().strip()))
         topics_filter_row.addWidget(test_topics_btn)
         _adv_body_layout.addLayout(topics_filter_row)
 
         items_filter_row = QHBoxLayout()
         items_filter_row.addWidget(QLabel("Items filter:"))
         self._items_filter_edit = QLineEdit()
-        self._items_filter_edit.setPlaceholderText("-deck:Topics")
+        self._items_filter_edit.setPlaceholderText("Optional extra narrowing")
         self._items_filter_edit.setToolTip(
-            "Anki search query that identifies item (flashcard) cards.\n"
-            "Default: -deck:Topics -tag:Incremento"
+            "Optional Anki search query that further narrows Incremento item cards.\n"
+            "Leave empty to include all cards classified as items."
         )
-        self._items_filter_edit.setText(self._saved.get("items_filter", "-deck:Topics"))
+        self._items_filter_edit.setText(self._normalized_saved_filter("items_filter"))
         items_filter_row.addWidget(self._items_filter_edit)
         test_items_btn = QPushButton("Test")
         test_items_btn.setFixedWidth(48)
         qconnect(test_items_btn.clicked,
-                 lambda: self._test_filter(self._items_filter_edit.text().strip() or "-deck:Topics"))
+                 lambda: self._test_filter("items", self._items_filter_edit.text().strip()))
         items_filter_row.addWidget(test_items_btn)
         _adv_body_layout.addLayout(items_filter_row)
 
@@ -3095,6 +3097,17 @@ class SchedulerConfigDialog(QDialog):
             return parts[0]
         return "(" + " OR ".join(parts) + ")"
 
+    def _normalized_saved_filter(self, key: str, source: dict | None = None) -> str:
+        lookup = self._saved if source is None else (source or {})
+        value = str(lookup.get(key, "") or "").strip()
+        legacy_defaults = {
+            "topics_filter": {"deck:Topics", "deck:Topics OR tag:Incremento"},
+            "items_filter": {"-deck:Topics", "-deck:Topics -tag:Incremento"},
+        }
+        if value in legacy_defaults.get(key, set()):
+            return ""
+        return value
+
     def _refresh_tag_count(self, row_dict: dict) -> None:
         """Update the count annotation on one tag row."""
         tag = row_dict["tag"]
@@ -3104,13 +3117,21 @@ class SchedulerConfigDialog(QDialog):
             )
             return
         ready = self._ready_filter_from_checks()
-        # Use filter edits if they already exist (they're created after tag rows).
-        tf_widget  = getattr(self, "_topics_filter_edit", None)
-        itf_widget = getattr(self, "_items_filter_edit",  None)
-        tf  = (tf_widget.text().strip()  or "deck:Topics")  if tf_widget  else "deck:Topics"
-        itf = (itf_widget.text().strip() or "-deck:Topics") if itf_widget else "-deck:Topics"
-        n_topics = len(mw.col.find_cards(self._apply_branch_scope_query(f"{tf} tag:{tag} {ready}")))
-        n_items  = len(mw.col.find_cards(self._apply_branch_scope_query(f"{itf} tag:{tag} {ready}")))
+        tf_widget = getattr(self, "_topics_filter_edit", None)
+        itf_widget = getattr(self, "_items_filter_edit", None)
+        tf = tf_widget.text().strip() if tf_widget else ""
+        itf = itf_widget.text().strip() if itf_widget else ""
+        _card_utils.clear_topic_item_cache()
+        n_topics = _card_utils.count_ready_topic_cards_by_tag(
+            tag,
+            topics_filter=self._apply_branch_scope_query(tf),
+            ready_filter=ready,
+        )
+        n_items = _card_utils.count_ready_item_cards_by_tag(
+            tag,
+            items_filter=self._apply_branch_scope_query(itf),
+            ready_filter=ready,
+        )
         color = "#e0a020" if (n_topics == 0 or n_items == 0) else "gray"
         row_dict["name_label"].setText(
             f'{tag} <span style="color: {color}; font-size: small;">'
@@ -3120,10 +3141,17 @@ class SchedulerConfigDialog(QDialog):
     def _refresh_counts(self) -> None:
         """Refresh the global topics/items count label and all tag-row counts."""
         ready = self._ready_filter_from_checks()
-        tf  = self._topics_filter_edit.text().strip() or "deck:Topics"
-        itf = self._items_filter_edit.text().strip()  or "-deck:Topics"
-        n_topics = len(mw.col.find_cards(self._apply_branch_scope_query(f"{tf} {ready}")))
-        n_items  = len(mw.col.find_cards(self._apply_branch_scope_query(f"{itf} {ready}")))
+        tf = self._topics_filter_edit.text().strip()
+        itf = self._items_filter_edit.text().strip()
+        _card_utils.clear_topic_item_cache()
+        n_topics = _card_utils.count_ready_topic_cards(
+            topics_filter=self._apply_branch_scope_query(tf),
+            ready_filter=ready,
+        )
+        n_items = _card_utils.count_ready_item_cards(
+            items_filter=self._apply_branch_scope_query(itf),
+            ready_filter=ready,
+        )
         t_color = "#e0a020" if n_topics == 0 else "#c8a800"
         i_color = "#e0a020" if n_items  == 0 else "gray"
         topic_suffix = " ready in branch" if self._branch_scope else " ready"
@@ -3149,29 +3177,49 @@ class SchedulerConfigDialog(QDialog):
             except Exception:
                 row["count_label"].setText("")
 
-    def _test_filter(self, query: str) -> None:
-        """Show the card count for a filter string."""
+    def _test_filter(self, kind: str, query: str) -> None:
+        """Show the classified card count for a narrowing filter string."""
         ready = self._ready_filter_from_checks()
-        count = len(mw.col.find_cards(self._apply_branch_scope_query(f"{query} {ready}")))
+        _card_utils.clear_topic_item_cache()
+        scoped_query = self._apply_branch_scope_query(query)
+        if kind == "topics":
+            count = _card_utils.count_ready_topic_cards(
+                topics_filter=scoped_query,
+                ready_filter=ready,
+            )
+        else:
+            count = _card_utils.count_ready_item_cards(
+                items_filter=scoped_query,
+                ready_filter=ready,
+            )
         scope_note = " in the active branch" if self._branch_scope else ""
-        showInfo(f'Filter "{query}" matches {count} ready card(s){scope_note}.')
+        label = "topic" if kind == "topics" else "item"
+        query_label = query or "(no extra filter)"
+        showInfo(f'{label.title()} filter "{query_label}" leaves {count} ready classified card(s){scope_note}.')
 
     def accept(self) -> None:
         """Warn if both filters return no cards, then accept."""
         try:
             ready = self._ready_filter_from_checks()
-            tf  = self._topics_filter_edit.text().strip() or "deck:Topics"
-            itf = self._items_filter_edit.text().strip()  or "-deck:Topics"
-            n_topics = len(mw.col.find_cards(self._apply_branch_scope_query(f"{tf} {ready}")))
-            n_items  = len(mw.col.find_cards(self._apply_branch_scope_query(f"{itf} {ready}")))
+            tf = self._topics_filter_edit.text().strip()
+            itf = self._items_filter_edit.text().strip()
+            _card_utils.clear_topic_item_cache()
+            n_topics = _card_utils.count_ready_topic_cards(
+                topics_filter=self._apply_branch_scope_query(tf),
+                ready_filter=ready,
+            )
+            n_items = _card_utils.count_ready_item_cards(
+                items_filter=self._apply_branch_scope_query(itf),
+                ready_filter=ready,
+            )
             if n_topics == 0 and n_items == 0:
                 from aqt.qt import QMessageBox
                 no_cards_msg = (
-                    "Both filters returned 0 ready cards inside the active branch.\n"
+                    "The current topic/item classification plus your extra filters returned 0 ready cards inside the active branch.\n"
                     "The session will be empty.\n\nContinue anyway?"
                     if self._branch_scope
                     else
-                    "Both filters returned 0 ready cards.\n"
+                    "The current topic/item classification plus your extra filters returned 0 ready cards.\n"
                     "The session will be empty.\n\nContinue anyway?"
                 )
                 r = QMessageBox.warning(
@@ -3290,8 +3338,8 @@ class SchedulerConfigDialog(QDialog):
             phase_order=self._funnel.get_order(),
             phases_enabled=self._funnel.get_enabled(),
             enforce_priority=self._enforce_cb.isChecked(),
-            topics_filter=self._topics_filter_edit.text().strip() or "deck:Topics",
-            items_filter=self._items_filter_edit.text().strip() or "-deck:Topics",
+            topics_filter=self._topics_filter_edit.text().strip(),
+            items_filter=self._items_filter_edit.text().strip(),
             include_new=self._cb_new.isChecked(),
             include_learning=self._cb_learning.isChecked(),
             include_due=self._cb_due.isChecked(),
@@ -3342,8 +3390,8 @@ class SchedulerConfigDialog(QDialog):
                 {"type": r["type"], "enabled": r["cb"].isChecked(), "weight": r["slider"].value()}
                 for r in self._ct_rows
             ],
-            "topics_filter":    self._topics_filter_edit.text().strip() or "deck:Topics",
-            "items_filter":     self._items_filter_edit.text().strip() or "-deck:Topics",
+            "topics_filter":    self._topics_filter_edit.text().strip(),
+            "items_filter":     self._items_filter_edit.text().strip(),
             "include_new":      self._cb_new.isChecked(),
             "include_learning": self._cb_learning.isChecked(),
             "include_due":      self._cb_due.isChecked(),
@@ -3489,8 +3537,8 @@ class SchedulerConfigDialog(QDialog):
             enabled=d.get("phases_enabled", {}),
         )
 
-        self._topics_filter_edit.setText(d.get("topics_filter", "deck:Topics"))
-        self._items_filter_edit.setText(d.get("items_filter", "-deck:Topics"))
+        self._topics_filter_edit.setText(self._normalized_saved_filter("topics_filter", d))
+        self._items_filter_edit.setText(self._normalized_saved_filter("items_filter", d))
         self._preserve_order_cb.setChecked(d.get("preserve_order", True))
         self._show_debug_cb.setChecked(d.get("show_debug", False))
         self._use_live_preview_enabled = bool(d.get("use_live_preview", False))

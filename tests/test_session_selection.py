@@ -189,17 +189,21 @@ def test_prioritized_tags_are_selected_before_scheduler_fill():
         ]
     )
 
-    def _fake_find_cards(query: str):
-        if "tag:active_writing" in query and 'note:"Incremento PDF"' in query:
-            return [302]
-        if "tag:active_writing" in query and "deck:Topics" in query:
-            return [301]
-        return []
-
-    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
-
-    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
-        "session_selection.StatsManager", _FakeStats
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[302],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        return_value=[301],
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
     ), patch(
         "session_selection.card_utils.sort_cards_for_priority_mode",
         side_effect=lambda ids, **_: list(ids),
@@ -226,17 +230,28 @@ def test_prioritized_tags_dedupe_cards_across_multiple_tags():
         prioritized_tags_first=["alpha", "beta"],
     )
 
-    def _fake_find_cards(query: str):
-        if "tag:alpha" in query and "deck:Topics" in query:
+    def _fake_topics(tag, **_kwargs):
+        if tag == "alpha":
             return [101]
-        if "tag:beta" in query and "deck:Topics" in query:
+        if tag == "beta":
             return [101, 102]
         return []
 
-    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
-
-    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
-        "session_selection.StatsManager", _FakeStats
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        side_effect=_fake_topics,
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
     ), patch(
         "session_selection.card_utils.sort_cards_for_priority_mode",
         side_effect=lambda ids, **_: list(ids),
@@ -262,15 +277,21 @@ def test_prioritized_tags_respect_session_card_count_cap():
         prioritized_tags_first=["alpha"],
     )
 
-    def _fake_find_cards(query: str):
-        if "tag:alpha" in query and "deck:Topics" in query:
-            return [401, 402]
-        return []
-
-    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
-
-    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
-        "session_selection.StatsManager", _FakeStats
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        return_value=[401, 402],
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
     ), patch(
         "session_selection.card_utils.sort_cards_for_priority_mode",
         side_effect=lambda ids, **_: list(ids),
@@ -295,18 +316,27 @@ def test_prioritized_tags_use_branch_scope_in_queries():
         topics_filter="deck:Topics",
         items_filter="-deck:Topics",
     )
-    seen_queries: list[str] = []
+    seen_kwargs: list[dict] = []
 
-    def _fake_find_cards(query: str):
-        seen_queries.append(query)
-        if "tag:medicine" in query and "cid:10" in query:
-            return [10]
-        return []
+    def _fake_topics(tag, **kwargs):
+        seen_kwargs.append({"tag": tag, **kwargs})
+        return [10] if tag == "medicine" else []
 
-    fake_col = types.SimpleNamespace(find_cards=_fake_find_cards)
-
-    with patch.object(session_selection, "mw", types.SimpleNamespace(col=fake_col)), patch(
-        "session_selection.StatsManager", _FakeStats
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        side_effect=_fake_topics,
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
     ), patch(
         "session_selection.card_utils.sort_cards_for_priority_mode",
         side_effect=lambda ids, **_: list(ids),
@@ -318,7 +348,40 @@ def test_prioritized_tags_use_branch_scope_in_queries():
         )
 
     assert result.selected_ids == [10]
-    assert any("tag:medicine" in query and "cid:10" in query and "cid:11" in query for query in seen_queries)
+    assert any(
+        entry["tag"] == "medicine"
+        and "cid:10" in entry["topics_filter"]
+        and "cid:11" in entry["topics_filter"]
+        for entry in seen_kwargs
+    )
+
+
+def test_topic_tagged_cards_can_enter_topic_pool_without_topics_deck_filter():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        topics_filter="",
+        items_filter="",
+    )
+    captured = {}
+
+    def _fake_get(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(card=777, card_type="topics", tag=None, mode="priority")
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=_fake_get,
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [777]
+    assert captured["topics_filter"] == ""
+    assert captured["items_filter"] == ""
 
 
 def test_soft_mode_keeps_trying_after_a_scheduler_miss():

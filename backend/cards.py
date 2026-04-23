@@ -3,13 +3,16 @@ from aqt import mw
 try:
     from .priority_manager import get_all_priorities
     from .epub_manager import DOCUMENT_FILTER
+    from .topic_scheduler import is_topic_card
     from .paths import get_active_profile as _active_profile
 except ImportError:
     from priority_manager import get_all_priorities  # type: ignore
     from epub_manager import DOCUMENT_FILTER  # type: ignore
+    from topic_scheduler import is_topic_card  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
 all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
+_TOPIC_ITEM_CACHE: dict[tuple[str, str, str], tuple[int, ...]] = {}
 
 
 def _sort_by_due(card_ids):
@@ -28,6 +31,10 @@ def _sort_by_due(card_ids):
     due_map = {row[0]: row[1] for row in rows}
     ids.sort(key=lambda cid: due_map.get(cid, 0))
     return ids
+
+
+def clear_topic_item_cache() -> None:
+    _TOPIC_ITEM_CACHE.clear()
 
 
 def sort_cards_for_priority_mode(
@@ -70,31 +77,112 @@ def get_all_ready_card_ids():
     return mw.col.find_cards(all_ready_cards_filter)
 
 
-def get_all_topic_cards(
-    topics_filter: str = "deck:Topics", ready_filter: str = all_ready_cards_filter
+def _normalized_query(*parts: str) -> str:
+    return " ".join(str(part or "").strip() for part in parts if str(part or "").strip()).strip()
+
+
+def _classified_ready_cards(
+    kind: str,
+    *,
+    extra_filter: str = "",
+    ready_filter: str = all_ready_cards_filter,
 ):
-    return _sort_by_due(mw.col.find_cards(f"{topics_filter} {ready_filter}"))
+    query = _normalized_query(extra_filter, ready_filter)
+    cache_key = (kind, str(extra_filter or "").strip(), str(ready_filter or "").strip())
+    cached = _TOPIC_ITEM_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    candidate_ids = _sort_by_due(mw.col.find_cards(query))
+    matched: list[int] = []
+    for card_id in candidate_ids:
+        try:
+            card = mw.col.get_card(card_id)
+        except Exception:
+            continue
+        if card is None:
+            continue
+        try:
+            is_topic = bool(is_topic_card(card))
+        except Exception:
+            is_topic = False
+        if kind == "topics":
+            if is_topic:
+                matched.append(int(card_id))
+            continue
+        if kind == "items":
+            if not is_topic:
+                matched.append(int(card_id))
+            continue
+        raise ValueError(f"Unsupported classified kind: {kind}")
+
+    _TOPIC_ITEM_CACHE[cache_key] = tuple(matched)
+    return list(matched)
+
+
+def get_all_topic_cards(
+    topics_filter: str = "", ready_filter: str = all_ready_cards_filter
+):
+    return _classified_ready_cards("topics", extra_filter=topics_filter, ready_filter=ready_filter)
 
 
 def get_all_item_cards(
-    items_filter: str = "-deck:Topics", ready_filter: str = all_ready_cards_filter
+    items_filter: str = "", ready_filter: str = all_ready_cards_filter
 ):
-    return _sort_by_due(mw.col.find_cards(f"{items_filter} {ready_filter}"))
+    return _classified_ready_cards("items", extra_filter=items_filter, ready_filter=ready_filter)
 
 def get_topic_cards_by_tag(
     tag: str,
-    topics_filter: str = "deck:Topics",
+    topics_filter: str = "",
     ready_filter: str = all_ready_cards_filter,
 ):
-    return _sort_by_due(mw.col.find_cards(f"{topics_filter} tag:{tag} {ready_filter}"))
+    return _classified_ready_cards(
+        "topics",
+        extra_filter=_normalized_query(topics_filter, f"tag:{tag}"),
+        ready_filter=ready_filter,
+    )
 
 
 def get_item_cards_by_tag(
     tag: str,
-    items_filter: str = "-deck:Topics",
+    items_filter: str = "",
     ready_filter: str = all_ready_cards_filter,
 ):
-    return _sort_by_due(mw.col.find_cards(f"{items_filter} tag:{tag} {ready_filter}"))
+    return _classified_ready_cards(
+        "items",
+        extra_filter=_normalized_query(items_filter, f"tag:{tag}"),
+        ready_filter=ready_filter,
+    )
+
+
+def count_ready_topic_cards(
+    topics_filter: str = "",
+    ready_filter: str = all_ready_cards_filter,
+) -> int:
+    return len(get_all_topic_cards(topics_filter=topics_filter, ready_filter=ready_filter))
+
+
+def count_ready_item_cards(
+    items_filter: str = "",
+    ready_filter: str = all_ready_cards_filter,
+) -> int:
+    return len(get_all_item_cards(items_filter=items_filter, ready_filter=ready_filter))
+
+
+def count_ready_topic_cards_by_tag(
+    tag: str,
+    topics_filter: str = "",
+    ready_filter: str = all_ready_cards_filter,
+) -> int:
+    return len(get_topic_cards_by_tag(tag, topics_filter=topics_filter, ready_filter=ready_filter))
+
+
+def count_ready_item_cards_by_tag(
+    tag: str,
+    items_filter: str = "",
+    ready_filter: str = all_ready_cards_filter,
+) -> int:
+    return len(get_item_cards_by_tag(tag, items_filter=items_filter, ready_filter=ready_filter))
 
 
 def get_all_pdf_cards(pdf_filter: str = DOCUMENT_FILTER):

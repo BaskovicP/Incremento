@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import NamedTuple
-from aqt import mw
 
 try:
     from . import cards as card_utils
@@ -86,18 +85,28 @@ def _collect_prioritized_tag_candidates(
     tag_to_candidates: dict[str, dict[int, str]] = {}
     for tag in prioritized_tags:
         tag_map = tag_to_candidates.setdefault(tag, {})
-        pool_queries = [
-            ("pdf", f"{pdf_filter} tag:{tag} -is:suspended"),
-            ("youtube", f'{youtube_filter} tag:{tag} -is:suspended'),
-            ("webpage", f'{webpage_filter} tag:{tag} -is:suspended'),
-            ("topics", f"{topics_filter} tag:{tag} {cfg.ready_filter}"),
-            ("items", f"{items_filter} tag:{tag} {cfg.ready_filter}"),
+        pool_ids = [
+            ("pdf", card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter)),
+            ("youtube", card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter)),
+            ("webpage", card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter)),
+            (
+                "topics",
+                card_utils.get_topic_cards_by_tag(
+                    tag,
+                    topics_filter=topics_filter,
+                    ready_filter=cfg.ready_filter,
+                ),
+            ),
+            (
+                "items",
+                card_utils.get_item_cards_by_tag(
+                    tag,
+                    items_filter=items_filter,
+                    ready_filter=cfg.ready_filter,
+                ),
+            ),
         ]
-        for card_type, query in pool_queries:
-            try:
-                ids = mw.col.find_cards(query)
-            except Exception:
-                ids = []
+        for card_type, ids in pool_ids:
             for card_id in ids:
                 try:
                     cid = int(card_id)
@@ -180,6 +189,7 @@ def select_session_cards(
     branch_scope: dict | None = None,
 ) -> SessionSelectionResult:
     """Run the scheduler pick loop and return selected card IDs + pick metadata."""
+    card_utils.clear_topic_item_cache()
     target_count = cfg.session_card_count
     stats = StatsManager(addon_dir, _active_profile(), day_end_time=cfg.day_end_time)
     normalized_branch_scope = _normalize_branch_scope(branch_scope)

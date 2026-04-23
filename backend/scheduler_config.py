@@ -22,8 +22,8 @@ class SchedulerConfig:
     day_end_time: str = "00:00"        # HH:MM — logical day boundary for "daily" scope
     priority_order: list = field(default_factory=lambda: ["tags", "type", "mode"])
     enforce_priority: bool = True      # False → soft debt-based ordering, no hard quotas
-    topics_filter: str = "deck:Topics OR tag:Incremento"   # Anki search filter for topic cards
-    items_filter: str = "-deck:Topics -tag:Incremento"     # Anki search filter for item cards
+    topics_filter: str = ""   # Optional Anki search filter that further narrows topic cards
+    items_filter: str = ""    # Optional Anki search filter that further narrows item cards
     include_new: bool = True             # include is:new cards
     include_learning: bool = True        # include is:learn cards
     include_due: bool = True             # include is:due (review) cards
@@ -97,13 +97,13 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
 
     scheduler_scope = d.get("scheduler_scope", "session")
     day_end_time    = d.get("day_end_time", "00:00")
-    topics_filter    = d.get("topics_filter",    "deck:Topics OR tag:Incremento")
-    items_filter     = d.get("items_filter",     "-deck:Topics -tag:Incremento")
-    # Migrate old deck-only defaults to tag-aware defaults
-    if topics_filter == "deck:Topics":
-        topics_filter = "deck:Topics OR tag:Incremento"
-    if items_filter == "-deck:Topics":
-        items_filter = "-deck:Topics -tag:Incremento"
+    topics_filter    = str(d.get("topics_filter", "") or "").strip()
+    items_filter     = str(d.get("items_filter", "") or "").strip()
+    # Migrate old deck/tag defaults to the new classifier-based empty filters.
+    if topics_filter in {"deck:Topics", "deck:Topics OR tag:Incremento"}:
+        topics_filter = ""
+    if items_filter in {"-deck:Topics", "-deck:Topics -tag:Incremento"}:
+        items_filter = ""
     include_new      = d.get("include_new",      True)
     include_learning = d.get("include_learning", True)
     include_due      = d.get("include_due",      True)

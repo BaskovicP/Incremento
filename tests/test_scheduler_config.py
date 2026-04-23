@@ -57,8 +57,8 @@ class TestConfigFromDialogDict:
         assert cfg.day_end_time == "00:00"
         assert cfg.priority_order == ["tags", "type", "mode"]
         assert cfg.enforce_priority is True
-        assert cfg.topics_filter == "deck:Topics OR tag:Incremento"
-        assert cfg.items_filter == "-deck:Topics -tag:Incremento"
+        assert cfg.topics_filter == ""
+        assert cfg.items_filter == ""
         assert cfg.include_new is True
         assert cfg.include_learning is True
         assert cfg.include_due is True
@@ -107,11 +107,21 @@ class TestConfigFromDialogDict:
 
     def test_migrate_old_topics_filter(self):
         cfg = _config_from_dialog_dict({"topics_filter": "deck:Topics"})
-        assert cfg.topics_filter == "deck:Topics OR tag:Incremento"
+        assert cfg.topics_filter == ""
 
     def test_migrate_old_items_filter(self):
         cfg = _config_from_dialog_dict({"items_filter": "-deck:Topics"})
-        assert cfg.items_filter == "-deck:Topics -tag:Incremento"
+        assert cfg.items_filter == ""
+
+    def test_migrate_old_tag_aware_defaults_to_empty_filters(self):
+        cfg = _config_from_dialog_dict(
+            {
+                "topics_filter": "deck:Topics OR tag:Incremento",
+                "items_filter": "-deck:Topics -tag:Incremento",
+            }
+        )
+        assert cfg.topics_filter == ""
+        assert cfg.items_filter == ""
 
     def test_custom_filters_not_migrated(self):
         cfg = _config_from_dialog_dict({

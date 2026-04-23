@@ -128,31 +128,46 @@ class TestSortCardsForPriorityMode:
 
 class TestGetAllTopicCards:
     def test_returns_sorted_list(self):
-        with patch("cards.mw") as mock_mw:
+        card_map = {3: object(), 1: object(), 2: object()}
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card",
+            side_effect=lambda card: card is not card_map[2],
+        ):
             mock_mw.col.find_cards.return_value = [3, 1, 2]
             mock_mw.col.db.all.return_value = [(3, 30), (1, 10), (2, 20)]
+            mock_mw.col.get_card.side_effect = lambda cid: card_map[cid]
+            cards.clear_topic_item_cache()
             result = cards.get_all_topic_cards()
-        assert result == [1, 2, 3]
+        assert result == [1, 3]
 
     def test_passes_topics_filter_in_query(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             cards.get_all_topic_cards(topics_filter="deck:MyTopics")
             call_arg = mock_mw.col.find_cards.call_args[0][0]
         assert "deck:MyTopics" in call_arg
 
     def test_empty_result_returns_empty_list(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             result = cards.get_all_topic_cards()
         assert result == []
 
     def test_passes_ready_filter_in_query(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             cards.get_all_topic_cards(ready_filter="is:due")
             call_arg = mock_mw.col.find_cards.call_args[0][0]
         assert "is:due" in call_arg
@@ -165,24 +180,36 @@ class TestGetAllTopicCards:
 
 class TestGetAllItemCards:
     def test_returns_sorted_list(self):
-        with patch("cards.mw") as mock_mw:
+        card_map = {200: object(), 100: object()}
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card",
+            side_effect=lambda card: card is card_map[200],
+        ):
             mock_mw.col.find_cards.return_value = [200, 100]
             mock_mw.col.db.all.return_value = [(200, 100), (100, 50)]
+            mock_mw.col.get_card.side_effect = lambda cid: card_map[cid]
+            cards.clear_topic_item_cache()
             result = cards.get_all_item_cards()
-        assert result == [100, 200]
+        assert result == [100]
 
     def test_passes_items_filter_in_query(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             cards.get_all_item_cards(items_filter="-deck:Topics")
             call_arg = mock_mw.col.find_cards.call_args[0][0]
         assert "-deck:Topics" in call_arg
 
     def test_empty_collection_returns_empty_list(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             result = cards.get_all_item_cards()
         assert result == []
 
@@ -194,27 +221,39 @@ class TestGetAllItemCards:
 
 class TestGetCardsByTag:
     def test_topic_tag_filter_includes_tag_in_query(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             cards.get_topic_cards_by_tag("physics")
             call_arg = mock_mw.col.find_cards.call_args[0][0]
         assert "tag:physics" in call_arg
 
     def test_item_tag_filter_includes_tag_in_query(self):
-        with patch("cards.mw") as mock_mw:
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card", return_value=False
+        ):
             mock_mw.col.find_cards.return_value = []
             mock_mw.col.db.all.return_value = []
+            cards.clear_topic_item_cache()
             cards.get_item_cards_by_tag("history")
             call_arg = mock_mw.col.find_cards.call_args[0][0]
         assert "tag:history" in call_arg
 
     def test_topic_tag_returns_sorted_result(self):
-        with patch("cards.mw") as mock_mw:
+        card_map = {5: object(), 3: object(), 4: object()}
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.is_topic_card",
+            side_effect=lambda card: card is not card_map[4],
+        ):
             mock_mw.col.find_cards.return_value = [5, 3, 4]
             mock_mw.col.db.all.return_value = [(5, 50), (3, 10), (4, 30)]
+            mock_mw.col.get_card.side_effect = lambda cid: card_map[cid]
+            cards.clear_topic_item_cache()
             result = cards.get_topic_cards_by_tag("science")
-        assert result == [3, 4, 5]
+        assert result == [3, 5]
 
 
 # ---------------------------------------------------------------------------
