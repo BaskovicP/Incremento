@@ -18,6 +18,7 @@ build_reviewer_priority_badge_js = _badge.build_reviewer_priority_badge_js
 format_reviewer_a_factor_value = _badge.format_reviewer_a_factor_value
 format_reviewer_priority_value = _badge.format_reviewer_priority_value
 format_reviewer_saved_time_value = _badge.format_reviewer_saved_time_value
+get_reviewer_priority_palette = _badge.get_reviewer_priority_palette
 
 
 def test_format_reviewer_priority_value_rounds_and_clamps():
@@ -63,9 +64,21 @@ def test_build_reviewer_priority_badge_js_includes_priority_and_topic_a_factor()
     assert '"Every 2 days \\u00b7 Minimum cadence"' in js
     assert "position: fixed;" in js
     assert "height: 82px;" in js
+    assert "--incremento-priority-accent" in js
+    assert "--incremento-priority-soft" in js
     assert 'badge.classList.add("has-a-factor")' in js
     assert 'badge.classList.add("has-browser-time")' in js
     assert 'badge.classList.add("has-schedule")' in js
+
+
+def test_get_reviewer_priority_palette_respects_priority_direction():
+    low_priority_palette = get_reviewer_priority_palette(10, lower_is_more_important=True)
+    high_priority_palette = get_reviewer_priority_palette(90, lower_is_more_important=False)
+
+    assert low_priority_palette["accent"] == high_priority_palette["accent"]
+    assert low_priority_palette["background"].startswith("#")
+    assert low_priority_palette["border"].startswith("#")
+    assert low_priority_palette["glow"].startswith("rgba(")
 
 
 def test_build_reviewer_priority_badge_js_keeps_a_factor_hidden_for_items():
@@ -73,6 +86,13 @@ def test_build_reviewer_priority_badge_js_keeps_a_factor_hidden_for_items():
     assert 'badge.classList.remove("has-a-factor")' in js
     assert 'badge.classList.remove("has-browser-time")' in js
     assert '""' in js
+
+
+def test_build_reviewer_priority_badge_js_uses_directional_palette():
+    palette = get_reviewer_priority_palette(90, lower_is_more_important=False)
+    js = build_reviewer_priority_badge_js(90, lower_is_more_important=False)
+    assert palette["accent"] in js
+    assert palette["background"] in js
 
 
 def test_build_reviewer_priority_badge_js_can_disable_existing_badge():

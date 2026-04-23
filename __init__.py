@@ -1146,6 +1146,7 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
                 a_factor=a_factor,
                 browser_time_seconds=browser_time_seconds,
                 custom_schedule_text=custom_schedule_text,
+                lower_is_more_important=configured_priority_lower_is_more_important(),
             )
         )
     except Exception:
