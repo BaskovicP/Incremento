@@ -10,6 +10,7 @@ from aqt.qt import (
     QLineEdit,
     QKeySequence,
     QKeySequenceEdit,
+    QPlainTextEdit,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -19,6 +20,21 @@ from aqt.qt import (
     QVBoxLayout,
     QWidget,
 )
+
+try:
+    from ..backend.custom_schedule import (
+        configured_custom_schedule_default_mode,
+        configured_custom_schedule_presets,
+        normalize_custom_schedule_mode,
+        normalize_custom_schedule_preset,
+    )
+except ImportError:
+    from backend.custom_schedule import (  # type: ignore
+        configured_custom_schedule_default_mode,
+        configured_custom_schedule_presets,
+        normalize_custom_schedule_mode,
+        normalize_custom_schedule_preset,
+    )
 
 
 SHORTCUT_ACTION_SPECS = [
@@ -187,6 +203,15 @@ class IncrementoSettingsDialog(QDialog):
         current_topic_postpone_enabled: bool = False,
         current_topic_postpone_mode: str = "timed",
         current_topic_postpone_minutes: int = 30,
+        current_writing_wrap_enabled: bool = True,
+        current_writing_focus_mode: bool = False,
+        current_writing_highlight_current_line: bool = True,
+        current_writing_restore_bookmark: bool = True,
+        current_writing_progress_visible: bool = True,
+        current_writing_progress_default_scope: str = "today",
+        current_writing_word_count_mode: str = "simple",
+        current_custom_schedule_default_mode: str = "minimum_cadence",
+        current_custom_schedule_presets: list[dict] | None = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -208,24 +233,6 @@ class IncrementoSettingsDialog(QDialog):
             scroll.setWidget(content)
             return scroll
 
-        general_tab = QWidget()
-        general_layout = QVBoxLayout(general_tab)
-        general_layout.setSpacing(8)
-
-        general_hint = QLabel(
-            "Choose which card type extraction opens in by default."
-            " This applies to the Add Card dock and Extract Card dialog."
-            " You can also choose which source links should be appended while extracting,"
-            " how incremental learning interprets stored priority numbers,"
-            " whether to prompt for priority after answering a card,"
-            " whether browser cards remember scroll position,"
-            " how browser-card media resume opens,"
-            " whether item cards use Fail / Pass instead of standard ease buttons,"
-            " and which card types or tags should be treated as topics."
-        )
-        general_hint.setWordWrap(True)
-        general_layout.addWidget(general_hint)
-
         def _section_title(text: str) -> QLabel:
             lbl = QLabel(f"<b>{text}</b>")
             lbl.setWordWrap(True)
@@ -237,12 +244,23 @@ class IncrementoSettingsDialog(QDialog):
             form.setVerticalSpacing(8)
             return form
 
-        general_layout.addWidget(_section_title("Extraction"))
+        extraction_tab = QWidget()
+        extraction_layout = QVBoxLayout(extraction_tab)
+        extraction_layout.setSpacing(8)
+
+        extraction_hint = QLabel(
+            "Choose how extracted content opens by default, how its priority is derived,"
+            " whether extracts should start as topics, and which provenance links should be appended."
+        )
+        extraction_hint.setWordWrap(True)
+        extraction_layout.addWidget(extraction_hint)
+
+        extraction_layout.addWidget(_section_title("Extraction"))
         extraction_hint = QLabel(
             "Controls how extracted text opens in Add Card and which source links are appended."
         )
         extraction_hint.setWordWrap(True)
-        general_layout.addWidget(extraction_hint)
+        extraction_layout.addWidget(extraction_hint)
 
         extraction_form = _section_form()
 
@@ -325,14 +343,27 @@ class IncrementoSettingsDialog(QDialog):
         self._extract_parent_links_cb.setChecked(source_link_cfg["parent"])
         extraction_form.addRow("", self._extract_parent_links_cb)
 
-        general_layout.addLayout(extraction_form)
+        extraction_layout.addLayout(extraction_form)
+        extraction_layout.addStretch(1)
+        tabs.addTab(_scrollable_tab(extraction_tab), "Extraction")
 
-        general_layout.addWidget(_section_title("Review Behavior"))
+        review_tab = QWidget()
+        review_layout = QVBoxLayout(review_tab)
+        review_layout.setSpacing(8)
+
+        review_hint = QLabel(
+            "Review settings control how priority numbers are interpreted, which extra prompts appear after answering,"
+            " how browser cards resume, and how optional repeating schedule rules behave."
+        )
+        review_hint.setWordWrap(True)
+        review_layout.addWidget(review_hint)
+
+        review_layout.addWidget(_section_title("Review Behavior"))
         review_hint = QLabel(
             "Controls how review buttons behave and whether review flow asks for extra input after answering."
         )
         review_hint.setWordWrap(True)
-        general_layout.addWidget(review_hint)
+        review_layout.addWidget(review_hint)
 
         review_form = _section_form()
 
@@ -390,15 +421,86 @@ class IncrementoSettingsDialog(QDialog):
         )
         review_form.addRow("", self._use_fail_pass_on_items_cb)
 
-        general_layout.addLayout(review_form)
+        review_layout.addLayout(review_form)
 
-        general_layout.addWidget(_section_title("Topic Cards"))
+        review_layout.addWidget(_section_title("Custom Scheduling"))
+        custom_schedule_hint = QLabel(
+            "Browser right-click can apply repeating schedule rules such as every 2 days or monthly. "
+            "Manage the default rule behavior and quick presets here."
+        )
+        custom_schedule_hint.setWordWrap(True)
+        review_layout.addWidget(custom_schedule_hint)
+
+        custom_schedule_form = _section_form()
+
+        self._custom_schedule_default_mode_combo = QComboBox()
+        self._custom_schedule_default_mode_combo.addItem(
+            "Minimum cadence",
+            "minimum_cadence",
+        )
+        self._custom_schedule_default_mode_combo.addItem(
+            "Repeat exactly",
+            "fixed_repeat",
+        )
+        self._custom_schedule_default_mode_combo.addItem(
+            "One-time set due",
+            "one_time",
+        )
+        selected_custom_schedule_mode = normalize_custom_schedule_mode(
+            current_custom_schedule_default_mode
+        )
+        for idx in range(self._custom_schedule_default_mode_combo.count()):
+            if self._custom_schedule_default_mode_combo.itemData(idx) == selected_custom_schedule_mode:
+                self._custom_schedule_default_mode_combo.setCurrentIndex(idx)
+                break
+        custom_schedule_form.addRow(
+            "Default behavior:",
+            self._custom_schedule_default_mode_combo,
+        )
+
+        self._custom_schedule_presets_edit = QPlainTextEdit()
+        self._custom_schedule_presets_edit.setPlaceholderText(
+            "One preset per line: Label | Value | Unit\n"
+            "Example: Every 2 days | 2 | days"
+        )
+        presets_lines = []
+        for preset in configured_custom_schedule_presets(
+            {"custom_schedule_presets": current_custom_schedule_presets}
+        ):
+            normalized = normalize_custom_schedule_preset(preset)
+            presets_lines.append(
+                f"{normalized['label']} | {normalized['interval_value']} | {normalized['interval_unit']}"
+            )
+        self._custom_schedule_presets_edit.setPlainText("\n".join(presets_lines))
+        self._custom_schedule_presets_edit.setMinimumHeight(120)
+        custom_schedule_form.addRow("Quick presets:", self._custom_schedule_presets_edit)
+
+        custom_schedule_form.addRow(
+            "",
+            QLabel("Units: days, weeks, months. Lines with invalid values are ignored."),
+        )
+        review_layout.addLayout(custom_schedule_form)
+        review_layout.addStretch(1)
+        tabs.addTab(_scrollable_tab(review_tab), "Review")
+
+        topics_tab = QWidget()
+        topics_layout = QVBoxLayout(topics_tab)
+        topics_layout.setSpacing(8)
+
+        topics_hint = QLabel(
+            "Topic settings control which cards are treated as topics, which tags the Add Card topic and item buttons apply,"
+            " and whether topic reviews show the red Postpone action."
+        )
+        topics_hint.setWordWrap(True)
+        topics_layout.addWidget(topics_hint)
+
+        topics_layout.addWidget(_section_title("Topic Cards"))
         topic_section_hint = QLabel(
             "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
             " You can also add a red Postpone button for difficult topics."
         )
         topic_section_hint.setWordWrap(True)
-        general_layout.addWidget(topic_section_hint)
+        topics_layout.addWidget(topic_section_hint)
 
         topic_form = _section_form()
 
@@ -495,9 +597,85 @@ class IncrementoSettingsDialog(QDialog):
         )
         _sync_topic_postpone_widgets()
 
-        general_layout.addLayout(topic_form)
-        general_layout.addStretch(1)
-        tabs.addTab(_scrollable_tab(general_tab), "General")
+        topics_layout.addLayout(topic_form)
+        topics_layout.addStretch(1)
+        tabs.addTab(_scrollable_tab(topics_tab), "Topics")
+
+        writing_tab = QWidget()
+        writing_layout = QVBoxLayout(writing_tab)
+        writing_layout.setSpacing(8)
+
+        writing_hint = QLabel(
+            "Choose the default behavior for markdown writing cards. After a card is opened once, its own saved editor state takes over. "
+            "The progress widget shows per-card word progress for today, the current card-open session, or all time."
+        )
+        writing_hint.setWordWrap(True)
+        writing_layout.addWidget(writing_hint)
+
+        writing_layout.addWidget(_section_title("Editor Defaults"))
+        writing_form = _section_form()
+
+        self._writing_wrap_enabled_cb = QCheckBox("Wrap long lines in writing cards")
+        self._writing_wrap_enabled_cb.setChecked(bool(current_writing_wrap_enabled))
+        writing_form.addRow("", self._writing_wrap_enabled_cb)
+
+        self._writing_focus_mode_cb = QCheckBox("Start writing cards in focus mode")
+        self._writing_focus_mode_cb.setChecked(bool(current_writing_focus_mode))
+        writing_form.addRow("", self._writing_focus_mode_cb)
+
+        self._writing_highlight_current_line_cb = QCheckBox("Highlight the current writing line")
+        self._writing_highlight_current_line_cb.setChecked(bool(current_writing_highlight_current_line))
+        writing_form.addRow("", self._writing_highlight_current_line_cb)
+
+        self._writing_restore_bookmark_cb = QCheckBox(
+            "Restore saved bookmark line when reopening writing cards"
+        )
+        self._writing_restore_bookmark_cb.setChecked(bool(current_writing_restore_bookmark))
+        writing_form.addRow("", self._writing_restore_bookmark_cb)
+        writing_layout.addLayout(writing_form)
+
+        writing_layout.addWidget(_section_title("Progress"))
+        writing_progress_form = _section_form()
+
+        self._writing_progress_visible_cb = QCheckBox("Show the writing progress counter in the dock")
+        self._writing_progress_visible_cb.setChecked(bool(current_writing_progress_visible))
+        writing_progress_form.addRow("", self._writing_progress_visible_cb)
+
+        self._writing_progress_scope_combo = QComboBox()
+        self._writing_progress_scope_combo.addItem("Today", "today")
+        self._writing_progress_scope_combo.addItem("Session", "session")
+        self._writing_progress_scope_combo.addItem("All-time", "all_time")
+        selected_progress_scope = str(current_writing_progress_default_scope or "today").strip().lower()
+        if selected_progress_scope not in {"today", "session", "all_time"}:
+            selected_progress_scope = "today"
+        for idx in range(self._writing_progress_scope_combo.count()):
+            if self._writing_progress_scope_combo.itemData(idx) == selected_progress_scope:
+                self._writing_progress_scope_combo.setCurrentIndex(idx)
+                break
+        writing_progress_form.addRow("Default progress scope:", self._writing_progress_scope_combo)
+        writing_progress_form.addRow(
+            "",
+            QLabel("Session resets when you leave and reopen that writing card."),
+        )
+
+        self._writing_word_count_mode_combo = QComboBox()
+        self._writing_word_count_mode_combo.addItem("Simple whitespace", "simple")
+        self._writing_word_count_mode_combo.addItem("Word-like", "word_like")
+        selected_word_count_mode = str(current_writing_word_count_mode or "simple").strip().lower()
+        if selected_word_count_mode not in {"simple", "word_like"}:
+            selected_word_count_mode = "simple"
+        for idx in range(self._writing_word_count_mode_combo.count()):
+            if self._writing_word_count_mode_combo.itemData(idx) == selected_word_count_mode:
+                self._writing_word_count_mode_combo.setCurrentIndex(idx)
+                break
+        writing_progress_form.addRow("Word counting mode:", self._writing_word_count_mode_combo)
+        writing_progress_form.addRow(
+            "",
+            QLabel("Word-like mode approximates Microsoft Word better for punctuation, apostrophes, and hyphenated words."),
+        )
+        writing_layout.addLayout(writing_progress_form)
+        writing_layout.addStretch(1)
+        tabs.addTab(_scrollable_tab(writing_tab), "Writing")
 
         shortcuts_tab = QWidget()
         shortcuts_layout = QVBoxLayout(shortcuts_tab)
@@ -653,3 +831,67 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def topic_postpone_minutes(self) -> int:
         return int(self._topic_postpone_minutes_spin.value())
+
+    @property
+    def writing_wrap_enabled(self) -> bool:
+        return bool(self._writing_wrap_enabled_cb.isChecked())
+
+    @property
+    def writing_focus_mode(self) -> bool:
+        return bool(self._writing_focus_mode_cb.isChecked())
+
+    @property
+    def writing_highlight_current_line(self) -> bool:
+        return bool(self._writing_highlight_current_line_cb.isChecked())
+
+    @property
+    def writing_restore_bookmark(self) -> bool:
+        return bool(self._writing_restore_bookmark_cb.isChecked())
+
+    @property
+    def writing_progress_visible(self) -> bool:
+        return bool(self._writing_progress_visible_cb.isChecked())
+
+    @property
+    def writing_progress_default_scope(self) -> str:
+        raw = str(self._writing_progress_scope_combo.currentData() or "today").strip().lower()
+        return raw if raw in {"today", "session", "all_time"} else "today"
+
+    @property
+    def writing_word_count_mode(self) -> str:
+        raw = str(self._writing_word_count_mode_combo.currentData() or "simple").strip().lower()
+        return raw if raw in {"simple", "word_like"} else "simple"
+
+    @property
+    def custom_schedule_default_mode(self) -> str:
+        return normalize_custom_schedule_mode(
+            self._custom_schedule_default_mode_combo.currentData()
+        )
+
+    @property
+    def custom_schedule_presets(self) -> list[dict]:
+        presets: list[dict] = []
+        for index, raw_line in enumerate(
+            self._custom_schedule_presets_edit.toPlainText().splitlines()
+        ):
+            line = str(raw_line or "").strip()
+            if not line:
+                continue
+            parts = [part.strip() for part in line.split("|")]
+            if len(parts) != 3:
+                continue
+            label, interval_value, interval_unit = parts
+            try:
+                preset = normalize_custom_schedule_preset(
+                    {
+                        "label": label,
+                        "interval_value": int(interval_value),
+                        "interval_unit": interval_unit,
+                        "sort_order": index,
+                    },
+                    index=index,
+                )
+            except Exception:
+                continue
+            presets.append(preset)
+        return presets or configured_custom_schedule_presets()
