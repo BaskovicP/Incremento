@@ -128,6 +128,7 @@ from .frontend import writing_dock as _writing_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
+    create_database_checkpoint,
     get_connection,
     get_card_browser_media_ref,
     get_custom_schedule_rule,
@@ -3470,6 +3471,7 @@ def openSettingsFunction() -> None:
         current_writing_word_count_mode=_writing_dock_mod.configured_writing_word_count_mode(cfg),
         current_custom_schedule_default_mode=_configured_custom_schedule_default_mode(cfg),
         current_custom_schedule_presets=_configured_custom_schedule_presets(cfg),
+        open_database_editor_callback=_open_database_editor,
         parent=mw,
     )
     if not dlg.exec():
@@ -3537,6 +3539,32 @@ def openSettingsFunction() -> None:
                 )
                 return
     tooltip("Incremento settings updated.")
+
+
+def _open_database_editor() -> None:
+    from .frontend.sqlite_editor_dialog import SQLiteEditorDialog
+
+    profile = _active_profile()
+    mw.progress.start(label="Creating database checkpoint…", immediate=True)
+    try:
+        checkpoint_info = create_database_checkpoint(
+            _ADDON_DIR,
+            profile,
+            label="sqlite_editor",
+        )
+    except Exception as exc:
+        showInfo(f"Could not prepare the database editor:\n{exc}")
+        return
+    finally:
+        mw.progress.finish()
+
+    dialog = SQLiteEditorDialog(
+        _ADDON_DIR,
+        profile,
+        checkpoint_info=checkpoint_info,
+        parent=mw,
+    )
+    dialog.exec()
 
 
 def openAboutFunction() -> None:

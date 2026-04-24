@@ -4,6 +4,7 @@ import tempfile
 import os
 
 import db
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +227,73 @@ class TestGetConnection:
         assert isinstance(conn1, sqlite3.Connection)
         assert isinstance(conn2, sqlite3.Connection)
         assert conn1 is not conn2
+
+
+class TestDatabaseEditorHelpers:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_create_database_checkpoint_copies_profile_db(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute("INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)", (77, 12.5))
+        conn.commit()
+
+        checkpoint = db.create_database_checkpoint(self.addon_dir, "TestProfile", label="sqlite_editor")
+
+        assert checkpoint["filename"].endswith("_sqlite_editor.sqlite3")
+        assert os.path.isfile(checkpoint["path"])
+        snapshot_conn = sqlite3.connect(checkpoint["path"])
+        try:
+            row = snapshot_conn.execute(
+                "SELECT priority FROM priorities WHERE card_id = ?",
+                (77,),
+            ).fetchone()
+        finally:
+            snapshot_conn.close()
+        assert row == (12.5,)
+
+    def test_list_database_checkpoints_returns_newest_first(self):
+        first = db.create_database_checkpoint(self.addon_dir, "TestProfile", label="first")
+        second = db.create_database_checkpoint(self.addon_dir, "TestProfile", label="second")
+
+        checkpoints = db.list_database_checkpoints(self.addon_dir, "TestProfile", limit=5)
+
+        assert checkpoints
+        assert checkpoints[0]["path"] == second["path"]
+        assert {row["path"] for row in checkpoints} >= {first["path"], second["path"]}
+
+    def test_open_database_editor_connection_read_only_blocks_writes(self):
+        db.get_connection(self.addon_dir, "TestProfile").commit()
+        conn = db.open_database_editor_connection(self.addon_dir, "TestProfile", read_only=True)
+        try:
+            with pytest.raises(sqlite3.OperationalError):
+                conn.execute(
+                    "INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)",
+                    (91, 55.0),
+                )
+        finally:
+            conn.close()
+
+    def test_open_database_editor_connection_read_write_allows_writes(self):
+        db.get_connection(self.addon_dir, "TestProfile").commit()
+        conn = db.open_database_editor_connection(self.addon_dir, "TestProfile", read_only=False)
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)",
+                (92, 44.0),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        row = db.get_connection(self.addon_dir, "TestProfile").execute(
+            "SELECT priority FROM priorities WHERE card_id = ?",
+            (92,),
+        ).fetchone()
+        assert row == (44.0,)
 
 
 # ---------------------------------------------------------------------------

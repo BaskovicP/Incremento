@@ -14,6 +14,7 @@ from aqt.qt import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QStyle,
     QDoubleSpinBox,
     QSpinBox,
     QTabWidget,
@@ -223,6 +224,7 @@ class IncrementoSettingsDialog(QDialog):
         current_writing_word_count_mode: str = "simple",
         current_custom_schedule_default_mode: str = "minimum_cadence",
         current_custom_schedule_presets: list[dict] | None = None,
+        open_database_editor_callback=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -231,6 +233,7 @@ class IncrementoSettingsDialog(QDialog):
         self.resize(720, 640)
         self._defaults = default_shortcuts()
         self._editors: dict[str, QKeySequenceEdit] = {}
+        self._open_database_editor_callback = open_database_editor_callback
 
         root = QVBoxLayout(self)
 
@@ -500,6 +503,56 @@ class IncrementoSettingsDialog(QDialog):
         review_layout.addStretch(1)
         tabs.addTab(_scrollable_tab(review_tab), "Review")
 
+        advanced_tab = QWidget()
+        advanced_layout = QVBoxLayout(advanced_tab)
+        advanced_layout.setSpacing(8)
+
+        advanced_hint = QLabel(
+            "Advanced tools expose internal Incremento runtime data for inspection and debugging. "
+            "These tools operate on the active profile only and are intended for power users."
+        )
+        advanced_hint.setWordWrap(True)
+        advanced_layout.addWidget(advanced_hint)
+
+        advanced_layout.addWidget(_section_title("Profile SQLite Database"))
+
+        warning_row = QHBoxLayout()
+        warning_row.setSpacing(10)
+
+        warning_icon = QLabel()
+        warning_icon.setPixmap(
+            self.style()
+            .standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+            .pixmap(20, 20)
+        )
+        warning_row.addWidget(warning_icon)
+
+        warning_copy = QLabel(
+            "Open a guarded database inspector for the current profile's Incremento SQLite database. "
+            "A timestamped checkpoint is created automatically before the editor opens."
+        )
+        warning_copy.setWordWrap(True)
+        warning_row.addWidget(warning_copy, 1)
+        advanced_layout.addLayout(warning_row)
+
+        advanced_button_row = QHBoxLayout()
+        advanced_button_row.setSpacing(8)
+
+        self._open_database_editor_btn = QPushButton("Open Database Editor...")
+        self._open_database_editor_btn.clicked.connect(self._open_database_editor)
+        self._open_database_editor_btn.setEnabled(callable(self._open_database_editor_callback))
+        advanced_button_row.addWidget(self._open_database_editor_btn)
+
+        advanced_note = QLabel(
+            "The editor starts read-only. SQL writes stay locked until you explicitly unlock them."
+        )
+        advanced_note.setWordWrap(True)
+        advanced_button_row.addWidget(advanced_note, 1)
+        advanced_layout.addLayout(advanced_button_row)
+
+        advanced_layout.addStretch(1)
+        tabs.addTab(_scrollable_tab(advanced_tab), "Advanced")
+
         topics_tab = QWidget()
         topics_layout = QVBoxLayout(topics_tab)
         topics_layout.setSpacing(8)
@@ -762,6 +815,11 @@ class IncrementoSettingsDialog(QDialog):
     def _clear_all(self) -> None:
         for editor in self._editors.values():
             editor.clear()
+
+    def _open_database_editor(self) -> None:
+        callback = self._open_database_editor_callback
+        if callable(callback):
+            callback()
 
     @property
     def shortcuts_map(self) -> dict[str, str]:

@@ -63,6 +63,10 @@ def get_db_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "incremento.db"
 
 
+def get_db_checkpoint_dir(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "db_checkpoints"
+
+
 def get_stats_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "custom_learn_stats.json"
 

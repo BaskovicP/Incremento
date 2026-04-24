@@ -42,9 +42,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 try:
-    from .paths import get_db_path
+    from .paths import get_db_checkpoint_dir, get_db_path
 except ImportError:
-    from paths import get_db_path  # test environment
+    from paths import get_db_checkpoint_dir, get_db_path  # test environment
 
 _connection: sqlite3.Connection | None = None
 _initialized_for: str | None = None
@@ -81,6 +81,95 @@ def get_connection(addon_dir: str, profile: str) -> sqlite3.Connection:
         _connection = conn
         _initialized_for = cache_key
     return _connection
+
+
+def open_database_editor_connection(
+    addon_dir: str,
+    profile: str,
+    *,
+    read_only: bool = True,
+) -> sqlite3.Connection:
+    db_path = get_db_path(addon_dir, profile)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    if not db_path.exists():
+        conn = get_connection(addon_dir, profile)
+        conn.commit()
+    if read_only:
+        conn = sqlite3.connect(
+            f"file:{db_path}?mode=ro",
+            uri=True,
+            check_same_thread=False,
+        )
+    else:
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
+def create_database_checkpoint(
+    addon_dir: str,
+    profile: str,
+    *,
+    label: str = "sqlite_editor",
+) -> dict[str, object]:
+    conn = get_connection(addon_dir, profile)
+    conn.commit()
+    checkpoints_dir = get_db_checkpoint_dir(addon_dir, profile)
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    created_at = int(time.time())
+    safe_label = re.sub(r"[^a-z0-9_-]+", "_", str(label or "checkpoint").strip().lower()).strip("_")
+    if not safe_label:
+        safe_label = "checkpoint"
+    checkpoint_name = f"{created_at}_{safe_label}.sqlite3"
+    checkpoint_path = checkpoints_dir / checkpoint_name
+    snapshot_conn = sqlite3.connect(str(checkpoint_path))
+    try:
+        conn.backup(snapshot_conn)
+    finally:
+        snapshot_conn.close()
+    return {
+        "path": str(checkpoint_path),
+        "filename": checkpoint_name,
+        "created_at": created_at,
+        "size_bytes": int(checkpoint_path.stat().st_size),
+    }
+
+
+def list_database_checkpoints(
+    addon_dir: str,
+    profile: str,
+    *,
+    limit: int = 10,
+) -> list[dict[str, object]]:
+    checkpoints_dir = get_db_checkpoint_dir(addon_dir, profile)
+    if not checkpoints_dir.exists():
+        return []
+    rows: list[dict[str, object]] = []
+    for path in sorted(
+        checkpoints_dir.glob("*.sqlite3"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    ):
+        try:
+            size_bytes = int(path.stat().st_size)
+            created_at = int(path.stem.split("_", 1)[0])
+        except Exception:
+            created_at = int(path.stat().st_mtime)
+            size_bytes = int(path.stat().st_size)
+        rows.append(
+            {
+                "path": str(path),
+                "filename": path.name,
+                "created_at": created_at,
+                "size_bytes": size_bytes,
+            }
+        )
+        if len(rows) >= max(1, int(limit)):
+            break
+    return rows
 
 
 atexit.register(close_connection)
