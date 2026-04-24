@@ -91,6 +91,10 @@ def get_writing_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "writing"
 
 
+def get_writing_backup_dir(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "writing_backups"
+
+
 def get_video_profile_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "video_profile"
 

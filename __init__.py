@@ -3464,8 +3464,10 @@ def openSettingsFunction() -> None:
         current_topic_postpone_minutes=cfg.get("topic_postpone_minutes", 30),
         current_writing_wrap_enabled=_writing_dock_mod.configured_writing_wrap_enabled(cfg),
         current_writing_focus_mode=_writing_dock_mod.configured_writing_focus_mode(cfg),
+        current_writing_preview_visible=_writing_dock_mod.configured_writing_preview_visible(cfg),
         current_writing_highlight_current_line=_writing_dock_mod.configured_writing_highlight_current_line(cfg),
         current_writing_restore_bookmark=_writing_dock_mod.configured_writing_restore_bookmark(cfg),
+        current_writing_backups_enabled=_writing_dock_mod.configured_writing_backups_enabled(cfg),
         current_writing_progress_visible=_writing_dock_mod.configured_writing_progress_visible(cfg),
         current_writing_progress_default_scope=_writing_dock_mod.configured_writing_progress_default_scope(cfg),
         current_writing_word_count_mode=_writing_dock_mod.configured_writing_word_count_mode(cfg),
@@ -3498,8 +3500,10 @@ def openSettingsFunction() -> None:
     cfg["topic_postpone_minutes"] = dlg.topic_postpone_minutes
     cfg["writing_wrap_enabled"] = dlg.writing_wrap_enabled
     cfg["writing_focus_mode"] = dlg.writing_focus_mode
+    cfg["writing_preview_visible"] = dlg.writing_preview_visible
     cfg["writing_highlight_current_line"] = dlg.writing_highlight_current_line
     cfg["writing_restore_bookmark"] = dlg.writing_restore_bookmark
+    cfg["writing_backups_enabled"] = dlg.writing_backups_enabled
     cfg["writing_progress_visible"] = dlg.writing_progress_visible
     cfg["writing_progress_default_scope"] = dlg.writing_progress_default_scope
     cfg["writing_word_count_mode"] = dlg.writing_word_count_mode

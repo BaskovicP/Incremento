@@ -217,8 +217,10 @@ class IncrementoSettingsDialog(QDialog):
         current_topic_postpone_minutes: int = 30,
         current_writing_wrap_enabled: bool = True,
         current_writing_focus_mode: bool = False,
+        current_writing_preview_visible: bool = True,
         current_writing_highlight_current_line: bool = True,
         current_writing_restore_bookmark: bool = True,
+        current_writing_backups_enabled: bool = True,
         current_writing_progress_visible: bool = True,
         current_writing_progress_default_scope: str = "today",
         current_writing_word_count_mode: str = "simple",
@@ -693,6 +695,10 @@ class IncrementoSettingsDialog(QDialog):
         self._writing_focus_mode_cb.setChecked(bool(current_writing_focus_mode))
         writing_form.addRow("", self._writing_focus_mode_cb)
 
+        self._writing_preview_visible_cb = QCheckBox("Show markdown preview in writing cards")
+        self._writing_preview_visible_cb.setChecked(bool(current_writing_preview_visible))
+        writing_form.addRow("", self._writing_preview_visible_cb)
+
         self._writing_highlight_current_line_cb = QCheckBox("Highlight the current writing line")
         self._writing_highlight_current_line_cb.setChecked(bool(current_writing_highlight_current_line))
         writing_form.addRow("", self._writing_highlight_current_line_cb)
@@ -703,6 +709,18 @@ class IncrementoSettingsDialog(QDialog):
         self._writing_restore_bookmark_cb.setChecked(bool(current_writing_restore_bookmark))
         writing_form.addRow("", self._writing_restore_bookmark_cb)
         writing_layout.addLayout(writing_form)
+
+        writing_layout.addWidget(_section_title("Backups"))
+        writing_backup_form = _section_form()
+
+        self._writing_backups_enabled_cb = QCheckBox("Create automatic writing backups")
+        self._writing_backups_enabled_cb.setChecked(bool(current_writing_backups_enabled))
+        writing_backup_form.addRow("", self._writing_backups_enabled_cb)
+        writing_backup_form.addRow(
+            "",
+            QLabel("Keeps three rolling backups per writing card: 1 minute, 30 minutes, and 1 day."),
+        )
+        writing_layout.addLayout(writing_backup_form)
 
         writing_layout.addWidget(_section_title("Progress"))
         writing_progress_form = _section_form()
@@ -924,8 +942,16 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._writing_highlight_current_line_cb.isChecked())
 
     @property
+    def writing_preview_visible(self) -> bool:
+        return bool(self._writing_preview_visible_cb.isChecked())
+
+    @property
     def writing_restore_bookmark(self) -> bool:
         return bool(self._writing_restore_bookmark_cb.isChecked())
+
+    @property
+    def writing_backups_enabled(self) -> bool:
+        return bool(self._writing_backups_enabled_cb.isChecked())
 
     @property
     def writing_progress_visible(self) -> bool:

@@ -4,8 +4,10 @@ import writing_dock
 def test_configured_writing_defaults():
     assert writing_dock.configured_writing_wrap_enabled({}) is True
     assert writing_dock.configured_writing_focus_mode({}) is False
+    assert writing_dock.configured_writing_preview_visible({}) is True
     assert writing_dock.configured_writing_highlight_current_line({}) is True
     assert writing_dock.configured_writing_restore_bookmark({}) is True
+    assert writing_dock.configured_writing_backups_enabled({}) is True
     assert writing_dock.configured_writing_progress_visible({}) is True
     assert writing_dock.configured_writing_progress_default_scope({}) == "today"
     assert writing_dock.configured_writing_word_count_mode({}) == "simple"
@@ -15,16 +17,20 @@ def test_configured_writing_flags_read_config_values():
     cfg = {
         "writing_wrap_enabled": False,
         "writing_focus_mode": True,
+        "writing_preview_visible": False,
         "writing_highlight_current_line": False,
         "writing_restore_bookmark": False,
+        "writing_backups_enabled": False,
         "writing_progress_visible": False,
         "writing_progress_default_scope": "all_time",
         "writing_word_count_mode": "word_like",
     }
     assert writing_dock.configured_writing_wrap_enabled(cfg) is False
     assert writing_dock.configured_writing_focus_mode(cfg) is True
+    assert writing_dock.configured_writing_preview_visible(cfg) is False
     assert writing_dock.configured_writing_highlight_current_line(cfg) is False
     assert writing_dock.configured_writing_restore_bookmark(cfg) is False
+    assert writing_dock.configured_writing_backups_enabled(cfg) is False
     assert writing_dock.configured_writing_progress_visible(cfg) is False
     assert writing_dock.configured_writing_progress_default_scope(cfg) == "all_time"
     assert writing_dock.configured_writing_word_count_mode(cfg) == "word_like"

@@ -1,6 +1,9 @@
 import os
 import re
+import shutil
+import time
 import uuid
+import hashlib
 from pathlib import Path
 
 try:
@@ -34,6 +37,11 @@ CARD_TEMPLATE_BACK = "{{Title}}"
 
 _SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 _MAX_FILENAME_STEM = 80
+_BACKUP_SLOTS = (
+    ("1m", 60, "1 minute"),
+    ("30m", 30 * 60, "30 minutes"),
+    ("1d", 24 * 60 * 60, "1 day"),
+)
 
 
 def get_writing_dir() -> str:
@@ -43,6 +51,12 @@ def get_writing_dir() -> str:
     d = str(_paths.get_writing_dir(addon_dir, _paths.get_active_profile()))
     os.makedirs(d, exist_ok=True)
     return d
+
+
+def _writing_backup_dir(addon_dir: str) -> str:
+    path = str(_paths.get_writing_backup_dir(addon_dir, _paths.get_active_profile()))
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def _sanitize_filename(raw: str, fallback: str = "writing-note") -> str:
@@ -92,6 +106,76 @@ def writing_file_abspath(addon_dir: str, relpath: str) -> str:
     return str(path)
 
 
+def _backup_base_name(relpath: str) -> str:
+    rel = (relpath or "").strip().replace("\\", "/")
+    base = os.path.basename(rel) or "writing-note.md"
+    stem, ext = os.path.splitext(_sanitize_filename(base, fallback="writing-note"))
+    digest = hashlib.sha1(rel.encode("utf-8")).hexdigest()[:12]
+    return f"{stem}-{digest}{ext or '.md'}"
+
+
+def _backup_slot_path(addon_dir: str, relpath: str, tier_key: str) -> str:
+    base_name = _backup_base_name(relpath)
+    stem, ext = os.path.splitext(base_name)
+    return os.path.join(_writing_backup_dir(addon_dir), f"{stem}.{tier_key}{ext or '.md'}")
+
+
+def _backup_meta(path: str, tier_key: str, label: str) -> dict | None:
+    if not os.path.exists(path):
+        return None
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    return {
+        "tier_key": tier_key,
+        "label": label,
+        "path": path,
+        "created_at": float(stat.st_mtime),
+        "size_bytes": int(stat.st_size),
+    }
+
+
+def list_writing_backups(addon_dir: str, relpath: str) -> list[dict]:
+    rows: list[dict] = []
+    for tier_key, _threshold_seconds, label in _BACKUP_SLOTS:
+        meta = _backup_meta(_backup_slot_path(addon_dir, relpath, tier_key), tier_key, label)
+        if meta:
+            rows.append(meta)
+    return rows
+
+
+def _refresh_due_backups(
+    addon_dir: str,
+    relpath: str,
+    source_path: str,
+    *,
+    now: float | None = None,
+) -> list[dict]:
+    if not os.path.exists(source_path):
+        return []
+    current_now = float(now if now is not None else time.time())
+    created: list[dict] = []
+    for tier_key, threshold_seconds, label in _BACKUP_SLOTS:
+        backup_path = _backup_slot_path(addon_dir, relpath, tier_key)
+        should_refresh = True
+        if os.path.exists(backup_path):
+            try:
+                age = current_now - float(os.path.getmtime(backup_path))
+                should_refresh = age >= float(threshold_seconds)
+            except OSError:
+                should_refresh = True
+        if not should_refresh:
+            continue
+        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+        shutil.copy2(source_path, backup_path)
+        os.utime(backup_path, (current_now, current_now))
+        meta = _backup_meta(backup_path, tier_key, label)
+        if meta:
+            created.append(meta)
+    return created
+
+
 def ensure_writing_file(addon_dir: str, relpath: str, initial_text: str = "") -> str:
     path = writing_file_abspath(addon_dir, relpath)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -110,13 +194,44 @@ def read_writing_text(addon_dir: str, relpath: str) -> str:
         return ""
 
 
-def write_writing_text(addon_dir: str, relpath: str, text: str) -> None:
+def write_writing_text(
+    addon_dir: str,
+    relpath: str,
+    text: str,
+    *,
+    backups_enabled: bool = True,
+    now: float | None = None,
+) -> list[dict]:
     path = writing_file_abspath(addon_dir, relpath)
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    if backups_enabled and os.path.exists(path):
+        _refresh_due_backups(addon_dir, relpath, path, now=now)
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(text or "")
     os.replace(tmp, path)
+    return list_writing_backups(addon_dir, relpath)
+
+
+def restore_writing_backup(addon_dir: str, relpath: str, tier_key: str) -> dict:
+    normalized_tier = str(tier_key or "").strip().lower()
+    selected_label = None
+    for slot_key, _seconds, label in _BACKUP_SLOTS:
+        if slot_key == normalized_tier:
+            selected_label = label
+            break
+    if not selected_label:
+        raise ValueError("Unknown writing backup tier.")
+    backup_path = _backup_slot_path(addon_dir, relpath, normalized_tier)
+    if not os.path.exists(backup_path):
+        raise FileNotFoundError("Requested writing backup does not exist.")
+    live_path = writing_file_abspath(addon_dir, relpath)
+    os.makedirs(os.path.dirname(live_path), exist_ok=True)
+    tmp = f"{live_path}.tmp"
+    shutil.copyfile(backup_path, tmp)
+    os.replace(tmp, live_path)
+    meta = _backup_meta(backup_path, normalized_tier, selected_label)
+    return meta or {"tier_key": normalized_tier, "label": selected_label, "path": backup_path}
 
 
 def ensure_writing_note_type(col) -> None:

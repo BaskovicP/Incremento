@@ -611,6 +611,7 @@ class TestWritingProgress:
             "font_scale": 1.0,
             "wrap_enabled": True,
             "focus_mode": False,
+            "preview_visible": True,
             "highlight_current_line": True,
             "bookmark_block_number": -1,
             "updated_at": 0,
@@ -626,6 +627,7 @@ class TestWritingProgress:
             font_scale=1.45,
             wrap_enabled=False,
             focus_mode=True,
+            preview_visible=False,
             highlight_current_line=False,
             bookmark_block_number=17,
         )
@@ -636,6 +638,7 @@ class TestWritingProgress:
         assert loaded["font_scale"] == 1.45
         assert loaded["wrap_enabled"] is False
         assert loaded["focus_mode"] is True
+        assert loaded["preview_visible"] is False
         assert loaded["highlight_current_line"] is False
         assert loaded["bookmark_block_number"] == 17
         assert loaded["updated_at"] >= saved["updated_at"] >= 1
@@ -650,6 +653,7 @@ class TestWritingProgress:
             font_scale=9,
             wrap_enabled=1,
             focus_mode=0,
+            preview_visible=2,
             highlight_current_line=2,
             bookmark_block_number=-99,
         )
@@ -660,6 +664,7 @@ class TestWritingProgress:
         assert loaded["font_scale"] == 2.4
         assert loaded["wrap_enabled"] is True
         assert loaded["focus_mode"] is False
+        assert loaded["preview_visible"] is True
         assert loaded["highlight_current_line"] is True
         assert loaded["bookmark_block_number"] == -1
 

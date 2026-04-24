@@ -274,6 +274,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             font_scale             REAL    NOT NULL DEFAULT 1.0,
             wrap_enabled           INTEGER NOT NULL DEFAULT 1,
             focus_mode             INTEGER NOT NULL DEFAULT 0,
+            preview_visible        INTEGER NOT NULL DEFAULT 1,
             highlight_current_line INTEGER NOT NULL DEFAULT 1,
             bookmark_block_number  INTEGER NOT NULL DEFAULT -1,
             updated_at             INTEGER NOT NULL DEFAULT 0
@@ -499,6 +500,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "media_updated_at",
         "INTEGER NOT NULL DEFAULT 0",
     )
+    _ensure_column(
+        conn,
+        "writing_progress",
+        "preview_visible",
+        "INTEGER NOT NULL DEFAULT 1",
+    )
 
 
 def _ensure_column(
@@ -620,6 +627,7 @@ def _default_writing_progress() -> dict:
         "font_scale": 1.0,
         "wrap_enabled": True,
         "focus_mode": False,
+        "preview_visible": True,
         "highlight_current_line": True,
         "bookmark_block_number": -1,
         "updated_at": 0,
@@ -702,7 +710,7 @@ def _normalize_writing_logical_date(value) -> str:
 def get_writing_progress(addon_dir: str, profile: str, card_id: int) -> dict:
     row = get_connection(addon_dir, profile).execute(
         "SELECT cursor_position, scroll_ratio, font_scale, wrap_enabled, focus_mode, "
-        "highlight_current_line, bookmark_block_number, updated_at "
+        "preview_visible, highlight_current_line, bookmark_block_number, updated_at "
         "FROM writing_progress WHERE card_id = ?",
         (int(card_id),),
     ).fetchone()
@@ -714,9 +722,10 @@ def get_writing_progress(addon_dir: str, profile: str, card_id: int) -> dict:
         "font_scale": _normalize_writing_progress_font_scale(row[2]),
         "wrap_enabled": bool(row[3]),
         "focus_mode": bool(row[4]),
-        "highlight_current_line": bool(row[5]),
-        "bookmark_block_number": _normalize_writing_progress_bookmark_block(row[6]),
-        "updated_at": _normalize_browser_media_ref_updated_at(row[7]),
+        "preview_visible": bool(row[5]),
+        "highlight_current_line": bool(row[6]),
+        "bookmark_block_number": _normalize_writing_progress_bookmark_block(row[7]),
+        "updated_at": _normalize_browser_media_ref_updated_at(row[8]),
     }
 
 
@@ -730,6 +739,7 @@ def set_writing_progress(
     font_scale: float,
     wrap_enabled: bool,
     focus_mode: bool,
+    preview_visible: bool,
     highlight_current_line: bool,
     bookmark_block_number: int,
 ) -> dict:
@@ -739,6 +749,7 @@ def set_writing_progress(
         "font_scale": _normalize_writing_progress_font_scale(font_scale),
         "wrap_enabled": bool(wrap_enabled),
         "focus_mode": bool(focus_mode),
+        "preview_visible": bool(preview_visible),
         "highlight_current_line": bool(highlight_current_line),
         "bookmark_block_number": _normalize_writing_progress_bookmark_block(bookmark_block_number),
         "updated_at": int(time.time()),
@@ -747,14 +758,15 @@ def set_writing_progress(
     conn.execute(
         "INSERT INTO writing_progress "
         "(card_id, cursor_position, scroll_ratio, font_scale, wrap_enabled, focus_mode, "
-        "highlight_current_line, bookmark_block_number, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "preview_visible, highlight_current_line, bookmark_block_number, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "
         "cursor_position = excluded.cursor_position, "
         "scroll_ratio = excluded.scroll_ratio, "
         "font_scale = excluded.font_scale, "
         "wrap_enabled = excluded.wrap_enabled, "
         "focus_mode = excluded.focus_mode, "
+        "preview_visible = excluded.preview_visible, "
         "highlight_current_line = excluded.highlight_current_line, "
         "bookmark_block_number = excluded.bookmark_block_number, "
         "updated_at = excluded.updated_at",
@@ -765,6 +777,7 @@ def set_writing_progress(
             payload["font_scale"],
             1 if payload["wrap_enabled"] else 0,
             1 if payload["focus_mode"] else 0,
+            1 if payload["preview_visible"] else 0,
             1 if payload["highlight_current_line"] else 0,
             payload["bookmark_block_number"],
             payload["updated_at"],

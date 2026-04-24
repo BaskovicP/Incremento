@@ -15,11 +15,15 @@ import sys
 from aqt import mw
 from aqt.qt import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDockWidget,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QTextEdit,
     QTextBrowser,
@@ -32,7 +36,7 @@ from aqt.qt import (
     QTextOption,
     QShortcut,
 )
-from aqt.utils import tooltip
+from aqt.utils import askUser, showInfo, tooltip
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase, QColor, QTextCharFormat, QKeySequence
 
@@ -51,7 +55,9 @@ try:
         get_writing_dir,
         build_writing_relpath,
         ensure_writing_file,
+        list_writing_backups,
         read_writing_text,
+        restore_writing_backup,
         write_writing_text,
     )
 except ImportError:
@@ -69,7 +75,9 @@ except ImportError:
         get_writing_dir,
         build_writing_relpath,
         ensure_writing_file,
+        list_writing_backups,
         read_writing_text,
+        restore_writing_backup,
         write_writing_text,
     )
 
@@ -117,12 +125,20 @@ def configured_writing_focus_mode(config: dict | None = None) -> bool:
     return bool(_config(config).get("writing_focus_mode", False))
 
 
+def configured_writing_preview_visible(config: dict | None = None) -> bool:
+    return bool(_config(config).get("writing_preview_visible", True))
+
+
 def configured_writing_highlight_current_line(config: dict | None = None) -> bool:
     return bool(_config(config).get("writing_highlight_current_line", True))
 
 
 def configured_writing_restore_bookmark(config: dict | None = None) -> bool:
     return bool(_config(config).get("writing_restore_bookmark", True))
+
+
+def configured_writing_backups_enabled(config: dict | None = None) -> bool:
+    return bool(_config(config).get("writing_backups_enabled", True))
 
 
 def configured_writing_progress_visible(config: dict | None = None) -> bool:
@@ -285,6 +301,13 @@ def _set_saved_time() -> None:
         pass
 
 
+def _format_backup_timestamp(value) -> str:
+    try:
+        return datetime.datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "Unknown time"
+
+
 def _current_scroll_ratio() -> float:
     if _writing_dock is None:
         return 0.0
@@ -385,6 +408,22 @@ def _apply_focus_mode(enabled: bool) -> None:
         pass
 
 
+def _apply_preview_visibility(visible: bool) -> None:
+    if _writing_dock is None:
+        return
+    preview_visible = bool(visible)
+    _writing_dock._preview_visible = preview_visible
+    try:
+        _writing_dock._preview_btn.setChecked(preview_visible)
+        _writing_dock._preview_host.setVisible(preview_visible)
+        if preview_visible:
+            _apply_focus_mode(bool(getattr(_writing_dock, "_focus_mode", False)))
+        else:
+            _writing_dock._split.setSizes([1, 0])
+    except Exception:
+        pass
+
+
 def _apply_current_line_highlight(enabled: bool) -> None:
     if _writing_dock is None:
         return
@@ -462,6 +501,7 @@ def _save_writing_progress() -> None:
             font_scale=float(getattr(_writing_dock, "_font_scale", _DEFAULT_FONT_SCALE)),
             wrap_enabled=bool(getattr(_writing_dock, "_wrap_enabled", True)),
             focus_mode=bool(getattr(_writing_dock, "_focus_mode", False)),
+            preview_visible=bool(getattr(_writing_dock, "_preview_visible", True)),
             highlight_current_line=bool(getattr(_writing_dock, "_highlight_current_line", True)),
             bookmark_block_number=int(getattr(_writing_dock, "_bookmark_block_number", -1)),
         )
@@ -505,7 +545,12 @@ def _autosave_from_editor() -> None:
         return
     try:
         text = _writing_dock._editor.toPlainText()
-        write_writing_text(_ADDON_DIR, _current_writing_relpath, text)
+        write_writing_text(
+            _ADDON_DIR,
+            _current_writing_relpath,
+            text,
+            backups_enabled=configured_writing_backups_enabled(),
+        )
     except Exception:
         _set_status("Autosave failed")
         return
@@ -664,6 +709,13 @@ def _toggle_focus_mode() -> None:
     _schedule_state_save()
 
 
+def _toggle_preview() -> None:
+    if _writing_dock is None:
+        return
+    _apply_preview_visibility(not bool(getattr(_writing_dock, "_preview_visible", True)))
+    _schedule_state_save()
+
+
 def _toggle_line_highlight() -> None:
     if _writing_dock is None:
         return
@@ -732,6 +784,96 @@ def _open_writing_folder() -> None:
     QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
 
+def _reload_current_writing_from_disk() -> None:
+    global _loading_editor, _writing_session_baseline_words, _writing_current_word_count
+    if _writing_dock is None or _current_writing_card_id is None or not _current_writing_relpath:
+        return
+    text = read_writing_text(_ADDON_DIR, _current_writing_relpath)
+    current_words = _count_words(text)
+    today_key = _logical_today_text()
+    _writing_session_baseline_words = current_words
+    _writing_current_word_count = current_words
+    _loading_editor = True
+    try:
+        _writing_dock._editor.setPlainText(text)
+        _writing_dock._current_word_count = current_words
+        _writing_dock._session_baseline_words = current_words
+        _writing_dock._daily_logical_date = today_key
+        _writing_dock._daily_baseline_words = current_words
+        _refresh_markdown_preview(text)
+    finally:
+        _loading_editor = False
+    _sync_writing_word_stats(text=text)
+    _save_writing_progress()
+    _update_editor_highlights()
+    _set_status("Backup restored")
+    _set_saved_time()
+
+
+class _WritingBackupDialog(QDialog):
+    def __init__(self, parent, backups: list[dict]):
+        super().__init__(parent)
+        self.setWindowTitle("Writing Backups")
+        self.resize(520, 300)
+        self._list = QListWidget(self)
+        root = QVBoxLayout(self)
+        hint = QLabel("Choose a backup snapshot for this writing card. Restoring replaces the current markdown file.")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+        root.addWidget(self._list, 1)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Restore")
+        qconnect(buttons.accepted, self.accept)
+        qconnect(buttons.rejected, self.reject)
+        root.addWidget(buttons)
+        for row in backups:
+            item = QListWidgetItem(
+                f"{row.get('label', row.get('tier_key', 'Backup'))}  •  {_format_backup_timestamp(row.get('created_at'))}"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            self._list.addItem(item)
+        if self._list.count():
+            self._list.setCurrentRow(0)
+
+    def selected_backup(self) -> dict | None:
+        item = self._list.currentItem()
+        if item is None:
+            return None
+        return item.data(Qt.ItemDataRole.UserRole)
+
+
+def _open_backup_restore_dialog() -> None:
+    if _current_writing_card_id is None or not _current_writing_relpath:
+        tooltip("No writing card is open.")
+        return
+    _flush_editor_state()
+    backups = list_writing_backups(_ADDON_DIR, _current_writing_relpath)
+    if not backups:
+        showInfo("No writing backups are available for this card yet.")
+        return
+    dlg = _WritingBackupDialog(mw, backups)
+    if not dlg.exec():
+        return
+    selected = dlg.selected_backup()
+    if not selected:
+        return
+    label = str(selected.get("label", selected.get("tier_key", "backup")))
+    timestamp = _format_backup_timestamp(selected.get("created_at"))
+    if not askUser(
+        f"Restore the {label} backup from {timestamp}?\n\nThis replaces the current markdown file for this writing card."
+    ):
+        return
+    try:
+        restore_writing_backup(_ADDON_DIR, _current_writing_relpath, str(selected.get("tier_key", "")))
+    except Exception as exc:
+        showInfo(f"Could not restore writing backup.\n\n{exc}")
+        return
+    _reload_current_writing_from_disk()
+
+
 def _build_button(label: str, callback, *, tooltip_text: str = "", checkable: bool = False):
     btn = QPushButton(label)
     btn.setCheckable(checkable)
@@ -796,6 +938,14 @@ def _build_writing_dock():
     focus_btn = _build_button("Focus", lambda _checked=False: _toggle_focus_mode(), tooltip_text="Make preview less prominent", checkable=True)
     toolbar.addWidget(focus_btn)
 
+    preview_btn = _build_button(
+        "Preview",
+        lambda _checked=False: _toggle_preview(),
+        tooltip_text="Show or hide the markdown preview",
+        checkable=True,
+    )
+    toolbar.addWidget(preview_btn)
+
     highlight_line_btn = _build_button(
         "Line",
         lambda _checked=False: _toggle_line_highlight(),
@@ -819,6 +969,7 @@ def _build_writing_dock():
     toolbar.addWidget(_build_button("Jump", _jump_to_marker, tooltip_text="Jump to the saved marker line"))
     toolbar.addWidget(_build_button("Clear", _clear_marker, tooltip_text="Clear the saved marker line"))
     toolbar.addStretch(1)
+    toolbar.addWidget(_build_button("Backups", _open_backup_restore_dialog, tooltip_text="Restore one of the saved writing backups"))
     toolbar.addWidget(_build_button("Reveal File", _open_writing_folder, tooltip_text="Reveal markdown file in Finder/Explorer"))
     layout.addLayout(toolbar)
 
@@ -903,6 +1054,7 @@ def _build_writing_dock():
     dock._font_scale = _DEFAULT_FONT_SCALE
     dock._wrap_enabled = True
     dock._focus_mode = False
+    dock._preview_visible = True
     dock._highlight_current_line = True
     dock._bookmark_block_number = -1
     dock._current_word_count = 0
@@ -912,6 +1064,7 @@ def _build_writing_dock():
     dock._progress_visible = configured_writing_progress_visible()
     dock._wrap_btn = wrap_btn
     dock._focus_btn = focus_btn
+    dock._preview_btn = preview_btn
     dock._highlight_line_btn = highlight_line_btn
 
     _autosave_timer = QTimer(dock)
@@ -997,6 +1150,11 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
             progress.get("focus_mode", False)
             if has_saved_progress
             else configured_writing_focus_mode()
+        )
+        _apply_preview_visibility(
+            progress.get("preview_visible", True)
+            if has_saved_progress
+            else configured_writing_preview_visible()
         )
         _apply_current_line_highlight(
             progress.get("highlight_current_line", True)

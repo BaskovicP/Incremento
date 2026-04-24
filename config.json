@@ -15,6 +15,7 @@
     "writing_focus_mode": false,
     "writing_highlight_current_line": true,
     "writing_restore_bookmark": true,
+    "writing_backups_enabled": true,
     "writing_progress_visible": true,
     "writing_progress_default_scope": "today",
     "writing_word_count_mode": "simple",
