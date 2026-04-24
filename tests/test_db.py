@@ -300,6 +300,59 @@ class TestPdfTextIndex:
         assert count == 0
 
 
+class TestNoteOcrIndex:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_insert_and_search_finds_term(self):
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            100,
+            [10],
+            [("diagram.png", "Cell membrane transport")],
+        )
+        results = db.search_note_ocr_index(self.addon_dir, "TestProfile", "membrane")
+        assert results == [(100, 10, "diagram.png", "Cell membrane transport")]
+
+    def test_replace_removes_old_rows(self):
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            101,
+            [11],
+            [("old.png", "old text")],
+        )
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            101,
+            [11],
+            [("new.png", "new text")],
+        )
+        assert db.search_note_ocr_index(self.addon_dir, "TestProfile", "old") == []
+        assert db.search_note_ocr_index(self.addon_dir, "TestProfile", "new") == [
+            (101, 11, "new.png", "new text")
+        ]
+
+    def test_fallback_text_used_when_no_image_rows(self):
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            102,
+            [12],
+            [],
+            fallback_text="hidden field text",
+        )
+        assert db.search_note_ocr_index(self.addon_dir, "TestProfile", "hidden") == [
+            (102, 12, "", "hidden field text")
+        ]
+
+
 class TestBrowserMediaRefs:
     def setup_method(self):
         _reset_db_module()

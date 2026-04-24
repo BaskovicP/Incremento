@@ -23,6 +23,7 @@ priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
+note_ocr_index  — searchable OCR text extracted from image-based non-document notes
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
 browser_media_refs — latest manually saved browser media reference per card
 reviewer_recent_tags — latest reviewer-added tags for quick reuse
@@ -271,6 +272,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_wcs_card_url
             ON web_card_sources (web_card_id, url);
+
+        CREATE TABLE IF NOT EXISTS note_ocr_index (
+            note_id    INTEGER NOT NULL,
+            card_id    INTEGER NOT NULL,
+            image_name TEXT    NOT NULL DEFAULT '',
+            text       TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (note_id, card_id, image_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_noi_note_card
+            ON note_ocr_index (note_id, card_id);
 
         CREATE TABLE IF NOT EXISTS pdf_text_index (
             card_id INTEGER NOT NULL,
@@ -1537,6 +1548,78 @@ def search_text_match_score(
         return (2, unordered[-1] - unordered[0], unordered[0], len(text_terms))
 
     return None
+
+
+def replace_note_ocr_index(
+    addon_dir: str,
+    profile: str,
+    note_id: int,
+    card_ids: list[int],
+    image_rows: list[tuple[str, str]],
+    *,
+    fallback_text: str = "",
+) -> None:
+    conn = get_connection(addon_dir, profile)
+    conn.execute("DELETE FROM note_ocr_index WHERE note_id = ?", (note_id,))
+    normalized_card_ids = sorted(
+        {int(card_id) for card_id in list(card_ids or []) if int(card_id) > 0}
+    )
+    normalized_rows = [
+        (str(image_name or "").strip(), (text or "").strip())
+        for image_name, text in list(image_rows or [])
+        if (text or "").strip()
+    ]
+    if not normalized_rows and str(fallback_text or "").strip():
+        normalized_rows = [("", str(fallback_text or "").strip())]
+    rows = [
+        (int(note_id), int(card_id), image_name, text)
+        for card_id in normalized_card_ids
+        for image_name, text in normalized_rows
+    ]
+    if rows:
+        conn.executemany(
+            "INSERT INTO note_ocr_index (note_id, card_id, image_name, text) VALUES (?, ?, ?, ?)",
+            rows,
+        )
+    conn.commit()
+
+
+def search_note_ocr_index(
+    addon_dir: str, profile: str, query: str, limit: int = 120
+) -> list[tuple[int, int, str, str]]:
+    query_terms = split_search_terms(query)
+    if not query_terms:
+        return []
+
+    conn = get_connection(addon_dir, profile)
+    pre = query_terms[0]
+    rows = conn.execute(
+        "SELECT note_id, card_id, image_name, text FROM note_ocr_index "
+        "WHERE lower(text) LIKE lower(?) "
+        "ORDER BY note_id, card_id, image_name LIMIT ?",
+        (f"%{pre}%", max(500, limit * 25)),
+    ).fetchall()
+
+    ranked: list[tuple[tuple[int, int, int, int], int, int, str, str]] = []
+    for note_id, card_id, image_name, text in rows:
+        score = search_text_match_score(text or "", query)
+        if score is None:
+            continue
+        ranked.append(
+            (
+                score,
+                int(note_id),
+                int(card_id),
+                str(image_name or ""),
+                str(text or ""),
+            )
+        )
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    return [
+        (note_id, card_id, image_name, text)
+        for _, note_id, card_id, image_name, text in ranked[:limit]
+    ]
 
 
 def replace_pdf_text_index(addon_dir: str, profile: str, card_id: int, page_texts: list[str]) -> None:

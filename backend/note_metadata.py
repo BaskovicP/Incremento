@@ -9,6 +9,7 @@ INCREMENTO_SOURCE_AUTHOR_FIELD = "Incremento_Source_Author"
 INCREMENTO_IMPORTED_AT_FIELD = "Incremento_Imported_At"
 INCREMENTO_PARENT_FIELD = "Incremento_Parent"
 INCREMENTO_PARENT_CARD_ID_FIELD = "Incremento_Parent_Card_ID"
+INCREMENTO_OCR_TEXT_FIELD = "Incremento_OCR_Text"
 
 INCREMENTO_METADATA_FIELDS = (
     INCREMENTO_SOURCE_TYPE_FIELD,
@@ -19,7 +20,9 @@ INCREMENTO_METADATA_FIELDS = (
     INCREMENTO_PARENT_FIELD,
     INCREMENTO_PARENT_CARD_ID_FIELD,
 )
+INCREMENTO_HIDDEN_FIELDS = INCREMENTO_METADATA_FIELDS + (INCREMENTO_OCR_TEXT_FIELD,)
 _METADATA_FIELD_SET = {field.casefold() for field in INCREMENTO_METADATA_FIELDS}
+_HIDDEN_FIELD_SET = {field.casefold() for field in INCREMENTO_HIDDEN_FIELDS}
 
 
 def metadata_timestamp(value: datetime | None = None) -> str:
@@ -31,13 +34,55 @@ def is_incremento_metadata_field(field_name: str) -> bool:
     return str(field_name or "").strip().casefold() in _METADATA_FIELD_SET
 
 
+def is_incremento_hidden_field(field_name: str) -> bool:
+    return str(field_name or "").strip().casefold() in _HIDDEN_FIELD_SET
+
+
+def matches_hidden_field_reference(field_name: str) -> bool:
+    raw = str(field_name or "").strip()
+    if not raw:
+        return False
+    if is_incremento_hidden_field(raw):
+        return True
+
+    lowered = raw.casefold()
+    for prefix in ("field_", "field:", "field ", "fld_", "fld:", "fld "):
+        if lowered.startswith(prefix):
+            return is_incremento_hidden_field(raw[len(prefix) :].strip())
+
+    for separator in (":", "/", ".", "|"):
+        head, found, tail = lowered.rpartition(separator)
+        if found and head and is_incremento_hidden_field(tail.strip()):
+            return True
+    return False
+
+
 def visible_field_names(field_names: list[str] | tuple[str, ...]) -> list[str]:
     return [
         str(field_name or "").strip()
         for field_name in list(field_names or [])
         if str(field_name or "").strip()
-        and not is_incremento_metadata_field(str(field_name or "").strip())
+        and not is_incremento_hidden_field(str(field_name or "").strip())
     ]
+
+
+def hidden_field_values(note) -> list[tuple[str, str]]:
+    values: list[tuple[str, str]] = []
+    fields = []
+    try:
+        fields = list(getattr(note, "note_type", lambda: {})().get("flds") or [])
+    except Exception:
+        fields = []
+    for field in fields:
+        field_name = str((field or {}).get("name") or "").strip()
+        if not field_name or not is_incremento_hidden_field(field_name):
+            continue
+        try:
+            value = str(note[field_name] or "")
+        except Exception:
+            value = ""
+        values.append((field_name, value))
+    return values
 
 
 def _model_fields(model) -> list[dict] | None:
@@ -70,6 +115,24 @@ def ensure_incremento_metadata_fields(models, model) -> bool:
         models.add_field(model, fld)
         changed = True
     return changed
+
+
+def ensure_incremento_ocr_field(models, model) -> bool:
+    fields = _model_fields(model)
+    if fields is None:
+        return False
+
+    existing = {
+        str(field.get("name") or "").strip()
+        for field in fields
+        if isinstance(field, dict) and str(field.get("name") or "").strip()
+    }
+    if INCREMENTO_OCR_TEXT_FIELD in existing:
+        return False
+
+    fld = models.new_field(INCREMENTO_OCR_TEXT_FIELD)
+    models.add_field(model, fld)
+    return True
 
 
 def build_incremento_metadata(

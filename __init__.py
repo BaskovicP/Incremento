@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import time
+import weakref
 import zipfile
 from urllib.parse import unquote
 
@@ -12,13 +13,17 @@ from aqt.operations.scheduling import bury_cards as _bury_cards_op
 from aqt.qt import (
     QAction,
     QApplication,
+    QDialog,
+    QDialogButtonBox,
     QEvent,
     QMenu,
     QObject,
     QShortcut,
     QKeySequence,
+    QTextBrowser,
     QTimer,
     Qt,
+    QVBoxLayout,
     qconnect,
 )
 
@@ -48,10 +53,13 @@ from .backend.video_manager import (
 )
 from .backend.writing_manager import WRITING_NOTE_TYPE, add_writing_card
 from .backend.note_metadata import (
+    INCREMENTO_HIDDEN_FIELDS,
     apply_incremento_metadata,
     build_incremento_metadata,
     derive_note_source_metadata,
     ensure_incremento_metadata_fields,
+    hidden_field_values,
+    matches_hidden_field_reference,
     visible_field_names,
 )
 from .backend.priority_manager import (
@@ -162,6 +170,19 @@ _menu: QMenu | None = None
 _timerToggleAction: QAction | None = None
 _knowledge_tree_dialog = None
 _configured_shortcut_filter = None
+_ocr_sync_editors: "weakref.WeakSet[object]" = weakref.WeakSet()
+
+
+def configured_show_incremento_fields(cfg: dict | None = None) -> bool:
+    config = cfg if cfg is not None else (mw.addonManager.getConfig(__name__) or {})
+    return bool(config.get("show_incremento_fields", False))
+
+
+def _track_editor_for_ocr_sync(editor) -> None:
+    try:
+        _ocr_sync_editors.add(editor)
+    except Exception:
+        pass
 
 
 def _register_shortcut_action(action_id: str, action_obj) -> None:
@@ -953,6 +974,8 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     topic_action = QAction(f"Make Topic ({count_label})", submenu)
     item_action = QAction(f"Make Item ({count_label})", submenu)
     schedule_action = QAction(f"Custom Schedule… ({count_label})", submenu)
+    ocr_action = QAction(f"OCR Image Text ({count_label})", submenu)
+    hidden_fields_action = QAction(f"Show Hidden Fields ({count_label})", submenu)
 
     qconnect(
         topic_action.triggered,
@@ -972,11 +995,21 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         schedule_action.triggered,
         lambda _checked=False, card_ids=list(card_ids): _open_custom_schedule_dialog(card_ids),
     )
+    qconnect(
+        ocr_action.triggered,
+        lambda _checked=False, b=browser: _ocr_browser_selection(b),
+    )
+    qconnect(
+        hidden_fields_action.triggered,
+        lambda _checked=False, b=browser: _show_browser_hidden_fields(b),
+    )
 
     submenu.addAction(topic_action)
     submenu.addAction(item_action)
     submenu.addSeparator()
     submenu.addAction(schedule_action)
+    submenu.addAction(ocr_action)
+    submenu.addAction(hidden_fields_action)
     menu.addMenu(submenu)
 
 
@@ -2374,6 +2407,378 @@ def reindexPdfTextFunction() -> None:
     showInfo("\n".join(lines))
 
 
+def _ocr_note_ids_for_card_ids(card_ids: list[int] | None = None) -> list[int]:
+    note_ids: list[int] = []
+    seen: set[int] = set()
+    if card_ids is None:
+        try:
+            rows = mw.col.db.list("SELECT DISTINCT nid FROM cards")
+        except Exception:
+            rows = []
+        for raw_note_id in rows:
+            try:
+                note_id = int(raw_note_id)
+            except Exception:
+                continue
+            if note_id in seen:
+                continue
+            seen.add(note_id)
+            note_ids.append(note_id)
+        return note_ids
+
+    for raw_card_id in list(card_ids or []):
+        try:
+            card = mw.col.get_card(int(raw_card_id))
+            note_id = int(card.nid)
+        except Exception:
+            continue
+        if note_id in seen:
+            continue
+        seen.add(note_id)
+        note_ids.append(note_id)
+    return note_ids
+
+
+def _run_note_ocr_scan(note_ids: list[int], *, label: str) -> None:
+    from .backend.image_ocr import ocr_note_images, tesseract_ready_message
+
+    if not note_ids:
+        showInfo("No eligible cards found.")
+        return
+
+    missing_dep = tesseract_ready_message()
+    if missing_dep:
+        showInfo(f"Tesseract OCR is required for this utility.\n\n{missing_dep}")
+        return
+
+    media_dir = ""
+    try:
+        media_dir = mw.col.media.dir()
+    except Exception as exc:
+        showInfo(f"Could not access Anki media directory:\n{exc}")
+        return
+
+    scanned = 0
+    updated = 0
+    skipped_special = 0
+    no_images = 0
+    missing_images = 0
+    failures: list[str] = []
+
+    mw.progress.start(label=label, immediate=True)
+    try:
+        total = len(note_ids)
+        for idx, note_id in enumerate(note_ids, start=1):
+            try:
+                mw.progress.update(label=f"({idx}/{total}) {label}")
+            except Exception:
+                pass
+            try:
+                note = mw.col.get_note(int(note_id))
+            except Exception as exc:
+                failures.append(f"nid:{note_id}: {exc}")
+                continue
+            scanned += 1
+            try:
+                result = ocr_note_images(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    note,
+                    media_dir=media_dir,
+                )
+            except Exception as exc:
+                failures.append(f"nid:{note_id}: {exc}")
+                continue
+            if not result.get("supported"):
+                skipped_special += 1
+                continue
+            if not result.get("images_found"):
+                no_images += 1
+            if result.get("updated"):
+                updated += 1
+            missing_images += len(list(result.get("missing_images") or []))
+            for msg in list(result.get("errors") or []):
+                failures.append(f"nid:{note_id}: {msg}")
+    finally:
+        mw.progress.finish()
+
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+
+    lines = [f"{label} complete.\n"]
+    lines.append(f"Scanned notes: {scanned}")
+    lines.append(f"Updated OCR text: {updated}")
+    lines.append(f"Skipped special note types: {skipped_special}")
+    lines.append(f"Notes without images: {no_images}")
+    lines.append(f"Missing image files: {missing_images}")
+    if failures:
+        lines.append(f"Errors: {len(failures)}")
+        for msg in failures[:10]:
+            lines.append(f"  • {msg}")
+        if len(failures) > 10:
+            lines.append(f"  …and {len(failures) - 10} more")
+    showInfo("\n".join(lines))
+
+
+def _rebuild_ocr_cache_for_note_ids(note_ids: list[int], *, label: str) -> None:
+    from .backend.image_ocr import rebuild_note_ocr_index_from_field, supported_image_ocr_note
+
+    if not note_ids:
+        showInfo("No eligible cards found.")
+        return
+
+    rebuilt = 0
+    skipped_special = 0
+    blank = 0
+    failures: list[str] = []
+
+    mw.progress.start(label=label, immediate=True)
+    try:
+        total = len(note_ids)
+        for idx, note_id in enumerate(note_ids, start=1):
+            try:
+                mw.progress.update(label=f"({idx}/{total}) {label}")
+            except Exception:
+                pass
+            try:
+                note = mw.col.get_note(int(note_id))
+            except Exception as exc:
+                failures.append(f"nid:{note_id}: {exc}")
+                continue
+            if not supported_image_ocr_note(note):
+                skipped_special += 1
+                continue
+            try:
+                text = rebuild_note_ocr_index_from_field(_ADDON_DIR, _active_profile(), note)
+            except Exception as exc:
+                failures.append(f"nid:{note_id}: {exc}")
+                continue
+            if text:
+                rebuilt += 1
+            else:
+                blank += 1
+    finally:
+        mw.progress.finish()
+
+    lines = [f"{label} complete.\n"]
+    lines.append(f"Rebuilt notes: {rebuilt}")
+    lines.append(f"Blank OCR fields: {blank}")
+    lines.append(f"Skipped special note types: {skipped_special}")
+    if failures:
+        lines.append(f"Errors: {len(failures)}")
+        for msg in failures[:10]:
+            lines.append(f"  • {msg}")
+        if len(failures) > 10:
+            lines.append(f"  …and {len(failures) - 10} more")
+    showInfo("\n".join(lines))
+
+
+def ocrImageTextFunction() -> None:
+    _run_note_ocr_scan(
+        _ocr_note_ids_for_card_ids(),
+        label="OCR image text",
+    )
+
+
+def reindexImageOcrCacheFunction() -> None:
+    _rebuild_ocr_cache_for_note_ids(
+        _ocr_note_ids_for_card_ids(),
+        label="Reindex OCR search cache",
+    )
+
+
+def _ocr_browser_selection(browser) -> None:
+    card_ids = _browser_selected_incremento_card_ids(browser)
+    if not card_ids:
+        showInfo("Select one or more Browser rows first.")
+        return
+    _run_note_ocr_scan(
+        _ocr_note_ids_for_card_ids(card_ids),
+        label="OCR image text",
+    )
+
+
+def _show_browser_hidden_fields(browser) -> None:
+    card_ids = _browser_selected_incremento_card_ids(browser)
+    if not card_ids:
+        showInfo("Select one or more Browser rows first.")
+        return
+
+    note_ids = _ocr_note_ids_for_card_ids(card_ids)
+    if not note_ids:
+        showInfo("No notes found for the selected Browser rows.")
+        return
+
+    chunks: list[str] = []
+    for note_id in note_ids:
+        try:
+            note = mw.col.get_note(int(note_id))
+            model = mw.col.models.get(note.mid)
+            model_name = str((model or {}).get("name") or "Note").strip() or "Note"
+        except Exception as exc:
+            chunks.append(f"Note {note_id}\nCould not load note: {exc}")
+            continue
+
+        title = ""
+        try:
+            title = str((list(getattr(note, "fields", []) or [""])[:1] or [""])[0] or "").strip()
+        except Exception:
+            title = ""
+        header = f"Note {note_id} · {model_name}"
+        if title:
+            header += f"\nTitle: {title}"
+
+        rows = hidden_field_values(note)
+        if not rows:
+            body = "No Incremento hidden fields exist on this note."
+        else:
+            lines: list[str] = []
+            for field_name in INCREMENTO_HIDDEN_FIELDS:
+                match = next((value for name, value in rows if name == field_name), None)
+                if match is None:
+                    continue
+                value_text = str(match or "").strip()
+                lines.append(f"{field_name}:\n{value_text or '(empty)'}")
+            body = "\n\n".join(lines) if lines else "No Incremento hidden fields exist on this note."
+        chunks.append(f"{header}\n\n{body}")
+
+    dlg = QDialog(mw)
+    dlg.setWindowTitle("Incremento Hidden Fields")
+    dlg.resize(860, 620)
+    layout = QVBoxLayout(dlg)
+    browser = QTextBrowser(dlg)
+    browser.setReadOnly(True)
+    browser.setOpenExternalLinks(True)
+    separator = "\n\n" + ("-" * 72) + "\n\n"
+    browser.setPlainText(separator.join(chunks))
+    layout.addWidget(browser, 1)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dlg)
+    buttons.rejected.connect(dlg.reject)
+    buttons.accepted.connect(dlg.accept)
+    layout.addWidget(buttons)
+    dlg.exec()
+
+
+def _hide_incremento_hidden_fields_in_editor(editor) -> None:
+    _track_editor_for_ocr_sync(editor)
+    if configured_show_incremento_fields():
+        return
+    note = getattr(editor, "note", None)
+    if note is None:
+        return
+
+    field_names: list[str] = []
+    hidden_indexes: list[int] = []
+    try:
+        for idx, field in enumerate(list(note.note_type().get("flds") or [])):
+            field_name = str((field or {}).get("name") or "").strip()
+            if field_name in INCREMENTO_HIDDEN_FIELDS:
+                field_names.append(field_name)
+                hidden_indexes.append(idx)
+    except Exception:
+        field_names = []
+        hidden_indexes = []
+    if not field_names:
+        return
+
+    hidden_json = json.dumps(field_names)
+    hidden_index_json = json.dumps(hidden_indexes)
+    editor.web.eval(
+        f"""
+(() => {{
+  const hidden = new Set({hidden_json});
+  const hiddenIndexes = new Set({hidden_index_json});
+  const hide = () => {{
+    document.querySelectorAll(".field-container").forEach((container, idx) => {{
+      const label = (container.querySelector(".field-name")?.textContent || "").trim();
+      if (!hidden.has(label) && !hiddenIndexes.has(idx)) {{
+        return;
+      }}
+      container.style.display = "none";
+      container.dataset.incrementoHiddenField = "1";
+    }});
+  }};
+  hide();
+  requestAnimationFrame(hide);
+  setTimeout(hide, 60);
+}})();
+"""
+    )
+
+
+def _filter_incremento_hidden_browser_columns(columns) -> None:
+    if configured_show_incremento_fields():
+        return
+    for key, column in list((columns or {}).items()):
+        candidates = [
+            str(key or "").strip(),
+            str(getattr(column, "cards_mode_label", "") or "").strip(),
+            str(getattr(column, "notes_mode_label", "") or "").strip(),
+        ]
+        if any(matches_hidden_field_reference(candidate) for candidate in candidates):
+            columns.pop(key, None)
+
+
+def _sync_ocr_index_for_open_editor_notes(changes, handler=None) -> None:
+    if not bool(getattr(changes, "note_text", False)):
+        return
+
+    try:
+        from .backend.image_ocr import rebuild_note_ocr_index_from_field, supported_image_ocr_note
+    except Exception:
+        return
+
+    synced_note_ids: set[int] = set()
+    for editor in list(_ocr_sync_editors):
+        note = getattr(editor, "note", None)
+        note_id = int(getattr(note, "id", 0) or 0) if note is not None else 0
+        if note is None or note_id <= 0 or note_id in synced_note_ids:
+            continue
+        try:
+            if not supported_image_ocr_note(note):
+                continue
+            rebuild_note_ocr_index_from_field(_ADDON_DIR, _active_profile(), note)
+            synced_note_ids.add(note_id)
+        except Exception:
+            continue
+
+
+def _prune_incremento_hidden_browser_active_columns(browser) -> None:
+    if configured_show_incremento_fields():
+        return
+    table = getattr(browser, "table", None)
+    state = getattr(table, "_state", None)
+    if state is None:
+        return
+
+    active_columns = list(getattr(state, "active_columns", []) or [])
+    filtered_columns = [
+        column_key
+        for column_key in active_columns
+        if not matches_hidden_field_reference(column_key)
+    ]
+    if filtered_columns == active_columns:
+        return
+
+    try:
+        setattr(state, "_active_columns", filtered_columns)
+    except Exception:
+        pass
+
+    col = getattr(browser, "col", None)
+    if col is None:
+        return
+    try:
+        if bool(getattr(state, "is_notes_mode", lambda: False)()):
+            col.set_browser_note_columns(filtered_columns)
+        else:
+            col.set_browser_card_columns(filtered_columns)
+    except Exception:
+        return
+
+
 def _prune_stale_progress_rows() -> dict[str, int]:
     """
     Remove progress rows whose card_id no longer exists.
@@ -3045,6 +3450,7 @@ def openSettingsFunction() -> None:
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
+        current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
@@ -3077,6 +3483,7 @@ def openSettingsFunction() -> None:
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
+    cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
@@ -3320,6 +3727,14 @@ def _build_incremento_menu() -> None:
     qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
     _utilsMenu.addAction(_reindexPdfTextAction)
 
+    _ocrImageTextAction = QAction("OCR Image Text (Existing Cards)…", mw)
+    qconnect(_ocrImageTextAction.triggered, ocrImageTextFunction)
+    _utilsMenu.addAction(_ocrImageTextAction)
+
+    _reindexImageOcrCacheAction = QAction("Reindex OCR Search Cache (From Hidden Field)", mw)
+    qconnect(_reindexImageOcrCacheAction.triggered, reindexImageOcrCacheFunction)
+    _utilsMenu.addAction(_reindexImageOcrCacheAction)
+
     _cleanupNonActiveProfileDataAction = QAction("Clean Non-Active Profile Data…", mw)
     qconnect(_cleanupNonActiveProfileDataAction.triggered, cleanupNonActiveProfileDataFunction)
     _utilsMenu.addAction(_cleanupNonActiveProfileDataAction)
@@ -3367,4 +3782,8 @@ def _build_incremento_menu() -> None:
 gui_hooks.main_window_did_init.append(_build_incremento_menu)
 gui_hooks.main_window_did_init.append(_build_timer_toolbar)
 gui_hooks.state_did_change.append(lambda *_: _build_incremento_menu())
+gui_hooks.operation_did_execute.append(_sync_ocr_index_for_open_editor_notes)
+gui_hooks.browser_will_show.append(_prune_incremento_hidden_browser_active_columns)
+gui_hooks.editor_did_load_note.append(_hide_incremento_hidden_fields_in_editor)
+gui_hooks.browser_did_fetch_columns.append(_filter_incremento_hidden_browser_columns)
 gui_hooks.browser_will_show_context_menu.append(_on_browser_context_menu)

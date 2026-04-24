@@ -31,6 +31,7 @@ except ImportError:
 try:
     from ..backend.db import (
         get_connection,
+        search_note_ocr_index,
         search_epub_text_index,
         replace_pdf_text_index,
         search_pdf_text_index,
@@ -42,6 +43,7 @@ try:
 except ImportError:
     from db import (  # type: ignore
         get_connection,
+        search_note_ocr_index,
         search_epub_text_index,
         replace_pdf_text_index,
         search_pdf_text_index,
@@ -77,6 +79,7 @@ class _SearchAllDialog(QDialog):
         self._cb_epub_sources = QCheckBox("EPUB Sources")
         self._cb_content = QCheckBox("PDF Content")
         self._cb_epub_content = QCheckBox("EPUB Content")
+        self._cb_ocr = QCheckBox("Image OCR")
         self._cb_cards = QCheckBox("Cards")
         self._cb_current_profile = QCheckBox("Current Anki Profile Only")
         for cb in (
@@ -86,6 +89,7 @@ class _SearchAllDialog(QDialog):
             self._cb_epub_sources,
             self._cb_content,
             self._cb_epub_content,
+            self._cb_ocr,
             self._cb_cards,
         ):
             cb.setChecked(True)
@@ -477,6 +481,36 @@ class _SearchAllDialog(QDialog):
                         )
                         total += 1
                     html.append("</ul>")
+
+        if self._cb_ocr.isChecked():
+            search_limit = 1200 if self._cb_current_profile.isChecked() else 120
+            ocr_hits = search_note_ocr_index(
+                self._addon_dir,
+                _active_profile(),
+                q,
+                limit=search_limit,
+            )
+            if self._cb_current_profile.isChecked():
+                ocr_hits = [
+                    row for row in ocr_hits if self._is_current_profile_card(int(row[1]))
+                ]
+            if ocr_hits:
+                html.append("<h3>Image OCR</h3><ul>")
+                for note_id, card_id, image_name, text in ocr_hits[:120]:
+                    try:
+                        note = mw.col.get_note(note_id)
+                        model = mw.col.models.get(note.mid)
+                        model_name = escape(model.get("name", "Note") if model else "Note")
+                    except Exception:
+                        model_name = "Note"
+                    snippet = escape(self._snippet(text or "", q, max_len=180))
+                    image_label = escape(image_name or "OCR text")
+                    html.append(
+                        f"<li><a href='inc://card/{note_id}'>{model_name} — note {int(note_id)}</a>"
+                        f"<br><span style='color:#888'>{image_label}: {snippet}</span></li>"
+                    )
+                    total += 1
+                html.append("</ul>")
 
         # All cards/notes (open in Browser)
         if self._cb_cards.isChecked():

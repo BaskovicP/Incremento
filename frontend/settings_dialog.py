@@ -203,6 +203,7 @@ class IncrementoSettingsDialog(QDialog):
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
+        current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_use_fail_pass_on_items: bool = False,
@@ -430,6 +431,12 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_use_fail_pass_on_items)
         )
         review_form.addRow("", self._use_fail_pass_on_items_cb)
+
+        self._show_incremento_fields_cb = QCheckBox(
+            "Show Incremento metadata / OCR fields in Browser and note editors"
+        )
+        self._show_incremento_fields_cb.setChecked(bool(current_show_incremento_fields))
+        review_form.addRow("", self._show_incremento_fields_cb)
 
         review_layout.addLayout(review_form)
 
@@ -800,6 +807,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def remember_browser_card_scroll(self) -> bool:
         return bool(self._remember_browser_card_scroll_cb.isChecked())
+
+    @property
+    def show_incremento_fields(self) -> bool:
+        return bool(self._show_incremento_fields_cb.isChecked())
 
     @property
     def prefer_web_card_resume_in_original_page(self) -> bool:
