@@ -11,6 +11,7 @@ time so there is no practical issue.
 
 import json
 import os
+from html import escape
 
 from aqt import mw
 from aqt.qt import (
@@ -19,6 +20,7 @@ from aqt.qt import (
     QComboBox,
     QDockWidget,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QWidget,
     QVBoxLayout,
@@ -57,6 +59,7 @@ try:
         get_pdf_dir,
         get_zoom,
         get_read_page,
+        replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
         set_page,
@@ -76,6 +79,7 @@ except ImportError:
         get_pdf_dir,
         get_zoom,
         get_read_page,
+        replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
         set_page,
@@ -370,6 +374,7 @@ _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MSG_LIMIT_SETTINGS = "incremento_pdf_limit_settings:"
 _MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
 _MSG_DUE_REVIEW = "incremento_pdf_due_review:"
+_MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
 
 
 def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
@@ -394,6 +399,129 @@ def _push_pdf_limit_status(status: dict) -> None:
         )
     except Exception:
         pass
+
+
+def _pdf_storage_path(filename: str) -> str:
+    return os.path.join(get_pdf_dir(), str(filename or "").strip())
+
+
+def _missing_pdf_html(filename: str, expected_path: str) -> str:
+    escaped_name = escape(str(filename or "").strip() or "(missing filename)")
+    escaped_path = escape(str(expected_path or "").strip())
+    cmd = f"{_PYCMD_BRIDGE}{_MSG_REPAIR_MISSING}"
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html, body {{
+  margin: 0;
+  min-height: 100%;
+  background: #181818;
+  color: #e7e7e7;
+  font-family: sans-serif;
+}}
+.wrap {{
+  max-width: 720px;
+  margin: 48px auto;
+  padding: 0 24px;
+}}
+.panel {{
+  background: #232323;
+  border: 1px solid #474747;
+  border-radius: 12px;
+  padding: 20px 22px;
+}}
+.title {{
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}}
+.copy {{
+  line-height: 1.5;
+  margin-bottom: 14px;
+}}
+.path {{
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #111;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}}
+button {{
+  background: #3f6db3;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}}
+button:hover {{
+  background: #4b7bc7;
+}}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="title">PDF file is missing</div>
+      <div class="copy">
+        This PDF card still exists, but its stored PDF file could not be found.
+        Choose a replacement PDF to relink this card and reopen the viewer.
+      </div>
+      <div class="copy"><b>Expected file:</b> {escaped_name}</div>
+      <div class="path">{escaped_path}</div>
+      <button onclick="pycmd('{cmd}')">Choose Replacement PDF</button>
+    </div>
+  </div>
+</body>
+</html>
+""".strip()
+
+
+def _show_missing_pdf_screen(filename: str) -> None:
+    if _pdf_dock is None:
+        return
+    expected_path = _pdf_storage_path(filename)
+    _pdf_dock._view.setHtml(_missing_pdf_html(filename, expected_path), QUrl(_DOCK_HTML))
+
+
+def _repair_missing_pdf() -> None:
+    card_id = current_pdf_card_id()
+    filename = str(_current_pdf_filename or "").strip()
+    if card_id is None or not filename:
+        showInfo("Could not determine which PDF card needs repairing.")
+        return
+    selected_path, _ = QFileDialog.getOpenFileName(
+        mw,
+        "Choose Replacement PDF",
+        "",
+        "PDF Files (*.pdf)",
+    )
+    if not selected_path:
+        return
+    try:
+        new_filename = replace_pdf_card_file(_ADDON_DIR, mw.col, int(card_id), selected_path)
+        page = get_page(_ADDON_DIR, _active_profile(), int(card_id))
+        zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
+        read_page = get_read_page(_ADDON_DIR, _active_profile(), int(card_id))
+        tooltip("PDF card relinked to the replacement file.")
+        show_pdf_in_dock(
+            int(card_id),
+            new_filename,
+            page,
+            zoom,
+            read_page=read_page,
+            preserve_history=False,
+            offer_due_review_prompt=False,
+        )
+    except Exception as exc:
+        showInfo(f"Could not relink this PDF card.\n\n{exc}")
 
 
 def _open_pdf_limit_dialog(card_id: int) -> None:
@@ -660,6 +788,8 @@ class _PdfDockPage(QWebEnginePage):
                     )
             except Exception as e:
                 showInfo(f"Could not open PDF due-card review:\n{e}")
+        elif msg.startswith(_MSG_REPAIR_MISSING):
+            _repair_missing_pdf()
         elif msg.startswith(_MSG_SNAPSHOT):
             QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
         elif msg.startswith(_MSG_FINISHED):
@@ -1041,6 +1171,11 @@ def show_pdf_in_dock(
             _cb_pdf_view_started(card_id)
         except Exception:
             pass
+
+    if not os.path.exists(_pdf_storage_path(filename)):
+        _show_missing_pdf_screen(filename)
+        tooltip("Stored PDF file is missing. Choose a replacement PDF to repair this card.")
+        return
 
     pdf_file_url = QUrl.fromLocalFile(
         os.path.join(get_pdf_dir(), filename)

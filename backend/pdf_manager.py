@@ -33,6 +33,10 @@ try:
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_IMPORTED_AT_FIELD,
+        INCREMENTO_PARENT_CARD_ID_FIELD,
+        INCREMENTO_PARENT_FIELD,
+        INCREMENTO_SOURCE_AUTHOR_FIELD,
     )
     from .scheduler_config import load_scheduler_config
     from .statistics import _effective_date
@@ -53,6 +57,10 @@ except ImportError:
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_IMPORTED_AT_FIELD,
+        INCREMENTO_PARENT_CARD_ID_FIELD,
+        INCREMENTO_PARENT_FIELD,
+        INCREMENTO_SOURCE_AUTHOR_FIELD,
     )
     from scheduler_config import load_scheduler_config  # type: ignore
     from statistics import _effective_date  # type: ignore
@@ -812,3 +820,52 @@ def add_pdf_card(
     except Exception:
         pass
     return cid
+
+
+def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> str:
+    """Copy a replacement PDF into storage and relink an existing PDF card."""
+    cid = int(card_id)
+    if not pdf_path or not os.path.exists(pdf_path):
+        raise FileNotFoundError("Replacement PDF was not found.")
+
+    card = col.get_card(cid)
+    if card is None:
+        raise RuntimeError("PDF card was not found.")
+    note = col.get_note(card.nid)
+    if note is None:
+        raise RuntimeError("Linked PDF note was not found.")
+
+    media_filename = _copy_to_pdf_dir(pdf_path)
+    dest_path = os.path.join(get_pdf_dir(), media_filename)
+    page_texts = extract_pdf_pages_text(dest_path)
+
+    note["PDF_Filename"] = media_filename
+    try:
+        current_author = str(note[INCREMENTO_SOURCE_AUTHOR_FIELD] or "").strip()
+    except Exception:
+        current_author = ""
+    metadata = build_incremento_metadata(
+        source_type="PDF",
+        source_title=str(note["Title"] or "").strip(),
+        source_link=f"pdfs/{media_filename}",
+        source_author=current_author,
+    )
+    for field_name in (
+        INCREMENTO_IMPORTED_AT_FIELD,
+        INCREMENTO_PARENT_FIELD,
+        INCREMENTO_PARENT_CARD_ID_FIELD,
+    ):
+        try:
+            current_value = str(note[field_name] or "").strip()
+        except Exception:
+            current_value = ""
+        if current_value:
+            metadata[field_name] = current_value
+    apply_incremento_metadata(note, metadata)
+    col.update_note(note)
+
+    try:
+        replace_pdf_text_index(addon_dir, _paths.get_active_profile(), cid, page_texts)
+    except Exception:
+        pass
+    return media_filename

@@ -39,9 +39,33 @@ _SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 _MAX_FILENAME_STEM = 80
 _BACKUP_SLOTS = (
     ("1m", 60, "1 minute"),
+    ("5m", 5 * 60, "5 minutes"),
+    ("15m", 15 * 60, "15 minutes"),
     ("30m", 30 * 60, "30 minutes"),
+    ("1h", 60 * 60, "1 hour"),
+    ("6h", 6 * 60 * 60, "6 hours"),
     ("1d", 24 * 60 * 60, "1 day"),
+    ("7d", 7 * 24 * 60 * 60, "7 days"),
 )
+_DEFAULT_BACKUP_TIER_KEYS = ("1m", "30m", "1d")
+_BACKUP_SLOT_MAP = {tier_key: (seconds, label) for tier_key, seconds, label in _BACKUP_SLOTS}
+
+
+def normalize_writing_backup_tiers(tier_keys) -> tuple[str, ...]:
+    raw_values = tier_keys
+    if raw_values is None:
+        raw_values = _DEFAULT_BACKUP_TIER_KEYS
+    elif isinstance(raw_values, str):
+        raw_values = [raw_values]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in raw_values:
+        tier_key = str(value or "").strip().lower()
+        if tier_key not in _BACKUP_SLOT_MAP or tier_key in seen:
+            continue
+        normalized.append(tier_key)
+        seen.add(tier_key)
+    return tuple(normalized)
 
 
 def get_writing_dir() -> str:
@@ -150,13 +174,15 @@ def _refresh_due_backups(
     relpath: str,
     source_path: str,
     *,
+    backup_tiers=None,
     now: float | None = None,
 ) -> list[dict]:
     if not os.path.exists(source_path):
         return []
     current_now = float(now if now is not None else time.time())
     created: list[dict] = []
-    for tier_key, threshold_seconds, label in _BACKUP_SLOTS:
+    for tier_key in normalize_writing_backup_tiers(backup_tiers):
+        threshold_seconds, label = _BACKUP_SLOT_MAP[tier_key]
         backup_path = _backup_slot_path(addon_dir, relpath, tier_key)
         should_refresh = True
         if os.path.exists(backup_path):
@@ -200,12 +226,14 @@ def write_writing_text(
     text: str,
     *,
     backups_enabled: bool = True,
+    backup_tiers=None,
     now: float | None = None,
 ) -> list[dict]:
     path = writing_file_abspath(addon_dir, relpath)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    if backups_enabled and os.path.exists(path):
-        _refresh_due_backups(addon_dir, relpath, path, now=now)
+    selected_tiers = normalize_writing_backup_tiers(backup_tiers)
+    if backups_enabled and selected_tiers and os.path.exists(path):
+        _refresh_due_backups(addon_dir, relpath, path, backup_tiers=selected_tiers, now=now)
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(text or "")
@@ -215,11 +243,8 @@ def write_writing_text(
 
 def restore_writing_backup(addon_dir: str, relpath: str, tier_key: str) -> dict:
     normalized_tier = str(tier_key or "").strip().lower()
-    selected_label = None
-    for slot_key, _seconds, label in _BACKUP_SLOTS:
-        if slot_key == normalized_tier:
-            selected_label = label
-            break
+    selected_meta = _BACKUP_SLOT_MAP.get(normalized_tier)
+    selected_label = selected_meta[1] if selected_meta else None
     if not selected_label:
         raise ValueError("Unknown writing backup tier.")
     backup_path = _backup_slot_path(addon_dir, relpath, normalized_tier)

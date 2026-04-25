@@ -56,6 +56,7 @@ try:
         build_writing_relpath,
         ensure_writing_file,
         list_writing_backups,
+        normalize_writing_backup_tiers,
         read_writing_text,
         restore_writing_backup,
         write_writing_text,
@@ -76,6 +77,7 @@ except ImportError:
         build_writing_relpath,
         ensure_writing_file,
         list_writing_backups,
+        normalize_writing_backup_tiers,
         read_writing_text,
         restore_writing_backup,
         write_writing_text,
@@ -98,6 +100,7 @@ _MIN_FONT_SCALE = 0.7
 _MAX_FONT_SCALE = 2.4
 _WRITING_PROGRESS_SCOPES = ("today", "session", "all_time")
 _WRITING_WORD_COUNT_MODES = ("simple", "word_like")
+_DEFAULT_WRITING_BACKUP_TIERS = ("1m", "30m", "1d")
 _WORD_LIKE_TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:[’'`-][A-Za-z0-9]+)*", re.UNICODE)
 
 
@@ -139,6 +142,12 @@ def configured_writing_restore_bookmark(config: dict | None = None) -> bool:
 
 def configured_writing_backups_enabled(config: dict | None = None) -> bool:
     return bool(_config(config).get("writing_backups_enabled", True))
+
+
+def configured_writing_backup_tiers(config: dict | None = None) -> tuple[str, ...]:
+    cfg = _config(config)
+    normalized = normalize_writing_backup_tiers(cfg.get("writing_backup_tiers"))
+    return normalized or _DEFAULT_WRITING_BACKUP_TIERS
 
 
 def configured_writing_progress_visible(config: dict | None = None) -> bool:
@@ -550,6 +559,7 @@ def _autosave_from_editor() -> None:
             _current_writing_relpath,
             text,
             backups_enabled=configured_writing_backups_enabled(),
+            backup_tiers=configured_writing_backup_tiers(),
         )
     except Exception:
         _set_status("Autosave failed")

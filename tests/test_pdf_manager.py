@@ -599,6 +599,18 @@ class _FakeCollection:
         return self._notes[int(note_id)]
 
 
+class _FakePdfNote:
+    def __init__(self, nid, **fields):
+        self.id = int(nid)
+        self._fields = dict(fields)
+
+    def __getitem__(self, key):
+        return self._fields[key]
+
+    def __setitem__(self, key, value):
+        self._fields[key] = value
+
+
 class TestPdfDueSourceCards:
     def setup_method(self):
         import db as _db
@@ -656,3 +668,47 @@ class TestPdfDueSourceCards:
             enabled=False,
         )
         assert updated["enabled"] is False
+
+
+class TestReplacePdfCardFile:
+    def test_relinks_note_and_refreshes_text_index(self, tmp_path):
+        replacement_pdf = tmp_path / "replacement.pdf"
+        replacement_pdf.write_bytes(b"%PDF replacement")
+
+        note = _FakePdfNote(
+            321,
+            Title="Linked PDF",
+            PDF_Filename="old-file.pdf",
+            Incremento_Imported_At="2026-04-01 10:00:00",
+            Incremento_Parent="Parent",
+            Incremento_Parent_Card_ID="88",
+            Incremento_Source_Author="Author",
+        )
+        card = _FakeCard(77, 321)
+        col = MagicMock()
+        col.get_card.return_value = card
+        col.get_note.return_value = note
+
+        with patch("pdf_manager._copy_to_pdf_dir", return_value="new-file.pdf") as copy_mock, \
+             patch("pdf_manager.get_pdf_dir", return_value=str(tmp_path / "pdfs")), \
+             patch("pdf_manager.extract_pdf_pages_text", return_value=["page one"]) as extract_mock, \
+             patch("pdf_manager.replace_pdf_text_index") as index_mock, \
+             patch("pdf_manager._paths.get_active_profile", return_value="TestProfile"):
+            filename = pdf_manager.replace_pdf_card_file(
+                str(tmp_path),
+                col,
+                77,
+                str(replacement_pdf),
+            )
+
+        assert filename == "new-file.pdf"
+        copy_mock.assert_called_once_with(str(replacement_pdf))
+        extract_mock.assert_called_once_with(os.path.join(str(tmp_path / "pdfs"), "new-file.pdf"))
+        index_mock.assert_called_once_with(str(tmp_path), "TestProfile", 77, ["page one"])
+        assert note["PDF_Filename"] == "new-file.pdf"
+        assert note["Incremento_Source_Link"] == "pdfs/new-file.pdf"
+        assert note["Incremento_Imported_At"] == "2026-04-01 10:00:00"
+        assert note["Incremento_Parent"] == "Parent"
+        assert note["Incremento_Parent_Card_ID"] == "88"
+        assert note["Incremento_Source_Author"] == "Author"
+        col.update_note.assert_called_once_with(note)

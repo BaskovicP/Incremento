@@ -3468,6 +3468,7 @@ def openSettingsFunction() -> None:
         current_writing_highlight_current_line=_writing_dock_mod.configured_writing_highlight_current_line(cfg),
         current_writing_restore_bookmark=_writing_dock_mod.configured_writing_restore_bookmark(cfg),
         current_writing_backups_enabled=_writing_dock_mod.configured_writing_backups_enabled(cfg),
+        current_writing_backup_tiers=_writing_dock_mod.configured_writing_backup_tiers(cfg),
         current_writing_progress_visible=_writing_dock_mod.configured_writing_progress_visible(cfg),
         current_writing_progress_default_scope=_writing_dock_mod.configured_writing_progress_default_scope(cfg),
         current_writing_word_count_mode=_writing_dock_mod.configured_writing_word_count_mode(cfg),
@@ -3504,6 +3505,7 @@ def openSettingsFunction() -> None:
     cfg["writing_highlight_current_line"] = dlg.writing_highlight_current_line
     cfg["writing_restore_bookmark"] = dlg.writing_restore_bookmark
     cfg["writing_backups_enabled"] = dlg.writing_backups_enabled
+    cfg["writing_backup_tiers"] = dlg.writing_backup_tiers
     cfg["writing_progress_visible"] = dlg.writing_progress_visible
     cfg["writing_progress_default_scope"] = dlg.writing_progress_default_scope
     cfg["writing_word_count_mode"] = dlg.writing_word_count_mode

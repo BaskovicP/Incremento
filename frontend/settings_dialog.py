@@ -5,6 +5,7 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -161,6 +162,18 @@ SHORTCUT_ACTION_SPECS = [
     },
 ]
 
+WRITING_BACKUP_TIER_OPTIONS = (
+    ("1m", "1 minute"),
+    ("5m", "5 minutes"),
+    ("15m", "15 minutes"),
+    ("30m", "30 minutes"),
+    ("1h", "1 hour"),
+    ("6h", "6 hours"),
+    ("1d", "1 day"),
+    ("7d", "7 days"),
+)
+DEFAULT_WRITING_BACKUP_TIERS = ("1m", "30m", "1d")
+
 
 def default_shortcuts() -> dict[str, str]:
     return {spec["id"]: spec["default"] for spec in SHORTCUT_ACTION_SPECS}
@@ -221,6 +234,7 @@ class IncrementoSettingsDialog(QDialog):
         current_writing_highlight_current_line: bool = True,
         current_writing_restore_bookmark: bool = True,
         current_writing_backups_enabled: bool = True,
+        current_writing_backup_tiers: list[str] | tuple[str, ...] | None = None,
         current_writing_progress_visible: bool = True,
         current_writing_progress_default_scope: str = "today",
         current_writing_word_count_mode: str = "simple",
@@ -716,10 +730,29 @@ class IncrementoSettingsDialog(QDialog):
         self._writing_backups_enabled_cb = QCheckBox("Create automatic writing backups")
         self._writing_backups_enabled_cb.setChecked(bool(current_writing_backups_enabled))
         writing_backup_form.addRow("", self._writing_backups_enabled_cb)
+
+        selected_backup_tiers = {
+            str(value or "").strip().lower()
+            for value in (current_writing_backup_tiers or DEFAULT_WRITING_BACKUP_TIERS)
+        }
+        self._writing_backup_tier_checks: dict[str, QCheckBox] = {}
+        tier_grid = QGridLayout()
+        tier_grid.setHorizontalSpacing(18)
+        tier_grid.setVerticalSpacing(6)
+        for idx, (tier_key, label) in enumerate(WRITING_BACKUP_TIER_OPTIONS):
+            checkbox = QCheckBox(label)
+            checkbox.setChecked(tier_key in selected_backup_tiers)
+            self._writing_backup_tier_checks[tier_key] = checkbox
+            tier_grid.addWidget(checkbox, idx // 2, idx % 2)
+        writing_backup_form.addRow("Create snapshots for:", tier_grid)
         writing_backup_form.addRow(
             "",
-            QLabel("Keeps three rolling backups per writing card: 1 minute, 30 minutes, and 1 day."),
+            QLabel(
+                "Each selected interval keeps one rolling snapshot per writing card. Existing backup files remain restorable even if you later uncheck an interval."
+            ),
         )
+        self._writing_backups_enabled_cb.toggled.connect(self._sync_writing_backup_controls)
+        self._sync_writing_backup_controls(self._writing_backups_enabled_cb.isChecked())
         writing_layout.addLayout(writing_backup_form)
 
         writing_layout.addWidget(_section_title("Progress"))
@@ -954,6 +987,15 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._writing_backups_enabled_cb.isChecked())
 
     @property
+    def writing_backup_tiers(self) -> list[str]:
+        selected = [
+            tier_key
+            for tier_key, _label in WRITING_BACKUP_TIER_OPTIONS
+            if self._writing_backup_tier_checks[tier_key].isChecked()
+        ]
+        return selected or list(DEFAULT_WRITING_BACKUP_TIERS)
+
+    @property
     def writing_progress_visible(self) -> bool:
         return bool(self._writing_progress_visible_cb.isChecked())
 
@@ -972,6 +1014,10 @@ class IncrementoSettingsDialog(QDialog):
         return normalize_custom_schedule_mode(
             self._custom_schedule_default_mode_combo.currentData()
         )
+
+    def _sync_writing_backup_controls(self, enabled: bool) -> None:
+        for checkbox in self._writing_backup_tier_checks.values():
+            checkbox.setEnabled(bool(enabled))
 
     @property
     def custom_schedule_presets(self) -> list[dict]:

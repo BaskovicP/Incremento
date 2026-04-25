@@ -8,6 +8,7 @@ def test_configured_writing_defaults():
     assert writing_dock.configured_writing_highlight_current_line({}) is True
     assert writing_dock.configured_writing_restore_bookmark({}) is True
     assert writing_dock.configured_writing_backups_enabled({}) is True
+    assert writing_dock.configured_writing_backup_tiers({}) == ("1m", "30m", "1d")
     assert writing_dock.configured_writing_progress_visible({}) is True
     assert writing_dock.configured_writing_progress_default_scope({}) == "today"
     assert writing_dock.configured_writing_word_count_mode({}) == "simple"
@@ -21,6 +22,7 @@ def test_configured_writing_flags_read_config_values():
         "writing_highlight_current_line": False,
         "writing_restore_bookmark": False,
         "writing_backups_enabled": False,
+        "writing_backup_tiers": ["5m", "1h", "7d"],
         "writing_progress_visible": False,
         "writing_progress_default_scope": "all_time",
         "writing_word_count_mode": "word_like",
@@ -31,9 +33,18 @@ def test_configured_writing_flags_read_config_values():
     assert writing_dock.configured_writing_highlight_current_line(cfg) is False
     assert writing_dock.configured_writing_restore_bookmark(cfg) is False
     assert writing_dock.configured_writing_backups_enabled(cfg) is False
+    assert writing_dock.configured_writing_backup_tiers(cfg) == ("5m", "1h", "7d")
     assert writing_dock.configured_writing_progress_visible(cfg) is False
     assert writing_dock.configured_writing_progress_default_scope(cfg) == "all_time"
     assert writing_dock.configured_writing_word_count_mode(cfg) == "word_like"
+
+
+def test_configured_writing_backup_tiers_falls_back_to_defaults_for_invalid_values():
+    assert writing_dock.configured_writing_backup_tiers({"writing_backup_tiers": ["bogus"]}) == (
+        "1m",
+        "30m",
+        "1d",
+    )
 
 
 def test_wrap_selection_text_uses_placeholder_for_empty_selection():
