@@ -133,6 +133,7 @@ from .backend.db import (
     get_card_browser_media_ref,
     get_custom_schedule_rule,
     get_knowledge_tree_node,
+    prune_note_ocr_index_rows,
     get_recent_reviewer_tags,
     replace_pdf_text_index,
     search_pdf_text_index,
@@ -2817,6 +2818,16 @@ def _prune_stale_progress_rows() -> dict[str, int]:
     return counts
 
 
+def _prune_stale_ocr_rows() -> dict[str, int]:
+    """Delete OCR cache rows whose note_id or card_id no longer exists."""
+    return prune_note_ocr_index_rows(
+        _ADDON_DIR,
+        _active_profile(),
+        live_note_ids=_all_live_note_ids_any_profile(),
+        live_card_ids=_all_live_card_ids_any_profile(),
+    )
+
+
 def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
     pdf_n = int(counts.get("pdf_progress", 0) or 0)
     video_n = int(counts.get("video_progress", 0) or 0)
@@ -2829,6 +2840,19 @@ def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
         f"• PDF: {pdf_n}\n"
         f"• Video: {video_n}\n"
         f"• Web: {web_n}"
+    )
+
+
+def _format_pruned_ocr_summary(counts: dict[str, int]) -> str:
+    missing_note = int(counts.get("note_ocr_index_missing_note", 0) or 0)
+    missing_card = int(counts.get("note_ocr_index_missing_card", 0) or 0)
+    total = int(counts.get("note_ocr_index_total", 0) or 0)
+    if total <= 0:
+        return ""
+    return (
+        f"Stale OCR cache rows removed: {total}\n"
+        f"• Missing notes: {missing_note}\n"
+        f"• Missing cards: {missing_card}"
     )
 
 
@@ -2912,6 +2936,29 @@ def _all_live_card_ids_any_profile() -> set[int]:
     return live_ids
 
 
+def _all_live_note_ids_any_profile() -> set[int]:
+    """Union of note IDs from current + other profiles."""
+    live_ids = set(int(nid) for nid in mw.col.db.list("SELECT id FROM notes"))
+    for _, db_path in _iter_other_profile_collections():
+        conn = None
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            for (nid,) in conn.execute("SELECT id FROM notes"):
+                try:
+                    live_ids.add(int(nid))
+                except Exception:
+                    pass
+        except Exception:
+            continue
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    return live_ids
+
+
 def _profiles_referencing_files(candidates: list[str], kind: str) -> dict[str, list[str]]:
     """
     For each candidate filename, return profile names that reference it in notes.flds.
@@ -2978,6 +3025,36 @@ def _count_stale_progress_rows() -> dict[str, int]:
             if cid not in live_ids:
                 stale += 1
         counts[table] = stale
+    return counts
+
+
+def _count_stale_ocr_rows() -> dict[str, int]:
+    """Return stale OCR cache row counts without deleting."""
+    conn = get_connection(_ADDON_DIR, _active_profile())
+    counts = {
+        "note_ocr_index_missing_note": 0,
+        "note_ocr_index_missing_card": 0,
+        "note_ocr_index_total": 0,
+    }
+    live_note_ids = _all_live_note_ids_any_profile()
+    live_card_ids = _all_live_card_ids_any_profile()
+    try:
+        rows = conn.execute("SELECT note_id, card_id FROM note_ocr_index").fetchall()
+    except Exception:
+        return counts
+    for note_id, card_id in rows:
+        try:
+            normalized_note_id = int(note_id or 0)
+            normalized_card_id = int(card_id or 0)
+        except Exception:
+            continue
+        if normalized_note_id not in live_note_ids:
+            counts["note_ocr_index_missing_note"] += 1
+            counts["note_ocr_index_total"] += 1
+            continue
+        if normalized_card_id not in live_card_ids:
+            counts["note_ocr_index_missing_card"] += 1
+            counts["note_ocr_index_total"] += 1
     return counts
 
 
@@ -3054,7 +3131,7 @@ def _scan_orphan_videos() -> tuple[str, list[str], int]:
 def cleanupNonActiveProfileDataFunction() -> None:
     """
     Offer one-shot cleanup of artifacts not referenced by the active profile:
-    orphan PDFs, orphan local videos, and stale progress rows.
+    orphan PDFs, orphan local videos, stale progress rows, and stale OCR cache rows.
     """
     try:
         pdf_dir, orphan_pdfs_all, _pdf_bytes_all = _scan_orphan_pdfs()
@@ -3074,12 +3151,14 @@ def cleanupNonActiveProfileDataFunction() -> None:
             except OSError:
                 pass
         stale_counts = _count_stale_progress_rows()
+        stale_ocr_counts = _count_stale_ocr_rows()
     except Exception as e:
         showInfo(f"Could not scan non-active profile artifacts:\n{e}")
         return
 
     stale_total = sum(int(stale_counts.get(k, 0) or 0) for k in ("pdf_progress", "video_progress", "web_progress"))
-    if not orphan_pdfs and not orphan_videos and stale_total <= 0:
+    stale_ocr_total = int(stale_ocr_counts.get("note_ocr_index_total", 0) or 0)
+    if not orphan_pdfs and not orphan_videos and stale_total <= 0 and stale_ocr_total <= 0:
         showInfo(
             "No deletable cross-profile artifacts detected.\n\n"
             "Nothing is safe to delete without affecting some profile."
@@ -3104,6 +3183,8 @@ def cleanupNonActiveProfileDataFunction() -> None:
         f"• Video files: {len(orphan_videos)}",
         f"• Progress rows: {stale_total} (PDF {stale_counts.get('pdf_progress', 0)}, "
         f"Video {stale_counts.get('video_progress', 0)}, Web {stale_counts.get('web_progress', 0)})",
+        f"• OCR cache rows: {stale_ocr_total} (missing notes {stale_ocr_counts.get('note_ocr_index_missing_note', 0)}, "
+        f"missing cards {stale_ocr_counts.get('note_ocr_index_missing_card', 0)})",
     ]
     if protected_pdfs:
         lines.append(f"• Skipped PDF files tied to other profile(s): {len(protected_pdfs)}")
@@ -3165,6 +3246,15 @@ def cleanupNonActiveProfileDataFunction() -> None:
     except Exception as e:
         pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
         errors.append(f"Rows: {e}")
+    try:
+        pruned_ocr_counts = _prune_stale_ocr_rows()
+    except Exception as e:
+        pruned_ocr_counts = {
+            "note_ocr_index_missing_note": 0,
+            "note_ocr_index_missing_card": 0,
+            "note_ocr_index_total": 0,
+        }
+        errors.append(f"OCR cache: {e}")
 
     summary = [
         f"Deleted PDF files: {deleted_pdfs}/{len(orphan_pdfs)}",
@@ -3174,6 +3264,10 @@ def cleanupNonActiveProfileDataFunction() -> None:
     if pruned_summary:
         summary.append("")
         summary.append(pruned_summary)
+    pruned_ocr_summary = _format_pruned_ocr_summary(pruned_ocr_counts)
+    if pruned_ocr_summary:
+        summary.append("")
+        summary.append(pruned_ocr_summary)
     if total_bytes > 0:
         summary.append("")
         summary.append(f"Potential recovered space: {total_str}")
@@ -3188,18 +3282,21 @@ def cleanupNonActiveProfileDataFunction() -> None:
 
 
 def cleanupStaleProgressFunction() -> None:
-    """Delete persisted progress rows for cards that no longer exist."""
+    """Delete stale progress rows and OCR cache rows for removed cards/notes."""
     try:
         counts = _prune_stale_progress_rows()
+        ocr_counts = _prune_stale_ocr_rows()
     except Exception as e:
-        showInfo(f"Could not clean stale progress rows:\n{e}")
+        showInfo(f"Could not clean stale Incremento rows:\n{e}")
         return
 
     summary = _format_pruned_progress_summary(counts)
-    if summary:
-        showInfo(summary)
-    else:
-        showInfo("No stale progress rows found.")
+    ocr_summary = _format_pruned_ocr_summary(ocr_counts)
+    chunks = [chunk for chunk in (summary, ocr_summary) if chunk]
+    if chunks:
+        showInfo("\n\n".join(chunks))
+        return
+    showInfo("No stale progress or OCR cache rows found.")
 
 
 def cleanupOrphanPdfsFunction() -> None:
@@ -3783,7 +3880,7 @@ def _build_incremento_menu() -> None:
     qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
     _utilsMenu.addAction(_cleanupOrphanVideosAction)
 
-    _cleanupStaleProgressAction = QAction("Clean Up Stale Progress Rows…", mw)
+    _cleanupStaleProgressAction = QAction("Clean Up Stale Progress / OCR Rows…", mw)
     qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
     _utilsMenu.addAction(_cleanupStaleProgressAction)
 

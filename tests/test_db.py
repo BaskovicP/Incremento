@@ -420,6 +420,62 @@ class TestNoteOcrIndex:
             (102, 12, "", "hidden field text")
         ]
 
+    def test_prune_note_ocr_index_rows_removes_missing_note_rows(self):
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            103,
+            [13],
+            [("diagram.png", "alpha text")],
+        )
+
+        counts = db.prune_note_ocr_index_rows(
+            self.addon_dir,
+            "TestProfile",
+            live_note_ids={999},
+            live_card_ids={13},
+        )
+
+        assert counts == {
+            "note_ocr_index_missing_note": 1,
+            "note_ocr_index_missing_card": 0,
+            "note_ocr_index_total": 1,
+        }
+        assert db.search_note_ocr_index(self.addon_dir, "TestProfile", "alpha") == []
+
+    def test_prune_note_ocr_index_rows_removes_missing_card_rows_but_keeps_live_rows(self):
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            104,
+            [14],
+            [("diagram.png", "beta text")],
+        )
+        db.replace_note_ocr_index(
+            self.addon_dir,
+            "TestProfile",
+            105,
+            [15],
+            [("diagram.png", "gamma text")],
+        )
+
+        counts = db.prune_note_ocr_index_rows(
+            self.addon_dir,
+            "TestProfile",
+            live_note_ids={104, 105},
+            live_card_ids={15},
+        )
+
+        assert counts == {
+            "note_ocr_index_missing_note": 0,
+            "note_ocr_index_missing_card": 1,
+            "note_ocr_index_total": 1,
+        }
+        assert db.search_note_ocr_index(self.addon_dir, "TestProfile", "beta") == []
+        assert db.search_note_ocr_index(self.addon_dir, "TestProfile", "gamma") == [
+            (105, 15, "diagram.png", "gamma text")
+        ]
+
 
 class TestBrowserMediaRefs:
     def setup_method(self):

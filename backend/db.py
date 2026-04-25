@@ -1724,6 +1724,45 @@ def search_note_ocr_index(
     ]
 
 
+def prune_note_ocr_index_rows(
+    addon_dir: str,
+    profile: str,
+    *,
+    live_note_ids: set[int],
+    live_card_ids: set[int],
+) -> dict[str, int]:
+    conn = get_connection(addon_dir, profile)
+    rows = conn.execute("SELECT note_id, card_id, image_name FROM note_ocr_index").fetchall()
+    stale_rows: list[tuple[int, int, str]] = []
+    stale_note_count = 0
+    stale_card_count = 0
+
+    for note_id, card_id, image_name in rows:
+        normalized_note_id = int(note_id or 0)
+        normalized_card_id = int(card_id or 0)
+        normalized_image_name = str(image_name or "")
+        if normalized_note_id not in live_note_ids:
+            stale_rows.append((normalized_note_id, normalized_card_id, normalized_image_name))
+            stale_note_count += 1
+            continue
+        if normalized_card_id not in live_card_ids:
+            stale_rows.append((normalized_note_id, normalized_card_id, normalized_image_name))
+            stale_card_count += 1
+
+    if stale_rows:
+        conn.executemany(
+            "DELETE FROM note_ocr_index WHERE note_id = ? AND card_id = ? AND image_name = ?",
+            stale_rows,
+        )
+        conn.commit()
+
+    return {
+        "note_ocr_index_missing_note": stale_note_count,
+        "note_ocr_index_missing_card": stale_card_count,
+        "note_ocr_index_total": stale_note_count + stale_card_count,
+    }
+
+
 def replace_pdf_text_index(addon_dir: str, profile: str, card_id: int, page_texts: list[str]) -> None:
     """Replace stored per-page extracted text for a PDF card."""
     conn = get_connection(addon_dir, profile)
