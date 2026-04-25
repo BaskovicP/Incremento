@@ -9,8 +9,6 @@ editor state such as cursor, scroll, zoom, wrap mode, and bookmark line.
 import datetime
 import os
 import re
-import subprocess
-import sys
 
 from aqt import mw
 from aqt.qt import (
@@ -42,6 +40,7 @@ from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase, QColor, QTextCha
 
 try:
     from ..backend import paths as _paths
+    from .file_shell import reveal_local_file
     from ..backend.db import (
         get_writing_progress,
         get_writing_word_stats,
@@ -63,6 +62,7 @@ try:
     )
 except ImportError:
     import paths as _paths
+    from file_shell import reveal_local_file  # type: ignore
     from db import (
         get_writing_progress,
         get_writing_word_stats,
@@ -782,16 +782,8 @@ def _open_writing_folder() -> None:
     if not path:
         QDesktopServices.openUrl(QUrl.fromLocalFile(get_writing_dir()))
         return
-    try:
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", "-R", path])
-            return
-        if sys.platform.startswith("win"):
-            subprocess.Popen(["explorer", f"/select,{os.path.normpath(path)}"])
-            return
-    except Exception:
-        pass
-    QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
+    if not reveal_local_file(path):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(path)))
 
 
 def _reload_current_writing_from_disk() -> None:

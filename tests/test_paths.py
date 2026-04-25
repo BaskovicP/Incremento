@@ -64,6 +64,7 @@ class TestDirectoryHelpers:
         assert p.get_videos_dir(str(tmp_path), "P") == base / "videos"
         assert p.get_writing_dir(str(tmp_path), "P") == base / "writing"
         assert p.get_writing_backup_dir(str(tmp_path), "P") == base / "writing_backups"
+        assert p.get_local_files_dir(str(tmp_path), "P") == base / "files"
         assert p.get_video_profile_dir(str(tmp_path), "P") == base / "video_profile"
         assert p.get_web_profile_dir(str(tmp_path), "P") == base / "web_profile"
 

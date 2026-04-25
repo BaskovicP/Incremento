@@ -76,6 +76,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "",
     },
     {
+        "id": "add_local_file",
+        "label": "Add Local File",
+        "default": "",
+    },
+    {
         "id": "toggle_focus_timer",
         "label": "Show Focus Timer",
         "default": "",
@@ -107,7 +112,7 @@ SHORTCUT_ACTION_SPECS = [
     },
     {
         "id": "quick_open_pdf",
-        "label": "Quick Open Docs",
+        "label": "Quick Open Content",
         "default": "Ctrl+Alt+P",
     },
     {
@@ -395,7 +400,9 @@ class IncrementoSettingsDialog(QDialog):
         review_hint.setWordWrap(True)
         review_layout.addWidget(review_hint)
 
-        review_form = _section_form()
+        review_behavior_layout = QVBoxLayout()
+        review_behavior_layout.setContentsMargins(0, 0, 0, 0)
+        review_behavior_layout.setSpacing(8)
 
         priority_direction_wrap = QWidget()
         priority_direction_layout = QVBoxLayout(priority_direction_wrap)
@@ -417,7 +424,10 @@ class IncrementoSettingsDialog(QDialog):
         )
         priority_direction_hint.setWordWrap(True)
         priority_direction_layout.addWidget(priority_direction_hint)
-        review_form.addRow("Incremental learning priority:", priority_direction_wrap)
+
+        priority_direction_label = QLabel("Incremental learning priority:")
+        review_behavior_layout.addWidget(priority_direction_label)
+        review_behavior_layout.addWidget(priority_direction_wrap)
 
         self._show_priority_dialog_after_answer_cb = QCheckBox(
             "Show priority dialog after each card is done before moving forward"
@@ -425,7 +435,7 @@ class IncrementoSettingsDialog(QDialog):
         self._show_priority_dialog_after_answer_cb.setChecked(
             bool(current_show_priority_dialog_after_answer)
         )
-        review_form.addRow("", self._show_priority_dialog_after_answer_cb)
+        review_behavior_layout.addWidget(self._show_priority_dialog_after_answer_cb)
 
         self._remember_browser_card_scroll_cb = QCheckBox(
             "Remember scrolling position in browser cards"
@@ -433,7 +443,7 @@ class IncrementoSettingsDialog(QDialog):
         self._remember_browser_card_scroll_cb.setChecked(
             bool(current_remember_browser_card_scroll)
         )
-        review_form.addRow("", self._remember_browser_card_scroll_cb)
+        review_behavior_layout.addWidget(self._remember_browser_card_scroll_cb)
 
         self._prefer_web_card_resume_in_original_page_cb = QCheckBox(
             "Prefer resuming embedded web-card media in the original page"
@@ -441,7 +451,7 @@ class IncrementoSettingsDialog(QDialog):
         self._prefer_web_card_resume_in_original_page_cb.setChecked(
             bool(current_prefer_web_card_resume_in_original_page)
         )
-        review_form.addRow("", self._prefer_web_card_resume_in_original_page_cb)
+        review_behavior_layout.addWidget(self._prefer_web_card_resume_in_original_page_cb)
 
         self._use_fail_pass_on_items_cb = QCheckBox(
             "Use Fail / Pass buttons on items"
@@ -449,15 +459,15 @@ class IncrementoSettingsDialog(QDialog):
         self._use_fail_pass_on_items_cb.setChecked(
             bool(current_use_fail_pass_on_items)
         )
-        review_form.addRow("", self._use_fail_pass_on_items_cb)
+        review_behavior_layout.addWidget(self._use_fail_pass_on_items_cb)
 
         self._show_incremento_fields_cb = QCheckBox(
             "Show Incremento metadata / OCR fields in Browser and note editors"
         )
         self._show_incremento_fields_cb.setChecked(bool(current_show_incremento_fields))
-        review_form.addRow("", self._show_incremento_fields_cb)
+        review_behavior_layout.addWidget(self._show_incremento_fields_cb)
 
-        review_layout.addLayout(review_form)
+        review_layout.addLayout(review_behavior_layout)
 
         review_layout.addWidget(_section_title("Custom Scheduling"))
         custom_schedule_hint = QLabel(

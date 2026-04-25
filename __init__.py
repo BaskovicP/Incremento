@@ -51,7 +51,13 @@ from .backend.video_manager import (
     download_and_compress_video,
     import_local_video_file,
 )
-from .backend.writing_manager import WRITING_NOTE_TYPE, add_writing_card
+from .backend.writing_manager import (
+    WRITING_FILE_FIELD,
+    WRITING_NOTE_TYPE,
+    add_writing_card,
+    build_writing_relpath,
+)
+from .backend.local_file_manager import add_local_file_card
 from .backend.note_metadata import (
     INCREMENTO_HIDDEN_FIELDS,
     apply_incremento_metadata,
@@ -125,6 +131,7 @@ from .frontend import epub_dock as _epub_dock_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
+from .frontend import local_file_dock as _local_file_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
@@ -812,8 +819,9 @@ Reviewer._linkHandler = _incremento_link_handler
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
 
-# Last PDF card opened via the Quick Open dialog (used by Ctrl+L).
+# Last cards opened via the Quick Open dialog (used by Ctrl+L).
 _last_opened_pdf_cid: int | None = None
+_last_opened_writing_cid: int | None = None
 
 
 # Wire add_card_dock callbacks to pdf_dock.
@@ -1164,6 +1172,7 @@ gui_hooks.reviewer_did_show_question.append(_epub_dock_mod.on_epub_question_show
 gui_hooks.reviewer_did_show_question.append(_video_dock_mod.on_video_question_shown)
 gui_hooks.reviewer_did_show_question.append(_web_dock_mod.on_web_question_shown)
 gui_hooks.reviewer_did_show_question.append(_writing_dock_mod.on_writing_question_shown)
+gui_hooks.reviewer_did_show_question.append(_local_file_dock_mod.on_local_file_question_shown)
 gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_shown)
 gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
@@ -1178,6 +1187,7 @@ gui_hooks.reviewer_will_end.append(_epub_dock_mod.on_epub_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_writing_dock_mod.on_writing_reviewer_will_end)
+gui_hooks.reviewer_will_end.append(_local_file_dock_mod.on_local_file_reviewer_will_end)
 gui_hooks.profile_will_close.append(_video_dock_mod.flush_video_progress)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
@@ -1360,8 +1370,13 @@ def _build_timer_toolbar() -> None:
 
 
 def _open_pdf_quick_jump() -> None:
-    global _last_opened_pdf_cid
-    dlg = _PdfQuickJumpDialog(mw, addon_dir=_ADDON_DIR, last_opened_pdf_cid=_last_opened_pdf_cid)
+    global _last_opened_pdf_cid, _last_opened_writing_cid
+    dlg = _PdfQuickJumpDialog(
+        mw,
+        addon_dir=_ADDON_DIR,
+        last_opened_pdf_cid=_last_opened_pdf_cid,
+        last_opened_writing_cid=_last_opened_writing_cid,
+    )
     if not dlg.exec():
         return
     cid = dlg.selected_card_id
@@ -1370,10 +1385,29 @@ def _open_pdf_quick_jump() -> None:
     try:
         if dlg.selected_card_type == "EPUB":
             _open_epub_card(cid)
+        elif dlg.selected_card_type == "WRITING":
+            _open_writing_card(cid, relpath=dlg.selected_relpath)
         else:
             _open_pdf_card(cid, preserve_history=dlg.preserve_history)
     except Exception as e:
         showInfo(f"Could not open document:\n{e}")
+
+
+def _open_writing_card(card_id: int, *, relpath: str = "") -> None:
+    global _last_opened_writing_cid
+    card = mw.col.get_card(card_id)
+    note = mw.col.get_note(card.nid)
+    title = str(note["Title"] or "").strip()
+    stored_relpath = str(relpath or note[WRITING_FILE_FIELD] or "").strip()
+    if not stored_relpath:
+        stored_relpath = build_writing_relpath(title=title or f"writing-{card.id}")
+        try:
+            note[WRITING_FILE_FIELD] = stored_relpath
+            mw.col.update_note(note)
+        except Exception:
+            pass
+    _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath)
+    _last_opened_writing_cid = int(card.id)
 
 
 def _open_pdf_card(
@@ -2325,6 +2359,43 @@ def addWritingFunction() -> None:
         tooltip(f"Markdown card '{title}' added to {dlg.deck_name}.")
     except Exception as e:
         showInfo(f"Failed to add markdown card:\n{e}")
+
+
+def addLocalFileFunction() -> None:
+    """Incremento -> Add Content -> Add Local File"""
+    from .frontend.add_local_file_dialog import AddLocalFileDialog
+
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    dlg = AddLocalFileDialog(deck_names, default_deck="Topics", parent=mw)
+    if not dlg.exec():
+        return
+
+    source_path = dlg.source_path
+    if not source_path:
+        showInfo("Please choose a local file.")
+        return
+    if not os.path.isfile(source_path):
+        showInfo("Selected local file does not exist.")
+        return
+
+    title = dlg.title or os.path.splitext(os.path.basename(source_path))[0]
+
+    try:
+        add_local_file_card(
+            _ADDON_DIR,
+            _active_profile(),
+            mw.col,
+            source_path=source_path,
+            title=title,
+            deck_name=dlg.deck_name,
+            tags=dlg.tags,
+            mode=dlg.storage_mode,
+            note_text=dlg.note_text,
+        )
+        mw.col.reset()
+        tooltip(f"Local file card '{title}' added to {dlg.deck_name}.")
+    except Exception as e:
+        showInfo(f"Failed to add local file card:\n{e}")
 
 
 def addWebpageFunction() -> None:
@@ -3787,6 +3858,11 @@ def _build_incremento_menu() -> None:
     _addContentMenu.addAction(_addWebAction)
     _register_shortcut_action("add_web_page", _addWebAction)
 
+    _addLocalFileAction = QAction("Add Local File", mw)
+    qconnect(_addLocalFileAction.triggered, addLocalFileFunction)
+    _addContentMenu.addAction(_addLocalFileAction)
+    _register_shortcut_action("add_local_file", _addLocalFileAction)
+
     _downloadCurrentVideoAction = QAction("Download Current Video Locally", mw)
     qconnect(
         _downloadCurrentVideoAction.triggered,
@@ -3889,7 +3965,7 @@ def _build_incremento_menu() -> None:
     _menu.addAction(_statsAction)
     _register_shortcut_action("statistics", _statsAction)
 
-    _quickOpenPdfAction = QAction("Quick Open Docs", mw)
+    _quickOpenPdfAction = QAction("Quick Open Content", mw)
     qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
     _menu.addAction(_quickOpenPdfAction)
     _register_shortcut_action("quick_open_pdf", _quickOpenPdfAction)
