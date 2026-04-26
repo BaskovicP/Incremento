@@ -340,7 +340,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             pdf_card_id INTEGER NOT NULL,
             page        INTEGER NOT NULL,
             note_id     INTEGER NOT NULL,
-            excerpt     TEXT    NOT NULL DEFAULT ''
+            excerpt     TEXT    NOT NULL DEFAULT '',
+            pdf_filename TEXT   NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_pcs_card_page
             ON pdf_card_sources (pdf_card_id, page);
@@ -518,6 +519,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         conn,
         "epub_highlights",
         "note",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "pdf_card_sources",
+        "pdf_filename",
         "TEXT NOT NULL DEFAULT ''",
     )
 
@@ -1416,13 +1423,19 @@ def export_highlights_json(addon_dir: str, profile: str) -> str:
 
 
 def add_pdf_card_source(
-    addon_dir: str, profile: str, pdf_card_id: int, page: int, note_id: int, excerpt: str = ""
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    page: int,
+    note_id: int,
+    excerpt: str = "",
+    pdf_filename: str = "",
 ) -> None:
     """Record that note_id was created while reading pdf_card_id at page."""
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT INTO pdf_card_sources (pdf_card_id, page, note_id, excerpt) VALUES (?, ?, ?, ?)",
-        (pdf_card_id, page, note_id, excerpt),
+        "INSERT INTO pdf_card_sources (pdf_card_id, page, note_id, excerpt, pdf_filename) VALUES (?, ?, ?, ?, ?)",
+        (pdf_card_id, page, note_id, excerpt, str(pdf_filename or "").strip()),
     )
     conn.commit()
 
@@ -1465,6 +1478,37 @@ def get_pdf_card_sources_up_to_page(
         }
         for row in rows
     ]
+
+
+def get_pdf_card_source_filename(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    page: int,
+) -> str:
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT pdf_filename FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? AND page = ? AND pdf_filename != '' "
+            "ORDER BY id LIMIT 1",
+            (int(pdf_card_id), int(page)),
+        )
+        .fetchone()
+    )
+    return str(row[0]).strip() if row and row[0] else ""
+
+
+def get_pdf_referenced_filenames(addon_dir: str, profile: str) -> list[str]:
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT DISTINCT pdf_filename FROM pdf_card_sources "
+            "WHERE pdf_filename != '' ORDER BY pdf_filename"
+        )
+        .fetchall()
+    )
+    return [str(row[0]).strip() for row in rows if str(row[0]).strip()]
 
 
 def get_pdf_page_card_counts(addon_dir: str, profile: str, pdf_card_id: int) -> dict:

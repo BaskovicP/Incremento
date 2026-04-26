@@ -168,7 +168,8 @@ export function usePdfRender() {
    * NOTE: does NOT touch window._incPdfHighlights — caller must handle that.
    */
   const startViewer = useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
-    cardIdRef.current   = cardId;
+    const normalizedCardId = Number(cardId);
+    cardIdRef.current   = Number.isFinite(normalizedCardId) && normalizedCardId > 0 ? normalizedCardId : 0;
     filenameRef.current = filename;
     pageRef.current     = startPage || 1;
     const z = parseFloat(startZoom) || 1.0;

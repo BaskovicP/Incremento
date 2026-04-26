@@ -134,6 +134,9 @@ def on_pdf_view_started(card_id: int) -> None:
     global _active_dock_cid, _active_dock_started
     if mw.state == "review":
         return
+    if int(card_id or 0) <= 0:
+        _stop_active_dock()
+        return
     if _active_dock_cid == card_id and _active_dock_started is not None:
         return
     _stop_active_dock()
@@ -143,6 +146,9 @@ def on_pdf_view_started(card_id: int) -> None:
 
 def on_pdf_view_stopped(card_id: int | None = None) -> None:
     if mw.state == "review":
+        return
+    if card_id is not None and int(card_id or 0) <= 0:
+        _stop_active_dock()
         return
     if (
         card_id is not None

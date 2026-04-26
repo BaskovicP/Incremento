@@ -32,6 +32,7 @@ from .frontend.stats_dialog import StatsDialog
 from .backend.scheduler_config import load_scheduler_config
 from .backend.pdf_manager import (
     PDF_NOTE_TYPE,
+    find_live_pdf_card_by_filename,
     get_page,
     get_zoom,
     get_read_page,
@@ -68,6 +69,11 @@ from .backend.note_metadata import (
     hidden_field_values,
     matches_hidden_field_reference,
     visible_field_names,
+)
+from .backend.db import (
+    get_connection,
+    get_pdf_card_source_filename,
+    get_pdf_referenced_filenames,
 )
 from .backend.priority_manager import (
     configured_show_priority_dialog_after_answer,
@@ -1097,6 +1103,71 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     menu.addMenu(submenu)
 
 
+def _open_pdf_reference(card_id: int, page: int, filename: str = "") -> None:
+    clean_filename = str(filename or "").strip()
+    live_card_id = int(card_id or 0)
+    try:
+        if live_card_id > 0:
+            card = mw.col.get_card(live_card_id)
+            note = mw.col.get_note(card.nid)
+            note_filename = str(note["PDF_Filename"] or "").strip()
+            if note_filename:
+                clean_filename = note_filename
+                try:
+                    conn = get_connection(_ADDON_DIR, _active_profile())
+                    conn.execute(
+                        "UPDATE pdf_card_sources SET pdf_filename = ? "
+                        "WHERE pdf_card_id = ? AND pdf_filename = ''",
+                        (clean_filename, live_card_id),
+                    )
+                    conn.commit()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    if not clean_filename:
+        try:
+            clean_filename = get_pdf_card_source_filename(_ADDON_DIR, _active_profile(), live_card_id, page)
+        except Exception:
+            clean_filename = ""
+    if not clean_filename:
+        try:
+            clean_filename = get_pdf_card_source_filename(_ADDON_DIR, _active_profile(), live_card_id, 0)
+        except Exception:
+            clean_filename = ""
+
+    if not clean_filename and live_card_id <= 0:
+        return
+
+    if clean_filename:
+        try:
+            resolved_card_id = find_live_pdf_card_by_filename(mw.col, clean_filename)
+            if resolved_card_id is not None:
+                live_card_id = resolved_card_id
+        except Exception:
+            pass
+
+    zoom = get_zoom(_ADDON_DIR, _active_profile(), live_card_id or card_id)
+    if live_card_id > 0:
+        _pdf_dock_mod.show_pdf_in_dock(
+            live_card_id,
+            clean_filename,
+            page,
+            zoom,
+            via_link=True,
+        )
+    else:
+        _pdf_dock_mod.show_pdf_in_dock(
+            0,
+            clean_filename,
+            page,
+            zoom,
+            via_link=True,
+            offer_due_review_prompt=False,
+        )
+
+
 def _on_js_message(handled, message, context) -> tuple:
     if not isinstance(message, str) or not message.startswith("incremento_"):
         return handled
@@ -1157,19 +1228,23 @@ def _on_js_message(handled, message, context) -> tuple:
             pass
         return (True, None)
 
+    if message.startswith("incremento_open_pdf_ref:"):
+        try:
+            data = json.loads(message[len("incremento_open_pdf_ref:") :])
+            _open_pdf_reference(
+                int(data.get("card_id") or 0),
+                int(data.get("page") or 1),
+                str(data.get("filename") or ""),
+            )
+        except Exception:
+            pass
+        return (True, None)
+
     if message.startswith("incremento_open_pdf:"):
         parts = message.split(":")
         if len(parts) == 3:
             try:
-                card_id = int(parts[1])
-                page = int(parts[2])
-                card = mw.col.get_card(card_id)
-                note = mw.col.get_note(card.nid)
-                filename = note["PDF_Filename"]
-                zoom = get_zoom(_ADDON_DIR, _active_profile(), card_id)
-                _pdf_dock_mod.show_pdf_in_dock(
-                    card_id, filename, page, zoom, via_link=True
-                )
+                _open_pdf_reference(int(parts[1]), int(parts[2]))
             except Exception:
                 pass
         return (True, None)
@@ -3106,7 +3181,8 @@ def _all_live_note_ids_any_profile() -> set[int]:
 
 def _profiles_referencing_files(candidates: list[str], kind: str) -> dict[str, list[str]]:
     """
-    For each candidate filename, return profile names that reference it in notes.flds.
+    For each candidate filename, return profile names that reference it in notes.flds
+    or in profile-local source tables.
     kind: "pdf" or "video".
     """
     refs: dict[str, list[str]] = {}
@@ -3130,6 +3206,13 @@ def _profiles_referencing_files(candidates: list[str], kind: str) -> dict[str, l
                     if row:
                         hit = True
                         break
+                if not hit and kind == "pdf":
+                    row = conn.execute(
+                        "SELECT 1 FROM pdf_card_sources WHERE pdf_filename = ? LIMIT 1",
+                        (fname,),
+                    ).fetchone()
+                    if row:
+                        hit = True
                 if hit:
                     refs.setdefault(fname, []).append(profile_name)
         except Exception:
@@ -3149,6 +3232,31 @@ def _partition_any_profile_ties(candidates: list[str], kind: str) -> tuple[list[
     protected = sorted([f for f in candidates if f in refs_map])
     deletable = [f for f in candidates if f not in refs_map]
     return deletable, protected, refs_map
+
+
+def _backfill_pdf_source_filenames() -> None:
+    try:
+        conn = get_connection(_ADDON_DIR, _active_profile())
+        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+        for nid in note_ids:
+            try:
+                note = mw.col.get_note(nid)
+                filename = str(note["PDF_Filename"] or "").strip()
+                if not filename:
+                    continue
+                card_ids = mw.col.find_cards(f"nid:{nid}")
+                if not card_ids:
+                    continue
+                conn.execute(
+                    "UPDATE pdf_card_sources SET pdf_filename = ? "
+                    "WHERE pdf_card_id = ? AND pdf_filename = ''",
+                    (filename, int(card_ids[0])),
+                )
+            except Exception:
+                continue
+        conn.commit()
+    except Exception:
+        pass
 
 
 def _count_stale_progress_rows() -> dict[str, int]:
@@ -3206,6 +3314,7 @@ def _count_stale_ocr_rows() -> dict[str, int]:
 def _scan_orphan_pdfs() -> tuple[str, list[str], int]:
     from .backend.pdf_manager import get_pdf_dir
 
+    _backfill_pdf_source_filenames()
     pdf_dir = get_pdf_dir()
     disk_files = {
         f for f in os.listdir(pdf_dir)
@@ -3214,13 +3323,20 @@ def _scan_orphan_pdfs() -> tuple[str, list[str], int]:
     if not disk_files:
         return pdf_dir, [], 0
 
-    note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
     referenced = set()
-    for nid in note_ids:
-        note = mw.col.get_note(nid)
-        fname = note["PDF_Filename"].strip()
-        if fname:
-            referenced.add(fname)
+    try:
+        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+        for nid in note_ids:
+            note = mw.col.get_note(nid)
+            fname = str(note["PDF_Filename"] or "").strip()
+            if fname:
+                referenced.add(fname)
+    except Exception:
+        pass
+    try:
+        referenced.update(get_pdf_referenced_filenames(_ADDON_DIR, _active_profile()))
+    except Exception:
+        pass
 
     orphans = sorted(disk_files - referenced)
     total_bytes = 0
@@ -3448,6 +3564,7 @@ def cleanupOrphanPdfsFunction() -> None:
     """Delete PDF files in user_files/<profile>/pdfs/ that no card references."""
     from .backend.pdf_manager import get_pdf_dir
 
+    _backfill_pdf_source_filenames()
     pdf_dir = get_pdf_dir()
 
     # All files currently on disk
@@ -3473,6 +3590,7 @@ def cleanupOrphanPdfsFunction() -> None:
             fname = note["PDF_Filename"].strip()
             if fname:
                 referenced.add(fname)
+        referenced.update(get_pdf_referenced_filenames(_ADDON_DIR, _active_profile()))
     except Exception as e:
         showInfo(f"Could not query PDF cards:\n{e}")
         return

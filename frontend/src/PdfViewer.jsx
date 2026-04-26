@@ -219,6 +219,7 @@ export default function PdfViewer() {
   const allowedMaxPage = limitStatus?.allowed_max_page == null ? null : Number(limitStatus.allowed_max_page);
   const limitReached = !!limitStatus?.limit_reached;
   const overrideEnabled = !!limitStatus?.override_enabled;
+  const hasPdfCard = Number(cardIdRef.current || 0) > 0;
 
   const clearLimitNotice = useCallback(() => setLimitNotice(null), []);
 
@@ -848,6 +849,7 @@ export default function PdfViewer() {
 
         {/* ── Row 4: Tools + card management ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+          {hasPdfCard && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             {Object.keys(HL_COLORS).map(c => (
               <button
@@ -901,23 +903,23 @@ export default function PdfViewer() {
                 fontWeight: showHighlightsPanel ? 'bold' : 'normal',
               }}
               onClick={() => {
-                setHighlightsScope('all');
-                setShowHighlightsPanel(o => !o);
-              }}
+              setHighlightsScope('all');
+              setShowHighlightsPanel(o => !o);
+            }}
             >
               &#x1F4D1; Highlights ({highlights.length})
             </button>
           </span>
+          )}
           <span style={{ width: 1, height: 20, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          {hasPdfCard && (
+          <>
           <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
             &#x1F9E0; Review Due
           </button>
           <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
             &#x1F4D6; Reading Limit
-          </button>
-          <button onClick={() => window.pycmd('incremento_open_add_card')}>
-            &#43; Add Card
           </button>
           {pageCards.length > 0 && (
             <button
@@ -946,8 +948,13 @@ export default function PdfViewer() {
                 window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
               }
             }}
-          >
-            ✓ Finished Reading
+              >
+              ✓ Finished Reading
+          </button>
+          </>
+          )}
+          <button onClick={() => window.pycmd('incremento_open_add_card')}>
+            &#43; Add Card
           </button>
           </span>
         </div>
@@ -955,12 +962,12 @@ export default function PdfViewer() {
       </div>
 
       {/* Card preview panel */}
-      {showCardPanel && pageCards.length > 0 && (
+      {hasPdfCard && showCardPanel && pageCards.length > 0 && (
         <PageCardPanel page={page} pageCards={pageCards} />
       )}
 
       {/* Highlights panel */}
-      {showHighlightsPanel && (
+      {hasPdfCard && showHighlightsPanel && (
         <div
           style={{
             position: 'fixed',

@@ -9,12 +9,57 @@ from PyQt6.QtPdf import QPdfDocument
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_FILENAME_STEM = 80
+_PDF_DISPLAY_LABEL_MAX_LEN = 48
+_PDF_UUID_SUFFIX_RE = re.compile(r"^(?P<label>.+)-(?P<uuid>[0-9a-f]{32})$", re.IGNORECASE)
 
 
 def _safe_pdf_stem(raw_name: str, fallback: str = "document") -> str:
     stem = _SAFE_FILENAME_RE.sub("_", str(raw_name or "").strip()).strip("._-")
     stem = stem[:_MAX_FILENAME_STEM].strip("._-")
     return stem or fallback
+
+
+def pdf_display_label_from_filename(filename: str, fallback: str = "PDF") -> str:
+    """Return a short readable label for a stored PDF filename."""
+    stem = os.path.splitext(os.path.basename(str(filename or "").strip()))[0].strip("._-")
+    if not stem:
+        return fallback
+
+    match = _PDF_UUID_SUFFIX_RE.match(stem)
+    if match:
+        stem = match.group("label").strip("._-")
+
+    stem = re.sub(r"[_-]+", " ", stem).strip()
+    if len(stem) > _PDF_DISPLAY_LABEL_MAX_LEN:
+        stem = stem[:_PDF_DISPLAY_LABEL_MAX_LEN].rstrip(" ._-")
+    return stem or fallback
+
+
+def find_live_pdf_card_by_filename(col, filename: str) -> int | None:
+    clean_filename = os.path.basename(str(filename or "").strip())
+    if not clean_filename:
+        return None
+    try:
+        note_ids = col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+    except Exception:
+        return None
+    for nid in note_ids:
+        try:
+            note = col.get_note(nid)
+            stored = str(note["PDF_Filename"] or "").strip()
+        except Exception:
+            continue
+        if os.path.basename(stored) == clean_filename:
+            try:
+                cids = col.find_cards(f"nid:{nid}")
+            except Exception:
+                cids = []
+            if cids:
+                try:
+                    return int(cids[0])
+                except Exception:
+                    return None
+    return None
 
 try:
     from .db import (

@@ -59,6 +59,7 @@ try:
         get_pdf_dir,
         get_zoom,
         get_read_page,
+        pdf_display_label_from_filename,
         replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
@@ -79,6 +80,7 @@ except ImportError:
         get_pdf_dir,
         get_zoom,
         get_read_page,
+        pdf_display_label_from_filename,
         replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
@@ -133,7 +135,8 @@ _pdf_preserve_history = False
 
 def current_pdf_card_id() -> int | None:
     try:
-        return int(_current_pdf_card_id) if _current_pdf_card_id is not None else None
+        card_id = int(_current_pdf_card_id) if _current_pdf_card_id is not None else 0
+        return card_id if card_id > 0 else None
     except Exception:
         return None
 _pdf_shortcuts = []
@@ -349,10 +352,17 @@ def pdf_citation() -> str:
     if not _current_pdf_card_id or not _current_pdf_filename:
         return ""
     page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
-    name = os.path.splitext(_current_pdf_filename)[0]
-    cmd = f"incremento_open_pdf:{_current_pdf_card_id}:{page}"
+    name = pdf_display_label_from_filename(_current_pdf_filename)
+    cmd = "incremento_open_pdf_ref:" + json.dumps(
+        {
+            "card_id": int(_current_pdf_card_id),
+            "filename": str(_current_pdf_filename or "").strip(),
+            "page": int(page),
+        },
+        ensure_ascii=False,
+    )
     return (
-        f"<a onclick=\"pycmd('{cmd}'); return false;\" "
+        f"<a onclick=\"pycmd({json.dumps(cmd)}); return false;\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
         f"Page {page}. of {name}</a>"
     )
@@ -725,31 +735,32 @@ class _PdfDockPage(QWebEnginePage):
                 try:
                     cid = int(parts[1])
                     pg = int(parts[2])
-                    current_pg = get_page(_ADDON_DIR, _active_profile(), cid)
-                    status_before = _current_pdf_limit_status(cid, current_page=current_pg)
-                    allowed_max = status_before.get("allowed_max_page")
-                    is_blocking = bool(
-                        status_before.get("enabled")
-                        and status_before.get("enforcement_mode") in {"soft_lock", "hard_stop"}
-                        and not status_before.get("override_enabled")
-                        and allowed_max is not None
-                        and pg > current_pg
-                        and pg > int(allowed_max)
-                    )
-                    if is_blocking:
-                        _push_pdf_limit_status(status_before)
-                        return
-                    if not _pdf_via_link and not _pdf_preserve_history:
-                        set_page(_ADDON_DIR, _active_profile(), cid, pg)
-                    _timer_mod.record_pdf_page_read(cid, pg)
-                    _push_pdf_limit_status(_current_pdf_limit_status(cid, current_page=pg))
+                    if cid > 0:
+                        current_pg = get_page(_ADDON_DIR, _active_profile(), cid)
+                        status_before = _current_pdf_limit_status(cid, current_page=current_pg)
+                        allowed_max = status_before.get("allowed_max_page")
+                        is_blocking = bool(
+                            status_before.get("enabled")
+                            and status_before.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                            and not status_before.get("override_enabled")
+                            and allowed_max is not None
+                            and pg > current_pg
+                            and pg > int(allowed_max)
+                        )
+                        if is_blocking:
+                            _push_pdf_limit_status(status_before)
+                            return
+                        if not _pdf_via_link and not _pdf_preserve_history:
+                            set_page(_ADDON_DIR, _active_profile(), cid, pg)
+                        _timer_mod.record_pdf_page_read(cid, pg)
+                        _push_pdf_limit_status(_current_pdf_limit_status(cid, current_page=pg))
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_ZOOM):
             parts = msg.split(":")
             if len(parts) == 3:
                 try:
-                    if not _pdf_preserve_history:
+                    if int(parts[1]) > 0 and not _pdf_preserve_history:
                         set_zoom(_ADDON_DIR, _active_profile(), int(parts[1]), float(parts[2]))
                 except ValueError:
                     pass
@@ -771,21 +782,22 @@ class _PdfDockPage(QWebEnginePage):
                 try:
                     cid = int(parts[1])
                     read_page = int(parts[2])
-                    status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
-                    allowed_max = status.get("allowed_max_page")
-                    is_blocking = bool(
-                        status.get("enabled")
-                        and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
-                        and not status.get("override_enabled")
-                        and allowed_max is not None
-                        and read_page > int(allowed_max)
-                    )
-                    if is_blocking:
+                    if cid > 0:
+                        status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
+                        allowed_max = status.get("allowed_max_page")
+                        is_blocking = bool(
+                            status.get("enabled")
+                            and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                            and not status.get("override_enabled")
+                            and allowed_max is not None
+                            and read_page > int(allowed_max)
+                        )
+                        if is_blocking:
+                            _push_pdf_limit_status(status)
+                            return
+                        if not _pdf_preserve_history:
+                            set_read_page(_ADDON_DIR, _active_profile(), cid, read_page)
                         _push_pdf_limit_status(status)
-                        return
-                    if not _pdf_preserve_history:
-                        set_read_page(_ADDON_DIR, _active_profile(), cid, read_page)
-                    _push_pdf_limit_status(status)
                 except ValueError:
                     pass
         elif msg.startswith(_MSG_CMD1):
@@ -815,32 +827,37 @@ class _PdfDockPage(QWebEnginePage):
                 pass
         elif msg.startswith(_MSG_LIMIT_SETTINGS):
             try:
-                _open_pdf_limit_dialog(int(msg[len(_MSG_LIMIT_SETTINGS) :]))
+                cid = int(msg[len(_MSG_LIMIT_SETTINGS) :])
+                if cid > 0:
+                    _open_pdf_limit_dialog(cid)
             except Exception as e:
                 showInfo(f"Could not edit PDF reading limit:\n{e}")
         elif msg.startswith(_MSG_LIMIT_OVERRIDE):
             try:
                 cid = int(msg[len(_MSG_LIMIT_OVERRIDE) :])
-                status = set_pdf_daily_limit_override(
-                    _ADDON_DIR,
-                    _active_profile(),
-                    cid,
-                    enabled=True,
-                    current_page=get_page(_ADDON_DIR, _active_profile(), cid),
-                )
-                _push_pdf_limit_status(status)
-                tooltip("PDF reading limit overridden for today.")
+                if cid > 0:
+                    status = set_pdf_daily_limit_override(
+                        _ADDON_DIR,
+                        _active_profile(),
+                        cid,
+                        enabled=True,
+                        current_page=get_page(_ADDON_DIR, _active_profile(), cid),
+                    )
+                    _push_pdf_limit_status(status)
+                    tooltip("PDF reading limit overridden for today.")
             except Exception as e:
                 showInfo(f"Could not override PDF reading limit:\n{e}")
         elif msg.startswith(_MSG_DUE_REVIEW):
             try:
                 parts = msg.split(":")
                 if len(parts) == 3:
-                    _offer_due_review_for_pdf(
-                        int(parts[1]),
-                        current_page=int(parts[2]),
-                        force=True,
-                    )
+                    cid = int(parts[1])
+                    if cid > 0:
+                        _offer_due_review_for_pdf(
+                            cid,
+                            current_page=int(parts[2]),
+                            force=True,
+                        )
             except Exception as e:
                 showInfo(f"Could not open PDF due-card review:\n{e}")
         elif msg.startswith(_MSG_HL_NOTE):
@@ -856,11 +873,12 @@ class _PdfDockPage(QWebEnginePage):
         elif msg.startswith(_MSG_FINISHED):
             try:
                 card_id = int(msg[len(_MSG_FINISHED) :])
-                mw.col.sched.suspend_cards([card_id])
-                mw.col.reset()
-                tooltip("PDF card suspended — it won't appear in future sessions.")
-                if _pdf_dock:
-                    _pdf_dock.hide()
+                if card_id > 0:
+                    mw.col.sched.suspend_cards([card_id])
+                    mw.col.reset()
+                    tooltip("PDF card suspended — it won't appear in future sessions.")
+                    if _pdf_dock:
+                        _pdf_dock.hide()
             except Exception as e:
                 showInfo(f"Could not suspend card:\n{e}")
         elif msg.startswith(_MSG_OPEN_CARD):
@@ -881,8 +899,12 @@ class _PdfDockPage(QWebEnginePage):
                 if len(parts) == 3:
                     cid = int(parts[1])
                     page = int(parts[2])
-                    cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), cid, page)
-                    counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), cid)
+                    if cid > 0:
+                        cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), cid, page)
+                        counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), cid)
+                    else:
+                        cards = []
+                        counts = {}
                     data = {"page": page, "cards": cards, "pageCounts": counts}
                     js = (
                         "window.incrementoReceivePageCards && "
@@ -1211,7 +1233,11 @@ def show_pdf_in_dock(
     offer_due_review_prompt=True,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
-    _current_pdf_card_id = card_id
+    try:
+        normalized_card_id = int(card_id)
+    except Exception:
+        normalized_card_id = 0
+    _current_pdf_card_id = normalized_card_id if normalized_card_id > 0 else 0
     _current_pdf_filename = filename
     _pdf_via_link = via_link
     _pdf_preserve_history = bool(preserve_history)
@@ -1229,7 +1255,7 @@ def show_pdf_in_dock(
 
     if _cb_pdf_view_started:
         try:
-            _cb_pdf_view_started(card_id)
+            _cb_pdf_view_started(_current_pdf_card_id)
         except Exception:
             pass
 
@@ -1346,7 +1372,15 @@ def on_add_cards_did_add_note(note) -> None:
             parts.append(plain)
     excerpt = " / ".join(parts)[:200]
     try:
-        add_pdf_card_source(_ADDON_DIR, _active_profile(), _current_pdf_card_id, page, note.id, excerpt)
+        add_pdf_card_source(
+            _ADDON_DIR,
+            _active_profile(),
+            _current_pdf_card_id,
+            page,
+            note.id,
+            excerpt,
+            str(_current_pdf_filename or "").strip(),
+        )
     except Exception:
         pass
     if _pdf_dock is None:

@@ -32,6 +32,7 @@ from note_metadata import (
 sys.modules.setdefault("db", db)
 
 import pdf_manager  # noqa: E402
+from pdf_manager import pdf_display_label_from_filename  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +112,33 @@ class TestCopyToPdfDir:
         base, _, suffix = stem.rpartition("-")
         assert len(base) <= 80
         assert len(suffix) == 32
+
+
+class TestPdfDisplayLabelFromFilename:
+    def test_strips_uuid_suffix_and_extension(self):
+        filename = f"very_long_pdf_title_for_reading-{('a' * 32)}.pdf"
+
+        assert pdf_display_label_from_filename(filename) == "very long pdf title for reading"
+
+    def test_truncates_overlong_labels(self):
+        filename = f"{'x' * 120}-{('b' * 32)}.pdf"
+
+        assert pdf_display_label_from_filename(filename) == "x" * 48
+
+    def test_keeps_short_readable_names(self):
+        assert pdf_display_label_from_filename("chapter_01-intro.pdf") == "chapter 01 intro"
+
+
+class TestFindLivePdfCardByFilename:
+    def test_finds_matching_card_id_by_stored_filename(self):
+        note = MagicMock()
+        note.__getitem__.side_effect = lambda key: {"PDF_Filename": "paper.pdf"}[key]
+        col = MagicMock()
+        col.find_notes.return_value = [11]
+        col.get_note.return_value = note
+        col.find_cards.return_value = [123]
+
+        assert pdf_manager.find_live_pdf_card_by_filename(col, "paper.pdf") == 123
 
 
 class TestAddPdfCard:

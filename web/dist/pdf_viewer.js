@@ -7180,7 +7180,8 @@
       }).catch((e) => setError("Load error: " + e));
     }, [renderPage]);
     const startViewer = reactExports.useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
-      cardIdRef.current = cardId;
+      const normalizedCardId = Number(cardId);
+      cardIdRef.current = Number.isFinite(normalizedCardId) && normalizedCardId > 0 ? normalizedCardId : 0;
       filenameRef.current = filename;
       pageRef.current = startPage || 1;
       const z = parseFloat(startZoom) || 1;
@@ -7647,6 +7648,7 @@
     const allowedMaxPage = (limitStatus == null ? void 0 : limitStatus.allowed_max_page) == null ? null : Number(limitStatus.allowed_max_page);
     const limitReached = !!(limitStatus == null ? void 0 : limitStatus.limit_reached);
     const overrideEnabled = !!(limitStatus == null ? void 0 : limitStatus.override_enabled);
+    const hasPdfCard = Number(cardIdRef.current || 0) > 0;
     const clearLimitNotice = reactExports.useCallback(() => setLimitNotice(null), []);
     const showHighlightNote = reactExports.useCallback((highlight, event) => {
       const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
@@ -8198,7 +8200,7 @@
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 14, flexWrap: "wrap" }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
+                  hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
                     Object.keys(HL_COLORS).map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
@@ -8285,58 +8287,60 @@
                   ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 1, height: 20, background: "rgba(128,128,128,0.4)", display: "inline-block" } }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" }),
-                    pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        title: `${pageCards.length} card${pageCards.length > 1 ? "s" : ""} created on this page — click to preview`,
-                        onClick: () => setShowCardPanel((o) => !o),
-                        style: {
-                          background: showCardPanel ? "rgba(74,144,217,0.25)" : "rgba(74,144,217,0.12)",
-                          border: "1px solid rgba(74,144,217,0.6)",
-                          borderRadius: 4,
-                          color: "rgb(74,144,217)",
-                          cursor: "pointer",
-                          padding: "2px 8px",
-                          fontSize: 12,
-                          fontWeight: "bold"
-                        },
-                        children: [
-                          "📄 ",
-                          pageCards.length
-                        ]
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        title: "Mark this PDF as finished reading — suspends the card so it won't appear again",
-                        style: {
-                          background: "transparent",
-                          border: "1px solid rgba(220,50,50,0.45)",
-                          borderRadius: 4,
-                          color: "rgba(220,70,70,0.9)",
-                          cursor: "pointer",
-                          padding: "2px 8px",
-                          fontSize: 12
-                        },
-                        onClick: () => {
-                          if (window.confirm("Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.")) {
-                            window.pycmd("incremento_pdf_finished:" + cardIdRef.current);
-                          }
-                        },
-                        children: "✓ Finished Reading"
-                      }
-                    )
+                    hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" }),
+                      pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          title: `${pageCards.length} card${pageCards.length > 1 ? "s" : ""} created on this page — click to preview`,
+                          onClick: () => setShowCardPanel((o) => !o),
+                          style: {
+                            background: showCardPanel ? "rgba(74,144,217,0.25)" : "rgba(74,144,217,0.12)",
+                            border: "1px solid rgba(74,144,217,0.6)",
+                            borderRadius: 4,
+                            color: "rgb(74,144,217)",
+                            cursor: "pointer",
+                            padding: "2px 8px",
+                            fontSize: 12,
+                            fontWeight: "bold"
+                          },
+                          children: [
+                            "📄 ",
+                            pageCards.length
+                          ]
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          title: "Mark this PDF as finished reading — suspends the card so it won't appear again",
+                          style: {
+                            background: "transparent",
+                            border: "1px solid rgba(220,50,50,0.45)",
+                            borderRadius: 4,
+                            color: "rgba(220,70,70,0.9)",
+                            cursor: "pointer",
+                            padding: "2px 8px",
+                            fontSize: 12
+                          },
+                          onClick: () => {
+                            if (window.confirm("Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.")) {
+                              window.pycmd("incremento_pdf_finished:" + cardIdRef.current);
+                            }
+                          },
+                          children: "✓ Finished Reading"
+                        }
+                      )
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" })
                   ] })
                 ] })
               ]
             }
           ),
-          showCardPanel && pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(PageCardPanel, { page, pageCards }),
-          showHighlightsPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          hasPdfCard && showCardPanel && pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(PageCardPanel, { page, pageCards }),
+          hasPdfCard && showHighlightsPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
               style: {

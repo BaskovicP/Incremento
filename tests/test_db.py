@@ -834,11 +834,21 @@ class TestPdfCardSources:
         _reset_db_module()
 
     def test_add_and_retrieve_card_source(self):
-        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=1, page=3, note_id=999, excerpt="test excerpt")
+        db.add_pdf_card_source(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=1,
+            page=3,
+            note_id=999,
+            excerpt="test excerpt",
+            pdf_filename="paper.pdf",
+        )
         sources = db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=1, page=3)
         assert len(sources) == 1
         assert sources[0]["note_id"] == 999
         assert sources[0]["excerpt"] == "test excerpt"
+        assert db.get_pdf_card_source_filename(self.addon_dir, "TestProfile", 1, 3) == "paper.pdf"
+        assert db.get_pdf_referenced_filenames(self.addon_dir, "TestProfile") == ["paper.pdf"]
 
     def test_get_pdf_page_card_counts(self):
         db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=1, note_id=101)
