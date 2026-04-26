@@ -16,6 +16,7 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QEvent,
+    QInputDialog,
     QMenu,
     QObject,
     QShortcut,
@@ -84,6 +85,9 @@ from .backend.custom_schedule import (
     configured_custom_schedule_presets as _configured_custom_schedule_presets,
     format_custom_schedule_rule as _format_custom_schedule_rule,
     save_custom_schedule_rule as _save_custom_schedule_rule,
+)
+from .backend.topic_a_factor_bulk import (
+    apply_bulk_topic_a_factor as _apply_bulk_topic_a_factor,
 )
 from .backend.web_manager import (
     configured_remember_browser_card_scroll,
@@ -973,6 +977,67 @@ def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
         )
 
 
+def _open_browser_a_factor_dialog(browser, card_ids: list[int]) -> None:
+    normalized_ids = sorted({int(card_id) for card_id in (card_ids or [])})
+    if not normalized_ids:
+        showInfo("Select one or more Browser rows first.")
+        return
+
+    value, accepted = QInputDialog.getDouble(
+        mw,
+        "Set A-Factor",
+        "A-Factor:",
+        3.5,
+        1.1,
+        100.0,
+        3,
+    )
+    if not accepted:
+        return
+
+    try:
+        result = _apply_bulk_topic_a_factor(
+            _ADDON_DIR,
+            _active_profile(),
+            normalized_ids,
+            value,
+            get_card=mw.col.get_card,
+            is_topic_card=_is_topic_card,
+        )
+    except ValueError as exc:
+        showInfo(str(exc))
+        return
+
+    updated = int(result.get("updated") or 0)
+    skipped = int(result.get("skipped") or 0)
+    errors = int(result.get("errors") or 0)
+    if not updated:
+        if errors:
+            showInfo(
+                f"No topic cards were updated. {errors} selected "
+                f"card{'s' if errors != 1 else ''} failed to load or save."
+            )
+        else:
+            showInfo("No topic cards found in the selected Browser rows.")
+        return
+
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+    try:
+        browser.search()
+    except Exception:
+        pass
+
+    msg = f"Set A-Factor {float(value):.3f} on {updated} topic card{'s' if updated != 1 else ''}."
+    if skipped:
+        msg += f" Skipped {skipped} non-topic card{'s' if skipped != 1 else ''}."
+    if errors:
+        msg += f" {errors} selected card{'s' if errors != 1 else ''} failed."
+    tooltip(msg)
+
+
 def _on_browser_context_menu(browser, menu: QMenu) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
@@ -983,6 +1048,7 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     count_label = f"{len(card_ids)} selected card{'s' if len(card_ids) != 1 else ''}"
     topic_action = QAction(f"Make Topic ({count_label})", submenu)
     item_action = QAction(f"Make Item ({count_label})", submenu)
+    a_factor_action = QAction(f"Set A-Factor… ({count_label})", submenu)
     schedule_action = QAction(f"Custom Schedule… ({count_label})", submenu)
     ocr_action = QAction(f"OCR Image Text ({count_label})", submenu)
     hidden_fields_action = QAction(f"Show Hidden Fields ({count_label})", submenu)
@@ -1006,6 +1072,13 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         lambda _checked=False, card_ids=list(card_ids): _open_custom_schedule_dialog(card_ids),
     )
     qconnect(
+        a_factor_action.triggered,
+        lambda _checked=False, b=browser, card_ids=list(card_ids): _open_browser_a_factor_dialog(
+            b,
+            card_ids,
+        ),
+    )
+    qconnect(
         ocr_action.triggered,
         lambda _checked=False, b=browser: _ocr_browser_selection(b),
     )
@@ -1017,6 +1090,7 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     submenu.addAction(topic_action)
     submenu.addAction(item_action)
     submenu.addSeparator()
+    submenu.addAction(a_factor_action)
     submenu.addAction(schedule_action)
     submenu.addAction(ocr_action)
     submenu.addAction(hidden_fields_action)

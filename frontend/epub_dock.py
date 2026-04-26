@@ -671,8 +671,48 @@ def _build_page_script(
         const style = document.createElement('style');
         style.id = 'incremento-epub-style';
         style.textContent = `
+          html.incremento-epub-scaled {{
+            overflow-x: hidden !important;
+          }}
           html.incremento-epub-scaled body {{
             font-size: var(--incremento-epub-font-size, 100%) !important;
+            box-sizing: border-box !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            width: auto !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding-left: max(24px, env(safe-area-inset-left)) !important;
+            padding-right: max(36px, env(safe-area-inset-right)) !important;
+            overflow-x: hidden !important;
+            overflow-wrap: break-word;
+            word-break: normal;
+          }}
+          html.incremento-epub-scaled body * {{
+            box-sizing: border-box !important;
+            max-width: 100% !important;
+          }}
+          html.incremento-epub-scaled img,
+          html.incremento-epub-scaled svg,
+          html.incremento-epub-scaled video,
+          html.incremento-epub-scaled canvas,
+          html.incremento-epub-scaled table {{
+            max-width: 100% !important;
+            height: auto !important;
+          }}
+          html.incremento-epub-scaled h1,
+          html.incremento-epub-scaled h2,
+          html.incremento-epub-scaled h3,
+          html.incremento-epub-scaled h4,
+          html.incremento-epub-scaled h5,
+          html.incremento-epub-scaled h6,
+          html.incremento-epub-scaled p,
+          html.incremento-epub-scaled li,
+          html.incremento-epub-scaled blockquote {{
+            white-space: normal !important;
+          }}
+          html.incremento-epub-scaled pre {{
+            white-space: pre-wrap !important;
           }}
           span.incremento-epub-highlight {{
             background: rgba(255, 225, 120, 0.75);
