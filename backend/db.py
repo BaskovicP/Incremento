@@ -218,6 +218,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             page    INTEGER NOT NULL DEFAULT 1,
             color   TEXT    NOT NULL DEFAULT 'yellow',
             text    TEXT    NOT NULL DEFAULT '',
+            note    TEXT    NOT NULL DEFAULT '',
             rects   TEXT    NOT NULL DEFAULT '[]',
             PRIMARY KEY (id, card_id)
         );
@@ -262,6 +263,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             section_index INTEGER NOT NULL DEFAULT 0,
             color         TEXT    NOT NULL DEFAULT 'yellow',
             text          TEXT    NOT NULL DEFAULT '',
+            note          TEXT    NOT NULL DEFAULT '',
             start_offset  INTEGER NOT NULL DEFAULT 0,
             end_offset    INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (id, card_id)
@@ -505,6 +507,18 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "writing_progress",
         "preview_visible",
         "INTEGER NOT NULL DEFAULT 1",
+    )
+    _ensure_column(
+        conn,
+        "pdf_highlights",
+        "note",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "epub_highlights",
+        "note",
+        "TEXT NOT NULL DEFAULT ''",
     )
 
 
@@ -1381,12 +1395,12 @@ def export_highlights_json(addon_dir: str, profile: str) -> str:
     rows = (
         get_connection(addon_dir, profile)
         .execute(
-            "SELECT card_id, id, page, color, text, rects FROM pdf_highlights ORDER BY card_id"
+            "SELECT card_id, id, page, color, text, note, rects FROM pdf_highlights ORDER BY card_id"
         )
         .fetchall()
     )
     result: dict = {}
-    for cid, hl_id, page, color, text, rects in rows:
+    for cid, hl_id, page, color, text, note, rects in rows:
         key = str(cid)
         result.setdefault(key, []).append(
             {
@@ -1394,6 +1408,7 @@ def export_highlights_json(addon_dir: str, profile: str) -> str:
                 "page": page,
                 "color": color,
                 "text": text,
+                "note": note,
                 "rects": json.loads(rects),
             }
         )

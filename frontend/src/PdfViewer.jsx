@@ -190,6 +190,7 @@ export default function PdfViewer() {
   const [searchQuery, setSearchQuery] = useState('');
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
   const [limitNotice, setLimitNotice] = useState(null);
+  const [hoveredHighlightNote, setHoveredHighlightNote] = useState(null);
   const [highlightsScope, setHighlightsScope] = useState('all');
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
@@ -220,6 +221,33 @@ export default function PdfViewer() {
   const overrideEnabled = !!limitStatus?.override_enabled;
 
   const clearLimitNotice = useCallback(() => setLimitNotice(null), []);
+
+  const showHighlightNote = useCallback((highlight, event) => {
+    const note = String(highlight?.note || '').trim();
+    if (!note) return;
+    setHoveredHighlightNote({
+      id: String(highlight.id || ''),
+      note,
+      x: Number(event?.clientX || 0),
+      y: Number(event?.clientY || 0),
+    });
+  }, []);
+
+  const moveHighlightNote = useCallback((event) => {
+    setHoveredHighlightNote((prev) => (
+      prev
+        ? {
+            ...prev,
+            x: Number(event?.clientX || prev.x || 0),
+            y: Number(event?.clientY || prev.y || 0),
+          }
+        : prev
+    ));
+  }, []);
+
+  const hideHighlightNote = useCallback(() => {
+    setHoveredHighlightNote(null);
+  }, []);
 
   const describeLimitReached = useCallback(() => {
     const prefix = limitTotal > 0
@@ -434,6 +462,12 @@ export default function PdfViewer() {
     window.pycmd('incremento_pdf_hl_del:' + JSON.stringify({ cardId: cardIdRef.current, id }));
   }, [cardIdRef]);
 
+  const updateHighlightNote = useCallback((id, note) => {
+    setHighlights(prev => prev.map((h) => (
+      h.id === id ? { ...h, note: String(note || '') } : h
+    )));
+  }, []);
+
   const makeHighlight = useCallback((sel, forcedColor = null) => {
     if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
     const tl = textLayerRef.current;
@@ -523,6 +557,9 @@ export default function PdfViewer() {
     window.incrementoReceivePdfLimitStatus = (status) => {
       setLimitStatus(status || DEFAULT_LIMIT_STATUS);
     };
+    window.incrementoUpdatePdfHighlightNote = (id, note) => {
+      updateHighlightNote(String(id || ''), String(note || ''));
+    };
 
     const pending = window._incPdfPending;
     if (pending) {
@@ -544,8 +581,9 @@ export default function PdfViewer() {
       delete window.incrementoPdfMarkRead;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfLimitStatus;
+      delete window.incrementoUpdatePdfHighlightNote;
     };
-  }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef]);
+  }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote]);
 
   // ── Request card sources for current page ─────────────────────────────────
   useEffect(() => {
@@ -1028,6 +1066,26 @@ export default function PdfViewer() {
                       <span>Page {hl.page || 1}</span>
                     </span>
                     <button
+                      title={(hl.note || '').trim() ? 'Edit note for this highlight' : 'Add note to this highlight'}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        window.pycmd('incremento_pdf_hl_note:' + JSON.stringify({ id: hl.id }));
+                      }}
+                      style={{
+                        border: '1px solid rgba(74,144,217,0.55)',
+                        borderRadius: 4,
+                        background: 'rgba(74,144,217,0.12)',
+                        color: 'rgba(147,197,253,0.95)',
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        padding: '1px 7px',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {(hl.note || '').trim() ? 'Edit note' : 'Add note'}
+                    </button>
+                    <button
                       title="Delete this highlight"
                       onClick={(e) => {
                         e.preventDefault();
@@ -1051,6 +1109,11 @@ export default function PdfViewer() {
                   <div style={{ fontSize: 12, lineHeight: 1.35 }}>
                     {(hl.text || '(no text)').trim()}
                   </div>
+                  {(hl.note || '').trim() && (
+                    <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(147,197,253)', marginTop: 6 }}>
+                      Note: {String(hl.note).trim()}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
@@ -1060,6 +1123,30 @@ export default function PdfViewer() {
 
       {error && (
         <div style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}>{error}</div>
+      )}
+
+      {hoveredHighlightNote && (
+        <div
+          style={{
+            position: 'fixed',
+            left: hoveredHighlightNote.x + 14,
+            top: hoveredHighlightNote.y + 16,
+            maxWidth: 280,
+            padding: '8px 10px',
+            background: 'rgba(20,20,20,0.96)',
+            border: '1px solid rgba(147,197,253,0.45)',
+            borderRadius: 6,
+            color: 'rgb(219,234,254)',
+            fontSize: 12,
+            lineHeight: 1.4,
+            boxShadow: '0 8px 18px rgba(0,0,0,0.35)',
+            pointerEvents: 'none',
+            zIndex: 120,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {hoveredHighlightNote.note}
+        </div>
       )}
 
       {/* Canvas wrapper */}
@@ -1079,6 +1166,9 @@ export default function PdfViewer() {
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}
           focusedHighlightId={focusedHighlightId}
+          showHighlightNote={showHighlightNote}
+          moveHighlightNote={moveHighlightNote}
+          hideHighlightNote={hideHighlightNote}
           snapshotMode={snapshotMode}
           snapRect={snapRect}
           handleSnapStart={handleSnapStart}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape
 
 from aqt import mw
 from aqt.qt import (
@@ -84,9 +85,13 @@ except ImportError:
         ensure_epub_note_type,
     )
 try:
-    from ..backend.epub_highlights import load_highlights, add_highlight, remove_highlight
+    from ..backend.epub_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
 except ImportError:
-    from epub_highlights import load_highlights, add_highlight, remove_highlight  # type: ignore
+    from epub_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note  # type: ignore
+try:
+    from .highlight_note_dialog import HighlightNoteDialog
+except ImportError:
+    from highlight_note_dialog import HighlightNoteDialog  # type: ignore
 try:
     from ..backend.db import add_epub_card_source, get_epub_card_sources, get_epub_section_card_counts
 except ImportError:
@@ -606,6 +611,7 @@ class _EpubDockPage(QWebEnginePage):
             try:
                 data = json.loads(msg[len(_MSG_HL_ADD) :])
                 add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
+                _update_sources_panel()
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight add failed: {exc}")
             return
@@ -613,6 +619,7 @@ class _EpubDockPage(QWebEnginePage):
             try:
                 data = json.loads(msg[len(_MSG_HL_DEL) :])
                 remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), str(data["id"]))
+                _update_sources_panel()
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight remove failed: {exc}")
             return
@@ -1050,8 +1057,73 @@ def _open_source_link(url: QUrl) -> None:
 
             browser = dialogs.open("Browser", mw)
             browser.search_for(f"nid:{note_id}")
+        elif s.startswith("inc://epub-highlight-note/"):
+            _edit_current_epub_highlight_note(s.rsplit("/", 1)[1])
+        elif s.startswith("inc://epub-highlight-delete/"):
+            _delete_current_epub_highlight(s.rsplit("/", 1)[1])
     except Exception:
         pass
+
+
+def _current_section_highlights() -> list[dict]:
+    if _current_epub_card_id is None:
+        return []
+    return [
+        row
+        for row in load_highlights(_ADDON_DIR, _active_profile(), int(_current_epub_card_id))
+        if int(row.get("sectionIndex", -1)) == int(_current_epub_section_index)
+    ]
+
+
+def _edit_current_epub_highlight_note(hl_id: str) -> None:
+    if _current_epub_card_id is None:
+        return
+    highlight = next(
+        (row for row in _current_section_highlights() if str(row.get("id") or "") == str(hl_id or "")),
+        None,
+    )
+    if not highlight:
+        showInfo("That EPUB highlight could not be found.")
+        return
+    dialog = HighlightNoteDialog(
+        mw,
+        title="EPUB Highlight Note",
+        excerpt=str(highlight.get("text") or ""),
+        current_note=str(highlight.get("note") or ""),
+    )
+    if not dialog.exec():
+        return
+    try:
+        updated = update_highlight_note(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_epub_card_id),
+            str(highlight.get("id") or ""),
+            dialog.note_text(),
+        )
+    except Exception as exc:
+        showInfo(f"Could not save the EPUB highlight note.\n\n{exc}")
+        return
+    if not updated:
+        showInfo("That EPUB highlight could not be updated.")
+        return
+    _update_sources_panel()
+    tooltip("EPUB highlight note saved.")
+
+
+def _delete_current_epub_highlight(hl_id: str) -> None:
+    if _current_epub_card_id is None:
+        return
+    try:
+        remove_highlight(_ADDON_DIR, _active_profile(), int(_current_epub_card_id), str(hl_id or ""))
+    except Exception as exc:
+        showInfo(f"Could not remove that EPUB highlight.\n\n{exc}")
+        return
+    try:
+        _load_current_section()
+    except Exception:
+        _update_sources_panel()
+    tooltip("EPUB highlight removed.")
 
 
 def _browse_current_epub_note() -> None:
@@ -1282,21 +1354,44 @@ def _update_sources_panel() -> None:
     cards = get_epub_card_sources(_ADDON_DIR, _active_profile(), _current_epub_card_id, _current_epub_section_index)
     counts = get_epub_section_card_counts(_ADDON_DIR, _active_profile(), _current_epub_card_id)
     count = int(counts.get(_current_epub_section_index, 0) or 0)
-    _epub_dock._source_lbl.setText(f"Cards here: {count}")
-    if not cards:
-        _epub_dock._sources.setHtml(
-            "<div style='color:#888;font-size:12px;padding:6px'>No cards created from this section yet.</div>"
-        )
-        return
-    html = ["<div style='font-family:sans-serif;font-size:12px'><b>Cards from this section</b><ul>"]
-    for item in cards:
-        note_id = int(item.get("note_id") or 0)
-        excerpt = str(item.get("excerpt") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        html.append(
-            f"<li><a href='inc://card/{note_id}'>note {note_id}</a>"
-            f" <span style='color:#888'>{excerpt}</span></li>"
-        )
-    html.append("</ul></div>")
+    highlights = _current_section_highlights()
+    _epub_dock._source_lbl.setText(f"Cards here: {count}  •  Highlights: {len(highlights)}")
+    html = ["<div style='font-family:sans-serif;font-size:12px'>"]
+    if cards:
+        html.append("<b>Cards from this section</b><ul>")
+        for item in cards:
+            note_id = int(item.get("note_id") or 0)
+            excerpt = escape(str(item.get("excerpt") or ""))
+            html.append(
+                f"<li><a href='inc://card/{note_id}'>note {note_id}</a>"
+                f" <span style='color:#888'>{excerpt}</span></li>"
+            )
+        html.append("</ul>")
+    else:
+        html.append("<div style='color:#888;padding:2px 0 10px'>No cards created from this section yet.</div>")
+
+    if highlights:
+        html.append("<b>Highlights in this section</b><ul>")
+        for highlight in highlights:
+            highlight_id = escape(str(highlight.get("id") or ""))
+            text = escape(str(highlight.get("text") or "").strip() or "(no text)")
+            note = escape(str(highlight.get("note") or "").strip())
+            action_label = "Edit note" if note else "Add note"
+            html.append(
+                "<li>"
+                f"<span>{text}</span>"
+                f" <a href='inc://epub-highlight-note/{highlight_id}'>{action_label}</a>"
+                f" <a href='inc://epub-highlight-delete/{highlight_id}' style='color:#c66'>Delete</a>"
+            )
+            if note:
+                html.append(
+                    f"<div style='color:#9ec4ff;padding-top:2px'>Note: {note}</div>"
+                )
+            html.append("</li>")
+        html.append("</ul>")
+    else:
+        html.append("<div style='color:#888;padding:6px 0 0'>No highlights in this section yet.</div>")
+    html.append("</div>")
     _epub_dock._sources.setHtml("".join(html))
 
 

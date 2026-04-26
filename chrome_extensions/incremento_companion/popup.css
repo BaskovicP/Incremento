@@ -130,6 +130,52 @@ h1 {
   border-color: rgba(201, 118, 18, 0.42);
 }
 
+.field + .field {
+  margin-top: 10px;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #5d5b57;
+}
+
+.field-hint.is-error {
+  color: #ab2f2f;
+}
+
+.priority-controls {
+  display: grid;
+  grid-template-columns: 1fr 86px;
+  gap: 10px;
+  align-items: start;
+}
+
+.priority-slider-wrap {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.priority-slider {
+  width: 100%;
+  margin: 0;
+  accent-color: #b46817;
+}
+
+.priority-number {
+  text-align: right;
+}
+
+.priority-scale {
+  display: flex;
+  justify-content: space-between;
+  color: #7a756c;
+  font-size: 10px;
+  line-height: 1;
+}
+
 .note {
   min-height: 18px;
   margin-top: 10px;

@@ -88,9 +88,13 @@ except ImportError:
         set_read_page,
     )
 try:
-    from ..backend.pdf_highlights import load_highlights, add_highlight, remove_highlight
+    from ..backend.pdf_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
 except ImportError:
-    from pdf_highlights import load_highlights, add_highlight, remove_highlight
+    from pdf_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
+try:
+    from .highlight_note_dialog import HighlightNoteDialog
+except ImportError:
+    from highlight_note_dialog import HighlightNoteDialog  # type: ignore
 try:
     from ..backend.db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
 except ImportError:
@@ -375,6 +379,7 @@ _MSG_LIMIT_SETTINGS = "incremento_pdf_limit_settings:"
 _MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
 _MSG_DUE_REVIEW = "incremento_pdf_due_review:"
 _MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
+_MSG_HL_NOTE = "incremento_pdf_hl_note:"
 
 
 def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
@@ -522,6 +527,57 @@ def _repair_missing_pdf() -> None:
         )
     except Exception as exc:
         showInfo(f"Could not relink this PDF card.\n\n{exc}")
+
+
+def _edit_pdf_highlight_note(hl_id: str) -> None:
+    card_id = current_pdf_card_id()
+    if card_id is None:
+        showInfo("Could not determine which PDF card owns this highlight.")
+        return
+    highlight = next(
+        (
+            row
+            for row in load_highlights(_ADDON_DIR, _active_profile(), int(card_id))
+            if str(row.get("id") or "") == str(hl_id or "")
+        ),
+        None,
+    )
+    if not highlight:
+        showInfo("That PDF highlight could not be found.")
+        return
+    dialog = HighlightNoteDialog(
+        mw,
+        title="PDF Highlight Note",
+        excerpt=str(highlight.get("text") or ""),
+        current_note=str(highlight.get("note") or ""),
+    )
+    if not dialog.exec():
+        return
+    try:
+        updated = update_highlight_note(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            str(highlight.get("id") or ""),
+            dialog.note_text(),
+        )
+    except Exception as exc:
+        showInfo(f"Could not save the PDF highlight note.\n\n{exc}")
+        return
+    if not updated:
+        showInfo("That PDF highlight could not be updated.")
+        return
+    escaped_id = json.dumps(str(updated.get("id") or ""))
+    escaped_note = json.dumps(str(updated.get("note") or ""))
+    try:
+        if _pdf_dock is not None:
+            _pdf_dock._view.page().runJavaScript(
+                "window.incrementoUpdatePdfHighlightNote && "
+                f"window.incrementoUpdatePdfHighlightNote({escaped_id}, {escaped_note});"
+            )
+    except Exception:
+        pass
+    tooltip("PDF highlight note saved.")
 
 
 def _open_pdf_limit_dialog(card_id: int) -> None:
@@ -788,6 +844,12 @@ class _PdfDockPage(QWebEnginePage):
                     )
             except Exception as e:
                 showInfo(f"Could not open PDF due-card review:\n{e}")
+        elif msg.startswith(_MSG_HL_NOTE):
+            try:
+                payload = json.loads(msg[len(_MSG_HL_NOTE) :])
+                _edit_pdf_highlight_note(str(payload.get("id") or ""))
+            except Exception as e:
+                showInfo(f"Could not edit PDF highlight note.\n\n{e}")
         elif msg.startswith(_MSG_REPAIR_MISSING):
             _repair_missing_pdf()
         elif msg.startswith(_MSG_SNAPSHOT):

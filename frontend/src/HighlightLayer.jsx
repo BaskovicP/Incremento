@@ -16,6 +16,9 @@ export default function HighlightLayer({
   renderInfo,
   deleteHighlight,
   focusedHighlightId,
+  showHighlightNote,
+  moveHighlightNote,
+  hideHighlightNote,
   snapshotMode,
   snapRect,
   handleSnapStart,
@@ -44,6 +47,31 @@ export default function HighlightLayer({
             }}
           />
         ))
+      )}
+
+      {/* ── Hover targets for note-bearing highlights — above text layer ── */}
+      {pageHighlights.map(h =>
+        !String(h.note || '').trim()
+          ? null
+          : h.rects.map((r, ri) => (
+              <div
+                key={`note-${h.id}-${ri}`}
+                title={String(h.note || '').trim()}
+                onMouseEnter={(event) => showHighlightNote(h, event)}
+                onMouseMove={moveHighlightNote}
+                onMouseLeave={hideHighlightNote}
+                style={{
+                  position: 'absolute',
+                  left: renderInfo.tlLeft + r.x * renderInfo.scale,
+                  top: r.y * renderInfo.scale,
+                  width: r.w * renderInfo.scale,
+                  height: r.h * renderInfo.scale,
+                  background: 'transparent',
+                  cursor: 'help',
+                  zIndex: 9,
+                }}
+              />
+            ))
       )}
 
       {/* ── Delete buttons — above text layer (z:10), one per highlight ── */}

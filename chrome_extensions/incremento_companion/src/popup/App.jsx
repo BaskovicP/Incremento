@@ -16,6 +16,7 @@ import {
 import {
   formatBridgeError,
   importIntoIncremento,
+  loadBrowserCaptureMeta,
   saveBrowserMediaRef,
 } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
@@ -31,6 +32,15 @@ import {
   MODIFIER_OPTIONS,
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
+import {
+  DEFAULT_PRIORITY,
+  PRIORITY_SLIDER_MAX,
+  formatPriority,
+  parseTags,
+  parsePriorityText,
+  priorityToSliderValue,
+  sliderValueToPriority,
+} from "../bookmarks/bookmarkModel.js";
 
 function initialStatus() {
   return { text: "", kind: "" };
@@ -95,6 +105,12 @@ export function PopupApp() {
   const [mediaContext, setMediaContext] = useState(null);
   const [manualTime, setManualTime] = useState("");
   const [linkSaveSettings, setLinkSaveSettings] = useState(DEFAULT_LINK_SAVE_SETTINGS);
+  const [deckNames, setDeckNames] = useState(["Topics"]);
+  const [deckName, setDeckName] = useState("Topics");
+  const [deckLoadError, setDeckLoadError] = useState("");
+  const [priority, setPriority] = useState(DEFAULT_PRIORITY);
+  const [priorityText, setPriorityText] = useState(formatPriority(DEFAULT_PRIORITY));
+  const [tagsText, setTagsText] = useState("");
 
   const pageUrl = String(snapshot?.url || activeTab?.url || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
@@ -173,6 +189,38 @@ export function PopupApp() {
         const commands = await getCommandShortcuts();
         if (!cancelled) {
           setCommandShortcuts(Array.isArray(commands) ? commands : []);
+        }
+
+        try {
+          const meta = await loadBrowserCaptureMeta();
+          if (cancelled) {
+            return;
+          }
+          const nextDeckNames = Array.from(
+            new Set(
+              Array.isArray(meta?.deckNames)
+                ? meta.deckNames.map((value) => String(value || "").trim()).filter(Boolean)
+                : []
+            )
+          );
+          const availableDecks = nextDeckNames.length > 0 ? nextDeckNames : ["Topics"];
+          setDeckNames(availableDecks);
+          setDeckName((currentDeck) => {
+            if (availableDecks.includes(currentDeck)) {
+              return currentDeck;
+            }
+            if (availableDecks.includes("Topics")) {
+              return "Topics";
+            }
+            return availableDecks[0] || "Topics";
+          });
+          setDeckLoadError("");
+        } catch (error) {
+          if (!cancelled) {
+            setDeckNames(["Topics"]);
+            setDeckName((currentDeck) => currentDeck || "Topics");
+            setDeckLoadError(formatBridgeError(error, "Failed to load decks from Anki. Using Topics."));
+          }
         }
 
         const storedLinkSaveSettings = await getLocalExtensionSetting(
@@ -268,6 +316,27 @@ export function PopupApp() {
     }
   }, [busy, hasSupportedPage]);
 
+  function handlePrioritySlider(value) {
+    const nextPriority = sliderValueToPriority(value);
+    setPriority(nextPriority);
+    setPriorityText(formatPriority(nextPriority));
+  }
+
+  function handlePriorityText(value) {
+    setPriorityText(value);
+    const parsed = parsePriorityText(value, priority);
+    if (parsed !== null) {
+      setPriority(parsed);
+    }
+  }
+
+  function commitPriorityText() {
+    const parsed = parsePriorityText(priorityText, priority);
+    const nextPriority = parsed ?? priority ?? DEFAULT_PRIORITY;
+    setPriority(nextPriority);
+    setPriorityText(formatPriority(nextPriority));
+  }
+
   async function handleAdd(kind, options = {}) {
     const context = await readCurrentPageContext();
     const currentTab = context.tab;
@@ -293,6 +362,9 @@ export function PopupApp() {
       kind,
       url: currentPageUrl,
       title: title.trim() || currentPageTitle || currentPageUrl,
+      deckName,
+      priority,
+      tags: parseTags(tagsText),
       selectedText: currentSelectionText,
     };
     if (kind === "pdf" && currentSnapshot?.html) {
@@ -551,6 +623,69 @@ export function PopupApp() {
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
+        </label>
+        <label className="field">
+          <span>Deck</span>
+          <select
+            id="deck-select"
+            value={deckName}
+            disabled={busy}
+            onChange={(event) => setDeckName(event.target.value)}
+          >
+            {deckNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {deckLoadError ? (
+          <p className="field-hint is-error">{deckLoadError}</p>
+        ) : null}
+        <label className="field">
+          <span>Tags</span>
+          <input
+            id="tags-input"
+            type="text"
+            value={tagsText}
+            placeholder="tag1 tag2"
+            spellCheck="false"
+            disabled={busy}
+            onChange={(event) => setTagsText(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Priority</span>
+          <div className="priority-controls">
+            <div className="priority-slider-wrap">
+              <input
+                className="priority-slider"
+                type="range"
+                min="0"
+                max={String(PRIORITY_SLIDER_MAX)}
+                step="1"
+                value={String(priorityToSliderValue(priority))}
+                disabled={busy}
+                onChange={(event) => handlePrioritySlider(event.target.value)}
+              />
+              <div className="priority-scale">
+                <span>0</span>
+                <span>100</span>
+              </div>
+            </div>
+            <input
+              className="priority-number"
+              type="text"
+              inputMode="decimal"
+              pattern="^\\d{1,3}(\\.\\d{0,4})?$"
+              value={priorityText}
+              placeholder="50.0000"
+              spellCheck="false"
+              disabled={busy}
+              onChange={(event) => handlePriorityText(event.target.value)}
+              onBlur={commitPriorityText}
+            />
+          </div>
         </label>
         <p className="note" id="selection-note">{writingNote}</p>
         <label className="field">

@@ -1,21 +1,25 @@
-"""Quick Open dialog — fuzzy-search PDF cards by title with priority display."""
+"""Quick Open dialog — fuzzy-search docs and writing cards by title."""
 
 from __future__ import annotations
 
 import random as _random
+from dataclasses import dataclass
 
 from aqt import mw
 from aqt.qt import (
     QAbstractItemView,
+    QButtonGroup,
     QCheckBox,
     QColor,
     QDialog,
     QEvent,
     QHeaderView,
+    QHBoxLayout,
     QKeySequence,
     QLabel,
     QLineEdit,
     QPushButton,
+    QRadioButton,
     QShortcut,
     QTableWidget,
     QTableWidgetItem,
@@ -30,30 +34,162 @@ except ImportError:
     from paths import get_active_profile as _active_profile
 
 try:
-    from ..backend.pdf_manager import PDF_NOTE_TYPE, get_page
+    from ..backend.pdf_manager import PDF_NOTE_TYPE
     from ..backend.epub_manager import EPUB_NOTE_TYPE
     from ..backend.priority_manager import get_all_priorities
+    from ..backend.writing_manager import WRITING_FILE_FIELD, WRITING_NOTE_TYPE
 except ImportError:
-    from pdf_manager import PDF_NOTE_TYPE, get_page  # type: ignore
+    from pdf_manager import PDF_NOTE_TYPE  # type: ignore
     from epub_manager import EPUB_NOTE_TYPE  # type: ignore
     from priority_manager import get_all_priorities  # type: ignore
+    from writing_manager import WRITING_FILE_FIELD, WRITING_NOTE_TYPE  # type: ignore
+
+
+_MODE_DOCS = "docs"
+_MODE_WRITING = "writing"
+_TYPE_PDF = "PDF"
+_TYPE_EPUB = "EPUB"
+_TYPE_WRITING = "WRITING"
+
+
+@dataclass(frozen=True)
+class _QuickOpenEntry:
+    title: str
+    card_id: int
+    kind: str
+    priority: float | None
+    relpath: str = ""
+
+
+def _filter_quick_open_entries(
+    entries: list[_QuickOpenEntry],
+    query: str,
+) -> list[_QuickOpenEntry]:
+    needle = str(query or "").strip().lower()
+    if not needle:
+        return list(entries)
+    return [entry for entry in entries if needle in entry.title.lower()]
+
+
+def _best_quick_open_entry(entries: list[_QuickOpenEntry]) -> _QuickOpenEntry | None:
+    if not entries:
+        return None
+    return min(entries, key=lambda entry: entry.priority if entry.priority is not None else 50.0)
+
+
+def _load_doc_quick_open_entries(
+    addon_dir: str,
+    *,
+    collection=None,
+) -> list[_QuickOpenEntry]:
+    col = collection or mw.col
+    all_prios = get_all_priorities(addon_dir, _active_profile())
+    entries: list[_QuickOpenEntry] = []
+    try:
+        for note_type_name, kind in ((PDF_NOTE_TYPE, _TYPE_PDF), (EPUB_NOTE_TYPE, _TYPE_EPUB)):
+            note_ids = col.find_notes(f'note:"{note_type_name}" -is:suspended')
+            for nid in note_ids:
+                try:
+                    note = col.get_note(nid)
+                    title = str(note.fields[0] if getattr(note, "fields", None) else nid).strip()
+                    cids = col.find_cards(f"nid:{nid}")
+                    if not cids:
+                        continue
+                    entries.append(
+                        _QuickOpenEntry(
+                            title=title or str(nid),
+                            card_id=int(cids[0]),
+                            kind=kind,
+                            priority=all_prios.get(int(cids[0])),
+                        )
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return sorted(entries, key=lambda entry: entry.title.lower())
+
+
+def _load_writing_quick_open_entries(
+    addon_dir: str,
+    *,
+    collection=None,
+) -> list[_QuickOpenEntry]:
+    col = collection or mw.col
+    all_prios = get_all_priorities(addon_dir, _active_profile())
+    entries: list[_QuickOpenEntry] = []
+    try:
+        note_ids = col.find_notes(f'note:"{WRITING_NOTE_TYPE}" -is:suspended')
+        for nid in note_ids:
+            try:
+                note = col.get_note(nid)
+                title = str(note["Title"] or "").strip()
+                if not title:
+                    title = str(note.fields[0] if getattr(note, "fields", None) else nid).strip() or str(nid)
+                relpath = str(note[WRITING_FILE_FIELD] or "").strip()
+                cids = col.find_cards(f"nid:{nid}")
+                if not cids:
+                    continue
+                entries.append(
+                    _QuickOpenEntry(
+                        title=title,
+                        card_id=int(cids[0]),
+                        kind=_TYPE_WRITING,
+                        priority=all_prios.get(int(cids[0])),
+                        relpath=relpath,
+                    )
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return sorted(entries, key=lambda entry: entry.title.lower())
 
 
 class _PdfQuickJumpDialog(QDialog):
-    """Quick Open dialog: fuzzy-search PDF cards by title with priority display."""
+    """Quick Open dialog: fuzzy-search docs and writing cards by title."""
 
-    def __init__(self, parent=None, *, addon_dir: str, last_opened_pdf_cid: int | None):
+    def __init__(
+        self,
+        parent=None,
+        *,
+        addon_dir: str,
+        last_opened_pdf_cid: int | None,
+        last_opened_writing_cid: int | None,
+    ):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._last_opened_pdf_cid = last_opened_pdf_cid
-        self.setWindowTitle("Quick Open")
+        self._last_opened_writing_cid = last_opened_writing_cid
+        self._entries_by_mode = {
+            _MODE_DOCS: _load_doc_quick_open_entries(addon_dir),
+            _MODE_WRITING: _load_writing_quick_open_entries(addon_dir),
+        }
+        self._visible_entries: list[_QuickOpenEntry] = []
+
+        self.setWindowTitle("Quick Open Content")
         self.resize(860, 580)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(0)
         layout.setContentsMargins(12, 12, 12, 12)
 
-        # ── Search box ─────────────────────────────────────────────────────────
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(10)
+        mode_label = QLabel("<b>Mode</b>")
+        mode_row.addWidget(mode_label)
+        self._mode_group = QButtonGroup(self)
+        self._docs_radio = QRadioButton("Docs")
+        self._writing_radio = QRadioButton("Writing")
+        self._mode_group.addButton(self._docs_radio)
+        self._mode_group.addButton(self._writing_radio)
+        self._docs_radio.setChecked(True)
+        mode_row.addWidget(self._docs_radio)
+        mode_row.addWidget(self._writing_radio)
+        mode_row.addStretch(1)
+        layout.addLayout(mode_row)
+        layout.addSpacing(10)
+
         self._search = QLineEdit()
         self._search.setStyleSheet(
             "QLineEdit { border: 2px solid #2979ff; border-radius: 3px;"
@@ -62,7 +198,6 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addWidget(self._search)
         layout.addSpacing(10)
 
-        # ── Results table ──────────────────────────────────────────────────────
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Title", "Type", "Prio", ""])
         hdr = self._table.horizontalHeader()
@@ -70,7 +205,7 @@ class _PdfQuickJumpDialog(QDialog):
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self._table.setColumnWidth(1, 52)
+        self._table.setColumnWidth(1, 74)
         self._table.setColumnWidth(2, 48)
         self._table.setColumnWidth(3, 28)
         self._table.verticalHeader().setVisible(False)
@@ -81,7 +216,6 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addWidget(self._table)
         layout.addSpacing(10)
 
-        # ── Keyboard shortcut hints ────────────────────────────────────────────
         for key, desc in [
             ("Ctrl + F", "Open First in Queue"),
             ("Ctrl + R", "Open Random Note"),
@@ -99,7 +233,6 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addWidget(self._preserve_history_cb)
         layout.addSpacing(10)
 
-        # ── Cancel button ──────────────────────────────────────────────────────
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet(
             "QPushButton { background: #2979ff; color: white; border: none;"
@@ -109,109 +242,99 @@ class _PdfQuickJumpDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         layout.addWidget(cancel_btn)
 
-        # ── Load data ──────────────────────────────────────────────────────────
-        self._all_entries: list[tuple[str, int, str, float | None]] = []
-        self._load_entries()
-        self._refresh("")
-
         qconnect(self._search.textChanged, self._refresh)
         self._search.returnPressed.connect(self._accept_current)
         self._table.itemDoubleClicked.connect(lambda _: self._accept_current())
         self._search.installEventFilter(self)
+        qconnect(self._docs_radio.toggled, lambda checked: self._on_mode_toggled(checked))
+        qconnect(self._writing_radio.toggled, lambda checked: self._on_mode_toggled(checked))
 
-        # In-dialog shortcuts (Ctrl+F/R/L)
         QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self._open_first)
         QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(self._open_random)
         QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self._open_last)
 
-    def _load_entries(self) -> None:
-        all_prios = get_all_priorities(self._addon_dir, _active_profile())  # {cid: priority}
-        try:
-            for note_type_name, kind in ((PDF_NOTE_TYPE, "PDF"), (EPUB_NOTE_TYPE, "EPUB")):
-                note_ids = mw.col.find_notes(f'note:"{note_type_name}" -is:suspended')
-                for nid in note_ids:
-                    try:
-                        note = mw.col.get_note(nid)
-                        title = note.fields[0] if note.fields else str(nid)
-                        cids = mw.col.find_cards(f"nid:{nid}")
-                        if cids:
-                            cid = cids[0]
-                            prio = all_prios.get(cid)  # None = not explicitly set
-                            self._all_entries.append((title, cid, kind, prio))
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        self._all_entries.sort(key=lambda e: e[0].lower())
+        self._refresh("")
+
+    def _current_mode(self) -> str:
+        return _MODE_WRITING if self._writing_radio.isChecked() else _MODE_DOCS
+
+    def _on_mode_toggled(self, checked: bool) -> None:
+        if checked:
+            self._refresh(self._search.text())
 
     @staticmethod
-    def _prio_bg(p) -> QColor:
-        if p is None:
+    def _prio_bg(priority: float | None) -> QColor:
+        if priority is None:
             return QColor(80, 80, 80)
-        if p >= 75:
+        if priority >= 75:
             return QColor(160, 20, 20)
-        if p >= 55:
+        if priority >= 55:
             return QColor(150, 80, 0)
-        if p >= 35:
+        if priority >= 35:
             return QColor(110, 100, 0)
         return QColor(50, 110, 35)
 
     def _refresh(self, query: str) -> None:
+        mode = self._current_mode()
+        self._visible_entries = _filter_quick_open_entries(self._entries_by_mode.get(mode, []), query)
+
+        self._preserve_history_cb.setVisible(mode == _MODE_DOCS)
         self._table.setRowCount(0)
-        q = query.lower()
-        n = 0
-        for title, cid, kind, prio in self._all_entries:
-            if q in title.lower():
-                n += 1
-                row = self._table.rowCount()
-                self._table.insertRow(row)
 
-                title_item = QTableWidgetItem(f"{n}.  {title}")
-                title_item.setData(Qt.ItemDataRole.UserRole, cid)
-                self._table.setItem(row, 0, title_item)
+        for index, entry in enumerate(self._visible_entries, start=1):
+            row = self._table.rowCount()
+            self._table.insertRow(row)
 
-                type_item = QTableWidgetItem(kind)
-                type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row, 1, type_item)
+            title_item = QTableWidgetItem(f"{index}.  {entry.title}")
+            title_item.setData(Qt.ItemDataRole.UserRole, entry)
+            self._table.setItem(row, 0, title_item)
 
-                if prio is not None:
-                    prio_item = QTableWidgetItem(str(int(round(prio))))
-                    prio_item.setBackground(self._prio_bg(prio))
-                    prio_item.setForeground(QColor("white"))
-                else:
-                    prio_item = QTableWidgetItem("-")
-                    prio_item.setForeground(QColor("#888888"))
-                prio_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row, 2, prio_item)
+            type_item = QTableWidgetItem(entry.kind)
+            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._table.setItem(row, 1, type_item)
 
-                self._table.setItem(row, 3, QTableWidgetItem(""))
+            if entry.priority is not None:
+                prio_item = QTableWidgetItem(str(int(round(entry.priority))))
+                prio_item.setBackground(self._prio_bg(entry.priority))
+                prio_item.setForeground(QColor("white"))
+            else:
+                prio_item = QTableWidgetItem("-")
+                prio_item.setForeground(QColor("#888888"))
+            prio_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._table.setItem(row, 2, prio_item)
+
+            self._table.setItem(row, 3, QTableWidgetItem(""))
 
         self._table.resizeRowsToContents()
         if self._table.rowCount():
             self._table.selectRow(0)
 
     def _open_first(self) -> None:
-        """Open the highest-priority entry (lowest priority value = most important)."""
-        if not self._all_entries:
-            return
-        best = min(self._all_entries, key=lambda e: e[3] if e[3] is not None else 50.0)
-        self._select_cid_and_accept(best[1])
+        best = _best_quick_open_entry(self._visible_entries)
+        if best is not None:
+            self._select_cid_and_accept(best.card_id)
 
     def _open_random(self) -> None:
-        if self._all_entries:
-            self._select_cid_and_accept(_random.choice(self._all_entries)[1])
+        if self._visible_entries:
+            self._select_cid_and_accept(_random.choice(self._visible_entries).card_id)
 
     def _open_last(self) -> None:
-        if self._last_opened_pdf_cid is not None:
-            self._select_cid_and_accept(self._last_opened_pdf_cid)
+        cid = (
+            self._last_opened_writing_cid
+            if self._current_mode() == _MODE_WRITING
+            else self._last_opened_pdf_cid
+        )
+        if cid is not None:
+            self._select_cid_and_accept(cid)
 
     def _select_cid_and_accept(self, cid: int) -> None:
         for row in range(self._table.rowCount()):
             item = self._table.item(row, 0)
-            if item and item.data(Qt.ItemDataRole.UserRole) == cid:
+            entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+            if isinstance(entry, _QuickOpenEntry) and int(entry.card_id) == int(cid):
                 self._table.selectRow(row)
-                break
-        self.accept()
+                self.accept()
+                return
 
     def eventFilter(self, obj, event):
         if obj is self._search and event.type() == QEvent.Type.KeyPress:
@@ -230,15 +353,25 @@ class _PdfQuickJumpDialog(QDialog):
         if self._table.currentRow() >= 0:
             self.accept()
 
+    def _selected_entry(self) -> _QuickOpenEntry | None:
+        item = self._table.item(self._table.currentRow(), 0)
+        entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        return entry if isinstance(entry, _QuickOpenEntry) else None
+
     @property
     def selected_card_id(self) -> int | None:
-        item = self._table.item(self._table.currentRow(), 0)
-        return item.data(Qt.ItemDataRole.UserRole) if item else None
+        entry = self._selected_entry()
+        return int(entry.card_id) if entry is not None else None
 
     @property
     def selected_card_type(self) -> str:
-        item = self._table.item(self._table.currentRow(), 1)
-        return str(item.text() if item else "PDF").upper()
+        entry = self._selected_entry()
+        return str(entry.kind if entry is not None else _TYPE_PDF).upper()
+
+    @property
+    def selected_relpath(self) -> str:
+        entry = self._selected_entry()
+        return str(entry.relpath if entry is not None else "")
 
     @property
     def preserve_history(self) -> bool:

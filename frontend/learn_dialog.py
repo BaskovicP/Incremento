@@ -56,6 +56,25 @@ except ImportError:
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 
+def _write_named_scheduler_profile(name: str, profile_data: dict, profiles: dict[str, dict]) -> dict[str, dict]:
+    updated_profiles = dict(profiles or {})
+    updated_profiles[name] = profile_data
+    config = mw.addonManager.getConfig(__name__) or {}
+    config["profiles"] = updated_profiles
+    mw.addonManager.writeConfig(__name__, config)
+    return updated_profiles
+
+
+def _rename_named_scheduler_profile(old_name: str, new_name: str, profiles: dict[str, dict]) -> dict[str, dict]:
+    updated_profiles: dict[str, dict] = {}
+    for name, profile in (profiles or {}).items():
+        updated_profiles[new_name if name == old_name else name] = profile
+    config = mw.addonManager.getConfig(__name__) or {}
+    config["profiles"] = updated_profiles
+    mw.addonManager.writeConfig(__name__, config)
+    return updated_profiles
+
+
 def _compute_expected_mix(
     session_card_count: int,
     topics_slider: int,
@@ -1151,11 +1170,23 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._profile_load_btn.clicked, self._load_profile)
         profile_row.addWidget(self._profile_load_btn)
 
+        self._profile_save_btn = QPushButton("Save")
+        self._profile_save_btn.setFixedWidth(52)
+        self._profile_save_btn.setToolTip("Overwrite the selected profile with the current settings")
+        qconnect(self._profile_save_btn.clicked, self._save_profile)
+        profile_row.addWidget(self._profile_save_btn)
+
         save_as_btn = QPushButton("Save As…")
         save_as_btn.setFixedWidth(72)
         save_as_btn.setToolTip("Save the current settings as a named profile")
         qconnect(save_as_btn.clicked, self._save_profile_as)
         profile_row.addWidget(save_as_btn)
+
+        self._profile_rename_btn = QPushButton("Rename…")
+        self._profile_rename_btn.setFixedWidth(78)
+        self._profile_rename_btn.setToolTip("Rename the selected profile")
+        qconnect(self._profile_rename_btn.clicked, self._rename_profile)
+        profile_row.addWidget(self._profile_rename_btn)
 
         self._profile_delete_btn = QPushButton("Delete")
         self._profile_delete_btn.setFixedWidth(58)
@@ -3416,6 +3447,8 @@ class SchedulerConfigDialog(QDialog):
             self._profile_combo.addItem(name)
         has = self._profile_combo.count() > 0
         self._profile_load_btn.setEnabled(has)
+        self._profile_save_btn.setEnabled(has)
+        self._profile_rename_btn.setEnabled(has)
         self._profile_delete_btn.setEnabled(has)
         self._profile_combo.blockSignals(False)
 
@@ -3441,15 +3474,59 @@ class SchedulerConfigDialog(QDialog):
             )
             if r != QMessageBox.StandardButton.Yes:
                 return
-        self._profiles[name] = self._build_current_dict()
-        config = mw.addonManager.getConfig(__name__) or {}
-        config["profiles"] = self._profiles
-        mw.addonManager.writeConfig(__name__, config)
+        self._profiles = _write_named_scheduler_profile(
+            name,
+            self._build_current_dict(),
+            self._profiles,
+        )
         self._refresh_profile_combo()
         idx = self._profile_combo.findText(name)
         if idx >= 0:
             self._profile_combo.setCurrentIndex(idx)
         tooltip(f'Profile "{name}" saved.')
+
+    def _save_profile(self) -> None:
+        name = self._profile_combo.currentText().strip()
+        if not name or name not in self._profiles:
+            return
+        self._profiles = _write_named_scheduler_profile(
+            name,
+            self._build_current_dict(),
+            self._profiles,
+        )
+        self._refresh_profile_combo()
+        idx = self._profile_combo.findText(name)
+        if idx >= 0:
+            self._profile_combo.setCurrentIndex(idx)
+        tooltip(f'Profile "{name}" saved.')
+
+    def _rename_profile(self) -> None:
+        old_name = self._profile_combo.currentText().strip()
+        if not old_name or old_name not in self._profiles:
+            return
+        new_name, ok = QInputDialog.getText(
+            self, "Rename Profile", "Profile name:", text=old_name
+        )
+        new_name = new_name.strip()
+        if not ok or not new_name or new_name == old_name:
+            return
+        if new_name in self._profiles:
+            QMessageBox.warning(
+                self,
+                "Rename Profile",
+                f'Profile "{new_name}" already exists.',
+            )
+            return
+        self._profiles = _rename_named_scheduler_profile(
+            old_name,
+            new_name,
+            self._profiles,
+        )
+        self._refresh_profile_combo()
+        idx = self._profile_combo.findText(new_name)
+        if idx >= 0:
+            self._profile_combo.setCurrentIndex(idx)
+        tooltip(f'Profile "{old_name}" renamed to "{new_name}".')
 
     def _delete_profile(self) -> None:
         name = self._profile_combo.currentText()

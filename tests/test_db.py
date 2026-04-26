@@ -1215,12 +1215,13 @@ class TestExportHelpers:
         import json
         conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute(
-            "INSERT INTO pdf_highlights VALUES ('h1', 5, 2, 'blue', 'some text', '[]')"
+            "INSERT INTO pdf_highlights VALUES ('h1', 5, 2, 'blue', 'some text', 'saved note', '[]')"
         )
         conn.commit()
         result = json.loads(db.export_highlights_json(self.addon_dir, "TestProfile"))
         assert "5" in result
         assert result["5"][0]["id"] == "h1"
+        assert result["5"][0]["note"] == "saved note"
 
     def test_export_stats_json_empty(self):
         import json

@@ -14,8 +14,8 @@ add_highlight = _mod.add_highlight
 remove_highlight = _mod.remove_highlight
 
 
-def make_hl(hl_id="hl-1", page=1, color="yellow", text="hello", rects=None):
-    return {"id": hl_id, "page": page, "color": color, "text": text, "rects": rects or []}
+def make_hl(hl_id="hl-1", page=1, color="yellow", text="hello", note="", rects=None):
+    return {"id": hl_id, "page": page, "color": color, "text": text, "note": note, "rects": rects or []}
 
 
 class TestLoadHighlights:
@@ -29,9 +29,16 @@ class TestLoadHighlights:
         assert len(result) == 1
         assert result[0]["id"] == "hl-1"
         assert result[0]["text"] == "hello"
+        assert result[0]["note"] == ""
         assert result[0]["color"] == "yellow"
         assert result[0]["page"] == 1
         assert result[0]["rects"] == []
+
+    def test_returns_saved_note_text(self, tmp_path):
+        hl = make_hl(note="Margin reminder")
+        add_highlight(str(tmp_path), "TestProfile", 1, hl)
+        result = load_highlights(str(tmp_path), "TestProfile", 1)
+        assert result[0]["note"] == "Margin reminder"
 
     def test_rects_deserialized_from_json(self, tmp_path):
         hl = make_hl(rects=[{"x": 10, "y": 20, "w": 30, "h": 5}])
@@ -70,6 +77,7 @@ class TestAddHighlight:
         assert result[0]["page"] == 1
         assert result[0]["color"] == "yellow"
         assert result[0]["text"] == ""
+        assert result[0]["note"] == ""
         assert result[0]["rects"] == []
 
 

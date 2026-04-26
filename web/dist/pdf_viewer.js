@@ -7302,6 +7302,9 @@
     renderInfo,
     deleteHighlight,
     focusedHighlightId,
+    showHighlightNote,
+    moveHighlightNote,
+    hideHighlightNote,
     snapshotMode,
     snapRect,
     handleSnapStart,
@@ -7328,6 +7331,28 @@
             }
           },
           `${h.id}-${ri}`
+        ))
+      ),
+      pageHighlights.map(
+        (h) => !String(h.note || "").trim() ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            title: String(h.note || "").trim(),
+            onMouseEnter: (event) => showHighlightNote(h, event),
+            onMouseMove: moveHighlightNote,
+            onMouseLeave: hideHighlightNote,
+            style: {
+              position: "absolute",
+              left: renderInfo.tlLeft + r.x * renderInfo.scale,
+              top: r.y * renderInfo.scale,
+              width: r.w * renderInfo.scale,
+              height: r.h * renderInfo.scale,
+              background: "transparent",
+              cursor: "help",
+              zIndex: 9
+            }
+          },
+          `note-${h.id}-${ri}`
         ))
       ),
       pageHighlights.map((h) => {
@@ -7599,6 +7624,7 @@
     const [searchQuery, setSearchQuery] = reactExports.useState("");
     const [limitStatus, setLimitStatus] = reactExports.useState(DEFAULT_LIMIT_STATUS);
     const [limitNotice, setLimitNotice] = reactExports.useState(null);
+    const [hoveredHighlightNote, setHoveredHighlightNote] = reactExports.useState(null);
     const [highlightsScope, setHighlightsScope] = reactExports.useState("all");
     const [focusedHighlightId, setFocusedHighlightId] = reactExports.useState(null);
     const [highlightJumpNonce, setHighlightJumpNonce] = reactExports.useState(0);
@@ -7622,6 +7648,26 @@
     const limitReached = !!(limitStatus == null ? void 0 : limitStatus.limit_reached);
     const overrideEnabled = !!(limitStatus == null ? void 0 : limitStatus.override_enabled);
     const clearLimitNotice = reactExports.useCallback(() => setLimitNotice(null), []);
+    const showHighlightNote = reactExports.useCallback((highlight, event) => {
+      const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
+      if (!note) return;
+      setHoveredHighlightNote({
+        id: String(highlight.id || ""),
+        note,
+        x: Number((event == null ? void 0 : event.clientX) || 0),
+        y: Number((event == null ? void 0 : event.clientY) || 0)
+      });
+    }, []);
+    const moveHighlightNote = reactExports.useCallback((event) => {
+      setHoveredHighlightNote((prev) => prev ? {
+        ...prev,
+        x: Number((event == null ? void 0 : event.clientX) || prev.x || 0),
+        y: Number((event == null ? void 0 : event.clientY) || prev.y || 0)
+      } : prev);
+    }, []);
+    const hideHighlightNote = reactExports.useCallback(() => {
+      setHoveredHighlightNote(null);
+    }, []);
     const describeLimitReached = reactExports.useCallback(() => {
       const prefix = limitTotal > 0 ? `Daily limit reached: ${Math.max(limitUsed, limitTotal)}/${limitTotal} pages today.` : "Daily limit reached for this PDF.";
       if (limitMode === "hard_stop") {
@@ -7818,6 +7864,9 @@
       setHighlights((prev) => prev.filter((h) => h.id !== id));
       window.pycmd("incremento_pdf_hl_del:" + JSON.stringify({ cardId: cardIdRef.current, id }));
     }, [cardIdRef]);
+    const updateHighlightNote = reactExports.useCallback((id, note) => {
+      setHighlights((prev) => prev.map((h) => h.id === id ? { ...h, note: String(note || "") } : h));
+    }, []);
     const makeHighlight = reactExports.useCallback((sel, forcedColor = null) => {
       if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
       const tl = textLayerRef.current;
@@ -7889,6 +7938,9 @@
       window.incrementoReceivePdfLimitStatus = (status) => {
         setLimitStatus(status || DEFAULT_LIMIT_STATUS);
       };
+      window.incrementoUpdatePdfHighlightNote = (id, note) => {
+        updateHighlightNote(String(id || ""), String(note || ""));
+      };
       const pending = window._incPdfPending;
       if (pending) {
         window._incPdfPending = null;
@@ -7909,8 +7961,9 @@
         delete window.incrementoPdfMarkRead;
         delete window.incrementoReceivePageCards;
         delete window.incrementoReceivePdfLimitStatus;
+        delete window.incrementoUpdatePdfHighlightNote;
       };
-    }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef]);
+    }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote]);
     reactExports.useEffect(() => {
       if (!pdfDocRef.current || !cardIdRef.current) return;
       setPageCards([]);
@@ -8399,6 +8452,28 @@
                         /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
+                            title: (hl.note || "").trim() ? "Edit note for this highlight" : "Add note to this highlight",
+                            onClick: (e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              window.pycmd("incremento_pdf_hl_note:" + JSON.stringify({ id: hl.id }));
+                            },
+                            style: {
+                              border: "1px solid rgba(74,144,217,0.55)",
+                              borderRadius: 4,
+                              background: "rgba(74,144,217,0.12)",
+                              color: "rgba(147,197,253,0.95)",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              padding: "1px 7px",
+                              flexShrink: 0
+                            },
+                            children: (hl.note || "").trim() ? "Edit note" : "Add note"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
                             title: "Delete this highlight",
                             onClick: (e) => {
                               e.preventDefault();
@@ -8419,7 +8494,11 @@
                           }
                         )
                       ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: (hl.text || "(no text)").trim() })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: (hl.text || "(no text)").trim() }),
+                      (hl.note || "").trim() && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: [
+                        "Note: ",
+                        String(hl.note).trim()
+                      ] })
                     ]
                   },
                   hl.id
@@ -8428,6 +8507,29 @@
             }
           ),
           error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { color: "red", padding: "4px 8px", textAlign: "center" }, children: error }),
+          hoveredHighlightNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              style: {
+                position: "fixed",
+                left: hoveredHighlightNote.x + 14,
+                top: hoveredHighlightNote.y + 16,
+                maxWidth: 280,
+                padding: "8px 10px",
+                background: "rgba(20,20,20,0.96)",
+                border: "1px solid rgba(147,197,253,0.45)",
+                borderRadius: 6,
+                color: "rgb(219,234,254)",
+                fontSize: 12,
+                lineHeight: 1.4,
+                boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
+                pointerEvents: "none",
+                zIndex: 120,
+                whiteSpace: "pre-wrap"
+              },
+              children: hoveredHighlightNote.note
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
@@ -8465,6 +8567,9 @@
                     renderInfo,
                     deleteHighlight,
                     focusedHighlightId,
+                    showHighlightNote,
+                    moveHighlightNote,
+                    hideHighlightNote,
                     snapshotMode,
                     snapRect,
                     handleSnapStart,
