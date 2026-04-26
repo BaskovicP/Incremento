@@ -9,6 +9,16 @@
     "remember_browser_card_scroll": true,
     "show_priority_dialog_after_answer": false,
     "show_incremento_fields": false,
+    "auto_timer_enabled": false,
+    "auto_timer_tags": [],
+    "auto_timer_card_types": {
+        "pdf": true,
+        "epub": true,
+        "video": false,
+        "web": false,
+        "writing": false,
+        "local_file": false
+    },
     "scheduler_scope": "session",
     "use_fail_pass_on_items": false,
     "writing_wrap_enabled": true,

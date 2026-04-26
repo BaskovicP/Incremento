@@ -236,3 +236,63 @@ class TestEpubWorkflowHelpers:
         assert status["sections_used"] == 1
         assert status["sections_remaining"] == 1
         assert status["allowed_max_section"] == 2
+
+    def test_epub_daily_limit_status_uses_page_aliases(self, tmp_path):
+        addon_dir = str(tmp_path)
+        with patch("epub_manager.load_scheduler_config", return_value=type("Cfg", (), {"day_end_time": "00:00"})()), patch(
+            "epub_manager._effective_date", return_value="2026-04-24"
+        ):
+            epub_manager.save_epub_daily_limit_settings(
+                addon_dir,
+                "TestProfile",
+                11,
+                enabled=True,
+                daily_section_limit=3,
+                enforcement_mode="hard_stop",
+            )
+            status = epub_manager.get_epub_daily_limit_status(
+                addon_dir,
+                "TestProfile",
+                11,
+                current_section_index=0,
+                current_page_index=4,
+            )
+
+        assert status["daily_page_limit"] == 3
+        assert status["current_page_index"] == 4
+        assert status["baseline_page"] == 3
+        assert status["highest_page"] == 4
+        assert status["pages_used"] == 1
+        assert status["pages_remaining"] == 2
+        assert status["allowed_max_page"] == 6
+
+    def test_epub_daily_limit_highest_page_only_grows(self, tmp_path):
+        addon_dir = str(tmp_path)
+        with patch("epub_manager.load_scheduler_config", return_value=type("Cfg", (), {"day_end_time": "00:00"})()), patch(
+            "epub_manager._effective_date", return_value="2026-04-25"
+        ):
+            epub_manager.save_epub_daily_limit_settings(
+                addon_dir,
+                "TestProfile",
+                12,
+                enabled=True,
+                daily_section_limit=2,
+                enforcement_mode="soft_lock",
+            )
+            epub_manager.get_epub_daily_limit_status(
+                addon_dir,
+                "TestProfile",
+                12,
+                current_page_index=5,
+            )
+            backed_up = epub_manager.get_epub_daily_limit_status(
+                addon_dir,
+                "TestProfile",
+                12,
+                current_page_index=4,
+            )
+
+        assert backed_up["baseline_page"] == 4
+        assert backed_up["highest_page"] == 5
+        assert backed_up["pages_used"] == 1
+        assert backed_up["allowed_max_page"] == 6

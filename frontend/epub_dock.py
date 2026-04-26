@@ -133,8 +133,14 @@ _MSG_FILL_FIELD = "incremento_epub_fill_field:"
 _MSG_HL_ADD = "incremento_epub_hl_add:"
 _MSG_HL_DEL = "incremento_epub_hl_del:"
 _MSG_PROGRESS = "incremento_epub_progress:"
+_MSG_SECTION_NAV = "incremento_epub_section_nav:"
 _MSG_SNAPSHOT = "incremento_epub_snapshot:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
+
+_current_epub_page_index = 0
+_current_epub_total_pages = 0
+_current_epub_section_page = 1
+_current_epub_section_pages = 1
 
 
 def current_epub_card_id() -> int | None:
@@ -199,7 +205,7 @@ class _EpubReadingLimitDialog(QDialog):
         form.setContentsMargins(0, 0, 0, 0)
         form.setSpacing(8)
 
-        self._enabled = QCheckBox("Limit sections read per day for this EPUB")
+        self._enabled = QCheckBox("Limit pages read per day for this EPUB")
         self._enabled.setChecked(bool(settings.get("enabled")))
         form.addRow("Enabled:", self._enabled)
 
@@ -210,7 +216,7 @@ class _EpubReadingLimitDialog(QDialog):
 
         self._limit_spin = QSpinBox(self)
         self._limit_spin.setRange(1, 5000)
-        self._limit_spin.setValue(max(1, int(settings.get("daily_section_limit", 5) or 5)))
+        self._limit_spin.setValue(max(1, int(settings.get("daily_page_limit", settings.get("daily_section_limit", 5)) or 5)))
         row_layout.addWidget(self._limit_spin)
 
         self._mode = QComboBox(self)
@@ -243,12 +249,12 @@ class _EpubReadingLimitDialog(QDialog):
     def _summary_text(status: dict) -> str:
         if not status.get("enabled"):
             return "No daily reading limit is set for this EPUB."
-        limit = int(status.get("daily_section_limit", 0) or 0)
-        used = int(status.get("sections_used", 0) or 0)
-        remaining = int(status.get("sections_remaining", 0) or 0)
+        limit = int(status.get("daily_page_limit", status.get("daily_section_limit", 0)) or 0)
+        used = int(status.get("pages_used", status.get("sections_used", 0)) or 0)
+        remaining = int(status.get("pages_remaining", status.get("sections_remaining", 0)) or 0)
         mode_label = get_epub_limit_mode_label(status.get("enforcement_mode"))
         return (
-            f"Today: {used}/{limit} sections used, {remaining} remaining. "
+            f"Today: {used}/{limit} pages used, {remaining} remaining. "
             f"Mode: {mode_label}."
         )
 
@@ -296,8 +302,8 @@ class _EpubDueReviewPromptDialog(QDialog):
         count = len(due_cards)
         earlier_sections = _summarize_due_review_sections(due_cards)
         summary = QLabel(
-            f"You have {count} due card{'s' if count != 1 else ''} from this EPUB up to section {current_section_index + 1}.\n"
-            f"Sections: {earlier_sections}"
+            f"You have {count} due card{'s' if count != 1 else ''} from this EPUB near this reading point.\n"
+            f"Source sections: {earlier_sections}"
         )
         summary.setWordWrap(True)
         summary.setStyleSheet(
@@ -335,7 +341,7 @@ class _EpubDueReviewPromptDialog(QDialog):
             excerpt = str(row.get("excerpt") or "").strip()
             state = str(row.get("due_state") or "due").capitalize()
             detail = (
-                f"s.{int(row.get('section_index', 0) or 0) + 1} — {title} "
+                f"section {int(row.get('section_index', 0) or 0) + 1} — {title} "
                 f"<span style='color:#8892a0;'>({state})</span>"
             )
             if excerpt:
@@ -360,7 +366,7 @@ class _EpubDueReviewPromptDialog(QDialog):
 
 
 class _EpubSoftLimitDialog(QDialog):
-    def __init__(self, parent, *, status: dict, target_section_index: int):
+    def __init__(self, parent, *, status: dict, target_page_index: int):
         super().__init__(parent)
         self._override = False
         self.setWindowTitle("EPUB Reading Limit")
@@ -371,11 +377,11 @@ class _EpubSoftLimitDialog(QDialog):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        allowed = int(status.get("allowed_max_section", 0) or 0) + 1
-        target = int(target_section_index) + 1
+        allowed = int(status.get("allowed_max_page", status.get("allowed_max_section", 0)) or 0) + 1
+        target = int(target_page_index) + 1
         summary = QLabel(
-            f"You reached this EPUB's daily section limit.\n"
-            f"Allowed today: up to section {allowed}. Target: section {target}."
+            f"You reached this EPUB's daily page limit.\n"
+            f"Allowed today: up to page {allowed}. Target: page {target}."
         )
         summary.setWordWrap(True)
         layout.addWidget(summary)
@@ -400,13 +406,19 @@ class _EpubSoftLimitDialog(QDialog):
         return self._override
 
 
-def _current_epub_limit_status(card_id: int, *, current_section_index: int | None = None) -> dict:
+def _current_epub_limit_status(
+    card_id: int,
+    *,
+    current_section_index: int | None = None,
+    current_page_index: int | None = None,
+) -> dict:
     try:
         return get_epub_daily_limit_status(
             _ADDON_DIR,
             _active_profile(),
             int(card_id),
             current_section_index=current_section_index,
+            current_page_index=current_page_index,
         )
     except Exception:
         return {"enabled": False}
@@ -417,6 +429,7 @@ def _open_epub_limit_dialog(card_id: int) -> None:
     status = _current_epub_limit_status(
         int(card_id),
         current_section_index=_current_epub_section_index,
+        current_page_index=_current_epub_page_index,
     )
     dlg = _EpubReadingLimitDialog(mw, settings=settings, status=status)
     if not dlg.exec():
@@ -432,7 +445,7 @@ def _open_epub_limit_dialog(card_id: int) -> None:
     )
     if refreshed.get("enabled"):
         tooltip(
-            f"EPUB limit saved: {refreshed['daily_section_limit']} sections/day "
+            f"EPUB limit saved: {refreshed['daily_page_limit']} pages/day "
             f"({refreshed['enforcement_label']})."
         )
     else:
@@ -541,20 +554,21 @@ def _offer_due_review_for_epub(
         _start_due_epub_review(int(card_id), current_section_index=section_index, due_cards=due_cards)
 
 
-def _check_epub_limit_before_navigation(target_section_index: int) -> bool:
+def _check_epub_limit_before_navigation(target_page_index: int) -> bool:
     if _current_epub_card_id is None:
         return True
     status = _current_epub_limit_status(
         int(_current_epub_card_id),
         current_section_index=_current_epub_section_index,
+        current_page_index=_current_epub_page_index,
     )
-    allowed_max = status.get("allowed_max_section")
+    allowed_max = status.get("allowed_max_page", status.get("allowed_max_section"))
     is_blocking = bool(
         status.get("enabled")
         and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
         and not status.get("override_enabled")
         and allowed_max is not None
-        and int(target_section_index) > int(allowed_max)
+        and int(target_page_index) > int(allowed_max)
     )
     if not is_blocking:
         return True
@@ -562,7 +576,7 @@ def _check_epub_limit_before_navigation(target_section_index: int) -> bool:
         dlg = _EpubSoftLimitDialog(
             mw,
             status=status,
-            target_section_index=int(target_section_index),
+            target_page_index=int(target_page_index),
         )
         if dlg.exec() and dlg.override_requested():
             set_epub_daily_limit_override(
@@ -571,6 +585,7 @@ def _check_epub_limit_before_navigation(target_section_index: int) -> bool:
                 int(_current_epub_card_id),
                 enabled=True,
                 current_section_index=_current_epub_section_index,
+                current_page_index=_current_epub_page_index,
             )
             tooltip("EPUB reading limit overridden for today.")
             return True
@@ -629,7 +644,18 @@ class _EpubDockPage(QWebEnginePage):
                 _record_progress(
                     int(data.get("sectionIndex", _current_epub_section_index) or 0),
                     float(data.get("scrollRatio", 0.0) or 0.0),
+                    page_index=int(data.get("pageIndex", _current_epub_page_index) or 0),
+                    total_pages=int(data.get("totalPages", _current_epub_total_pages) or 0),
+                    section_page=int(data.get("sectionPage", _current_epub_section_page) or 1),
+                    section_pages=int(data.get("sectionPages", _current_epub_section_pages) or 1),
                 )
+            except Exception:
+                pass
+            return
+        if msg.startswith(_MSG_SECTION_NAV):
+            try:
+                data = json.loads(msg[len(_MSG_SECTION_NAV) :])
+                _jump_section_boundary(int(data.get("delta", 0) or 0))
             except Exception:
                 pass
             return
@@ -647,6 +673,8 @@ def _build_page_script(
     search_query: str,
     highlights: list[dict],
 ) -> str:
+    sections = _current_sections()
+    section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
     state = {
         "cardId": int(card_id),
         "sectionIndex": int(section_index),
@@ -655,6 +683,7 @@ def _build_page_script(
         "focusOffset": int(focus_offset),
         "searchQuery": str(search_query or ""),
         "highlights": highlights,
+        "sectionLengths": section_lengths,
     }
     return f"""
     (function() {{
@@ -837,14 +866,56 @@ def _build_page_script(
         window._lastEpubSelectionMeta = meta;
         send('incremento_selection_state:' + JSON.stringify({{ source: 'epub', hasText: true }}));
       }}
+      function pageStep() {{
+        return Math.max(1, Math.floor(window.innerHeight * 0.92));
+      }}
+      function maxScroll() {{
+        const doc = document.documentElement || document.body;
+        return Math.max(0, ((doc && doc.scrollHeight) || 0) - window.innerHeight);
+      }}
+      function sectionPageCount() {{
+        return Math.max(1, Math.ceil(maxScroll() / pageStep()) + 1);
+      }}
+      function currentSectionPage() {{
+        return Math.max(1, Math.min(sectionPageCount(), Math.floor(window.scrollY / pageStep()) + 1));
+      }}
+      function estimatedSectionPages() {{
+        const lengths = Array.isArray(STATE.sectionLengths) ? STATE.sectionLengths : [];
+        const currentLength = Math.max(1, Number(lengths[STATE.sectionIndex]) || 1);
+        const charsPerPage = Math.max(300, currentLength / sectionPageCount());
+        return lengths.map(function(length) {{
+          return Math.max(1, Math.ceil(Math.max(1, Number(length) || 1) / charsPerPage));
+        }});
+      }}
+      function pageMetrics() {{
+        const pages = estimatedSectionPages();
+        let before = 0;
+        for (let i = 0; i < Math.min(STATE.sectionIndex, pages.length); i += 1) {{
+          before += pages[i];
+        }}
+        const total = Math.max(1, pages.reduce(function(sum, value) {{ return sum + value; }}, 0));
+        const sectionPage = currentSectionPage();
+        const sectionPages = sectionPageCount();
+        return {{
+          sectionPage: sectionPage,
+          sectionPages: sectionPages,
+          pageIndex: Math.max(0, before + sectionPage - 1),
+          totalPages: total,
+        }};
+      }}
       function reportProgress() {{
         const doc = document.documentElement || document.body;
-        const maxScroll = Math.max(0, ((doc && doc.scrollHeight) || 0) - window.innerHeight);
-        const ratio = maxScroll > 0 ? Math.max(0, Math.min(window.scrollY / maxScroll, 1)) : 0;
+        const scrollMax = maxScroll();
+        const ratio = scrollMax > 0 ? Math.max(0, Math.min(window.scrollY / scrollMax, 1)) : 0;
+        const metrics = pageMetrics();
         send('incremento_epub_progress:' + JSON.stringify({{
           cardId: STATE.cardId,
           sectionIndex: STATE.sectionIndex,
           scrollRatio: ratio,
+          sectionPage: metrics.sectionPage,
+          sectionPages: metrics.sectionPages,
+          pageIndex: metrics.pageIndex,
+          totalPages: metrics.totalPages,
         }}));
       }}
       function clearSelection() {{
@@ -881,6 +952,27 @@ def _build_page_script(
           rect,
         }}));
         return true;
+      }};
+      window.incrementoEpubPageNav = function(delta) {{
+        const dir = Number(delta) < 0 ? -1 : 1;
+        const step = pageStep();
+        const scrollMax = maxScroll();
+        const currentY = Math.max(0, window.scrollY || 0);
+        if (dir > 0) {{
+          if (currentY + step >= scrollMax - 2) {{
+            send('incremento_epub_section_nav:' + JSON.stringify({{ delta: 1 }}));
+          }} else {{
+            window.scrollTo(0, Math.min(scrollMax, currentY + step));
+            setTimeout(reportProgress, 40);
+          }}
+          return;
+        }}
+        if (currentY <= 2) {{
+          send('incremento_epub_section_nav:' + JSON.stringify({{ delta: -1 }}));
+        }} else {{
+          window.scrollTo(0, Math.max(0, currentY - step));
+          setTimeout(reportProgress, 40);
+        }}
       }};
       ensureStyle();
       applyTextScale(STATE.textScale);
@@ -954,9 +1046,7 @@ def _build_page_script(
             point.node.parentElement.scrollIntoView({{ block: 'center' }});
           }}
         }} else if (Number(STATE.scrollRatio) > 0) {{
-          const doc = document.documentElement || document.body;
-          const maxScroll = Math.max(0, ((doc && doc.scrollHeight) || 0) - window.innerHeight);
-          window.scrollTo(0, maxScroll * Number(STATE.scrollRatio));
+          window.scrollTo(0, maxScroll() * Number(STATE.scrollRatio));
         }}
         if (STATE.searchQuery) {{
           try {{
@@ -1344,7 +1434,12 @@ def _handle_epub_snapshot(msg: str) -> None:
             return
 
         if _cb_fill_dock_field:
-            _cb_fill_dock_field(chosen_idx[0], f'<img src="{media_filename}">')
+            _cb_fill_dock_field(
+                chosen_idx[0],
+                f'<img src="{media_filename}">',
+                include_pdf_citation=False,
+                source_link_kind="epub",
+            )
     except Exception as exc:
         showInfo(f"EPUB snapshot failed:\n{exc}")
 
@@ -1367,11 +1462,17 @@ def _update_title_and_buttons() -> None:
     if count:
         idx = max(0, min(_current_epub_section_index, count - 1))
         section = sections[idx]
-        _epub_dock._title_lbl.setText(
-            f"{section.get('title') or f'Section {idx + 1}'} ({idx + 1}/{count})"
-        )
-        _epub_dock._prev_btn.setEnabled(idx > 0)
-        _epub_dock._next_btn.setEnabled(idx + 1 < count)
+        if _current_epub_total_pages > 0:
+            _epub_dock._title_lbl.setText(
+                f"Page {_current_epub_page_index + 1} / {_current_epub_total_pages} — "
+                f"{section.get('title') or f'Section {idx + 1}'}"
+            )
+        else:
+            _epub_dock._title_lbl.setText(
+                f"{section.get('title') or f'Section {idx + 1}'} ({idx + 1}/{count})"
+            )
+        _epub_dock._prev_btn.setEnabled(idx > 0 or _current_epub_scroll_ratio > 0.001)
+        _epub_dock._next_btn.setEnabled(idx + 1 < count or _current_epub_scroll_ratio < 0.999)
     else:
         _epub_dock._title_lbl.setText("EPUB")
         _epub_dock._prev_btn.setEnabled(False)
@@ -1435,12 +1536,29 @@ def _update_sources_panel() -> None:
     _epub_dock._sources.setHtml("".join(html))
 
 
-def _record_progress(section_index: int, scroll_ratio: float) -> None:
+def _record_progress(
+    section_index: int,
+    scroll_ratio: float,
+    *,
+    page_index: int | None = None,
+    total_pages: int | None = None,
+    section_page: int | None = None,
+    section_pages: int | None = None,
+) -> None:
     global _current_epub_section_index, _current_epub_scroll_ratio
+    global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
     if _current_epub_card_id is None:
         return
     _current_epub_section_index = max(0, int(section_index))
     _current_epub_scroll_ratio = max(0.0, min(float(scroll_ratio), 1.0))
+    if page_index is not None:
+        _current_epub_page_index = max(0, int(page_index))
+    if total_pages is not None:
+        _current_epub_total_pages = max(0, int(total_pages))
+    if section_page is not None:
+        _current_epub_section_page = max(1, int(section_page))
+    if section_pages is not None:
+        _current_epub_section_pages = max(1, int(section_pages))
     try:
         set_epub_progress(
             _ADDON_DIR,
@@ -1449,6 +1567,13 @@ def _record_progress(section_index: int, scroll_ratio: float) -> None:
             section_index=_current_epub_section_index,
             scroll_ratio=_current_epub_scroll_ratio,
             is_finished=_current_epub_finished,
+        )
+        get_epub_daily_limit_status(
+            _ADDON_DIR,
+            _active_profile(),
+            _current_epub_card_id,
+            current_section_index=_current_epub_section_index,
+            current_page_index=_current_epub_page_index,
         )
     except Exception:
         pass
@@ -1530,6 +1655,7 @@ def show_epub_in_dock(
 ) -> None:
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _current_epub_section_index
     global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _pending_focus_offset, _pending_restore_ratio
+    global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
     global _pending_search_query, _pending_explicit_navigation, _last_selection_meta
 
     if _epub_dock is None:
@@ -1539,6 +1665,10 @@ def show_epub_in_dock(
     _current_epub_filename = str(filename or "").strip()
     _current_epub_section_index = max(0, int(section_index))
     _current_epub_scroll_ratio = max(0.0, min(float(scroll_ratio), 1.0))
+    _current_epub_page_index = max(0, _current_epub_section_index)
+    _current_epub_total_pages = 0
+    _current_epub_section_page = 1
+    _current_epub_section_pages = 1
     _pending_focus_offset = int(focus_offset)
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = str(search_query or "")
@@ -1611,13 +1741,24 @@ def _on_epub_selection(idx: int, text: str, start_offset: int, end_offset: int) 
 
 
 def _jump_relative(delta: int) -> None:
+    if _epub_dock is None or _current_epub_card_id is None:
+        return
+    if int(delta) > 0 and not _check_epub_limit_before_navigation(_current_epub_page_index + 1):
+        return
+    _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
+    _epub_dock._view.page().runJavaScript(
+        f"window.incrementoEpubPageNav && window.incrementoEpubPageNav({1 if int(delta) > 0 else -1});"
+    )
+
+
+def _jump_section_boundary(delta: int) -> None:
     sections = _current_sections()
     if not sections or _current_epub_filename is None or _current_epub_card_id is None:
         return
     next_idx = max(0, min(_current_epub_section_index + int(delta), len(sections) - 1))
     if next_idx == _current_epub_section_index:
         return
-    if next_idx > _current_epub_section_index and not _check_epub_limit_before_navigation(next_idx):
+    if next_idx > _current_epub_section_index and not _check_epub_limit_before_navigation(_current_epub_page_index + 1):
         return
     _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
     if next_idx > _current_epub_section_index:
@@ -1634,7 +1775,7 @@ def _jump_relative(delta: int) -> None:
         _current_epub_card_id,
         _current_epub_filename,
         section_index=next_idx,
-        scroll_ratio=0.0,
+        scroll_ratio=0.0 if int(delta) > 0 else 1.0,
         offer_due_review_prompt=False,
     )
 
@@ -1731,6 +1872,14 @@ def on_epub_reviewer_will_end() -> None:
 def on_add_cards_did_add_note(note) -> None:
     if _current_epub_card_id is None:
         return
+    try:
+        from . import add_card_dock as _add_card_dock_mod
+
+        source = _add_card_dock_mod.recent_fill_source()
+        if source and source != "epub":
+            return
+    except Exception:
+        pass
     import re as _re
 
     parts = []

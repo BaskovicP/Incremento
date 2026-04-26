@@ -3697,6 +3697,9 @@ def openSettingsFunction() -> None:
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
+        current_auto_timer_enabled=_timer_mod.configured_auto_timer_enabled(cfg),
+        current_auto_timer_card_types=_timer_mod.configured_auto_timer_card_types(cfg),
+        current_auto_timer_tags=_timer_mod.configured_auto_timer_tags(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
         current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
@@ -3734,6 +3737,9 @@ def openSettingsFunction() -> None:
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
+    cfg["auto_timer_enabled"] = dlg.auto_timer_enabled
+    cfg["auto_timer_card_types"] = dlg.auto_timer_card_types
+    cfg["auto_timer_tags"] = dlg.auto_timer_tags
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
     cfg["add_card_topic_tags"] = dlg.add_card_topic_tags

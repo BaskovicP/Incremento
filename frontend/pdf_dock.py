@@ -741,8 +741,7 @@ class _PdfDockPage(QWebEnginePage):
                         return
                     if not _pdf_via_link and not _pdf_preserve_history:
                         set_page(_ADDON_DIR, _active_profile(), cid, pg)
-                    if _timer_mod._timer_running:
-                        _timer_mod._timer_pdf_pages.add((cid, pg))
+                    _timer_mod.record_pdf_page_read(cid, pg)
                     _push_pdf_limit_status(_current_pdf_limit_status(cid, current_page=pg))
                 except ValueError:
                     pass
@@ -1329,6 +1328,14 @@ def on_add_cards_did_add_note(note) -> None:
     """When a card is saved in the AddCards dock, record it against the current PDF page."""
     if _current_pdf_card_id is None:
         return
+    try:
+        from . import add_card_dock as _add_card_dock_mod
+
+        source = _add_card_dock_mod.recent_fill_source()
+        if source and source != "pdf":
+            return
+    except Exception:
+        pass
     page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
     import re as _re
 

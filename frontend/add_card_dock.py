@@ -34,6 +34,8 @@ _last_add_mode_editor = None
 _current_extract_priority: float | None = None
 _current_extract_mark_topic: bool | None = None
 _pending_extract_options: dict | None = None
+_last_fill_source = ""
+_last_fill_seen = 0.0
 _tracked_tag_button_editors: list[weakref.ReferenceType] = []
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -996,6 +998,15 @@ def pending_extract_options() -> dict | None:
     return dict(_pending_extract_options) if _pending_extract_options else None
 
 
+def recent_fill_source(ttl_sec: float = 30.0) -> str:
+    try:
+        if time.monotonic() - float(_last_fill_seen) <= float(ttl_sec):
+            return str(_last_fill_source or "")
+    except Exception:
+        pass
+    return ""
+
+
 def _card_ids_for_note(note) -> list[int]:
     note_id = getattr(note, "id", None)
     try:
@@ -1237,7 +1248,7 @@ def fill_dock_field(
     source_link_kind: str | None = None,
     mark_topic: bool = False,
 ):
-    global _add_card_dock
+    global _add_card_dock, _last_fill_source, _last_fill_seen
     citation = citation_html
     link_kind = str(source_link_kind or "").strip()
     if citation is None and include_pdf_citation:
@@ -1250,6 +1261,8 @@ def fill_dock_field(
             citation = None
     if citation and (not link_kind or should_add_extract_source_link(link_kind)):
         text = text + '<br>' + citation
+    _last_fill_source = link_kind
+    _last_fill_seen = time.monotonic()
     if _add_card_dock is None:
         build_add_card_dock()
         QTimer.singleShot(600, lambda: do_fill(idx, text, mark_topic=mark_topic))

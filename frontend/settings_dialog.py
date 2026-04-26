@@ -226,6 +226,9 @@ class IncrementoSettingsDialog(QDialog):
         current_remember_browser_card_scroll: bool = True,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_use_fail_pass_on_items: bool = False,
+        current_auto_timer_enabled: bool = False,
+        current_auto_timer_card_types: dict[str, bool] | None = None,
+        current_auto_timer_tags: list[str] | str | None = None,
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
         current_add_card_topic_tags: list[str] | str | None = None,
@@ -278,6 +281,17 @@ class IncrementoSettingsDialog(QDialog):
             form.setHorizontalSpacing(16)
             form.setVerticalSpacing(8)
             return form
+
+        def _section_body() -> QVBoxLayout:
+            layout = QVBoxLayout()
+            layout.setContentsMargins(12, 0, 0, 0)
+            layout.setSpacing(8)
+            return layout
+
+        def _note_label(text: str) -> QLabel:
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            return lbl
 
         extraction_tab = QWidget()
         extraction_layout = QVBoxLayout(extraction_tab)
@@ -468,6 +482,89 @@ class IncrementoSettingsDialog(QDialog):
         review_behavior_layout.addWidget(self._show_incremento_fields_cb)
 
         review_layout.addLayout(review_behavior_layout)
+
+        review_layout.addWidget(_section_title("Focus Timer"))
+        timer_hint = QLabel(
+            "Automatically start the focus timer when a matching card is shown. "
+            "If the timer is already running, it keeps the current session."
+        )
+        timer_hint.setWordWrap(True)
+        review_layout.addWidget(timer_hint)
+
+        timer_form = _section_form()
+        self._auto_timer_enabled_cb = QCheckBox(
+            "Automatically start focus timer on matching cards"
+        )
+        self._auto_timer_enabled_cb.setChecked(bool(current_auto_timer_enabled))
+        timer_form.addRow("", self._auto_timer_enabled_cb)
+
+        timer_types = {
+            "pdf": True,
+            "epub": True,
+            "video": False,
+            "web": False,
+            "writing": False,
+            "local_file": False,
+        }
+        if isinstance(current_auto_timer_card_types, dict):
+            for key in timer_types:
+                if key in current_auto_timer_card_types:
+                    timer_types[key] = bool(current_auto_timer_card_types.get(key))
+
+        timer_types_wrap = QWidget()
+        timer_types_layout = QVBoxLayout(timer_types_wrap)
+        timer_types_layout.setContentsMargins(0, 0, 0, 0)
+        timer_types_layout.setSpacing(4)
+
+        self._auto_timer_pdf_cb = QCheckBox("PDF")
+        self._auto_timer_pdf_cb.setChecked(timer_types["pdf"])
+        timer_types_layout.addWidget(self._auto_timer_pdf_cb)
+
+        self._auto_timer_epub_cb = QCheckBox("EPUB")
+        self._auto_timer_epub_cb.setChecked(timer_types["epub"])
+        timer_types_layout.addWidget(self._auto_timer_epub_cb)
+
+        self._auto_timer_video_cb = QCheckBox("Video")
+        self._auto_timer_video_cb.setChecked(timer_types["video"])
+        timer_types_layout.addWidget(self._auto_timer_video_cb)
+
+        self._auto_timer_web_cb = QCheckBox("Web")
+        self._auto_timer_web_cb.setChecked(timer_types["web"])
+        timer_types_layout.addWidget(self._auto_timer_web_cb)
+
+        self._auto_timer_writing_cb = QCheckBox("Writing")
+        self._auto_timer_writing_cb.setChecked(timer_types["writing"])
+        timer_types_layout.addWidget(self._auto_timer_writing_cb)
+
+        self._auto_timer_local_file_cb = QCheckBox("Local file")
+        self._auto_timer_local_file_cb.setChecked(timer_types["local_file"])
+        timer_types_layout.addWidget(self._auto_timer_local_file_cb)
+
+        timer_form.addRow("Card types:", timer_types_wrap)
+
+        self._auto_timer_tags_edit = QLineEdit()
+        self._auto_timer_tags_edit.setPlaceholderText("tag1, tag2")
+        self._auto_timer_tags_edit.setText(_tag_list_text(current_auto_timer_tags))
+        timer_form.addRow("Tags:", self._auto_timer_tags_edit)
+
+        def _sync_auto_timer_widgets() -> None:
+            enabled = bool(self._auto_timer_enabled_cb.isChecked())
+            for widget in (
+                self._auto_timer_pdf_cb,
+                self._auto_timer_epub_cb,
+                self._auto_timer_video_cb,
+                self._auto_timer_web_cb,
+                self._auto_timer_writing_cb,
+                self._auto_timer_local_file_cb,
+                self._auto_timer_tags_edit,
+            ):
+                widget.setEnabled(enabled)
+
+        self._auto_timer_enabled_cb.toggled.connect(
+            lambda _checked: _sync_auto_timer_widgets()
+        )
+        _sync_auto_timer_widgets()
+        review_layout.addLayout(timer_form)
 
         review_layout.addWidget(_section_title("Custom Scheduling"))
         custom_schedule_hint = QLabel(
@@ -709,44 +806,50 @@ class IncrementoSettingsDialog(QDialog):
         writing_layout.addWidget(writing_hint)
 
         writing_layout.addWidget(_section_title("Editor Defaults"))
-        writing_form = _section_form()
+        writing_editor_layout = _section_body()
 
         self._writing_wrap_enabled_cb = QCheckBox("Wrap long lines in writing cards")
         self._writing_wrap_enabled_cb.setChecked(bool(current_writing_wrap_enabled))
-        writing_form.addRow("", self._writing_wrap_enabled_cb)
+        writing_editor_layout.addWidget(self._writing_wrap_enabled_cb)
 
         self._writing_focus_mode_cb = QCheckBox("Start writing cards in focus mode")
         self._writing_focus_mode_cb.setChecked(bool(current_writing_focus_mode))
-        writing_form.addRow("", self._writing_focus_mode_cb)
+        writing_editor_layout.addWidget(self._writing_focus_mode_cb)
 
         self._writing_preview_visible_cb = QCheckBox("Show markdown preview in writing cards")
         self._writing_preview_visible_cb.setChecked(bool(current_writing_preview_visible))
-        writing_form.addRow("", self._writing_preview_visible_cb)
+        writing_editor_layout.addWidget(self._writing_preview_visible_cb)
 
         self._writing_highlight_current_line_cb = QCheckBox("Highlight the current writing line")
         self._writing_highlight_current_line_cb.setChecked(bool(current_writing_highlight_current_line))
-        writing_form.addRow("", self._writing_highlight_current_line_cb)
+        writing_editor_layout.addWidget(self._writing_highlight_current_line_cb)
 
         self._writing_restore_bookmark_cb = QCheckBox(
             "Restore saved bookmark line when reopening writing cards"
         )
         self._writing_restore_bookmark_cb.setChecked(bool(current_writing_restore_bookmark))
-        writing_form.addRow("", self._writing_restore_bookmark_cb)
-        writing_layout.addLayout(writing_form)
+        writing_editor_layout.addWidget(self._writing_restore_bookmark_cb)
+        writing_layout.addLayout(writing_editor_layout)
 
         writing_layout.addWidget(_section_title("Backups"))
-        writing_backup_form = _section_form()
+        writing_backup_layout = _section_body()
 
         self._writing_backups_enabled_cb = QCheckBox("Create automatic writing backups")
         self._writing_backups_enabled_cb.setChecked(bool(current_writing_backups_enabled))
-        writing_backup_form.addRow("", self._writing_backups_enabled_cb)
+        writing_backup_layout.addWidget(self._writing_backups_enabled_cb)
 
         selected_backup_tiers = {
             str(value or "").strip().lower()
             for value in (current_writing_backup_tiers or DEFAULT_WRITING_BACKUP_TIERS)
         }
         self._writing_backup_tier_checks: dict[str, QCheckBox] = {}
+        self._writing_backup_details = QWidget()
+        backup_details_layout = QVBoxLayout(self._writing_backup_details)
+        backup_details_layout.setContentsMargins(24, 0, 0, 0)
+        backup_details_layout.setSpacing(8)
+
         tier_grid = QGridLayout()
+        tier_grid.setContentsMargins(0, 0, 0, 0)
         tier_grid.setHorizontalSpacing(18)
         tier_grid.setVerticalSpacing(6)
         for idx, (tier_key, label) in enumerate(WRITING_BACKUP_TIER_OPTIONS):
@@ -754,23 +857,31 @@ class IncrementoSettingsDialog(QDialog):
             checkbox.setChecked(tier_key in selected_backup_tiers)
             self._writing_backup_tier_checks[tier_key] = checkbox
             tier_grid.addWidget(checkbox, idx // 2, idx % 2)
-        writing_backup_form.addRow("Create snapshots for:", tier_grid)
-        writing_backup_form.addRow(
-            "",
-            QLabel(
+        backup_details_layout.addLayout(tier_grid)
+        backup_details_layout.addWidget(
+            _note_label(
                 "Each selected interval keeps one rolling snapshot per writing card. Existing backup files remain restorable even if you later uncheck an interval."
-            ),
+            )
         )
+        writing_backup_layout.addWidget(self._writing_backup_details)
         self._writing_backups_enabled_cb.toggled.connect(self._sync_writing_backup_controls)
         self._sync_writing_backup_controls(self._writing_backups_enabled_cb.isChecked())
-        writing_layout.addLayout(writing_backup_form)
+        writing_layout.addLayout(writing_backup_layout)
 
         writing_layout.addWidget(_section_title("Progress"))
-        writing_progress_form = _section_form()
+        writing_progress_layout = _section_body()
 
         self._writing_progress_visible_cb = QCheckBox("Show the writing progress counter in the dock")
         self._writing_progress_visible_cb.setChecked(bool(current_writing_progress_visible))
-        writing_progress_form.addRow("", self._writing_progress_visible_cb)
+        writing_progress_layout.addWidget(self._writing_progress_visible_cb)
+
+        self._writing_progress_details = QWidget()
+        progress_details_layout = QVBoxLayout(self._writing_progress_details)
+        progress_details_layout.setContentsMargins(24, 0, 0, 0)
+        progress_details_layout.setSpacing(8)
+
+        writing_progress_form = _section_form()
+        writing_progress_form.setContentsMargins(0, 0, 0, 0)
 
         self._writing_progress_scope_combo = QComboBox()
         self._writing_progress_scope_combo.addItem("Today", "today")
@@ -784,9 +895,9 @@ class IncrementoSettingsDialog(QDialog):
                 self._writing_progress_scope_combo.setCurrentIndex(idx)
                 break
         writing_progress_form.addRow("Default progress scope:", self._writing_progress_scope_combo)
-        writing_progress_form.addRow(
-            "",
-            QLabel("Session resets when you leave and reopen that writing card."),
+        progress_details_layout.addLayout(writing_progress_form)
+        progress_details_layout.addWidget(
+            _note_label("Session resets when you leave and reopen that writing card.")
         )
 
         self._writing_word_count_mode_combo = QComboBox()
@@ -800,11 +911,15 @@ class IncrementoSettingsDialog(QDialog):
                 self._writing_word_count_mode_combo.setCurrentIndex(idx)
                 break
         writing_progress_form.addRow("Word counting mode:", self._writing_word_count_mode_combo)
-        writing_progress_form.addRow(
-            "",
-            QLabel("Word-like mode approximates Microsoft Word better for punctuation, apostrophes, and hyphenated words."),
+        progress_details_layout.addWidget(
+            _note_label(
+                "Word-like mode approximates Microsoft Word better for punctuation, apostrophes, and hyphenated words."
+            )
         )
-        writing_layout.addLayout(writing_progress_form)
+        writing_progress_layout.addWidget(self._writing_progress_details)
+        self._writing_progress_visible_cb.toggled.connect(self._sync_writing_progress_controls)
+        self._sync_writing_progress_controls(self._writing_progress_visible_cb.isChecked())
+        writing_layout.addLayout(writing_progress_layout)
         writing_layout.addStretch(1)
         tabs.addTab(_scrollable_tab(writing_tab), "Writing")
 
@@ -940,6 +1055,25 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._use_fail_pass_on_items_cb.isChecked())
 
     @property
+    def auto_timer_enabled(self) -> bool:
+        return bool(self._auto_timer_enabled_cb.isChecked())
+
+    @property
+    def auto_timer_card_types(self) -> dict[str, bool]:
+        return {
+            "pdf": bool(self._auto_timer_pdf_cb.isChecked()),
+            "epub": bool(self._auto_timer_epub_cb.isChecked()),
+            "video": bool(self._auto_timer_video_cb.isChecked()),
+            "web": bool(self._auto_timer_web_cb.isChecked()),
+            "writing": bool(self._auto_timer_writing_cb.isChecked()),
+            "local_file": bool(self._auto_timer_local_file_cb.isChecked()),
+        }
+
+    @property
+    def auto_timer_tags(self) -> list[str]:
+        return _normalize_tag_list(self._auto_timer_tags_edit.text())
+
+    @property
     def topic_card_types(self) -> dict[str, bool]:
         return {
             "pdf_epub": bool(self._topic_pdf_epub_cb.isChecked()),
@@ -1026,8 +1160,12 @@ class IncrementoSettingsDialog(QDialog):
         )
 
     def _sync_writing_backup_controls(self, enabled: bool) -> None:
+        self._writing_backup_details.setEnabled(bool(enabled))
         for checkbox in self._writing_backup_tier_checks.values():
             checkbox.setEnabled(bool(enabled))
+
+    def _sync_writing_progress_controls(self, enabled: bool) -> None:
+        self._writing_progress_details.setEnabled(bool(enabled))
 
     @property
     def custom_schedule_presets(self) -> list[dict]:

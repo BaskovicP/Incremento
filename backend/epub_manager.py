@@ -519,6 +519,7 @@ def get_epub_daily_limit_settings(addon_dir: str, profile: str, card_id: int) ->
     return {
         "enabled": limit > 0,
         "daily_section_limit": limit,
+        "daily_page_limit": limit,
         "enforcement_mode": mode,
         "enforcement_label": get_epub_limit_mode_label(mode),
         "updated_at": int(config.get("updated_at", 0) or 0),
@@ -675,27 +676,38 @@ def get_epub_daily_limit_status(
     card_id: int,
     *,
     current_section_index: int | None = None,
+    current_page_index: int | None = None,
     count_current_section: bool = True,
+    count_current_page: bool | None = None,
     persist_usage: bool = True,
 ) -> dict:
     settings = get_epub_daily_limit_settings(addon_dir, profile, card_id)
     section_index = max(0, int(current_section_index if current_section_index is not None else get_epub_progress(addon_dir, profile, card_id)[0]))
+    page_index = max(0, int(current_page_index if current_page_index is not None else section_index))
+    count_page = count_current_section if count_current_page is None else bool(count_current_page)
     day_end_time = _current_day_end_time()
     logical_date = _effective_date(day_end_time)
 
     status = {
         "enabled": settings["enabled"],
         "daily_section_limit": settings["daily_section_limit"],
+        "daily_page_limit": settings["daily_page_limit"],
         "enforcement_mode": settings["enforcement_mode"],
         "enforcement_label": settings["enforcement_label"],
         "logical_date": logical_date,
         "day_end_time": day_end_time,
         "current_section_index": section_index,
-        "baseline_section": max(0, section_index - 1),
-        "highest_section": section_index if count_current_section else max(0, section_index - 1),
+        "current_page_index": page_index,
+        "baseline_section": max(0, page_index - 1),
+        "highest_section": page_index if count_page else max(0, page_index - 1),
+        "baseline_page": max(0, page_index - 1),
+        "highest_page": page_index if count_page else max(0, page_index - 1),
         "sections_used": 0,
+        "pages_used": 0,
         "sections_remaining": 0,
+        "pages_remaining": 0,
         "allowed_max_section": None,
+        "allowed_max_page": None,
         "override_enabled": False,
         "limit_reached": False,
         "blocking_active": False,
@@ -710,8 +722,8 @@ def get_epub_daily_limit_status(
     override_enabled = bool(usage.get("override_enabled"))
 
     if baseline_section <= 0 and highest_section <= 0:
-        baseline_section = max(0, section_index - 1)
-        highest_section = section_index if count_current_section else baseline_section
+        baseline_section = max(0, page_index - 1)
+        highest_section = page_index if count_page else baseline_section
         if persist_usage:
             set_epub_daily_limit_usage(
                 addon_dir,
@@ -722,8 +734,8 @@ def get_epub_daily_limit_status(
                 highest_section=highest_section,
                 override_enabled=override_enabled,
             )
-    elif count_current_section and section_index > highest_section:
-        highest_section = section_index
+    elif count_page and page_index > highest_section:
+        highest_section = page_index
         if persist_usage:
             set_epub_daily_limit_usage(
                 addon_dir,
@@ -750,9 +762,14 @@ def get_epub_daily_limit_status(
         {
             "baseline_section": baseline_section,
             "highest_section": highest_section,
+            "baseline_page": baseline_section,
+            "highest_page": highest_section,
             "sections_used": sections_used,
+            "pages_used": sections_used,
             "sections_remaining": sections_remaining,
+            "pages_remaining": sections_remaining,
             "allowed_max_section": allowed_max_section,
+            "allowed_max_page": allowed_max_section,
             "override_enabled": override_enabled,
             "limit_reached": limit_reached,
             "blocking_active": blocking_active,
@@ -773,6 +790,7 @@ def set_epub_daily_limit_override(
     *,
     enabled: bool,
     current_section_index: int | None = None,
+    current_page_index: int | None = None,
 ) -> dict:
     settings = get_epub_daily_limit_settings(addon_dir, profile, card_id)
     if not settings["enabled"]:
@@ -781,6 +799,7 @@ def set_epub_daily_limit_override(
             profile,
             card_id,
             current_section_index=current_section_index,
+            current_page_index=current_page_index,
         )
 
     section_index = max(
@@ -791,12 +810,13 @@ def set_epub_daily_limit_override(
             else get_epub_progress(addon_dir, profile, card_id)[0]
         ),
     )
+    page_index = max(0, int(current_page_index if current_page_index is not None else section_index))
     logical_date = _effective_date(_current_day_end_time())
     usage = get_epub_daily_limit_usage(addon_dir, profile, card_id, logical_date)
-    baseline_section = int(usage.get("baseline_section", 0) or max(0, section_index - 1))
-    highest_section = int(usage.get("highest_section", 0) or section_index)
-    if section_index > highest_section:
-        highest_section = section_index
+    baseline_section = int(usage.get("baseline_section", 0) or max(0, page_index - 1))
+    highest_section = int(usage.get("highest_section", 0) or page_index)
+    if page_index > highest_section:
+        highest_section = page_index
     set_epub_daily_limit_usage(
         addon_dir,
         profile,
@@ -811,6 +831,7 @@ def set_epub_daily_limit_override(
         profile,
         card_id,
         current_section_index=section_index,
+        current_page_index=page_index,
     )
 
 
