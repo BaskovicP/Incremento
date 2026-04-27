@@ -7417,39 +7417,6 @@
       )
     ] });
   }
-  function PageCardPanel({ page, pageCards }) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
-      margin: "6px 8px 2px",
-      padding: "8px 10px",
-      background: "rgba(74,144,217,0.08)",
-      border: "1px solid rgba(74,144,217,0.3)",
-      borderRadius: 6,
-      fontSize: 12
-    }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontWeight: "bold", marginBottom: 6, color: "rgb(74,144,217)" }, children: [
-        "Cards created on page ",
-        page
-      ] }),
-      pageCards.map((c, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "div",
-        {
-          style: {
-            padding: "5px 8px",
-            marginBottom: i < pageCards.length - 1 ? 5 : 0,
-            background: "rgba(255,255,255,0.05)",
-            borderRadius: 4,
-            borderLeft: "3px solid rgba(74,144,217,0.5)",
-            cursor: "pointer",
-            userSelect: "none"
-          },
-          onClick: () => window.pycmd("incremento_open_card:" + c.note_id),
-          title: "Click to open in card browser",
-          children: c.excerpt || /* @__PURE__ */ jsxRuntimeExports.jsx("em", { style: { color: "#888" }, children: "No text" })
-        },
-        c.note_id
-      ))
-    ] });
-  }
   const HL_COLORS = {
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
@@ -7478,6 +7445,34 @@
     limit_reached: false,
     blocking_active: false,
     can_override: false
+  };
+  const TOOLBAR_GROUP_STYLE = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 14,
+    background: "linear-gradient(180deg, rgba(44,44,44,0.96), rgba(28,28,28,0.96))",
+    border: "1px solid rgba(138,138,138,0.26)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 18px rgba(0,0,0,0.16)"
+  };
+  const TOOLBAR_LABEL_STYLE = {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "rgba(200,200,200,0.72)"
+  };
+  const TOOLBAR_STACK_STYLE = {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 5
+  };
+  const TOOLBAR_SEPARATOR_STYLE = {
+    width: 1,
+    alignSelf: "stretch",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))"
   };
   function calculateTextWidth(text, font) {
     const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement("canvas"));
@@ -7620,7 +7615,6 @@
     const [snapRect, setSnapRect] = reactExports.useState(null);
     const snapStartRef = reactExports.useRef(null);
     const [pageCards, setPageCards] = reactExports.useState([]);
-    const [showCardPanel, setShowCardPanel] = reactExports.useState(false);
     const [showHighlightsPanel, setShowHighlightsPanel] = reactExports.useState(false);
     const [searchQuery, setSearchQuery] = reactExports.useState("");
     const [limitStatus, setLimitStatus] = reactExports.useState(DEFAULT_LIMIT_STATUS);
@@ -7752,7 +7746,7 @@
       const wrapperRect = wrapper.getBoundingClientRect();
       const scale = (renderInfo == null ? void 0 : renderInfo.scale) || 1;
       const tlLeft = (renderInfo == null ? void 0 : renderInfo.tlLeft) || 0;
-      const targetTop = window.scrollY + wrapperRect.top + firstRect.y * scale - CONTROLS_HEIGHT - 24;
+      const targetTop = window.scrollY + wrapperRect.top + firstRect.y * scale - 24;
       const targetLeft = Math.max(
         0,
         window.scrollX + tlLeft + firstRect.x * scale - window.innerWidth * 0.25
@@ -7969,7 +7963,6 @@
     reactExports.useEffect(() => {
       if (!pdfDocRef.current || !cardIdRef.current) return;
       setPageCards([]);
-      setShowCardPanel(false);
       window.pycmd("incremento_get_page_cards:" + cardIdRef.current + ":" + page);
     }, [page, pdfDocRef, cardIdRef]);
     reactExports.useEffect(() => {
@@ -8046,7 +8039,7 @@
         style: {
           width: "100%",
           minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : void 0,
-          paddingTop: `${CONTROLS_HEIGHT}px`
+          paddingBottom: `${CONTROLS_HEIGHT}px`
         },
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -8055,7 +8048,7 @@
               id: "pdf-controls",
               style: {
                 position: "fixed",
-                top: 0,
+                bottom: 0,
                 left: 0,
                 right: 0,
                 zIndex: 50,
@@ -8066,80 +8059,106 @@
                 background: "rgba(30, 30, 30, 0.96)",
                 backdropFilter: "blur(4px)",
                 WebkitBackdropFilter: "blur(4px)",
-                borderBottom: "1px solid rgba(130,130,130,0.35)",
-                boxShadow: "0 3px 10px rgba(0,0,0,0.28)"
+                borderTop: "1px solid rgba(130,130,130,0.35)",
+                boxShadow: "0 -3px 10px rgba(0,0,0,0.28)"
               },
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 6 }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(-1), children: "← Prev" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { margin: "0 4px" }, children: totalPages > 0 ? `Page ${page} / ${totalPages}` : "Page — / —" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(1), children: "Next →" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 1, height: 18, background: "rgba(128,128,128,0.4)", margin: "0 4px", display: "inline-block" } }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => adjustZoom(-1), children: "−" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 40, textAlign: "center" }, children: [
-                    Math.round(zoom * 100),
-                    "%"
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => adjustZoom(1), children: "+" })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6 }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      title: readPage > 0 ? `Read up to page ${readPage} — click to toggle` : "Mark pages as read up to here",
-                      style: {
-                        background: readPage > 0 && page <= readPage ? "rgba(34,197,94,0.3)" : "transparent",
-                        border: "1px solid rgba(34,197,94,0.6)",
-                        borderRadius: 4,
-                        color: readPage > 0 && page <= readPage ? "rgb(22,163,74)" : "inherit",
-                        cursor: "pointer",
-                        padding: "2px 8px",
-                        fontSize: 12,
-                        fontWeight: readPage > 0 && page <= readPage ? "bold" : "normal"
-                      },
-                      onClick: limitAwareMarkRead,
-                      children: "✓ Read to here"
-                    }
-                  ),
-                  readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 11, color: "rgb(22,163,74)", fontWeight: "bold" }, children: [
-                    "p.1–",
-                    readPage
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "span",
-                    {
-                      title: totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : "Read progress",
-                      style: {
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "2px 6px",
-                        borderRadius: 6,
-                        background: "rgba(20,20,20,0.45)",
-                        border: "1px solid rgba(120,120,120,0.35)"
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 36, textAlign: "right", fontWeight: "bold", fontSize: 12 }, children: [
-                          progressPct,
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "stretch", justifyContent: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_GROUP_STYLE, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Navigate" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(-1), children: "← Prev" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { minWidth: 170, textAlign: "center", fontSize: 15, fontWeight: 700 }, children: totalPages > 0 ? `Page ${page} / ${totalPages}` : "Page — / —" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(1), children: "Next →" })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Zoom" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => adjustZoom(-1), children: "−" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 54, textAlign: "center", fontSize: 15, fontWeight: 700 }, children: [
+                          Math.round(zoom * 100),
                           "%"
                         ] }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 3 }, children: Array.from({ length: progressSegments }).map((_, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "span",
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => adjustZoom(1), children: "+" })
+                      ] })
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12 }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Reading" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
                           {
+                            title: readPage > 0 ? `Read up to page ${readPage} — click to toggle` : "Mark pages as read up to here",
                             style: {
-                              width: 14,
-                              height: 20,
-                              borderRadius: 4,
-                              background: idx < filledSegments ? "rgba(14,165,233,0.85)" : "rgba(80,80,80,0.28)",
-                              border: idx < filledSegments ? "1px solid rgba(14,165,233,0.95)" : "1px solid rgba(130,130,130,0.55)",
-                              boxSizing: "border-box"
-                            }
-                          },
-                          idx
-                        )) })
-                      ]
-                    }
-                  )
+                              background: readPage > 0 && page <= readPage ? "rgba(34,197,94,0.3)" : "transparent",
+                              border: "1px solid rgba(34,197,94,0.6)",
+                              borderRadius: 8,
+                              color: readPage > 0 && page <= readPage ? "rgb(22,163,74)" : "inherit",
+                              cursor: "pointer",
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              fontWeight: readPage > 0 && page <= readPage ? "bold" : "normal"
+                            },
+                            onClick: limitAwareMarkRead,
+                            children: "✓ Read to here"
+                          }
+                        ),
+                        readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
+                          fontSize: 11,
+                          color: "rgb(22,163,74)",
+                          fontWeight: "bold",
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: "rgba(22,163,74,0.12)",
+                          border: "1px solid rgba(22,163,74,0.24)"
+                        }, children: [
+                          "p.1–",
+                          readPage
+                        ] })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "span",
+                      {
+                        title: totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : "Read progress",
+                        style: {
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "6px 8px",
+                          borderRadius: 10,
+                          background: "rgba(20,20,20,0.45)",
+                          border: "1px solid rgba(120,120,120,0.35)"
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 36, textAlign: "right", fontWeight: "bold", fontSize: 12 }, children: [
+                            progressPct,
+                            "%"
+                          ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 3 }, children: Array.from({ length: progressSegments }).map((_, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "span",
+                            {
+                              style: {
+                                width: 14,
+                                height: 20,
+                                borderRadius: 4,
+                                background: idx < filledSegments ? "rgba(14,165,233,0.85)" : "rgba(80,80,80,0.28)",
+                                border: idx < filledSegments ? "1px solid rgba(14,165,233,0.95)" : "1px solid rgba(130,130,130,0.55)",
+                                boxSizing: "border-box"
+                              }
+                            },
+                            idx
+                          )) })
+                        ]
+                      }
+                    )
+                  ] })
                 ] }),
                 limitEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }, children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -8199,147 +8218,196 @@
                     ]
                   }
                 ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 14, flexWrap: "wrap" }, children: [
-                  hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                    Object.keys(HL_COLORS).map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        title: `Highlight ${c}`,
-                        onMouseDown: (e) => {
-                          e.preventDefault();
-                          pickHighlightColor(c, true);
-                        },
-                        onClick: () => pickHighlightColor(c, false),
-                        style: {
-                          background: HL_SOLID[c],
-                          border: hlColor === c ? "2px solid white" : "2px solid transparent",
-                          width: 18,
-                          height: 18,
-                          borderRadius: 3,
-                          padding: 0,
-                          cursor: "pointer"
-                        }
-                      },
-                      c
-                    )),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 1, height: 18, background: "rgba(128,128,128,0.4)", display: "inline-block" } }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { style: { fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "input",
-                        {
-                          type: "checkbox",
-                          checked: autoHighlight,
-                          onChange: (e) => {
-                            autoHighlightRef.current = e.target.checked;
-                            setAutoHighlight(e.target.checked);
-                          }
-                        }
-                      ),
-                      "Highlight when extracting"
-                    ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        title: snapshotMode ? "Cancel snapshot" : "Draw a rectangle to capture a region",
-                        style: {
-                          background: snapshotMode ? "rgba(37,99,235,0.2)" : "transparent",
-                          border: "1px solid rgba(37,99,235,0.5)",
-                          borderRadius: 4,
-                          color: snapshotMode ? "rgb(37,99,235)" : "inherit",
-                          cursor: "pointer",
-                          padding: "2px 8px",
-                          fontSize: 12,
-                          fontWeight: snapshotMode ? "bold" : "normal"
-                        },
-                        onClick: () => {
-                          setSnapshotMode((o) => !o);
-                          setSnapRect(null);
-                          snapStartRef.current = null;
-                        },
-                        children: "📷 Snapshot"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        title: "Show highlights list",
-                        style: {
-                          background: showHighlightsPanel ? "rgba(56,189,248,0.2)" : "transparent",
-                          border: "1px solid rgba(56,189,248,0.55)",
-                          borderRadius: 4,
-                          color: showHighlightsPanel ? "rgb(56,189,248)" : "inherit",
-                          cursor: "pointer",
-                          padding: "2px 8px",
-                          fontSize: 12,
-                          fontWeight: showHighlightsPanel ? "bold" : "normal"
-                        },
-                        onClick: () => {
-                          setHighlightsScope("all");
-                          setShowHighlightsPanel((o) => !o);
-                        },
-                        children: [
-                          "📑 Highlights (",
-                          highlights.length,
-                          ")"
-                        ]
-                      }
-                    )
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { width: 1, height: 20, background: "rgba(128,128,128,0.4)", display: "inline-block" } }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                    hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" }),
-                      pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          title: `${pageCards.length} card${pageCards.length > 1 ? "s" : ""} created on this page — click to preview`,
-                          onClick: () => setShowCardPanel((o) => !o),
-                          style: {
-                            background: showCardPanel ? "rgba(74,144,217,0.25)" : "rgba(74,144,217,0.12)",
-                            border: "1px solid rgba(74,144,217,0.6)",
-                            borderRadius: 4,
-                            color: "rgb(74,144,217)",
-                            cursor: "pointer",
-                            padding: "2px 8px",
-                            fontSize: 12,
-                            fontWeight: "bold"
-                          },
-                          children: [
-                            "📄 ",
-                            pageCards.length
-                          ]
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          title: "Mark this PDF as finished reading — suspends the card so it won't appear again",
-                          style: {
-                            background: "transparent",
-                            border: "1px solid rgba(220,50,50,0.45)",
-                            borderRadius: 4,
-                            color: "rgba(220,70,70,0.9)",
-                            cursor: "pointer",
-                            padding: "2px 8px",
-                            fontSize: 12
-                          },
-                          onClick: () => {
-                            if (window.confirm("Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.")) {
-                              window.pycmd("incremento_pdf_finished:" + cardIdRef.current);
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "stretch", justifyContent: "center", gap: 12, flexWrap: "wrap" }, children: [
+                  hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Annotate" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, padding: "2px 4px" }, children: Object.keys(HL_COLORS).map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            title: `Highlight ${c}`,
+                            onMouseDown: (e) => {
+                              e.preventDefault();
+                              pickHighlightColor(c, true);
+                            },
+                            onClick: () => pickHighlightColor(c, false),
+                            style: {
+                              background: HL_SOLID[c],
+                              border: hlColor === c ? "2px solid white" : "2px solid transparent",
+                              width: 22,
+                              height: 22,
+                              borderRadius: 6,
+                              padding: 0,
+                              cursor: "pointer",
+                              boxShadow: hlColor === c ? "0 0 0 2px rgba(255,255,255,0.12)" : "none"
                             }
                           },
-                          children: "✓ Finished Reading"
-                        }
-                      )
+                          c
+                        )) }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { style: {
+                          fontSize: 12,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          background: "rgba(255,255,255,0.04)",
+                          border: "1px solid rgba(255,255,255,0.08)"
+                        }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "input",
+                            {
+                              type: "checkbox",
+                              checked: autoHighlight,
+                              onChange: (e) => {
+                                autoHighlightRef.current = e.target.checked;
+                                setAutoHighlight(e.target.checked);
+                              }
+                            }
+                          ),
+                          "Highlight when extracting"
+                        ] })
+                      ] })
                     ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Capture" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            title: snapshotMode ? "Cancel snapshot" : "Draw a rectangle to capture a region",
+                            style: {
+                              background: snapshotMode ? "rgba(37,99,235,0.2)" : "transparent",
+                              border: "1px solid rgba(37,99,235,0.5)",
+                              borderRadius: 8,
+                              color: snapshotMode ? "rgb(37,99,235)" : "inherit",
+                              cursor: "pointer",
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              fontWeight: snapshotMode ? "bold" : "normal"
+                            },
+                            onClick: () => {
+                              setSnapshotMode((o) => !o);
+                              setSnapRect(null);
+                              snapStartRef.current = null;
+                            },
+                            children: "📷 Snapshot"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            title: "Show highlights list",
+                            style: {
+                              background: showHighlightsPanel ? "rgba(56,189,248,0.2)" : "transparent",
+                              border: "1px solid rgba(56,189,248,0.55)",
+                              borderRadius: 8,
+                              color: showHighlightsPanel ? "rgb(56,189,248)" : "inherit",
+                              cursor: "pointer",
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              fontWeight: showHighlightsPanel ? "bold" : "normal"
+                            },
+                            onClick: () => {
+                              setHighlightsScope("all");
+                              setShowHighlightsPanel((o) => !o);
+                            },
+                            children: [
+                              "📑 Highlights (",
+                              highlights.length,
+                              ")"
+                            ]
+                          }
+                        )
+                      ] })
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
+                    hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Review" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" })
+                        ] })
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Cards" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              title: "Open all cards created from this PDF in the Anki Browser",
+                              onClick: () => window.pycmd("incremento_open_all_pdf_cards:" + cardIdRef.current),
+                              children: "Open All in Browser"
+                            }
+                          ),
+                          pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                            "button",
+                            {
+                              title: `Open the ${pageCards.length} card${pageCards.length > 1 ? "s" : ""} created on this page in the Anki Browser`,
+                              onClick: () => window.pycmd("incremento_open_page_cards:" + JSON.stringify(
+                                pageCards.map((card) => Number(card.note_id || 0)).filter((noteId) => Number.isInteger(noteId) && noteId > 0)
+                              )),
+                              style: {
+                                background: "rgba(74,144,217,0.12)",
+                                border: "1px solid rgba(74,144,217,0.6)",
+                                borderRadius: 8,
+                                color: "rgb(74,144,217)",
+                                cursor: "pointer",
+                                padding: "4px 10px",
+                                fontSize: 12,
+                                fontWeight: "bold"
+                              },
+                              children: [
+                                "📄 Page cards (",
+                                pageCards.length,
+                                ")"
+                              ]
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" })
+                        ] })
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Status" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            title: "Mark this PDF as finished reading — suspends the card so it won't appear again",
+                            style: {
+                              background: "transparent",
+                              border: "1px solid rgba(220,50,50,0.45)",
+                              borderRadius: 8,
+                              color: "rgba(220,70,70,0.9)",
+                              cursor: "pointer",
+                              padding: "4px 10px",
+                              fontSize: 12
+                            },
+                            onClick: () => {
+                              if (window.confirm("Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.")) {
+                                window.pycmd("incremento_pdf_finished:" + cardIdRef.current);
+                              }
+                            },
+                            children: "✓ Finished Reading"
+                          }
+                        )
+                      ] })
+                    ] }),
+                    !hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Cards" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" })
+                    ] })
                   ] })
                 ] })
               ]
             }
           ),
-          hasPdfCard && showCardPanel && pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(PageCardPanel, { page, pageCards }),
           hasPdfCard && showHighlightsPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {

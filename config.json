@@ -21,6 +21,8 @@
     },
     "scheduler_scope": "session",
     "use_fail_pass_on_items": false,
+    "item_skip_enabled": false,
+    "item_skip_minutes": 30,
     "writing_wrap_enabled": true,
     "writing_focus_mode": false,
     "writing_highlight_current_line": true,

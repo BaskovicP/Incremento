@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer  from './HighlightLayer.jsx';
-import PageCardPanel   from './PageCardPanel.jsx';
 
 const HL_COLORS = {
   yellow: 'rgba(255,220,0,0.45)',
@@ -32,6 +31,38 @@ const DEFAULT_LIMIT_STATUS = {
   limit_reached: false,
   blocking_active: false,
   can_override: false,
+};
+
+const TOOLBAR_GROUP_STYLE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '10px 12px',
+  borderRadius: 14,
+  background: 'linear-gradient(180deg, rgba(44,44,44,0.96), rgba(28,28,28,0.96))',
+  border: '1px solid rgba(138,138,138,0.26)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 18px rgba(0,0,0,0.16)',
+};
+
+const TOOLBAR_LABEL_STYLE = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'rgba(200,200,200,0.72)',
+};
+
+const TOOLBAR_STACK_STYLE = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 5,
+};
+
+const TOOLBAR_SEPARATOR_STYLE = {
+  width: 1,
+  alignSelf: 'stretch',
+  background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))',
 };
 
 function calculateTextWidth(text, font) {
@@ -185,7 +216,6 @@ export default function PdfViewer() {
 
   // ── Page card panel state ──────────────────────────────────────────────────
   const [pageCards,     setPageCards]     = useState([]);
-  const [showCardPanel, setShowCardPanel] = useState(false);
   const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
@@ -340,7 +370,7 @@ export default function PdfViewer() {
     const wrapperRect = wrapper.getBoundingClientRect();
     const scale = renderInfo?.scale || 1;
     const tlLeft = renderInfo?.tlLeft || 0;
-    const targetTop = window.scrollY + wrapperRect.top + (firstRect.y * scale) - CONTROLS_HEIGHT - 24;
+    const targetTop = window.scrollY + wrapperRect.top + (firstRect.y * scale) - 24;
     const targetLeft = Math.max(
       0,
       window.scrollX + tlLeft + (firstRect.x * scale) - (window.innerWidth * 0.25),
@@ -590,7 +620,6 @@ export default function PdfViewer() {
   useEffect(() => {
     if (!pdfDocRef.current || !cardIdRef.current) return;
     setPageCards([]);
-    setShowCardPanel(false);
     window.pycmd('incremento_get_page_cards:' + cardIdRef.current + ':' + page);
   }, [page, pdfDocRef, cardIdRef]);
 
@@ -680,7 +709,7 @@ export default function PdfViewer() {
       style={{
         width: '100%',
         minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : undefined,
-        paddingTop: `${CONTROLS_HEIGHT}px`,
+        paddingBottom: `${CONTROLS_HEIGHT}px`,
       }}
     >
 
@@ -689,7 +718,7 @@ export default function PdfViewer() {
         id="pdf-controls"
         style={{
           position: 'fixed',
-          top: 0,
+          bottom: 0,
           left: 0,
           right: 0,
           zIndex: 50,
@@ -700,75 +729,102 @@ export default function PdfViewer() {
           background: 'rgba(30, 30, 30, 0.96)',
           backdropFilter: 'blur(4px)',
           WebkitBackdropFilter: 'blur(4px)',
-          borderBottom: '1px solid rgba(130,130,130,0.35)',
-          boxShadow: '0 3px 10px rgba(0,0,0,0.28)',
+          borderTop: '1px solid rgba(130,130,130,0.35)',
+          boxShadow: '0 -3px 10px rgba(0,0,0,0.28)',
         }}
       >
 
-        {/* ── Row 1: Navigation + Zoom ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
-          <button onClick={() => limitAwareNav(-1)}>&#8592; Prev</button>
-          <span style={{ margin: '0 4px' }}>
-            {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
-          </span>
-          <button onClick={() => limitAwareNav(1)}>Next &#8594;</button>
-          <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', margin: '0 4px', display: 'inline-block' }} />
-          <button onClick={() => adjustZoom(-1)}>&#8722;</button>
-          <span style={{ minWidth: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-          <button onClick={() => adjustZoom(1)}>&#43;</button>
-        </div>
+        {/* ── Row 1: Reader status and navigation ── */}
+        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+          <div style={TOOLBAR_GROUP_STYLE}>
+            <div style={TOOLBAR_STACK_STYLE}>
+              <span style={TOOLBAR_LABEL_STYLE}>Navigate</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => limitAwareNav(-1)}>&#8592; Prev</button>
+                <span style={{ minWidth: 170, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
+                  {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
+                </span>
+                <button onClick={() => limitAwareNav(1)}>Next &#8594;</button>
+              </span>
+            </div>
+            <span style={TOOLBAR_SEPARATOR_STYLE} />
+            <div style={TOOLBAR_STACK_STYLE}>
+              <span style={TOOLBAR_LABEL_STYLE}>Zoom</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => adjustZoom(-1)}>&#8722;</button>
+                <span style={{ minWidth: 54, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
+                  {Math.round(zoom * 100)}%
+                </span>
+                <button onClick={() => adjustZoom(1)}>&#43;</button>
+              </span>
+            </div>
+          </div>
 
-        {/* ── Row 2: Reading progress ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 6 }}>
-          <button
-            title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
-            style={{
-              background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
-              border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 4,
-              color:       readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
-              cursor:      'pointer', padding: '2px 8px', fontSize: 12,
-              fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
-            }}
-            onClick={limitAwareMarkRead}
-          >
-            ✓ Read to here
-          </button>
-          {readPage > 0 && (
-            <span style={{ fontSize: 11, color: 'rgb(22,163,74)', fontWeight: 'bold' }}>
-              p.1–{readPage}
-            </span>
-          )}
-          <span
-            title={totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : 'Read progress'}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '2px 6px',
-              borderRadius: 6,
-              background: 'rgba(20,20,20,0.45)',
-              border: '1px solid rgba(120,120,120,0.35)',
-            }}
-          >
-            <span style={{ minWidth: 36, textAlign: 'right', fontWeight: 'bold', fontSize: 12 }}>
-              {progressPct}%
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              {Array.from({ length: progressSegments }).map((_, idx) => (
-                <span
-                  key={idx}
+          <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12 }}>
+            <div style={TOOLBAR_STACK_STYLE}>
+              <span style={TOOLBAR_LABEL_STYLE}>Reading</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
                   style={{
-                    width: 14,
-                    height: 20,
-                    borderRadius: 4,
-                    background: idx < filledSegments ? 'rgba(14,165,233,0.85)' : 'rgba(80,80,80,0.28)',
-                    border: idx < filledSegments ? '1px solid rgba(14,165,233,0.95)' : '1px solid rgba(130,130,130,0.55)',
-                    boxSizing: 'border-box',
+                    background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
+                    border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 8,
+                    color:       readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
+                    cursor:      'pointer', padding: '4px 10px', fontSize: 12,
+                    fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
                   }}
-                />
-              ))}
+                  onClick={limitAwareMarkRead}
+                >
+                  ✓ Read to here
+                </button>
+                {readPage > 0 && (
+                  <span style={{
+                    fontSize: 11,
+                    color: 'rgb(22,163,74)',
+                    fontWeight: 'bold',
+                    padding: '4px 8px',
+                    borderRadius: 999,
+                    background: 'rgba(22,163,74,0.12)',
+                    border: '1px solid rgba(22,163,74,0.24)',
+                  }}>
+                    p.1–{readPage}
+                  </span>
+                )}
+              </span>
+            </div>
+            <span style={TOOLBAR_SEPARATOR_STYLE} />
+            <span
+              title={totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : 'Read progress'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 8px',
+                borderRadius: 10,
+                background: 'rgba(20,20,20,0.45)',
+                border: '1px solid rgba(120,120,120,0.35)',
+              }}
+            >
+              <span style={{ minWidth: 36, textAlign: 'right', fontWeight: 'bold', fontSize: 12 }}>
+                {progressPct}%
+              </span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                {Array.from({ length: progressSegments }).map((_, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      width: 14,
+                      height: 20,
+                      borderRadius: 4,
+                      background: idx < filledSegments ? 'rgba(14,165,233,0.85)' : 'rgba(80,80,80,0.28)',
+                      border: idx < filledSegments ? '1px solid rgba(14,165,233,0.95)' : '1px solid rgba(130,130,130,0.55)',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                ))}
+              </span>
             </span>
-          </span>
+          </div>
         </div>
 
         {/* ── Row 3: Daily reading limit ── */}
@@ -848,123 +904,174 @@ export default function PdfViewer() {
         )}
 
         {/* ── Row 4: Tools + card management ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
           {hasPdfCard && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            {Object.keys(HL_COLORS).map(c => (
-              <button
-                key={c}
-                title={`Highlight ${c}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pickHighlightColor(c, true);
-                }}
-                onClick={() => pickHighlightColor(c, false)}
-                style={{
-                  background:  HL_SOLID[c],
-                  border:      hlColor === c ? '2px solid white' : '2px solid transparent',
-                  width: 18, height: 18,
-                  borderRadius: 3, padding: 0, cursor: 'pointer',
-                }}
-              />
-            ))}
-            <span style={{ width: 1, height: 18, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
-            <label style={{ fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input
-                type="checkbox"
-                checked={autoHighlight}
-                onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
-              />
-              Highlight when extracting
-            </label>
-            <button
-              title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
-              style={{
-                background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
-                border:      '1px solid rgba(37,99,235,0.5)',
-                borderRadius: 4, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
-                cursor: 'pointer', padding: '2px 8px', fontSize: 12,
-                fontWeight: snapshotMode ? 'bold' : 'normal',
-              }}
-              onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
-            >
-              &#x1F4F7; Snapshot
-            </button>
-            <button
-              title="Show highlights list"
-              style={{
-                background: showHighlightsPanel ? 'rgba(56,189,248,0.2)' : 'transparent',
-                border: '1px solid rgba(56,189,248,0.55)',
-                borderRadius: 4,
-                color: showHighlightsPanel ? 'rgb(56,189,248)' : 'inherit',
-                cursor: 'pointer',
-                padding: '2px 8px',
-                fontSize: 12,
-                fontWeight: showHighlightsPanel ? 'bold' : 'normal',
-              }}
-              onClick={() => {
-              setHighlightsScope('all');
-              setShowHighlightsPanel(o => !o);
-            }}
-            >
-              &#x1F4D1; Highlights ({highlights.length})
-            </button>
-          </span>
+            <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
+              <div style={TOOLBAR_STACK_STYLE}>
+                <span style={TOOLBAR_LABEL_STYLE}>Annotate</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
+                    {Object.keys(HL_COLORS).map(c => (
+                      <button
+                        key={c}
+                        title={`Highlight ${c}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          pickHighlightColor(c, true);
+                        }}
+                        onClick={() => pickHighlightColor(c, false)}
+                        style={{
+                          background:  HL_SOLID[c],
+                          border:      hlColor === c ? '2px solid white' : '2px solid transparent',
+                          width: 22, height: 22,
+                          borderRadius: 6, padding: 0, cursor: 'pointer',
+                          boxShadow: hlColor === c ? '0 0 0 2px rgba(255,255,255,0.12)' : 'none',
+                        }}
+                      />
+                    ))}
+                  </span>
+                  <label style={{
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={autoHighlight}
+                      onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
+                    />
+                    Highlight when extracting
+                  </label>
+                </span>
+              </div>
+              <span style={TOOLBAR_SEPARATOR_STYLE} />
+              <div style={TOOLBAR_STACK_STYLE}>
+                <span style={TOOLBAR_LABEL_STYLE}>Capture</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
+                    style={{
+                      background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
+                      border:      '1px solid rgba(37,99,235,0.5)',
+                      borderRadius: 8, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
+                      cursor: 'pointer', padding: '4px 10px', fontSize: 12,
+                      fontWeight: snapshotMode ? 'bold' : 'normal',
+                    }}
+                    onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
+                  >
+                    &#x1F4F7; Snapshot
+                  </button>
+                  <button
+                    title="Show highlights list"
+                    style={{
+                      background: showHighlightsPanel ? 'rgba(56,189,248,0.2)' : 'transparent',
+                      border: '1px solid rgba(56,189,248,0.55)',
+                      borderRadius: 8,
+                      color: showHighlightsPanel ? 'rgb(56,189,248)' : 'inherit',
+                      cursor: 'pointer',
+                      padding: '4px 10px',
+                      fontSize: 12,
+                      fontWeight: showHighlightsPanel ? 'bold' : 'normal',
+                    }}
+                    onClick={() => {
+                      setHighlightsScope('all');
+                      setShowHighlightsPanel(o => !o);
+                    }}
+                  >
+                    &#x1F4D1; Highlights ({highlights.length})
+                  </button>
+                </span>
+              </div>
+            </div>
           )}
-          <span style={{ width: 1, height: 20, background: 'rgba(128,128,128,0.4)', display: 'inline-block' }} />
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          {hasPdfCard && (
-          <>
-          <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
-            &#x1F9E0; Review Due
-          </button>
-          <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
-            &#x1F4D6; Reading Limit
-          </button>
-          {pageCards.length > 0 && (
-            <button
-              title={`${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page — click to preview`}
-              onClick={() => setShowCardPanel(o => !o)}
-              style={{
-                background:  showCardPanel ? 'rgba(74,144,217,0.25)' : 'rgba(74,144,217,0.12)',
-                border:      '1px solid rgba(74,144,217,0.6)', borderRadius: 4,
-                color:       'rgb(74,144,217)', cursor: 'pointer',
-                padding:     '2px 8px', fontSize: 12, fontWeight: 'bold',
-              }}
-            >
-              &#x1F4C4; {pageCards.length}
-            </button>
-          )}
-          <button
-            title="Mark this PDF as finished reading — suspends the card so it won't appear again"
-            style={{
-              background:  'transparent',
-              border:      '1px solid rgba(220,50,50,0.45)', borderRadius: 4,
-              color:       'rgba(220,70,70,0.9)', cursor: 'pointer',
-              padding:     '2px 8px', fontSize: 12,
-            }}
-            onClick={() => {
-              if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
-                window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
-              }
-            }}
-              >
-              ✓ Finished Reading
-          </button>
-          </>
-          )}
-          <button onClick={() => window.pycmd('incremento_open_add_card')}>
-            &#43; Add Card
-          </button>
-          </span>
+
+          <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
+            {hasPdfCard && (
+              <>
+                <div style={TOOLBAR_STACK_STYLE}>
+                  <span style={TOOLBAR_LABEL_STYLE}>Review</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
+                      &#x1F9E0; Review Due
+                    </button>
+                    <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
+                      &#x1F4D6; Reading Limit
+                    </button>
+                  </span>
+                </div>
+                <span style={TOOLBAR_SEPARATOR_STYLE} />
+                <div style={TOOLBAR_STACK_STYLE}>
+                  <span style={TOOLBAR_LABEL_STYLE}>Cards</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      title="Open all cards created from this PDF in the Anki Browser"
+                      onClick={() => window.pycmd('incremento_open_all_pdf_cards:' + cardIdRef.current)}
+                    >
+                      Open All in Browser
+                    </button>
+                    {pageCards.length > 0 && (
+                      <button
+                        title={`Open the ${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page in the Anki Browser`}
+                        onClick={() => window.pycmd('incremento_open_page_cards:' + JSON.stringify(
+                          pageCards
+                            .map((card) => Number(card.note_id || 0))
+                            .filter((noteId) => Number.isInteger(noteId) && noteId > 0),
+                        ))}
+                        style={{
+                          background:  'rgba(74,144,217,0.12)',
+                          border:      '1px solid rgba(74,144,217,0.6)', borderRadius: 8,
+                          color:       'rgb(74,144,217)', cursor: 'pointer',
+                          padding:     '4px 10px', fontSize: 12, fontWeight: 'bold',
+                        }}
+                      >
+                        &#x1F4C4; Page cards ({pageCards.length})
+                      </button>
+                    )}
+                    <button onClick={() => window.pycmd('incremento_open_add_card')}>
+                      &#43; Add Card
+                    </button>
+                  </span>
+                </div>
+                <span style={TOOLBAR_SEPARATOR_STYLE} />
+                <div style={TOOLBAR_STACK_STYLE}>
+                  <span style={TOOLBAR_LABEL_STYLE}>Status</span>
+                  <button
+                    title="Mark this PDF as finished reading — suspends the card so it won't appear again"
+                    style={{
+                      background:  'transparent',
+                      border:      '1px solid rgba(220,50,50,0.45)', borderRadius: 8,
+                      color:       'rgba(220,70,70,0.9)', cursor: 'pointer',
+                      padding:     '4px 10px', fontSize: 12,
+                    }}
+                    onClick={() => {
+                      if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
+                        window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
+                      }
+                    }}
+                  >
+                    ✓ Finished Reading
+                  </button>
+                </div>
+              </>
+            )}
+            {!hasPdfCard && (
+              <div style={TOOLBAR_STACK_STYLE}>
+                <span style={TOOLBAR_LABEL_STYLE}>Cards</span>
+                <button onClick={() => window.pycmd('incremento_open_add_card')}>
+                  &#43; Add Card
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
       </div>
-
-      {/* Card preview panel */}
-      {hasPdfCard && showCardPanel && pageCards.length > 0 && (
-        <PageCardPanel page={page} pageCards={pageCards} />
-      )}
 
       {/* Highlights panel */}
       {hasPdfCard && showHighlightsPanel && (

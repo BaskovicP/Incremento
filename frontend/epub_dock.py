@@ -93,9 +93,19 @@ try:
 except ImportError:
     from highlight_note_dialog import HighlightNoteDialog  # type: ignore
 try:
-    from ..backend.db import add_epub_card_source, get_epub_card_sources, get_epub_section_card_counts
+    from ..backend.db import (
+        add_epub_card_source,
+        get_epub_card_sources,
+        get_epub_document_source_note_ids,
+        get_epub_section_card_counts,
+    )
 except ImportError:
-    from db import add_epub_card_source, get_epub_card_sources, get_epub_section_card_counts  # type: ignore
+    from db import (  # type: ignore
+        add_epub_card_source,
+        get_epub_card_sources,
+        get_epub_document_source_note_ids,
+        get_epub_section_card_counts,
+    )
 try:
     from ..backend.session import start_explicit_review
 except ImportError:
@@ -1088,6 +1098,7 @@ def _build_epub_dock() -> None:
     dock._source_lbl.setStyleSheet("font-size: 11px; color: gray;")
     dock._add_card_btn = QPushButton("Add Card")
     dock._browser_btn = QPushButton("Browser")
+    dock._all_cards_btn = QPushButton("All Cards")
     dock._due_review_btn = QPushButton("Review Due")
     dock._limit_btn = QPushButton("Limit")
     dock._text_smaller_btn = QPushButton("A-")
@@ -1102,6 +1113,7 @@ def _build_epub_dock() -> None:
     toolbar.addWidget(dock._source_lbl)
     toolbar.addWidget(dock._add_card_btn)
     toolbar.addWidget(dock._browser_btn)
+    toolbar.addWidget(dock._all_cards_btn)
     toolbar.addWidget(dock._due_review_btn)
     toolbar.addWidget(dock._limit_btn)
     toolbar.addWidget(dock._text_smaller_btn)
@@ -1148,6 +1160,7 @@ def _build_epub_dock() -> None:
     qconnect(dock._next_btn.clicked, lambda: _jump_relative(1))
     qconnect(dock._add_card_btn.clicked, lambda: _cb_open_add_card_dock and _cb_open_add_card_dock())
     qconnect(dock._browser_btn.clicked, _browse_current_epub_note)
+    qconnect(dock._all_cards_btn.clicked, _open_all_epub_cards_in_browser)
     qconnect(dock._due_review_btn.clicked, lambda: _current_epub_card_id and _offer_due_review_for_epub(int(_current_epub_card_id), force=True))
     qconnect(dock._limit_btn.clicked, lambda: _current_epub_card_id and _open_epub_limit_dialog(int(_current_epub_card_id)))
     qconnect(dock._text_smaller_btn.clicked, lambda: _adjust_epub_text_scale(-0.1))
@@ -1183,16 +1196,52 @@ def _open_source_link(url: QUrl) -> None:
         s = url.toString()
         if s.startswith("inc://card/"):
             note_id = int(s.rsplit("/", 1)[1])
-            from aqt import dialogs
-
-            browser = dialogs.open("Browser", mw)
-            browser.search_for(f"nid:{note_id}")
+            _browse_note_ids_in_browser([note_id])
         elif s.startswith("inc://epub-highlight-note/"):
             _edit_current_epub_highlight_note(s.rsplit("/", 1)[1])
         elif s.startswith("inc://epub-highlight-delete/"):
             _delete_current_epub_highlight(s.rsplit("/", 1)[1])
     except Exception:
         pass
+
+
+def _browse_note_ids_in_browser(note_ids: list[int], *, empty_message: str = "") -> bool:
+    ordered: list[int] = []
+    seen: set[int] = set()
+    for raw_note_id in list(note_ids or []):
+        try:
+            note_id = int(raw_note_id or 0)
+        except Exception:
+            note_id = 0
+        if note_id <= 0 or note_id in seen:
+            continue
+        seen.add(note_id)
+        ordered.append(note_id)
+
+    if not ordered:
+        if empty_message:
+            tooltip(empty_message)
+        return False
+
+    try:
+        from aqt import dialogs
+
+        browser = dialogs.open("Browser", mw)
+        browser.search_for(" OR ".join(f"nid:{note_id}" for note_id in ordered))
+        return True
+    except Exception:
+        return False
+
+
+def _open_all_epub_cards_in_browser() -> None:
+    if _current_epub_card_id is None:
+        return
+    note_ids = get_epub_document_source_note_ids(
+        _ADDON_DIR,
+        _active_profile(),
+        int(_current_epub_card_id),
+    )
+    _browse_note_ids_in_browser(note_ids, empty_message="No cards created from this EPUB yet.")
 
 
 def _current_section_highlights() -> list[dict]:
@@ -1262,10 +1311,7 @@ def _browse_current_epub_note() -> None:
     try:
         card = mw.col.get_card(int(_current_epub_card_id))
         note_id = int(card.nid)
-        from aqt import dialogs
-
-        browser = dialogs.open("Browser", mw)
-        browser.search_for(f"nid:{note_id}")
+        _browse_note_ids_in_browser([note_id])
     except Exception:
         pass
 
@@ -1891,6 +1937,7 @@ def on_add_cards_did_add_note(note) -> None:
     try:
         add_epub_card_source(
             _ADDON_DIR,
+            _active_profile(),
             _current_epub_card_id,
             _current_epub_section_index,
             note.id,

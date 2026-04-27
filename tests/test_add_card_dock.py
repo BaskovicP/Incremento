@@ -95,6 +95,13 @@ class _FakeTagsWidget:
         self.repainted += 1
 
 
+class _FakeCol:
+    class tags:
+        @staticmethod
+        def split(raw):
+            return str(raw or "").split()
+
+
 def test_detach_embedded_window_menu_bar_removes_native_menu():
     window = _FakeWindow()
 
@@ -326,7 +333,7 @@ def test_toolbar_buttons_register_even_before_note_is_loaded():
 def test_toggle_editor_tag_button_saves_edit_current_note(monkeypatch):
     editor = _FakeEditor(_FakeNote(["keep"], note_id=9), add_mode=False)
     monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
-    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": object()})())
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
     calls = []
     monkeypatch.setattr(
         dock.QTimer,
@@ -344,3 +351,45 @@ def test_toggle_editor_tag_button_saves_edit_current_note(monkeypatch):
     assert editor.tag_focus_lost_calls == 1
     assert editor.load_note_calls == 2
     assert editor.saved_current_note == 1
+
+
+def test_toggle_editor_item_button_removes_topic_tags(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=False)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+
+    dock._toggle_editor_tag_button(
+        editor,
+        ["item"],
+        "unused",
+        opposite_tags=["topic"],
+    )
+
+    assert editor.note.tags == ["keep", "item"]
+    assert editor.tags.text_value == "keep item"
+
+
+def test_toggle_editor_topic_button_removes_item_tags(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "item"], note_id=9), add_mode=False)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+
+    dock._toggle_editor_tag_button(
+        editor,
+        ["topic"],
+        "unused",
+        opposite_tags=["item"],
+    )
+
+    assert editor.note.tags == ["keep", "topic"]
+    assert editor.tags.text_value == "keep topic"

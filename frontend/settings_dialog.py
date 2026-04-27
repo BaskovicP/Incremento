@@ -226,6 +226,8 @@ class IncrementoSettingsDialog(QDialog):
         current_remember_browser_card_scroll: bool = True,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_use_fail_pass_on_items: bool = False,
+        current_item_skip_enabled: bool = False,
+        current_item_skip_minutes: int = 30,
         current_auto_timer_enabled: bool = False,
         current_auto_timer_card_types: dict[str, bool] | None = None,
         current_auto_timer_tags: list[str] | str | None = None,
@@ -474,6 +476,36 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_use_fail_pass_on_items)
         )
         review_behavior_layout.addWidget(self._use_fail_pass_on_items_cb)
+
+        self._item_skip_enabled_cb = QCheckBox("Enable timed Skip button on items")
+        self._item_skip_enabled_cb.setChecked(bool(current_item_skip_enabled))
+        review_behavior_layout.addWidget(self._item_skip_enabled_cb)
+
+        item_skip_row = QHBoxLayout()
+        item_skip_row.setContentsMargins(0, 0, 0, 0)
+        item_skip_row.setSpacing(8)
+        item_skip_row.addWidget(QLabel("Skip duration:"))
+
+        self._item_skip_minutes_spin = QSpinBox()
+        self._item_skip_minutes_spin.setRange(1, 1440)
+        try:
+            item_skip_minutes = int(current_item_skip_minutes)
+        except Exception:
+            item_skip_minutes = 30
+        self._item_skip_minutes_spin.setValue(max(1, min(1440, item_skip_minutes)))
+        self._item_skip_minutes_spin.setSuffix(" min")
+        item_skip_row.addWidget(self._item_skip_minutes_spin)
+        item_skip_row.addStretch(1)
+        review_behavior_layout.addLayout(item_skip_row)
+
+        def _sync_item_skip_widgets() -> None:
+            enabled = bool(self._item_skip_enabled_cb.isChecked())
+            self._item_skip_minutes_spin.setEnabled(enabled)
+
+        self._item_skip_enabled_cb.toggled.connect(
+            lambda _checked: _sync_item_skip_widgets()
+        )
+        _sync_item_skip_widgets()
 
         self._show_incremento_fields_cb = QCheckBox(
             "Show Incremento metadata / OCR fields in Browser and note editors"
@@ -1053,6 +1085,14 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def use_fail_pass_on_items(self) -> bool:
         return bool(self._use_fail_pass_on_items_cb.isChecked())
+
+    @property
+    def item_skip_enabled(self) -> bool:
+        return bool(self._item_skip_enabled_cb.isChecked())
+
+    @property
+    def item_skip_minutes(self) -> int:
+        return int(self._item_skip_minutes_spin.value())
 
     @property
     def auto_timer_enabled(self) -> bool:

@@ -780,6 +780,31 @@ def _toggle_note_tag_set(note, wanted_tags: list[str]) -> bool:
     return True
 
 
+def _activate_exclusive_note_tag_set(
+    note,
+    wanted_tags: list[str],
+    unwanted_tags: list[str] | None = None,
+) -> None:
+    normalized_wanted = _normalize_tag_list(wanted_tags)
+    normalized_unwanted = _normalize_tag_list(unwanted_tags or [])
+    if not normalized_wanted:
+        return
+
+    unwanted_set = {tag.lower() for tag in normalized_unwanted}
+    updated = [
+        tag for tag in _note_tags(note)
+        if tag.lower() not in unwanted_set
+    ]
+    existing_set = {tag.lower() for tag in updated}
+    for tag in normalized_wanted:
+        lowered = tag.lower()
+        if lowered in existing_set:
+            continue
+        updated.append(tag)
+        existing_set.add(lowered)
+    _set_note_tags(note, updated)
+
+
 def _ensure_add_card_tag_button_styles(editor) -> None:
     try:
         editor.web.eval(
@@ -1083,7 +1108,13 @@ def refresh_add_card_dock_controls() -> None:
     refresh_add_card_tag_buttons()
 
 
-def _toggle_editor_tag_button(editor, tags: list[str], empty_message: str) -> None:
+def _toggle_editor_tag_button(
+    editor,
+    tags: list[str],
+    empty_message: str,
+    *,
+    opposite_tags: list[str] | None = None,
+) -> None:
     note = getattr(editor, "note", None)
     if note is None:
         return
@@ -1093,7 +1124,10 @@ def _toggle_editor_tag_button(editor, tags: list[str], empty_message: str) -> No
         _refresh_add_card_tag_buttons_for_editor(editor)
         return
     tag_state = type("_TagState", (), {"tags": _editor_tags(editor, note)})()
-    _toggle_note_tag_set(tag_state, normalized_tags)
+    if _note_has_all_tags(tag_state, normalized_tags):
+        _toggle_note_tag_set(tag_state, normalized_tags)
+    else:
+        _activate_exclusive_note_tag_set(tag_state, normalized_tags, opposite_tags)
     _set_editor_tags(editor, _note_tags(tag_state))
     _schedule_editor_tag_widget_sync(editor)
     try:
@@ -1115,6 +1149,7 @@ def _on_topic_tag_button(editor) -> None:
         editor,
         configured_add_card_topic_tags(),
         "No Add Card topic-button tags configured.",
+        opposite_tags=configured_add_card_item_tags(),
     )
 
 
@@ -1123,6 +1158,7 @@ def _on_item_tag_button(editor) -> None:
         editor,
         configured_add_card_item_tags(),
         "No Add Card item-button tags configured.",
+        opposite_tags=configured_add_card_topic_tags(),
     )
 
 

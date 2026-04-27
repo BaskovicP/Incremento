@@ -28,6 +28,7 @@ web_progress    — last URL, scroll position, bookmark state, and media resume 
 browser_media_refs — latest manually saved browser media reference per card
 reviewer_recent_tags — latest reviewer-added tags for quick reuse
 topic_postpones — timed postpone expiry timestamps per topic card
+item_postpones  — timed skip expiry timestamps per non-topic card
 custom_schedule_rules — per-card recurring custom scheduling rules
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
 knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
@@ -407,6 +408,13 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_topic_postpones_until
             ON topic_postpones (until_ts);
+
+        CREATE TABLE IF NOT EXISTS item_postpones (
+            card_id  INTEGER PRIMARY KEY,
+            until_ts INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_item_postpones_until
+            ON item_postpones (until_ts);
 
         CREATE TABLE IF NOT EXISTS custom_schedule_rules (
             card_id        INTEGER PRIMARY KEY,
@@ -1454,6 +1462,32 @@ def get_pdf_card_sources(addon_dir: str, profile: str, pdf_card_id: int, page: i
     return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
 
 
+def delete_pdf_card_sources_for_note_ids(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    note_ids: list[int] | set[int] | tuple[int, ...],
+) -> int:
+    normalized = sorted(
+        {
+            int(note_id or 0)
+            for note_id in (note_ids or [])
+            if int(note_id or 0) > 0
+        }
+    )
+    if not normalized:
+        return 0
+
+    placeholders = ",".join("?" for _ in normalized)
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        f"DELETE FROM pdf_card_sources WHERE pdf_card_id = ? AND note_id IN ({placeholders})",
+        (int(pdf_card_id), *normalized),
+    )
+    conn.commit()
+    return int(cursor.rowcount or 0)
+
+
 def get_pdf_card_sources_up_to_page(
     addon_dir: str,
     profile: str,
@@ -1524,6 +1558,30 @@ def get_pdf_page_card_counts(addon_dir: str, profile: str, pdf_card_id: int) -> 
     return {r[0]: r[1] for r in rows}
 
 
+def get_pdf_document_source_note_ids(addon_dir: str, profile: str, pdf_card_id: int) -> list[int]:
+    """Return distinct note ids created from this PDF, in creation order."""
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT note_id FROM pdf_card_sources WHERE pdf_card_id = ? ORDER BY id",
+            (int(pdf_card_id),),
+        )
+        .fetchall()
+    )
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for row in rows:
+        try:
+            note_id = int(row[0] or 0)
+        except Exception:
+            note_id = 0
+        if note_id <= 0 or note_id in seen:
+            continue
+        seen.add(note_id)
+        ordered.append(note_id)
+    return ordered
+
+
 def add_epub_card_source(
     addon_dir: str, profile: str, epub_card_id: int, section_index: int, note_id: int, excerpt: str = ""
 ) -> None:
@@ -1584,6 +1642,30 @@ def get_epub_section_card_counts(addon_dir: str, profile: str, epub_card_id: int
         .fetchall()
     )
     return {int(r[0]): int(r[1]) for r in rows}
+
+
+def get_epub_document_source_note_ids(addon_dir: str, profile: str, epub_card_id: int) -> list[int]:
+    """Return distinct note ids created from this EPUB, in creation order."""
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT note_id FROM epub_card_sources WHERE epub_card_id = ? ORDER BY id",
+            (int(epub_card_id),),
+        )
+        .fetchall()
+    )
+    seen: set[int] = set()
+    ordered: list[int] = []
+    for row in rows:
+        try:
+            note_id = int(row[0] or 0)
+        except Exception:
+            note_id = 0
+        if note_id <= 0 or note_id in seen:
+            continue
+        seen.add(note_id)
+        ordered.append(note_id)
+    return ordered
 
 
 def add_web_card_source(

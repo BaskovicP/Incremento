@@ -172,6 +172,17 @@ class TestGetConnection:
         }
         assert "topic_postpones" in tables
 
+    def test_creates_item_postpones_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "item_postpones" in tables
+
     def test_creates_custom_schedule_rules_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
@@ -858,6 +869,26 @@ class TestPdfCardSources:
         assert counts[1] == 2
         assert counts[2] == 1
 
+    def test_delete_pdf_card_sources_for_note_ids(self):
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=1, note_id=101)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=1, note_id=102)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=3, page=1, note_id=101)
+
+        deleted = db.delete_pdf_card_sources_for_note_ids(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=2,
+            note_ids=[101, 999],
+        )
+
+        assert deleted == 1
+        assert db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=2, page=1) == [
+            {"note_id": 102, "excerpt": ""}
+        ]
+        assert db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=3, page=1) == [
+            {"note_id": 101, "excerpt": ""}
+        ]
+
     def test_get_pdf_card_sources_up_to_page(self):
         db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=4, page=2, note_id=201, excerpt="two")
         db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=4, page=4, note_id=202, excerpt="four")
@@ -874,6 +905,20 @@ class TestPdfCardSources:
             {"page": 2, "note_id": 201, "excerpt": "two"},
             {"page": 4, "note_id": 202, "excerpt": "four"},
         ]
+
+    def test_get_pdf_document_source_note_ids_deduplicates_in_insert_order(self):
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=9, page=1, note_id=301)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=9, page=3, note_id=302)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=9, page=4, note_id=301)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=10, page=1, note_id=999)
+
+        note_ids = db.get_pdf_document_source_note_ids(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=9,
+        )
+
+        assert note_ids == [301, 302]
 
 
 class TestPdfDueReviewPromptConfig:
@@ -1001,6 +1046,20 @@ class TestEpubCardSources:
             {"section_index": 0, "note_id": 201, "excerpt": "zero"},
             {"section_index": 2, "note_id": 202, "excerpt": "two"},
         ]
+
+    def test_get_epub_document_source_note_ids_deduplicates_in_insert_order(self):
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=7, section_index=0, note_id=401, excerpt="zero")
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=7, section_index=2, note_id=402, excerpt="two")
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=7, section_index=4, note_id=401, excerpt="four")
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=8, section_index=0, note_id=999, excerpt="other")
+
+        note_ids = db.get_epub_document_source_note_ids(
+            self.addon_dir,
+            "TestProfile",
+            epub_card_id=7,
+        )
+
+        assert note_ids == [401, 402]
 
 
 class TestWebCardSources:

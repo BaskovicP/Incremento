@@ -1,0 +1,136 @@
+import types
+import sys
+from unittest.mock import MagicMock
+
+sys.modules.setdefault("session", MagicMock())
+import aqt
+
+import pdf_dock
+
+
+class _FakeNote:
+    def __init__(self):
+        self.tags = ["alpha", "beta"]
+        self._fields = {
+            "Front": "Main title\nSecond line",
+            "Back": "Answer text",
+            "Incremento_Source_Title": "Hidden source",
+            "Empty": "   ",
+        }
+
+    def note_type(self):
+        return {
+            "flds": [
+                {"name": "Front"},
+                {"name": "Back"},
+                {"name": "Incremento_Source_Title"},
+                {"name": "Empty"},
+            ]
+        }
+
+    def __getitem__(self, key):
+        return self._fields[key]
+
+    def cards(self):
+        return [object(), object()]
+
+
+def test_load_pdf_page_note_preview_filters_hidden_and_empty_fields(monkeypatch):
+    fake_mw = types.SimpleNamespace(
+        col=types.SimpleNamespace(get_note=lambda note_id: _FakeNote())
+    )
+    monkeypatch.setattr(pdf_dock, "mw", fake_mw)
+
+    payload = pdf_dock._load_pdf_page_note_preview(123)
+
+    assert payload is not None
+    assert payload["note_id"] == 123
+    assert payload["title"] == "Main title"
+    assert payload["tags"] == ["alpha", "beta"]
+    assert payload["card_count"] == 2
+    assert payload["fields"] == [
+        {"name": "Front", "value": "Main title\nSecond line"},
+        {"name": "Back", "value": "Answer text"},
+    ]
+
+
+def test_render_pdf_page_note_preview_html_shows_tags_and_card_count():
+    html = pdf_dock._render_pdf_page_note_preview_html(
+        {
+            "note_id": 123,
+            "title": "Main title",
+            "fields": [{"name": "Front", "value": "Line 1\nLine 2"}],
+            "tags": ["alpha", "beta"],
+            "card_count": 2,
+        }
+    )
+
+    assert "PDF Page Card" not in html
+    assert "Note ID 123" in html
+    assert "2 cards" in html
+    assert "alpha, beta" in html
+    assert "Line 1<br>Line 2" in html
+
+
+def test_browse_note_ids_in_browser_builds_deduplicated_query(monkeypatch):
+    searches = []
+
+    class _FakeBrowser:
+        def search_for(self, query):
+            searches.append(query)
+
+    fake_dialogs = types.SimpleNamespace(open=lambda name, parent: _FakeBrowser())
+    monkeypatch.setitem(sys.modules, "aqt.dialogs", fake_dialogs)
+    monkeypatch.setattr(aqt, "dialogs", fake_dialogs, raising=False)
+
+    assert pdf_dock._browse_note_ids_in_browser([11, 12, 11, 0, -1]) is True
+    assert searches == ["nid:11 OR nid:12"]
+
+
+def test_browse_note_ids_in_browser_shows_empty_tooltip(monkeypatch):
+    tooltips = []
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda message: tooltips.append(message))
+
+    assert pdf_dock._browse_note_ids_in_browser([], empty_message="No cards yet.") is False
+    assert tooltips == ["No cards yet."]
+
+
+def test_reconcile_pdf_page_sources_prunes_missing_notes(monkeypatch):
+    deleted = []
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_card_sources",
+        lambda addon_dir, profile, pdf_card_id, page: [
+            {"note_id": 11, "excerpt": "live"},
+            {"note_id": 12, "excerpt": "stale"},
+        ],
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_page_card_counts",
+        lambda addon_dir, profile, pdf_card_id: {3: 1},
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "delete_pdf_card_sources_for_note_ids",
+        lambda addon_dir, profile, pdf_card_id, note_ids: deleted.append(
+            (addon_dir, profile, pdf_card_id, sorted(note_ids))
+        ),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                get_note=lambda note_id: object() if note_id == 11 else (_ for _ in ()).throw(Exception("missing"))
+            )
+        ),
+    )
+
+    cards, counts = pdf_dock._reconcile_pdf_page_sources(5, 3)
+
+    assert cards == [{"note_id": 11, "excerpt": "live"}]
+    assert counts == {3: 1}
+    assert deleted == [("/tmp/addon", "TestProfile", 5, [12])]

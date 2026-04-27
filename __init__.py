@@ -105,6 +105,14 @@ from .backend.reviewer_buttons import (
     item_pass_ease_for_button_count as _item_pass_ease_for_button_count,
     reviewer_button_mode as _reviewer_button_mode_for_card,
 )
+from .backend.item_skip import (
+    configured_item_skip_enabled as _configured_item_skip_enabled,
+    configured_item_skip_minutes as _configured_item_skip_minutes,
+    item_skip_due_label as _item_skip_due_label,
+    next_timed_item_skip_at as _next_timed_item_skip_at,
+    release_expired_timed_item_skips as _release_expired_timed_item_skips,
+    store_timed_item_skip as _store_timed_item_skip,
+)
 from .backend import browser_bridge as _browser_bridge_mod
 from .frontend.priority_dialog import PriorityDialog
 from .frontend.custom_schedule_dialog import CustomScheduleDialog
@@ -185,6 +193,7 @@ except Exception:
 
 _shortcut_actions: dict[str, list[object]] = {}
 _topic_postpone_timer: QTimer | None = None
+_item_skip_timer: QTimer | None = None
 _menu: QMenu | None = None
 _timerToggleAction: QAction | None = None
 _knowledge_tree_dialog = None
@@ -433,6 +442,10 @@ def _reviewer_topic_postpone_enabled(card) -> bool:
     return _reviewer_topic_card(card) and _configured_topic_postpone_enabled()
 
 
+def _reviewer_item_skip_enabled(card) -> bool:
+    return bool(card is not None and not _reviewer_topic_card(card) and _configured_item_skip_enabled())
+
+
 def _current_answer_button_count(card) -> int:
     if card is None:
         return 4
@@ -500,9 +513,59 @@ def _perform_topic_postpone(reviewer, card) -> None:
             pass
 
 
+def _perform_item_skip(reviewer, card) -> None:
+    try:
+        _store_timed_item_skip(
+            card,
+            minutes=_configured_item_skip_minutes(),
+            bury=False,
+        )
+        _schedule_item_skip_timer()
+    except Exception as e:
+        print(f"[Incremento] item skip error: {e}")
+    try:
+        tooltip(f"Skipped for {_configured_item_skip_minutes()} minutes.")
+    except Exception:
+        pass
+    try:
+        current = getattr(reviewer, "card", None)
+        if current is not None and getattr(current, "id", None) == getattr(card, "id", None):
+            reviewer.nextCard()
+    except Exception as e:
+        print(f"[Incremento] item skip nextCard error: {e}")
+
+
+def _perform_item_skip_after_bury(reviewer, card) -> None:
+    def _after_bury(_changes) -> None:
+        _perform_item_skip(reviewer, card)
+
+    try:
+        _bury_cards_op(parent=reviewer.mw, card_ids=[card.id]).success(_after_bury).run_in_background()
+    except Exception as e:
+        print(f"[Incremento] item skip bury error: {e}")
+        try:
+            reviewer.nextCard()
+        except Exception:
+            pass
+
+
 def _release_expired_topic_postpones_now() -> list[int]:
     try:
         restored_ids = _release_expired_timed_postpones()
+    except Exception:
+        restored_ids = []
+    if not restored_ids:
+        return []
+    try:
+        mw.reset()
+    except Exception:
+        pass
+    return restored_ids
+
+
+def _release_expired_item_skips_now() -> list[int]:
+    try:
+        restored_ids = _release_expired_timed_item_skips()
     except Exception:
         restored_ids = []
     if not restored_ids:
@@ -539,6 +602,31 @@ def _schedule_topic_postpone_timer() -> None:
         timer.start()
 
 
+def _ensure_item_skip_timer() -> QTimer:
+    global _item_skip_timer
+    if _item_skip_timer is None:
+        _item_skip_timer = QTimer(mw)
+        _item_skip_timer.setSingleShot(False)
+        _item_skip_timer.setInterval(1000)
+        _item_skip_timer.timeout.connect(_on_item_skip_timer_timeout)
+    return _item_skip_timer
+
+
+def _schedule_item_skip_timer() -> None:
+    try:
+        next_until = _next_timed_item_skip_at()
+    except Exception:
+        next_until = None
+
+    timer = _ensure_item_skip_timer()
+    if next_until is None:
+        timer.stop()
+        return
+
+    if not timer.isActive():
+        timer.start()
+
+
 def _on_topic_postpone_timer_timeout() -> None:
     try:
         restored_ids = _release_expired_topic_postpones_now()
@@ -555,6 +643,22 @@ def _on_topic_postpone_timer_timeout() -> None:
         return
 
 
+def _on_item_skip_timer_timeout() -> None:
+    try:
+        restored_ids = _release_expired_item_skips_now()
+    except Exception:
+        restored_ids = []
+
+    try:
+        if _next_timed_item_skip_at() is None:
+            _ensure_item_skip_timer().stop()
+    except Exception:
+        pass
+
+    if not restored_ids:
+        return
+
+
 def _release_expired_topic_postpones_on_overview(new_state: str, _old_state: str) -> None:
     if new_state != "overview":
         return
@@ -564,6 +668,19 @@ def _release_expired_topic_postpones_on_overview(new_state: str, _old_state: str
         pass
     try:
         _schedule_topic_postpone_timer()
+    except Exception:
+        pass
+
+
+def _release_expired_item_skips_on_overview(new_state: str, _old_state: str) -> None:
+    if new_state != "overview":
+        return
+    try:
+        _release_expired_item_skips_now()
+    except Exception:
+        pass
+    try:
+        _schedule_item_skip_timer()
     except Exception:
         pass
 
@@ -659,6 +776,14 @@ def _incremento_next_card(self) -> None:
         _schedule_topic_postpone_timer()
     except Exception:
         pass
+    try:
+        _release_expired_item_skips_now()
+    except Exception:
+        pass
+    try:
+        _schedule_item_skip_timer()
+    except Exception:
+        pass
 
     self.previous_card = self.card
     self.card = None
@@ -689,7 +814,31 @@ def _incremento_next_card(self) -> None:
 def _incremento_show_answer_button(self) -> None:
     card = getattr(self, "card", None)
     if not _reviewer_topic_postpone_enabled(card):
-        _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON(self)
+        if not _reviewer_item_skip_enabled(card):
+            _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON(self)
+            return
+        show_answer_key = tr.actions_shortcut_key(val=tr.studying_space())
+        skip_due = _item_skip_due_label()
+        middle = """
+<table cellpadding=0 cellspacing=8><tr>
+<td class=stat2 align=center>
+<button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
+</td>
+<td class=stat2 align=center>
+<button id="incremento-item-skip-but" onclick='pycmd("incremento_item_skip");' style="border-color:#a34747;color:#ffb3b3;">Skip<span class=stattxt>{skip_due}</span></button>
+</td>
+</tr></table>
+""".format(
+            show_answer_key=show_answer_key,
+            show_answer=tr.studying_show_answer(),
+            remaining=self._remaining(),
+            skip_due=skip_due,
+        )
+        if self.card.should_show_timer():
+            maxTime = self.card.time_limit() / 1000
+        else:
+            maxTime = 0
+        self.bottom.web.eval("showQuestion(%s,%d);" % (json.dumps(middle), maxTime))
         return
 
     show_answer_key = tr.actions_shortcut_key(val=tr.studying_space())
@@ -805,6 +954,11 @@ def _incremento_link_handler(self, url: str) -> None:
         card = getattr(self, "card", None)
         if self.state == "question" and _reviewer_topic_postpone_enabled(card):
             _perform_topic_postpone(self, card)
+            return
+    if url == "incremento_item_skip":
+        card = getattr(self, "card", None)
+        if self.state == "question" and _reviewer_item_skip_enabled(card):
+            _perform_item_skip_after_bury(self, card)
             return
     _ORIGINAL_REVIEWER_LINK_HANDLER(self, url)
 
@@ -1217,13 +1371,7 @@ def _on_js_message(handled, message, context) -> tuple:
     if message.startswith("incremento_open_card:"):
         try:
             note_id = int(message[len("incremento_open_card:") :])
-            from aqt import dialogs
-
-            def _browse(nid=note_id):
-                b = dialogs.open("Browser", mw)
-                b.search_for(f"nid:{nid}")
-
-            QTimer.singleShot(0, _browse)
+            QTimer.singleShot(0, lambda nid=note_id: _pdf_dock_mod.show_pdf_page_card_preview(nid))
         except Exception:
             pass
         return (True, None)
@@ -1331,6 +1479,7 @@ gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(lambda: _release_session_postponed_cards())
 gui_hooks.state_did_change.append(_release_expired_topic_postpones_on_overview)
+gui_hooks.state_did_change.append(_release_expired_item_skips_on_overview)
 gui_hooks.reviewer_will_end.append(_pdf_dock_mod.on_pdf_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_epub_dock_mod.on_epub_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_video_dock_mod.on_video_reviewer_will_end)
@@ -1385,7 +1534,19 @@ def _initialize_topic_postpone_runtime() -> None:
         pass
 
 
+def _initialize_item_skip_runtime() -> None:
+    try:
+        _release_expired_item_skips_now()
+    except Exception:
+        pass
+    try:
+        _schedule_item_skip_timer()
+    except Exception:
+        pass
+
+
 gui_hooks.main_window_did_init.append(_initialize_topic_postpone_runtime)
+gui_hooks.main_window_did_init.append(_initialize_item_skip_runtime)
 gui_hooks.main_window_did_init.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )
@@ -3815,6 +3976,8 @@ def openSettingsFunction() -> None:
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
+        current_item_skip_enabled=_configured_item_skip_enabled(cfg),
+        current_item_skip_minutes=_configured_item_skip_minutes(cfg),
         current_auto_timer_enabled=_timer_mod.configured_auto_timer_enabled(cfg),
         current_auto_timer_card_types=_timer_mod.configured_auto_timer_card_types(cfg),
         current_auto_timer_tags=_timer_mod.configured_auto_timer_tags(cfg),
@@ -3855,6 +4018,8 @@ def openSettingsFunction() -> None:
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
+    cfg["item_skip_enabled"] = dlg.item_skip_enabled
+    cfg["item_skip_minutes"] = dlg.item_skip_minutes
     cfg["auto_timer_enabled"] = dlg.auto_timer_enabled
     cfg["auto_timer_card_types"] = dlg.auto_timer_card_types
     cfg["auto_timer_tags"] = dlg.auto_timer_tags

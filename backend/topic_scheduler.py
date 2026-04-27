@@ -23,11 +23,13 @@ from aqt import mw
 try:
     from .db import get_topic_schedule, set_topic_schedule
     from .knowledge_tree import configured_topic_tags as configured_add_card_topic_tags
+    from .knowledge_tree import configured_item_tags as configured_add_card_item_tags
     from .scheduler_config import load_scheduler_config
     from .paths import get_active_profile as _active_profile
 except ImportError:
     from db import get_topic_schedule, set_topic_schedule  # type: ignore
     from knowledge_tree import configured_topic_tags as configured_add_card_topic_tags  # type: ignore
+    from knowledge_tree import configured_item_tags as configured_add_card_item_tags  # type: ignore
     from scheduler_config import load_scheduler_config  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
@@ -141,6 +143,10 @@ def configured_effective_topic_tags(config: dict | None = None) -> list[str]:
     return combined
 
 
+def configured_effective_item_tags(config: dict | None = None) -> list[str]:
+    return configured_add_card_item_tags(config)
+
+
 def remap_topic_review_ease(ease: int) -> int:
     try:
         value = int(ease)
@@ -223,6 +229,16 @@ def _card_matches_topic_tags(card, topic_tags: list[str]) -> bool:
     return bool(card_tags & wanted)
 
 
+def _card_matches_item_tags(card, item_tags: list[str]) -> bool:
+    if not item_tags:
+        return False
+    card_tags = _card_tags(card)
+    if not card_tags:
+        return False
+    wanted = {tag.lower() for tag in item_tags if str(tag or "").strip()}
+    return bool(card_tags & wanted)
+
+
 def is_topic_card(card) -> bool:
     """Return True if *card* should use topic-card A-factor scheduling."""
     if card is None:
@@ -230,6 +246,9 @@ def is_topic_card(card) -> bool:
     try:
         enabled_types = configured_topic_card_types()
         topic_tags = configured_effective_topic_tags()
+        item_tags = configured_effective_item_tags()
+        if _card_matches_item_tags(card, item_tags):
+            return False
         return (
             _card_matches_enabled_type(card, enabled_types)
             or _card_matches_topic_tags(card, topic_tags)

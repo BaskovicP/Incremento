@@ -240,6 +240,32 @@ class TestIsTopicCard:
             result = is_topic_card(card)
         assert result is True
 
+    def test_item_tag_overrides_topic_note_type(self):
+        card = self._make_card(did=2, note_type_name="Incremento PDF", tags=["item"])
+        with patch("topic_scheduler.configured_topic_card_types", return_value={
+            "pdf_epub": True,
+            "video": False,
+            "writing": False,
+            "web": False,
+        }), patch("topic_scheduler.configured_effective_topic_tags", return_value=["topic"]), \
+             patch("topic_scheduler.configured_effective_item_tags", return_value=["item"]), \
+             patch("topic_scheduler._card_in_topics_deck", return_value=False):
+            result = is_topic_card(card)
+        assert result is False
+
+    def test_item_tag_overrides_topics_deck_membership(self):
+        card = self._make_card(did=2, note_type_name="Basic", tags=["item"])
+        with patch("topic_scheduler.configured_topic_card_types", return_value={
+            "pdf_epub": False,
+            "video": False,
+            "writing": False,
+            "web": False,
+        }), patch("topic_scheduler.configured_effective_topic_tags", return_value=["topic"]), \
+             patch("topic_scheduler.configured_effective_item_tags", return_value=["item"]), \
+             patch("topic_scheduler._card_in_topics_deck", return_value=True):
+            result = is_topic_card(card)
+        assert result is False
+
     def test_uses_odid_when_in_filtered_deck(self):
         """When odid != 0, use odid (original deck) instead of did."""
         card = self._make_card(did=999, odid=1)

@@ -34,6 +34,7 @@ from aqt.qt import (
     QPushButton,
     QPixmap,
     QSpinBox,
+    QTextBrowser,
     QTextEdit,
     qconnect,
 )
@@ -98,10 +99,29 @@ try:
 except ImportError:
     from highlight_note_dialog import HighlightNoteDialog  # type: ignore
 try:
-    from ..backend.db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
+    from ..backend.db import (
+        add_pdf_card_source,
+        delete_pdf_card_sources_for_note_ids,
+        get_pdf_card_sources,
+        get_pdf_document_source_note_ids,
+        get_pdf_page_card_counts,
+    )
 except ImportError:
-    from db import add_pdf_card_source, get_pdf_card_sources, get_pdf_page_card_counts
-from . import timer_widget as _timer_mod
+    from db import (  # type: ignore
+        add_pdf_card_source,
+        delete_pdf_card_sources_for_note_ids,
+        get_pdf_card_sources,
+        get_pdf_document_source_note_ids,
+        get_pdf_page_card_counts,
+    )
+try:
+    from ..backend.note_metadata import visible_field_names
+except ImportError:
+    from note_metadata import visible_field_names
+try:
+    from . import timer_widget as _timer_mod
+except ImportError:
+    import timer_widget as _timer_mod  # type: ignore
 try:
     from ..backend.session import INCREMENTO_PDF_REVIEW_DECK, start_explicit_review
 except ImportError:
@@ -141,6 +161,236 @@ def current_pdf_card_id() -> int | None:
         return None
 _pdf_shortcuts = []
 _pdf_key_filter = None
+
+
+def _browse_note_in_browser(note_id: int) -> None:
+    _browse_note_ids_in_browser([note_id])
+
+
+def _browse_note_ids_in_browser(note_ids: list[int], *, empty_message: str = "") -> bool:
+    ordered: list[int] = []
+    seen: set[int] = set()
+    for raw_note_id in list(note_ids or []):
+        try:
+            note_id = int(raw_note_id or 0)
+        except Exception:
+            note_id = 0
+        if note_id <= 0 or note_id in seen:
+            continue
+        seen.add(note_id)
+        ordered.append(note_id)
+
+    if not ordered:
+        if empty_message:
+            tooltip(empty_message)
+        return False
+
+    try:
+        from aqt import dialogs
+
+        browser = dialogs.open("Browser", mw)
+        browser.search_for(" OR ".join(f"nid:{note_id}" for note_id in ordered))
+        return True
+    except Exception:
+        return False
+
+
+def _open_all_pdf_cards_in_browser(card_id: int) -> None:
+    note_ids = _live_pdf_document_source_note_ids(int(card_id))
+    _browse_note_ids_in_browser(
+        note_ids,
+        empty_message="No cards created from this PDF yet.",
+    )
+
+
+def _note_exists(note_id: int) -> bool:
+    try:
+        if int(note_id or 0) <= 0 or not getattr(mw, "col", None):
+            return False
+        note = mw.col.get_note(int(note_id))
+    except Exception:
+        return False
+    return note is not None
+
+
+def _reconcile_pdf_page_sources(
+    pdf_card_id: int,
+    page: int | None = None,
+) -> tuple[list[dict], dict[int, int]]:
+    if int(pdf_card_id or 0) <= 0:
+        return [], {}
+
+    if page is None:
+        page = get_page(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+
+    cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), int(pdf_card_id), int(page))
+    stale_note_ids = {
+        int(row.get("note_id", 0) or 0)
+        for row in cards
+        if int(row.get("note_id", 0) or 0) > 0 and not _note_exists(int(row.get("note_id", 0) or 0))
+    }
+    if stale_note_ids:
+        delete_pdf_card_sources_for_note_ids(
+            _ADDON_DIR,
+            _active_profile(),
+            int(pdf_card_id),
+            stale_note_ids,
+        )
+        cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), int(pdf_card_id), int(page))
+
+    live_cards = [
+        row
+        for row in cards
+        if int(row.get("note_id", 0) or 0) > 0 and _note_exists(int(row.get("note_id", 0) or 0))
+    ]
+    counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+    return live_cards, counts
+
+
+def _live_pdf_document_source_note_ids(pdf_card_id: int) -> list[int]:
+    note_ids = get_pdf_document_source_note_ids(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+    stale_note_ids = [note_id for note_id in note_ids if not _note_exists(note_id)]
+    if stale_note_ids:
+        delete_pdf_card_sources_for_note_ids(
+            _ADDON_DIR,
+            _active_profile(),
+            int(pdf_card_id),
+            stale_note_ids,
+        )
+        note_ids = get_pdf_document_source_note_ids(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+    return [note_id for note_id in note_ids if _note_exists(note_id)]
+
+
+def _load_pdf_page_note_preview(note_id: int) -> dict | None:
+    try:
+        nid = int(note_id)
+    except Exception:
+        return None
+    if nid <= 0 or not getattr(mw, "col", None):
+        return None
+
+    try:
+        note = mw.col.get_note(nid)
+    except Exception:
+        return None
+    if note is None:
+        return None
+
+    try:
+        model = note.note_type() or {}
+        all_field_names = [
+            str((field or {}).get("name") or "").strip()
+            for field in list(model.get("flds") or [])
+        ]
+    except Exception:
+        all_field_names = []
+
+    field_names = visible_field_names(all_field_names)
+    fields: list[dict[str, str]] = []
+    for field_name in field_names:
+        try:
+            raw_value = str(note[field_name] or "")
+        except Exception:
+            raw_value = ""
+        value = raw_value.strip()
+        if not value:
+            continue
+        fields.append({"name": field_name, "value": value})
+
+    title = ""
+    if fields:
+        title = fields[0]["value"].splitlines()[0].strip()
+    if not title:
+        title = f"Note {nid}"
+
+    tags = []
+    try:
+        tags = [str(tag).strip() for tag in list(getattr(note, "tags", []) or []) if str(tag).strip()]
+    except Exception:
+        tags = []
+
+    card_count = 0
+    try:
+        card_count = len(list(note.cards() or []))
+    except Exception:
+        card_count = 0
+
+    return {
+        "note_id": nid,
+        "title": title,
+        "fields": fields,
+        "tags": tags,
+        "card_count": int(card_count),
+    }
+
+
+def _render_pdf_page_note_preview_html(payload: dict) -> str:
+    title = escape(str(payload.get("title") or ""))
+    note_id = int(payload.get("note_id") or 0)
+    fields = list(payload.get("fields") or [])
+    tags = [str(tag).strip() for tag in list(payload.get("tags") or []) if str(tag).strip()]
+    card_count = int(payload.get("card_count") or 0)
+
+    parts = [
+        f"<div style='font-size:15px; font-weight:600; margin-bottom:4px;'>{title}</div>",
+        (
+            "<div style='color:#8892a0; font-size:12px; margin-bottom:10px;'>"
+            f"Note ID {note_id}"
+            + (f" · {card_count} card{'s' if card_count != 1 else ''}" if card_count > 0 else "")
+            + "</div>"
+        ),
+    ]
+    if tags:
+        parts.append(
+            "<div style='margin-bottom:10px;'>"
+            "<span style='color:#8892a0; font-size:12px;'>Tags:</span> "
+            f"{escape(', '.join(tags))}</div>"
+        )
+
+    if fields:
+        for field in fields:
+            field_name = escape(str(field.get("name") or ""))
+            value = escape(str(field.get("value") or "")).replace("\n", "<br>")
+            parts.append(
+                "<div style='margin-bottom:12px;'>"
+                f"<div style='font-weight:600; margin-bottom:4px;'>{field_name}</div>"
+                "<div style='white-space:normal; line-height:1.45; "
+                "background:rgba(255,255,255,0.04); border:1px solid rgba(140,140,140,0.25); "
+                f"border-radius:6px; padding:8px 10px;'>{value}</div>"
+                "</div>"
+            )
+    else:
+        parts.append("<div style='color:#8892a0;'>This note has no visible non-empty fields.</div>")
+    return "".join(parts)
+
+
+def show_pdf_page_card_preview(note_id: int) -> bool:
+    payload = _load_pdf_page_note_preview(note_id)
+    if not payload:
+        return False
+
+    dlg = QDialog(mw)
+    dlg.setWindowTitle("PDF Page Card Preview")
+    dlg.resize(780, 560)
+    layout = QVBoxLayout(dlg)
+
+    browser = QTextBrowser(dlg)
+    browser.setReadOnly(True)
+    browser.setOpenExternalLinks(True)
+    browser.setHtml(_render_pdf_page_note_preview_html(payload))
+    layout.addWidget(browser, 1)
+
+    buttons = QDialogButtonBox(parent=dlg)
+    open_btn = buttons.addButton("Open in Browser", QDialogButtonBox.ButtonRole.ActionRole)
+    close_btn = buttons.addButton(QDialogButtonBox.StandardButton.Close)
+    qconnect(
+        open_btn.clicked,
+        lambda _checked=False, nid=int(payload["note_id"]): _browse_note_in_browser(nid),
+    )
+    qconnect(close_btn.clicked, dlg.accept)
+    layout.addWidget(buttons)
+    dlg.exec()
+    return True
 
 
 class _PdfReadingLimitDialog(QDialog):
@@ -384,6 +634,8 @@ _MSG_FILL_FIELD = "incremento_fill_field:"
 _MSG_SNAPSHOT = "incremento_pdf_snapshot:"
 _MSG_FINISHED = "incremento_pdf_finished:"
 _MSG_OPEN_CARD = "incremento_open_card:"
+_MSG_OPEN_ALL_CARDS = "incremento_open_all_pdf_cards:"
+_MSG_OPEN_PAGE_CARDS = "incremento_open_page_cards:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MSG_LIMIT_SETTINGS = "incremento_pdf_limit_settings:"
 _MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
@@ -884,13 +1136,27 @@ class _PdfDockPage(QWebEnginePage):
         elif msg.startswith(_MSG_OPEN_CARD):
             try:
                 note_id = int(msg[len(_MSG_OPEN_CARD) :])
-                from aqt import dialogs
-
-                def _browse(nid=note_id):
-                    b = dialogs.open("Browser", mw)
-                    b.search_for(f"nid:{nid}")
-
-                QTimer.singleShot(0, _browse)
+                QTimer.singleShot(0, lambda nid=note_id: show_pdf_page_card_preview(nid))
+            except Exception:
+                pass
+        elif msg.startswith(_MSG_OPEN_ALL_CARDS):
+            try:
+                card_id = int(msg[len(_MSG_OPEN_ALL_CARDS) :])
+                if card_id > 0:
+                    QTimer.singleShot(0, lambda cid=card_id: _open_all_pdf_cards_in_browser(cid))
+            except Exception:
+                pass
+        elif msg.startswith(_MSG_OPEN_PAGE_CARDS):
+            try:
+                payload = json.loads(msg[len(_MSG_OPEN_PAGE_CARDS) :])
+                note_ids = payload if isinstance(payload, list) else []
+                QTimer.singleShot(
+                    0,
+                    lambda ids=note_ids: _browse_note_ids_in_browser(
+                        ids,
+                        empty_message="No cards created on this page yet.",
+                    ),
+                )
             except Exception:
                 pass
         elif msg.startswith("incremento_get_page_cards:"):
@@ -900,8 +1166,7 @@ class _PdfDockPage(QWebEnginePage):
                     cid = int(parts[1])
                     page = int(parts[2])
                     if cid > 0:
-                        cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), cid, page)
-                        counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), cid)
+                        cards, counts = _reconcile_pdf_page_sources(cid, page)
                     else:
                         cards = []
                         counts = {}
@@ -1386,8 +1651,7 @@ def on_add_cards_did_add_note(note) -> None:
     if _pdf_dock is None:
         return
     try:
-        cards = get_pdf_card_sources(_ADDON_DIR, _active_profile(), _current_pdf_card_id, page)
-        counts = get_pdf_page_card_counts(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
+        cards, counts = _reconcile_pdf_page_sources(_current_pdf_card_id, page)
         data = {"page": page, "cards": cards, "pageCounts": counts}
         js = (
             "window.incrementoReceivePageCards && "
