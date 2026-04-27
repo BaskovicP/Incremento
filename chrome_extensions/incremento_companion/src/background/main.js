@@ -30,7 +30,7 @@ const INC_TRACK_WEB_PARAM = "inc_track_web";
 const INC_RESUME_SEC_PARAM = "inc_resume_sec";
 const INC_RESUME_MEDIA_PARAM = "inc_resume_media";
 const INC_RESUME_HASH_MARKER = "__incremento_resume__=1";
-const CONTENT_SCRIPT_FILE = "dist/content.js";
+const CONTENT_SCRIPT_FILE = "content-loader.js";
 const COMMAND_BROWSER_CAPTURE_SELECTION = "browser-capture-selection";
 const COMMAND_BROWSER_CAPTURE_SNAPSHOT = "browser-capture-snapshot";
 const COMMAND_ADD_CURRENT_PAGE_AS_PDF = "add-current-page-as-pdf";
@@ -44,6 +44,10 @@ const CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID = "incremento-save-link-as-webpage";
 
 function isHttpUrl(rawUrl) {
   return /^https?:\/\//i.test(String(rawUrl || ""));
+}
+
+function getTabUrl(tab) {
+  return String(tab?.url || tab?.pendingUrl || "").trim();
 }
 
 async function parseBridgeResponse(response) {
@@ -86,7 +90,7 @@ async function injectContentScriptIntoOpenTabs() {
   await Promise.all(
     tabs.map(async (tab) => {
       const tabId = Number(tab?.id);
-      if (!Number.isFinite(tabId) || tabId <= 0 || !isHttpUrl(tab?.url || "")) {
+      if (!Number.isFinite(tabId) || tabId <= 0 || !isHttpUrl(getTabUrl(tab))) {
         return;
       }
       try {
@@ -751,7 +755,7 @@ async function ensureContentScriptInjected(tabId) {
   }
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, allFrames: true },
       files: [CONTENT_SCRIPT_FILE],
     });
     return true;
@@ -761,26 +765,27 @@ async function ensureContentScriptInjected(tabId) {
 }
 
 async function invokeBrowserCaptureInTab(tabId, mode) {
-  if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
+  if (typeof tabId !== "number") {
     return { ok: false };
   }
+  const sendTriggerMessage = async () => {
+    try {
+      const response = await chrome.tabs.sendMessage(tabId, {
+        type: "TRIGGER_BROWSER_CAPTURE",
+        mode,
+      }, { frameId: 0 });
+      return response || { ok: false };
+    } catch (error) {
+      return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
+    }
+  };
   try {
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: (captureMode) => {
-        const trigger = globalThis.__incrementoTriggerBrowserCapture;
-        if (typeof trigger !== "function") {
-          return { ok: false, error: "Browser capture script is not available on this page." };
-        }
-        try {
-          return trigger(captureMode);
-        } catch (error) {
-          return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
-        }
-      },
-      args: [mode],
-    });
-    return results?.[0]?.result || { ok: false };
+    let response = await sendTriggerMessage();
+    if (!response?.ok && /Receiving end does not exist/i.test(String(response?.error || ""))) {
+      await ensureContentScriptInjected(tabId);
+      response = await sendTriggerMessage();
+    }
+    return response;
   } catch (error) {
     return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
   }
@@ -788,7 +793,7 @@ async function invokeBrowserCaptureInTab(tabId, mode) {
 
 async function triggerBrowserCapture(mode) {
   const tab = await getActiveTab();
-  if (!tab?.id || !isHttpUrl(tab.url || "")) {
+  if (!tab?.id || !isHttpUrl(getTabUrl(tab))) {
     return false;
   }
 
@@ -798,7 +803,7 @@ async function triggerBrowserCapture(mode) {
 }
 
 async function triggerBrowserCaptureOnTab(tab, mode) {
-  if (!tab?.id || !isHttpUrl(tab.url || "")) {
+  if (!tab?.id || !isHttpUrl(getTabUrl(tab))) {
     return false;
   }
   await ensureContentScriptInjected(tab.id);
@@ -812,7 +817,7 @@ async function capturePageContext(tabId) {
   }
   await ensureContentScriptInjected(tabId);
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_CONTEXT" });
+    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_CONTEXT" }, { frameId: 0 });
     if (response?.ok) {
       return response;
     }
@@ -920,7 +925,7 @@ async function loadContextMenuLinkInfo(tabId, linkUrl) {
     return null;
   }
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_CONTEXT_LINK_INFO" });
+    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_CONTEXT_LINK_INFO" }, { frameId: 0 });
     if (!response?.ok) {
       return null;
     }
@@ -974,12 +979,12 @@ async function addCurrentPageToIncremento(command) {
   if (!tab?.id) {
     return {ok: false, error: "No active tab found."};
   }
-  if (!isHttpUrl(tab.url || "")) {
+  if (!isHttpUrl(getTabUrl(tab))) {
     return {ok: false, error: "Only http(s) pages can be sent to Incremento."};
   }
 
   const context = await capturePageContext(tab.id);
-  const pageUrl = String(context?.url || tab.url || "").trim();
+  const pageUrl = String(context?.url || getTabUrl(tab) || "").trim();
   const pageTitle = String(context?.title || tab.title || pageUrl).trim();
   const selectionText = String(context?.selectionText || "");
   const html = String(context?.html || "");

@@ -7,7 +7,7 @@ export async function captureSnapshot(tabId) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ["dist/content.js"],
+      files: ["content-loader.js"],
     });
   } catch (_err) {
     // Ignore injection failures here; the direct page read below may still succeed.
@@ -98,7 +98,7 @@ export async function getCurrentMediaContextForTab(tabId) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId: Number(tabId) },
-      files: ["dist/content.js"],
+      files: ["content-loader.js"],
     });
   } catch (error) {
     injectionError = String(
@@ -174,38 +174,55 @@ export async function triggerBrowserCaptureForTab(tabId, mode) {
     throw new Error("No active tab found for browser capture.");
   }
 
+  const normalizedTabId = Number(tabId);
+
   let injectionError = "";
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId: Number(tabId) },
-      files: ["dist/content.js"],
-    });
-  } catch (error) {
-    injectionError = String(
-      error?.message || "Chrome did not allow script injection on this tab."
-    );
+  const injectContentScript = async () => {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: normalizedTabId, allFrames: true },
+        files: ["content-loader.js"],
+      });
+      return "";
+    } catch (error) {
+      return String(
+        error?.message || "Chrome did not allow script injection on this tab."
+      );
+    }
+  };
+  const sendTriggerMessage = () => new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(
+        normalizedTabId,
+        { type: "TRIGGER_BROWSER_CAPTURE", mode },
+        (response) => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            resolve({ ok: false, error: error.message || "Failed to trigger browser capture." });
+            return;
+          }
+          resolve(response || { ok: false });
+        }
+      );
+    } catch (error) {
+      resolve({
+        ok: false,
+        error: String(error?.message || "Failed to trigger browser capture."),
+      });
+    }
+  });
+
+  injectionError = await injectContentScript();
+  let result = await sendTriggerMessage();
+  if (!result?.ok && /Receiving end does not exist/i.test(String(result?.error || ""))) {
+    injectionError = await injectContentScript() || injectionError;
+    result = await sendTriggerMessage();
   }
 
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: Number(tabId) },
-    func: (captureMode) => {
-      const trigger = globalThis.__incrementoTriggerBrowserCapture;
-      if (typeof trigger !== "function") {
-        return { ok: false, error: "Browser capture script is not available on this page." };
-      }
-      try {
-        return trigger(captureMode);
-      } catch (error) {
-        return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
-      }
-    },
-    args: [mode],
-  });
-  const result = results?.[0]?.result || { ok: false };
-  if (!result.ok && injectionError && !result.error) {
+  if (!result?.ok && injectionError && !result?.error) {
     return { ok: false, error: injectionError };
   }
-  if (!result.ok && injectionError && result.error === "Browser capture script is not available on this page.") {
+  if (!result?.ok && /Receiving end does not exist/i.test(String(result?.error || "")) && injectionError) {
     return { ok: false, error: injectionError };
   }
   return result;

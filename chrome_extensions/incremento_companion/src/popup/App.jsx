@@ -93,6 +93,10 @@ function parseManualTimeInput(rawValue) {
   return consumed.replace(/\s+/g, "") === raw.replace(/\s+/g, "") ? total : null;
 }
 
+function getTabUrl(tab) {
+  return String(tab?.url || tab?.pendingUrl || "").trim();
+}
+
 export function PopupApp() {
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
@@ -112,7 +116,7 @@ export function PopupApp() {
   const [priorityText, setPriorityText] = useState(formatPriority(DEFAULT_PRIORITY));
   const [tagsText, setTagsText] = useState("");
 
-  const pageUrl = String(snapshot?.url || activeTab?.url || "").trim();
+  const pageUrl = String(snapshot?.url || getTabUrl(activeTab) || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
   const selectionText = String(snapshot?.selectionText || "");
   const hasSupportedPage = Boolean(activeTab && isHttpUrl(pageUrl));
@@ -142,7 +146,7 @@ export function PopupApp() {
         setActiveTab(tab);
 
         let nextSnapshot = null;
-        if (tab?.id && isHttpUrl(tab.url)) {
+        if (tab?.id && isHttpUrl(getTabUrl(tab))) {
           nextSnapshot = await captureSnapshot(tab.id);
           if (cancelled) {
             return;
@@ -150,14 +154,14 @@ export function PopupApp() {
           setSnapshot(nextSnapshot);
         }
 
-        const nextTitle = String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || tab?.url || "").trim();
+        const nextTitle = String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || getTabUrl(tab) || "").trim();
         if (nextTitle) {
           setTitle(nextTitle);
         }
 
         if (tab?.id) {
           try {
-            const linked = await getLinkedCardContextForTab(tab.id, tab.url || "");
+            const linked = await getLinkedCardContextForTab(tab.id, getTabUrl(tab));
             if (!cancelled) {
               setLinkedCard(linked?.linked ? {
                 linked: true,
@@ -170,7 +174,7 @@ export function PopupApp() {
             }
           }
 
-          if (isHttpUrl(String(tab.url || "").trim())) {
+          if (isHttpUrl(getTabUrl(tab))) {
             try {
               const media = await getCurrentMediaContextForTab(tab.id);
               if (!cancelled) {
@@ -260,7 +264,7 @@ export function PopupApp() {
 
     let linked = { linked: false, cardId: 0 };
     try {
-      const result = await getLinkedCardContextForTab(tab.id, tab.url || "");
+      const result = await getLinkedCardContextForTab(tab.id, getTabUrl(tab));
       if (result?.linked && Number(result.cardId) > 0) {
         linked = {
           linked: true,
@@ -273,7 +277,7 @@ export function PopupApp() {
     setLinkedCard(linked);
 
     let media = null;
-    if (isHttpUrl(String(tab.url || "").trim())) {
+    if (isHttpUrl(getTabUrl(tab))) {
       try {
         const result = await getCurrentMediaContextForTab(tab.id);
         media = result?.ok ? result : null;
@@ -291,7 +295,7 @@ export function PopupApp() {
   async function readCurrentPageContext() {
     const tab = await getActiveTab();
     let nextSnapshot = null;
-    if (tab?.id && isHttpUrl(String(tab.url || "").trim())) {
+    if (tab?.id && isHttpUrl(getTabUrl(tab))) {
       nextSnapshot = await captureSnapshot(tab.id);
     }
     if (tab) {
@@ -301,8 +305,8 @@ export function PopupApp() {
     return {
       tab,
       snapshot: nextSnapshot,
-      pageUrl: String(nextSnapshot?.url || tab?.url || "").trim(),
-      pageTitle: String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || tab?.url || "").trim(),
+      pageUrl: String(nextSnapshot?.url || getTabUrl(tab) || "").trim(),
+      pageTitle: String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || getTabUrl(tab) || "").trim(),
       selectionText: String(nextSnapshot?.selectionText || ""),
     };
   }
@@ -489,7 +493,7 @@ export function PopupApp() {
         return;
       }
 
-      const pageUrlForSave = String(media?.pageUrl || tab.url || "").trim();
+      const pageUrlForSave = String(media?.pageUrl || getTabUrl(tab) || "").trim();
       if (!isHttpUrl(pageUrlForSave)) {
         setStatus({
           text: "Only normal http(s) pages can store browser times.",

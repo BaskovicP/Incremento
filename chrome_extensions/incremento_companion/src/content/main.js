@@ -9,9 +9,18 @@ import {
 
 (() => {
   const CONTENT_SCRIPT_VERSION = "browser-capture-v5";
-  if (window.__incrementoContentScriptVersion === CONTENT_SCRIPT_VERSION) {
+  const scriptState = (
+    window.__incrementoContentScriptState
+    && typeof window.__incrementoContentScriptState === "object"
+  ) ? window.__incrementoContentScriptState : {};
+  if (scriptState.version === CONTENT_SCRIPT_VERSION && scriptState.ready) {
     return;
   }
+  window.__incrementoContentScriptState = {
+    ...scriptState,
+    version: CONTENT_SCRIPT_VERSION,
+    ready: false,
+  };
   window.__incrementoContentScriptVersion = CONTENT_SCRIPT_VERSION;
 
   const BROWSER_CAPTURE_SETTINGS_KEY = "incremento_browser_capture_settings";
@@ -2137,12 +2146,10 @@ import {
   window.setTimeout(() => {
     void refreshSavedBrowserMediaBadge();
   }, 320);
-  window.addEventListener("unload", () => {
-    try {
-      clearInterval(periodic);
-      clearInterval(badgePoll);
-    } catch (_err) {
-      // noop
-    }
-  });
+
+  window.__incrementoContentScriptState = {
+    ...(window.__incrementoContentScriptState || {}),
+    version: CONTENT_SCRIPT_VERSION,
+    ready: true,
+  };
 })();

@@ -77,9 +77,21 @@
       ],
       "all_frames": true,
       "js": [
-        "dist/content.js"
+        "content-loader.js"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "dist/content.js",
+        "dist/assets/*.js"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
     }
   ],
   "action": {
