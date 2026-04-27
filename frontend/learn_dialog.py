@@ -1180,42 +1180,42 @@ class SchedulerConfigDialog(QDialog):
 
         # -- Profiles --
         profile_row = QHBoxLayout()
-        profile_row.addWidget(QLabel("Profile:"))
+        profile_row.addWidget(QLabel("Preset:"))
         self._profile_combo = QComboBox()
         self._profile_combo.setMinimumWidth(160)
         self._profile_combo.setToolTip(
-            "Saved presets. Use Current Settings for the shared Incremento Session deck."
+            "Saved scheduler presets. Use Current Settings for the shared Incremento Session deck."
         )
         qconnect(self._profile_combo.currentIndexChanged, self._on_profile_combo_changed)
         profile_row.addWidget(self._profile_combo)
 
         self._profile_load_btn = QPushButton("Load")
         self._profile_load_btn.setFixedWidth(52)
-        self._profile_load_btn.setToolTip("Apply the selected profile to all settings below")
+        self._profile_load_btn.setToolTip("Apply the selected saved preset to all settings below")
         qconnect(self._profile_load_btn.clicked, self._load_profile)
         profile_row.addWidget(self._profile_load_btn)
 
         self._profile_save_btn = QPushButton("Save")
         self._profile_save_btn.setFixedWidth(52)
-        self._profile_save_btn.setToolTip("Overwrite the selected profile with the current settings")
+        self._profile_save_btn.setToolTip("Overwrite the selected saved preset with the current settings")
         qconnect(self._profile_save_btn.clicked, self._save_profile)
         profile_row.addWidget(self._profile_save_btn)
 
-        save_as_btn = QPushButton("Save As…")
-        save_as_btn.setFixedWidth(72)
-        save_as_btn.setToolTip("Save the current settings as a named profile")
-        qconnect(save_as_btn.clicked, self._save_profile_as)
-        profile_row.addWidget(save_as_btn)
+        add_btn = QPushButton("Add…")
+        add_btn.setFixedWidth(60)
+        add_btn.setToolTip("Create a new saved preset from the current settings")
+        qconnect(add_btn.clicked, self._add_profile)
+        profile_row.addWidget(add_btn)
 
         self._profile_rename_btn = QPushButton("Rename…")
         self._profile_rename_btn.setFixedWidth(78)
-        self._profile_rename_btn.setToolTip("Rename the selected profile")
+        self._profile_rename_btn.setToolTip("Rename the selected saved preset")
         qconnect(self._profile_rename_btn.clicked, self._rename_profile)
         profile_row.addWidget(self._profile_rename_btn)
 
         self._profile_delete_btn = QPushButton("Delete")
         self._profile_delete_btn.setFixedWidth(58)
-        self._profile_delete_btn.setToolTip("Delete the selected profile")
+        self._profile_delete_btn.setToolTip("Delete the selected saved preset")
         self._profile_delete_btn.setStyleSheet("color: #e05050;")
         qconnect(self._profile_delete_btn.clicked, self._delete_profile)
         profile_row.addWidget(self._profile_delete_btn)
@@ -3513,22 +3513,21 @@ class SchedulerConfigDialog(QDialog):
             return
         self._load_profile_dict(self._profiles[name])
 
-    def _save_profile_as(self) -> None:
-        current = self._profile_combo.currentText()
+    def _add_profile(self) -> None:
+        current = self.selected_dialog_profile_name() or ""
         name, ok = QInputDialog.getText(
-            self, "Save Profile", "Profile name:", text=current
+            self, "Add Preset", "Preset name:", text=current
         )
         name = name.strip()
         if not ok or not name:
             return
         if name in self._profiles:
-            r = QMessageBox.question(
-                self, "Overwrite Profile",
-                f'Profile "{name}" already exists. Overwrite?',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.warning(
+                self,
+                "Add Preset",
+                f'Preset "{name}" already exists.',
             )
-            if r != QMessageBox.StandardButton.Yes:
-                return
+            return
         self._profiles = _write_named_scheduler_profile(
             name,
             self._build_current_dict(include_selected_profile=False),
@@ -3536,7 +3535,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = name
         self._refresh_profile_combo()
-        tooltip(f'Profile "{name}" saved.')
+        tooltip(f'Preset "{name}" added.')
 
     def _save_profile(self) -> None:
         name = self.selected_dialog_profile_name()
@@ -3549,14 +3548,14 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = name
         self._refresh_profile_combo()
-        tooltip(f'Profile "{name}" saved.')
+        tooltip(f'Preset "{name}" saved.')
 
     def _rename_profile(self) -> None:
         old_name = self.selected_dialog_profile_name()
         if not old_name or old_name not in self._profiles:
             return
         new_name, ok = QInputDialog.getText(
-            self, "Rename Profile", "Profile name:", text=old_name
+            self, "Rename Preset", "Preset name:", text=old_name
         )
         new_name = new_name.strip()
         if not ok or not new_name or new_name == old_name:
@@ -3564,8 +3563,8 @@ class SchedulerConfigDialog(QDialog):
         if new_name in self._profiles:
             QMessageBox.warning(
                 self,
-                "Rename Profile",
-                f'Profile "{new_name}" already exists.',
+                "Rename Preset",
+                f'Preset "{new_name}" already exists.',
             )
             return
         self._profiles = _rename_named_scheduler_profile(
@@ -3575,15 +3574,15 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = new_name
         self._refresh_profile_combo()
-        tooltip(f'Profile "{old_name}" renamed to "{new_name}".')
+        tooltip(f'Preset "{old_name}" renamed to "{new_name}".')
 
     def _delete_profile(self) -> None:
         name = self.selected_dialog_profile_name()
         if not name or name not in self._profiles:
             return
         r = QMessageBox.question(
-            self, "Delete Profile",
-            f'Delete profile "{name}"?',
+            self, "Delete Preset",
+            f'Delete preset "{name}"?',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if r != QMessageBox.StandardButton.Yes:
@@ -3598,7 +3597,7 @@ class SchedulerConfigDialog(QDialog):
         mw.addonManager.writeConfig(__name__, config)
         self._selected_profile_name = None
         self._refresh_profile_combo()
-        tooltip(f'Profile "{name}" deleted.')
+        tooltip(f'Preset "{name}" deleted.')
 
     def _load_profile_dict(self, d: dict) -> None:
         """Apply a profile dict to all dialog widgets."""
