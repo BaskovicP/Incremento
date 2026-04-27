@@ -208,6 +208,11 @@ export default function PdfViewer() {
   const [autoHighlight, setAutoHighlight] = useState(false);
   const hlColorRef       = useRef('yellow');
   const autoHighlightRef = useRef(false);
+  const applyAutoHighlightSetting = useCallback((value) => {
+    const enabled = !!value;
+    autoHighlightRef.current = enabled;
+    setAutoHighlight(enabled);
+  }, []);
 
   // ── Snapshot state ─────────────────────────────────────────────────────────
   const [snapshotMode, setSnapshotMode] = useState(false);
@@ -566,12 +571,16 @@ export default function PdfViewer() {
       startReadPage = 0,
       startSearchQuery = '',
       startLimitStatus = null,
+      startAutoHighlightOnExtract = undefined,
     ) => {
       setHighlights(window._incPdfHighlights || []);
       window._incPdfHighlights = null;
       setSearchQuery(startSearchQuery || '');
       setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
       setLimitNotice(null);
+      if (typeof startAutoHighlightOnExtract === 'boolean') {
+        applyAutoHighlightSetting(startAutoHighlightOnExtract);
+      }
       startViewer(cardId, filename, startPage, startZoom, startReadPage);
     };
 
@@ -579,6 +588,9 @@ export default function PdfViewer() {
     window.incrementoPdfNav   = limitAwareNav;
     window.incrementoPdfZoom  = adjustZoom;
     window.incrementoPdfMarkRead = limitAwareMarkRead;
+    window.incrementoSetAutoHighlightOnExtract = (value) => {
+      applyAutoHighlightSetting(value);
+    };
 
     window.incrementoReceivePageCards = (data) => {
       if (data.page === pageRef.current) {
@@ -603,6 +615,7 @@ export default function PdfViewer() {
         pending.readPage || 0,
         pending.searchQuery || '',
         pending.limitStatus || DEFAULT_LIMIT_STATUS,
+        pending.autoHighlightOnExtract,
       );
     }
     return () => {
@@ -610,11 +623,12 @@ export default function PdfViewer() {
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
       delete window.incrementoPdfMarkRead;
+      delete window.incrementoSetAutoHighlightOnExtract;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfLimitStatus;
       delete window.incrementoUpdatePdfHighlightNote;
     };
-  }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote]);
+  }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote, applyAutoHighlightSetting]);
 
   // ── Request card sources for current page ─────────────────────────────────
   useEffect(() => {
@@ -944,7 +958,7 @@ export default function PdfViewer() {
                     <input
                       type="checkbox"
                       checked={autoHighlight}
-                      onChange={e => { autoHighlightRef.current = e.target.checked; setAutoHighlight(e.target.checked); }}
+                      onChange={e => applyAutoHighlightSetting(e.target.checked)}
                     />
                     Highlight when extracting
                   </label>

@@ -25,6 +25,14 @@ from aqt.qt import (
 )
 from aqt.utils import tooltip
 
+try:
+    from ..backend.reviewer_tags import append_missing_tags
+except Exception:
+    try:
+        from reviewer_tags import append_missing_tags  # type: ignore
+    except Exception:
+        append_missing_tags = None  # type: ignore
+
 _add_card_dock = None  # QDockWidget instance, persists across card reviews
 _SELECTION_TTL_SEC = 20.0
 _last_selection_source = ""
@@ -222,6 +230,11 @@ def calculate_extract_priority(
 def configured_extract_mark_topic(config: dict | None = None) -> bool:
     cfg = _config(config)
     return bool(cfg.get("extract_mark_topic", True))
+
+
+def configured_extract_copy_source_tags(config: dict | None = None) -> bool:
+    cfg = _config(config)
+    return bool(cfg.get("extract_copy_source_tags", False))
 
 
 def configured_add_card_topic_tags(config: dict | None = None) -> list[str]:
@@ -755,6 +768,35 @@ def add_topic_tags_to_note(note) -> bool:
     return changed
 
 
+def copy_source_note_tags_to_note(note, source_note) -> list[str]:
+    if note is None or source_note is None or append_missing_tags is None:
+        return []
+    try:
+        updated_tags, added_tags = append_missing_tags(
+            getattr(note, "tags", []) or [],
+            getattr(source_note, "tags", []) or [],
+        )
+    except Exception:
+        return []
+    if not added_tags:
+        return []
+    _set_note_tags(note, updated_tags)
+    return list(added_tags)
+
+
+def copy_source_card_tags_to_note(note, source_card_id: int | None) -> list[str]:
+    if note is None or source_card_id is None:
+        return []
+    try:
+        source_card = mw.col.get_card(int(source_card_id))
+        if source_card is None:
+            return []
+        source_note = source_card.note()
+    except Exception:
+        return []
+    return copy_source_note_tags_to_note(note, source_note)
+
+
 def _toggle_note_tag_set(note, wanted_tags: list[str]) -> bool:
     normalized_wanted = _normalize_tag_list(wanted_tags)
     if not normalized_wanted:
@@ -1001,14 +1043,21 @@ def set_pending_extract_options(
     priority=None,
     mark_topic: bool | None = None,
     source: str = "",
+    source_card_id: int | None = None,
 ) -> dict:
     global _pending_extract_options
+    resolved_source_card_id = source_card_id
+    if resolved_source_card_id is None:
+        resolved_source_card_id = _source_card_id_for_transfer(source)
     _pending_extract_options = {
         "priority": _clamp_priority(
             configured_extract_priority() if priority is None else priority
         ),
         "mark_topic": configured_extract_mark_topic() if mark_topic is None else bool(mark_topic),
         "source": str(source or ""),
+        "source_card_id": (
+            int(resolved_source_card_id) if resolved_source_card_id is not None else None
+        ),
         "seen": time.monotonic(),
     }
     return dict(_pending_extract_options)
@@ -1087,9 +1136,17 @@ def consume_pending_extract_options_for_note(note) -> dict | None:
     if not options:
         return None
     clear_pending_extract_options()
+    tags_changed = False
+    copied_tags: list[str] = []
+    if configured_extract_copy_source_tags():
+        copied_tags = copy_source_card_tags_to_note(note, options.get("source_card_id"))
+        tags_changed = bool(copied_tags)
     if bool(options.get("mark_topic")) and add_topic_tags_to_note(note):
+        tags_changed = True
+    if tags_changed:
         _save_note_tag_changes(note)
     changed = apply_priority_to_note_cards(note, float(options.get("priority", 50.0)))
+    options["copied_source_tags"] = copied_tags
     options["priority_cards_changed"] = changed
     return options
 

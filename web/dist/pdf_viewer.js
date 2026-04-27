@@ -7611,6 +7611,11 @@
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
     const hlColorRef = reactExports.useRef("yellow");
     const autoHighlightRef = reactExports.useRef(false);
+    const applyAutoHighlightSetting = reactExports.useCallback((value) => {
+      const enabled = !!value;
+      autoHighlightRef.current = enabled;
+      setAutoHighlight(enabled);
+    }, []);
     const [snapshotMode, setSnapshotMode] = reactExports.useState(false);
     const [snapRect, setSnapRect] = reactExports.useState(null);
     const snapStartRef = reactExports.useRef(null);
@@ -7914,18 +7919,24 @@
       rawMarkRead();
     }, [canMarkReadAtPage, pageRef, rawMarkRead]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = "", startLimitStatus = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0) => {
         setHighlights(window._incPdfHighlights || []);
         window._incPdfHighlights = null;
         setSearchQuery(startSearchQuery || "");
         setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
         setLimitNotice(null);
+        if (typeof startAutoHighlightOnExtract === "boolean") {
+          applyAutoHighlightSetting(startAutoHighlightOnExtract);
+        }
         startViewer(cardId, filename, startPage, startZoom, startReadPage);
       };
       window.incrementoPdfStart = startWithHighlights;
       window.incrementoPdfNav = limitAwareNav;
       window.incrementoPdfZoom = adjustZoom;
       window.incrementoPdfMarkRead = limitAwareMarkRead;
+      window.incrementoSetAutoHighlightOnExtract = (value) => {
+        applyAutoHighlightSetting(value);
+      };
       window.incrementoReceivePageCards = (data) => {
         if (data.page === pageRef.current) {
           setPageCards(data.cards || []);
@@ -7947,7 +7958,8 @@
           pending.zoom,
           pending.readPage || 0,
           pending.searchQuery || "",
-          pending.limitStatus || DEFAULT_LIMIT_STATUS
+          pending.limitStatus || DEFAULT_LIMIT_STATUS,
+          pending.autoHighlightOnExtract
         );
       }
       return () => {
@@ -7955,11 +7967,12 @@
         delete window.incrementoPdfNav;
         delete window.incrementoPdfZoom;
         delete window.incrementoPdfMarkRead;
+        delete window.incrementoSetAutoHighlightOnExtract;
         delete window.incrementoReceivePageCards;
         delete window.incrementoReceivePdfLimitStatus;
         delete window.incrementoUpdatePdfHighlightNote;
       };
-    }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote]);
+    }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote, applyAutoHighlightSetting]);
     reactExports.useEffect(() => {
       if (!pdfDocRef.current || !cardIdRef.current) return;
       setPageCards([]);
@@ -8261,10 +8274,7 @@
                             {
                               type: "checkbox",
                               checked: autoHighlight,
-                              onChange: (e) => {
-                                autoHighlightRef.current = e.target.checked;
-                                setAutoHighlight(e.target.checked);
-                              }
+                              onChange: (e) => applyAutoHighlightSetting(e.target.checked)
                             }
                           ),
                           "Highlight when extracting"

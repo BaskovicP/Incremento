@@ -197,6 +197,11 @@ def test_configured_extract_mark_topic_defaults_enabled():
     assert dock.configured_extract_mark_topic({"extract_mark_topic": False}) is False
 
 
+def test_configured_extract_copy_source_tags_defaults_disabled():
+    assert dock.configured_extract_copy_source_tags({}) is False
+    assert dock.configured_extract_copy_source_tags({"extract_copy_source_tags": True}) is True
+
+
 def test_should_apply_extract_notetype_only_for_blank_mismatched_note():
     assert dock.should_apply_extract_notetype(
         "Basic",
@@ -277,6 +282,123 @@ def test_pending_extract_options_are_consumed_once(monkeypatch):
     assert priority_calls == [(101, 25.0), (102, 25.0)]
     assert dock.pending_extract_options() is None
     assert dock.consume_pending_extract_options_for_note(note) is None
+
+
+def test_pending_extract_options_capture_source_card_id(monkeypatch):
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 123 if source == "pdf" else None)
+
+    options = dock.set_pending_extract_options(priority=25, mark_topic=False, source="pdf")
+
+    assert options["source_card_id"] == 123
+
+
+def test_consume_pending_extract_options_copies_source_tags_when_enabled(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    source_note = _FakeNote(["Topic", "Source", "source"], note_id=22)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        type(
+            "MW",
+            (),
+            {
+                "col": type(
+                    "Col",
+                    (),
+                    {"get_card": staticmethod(lambda card_id: type("Card", (), {"note": lambda self: source_note})())},
+                )()
+            },
+        )(),
+    )
+
+    dock.set_pending_extract_options(priority=25, mark_topic=False, source="pdf", source_card_id=99)
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert result["copied_source_tags"] == ["Topic", "Source"]
+    assert note.tags == ["existing", "Topic", "Source"]
+    assert saved == [["existing", "Topic", "Source"]]
+
+
+def test_consume_pending_extract_options_skips_source_tags_when_disabled(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: False)
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+
+    dock.set_pending_extract_options(priority=25, mark_topic=False, source="pdf", source_card_id=99)
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert result["copied_source_tags"] == []
+    assert note.tags == ["existing"]
+    assert saved == []
+
+
+def test_consume_pending_extract_options_combines_source_and_topic_tags(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    source_note = _FakeNote(["Topic", "Source"], note_id=22)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic", "branch"])
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        type(
+            "MW",
+            (),
+            {
+                "col": type(
+                    "Col",
+                    (),
+                    {"get_card": staticmethod(lambda card_id: type("Card", (), {"note": lambda self: source_note})())},
+                )()
+            },
+        )(),
+    )
+
+    dock.set_pending_extract_options(priority=25, mark_topic=True, source="pdf", source_card_id=99)
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert note.tags == ["existing", "Topic", "Source", "branch"]
+    assert saved == [["existing", "Topic", "Source", "branch"]]
+
+
+def test_consume_pending_extract_options_ignores_missing_source_card(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        type(
+            "MW",
+            (),
+            {"col": type("Col", (), {"get_card": staticmethod(lambda card_id: None)})()},
+        )(),
+    )
+
+    dock.set_pending_extract_options(priority=25, mark_topic=False, source="pdf", source_card_id=99)
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert result["copied_source_tags"] == []
+    assert note.tags == ["existing"]
+    assert saved == []
 
 
 def test_do_fill_forwards_mark_topic_to_embedded_dock(monkeypatch):

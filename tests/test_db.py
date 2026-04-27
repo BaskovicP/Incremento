@@ -1398,6 +1398,26 @@ class TestTopicSchedule:
         assert a_factor == 3.5
         assert interval == 1
 
+    def test_get_default_when_not_set_uses_override(self):
+        a_factor, interval = db.get_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            default_a_factor=4.25,
+        )
+        assert a_factor == 4.25
+        assert interval == 1
+
+    def test_get_default_when_not_set_clamps_override(self):
+        a_factor, interval = db.get_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            default_a_factor=1000.0,
+        )
+        assert a_factor == 100.0
+        assert interval == 1
+
     def test_set_and_get_topic_schedule(self):
         db.set_topic_schedule(self.addon_dir, "TestProfile", 42, 2.0, 7)
         a_factor, interval = db.get_topic_schedule(self.addon_dir, "TestProfile", 42)
@@ -1415,6 +1435,17 @@ class TestTopicSchedule:
         db.set_topic_schedule(self.addon_dir, "TestProfile", 7, 2.12345, 3)
         a_factor, _ = db.get_topic_schedule(self.addon_dir, "TestProfile", 7)
         assert a_factor == round(2.12345, 3)
+
+    def test_existing_stored_schedule_ignores_override_default(self):
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 7, 2.4, 3)
+        a_factor, interval = db.get_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            7,
+            default_a_factor=9.9,
+        )
+        assert a_factor == 2.4
+        assert interval == 3
 
 
 # ---------------------------------------------------------------------------

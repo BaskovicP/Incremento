@@ -5,6 +5,8 @@
         "web": true
     },
     "extract_notetype": "",
+    "extract_copy_source_tags": false,
+    "highlight_when_extracting": true,
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "show_priority_dialog_after_answer": false,

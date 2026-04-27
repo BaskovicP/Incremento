@@ -39,6 +39,7 @@ _ADDON_DIR = os.path.normpath(
 
 _A_MIN = 1.1
 _A_MAX = 100.0
+_DEFAULT_TOPIC_A_FACTOR = 3.5
 TOPIC_REVIEW_BUTTONS: tuple[tuple[int, str], ...] = (
     (1, "More"),
     (2, "Same"),
@@ -122,6 +123,15 @@ def configured_topic_card_tags(config: dict | None = None) -> list[str]:
         seen.add(normalized)
         out.append(tag)
     return out
+
+
+def configured_default_topic_a_factor(config: dict | None = None) -> float:
+    cfg = _resolved_config(config)
+    try:
+        value = float(cfg.get("default_topic_a_factor", _DEFAULT_TOPIC_A_FACTOR))
+    except Exception:
+        value = _DEFAULT_TOPIC_A_FACTOR
+    return round(max(_A_MIN, min(_A_MAX, value)), 3)
 
 
 def configured_effective_topic_tags(config: dict | None = None) -> list[str]:
@@ -289,7 +299,12 @@ def topic_due_label(card, review_button_ease: int) -> str:
     if card is None:
         return ""
     try:
-        a_factor, last_interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card.id)
+        a_factor, last_interval = get_topic_schedule(
+            _ADDON_DIR,
+            _active_profile(),
+            card.id,
+            default_a_factor=configured_default_topic_a_factor(),
+        )
         new_interval, _ = _next_interval_and_afactor(
             last_interval,
             a_factor,
@@ -305,7 +320,12 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
     if not is_topic_card(card):
         return
     try:
-        a_factor, last_interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card.id)
+        a_factor, last_interval = get_topic_schedule(
+            _ADDON_DIR,
+            _active_profile(),
+            card.id,
+            default_a_factor=configured_default_topic_a_factor(),
+        )
         new_interval, new_a = _next_interval_and_afactor(
             last_interval,
             a_factor,

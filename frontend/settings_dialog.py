@@ -19,6 +19,7 @@ from aqt.qt import (
     QDoubleSpinBox,
     QSpinBox,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -219,6 +220,8 @@ class IncrementoSettingsDialog(QDialog):
         current_extract_priority: float = 40.0,
         current_extract_priority_multiplier: float = 0.98,
         current_extract_mark_topic: bool = True,
+        current_extract_copy_source_tags: bool = False,
+        current_extract_highlight_when_extracting: bool = True,
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
@@ -233,6 +236,7 @@ class IncrementoSettingsDialog(QDialog):
         current_auto_timer_tags: list[str] | str | None = None,
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
+        current_default_topic_a_factor: float = 3.5,
         current_add_card_topic_tags: list[str] | str | None = None,
         current_add_card_item_tags: list[str] | str | None = None,
         current_topic_postpone_enabled: bool = False,
@@ -278,6 +282,11 @@ class IncrementoSettingsDialog(QDialog):
             lbl.setWordWrap(True)
             return lbl
 
+        def _subsection_title(text: str) -> QLabel:
+            lbl = QLabel(f"<b>{text}</b>")
+            lbl.setWordWrap(True)
+            return lbl
+
         def _section_form() -> QFormLayout:
             form = QFormLayout()
             form.setHorizontalSpacing(16)
@@ -295,23 +304,52 @@ class IncrementoSettingsDialog(QDialog):
             lbl.setWordWrap(True)
             return lbl
 
+        def _info_button(tooltip_text: str) -> QToolButton:
+            btn = QToolButton()
+            btn.setText("i")
+            btn.setAutoRaise(True)
+            btn.setToolTip(tooltip_text)
+            btn.setFixedSize(15, 15)
+            btn.setStyleSheet(
+                "QToolButton {"
+                "  color: white;"
+                "  background-color: #4a7ab5;"
+                "  border: none;"
+                "  border-radius: 7px;"
+                "  font-size: 9px;"
+                "  font-style: italic;"
+                "  font-weight: bold;"
+                "  padding-bottom: 1px;"
+                "}"
+                "QToolButton:hover { background-color: #3060a0; }"
+            )
+            return btn
+
+        def _label_with_info(text: str, tooltip_text: str | None = None) -> QWidget | str:
+            if not tooltip_text:
+                return text
+            wrap = QWidget()
+            layout = QHBoxLayout(wrap)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+            label = QLabel(text)
+            layout.addWidget(label)
+            layout.addWidget(_info_button(tooltip_text))
+            layout.addStretch(1)
+            return wrap
+
         extraction_tab = QWidget()
         extraction_layout = QVBoxLayout(extraction_tab)
         extraction_layout.setSpacing(8)
 
         extraction_hint = QLabel(
             "Choose how extracted content opens by default, how its priority is derived,"
-            " whether extracts should start as topics, and which provenance links should be appended."
+            " whether extracts should start as topics, and which provenance links should be saved with new extracts."
         )
         extraction_hint.setWordWrap(True)
         extraction_layout.addWidget(extraction_hint)
 
-        extraction_layout.addWidget(_section_title("Extraction"))
-        extraction_hint = QLabel(
-            "Controls how extracted text opens in Add Card and which source links are appended."
-        )
-        extraction_hint.setWordWrap(True)
-        extraction_layout.addWidget(extraction_hint)
+        extraction_layout.addWidget(_section_title("Card Creation"))
 
         extraction_form = _section_form()
 
@@ -326,7 +364,14 @@ class IncrementoSettingsDialog(QDialog):
                 self._extract_notetype_combo.setCurrentIndex(idx)
                 break
 
-        extraction_form.addRow("Default extract card type:", self._extract_notetype_combo)
+        extraction_form.addRow(
+            _label_with_info(
+                "Default extract card type:",
+                "This is used by Extract Card when it creates a new note from selected text. "
+                "Use 'current Add Card type' if you want extraction to follow whatever note type is currently selected there.",
+            ),
+            self._extract_notetype_combo,
+        )
 
         self._extract_priority_spin = QDoubleSpinBox()
         self._extract_priority_spin.setRange(0.0, 100.0)
@@ -341,7 +386,14 @@ class IncrementoSettingsDialog(QDialog):
         self._extract_priority_spin.setToolTip(
             f"Priority assigned to newly extracted cards. {important_end} is the most important end."
         )
-        extraction_form.addRow("Fallback extract priority:", self._extract_priority_spin)
+        extraction_form.addRow(
+            _label_with_info(
+                "Fallback extract priority:",
+                f"Used when Incremento cannot derive the new extract's priority from a source card. "
+                f"{important_end} is the most important end with your current priority direction.",
+            ),
+            self._extract_priority_spin,
+        )
 
         self._extract_priority_multiplier_spin = QDoubleSpinBox()
         self._extract_priority_multiplier_spin.setRange(0.01, 10.0)
@@ -361,11 +413,38 @@ class IncrementoSettingsDialog(QDialog):
             "New extracts use source priority × this value when the source card is known. "
             + multiplier_hint
         )
-        extraction_form.addRow("Source priority multiplier:", self._extract_priority_multiplier_spin)
+        extraction_form.addRow(
+            _label_with_info(
+                "Source priority multiplier:",
+                "Used when the extracted text came from a card that already has a priority. "
+                + multiplier_hint,
+            ),
+            self._extract_priority_multiplier_spin,
+        )
 
         self._extract_mark_topic_cb = QCheckBox("Mark extracted cards as topics")
         self._extract_mark_topic_cb.setChecked(bool(current_extract_mark_topic))
         extraction_form.addRow("", self._extract_mark_topic_cb)
+
+        self._extract_copy_source_tags_cb = QCheckBox("Copy source card tags to extracted cards")
+        self._extract_copy_source_tags_cb.setChecked(bool(current_extract_copy_source_tags))
+        extraction_form.addRow("", self._extract_copy_source_tags_cb)
+
+        self._extract_highlight_when_extracting_cb = QCheckBox("Highlight when extracting")
+        self._extract_highlight_when_extracting_cb.setChecked(
+            bool(current_extract_highlight_when_extracting)
+        )
+        extraction_form.addRow("", self._extract_highlight_when_extracting_cb)
+
+        extraction_layout.addLayout(extraction_form)
+        extraction_layout.addWidget(_subsection_title("Saved Provenance"))
+
+        provenance_hint = _note_label(
+            "These links are stored in dedicated Incremento metadata fields so the new extract can point back to where it came from."
+        )
+        extraction_layout.addWidget(provenance_hint)
+
+        provenance_form = _section_form()
 
         if isinstance(extract_source_links, dict):
             source_link_cfg = {
@@ -384,17 +463,23 @@ class IncrementoSettingsDialog(QDialog):
 
         self._extract_pdf_links_cb = QCheckBox("PDF pages")
         self._extract_pdf_links_cb.setChecked(source_link_cfg["pdf"])
-        extraction_form.addRow("Should add links to:", self._extract_pdf_links_cb)
+        provenance_form.addRow(
+            _label_with_info(
+                "Save links for:",
+                "Examples: a PDF page reference, the current web page URL, or a parent card link when you extract from an existing card.",
+            ),
+            self._extract_pdf_links_cb,
+        )
 
         self._extract_web_links_cb = QCheckBox("Web pages / URLs")
         self._extract_web_links_cb.setChecked(source_link_cfg["web"])
-        extraction_form.addRow("", self._extract_web_links_cb)
+        provenance_form.addRow("", self._extract_web_links_cb)
 
         self._extract_parent_links_cb = QCheckBox("Parent cards in Extract Card")
         self._extract_parent_links_cb.setChecked(source_link_cfg["parent"])
-        extraction_form.addRow("", self._extract_parent_links_cb)
+        provenance_form.addRow("", self._extract_parent_links_cb)
 
-        extraction_layout.addLayout(extraction_form)
+        extraction_layout.addLayout(provenance_form)
         extraction_layout.addStretch(1)
         tabs.addTab(_scrollable_tab(extraction_tab), "Extraction")
 
@@ -409,16 +494,9 @@ class IncrementoSettingsDialog(QDialog):
         review_hint.setWordWrap(True)
         review_layout.addWidget(review_hint)
 
-        review_layout.addWidget(_section_title("Review Behavior"))
-        review_hint = QLabel(
-            "Controls how review buttons behave and whether review flow asks for extra input after answering."
-        )
-        review_hint.setWordWrap(True)
-        review_layout.addWidget(review_hint)
+        review_layout.addWidget(_section_title("Review Flow"))
 
-        review_behavior_layout = QVBoxLayout()
-        review_behavior_layout.setContentsMargins(0, 0, 0, 0)
-        review_behavior_layout.setSpacing(8)
+        review_priority_form = _section_form()
 
         priority_direction_wrap = QWidget()
         priority_direction_layout = QVBoxLayout(priority_direction_wrap)
@@ -441,9 +519,14 @@ class IncrementoSettingsDialog(QDialog):
         priority_direction_hint.setWordWrap(True)
         priority_direction_layout.addWidget(priority_direction_hint)
 
-        priority_direction_label = QLabel("Incremental learning priority:")
-        review_behavior_layout.addWidget(priority_direction_label)
-        review_behavior_layout.addWidget(priority_direction_wrap)
+        review_priority_form.addRow(
+            _label_with_info(
+                "Priority direction:",
+                "This decides whether smaller numbers mean 'do this sooner' or larger numbers do. "
+                "If you change it, Incremento can invert stored priorities for the current profile when you save.",
+            ),
+            priority_direction_wrap,
+        )
 
         self._show_priority_dialog_after_answer_cb = QCheckBox(
             "Show priority dialog after each card is done before moving forward"
@@ -451,7 +534,12 @@ class IncrementoSettingsDialog(QDialog):
         self._show_priority_dialog_after_answer_cb.setChecked(
             bool(current_show_priority_dialog_after_answer)
         )
-        review_behavior_layout.addWidget(self._show_priority_dialog_after_answer_cb)
+        review_priority_form.addRow("", self._show_priority_dialog_after_answer_cb)
+
+        review_layout.addLayout(review_priority_form)
+
+        review_layout.addWidget(_subsection_title("Reviewer Controls"))
+        reviewer_controls_layout = _section_body()
 
         self._remember_browser_card_scroll_cb = QCheckBox(
             "Remember scrolling position in browser cards"
@@ -459,7 +547,7 @@ class IncrementoSettingsDialog(QDialog):
         self._remember_browser_card_scroll_cb.setChecked(
             bool(current_remember_browser_card_scroll)
         )
-        review_behavior_layout.addWidget(self._remember_browser_card_scroll_cb)
+        reviewer_controls_layout.addWidget(self._remember_browser_card_scroll_cb)
 
         self._prefer_web_card_resume_in_original_page_cb = QCheckBox(
             "Prefer resuming embedded web-card media in the original page"
@@ -467,7 +555,7 @@ class IncrementoSettingsDialog(QDialog):
         self._prefer_web_card_resume_in_original_page_cb.setChecked(
             bool(current_prefer_web_card_resume_in_original_page)
         )
-        review_behavior_layout.addWidget(self._prefer_web_card_resume_in_original_page_cb)
+        reviewer_controls_layout.addWidget(self._prefer_web_card_resume_in_original_page_cb)
 
         self._use_fail_pass_on_items_cb = QCheckBox(
             "Use Fail / Pass buttons on items"
@@ -475,11 +563,22 @@ class IncrementoSettingsDialog(QDialog):
         self._use_fail_pass_on_items_cb.setChecked(
             bool(current_use_fail_pass_on_items)
         )
-        review_behavior_layout.addWidget(self._use_fail_pass_on_items_cb)
+        reviewer_controls_layout.addWidget(self._use_fail_pass_on_items_cb)
+
+        self._show_incremento_fields_cb = QCheckBox(
+            "Show Incremento metadata / OCR fields in Browser and note editors"
+        )
+        self._show_incremento_fields_cb.setChecked(bool(current_show_incremento_fields))
+        reviewer_controls_layout.addWidget(self._show_incremento_fields_cb)
+
+        review_layout.addLayout(reviewer_controls_layout)
+
+        review_layout.addWidget(_subsection_title("Item Skip"))
+        item_skip_layout = _section_body()
 
         self._item_skip_enabled_cb = QCheckBox("Enable timed Skip button on items")
         self._item_skip_enabled_cb.setChecked(bool(current_item_skip_enabled))
-        review_behavior_layout.addWidget(self._item_skip_enabled_cb)
+        item_skip_layout.addWidget(self._item_skip_enabled_cb)
 
         item_skip_row = QHBoxLayout()
         item_skip_row.setContentsMargins(0, 0, 0, 0)
@@ -495,8 +594,14 @@ class IncrementoSettingsDialog(QDialog):
         self._item_skip_minutes_spin.setValue(max(1, min(1440, item_skip_minutes)))
         self._item_skip_minutes_spin.setSuffix(" min")
         item_skip_row.addWidget(self._item_skip_minutes_spin)
+        item_skip_row.addWidget(
+            _info_button(
+                "When you click Skip on an item card, Incremento buries it temporarily and brings it back after this many minutes. "
+                "Example: 30 minutes hides the item for the rest of the current short study burst, then lets it reappear later."
+            )
+        )
         item_skip_row.addStretch(1)
-        review_behavior_layout.addLayout(item_skip_row)
+        item_skip_layout.addLayout(item_skip_row)
 
         def _sync_item_skip_widgets() -> None:
             enabled = bool(self._item_skip_enabled_cb.isChecked())
@@ -506,14 +611,7 @@ class IncrementoSettingsDialog(QDialog):
             lambda _checked: _sync_item_skip_widgets()
         )
         _sync_item_skip_widgets()
-
-        self._show_incremento_fields_cb = QCheckBox(
-            "Show Incremento metadata / OCR fields in Browser and note editors"
-        )
-        self._show_incremento_fields_cb.setChecked(bool(current_show_incremento_fields))
-        review_behavior_layout.addWidget(self._show_incremento_fields_cb)
-
-        review_layout.addLayout(review_behavior_layout)
+        review_layout.addLayout(item_skip_layout)
 
         review_layout.addWidget(_section_title("Focus Timer"))
         timer_hint = QLabel(
@@ -577,7 +675,13 @@ class IncrementoSettingsDialog(QDialog):
         self._auto_timer_tags_edit = QLineEdit()
         self._auto_timer_tags_edit.setPlaceholderText("tag1, tag2")
         self._auto_timer_tags_edit.setText(_tag_list_text(current_auto_timer_tags))
-        timer_form.addRow("Tags:", self._auto_timer_tags_edit)
+        timer_form.addRow(
+            _label_with_info(
+                "Tags:",
+                "Optional extra filter. If you fill this in, the auto-start timer only triggers for cards that match one of these tags in addition to the selected card types.",
+            ),
+            self._auto_timer_tags_edit,
+        )
 
         def _sync_auto_timer_widgets() -> None:
             enabled = bool(self._auto_timer_enabled_cb.isChecked())
@@ -629,7 +733,11 @@ class IncrementoSettingsDialog(QDialog):
                 self._custom_schedule_default_mode_combo.setCurrentIndex(idx)
                 break
         custom_schedule_form.addRow(
-            "Default behavior:",
+            _label_with_info(
+                "Default behavior:",
+                "Minimum cadence means 'not earlier than this interval'. Repeat exactly keeps moving the due date by the same interval each time. "
+                "One-time set due changes the next due date once without creating a repeating rule.",
+            ),
             self._custom_schedule_default_mode_combo,
         )
 
@@ -648,7 +756,13 @@ class IncrementoSettingsDialog(QDialog):
             )
         self._custom_schedule_presets_edit.setPlainText("\n".join(presets_lines))
         self._custom_schedule_presets_edit.setMinimumHeight(120)
-        custom_schedule_form.addRow("Quick presets:", self._custom_schedule_presets_edit)
+        custom_schedule_form.addRow(
+            _label_with_info(
+                "Quick presets:",
+                "These appear in browser scheduling menus for one-click reuse. Example lines: 'Every 2 days | 2 | days' or 'Monthly review | 1 | months'.",
+            ),
+            self._custom_schedule_presets_edit,
+        )
 
         custom_schedule_form.addRow(
             "",
@@ -719,7 +833,7 @@ class IncrementoSettingsDialog(QDialog):
         topics_hint.setWordWrap(True)
         topics_layout.addWidget(topics_hint)
 
-        topics_layout.addWidget(_section_title("Topic Cards"))
+        topics_layout.addWidget(_section_title("Topic Identity"))
         topic_section_hint = QLabel(
             "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
             " You can also add a red Postpone button for difficult topics."
@@ -728,6 +842,34 @@ class IncrementoSettingsDialog(QDialog):
         topics_layout.addWidget(topic_section_hint)
 
         topic_form = _section_form()
+
+        self._default_topic_a_factor_spin = QDoubleSpinBox()
+        self._default_topic_a_factor_spin.setRange(1.1, 100.0)
+        self._default_topic_a_factor_spin.setDecimals(3)
+        self._default_topic_a_factor_spin.setSingleStep(0.1)
+        try:
+            default_topic_a_factor = float(current_default_topic_a_factor)
+        except Exception:
+            default_topic_a_factor = 3.5
+        self._default_topic_a_factor_spin.setValue(
+            max(1.1, min(100.0, default_topic_a_factor))
+        )
+        self._default_topic_a_factor_spin.setToolTip(
+            "Starting A-factor for topic cards before they build their own topic review history."
+        )
+        topic_form.addRow(
+            _label_with_info(
+                "Default topic A-factor:",
+                "Used when a topic card has no stored topic-schedule history yet. Higher values generally stretch topic reviews further apart.",
+            ),
+            self._default_topic_a_factor_spin,
+        )
+        topic_form.addRow(
+            "",
+            QLabel(
+                "Used only when a topic card does not yet have stored topic-schedule state."
+            ),
+        )
 
         topic_types = {
             "pdf_epub": True,
@@ -761,28 +903,60 @@ class IncrementoSettingsDialog(QDialog):
         self._topic_web_cb.setChecked(topic_types["web"])
         topic_layout.addWidget(self._topic_web_cb)
 
-        topic_form.addRow("Consider these as topics:", topic_wrap)
+        topic_form.addRow(
+            _label_with_info(
+                "Treat these card types as topics:",
+                "These cards use topic review behavior such as More / Same / Less and A-factor scheduling instead of standard item grading.",
+            ),
+            topic_wrap,
+        )
 
         self._topic_tags_edit = QLineEdit()
         self._topic_tags_edit.setPlaceholderText("tag1, tag2")
         self._topic_tags_edit.setText(_tag_list_text(current_topic_card_tags))
-        topic_form.addRow("Topic tags:", self._topic_tags_edit)
+        topic_form.addRow(
+            _label_with_info(
+                "Topic tags:",
+                "Any card with one of these tags is also treated as a topic, even if its card type would normally behave like an item.",
+            ),
+            self._topic_tags_edit,
+        )
 
         self._add_card_topic_tags_edit = QLineEdit()
         self._add_card_topic_tags_edit.setPlaceholderText("topic")
         self._add_card_topic_tags_edit.setText(_tag_list_text(current_add_card_topic_tags))
-        topic_form.addRow("Add Card topic-button tags:", self._add_card_topic_tags_edit)
+        topic_form.addRow(
+            _label_with_info(
+                "Add Card topic-button tags:",
+                "These tags are toggled when you click the Topic button in Add Card or the note editor. "
+                "Example: 'topic, article' marks long-form notes as topic material.",
+            ),
+            self._add_card_topic_tags_edit,
+        )
 
         self._add_card_item_tags_edit = QLineEdit()
         self._add_card_item_tags_edit.setPlaceholderText("item")
         self._add_card_item_tags_edit.setText(_tag_list_text(current_add_card_item_tags))
-        topic_form.addRow("Add Card item-button tags:", self._add_card_item_tags_edit)
+        topic_form.addRow(
+            _label_with_info(
+                "Add Card item-button tags:",
+                "These tags are toggled when you click the Item button. Example: 'item, flashcard' for short recall-oriented notes.",
+            ),
+            self._add_card_item_tags_edit,
+        )
+
+        topics_layout.addLayout(topic_form)
+        topics_layout.addWidget(_subsection_title("Postpone Button"))
+
+        postpone_layout = _section_body()
 
         self._topic_postpone_enabled_cb = QCheckBox(
             "Enable red Postpone button on topic cards"
         )
         self._topic_postpone_enabled_cb.setChecked(bool(current_topic_postpone_enabled))
-        topic_form.addRow("", self._topic_postpone_enabled_cb)
+        postpone_layout.addWidget(self._topic_postpone_enabled_cb)
+
+        postpone_form = _section_form()
 
         self._topic_postpone_mode_combo = QComboBox()
         self._topic_postpone_mode_combo.addItem("Timed snooze", "timed")
@@ -796,7 +970,13 @@ class IncrementoSettingsDialog(QDialog):
             if self._topic_postpone_mode_combo.itemData(idx) == selected_mode:
                 self._topic_postpone_mode_combo.setCurrentIndex(idx)
                 break
-        topic_form.addRow("Postpone mode:", self._topic_postpone_mode_combo)
+        postpone_form.addRow(
+            _label_with_info(
+                "Postpone mode:",
+                "Timed snooze hides the topic until the timer expires. Session only keeps it out until the current study session ends or postponed cards are released.",
+            ),
+            self._topic_postpone_mode_combo,
+        )
 
         self._topic_postpone_minutes_spin = QSpinBox()
         self._topic_postpone_minutes_spin.setRange(1, 1440)
@@ -806,7 +986,13 @@ class IncrementoSettingsDialog(QDialog):
             postpone_minutes = 30
         self._topic_postpone_minutes_spin.setValue(max(1, min(1440, postpone_minutes)))
         self._topic_postpone_minutes_spin.setSuffix(" min")
-        topic_form.addRow("Timed snooze duration:", self._topic_postpone_minutes_spin)
+        postpone_form.addRow(
+            _label_with_info(
+                "Timed snooze duration:",
+                "Only used for Timed snooze. Example: 60 minutes hides the topic for an hour, then lets it come back automatically.",
+            ),
+            self._topic_postpone_minutes_spin,
+        )
 
         def _sync_topic_postpone_widgets() -> None:
             enabled = bool(self._topic_postpone_enabled_cb.isChecked())
@@ -822,7 +1008,8 @@ class IncrementoSettingsDialog(QDialog):
         )
         _sync_topic_postpone_widgets()
 
-        topics_layout.addLayout(topic_form)
+        postpone_layout.addLayout(postpone_form)
+        topics_layout.addLayout(postpone_layout)
         topics_layout.addStretch(1)
         tabs.addTab(_scrollable_tab(topics_tab), "Topics")
 
@@ -926,7 +1113,13 @@ class IncrementoSettingsDialog(QDialog):
             if self._writing_progress_scope_combo.itemData(idx) == selected_progress_scope:
                 self._writing_progress_scope_combo.setCurrentIndex(idx)
                 break
-        writing_progress_form.addRow("Default progress scope:", self._writing_progress_scope_combo)
+        writing_progress_form.addRow(
+            _label_with_info(
+                "Default progress scope:",
+                "Today counts words written today on this card. Session counts only the current open session for this card. All-time uses the card's full saved writing history.",
+            ),
+            self._writing_progress_scope_combo,
+        )
         progress_details_layout.addLayout(writing_progress_form)
         progress_details_layout.addWidget(
             _note_label("Session resets when you leave and reopen that writing card.")
@@ -942,7 +1135,13 @@ class IncrementoSettingsDialog(QDialog):
             if self._writing_word_count_mode_combo.itemData(idx) == selected_word_count_mode:
                 self._writing_word_count_mode_combo.setCurrentIndex(idx)
                 break
-        writing_progress_form.addRow("Word counting mode:", self._writing_word_count_mode_combo)
+        writing_progress_form.addRow(
+            _label_with_info(
+                "Word counting mode:",
+                "Simple whitespace counts chunks separated by spaces. Word-like is closer to word-processor counting for punctuation, contractions, and hyphenated text.",
+            ),
+            self._writing_word_count_mode_combo,
+        )
         progress_details_layout.addWidget(
             _note_label(
                 "Word-like mode approximates Microsoft Word better for punctuation, apostrophes, and hyphenated words."
@@ -1055,6 +1254,14 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._extract_mark_topic_cb.isChecked())
 
     @property
+    def extract_copy_source_tags(self) -> bool:
+        return bool(self._extract_copy_source_tags_cb.isChecked())
+
+    @property
+    def extract_highlight_when_extracting(self) -> bool:
+        return bool(self._extract_highlight_when_extracting_cb.isChecked())
+
+    @property
     def extract_source_links(self) -> dict[str, bool]:
         return {
             "pdf": bool(self._extract_pdf_links_cb.isChecked()),
@@ -1125,6 +1332,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def topic_card_tags(self) -> list[str]:
         return _normalize_tag_list(self._topic_tags_edit.text())
+
+    @property
+    def default_topic_a_factor(self) -> float:
+        return round(float(self._default_topic_a_factor_spin.value()), 3)
 
     @property
     def add_card_topic_tags(self) -> list[str]:

@@ -119,6 +119,7 @@ from .frontend.custom_schedule_dialog import CustomScheduleDialog
 from .frontend import timer_widget as _timer_mod
 from .backend.topic_scheduler import (
     TOPIC_REVIEW_BUTTONS,
+    configured_default_topic_a_factor as _configured_default_topic_a_factor,
     configured_topic_card_tags as _configured_topic_card_tags,
     configured_topic_card_types as _configured_topic_card_types,
     is_topic_card as _is_topic_card,
@@ -2270,7 +2271,6 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         parent=parent_label,
         parent_card_id=getattr(parent_card, "id", None),
     )
-
     dlg = ExtractCardDialog(
         selected_text=selected_text,
         notetypes=notetypes,
@@ -3969,6 +3969,8 @@ def openSettingsFunction() -> None:
         current_extract_priority=_add_card_dock_mod.configured_extract_priority(cfg),
         current_extract_priority_multiplier=_add_card_dock_mod.configured_extract_priority_multiplier(cfg),
         current_extract_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(cfg),
+        current_extract_copy_source_tags=_add_card_dock_mod.configured_extract_copy_source_tags(cfg),
+        current_extract_highlight_when_extracting=_pdf_dock_mod.configured_highlight_when_extracting(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
@@ -3983,6 +3985,7 @@ def openSettingsFunction() -> None:
         current_auto_timer_tags=_timer_mod.configured_auto_timer_tags(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
+        current_default_topic_a_factor=_configured_default_topic_a_factor(cfg),
         current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
         current_add_card_item_tags=_add_card_dock_mod.configured_add_card_item_tags(cfg),
         current_topic_postpone_enabled=_configured_topic_postpone_enabled(cfg),
@@ -4011,6 +4014,8 @@ def openSettingsFunction() -> None:
     cfg["extract_priority"] = dlg.extract_priority
     cfg["extract_priority_multiplier"] = dlg.extract_priority_multiplier
     cfg["extract_mark_topic"] = dlg.extract_mark_topic
+    cfg["extract_copy_source_tags"] = dlg.extract_copy_source_tags
+    cfg["highlight_when_extracting"] = dlg.extract_highlight_when_extracting
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
@@ -4025,6 +4030,7 @@ def openSettingsFunction() -> None:
     cfg["auto_timer_tags"] = dlg.auto_timer_tags
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
+    cfg["default_topic_a_factor"] = dlg.default_topic_a_factor
     cfg["add_card_topic_tags"] = dlg.add_card_topic_tags
     cfg["add_card_item_tags"] = dlg.add_card_item_tags
     cfg["topic_postpone_enabled"] = dlg.topic_postpone_enabled
@@ -4043,6 +4049,12 @@ def openSettingsFunction() -> None:
     cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     mw.addonManager.writeConfig(__name__, cfg)
+    try:
+        _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
+            f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"
+        )
+    except Exception:
+        pass
     _apply_shortcuts_from_config()
     _add_card_dock_mod.refresh_add_card_dock_controls()
     if dlg.priority_lower_is_more_important != previous_priority_direction:

@@ -10,6 +10,7 @@ _next_interval_and_afactor = topic_scheduler._next_interval_and_afactor
 _topics_deck_name = topic_scheduler._topics_deck_name
 configured_topic_card_tags = topic_scheduler.configured_topic_card_tags
 configured_topic_card_types = topic_scheduler.configured_topic_card_types
+configured_default_topic_a_factor = topic_scheduler.configured_default_topic_a_factor
 is_topic_card = topic_scheduler.is_topic_card
 remap_topic_review_ease = topic_scheduler.remap_topic_review_ease
 topic_due_label = topic_scheduler.topic_due_label
@@ -160,6 +161,14 @@ class TestTopicConfigHelpers:
         cfg = {"topic_card_tags": ["Topic", "reading", "Topic"]}
         assert configured_topic_card_tags(cfg) == ["Topic", "reading"]
 
+    def test_configured_default_topic_a_factor_uses_default(self):
+        assert configured_default_topic_a_factor({}) == 3.5
+
+    def test_configured_default_topic_a_factor_clamps_and_rounds(self):
+        assert configured_default_topic_a_factor({"default_topic_a_factor": 1000}) == 100.0
+        assert configured_default_topic_a_factor({"default_topic_a_factor": 1.0001}) == 1.1
+        assert configured_default_topic_a_factor({"default_topic_a_factor": 2.34567}) == 2.346
+
 
 class TestTopicReviewEaseRemap:
     def test_remaps_custom_topic_buttons_to_scheduler_eases(self):
@@ -299,8 +308,17 @@ class TestTopicDueLabel:
     def test_uses_remapped_topic_button_ease(self):
         card = MagicMock()
         card.id = 42
-        with patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)):
+        with patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             assert topic_due_label(card, 1) == "24d"
+
+    def test_passes_configured_default_for_unseen_topic_cards(self):
+        card = MagicMock()
+        card.id = 42
+        with patch("topic_scheduler.get_topic_schedule", return_value=(4.2, 1)) as mock_get, \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
+            assert topic_due_label(card, 2) == "4d"
+        assert mock_get.call_args.kwargs["default_a_factor"] == 4.2
 
 
 # ── on_topic_card_answered ────────────────────────────────────────────────────
@@ -328,17 +346,32 @@ class TestOnTopicCardAnswered:
         with patch("topic_scheduler.is_topic_card", return_value=True), \
              patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
-             patch("topic_scheduler.mw") as mock_mw:
+             patch("topic_scheduler.mw") as mock_mw, \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             on_topic_card_answered(MagicMock(), card, ease=3)
         mock_set.assert_called_once()
         mock_mw.col.sched.set_due_date.assert_called_once()
+        assert mock_set.call_args.args[3] == pytest.approx(round(3.5 * 1.1, 3))
+
+    def test_uses_configured_default_for_unseen_topic_cards(self):
+        card = self._make_card()
+        with patch("topic_scheduler.is_topic_card", return_value=True), \
+             patch("topic_scheduler.get_topic_schedule", return_value=(4.2, 1)) as mock_get, \
+             patch("topic_scheduler.set_topic_schedule") as mock_set, \
+             patch("topic_scheduler.mw") as mock_mw, \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
+            on_topic_card_answered(MagicMock(), card, ease=2)
+        assert mock_get.call_args.kwargs["default_a_factor"] == 4.2
+        assert mock_set.call_args.args[3] == 4.2
+        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "4")
 
     def test_remaps_more_button_to_hard_scheduling(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
              patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
-             patch("topic_scheduler.mw") as mock_mw:
+             patch("topic_scheduler.mw") as mock_mw, \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             on_topic_card_answered(MagicMock(), card, ease=1)
         args = mock_set.call_args.args
         assert args[2] == card.id

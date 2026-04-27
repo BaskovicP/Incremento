@@ -132,6 +132,7 @@ except ImportError:
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 )
+_ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 
 _DOCK_HTML = QUrl.fromLocalFile(
     os.path.join(_ADDON_DIR, "web", "pdf_dock.html")
@@ -151,6 +152,20 @@ _current_pdf_card_id = None
 _current_pdf_filename = None
 _pdf_via_link = False  # True when dock was opened via a cross-reference link
 _pdf_preserve_history = False
+
+
+def _config(config: dict | None = None) -> dict:
+    if config is not None:
+        return config or {}
+    try:
+        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+    except Exception:
+        return {}
+
+
+def configured_highlight_when_extracting(config: dict | None = None) -> bool:
+    cfg = _config(config)
+    return bool(cfg.get("highlight_when_extracting", True))
 
 
 def current_pdf_card_id() -> int | None:
@@ -1540,10 +1555,10 @@ def show_pdf_in_dock(
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}));"
     )
 
     current = _pdf_dock._view.url().toString()

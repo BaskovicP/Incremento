@@ -52,6 +52,9 @@ _initialized_for: str | None = None
 
 DB_NAME = "incremento.db"
 _SEARCH_WORD_RE = re.compile(r"\w+", re.UNICODE)
+_TOPIC_A_FACTOR_MIN = 1.1
+_TOPIC_A_FACTOR_MAX = 100.0
+_DEFAULT_TOPIC_A_FACTOR = 3.5
 
 
 def close_connection() -> None:
@@ -1997,7 +2000,20 @@ def search_epub_text_index(
 # ── Topic A-factor schedule ───────────────────────────────────────────────────
 
 
-def get_topic_schedule(addon_dir: str, profile: str, card_id: int) -> tuple[float, int]:
+def _normalize_topic_a_factor(value, default: float = _DEFAULT_TOPIC_A_FACTOR) -> float:
+    try:
+        a_factor = float(value)
+    except Exception:
+        a_factor = float(default)
+    return round(max(_TOPIC_A_FACTOR_MIN, min(_TOPIC_A_FACTOR_MAX, a_factor)), 3)
+
+
+def get_topic_schedule(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    default_a_factor: float = _DEFAULT_TOPIC_A_FACTOR,
+) -> tuple[float, int]:
     """Return (a_factor, last_interval) for a topic card, or defaults if unseen."""
     row = (
         get_connection(addon_dir, profile)
@@ -2007,7 +2023,9 @@ def get_topic_schedule(addon_dir: str, profile: str, card_id: int) -> tuple[floa
         )
         .fetchone()
     )
-    return (row[0], row[1]) if row else (3.5, 1)
+    if not row:
+        return _normalize_topic_a_factor(default_a_factor), 1
+    return (_normalize_topic_a_factor(row[0]), int(row[1]))
 
 
 def set_topic_schedule(
@@ -2018,7 +2036,7 @@ def set_topic_schedule(
         "INSERT INTO topic_schedule (card_id, a_factor, interval) VALUES (?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "
         "a_factor = excluded.a_factor, interval = excluded.interval",
-        (card_id, round(float(a_factor), 3), int(interval)),
+        (card_id, _normalize_topic_a_factor(a_factor), int(interval)),
     )
     conn.commit()
 
