@@ -4,6 +4,11 @@ from aqt.qt import (
     QCheckBox, QDoubleSpinBox,
 )
 
+try:
+    from ..backend.reviewer_extract import knowledge_tree_link_state
+except ImportError:
+    from reviewer_extract import knowledge_tree_link_state  # type: ignore
+
 
 class ExtractCardDialog(QDialog):
     """Create a new card extracted from a parent card's content.
@@ -22,6 +27,9 @@ class ExtractCardDialog(QDialog):
                  default_priority: float = 50.0,
                  default_mark_topic: bool = True,
                  lower_is_more_important: bool = True,
+                 initial_field_values: dict[str, str] | None = None,
+                 knowledge_tree_link_enabled: bool = False,
+                 default_link_to_knowledge_tree: bool = False,
                  parent=None):
         super().__init__(parent)
         self.setWindowTitle("Extract Card")
@@ -30,6 +38,11 @@ class ExtractCardDialog(QDialog):
 
         self._notetypes = notetypes
         self._selected_text = selected_text
+        self._initial_field_values = {
+            str(name or "").strip(): str(value or "")
+            for name, value in dict(initial_field_values or {}).items()
+            if str(name or "").strip()
+        }
         self._field_widgets: list[QTextEdit] = []
 
         layout = QVBoxLayout(self)
@@ -74,6 +87,14 @@ class ExtractCardDialog(QDialog):
         self._mark_topic_cb.setChecked(bool(default_mark_topic))
         self._mark_topic_cb.setToolTip("Add the configured topic tags to this extracted card.")
         options_row.addWidget(self._mark_topic_cb)
+        tree_link_state = knowledge_tree_link_state(bool(knowledge_tree_link_enabled))
+        self._knowledge_tree_link_cb = QCheckBox("Add to knowledge tree as child")
+        self._knowledge_tree_link_cb.setChecked(
+            bool(tree_link_state["checked"] and default_link_to_knowledge_tree)
+        )
+        self._knowledge_tree_link_cb.setEnabled(bool(tree_link_state["enabled"]))
+        self._knowledge_tree_link_cb.setToolTip(str(tree_link_state["tooltip"] or ""))
+        options_row.addWidget(self._knowledge_tree_link_cb)
         options_row.addStretch()
         layout.addLayout(options_row)
 
@@ -135,7 +156,9 @@ class ExtractCardDialog(QDialog):
             te = QTextEdit()
             te.setFixedHeight(100)
             te.setAcceptRichText(False)
-            if i == 0:
+            if fname in self._initial_field_values:
+                te.setPlainText(self._initial_field_values.get(fname, ""))
+            elif i == 0:
                 te.setPlainText(self._selected_text)
             self._fields_layout.addWidget(te)
             self._field_widgets.append(te)
@@ -172,3 +195,7 @@ class ExtractCardDialog(QDialog):
     @property
     def mark_topic(self) -> bool:
         return bool(self._mark_topic_cb.isChecked())
+
+    @property
+    def link_to_knowledge_tree(self) -> bool:
+        return bool(self._knowledge_tree_link_cb.isEnabled() and self._knowledge_tree_link_cb.isChecked())

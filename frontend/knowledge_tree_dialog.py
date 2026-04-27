@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from typing import Callable
 
 from aqt import mw
@@ -88,6 +89,7 @@ try:
         NODE_KIND_ITEM,
         NODE_KIND_TOPIC,
         active_profile,
+        ancestor_card_ids,
         available_deck_names,
         available_note_types,
         describe_branch_summary,
@@ -100,6 +102,7 @@ try:
         get_card_metadata,
         get_card_priority_context,
         get_parent_card_id,
+        link_card_to_tree,
         link_cards_to_tree,
         load_knowledge_tree_nodes,
         normalize_node_kind,
@@ -119,6 +122,7 @@ except ImportError:
         NODE_KIND_ITEM,
         NODE_KIND_TOPIC,
         active_profile,
+        ancestor_card_ids,
         available_deck_names,
         available_note_types,
         describe_branch_summary,
@@ -131,6 +135,7 @@ except ImportError:
         get_card_metadata,
         get_card_priority_context,
         get_parent_card_id,
+        link_card_to_tree,
         link_cards_to_tree,
         load_knowledge_tree_nodes,
         normalize_node_kind,
@@ -936,6 +941,15 @@ class KnowledgeTreeDialog(QDialog):
         self._parent_value.setWordWrap(True)
         branch_layout.addWidget(self._parent_value)
 
+        self._lineage_value = QLabel("Lineage: Select a node first.")
+        self._lineage_value.setObjectName("KnowledgeSummaryLine")
+        self._lineage_value.setWordWrap(True)
+        self._lineage_value.setTextFormat(Qt.TextFormat.RichText)
+        self._lineage_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self._lineage_value.setOpenExternalLinks(False)
+        qconnect(self._lineage_value.linkActivated, self._on_lineage_link_activated)
+        branch_layout.addWidget(self._lineage_value)
+
         self._branch_size_value = QLabel("Select a topic or item to inspect this branch.")
         self._branch_size_value.setObjectName("KnowledgeSummaryLine")
         self._branch_size_value.setWordWrap(True)
@@ -1518,6 +1532,29 @@ class KnowledgeTreeDialog(QDialog):
         ) or {}
         return str(meta.get("title") or f"Card {int(card_id)}")
 
+    def _lineage_text_for_card_id(self, card_id: int | None) -> str:
+        if card_id is None:
+            return "Lineage: Select a node first."
+        lineage_card_ids = ancestor_card_ids(self._rows_cache, int(card_id))
+        if not lineage_card_ids:
+            return "Lineage: Root level"
+        parts = []
+        for ancestor_card_id in lineage_card_ids:
+            title = html.escape(self._title_for_card_id(int(ancestor_card_id)))
+            parts.append(f'<a href="card:{int(ancestor_card_id)}">{title}</a>')
+        return "Lineage: " + " &rarr; ".join(parts)
+
+    def _on_lineage_link_activated(self, href: str) -> None:
+        value = str(href or "").strip()
+        if not value.startswith("card:"):
+            return
+        try:
+            card_id = int(value.split(":", 1)[1])
+        except Exception:
+            return
+        self._select_card_id(card_id)
+        tooltip("Selected ancestor node.")
+
     def _tree_collapse_all(self) -> None:
         self._tree.collapseAll()
         selected = self._selected_item()
@@ -1607,6 +1644,7 @@ class KnowledgeTreeDialog(QDialog):
             )
             empty_summary = describe_branch_summary({})
             self._parent_value.setText("Parent branch: Select a node first.")
+            self._lineage_value.setText("Lineage: Select a node first.")
             _set_optional_label_text(
                 self._branch_size_value,
                 str(empty_summary.get("size_line") or ""),
@@ -1680,6 +1718,7 @@ class KnowledgeTreeDialog(QDialog):
         parent_text = self._title_for_card_id(parent_card_id) if has_parent else "Root level"
         summary = describe_branch_summary(stats)
         self._parent_value.setText(f"Parent branch: {parent_text}")
+        self._lineage_value.setText(self._lineage_text_for_card_id(card_id))
         _set_optional_label_text(
             self._branch_size_value,
             str(summary.get("size_line") or ""),

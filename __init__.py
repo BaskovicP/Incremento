@@ -183,6 +183,11 @@ from .backend.knowledge_tree import (
     NODE_KIND_ITEM as _KT_NODE_KIND_ITEM,
     NODE_KIND_TOPIC as _KT_NODE_KIND_TOPIC,
     apply_node_kind_to_cards as _kt_apply_node_kind_to_cards,
+    link_card_to_tree as _kt_link_card_to_tree,
+)
+from .backend.reviewer_extract import (
+    extract_default_notetype_name as _extract_default_notetype_name,
+    initial_extract_field_values as _initial_extract_field_values,
 )
 
 _ADDON_DIR = os.path.dirname(__file__)
@@ -817,6 +822,7 @@ def _incremento_show_answer_button(self) -> None:
     if not _reviewer_topic_postpone_enabled(card):
         if not _reviewer_item_skip_enabled(card):
             _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON(self)
+            _sync_reviewer_extract_button(self)
             return
         show_answer_key = tr.actions_shortcut_key(val=tr.studying_space())
         skip_due = _item_skip_due_label()
@@ -840,6 +846,7 @@ def _incremento_show_answer_button(self) -> None:
         else:
             maxTime = 0
         self.bottom.web.eval("showQuestion(%s,%d);" % (json.dumps(middle), maxTime))
+        _sync_reviewer_extract_button(self)
         return
 
     show_answer_key = tr.actions_shortcut_key(val=tr.studying_space())
@@ -873,6 +880,7 @@ def _incremento_show_answer_button(self) -> None:
     else:
         maxTime = 0
     self.bottom.web.eval("showQuestion(%s,%d);" % (json.dumps(middle), maxTime))
+    _sync_reviewer_extract_button(self)
 
 
 def _sync_topic_answer_button_style(reviewer) -> None:
@@ -945,12 +953,77 @@ def _sync_topic_answer_button_style(reviewer) -> None:
         pass
 
 
+def _sync_reviewer_extract_button(reviewer) -> None:
+    try:
+        reviewer.bottom.web.eval(
+            """
+            (function() {
+              var buttonId = "incremento-reviewer-extract-button";
+              var attempts = 0;
+
+              function removeExisting() {
+                var existing = document.getElementById(buttonId);
+                if (!existing) {
+                  return;
+                }
+                var cell = existing.closest("td");
+                if (cell && cell.parentElement && cell.parentElement.children.length > 1) {
+                  cell.remove();
+                  return;
+                }
+                existing.remove();
+              }
+
+              function install() {
+                var existing = document.getElementById(buttonId);
+                if (existing) {
+                  return;
+                }
+
+                var row = document.querySelector("table tr");
+                if (!row) {
+                  attempts += 1;
+                  if (attempts < 10) {
+                    setTimeout(install, 40);
+                  }
+                  return;
+                }
+
+                var cell = document.createElement("td");
+                cell.className = "stat2";
+                cell.setAttribute("align", "center");
+
+                var button = document.createElement("button");
+                button.id = buttonId;
+                button.title = "Alt+X";
+                button.innerHTML = 'Extract<span class="stattxt">Alt+X</span>';
+                button.onclick = function() {
+                  pycmd("incremento_extract_card");
+                };
+
+                cell.appendChild(button);
+                row.appendChild(cell);
+              }
+
+              removeExisting();
+              install();
+            })();
+            """
+        )
+    except Exception:
+        pass
+
+
 def _incremento_show_ease_buttons(self) -> None:
     _ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS(self)
     _sync_topic_answer_button_style(self)
+    _sync_reviewer_extract_button(self)
 
 
 def _incremento_link_handler(self, url: str) -> None:
+    if url == "incremento_extract_card":
+        _extract_card()
+        return
     if url == "incremento_topic_postpone":
         card = getattr(self, "card", None)
         if self.state == "question" and _reviewer_topic_postpone_enabled(card):
@@ -2249,13 +2322,15 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
     parent_note = parent_card.note()
     configured_notetype = _add_card_dock_mod.configured_extract_notetype_name()
     parent_notetype = parent_note.note_type()["name"]
-    default_notetype = (
-        configured_notetype
-        if configured_notetype in notetype_names
-        else parent_notetype
+    default_notetype = _extract_default_notetype_name(
+        selected_text=selected_text,
+        configured_notetype=configured_notetype,
+        parent_notetype=parent_notetype,
+        available_notetype_names=notetype_names,
     )
     parent_deck = mw.col.decks.get(parent_card.did)
     default_deck = parent_deck["name"] if parent_deck else ""
+    initial_field_values = _initial_extract_field_values(parent_note, selected_text)
 
     parent_label = (
         parent_note.fields[0][:60].strip()
@@ -2271,6 +2346,11 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         parent=parent_label,
         parent_card_id=getattr(parent_card, "id", None),
     )
+    parent_in_tree = get_knowledge_tree_node(
+        _ADDON_DIR,
+        _active_profile(),
+        int(getattr(parent_card, "id", 0) or 0),
+    ) is not None
     dlg = ExtractCardDialog(
         selected_text=selected_text,
         notetypes=notetypes,
@@ -2282,6 +2362,9 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         ),
         default_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(),
         lower_is_more_important=configured_priority_lower_is_more_important(),
+        initial_field_values=initial_field_values,
+        knowledge_tree_link_enabled=parent_in_tree,
+        default_link_to_knowledge_tree=parent_in_tree,
         parent=mw,
     )
     if not dlg.exec():
@@ -2308,10 +2391,34 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
             _add_card_dock_mod.add_topic_tags_to_note(note)
         mw.col.add_note(note, deck_id)
         priority_cards = _add_card_dock_mod.apply_priority_to_note_cards(note, dlg.priority)
-        showInfo(
+        created_card_ids = list(mw.col.find_cards(f"nid:{note.id}") or [])
+        partial_link_error = ""
+        if dlg.link_to_knowledge_tree and created_card_ids:
+            try:
+                _kt_link_card_to_tree(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    int(created_card_ids[0]),
+                    _KT_NODE_KIND_TOPIC if dlg.mark_topic else _KT_NODE_KIND_ITEM,
+                    parent_card_id=int(getattr(parent_card, "id", 0) or 0),
+                )
+            except Exception as exc:
+                partial_link_error = str(exc)
+
+        message = (
             f"Card created in '{dlg.deck_name}'."
-            + (f"\nPriority {dlg.priority:.1f} applied to {priority_cards} card(s)." if priority_cards else "")
+            + (
+                f"\nPriority {dlg.priority:.1f} applied to {priority_cards} card(s)."
+                if priority_cards
+                else ""
+            )
         )
+        if partial_link_error:
+            message += (
+                "\n\nThe card was created, but it could not be linked into the knowledge tree:\n"
+                f"{partial_link_error}"
+            )
+        showInfo(message)
     except Exception as e:
         showInfo(f"Failed to create card:\n{e}")
 
