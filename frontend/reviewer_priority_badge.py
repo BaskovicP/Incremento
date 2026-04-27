@@ -269,26 +269,27 @@ def build_reviewer_priority_badge_js(
     `;
     (document.head || document.documentElement).appendChild(style);
   }}
+  var renderMarkup =
+    '<div class="incremento-priority-metric incremento-priority-wrap">' +
+      '<span class="incremento-priority-label">Priority</span>' +
+      '<span class="incremento-priority-value"></span>' +
+    '</div>' +
+    '<div class="incremento-priority-metric incremento-a-factor-wrap">' +
+      '<span class="incremento-priority-label">A-Factor</span>' +
+      '<span class="incremento-priority-value incremento-a-factor-value"></span>' +
+    '</div>' +
+    '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
+      '<span class="incremento-priority-label">Saved</span>' +
+      '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
+    '</div>' +
+    '<div class="incremento-priority-metric incremento-schedule-wrap">' +
+      '<span class="incremento-priority-label">Schedule</span>' +
+      '<span class="incremento-priority-value incremento-schedule-value"></span>' +
+    '</div>';
   if (!badge) {{
     badge = document.createElement("div");
     badge.id = badgeId;
-    badge.innerHTML =
-      '<div class="incremento-priority-metric incremento-priority-wrap">' +
-        '<span class="incremento-priority-label">Priority</span>' +
-        '<span class="incremento-priority-value"></span>' +
-      '</div>' +
-      '<div class="incremento-priority-metric incremento-a-factor-wrap">' +
-        '<span class="incremento-priority-label">A-Factor</span>' +
-        '<span class="incremento-priority-value incremento-a-factor-value"></span>' +
-      '</div>' +
-      '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
-        '<span class="incremento-priority-label">Saved</span>' +
-        '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
-      '</div>' +
-      '<div class="incremento-priority-metric incremento-schedule-wrap">' +
-        '<span class="incremento-priority-label">Schedule</span>' +
-        '<span class="incremento-priority-value incremento-schedule-value"></span>' +
-      '</div>';
+    badge.innerHTML = renderMarkup;
     document.body.appendChild(badge);
   }}
   if (!spacer) {{
@@ -304,23 +305,7 @@ def build_reviewer_priority_badge_js(
   var browserTimeNode = badge.querySelector(".incremento-browser-time-value");
   var scheduleNode = badge.querySelector(".incremento-schedule-value");
   if (!valueNode || !aFactorNode || !browserTimeNode || !scheduleNode) {{
-    badge.innerHTML =
-      '<div class="incremento-priority-metric incremento-priority-wrap">' +
-        '<span class="incremento-priority-label">Priority</span>' +
-        '<span class="incremento-priority-value"></span>' +
-      '</div>' +
-      '<div class="incremento-priority-metric incremento-a-factor-wrap">' +
-        '<span class="incremento-priority-label">A-Factor</span>' +
-        '<span class="incremento-priority-value incremento-a-factor-value"></span>' +
-      '</div>' +
-      '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
-        '<span class="incremento-priority-label">Saved</span>' +
-        '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
-      '</div>' +
-      '<div class="incremento-priority-metric incremento-schedule-wrap">' +
-        '<span class="incremento-priority-label">Schedule</span>' +
-        '<span class="incremento-priority-value incremento-schedule-value"></span>' +
-      '</div>';
+    badge.innerHTML = renderMarkup;
     valueNode = badge.querySelector(".incremento-priority-value");
     aFactorNode = badge.querySelector(".incremento-a-factor-value");
     browserTimeNode = badge.querySelector(".incremento-browser-time-value");
