@@ -71,8 +71,24 @@ def _rename_named_scheduler_profile(old_name: str, new_name: str, profiles: dict
         updated_profiles[new_name if name == old_name else name] = profile
     config = mw.addonManager.getConfig(__name__) or {}
     config["profiles"] = updated_profiles
+    dialog_config = config.get("dialog") or {}
+    if dialog_config.get("selected_profile") == old_name:
+        dialog_config["selected_profile"] = new_name
+        config["dialog"] = dialog_config
     mw.addonManager.writeConfig(__name__, config)
     return updated_profiles
+
+
+def _normalize_selected_scheduler_profile(
+    selected_profile: str | None,
+    profiles: dict[str, dict] | None,
+) -> str | None:
+    name = str(selected_profile or "").strip()
+    if not name:
+        return None
+    if name not in (profiles or {}):
+        return None
+    return name
 
 
 def _compute_expected_mix(
@@ -1059,6 +1075,8 @@ _DEFAULT_MAIN_GROUPS = {
 
 
 class SchedulerConfigDialog(QDialog):
+    _CURRENT_SETTINGS_LABEL = "Current Settings"
+
     def __init__(self, parent=None, on_clear_session=None, branch_scope: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Scheduler Settings")
@@ -1082,6 +1100,10 @@ class SchedulerConfigDialog(QDialog):
         self._saved = config.get("dialog", {})
         self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._profiles: dict[str, dict] = config.get("profiles", {})
+        self._selected_profile_name = _normalize_selected_scheduler_profile(
+            self._saved.get("selected_profile"),
+            self._profiles,
+        )
         self._pdf_limit_targets: list[dict] = []
         self._pdf_limit_main_loading = False
         self._setup_ui()
@@ -1161,7 +1183,10 @@ class SchedulerConfigDialog(QDialog):
         profile_row.addWidget(QLabel("Profile:"))
         self._profile_combo = QComboBox()
         self._profile_combo.setMinimumWidth(160)
-        self._profile_combo.setToolTip("Saved presets — pick one and click Load")
+        self._profile_combo.setToolTip(
+            "Saved presets. Use Current Settings for the shared Incremento Session deck."
+        )
+        qconnect(self._profile_combo.currentIndexChanged, self._on_profile_combo_changed)
         profile_row.addWidget(self._profile_combo)
 
         self._profile_load_btn = QPushButton("Load")
@@ -3379,13 +3404,19 @@ class SchedulerConfigDialog(QDialog):
             content_type_weights=ct_weights,
         )
 
+    def selected_dialog_profile_name(self) -> str | None:
+        return _normalize_selected_scheduler_profile(
+            self._selected_profile_name,
+            self._profiles,
+        )
+
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
 
-    def _build_current_dict(self) -> dict:
-        """Serialize all current widget state to a plain dict (profile / save format)."""
-        return {
+    def _build_current_dict(self, *, include_selected_profile: bool = True) -> dict:
+        """Serialize dialog state for config persistence or named-profile storage."""
+        data = {
             "session_card_count": self._count_spin.value(),
             "topics_slider":      self._topics_slider.value(),
             "random_slider":      self._random_slider.value(),
@@ -3430,10 +3461,13 @@ class SchedulerConfigDialog(QDialog):
             "show_debug":       self._show_debug_cb.isChecked(),
             "use_live_preview": self._use_live_preview_enabled,
         }
+        if include_selected_profile:
+            data["selected_profile"] = self.selected_dialog_profile_name()
+        return data
 
     def save_config(self) -> None:
         config = mw.addonManager.getConfig(__name__) or {}
-        config["dialog"] = self._build_current_dict()
+        config["dialog"] = self._build_current_dict(include_selected_profile=True)
         mw.addonManager.writeConfig(__name__, config)
 
     # ------------------------------------------------------------------
@@ -3443,17 +3477,38 @@ class SchedulerConfigDialog(QDialog):
     def _refresh_profile_combo(self) -> None:
         self._profile_combo.blockSignals(True)
         self._profile_combo.clear()
+        self._profile_combo.addItem(self._CURRENT_SETTINGS_LABEL, None)
         for name in sorted(self._profiles.keys()):
             self._profile_combo.addItem(name)
-        has = self._profile_combo.count() > 0
-        self._profile_load_btn.setEnabled(has)
-        self._profile_save_btn.setEnabled(has)
-        self._profile_rename_btn.setEnabled(has)
-        self._profile_delete_btn.setEnabled(has)
+        selected_name = self.selected_dialog_profile_name()
+        if selected_name:
+            idx = self._profile_combo.findText(selected_name)
+            if idx >= 0:
+                self._profile_combo.setCurrentIndex(idx)
+            else:
+                self._profile_combo.setCurrentIndex(0)
+                self._selected_profile_name = None
+        else:
+            self._profile_combo.setCurrentIndex(0)
         self._profile_combo.blockSignals(False)
+        self._sync_profile_button_state()
+
+    def _sync_profile_button_state(self) -> None:
+        has_selected_profile = self.selected_dialog_profile_name() is not None
+        self._profile_load_btn.setEnabled(has_selected_profile)
+        self._profile_save_btn.setEnabled(has_selected_profile)
+        self._profile_rename_btn.setEnabled(has_selected_profile)
+        self._profile_delete_btn.setEnabled(has_selected_profile)
+
+    def _on_profile_combo_changed(self, _index: int) -> None:
+        self._selected_profile_name = _normalize_selected_scheduler_profile(
+            self._profile_combo.currentData() or self._profile_combo.currentText(),
+            self._profiles,
+        )
+        self._sync_profile_button_state()
 
     def _load_profile(self) -> None:
-        name = self._profile_combo.currentText()
+        name = self.selected_dialog_profile_name()
         if not name or name not in self._profiles:
             return
         self._load_profile_dict(self._profiles[name])
@@ -3476,32 +3531,28 @@ class SchedulerConfigDialog(QDialog):
                 return
         self._profiles = _write_named_scheduler_profile(
             name,
-            self._build_current_dict(),
+            self._build_current_dict(include_selected_profile=False),
             self._profiles,
         )
+        self._selected_profile_name = name
         self._refresh_profile_combo()
-        idx = self._profile_combo.findText(name)
-        if idx >= 0:
-            self._profile_combo.setCurrentIndex(idx)
         tooltip(f'Profile "{name}" saved.')
 
     def _save_profile(self) -> None:
-        name = self._profile_combo.currentText().strip()
+        name = self.selected_dialog_profile_name()
         if not name or name not in self._profiles:
             return
         self._profiles = _write_named_scheduler_profile(
             name,
-            self._build_current_dict(),
+            self._build_current_dict(include_selected_profile=False),
             self._profiles,
         )
+        self._selected_profile_name = name
         self._refresh_profile_combo()
-        idx = self._profile_combo.findText(name)
-        if idx >= 0:
-            self._profile_combo.setCurrentIndex(idx)
         tooltip(f'Profile "{name}" saved.')
 
     def _rename_profile(self) -> None:
-        old_name = self._profile_combo.currentText().strip()
+        old_name = self.selected_dialog_profile_name()
         if not old_name or old_name not in self._profiles:
             return
         new_name, ok = QInputDialog.getText(
@@ -3522,14 +3573,12 @@ class SchedulerConfigDialog(QDialog):
             new_name,
             self._profiles,
         )
+        self._selected_profile_name = new_name
         self._refresh_profile_combo()
-        idx = self._profile_combo.findText(new_name)
-        if idx >= 0:
-            self._profile_combo.setCurrentIndex(idx)
         tooltip(f'Profile "{old_name}" renamed to "{new_name}".')
 
     def _delete_profile(self) -> None:
-        name = self._profile_combo.currentText()
+        name = self.selected_dialog_profile_name()
         if not name or name not in self._profiles:
             return
         r = QMessageBox.question(
@@ -3542,7 +3591,12 @@ class SchedulerConfigDialog(QDialog):
         del self._profiles[name]
         config = mw.addonManager.getConfig(__name__) or {}
         config["profiles"] = self._profiles
+        dialog_config = config.get("dialog") or {}
+        if dialog_config.get("selected_profile") == name:
+            dialog_config["selected_profile"] = None
+            config["dialog"] = dialog_config
         mw.addonManager.writeConfig(__name__, config)
+        self._selected_profile_name = None
         self._refresh_profile_combo()
         tooltip(f'Profile "{name}" deleted.')
 

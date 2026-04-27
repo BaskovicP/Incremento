@@ -6,6 +6,8 @@ creation logic that was previously inline in __init__.py.
 
 Public API:
     INCREMENTO_DECK       — filtered deck name constant
+    incremento_session_deck_name() — map an optional dialog profile to a deck name
+    is_incremento_session_deck_name() — predicate for Incremento session decks
     learnFunction()       — main entry point; shows config dialog and starts review
     reset_session_counts() — clear in-memory session counts
     get_session_counts()  — return a copy of the current session counts
@@ -42,6 +44,23 @@ INCREMENTO_PDF_REVIEW_DECK = "Incremento PDF Review"
 # Accessed via get_session_counts() from __init__.py for the stats dialog.
 _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
 _session_times: dict = _empty_time()
+
+
+def incremento_session_deck_name(dialog_profile_name: str | None = None) -> str:
+    name = str(dialog_profile_name or "").strip()
+    if not name:
+        return INCREMENTO_DECK
+    return f"{INCREMENTO_DECK} ({name})"
+
+
+def is_incremento_session_deck_name(deck_name: str | None) -> bool:
+    name = str(deck_name or "").strip()
+    if not name:
+        return False
+    if name == INCREMENTO_DECK:
+        return True
+    prefix = f"{INCREMENTO_DECK} ("
+    return name.startswith(prefix) and name.endswith(")") and len(name) > len(prefix) + 1
 
 
 def reset_session_counts() -> None:
@@ -284,9 +303,14 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         _debug_dlg.exec()
 
     try:
+        dialog_profile_name = (
+            dlg.selected_dialog_profile_name()
+            if hasattr(dlg, "selected_dialog_profile_name")
+            else None
+        )
         _prepare_filtered_review_deck(
             selected_ids,
-            deck_name=INCREMENTO_DECK,
+            deck_name=incremento_session_deck_name(dialog_profile_name),
             preserve_order=cfg.preserve_order,
         )
     except Exception as e:

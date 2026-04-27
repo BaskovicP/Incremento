@@ -6,11 +6,78 @@ statistics.py with lightweight mocks.
 """
 
 import copy
+import importlib.util
+import os
+import sys
 import types
 from unittest.mock import MagicMock, patch
 
 import scheduler as sched
 from scheduler import NO_TAGS_KEY
+
+
+_ADDON_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _ensure_package(name: str, path: str) -> None:
+    module = sys.modules.get(name)
+    if module is None or not isinstance(module, types.ModuleType):
+        module = types.ModuleType(name)
+        sys.modules[name] = module
+    module.__path__ = [path]
+
+
+def _load_repo_module(fullname: str, relpath: str):
+    _ensure_package("incremento", _ADDON_ROOT)
+    _ensure_package("incremento.backend", os.path.join(_ADDON_ROOT, "backend"))
+    _ensure_package("incremento.frontend", os.path.join(_ADDON_ROOT, "frontend"))
+
+    if "incremento.frontend.learn_dialog" not in sys.modules:
+        stub = types.ModuleType("incremento.frontend.learn_dialog")
+        stub.SchedulerConfigDialog = object
+        sys.modules["incremento.frontend.learn_dialog"] = stub
+
+    spec = importlib.util.spec_from_file_location(
+        fullname,
+        os.path.join(_ADDON_ROOT, relpath),
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[fullname] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_SESSION_MOD = _load_repo_module("incremento.backend.session", "backend/session.py")
+
+
+def _load_review_time_tracker_module():
+    sys.modules.pop("incremento.backend.review_time_tracker", None)
+
+    pdf_manager = types.ModuleType("incremento.backend.pdf_manager")
+    pdf_manager.PDF_NOTE_TYPE = "Incremento PDF"
+    sys.modules["incremento.backend.pdf_manager"] = pdf_manager
+
+    epub_manager = types.ModuleType("incremento.backend.epub_manager")
+    epub_manager.EPUB_NOTE_TYPE = "Incremento EPUB"
+    sys.modules["incremento.backend.epub_manager"] = epub_manager
+
+    scheduler_config = types.ModuleType("incremento.backend.scheduler_config")
+    scheduler_config.load_scheduler_config = lambda: types.SimpleNamespace(day_end_time="00:00")
+    sys.modules["incremento.backend.scheduler_config"] = scheduler_config
+
+    statistics = types.ModuleType("incremento.backend.statistics")
+
+    class _StatsManager:
+        def __init__(self, *_args, **_kwargs):
+            self.record_time_only = MagicMock()
+
+    statistics.StatsManager = _StatsManager
+    sys.modules["incremento.backend.statistics"] = statistics
+
+    return _load_repo_module(
+        "incremento.backend.review_time_tracker",
+        "backend/review_time_tracker.py",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -157,3 +224,40 @@ class TestSessionCountsSnapshot:
         assert session_copy["type"]["items"]  == 1
         assert session_copy["mode"]["random"]   == 2
         assert session_copy["mode"]["priority"] == 1
+
+
+class TestIncrementoSessionDeckNaming:
+    def test_no_dialog_profile_uses_base_session_deck(self):
+        assert _SESSION_MOD.incremento_session_deck_name(None) == "Incremento Session"
+        assert _SESSION_MOD.incremento_session_deck_name("") == "Incremento Session"
+
+    def test_named_dialog_profile_scopes_session_deck(self):
+        assert _SESSION_MOD.incremento_session_deck_name("Focus") == "Incremento Session (Focus)"
+        assert _SESSION_MOD.incremento_session_deck_name("Writing") == "Incremento Session (Writing)"
+
+    def test_session_deck_predicate_matches_only_incremento_session_variants(self):
+        assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session") is True
+        assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session (Focus)") is True
+        assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session (Writing)") is True
+        assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session ()") is False
+        assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session Focus") is False
+        assert _SESSION_MOD.is_incremento_session_deck_name("Incremento PDF Review") is False
+
+
+class TestReviewTimeTrackerIncrementoSessions:
+    def test_profile_scoped_incremento_session_decks_skip_duplicate_pdf_time(self):
+        review_time_tracker = _load_review_time_tracker_module()
+        get_card = MagicMock(side_effect=AssertionError("should not fetch cards"))
+        review_time_tracker.mw = types.SimpleNamespace(
+            state="review",
+            col=types.SimpleNamespace(
+                decks=types.SimpleNamespace(
+                    current=lambda: {"name": "Incremento Session (Focus)"}
+                ),
+                get_card=get_card,
+            ),
+        )
+
+        review_time_tracker._record_pdf_time(123, 15.0)
+
+        get_card.assert_not_called()

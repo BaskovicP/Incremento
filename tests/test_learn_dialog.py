@@ -12,6 +12,7 @@ _MOD = importlib.util.module_from_spec(_SPEC)
 sys.modules["_incremento_learn_dialog"] = _MOD
 _SPEC.loader.exec_module(_MOD)
 
+_normalize_selected_scheduler_profile = _MOD._normalize_selected_scheduler_profile
 _write_named_scheduler_profile = _MOD._write_named_scheduler_profile
 _rename_named_scheduler_profile = _MOD._rename_named_scheduler_profile
 
@@ -72,9 +73,9 @@ class TestWriteNamedSchedulerProfile:
 
 
 class TestRenameNamedSchedulerProfile:
-    def test_renames_profile_without_touching_dialog_config(self, monkeypatch):
+    def test_renames_profile_and_updates_selected_dialog_profile(self, monkeypatch):
         stored_config = {
-            "dialog": {"session_card_count": 50, "topics_slider": 10},
+            "dialog": {"session_card_count": 50, "topics_slider": 10, "selected_profile": "Writing"},
             "profiles": {
                 "Writing": {"session_card_count": 20, "topics_slider": 80},
                 "Spare": {"session_card_count": 99, "topics_slider": 1},
@@ -97,7 +98,11 @@ class TestRenameNamedSchedulerProfile:
             "Deep Writing": {"session_card_count": 20, "topics_slider": 80},
             "Spare": {"session_card_count": 99, "topics_slider": 1},
         }
-        assert stored_config["dialog"] == {"session_card_count": 50, "topics_slider": 10}
+        assert stored_config["dialog"] == {
+            "session_card_count": 50,
+            "topics_slider": 10,
+            "selected_profile": "Deep Writing",
+        }
         assert stored_config["profiles"] == updated_profiles
         assert write_calls == [stored_config]
 
@@ -121,3 +126,18 @@ class TestRenameNamedSchedulerProfile:
         assert updated_profiles == {"New": {"session_card_count": 20}}
         assert stored_config["profiles"] == updated_profiles
         assert write_calls == [stored_config]
+
+
+class TestSelectedSchedulerProfile:
+    def test_restores_known_selected_profile(self):
+        assert _normalize_selected_scheduler_profile(
+            "Focus",
+            {"Focus": {"session_card_count": 20}, "Writing": {"session_card_count": 30}},
+        ) == "Focus"
+
+    def test_unknown_or_blank_selected_profile_restores_as_none(self):
+        profiles = {"Focus": {"session_card_count": 20}}
+
+        assert _normalize_selected_scheduler_profile(None, profiles) is None
+        assert _normalize_selected_scheduler_profile("", profiles) is None
+        assert _normalize_selected_scheduler_profile("Missing", profiles) is None

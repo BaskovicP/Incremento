@@ -16,7 +16,7 @@ from aqt import mw
 from .pdf_manager import PDF_NOTE_TYPE
 from .epub_manager import EPUB_NOTE_TYPE
 from .scheduler import NO_TAGS_KEY
-from .session import INCREMENTO_DECK
+from .session import is_incremento_session_deck_name
 from .statistics import StatsManager
 from .scheduler_config import load_scheduler_config
 from .paths import get_active_profile as _active_profile
@@ -68,7 +68,7 @@ def _record_pdf_time(card_id: int, seconds: float) -> None:
             current_deck = (mw.col.decks.current() or {}).get("name", "")
         except Exception:
             current_deck = ""
-        if mw.state == "review" and current_deck == INCREMENTO_DECK:
+        if mw.state == "review" and is_incremento_session_deck_name(current_deck):
             # learnFunction/session.py already tracks review time in this mode.
             return
 
