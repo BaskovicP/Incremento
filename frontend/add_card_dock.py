@@ -784,17 +784,39 @@ def copy_source_note_tags_to_note(note, source_note) -> list[str]:
     return list(added_tags)
 
 
-def copy_source_card_tags_to_note(note, source_card_id: int | None) -> list[str]:
-    if note is None or source_card_id is None:
+def copy_source_tags_to_note(note, source_tags) -> list[str]:
+    if note is None or append_missing_tags is None:
+        return []
+    try:
+        updated_tags, added_tags = append_missing_tags(
+            getattr(note, "tags", []) or [],
+            source_tags or [],
+        )
+    except Exception:
+        return []
+    if not added_tags:
+        return []
+    _set_note_tags(note, updated_tags)
+    return list(added_tags)
+
+
+def source_note_tags_for_card(source_card_id: int | None) -> list[str]:
+    if source_card_id is None:
         return []
     try:
         source_card = mw.col.get_card(int(source_card_id))
         if source_card is None:
             return []
         source_note = source_card.note()
+        return _normalize_tag_list(getattr(source_note, "tags", []) or [])
     except Exception:
         return []
-    return copy_source_note_tags_to_note(note, source_note)
+
+
+def copy_source_card_tags_to_note(note, source_card_id: int | None) -> list[str]:
+    if note is None or source_card_id is None:
+        return []
+    return copy_source_tags_to_note(note, source_note_tags_for_card(source_card_id))
 
 
 def _toggle_note_tag_set(note, wanted_tags: list[str]) -> bool:
@@ -1049,6 +1071,7 @@ def set_pending_extract_options(
     resolved_source_card_id = source_card_id
     if resolved_source_card_id is None:
         resolved_source_card_id = _source_card_id_for_transfer(source)
+    source_tags = source_note_tags_for_card(resolved_source_card_id)
     _pending_extract_options = {
         "priority": _clamp_priority(
             configured_extract_priority() if priority is None else priority
@@ -1058,6 +1081,7 @@ def set_pending_extract_options(
         "source_card_id": (
             int(resolved_source_card_id) if resolved_source_card_id is not None else None
         ),
+        "source_tags": source_tags,
         "seen": time.monotonic(),
     }
     return dict(_pending_extract_options)
@@ -1139,7 +1163,9 @@ def consume_pending_extract_options_for_note(note) -> dict | None:
     tags_changed = False
     copied_tags: list[str] = []
     if configured_extract_copy_source_tags():
-        copied_tags = copy_source_card_tags_to_note(note, options.get("source_card_id"))
+        copied_tags = copy_source_tags_to_note(note, options.get("source_tags") or [])
+        if not copied_tags:
+            copied_tags = copy_source_card_tags_to_note(note, options.get("source_card_id"))
         tags_changed = bool(copied_tags)
     if bool(options.get("mark_topic")) and add_topic_tags_to_note(note):
         tags_changed = True

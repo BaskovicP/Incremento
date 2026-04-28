@@ -375,6 +375,35 @@ def test_consume_pending_extract_options_combines_source_and_topic_tags(monkeypa
     assert saved == [["existing", "Topic", "Source", "branch"]]
 
 
+def test_set_pending_extract_options_snapshots_source_tags(monkeypatch):
+    source_note = _FakeNote(["Topic", "Source", "source"], note_id=22)
+
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        type(
+            "MW",
+            (),
+            {
+                "col": type(
+                    "Col",
+                    (),
+                    {"get_card": staticmethod(lambda card_id: type("Card", (), {"note": lambda self: source_note})())},
+                )()
+            },
+        )(),
+    )
+
+    options = dock.set_pending_extract_options(
+        priority=25,
+        mark_topic=False,
+        source="pdf",
+        source_card_id=99,
+    )
+
+    assert options["source_tags"] == ["Topic", "Source"]
+
+
 def test_consume_pending_extract_options_ignores_missing_source_card(monkeypatch):
     note = _FakeNote(["existing"], note_id=11)
     saved = []
@@ -399,6 +428,35 @@ def test_consume_pending_extract_options_ignores_missing_source_card(monkeypatch
     assert result["copied_source_tags"] == []
     assert note.tags == ["existing"]
     assert saved == []
+
+
+def test_consume_pending_extract_options_prefers_snapshot_source_tags(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+    monkeypatch.setattr(
+        dock,
+        "copy_source_card_tags_to_note",
+        lambda current_note, source_card_id: (_ for _ in ()).throw(AssertionError("fallback should not run")),
+    )
+
+    dock._pending_extract_options = {
+        "priority": 25.0,
+        "mark_topic": False,
+        "source": "pdf",
+        "source_card_id": 99,
+        "source_tags": ["Topic", "Source"],
+        "seen": 0.0,
+    }
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert result["copied_source_tags"] == ["Topic", "Source"]
+    assert note.tags == ["existing", "Topic", "Source"]
+    assert saved == [["existing", "Topic", "Source"]]
 
 
 def test_do_fill_forwards_mark_topic_to_embedded_dock(monkeypatch):
