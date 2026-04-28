@@ -21,13 +21,13 @@ import os
 from aqt import mw
 
 try:
-    from .db import get_topic_schedule, set_topic_schedule
+    from .db import get_topic_schedule, get_topic_schedule_state, set_topic_schedule
     from .knowledge_tree import configured_topic_tags as configured_add_card_topic_tags
     from .knowledge_tree import configured_item_tags as configured_add_card_item_tags
     from .scheduler_config import load_scheduler_config
     from .paths import get_active_profile as _active_profile
 except ImportError:
-    from db import get_topic_schedule, set_topic_schedule  # type: ignore
+    from db import get_topic_schedule, get_topic_schedule_state, set_topic_schedule  # type: ignore
     from knowledge_tree import configured_topic_tags as configured_add_card_topic_tags  # type: ignore
     from knowledge_tree import configured_item_tags as configured_add_card_item_tags  # type: ignore
     from scheduler_config import load_scheduler_config  # type: ignore
@@ -269,9 +269,9 @@ def is_topic_card(card) -> bool:
 
 
 def _next_interval_and_afactor(
-    last_interval: int, a_factor: float, ease: int
-) -> tuple[int, float]:
-    """Return (new_interval_days, new_a_factor).
+    last_interval: float, a_factor: float, ease: int
+) -> tuple[int, float, float]:
+    """Return (new_interval_days, new_a_factor, new_precise_interval).
 
     Interval formula matches SuperMemo spec for topics:
         next_interval = current_interval × A-factor
@@ -283,30 +283,35 @@ def _next_interval_and_afactor(
       Good  (3) — normal interval; A-factor unchanged
       Easy  (4) — normal interval; A-factor ×1.1  (topic less urgent → grow faster)
     """
-    new_interval = max(1, round(last_interval * a_factor))
+    new_precise_interval = max(1.0, float(last_interval) * float(a_factor))
+    new_interval = max(1, round(new_precise_interval))
 
     if ease == 1:  # Again — reset interval, leave A-factor alone
-        return 1, a_factor
+        return 1, a_factor, 1.0
     if ease == 2:  # Hard — signal topic is important, tighten future intervals
-        return new_interval, max(_A_MIN, round(a_factor * 0.9, 3))
+        return new_interval, max(_A_MIN, round(a_factor * 0.9, 3)), new_precise_interval
     if ease == 3:  # Good — pure spec formula, no A-factor change
-        return new_interval, a_factor
+        return new_interval, a_factor, new_precise_interval
     # Easy — topic less urgent, loosen future intervals
-    return new_interval, min(_A_MAX, round(a_factor * 1.1, 3))
+    return (
+        new_interval,
+        min(_A_MAX, round(a_factor * 1.1, 3)),
+        new_precise_interval,
+    )
 
 
 def topic_due_label(card, review_button_ease: int) -> str:
     if card is None:
         return ""
     try:
-        a_factor, last_interval = get_topic_schedule(
+        a_factor, precise_interval, _last_interval = get_topic_schedule_state(
             _ADDON_DIR,
             _active_profile(),
             card.id,
             default_a_factor=configured_default_topic_a_factor(),
         )
-        new_interval, _ = _next_interval_and_afactor(
-            last_interval,
+        new_interval, _new_a_factor, _new_precise_interval = _next_interval_and_afactor(
+            precise_interval,
             a_factor,
             remap_topic_review_ease(review_button_ease),
         )
@@ -320,18 +325,25 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
     if not is_topic_card(card):
         return
     try:
-        a_factor, last_interval = get_topic_schedule(
+        a_factor, precise_interval, _last_interval = get_topic_schedule_state(
             _ADDON_DIR,
             _active_profile(),
             card.id,
             default_a_factor=configured_default_topic_a_factor(),
         )
-        new_interval, new_a = _next_interval_and_afactor(
-            last_interval,
+        new_interval, new_a, new_precise_interval = _next_interval_and_afactor(
+            precise_interval,
             a_factor,
             remap_topic_review_ease(ease),
         )
-        set_topic_schedule(_ADDON_DIR, _active_profile(), card.id, new_a, new_interval)
+        set_topic_schedule(
+            _ADDON_DIR,
+            _active_profile(),
+            card.id,
+            new_a,
+            new_interval,
+            precise_interval=new_precise_interval,
+        )
         mw.col.sched.set_due_date([card.id], str(new_interval))
     except Exception as e:
         print(f"[Incremento] A-factor scheduling error: {e}")

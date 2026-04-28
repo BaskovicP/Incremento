@@ -24,83 +24,97 @@ class TestNextIntervalAndAfactor:
     # ── ease == 1 (Again) ─────────────────────────────────────────────────
 
     def test_again_resets_interval_to_one(self):
-        interval, _ = _next_interval_and_afactor(10, 3.5, 1)
+        interval, _, precise = _next_interval_and_afactor(10, 3.5, 1)
         assert interval == 1
+        assert precise == 1.0
 
     def test_again_leaves_afactor_unchanged(self):
-        _, afactor = _next_interval_and_afactor(10, 3.5, 1)
+        _, afactor, _ = _next_interval_and_afactor(10, 3.5, 1)
         assert afactor == 3.5
 
     def test_again_leaves_custom_afactor_unchanged(self):
-        _, afactor = _next_interval_and_afactor(5, 2.0, 1)
+        _, afactor, _ = _next_interval_and_afactor(5, 2.0, 1)
         assert afactor == 2.0
 
     # ── ease == 2 (Hard) ──────────────────────────────────────────────────
 
     def test_hard_reduces_afactor(self):
-        _, afactor = _next_interval_and_afactor(10, 3.5, 2)
+        _, afactor, _ = _next_interval_and_afactor(10, 3.5, 2)
         assert afactor < 3.5
 
     def test_hard_afactor_is_09_times_original(self):
-        _, afactor = _next_interval_and_afactor(10, 3.5, 2)
+        _, afactor, _ = _next_interval_and_afactor(10, 3.5, 2)
         assert afactor == pytest.approx(round(3.5 * 0.9, 3))
 
     def test_hard_afactor_clamped_to_a_min(self):
         """A-factor cannot go below _A_MIN even with Hard."""
-        _, afactor = _next_interval_and_afactor(10, _A_MIN, 2)
+        _, afactor, _ = _next_interval_and_afactor(10, _A_MIN, 2)
         assert afactor == _A_MIN
 
     def test_hard_uses_normal_interval(self):
-        interval, _ = _next_interval_and_afactor(10, 3.5, 2)
+        interval, _, precise = _next_interval_and_afactor(10, 3.5, 2)
         assert interval == max(1, round(10 * 3.5))
+        assert precise == pytest.approx(10 * 3.5)
 
     # ── ease == 3 (Good) ──────────────────────────────────────────────────
 
     def test_good_afactor_unchanged(self):
-        _, afactor = _next_interval_and_afactor(10, 3.5, 3)
+        _, afactor, _ = _next_interval_and_afactor(10, 3.5, 3)
         assert afactor == 3.5
 
     def test_good_interval_is_last_times_afactor(self):
-        interval, _ = _next_interval_and_afactor(10, 2.0, 3)
+        interval, _, precise = _next_interval_and_afactor(10, 2.0, 3)
         assert interval == max(1, round(10 * 2.0))
+        assert precise == pytest.approx(20.0)
 
     def test_good_minimum_interval_is_one(self):
-        interval, _ = _next_interval_and_afactor(0, 3.5, 3)
+        interval, _, precise = _next_interval_and_afactor(0, 3.5, 3)
         assert interval >= 1
+        assert precise >= 1.0
+
+    def test_good_accumulates_precise_interval_even_when_rounded_interval_stalls(self):
+        interval = 1.0
+        for _ in range(2):
+            rounded, _a_factor, interval = _next_interval_and_afactor(interval, 1.25, 3)
+        assert rounded == 2
+        assert interval == pytest.approx(1.5625)
 
     # ── ease == 4 (Easy) ──────────────────────────────────────────────────
 
     def test_easy_increases_afactor(self):
-        _, afactor = _next_interval_and_afactor(10, 3.5, 4)
+        _, afactor, _ = _next_interval_and_afactor(10, 3.5, 4)
         assert afactor > 3.5
 
     def test_easy_afactor_is_11_times_original(self):
-        _, afactor = _next_interval_and_afactor(10, 3.5, 4)
+        _, afactor, _ = _next_interval_and_afactor(10, 3.5, 4)
         assert afactor == pytest.approx(round(3.5 * 1.1, 3))
 
     def test_easy_afactor_clamped_to_a_max(self):
         """A-factor cannot exceed _A_MAX even with Easy."""
-        _, afactor = _next_interval_and_afactor(10, _A_MAX, 4)
+        _, afactor, _ = _next_interval_and_afactor(10, _A_MAX, 4)
         assert afactor == _A_MAX
 
     def test_easy_uses_normal_interval(self):
-        interval, _ = _next_interval_and_afactor(10, 3.5, 4)
+        interval, _, precise = _next_interval_and_afactor(10, 3.5, 4)
         assert interval == max(1, round(10 * 3.5))
+        assert precise == pytest.approx(10 * 3.5)
 
     # ── boundary / cumulative ─────────────────────────────────────────────
 
     def test_interval_grows_with_repeated_good_reviews(self):
         """Multiple Good answers should compound the interval via A-factor."""
-        interval = 1
+        interval = 1.0
         a = 3.5
         for _ in range(5):
-            interval, a = _next_interval_and_afactor(interval, a, 3)
-        assert interval > 1
+            rounded, a, interval = _next_interval_and_afactor(interval, a, 3)
+        assert rounded > 1
+        assert interval > 1.0
 
     def test_small_interval_never_goes_below_one(self):
         for ease in (1, 2, 3, 4):
-            interval, _ = _next_interval_and_afactor(1, _A_MIN, ease)
+            interval, _, precise = _next_interval_and_afactor(1, _A_MIN, ease)
             assert interval >= 1
+            assert precise >= 1.0
 
 
 # ── _topics_deck_name ─────────────────────────────────────────────────────────
@@ -308,14 +322,14 @@ class TestTopicDueLabel:
     def test_uses_remapped_topic_button_ease(self):
         card = MagicMock()
         card.id = 42
-        with patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
+        with patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             assert topic_due_label(card, 1) == "24d"
 
     def test_passes_configured_default_for_unseen_topic_cards(self):
         card = MagicMock()
         card.id = 42
-        with patch("topic_scheduler.get_topic_schedule", return_value=(4.2, 1)) as mock_get, \
+        with patch("topic_scheduler.get_topic_schedule_state", return_value=(4.2, 1.0, 1)) as mock_get, \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             assert topic_due_label(card, 2) == "4d"
         assert mock_get.call_args.kwargs["default_a_factor"] == 4.2
@@ -337,14 +351,14 @@ class TestOnTopicCardAnswered:
     def test_skips_non_topic_card(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=False), \
-             patch("topic_scheduler.get_topic_schedule") as mock_get:
+             patch("topic_scheduler.get_topic_schedule_state") as mock_get:
             on_topic_card_answered(MagicMock(), card, ease=3)
         mock_get.assert_not_called()
 
     def test_schedules_topic_card_with_good(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
-             patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
+             patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
              patch("topic_scheduler.mw") as mock_mw, \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
@@ -352,11 +366,12 @@ class TestOnTopicCardAnswered:
         mock_set.assert_called_once()
         mock_mw.col.sched.set_due_date.assert_called_once()
         assert mock_set.call_args.args[3] == pytest.approx(round(3.5 * 1.1, 3))
+        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
 
     def test_uses_configured_default_for_unseen_topic_cards(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
-             patch("topic_scheduler.get_topic_schedule", return_value=(4.2, 1)) as mock_get, \
+             patch("topic_scheduler.get_topic_schedule_state", return_value=(4.2, 1.0, 1)) as mock_get, \
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
              patch("topic_scheduler.mw") as mock_mw, \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
@@ -368,7 +383,7 @@ class TestOnTopicCardAnswered:
     def test_remaps_more_button_to_hard_scheduling(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
-             patch("topic_scheduler.get_topic_schedule", return_value=(3.5, 7)), \
+             patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
              patch("topic_scheduler.mw") as mock_mw, \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
@@ -376,11 +391,12 @@ class TestOnTopicCardAnswered:
         args = mock_set.call_args.args
         assert args[2] == card.id
         assert args[3] == pytest.approx(round(3.5 * 0.9, 3))
+        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
         mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
 
     def test_handles_exception_gracefully(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
-             patch("topic_scheduler.get_topic_schedule", side_effect=Exception("db error")):
+             patch("topic_scheduler.get_topic_schedule_state", side_effect=Exception("db error")):
             # Should not raise
             on_topic_card_answered(MagicMock(), card, ease=3)

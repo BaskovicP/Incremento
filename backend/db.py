@@ -400,9 +400,10 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             ON epub_text_index (card_id, section_index);
 
         CREATE TABLE IF NOT EXISTS topic_schedule (
-            card_id  INTEGER PRIMARY KEY,
-            a_factor REAL    NOT NULL DEFAULT 3.5,
-            interval INTEGER NOT NULL DEFAULT 1
+            card_id          INTEGER PRIMARY KEY,
+            a_factor         REAL    NOT NULL DEFAULT 3.5,
+            interval         INTEGER NOT NULL DEFAULT 1,
+            precise_interval REAL    NOT NULL DEFAULT 1.0
         );
 
         CREATE TABLE IF NOT EXISTS topic_postpones (
@@ -513,6 +514,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "web_progress",
         "media_updated_at",
         "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "topic_schedule",
+        "precise_interval",
+        "REAL NOT NULL DEFAULT 1.0",
     )
     _ensure_column(
         conn,
@@ -2008,6 +2015,44 @@ def _normalize_topic_a_factor(value, default: float = _DEFAULT_TOPIC_A_FACTOR) -
     return round(max(_TOPIC_A_FACTOR_MIN, min(_TOPIC_A_FACTOR_MAX, a_factor)), 3)
 
 
+def _normalize_topic_interval(value, default: float = 1.0) -> float:
+    try:
+        interval = float(value)
+    except Exception:
+        interval = float(default)
+    return max(1.0, interval)
+
+
+def _rounded_topic_interval(value, default: float = 1.0) -> int:
+    return max(1, int(round(_normalize_topic_interval(value, default))))
+
+
+def get_topic_schedule_state(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    default_a_factor: float = _DEFAULT_TOPIC_A_FACTOR,
+) -> tuple[float, float, int]:
+    """Return (a_factor, precise_interval, rounded_interval) for a topic card."""
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT a_factor, interval, precise_interval FROM topic_schedule WHERE card_id = ?",
+            (card_id,),
+        )
+        .fetchone()
+    )
+    if not row:
+        a_factor = _normalize_topic_a_factor(default_a_factor)
+        return a_factor, 1.0, 1
+
+    a_factor = _normalize_topic_a_factor(row[0])
+    rounded_interval = _rounded_topic_interval(row[1], 1.0)
+    precise_raw = row[2] if len(row) > 2 and row[2] is not None else row[1]
+    precise_interval = _normalize_topic_interval(precise_raw, float(rounded_interval))
+    return a_factor, precise_interval, _rounded_topic_interval(precise_interval, float(rounded_interval))
+
+
 def get_topic_schedule(
     addon_dir: str,
     profile: str,
@@ -2015,28 +2060,41 @@ def get_topic_schedule(
     default_a_factor: float = _DEFAULT_TOPIC_A_FACTOR,
 ) -> tuple[float, int]:
     """Return (a_factor, last_interval) for a topic card, or defaults if unseen."""
-    row = (
-        get_connection(addon_dir, profile)
-        .execute(
-            "SELECT a_factor, interval FROM topic_schedule WHERE card_id = ?",
-            (card_id,),
-        )
-        .fetchone()
+    a_factor, _precise_interval, rounded_interval = get_topic_schedule_state(
+        addon_dir,
+        profile,
+        card_id,
+        default_a_factor=default_a_factor,
     )
-    if not row:
-        return _normalize_topic_a_factor(default_a_factor), 1
-    return (_normalize_topic_a_factor(row[0]), int(row[1]))
+    return a_factor, rounded_interval
 
 
 def set_topic_schedule(
-    addon_dir: str, profile: str, card_id: int, a_factor: float, interval: int
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    a_factor: float,
+    interval: int | float,
+    *,
+    precise_interval: float | None = None,
 ) -> None:
+    normalized_precise = _normalize_topic_interval(
+        interval if precise_interval is None else precise_interval
+    )
+    rounded_interval = _rounded_topic_interval(
+        interval if precise_interval is None else normalized_precise
+    )
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT INTO topic_schedule (card_id, a_factor, interval) VALUES (?, ?, ?) "
+        "INSERT INTO topic_schedule (card_id, a_factor, interval, precise_interval) VALUES (?, ?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "
-        "a_factor = excluded.a_factor, interval = excluded.interval",
-        (card_id, _normalize_topic_a_factor(a_factor), int(interval)),
+        "a_factor = excluded.a_factor, interval = excluded.interval, precise_interval = excluded.precise_interval",
+        (
+            card_id,
+            _normalize_topic_a_factor(a_factor),
+            rounded_interval,
+            normalized_precise,
+        ),
     )
     conn.commit()
 

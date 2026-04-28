@@ -1424,6 +1424,24 @@ class TestTopicSchedule:
         assert a_factor == 2.0
         assert interval == 7
 
+    def test_set_and_get_topic_schedule_state_with_precise_interval(self):
+        db.set_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            1.25,
+            2,
+            precise_interval=1.5625,
+        )
+        a_factor, precise_interval, interval = db.get_topic_schedule_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        )
+        assert a_factor == 1.25
+        assert precise_interval == pytest.approx(1.5625)
+        assert interval == 2
+
     def test_overwrite_existing_schedule(self):
         db.set_topic_schedule(self.addon_dir, "TestProfile", 10, 3.0, 5)
         db.set_topic_schedule(self.addon_dir, "TestProfile", 10, 4.5, 14)
@@ -1446,6 +1464,14 @@ class TestTopicSchedule:
         )
         assert a_factor == 2.4
         assert interval == 3
+
+    def test_topic_schedule_precise_interval_column_is_created(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(topic_schedule)").fetchall()
+        }
+        assert "precise_interval" in columns
 
 
 # ---------------------------------------------------------------------------
