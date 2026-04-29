@@ -696,6 +696,20 @@ def _set_note_tags(note, tags: list[str]) -> None:
         pass
 
 
+def _set_editor_web_tags(editor, tags: list[str]) -> None:
+    try:
+        editor.web.eval(
+            f"""
+            require("anki/ui").loaded.then(() => {{
+                setTags({json.dumps(list(tags or []))});
+                triggerChanges();
+            }});
+            """
+        )
+    except Exception:
+        pass
+
+
 def _editor_tags(editor, note) -> list[str]:
     try:
         tags_widget = getattr(editor, "tags", None)
@@ -713,6 +727,7 @@ def _set_editor_tags(editor, tags: list[str]) -> None:
     note = getattr(editor, "note", None)
     if note is not None:
         _set_note_tags(note, tags)
+    _set_editor_web_tags(editor, tags)
     try:
         tags_widget = getattr(editor, "tags", None)
         if tags_widget is None:
@@ -733,10 +748,13 @@ def _sync_editor_tag_widget(editor) -> None:
         tags_widget = getattr(editor, "tags", None)
         note = getattr(editor, "note", None)
         if tags_widget is None or note is None:
+            if note is not None:
+                _set_editor_web_tags(editor, _note_tags(note))
             return
         if getattr(tags_widget, "col", None) != mw.col:
             tags_widget.setCol(mw.col)
         tags_widget.setText(note.string_tags().strip())
+        _set_editor_web_tags(editor, _note_tags(note))
         if hasattr(tags_widget, "update"):
             tags_widget.update()
         if hasattr(tags_widget, "repaint"):
@@ -790,8 +808,6 @@ def _apply_extract_topic_default_to_editor(editor) -> None:
 
 
 def _schedule_editor_note_reload(editor) -> None:
-    if getattr(editor, "addMode", False):
-        return
     try:
         QTimer.singleShot(0, lambda editor=editor: editor.loadNote())
         QTimer.singleShot(60, lambda editor=editor: editor.loadNote())
@@ -1559,12 +1575,16 @@ def _toggle_editor_tag_button(
         tooltip(empty_message)
         _refresh_add_card_tag_buttons_for_editor(editor)
         return
-    tag_state = type("_TagState", (), {"tags": _editor_tags(editor, note)})()
-    if _note_has_all_tags(tag_state, normalized_tags):
-        _toggle_note_tag_set(tag_state, normalized_tags)
+
+    current_tags = _editor_tags(editor, note)
+    if current_tags != _note_tags(note):
+        _set_note_tags(note, current_tags)
+
+    if _note_has_all_tags(note, normalized_tags):
+        _toggle_note_tag_set(note, normalized_tags)
     else:
-        _activate_exclusive_note_tag_set(tag_state, normalized_tags, opposite_tags)
-    _set_editor_tags(editor, _note_tags(tag_state))
+        _activate_exclusive_note_tag_set(note, normalized_tags, opposite_tags)
+    _set_editor_tags(editor, _note_tags(note))
     _schedule_editor_tag_widget_sync(editor)
     try:
         if getattr(editor, "tags", None) is not None and hasattr(editor, "on_tag_focus_lost"):
@@ -1577,6 +1597,11 @@ def _toggle_editor_tag_button(
             gui_hooks.editor_did_update_tags(note)
     except Exception:
         pass
+    if getattr(editor, "addMode", False):
+        try:
+            gui_hooks.editor_did_update_tags(note)
+        except Exception:
+            pass
     _refresh_add_card_tag_buttons_for_editor(editor)
 
 

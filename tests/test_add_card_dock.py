@@ -82,6 +82,14 @@ class _FakeEditor:
         self.load_note_calls += 1
 
 
+class _FakeWeb:
+    def __init__(self):
+        self.eval_calls = []
+
+    def eval(self, js):
+        self.eval_calls.append(js)
+
+
 class _FakeDock:
     def __init__(self, editor):
         self.editor = editor
@@ -818,6 +826,81 @@ def test_item_button_switches_pending_extract_mode_to_item(monkeypatch):
     assert editor.note.tags == ["keep", "item"]
     assert dock._current_extract_mark_topic is False
     assert sync_calls == [True]
+
+
+def test_item_button_notifies_tag_update_hooks_in_add_mode(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=True)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+    monkeypatch.setattr(
+        dock,
+        "sync_pending_extract_options_from_current",
+        lambda: None,
+    )
+    calls = []
+    monkeypatch.setattr(
+        dock.gui_hooks,
+        "editor_did_update_tags",
+        lambda note: calls.append(list(note.tags)),
+    )
+
+    dock._on_item_tag_button(editor)
+
+    assert editor.note.tags == ["keep", "item"]
+    assert calls == [["keep", "item"]]
+
+
+def test_toggle_editor_item_button_reloads_add_mode_editor(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=True)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    calls = []
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: (calls.append(delay), func()),
+    )
+
+    dock._toggle_editor_tag_button(
+        editor,
+        ["item"],
+        "unused",
+        opposite_tags=["topic"],
+    )
+
+    assert editor.note.tags == ["keep", "item"]
+    assert editor.tags.text_value == "keep item"
+    assert calls == [0, 40, 0, 60]
+    assert editor.tag_focus_lost_calls == 1
+    assert editor.load_note_calls == 2
+
+
+def test_toggle_editor_item_button_updates_web_tag_chips(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=True)
+    editor.web = _FakeWeb()
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+
+    dock._toggle_editor_tag_button(
+        editor,
+        ["item"],
+        "unused",
+        opposite_tags=["topic"],
+    )
+
+    assert editor.note.tags == ["keep", "item"]
+    assert any('setTags(["keep", "item"])' in call for call in editor.web.eval_calls)
 
 
 def test_apply_extract_topic_default_respects_current_item_choice(monkeypatch):
