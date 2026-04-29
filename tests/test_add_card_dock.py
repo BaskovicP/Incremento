@@ -12,16 +12,35 @@ class _FakeWindow:
 
 
 class _FakeNote:
-    def __init__(self, tags=None, note_id=0):
+    def __init__(self, tags=None, note_id=0, field_names=None):
         self.tags = list(tags or [])
         self.id = note_id
         self.flush_calls = 0
+        self._field_names = list(field_names or ["Front", "Back"])
+        self.fields = ["" for _ in self._field_names]
+        self._field_map = {name: index for index, name in enumerate(self._field_names)}
+        self._note_type = {
+            "name": "Basic",
+            "flds": [{"name": name} for name in self._field_names],
+        }
 
     def string_tags(self):
         return " ".join(self.tags)
 
     def flush(self):
         self.flush_calls += 1
+
+    def note_type(self):
+        return self._note_type
+
+    def __contains__(self, field_name):
+        return field_name in self._field_map
+
+    def __getitem__(self, field_name):
+        return self.fields[self._field_map[field_name]]
+
+    def __setitem__(self, field_name, value):
+        self.fields[self._field_map[field_name]] = value
 
 
 class _FakeEditor:
@@ -67,9 +86,23 @@ class _FakeDock:
     def __init__(self, editor):
         self.editor = editor
         self.calls = []
+        self._addcards_dialog = None
 
     def _set_field(self, idx, text, mark_topic=False):
         self.calls.append((idx, text, mark_topic))
+
+
+class _FakeAddCardsDialog:
+    def __init__(self, editor):
+        self.editor = editor
+        self.note_type_ids = []
+        self.deck_ids = []
+
+    def set_note_type(self, note_type_id):
+        self.note_type_ids.append(note_type_id)
+
+    def set_deck(self, deck_id):
+        self.deck_ids.append(deck_id)
 
 
 class _FakeTagsWidget:
@@ -232,6 +265,14 @@ def test_note_has_all_tags_matches_case_insensitively():
     assert not dock._note_has_all_tags(note, ["topic", "item"])
 
 
+def test_note_has_any_tags_matches_case_insensitively():
+    note = _FakeNote(["Topic", "extra"])
+
+    assert dock._note_has_any_tags(note, ["topic"])
+    assert dock._note_has_any_tags(note, ["item", "TOPIC"])
+    assert not dock._note_has_any_tags(note, ["item"])
+
+
 def test_toggle_note_tag_set_adds_all_missing_tags():
     note = _FakeNote(["existing"])
 
@@ -292,6 +333,21 @@ def test_pending_extract_options_capture_source_card_id(monkeypatch):
     assert options["source_card_id"] == 123
 
 
+def test_sync_pending_extract_options_from_current_carries_tree_link(monkeypatch):
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 77 if source == "reviewer" else None)
+    dock._last_selection_source = "reviewer"
+    dock.set_current_extract_options(priority=33, mark_topic=True, link_to_knowledge_tree=True)
+
+    options = dock.sync_pending_extract_options_from_current()
+
+    assert options is not None
+    assert options["priority"] == 33.0
+    assert options["mark_topic"] is True
+    assert options["link_to_knowledge_tree"] is True
+    assert options["source"] == "reviewer"
+    assert options["source_card_id"] == 77
+
+
 def test_consume_pending_extract_options_copies_source_tags_when_enabled(monkeypatch):
     note = _FakeNote(["existing"], note_id=11)
     source_note = _FakeNote(["Topic", "Source", "source"], note_id=22)
@@ -320,9 +376,9 @@ def test_consume_pending_extract_options_copies_source_tags_when_enabled(monkeyp
     result = dock.consume_pending_extract_options_for_note(note)
 
     assert result is not None
-    assert result["copied_source_tags"] == ["Topic", "Source"]
-    assert note.tags == ["existing", "Topic", "Source"]
-    assert saved == [["existing", "Topic", "Source"]]
+    assert result["copied_source_tags"] == ["Source"]
+    assert note.tags == ["existing", "Source"]
+    assert saved == [["existing", "Source"]]
 
 
 def test_consume_pending_extract_options_skips_source_tags_when_disabled(monkeypatch):
@@ -371,8 +427,8 @@ def test_consume_pending_extract_options_combines_source_and_topic_tags(monkeypa
     result = dock.consume_pending_extract_options_for_note(note)
 
     assert result is not None
-    assert note.tags == ["existing", "Topic", "Source", "branch"]
-    assert saved == [["existing", "Topic", "Source", "branch"]]
+    assert note.tags == ["existing", "Source", "topic", "branch"]
+    assert saved == [["existing", "Source", "topic", "branch"]]
 
 
 def test_set_pending_extract_options_snapshots_source_tags(monkeypatch):
@@ -446,6 +502,7 @@ def test_consume_pending_extract_options_prefers_snapshot_source_tags(monkeypatc
     dock._pending_extract_options = {
         "priority": 25.0,
         "mark_topic": False,
+        "link_to_knowledge_tree": False,
         "source": "pdf",
         "source_card_id": 99,
         "source_tags": ["Topic", "Source"],
@@ -454,9 +511,173 @@ def test_consume_pending_extract_options_prefers_snapshot_source_tags(monkeypatc
     result = dock.consume_pending_extract_options_for_note(note)
 
     assert result is not None
-    assert result["copied_source_tags"] == ["Topic", "Source"]
-    assert note.tags == ["existing", "Topic", "Source"]
-    assert saved == [["existing", "Topic", "Source"]]
+    assert result["copied_source_tags"] == ["Source"]
+    assert note.tags == ["existing", "Source"]
+    assert saved == [["existing", "Source"]]
+
+
+def test_consume_pending_extract_options_excludes_topic_item_classification_tags(monkeypatch):
+    note = _FakeNote(["existing", "item"], note_id=11)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+
+    dock._pending_extract_options = {
+        "priority": 25.0,
+        "mark_topic": False,
+        "link_to_knowledge_tree": False,
+        "source": "pdf",
+        "source_card_id": 99,
+        "source_tags": ["Topic", "writing", "Item"],
+        "seen": 0.0,
+    }
+    result = dock.consume_pending_extract_options_for_note(note)
+
+    assert result is not None
+    assert result["copied_source_tags"] == ["writing"]
+    assert note.tags == ["existing", "item", "writing"]
+    assert saved == [["existing", "item", "writing"]]
+
+
+def test_consume_pending_extract_context_applies_metadata_and_links_topic_child(monkeypatch):
+    note = _FakeNote(["topic"], note_id=11)
+    metadata_calls = []
+    link_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [444])
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: None)
+    monkeypatch.setitem(
+        sys.modules,
+        "note_metadata",
+        types.SimpleNamespace(
+            ensure_incremento_metadata_fields=lambda models, note_type: metadata_calls.append(("ensure", note_type)),
+            apply_incremento_metadata=lambda current_note, metadata: metadata_calls.append(("apply", dict(metadata))),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "knowledge_tree",
+        types.SimpleNamespace(
+            NODE_KIND_ITEM="item",
+            NODE_KIND_TOPIC="topic",
+            link_card_to_tree=lambda addon_dir, profile, card_id, node_kind, parent_card_id: link_calls.append(
+                (addon_dir, profile, card_id, node_kind, parent_card_id)
+            ),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "paths",
+        types.SimpleNamespace(get_active_profile=lambda: "TestProfile"),
+    )
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(col=types.SimpleNamespace(models=object())),
+    )
+    dock.set_pending_extract_context(
+        metadata={"source_type": "Extract"},
+        parent_card_id=55,
+        knowledge_tree_link_enabled=True,
+        link_to_knowledge_tree=True,
+    )
+
+    result = dock.consume_pending_extract_context_for_note(
+        note,
+        {"link_to_knowledge_tree": True},
+    )
+
+    assert result is not None
+    assert result["metadata_saved"] is True
+    assert result["knowledge_tree_link_error"] == ""
+    assert metadata_calls == [
+        ("ensure", note.note_type()),
+        ("apply", {"source_type": "Extract"}),
+    ]
+    assert link_calls == [
+        (dock._ADDON_DIR, "TestProfile", 444, "topic", 55),
+    ]
+
+
+def test_prime_editor_note_for_extract_copies_source_tags_before_topic_tags(monkeypatch):
+    note = _FakeNote(["stale"], note_id=11)
+    editor = _FakeEditor(note=note)
+    refreshed = []
+    tag_refresh = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: refreshed.append(current_editor))
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: tag_refresh.append(current_editor))
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic", "branch"])
+
+    dock._prime_editor_note_for_extract(
+        editor,
+        {"Front": "Selected text"},
+        True,
+        ["Topic", "Source"],
+    )
+
+    assert note.fields[0] == "Selected text"
+    assert note.tags == ["Topic", "Source", "branch"]
+    assert editor.tags.text() == "Topic Source branch"
+    assert refreshed == [editor]
+    assert tag_refresh == [editor]
+
+
+def test_prepare_reviewer_extract_primes_native_add_dialog(monkeypatch):
+    note = _FakeNote(note_id=22)
+    editor = _FakeEditor(note, add_mode=True)
+    dlg = _FakeAddCardsDialog(editor)
+    fake_dock = _FakeDock(editor)
+    fake_dock._addcards_dialog = dlg
+    selection_updates = []
+
+    monkeypatch.setattr(dock, "open_add_card_dock", lambda: None)
+    monkeypatch.setattr(dock, "get_add_card_dock", lambda: fake_dock)
+    monkeypatch.setattr(dock, "_dock_editor", lambda: editor)
+    monkeypatch.setattr(
+        dock,
+        "update_selection_state",
+        lambda source, text=None, has_text=None: selection_updates.append((source, text, has_text)),
+    )
+    monkeypatch.setattr(dock, "_inject_transfer_buttons", lambda current_editor: None)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                models=types.SimpleNamespace(by_name=lambda name: {"id": 9} if name == "Basic" else None),
+                decks=types.SimpleNamespace(by_name=lambda name: {"id": 3} if name == "Deck" else None),
+            )
+        ),
+    )
+
+    dock.prepare_reviewer_extract(
+        selected_text="Excerpt",
+        note_type_name="Basic",
+        deck_name="Deck",
+        field_values={"Front": "Excerpt"},
+        metadata={"source_type": "Extract"},
+        parent_card_id=5,
+        priority=30,
+        mark_topic=True,
+        knowledge_tree_link_enabled=True,
+        link_to_knowledge_tree=True,
+        knowledge_tree_tooltip="Link beneath parent",
+    )
+
+    assert selection_updates == [("reviewer", "Excerpt", True)]
+    assert dlg.note_type_ids == [9]
+    assert dlg.deck_ids == [3]
+    assert note["Front"] == "Excerpt"
+    assert note.tags == ["topic"]
+    assert dock.pending_extract_options()["source"] == "reviewer"
+    assert dock.pending_extract_options()["link_to_knowledge_tree"] is True
+    assert dock.pending_extract_context()["parent_card_id"] == 5
 
 
 def test_do_fill_forwards_mark_topic_to_embedded_dock(monkeypatch):
@@ -499,6 +720,25 @@ def test_on_editor_did_update_tags_refreshes_matching_edit_note(monkeypatch):
     dock._on_editor_did_update_tags(_FakeNote(["item"], note_id=42))
 
     assert calls == [editor]
+
+
+def test_on_editor_did_update_tags_syncs_extract_mode_for_add_note(monkeypatch):
+    note = _FakeNote(["item"], note_id=42)
+    editor = _FakeEditor(note, add_mode=True)
+    dock._tracked_tag_button_editors.clear()
+    dock._track_tag_button_editor(editor)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(
+        dock,
+        "sync_pending_extract_options_from_current",
+        lambda: None,
+    )
+    dock._current_extract_mark_topic = True
+
+    dock._on_editor_did_update_tags(_FakeNote(["item"], note_id=42))
+
+    assert dock._current_extract_mark_topic is False
 
 
 def test_toolbar_buttons_register_even_before_note_is_loaded():
@@ -552,6 +792,49 @@ def test_toggle_editor_item_button_removes_topic_tags(monkeypatch):
 
     assert editor.note.tags == ["keep", "item"]
     assert editor.tags.text_value == "keep item"
+
+
+def test_item_button_switches_pending_extract_mode_to_item(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=True)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+    sync_calls = []
+    monkeypatch.setattr(
+        dock,
+        "sync_pending_extract_options_from_current",
+        lambda: sync_calls.append(True),
+    )
+    dock._last_selection_source = "pdf"
+    dock._current_extract_mark_topic = True
+
+    dock._on_item_tag_button(editor)
+
+    assert editor.note.tags == ["keep", "item"]
+    assert dock._current_extract_mark_topic is False
+    assert sync_calls == [True]
+
+
+def test_apply_extract_topic_default_respects_current_item_choice(monkeypatch):
+    note = _FakeNote(["item", "writing"], note_id=9)
+    editor = _FakeEditor(note, add_mode=True)
+
+    monkeypatch.setattr(dock, "_has_recent_selection", lambda: True)
+    monkeypatch.setattr(dock, "_extract_mark_topic_for_transfer", lambda: True)
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "_set_add_card_tag_button_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: None)
+
+    dock._apply_extract_topic_default_to_editor(editor)
+
+    assert note.tags == ["item", "writing"]
 
 
 def test_toggle_editor_topic_button_removes_item_tags(monkeypatch):

@@ -229,10 +229,9 @@ class StatsManager:
         if result.card is None:
             return
 
-        for scope_name in ("session", "daily", "lifetime"):
-            if scope_name == scheduled_scope:
-                continue
-            counts = self.counts_for(scope_name)
+        # Session counts are a transient scheduler snapshot. Persist only actual
+        # answered-card history into daily and lifetime totals.
+        for counts in (self.daily, self.lifetime):
             counts["type"][result.card_type] = (
                 counts["type"].get(result.card_type, 0) + 1
             )

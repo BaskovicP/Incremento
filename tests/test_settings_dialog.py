@@ -345,6 +345,8 @@ sys.modules["_incremento_settings_dialog"] = _MOD
 _SPEC.loader.exec_module(_MOD)
 
 IncrementoSettingsDialog = _MOD.IncrementoSettingsDialog
+default_shortcuts = _MOD.default_shortcuts
+SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
 
 
 class TestIncrementoSettingsDialogDefaultTopicAFactor:
@@ -393,3 +395,13 @@ class TestIncrementoSettingsDialogExtractCopySourceTags:
         dialog = IncrementoSettingsDialog({})
         dialog._extract_copy_source_tags_cb.setChecked(True)
         assert dialog.extract_copy_source_tags is True
+
+
+class TestIncrementoSettingsDialogShortcuts:
+    def test_extract_card_shortcut_is_exposed_in_settings(self):
+        extract_spec = next(
+            spec for spec in SHORTCUT_ACTION_SPECS if spec["id"] == "extract_card"
+        )
+
+        assert extract_spec["label"] == "Extract Card"
+        assert default_shortcuts()["extract_card"] == "Alt+X"

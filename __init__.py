@@ -62,13 +62,10 @@ from .backend.writing_manager import (
 from .backend.local_file_manager import add_local_file_card
 from .backend.note_metadata import (
     INCREMENTO_HIDDEN_FIELDS,
-    apply_incremento_metadata,
     build_incremento_metadata,
     derive_note_source_metadata,
-    ensure_incremento_metadata_fields,
     hidden_field_values,
     matches_hidden_field_reference,
-    visible_field_names,
 )
 from .backend.db import (
     get_connection,
@@ -183,11 +180,11 @@ from .backend.knowledge_tree import (
     NODE_KIND_ITEM as _KT_NODE_KIND_ITEM,
     NODE_KIND_TOPIC as _KT_NODE_KIND_TOPIC,
     apply_node_kind_to_cards as _kt_apply_node_kind_to_cards,
-    link_card_to_tree as _kt_link_card_to_tree,
 )
 from .backend.reviewer_extract import (
     extract_default_notetype_name as _extract_default_notetype_name,
     initial_extract_field_values as _initial_extract_field_values,
+    knowledge_tree_link_state as _knowledge_tree_link_state,
 )
 
 _ADDON_DIR = os.path.dirname(__file__)
@@ -955,10 +952,13 @@ def _sync_topic_answer_button_style(reviewer) -> None:
 
 def _sync_reviewer_extract_button(reviewer) -> None:
     try:
+        shortcut_text = json.dumps(_configured_shortcut_text("extract_card"))
         reviewer.bottom.web.eval(
             """
             (function() {
               var buttonId = "incremento-reviewer-extract-button";
+              var styleId = "incremento-reviewer-extract-button-style";
+              var shortcutText = %s;
               var attempts = 0;
 
               function removeExisting() {
@@ -974,9 +974,46 @@ def _sync_reviewer_extract_button(reviewer) -> None:
                 existing.remove();
               }
 
+              function ensureStyle() {
+                var style = document.getElementById(styleId);
+                if (style) {
+                  return;
+                }
+                style = document.createElement("style");
+                style.id = styleId;
+                style.textContent = `
+                  #${buttonId} {
+                    background: rgba(112, 112, 112, 0.16);
+                    border-color: rgba(180, 180, 180, 0.22);
+                    color: #e3e3e3;
+                    min-width: 92px;
+                    transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+                  }
+                  #${buttonId}:hover,
+                  #${buttonId}:focus {
+                    background: rgba(138, 138, 138, 0.24);
+                    border-color: rgba(210, 210, 210, 0.34);
+                    color: #f4f4f4;
+                    transform: translateY(-1px);
+                  }
+                  #${buttonId} .incremento-reviewer-extract-icon {
+                    margin-right: 6px;
+                    opacity: 0.88;
+                    font-size: 0.95em;
+                  }
+                  #${buttonId} .stattxt {
+                    opacity: 0.72;
+                  }
+                `;
+                document.head.appendChild(style);
+              }
+
               function install() {
                 var existing = document.getElementById(buttonId);
                 if (existing) {
+                  existing.title = shortcutText
+                    ? "Extract selected content into a new card (" + shortcutText + ")"
+                    : "Extract selected content into a new card";
                   return;
                 }
 
@@ -992,23 +1029,54 @@ def _sync_reviewer_extract_button(reviewer) -> None:
                 var cell = document.createElement("td");
                 cell.className = "stat2";
                 cell.setAttribute("align", "center");
+                cell.id = "incremento-reviewer-extract-cell";
 
                 var button = document.createElement("button");
                 button.id = buttonId;
-                button.title = "Alt+X";
-                button.innerHTML = 'Extract<span class="stattxt">Alt+X</span>';
+                button.title = shortcutText
+                  ? "Extract selected content into a new card (" + shortcutText + ")"
+                  : "Extract selected content into a new card";
+                button.setAttribute("aria-label", "Extract selected content into a new card");
+                button.innerHTML =
+                  '<span class="incremento-reviewer-extract-icon">+</span>Extract';
                 button.onclick = function() {
                   pycmd("incremento_extract_card");
                 };
 
                 cell.appendChild(button);
-                row.appendChild(cell);
+                ensureStyle();
+
+                var insertBeforeCell = null;
+                var rowCells = Array.prototype.slice.call(row.children || []);
+                for (var i = rowCells.length - 1; i >= 0; i -= 1) {
+                  var candidate = rowCells[i];
+                  if (
+                    candidate &&
+                    candidate.querySelector &&
+                    candidate.querySelector("button") &&
+                    !candidate.querySelector("#" + buttonId)
+                  ) {
+                    insertBeforeCell = candidate;
+                    break;
+                  }
+                }
+
+                if (
+                  insertBeforeCell &&
+                  rowCells.length > 2 &&
+                  insertBeforeCell !== row.firstElementChild
+                ) {
+                  row.insertBefore(cell, insertBeforeCell);
+                } else {
+                  row.appendChild(cell);
+                }
               }
 
               removeExisting();
               install();
             })();
             """
+            % shortcut_text
         )
     except Exception:
         pass
@@ -1437,7 +1505,9 @@ def _on_js_message(handled, message, context) -> tuple:
             _add_card_dock_mod.set_current_extract_options(
                 priority=data.get("priority"),
                 mark_topic=bool(data.get("markTopic")),
+                link_to_knowledge_tree=bool(data.get("linkToKnowledgeTree")),
             )
+            _add_card_dock_mod.sync_pending_extract_options_from_current()
         except Exception:
             pass
         return (True, None)
@@ -2303,21 +2373,6 @@ def _extract_card() -> None:
 
 
 def _on_extract_selection(selected_text: str, parent_card) -> None:
-    from .frontend.extract_card_dialog import ExtractCardDialog
-
-    # Build note-type list
-    notetypes = [
-        {
-            "name": m["name"],
-            "fields": visible_field_names([f["name"] for f in m["flds"]]),
-        }
-        for m in mw.col.models.all()
-    ]
-    notetype_names = [nt["name"] for nt in notetypes]
-
-    # Build deck list
-    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
-
     # Defaults: configured extract note type if present, otherwise the parent note type.
     parent_note = parent_card.note()
     configured_notetype = _add_card_dock_mod.configured_extract_notetype_name()
@@ -2326,7 +2381,7 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         selected_text=selected_text,
         configured_notetype=configured_notetype,
         parent_notetype=parent_notetype,
-        available_notetype_names=notetype_names,
+        available_notetype_names=[m["name"] for m in mw.col.models.all()],
     )
     parent_deck = mw.col.decks.get(parent_card.did)
     default_deck = parent_deck["name"] if parent_deck else ""
@@ -2351,76 +2406,22 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         _active_profile(),
         int(getattr(parent_card, "id", 0) or 0),
     ) is not None
-    dlg = ExtractCardDialog(
+    tree_link_state = _knowledge_tree_link_state(parent_in_tree)
+    _add_card_dock_mod.prepare_reviewer_extract(
         selected_text=selected_text,
-        notetypes=notetypes,
-        deck_names=deck_names,
-        default_notetype=default_notetype,
-        default_deck=default_deck,
-        default_priority=_add_card_dock_mod.source_relative_extract_priority_for_card(
+        note_type_name=default_notetype,
+        deck_name=default_deck,
+        field_values=initial_field_values,
+        metadata=metadata,
+        parent_card_id=int(getattr(parent_card, "id", 0) or 0),
+        priority=_add_card_dock_mod.source_relative_extract_priority_for_card(
             getattr(parent_card, "id", None)
         ),
-        default_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(),
-        lower_is_more_important=configured_priority_lower_is_more_important(),
-        initial_field_values=initial_field_values,
-        knowledge_tree_link_enabled=parent_in_tree,
-        default_link_to_knowledge_tree=parent_in_tree,
-        parent=mw,
+        mark_topic=_add_card_dock_mod.configured_extract_mark_topic(),
+        knowledge_tree_link_enabled=bool(tree_link_state.get("enabled")),
+        link_to_knowledge_tree=bool(tree_link_state.get("checked")),
+        knowledge_tree_tooltip=str(tree_link_state.get("tooltip") or ""),
     )
-    if not dlg.exec():
-        return
-
-    try:
-        model = mw.col.models.by_name(dlg.notetype_name)
-        if model is None:
-            showInfo(f"Note type '{dlg.notetype_name}' not found.")
-            return
-        ensure_incremento_metadata_fields(mw.col.models, model)
-        deck = mw.col.decks.by_name(dlg.deck_name)
-        deck_id = (
-            mw.col.decks.add_normal_deck_with_name(dlg.deck_name).id
-            if deck is None
-            else deck["id"]
-        )
-        note = mw.col.new_note(model)
-        for fname, val in dlg.field_values.items():
-            if fname in note:
-                note[fname] = val
-        apply_incremento_metadata(note, metadata)
-        if dlg.mark_topic:
-            _add_card_dock_mod.add_topic_tags_to_note(note)
-        mw.col.add_note(note, deck_id)
-        priority_cards = _add_card_dock_mod.apply_priority_to_note_cards(note, dlg.priority)
-        created_card_ids = list(mw.col.find_cards(f"nid:{note.id}") or [])
-        partial_link_error = ""
-        if dlg.link_to_knowledge_tree and created_card_ids:
-            try:
-                _kt_link_card_to_tree(
-                    _ADDON_DIR,
-                    _active_profile(),
-                    int(created_card_ids[0]),
-                    _KT_NODE_KIND_TOPIC if dlg.mark_topic else _KT_NODE_KIND_ITEM,
-                    parent_card_id=int(getattr(parent_card, "id", 0) or 0),
-                )
-            except Exception as exc:
-                partial_link_error = str(exc)
-
-        message = (
-            f"Card created in '{dlg.deck_name}'."
-            + (
-                f"\nPriority {dlg.priority:.1f} applied to {priority_cards} card(s)."
-                if priority_cards
-                else ""
-            )
-        )
-        if partial_link_error:
-            message += (
-                "\n\nThe card was created, but it could not be linked into the knowledge tree:\n"
-                f"{partial_link_error}"
-            )
-        showInfo(message)
-    except Exception as e:
-        showInfo(f"Failed to create card:\n{e}")
 
 
 def _open_priority_dialog_for_card(card) -> None:

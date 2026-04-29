@@ -176,6 +176,25 @@ class TestRecord:
         assert sm.daily["tags"] == {"health": 1, "psych": 1}
         assert sm.daily["mode"] == {"random": 1, "priority": 1}
 
+    def test_lifetime_scope_still_updates_lifetime_counts_on_review(self, tmp_path):
+        sm = StatsManager(str(tmp_path), "TestProfile")
+        result = make_result(card_type="items", tag="health", mode="priority")
+        sm.record(result, "lifetime")
+
+        assert sm.daily["type"] == {"items": 1}
+        assert sm.lifetime["type"] == {"items": 1}
+        assert sm.lifetime["tags"] == {"health": 1}
+        assert sm.lifetime["mode"] == {"priority": 1}
+
+    def test_daily_scope_still_updates_daily_and_lifetime_counts_on_review(self, tmp_path):
+        sm = StatsManager(str(tmp_path), "TestProfile")
+        result = make_result(card_type="topics", tag="math", mode="random")
+        sm.record(result, "daily")
+
+        assert sm.daily["type"] == {"topics": 1}
+        assert sm.daily["tags"] == {"math": 1}
+        assert sm.lifetime["type"] == {"topics": 1}
+
 
 class TestSave:
     def test_written_json_matches_schema(self, tmp_path):

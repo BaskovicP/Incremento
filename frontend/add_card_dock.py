@@ -33,6 +33,14 @@ except Exception:
     except Exception:
         append_missing_tags = None  # type: ignore
 
+try:
+    from ..backend.reviewer_extract import knowledge_tree_link_state
+except Exception:
+    try:
+        from reviewer_extract import knowledge_tree_link_state  # type: ignore
+    except Exception:
+        knowledge_tree_link_state = None  # type: ignore
+
 _add_card_dock = None  # QDockWidget instance, persists across card reviews
 _SELECTION_TTL_SEC = 20.0
 _last_selection_source = ""
@@ -41,7 +49,9 @@ _last_selection_seen = 0.0
 _last_add_mode_editor = None
 _current_extract_priority: float | None = None
 _current_extract_mark_topic: bool | None = None
+_current_extract_link_to_knowledge_tree: bool | None = None
 _pending_extract_options: dict | None = None
+_pending_extract_context: dict | None = None
 _last_fill_source = ""
 _last_fill_seen = 0.0
 _tracked_tag_button_editors: list[weakref.ReferenceType] = []
@@ -360,11 +370,23 @@ def _inject_transfer_buttons(editor) -> None:
         field_names = []
     try:
         extract_priority = (
-            source_relative_extract_priority_for_source(_last_selection_source)
-            if _has_recent_selection()
-            else configured_extract_priority()
+            _extract_priority_for_transfer()
+            if _current_extract_priority is not None
+            else (
+                source_relative_extract_priority_for_source(_last_selection_source)
+                if _has_recent_selection()
+                else configured_extract_priority()
+            )
         )
-        extract_mark_topic = configured_extract_mark_topic()
+        extract_mark_topic = _extract_mark_topic_for_transfer()
+        tree_context = pending_extract_context() or {}
+        tree_link_enabled = bool(tree_context.get("knowledge_tree_link_enabled"))
+        tree_link_checked = bool(
+            tree_context.get("link_to_knowledge_tree")
+            if _current_extract_link_to_knowledge_tree is None
+            else _current_extract_link_to_knowledge_tree
+        )
+        tree_link_tooltip = str(tree_context.get("knowledge_tree_tooltip") or "")
         editor.web.eval(
             f"""
             (function() {{
@@ -372,6 +394,9 @@ def _inject_transfer_buttons(editor) -> None:
               var fieldNames = {json.dumps(field_names)};
               var defaultExtractPriority = {json.dumps(extract_priority)};
               var defaultExtractTopic = {json.dumps(extract_mark_topic)};
+              var defaultExtractTreeLink = {json.dumps(tree_link_checked)};
+              var extractTreeLinkEnabled = {json.dumps(tree_link_enabled)};
+              var extractTreeLinkTooltip = {json.dumps(tree_link_tooltip)};
               if (!window.incrementoTransferButtons) {{
                 var styleId = 'incremento-transfer-style';
                 if (!document.getElementById(styleId)) {{
@@ -435,10 +460,12 @@ def _inject_transfer_buttons(editor) -> None:
                   fieldNames: [],
                   extractPriority: defaultExtractPriority,
                   extractTopic: defaultExtractTopic,
+                  extractTreeLink: defaultExtractTreeLink,
                   syncExtractOptions: function() {{
                     pycmd('incremento_extract_options:' + JSON.stringify({{
                       priority: this.extractPriority,
-                      markTopic: this.extractTopic
+                      markTopic: this.extractTopic,
+                      linkToKnowledgeTree: this.extractTreeLink
                     }}));
                   }},
                   fieldNodes: function() {{
@@ -515,13 +542,20 @@ def _inject_transfer_buttons(editor) -> None:
                       panel.innerHTML = [
                         '<strong>Extract</strong>',
                         '<label>Priority <input id="incremento-extract-priority" type="number" min="0" max="100" step="0.1"></label>',
-                        '<label><input id="incremento-extract-topic" type="checkbox"> Topic</label>'
+                        '<label><input id="incremento-extract-topic" type="checkbox"> Topic</label>',
+                        '<label id="incremento-extract-tree-link-wrap"><input id="incremento-extract-tree-link" type="checkbox"> Tree child</label>'
                       ].join('');
                       host.parentElement.insertBefore(panel, host);
                       var prio = panel.querySelector('#incremento-extract-priority');
                       var topic = panel.querySelector('#incremento-extract-topic');
+                      var treeLink = panel.querySelector('#incremento-extract-tree-link');
+                      var treeLinkWrap = panel.querySelector('#incremento-extract-tree-link-wrap');
                       prio.value = String(this.extractPriority);
                       topic.checked = !!this.extractTopic;
+                      treeLink.checked = !!this.extractTreeLink;
+                      treeLink.disabled = !extractTreeLinkEnabled;
+                      treeLinkWrap.style.display = extractTreeLinkEnabled ? 'inline-flex' : 'none';
+                      treeLinkWrap.title = extractTreeLinkTooltip;
                       prio.addEventListener('change', function() {{
                         var value = Number(prio.value);
                         if (!Number.isFinite(value)) {{
@@ -534,6 +568,10 @@ def _inject_transfer_buttons(editor) -> None:
                       }});
                       topic.addEventListener('change', function() {{
                         window.incrementoTransferButtons.extractTopic = !!topic.checked;
+                        window.incrementoTransferButtons.syncExtractOptions();
+                      }});
+                      treeLink.addEventListener('change', function() {{
+                        window.incrementoTransferButtons.extractTreeLink = !!treeLink.checked;
                         window.incrementoTransferButtons.syncExtractOptions();
                       }});
                       this.syncExtractOptions();
@@ -603,15 +641,26 @@ def _inject_transfer_buttons(editor) -> None:
               if (window.incrementoTransferButtons) {{
                 window.incrementoTransferButtons.extractPriority = defaultExtractPriority;
                 window.incrementoTransferButtons.extractTopic = defaultExtractTopic;
+                window.incrementoTransferButtons.extractTreeLink = defaultExtractTreeLink;
                 var existingPanel = document.getElementById('incremento-extract-options');
                 if (existingPanel) {{
                   var existingPrio = existingPanel.querySelector('#incremento-extract-priority');
                   var existingTopic = existingPanel.querySelector('#incremento-extract-topic');
+                  var existingTreeLink = existingPanel.querySelector('#incremento-extract-tree-link');
+                  var existingTreeLinkWrap = existingPanel.querySelector('#incremento-extract-tree-link-wrap');
                   if (existingPrio) {{
                     existingPrio.value = String(defaultExtractPriority);
                   }}
                   if (existingTopic) {{
                     existingTopic.checked = !!defaultExtractTopic;
+                  }}
+                  if (existingTreeLink) {{
+                    existingTreeLink.checked = !!defaultExtractTreeLink;
+                    existingTreeLink.disabled = !extractTreeLinkEnabled;
+                  }}
+                  if (existingTreeLinkWrap) {{
+                    existingTreeLinkWrap.style.display = extractTreeLinkEnabled ? 'inline-flex' : 'none';
+                    existingTreeLinkWrap.title = extractTreeLinkTooltip;
                   }}
                   window.incrementoTransferButtons.syncExtractOptions();
                 }}
@@ -715,11 +764,21 @@ def _schedule_add_card_tag_button_refresh(editor) -> None:
         pass
 
 
+def _note_has_any_tags(note, wanted_tags: list[str]) -> bool:
+    normalized_wanted = {tag.lower() for tag in _normalize_tag_list(wanted_tags)}
+    if not normalized_wanted:
+        return False
+    note_tag_set = {tag.lower() for tag in _note_tags(note)}
+    return bool(note_tag_set.intersection(normalized_wanted))
+
+
 def _apply_extract_topic_default_to_editor(editor) -> None:
-    if not _has_recent_selection() or not configured_extract_mark_topic():
+    if not _has_recent_selection() or not _extract_mark_topic_for_transfer():
         return
     note = getattr(editor, "note", None)
     if note is None:
+        return
+    if _note_has_any_tags(note, configured_add_card_item_tags()):
         return
     if not add_topic_tags_to_note(note):
         _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
@@ -784,13 +843,33 @@ def copy_source_note_tags_to_note(note, source_note) -> list[str]:
     return list(added_tags)
 
 
-def copy_source_tags_to_note(note, source_tags) -> list[str]:
+def _classification_tag_set() -> set[str]:
+    return {
+        tag.lower()
+        for tag in (
+            configured_add_card_topic_tags() + configured_add_card_item_tags()
+        )
+        if str(tag or "").strip()
+    }
+
+
+def copy_source_tags_to_note(note, source_tags, *, exclude_tags=None) -> list[str]:
     if note is None or append_missing_tags is None:
+        return []
+    source_list = _normalize_tag_list(source_tags or [])
+    excluded = {
+        str(tag or "").strip().lower()
+        for tag in list(exclude_tags or [])
+        if str(tag or "").strip()
+    }
+    if excluded:
+        source_list = [tag for tag in source_list if tag.lower() not in excluded]
+    if not source_list:
         return []
     try:
         updated_tags, added_tags = append_missing_tags(
             getattr(note, "tags", []) or [],
-            source_tags or [],
+            source_list,
         )
     except Exception:
         return []
@@ -813,10 +892,14 @@ def source_note_tags_for_card(source_card_id: int | None) -> list[str]:
         return []
 
 
-def copy_source_card_tags_to_note(note, source_card_id: int | None) -> list[str]:
+def copy_source_card_tags_to_note(note, source_card_id: int | None, *, exclude_tags=None) -> list[str]:
     if note is None or source_card_id is None:
         return []
-    return copy_source_tags_to_note(note, source_note_tags_for_card(source_card_id))
+    return copy_source_tags_to_note(
+        note,
+        source_note_tags_for_card(source_card_id),
+        exclude_tags=exclude_tags,
+    )
 
 
 def _toggle_note_tag_set(note, wanted_tags: list[str]) -> bool:
@@ -986,12 +1069,14 @@ def _refresh_add_card_tag_buttons_for_editor(editor) -> None:
     )
 
 
-def set_current_extract_options(priority=None, mark_topic=None) -> None:
-    global _current_extract_priority, _current_extract_mark_topic
+def set_current_extract_options(priority=None, mark_topic=None, link_to_knowledge_tree=None) -> None:
+    global _current_extract_priority, _current_extract_mark_topic, _current_extract_link_to_knowledge_tree
     if priority is not None:
         _current_extract_priority = _clamp_priority(priority)
     if mark_topic is not None:
         _current_extract_mark_topic = bool(mark_topic)
+    if link_to_knowledge_tree is not None:
+        _current_extract_link_to_knowledge_tree = bool(link_to_knowledge_tree)
 
 
 def _extract_priority_for_transfer() -> float:
@@ -1004,6 +1089,12 @@ def _extract_mark_topic_for_transfer() -> bool:
     if _current_extract_mark_topic is not None:
         return bool(_current_extract_mark_topic)
     return configured_extract_mark_topic()
+
+
+def _extract_link_to_knowledge_tree_for_transfer() -> bool:
+    if _current_extract_link_to_knowledge_tree is not None:
+        return bool(_current_extract_link_to_knowledge_tree)
+    return bool((pending_extract_context() or {}).get("link_to_knowledge_tree"))
 
 
 def _priority_for_card_id(card_id: int | None) -> float | None:
@@ -1064,6 +1155,7 @@ def set_pending_extract_options(
     *,
     priority=None,
     mark_topic: bool | None = None,
+    link_to_knowledge_tree: bool | None = None,
     source: str = "",
     source_card_id: int | None = None,
 ) -> dict:
@@ -1077,6 +1169,11 @@ def set_pending_extract_options(
             configured_extract_priority() if priority is None else priority
         ),
         "mark_topic": configured_extract_mark_topic() if mark_topic is None else bool(mark_topic),
+        "link_to_knowledge_tree": (
+            _extract_link_to_knowledge_tree_for_transfer()
+            if link_to_knowledge_tree is None
+            else bool(link_to_knowledge_tree)
+        ),
         "source": str(source or ""),
         "source_card_id": (
             int(resolved_source_card_id) if resolved_source_card_id is not None else None
@@ -1094,6 +1191,47 @@ def clear_pending_extract_options() -> None:
 
 def pending_extract_options() -> dict | None:
     return dict(_pending_extract_options) if _pending_extract_options else None
+
+
+def set_pending_extract_context(
+    *,
+    metadata: dict | None = None,
+    parent_card_id: int | None = None,
+    knowledge_tree_link_enabled: bool = False,
+    link_to_knowledge_tree: bool = False,
+    knowledge_tree_tooltip: str = "",
+) -> dict:
+    global _pending_extract_context
+    _pending_extract_context = {
+        "metadata": dict(metadata or {}),
+        "parent_card_id": int(parent_card_id) if parent_card_id is not None else None,
+        "knowledge_tree_link_enabled": bool(knowledge_tree_link_enabled),
+        "link_to_knowledge_tree": bool(link_to_knowledge_tree),
+        "knowledge_tree_tooltip": str(knowledge_tree_tooltip or ""),
+        "seen": time.monotonic(),
+    }
+    return dict(_pending_extract_context)
+
+
+def clear_pending_extract_context() -> None:
+    global _pending_extract_context
+    _pending_extract_context = None
+
+
+def pending_extract_context() -> dict | None:
+    return dict(_pending_extract_context) if _pending_extract_context else None
+
+
+def sync_pending_extract_options_from_current() -> dict | None:
+    source = str(_last_selection_source or "").strip()
+    if not source:
+        return None
+    return set_pending_extract_options(
+        priority=_extract_priority_for_transfer(),
+        mark_topic=_extract_mark_topic_for_transfer(),
+        link_to_knowledge_tree=_extract_link_to_knowledge_tree_for_transfer(),
+        source=source,
+    )
 
 
 def recent_fill_source(ttl_sec: float = 30.0) -> str:
@@ -1162,10 +1300,19 @@ def consume_pending_extract_options_for_note(note) -> dict | None:
     clear_pending_extract_options()
     tags_changed = False
     copied_tags: list[str] = []
+    classification_excludes = _classification_tag_set()
     if configured_extract_copy_source_tags():
-        copied_tags = copy_source_tags_to_note(note, options.get("source_tags") or [])
+        copied_tags = copy_source_tags_to_note(
+            note,
+            options.get("source_tags") or [],
+            exclude_tags=classification_excludes,
+        )
         if not copied_tags:
-            copied_tags = copy_source_card_tags_to_note(note, options.get("source_card_id"))
+            copied_tags = copy_source_card_tags_to_note(
+                note,
+                options.get("source_card_id"),
+                exclude_tags=classification_excludes,
+            )
         tags_changed = bool(copied_tags)
     if bool(options.get("mark_topic")) and add_topic_tags_to_note(note):
         tags_changed = True
@@ -1177,8 +1324,214 @@ def consume_pending_extract_options_for_note(note) -> dict | None:
     return options
 
 
+def consume_pending_extract_context_for_note(note, options: dict | None = None) -> dict | None:
+    context = pending_extract_context()
+    if not context:
+        return None
+    clear_pending_extract_context()
+
+    metadata = dict(context.get("metadata") or {})
+    metadata_saved = False
+    if metadata:
+        try:
+            from ..backend.note_metadata import (
+                apply_incremento_metadata,
+                ensure_incremento_metadata_fields,
+            )
+        except Exception:
+            try:
+                from note_metadata import apply_incremento_metadata, ensure_incremento_metadata_fields  # type: ignore
+            except Exception:
+                apply_incremento_metadata = None  # type: ignore
+                ensure_incremento_metadata_fields = None  # type: ignore
+        if apply_incremento_metadata is not None and ensure_incremento_metadata_fields is not None:
+            try:
+                ensure_incremento_metadata_fields(mw.col.models, note.note_type() or {})
+                apply_incremento_metadata(note, metadata)
+                _save_note_tag_changes(note)
+                metadata_saved = True
+            except Exception as exc:
+                context["metadata_error"] = str(exc)
+
+    link_error = ""
+    if (
+        bool((options or {}).get("link_to_knowledge_tree"))
+        and context.get("knowledge_tree_link_enabled")
+        and context.get("parent_card_id") is not None
+    ):
+        try:
+            from ..backend.knowledge_tree import (
+                NODE_KIND_ITEM,
+                NODE_KIND_TOPIC,
+                link_card_to_tree,
+            )
+            from ..backend.paths import get_active_profile as _active_profile
+        except Exception:
+            try:
+                from knowledge_tree import NODE_KIND_ITEM, NODE_KIND_TOPIC, link_card_to_tree  # type: ignore
+                from paths import get_active_profile as _active_profile  # type: ignore
+            except Exception:
+                link_card_to_tree = None  # type: ignore
+                _active_profile = None  # type: ignore
+                NODE_KIND_ITEM = "item"  # type: ignore
+                NODE_KIND_TOPIC = "topic"  # type: ignore
+        if link_card_to_tree is not None and _active_profile is not None:
+            try:
+                created_card_ids = _card_ids_for_note(note)
+                if created_card_ids:
+                    is_topic = _note_has_all_tags(note, configured_add_card_topic_tags())
+                    link_card_to_tree(
+                        _ADDON_DIR,
+                        _active_profile(),
+                        int(created_card_ids[0]),
+                        NODE_KIND_TOPIC if is_topic else NODE_KIND_ITEM,
+                        parent_card_id=int(context["parent_card_id"]),
+                    )
+            except Exception as exc:
+                link_error = str(exc)
+
+    context["metadata_saved"] = metadata_saved
+    context["knowledge_tree_link_error"] = link_error
+    return context
+
+
 def on_add_cards_did_add_note(note) -> None:
-    consume_pending_extract_options_for_note(note)
+    options = consume_pending_extract_options_for_note(note)
+    consume_pending_extract_context_for_note(note, options)
+
+
+def _set_editor_note_type_and_deck(editor, note_type_name: str, deck_name: str) -> None:
+    dock = get_add_card_dock()
+    dlg = getattr(dock, "_addcards_dialog", None) if dock is not None else None
+    if dlg is None or editor is None:
+        return
+
+    configured_note_type = str(note_type_name or "").strip()
+    if configured_note_type:
+        try:
+            model = mw.col.models.by_name(configured_note_type)
+        except Exception:
+            model = None
+        if model is not None:
+            try:
+                dlg.set_note_type(model["id"])
+            except Exception:
+                pass
+
+    configured_deck = str(deck_name or "").strip()
+    if configured_deck:
+        try:
+            deck = mw.col.decks.by_name(configured_deck)
+        except Exception:
+            deck = None
+        if deck is not None:
+            try:
+                dlg.set_deck(deck["id"])
+            except Exception:
+                pass
+
+
+def _prime_editor_note_for_extract(
+    editor,
+    field_values: dict[str, str],
+    mark_topic: bool,
+    source_tags=None,
+) -> None:
+    note = getattr(editor, "note", None)
+    if note is None:
+        return
+    try:
+        for index in range(len(list(getattr(note, "fields", []) or []))):
+            note.fields[index] = ""
+    except Exception:
+        pass
+    try:
+        note.tags = []
+    except Exception:
+        pass
+    for field_name, value in dict(field_values or {}).items():
+        try:
+            if field_name in note:
+                note[field_name] = str(value or "")
+        except Exception:
+            pass
+    if configured_extract_copy_source_tags():
+        copy_source_tags_to_note(note, source_tags or [])
+    if mark_topic:
+        add_topic_tags_to_note(note)
+    try:
+        editor.loadNote()
+    except Exception:
+        pass
+    _set_editor_tags(editor, _note_tags(note))
+    _schedule_editor_tag_widget_sync(editor)
+    _schedule_add_card_tag_button_refresh(editor)
+
+
+def prepare_reviewer_extract(
+    *,
+    selected_text: str,
+    note_type_name: str,
+    deck_name: str,
+    field_values: dict[str, str],
+    metadata: dict | None,
+    parent_card_id: int | None,
+    priority: float,
+    mark_topic: bool,
+    knowledge_tree_link_enabled: bool,
+    link_to_knowledge_tree: bool,
+    knowledge_tree_tooltip: str = "",
+) -> None:
+    open_add_card_dock()
+    update_selection_state(
+        "reviewer",
+        text=selected_text,
+        has_text=bool(str(selected_text or "").strip()),
+    )
+    set_current_extract_options(
+        priority=priority,
+        mark_topic=mark_topic,
+        link_to_knowledge_tree=link_to_knowledge_tree,
+    )
+    set_pending_extract_options(
+        priority=priority,
+        mark_topic=mark_topic,
+        link_to_knowledge_tree=link_to_knowledge_tree,
+        source="reviewer",
+        source_card_id=parent_card_id,
+    )
+    tree_state = (
+        knowledge_tree_link_state(bool(knowledge_tree_link_enabled))
+        if knowledge_tree_link_state is not None
+        else {
+            "enabled": bool(knowledge_tree_link_enabled),
+            "checked": bool(link_to_knowledge_tree),
+            "tooltip": str(knowledge_tree_tooltip or ""),
+        }
+    )
+    if knowledge_tree_tooltip:
+        tree_state["tooltip"] = knowledge_tree_tooltip
+    set_pending_extract_context(
+        metadata=metadata,
+        parent_card_id=parent_card_id,
+        knowledge_tree_link_enabled=bool(tree_state.get("enabled")),
+        link_to_knowledge_tree=bool(
+            tree_state.get("checked") and link_to_knowledge_tree
+        ),
+        knowledge_tree_tooltip=str(tree_state.get("tooltip") or ""),
+    )
+    editor = _dock_editor()
+    if editor is None:
+        return
+    _set_editor_note_type_and_deck(editor, note_type_name, deck_name)
+    editor = _dock_editor() or editor
+    _prime_editor_note_for_extract(
+        editor,
+        field_values,
+        mark_topic,
+        (pending_extract_options() or {}).get("source_tags") or [],
+    )
+    _inject_transfer_buttons(editor)
 
 
 def refresh_add_card_tag_buttons() -> None:
@@ -1227,6 +1580,18 @@ def _toggle_editor_tag_button(
     _refresh_add_card_tag_buttons_for_editor(editor)
 
 
+def _sync_extract_mark_topic_from_note(note) -> None:
+    if note is None:
+        return
+    mark_topic = _note_has_all_tags(note, configured_add_card_topic_tags())
+    item_active = _note_has_all_tags(note, configured_add_card_item_tags())
+    if item_active:
+        mark_topic = False
+    set_current_extract_options(mark_topic=mark_topic)
+    sync_pending_extract_options_from_current()
+    _refresh_transfer_buttons()
+
+
 def _on_topic_tag_button(editor) -> None:
     _toggle_editor_tag_button(
         editor,
@@ -1234,6 +1599,7 @@ def _on_topic_tag_button(editor) -> None:
         "No Add Card topic-button tags configured.",
         opposite_tags=configured_add_card_item_tags(),
     )
+    _sync_extract_mark_topic_from_note(getattr(editor, "note", None))
 
 
 def _on_item_tag_button(editor) -> None:
@@ -1243,6 +1609,7 @@ def _on_item_tag_button(editor) -> None:
         "No Add Card item-button tags configured.",
         opposite_tags=configured_add_card_topic_tags(),
     )
+    _sync_extract_mark_topic_from_note(getattr(editor, "note", None))
 
 
 def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
@@ -1288,6 +1655,8 @@ def _on_editor_did_update_tags(note) -> None:
         if current_note is None:
             continue
         if current_note is note or getattr(current_note, "id", None) == getattr(note, "id", None):
+            if getattr(editor, "addMode", False):
+                _sync_extract_mark_topic_from_note(current_note)
             _refresh_add_card_tag_buttons_for_editor(editor)
 
 
@@ -1537,6 +1906,7 @@ def transfer_selection_to_field(idx: int) -> None:
         set_pending_extract_options(
             priority=priority,
             mark_topic=mark_topic,
+            link_to_knowledge_tree=_extract_link_to_knowledge_tree_for_transfer(),
             source=resolved_source,
         )
 

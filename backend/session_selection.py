@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import NamedTuple
 
 try:
@@ -55,12 +56,14 @@ def _record_selected_card(
     selected_ids: list[int],
     picked_meta: dict[int, dict],
     added_to_filtered: set[int],
-    counts: dict,
+    scheduler_counts: dict,
+    session_counts: dict,
 ) -> None:
-    counts["type"][card_type] = counts["type"].get(card_type, 0) + 1
-    counts["mode"][mode] = counts["mode"].get(mode, 0) + 1
-    if tag:
-        counts["tags"][tag] = counts["tags"].get(tag, 0) + 1
+    for counts in (scheduler_counts, session_counts):
+        counts["type"][card_type] = counts["type"].get(card_type, 0) + 1
+        counts["mode"][mode] = counts["mode"].get(mode, 0) + 1
+        if tag:
+            counts["tags"][tag] = counts["tags"].get(tag, 0) + 1
     picked_meta[card_id] = {
         "card_type": card_type,
         "tag": tag,
@@ -214,13 +217,14 @@ def select_session_cards(
     selected_ids: list[int] = []
     added_to_filtered: set[int] = set()
     picked_meta: dict[int, dict] = {}
-    counts = stats.counts_for(cfg.scheduler_scope)
+    scheduler_counts = copy.deepcopy(stats.counts_for(cfg.scheduler_scope))
+    session_counts = stats.session
 
     def _pick(
         use_tags: bool, tag_weights: dict, force_card_type=None, force_mode=None
     ) -> bool:
         result = get_card_from_scheduler(
-            counts=counts,
+            counts=scheduler_counts,
             topics_rate=cfg.topics_rate,
             random_rate=cfg.random_rate,
             use_tags=use_tags,
@@ -249,7 +253,8 @@ def select_session_cards(
             selected_ids=selected_ids,
             picked_meta=picked_meta,
             added_to_filtered=added_to_filtered,
-            counts=counts,
+            scheduler_counts=scheduler_counts,
+            session_counts=session_counts,
         )
         return True
 
@@ -283,7 +288,8 @@ def select_session_cards(
                 selected_ids=selected_ids,
                 picked_meta=picked_meta,
                 added_to_filtered=added_to_filtered,
-                counts=counts,
+                scheduler_counts=scheduler_counts,
+                session_counts=session_counts,
             )
 
     if cfg.enforce_priority:

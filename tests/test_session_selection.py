@@ -111,6 +111,39 @@ def test_priority_direction_is_forwarded_to_scheduler():
     assert captured["addon_dir"] == "/tmp/unused"
 
 
+def test_lifetime_scope_uses_working_copy_but_keeps_session_snapshot():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="lifetime",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+    queue = iter(
+        [
+            types.SimpleNamespace(card=21, card_type="topics", tag="math", mode="priority"),
+            types.SimpleNamespace(card=22, card_type="items", tag=None, mode="random"),
+        ]
+    )
+    captured_counts = []
+
+    def _fake_get(**kwargs):
+        captured_counts.append(kwargs["counts"])
+        return next(queue)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=_fake_get
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [21, 22]
+    assert result.stats.session["type"] == {"topics": 1, "items": 1}
+    assert result.stats.session["tags"] == {"math": 1}
+    assert result.stats.lifetime == {"type": {}, "tags": {}, "mode": {}}
+    assert captured_counts[0] is not result.stats.lifetime
+
+
 def test_branch_scope_restricts_all_scheduler_pools_to_subtree_card_ids():
     cfg = SchedulerConfig(
         session_card_count=1,
