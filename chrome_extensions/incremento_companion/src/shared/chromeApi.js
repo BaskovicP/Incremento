@@ -3,6 +3,55 @@ export async function getActiveTab() {
   return tabs && tabs[0] ? tabs[0] : null;
 }
 
+const MAIN_FRAME_MESSAGE_OPTIONS = { frameId: 0 };
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isReceivingEndError(error) {
+  return /Receiving end does not exist/i.test(String(error?.message || error || ""));
+}
+
+function sendMessageToMainFrame(tabId, message) {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.tabs.sendMessage(
+        Number(tabId),
+        message,
+        MAIN_FRAME_MESSAGE_OPTIONS,
+        (response) => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            reject(new Error(error.message || "Failed to inspect the current tab."));
+            return;
+          }
+          resolve(response || null);
+        }
+      );
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function sendMessageToMainFrameWithRetry(tabId, message, attempts = 3) {
+  let lastError = null;
+  const totalAttempts = Math.max(1, Number(attempts) || 1);
+  for (let index = 0; index < totalAttempts; index += 1) {
+    try {
+      return await sendMessageToMainFrame(tabId, message);
+    } catch (error) {
+      lastError = error;
+      if (!isReceivingEndError(error) || index === totalAttempts - 1) {
+        throw error;
+      }
+      await sleep(80);
+    }
+  }
+  throw lastError || new Error("Failed to inspect the current tab.");
+}
+
 export async function captureSnapshot(tabId) {
   try {
     await chrome.scripting.executeScript({
@@ -13,20 +62,11 @@ export async function captureSnapshot(tabId) {
     // Ignore injection failures here; the direct page read below may still succeed.
   }
   try {
-    const fromContentScript = await new Promise((resolve) => {
-      try {
-        chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_CONTEXT" }, (response) => {
-          const error = chrome.runtime.lastError;
-          if (error || !response?.ok) {
-            resolve(null);
-            return;
-          }
-          resolve(response);
-        });
-      } catch (_err) {
-        resolve(null);
-      }
-    });
+    const fromContentScript = await sendMessageToMainFrameWithRetry(
+      tabId,
+      { type: "GET_PAGE_CONTEXT" },
+      4
+    ).catch(() => null);
     if (fromContentScript) {
       return fromContentScript;
     }
@@ -106,24 +146,19 @@ export async function getCurrentMediaContextForTab(tabId) {
     );
   }
 
-  return new Promise((resolve, reject) => {
-    try {
-      chrome.tabs.sendMessage(Number(tabId), { type: "GET_CURRENT_MEDIA_CONTEXT" }, (response) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(new Error(injectionError || error.message || "Failed to inspect the current page media."));
-          return;
-        }
-        if (!response?.ok && injectionError && !response?.error) {
-          reject(new Error(injectionError));
-          return;
-        }
-        resolve(response || null);
-      });
-    } catch (error) {
-      reject(new Error(String(error?.message || injectionError || "Failed to inspect the current page media.")));
+  try {
+    const response = await sendMessageToMainFrameWithRetry(
+      Number(tabId),
+      { type: "GET_CURRENT_MEDIA_CONTEXT" },
+      4
+    );
+    if (!response?.ok && injectionError && !response?.error) {
+      throw new Error(injectionError);
     }
-  });
+    return response || null;
+  } catch (error) {
+    throw new Error(String(error?.message || injectionError || "Failed to inspect the current page media."));
+  }
 }
 
 export async function updateBrowserMediaRefBadgeForTab(tabId, reference) {
@@ -131,7 +166,7 @@ export async function updateBrowserMediaRefBadgeForTab(tabId, reference) {
     return false;
   }
   try {
-    await chrome.tabs.sendMessage(Number(tabId), {
+    await sendMessageToMainFrame(Number(tabId), {
       type: "UPDATE_BROWSER_MEDIA_REF_BADGE",
       reference: reference || null,
     });
