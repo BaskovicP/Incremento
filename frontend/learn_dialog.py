@@ -480,7 +480,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
             ct = meta.get("card_type", "?")
             md = meta.get("mode", "?")
             tg = meta.get("tag") or "no-tag"
-            if meta.get("selection_stage") == "prioritized_tags":
+            if meta.get("selection_stage") in {"prioritized_tags", "ordered_priority"}:
                 prioritized_count += 1
             if tg == NO_TAGS_KEY:
                 tg = "other"
@@ -492,7 +492,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
         if len(selected_ids) < target:
             status += " Limited by current availability."
         if prioritized_count:
-            status += f" Tag-first: {prioritized_count}."
+            status += f" Ordered priority: {prioritized_count}."
 
         self._summary_lbl.setText(
             status
@@ -515,6 +515,10 @@ class _LiveSchedulerPreviewDialog(QDialog):
         ]
         if entry.get("selection_stage") == "prioritized_tags":
             parts.append("<div><b>Selection stage:</b> prioritized tag-first pass</div>")
+        if entry.get("selection_stage") == "ordered_priority":
+            order = entry.get("priority_order")
+            suffix = "" if order is None else f" (order {escape(str(order))})"
+            parts.append(f"<div><b>Selection stage:</b> ordered priority pass{suffix}</div>")
         if entry.get("pdf_filename"):
             parts.append(f"<div><b>PDF file:</b> {escape(entry['pdf_filename'])}</div>")
             if entry.get("pdf_exists") is not None:
@@ -646,6 +650,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
                         "mode": mode,
                         "tag": tag_text,
                         "selection_stage": meta.get("selection_stage"),
+                        "priority_order": meta.get("priority_order"),
                         "title": title or f"Card {cid}",
                         "tags": tags,
                         "fields": readable_fields,
@@ -1082,7 +1087,6 @@ class SchedulerConfigDialog(QDialog):
         self.setWindowTitle("Scheduler Settings")
         self.setMinimumWidth(520)
         self._linked_rows: list[dict] = []
-        self._prioritized_tag_rows: list[dict] = []
         self._updating = False
         self._on_clear_session = on_clear_session
         self._branch_scope = _normalize_branch_scope(branch_scope)
@@ -1098,6 +1102,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._preview_refresh_timer.timeout, self._refresh_live_preview_if_open)
         config = mw.addonManager.getConfig(__name__) or {}
         self._saved = config.get("dialog", {})
+        self._saved_priority_order_map = self._priority_order_map_from_dict(self._saved)
         self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._profiles: dict[str, dict] = config.get("profiles", {})
         self._selected_profile_name = _normalize_selected_scheduler_profile(
@@ -1651,51 +1656,34 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._schedule_live_preview_refresh())
         qconnect(self._day_end_edit.timeChanged, lambda _: self._schedule_live_preview_refresh())
 
-        # ── 8. Prioritized tags first ─────────────────────────────────────────
-        _prio_tag_hrow = QHBoxLayout()
-        _prio_tag_header = QLabel("Prioritize Tags First")
-        _prio_tag_header.setStyleSheet("font-weight: bold;")
-        _prio_tag_hrow.addWidget(_prio_tag_header)
-        _prio_tag_hrow.addWidget(_info_icon(
-            "Exhaust these tags before normal session scheduling starts.\n\n"
-            "Cards with these tags are gathered first, ordered by Incremento priority,\n"
-            "and placed at the start of the session. After that, the normal scheduler\n"
-            "fills the remaining slots using your funnel, tag quotas, and ratios."
-        ))
-        _prio_tag_hrow.addStretch()
-        layout.addLayout(_prio_tag_hrow)
-
-        _prio_tag_desc = QLabel(
-            "Use this when a tag such as active_writing should always come before the rest of the session."
-        )
-        _prio_tag_desc.setWordWrap(True)
-        _prio_tag_desc.setStyleSheet("color: gray;")
-        layout.addWidget(_prio_tag_desc)
-
-        _prio_tag_row = QHBoxLayout()
-        self._prioritized_tag_combo = QComboBox()
         self._current_profile_tags = sorted(set(mw.col.tags.all()))
         self._current_profile_tags_map = {t.casefold(): t for t in self._current_profile_tags}
-        self._prioritized_tag_combo.addItems(self._current_profile_tags)
-        _prio_tag_row.addWidget(self._prioritized_tag_combo)
-        _prio_tag_add_btn = QPushButton("Add")
-        qconnect(_prio_tag_add_btn.clicked, lambda: self._add_prioritized_tag(self._prioritized_tag_combo.currentText()))
-        _prio_tag_row.addWidget(_prio_tag_add_btn)
-        _prio_tag_clear_btn = QPushButton("Clear")
-        qconnect(_prio_tag_clear_btn.clicked, self._clear_prioritized_tags)
-        _prio_tag_row.addWidget(_prio_tag_clear_btn)
-        _prio_tag_row.addStretch()
-        layout.addLayout(_prio_tag_row)
 
-        self._prioritized_tags_container = QWidget()
-        self._prioritized_tags_layout = QVBoxLayout(self._prioritized_tags_container)
-        self._prioritized_tags_layout.setContentsMargins(0, 0, 0, 0)
-        self._prioritized_tags_layout.setSpacing(4)
-        layout.addWidget(self._prioritized_tags_container)
-
-        for raw_tag in self._saved.get("prioritized_tags_first", []):
-            self._add_prioritized_tag(str(raw_tag or "").strip(), refresh=False)
-        self._refresh_prioritized_tag_hint()
+        # ── 8. Ordered priority pre-pass ─────────────────────────────────────
+        priority_order_row = QHBoxLayout()
+        self._priority_order_cb = QCheckBox("Prioritize rows by order")
+        self._priority_order_cb.setChecked(bool(self._saved.get("priority_order_enabled", False)))
+        if (
+            "priority_order_enabled" not in self._saved
+            and "priority_order_entries" not in self._saved
+            and self._saved.get("prioritized_tags_first")
+        ):
+            self._priority_order_cb.setChecked(True)
+        self._priority_order_cb.setToolTip(
+            "When enabled, rows with an Order value are exhausted first, starting at 1.\n"
+            "Rows with the same number form one tier and are sorted by Incremento priority."
+        )
+        priority_order_row.addWidget(self._priority_order_cb)
+        priority_order_row.addWidget(_info_icon(
+            "Use Order values to run a pre-pass before normal scheduling.\n\n"
+            "Example: active_writing = 1 and PDF = 2 means all matching active_writing\n"
+            "cards are selected first, then all PDF cards, then the normal scheduler fills\n"
+            "the remaining slots. Empty or invalid Order boxes are ignored."
+        ))
+        priority_order_row.addStretch()
+        layout.addLayout(priority_order_row)
+        qconnect(self._priority_order_cb.stateChanged, lambda _: self._sync_priority_order_visibility())
+        qconnect(self._priority_order_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         # ── 9. Tag quotas ─────────────────────────────────────────────────────
         _tag_hrow = QHBoxLayout()
@@ -1761,7 +1749,8 @@ class SchedulerConfigDialog(QDialog):
                 continue
             self._add_tag_row(tag, entry.get("weight", 20),
                               locked=entry.get("locked", False),
-                              group_name=entry.get("group", "tags"))
+                              group_name=entry.get("group", "tags"),
+                              order=self._priority_order_for("tag", tag))
         self._ensure_other_tag_row(default_enabled=self._saved.get("no_tags_checked", True))
         if skipped_missing_tags > 0:
             tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
@@ -1923,6 +1912,15 @@ class SchedulerConfigDialog(QDialog):
             ct_count.setStyleSheet("color: gray; font-size: small;")
             ct_layout.addWidget(ct_count)
 
+            order_label = QLabel("Order:")
+            ct_layout.addWidget(order_label)
+            order_edit = QLineEdit()
+            order_edit.setFixedWidth(54)
+            order_edit.setPlaceholderText("Order")
+            order_edit.setToolTip("Positive number for ordered priority. Empty means normal scheduling.")
+            self._set_order_edit_value(order_edit, self._priority_order_for("content_type", ct_type))
+            ct_layout.addWidget(order_edit)
+
             ct_layout.addWidget(_info_icon(_ct_tips[ct_type]))
             _funnel_body_layout.addWidget(ct_widget)
 
@@ -1932,6 +1930,8 @@ class SchedulerConfigDialog(QDialog):
                 "slider": ct_slider,
                 "pct_label": ct_pct,
                 "count_label": ct_count,
+                "order_label": order_label,
+                "order_edit": order_edit,
             }
             self._ct_rows.append(ct_row)
 
@@ -1941,8 +1941,10 @@ class SchedulerConfigDialog(QDialog):
                      lambda v, r=ct_row: r["pct_label"].setText(f"{v}%"))
             qconnect(ct_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
             qconnect(ct_slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
+            qconnect(order_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._refresh_ct_counts()
+        self._sync_priority_order_visibility()
 
         # ── Phase order funnel ─────────────────────────────────────────────────
         _inner_sep = QFrame()
@@ -2216,109 +2218,118 @@ class SchedulerConfigDialog(QDialog):
     def _tag_display_name(tag: str) -> str:
         return "Other" if tag == NO_TAGS_KEY else tag
 
-    def _prioritized_tag_values(self) -> list[str]:
-        return [str(row.get("tag") or "") for row in self._prioritized_tag_rows if row.get("tag")]
+    @staticmethod
+    def _parse_order_value(value) -> int | None:
+        try:
+            order = int(str(value or "").strip())
+        except Exception:
+            return None
+        if order <= 0:
+            return None
+        return order
 
-    def _refresh_prioritized_tag_combo(self) -> None:
-        if not hasattr(self, "_prioritized_tag_combo"):
-            return
-        current = self._prioritized_tag_combo.currentText()
-        selected_keys = {tag.casefold() for tag in self._prioritized_tag_values()}
-        options = [
-            tag for tag in getattr(self, "_current_profile_tags", [])
-            if tag.casefold() not in selected_keys
-        ]
-        self._prioritized_tag_combo.blockSignals(True)
-        self._prioritized_tag_combo.clear()
-        self._prioritized_tag_combo.addItems(options)
-        idx = self._prioritized_tag_combo.findText(current)
-        if idx >= 0:
-            self._prioritized_tag_combo.setCurrentIndex(idx)
-        self._prioritized_tag_combo.blockSignals(False)
+    @classmethod
+    def _priority_order_map_from_dict(cls, d: dict) -> dict[tuple[str, str], int]:
+        result: dict[tuple[str, str], int] = {}
+        if not isinstance(d, dict):
+            return result
 
-    def _refresh_prioritized_tag_hint(self) -> None:
-        if not hasattr(self, "_prioritized_tags_container"):
-            return
-        hint_label = getattr(self, "_prioritized_tag_hint_lbl", None)
-        if hint_label is None:
-            hint_label = QLabel()
-            hint_label.setWordWrap(True)
-            hint_label.setStyleSheet("color: gray; font-size: small;")
-            self._prioritized_tags_layout.addWidget(hint_label)
-            self._prioritized_tag_hint_lbl = hint_label
-        tags = self._prioritized_tag_values()
-        if tags:
-            hint_label.setText(
-                "Current tag-first order: " + " → ".join(tags)
-            )
-        else:
-            hint_label.setText("No tags are prioritized first. The normal scheduler starts immediately.")
-        self._refresh_prioritized_tag_combo()
+        if isinstance(d.get("priority_order_entries"), list):
+            for entry in d.get("priority_order_entries") or []:
+                if not isinstance(entry, dict):
+                    continue
+                kind = str(entry.get("kind") or "").strip()
+                value = str(entry.get("value") or "").strip()
+                order = cls._parse_order_value(entry.get("order"))
+                if order is None:
+                    continue
+                if kind == "tag":
+                    if not value or value == NO_TAGS_KEY:
+                        continue
+                    key_value = value.casefold()
+                elif kind == "content_type":
+                    value = value.lower()
+                    if value not in {"pdf", "youtube", "webpage"}:
+                        continue
+                    key_value = value
+                else:
+                    continue
+                result.setdefault((kind, key_value), order)
+            return result
 
-    def _add_prioritized_tag(self, tag: str, *, refresh: bool = True) -> None:
-        resolved = self._resolve_tag_for_current_profile(tag)
-        if not resolved or resolved == NO_TAGS_KEY:
-            return
-        if any(str(row.get("tag") or "").casefold() == resolved.casefold() for row in self._prioritized_tag_rows):
-            return
-
-        row_widget = QWidget()
-        row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(0, 2, 0, 2)
-        row_layout.setSpacing(6)
-
-        badge = QLabel("First")
-        badge.setStyleSheet(
-            "QLabel {"
-            " color: white;"
-            " background: #2f7ed8;"
-            " border-radius: 9px;"
-            " padding: 2px 8px;"
-            " font-weight: 600;"
-            "}"
-        )
-        row_layout.addWidget(badge)
-
-        label = QLabel(resolved)
-        label.setStyleSheet("font-weight: 500;")
-        row_layout.addWidget(label)
-        row_layout.addStretch()
-
-        remove_btn = QPushButton("Remove")
-        qconnect(remove_btn.clicked, lambda _checked=False, value=resolved: self._remove_prioritized_tag(value))
-        row_layout.addWidget(remove_btn)
-
-        row_dict = {"tag": resolved, "widget": row_widget}
-        hint_label = getattr(self, "_prioritized_tag_hint_lbl", None)
-        if hint_label is not None:
-            self._prioritized_tags_layout.insertWidget(self._prioritized_tags_layout.indexOf(hint_label), row_widget)
-        else:
-            self._prioritized_tags_layout.addWidget(row_widget)
-        self._prioritized_tag_rows.append(row_dict)
-
-        if refresh:
-            self._refresh_prioritized_tag_hint()
-            self._schedule_live_preview_refresh()
-
-    def _remove_prioritized_tag(self, tag: str) -> None:
-        remaining: list[dict] = []
-        for row in self._prioritized_tag_rows:
-            if str(row.get("tag") or "").casefold() == str(tag or "").casefold():
-                row["widget"].deleteLater()
+        row_has_order = False
+        for row in d.get("tag_rows", []) or []:
+            if not isinstance(row, dict) or "order" not in row:
                 continue
-            remaining.append(row)
-        self._prioritized_tag_rows = remaining
-        self._refresh_prioritized_tag_hint()
-        self._schedule_live_preview_refresh()
+            row_has_order = True
+            tag = str(row.get("tag") or "").strip()
+            order = cls._parse_order_value(row.get("order"))
+            if tag and tag != NO_TAGS_KEY and order is not None:
+                result.setdefault(("tag", tag.casefold()), order)
+        for row in d.get("content_type_rows", []) or []:
+            if not isinstance(row, dict) or "order" not in row:
+                continue
+            row_has_order = True
+            ct = str(row.get("type") or "").strip().lower()
+            order = cls._parse_order_value(row.get("order"))
+            if ct in {"pdf", "youtube", "webpage"} and order is not None:
+                result.setdefault(("content_type", ct), order)
 
-    def _clear_prioritized_tags(self) -> None:
-        if not self._prioritized_tag_rows:
+        if not row_has_order and "priority_order_enabled" not in d:
+            for idx, raw_tag in enumerate(d.get("prioritized_tags_first", []) or []):
+                tag = str(raw_tag or "").strip()
+                if tag and tag != NO_TAGS_KEY:
+                    result.setdefault(("tag", tag.casefold()), idx + 1)
+        return result
+
+    def _priority_order_for(self, kind: str, value: str) -> int | None:
+        key_value = str(value or "").strip()
+        if kind == "tag":
+            key_value = key_value.casefold()
+        elif kind == "content_type":
+            key_value = key_value.lower()
+        return getattr(self, "_saved_priority_order_map", {}).get((kind, key_value))
+
+    @staticmethod
+    def _set_order_edit_value(edit: QLineEdit | None, order: int | None) -> None:
+        if edit is None:
             return
-        for row in self._prioritized_tag_rows:
-            row["widget"].deleteLater()
-        self._prioritized_tag_rows = []
-        self._refresh_prioritized_tag_hint()
-        self._schedule_live_preview_refresh()
+        edit.setText("" if order is None else str(order))
+
+    def _current_priority_order_entries(self) -> list[dict]:
+        entries: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for row in getattr(self, "_linked_rows", []):
+            tag = str(row.get("tag") or "")
+            if tag == NO_TAGS_KEY:
+                continue
+            order = self._parse_order_value(row.get("order_edit").text() if row.get("order_edit") else "")
+            if order is None:
+                continue
+            key = ("tag", tag.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append({"kind": "tag", "value": tag, "order": order})
+        for row in getattr(self, "_ct_rows", []):
+            ct = str(row.get("type") or "").lower()
+            order = self._parse_order_value(row.get("order_edit").text() if row.get("order_edit") else "")
+            if order is None:
+                continue
+            key = ("content_type", ct)
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append({"kind": "content_type", "value": ct, "order": order})
+        return entries
+
+    def _sync_priority_order_visibility(self) -> None:
+        enabled = bool(getattr(self, "_priority_order_cb", None) and self._priority_order_cb.isChecked())
+        for row in list(getattr(self, "_linked_rows", [])) + list(getattr(self, "_ct_rows", [])):
+            for key in ("order_label", "order_edit"):
+                widget = row.get(key)
+                if widget is not None:
+                    widget.setVisible(enabled)
 
     def _find_other_tag_row(self) -> dict | None:
         for row in self._linked_rows:
@@ -2418,7 +2429,14 @@ class SchedulerConfigDialog(QDialog):
 
         return row_widget, row_layout, slider, pct_label, lock_cb, name_label, group_edit
 
-    def _add_tag_row(self, tag: str, weight: int = 20, locked: bool = False, group_name: str = "tags") -> None:
+    def _add_tag_row(
+        self,
+        tag: str,
+        weight: int = 20,
+        locked: bool = False,
+        group_name: str = "tags",
+        order: int | None = None,
+    ) -> None:
         resolved = self._resolve_tag_for_current_profile(tag)
         if not resolved:
             return
@@ -2441,6 +2459,17 @@ class SchedulerConfigDialog(QDialog):
         qconnect(group_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
 
         if tag != NO_TAGS_KEY:
+            order_label = QLabel("Order:")
+            row_layout.addWidget(order_label)
+            order_edit = QLineEdit()
+            order_edit.setFixedWidth(54)
+            order_edit.setPlaceholderText("Order")
+            order_edit.setToolTip("Positive number for ordered priority. Empty means normal scheduling.")
+            self._set_order_edit_value(order_edit, order)
+            row_dict["order_label"] = order_label
+            row_dict["order_edit"] = order_edit
+            qconnect(order_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
+            row_layout.addWidget(order_edit)
             row_layout.addSpacing(6)
             remove_btn = QPushButton("✕")
             remove_btn.setFixedWidth(28)
@@ -2467,6 +2496,7 @@ class SchedulerConfigDialog(QDialog):
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
+        self._sync_priority_order_visibility()
         self._schedule_live_preview_refresh()
 
     def _remove_row(self, row_dict: dict, allow_other: bool = False) -> None:
@@ -2489,6 +2519,7 @@ class SchedulerConfigDialog(QDialog):
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
+        self._sync_priority_order_visibility()
         self._schedule_live_preview_refresh()
 
     # ------------------------------------------------------------------
@@ -3070,8 +3101,8 @@ class SchedulerConfigDialog(QDialog):
             "enforce_priority": d.get("enforce_priority"),
             "scheduler_scope": d.get("scheduler_scope"),
             "day_end_time": d.get("day_end_time"),
-            "prioritized_tags_first": d.get("prioritized_tags_first"),
-            "prioritized_tags_mode": d.get("prioritized_tags_mode"),
+            "priority_order_enabled": d.get("priority_order_enabled"),
+            "priority_order_entries": d.get("priority_order_entries"),
             "tag_rows": d.get("tag_rows"),
             "content_type_rows": d.get("content_type_rows"),
             "topics_filter": d.get("topics_filter"),
@@ -3389,7 +3420,9 @@ class SchedulerConfigDialog(QDialog):
             include_rest=self._current_include_rest_from_other_slider(),
             scheduler_scope=self._scope_combo.currentData(),
             day_end_time=self._get_day_end_time(),
-            prioritized_tags_first=self._prioritized_tag_values(),
+            priority_order_enabled=self._priority_order_cb.isChecked(),
+            priority_order_entries=self._current_priority_order_entries(),
+            prioritized_tags_first=[],
             prioritized_tags_mode="exhaust",
             phase_order=self._funnel.get_order(),
             phases_enabled=self._funnel.get_enabled(),
@@ -3437,7 +3470,9 @@ class SchedulerConfigDialog(QDialog):
             "enforce_priority":   self._enforce_cb.isChecked(),
             "scheduler_scope":    self._scope_combo.currentData(),
             "day_end_time":       self._get_day_end_time(),
-            "prioritized_tags_first": self._prioritized_tag_values(),
+            "priority_order_enabled": self._priority_order_cb.isChecked(),
+            "priority_order_entries": self._current_priority_order_entries(),
+            "prioritized_tags_first": [],
             "prioritized_tags_mode": "exhaust",
             "tag_rows": [
                 {
@@ -3445,11 +3480,21 @@ class SchedulerConfigDialog(QDialog):
                     "weight": r["slider"].value(),
                     "locked": r["lock_cb"].isChecked(),
                     "group": r["group_edit"].text().strip() or "tags",
+                    "order": (
+                        self._parse_order_value(r.get("order_edit").text())
+                        if r.get("order_edit") is not None
+                        else None
+                    ),
                 }
                 for r in self._linked_rows
             ],
             "content_type_rows": [
-                {"type": r["type"], "enabled": r["cb"].isChecked(), "weight": r["slider"].value()}
+                {
+                    "type": r["type"],
+                    "enabled": r["cb"].isChecked(),
+                    "weight": r["slider"].value(),
+                    "order": self._parse_order_value(r.get("order_edit").text()),
+                }
                 for r in self._ct_rows
             ],
             "topics_filter":    self._topics_filter_edit.text().strip(),
@@ -3657,10 +3702,15 @@ class SchedulerConfigDialog(QDialog):
                 pass
         self._update_day_end_visibility()
 
-        self._clear_prioritized_tags()
-        for raw_tag in d.get("prioritized_tags_first", []):
-            self._add_prioritized_tag(str(raw_tag or "").strip(), refresh=False)
-        self._refresh_prioritized_tag_hint()
+        self._saved_priority_order_map = self._priority_order_map_from_dict(d)
+        priority_order_enabled = bool(d.get("priority_order_enabled", False))
+        if (
+            "priority_order_enabled" not in d
+            and "priority_order_entries" not in d
+            and d.get("prioritized_tags_first")
+        ):
+            priority_order_enabled = True
+        self._priority_order_cb.setChecked(priority_order_enabled)
 
         self._funnel.set_order(
             d.get("phase_order", _DEFAULT_PHASE_ORDER),
@@ -3686,7 +3736,8 @@ class SchedulerConfigDialog(QDialog):
                 continue
             self._add_tag_row(tag, entry.get("weight", 20),
                               locked=entry.get("locked", False),
-                              group_name=entry.get("group", "tags"))
+                              group_name=entry.get("group", "tags"),
+                              order=self._priority_order_for("tag", tag))
         self._ensure_other_tag_row(default_enabled=d.get("no_tags_checked", True))
         self._sync_no_tags_checkbox_from_other_slider()
         if skipped_missing_tags > 0:
@@ -3701,8 +3752,13 @@ class SchedulerConfigDialog(QDialog):
             row["slider"].setValue(w)
             row["pct_label"].setText(f"{w}%")
             row["slider"].setEnabled(row["cb"].isChecked())
+            self._set_order_edit_value(
+                row.get("order_edit"),
+                self._priority_order_for("content_type", row["type"]),
+            )
 
         self._update_other_label()
+        self._sync_priority_order_visibility()
         self._refresh_expected_mix_preview()
         self._refresh_counts()
         self._schedule_live_preview_refresh()

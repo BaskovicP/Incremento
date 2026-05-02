@@ -23,7 +23,7 @@ from aqt.utils import showInfo
 from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton
 
 from .scheduler import NO_TAGS_KEY
-from .statistics import StatsManager, _empty_time
+from .statistics import StatsManager, _empty, _empty_time
 from .session_selection import select_session_cards
 from .paths import get_active_profile as _active_profile
 from .topic_postpone import release_expired_timed_postpones
@@ -40,7 +40,7 @@ _ADDON_PKG = __name__.split(".")[0]  # "incremento"
 INCREMENTO_DECK = "Incremento Session"
 INCREMENTO_PDF_REVIEW_DECK = "Incremento PDF Review"
 
-# Most-recent session counts — updated after each learnFunction picking loop.
+# Most-recent reviewed session counts, updated as cards are answered.
 # Accessed via get_session_counts() from __init__.py for the stats dialog.
 _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
 _session_times: dict = _empty_time()
@@ -65,7 +65,7 @@ def is_incremento_session_deck_name(deck_name: str | None) -> bool:
 
 def reset_session_counts() -> None:
     global _session_counts, _session_times
-    _session_counts = {"type": {}, "tags": {}, "mode": {}}
+    _session_counts = _empty()
     _session_times = _empty_time()
 
 
@@ -77,6 +77,14 @@ def get_session_counts() -> dict:
 def get_session_times() -> dict:
     """Return review-time stats for the last/active session."""
     return _session_times
+
+
+def _record_session_count(card_type: str, tag: str | None, mode: str) -> None:
+    """Track cards actually answered in the current Incremento session."""
+    _session_counts["type"][card_type] = _session_counts["type"].get(card_type, 0) + 1
+    _session_counts["mode"][mode] = _session_counts["mode"].get(mode, 0) + 1
+    if tag is not None:
+        _session_counts["tags"][tag] = _session_counts["tags"].get(tag, 0) + 1
 
 
 def _prepare_filtered_review_deck(
@@ -245,7 +253,6 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         stats = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=cfg.day_end_time)
         selected_ids = preview_override.get("selected_ids", [])
         _picked_meta: dict[int, dict] = preview_override.get("picked_meta", {})
-        session_counts_snapshot = preview_override.get("session_counts", {"type": {}, "tags": {}, "mode": {}})
         session_time_snapshot = preview_override.get("session_time", {"type": {}, "tags": {}})
     else:
         selection = select_session_cards(cfg, _ADDON_DIR, branch_scope=branch_scope)
@@ -253,12 +260,12 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         selected_ids = selection.selected_ids
         # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
         _picked_meta = selection.picked_meta
-        session_counts_snapshot = stats.session
         session_time_snapshot = stats.session_time
 
-    # Snapshot session counts so the statistics dialog can show them later.
+    # The picker uses session-shaped counts to build the deck, but the
+    # statistics dialog should show cards actually reviewed.
     global _session_counts, _session_times
-    _session_counts = copy.deepcopy(session_counts_snapshot)
+    _session_counts = _empty()
     _session_times = copy.deepcopy(session_time_snapshot)
 
     if not selected_ids:
@@ -367,6 +374,7 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
                 ),
             )
             stats.record(fake, cfg.scheduler_scope)
+            _record_session_count(fake.card_type, fake.tag, fake.mode)
             _session_times = copy.deepcopy(stats.session_time)
             _question_started_at.pop(cid, None)
         except Exception as e:

@@ -241,6 +241,34 @@ class TestSelectedSchedulerProfile:
         assert _normalize_selected_scheduler_profile("Missing", profiles) is None
 
 
+class TestPriorityOrderState:
+    def test_priority_order_map_prefers_new_entries(self):
+        mapping = SchedulerConfigDialog._priority_order_map_from_dict(
+            {
+                "priority_order_entries": [
+                    {"kind": "tag", "value": "Writing", "order": "2"},
+                    {"kind": "content_type", "value": "PDF", "order": 1},
+                ],
+                "prioritized_tags_first": ["Legacy"],
+            }
+        )
+
+        assert mapping == {
+            ("tag", "writing"): 2,
+            ("content_type", "pdf"): 1,
+        }
+
+    def test_priority_order_map_migrates_legacy_prioritized_tags(self):
+        mapping = SchedulerConfigDialog._priority_order_map_from_dict(
+            {"prioritized_tags_first": ["alpha", "beta"]}
+        )
+
+        assert mapping == {
+            ("tag", "alpha"): 1,
+            ("tag", "beta"): 2,
+        }
+
+
 class TestSchedulerConfigDialogProfiles:
     def test_add_profile_persists_new_preset_under_config_profiles(self, monkeypatch):
         stored_config = {"dialog": {"session_card_count": 50}, "profiles": {"Focus": {"session_card_count": 20}}}

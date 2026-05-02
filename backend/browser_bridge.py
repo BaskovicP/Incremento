@@ -631,7 +631,7 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
     model = mw.col.models.by_name(note_type_name)
     if model is None:
         raise ValueError(f"Note type '{note_type_name}' was not found.")
-    ensure_incremento_metadata_fields(mw.col.models, model)
+    ensure_incremento_metadata_fields(mw.col.models, model, save=True)
 
     field_names = [str(field.get("name") or "") for field in model.get("flds") or [] if str(field.get("name") or "").strip()]
     if not field_names:

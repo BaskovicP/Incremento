@@ -95,6 +95,14 @@ try:
 except ImportError:
     from pdf_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
 try:
+    from ..backend.reader_bookmarks import (
+        add_reader_bookmark,
+        delete_reader_bookmark,
+        list_reader_bookmarks,
+    )
+except ImportError:
+    from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
+try:
     from .highlight_note_dialog import HighlightNoteDialog
 except ImportError:
     from highlight_note_dialog import HighlightNoteDialog  # type: ignore
@@ -657,6 +665,9 @@ _MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
 _MSG_DUE_REVIEW = "incremento_pdf_due_review:"
 _MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
 _MSG_HL_NOTE = "incremento_pdf_hl_note:"
+_MSG_BOOKMARK_ADD = "incremento_pdf_bookmark_add:"
+_MSG_BOOKMARK_DELETE = "incremento_pdf_bookmark_delete:"
+_MSG_BOOKMARK_LIST = "incremento_pdf_bookmark_list:"
 
 
 def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
@@ -855,6 +866,62 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
     except Exception:
         pass
     tooltip("PDF highlight note saved.")
+
+
+def _pdf_bookmarks_payload(card_id: int) -> list[dict]:
+    try:
+        return list_reader_bookmarks(_ADDON_DIR, _active_profile(), int(card_id), "pdf")
+    except Exception:
+        return []
+
+
+def _push_pdf_bookmarks(card_id: int | None = None) -> None:
+    if _pdf_dock is None:
+        return
+    try:
+        cid = int(card_id if card_id is not None else _current_pdf_card_id)
+    except Exception:
+        cid = 0
+    if cid <= 0:
+        return
+    payload = json.dumps(_pdf_bookmarks_payload(cid))
+    try:
+        _pdf_dock._view.page().runJavaScript(
+            f"window.incrementoReceivePdfBookmarks && window.incrementoReceivePdfBookmarks({payload});"
+        )
+    except Exception:
+        pass
+
+
+def _add_pdf_bookmark(card_id: int, page: int) -> None:
+    try:
+        add_reader_bookmark(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            "pdf",
+            {"page": max(1, int(page))},
+        )
+    except Exception as exc:
+        showInfo(f"Could not save PDF bookmark:\n{exc}")
+        return
+    _push_pdf_bookmarks(int(card_id))
+    tooltip("PDF bookmark saved.")
+
+
+def _delete_pdf_bookmark(card_id: int, bookmark_id: str) -> None:
+    try:
+        delete_reader_bookmark(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            "pdf",
+            str(bookmark_id or ""),
+        )
+    except Exception as exc:
+        showInfo(f"Could not delete PDF bookmark:\n{exc}")
+        return
+    _push_pdf_bookmarks(int(card_id))
 
 
 def _open_pdf_limit_dialog(card_id: int) -> None:
@@ -1133,6 +1200,30 @@ class _PdfDockPage(QWebEnginePage):
                 _edit_pdf_highlight_note(str(payload.get("id") or ""))
             except Exception as e:
                 showInfo(f"Could not edit PDF highlight note.\n\n{e}")
+        elif msg.startswith(_MSG_BOOKMARK_ADD):
+            try:
+                payload = json.loads(msg[len(_MSG_BOOKMARK_ADD) :])
+                cid = int(payload.get("cardId", 0) or 0)
+                page = int(payload.get("page", 1) or 1)
+                if cid > 0:
+                    _add_pdf_bookmark(cid, page)
+            except Exception as e:
+                showInfo(f"Could not save PDF bookmark:\n{e}")
+        elif msg.startswith(_MSG_BOOKMARK_DELETE):
+            try:
+                payload = json.loads(msg[len(_MSG_BOOKMARK_DELETE) :])
+                cid = int(payload.get("cardId", 0) or 0)
+                if cid > 0:
+                    _delete_pdf_bookmark(cid, str(payload.get("id") or ""))
+            except Exception as e:
+                showInfo(f"Could not delete PDF bookmark:\n{e}")
+        elif msg.startswith(_MSG_BOOKMARK_LIST):
+            try:
+                cid = int(msg[len(_MSG_BOOKMARK_LIST) :])
+                if cid > 0:
+                    _push_pdf_bookmarks(cid)
+            except Exception:
+                pass
         elif msg.startswith(_MSG_REPAIR_MISSING):
             _repair_missing_pdf()
         elif msg.startswith(_MSG_SNAPSHOT):
@@ -1549,16 +1640,18 @@ def show_pdf_in_dock(
     ).toString()
 
     hls = load_highlights(_ADDON_DIR, _active_profile(), card_id)
+    bookmarks = _pdf_bookmarks_payload(card_id)
     limit_status = _current_pdf_limit_status(card_id, current_page=page)
 
     js = (
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())} }};"
+        f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

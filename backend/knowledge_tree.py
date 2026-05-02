@@ -553,7 +553,14 @@ def create_card_for_node(
     model = mw.col.models.by_name(str(note_type_name or "").strip())
     if model is None:
         raise RuntimeError(f"Note type '{note_type_name}' was not found.")
-    ensure_incremento_metadata_fields(mw.col.models, model)
+    try:
+        ensure_incremento_metadata_fields(mw.col.models, model, save=True)
+    except TypeError:
+        if ensure_incremento_metadata_fields(mw.col.models, model):
+            try:
+                mw.col.models.update_dict(model)
+            except Exception:
+                pass
 
     deck = mw.col.decks.by_name(str(deck_name or "").strip())
     if deck is None:

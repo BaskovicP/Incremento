@@ -43,7 +43,15 @@ except ImportError:
     from paths import get_active_profile as _active_profile  # type: ignore
 
 # ── colour palettes ────────────────────────────────────────────────────────────
-_TYPE_COLORS = ["#4a90d9", "#7bc67e"]  # Topics, Items
+_TYPE_ORDER = ["topics", "items", "pdf", "youtube", "webpage"]
+_TYPE_LABELS = {
+    "topics": "Topics",
+    "items": "Items",
+    "pdf": "PDFs",
+    "youtube": "Videos",
+    "webpage": "Web pages",
+}
+_TYPE_COLORS = ["#4a90d9", "#7bc67e", "#e0a020", "#e05050", "#1abc9c"]
 _MODE_COLORS = ["#e0a020", "#8da0cb"]  # Priority, Random
 _TAG_COLORS = [  # cycled for arbitrary tag lists
     "#4a90d9",
@@ -180,6 +188,32 @@ def _fmt_duration(seconds: float) -> str:
     if m:
         return f"{m}m {s}s"
     return f"{s}s"
+
+
+def _ordered_type_items(type_counts: dict) -> list[tuple[str, float]]:
+    if not isinstance(type_counts, dict):
+        return []
+
+    items: list[tuple[str, float]] = []
+    seen: set[str] = set()
+
+    def _append(key: str) -> None:
+        seen.add(key)
+        try:
+            value = float(type_counts.get(key, 0) or 0)
+        except Exception:
+            value = 0.0
+        if value > 0:
+            items.append((_TYPE_LABELS.get(key, key.replace("_", " ").title()), value))
+
+    for key in _TYPE_ORDER:
+        _append(key)
+
+    for key in sorted(str(k) for k in type_counts.keys()):
+        if key not in seen:
+            _append(key)
+
+    return items
 
 
 # ── main dialog ────────────────────────────────────────────────────────────────
@@ -338,13 +372,12 @@ class StatsDialog(QDialog):
             return
 
         # Card types
-        n_topics = counts["type"].get("topics", 0)
-        n_items = counts["type"].get("items", 0)
-        if n_topics or n_items:
+        type_items = _ordered_type_items(counts["type"])
+        if type_items:
             self._clayout.addWidget(
                 _section(
                     "Card Types",
-                    [("Topics", n_topics), ("Items", n_items)],
+                    type_items,
                     _TYPE_COLORS,
                     self._content,
                 )
@@ -377,13 +410,12 @@ class StatsDialog(QDialog):
             )
 
         # Time by card type
-        t_topics = time_stats["type"].get("topics", 0.0)
-        t_items = time_stats["type"].get("items", 0.0)
-        if t_topics or t_items:
+        time_type_items = _ordered_type_items(time_stats["type"])
+        if time_type_items:
             self._clayout.addWidget(
                 _section(
                     "Review Time by Card Type",
-                    [("Topics", t_topics), ("Items", t_items)],
+                    time_type_items,
                     _TYPE_COLORS,
                     self._content,
                     value_formatter=_fmt_duration,

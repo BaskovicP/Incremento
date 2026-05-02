@@ -7621,6 +7621,8 @@
     const snapStartRef = reactExports.useRef(null);
     const [pageCards, setPageCards] = reactExports.useState([]);
     const [showHighlightsPanel, setShowHighlightsPanel] = reactExports.useState(false);
+    const [bookmarks, setBookmarks] = reactExports.useState([]);
+    const [showBookmarksPanel, setShowBookmarksPanel] = reactExports.useState(false);
     const [searchQuery, setSearchQuery] = reactExports.useState("");
     const [limitStatus, setLimitStatus] = reactExports.useState(DEFAULT_LIMIT_STATUS);
     const [limitNotice, setLimitNotice] = reactExports.useState(null);
@@ -7649,6 +7651,25 @@
     const overrideEnabled = !!(limitStatus == null ? void 0 : limitStatus.override_enabled);
     const hasPdfCard = Number(cardIdRef.current || 0) > 0;
     const clearLimitNotice = reactExports.useCallback(() => setLimitNotice(null), []);
+    const refreshBookmarks = reactExports.useCallback(() => {
+      if (!cardIdRef.current) return;
+      window.pycmd(`incremento_pdf_bookmark_list:${cardIdRef.current}`);
+    }, [cardIdRef]);
+    const addBookmark = reactExports.useCallback(() => {
+      if (!cardIdRef.current) return;
+      window.pycmd("incremento_pdf_bookmark_add:" + JSON.stringify({
+        cardId: cardIdRef.current,
+        page: pageRef.current
+      }));
+      setShowBookmarksPanel(true);
+    }, [cardIdRef, pageRef]);
+    const deleteBookmark = reactExports.useCallback((id) => {
+      if (!cardIdRef.current || !id) return;
+      window.pycmd("incremento_pdf_bookmark_delete:" + JSON.stringify({
+        cardId: cardIdRef.current,
+        id
+      }));
+    }, [cardIdRef]);
     const showHighlightNote = reactExports.useCallback((highlight, event) => {
       const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
       if (!note) return;
@@ -7912,6 +7933,12 @@
       }
       rawNav(delta);
     }, [canMoveToPage, pageRef, rawNav]);
+    const jumpToBookmark = reactExports.useCallback((bookmark) => {
+      var _a;
+      const targetPage = Number(((_a = bookmark == null ? void 0 : bookmark.location) == null ? void 0 : _a.page) || 0);
+      if (!Number.isFinite(targetPage) || targetPage < 1) return;
+      limitAwareNav(targetPage - pageRef.current);
+    }, [limitAwareNav, pageRef]);
     const limitAwareMarkRead = reactExports.useCallback(() => {
       if (!canMarkReadAtPage(pageRef.current)) {
         return;
@@ -7919,9 +7946,11 @@
       rawMarkRead();
     }, [canMarkReadAtPage, pageRef, rawMarkRead]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
         setHighlights(window._incPdfHighlights || []);
         window._incPdfHighlights = null;
+        setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
+        window._incPdfBookmarks = null;
         setSearchQuery(startSearchQuery || "");
         setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
         setLimitNotice(null);
@@ -7945,6 +7974,9 @@
       window.incrementoReceivePdfLimitStatus = (status) => {
         setLimitStatus(status || DEFAULT_LIMIT_STATUS);
       };
+      window.incrementoReceivePdfBookmarks = (items) => {
+        setBookmarks(Array.isArray(items) ? items : []);
+      };
       window.incrementoUpdatePdfHighlightNote = (id, note) => {
         updateHighlightNote(String(id || ""), String(note || ""));
       };
@@ -7959,7 +7991,8 @@
           pending.readPage || 0,
           pending.searchQuery || "",
           pending.limitStatus || DEFAULT_LIMIT_STATUS,
-          pending.autoHighlightOnExtract
+          pending.autoHighlightOnExtract,
+          pending.bookmarks || []
         );
       }
       return () => {
@@ -7970,6 +8003,7 @@
         delete window.incrementoSetAutoHighlightOnExtract;
         delete window.incrementoReceivePageCards;
         delete window.incrementoReceivePdfLimitStatus;
+        delete window.incrementoReceivePdfBookmarks;
         delete window.incrementoUpdatePdfHighlightNote;
       };
     }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote, applyAutoHighlightSetting]);
@@ -8331,6 +8365,39 @@
                               ")"
                             ]
                           }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            title: "Bookmark the current page as an interesting place",
+                            onClick: addBookmark,
+                            children: "★ Bookmark"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            title: "Show saved interesting-place bookmarks",
+                            style: {
+                              background: showBookmarksPanel ? "rgba(250,204,21,0.18)" : "transparent",
+                              border: "1px solid rgba(250,204,21,0.55)",
+                              borderRadius: 8,
+                              color: showBookmarksPanel ? "rgb(234,179,8)" : "inherit",
+                              cursor: "pointer",
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              fontWeight: showBookmarksPanel ? "bold" : "normal"
+                            },
+                            onClick: () => {
+                              refreshBookmarks();
+                              setShowBookmarksPanel((o) => !o);
+                            },
+                            children: [
+                              "Bookmarks (",
+                              bookmarks.length,
+                              ")"
+                            ]
+                          }
                         )
                       ] })
                     ] })
@@ -8415,6 +8482,82 @@
                     ] })
                   ] })
                 ] })
+              ]
+            }
+          ),
+          hasPdfCard && showBookmarksPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              style: {
+                position: "fixed",
+                top: CONTROLS_HEIGHT + 8,
+                right: 12,
+                width: "min(420px, calc(100vw - 24px))",
+                maxHeight: "calc(100vh - 220px)",
+                overflowY: "auto",
+                background: "rgba(25,25,25,0.97)",
+                border: "1px solid rgba(250,204,21,0.40)",
+                borderRadius: 8,
+                boxShadow: "0 8px 20px rgba(0,0,0,0.35)",
+                padding: 10,
+                zIndex: 65
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { fontSize: 13 }, children: "PDF Bookmarks" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: addBookmark, style: { fontSize: 12, padding: "1px 8px" }, children: "Add current page" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setShowBookmarksPanel(false), style: { fontSize: 12, padding: "1px 8px" }, children: "Close" })
+                  ] })
+                ] }),
+                bookmarks.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: "No bookmarks yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: bookmarks.map((bookmark) => {
+                  var _a;
+                  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
+                    {
+                      style: {
+                        border: "1px solid rgba(90,90,90,0.55)",
+                        borderRadius: 6,
+                        background: "rgba(35,35,35,0.75)",
+                        color: "inherit",
+                        padding: "8px 10px"
+                      },
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, fontWeight: 700 }, children: bookmark.label || `Page ${((_a = bookmark == null ? void 0 : bookmark.location) == null ? void 0 : _a.page) || 1}` }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", gap: 6, flexShrink: 0 }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              onClick: () => {
+                                jumpToBookmark(bookmark);
+                                setShowBookmarksPanel(false);
+                              },
+                              style: { fontSize: 11, padding: "1px 7px" },
+                              children: "Jump"
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              onClick: () => deleteBookmark(bookmark.id),
+                              style: {
+                                border: "1px solid rgba(220,70,70,0.55)",
+                                borderRadius: 4,
+                                background: "rgba(220,70,70,0.12)",
+                                color: "rgba(248,113,113,0.95)",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                padding: "1px 7px"
+                              },
+                              children: "Delete"
+                            }
+                          )
+                        ] })
+                      ] })
+                    },
+                    bookmark.id
+                  );
+                }) })
               ]
             }
           ),

@@ -206,7 +206,7 @@ def test_empty_branch_scope_returns_no_selected_cards():
     mock_get.assert_not_called()
 
 
-def test_prioritized_tags_are_selected_before_scheduler_fill():
+def test_ordered_priority_tags_are_selected_before_scheduler_fill():
     cfg = SchedulerConfig(
         session_card_count=3,
         enforce_priority=False,
@@ -214,7 +214,8 @@ def test_prioritized_tags_are_selected_before_scheduler_fill():
         use_tags=False,
         tag_weights={},
         include_rest=True,
-        prioritized_tags_first=["active_writing"],
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "tag", "value": "active_writing", "order": 1}],
     )
     queue = iter(
         [
@@ -246,13 +247,120 @@ def test_prioritized_tags_are_selected_before_scheduler_fill():
         result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
 
     assert result.selected_ids == [302, 301, 999]
-    assert result.picked_meta[302]["selection_stage"] == "prioritized_tags"
-    assert result.picked_meta[301]["selection_stage"] == "prioritized_tags"
+    assert result.picked_meta[302]["selection_stage"] == "ordered_priority"
+    assert result.picked_meta[302]["priority_order"] == 1
+    assert result.picked_meta[301]["selection_stage"] == "ordered_priority"
     assert result.picked_meta[999]["selection_stage"] == "scheduler"
     assert result.stats.session["tags"] == {"active_writing": 2}
 
 
-def test_prioritized_tags_dedupe_cards_across_multiple_tags():
+def test_ordered_priority_tiers_run_in_ascending_order():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        priority_order_enabled=True,
+        priority_order_entries=[
+            {"kind": "tag", "value": "second", "order": 2},
+            {"kind": "tag", "value": "first", "order": 1},
+        ],
+    )
+
+    def _fake_topics(tag, **_kwargs):
+        if tag == "first":
+            return [201]
+        if tag == "second":
+            return [101]
+        return []
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        side_effect=_fake_topics,
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [201, 101]
+    assert result.picked_meta[201]["priority_order"] == 1
+    assert result.picked_meta[101]["priority_order"] == 2
+
+
+def test_ordered_priority_content_types_work_before_normal_scheduling():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "content_type", "value": "pdf", "order": 1}],
+    )
+    queue = iter(
+        [
+            types.SimpleNamespace(card=999, card_type="items", tag=None, mode="random"),
+        ]
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_all_pdf_cards",
+        return_value=[501],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=lambda **_: next(queue),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [501, 999]
+    assert result.picked_meta[501]["card_type"] == "pdf"
+    assert result.picked_meta[501]["selection_stage"] == "ordered_priority"
+
+
+def test_ordered_priority_entries_are_ignored_when_disabled():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        priority_order_enabled=False,
+        priority_order_entries=[{"kind": "tag", "value": "alpha", "order": 1}],
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag"
+    ) as mock_tag_pool, patch(
+        "session_selection.get_card_from_scheduler",
+        return_value=types.SimpleNamespace(card=999, card_type="items", tag=None, mode="random"),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [999]
+    mock_tag_pool.assert_not_called()
+
+
+def test_ordered_priority_tags_dedupe_cards_across_multiple_tags():
     cfg = SchedulerConfig(
         session_card_count=3,
         enforce_priority=False,
@@ -260,7 +368,11 @@ def test_prioritized_tags_dedupe_cards_across_multiple_tags():
         use_tags=False,
         tag_weights={},
         include_rest=True,
-        prioritized_tags_first=["alpha", "beta"],
+        priority_order_enabled=True,
+        priority_order_entries=[
+            {"kind": "tag", "value": "alpha", "order": 1},
+            {"kind": "tag", "value": "beta", "order": 1},
+        ],
     )
 
     def _fake_topics(tag, **_kwargs):
@@ -299,7 +411,55 @@ def test_prioritized_tags_dedupe_cards_across_multiple_tags():
     assert result.picked_meta[102]["tag"] == "beta"
 
 
-def test_prioritized_tags_respect_session_card_count_cap():
+def test_ordered_priority_same_tier_tag_and_content_dedupe_and_priority_sort():
+    cfg = SchedulerConfig(
+        session_card_count=3,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        priority_order_enabled=True,
+        priority_order_entries=[
+            {"kind": "content_type", "value": "pdf", "order": 1},
+            {"kind": "tag", "value": "alpha", "order": 1},
+        ],
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_all_pdf_cards",
+        return_value=[301, 302],
+    ), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[302],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        return_value=[303],
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: sorted(ids, reverse=True),
+    ), patch(
+        "session_selection.get_card_from_scheduler",
+        return_value=types.SimpleNamespace(card=None, card_type=None, tag=None, mode=None),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [303, 302, 301]
+    assert result.selected_ids.count(302) == 1
+    assert result.picked_meta[303]["tag"] == "alpha"
+    assert result.picked_meta[302]["card_type"] == "pdf"
+
+
+def test_ordered_priority_respects_session_card_count_cap():
     cfg = SchedulerConfig(
         session_card_count=1,
         enforce_priority=False,
@@ -307,7 +467,8 @@ def test_prioritized_tags_respect_session_card_count_cap():
         use_tags=False,
         tag_weights={},
         include_rest=True,
-        prioritized_tags_first=["alpha"],
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "tag", "value": "alpha", "order": 1}],
     )
 
     with patch("session_selection.StatsManager", _FakeStats), patch(
@@ -337,7 +498,7 @@ def test_prioritized_tags_respect_session_card_count_cap():
     mock_get.assert_not_called()
 
 
-def test_prioritized_tags_use_branch_scope_in_queries():
+def test_ordered_priority_tags_use_branch_scope_in_queries():
     cfg = SchedulerConfig(
         session_card_count=1,
         enforce_priority=False,
@@ -345,7 +506,8 @@ def test_prioritized_tags_use_branch_scope_in_queries():
         use_tags=False,
         tag_weights={},
         include_rest=True,
-        prioritized_tags_first=["medicine"],
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "tag", "value": "medicine", "order": 1}],
         topics_filter="deck:Topics",
         items_filter="-deck:Topics",
     )

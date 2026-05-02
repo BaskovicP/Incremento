@@ -688,6 +688,46 @@ def test_prepare_reviewer_extract_primes_native_add_dialog(monkeypatch):
     assert dock.pending_extract_context()["parent_card_id"] == 5
 
 
+def test_set_editor_note_type_saves_metadata_fields_before_switch(monkeypatch):
+    note = _FakeNote(note_id=22)
+    editor = _FakeEditor(note, add_mode=True)
+    dlg = _FakeAddCardsDialog(editor)
+    fake_dock = _FakeDock(editor)
+    fake_dock._addcards_dialog = dlg
+    calls = []
+
+    def _set_note_type(note_type_id):
+        calls.append(("set_note_type", note_type_id))
+        dlg.note_type_ids.append(note_type_id)
+
+    dlg.set_note_type = _set_note_type
+    monkeypatch.setattr(dock, "get_add_card_dock", lambda: fake_dock)
+    monkeypatch.setitem(
+        sys.modules,
+        "note_metadata",
+        types.SimpleNamespace(
+            ensure_incremento_metadata_fields=lambda models, model, save=False: calls.append(
+                ("ensure", save)
+            )
+            or True,
+        ),
+    )
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                models=types.SimpleNamespace(by_name=lambda name: {"id": 9} if name == "Basic" else None),
+                decks=types.SimpleNamespace(by_name=lambda name: None),
+            )
+        ),
+    )
+
+    dock._set_editor_note_type_and_deck(editor, "Basic", "")
+
+    assert calls == [("ensure", True), ("set_note_type", 9)]
+
+
 def test_do_fill_forwards_mark_topic_to_embedded_dock(monkeypatch):
     fake_dock = _FakeDock(_FakeEditor(_FakeNote()))
     monkeypatch.setattr(dock, "_add_card_dock", fake_dock)

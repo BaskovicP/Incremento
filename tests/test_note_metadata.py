@@ -58,6 +58,40 @@ def test_ensure_incremento_metadata_fields_adds_missing_fields():
     )
 
 
+def test_ensure_incremento_metadata_fields_save_refreshes_ordinals():
+    model = {"id": 123, "flds": [{"name": "Front", "ord": 0}]}
+
+    class _Models:
+        def __init__(self):
+            self.updated = False
+
+        def new_field(self, name):
+            return {"name": name, "ord": None}
+
+        def add_field(self, model_dict, field):
+            model_dict["flds"].append(field)
+
+        def update_dict(self, model_dict):
+            self.updated = True
+
+        def get(self, model_id):
+            assert model_id == 123
+            return {
+                "id": 123,
+                "flds": [
+                    {"name": field["name"], "ord": index}
+                    for index, field in enumerate(model["flds"])
+                ],
+            }
+
+    models = _Models()
+    changed = ensure_incremento_metadata_fields(models, model, save=True)
+
+    assert changed is True
+    assert models.updated is True
+    assert None not in [field["ord"] for field in model["flds"]]
+
+
 def test_ensure_incremento_ocr_field_adds_hidden_ocr_field():
     model = {"flds": [{"name": "Front"}, {"name": "Back"}]}
 
@@ -72,6 +106,40 @@ def test_ensure_incremento_ocr_field_adds_hidden_ocr_field():
 
     assert changed is True
     assert model["flds"][-1]["name"] == INCREMENTO_OCR_TEXT_FIELD
+
+
+def test_ensure_incremento_ocr_field_save_refreshes_ordinals():
+    model = {"id": 124, "flds": [{"name": "Front", "ord": 0}]}
+
+    class _Models:
+        def __init__(self):
+            self.updated = False
+
+        def new_field(self, name):
+            return {"name": name, "ord": None}
+
+        def add_field(self, model_dict, field):
+            model_dict["flds"].append(field)
+
+        def update_dict(self, model_dict):
+            self.updated = True
+
+        def get(self, model_id):
+            assert model_id == 124
+            return {
+                "id": 124,
+                "flds": [
+                    {"name": field["name"], "ord": index}
+                    for index, field in enumerate(model["flds"])
+                ],
+            }
+
+    models = _Models()
+    changed = ensure_incremento_ocr_field(models, model, save=True)
+
+    assert changed is True
+    assert models.updated is True
+    assert None not in [field["ord"] for field in model["flds"]]
 
 
 def test_hidden_field_values_returns_incremento_hidden_fields():

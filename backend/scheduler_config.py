@@ -32,6 +32,8 @@ class SchedulerConfig:
     pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
     content_type_weights: dict = field(default_factory=dict)  # {"pdf"|"youtube"|"webpage": fraction}
     priority_lower_is_more_important: bool = True
+    priority_order_enabled: bool = False
+    priority_order_entries: list = field(default_factory=list)  # [{"kind": "tag"|"content_type", "value": str, "order": int}]
     prioritized_tags_first: list[str] = field(default_factory=list)
     prioritized_tags_mode: str = "exhaust"
     # Funnel: ordered list of phase IDs; phases_enabled gates each phase in strict mode
@@ -128,6 +130,25 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     if prioritized_tags_mode != "exhaust":
         prioritized_tags_mode = "exhaust"
 
+    has_new_priority_order_config = (
+        "priority_order_enabled" in d
+        or "priority_order_entries" in d
+        or any("order" in r for r in real_rows)
+        or any("order" in r for r in content_type_rows)
+    )
+    priority_order_enabled = bool(d.get("priority_order_enabled", False))
+    priority_order_entries = _normalize_priority_order_entries(
+        d.get("priority_order_entries"),
+        real_rows=real_rows,
+        content_type_rows=content_type_rows,
+    )
+    if not has_new_priority_order_config and prioritized_tags_first:
+        priority_order_enabled = True
+        priority_order_entries = [
+            {"kind": "tag", "value": tag, "order": idx + 1}
+            for idx, tag in enumerate(prioritized_tags_first)
+        ]
+
     return SchedulerConfig(
         session_card_count=session_card_count,
         topics_rate=topics_rate,
@@ -149,8 +170,79 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         pdf_rate=pdf_rate,
         content_type_weights=content_type_weights,
         priority_lower_is_more_important=priority_lower_is_more_important,
+        priority_order_enabled=priority_order_enabled,
+        priority_order_entries=priority_order_entries,
         prioritized_tags_first=prioritized_tags_first,
         prioritized_tags_mode=prioritized_tags_mode,
         phase_order=d.get("phase_order", ["content_types", "tags", "type", "mode"]),
         phases_enabled=d.get("phases_enabled", {}),
     )
+
+
+def _positive_int(value) -> int | None:
+    try:
+        order = int(str(value).strip())
+    except Exception:
+        return None
+    if order <= 0:
+        return None
+    return order
+
+
+def _normalize_priority_order_entries(
+    entries,
+    *,
+    real_rows: list[dict],
+    content_type_rows: list[dict],
+) -> list[dict]:
+    raw_entries: list[dict] = []
+    if isinstance(entries, list):
+        raw_entries.extend(entry for entry in entries if isinstance(entry, dict))
+    else:
+        for row in real_rows:
+            if "order" not in row:
+                continue
+            raw_entries.append(
+                {
+                    "kind": "tag",
+                    "value": row.get("tag"),
+                    "order": row.get("order"),
+                }
+            )
+        for row in content_type_rows:
+            if "order" not in row:
+                continue
+            raw_entries.append(
+                {
+                    "kind": "content_type",
+                    "value": row.get("type"),
+                    "order": row.get("order"),
+                }
+            )
+
+    normalized: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    valid_content_types = {"pdf", "youtube", "webpage"}
+    for entry in raw_entries:
+        kind = str(entry.get("kind") or "").strip()
+        value = str(entry.get("value") or "").strip()
+        order = _positive_int(entry.get("order"))
+        if order is None:
+            continue
+        if kind == "tag":
+            if not value or value == NO_TAGS_KEY:
+                continue
+            key_value = value.casefold()
+        elif kind == "content_type":
+            value = value.lower()
+            if value not in valid_content_types:
+                continue
+            key_value = value
+        else:
+            continue
+        key = (kind, key_value)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({"kind": kind, "value": value, "order": order})
+    return normalized

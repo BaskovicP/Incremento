@@ -66,6 +66,8 @@ class TestConfigFromDialogDict:
         assert cfg.show_debug is False
         assert cfg.pdf_rate == pytest.approx(0.0)
         assert cfg.priority_lower_is_more_important is True
+        assert cfg.priority_order_enabled is False
+        assert cfg.priority_order_entries == []
         assert cfg.prioritized_tags_first == []
         assert cfg.prioritized_tags_mode == "exhaust"
 
@@ -159,3 +161,44 @@ class TestConfigFromDialogDict:
         )
         assert cfg.prioritized_tags_first == ["active_writing", "Focus"]
         assert cfg.prioritized_tags_mode == "exhaust"
+        assert cfg.priority_order_enabled is True
+        assert cfg.priority_order_entries == [
+            {"kind": "tag", "value": "active_writing", "order": 1},
+            {"kind": "tag", "value": "Focus", "order": 2},
+        ]
+
+    def test_priority_order_entries_are_cleaned(self):
+        cfg = _config_from_dialog_dict(
+            {
+                "priority_order_enabled": True,
+                "priority_order_entries": [
+                    {"kind": "tag", "value": " Focus ", "order": "2"},
+                    {"kind": "tag", "value": "focus", "order": 3},
+                    {"kind": "tag", "value": NO_TAGS_KEY, "order": 1},
+                    {"kind": "content_type", "value": "PDF", "order": "1"},
+                    {"kind": "content_type", "value": "unknown", "order": 1},
+                    {"kind": "content_type", "value": "youtube", "order": "bad"},
+                ],
+            }
+        )
+
+        assert cfg.priority_order_enabled is True
+        assert cfg.priority_order_entries == [
+            {"kind": "tag", "value": "Focus", "order": 2},
+            {"kind": "content_type", "value": "pdf", "order": 1},
+        ]
+
+    def test_priority_order_values_from_rows_are_preserved_when_checkbox_off(self):
+        cfg = _config_from_dialog_dict(
+            {
+                "priority_order_enabled": False,
+                "tag_rows": [{"tag": "writing", "weight": 20, "order": 1}],
+                "content_type_rows": [{"type": "webpage", "enabled": True, "weight": 10, "order": 2}],
+            }
+        )
+
+        assert cfg.priority_order_enabled is False
+        assert cfg.priority_order_entries == [
+            {"kind": "tag", "value": "writing", "order": 1},
+            {"kind": "content_type", "value": "webpage", "order": 2},
+        ]

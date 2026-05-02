@@ -308,6 +308,32 @@ def should_apply_extract_notetype(
     return bool(target) and target != current and not note_has_content
 
 
+def _ensure_incremento_metadata_fields_saved(models, model) -> bool:
+    try:
+        from ..backend.note_metadata import ensure_incremento_metadata_fields
+    except Exception:
+        try:
+            from note_metadata import ensure_incremento_metadata_fields  # type: ignore
+        except Exception:
+            return False
+
+    try:
+        return bool(ensure_incremento_metadata_fields(models, model, save=True))
+    except TypeError:
+        try:
+            changed = bool(ensure_incremento_metadata_fields(models, model))
+        except Exception:
+            return False
+        if changed:
+            try:
+                models.update_dict(model)
+            except Exception:
+                return False
+        return changed
+    except Exception:
+        return False
+
+
 def _apply_configured_extract_notetype() -> None:
     dock = get_add_card_dock()
     if dock is None:
@@ -351,6 +377,7 @@ def _apply_configured_extract_notetype() -> None:
         deck_id = None
 
     try:
+        _ensure_incremento_metadata_fields_saved(mw.col.models, model)
         dlg.set_note_type(model["id"])
         if deck_id is not None:
             dlg.set_deck(deck_id)
@@ -1362,7 +1389,15 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
                 ensure_incremento_metadata_fields = None  # type: ignore
         if apply_incremento_metadata is not None and ensure_incremento_metadata_fields is not None:
             try:
-                ensure_incremento_metadata_fields(mw.col.models, note.note_type() or {})
+                metadata_fields_changed = _ensure_incremento_metadata_fields_saved(
+                    mw.col.models,
+                    note.note_type() or {},
+                )
+                if metadata_fields_changed:
+                    try:
+                        note.load()
+                    except Exception:
+                        pass
                 apply_incremento_metadata(note, metadata)
                 _save_note_tag_changes(note)
                 metadata_saved = True
@@ -1429,6 +1464,7 @@ def _set_editor_note_type_and_deck(editor, note_type_name: str, deck_name: str) 
         except Exception:
             model = None
         if model is not None:
+            _ensure_incremento_metadata_fields_saved(mw.col.models, model)
             try:
                 dlg.set_note_type(model["id"])
             except Exception:

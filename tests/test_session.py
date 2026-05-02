@@ -226,6 +226,31 @@ class TestSessionCountsSnapshot:
         assert session_copy["mode"]["priority"] == 1
 
 
+class TestRuntimeSessionStats:
+    def test_records_only_answered_cards_for_session_dialog(self, monkeypatch):
+        monkeypatch.setattr(_SESSION_MOD, "_empty", lambda: {"type": {}, "tags": {}, "mode": {}})
+        monkeypatch.setattr(_SESSION_MOD, "_empty_time", lambda: {"type": {}, "tags": {}})
+        _SESSION_MOD.reset_session_counts()
+
+        _SESSION_MOD._record_session_count("pdf", None, "random")
+        _SESSION_MOD._record_session_count("topics", "math", "priority")
+
+        assert _SESSION_MOD.get_session_counts() == {
+            "type": {"pdf": 1, "topics": 1},
+            "tags": {"math": 1},
+            "mode": {"random": 1, "priority": 1},
+        }
+
+    def test_reset_clears_session_counts_and_time(self, monkeypatch):
+        monkeypatch.setattr(_SESSION_MOD, "_empty", lambda: {"type": {}, "tags": {}, "mode": {}})
+        monkeypatch.setattr(_SESSION_MOD, "_empty_time", lambda: {"type": {}, "tags": {}})
+        _SESSION_MOD._record_session_count("items", None, "random")
+        _SESSION_MOD.reset_session_counts()
+
+        assert _SESSION_MOD.get_session_counts() == {"type": {}, "tags": {}, "mode": {}}
+        assert _SESSION_MOD.get_session_times() == {"type": {}, "tags": {}}
+
+
 class TestIncrementoSessionDeckNaming:
     def test_no_dialog_profile_uses_base_session_deck(self):
         assert _SESSION_MOD.incremento_session_deck_name(None) == "Incremento Session"

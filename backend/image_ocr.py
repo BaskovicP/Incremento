@@ -80,10 +80,18 @@ def ensure_note_ocr_field_for_note(note) -> bool:
         model = note.note_type()
     except Exception:
         return False
-    changed = ensure_incremento_ocr_field(mw.col.models, model)
+    try:
+        changed = ensure_incremento_ocr_field(mw.col.models, model, save=True)
+    except TypeError:
+        changed = ensure_incremento_ocr_field(mw.col.models, model)
+        if changed:
+            try:
+                mw.col.models.update_dict(model)
+            except Exception:
+                pass
     if changed:
         try:
-            mw.col.models.update_dict(model)
+            note.load()
         except Exception:
             pass
     return changed

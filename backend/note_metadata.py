@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 
 INCREMENTO_SOURCE_TYPE_FIELD = "Incremento_Source_Type"
@@ -97,11 +98,35 @@ def _model_fields(model) -> list[dict] | None:
     return fields if isinstance(fields, list) else None
 
 
-def ensure_incremento_metadata_fields(models, model) -> bool:
+def _persist_model_schema(models, model) -> bool:
+    try:
+        model_id = model.get("id") if isinstance(model, dict) else model["id"]
+    except Exception:
+        model_id = None
+    if not model_id or not hasattr(models, "update_dict"):
+        return False
+
+    try:
+        models.update_dict(model)
+    except Exception:
+        return False
+
+    try:
+        updated = models.get(model_id)
+    except Exception:
+        updated = None
+    if isinstance(updated, dict) and isinstance(model, dict):
+        model.clear()
+        model.update(updated)
+    return True
+
+
+def ensure_incremento_metadata_fields(models, model, *, save: bool = False) -> bool:
     fields = _model_fields(model)
     if fields is None:
         return False
 
+    original_fields = copy.deepcopy(fields)
     existing = {
         str(field.get("name") or "").strip()
         for field in fields
@@ -114,14 +139,21 @@ def ensure_incremento_metadata_fields(models, model) -> bool:
         fld = models.new_field(field_name)
         models.add_field(model, fld)
         changed = True
+    if changed and save and not _persist_model_schema(models, model):
+        try:
+            fields[:] = original_fields
+        except Exception:
+            pass
+        return False
     return changed
 
 
-def ensure_incremento_ocr_field(models, model) -> bool:
+def ensure_incremento_ocr_field(models, model, *, save: bool = False) -> bool:
     fields = _model_fields(model)
     if fields is None:
         return False
 
+    original_fields = copy.deepcopy(fields)
     existing = {
         str(field.get("name") or "").strip()
         for field in fields
@@ -132,6 +164,12 @@ def ensure_incremento_ocr_field(models, model) -> bool:
 
     fld = models.new_field(INCREMENTO_OCR_TEXT_FIELD)
     models.add_field(model, fld)
+    if save and not _persist_model_schema(models, model):
+        try:
+            fields[:] = original_fields
+        except Exception:
+            pass
+        return False
     return True
 
 

@@ -222,6 +222,8 @@ export default function PdfViewer() {
   // ── Page card panel state ──────────────────────────────────────────────────
   const [pageCards,     setPageCards]     = useState([]);
   const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
   const [limitNotice, setLimitNotice] = useState(null);
@@ -257,6 +259,28 @@ export default function PdfViewer() {
   const hasPdfCard = Number(cardIdRef.current || 0) > 0;
 
   const clearLimitNotice = useCallback(() => setLimitNotice(null), []);
+
+  const refreshBookmarks = useCallback(() => {
+    if (!cardIdRef.current) return;
+    window.pycmd(`incremento_pdf_bookmark_list:${cardIdRef.current}`);
+  }, [cardIdRef]);
+
+  const addBookmark = useCallback(() => {
+    if (!cardIdRef.current) return;
+    window.pycmd('incremento_pdf_bookmark_add:' + JSON.stringify({
+      cardId: cardIdRef.current,
+      page: pageRef.current,
+    }));
+    setShowBookmarksPanel(true);
+  }, [cardIdRef, pageRef]);
+
+  const deleteBookmark = useCallback((id) => {
+    if (!cardIdRef.current || !id) return;
+    window.pycmd('incremento_pdf_bookmark_delete:' + JSON.stringify({
+      cardId: cardIdRef.current,
+      id,
+    }));
+  }, [cardIdRef]);
 
   const showHighlightNote = useCallback((highlight, event) => {
     const note = String(highlight?.note || '').trim();
@@ -553,6 +577,12 @@ export default function PdfViewer() {
     rawNav(delta);
   }, [canMoveToPage, pageRef, rawNav]);
 
+  const jumpToBookmark = useCallback((bookmark) => {
+    const targetPage = Number(bookmark?.location?.page || 0);
+    if (!Number.isFinite(targetPage) || targetPage < 1) return;
+    limitAwareNav(targetPage - pageRef.current);
+  }, [limitAwareNav, pageRef]);
+
   const limitAwareMarkRead = useCallback(() => {
     if (!canMarkReadAtPage(pageRef.current)) {
       return;
@@ -572,9 +602,12 @@ export default function PdfViewer() {
       startSearchQuery = '',
       startLimitStatus = null,
       startAutoHighlightOnExtract = undefined,
+      startBookmarks = null,
     ) => {
       setHighlights(window._incPdfHighlights || []);
       window._incPdfHighlights = null;
+      setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : (window._incPdfBookmarks || []));
+      window._incPdfBookmarks = null;
       setSearchQuery(startSearchQuery || '');
       setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
       setLimitNotice(null);
@@ -600,6 +633,9 @@ export default function PdfViewer() {
     window.incrementoReceivePdfLimitStatus = (status) => {
       setLimitStatus(status || DEFAULT_LIMIT_STATUS);
     };
+    window.incrementoReceivePdfBookmarks = (items) => {
+      setBookmarks(Array.isArray(items) ? items : []);
+    };
     window.incrementoUpdatePdfHighlightNote = (id, note) => {
       updateHighlightNote(String(id || ''), String(note || ''));
     };
@@ -616,6 +652,7 @@ export default function PdfViewer() {
         pending.searchQuery || '',
         pending.limitStatus || DEFAULT_LIMIT_STATUS,
         pending.autoHighlightOnExtract,
+        pending.bookmarks || [],
       );
     }
     return () => {
@@ -626,6 +663,7 @@ export default function PdfViewer() {
       delete window.incrementoSetAutoHighlightOnExtract;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfLimitStatus;
+      delete window.incrementoReceivePdfBookmarks;
       delete window.incrementoUpdatePdfHighlightNote;
     };
   }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote, applyAutoHighlightSetting]);
@@ -1000,6 +1038,31 @@ export default function PdfViewer() {
                   >
                     &#x1F4D1; Highlights ({highlights.length})
                   </button>
+                  <button
+                    title="Bookmark the current page as an interesting place"
+                    onClick={addBookmark}
+                  >
+                    &#9733; Bookmark
+                  </button>
+                  <button
+                    title="Show saved interesting-place bookmarks"
+                    style={{
+                      background: showBookmarksPanel ? 'rgba(250,204,21,0.18)' : 'transparent',
+                      border: '1px solid rgba(250,204,21,0.55)',
+                      borderRadius: 8,
+                      color: showBookmarksPanel ? 'rgb(234,179,8)' : 'inherit',
+                      cursor: 'pointer',
+                      padding: '4px 10px',
+                      fontSize: 12,
+                      fontWeight: showBookmarksPanel ? 'bold' : 'normal',
+                    }}
+                    onClick={() => {
+                      refreshBookmarks();
+                      setShowBookmarksPanel(o => !o);
+                    }}
+                  >
+                    Bookmarks ({bookmarks.length})
+                  </button>
                 </span>
               </div>
             </div>
@@ -1086,6 +1149,87 @@ export default function PdfViewer() {
         </div>
 
       </div>
+
+      {/* Bookmarks panel */}
+      {hasPdfCard && showBookmarksPanel && (
+        <div
+          style={{
+            position: 'fixed',
+            top: CONTROLS_HEIGHT + 8,
+            right: 12,
+            width: 'min(420px, calc(100vw - 24px))',
+            maxHeight: 'calc(100vh - 220px)',
+            overflowY: 'auto',
+            background: 'rgba(25,25,25,0.97)',
+            border: '1px solid rgba(250,204,21,0.40)',
+            borderRadius: 8,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+            padding: 10,
+            zIndex: 65,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <strong style={{ fontSize: 13 }}>PDF Bookmarks</strong>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button onClick={addBookmark} style={{ fontSize: 12, padding: '1px 8px' }}>
+                Add current page
+              </button>
+              <button onClick={() => setShowBookmarksPanel(false)} style={{ fontSize: 12, padding: '1px 8px' }}>
+                Close
+              </button>
+            </span>
+          </div>
+          {bookmarks.length === 0 ? (
+            <div style={{ fontSize: 12, opacity: 0.75 }}>No bookmarks yet.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {bookmarks.map((bookmark) => (
+                <div
+                  key={bookmark.id}
+                  style={{
+                    border: '1px solid rgba(90,90,90,0.55)',
+                    borderRadius: 6,
+                    background: 'rgba(35,35,35,0.75)',
+                    color: 'inherit',
+                    padding: '8px 10px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>
+                      {bookmark.label || `Page ${bookmark?.location?.page || 1}`}
+                    </span>
+                    <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={() => {
+                          jumpToBookmark(bookmark);
+                          setShowBookmarksPanel(false);
+                        }}
+                        style={{ fontSize: 11, padding: '1px 7px' }}
+                      >
+                        Jump
+                      </button>
+                      <button
+                        onClick={() => deleteBookmark(bookmark.id)}
+                        style={{
+                          border: '1px solid rgba(220,70,70,0.55)',
+                          borderRadius: 4,
+                          background: 'rgba(220,70,70,0.12)',
+                          color: 'rgba(248,113,113,0.95)',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          padding: '1px 7px',
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Highlights panel */}
       {hasPdfCard && showHighlightsPanel && (

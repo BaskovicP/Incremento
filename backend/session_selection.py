@@ -58,88 +58,138 @@ def _record_selected_card(
     added_to_filtered: set[int],
     scheduler_counts: dict,
     session_counts: dict,
+    extra_meta: dict | None = None,
 ) -> None:
     for counts in (scheduler_counts, session_counts):
         counts["type"][card_type] = counts["type"].get(card_type, 0) + 1
         counts["mode"][mode] = counts["mode"].get(mode, 0) + 1
         if tag:
             counts["tags"][tag] = counts["tags"].get(tag, 0) + 1
-    picked_meta[card_id] = {
+    meta = {
         "card_type": card_type,
         "tag": tag,
         "mode": mode,
         "selection_stage": stage,
     }
+    if extra_meta:
+        meta.update(extra_meta)
+    picked_meta[card_id] = meta
     added_to_filtered.add(card_id)
     selected_ids.append(card_id)
 
 
-def _collect_prioritized_tag_candidates(
+def _collect_tag_priority_candidates(
     cfg,
-    addon_dir: str,
     *,
-    prioritized_tags: list[str],
+    tag: str,
     topics_filter: str,
     items_filter: str,
     pdf_filter: str,
     youtube_filter: str,
     webpage_filter: str,
-) -> list[tuple[int, str, str]]:
-    tag_to_candidates: dict[str, dict[int, str]] = {}
-    for tag in prioritized_tags:
-        tag_map = tag_to_candidates.setdefault(tag, {})
-        pool_ids = [
-            ("pdf", card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter)),
-            ("youtube", card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter)),
-            ("webpage", card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter)),
-            (
-                "topics",
-                card_utils.get_topic_cards_by_tag(
-                    tag,
-                    topics_filter=topics_filter,
-                    ready_filter=cfg.ready_filter,
-                ),
+) -> dict[int, tuple[str, str | None]]:
+    candidates: dict[int, tuple[str, str | None]] = {}
+    pool_ids = [
+        ("pdf", card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter)),
+        ("youtube", card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter)),
+        ("webpage", card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter)),
+        (
+            "topics",
+            card_utils.get_topic_cards_by_tag(
+                tag,
+                topics_filter=topics_filter,
+                ready_filter=cfg.ready_filter,
             ),
-            (
-                "items",
-                card_utils.get_item_cards_by_tag(
-                    tag,
-                    items_filter=items_filter,
-                    ready_filter=cfg.ready_filter,
-                ),
+        ),
+        (
+            "items",
+            card_utils.get_item_cards_by_tag(
+                tag,
+                items_filter=items_filter,
+                ready_filter=cfg.ready_filter,
             ),
-        ]
-        for card_type, ids in pool_ids:
-            for card_id in ids:
-                try:
-                    cid = int(card_id)
-                except Exception:
-                    continue
-                if cid <= 0 or cid in tag_map:
-                    continue
-                tag_map[cid] = card_type
+        ),
+    ]
+    for card_type, ids in pool_ids:
+        for card_id in ids:
+            try:
+                cid = int(card_id)
+            except Exception:
+                continue
+            if cid <= 0 or cid in candidates:
+                continue
+            candidates[cid] = (card_type, tag)
+    return candidates
 
-    ordered_ids = card_utils.sort_cards_for_priority_mode(
-        [
-            cid
-            for tag in prioritized_tags
-            for cid in tag_to_candidates.get(tag, {}).keys()
-        ],
-        addon_dir=addon_dir,
-        lower_is_more_important=cfg.priority_lower_is_more_important,
-    )
-    seen: set[int] = set()
-    ordered_candidates: list[tuple[int, str, str]] = []
-    for cid in ordered_ids:
-        if cid in seen:
+
+def _collect_content_type_priority_candidates(
+    *,
+    content_type: str,
+    pdf_filter: str,
+    youtube_filter: str,
+    webpage_filter: str,
+) -> dict[int, tuple[str, str | None]]:
+    if content_type == "pdf":
+        ids = card_utils.get_all_pdf_cards(pdf_filter=pdf_filter)
+    elif content_type == "youtube":
+        ids = card_utils.get_all_youtube_cards(youtube_filter=youtube_filter)
+    elif content_type == "webpage":
+        ids = card_utils.get_all_webpage_cards(webpage_filter=webpage_filter)
+    else:
+        return {}
+    candidates: dict[int, tuple[str, str | None]] = {}
+    for card_id in ids:
+        try:
+            cid = int(card_id)
+        except Exception:
             continue
-        seen.add(cid)
-        for tag in prioritized_tags:
-            card_type = tag_to_candidates.get(tag, {}).get(cid)
-            if card_type:
-                ordered_candidates.append((cid, card_type, tag))
-                break
-    return ordered_candidates
+        if cid <= 0 or cid in candidates:
+            continue
+        candidates[cid] = (content_type, None)
+    return candidates
+
+
+def _normalized_priority_order_entries(cfg) -> list[dict]:
+    entries: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for raw in list(getattr(cfg, "priority_order_entries", []) or []):
+        if not isinstance(raw, dict):
+            continue
+        kind = str(raw.get("kind") or "").strip()
+        value = str(raw.get("value") or "").strip()
+        try:
+            order = int(raw.get("order"))
+        except Exception:
+            continue
+        if order <= 0:
+            continue
+        if kind == "tag":
+            if not value:
+                continue
+            key_value = value.casefold()
+        elif kind == "content_type":
+            value = value.lower()
+            if value not in {"pdf", "youtube", "webpage"}:
+                continue
+            key_value = value
+        else:
+            continue
+        key = (kind, key_value)
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append({"kind": kind, "value": value, "order": order})
+    return entries
+
+
+def _ordered_priority_tiers(cfg) -> list[tuple[int, list[dict]]]:
+    if not bool(getattr(cfg, "priority_order_enabled", False)):
+        return []
+    entries = _normalized_priority_order_entries(cfg)
+    grouped: dict[int, list[dict]] = {}
+    for entry in entries:
+        grouped.setdefault(int(entry["order"]), []).append(entry)
+    return [(order, grouped[order]) for order in sorted(grouped)]
 
 
 def _normalize_branch_scope(branch_scope: dict | None) -> dict | None:
@@ -258,38 +308,56 @@ def select_session_cards(
         )
         return True
 
-    prioritized_tags = [
-        str(tag or "").strip()
-        for tag in list(getattr(cfg, "prioritized_tags_first", []) or [])
-        if str(tag or "").strip()
-    ]
-    if prioritized_tags and len(selected_ids) < target_count:
-        prioritized_candidates = _collect_prioritized_tag_candidates(
-            cfg,
-            addon_dir,
-            prioritized_tags=prioritized_tags,
-            topics_filter=topics_filter,
-            items_filter=items_filter,
-            pdf_filter=pdf_filter,
-            youtube_filter=youtube_filter,
-            webpage_filter=webpage_filter,
+    for order, tier_entries in _ordered_priority_tiers(cfg):
+        if len(selected_ids) >= target_count:
+            break
+        tier_candidates: dict[int, tuple[str, str | None]] = {}
+        for entry in tier_entries:
+            if entry["kind"] == "tag":
+                entry_candidates = _collect_tag_priority_candidates(
+                    cfg,
+                    tag=entry["value"],
+                    topics_filter=topics_filter,
+                    items_filter=items_filter,
+                    pdf_filter=pdf_filter,
+                    youtube_filter=youtube_filter,
+                    webpage_filter=webpage_filter,
+                )
+            else:
+                entry_candidates = _collect_content_type_priority_candidates(
+                    content_type=entry["value"],
+                    pdf_filter=pdf_filter,
+                    youtube_filter=youtube_filter,
+                    webpage_filter=webpage_filter,
+                )
+            for card_id, meta in entry_candidates.items():
+                if card_id in added_to_filtered or card_id in tier_candidates:
+                    continue
+                tier_candidates[card_id] = meta
+
+        ordered_tier_ids = card_utils.sort_cards_for_priority_mode(
+            list(tier_candidates.keys()),
+            addon_dir=addon_dir,
+            lower_is_more_important=cfg.priority_lower_is_more_important,
         )
-        for card_id, card_type, tag in prioritized_candidates:
+        for card_id in ordered_tier_ids:
             if len(selected_ids) >= target_count:
                 break
             if card_id in added_to_filtered:
                 continue
+            card_type, tag = tier_candidates[card_id]
             _record_selected_card(
                 card_id=card_id,
                 card_type=card_type,
                 tag=tag,
                 mode="priority",
-                stage="prioritized_tags",
+                stage="ordered_priority",
                 selected_ids=selected_ids,
                 picked_meta=picked_meta,
                 added_to_filtered=added_to_filtered,
                 scheduler_counts=scheduler_counts,
                 session_counts=session_counts,
+                extra_meta={"priority_order": order},
             )
 
     if cfg.enforce_priority:

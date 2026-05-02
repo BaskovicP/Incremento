@@ -25,6 +25,7 @@ epub_card_sources — notes created while reading an EPUB section
 web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
 note_ocr_index  — searchable OCR text extracted from image-based non-document notes
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
+reader_bookmarks — permanent interesting-place bookmarks per reader card
 browser_media_refs — latest manually saved browser media reference per card
 reviewer_recent_tags — latest reviewer-added tags for quick reuse
 topic_postpones — timed postpone expiry timestamps per topic card
@@ -321,6 +322,18 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             media_seconds    REAL    NOT NULL DEFAULT 0.0,
             media_updated_at INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS reader_bookmarks (
+            id            TEXT    PRIMARY KEY,
+            card_id       INTEGER NOT NULL,
+            reader_type   TEXT    NOT NULL DEFAULT '',
+            label         TEXT    NOT NULL DEFAULT '',
+            location_json TEXT    NOT NULL DEFAULT '{}',
+            created_at    INTEGER NOT NULL DEFAULT 0,
+            updated_at    INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_reader_bookmarks_card_reader
+            ON reader_bookmarks (card_id, reader_type, created_at);
 
         CREATE TABLE IF NOT EXISTS browser_media_refs (
             card_id       INTEGER PRIMARY KEY,

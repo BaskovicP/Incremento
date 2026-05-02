@@ -25,7 +25,7 @@ from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout,
                     QComboBox, QSlider, QApplication, QDialog, QLineEdit,
                     QFileDialog,
-                    QSpinBox, QDialogButtonBox)
+                    QSpinBox, QDialogButtonBox, QTextBrowser)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices
@@ -71,6 +71,11 @@ try:
         supported_subtitle_extensions,
         update_video_note_media,
     )
+    from ..backend.reader_bookmarks import (
+        add_reader_bookmark,
+        delete_reader_bookmark,
+        list_reader_bookmarks,
+    )
 except ImportError:
     from video_manager import (
         VIDEO_NOTE_TYPE,
@@ -98,6 +103,7 @@ except ImportError:
         supported_subtitle_extensions,
         update_video_note_media,
     )
+    from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -244,6 +250,10 @@ def _build_video_dock():
 
     add_btn = QPushButton("+ Add Card at this point")
     ctrl_layout.addWidget(add_btn)
+    bookmark_btn = QPushButton("Bookmark")
+    ctrl_layout.addWidget(bookmark_btn)
+    bookmarks_btn = QPushButton("Bookmarks 0")
+    ctrl_layout.addWidget(bookmarks_btn)
     browser_btn = QPushButton("Open in Browser")
     browser_btn.setEnabled(False)
     ctrl_layout.addWidget(browser_btn)
@@ -316,6 +326,14 @@ def _build_video_dock():
     caption_ctrl.setVisible(False)
     vbox.addWidget(caption_ctrl)
 
+    bookmarks_panel = QTextBrowser(container)
+    bookmarks_panel.setOpenLinks(False)
+    bookmarks_panel.setOpenExternalLinks(False)
+    bookmarks_panel.anchorClicked.connect(_open_video_bookmark_link)
+    bookmarks_panel.setVisible(False)
+    bookmarks_panel.setMaximumHeight(150)
+    vbox.addWidget(bookmarks_panel)
+
     dock.setWidget(container)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
@@ -335,6 +353,9 @@ def _build_video_dock():
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
     dock._browser_btn = browser_btn
+    dock._bookmark_btn = bookmark_btn
+    dock._bookmarks_btn = bookmarks_btn
+    dock._bookmarks_panel = bookmarks_panel
     dock._download_btn = download_btn
     dock._captions_btn = captions_btn
     dock._resume_input = resume_input
@@ -344,6 +365,8 @@ def _build_video_dock():
     dock._reference_cc_btn = reference_cc_btn
     dock._caption_status = caption_status
     qconnect(add_btn.clicked, _video_add_card_at_point)
+    qconnect(bookmark_btn.clicked, _add_current_video_bookmark)
+    qconnect(bookmarks_btn.clicked, _toggle_video_bookmarks_panel)
     qconnect(browser_btn.clicked, _open_video_in_browser)
     qconnect(download_btn.clicked, download_current_video_locally)
     qconnect(captions_btn.clicked, configure_current_video_captions)
@@ -796,6 +819,123 @@ def _on_manual_time_submit() -> None:
     _apply_manual_time(seconds)
 
 
+def _video_bookmarks() -> list[dict]:
+    if _current_video_card_id is None:
+        return []
+    try:
+        return list_reader_bookmarks(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_video_card_id),
+            "video",
+        )
+    except Exception:
+        return []
+
+
+def _refresh_video_bookmarks_panel() -> None:
+    if _video_dock is None:
+        return
+    bookmarks = _video_bookmarks()
+    try:
+        _video_dock._bookmarks_btn.setText(f"Bookmarks {len(bookmarks)}")
+    except Exception:
+        pass
+    panel = getattr(_video_dock, "_bookmarks_panel", None)
+    if panel is None:
+        return
+    html_parts = ["<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>"]
+    html_parts.append("<b>Interesting-place bookmarks</b>")
+    if bookmarks:
+        html_parts.append("<ul>")
+        for bookmark in bookmarks:
+            bookmark_id = html.escape(str(bookmark.get("id") or ""))
+            label = html.escape(str(bookmark.get("label") or "Bookmark"))
+            html_parts.append(
+                "<li>"
+                f"{label} "
+                f"<a href='inc://video-bookmark-open/{bookmark_id}'>Jump</a> "
+                f"<a href='inc://video-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                "</li>"
+            )
+        html_parts.append("</ul>")
+    else:
+        html_parts.append("<div style='color:#888;padding:6px 0 0'>No bookmarks yet.</div>")
+    html_parts.append("</div>")
+    panel.setHtml("".join(html_parts))
+
+
+def _add_current_video_bookmark() -> None:
+    if _current_video_card_id is None:
+        tooltip("Incremento: no active video card.")
+        return
+    seconds = float(_last_known_position or 0.0)
+    if _using_local_qt_player and _video_dock is not None:
+        player = getattr(_video_dock, "_local_player", None)
+        if player is not None:
+            try:
+                seconds = max(seconds, float(player.position()) / 1000.0)
+            except Exception:
+                pass
+    try:
+        add_reader_bookmark(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_video_card_id),
+            "video",
+            {"seconds": seconds},
+        )
+    except Exception:
+        tooltip("Incremento: could not save video bookmark.")
+        return
+    _refresh_video_bookmarks_panel()
+    try:
+        _video_dock._bookmarks_panel.setVisible(True)
+    except Exception:
+        pass
+    tooltip(f"Incremento: video bookmark saved at {fmt_time(seconds)}.")
+
+
+def _toggle_video_bookmarks_panel() -> None:
+    if _video_dock is None:
+        return
+    _refresh_video_bookmarks_panel()
+    try:
+        _video_dock._bookmarks_panel.setVisible(not _video_dock._bookmarks_panel.isVisible())
+    except Exception:
+        pass
+
+
+def _open_video_bookmark_link(url: QUrl) -> None:
+    global _last_known_position
+    if _current_video_card_id is None:
+        return
+    s = url.toString()
+    bookmark_id = s.rsplit("/", 1)[-1]
+    if s.startswith("inc://video-bookmark-delete/"):
+        try:
+            delete_reader_bookmark(
+                _ADDON_DIR,
+                _active_profile(),
+                int(_current_video_card_id),
+                "video",
+                bookmark_id,
+            )
+        except Exception:
+            tooltip("Incremento: could not delete video bookmark.")
+        _refresh_video_bookmarks_panel()
+        return
+    if not s.startswith("inc://video-bookmark-open/"):
+        return
+    bookmark = next((item for item in _video_bookmarks() if str(item.get("id") or "") == bookmark_id), None)
+    if not bookmark:
+        return
+    seconds = float((bookmark.get("location") or {}).get("seconds", 0.0) or 0.0)
+    _last_known_position = max(0.0, seconds)
+    _seek_to_seconds(seconds)
+    _set_seek_ui(seconds, _last_known_duration if _last_known_duration > 0 else None)
+
+
 def _seek_to_seconds(seconds: float) -> None:
     global _last_known_position
     if _video_dock is None:
@@ -1057,6 +1197,7 @@ def show_video_in_dock(
         has_local_copy=bool(local_video_file),
     )
     _set_captions_button_enabled(True)
+    _refresh_video_bookmarks_panel()
 
     local_relpath = (local_video_file or "").strip()
     start_sec = int(position)

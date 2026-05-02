@@ -17,6 +17,16 @@ class _FakeModels:
     def update_dict(self, model):
         self.updated.append(model)
 
+    def get(self, model_id):
+        return {
+            "id": model_id,
+            "name": "Basic",
+            "flds": [
+                {"name": field["name"], "ord": index}
+                for index, field in enumerate(self.updated[-1]["flds"])
+            ],
+        }
+
 
 class _FakeCard:
     def __init__(self, card_id):
@@ -29,11 +39,19 @@ class _FakeNote(dict):
         self.id = note_id
         self.mid = 1
         self.fields = list(fields or [])
-        self._model = {"name": model_name, "flds": [{"name": "Front"}, {"name": "Back"}]}
+        self._model = {
+            "id": 1,
+            "name": model_name,
+            "flds": [{"name": "Front", "ord": 0}, {"name": "Back", "ord": 1}],
+        }
         self.flush_calls = 0
+        self.load_calls = 0
 
     def note_type(self):
         return self._model
+
+    def load(self):
+        self.load_calls += 1
 
     def flush(self):
         self.flush_calls += 1
@@ -78,6 +96,7 @@ def test_ocr_note_images_updates_hidden_field_and_index(tmp_path):
     assert result["updated"] is True
     assert "Detected OCR text" in note[image_ocr.INCREMENTO_OCR_TEXT_FIELD]
     assert note.flush_calls == 1
+    assert note.load_calls == 1
     mock_replace.assert_called_once()
 
 

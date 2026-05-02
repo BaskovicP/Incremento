@@ -72,9 +72,13 @@ try:
         ensure_web_note_type,
         get_web_progress,
         get_web_url,
-        set_web_bookmark,
         set_web_scroll_position,
         set_web_url,
+    )
+    from ..backend.reader_bookmarks import (
+        add_reader_bookmark,
+        delete_reader_bookmark,
+        list_reader_bookmarks,
     )
 except ImportError:
     from db import add_web_card_source, get_web_card_sources
@@ -89,10 +93,10 @@ except ImportError:
         ensure_web_note_type,
         get_web_progress,
         get_web_url,
-        set_web_bookmark,
         set_web_scroll_position,
         set_web_url,
     )
+    from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -122,6 +126,7 @@ class _WebDockRuntime:
     snapshot_overlay: object | None = None
     snapshot_override_cursor: bool = False
     pending_restore: dict | None = None
+    pending_bookmark_restore: dict | None = None
     bridge_js_template: str | None = None
 
 
@@ -373,19 +378,14 @@ class _WebDockController:
     def refresh_bookmark_button(self) -> None:
         if self.runtime.dock is None:
             return
-        progress = self.progress_state()
-        has_bookmark = bool(progress.get("bookmark_url")) and bool(
-            progress.get("bookmark_payload")
-        )
         try:
             self.runtime.dock._bookmark_btn.setText("Bookmark")
             self.runtime.dock._bookmark_btn.setToolTip(
-                "Replace the saved browser-card bookmark with the current reading position."
-                if has_bookmark
-                else "Save the current reading position as the browser-card bookmark."
+                "Save the current web location as a permanent interesting-place bookmark."
             )
         except Exception:
             pass
+        self.refresh_bookmarks_panel()
 
     def refresh_resume_button(self) -> None:
         if self.runtime.dock is None:
@@ -508,6 +508,71 @@ class _WebDockController:
         except Exception:
             pass
 
+    def bookmark_rows(self) -> list[dict]:
+        if self.runtime.current_card_id is None:
+            return []
+        try:
+            return list_reader_bookmarks(
+                _ADDON_DIR,
+                _active_profile(),
+                int(self.runtime.current_card_id),
+                "web",
+            )
+        except Exception:
+            return []
+
+    def refresh_bookmarks_panel(self) -> None:
+        if self.runtime.dock is None:
+            return
+        rows = self.bookmark_rows()
+        try:
+            self.runtime.dock._bookmarks_btn.setText(f"Bookmarks {len(rows)}")
+        except Exception:
+            pass
+        panel = getattr(self.runtime.dock, "_bookmarks_panel", None)
+        if panel is None:
+            return
+        html = [
+            "<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>",
+            "<div style='font-weight:bold;color:rgb(234,179,8);margin-bottom:6px'>",
+            "Interesting-place bookmarks",
+            "</div>",
+        ]
+        if rows:
+            for row in rows:
+                bookmark_id = str(row.get("id") or "")
+                label = str(row.get("label") or "Bookmark")
+                url = str((row.get("location") or {}).get("url") or "")
+                safe_label = label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                safe_url = url.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                html.append(
+                    "<div style='margin-bottom:6px;padding:6px 8px;"
+                    "background:rgba(234,179,8,0.08);border-left:3px solid rgba(234,179,8,0.55)'>"
+                    f"<div><b>{safe_label}</b></div>"
+                    f"<div style='color:#888;word-break:break-all'>{safe_url}</div>"
+                    f"<a href='inc://web-bookmark-open/{bookmark_id}'>Jump</a> "
+                    f"<a href='inc://web-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                    "</div>"
+                )
+        else:
+            html.append("<div style='color:#888'>No bookmarks yet.</div>")
+        html.append("</div>")
+        try:
+            panel.setHtml("".join(html))
+        except Exception:
+            pass
+
+    def toggle_bookmarks_panel(self) -> None:
+        if self.runtime.dock is None:
+            return
+        self.refresh_bookmarks_panel()
+        try:
+            self.runtime.dock._bookmarks_panel.setVisible(
+                not self.runtime.dock._bookmarks_panel.isVisible()
+            )
+        except Exception:
+            pass
+
     def save_bookmark(self) -> None:
         if self.runtime.dock is None or self.runtime.current_card_id is None:
             tooltip("Incremento: no browser card is currently open.")
@@ -528,17 +593,26 @@ class _WebDockController:
                 tooltip("Incremento: couldn't place a bookmark here.")
                 return
             try:
-                set_web_bookmark(
+                add_reader_bookmark(
                     _ADDON_DIR,
                     _active_profile(),
                     target_card_id,
-                    url=current_url,
-                    bookmark_payload=bookmark,
+                    "web",
+                    {
+                        "url": current_url,
+                        "scroll_ratio": bookmark.get("scrollRatio", 0.0),
+                        "bookmark_payload": bookmark,
+                        "text": bookmark.get("text", ""),
+                    },
                 )
             except Exception as exc:
                 showInfo(f"Failed to save bookmark:\n{exc}")
                 return
             self.refresh_bookmark_button()
+            try:
+                self.runtime.dock._bookmarks_panel.setVisible(True)
+            except Exception:
+                pass
             tooltip("Incremento: bookmark saved.")
 
         try:
@@ -767,9 +841,12 @@ class _WebDockController:
         bookmark_btn = QPushButton("Bookmark")
         ctrl_layout.addWidget(bookmark_btn, 0, 8)
 
+        bookmarks_btn = QPushButton("Bookmarks 0")
+        ctrl_layout.addWidget(bookmarks_btn, 0, 9)
+
         cards_btn = QPushButton("Cards 0")
         cards_btn.setVisible(False)
-        ctrl_layout.addWidget(cards_btn, 0, 9)
+        ctrl_layout.addWidget(cards_btn, 0, 10)
 
         home_btn = QPushButton("Home")
         home_btn.setFixedWidth(70)
@@ -811,6 +888,17 @@ class _WebDockController:
         )
         vbox.addWidget(cards_panel)
 
+        bookmarks_panel = QTextBrowser(container)
+        bookmarks_panel.setOpenLinks(False)
+        bookmarks_panel.anchorClicked.connect(_open_result_link)
+        bookmarks_panel.setVisible(False)
+        bookmarks_panel.setMaximumHeight(190)
+        bookmarks_panel.setStyleSheet(
+            "border-top: 1px solid rgba(120,120,120,0.25);"
+            "background: rgba(234,179,8,0.04);"
+        )
+        vbox.addWidget(bookmarks_panel)
+
         dock.setWidget(container)
         mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
@@ -820,8 +908,10 @@ class _WebDockController:
         dock._extract_btn = extract_btn
         dock._snapshot_btn = snapshot_btn
         dock._bookmark_btn = bookmark_btn
+        dock._bookmarks_btn = bookmarks_btn
         dock._cards_btn = cards_btn
         dock._cards_panel = cards_panel
+        dock._bookmarks_panel = bookmarks_panel
         dock._resume_btn = resume_btn
 
         if self.runtime.interaction_filter is None:
@@ -863,6 +953,19 @@ class _WebDockController:
                     ),
                 )
             self.runtime.pending_restore = None
+            explicit_restore = self.runtime.pending_bookmark_restore
+            if (
+                isinstance(explicit_restore, dict)
+                and int(explicit_restore.get("card_id") or 0) == int(self.runtime.current_card_id)
+            ):
+                payload = json.dumps(explicit_restore.get("payload") or {})
+                QTimer.singleShot(
+                    0,
+                    lambda p=payload: view.page().runJavaScript(
+                        f"window.incrementoApplyRestoreState && window.incrementoApplyRestoreState({p});"
+                    ),
+                )
+            self.runtime.pending_bookmark_restore = None
             self.refresh_cards_panel()
             self.refresh_bookmark_button()
             self.refresh_resume_button()
@@ -878,6 +981,7 @@ class _WebDockController:
         qconnect(extract_btn.clicked, self.extract_selection_with_picker)
         qconnect(snapshot_btn.clicked, _toggle_snapshot_mode)
         qconnect(bookmark_btn.clicked, self.save_bookmark)
+        qconnect(bookmarks_btn.clicked, self.toggle_bookmarks_panel)
         qconnect(cards_btn.clicked, self.toggle_cards_panel)
         qconnect(window_btn.clicked, self.open_in_window)
         qconnect(resume_btn.clicked, self.open_media_resume_in_window)
@@ -1768,6 +1872,54 @@ def _toggle_snapshot_mode() -> None:
 
 def _open_result_link(qurl) -> None:
     s = qurl.toString() if hasattr(qurl, "toString") else str(qurl)
+    if s.startswith("inc://web-bookmark-delete/"):
+        bookmark_id = s.rsplit("/", 1)[-1]
+        card_id = current_web_card_id()
+        if card_id is None:
+            return
+        try:
+            delete_reader_bookmark(
+                _ADDON_DIR,
+                _active_profile(),
+                int(card_id),
+                "web",
+                bookmark_id,
+            )
+        except Exception as exc:
+            showInfo(f"Could not delete web bookmark:\n{exc}")
+        _controller.refresh_bookmarks_panel()
+        return
+    if s.startswith("inc://web-bookmark-open/"):
+        bookmark_id = s.rsplit("/", 1)[-1]
+        card_id = current_web_card_id()
+        if card_id is None or _runtime.dock is None:
+            return
+        bookmark = next((row for row in _controller.bookmark_rows() if str(row.get("id") or "") == bookmark_id), None)
+        if not bookmark:
+            return
+        location = bookmark.get("location") or {}
+        target_url = str(location.get("url") or "").strip()
+        if not target_url:
+            return
+        payload = {
+            "rememberScroll": True,
+            "scrollRatio": float(location.get("scroll_ratio", 0.0) or 0.0),
+            "bookmark": location.get("bookmark_payload") or None,
+        }
+        _runtime.pending_bookmark_restore = {
+            "card_id": int(card_id),
+            "payload": payload,
+        }
+        current_url = _runtime.dock._view.url().toString()
+        if current_url == target_url:
+            _runtime.dock._view.page().runJavaScript(
+                "window.incrementoApplyRestoreState && "
+                f"window.incrementoApplyRestoreState({json.dumps(payload)});"
+            )
+            _runtime.pending_bookmark_restore = None
+        else:
+            _runtime.dock._view.load(QUrl(target_url))
+        return
     if not s.startswith("inc://card/"):
         return
     try:

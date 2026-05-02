@@ -60,6 +60,11 @@ try:
         restore_writing_backup,
         write_writing_text,
     )
+    from ..backend.reader_bookmarks import (
+        add_reader_bookmark,
+        delete_reader_bookmark,
+        list_reader_bookmarks,
+    )
 except ImportError:
     import paths as _paths
     from file_shell import reveal_local_file  # type: ignore
@@ -82,6 +87,7 @@ except ImportError:
         restore_writing_backup,
         write_writing_text,
     )
+    from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
@@ -657,6 +663,125 @@ def _jump_to_marker() -> None:
         pass
 
 
+def _writing_bookmarks() -> list[dict]:
+    if _current_writing_card_id is None:
+        return []
+    try:
+        return list_reader_bookmarks(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_writing_card_id),
+            "writing",
+        )
+    except Exception:
+        return []
+
+
+def _refresh_writing_bookmarks_panel() -> None:
+    if _writing_dock is None:
+        return
+    bookmarks = _writing_bookmarks()
+    try:
+        _writing_dock._bookmarks_btn.setText(f"Bookmarks {len(bookmarks)}")
+    except Exception:
+        pass
+    panel = getattr(_writing_dock, "_bookmarks_panel", None)
+    if panel is None:
+        return
+    html = ["<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>"]
+    html.append("<b>Interesting-place bookmarks</b>")
+    if bookmarks:
+        html.append("<ul>")
+        for bookmark in bookmarks:
+            bookmark_id = str(bookmark.get("id") or "")
+            label = str(bookmark.get("label") or "Bookmark")
+            safe_label = label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            html.append(
+                "<li>"
+                f"{safe_label} "
+                f"<a href='inc://writing-bookmark-open/{bookmark_id}'>Jump</a> "
+                f"<a href='inc://writing-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                "</li>"
+            )
+        html.append("</ul>")
+    else:
+        html.append("<div style='color:#888;padding:6px 0 0'>No bookmarks yet.</div>")
+    html.append("</div>")
+    panel.setHtml("".join(html))
+
+
+def _add_current_writing_bookmark() -> None:
+    if _writing_dock is None or _current_writing_card_id is None:
+        return
+    try:
+        cursor = _writing_dock._editor.textCursor()
+        add_reader_bookmark(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_writing_card_id),
+            "writing",
+            {
+                "cursor_position": int(cursor.position()),
+                "block_number": int(cursor.blockNumber()),
+                "scroll_ratio": _current_scroll_ratio(),
+            },
+        )
+    except Exception as exc:
+        showInfo(f"Could not save writing bookmark:\n{exc}")
+        return
+    _refresh_writing_bookmarks_panel()
+    try:
+        _writing_dock._bookmarks_panel.setVisible(True)
+    except Exception:
+        pass
+    tooltip("Writing bookmark saved.")
+
+
+def _toggle_writing_bookmarks_panel() -> None:
+    if _writing_dock is None:
+        return
+    _refresh_writing_bookmarks_panel()
+    try:
+        _writing_dock._bookmarks_panel.setVisible(not _writing_dock._bookmarks_panel.isVisible())
+    except Exception:
+        pass
+
+
+def _open_writing_bookmark_link(url: QUrl) -> None:
+    if _writing_dock is None or _current_writing_card_id is None:
+        return
+    s = url.toString()
+    bookmark_id = s.rsplit("/", 1)[-1]
+    if s.startswith("inc://writing-bookmark-delete/"):
+        try:
+            delete_reader_bookmark(
+                _ADDON_DIR,
+                _active_profile(),
+                int(_current_writing_card_id),
+                "writing",
+                bookmark_id,
+            )
+        except Exception as exc:
+            showInfo(f"Could not delete writing bookmark:\n{exc}")
+        _refresh_writing_bookmarks_panel()
+        return
+    if not s.startswith("inc://writing-bookmark-open/"):
+        return
+    bookmark = next((item for item in _writing_bookmarks() if str(item.get("id") or "") == bookmark_id), None)
+    if not bookmark:
+        return
+    location = bookmark.get("location") or {}
+    try:
+        document = _writing_dock._editor.document()
+        max_pos = max(0, int(document.characterCount()) - 1)
+        cursor = _writing_dock._editor.textCursor()
+        cursor.setPosition(max(0, min(int(location.get("cursor_position", 0) or 0), max_pos)))
+        _writing_dock._editor.setTextCursor(cursor)
+        _writing_dock._editor.ensureCursorVisible()
+    except Exception:
+        pass
+
+
 def _apply_markdown_transform(kind: str) -> None:
     if _writing_dock is None:
         return
@@ -970,6 +1095,9 @@ def _build_writing_dock():
     toolbar.addWidget(_build_button("Set Marker", _move_marker_to_cursor, tooltip_text="Save the current line as a marker"))
     toolbar.addWidget(_build_button("Jump", _jump_to_marker, tooltip_text="Jump to the saved marker line"))
     toolbar.addWidget(_build_button("Clear", _clear_marker, tooltip_text="Clear the saved marker line"))
+    toolbar.addWidget(_build_button("Bookmark", _add_current_writing_bookmark, tooltip_text="Save the current line as an interesting-place bookmark"))
+    bookmarks_btn = _build_button("Bookmarks 0", _toggle_writing_bookmarks_panel, tooltip_text="Show saved writing bookmarks")
+    toolbar.addWidget(bookmarks_btn)
     toolbar.addStretch(1)
     toolbar.addWidget(_build_button("Backups", _open_backup_restore_dialog, tooltip_text="Restore one of the saved writing backups"))
     toolbar.addWidget(_build_button("Reveal File", _open_writing_folder, tooltip_text="Reveal markdown file in Finder/Explorer"))
@@ -1036,6 +1164,14 @@ def _build_writing_dock():
     bottom.addWidget(saved_lbl, 0, Qt.AlignmentFlag.AlignRight)
     layout.addLayout(bottom)
 
+    bookmarks_panel = QTextBrowser(root)
+    bookmarks_panel.setOpenLinks(False)
+    bookmarks_panel.setOpenExternalLinks(False)
+    bookmarks_panel.anchorClicked.connect(_open_writing_bookmark_link)
+    bookmarks_panel.setVisible(False)
+    bookmarks_panel.setMaximumHeight(150)
+    layout.addWidget(bookmarks_panel)
+
     dock.setWidget(root)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
@@ -1068,6 +1204,8 @@ def _build_writing_dock():
     dock._focus_btn = focus_btn
     dock._preview_btn = preview_btn
     dock._highlight_line_btn = highlight_line_btn
+    dock._bookmarks_btn = bookmarks_btn
+    dock._bookmarks_panel = bookmarks_panel
 
     _autosave_timer = QTimer(dock)
     _autosave_timer.setSingleShot(True)
@@ -1169,6 +1307,7 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
 
     _update_editor_highlights()
     _update_progress_display()
+    _refresh_writing_bookmarks_panel()
     _set_status("Autosave on typing")
     _writing_dock.show()
     _writing_dock.raise_()

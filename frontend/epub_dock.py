@@ -89,6 +89,14 @@ try:
 except ImportError:
     from epub_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note  # type: ignore
 try:
+    from ..backend.reader_bookmarks import (
+        add_reader_bookmark,
+        delete_reader_bookmark,
+        list_reader_bookmarks,
+    )
+except ImportError:
+    from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
+try:
     from .highlight_note_dialog import HighlightNoteDialog
 except ImportError:
     from highlight_note_dialog import HighlightNoteDialog  # type: ignore
@@ -1105,6 +1113,8 @@ def _build_epub_dock() -> None:
     dock._text_larger_btn = QPushButton("A+")
     dock._highlight_btn = QPushButton("Highlight")
     dock._snapshot_btn = QPushButton("Snapshot")
+    dock._bookmark_add_btn = QPushButton("Bookmark")
+    dock._bookmarks_btn = QPushButton("Bookmarks")
     dock._finished_btn = QPushButton("Finished")
     dock._finished_btn.setCheckable(True)
     toolbar.addWidget(dock._prev_btn)
@@ -1120,6 +1130,8 @@ def _build_epub_dock() -> None:
     toolbar.addWidget(dock._text_larger_btn)
     toolbar.addWidget(dock._highlight_btn)
     toolbar.addWidget(dock._snapshot_btn)
+    toolbar.addWidget(dock._bookmark_add_btn)
+    toolbar.addWidget(dock._bookmarks_btn)
     toolbar.addWidget(dock._finished_btn)
     layout.addLayout(toolbar)
 
@@ -1141,6 +1153,14 @@ def _build_epub_dock() -> None:
     dock._sources.setOpenExternalLinks(False)
     dock._sources.anchorClicked.connect(_open_source_link)
     layout.addWidget(dock._sources)
+
+    dock._bookmarks_panel = QTextBrowser()
+    dock._bookmarks_panel.setMaximumHeight(150)
+    dock._bookmarks_panel.setOpenLinks(False)
+    dock._bookmarks_panel.setOpenExternalLinks(False)
+    dock._bookmarks_panel.anchorClicked.connect(_open_epub_bookmark_link)
+    dock._bookmarks_panel.setVisible(False)
+    layout.addWidget(dock._bookmarks_panel)
 
     dock.setWidget(container)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
@@ -1167,6 +1187,8 @@ def _build_epub_dock() -> None:
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
     qconnect(dock._highlight_btn.clicked, _request_highlight)
     qconnect(dock._snapshot_btn.clicked, _request_snapshot)
+    qconnect(dock._bookmark_add_btn.clicked, _add_current_epub_bookmark)
+    qconnect(dock._bookmarks_btn.clicked, _toggle_epub_bookmarks_panel)
     qconnect(dock._finished_btn.clicked, _toggle_finished)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
@@ -1189,6 +1211,121 @@ def _build_epub_dock() -> None:
         _epub_shortcuts_registered = True
 
     _epub_dock = dock
+
+
+def _current_epub_section_title() -> str:
+    sections = _current_sections()
+    if 0 <= int(_current_epub_section_index) < len(sections):
+        return str(sections[int(_current_epub_section_index)].get("title") or "").strip()
+    return f"Section {int(_current_epub_section_index) + 1}"
+
+
+def _epub_bookmarks() -> list[dict]:
+    if _current_epub_card_id is None:
+        return []
+    try:
+        return list_reader_bookmarks(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_epub_card_id),
+            "epub",
+        )
+    except Exception:
+        return []
+
+
+def _refresh_epub_bookmarks_panel() -> None:
+    if _epub_dock is None:
+        return
+    bookmarks = _epub_bookmarks()
+    _epub_dock._bookmarks_btn.setText(f"Bookmarks {len(bookmarks)}")
+    if not getattr(_epub_dock, "_bookmarks_panel", None):
+        return
+    html = ["<div style='font-family:sans-serif;font-size:12px'>"]
+    html.append("<b>Interesting-place bookmarks</b>")
+    if bookmarks:
+        html.append("<ul>")
+        for bookmark in bookmarks:
+            bookmark_id = escape(str(bookmark.get("id") or ""))
+            label = escape(str(bookmark.get("label") or "Bookmark"))
+            location = bookmark.get("location") or {}
+            section = int(location.get("section_index", 0) or 0) + 1
+            html.append(
+                "<li>"
+                f"<span>{label}</span> <span style='color:#888'>section {section}</span> "
+                f"<a href='inc://epub-bookmark-open/{bookmark_id}'>Jump</a> "
+                f"<a href='inc://epub-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                "</li>"
+            )
+        html.append("</ul>")
+    else:
+        html.append("<div style='color:#888;padding:6px 0 0'>No bookmarks yet.</div>")
+    html.append("</div>")
+    _epub_dock._bookmarks_panel.setHtml("".join(html))
+
+
+def _add_current_epub_bookmark() -> None:
+    if _current_epub_card_id is None:
+        return
+    try:
+        add_reader_bookmark(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_epub_card_id),
+            "epub",
+            {
+                "section_index": int(_current_epub_section_index),
+                "scroll_ratio": float(_current_epub_scroll_ratio),
+                "section_title": _current_epub_section_title(),
+            },
+        )
+    except Exception as exc:
+        showInfo(f"Could not save EPUB bookmark:\n{exc}")
+        return
+    if _epub_dock is not None:
+        _epub_dock._bookmarks_panel.setVisible(True)
+    _refresh_epub_bookmarks_panel()
+    tooltip("EPUB bookmark saved.")
+
+
+def _toggle_epub_bookmarks_panel() -> None:
+    if _epub_dock is None:
+        return
+    _refresh_epub_bookmarks_panel()
+    _epub_dock._bookmarks_panel.setVisible(not _epub_dock._bookmarks_panel.isVisible())
+
+
+def _open_epub_bookmark_link(url: QUrl) -> None:
+    if _current_epub_card_id is None or _current_epub_filename is None:
+        return
+    s = url.toString()
+    bookmark_id = s.rsplit("/", 1)[-1]
+    if s.startswith("inc://epub-bookmark-delete/"):
+        try:
+            delete_reader_bookmark(
+                _ADDON_DIR,
+                _active_profile(),
+                int(_current_epub_card_id),
+                "epub",
+                bookmark_id,
+            )
+        except Exception as exc:
+            showInfo(f"Could not delete EPUB bookmark:\n{exc}")
+        _refresh_epub_bookmarks_panel()
+        return
+    if not s.startswith("inc://epub-bookmark-open/"):
+        return
+    bookmark = next((item for item in _epub_bookmarks() if str(item.get("id") or "") == bookmark_id), None)
+    if not bookmark:
+        return
+    location = bookmark.get("location") or {}
+    show_epub_in_dock(
+        int(_current_epub_card_id),
+        _current_epub_filename,
+        section_index=int(location.get("section_index", 0) or 0),
+        scroll_ratio=float(location.get("scroll_ratio", 0.0) or 0.0),
+        offer_due_review_prompt=False,
+    )
 
 
 def _open_source_link(url: QUrl) -> None:
@@ -1530,9 +1667,12 @@ def _update_title_and_buttons() -> None:
     _epub_dock._text_smaller_btn.setEnabled(has_card)
     _epub_dock._text_larger_btn.setEnabled(has_card)
     _epub_dock._snapshot_btn.setEnabled(has_card)
+    _epub_dock._bookmark_add_btn.setEnabled(has_card)
+    _epub_dock._bookmarks_btn.setEnabled(has_card)
     _epub_dock._finished_btn.blockSignals(True)
     _epub_dock._finished_btn.setChecked(bool(_current_epub_finished))
     _epub_dock._finished_btn.blockSignals(False)
+    _refresh_epub_bookmarks_panel()
 
 
 def _update_sources_panel() -> None:

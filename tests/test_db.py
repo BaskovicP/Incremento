@@ -128,6 +128,17 @@ class TestGetConnection:
         }
         assert "browser_media_refs" in tables
 
+    def test_creates_reader_bookmarks_table(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        assert "reader_bookmarks" in tables
+
     def test_creates_writing_progress_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
