@@ -286,6 +286,24 @@ def normalize_add_content_payload(payload) -> dict:
         raise ValueError("pageContentScope must be 'main' or 'full'.")
     pdf_base64 = str(payload.get("pdfBase64", "") or "").strip()
     pdf_filename = _collapse_ws(payload.get("pdfFilename", ""))
+    raw_media_url = str(payload.get("mediaUrl", "") or "").strip()
+    media_url = ""
+    if raw_media_url:
+        try:
+            media_url = normalize_http_url(raw_media_url)
+        except ValueError:
+            media_url = ""
+    media_title = _collapse_ws(payload.get("mediaTitle", ""))
+    raw_media_seconds = payload.get("mediaSeconds", None)
+    if raw_media_seconds in (None, ""):
+        media_seconds = 0.0
+    else:
+        try:
+            media_seconds = round(float(raw_media_seconds or 0.0), 1)
+        except Exception as exc:
+            raise ValueError("mediaSeconds must be a non-negative number.") from exc
+        if media_seconds < 0:
+            raise ValueError("mediaSeconds must be a non-negative number.")
 
     return {
         "kind": kind,
@@ -302,6 +320,9 @@ def normalize_add_content_payload(payload) -> dict:
         "page_content_scope": raw_page_content_scope or "main",
         "pdf_base64": pdf_base64,
         "pdf_filename": pdf_filename,
+        "media_url": media_url,
+        "media_title": media_title,
+        "media_seconds": media_seconds,
     }
 
 
@@ -718,7 +739,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     from .priority_manager import set_priority
     from .paths import get_active_profile as _active_profile
     from .video_manager import add_video_card, is_supported_video_url, resolve_video_url_for_embed
-    from .web_manager import add_web_card
+    from .web_manager import add_web_card, set_web_media_progress
     from .writing_manager import add_writing_card
     from ..frontend.webpage_dialog import render_webpage_to_pdf
 
@@ -735,6 +756,9 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     writing_mode = normalized["writing_mode"]
     page_content_scope = normalized["page_content_scope"]
     pdf_base64 = normalized["pdf_base64"]
+    media_url = normalized.get("media_url", "")
+    media_title = normalized.get("media_title", "")
+    media_seconds = float(normalized.get("media_seconds") or 0.0)
 
     if kind == "video":
         video_url = resolve_video_url_for_embed(url)
@@ -755,6 +779,16 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             deck_name=deck_name,
             tags=tags,
         )
+        if media_seconds > 0:
+            set_web_media_progress(
+                _addon_dir,
+                _active_profile(),
+                int(card_id),
+                url=url,
+                media_url=media_url,
+                media_title=media_title,
+                media_seconds=media_seconds,
+            )
     elif kind == "writing":
         initial_markdown = str(markdown or "").strip()
         if not initial_markdown and writing_mode == "webpage_markdown":
@@ -967,6 +1001,12 @@ def _update_web_card_media_on_main(payload: dict) -> dict:
         )
     except Exception:
         pass
+    try:
+        from .. import _sync_reviewer_priority_badge
+
+        _sync_reviewer_priority_badge()
+    except Exception:
+        pass
     return {
         "ok": True,
         "cardId": card_id,
@@ -983,9 +1023,11 @@ def _save_browser_media_ref_on_main(payload: dict) -> dict:
     try:
         from .db import set_card_browser_media_ref
         from .paths import get_active_profile as _active_profile
+        from .web_manager import WEB_NOTE_TYPE, set_web_media_progress
     except ImportError:
         from db import set_card_browser_media_ref  # type: ignore
         from paths import get_active_profile as _active_profile  # type: ignore
+        from web_manager import WEB_NOTE_TYPE, set_web_media_progress  # type: ignore
 
     normalized = normalize_browser_media_ref_payload(payload)
     card_id = int(normalized["card_id"])
@@ -997,17 +1039,56 @@ def _save_browser_media_ref_on_main(payload: dict) -> dict:
     if card is None:
         raise ValueError(f"Card {card_id} was not found.")
 
+    is_web_card = False
+    try:
+        note = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+        is_web_card = bool(model is not None and model.get("name") == WEB_NOTE_TYPE)
+    except Exception:
+        is_web_card = False
+
     updated_at = int(time.time())
-    set_card_browser_media_ref(
-        _addon_dir,
-        _active_profile(),
-        card_id,
-        page_url=normalized["page_url"],
-        media_url=normalized["media_url"],
-        media_title=normalized["media_title"],
-        media_seconds=normalized["seconds"],
-        updated_at=updated_at,
-    )
+    if is_web_card:
+        set_web_media_progress(
+            _addon_dir,
+            _active_profile(),
+            card_id,
+            url=normalized["page_url"],
+            media_url=normalized["media_url"],
+            media_title=normalized["media_title"],
+            media_seconds=normalized["seconds"],
+            media_updated_at=updated_at,
+        )
+        try:
+            from ..frontend.web_dock import sync_external_web_media_state
+
+            sync_external_web_media_state(
+                card_id,
+                normalized["page_url"],
+                normalized["media_url"],
+                normalized["media_title"],
+                normalized["seconds"],
+            )
+        except Exception:
+            pass
+    else:
+        set_card_browser_media_ref(
+            _addon_dir,
+            _active_profile(),
+            card_id,
+            page_url=normalized["page_url"],
+            media_url=normalized["media_url"],
+            media_title=normalized["media_title"],
+            media_seconds=normalized["seconds"],
+            updated_at=updated_at,
+        )
+
+    try:
+        from .. import _sync_reviewer_priority_badge
+
+        _sync_reviewer_priority_badge()
+    except Exception:
+        pass
 
     try:
         from .video_manager import fmt_time
@@ -1036,11 +1117,34 @@ def _load_browser_media_ref_on_main(card_id: int) -> dict:
     try:
         from .db import get_card_browser_media_ref
         from .paths import get_active_profile as _active_profile
+        from .web_manager import WEB_NOTE_TYPE, get_web_progress
     except ImportError:
         from db import get_card_browser_media_ref  # type: ignore
         from paths import get_active_profile as _active_profile  # type: ignore
+        from web_manager import WEB_NOTE_TYPE, get_web_progress  # type: ignore
 
-    ref = get_card_browser_media_ref(_addon_dir, _active_profile(), int(card_id))
+    is_web_card = False
+    try:
+        from aqt import mw
+
+        card = mw.col.get_card(int(card_id))
+        note = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+        is_web_card = bool(model is not None and model.get("name") == WEB_NOTE_TYPE)
+    except Exception:
+        is_web_card = False
+
+    if is_web_card:
+        progress = get_web_progress(_addon_dir, _active_profile(), int(card_id))
+        ref = {
+            "page_url": progress.get("url", ""),
+            "media_url": progress.get("media_url", ""),
+            "media_title": progress.get("media_title", ""),
+            "media_seconds": progress.get("media_seconds", 0.0),
+            "updated_at": progress.get("media_updated_at", 0),
+        }
+    else:
+        ref = get_card_browser_media_ref(_addon_dir, _active_profile(), int(card_id))
     seconds = float(ref.get("media_seconds") or 0.0)
     has_reference = bool(ref.get("updated_at"))
     try:

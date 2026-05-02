@@ -401,6 +401,28 @@ async function clearTrackedWebState(tabId) {
   }
 }
 
+async function registerWebCardTracking(tabId, cardId, rawUrl = "") {
+  const tid = Math.max(0, Math.floor(Number(tabId) || 0));
+  const cid = Math.max(0, Math.floor(Number(cardId) || 0));
+  const cleanUrl = stripIncrementoTrackingParams(String(rawUrl || ""));
+  if (tid <= 0 || cid <= 0) {
+    return { ok: false, linked: false, cardId: 0 };
+  }
+  await saveLinkedCardContext(tid, {
+    cardId: cid,
+    sourceUrl: cleanUrl,
+    updatedAt: Date.now(),
+  });
+  await saveTrackedWebState(tid, {
+    cardId: cid,
+    lastUrl: cleanUrl,
+    desiredResumeSec: 0,
+    desiredResumeMediaUrl: "",
+  });
+  await ensureContentScriptInjected(tid);
+  return { ok: true, linked: true, cardId: cid };
+}
+
 function setTimestampInVideoUrl(rawUrl, provider, videoId, seconds) {
   const sec = Math.max(0, Math.floor(Number(seconds) || 0));
   const decoded = htmlDecodeUrl(rawUrl);
@@ -764,6 +786,23 @@ async function ensureContentScriptInjected(tabId) {
   }
 }
 
+async function getCurrentMediaContextInTab(tabId) {
+  if (typeof tabId !== "number") {
+    return null;
+  }
+  await ensureContentScriptInjected(tabId);
+  try {
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      { type: "GET_CURRENT_MEDIA_CONTEXT" },
+      { frameId: 0 },
+    );
+    return response?.ok ? response : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
 async function invokeBrowserCaptureInTab(tabId, mode) {
   if (typeof tabId !== "number") {
     return { ok: false };
@@ -860,6 +899,15 @@ function buildImportPayload(kind, context, options = {}) {
 
   if (kind === "pdf" && context?.html) {
     payload.html = String(context.html);
+  }
+
+  if (kind === "webpage") {
+    const mediaSeconds = Math.max(0, Math.floor(Number(options.mediaSeconds) || 0));
+    if (mediaSeconds > 0) {
+      payload.mediaSeconds = mediaSeconds;
+      payload.mediaUrl = String(options.mediaUrl || "").trim();
+      payload.mediaTitle = String(options.mediaTitle || "").trim();
+    }
   }
 
   if (kind === "writing") {
@@ -1004,8 +1052,7 @@ async function addCurrentPageToIncremento(command) {
       payload.pdfBase64 = pdfPayload.pdfBase64;
       payload.pdfFilename = pdfPayload.pdfFilename;
     }
-  }
-  if (command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO) {
+  } else if (command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO) {
     if (!isSupportedVideoUrl(pageUrl)) {
       return {ok: false, error: "Open a YouTube or Vimeo page to add a video card."};
     }
@@ -1016,12 +1063,22 @@ async function addCurrentPageToIncremento(command) {
     if (startSeconds > 0) {
       payload.startSeconds = startSeconds;
     }
-  }
-  if (command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE) {
-    payload = buildImportPayload("webpage", {url: pageUrl, title: pageTitle, selectionText, html});
+  } else if (command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE) {
+    const media = await getCurrentMediaContextInTab(tab.id);
+    const detectedSeconds = media?.hasDetectedTime
+      ? Math.max(0, Math.floor(Number(media.seconds) || 0))
+      : 0;
+    payload = buildImportPayload(
+      "webpage",
+      {url: pageUrl, title: pageTitle, selectionText, html},
+      {
+        mediaSeconds: detectedSeconds,
+        mediaUrl: String(media?.mediaUrl || "").trim(),
+        mediaTitle: String(media?.mediaTitle || media?.pageTitle || pageTitle || "").trim(),
+      },
+    );
     progressMessage = "Adding webpage card...";
-  }
-  if (command === COMMAND_ADD_SELECTION_TO_MARKDOWN) {
+  } else if (command === COMMAND_ADD_SELECTION_TO_MARKDOWN) {
     if (!selectionText) {
       return {ok: false, error: "Select text on the page first."};
     }
@@ -1032,8 +1089,7 @@ async function addCurrentPageToIncremento(command) {
       html
     }, {writingMode: "selection"});
     progressMessage = "Adding writing card from selection...";
-  }
-  if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
+  } else if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
     if (!html) {
       return {ok: false, error: "Could not read webpage content from this tab."};
     }
@@ -1048,6 +1104,9 @@ async function addCurrentPageToIncremento(command) {
 
   try {
     const result = await importIntoIncremento(payload);
+    if (command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE && Number(result?.cardId) > 0) {
+      await registerWebCardTracking(tab.id, Number(result.cardId), pageUrl);
+    }
     await showToastInTab(tab.id, `Added ${result.kind} card: ${result.title}`);
     return {ok: true, result};
   } catch (error) {
@@ -1355,6 +1414,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       const status = await getLinkedCardContextForTab(tabId, String(msg.url || sender?.tab?.url || ""));
       sendResponse?.(status);
+    })();
+    return true;
+  }
+
+  if (msg.type === "REGISTER_WEB_CARD_TRACKING") {
+    void (async () => {
+      const senderTabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
+      const requestedTabId = Number(msg.tabId);
+      const tabId = Number.isFinite(requestedTabId) && requestedTabId > 0
+        ? requestedTabId
+        : senderTabId;
+      const cardId = Math.max(0, Math.floor(Number(msg.cardId) || 0));
+      if (typeof tabId !== "number" || cardId <= 0) {
+        sendResponse?.({ ok: false, linked: false, cardId: 0 });
+        return;
+      }
+      const result = await registerWebCardTracking(tabId, cardId, String(msg.url || sender?.tab?.url || ""));
+      sendResponse?.(result);
     })();
     return true;
   }

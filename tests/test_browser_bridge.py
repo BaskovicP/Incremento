@@ -75,6 +75,37 @@ def test_normalize_add_content_payload_defaults_and_aliases():
     assert payload["tags"] == ["alpha", "beta"]
     assert payload["priority"] == 50.0
     assert payload["html"] == "<html></html>"
+    assert payload["media_seconds"] == 0.0
+
+
+def test_normalize_add_content_payload_accepts_webpage_media_timing():
+    payload = normalize_add_content_payload(
+        {
+            "kind": "webpage",
+            "url": "https://example.com/article",
+            "title": "Article",
+            "mediaUrl": "https://cdn.example.com/video.mp4",
+            "mediaTitle": "  Embedded clip  ",
+            "mediaSeconds": "126.24",
+        }
+    )
+    assert payload["kind"] == "webpage"
+    assert payload["media_url"] == "https://cdn.example.com/video.mp4"
+    assert payload["media_title"] == "Embedded clip"
+    assert payload["media_seconds"] == 126.2
+
+
+def test_normalize_add_content_payload_ignores_non_http_webpage_media_url():
+    payload = normalize_add_content_payload(
+        {
+            "kind": "webpage",
+            "url": "https://example.com/article",
+            "mediaUrl": "blob:https://example.com/not-storable",
+            "mediaSeconds": 44,
+        }
+    )
+    assert payload["media_url"] == ""
+    assert payload["media_seconds"] == 44.0
 
 
 def test_normalize_add_content_payload_accepts_webpage_markdown_fields():
@@ -785,6 +816,115 @@ def test_save_browser_media_ref_on_main_persists_latest_reference(monkeypatch, t
     assert stored["media_url"] == "https://player.example.com/video"
     assert stored["media_title"] == "Example clip"
     assert stored["media_seconds"] == 83.2
+
+
+def test_save_browser_media_ref_on_main_routes_web_cards_to_web_progress(monkeypatch, tmp_path):
+    class _Card:
+        id = 123
+        nid = 456
+
+    class _Note:
+        mid = 789
+
+    class _Models:
+        def get(self, mid):
+            assert mid == 789
+            return {"name": "Incremento Web"}
+
+    class _Col:
+        models = _Models()
+
+        def get_card(self, card_id):
+            assert card_id == 123
+            return _Card()
+
+        def get_note(self, note_id):
+            assert note_id == 456
+            return _Note()
+
+    mw = SimpleNamespace(col=_Col())
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
+    monkeypatch.setitem(sys.modules, "db", db)
+
+    result = _save_browser_media_ref_on_main(
+        {
+            "cardId": 123,
+            "pageUrl": "https://example.com/article",
+            "mediaUrl": "https://player.example.com/video",
+            "mediaTitle": "Example clip",
+            "seconds": 83.2,
+        }
+    )
+
+    assert result["ok"] is True
+    stored_ref = db.get_card_browser_media_ref(str(tmp_path), "TestProfile", 123)
+    assert stored_ref["media_seconds"] == 0.0
+
+    import web_manager
+
+    progress = web_manager.get_web_progress(str(tmp_path), "TestProfile", 123)
+    assert progress["url"] == "https://example.com/article"
+    assert progress["media_url"] == "https://player.example.com/video"
+    assert progress["media_title"] == "Example clip"
+    assert progress["media_seconds"] == 83.2
+
+
+def test_load_browser_media_ref_on_main_reads_web_progress_for_web_cards(monkeypatch, tmp_path):
+    import web_manager
+
+    web_manager.set_web_media_progress(
+        str(tmp_path),
+        "TestProfile",
+        123,
+        url="https://example.com/article",
+        media_url="https://player.example.com/video",
+        media_title="Example clip",
+        media_seconds=83.2,
+        media_updated_at=1000,
+    )
+
+    class _Card:
+        id = 123
+        nid = 456
+
+    class _Note:
+        mid = 789
+
+    class _Models:
+        def get(self, mid):
+            assert mid == 789
+            return {"name": "Incremento Web"}
+
+    class _Col:
+        models = _Models()
+
+        def get_card(self, card_id):
+            assert card_id == 123
+            return _Card()
+
+        def get_note(self, note_id):
+            assert note_id == 456
+            return _Note()
+
+    mw = SimpleNamespace(col=_Col())
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
+    monkeypatch.setitem(sys.modules, "db", db)
+
+    result = _load_browser_media_ref_on_main(123)
+
+    assert result["ok"] is True
+    assert result["hasReference"] is True
+    assert result["pageUrl"] == "https://example.com/article"
+    assert result["mediaUrl"] == "https://player.example.com/video"
+    assert result["mediaTitle"] == "Example clip"
+    assert result["seconds"] == 83.2
+    assert result["timeText"] == "1:23"
 
 
 def test_load_browser_media_ref_on_main_returns_empty_state_when_missing(monkeypatch, tmp_path):

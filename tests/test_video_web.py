@@ -2,6 +2,7 @@
 import importlib.util
 import os
 
+import db
 import pytest
 
 # ── Load modules by path to avoid Qt dependency ──────────────────────────────
@@ -599,6 +600,27 @@ class TestWebUrl:
         )
         progress = get_web_progress(str(tmp_path), "TestProfile", 1)
         assert progress["media_seconds"] == pytest.approx(44.0)
+
+    def test_media_progress_falls_back_to_browser_media_ref(self, tmp_path):
+        db.set_card_browser_media_ref(
+            str(tmp_path),
+            "TestProfile",
+            1,
+            page_url="https://example.com/article",
+            media_url="https://player.example.com/video",
+            media_title="Embedded video",
+            media_seconds=127,
+            updated_at=1234567890,
+        )
+        set_web_url(str(tmp_path), "TestProfile", 1, "https://example.com/article")
+
+        progress = get_web_progress(str(tmp_path), "TestProfile", 1)
+
+        assert progress["url"] == "https://example.com/article"
+        assert progress["media_url"] == "https://player.example.com/video"
+        assert progress["media_title"] == "Embedded video"
+        assert progress["media_seconds"] == pytest.approx(127.0)
+        assert progress["media_updated_at"] == 1234567890
 
     def test_build_web_media_resume_target_prefers_page_provider_url(self):
         assert (

@@ -355,27 +355,52 @@ def _normalize_bookmark_payload(payload) -> WebBookmarkPayload:
 
 
 def get_web_progress(addon_dir: str, profile: str, card_id: int) -> WebProgressState:
-    row = get_connection(addon_dir, profile).execute(
+    conn = get_connection(addon_dir, profile)
+    row = conn.execute(
         "SELECT url, scroll_ratio, bookmark_url, bookmark_payload, media_url, media_title, media_seconds, media_updated_at "
         "FROM web_progress WHERE card_id = ?",
         (card_id,),
     ).fetchone()
     if not row:
-        return _default_web_progress()
+        progress = _default_web_progress()
+    else:
+        try:
+            bookmark_payload = json.loads(row[3] or "{}")
+        except Exception:
+            bookmark_payload = {}
+        progress = {
+            "url": str(row[0] or "").strip(),
+            "scroll_ratio": _normalize_scroll_ratio(row[1]),
+            "bookmark_url": str(row[2] or "").strip(),
+            "bookmark_payload": _normalize_bookmark_payload(bookmark_payload),
+            "media_url": _normalize_media_url(row[4]),
+            "media_title": _normalize_media_title(row[5]),
+            "media_seconds": _normalize_media_seconds(row[6]),
+            "media_updated_at": _normalize_media_updated_at(row[7]),
+        }
+
+    if float(progress.get("media_seconds") or 0.0) > 0:
+        return progress
     try:
-        bookmark_payload = json.loads(row[3] or "{}")
+        ref = conn.execute(
+            "SELECT page_url, media_url, media_title, media_seconds, updated_at "
+            "FROM browser_media_refs WHERE card_id = ?",
+            (card_id,),
+        ).fetchone()
     except Exception:
-        bookmark_payload = {}
-    return {
-        "url": str(row[0] or "").strip(),
-        "scroll_ratio": _normalize_scroll_ratio(row[1]),
-        "bookmark_url": str(row[2] or "").strip(),
-        "bookmark_payload": _normalize_bookmark_payload(bookmark_payload),
-        "media_url": _normalize_media_url(row[4]),
-        "media_title": _normalize_media_title(row[5]),
-        "media_seconds": _normalize_media_seconds(row[6]),
-        "media_updated_at": _normalize_media_updated_at(row[7]),
-    }
+        ref = None
+    if not ref:
+        return progress
+    ref_seconds = _normalize_media_seconds(ref[3])
+    if ref_seconds <= 0:
+        return progress
+    if not str(progress.get("url") or "").strip():
+        progress["url"] = str(ref[0] or "").strip()
+    progress["media_url"] = _normalize_media_url(ref[1])
+    progress["media_title"] = _normalize_media_title(ref[2])
+    progress["media_seconds"] = ref_seconds
+    progress["media_updated_at"] = _normalize_media_updated_at(ref[4])
+    return progress
 
 
 def build_web_restore_payload(

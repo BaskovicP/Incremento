@@ -9,6 +9,7 @@ import {
   getActiveTab,
   openExtensionShortcutsPage,
   openBookmarksPage,
+  registerWebCardTrackingForTab,
   setLocalExtensionSetting,
   triggerBrowserCaptureForTab,
   updateBrowserMediaRefBadgeForTab,
@@ -311,6 +312,42 @@ export function PopupApp() {
     };
   }
 
+  async function resolveWebpageMediaTiming(tab, pageUrl) {
+    const rawManualTime = String(manualTime || "").trim();
+    const parsedManualTime = rawManualTime ? parseManualTimeInput(rawManualTime) : null;
+    if (rawManualTime && parsedManualTime === null) {
+      return {
+        ok: false,
+        error: "Enter a valid time like 12:34, 1:02:03, 90, or 1m30s.",
+      };
+    }
+
+    const fallbackMedia = String(mediaContext?.pageUrl || "").trim() === String(pageUrl || "").trim()
+      ? mediaContext
+      : null;
+    let media = fallbackMedia;
+    if (tab?.id && isHttpUrl(pageUrl)) {
+      try {
+        const result = await getCurrentMediaContextForTab(tab.id);
+        media = result?.ok ? result : null;
+        setMediaContext(media);
+      } catch (_error) {
+        media = fallbackMedia;
+      }
+    }
+
+    const detectedSeconds = media?.hasDetectedTime ? Number(media.seconds) : 0;
+    const seconds = parsedManualTime ?? detectedSeconds;
+    if (!Number.isFinite(Number(seconds)) || Number(seconds) <= 0) {
+      return { ok: true, seconds: 0, media: media || null };
+    }
+    return {
+      ok: true,
+      seconds: Math.max(0, Math.floor(Number(seconds) || 0)),
+      media: media || null,
+    };
+  }
+
   useEffect(() => {
     if (!busy && !hasSupportedPage) {
       setStatus({
@@ -416,6 +453,20 @@ export function PopupApp() {
         payload.pdfFilename = pdfPayload.pdfFilename;
       }
     }
+    if (kind === "webpage") {
+      const timing = await resolveWebpageMediaTiming(currentTab, currentPageUrl);
+      if (!timing.ok) {
+        setStatus({ text: timing.error || "Invalid web page time.", kind: "error" });
+        return;
+      }
+      if (Number(timing.seconds) > 0) {
+        payload.mediaSeconds = Number(timing.seconds);
+        payload.mediaUrl = String(timing.media?.mediaUrl || "").trim();
+        payload.mediaTitle = String(
+          timing.media?.mediaTitle || timing.media?.pageTitle || currentPageTitle || ""
+        ).trim();
+      }
+    }
 
     setBusy(true);
     const statusLabel = (
@@ -426,6 +477,26 @@ export function PopupApp() {
     setStatus({ text: statusLabel, kind: "" });
     try {
       const result = await importIntoIncremento(payload);
+      if (kind === "webpage" && currentTab?.id && Number(result?.cardId) > 0) {
+        try {
+          await registerWebCardTrackingForTab(currentTab.id, Number(result.cardId), currentPageUrl);
+          setLinkedCard({ linked: true, cardId: Number(result.cardId) });
+          if (Number(payload.mediaSeconds) > 0) {
+            await updateBrowserMediaRefBadgeForTab(currentTab.id, {
+              ok: true,
+              hasReference: true,
+              cardId: Number(result.cardId),
+              pageUrl: currentPageUrl,
+              mediaUrl: String(payload.mediaUrl || ""),
+              mediaTitle: String(payload.mediaTitle || ""),
+              seconds: Number(payload.mediaSeconds),
+              timeText: formatMediaTime(payload.mediaSeconds),
+            });
+          }
+        } catch (_error) {
+          // Card creation succeeded; tracking can still start when the page is opened from Anki.
+        }
+      }
       setStatus({ text: `Added ${result.kind} card: ${result.title}`, kind: "success" });
     } catch (error) {
       setStatus({

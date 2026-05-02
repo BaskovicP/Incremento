@@ -93,8 +93,10 @@ from .backend.topic_a_factor_bulk import (
     apply_bulk_topic_a_factor as _apply_bulk_topic_a_factor,
 )
 from .backend.web_manager import (
+    WEB_NOTE_TYPE,
     configured_remember_browser_card_scroll,
     configured_prefer_web_card_resume_in_original_page,
+    get_web_progress,
 )
 from .backend.reviewer_buttons import (
     configured_use_fail_pass_on_items as _configured_use_fail_pass_on_items,
@@ -1748,11 +1750,25 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
         except Exception:
             a_factor = None
         try:
-            browser_ref = get_card_browser_media_ref(
-                _ADDON_DIR,
-                _active_profile(),
-                int(card.id),
-            )
+            is_web_card = False
+            try:
+                note = mw.col.get_note(card.nid)
+                model = mw.col.models.get(note.mid)
+                is_web_card = bool(model is not None and model.get("name") == WEB_NOTE_TYPE)
+            except Exception:
+                is_web_card = False
+            if is_web_card:
+                browser_ref = get_web_progress(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    int(card.id),
+                )
+            else:
+                browser_ref = get_card_browser_media_ref(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    int(card.id),
+                )
             seconds = float(browser_ref.get("media_seconds") or 0.0)
             if seconds > 0:
                 browser_time_seconds = seconds

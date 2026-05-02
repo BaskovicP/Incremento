@@ -129,6 +129,27 @@ export function getLinkedCardContextForTab(tabId, url = "") {
   });
 }
 
+export function registerWebCardTrackingForTab(tabId, cardId, url = "") {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: "REGISTER_WEB_CARD_TRACKING",
+        tabId: Number(tabId),
+        cardId: Number(cardId),
+        url: String(url || ""),
+      },
+      (response) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message || "Failed to link the web card tab."));
+          return;
+        }
+        resolve(response || null);
+      }
+    );
+  });
+}
+
 export async function getCurrentMediaContextForTab(tabId) {
   if (!Number.isFinite(Number(tabId)) || Number(tabId) <= 0) {
     throw new Error("No active tab found for media detection.");
