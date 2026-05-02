@@ -617,6 +617,22 @@ def register_pdf_view_callbacks(start_fn, stop_fn) -> None:
     _cb_pdf_view_stopped = stop_fn
 
 
+def _add_card_source_for_new_note() -> str:
+    try:
+        try:
+            from . import add_card_dock as _add_card_dock_mod
+        except Exception:
+            import add_card_dock as _add_card_dock_mod  # type: ignore
+
+        pending = _add_card_dock_mod.pending_extract_options()
+        pending_source = str((pending or {}).get("source") or "").strip()
+        if pending_source:
+            return pending_source
+        return str(_add_card_dock_mod.recent_fill_source() or "").strip()
+    except Exception:
+        return ""
+
+
 # ── Citation helper (called by _fill_dock_field in __init__.py) ───────────────
 
 
@@ -1727,14 +1743,9 @@ def on_add_cards_did_add_note(note) -> None:
     """When a card is saved in the AddCards dock, record it against the current PDF page."""
     if _current_pdf_card_id is None:
         return
-    try:
-        from . import add_card_dock as _add_card_dock_mod
-
-        source = _add_card_dock_mod.recent_fill_source()
-        if source and source != "pdf":
-            return
-    except Exception:
-        pass
+    source = _add_card_source_for_new_note()
+    if source and source != "pdf":
+        return
     page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
     import re as _re
 

@@ -52,6 +52,7 @@ _current_extract_mark_topic: bool | None = None
 _current_extract_link_to_knowledge_tree: bool | None = None
 _pending_extract_options: dict | None = None
 _pending_extract_context: dict | None = None
+_suppress_next_reviewer_queue_refresh: dict | None = None
 _last_fill_source = ""
 _last_fill_seen = 0.0
 _tracked_tag_button_editors: list[weakref.ReferenceType] = []
@@ -1446,8 +1447,49 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
     return context
 
 
+def mark_reviewer_extract_note_added(options: dict | None) -> None:
+    global _suppress_next_reviewer_queue_refresh
+    if str((options or {}).get("source") or "").strip() != "reviewer":
+        return
+    parent_card_id = None
+    try:
+        raw_parent_card_id = (options or {}).get("source_card_id")
+        parent_card_id = int(raw_parent_card_id) if raw_parent_card_id is not None else None
+    except Exception:
+        parent_card_id = None
+    _suppress_next_reviewer_queue_refresh = {
+        "parent_card_id": parent_card_id,
+        "seen": time.monotonic(),
+    }
+
+
+def consume_reviewer_extract_queue_refresh_suppression(
+    current_card_id: int | None = None,
+    *,
+    ttl_sec: float = 5.0,
+) -> bool:
+    global _suppress_next_reviewer_queue_refresh
+    state = _suppress_next_reviewer_queue_refresh
+    if not state:
+        return False
+    _suppress_next_reviewer_queue_refresh = None
+    try:
+        if time.monotonic() - float(state.get("seen") or 0.0) > float(ttl_sec):
+            return False
+    except Exception:
+        return False
+    parent_card_id = state.get("parent_card_id")
+    if parent_card_id is None or current_card_id is None:
+        return True
+    try:
+        return int(parent_card_id) == int(current_card_id)
+    except Exception:
+        return False
+
+
 def on_add_cards_did_add_note(note) -> None:
     options = consume_pending_extract_options_for_note(note)
+    mark_reviewer_extract_note_added(options)
     consume_pending_extract_context_for_note(note, options)
 
 

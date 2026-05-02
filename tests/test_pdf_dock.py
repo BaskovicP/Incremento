@@ -134,3 +134,33 @@ def test_reconcile_pdf_page_sources_prunes_missing_notes(monkeypatch):
     assert cards == [{"note_id": 11, "excerpt": "live"}]
     assert counts == {3: 1}
     assert deleted == [("/tmp/addon", "TestProfile", 5, [12])]
+
+
+def test_add_card_source_for_new_note_prefers_pending_extract_source(monkeypatch):
+    fake_add_card_dock = types.SimpleNamespace(
+        pending_extract_options=lambda: {"source": "reviewer"},
+        recent_fill_source=lambda: "pdf",
+    )
+    monkeypatch.setitem(sys.modules, "add_card_dock", fake_add_card_dock)
+
+    assert pdf_dock._add_card_source_for_new_note() == "reviewer"
+
+
+def test_on_add_cards_did_add_note_ignores_reviewer_extract(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "reviewer")
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("not a PDF add")),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
+
+    assert calls == []

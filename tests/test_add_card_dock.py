@@ -688,6 +688,34 @@ def test_prepare_reviewer_extract_primes_native_add_dialog(monkeypatch):
     assert dock.pending_extract_context()["parent_card_id"] == 5
 
 
+def test_reviewer_extract_queue_refresh_suppression_is_one_shot(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(dock.time, "monotonic", lambda: now[0])
+    dock._suppress_next_reviewer_queue_refresh = None
+
+    dock.mark_reviewer_extract_note_added({"source": "reviewer", "source_card_id": 5})
+
+    assert dock.consume_reviewer_extract_queue_refresh_suppression(5) is True
+    assert dock.consume_reviewer_extract_queue_refresh_suppression(5) is False
+
+
+def test_reviewer_extract_queue_refresh_suppression_checks_parent_card(monkeypatch):
+    monkeypatch.setattr(dock.time, "monotonic", lambda: 100.0)
+    dock._suppress_next_reviewer_queue_refresh = None
+
+    dock.mark_reviewer_extract_note_added({"source": "reviewer", "source_card_id": 5})
+
+    assert dock.consume_reviewer_extract_queue_refresh_suppression(6) is False
+
+
+def test_reviewer_extract_queue_refresh_suppression_ignores_non_reviewer_sources():
+    dock._suppress_next_reviewer_queue_refresh = None
+
+    dock.mark_reviewer_extract_note_added({"source": "pdf", "source_card_id": 5})
+
+    assert dock.consume_reviewer_extract_queue_refresh_suppression(5) is False
+
+
 def test_set_editor_note_type_saves_metadata_fields_before_switch(monkeypatch):
     note = _FakeNote(note_id=22)
     editor = _FakeEditor(note, add_mode=True)

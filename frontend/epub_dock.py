@@ -181,6 +181,22 @@ def register_epub_view_callbacks(start_fn, stop_fn) -> None:
     _cb_epub_view_stopped = stop_fn
 
 
+def _add_card_source_for_new_note() -> str:
+    try:
+        try:
+            from . import add_card_dock as _add_card_dock_mod
+        except Exception:
+            import add_card_dock as _add_card_dock_mod  # type: ignore
+
+        pending = _add_card_dock_mod.pending_extract_options()
+        pending_source = str((pending or {}).get("source") or "").strip()
+        if pending_source:
+            return pending_source
+        return str(_add_card_dock_mod.recent_fill_source() or "").strip()
+    except Exception:
+        return ""
+
+
 def epub_citation() -> str:
     if not _current_epub_card_id or not _current_epub_filename:
         return ""
@@ -2058,14 +2074,9 @@ def on_epub_reviewer_will_end() -> None:
 def on_add_cards_did_add_note(note) -> None:
     if _current_epub_card_id is None:
         return
-    try:
-        from . import add_card_dock as _add_card_dock_mod
-
-        source = _add_card_dock_mod.recent_fill_source()
-        if source and source != "epub":
-            return
-    except Exception:
-        pass
+    source = _add_card_source_for_new_note()
+    if source and source != "epub":
+        return
     import re as _re
 
     parts = []

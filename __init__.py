@@ -418,6 +418,11 @@ _ORIGINAL_REVIEWER_NEXT_CARD = getattr(
     "_incremento_original",
     Reviewer.nextCard,
 )
+_ORIGINAL_REVIEWER_OP_EXECUTED = getattr(
+    Reviewer.op_executed,
+    "_incremento_original",
+    Reviewer.op_executed,
+)
 _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON = getattr(
     Reviewer._showAnswerButton,
     "_incremento_original",
@@ -816,6 +821,20 @@ def _incremento_next_card(self) -> None:
     self._showQuestion()
 
 
+def _incremento_op_executed(self, changes, handler, focused) -> bool:
+    try:
+        if getattr(changes, "study_queues", False):
+            card = getattr(self, "card", None)
+            card_id = int(card.id) if card is not None else None
+            if _add_card_dock_mod.consume_reviewer_extract_queue_refresh_suppression(
+                card_id
+            ):
+                return False
+    except Exception:
+        pass
+    return _ORIGINAL_REVIEWER_OP_EXECUTED(self, changes, handler, focused)
+
+
 def _incremento_show_answer_button(self) -> None:
     card = getattr(self, "card", None)
     if not _reviewer_topic_postpone_enabled(card):
@@ -1117,6 +1136,8 @@ _incremento_on_enter_key._incremento_original = _ORIGINAL_REVIEWER_ON_ENTER_KEY
 Reviewer.onEnterKey = _incremento_on_enter_key
 _incremento_next_card._incremento_original = _ORIGINAL_REVIEWER_NEXT_CARD
 Reviewer.nextCard = _incremento_next_card
+_incremento_op_executed._incremento_original = _ORIGINAL_REVIEWER_OP_EXECUTED
+Reviewer.op_executed = _incremento_op_executed
 _incremento_show_answer_button._incremento_original = _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON
 Reviewer._showAnswerButton = _incremento_show_answer_button
 _incremento_show_ease_buttons._incremento_original = _ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS
