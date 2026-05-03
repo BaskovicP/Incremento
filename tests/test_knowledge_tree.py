@@ -261,6 +261,60 @@ class TestTreeMutationHelpers:
             (71, None, 1),
         ]
 
+    def test_lineage_card_ids_collects_ancestors_then_descendants(self):
+        with patch.object(
+            knowledge_tree,
+            "metadata_parent_card_id",
+            side_effect=lambda card_id: {20: 10, 30: 20}.get(int(card_id)),
+        ), patch.object(
+            knowledge_tree,
+            "metadata_child_card_ids",
+            side_effect=lambda card_id: {
+                30: [40, 50],
+                40: [60],
+            }.get(int(card_id), []),
+        ):
+            assert knowledge_tree.lineage_card_ids(30) == [10, 20, 30, 40, 60, 50]
+
+    def test_ensure_extract_lineage_cards_in_tree_links_missing_cards_at_root(self):
+        link_calls = []
+
+        with patch.object(
+            knowledge_tree,
+            "lineage_card_ids",
+            return_value=[10, 20, 30, 40],
+        ), patch.object(
+            knowledge_tree,
+            "get_knowledge_tree_node",
+            side_effect=lambda addon_dir, profile, card_id: {"card_id": 20} if int(card_id) == 20 else None,
+        ), patch.object(
+            knowledge_tree,
+            "infer_node_kind_for_card",
+            side_effect=lambda card_id: "topic" if int(card_id) == 10 else "item",
+        ), patch.object(
+            knowledge_tree,
+            "link_card_to_tree",
+            side_effect=lambda addon_dir, profile, card_id, node_kind, parent_card_id=None, sort_order=None: link_calls.append(
+                (addon_dir, profile, int(card_id), node_kind, parent_card_id)
+            ),
+        ):
+            result = knowledge_tree.ensure_extract_lineage_cards_in_tree(
+                self.addon_dir,
+                "TestProfile",
+                source_card_id=30,
+                created_card_ids=[40, 50],
+                created_node_kind="topic",
+            )
+
+        assert result["linked_card_ids"] == [10, 30, 40, 50]
+        assert result["error_count"] == 0
+        assert link_calls == [
+            (self.addon_dir, "TestProfile", 10, "topic", None),
+            (self.addon_dir, "TestProfile", 30, "item", None),
+            (self.addon_dir, "TestProfile", 40, "topic", None),
+            (self.addon_dir, "TestProfile", 50, "topic", None),
+        ]
+
     def test_link_cards_to_tree_reports_partial_failures_and_keeps_valid_cards(self):
         db.set_knowledge_tree_structure(
             self.addon_dir,

@@ -78,14 +78,14 @@ def test_extract_default_notetype_uses_configured_type_for_selected_text_when_av
 def test_knowledge_tree_link_state_defaults_checked_when_parent_is_in_tree():
     state = knowledge_tree_link_state(True)
 
-    assert state["enabled"] is True
+    assert state["enabled"] is False
     assert state["checked"] is True
-    assert "beneath the current source card" in str(state["tooltip"]).lower()
+    assert "added to the knowledge tree automatically" in str(state["tooltip"]).lower()
 
 
 def test_knowledge_tree_link_state_disables_when_parent_is_not_in_tree():
     state = knowledge_tree_link_state(False)
 
     assert state["enabled"] is False
-    assert state["checked"] is False
-    assert "not in the knowledge tree yet" in str(state["tooltip"]).lower()
+    assert state["checked"] is True
+    assert "root level" in str(state["tooltip"]).lower()

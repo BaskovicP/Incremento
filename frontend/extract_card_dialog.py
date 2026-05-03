@@ -88,7 +88,7 @@ class ExtractCardDialog(QDialog):
         self._mark_topic_cb.setToolTip("Add the configured topic tags to this extracted card.")
         options_row.addWidget(self._mark_topic_cb)
         tree_link_state = knowledge_tree_link_state(bool(knowledge_tree_link_enabled))
-        self._knowledge_tree_link_cb = QCheckBox("Add to knowledge tree as child")
+        self._knowledge_tree_link_cb = QCheckBox("Auto-add lineage to knowledge tree")
         self._knowledge_tree_link_cb.setChecked(
             bool(tree_link_state["checked"] and default_link_to_knowledge_tree)
         )

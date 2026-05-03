@@ -1178,6 +1178,13 @@ def _source_card_id_for_transfer(source: str) -> int | None:
             from . import writing_dock
 
             return writing_dock.current_writing_card_id()
+        if source == "video":
+            try:
+                from . import video_dock
+            except Exception:
+                import video_dock  # type: ignore
+
+            return video_dock.current_video_card_id()
         if source == "reviewer":
             reviewer = getattr(mw, "reviewer", None)
             card = getattr(reviewer, "card", None) if reviewer else None
@@ -1371,8 +1378,15 @@ def consume_pending_extract_options_for_note(note) -> dict | None:
 def consume_pending_extract_context_for_note(note, options: dict | None = None) -> dict | None:
     context = pending_extract_context()
     if not context:
-        return None
-    clear_pending_extract_context()
+        try:
+            raw_source_card_id = (options or {}).get("source_card_id")
+            if raw_source_card_id is None:
+                return None
+        except Exception:
+            return None
+        context = {}
+    else:
+        clear_pending_extract_context()
 
     metadata = dict(context.get("metadata") or {})
     metadata_saved = False
@@ -1406,39 +1420,51 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
                 context["metadata_error"] = str(exc)
 
     link_error = ""
-    if (
-        bool((options or {}).get("link_to_knowledge_tree"))
-        and context.get("knowledge_tree_link_enabled")
-        and context.get("parent_card_id") is not None
-    ):
+    source_card_id = context.get("parent_card_id")
+    if source_card_id is None:
+        try:
+            raw_source_card_id = (options or {}).get("source_card_id")
+            source_card_id = int(raw_source_card_id) if raw_source_card_id is not None else None
+        except Exception:
+            source_card_id = None
+    if source_card_id is not None:
         try:
             from ..backend.knowledge_tree import (
                 NODE_KIND_ITEM,
                 NODE_KIND_TOPIC,
-                link_card_to_tree,
+                ensure_extract_lineage_cards_in_tree,
             )
             from ..backend.paths import get_active_profile as _active_profile
         except Exception:
             try:
-                from knowledge_tree import NODE_KIND_ITEM, NODE_KIND_TOPIC, link_card_to_tree  # type: ignore
+                from knowledge_tree import (  # type: ignore
+                    NODE_KIND_ITEM,
+                    NODE_KIND_TOPIC,
+                    ensure_extract_lineage_cards_in_tree,
+                )
                 from paths import get_active_profile as _active_profile  # type: ignore
             except Exception:
-                link_card_to_tree = None  # type: ignore
+                ensure_extract_lineage_cards_in_tree = None  # type: ignore
                 _active_profile = None  # type: ignore
                 NODE_KIND_ITEM = "item"  # type: ignore
                 NODE_KIND_TOPIC = "topic"  # type: ignore
-        if link_card_to_tree is not None and _active_profile is not None:
+        if ensure_extract_lineage_cards_in_tree is not None and _active_profile is not None:
             try:
                 created_card_ids = _card_ids_for_note(note)
                 if created_card_ids:
                     is_topic = _note_has_all_tags(note, configured_add_card_topic_tags())
-                    link_card_to_tree(
+                    result = ensure_extract_lineage_cards_in_tree(
                         _ADDON_DIR,
                         _active_profile(),
-                        int(created_card_ids[0]),
-                        NODE_KIND_TOPIC if is_topic else NODE_KIND_ITEM,
-                        parent_card_id=int(context["parent_card_id"]),
+                        source_card_id=int(source_card_id),
+                        created_card_ids=created_card_ids,
+                        created_node_kind=(
+                            NODE_KIND_TOPIC if is_topic else NODE_KIND_ITEM
+                        ),
                     )
+                    errors = list((result or {}).get("errors") or [])
+                    if errors:
+                        link_error = str(errors[0].get("error") or "")
             except Exception as exc:
                 link_error = str(exc)
 
@@ -1487,10 +1513,33 @@ def consume_reviewer_extract_queue_refresh_suppression(
         return False
 
 
+def _notify_video_extract_note_added(note, options: dict | None) -> None:
+    if str((options or {}).get("source") or "").strip() != "video":
+        return
+    try:
+        source_card_id = int((options or {}).get("source_card_id"))
+    except Exception:
+        return
+    created_card_ids = _card_ids_for_note(note)
+    try:
+        from . import video_dock
+    except Exception:
+        try:
+            import video_dock  # type: ignore
+        except Exception:
+            return
+    try:
+        video_dock.on_video_extract_note_added(source_card_id, created_card_ids)
+    except Exception:
+        pass
+
+
 def on_add_cards_did_add_note(note) -> None:
     options = consume_pending_extract_options_for_note(note)
+    _notify_video_extract_note_added(note, options)
     mark_reviewer_extract_note_added(options)
     consume_pending_extract_context_for_note(note, options)
+    _notify_video_extract_note_added(note, options)
 
 
 def _set_editor_note_type_and_deck(editor, note_type_name: str, deck_name: str) -> None:

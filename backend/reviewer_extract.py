@@ -47,17 +47,11 @@ def extract_default_notetype_name(
 
 
 def knowledge_tree_link_state(parent_in_tree: bool) -> dict[str, object]:
-    if parent_in_tree:
-        return {
-            "enabled": True,
-            "checked": True,
-            "tooltip": "Link the created card beneath the current source card in the knowledge tree.",
-        }
     return {
         "enabled": False,
-        "checked": False,
+        "checked": True,
         "tooltip": (
-            "The current source card is not in the knowledge tree yet. "
-            "Link that parent node first if you want tree lineage."
+            "Extract lineage is added to the knowledge tree automatically. "
+            "New lineage nodes are appended at the root level."
         ),
     }

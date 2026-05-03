@@ -341,6 +341,45 @@ def test_pending_extract_options_capture_source_card_id(monkeypatch):
     assert options["source_card_id"] == 123
 
 
+def test_source_card_id_for_transfer_reads_video_source(monkeypatch):
+    monkeypatch.setitem(
+        sys.modules,
+        "video_dock",
+        types.SimpleNamespace(current_video_card_id=lambda: 456),
+    )
+
+    assert dock._source_card_id_for_transfer("video") == 456
+
+
+def test_on_add_cards_did_add_note_notifies_video_extract_source(monkeypatch):
+    note = _FakeNote(note_id=11)
+    notify_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [701])
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 0)
+    monkeypatch.setattr(dock, "consume_pending_extract_context_for_note", lambda current_note, options=None: {})
+    monkeypatch.setitem(
+        sys.modules,
+        "video_dock",
+        types.SimpleNamespace(
+            on_video_extract_note_added=lambda source_card_id, created_card_ids: notify_calls.append(
+                (source_card_id, list(created_card_ids))
+            )
+        ),
+    )
+
+    dock.set_pending_extract_options(
+        priority=25,
+        mark_topic=False,
+        source="video",
+        source_card_id=321,
+    )
+
+    dock.on_add_cards_did_add_note(note)
+
+    assert notify_calls == [(321, [701]), (321, [701])]
+
+
 def test_sync_pending_extract_options_from_current_carries_tree_link(monkeypatch):
     monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 77 if source == "reviewer" else None)
     dock._last_selection_source = "reviewer"
@@ -551,7 +590,7 @@ def test_consume_pending_extract_options_excludes_topic_item_classification_tags
     assert saved == [["existing", "item", "writing"]]
 
 
-def test_consume_pending_extract_context_applies_metadata_and_links_topic_child(monkeypatch):
+def test_consume_pending_extract_context_applies_metadata_and_links_lineage(monkeypatch):
     note = _FakeNote(["topic"], note_id=11)
     metadata_calls = []
     link_calls = []
@@ -572,8 +611,9 @@ def test_consume_pending_extract_context_applies_metadata_and_links_topic_child(
         types.SimpleNamespace(
             NODE_KIND_ITEM="item",
             NODE_KIND_TOPIC="topic",
-            link_card_to_tree=lambda addon_dir, profile, card_id, node_kind, parent_card_id: link_calls.append(
-                (addon_dir, profile, card_id, node_kind, parent_card_id)
+            ensure_extract_lineage_cards_in_tree=lambda addon_dir, profile, **kwargs: (
+                link_calls.append((addon_dir, profile, dict(kwargs)))
+                or {"linked_count": 2, "errors": []}
             ),
         ),
     )
@@ -607,7 +647,59 @@ def test_consume_pending_extract_context_applies_metadata_and_links_topic_child(
         ("apply", {"source_type": "Extract"}),
     ]
     assert link_calls == [
-        (dock._ADDON_DIR, "TestProfile", 444, "topic", 55),
+        (
+            dock._ADDON_DIR,
+            "TestProfile",
+            {
+                "source_card_id": 55,
+                "created_card_ids": [444],
+                "created_node_kind": "topic",
+            },
+        ),
+    ]
+
+
+def test_consume_pending_extract_context_links_lineage_from_source_card_without_context(monkeypatch):
+    note = _FakeNote(["item"], note_id=11)
+    link_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [445])
+    monkeypatch.setitem(
+        sys.modules,
+        "knowledge_tree",
+        types.SimpleNamespace(
+            NODE_KIND_ITEM="item",
+            NODE_KIND_TOPIC="topic",
+            ensure_extract_lineage_cards_in_tree=lambda addon_dir, profile, **kwargs: (
+                link_calls.append((addon_dir, profile, dict(kwargs)))
+                or {"linked_count": 1, "errors": []}
+            ),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "paths",
+        types.SimpleNamespace(get_active_profile=lambda: "TestProfile"),
+    )
+
+    result = dock.consume_pending_extract_context_for_note(
+        note,
+        {"source_card_id": 99, "source": "pdf"},
+    )
+
+    assert result is not None
+    assert result["metadata_saved"] is False
+    assert result["knowledge_tree_link_error"] == ""
+    assert link_calls == [
+        (
+            dock._ADDON_DIR,
+            "TestProfile",
+            {
+                "source_card_id": 99,
+                "created_card_ids": [445],
+                "created_node_kind": "item",
+            },
+        ),
     ]
 
 

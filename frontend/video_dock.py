@@ -131,6 +131,10 @@ _browser_sync_seed_sec = 0
 _position_lock_card_id = None
 _position_lock_until   = 0.0
 _position_lock_sec     = 0.0
+_recent_video_extract_source_card_id = None
+_recent_video_extract_child_card_ids: set[int] = set()
+_recent_video_extract_until = 0.0
+_recent_video_extract_position_sec = 0.0
 _remote_resume_target  = 0.0
 _remote_resume_attempts = 0
 _using_local_web_player = False
@@ -167,6 +171,13 @@ _CURRENT_TIME_JS = (
 )
 
 _HMS_INPUT_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?$")
+
+
+def current_video_card_id() -> int | None:
+    try:
+        return int(_current_video_card_id) if _current_video_card_id is not None else None
+    except Exception:
+        return None
 
 
 def _build_video_dock():
@@ -1146,6 +1157,7 @@ def show_video_in_dock(
     target_subtitle_label: str = "",
     reference_subtitle_file: str = "",
     reference_subtitle_label: str = "",
+    preserve_loaded: bool = False,
 ) -> None:
     global _video_dock, _current_video_card_id, _current_video_url
     global _current_local_relpath, _local_fallback_done, _using_local_qt_player
@@ -1158,6 +1170,24 @@ def show_video_in_dock(
     global _current_reference_subtitle_relpath, _current_reference_subtitle_label
     global _target_caption_enabled, _reference_caption_enabled
 
+    previous_dock = _video_dock
+    previous_card_id = _current_video_card_id
+    previous_video_url = _current_video_url
+    previous_remote_loaded = (
+        _video_dock is not None
+        and not _using_local_qt_player
+        and not _using_local_web_player
+        and not bool(_current_local_relpath)
+    )
+    previous_duration = float(_last_known_duration or 0.0)
+    try:
+        same_active_card = (
+            previous_card_id is not None
+            and int(previous_card_id) == int(card_id)
+        )
+    except Exception:
+        same_active_card = False
+
     normalized_url = (video_url or "").strip()
     if detect_video_provider(normalized_url) == "vimeo":
         try:
@@ -1165,10 +1195,16 @@ def show_video_in_dock(
         except Exception:
             pass
 
+    requested_position = max(0.0, float(position or 0.0))
+    if preserve_loaded and same_active_card:
+        position = max(requested_position, float(_last_known_position or 0.0))
+    else:
+        position = requested_position
+
     _current_video_card_id = card_id
     _current_video_url = normalized_url
     _last_known_position = max(0.0, float(position or 0.0))
-    _last_known_duration = 0.0
+    _last_known_duration = previous_duration if preserve_loaded and same_active_card else 0.0
     _remote_resume_target = 0.0
     _remote_resume_attempts = 0
     _using_local_web_player = False
@@ -1191,6 +1227,7 @@ def show_video_in_dock(
         except RuntimeError:
             _video_dock = None
             _build_video_dock()
+    existing_dock_reused = previous_dock is not None and _video_dock is previous_dock
     _set_browser_button_enabled(bool(build_remote_video_watch_url(_current_video_url, start_sec=0)))
     _set_download_button_enabled(
         bool(is_supported_video_url(_current_video_url)),
@@ -1305,6 +1342,14 @@ def show_video_in_dock(
 
     remote_watch_url = build_remote_video_watch_url(_current_video_url, start_sec=start_sec)
     if remote_watch_url:
+        same_loaded_remote = (
+            preserve_loaded
+            and same_active_card
+            and previous_remote_loaded
+            and existing_dock_reused
+            and not local_relpath
+            and str(previous_video_url or "").strip() == _current_video_url
+        )
         url = QUrl(remote_watch_url)
         _current_local_relpath = ""
         _local_fallback_done = False
@@ -1317,12 +1362,25 @@ def show_video_in_dock(
         _remote_resume_target = max(0.0, float(start_sec))
         _remote_resume_attempts = 0
         _set_local_controls_visible(False)
-        _reset_seek_ui()
+        if not same_loaded_remote:
+            _reset_seek_ui()
         _set_caption_controls_state(
             has_target=bool(_current_target_subtitle_relpath),
             has_reference=bool(_current_reference_subtitle_relpath),
             use_local_player=False,
         )
+        if same_loaded_remote:
+            if _last_known_position > 0:
+                _remote_resume_target = 0.0
+                _remote_resume_attempts = 0
+                _position_lock_card_id = int(card_id)
+                _position_lock_sec = float(_last_known_position)
+                _position_lock_until = time.monotonic() + 8.0
+                _set_seek_ui(_last_known_position, None)
+            _video_dock.show()
+            _video_dock.raise_()
+            _start_video_timer()
+            return
         if _remote_resume_target > 0:
             _set_seek_ui(_remote_resume_target, None)
 
@@ -1350,6 +1408,195 @@ def show_video_in_dock(
         use_local_player=False,
     )
     print(f"[Incremento] Invalid video URL for card {card_id}: {video_url!r}")
+
+
+def _stored_video_position_for_card(card_id: int | None) -> float:
+    if card_id is None:
+        return 0.0
+    try:
+        return float(get_video_position(_ADDON_DIR, _active_profile(), int(card_id)) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _best_protected_video_position(card_id: int | None, fallback_sec: float = 0.0) -> float:
+    target = max(0.0, float(fallback_sec or 0.0), _stored_video_position_for_card(card_id))
+    try:
+        if card_id is not None and _current_video_card_id is not None and int(card_id) == int(_current_video_card_id):
+            target = max(target, float(_last_known_position or 0.0))
+    except Exception:
+        pass
+    try:
+        if card_id is not None and _position_lock_card_id is not None and int(card_id) == int(_position_lock_card_id):
+            target = max(target, float(_position_lock_sec or 0.0))
+    except Exception:
+        pass
+    return target
+
+
+def _arm_video_extract_position_protection(
+    card_id: int | None,
+    position_sec: float = 0.0,
+    *,
+    ttl_sec: float = 60.0,
+) -> float:
+    global _last_known_position
+    global _position_lock_card_id, _position_lock_until, _position_lock_sec
+    global _recent_video_extract_source_card_id
+    global _recent_video_extract_until, _recent_video_extract_position_sec
+    if card_id is None:
+        return 0.0
+    try:
+        source_card_id = int(card_id)
+    except Exception:
+        return 0.0
+    target = _best_protected_video_position(source_card_id, position_sec)
+    if target <= 0.0:
+        return 0.0
+    _recent_video_extract_source_card_id = source_card_id
+    _recent_video_extract_position_sec = float(target)
+    _recent_video_extract_until = time.monotonic() + max(1.0, float(ttl_sec))
+    _last_known_position = max(float(_last_known_position or 0.0), float(target))
+    _position_lock_card_id = source_card_id
+    _position_lock_sec = float(target)
+    _position_lock_until = time.monotonic() + max(1.0, float(ttl_sec))
+    try:
+        set_video_position(_ADDON_DIR, _active_profile(), source_card_id, float(target))
+    except Exception:
+        pass
+    return float(target)
+
+
+def _video_note_payload_for_card(card_id: int) -> tuple[str, dict]:
+    try:
+        card = mw.col.get_card(int(card_id))
+        note = mw.col.get_note(card.nid)
+    except Exception:
+        return "", {}
+    try:
+        video_url = str(note["YouTube_URL"] or "").strip()
+    except Exception:
+        video_url = ""
+    try:
+        media = get_video_note_media(note)
+    except Exception:
+        media = {}
+    return video_url, media
+
+
+def _restore_video_extract_position(
+    card_id: int | None = None,
+    position_sec: float = 0.0,
+    *,
+    ttl_sec: float = 60.0,
+) -> bool:
+    raw_card_id = card_id if card_id is not None else _recent_video_extract_source_card_id
+    try:
+        source_card_id = int(raw_card_id)
+    except Exception:
+        return False
+    target = _arm_video_extract_position_protection(
+        source_card_id,
+        max(float(position_sec or 0.0), float(_recent_video_extract_position_sec or 0.0)),
+        ttl_sec=ttl_sec,
+    )
+    if target <= 0.0:
+        return False
+
+    same_current = False
+    try:
+        same_current = _current_video_card_id is not None and int(_current_video_card_id) == source_card_id
+    except Exception:
+        same_current = False
+    if same_current and _video_dock is not None:
+        try:
+            _video_dock.show()
+            _video_dock.raise_()
+        except Exception:
+            pass
+        _seek_to_seconds(target)
+        _set_seek_ui(target, _last_known_duration if _last_known_duration > 0 else None)
+        return True
+
+    video_url, media = _video_note_payload_for_card(source_card_id)
+    local_video_file = str((media or {}).get("local_video_file") or "")
+    if not video_url and not local_video_file:
+        return False
+    show_video_in_dock(
+        source_card_id,
+        video_url,
+        target,
+        local_video_file,
+        target_subtitle_file=str((media or {}).get("target_subtitle_file") or ""),
+        target_subtitle_label=str((media or {}).get("target_subtitle_label") or ""),
+        reference_subtitle_file=str((media or {}).get("reference_subtitle_file") or ""),
+        reference_subtitle_label=str((media or {}).get("reference_subtitle_label") or ""),
+        preserve_loaded=True,
+    )
+    return True
+
+
+def _schedule_video_extract_position_restores(
+    card_id: int | None,
+    position_sec: float,
+    *,
+    ttl_sec: float = 60.0,
+) -> None:
+    for delay_ms in (0, 250, 900, 1800, 3500):
+        try:
+            QTimer.singleShot(
+                delay_ms,
+                lambda cid=card_id, sec=position_sec, ttl=ttl_sec: _restore_video_extract_position(
+                    cid,
+                    sec,
+                    ttl_sec=ttl,
+                ),
+            )
+        except Exception:
+            pass
+
+
+def _should_preserve_for_recent_video_extract(non_video_card_id: int | None) -> bool:
+    if time.monotonic() >= float(_recent_video_extract_until or 0.0):
+        return False
+    try:
+        card_id = int(non_video_card_id) if non_video_card_id is not None else None
+    except Exception:
+        card_id = None
+    if card_id is not None and card_id in _recent_video_extract_child_card_ids:
+        return True
+    if _recent_video_extract_child_card_ids:
+        return False
+    try:
+        return (
+            _current_video_card_id is not None
+            and _recent_video_extract_source_card_id is not None
+            and int(_current_video_card_id) == int(_recent_video_extract_source_card_id)
+        )
+    except Exception:
+        return False
+
+
+def on_video_extract_note_added(source_card_id, created_card_ids=None) -> None:
+    global _recent_video_extract_child_card_ids
+    try:
+        source_id = int(source_card_id)
+    except Exception:
+        return
+    children = set(_recent_video_extract_child_card_ids or set())
+    for raw_card_id in list(created_card_ids or []):
+        try:
+            children.add(int(raw_card_id))
+        except Exception:
+            pass
+    _recent_video_extract_child_card_ids = children
+    target = _arm_video_extract_position_protection(
+        source_id,
+        float(_recent_video_extract_position_sec or _last_known_position or 0.0),
+        ttl_sec=60.0,
+    )
+    if target > 0.0:
+        _schedule_video_extract_position_restores(source_id, target, ttl_sec=60.0)
 
 
 def _start_video_timer() -> None:
@@ -1435,6 +1682,10 @@ def _on_video_time(t) -> None:
     ):
         lock_sec = max(0.0, float(_position_lock_sec or 0.0))
         if t + 1.0 < lock_sec:
+            try:
+                _seek_to_seconds(lock_sec)
+            except Exception:
+                pass
             t = lock_sec
         else:
             _position_lock_card_id = None
@@ -2138,15 +2389,39 @@ def _prompt_browser_stop_time() -> None:
 
 def _do_video_add_card(t) -> None:
     global _last_known_position
-    t = float(t or 0)
-    if t > 0:
-        _last_known_position = t
+    global _position_lock_card_id, _position_lock_until, _position_lock_sec
+
+    raw_t = float(t or 0)
+    persisted_t = 0.0
+    if _current_video_card_id is not None:
+        try:
+            persisted_t = float(
+                get_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id) or 0.0
+            )
+        except Exception:
+            persisted_t = 0.0
+
+    if raw_t > 0:
+        _last_known_position = raw_t
+    t = max(raw_t, float(_last_known_position or 0.0), persisted_t)
     if _current_video_card_id is None:
         return
-    try:
-        set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, t)
-    except Exception:
-        pass
+    if t > 0:
+        _last_known_position = t
+        _position_lock_card_id = int(_current_video_card_id)
+        _position_lock_sec = float(t)
+        _position_lock_until = time.monotonic() + 8.0
+        _set_seek_ui(t, _last_known_duration if _last_known_duration > 0 else None)
+        _arm_video_extract_position_protection(
+            int(_current_video_card_id),
+            t,
+            ttl_sec=60.0,
+        )
+        _schedule_video_extract_position_restores(
+            int(_current_video_card_id),
+            t,
+            ttl_sec=60.0,
+        )
     ts = fmt_time(t)
     try:
         note = mw.col.get_card(_current_video_card_id).note()
@@ -2158,14 +2433,33 @@ def _do_video_add_card(t) -> None:
         f'<a href="#" onclick="pycmd(\'incremento_open_video:{_current_video_card_id}:{t}\')" '
         f'style="color:#4a90d9;">{label}</a>'
     )
-    from .add_card_dock import fill_dock_field
-    fill_dock_field(0, link)
+    try:
+        from .add_card_dock import (
+            fill_dock_field,
+            set_pending_extract_options,
+            source_relative_extract_priority_for_source,
+        )
+    except Exception:
+        from add_card_dock import (  # type: ignore
+            fill_dock_field,
+            set_pending_extract_options,
+            source_relative_extract_priority_for_source,
+        )
+
+    fill_dock_field(0, link, include_pdf_citation=False, source_link_kind="video")
+    set_pending_extract_options(
+        priority=source_relative_extract_priority_for_source("video"),
+        mark_topic=False,
+        source="video",
+        source_card_id=_current_video_card_id,
+    )
 
 
 def on_video_question_shown(card) -> None:
     global _video_dock, _video_timer, _current_local_relpath, _current_video_url
     global _local_fallback_done, _using_local_qt_player, _current_video_card_id
     global _local_resume_pending, _local_resume_ms, _local_resume_attempts
+    global _last_known_position
     global _last_known_duration, _browser_sync_pending, _browser_sync_wait_bg
     global _browser_sync_card_id, _browser_sync_seed_sec
     global _position_lock_card_id, _position_lock_until, _position_lock_sec
@@ -2182,6 +2476,13 @@ def on_video_question_shown(card) -> None:
         except Exception:
             return
         if model is None or model.get("name") != VIDEO_NOTE_TYPE:
+            if _should_preserve_for_recent_video_extract(getattr(card, "id", None)):
+                _restore_video_extract_position(
+                    _recent_video_extract_source_card_id,
+                    _recent_video_extract_position_sec,
+                    ttl_sec=60.0,
+                )
+                return
             _persist_position_now()
             _current_local_relpath = ""
             _current_video_url = ""
@@ -2260,6 +2561,18 @@ def on_video_question_shown(card) -> None:
                         _video_dock = None
                 return
         position = float(get_video_position(_ADDON_DIR, _active_profile(), card.id) or 0.0)
+        preserve_loaded = (
+            _current_video_card_id is not None
+            and int(card.id) == int(_current_video_card_id)
+        )
+        if preserve_loaded:
+            position = max(position, float(_last_known_position or 0.0))
+            if (
+                _position_lock_card_id is not None
+                and int(_position_lock_card_id) == int(card.id)
+                and time.monotonic() < float(_position_lock_until or 0.0)
+            ):
+                position = max(position, float(_position_lock_sec or 0.0))
         try:
             url_position = float(extract_start_seconds(youtube_url) or 0.0)
         except Exception:
@@ -2281,6 +2594,7 @@ def on_video_question_shown(card) -> None:
             target_subtitle_label=str(media.get("target_subtitle_label") or ""),
             reference_subtitle_file=str(media.get("reference_subtitle_file") or ""),
             reference_subtitle_label=str(media.get("reference_subtitle_label") or ""),
+            preserve_loaded=preserve_loaded,
         )
     except Exception as e:
         print(f"[Incremento] on_video_question_shown error: {e}")

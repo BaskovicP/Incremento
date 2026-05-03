@@ -18,6 +18,7 @@ try:
         set_knowledge_tree_structure,
     )
     from .note_metadata import (
+        INCREMENTO_PARENT_CARD_ID_FIELD,
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
@@ -32,6 +33,7 @@ except ImportError:
         set_knowledge_tree_structure,
     )
     from note_metadata import (  # type: ignore
+        INCREMENTO_PARENT_CARD_ID_FIELD,
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
@@ -335,6 +337,183 @@ def get_card_metadata(card_id: int, *, addon_dir: str | None = None, profile: st
         "deck_name": deck_name,
         "note_type_name": note_type_name,
         "priority": priority,
+    }
+
+
+def infer_node_kind_for_card(card_id: int) -> str:
+    if mw is None or getattr(mw, "col", None) is None:
+        return NODE_KIND_ITEM
+
+    try:
+        card = mw.col.get_card(int(card_id))
+        note = card.note()
+        note_tags = {
+            str(tag or "").strip().lower()
+            for tag in list(getattr(note, "tags", []) or [])
+            if str(tag or "").strip()
+        }
+    except Exception:
+        return NODE_KIND_ITEM
+
+    topic_tags = {
+        str(tag or "").strip().lower()
+        for tag in configured_topic_tags()
+        if str(tag or "").strip()
+    }
+    item_tags = {
+        str(tag or "").strip().lower()
+        for tag in configured_item_tags()
+        if str(tag or "").strip()
+    }
+    if topic_tags and topic_tags.issubset(note_tags):
+        return NODE_KIND_TOPIC
+    if item_tags and item_tags.issubset(note_tags):
+        return NODE_KIND_ITEM
+    return NODE_KIND_ITEM
+
+
+def metadata_parent_card_id(card_id: int) -> int | None:
+    if mw is None or getattr(mw, "col", None) is None:
+        return None
+
+    try:
+        card = mw.col.get_card(int(card_id))
+        note = card.note()
+        raw_value = str(note[INCREMENTO_PARENT_CARD_ID_FIELD] or "").strip()
+    except Exception:
+        return None
+
+    if not raw_value:
+        return None
+    try:
+        parent_card_id = int(raw_value)
+    except Exception:
+        return None
+    if parent_card_id == int(card_id):
+        return None
+    return parent_card_id
+
+
+def metadata_child_card_ids(card_id: int) -> list[int]:
+    if mw is None or getattr(mw, "col", None) is None:
+        return []
+
+    try:
+        note_ids = mw.col.find_notes(
+            f'"{INCREMENTO_PARENT_CARD_ID_FIELD}:{int(card_id)}"'
+        )
+    except Exception:
+        return []
+
+    child_card_ids: list[int] = []
+    seen: set[int] = set()
+    for note_id in list(note_ids or []):
+        try:
+            card_ids = mw.col.find_cards(f"nid:{int(note_id)}")
+        except Exception:
+            continue
+        for raw_card_id in list(card_ids or []):
+            try:
+                child_card_id = int(raw_card_id)
+            except Exception:
+                continue
+            if child_card_id == int(card_id) or child_card_id in seen:
+                continue
+            seen.add(child_card_id)
+            child_card_ids.append(child_card_id)
+    child_card_ids.sort()
+    return child_card_ids
+
+
+def lineage_card_ids(card_id: int) -> list[int]:
+    card_id = int(card_id)
+    seen: set[int] = {card_id}
+
+    ancestors: list[int] = []
+    current_card_id = card_id
+    while True:
+        parent_card_id = metadata_parent_card_id(current_card_id)
+        if parent_card_id is None or parent_card_id in seen:
+            break
+        ancestors.append(parent_card_id)
+        seen.add(parent_card_id)
+        current_card_id = parent_card_id
+    ancestors.reverse()
+
+    descendants: list[int] = []
+
+    def visit_children(parent_card_id: int) -> None:
+        for child_card_id in metadata_child_card_ids(parent_card_id):
+            if child_card_id in seen:
+                continue
+            seen.add(child_card_id)
+            descendants.append(child_card_id)
+            visit_children(child_card_id)
+
+    visit_children(card_id)
+    return ancestors + [card_id] + descendants
+
+
+def ensure_extract_lineage_cards_in_tree(
+    addon_dir: str,
+    profile: str,
+    *,
+    source_card_id: int | None = None,
+    created_card_ids=None,
+    created_node_kind: str | None = None,
+) -> dict:
+    ordered_card_ids: list[int] = []
+    seen: set[int] = set()
+
+    def append_card(raw_card_id) -> None:
+        try:
+            resolved_card_id = int(raw_card_id)
+        except Exception:
+            return
+        if resolved_card_id in seen:
+            return
+        seen.add(resolved_card_id)
+        ordered_card_ids.append(resolved_card_id)
+
+    if source_card_id is not None:
+        for related_card_id in lineage_card_ids(int(source_card_id)):
+            append_card(related_card_id)
+    for created_card_id in list(created_card_ids or []):
+        append_card(created_card_id)
+
+    linked_card_ids: list[int] = []
+    errors: list[dict] = []
+    created_card_id_set = {
+        int(card_id)
+        for card_id in list(created_card_ids or [])
+        if card_id is not None
+    }
+
+    for card_id in ordered_card_ids:
+        if get_knowledge_tree_node(addon_dir, profile, card_id) is not None:
+            continue
+        node_kind = (
+            normalize_node_kind(created_node_kind)
+            if created_node_kind and card_id in created_card_id_set
+            else infer_node_kind_for_card(card_id)
+        )
+        try:
+            link_card_to_tree(
+                addon_dir,
+                profile,
+                card_id,
+                node_kind,
+                parent_card_id=None,
+            )
+            linked_card_ids.append(card_id)
+        except Exception as exc:
+            errors.append({"card_id": card_id, "error": str(exc)})
+
+    return {
+        "linked_card_ids": linked_card_ids,
+        "linked_count": len(linked_card_ids),
+        "errors": errors,
+        "error_count": len(errors),
     }
 
 
