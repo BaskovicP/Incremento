@@ -8,7 +8,8 @@ import {
 } from "../shared/linkSaveModel.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v5";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v6";
+  const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
     && typeof window.__incrementoContentScriptState === "object"
@@ -573,15 +574,33 @@ import {
     return String(event?.code || "").toLowerCase() === "keyx";
   }
 
+  function trapBrowserCaptureKeyboardEvent(event) {
+    const shell = browserCaptureUi?.shell;
+    const target = event?.target;
+    if (!shell || !(target instanceof Node) || !shell.contains(target)) {
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeBrowserCaptureUi();
+      return;
+    }
+    event.stopPropagation();
+  }
+
   function ensureBrowserCaptureUiRoot() {
     if (browserCaptureUi) {
       return browserCaptureUi;
     }
     const host = document.createElement("div");
-    host.id = "incremento-browser-capture-root";
+    host.id = BROWSER_CAPTURE_ROOT_ID;
     host.style.all = "initial";
     const shadow = host.attachShadow({ mode: "open" });
     document.documentElement.appendChild(host);
+    shadow.addEventListener("keydown", trapBrowserCaptureKeyboardEvent, true);
+    shadow.addEventListener("keypress", trapBrowserCaptureKeyboardEvent, true);
+    shadow.addEventListener("keyup", trapBrowserCaptureKeyboardEvent, true);
 
     const style = document.createElement("style");
     style.textContent = `
