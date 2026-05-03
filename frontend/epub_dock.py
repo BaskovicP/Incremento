@@ -13,6 +13,7 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QKeySequence,
     QLabel,
@@ -1098,7 +1099,7 @@ def _build_epub_dock() -> None:
 
     dock = QDockWidget("EPUB", mw)
     dock.setObjectName("incremento_epub_dock")
-    dock.setMinimumWidth(430)
+    dock.setMinimumWidth(300)
 
     container = QWidget(dock)
     layout = QVBoxLayout(container)
@@ -1112,13 +1113,17 @@ def _build_epub_dock() -> None:
         app.installEventFilter(_epub_key_filter)
     mw.installEventFilter(_epub_key_filter)
 
-    toolbar = QHBoxLayout()
+    toolbar = QGridLayout()
+    toolbar.setContentsMargins(0, 0, 0, 0)
+    toolbar.setHorizontalSpacing(6)
+    toolbar.setVerticalSpacing(6)
     dock._prev_btn = QPushButton("Prev")
     dock._next_btn = QPushButton("Next")
     dock._title_lbl = QLabel("EPUB")
-    dock._title_lbl.setWordWrap(True)
+    dock._title_lbl.setWordWrap(False)
     dock._title_lbl.setStyleSheet("font-weight: bold;")
     dock._source_lbl = QLabel("")
+    dock._source_lbl.setWordWrap(False)
     dock._source_lbl.setStyleSheet("font-size: 11px; color: gray;")
     dock._add_card_btn = QPushButton("Add Card")
     dock._browser_btn = QPushButton("Browser")
@@ -1133,22 +1138,26 @@ def _build_epub_dock() -> None:
     dock._bookmarks_btn = QPushButton("Bookmarks")
     dock._finished_btn = QPushButton("Finished")
     dock._finished_btn.setCheckable(True)
-    toolbar.addWidget(dock._prev_btn)
-    toolbar.addWidget(dock._next_btn)
-    toolbar.addWidget(dock._title_lbl, 1)
-    toolbar.addWidget(dock._source_lbl)
-    toolbar.addWidget(dock._add_card_btn)
-    toolbar.addWidget(dock._browser_btn)
-    toolbar.addWidget(dock._all_cards_btn)
-    toolbar.addWidget(dock._due_review_btn)
-    toolbar.addWidget(dock._limit_btn)
-    toolbar.addWidget(dock._text_smaller_btn)
-    toolbar.addWidget(dock._text_larger_btn)
-    toolbar.addWidget(dock._highlight_btn)
-    toolbar.addWidget(dock._snapshot_btn)
-    toolbar.addWidget(dock._bookmark_add_btn)
-    toolbar.addWidget(dock._bookmarks_btn)
-    toolbar.addWidget(dock._finished_btn)
+
+    toolbar.addWidget(dock._prev_btn, 0, 0)
+    toolbar.addWidget(dock._next_btn, 0, 1)
+    toolbar.addWidget(dock._title_lbl, 0, 2, 1, 4)
+    toolbar.addWidget(dock._source_lbl, 0, 6, 1, 3)
+
+    toolbar.addWidget(dock._add_card_btn, 1, 0)
+    toolbar.addWidget(dock._browser_btn, 1, 1)
+    toolbar.addWidget(dock._all_cards_btn, 1, 2)
+    toolbar.addWidget(dock._due_review_btn, 1, 3)
+    toolbar.addWidget(dock._limit_btn, 1, 4)
+    toolbar.addWidget(dock._text_smaller_btn, 1, 5)
+    toolbar.addWidget(dock._text_larger_btn, 1, 6)
+    toolbar.addWidget(dock._highlight_btn, 1, 7)
+    toolbar.addWidget(dock._snapshot_btn, 2, 0)
+    toolbar.addWidget(dock._bookmark_add_btn, 2, 1)
+    toolbar.addWidget(dock._bookmarks_btn, 2, 2)
+    toolbar.addWidget(dock._finished_btn, 2, 3)
+    toolbar.setColumnStretch(2, 1)
+    toolbar.setColumnStretch(6, 1)
     layout.addLayout(toolbar)
 
     page = _EpubDockPage(dock)
