@@ -101,6 +101,52 @@ function isSelectionInside(sel, container) {
   return true;
 }
 
+function findTextSpan(node, container) {
+  let current = node;
+  while (current && current !== container) {
+    if (current.nodeType === Node.ELEMENT_NODE && current.tagName === 'SPAN') {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
+function rectToPdfCoords(rect, layerRect, scale) {
+  if (!rect || !layerRect || !scale) return null;
+  const width = rect.width / scale;
+  const height = rect.height / scale;
+  if (width <= 0 || height <= 0) return null;
+  return {
+    x: (rect.left - layerRect.left) / scale,
+    y: (rect.top - layerRect.top) / scale,
+    w: width,
+    h: height,
+  };
+}
+
+function findBestVisibleTextSpan(textLayer) {
+  if (!textLayer) return null;
+  const spans = Array.from(textLayer.querySelectorAll('span')).filter((span) => /\S/.test(span.textContent || ''));
+  if (!spans.length) return null;
+
+  const viewportMid = window.innerHeight / 2;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const span of spans) {
+    const rect = span.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+    const spanMid = rect.top + (rect.height / 2);
+    const distance = Math.abs(spanMid - viewportMid);
+    if (distance < bestDistance) {
+      best = span;
+      bestDistance = distance;
+    }
+  }
+  return best || spans[0];
+}
+
 function selectionCleaned(sel, textLayer) {
   try {
     if (!sel || !sel.rangeCount) return '';
@@ -225,6 +271,7 @@ export default function PdfViewer() {
   const [bookmarks, setBookmarks] = useState([]);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [readAnchor, setReadAnchor] = useState(null);
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
   const [limitNotice, setLimitNotice] = useState(null);
   const [hoveredHighlightNote, setHoveredHighlightNote] = useState(null);
@@ -232,10 +279,28 @@ export default function PdfViewer() {
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
   const pendingHighlightScrollRef = useRef(null);
+  const lastReadAnchorSpanRef = useRef(null);
 
   // ── Highlights for the current page ───────────────────────────────────────
   const pageHighlights = highlights.filter(h => h.page === page);
   const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
+  const readMarkerRect = (
+    readAnchor
+    && readPage > 0
+    && Number(readAnchor.page || 0) === page
+    && Number.isFinite(Number(readAnchor.x))
+    && Number.isFinite(Number(readAnchor.y))
+    && Number.isFinite(Number(readAnchor.w))
+    && Number.isFinite(Number(readAnchor.h))
+  )
+    ? {
+        x: Number(readAnchor.x || 0),
+        y: Number(readAnchor.y || 0),
+        w: Number(readAnchor.w || 0),
+        h: Number(readAnchor.h || 0),
+      }
+    : null;
+  const showReadMarker = readPage > 0 && page === readPage;
   const progressPct = (totalPages > 0 && readPage > 0)
     ? Math.max(0, Math.min(100, Math.round((readPage / totalPages) * 100)))
     : 0;
@@ -364,6 +429,42 @@ export default function PdfViewer() {
     return false;
   }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled]);
 
+  const buildReadAnchor = useCallback(() => {
+    const tl = textLayerRef.current;
+    const scale = Number(lastScaleRef.current || 0);
+    if (!tl || !scale) return null;
+
+    const tlRect = tl.getBoundingClientRect();
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.rangeCount && isSelectionInside(selection, tl)) {
+      const range = selection.getRangeAt(0);
+      const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+      const targetRect = rects.length ? rects[rects.length - 1] : null;
+      const coords = rectToPdfCoords(targetRect, tlRect, scale);
+      if (coords) {
+        return {
+          page: pageRef.current,
+          ...coords,
+          text: selectionCleaned(selection, tl).slice(0, 240),
+        };
+      }
+    }
+
+    let span = lastReadAnchorSpanRef.current;
+    if (!span || !tl.contains(span)) {
+      span = findBestVisibleTextSpan(tl);
+    }
+    if (!span) return null;
+
+    const coords = rectToPdfCoords(span.getBoundingClientRect(), tlRect, scale);
+    if (!coords) return null;
+    return {
+      page: pageRef.current,
+      ...coords,
+      text: String(span.textContent || '').trim().slice(0, 240),
+    };
+  }, [lastScaleRef, pageRef, textLayerRef]);
+
   const requestLimitOverride = useCallback(() => {
     if (!cardIdRef.current) return;
     window.pycmd(`incremento_pdf_limit_override:${cardIdRef.current}`);
@@ -450,6 +551,23 @@ export default function PdfViewer() {
       } catch (_) {}
     }
   }, [searchQuery, page, renderInfo, textLayerRef]);
+
+  useEffect(() => {
+    const tl = textLayerRef.current;
+    if (!tl) return;
+    const rememberSpan = (event) => {
+      const span = findTextSpan(event.target, tl);
+      if (span) {
+        lastReadAnchorSpanRef.current = span;
+      }
+    };
+    tl.addEventListener('mousedown', rememberSpan, true);
+    tl.addEventListener('click', rememberSpan, true);
+    return () => {
+      tl.removeEventListener('mousedown', rememberSpan, true);
+      tl.removeEventListener('click', rememberSpan, true);
+    };
+  }, [page, textLayerRef]);
 
   // ── Snapshot handlers ──────────────────────────────────────────────────────
   const handleSnapStart = useCallback((e) => {
@@ -587,8 +705,11 @@ export default function PdfViewer() {
     if (!canMarkReadAtPage(pageRef.current)) {
       return;
     }
-    rawMarkRead();
-  }, [canMarkReadAtPage, pageRef, rawMarkRead]);
+    const nextReadPage = pageRef.current <= readPage ? 0 : pageRef.current;
+    const anchor = nextReadPage > 0 ? buildReadAnchor() : null;
+    setReadAnchor(anchor);
+    rawMarkRead(anchor);
+  }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawMarkRead, readPage]);
 
   // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
@@ -599,6 +720,7 @@ export default function PdfViewer() {
       startPage,
       startZoom,
       startReadPage = 0,
+      startReadAnchor = null,
       startSearchQuery = '',
       startLimitStatus = null,
       startAutoHighlightOnExtract = undefined,
@@ -609,6 +731,7 @@ export default function PdfViewer() {
       setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : (window._incPdfBookmarks || []));
       window._incPdfBookmarks = null;
       setSearchQuery(startSearchQuery || '');
+      setReadAnchor(startReadAnchor && typeof startReadAnchor === 'object' ? startReadAnchor : null);
       setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
       setLimitNotice(null);
       if (typeof startAutoHighlightOnExtract === 'boolean') {
@@ -649,6 +772,7 @@ export default function PdfViewer() {
         pending.page,
         pending.zoom,
         pending.readPage || 0,
+        pending.readAnchor || null,
         pending.searchQuery || '',
         pending.limitStatus || DEFAULT_LIMIT_STATUS,
         pending.autoHighlightOnExtract,
@@ -828,6 +952,29 @@ export default function PdfViewer() {
                   onClick={limitAwareMarkRead}
                 >
                   ✓ Read to here
+                </button>
+                <button
+                  title={showReadMarker ? 'Remove the READ UP UNTIL HERE marker from this page' : 'Place the READ UP UNTIL HERE marker on this page'}
+                  aria-label="Toggle read marker"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 34,
+                    height: 30,
+                    padding: 0,
+                    fontSize: 16,
+                    fontWeight: 800,
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    background: showReadMarker ? 'rgba(14,165,233,0.22)' : 'rgba(255,255,255,0.03)',
+                    color: showReadMarker ? 'rgb(125,211,252)' : 'inherit',
+                    border: showReadMarker ? '1px solid rgba(14,165,233,0.75)' : '1px solid rgba(180,180,180,0.32)',
+                    boxShadow: showReadMarker ? '0 0 0 1px rgba(14,165,233,0.12) inset' : 'none',
+                  }}
+                  onClick={limitAwareMarkRead}
+                >
+                  ↦
                 </button>
                 {readPage > 0 && (
                   <span style={{
@@ -1432,6 +1579,64 @@ export default function PdfViewer() {
         <canvas ref={canvasBRef} id="pdf-canvas-b"
           style={{ display: 'none', position: 'absolute', top: 0, left: '50%',
                    transform: 'translateX(-50%)', pointerEvents: 'none' }} />
+
+        {showReadMarker && readMarkerRect && (
+          <div
+            style={{
+              position: 'absolute',
+              top: Math.max(8, (readMarkerRect.y * renderInfo.scale) + ((readMarkerRect.h * renderInfo.scale) / 2) - 18),
+              left: Math.max(8, renderInfo.tlLeft + (readMarkerRect.x * renderInfo.scale) - 178),
+              zIndex: 4,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 12px 10px 10px',
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))',
+              color: '#ecfeff',
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              border: '1px solid rgba(103,232,249,0.6)',
+              boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
+              pointerEvents: 'none',
+            }}
+            title={readAnchor?.text ? `You stopped at: ${readAnchor.text}` : `You marked page ${readPage} as your current stopping point`}
+          >
+            <span style={{ fontSize: 26, lineHeight: 1 }}>↦</span>
+            <span>Read Up Until Here</span>
+          </div>
+        )}
+
+        {showReadMarker && !readMarkerRect && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 18,
+              left: Math.max(10, renderInfo.tlLeft - 6),
+              zIndex: 4,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '10px 12px 10px 10px',
+              borderRadius: 14,
+              background: 'linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))',
+              color: '#ecfeff',
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              border: '1px solid rgba(103,232,249,0.6)',
+              boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
+              pointerEvents: 'none',
+            }}
+            title={`You marked page ${readPage} as your current stopping point`}
+          >
+            <span style={{ fontSize: 26, lineHeight: 1 }}>↦</span>
+            <span>Read Up Until Here</span>
+          </div>
+        )}
 
         <HighlightLayer
           pageHighlights={pageHighlights}

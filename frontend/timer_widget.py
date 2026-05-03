@@ -9,7 +9,8 @@ import os
 
 from aqt import mw
 from aqt.qt import (QWidget, QHBoxLayout, QPushButton, QLabel, QTimer,
-                    QDialog, QVBoxLayout, Qt, QToolBar, QSizePolicy, qconnect)
+                    QDialog, QVBoxLayout, Qt, QToolBar, QSizePolicy,
+                    QApplication, qconnect)
 
 # Addon root — same derivation used by learn_dialog.py and scheduler_config.py
 _ADDON_DIR = os.path.normpath(
@@ -22,6 +23,7 @@ _timer_running:        bool = False
 _timer_duration_min:   int  = 30
 _timer_cards_answered: int  = 0
 _timer_pdf_pages:      set  = set()   # {(card_id, page)} unique pages seen since the last timer report
+_timer_epub_pages:     set  = set()   # {(card_id, page)} unique EPUB pages seen since the last timer report
 _timer_toolbar               = None   # QToolBar instance, set by build_timer_toolbar
 _timer_widget                = None   # _TimerWidget instance, set by build_timer_toolbar
 
@@ -50,9 +52,10 @@ def _timer_running_set(val: bool) -> None:
 
 def reset_activity_counters() -> None:
     """Clear card/page activity collected for the next timer report."""
-    global _timer_cards_answered, _timer_pdf_pages
+    global _timer_cards_answered, _timer_pdf_pages, _timer_epub_pages
     _timer_cards_answered = 0
     _timer_pdf_pages = set()
+    _timer_epub_pages = set()
 
 
 def record_card_answered() -> None:
@@ -71,6 +74,18 @@ def record_pdf_page_read(card_id: int, page: int) -> None:
     if cid <= 0 or pg <= 0:
         return
     _timer_pdf_pages.add((cid, pg))
+
+
+def record_epub_page_read(card_id: int, page_index: int) -> None:
+    """Count an EPUB page view regardless of whether the focus timer is running."""
+    try:
+        cid = int(card_id)
+        pg = int(page_index) + 1
+    except Exception:
+        return
+    if cid <= 0 or pg <= 0:
+        return
+    _timer_epub_pages.add((cid, pg))
 
 
 def begin_timer_session(duration_min: int) -> None:
@@ -128,6 +143,19 @@ def configured_auto_timer_card_types(config: dict | None = None) -> dict[str, bo
 
 def configured_auto_timer_tags(config: dict | None = None) -> list[str]:
     return _normalize_tag_list(_resolved_config(config).get("auto_timer_tags"))
+
+
+def configured_auto_timer_minutes(config: dict | None = None) -> int:
+    raw = _resolved_config(config).get("auto_timer_minutes", 30)
+    try:
+        minutes = int(raw)
+    except Exception:
+        minutes = 30
+    return max(1, min(1440, minutes))
+
+
+def configured_timer_completion_beep_enabled(config: dict | None = None) -> bool:
+    return bool(_resolved_config(config).get("timer_completion_beep", True))
 
 
 def _card_note_type_name(card) -> str:
@@ -209,10 +237,30 @@ def auto_start_timer_for_card(card) -> bool:
     if widget is None:
         return False
     try:
-        widget.start_if_idle()
+        widget.start_if_idle(configured_auto_timer_minutes())
         return True
     except Exception:
         return False
+
+
+def play_timer_completion_tone() -> None:
+    """Play a lightweight completion tone when the focus timer finishes."""
+    if not configured_timer_completion_beep_enabled():
+        return
+    try:
+        QApplication.beep()
+    except Exception:
+        pass
+
+
+def finish_timer(widget) -> None:
+    """Finalize timer state, play the completion tone, and show the summary."""
+    widget._qt_timer.stop()
+    widget._running = False
+    widget._start_btn.setText("▶  Start")
+    _timer_running_set(False)
+    play_timer_completion_tone()
+    QTimer.singleShot(0, show_timer_summary)
 
 
 # ── Timer widget ──────────────────────────────────────────────────────────────
@@ -316,8 +364,13 @@ class _TimerWidget(QWidget):
         self._begin_session()
         self._qt_timer.start()
 
-    def start_if_idle(self) -> None:
+    def start_if_idle(self, mins: int | None = None) -> None:
         if not self._running:
+            if mins is not None:
+                try:
+                    self._pick(max(1, min(1440, int(mins))))
+                except Exception:
+                    pass
             self._start()
 
     def _pause(self) -> None:
@@ -340,11 +393,7 @@ class _TimerWidget(QWidget):
         self._rem = max(0, self._rem - 1)
         self._render()
         if self._rem == 0:
-            self._qt_timer.stop()
-            self._running = False
-            self._start_btn.setText("▶  Start")
-            _timer_running_set(False)
-            QTimer.singleShot(0, show_timer_summary)
+            finish_timer(self)
 
     # ── session state helpers (write to module globals) ───────────────────────
 
@@ -359,6 +408,7 @@ def show_timer_summary() -> None:
     dur   = _timer_duration_min
     cards = _timer_cards_answered
     pdf_pages = set(_timer_pdf_pages)
+    epub_pages = set(_timer_epub_pages)
     reset_activity_counters()
 
     dlg = QDialog(mw)
@@ -389,6 +439,19 @@ def show_timer_summary() -> None:
         )
         pdf_lbl.setStyleSheet("font-size: 14px;")
         layout.addWidget(pdf_lbl)
+
+    if epub_pages:
+        by_epub: dict[int, set] = {}
+        for cid, page in epub_pages:
+            by_epub.setdefault(cid, set()).add(page)
+        total_pages = sum(len(v) for v in by_epub.values())
+        n_epubs = len(by_epub)
+        epub_lbl = QLabel(
+            f"<b>{total_pages}</b> EPUB page{'s' if total_pages != 1 else ''} read"
+            f" across {n_epubs} book{'s' if n_epubs != 1 else ''}"
+        )
+        epub_lbl.setStyleSheet("font-size: 14px;")
+        layout.addWidget(epub_lbl)
 
     layout.addSpacing(4)
 

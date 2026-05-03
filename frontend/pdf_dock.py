@@ -59,6 +59,7 @@ try:
         get_pdf_limit_mode_label,
         get_pdf_dir,
         get_zoom,
+        get_read_anchor,
         get_read_page,
         pdf_display_label_from_filename,
         replace_pdf_card_file,
@@ -80,6 +81,7 @@ except ImportError:
         get_pdf_limit_mode_label,
         get_pdf_dir,
         get_zoom,
+        get_read_anchor,
         get_read_page,
         pdf_display_label_from_filename,
         replace_pdf_card_file,
@@ -1127,29 +1129,44 @@ class _PdfDockPage(QWebEnginePage):
             except Exception as e:
                 print(f"[Incremento] pdf_dock: highlight delete failed: {e}")
         elif msg.startswith(_MSG_MARK_READ):
-            parts = msg.split(":")
-            if len(parts) == 3:
-                try:
+            payload_raw = msg[len(_MSG_MARK_READ) :]
+            try:
+                if payload_raw.lstrip().startswith("{"):
+                    payload = json.loads(payload_raw)
+                    cid = int(payload.get("cardId", 0) or 0)
+                    read_page = int(payload.get("readPage", 0) or 0)
+                    read_anchor = payload.get("anchor")
+                else:
+                    parts = msg.split(":")
+                    if len(parts) != 3:
+                        raise ValueError
                     cid = int(parts[1])
                     read_page = int(parts[2])
-                    if cid > 0:
-                        status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
-                        allowed_max = status.get("allowed_max_page")
-                        is_blocking = bool(
-                            status.get("enabled")
-                            and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
-                            and not status.get("override_enabled")
-                            and allowed_max is not None
-                            and read_page > int(allowed_max)
-                        )
-                        if is_blocking:
-                            _push_pdf_limit_status(status)
-                            return
-                        if not _pdf_preserve_history:
-                            set_read_page(_ADDON_DIR, _active_profile(), cid, read_page)
+                    read_anchor = None
+                if cid > 0:
+                    status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
+                    allowed_max = status.get("allowed_max_page")
+                    is_blocking = bool(
+                        status.get("enabled")
+                        and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                        and not status.get("override_enabled")
+                        and allowed_max is not None
+                        and read_page > int(allowed_max)
+                    )
+                    if is_blocking:
                         _push_pdf_limit_status(status)
-                except ValueError:
-                    pass
+                        return
+                    if not _pdf_preserve_history:
+                        set_read_page(
+                            _ADDON_DIR,
+                            _active_profile(),
+                            cid,
+                            read_page,
+                            read_anchor if isinstance(read_anchor, dict) else None,
+                        )
+                    _push_pdf_limit_status(status)
+            except ValueError:
+                pass
         elif msg.startswith(_MSG_CMD1):
             text = msg[len(_MSG_CMD1) :]
             if text:
@@ -1658,16 +1675,17 @@ def show_pdf_in_dock(
     hls = load_highlights(_ADDON_DIR, _active_profile(), card_id)
     bookmarks = _pdf_bookmarks_payload(card_id)
     limit_status = _current_pdf_limit_status(card_id, current_page=page)
+    read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), card_id)
 
     js = (
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

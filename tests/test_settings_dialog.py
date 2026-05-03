@@ -397,6 +397,24 @@ class TestIncrementoSettingsDialogExtractCopySourceTags:
         assert dialog.extract_copy_source_tags is True
 
 
+class TestIncrementoSettingsDialogTimerCompletionBeep:
+    def test_checkbox_defaults_enabled(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.timer_completion_beep is True
+
+    def test_checkbox_reflects_incoming_value(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_timer_completion_beep=False,
+        )
+        assert dialog._timer_completion_beep_cb.isChecked() is False
+
+    def test_property_returns_saved_value(self):
+        dialog = IncrementoSettingsDialog({})
+        dialog._timer_completion_beep_cb.setChecked(False)
+        assert dialog.timer_completion_beep is False
+
+
 class TestIncrementoSettingsDialogShortcuts:
     def test_extract_card_shortcut_is_exposed_in_settings(self):
         extract_spec = next(

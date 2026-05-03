@@ -129,6 +129,51 @@ class TestPdfDisplayLabelFromFilename:
         assert pdf_display_label_from_filename("chapter_01-intro.pdf") == "chapter 01 intro"
 
 
+class TestReadAnchorPersistence:
+    def test_set_and_get_read_anchor_round_trip(self, tmp_path):
+        addon_dir = str(tmp_path)
+
+        pdf_manager.set_read_page(
+            addon_dir,
+            "TestProfile",
+            77,
+            5,
+            {
+                "page": 5,
+                "x": 12.3456,
+                "y": 45.6789,
+                "w": 34.2,
+                "h": 11.1,
+                "text": "Last sentence here",
+            },
+        )
+
+        assert pdf_manager.get_read_page(addon_dir, "TestProfile", 77) == 5
+        assert pdf_manager.get_read_anchor(addon_dir, "TestProfile", 77) == {
+            "page": 5,
+            "x": 12.346,
+            "y": 45.679,
+            "w": 34.2,
+            "h": 11.1,
+            "text": "Last sentence here",
+        }
+
+    def test_clearing_read_page_clears_anchor(self, tmp_path):
+        addon_dir = str(tmp_path)
+
+        pdf_manager.set_read_page(
+            addon_dir,
+            "TestProfile",
+            78,
+            4,
+            {"page": 4, "x": 1, "y": 2, "w": 3, "h": 4, "text": "Anchor"},
+        )
+        pdf_manager.set_read_page(addon_dir, "TestProfile", 78, 0)
+
+        assert pdf_manager.get_read_page(addon_dir, "TestProfile", 78) == 0
+        assert pdf_manager.get_read_anchor(addon_dir, "TestProfile", 78) is None
+
+
 class TestFindLivePdfCardByFilename:
     def test_finds_matching_card_id_by_stored_filename(self):
         note = MagicMock()

@@ -189,7 +189,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             card_id   INTEGER PRIMARY KEY,
             page      INTEGER NOT NULL DEFAULT 1,
             zoom      REAL    NOT NULL DEFAULT 1.0,
-            read_page INTEGER NOT NULL DEFAULT 0
+            read_page INTEGER NOT NULL DEFAULT 0,
+            read_anchor_json TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS pdf_daily_limits (
@@ -476,6 +477,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
     )
     _ensure_column(
         conn,
+        "pdf_progress",
+        "read_anchor_json",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
         "epub_progress",
         "read_section_index",
         "INTEGER NOT NULL DEFAULT 0",
@@ -577,10 +584,17 @@ def _ensure_column(
         return
     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
     conn.commit()
-    # Add read_page to existing pdf_progress tables that predate this column
+    # Add read_page/read_anchor_json to existing pdf_progress tables that predate them
     try:
         conn.execute(
             "ALTER TABLE pdf_progress ADD COLUMN read_page INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+    except Exception:
+        pass  # column already exists
+    try:
+        conn.execute(
+            "ALTER TABLE pdf_progress ADD COLUMN read_anchor_json TEXT NOT NULL DEFAULT ''"
         )
         conn.commit()
     except Exception:
@@ -1423,10 +1437,26 @@ def export_priorities_json(addon_dir: str, profile: str) -> str:
 def export_pdf_progress_json(addon_dir: str, profile: str) -> str:
     rows = (
         get_connection(addon_dir, profile)
-        .execute("SELECT card_id, page, zoom FROM pdf_progress ORDER BY card_id")
+        .execute(
+            "SELECT card_id, page, zoom, read_page, read_anchor_json "
+            "FROM pdf_progress ORDER BY card_id"
+        )
         .fetchall()
     )
-    return json.dumps({str(r[0]): {"page": r[1], "zoom": r[2]} for r in rows}, indent=2)
+    result = {}
+    for card_id, page, zoom, read_page, read_anchor_json in rows:
+        item = {
+            "page": page,
+            "zoom": zoom,
+            "read_page": read_page,
+        }
+        if str(read_anchor_json or "").strip():
+            try:
+                item["read_anchor"] = json.loads(read_anchor_json)
+            except Exception:
+                item["read_anchor"] = {}
+        result[str(card_id)] = item
+    return json.dumps(result, indent=2)
 
 
 def export_highlights_json(addon_dir: str, profile: str) -> str:

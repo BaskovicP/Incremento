@@ -4128,6 +4128,8 @@ def openSettingsFunction() -> None:
         current_auto_timer_enabled=_timer_mod.configured_auto_timer_enabled(cfg),
         current_auto_timer_card_types=_timer_mod.configured_auto_timer_card_types(cfg),
         current_auto_timer_tags=_timer_mod.configured_auto_timer_tags(cfg),
+        current_auto_timer_minutes=_timer_mod.configured_auto_timer_minutes(cfg),
+        current_timer_completion_beep=_timer_mod.configured_timer_completion_beep_enabled(cfg),
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
         current_default_topic_a_factor=_configured_default_topic_a_factor(cfg),
@@ -4173,6 +4175,8 @@ def openSettingsFunction() -> None:
     cfg["auto_timer_enabled"] = dlg.auto_timer_enabled
     cfg["auto_timer_card_types"] = dlg.auto_timer_card_types
     cfg["auto_timer_tags"] = dlg.auto_timer_tags
+    cfg["auto_timer_minutes"] = dlg.auto_timer_minutes
+    cfg["timer_completion_beep"] = dlg.timer_completion_beep
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
     cfg["default_topic_a_factor"] = dlg.default_topic_a_factor

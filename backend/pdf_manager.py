@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import shutil
@@ -211,12 +212,69 @@ def get_read_page(addon_dir: str, profile: str, card_id: int) -> int:
     return row[0] if row else 0
 
 
-def set_read_page(addon_dir: str, profile: str, card_id: int, read_page: int) -> None:
+def _normalize_read_anchor(anchor) -> dict:
+    if not isinstance(anchor, dict):
+        return {}
+
+    text = str(anchor.get("text") or "").strip()
+    try:
+        page = max(1, int(anchor.get("page", 1) or 1))
+    except Exception:
+        page = 1
+
+    def _coord(name: str, default: float = 0.0) -> float:
+        try:
+            value = float(anchor.get(name, default) or default)
+        except Exception:
+            value = default
+        return round(max(0.0, value), 3)
+
+    normalized = {
+        "page": page,
+        "x": _coord("x"),
+        "y": _coord("y"),
+        "w": _coord("w"),
+        "h": _coord("h"),
+    }
+    if text:
+        normalized["text"] = text[:240]
+    return normalized
+
+
+def get_read_anchor(addon_dir: str, profile: str, card_id: int) -> dict | None:
+    row = (
+        get_connection(addon_dir, profile)
+        .execute("SELECT read_anchor_json FROM pdf_progress WHERE card_id = ?", (card_id,))
+        .fetchone()
+    )
+    if not row or not str(row[0] or "").strip():
+        return None
+    try:
+        return _normalize_read_anchor(json.loads(row[0] or "{}")) or None
+    except Exception:
+        return None
+
+
+def set_read_page(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    read_page: int,
+    read_anchor: dict | None = None,
+) -> None:
     conn = get_connection(addon_dir, profile)
+    anchor_json = ""
+    if int(read_page or 0) > 0 and read_anchor:
+        normalized_anchor = _normalize_read_anchor(read_anchor)
+        if normalized_anchor:
+            anchor_json = json.dumps(normalized_anchor, ensure_ascii=False, sort_keys=True)
     conn.execute(
-        "INSERT INTO pdf_progress (card_id, page, zoom, read_page) VALUES (?, 1, 1.0, ?) "
-        "ON CONFLICT(card_id) DO UPDATE SET read_page = excluded.read_page",
-        (card_id, read_page),
+        "INSERT INTO pdf_progress (card_id, page, zoom, read_page, read_anchor_json) "
+        "VALUES (?, 1, 1.0, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "read_page = excluded.read_page, "
+        "read_anchor_json = excluded.read_anchor_json",
+        (card_id, read_page, anchor_json),
     )
     conn.commit()
 

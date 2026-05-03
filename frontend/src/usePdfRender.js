@@ -209,13 +209,17 @@ export function usePdfRender() {
     window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
 
-  const markRead = useCallback(() => {
+  const markRead = useCallback((anchor = null) => {
     const p   = pageRef.current;
     const cur = readPageRef.current;
     const newRp = (p <= cur) ? 0 : p;
     readPageRef.current = newRp;
     setReadPage(newRp);
-    window.pycmd('incremento_pdf_mark_read:' + cardIdRef.current + ':' + newRp);
+    window.pycmd('incremento_pdf_mark_read:' + JSON.stringify({
+      cardId: cardIdRef.current,
+      readPage: newRp,
+      anchor: newRp > 0 ? anchor : null,
+    }));
   }, []);
 
   /* ── Text-layer event isolation ───────────────────────────────────────────── */

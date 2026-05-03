@@ -7223,13 +7223,17 @@
       renderPage(pageRef.current);
       window.pycmd("incremento_pdf_zoom:" + cardIdRef.current + ":" + clamped);
     }, [renderPage]);
-    const markRead = reactExports.useCallback(() => {
+    const markRead = reactExports.useCallback((anchor = null) => {
       const p = pageRef.current;
       const cur = readPageRef.current;
       const newRp = p <= cur ? 0 : p;
       readPageRef.current = newRp;
       setReadPage(newRp);
-      window.pycmd("incremento_pdf_mark_read:" + cardIdRef.current + ":" + newRp);
+      window.pycmd("incremento_pdf_mark_read:" + JSON.stringify({
+        cardId: cardIdRef.current,
+        readPage: newRp,
+        anchor: newRp > 0 ? anchor : null
+      }));
     }, []);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
@@ -7504,6 +7508,48 @@
     }
     return true;
   }
+  function findTextSpan(node, container2) {
+    let current = node;
+    while (current && current !== container2) {
+      if (current.nodeType === Node.ELEMENT_NODE && current.tagName === "SPAN") {
+        return current;
+      }
+      current = current.parentNode;
+    }
+    return null;
+  }
+  function rectToPdfCoords(rect, layerRect, scale) {
+    if (!rect || !layerRect || !scale) return null;
+    const width = rect.width / scale;
+    const height = rect.height / scale;
+    if (width <= 0 || height <= 0) return null;
+    return {
+      x: (rect.left - layerRect.left) / scale,
+      y: (rect.top - layerRect.top) / scale,
+      w: width,
+      h: height
+    };
+  }
+  function findBestVisibleTextSpan(textLayer) {
+    if (!textLayer) return null;
+    const spans = Array.from(textLayer.querySelectorAll("span")).filter((span) => /\S/.test(span.textContent || ""));
+    if (!spans.length) return null;
+    const viewportMid = window.innerHeight / 2;
+    let best = null;
+    let bestDistance = Infinity;
+    for (const span of spans) {
+      const rect = span.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+      const spanMid = rect.top + rect.height / 2;
+      const distance = Math.abs(spanMid - viewportMid);
+      if (distance < bestDistance) {
+        best = span;
+        bestDistance = distance;
+      }
+    }
+    return best || spans[0];
+  }
   function selectionCleaned(sel, textLayer) {
     var _a;
     try {
@@ -7624,6 +7670,7 @@
     const [bookmarks, setBookmarks] = reactExports.useState([]);
     const [showBookmarksPanel, setShowBookmarksPanel] = reactExports.useState(false);
     const [searchQuery, setSearchQuery] = reactExports.useState("");
+    const [readAnchor, setReadAnchor] = reactExports.useState(null);
     const [limitStatus, setLimitStatus] = reactExports.useState(DEFAULT_LIMIT_STATUS);
     const [limitNotice, setLimitNotice] = reactExports.useState(null);
     const [hoveredHighlightNote, setHoveredHighlightNote] = reactExports.useState(null);
@@ -7631,8 +7678,16 @@
     const [focusedHighlightId, setFocusedHighlightId] = reactExports.useState(null);
     const [highlightJumpNonce, setHighlightJumpNonce] = reactExports.useState(0);
     const pendingHighlightScrollRef = reactExports.useRef(null);
+    const lastReadAnchorSpanRef = reactExports.useRef(null);
     const pageHighlights = highlights.filter((h) => h.page === page);
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
+    const readMarkerRect = readAnchor && readPage > 0 && Number(readAnchor.page || 0) === page && Number.isFinite(Number(readAnchor.x)) && Number.isFinite(Number(readAnchor.y)) && Number.isFinite(Number(readAnchor.w)) && Number.isFinite(Number(readAnchor.h)) ? {
+      x: Number(readAnchor.x || 0),
+      y: Number(readAnchor.y || 0),
+      w: Number(readAnchor.w || 0),
+      h: Number(readAnchor.h || 0)
+    } : null;
+    const showReadMarker = readPage > 0 && page === readPage;
     const progressPct = totalPages > 0 && readPage > 0 ? Math.max(0, Math.min(100, Math.round(readPage / totalPages * 100))) : 0;
     const progressSegments = 10;
     const filledSegments = Math.round(progressPct / 100 * progressSegments);
@@ -7740,6 +7795,38 @@
       });
       return false;
     }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled]);
+    const buildReadAnchor = reactExports.useCallback(() => {
+      const tl = textLayerRef.current;
+      const scale = Number(lastScaleRef.current || 0);
+      if (!tl || !scale) return null;
+      const tlRect = tl.getBoundingClientRect();
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed && selection.rangeCount && isSelectionInside(selection, tl)) {
+        const range = selection.getRangeAt(0);
+        const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+        const targetRect = rects.length ? rects[rects.length - 1] : null;
+        const coords2 = rectToPdfCoords(targetRect, tlRect, scale);
+        if (coords2) {
+          return {
+            page: pageRef.current,
+            ...coords2,
+            text: selectionCleaned(selection, tl).slice(0, 240)
+          };
+        }
+      }
+      let span = lastReadAnchorSpanRef.current;
+      if (!span || !tl.contains(span)) {
+        span = findBestVisibleTextSpan(tl);
+      }
+      if (!span) return null;
+      const coords = rectToPdfCoords(span.getBoundingClientRect(), tlRect, scale);
+      if (!coords) return null;
+      return {
+        page: pageRef.current,
+        ...coords,
+        text: String(span.textContent || "").trim().slice(0, 240)
+      };
+    }, [lastScaleRef, pageRef, textLayerRef]);
     const requestLimitOverride = reactExports.useCallback(() => {
       if (!cardIdRef.current) return;
       window.pycmd(`incremento_pdf_limit_override:${cardIdRef.current}`);
@@ -7818,6 +7905,22 @@
         }
       }
     }, [searchQuery, page, renderInfo, textLayerRef]);
+    reactExports.useEffect(() => {
+      const tl = textLayerRef.current;
+      if (!tl) return;
+      const rememberSpan = (event) => {
+        const span = findTextSpan(event.target, tl);
+        if (span) {
+          lastReadAnchorSpanRef.current = span;
+        }
+      };
+      tl.addEventListener("mousedown", rememberSpan, true);
+      tl.addEventListener("click", rememberSpan, true);
+      return () => {
+        tl.removeEventListener("mousedown", rememberSpan, true);
+        tl.removeEventListener("click", rememberSpan, true);
+      };
+    }, [page, textLayerRef]);
     const handleSnapStart = reactExports.useCallback((e) => {
       const rect = e.currentTarget.getBoundingClientRect();
       snapStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -7943,15 +8046,19 @@
       if (!canMarkReadAtPage(pageRef.current)) {
         return;
       }
-      rawMarkRead();
-    }, [canMarkReadAtPage, pageRef, rawMarkRead]);
+      const nextReadPage = pageRef.current <= readPage ? 0 : pageRef.current;
+      const anchor = nextReadPage > 0 ? buildReadAnchor() : null;
+      setReadAnchor(anchor);
+      rawMarkRead(anchor);
+    }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawMarkRead, readPage]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
         setHighlights(window._incPdfHighlights || []);
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
         window._incPdfBookmarks = null;
         setSearchQuery(startSearchQuery || "");
+        setReadAnchor(startReadAnchor && typeof startReadAnchor === "object" ? startReadAnchor : null);
         setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
         setLimitNotice(null);
         if (typeof startAutoHighlightOnExtract === "boolean") {
@@ -7989,6 +8096,7 @@
           pending.page,
           pending.zoom,
           pending.readPage || 0,
+          pending.readAnchor || null,
           pending.searchQuery || "",
           pending.limitStatus || DEFAULT_LIMIT_STATUS,
           pending.autoHighlightOnExtract,
@@ -8153,6 +8261,31 @@
                             },
                             onClick: limitAwareMarkRead,
                             children: "✓ Read to here"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            title: showReadMarker ? "Remove the READ UP UNTIL HERE marker from this page" : "Place the READ UP UNTIL HERE marker on this page",
+                            "aria-label": "Toggle read marker",
+                            style: {
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 34,
+                              height: 30,
+                              padding: 0,
+                              fontSize: 16,
+                              fontWeight: 800,
+                              borderRadius: 8,
+                              cursor: "pointer",
+                              background: showReadMarker ? "rgba(14,165,233,0.22)" : "rgba(255,255,255,0.03)",
+                              color: showReadMarker ? "rgb(125,211,252)" : "inherit",
+                              border: showReadMarker ? "1px solid rgba(14,165,233,0.75)" : "1px solid rgba(180,180,180,0.32)",
+                              boxShadow: showReadMarker ? "0 0 0 1px rgba(14,165,233,0.12) inset" : "none"
+                            },
+                            onClick: limitAwareMarkRead,
+                            children: "↦"
                           }
                         ),
                         readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
@@ -8783,6 +8916,66 @@
                       transform: "translateX(-50%)",
                       pointerEvents: "none"
                     }
+                  }
+                ),
+                showReadMarker && readMarkerRect && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    style: {
+                      position: "absolute",
+                      top: Math.max(8, readMarkerRect.y * renderInfo.scale + readMarkerRect.h * renderInfo.scale / 2 - 18),
+                      left: Math.max(8, renderInfo.tlLeft + readMarkerRect.x * renderInfo.scale - 178),
+                      zIndex: 4,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px 10px 10px",
+                      borderRadius: 14,
+                      background: "linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))",
+                      color: "#ecfeff",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase",
+                      border: "1px solid rgba(103,232,249,0.6)",
+                      boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+                      pointerEvents: "none"
+                    },
+                    title: (readAnchor == null ? void 0 : readAnchor.text) ? `You stopped at: ${readAnchor.text}` : `You marked page ${readPage} as your current stopping point`,
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Read Up Until Here" })
+                    ]
+                  }
+                ),
+                showReadMarker && !readMarkerRect && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    style: {
+                      position: "absolute",
+                      top: 18,
+                      left: Math.max(10, renderInfo.tlLeft - 6),
+                      zIndex: 4,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px 10px 10px",
+                      borderRadius: 14,
+                      background: "linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))",
+                      color: "#ecfeff",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase",
+                      border: "1px solid rgba(103,232,249,0.6)",
+                      boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+                      pointerEvents: "none"
+                    },
+                    title: `You marked page ${readPage} as your current stopping point`,
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Read Up Until Here" })
+                    ]
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(

@@ -12,18 +12,26 @@ from aqt.qt import (
     QDockWidget,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QFormLayout,
-    QGridLayout,
+    QFontMetrics,
     QHBoxLayout,
     QKeySequence,
+    QLayout,
     QLabel,
     QPixmap,
+    QPoint,
     QPushButton,
+    QRect,
     QShortcut,
+    QSize,
+    QSizePolicy,
     QSpinBox,
+    QStyle,
     QTextBrowser,
     QTextEdit,
     QTimer,
+    QToolButton,
     QVBoxLayout,
     QWidget,
     Qt,
@@ -160,6 +168,114 @@ _current_epub_page_index = 0
 _current_epub_total_pages = 0
 _current_epub_section_page = 1
 _current_epub_section_pages = 1
+
+
+def _record_timer_epub_page_read(card_id: int | None, page_index: int | None) -> None:
+    if card_id is None or page_index is None:
+        return
+    try:
+        try:
+            from . import timer_widget as _timer_mod
+        except Exception:
+            import timer_widget as _timer_mod  # type: ignore
+        _timer_mod.record_epub_page_read(int(card_id), int(page_index))
+    except Exception:
+        pass
+
+
+class _ElidedLabel(QLabel):
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent)
+        self._full_text = str(text or "")
+        self.setWordWrap(False)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(0)
+        self._apply_elision()
+
+    def set_full_text(self, text: str) -> None:
+        self._full_text = str(text or "")
+        self._apply_elision()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_elision()
+
+    def _apply_elision(self) -> None:
+        metrics = QFontMetrics(self.font())
+        text = metrics.elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideRight,
+            max(24, self.contentsRect().width()),
+        )
+        super().setText(text)
+        self.setToolTip(self._full_text if text != self._full_text else "")
+
+
+class _FlowLayout(QLayout):
+    def __init__(self, parent=None, margin: int = 0, h_spacing: int = 6, v_spacing: int = 6):
+        super().__init__(parent)
+        self._items = []
+        self._h_spacing = h_spacing
+        self._v_spacing = v_spacing
+        self.setContentsMargins(margin, margin, margin, margin)
+
+    def addItem(self, item) -> None:
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int):
+        return self._items[index] if 0 <= index < len(self._items) else None
+
+    def takeAt(self, index: int):
+        return self._items.pop(index) if 0 <= index < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._do_layout(QRect(0, 0, width, 0), True)
+
+    def setGeometry(self, rect: QRect) -> None:
+        super().setGeometry(rect)
+        self._do_layout(rect, False)
+
+    def sizeHint(self) -> QSize:
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        return size
+
+    def _do_layout(self, rect: QRect, test_only: bool) -> int:
+        margins = self.contentsMargins()
+        area = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom())
+        x = area.x()
+        y = area.y()
+        line_height = 0
+
+        for item in self._items:
+            hint = item.sizeHint()
+            next_x = x + hint.width()
+            if line_height > 0 and next_x > area.right() + 1:
+                x = area.x()
+                y += line_height + self._v_spacing
+                next_x = x + hint.width()
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QRect(QPoint(x, y), hint))
+            x = next_x + self._h_spacing
+            line_height = max(line_height, hint.height())
+
+        return (y - rect.y()) + line_height + margins.bottom()
 
 
 def current_epub_card_id() -> int | None:
@@ -1094,6 +1210,99 @@ def _build_page_script(
     """
 
 
+def _standard_icon(pixmap: QStyle.StandardPixmap):
+    try:
+        return mw.style().standardIcon(pixmap)
+    except Exception:
+        return None
+
+
+def _make_epub_button(
+    dock,
+    text: str,
+    tooltip_text: str,
+    *,
+    icon=None,
+    checkable: bool = False,
+    icon_only: bool = False,
+    accent: str = "",
+) -> QToolButton:
+    btn = QToolButton(dock)
+    btn.setText(text)
+    btn.setToolTip(tooltip_text)
+    btn.setAutoRaise(False)
+    btn.setCheckable(checkable)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setToolButtonStyle(
+        Qt.ToolButtonStyle.ToolButtonIconOnly if icon_only else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+    )
+    btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    if icon is not None:
+        btn.setIcon(icon)
+    base_style = (
+        "QToolButton {"
+        " padding: 4px 8px;"
+        " border-radius: 7px;"
+        " border: 1px solid rgba(255,255,255,0.12);"
+        " background: rgba(255,255,255,0.04);"
+        " color: #d9dee7;"
+        " }"
+        "QToolButton:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.22); }"
+        "QToolButton:pressed { background: rgba(255,255,255,0.12); }"
+        "QToolButton:disabled { color: #717885; background: rgba(255,255,255,0.02); }"
+    )
+    if checkable:
+        base_style += (
+            "QToolButton:checked {"
+            " background: rgba(74,144,217,0.24);"
+            " border-color: rgba(74,144,217,0.65);"
+            " color: #eef5ff;"
+            " }"
+        )
+    if accent:
+        base_style += accent
+    btn.setStyleSheet(base_style)
+    return btn
+
+
+def _make_epub_chip(parent, text: str) -> QLabel:
+    label = QLabel(text, parent)
+    label.setStyleSheet(
+        "QLabel {"
+        " color: #9ca6b4;"
+        " background: rgba(255,255,255,0.04);"
+        " border: 1px solid rgba(255,255,255,0.10);"
+        " border-radius: 9px;"
+        " padding: 2px 8px;"
+        " font-size: 11px;"
+        " }"
+    )
+    return label
+
+
+def _make_epub_group(parent, title: str, *widgets: QWidget) -> QWidget:
+    frame = QFrame(parent)
+    frame.setFrameShape(QFrame.Shape.NoFrame)
+    frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    frame.setStyleSheet(
+        "QFrame {"
+        " background: rgba(255,255,255,0.03);"
+        " border: 1px solid rgba(255,255,255,0.08);"
+        " border-radius: 10px;"
+        " }"
+    )
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(8, 6, 8, 6)
+    row.setSpacing(5)
+
+    tag = QLabel(title, frame)
+    tag.setStyleSheet("color: #8a93a1; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;")
+    row.addWidget(tag)
+    for widget in widgets:
+        row.addWidget(widget)
+    return frame
+
+
 def _build_epub_dock() -> None:
     global _epub_dock, _epub_shortcuts_registered, _epub_key_filter
 
@@ -1113,52 +1322,169 @@ def _build_epub_dock() -> None:
         app.installEventFilter(_epub_key_filter)
     mw.installEventFilter(_epub_key_filter)
 
-    toolbar = QGridLayout()
-    toolbar.setContentsMargins(0, 0, 0, 0)
-    toolbar.setHorizontalSpacing(6)
-    toolbar.setVerticalSpacing(6)
-    dock._prev_btn = QPushButton("Prev")
-    dock._next_btn = QPushButton("Next")
-    dock._title_lbl = QLabel("EPUB")
-    dock._title_lbl.setWordWrap(False)
-    dock._title_lbl.setStyleSheet("font-weight: bold;")
-    dock._source_lbl = QLabel("")
-    dock._source_lbl.setWordWrap(False)
-    dock._source_lbl.setStyleSheet("font-size: 11px; color: gray;")
-    dock._add_card_btn = QPushButton("Add Card")
-    dock._browser_btn = QPushButton("Browser")
-    dock._all_cards_btn = QPushButton("All Cards")
-    dock._due_review_btn = QPushButton("Review Due")
-    dock._limit_btn = QPushButton("Limit")
-    dock._text_smaller_btn = QPushButton("A-")
-    dock._text_larger_btn = QPushButton("A+")
-    dock._highlight_btn = QPushButton("Highlight")
-    dock._snapshot_btn = QPushButton("Snapshot")
-    dock._bookmark_add_btn = QPushButton("Bookmark")
-    dock._bookmarks_btn = QPushButton("Bookmarks")
-    dock._finished_btn = QPushButton("Finished")
-    dock._finished_btn.setCheckable(True)
+    dock._prev_btn = _make_epub_button(
+        dock,
+        "",
+        "Previous page or previous section",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowBack),
+        icon_only=True,
+    )
+    dock._next_btn = _make_epub_button(
+        dock,
+        "",
+        "Next page or next section",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowForward),
+        icon_only=True,
+    )
+    dock._title_lbl = _ElidedLabel("EPUB", dock)
+    dock._title_lbl.setStyleSheet("font-weight: 600; color: #edf2f7;")
+    dock._cards_chip = _make_epub_chip(dock, "Cards 0")
+    dock._highlights_chip = _make_epub_chip(dock, "Highlights 0")
 
-    toolbar.addWidget(dock._prev_btn, 0, 0)
-    toolbar.addWidget(dock._next_btn, 0, 1)
-    toolbar.addWidget(dock._title_lbl, 0, 2, 1, 4)
-    toolbar.addWidget(dock._source_lbl, 0, 6, 1, 3)
+    dock._add_card_btn = _make_epub_button(
+        dock,
+        "Card",
+        "Add a card from the current selection",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogNewFolder),
+    )
+    dock._browser_btn = _make_epub_button(
+        dock,
+        "Browser",
+        "Open this EPUB note in the browser",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
+    )
+    dock._all_cards_btn = _make_epub_button(
+        dock,
+        "All",
+        "Open all cards created from this EPUB",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
+    )
+    dock._due_review_btn = _make_epub_button(
+        dock,
+        "Due",
+        "Review due cards from this EPUB",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
+    )
+    dock._limit_btn = _make_epub_button(
+        dock,
+        "Limit",
+        "Adjust this EPUB's daily reading limit",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_MessageBoxWarning),
+    )
+    dock._text_smaller_btn = _make_epub_button(
+        dock,
+        "A-",
+        "Decrease text size",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowDown),
+    )
+    dock._text_larger_btn = _make_epub_button(
+        dock,
+        "A+",
+        "Increase text size",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowUp),
+    )
+    dock._highlight_btn = _make_epub_button(
+        dock,
+        "Mark",
+        "Highlight the current selection (Alt+H)",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
+    )
+    dock._snapshot_btn = _make_epub_button(
+        dock,
+        "Snap",
+        "Capture the current selection as an image (Alt+S)",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+    )
+    dock._bookmark_add_btn = _make_epub_button(
+        dock,
+        "Save",
+        "Add a bookmark for this reading position",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogYesButton),
+    )
+    dock._bookmarks_btn = _make_epub_button(
+        dock,
+        "Marks",
+        "Show or hide EPUB bookmarks",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
+        checkable=True,
+    )
+    dock._sources_btn = _make_epub_button(
+        dock,
+        "Details",
+        "Show or hide cards and highlights for this section",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
+        checkable=True,
+    )
+    dock._finished_btn = _make_epub_button(
+        dock,
+        "Finished",
+        "Mark this EPUB as finished or unfinished",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogApplyButton),
+        checkable=True,
+        accent=(
+            "QToolButton { border-color: rgba(178,79,79,0.35); background: rgba(140,48,48,0.10); }"
+            "QToolButton:hover { background: rgba(140,48,48,0.16); border-color: rgba(178,79,79,0.55); }"
+            "QToolButton:checked { background: rgba(77,156,92,0.22); border-color: rgba(77,156,92,0.60); }"
+        ),
+    )
 
-    toolbar.addWidget(dock._add_card_btn, 1, 0)
-    toolbar.addWidget(dock._browser_btn, 1, 1)
-    toolbar.addWidget(dock._all_cards_btn, 1, 2)
-    toolbar.addWidget(dock._due_review_btn, 1, 3)
-    toolbar.addWidget(dock._limit_btn, 1, 4)
-    toolbar.addWidget(dock._text_smaller_btn, 1, 5)
-    toolbar.addWidget(dock._text_larger_btn, 1, 6)
-    toolbar.addWidget(dock._highlight_btn, 1, 7)
-    toolbar.addWidget(dock._snapshot_btn, 2, 0)
-    toolbar.addWidget(dock._bookmark_add_btn, 2, 1)
-    toolbar.addWidget(dock._bookmarks_btn, 2, 2)
-    toolbar.addWidget(dock._finished_btn, 2, 3)
-    toolbar.setColumnStretch(2, 1)
-    toolbar.setColumnStretch(6, 1)
-    layout.addLayout(toolbar)
+    header = QWidget(dock)
+    header_layout = QVBoxLayout(header)
+    header_layout.setContentsMargins(0, 0, 0, 0)
+    header_layout.setSpacing(5)
+
+    nav_row = QHBoxLayout()
+    nav_row.setContentsMargins(0, 0, 0, 0)
+    nav_row.setSpacing(6)
+    nav_row.addWidget(dock._prev_btn)
+    nav_row.addWidget(dock._next_btn)
+    nav_row.addWidget(dock._title_lbl, 1)
+    header_layout.addLayout(nav_row)
+
+    status_row = QHBoxLayout()
+    status_row.setContentsMargins(0, 0, 0, 0)
+    status_row.setSpacing(6)
+    status_row.addWidget(dock._cards_chip)
+    status_row.addWidget(dock._highlights_chip)
+    status_row.addStretch(1)
+    header_layout.addLayout(status_row)
+    layout.addWidget(header)
+
+    groups_host = QWidget(dock)
+    groups_flow = _FlowLayout(groups_host, margin=0, h_spacing=6, v_spacing=6)
+    groups_host.setLayout(groups_flow)
+    groups_flow.addWidget(
+        _make_epub_group(
+            groups_host,
+            "Reader",
+            dock._text_smaller_btn,
+            dock._text_larger_btn,
+            dock._finished_btn,
+        )
+    )
+    groups_flow.addWidget(
+        _make_epub_group(
+            groups_host,
+            "Capture",
+            dock._highlight_btn,
+            dock._snapshot_btn,
+            dock._bookmark_add_btn,
+            dock._bookmarks_btn,
+            dock._sources_btn,
+        )
+    )
+    groups_flow.addWidget(
+        _make_epub_group(
+            groups_host,
+            "Cards",
+            dock._add_card_btn,
+            dock._browser_btn,
+            dock._all_cards_btn,
+            dock._due_review_btn,
+            dock._limit_btn,
+        )
+    )
+    layout.addWidget(groups_host)
 
     page = _EpubDockPage(dock)
     s = page.settings()
@@ -1177,6 +1503,7 @@ def _build_epub_dock() -> None:
     dock._sources.setOpenLinks(False)
     dock._sources.setOpenExternalLinks(False)
     dock._sources.anchorClicked.connect(_open_source_link)
+    dock._sources.setVisible(False)
     layout.addWidget(dock._sources)
 
     dock._bookmarks_panel = QTextBrowser()
@@ -1214,6 +1541,7 @@ def _build_epub_dock() -> None:
     qconnect(dock._snapshot_btn.clicked, _request_snapshot)
     qconnect(dock._bookmark_add_btn.clicked, _add_current_epub_bookmark)
     qconnect(dock._bookmarks_btn.clicked, _toggle_epub_bookmarks_panel)
+    qconnect(dock._sources_btn.clicked, _toggle_epub_sources_panel)
     qconnect(dock._finished_btn.clicked, _toggle_finished)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
@@ -1263,7 +1591,12 @@ def _refresh_epub_bookmarks_panel() -> None:
     if _epub_dock is None:
         return
     bookmarks = _epub_bookmarks()
-    _epub_dock._bookmarks_btn.setText(f"Bookmarks {len(bookmarks)}")
+    _epub_dock._bookmarks_btn.setToolTip(
+        f"Show or hide EPUB bookmarks ({len(bookmarks)} saved)"
+    )
+    _epub_dock._bookmarks_btn.blockSignals(True)
+    _epub_dock._bookmarks_btn.setChecked(bool(_epub_dock._bookmarks_panel.isVisible()))
+    _epub_dock._bookmarks_btn.blockSignals(False)
     if not getattr(_epub_dock, "_bookmarks_panel", None):
         return
     html = ["<div style='font-family:sans-serif;font-size:12px'>"]
@@ -1317,7 +1650,21 @@ def _toggle_epub_bookmarks_panel() -> None:
     if _epub_dock is None:
         return
     _refresh_epub_bookmarks_panel()
-    _epub_dock._bookmarks_panel.setVisible(not _epub_dock._bookmarks_panel.isVisible())
+    visible = not _epub_dock._bookmarks_panel.isVisible()
+    _epub_dock._bookmarks_panel.setVisible(visible)
+    _epub_dock._bookmarks_btn.blockSignals(True)
+    _epub_dock._bookmarks_btn.setChecked(visible)
+    _epub_dock._bookmarks_btn.blockSignals(False)
+
+
+def _toggle_epub_sources_panel() -> None:
+    if _epub_dock is None:
+        return
+    visible = not _epub_dock._sources.isVisible()
+    _epub_dock._sources.setVisible(visible)
+    _epub_dock._sources_btn.blockSignals(True)
+    _epub_dock._sources_btn.setChecked(visible)
+    _epub_dock._sources_btn.blockSignals(False)
 
 
 def _open_epub_bookmark_link(url: QUrl) -> None:
@@ -1667,36 +2014,47 @@ def _update_title_and_buttons() -> None:
         return
     sections = _current_sections()
     count = len(sections)
+    title_text = "EPUB"
     if count:
         idx = max(0, min(_current_epub_section_index, count - 1))
         section = sections[idx]
         if _current_epub_total_pages > 0:
-            _epub_dock._title_lbl.setText(
+            title_text = (
                 f"Page {_current_epub_page_index + 1} / {_current_epub_total_pages} — "
                 f"{section.get('title') or f'Section {idx + 1}'}"
             )
         else:
-            _epub_dock._title_lbl.setText(
+            title_text = (
                 f"{section.get('title') or f'Section {idx + 1}'} ({idx + 1}/{count})"
             )
         _epub_dock._prev_btn.setEnabled(idx > 0 or _current_epub_scroll_ratio > 0.001)
         _epub_dock._next_btn.setEnabled(idx + 1 < count or _current_epub_scroll_ratio < 0.999)
     else:
-        _epub_dock._title_lbl.setText("EPUB")
         _epub_dock._prev_btn.setEnabled(False)
         _epub_dock._next_btn.setEnabled(False)
+    _epub_dock._title_lbl.set_full_text(title_text)
     has_card = _current_epub_card_id is not None
     _epub_dock._browser_btn.setEnabled(has_card)
     _epub_dock._due_review_btn.setEnabled(has_card)
     _epub_dock._limit_btn.setEnabled(has_card)
     _epub_dock._text_smaller_btn.setEnabled(has_card)
     _epub_dock._text_larger_btn.setEnabled(has_card)
+    _epub_dock._highlight_btn.setEnabled(has_card)
+    _epub_dock._add_card_btn.setEnabled(has_card)
+    _epub_dock._all_cards_btn.setEnabled(has_card)
     _epub_dock._snapshot_btn.setEnabled(has_card)
     _epub_dock._bookmark_add_btn.setEnabled(has_card)
     _epub_dock._bookmarks_btn.setEnabled(has_card)
+    _epub_dock._sources_btn.setEnabled(has_card)
     _epub_dock._finished_btn.blockSignals(True)
     _epub_dock._finished_btn.setChecked(bool(_current_epub_finished))
     _epub_dock._finished_btn.blockSignals(False)
+    _epub_dock._bookmarks_btn.blockSignals(True)
+    _epub_dock._bookmarks_btn.setChecked(bool(_epub_dock._bookmarks_panel.isVisible()))
+    _epub_dock._bookmarks_btn.blockSignals(False)
+    _epub_dock._sources_btn.blockSignals(True)
+    _epub_dock._sources_btn.setChecked(bool(_epub_dock._sources.isVisible()))
+    _epub_dock._sources_btn.blockSignals(False)
     _refresh_epub_bookmarks_panel()
 
 
@@ -1707,7 +2065,13 @@ def _update_sources_panel() -> None:
     counts = get_epub_section_card_counts(_ADDON_DIR, _active_profile(), _current_epub_card_id)
     count = int(counts.get(_current_epub_section_index, 0) or 0)
     highlights = _current_section_highlights()
-    _epub_dock._source_lbl.setText(f"Cards here: {count}  •  Highlights: {len(highlights)}")
+    _epub_dock._cards_chip.setText(f"Cards {count}")
+    _epub_dock._cards_chip.setToolTip(f"{count} cards created from this section")
+    _epub_dock._highlights_chip.setText(f"Highlights {len(highlights)}")
+    _epub_dock._highlights_chip.setToolTip(f"{len(highlights)} highlights in this section")
+    _epub_dock._sources_btn.setToolTip(
+        f"Show or hide cards and highlights for this section ({count} cards, {len(highlights)} highlights)"
+    )
     html = ["<div style='font-family:sans-serif;font-size:12px'>"]
     if cards:
         html.append("<b>Cards from this section</b><ul>")
@@ -1764,6 +2128,7 @@ def _record_progress(
     _current_epub_scroll_ratio = max(0.0, min(float(scroll_ratio), 1.0))
     if page_index is not None:
         _current_epub_page_index = max(0, int(page_index))
+        _record_timer_epub_page_read(_current_epub_card_id, _current_epub_page_index)
     if total_pages is not None:
         _current_epub_total_pages = max(0, int(total_pages))
     if section_page is not None:
@@ -1880,6 +2245,7 @@ def show_epub_in_dock(
     _current_epub_total_pages = 0
     _current_epub_section_page = 1
     _current_epub_section_pages = 1
+    _record_timer_epub_page_read(_current_epub_card_id, _current_epub_page_index)
     _pending_focus_offset = int(focus_offset)
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = str(search_query or "")

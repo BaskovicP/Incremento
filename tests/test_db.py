@@ -49,6 +49,8 @@ class TestGetConnection:
             ).fetchall()
         }
         assert "pdf_progress" in tables
+        columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
+        assert "read_anchor_json" in columns
 
     def test_creates_pdf_daily_limits_tables(self):
         addon_dir = _fresh_dir()
@@ -1242,6 +1244,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
         columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
         assert "read_page" in columns
+        assert "read_anchor_json" in columns
 
 
 # ---------------------------------------------------------------------------
@@ -1279,12 +1282,18 @@ class TestExportHelpers:
     def test_export_pdf_progress_json_with_data(self):
         import json
         conn = db.get_connection(self.addon_dir, "TestProfile")
-        conn.execute("INSERT INTO pdf_progress (card_id, page, zoom) VALUES (10, 3, 1.5)")
+        conn.execute(
+            "INSERT INTO pdf_progress (card_id, page, zoom, read_page, read_anchor_json) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (10, 3, 1.5, 3, '{"page":3,"x":10.5,"y":22.0,"w":40.0,"h":12.0}'),
+        )
         conn.commit()
         result = json.loads(db.export_pdf_progress_json(self.addon_dir, "TestProfile"))
         assert "10" in result
         assert result["10"]["page"] == 3
         assert result["10"]["zoom"] == 1.5
+        assert result["10"]["read_page"] == 3
+        assert result["10"]["read_anchor"]["page"] == 3
 
     def test_export_highlights_json_empty(self):
         import json

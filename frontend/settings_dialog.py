@@ -234,6 +234,8 @@ class IncrementoSettingsDialog(QDialog):
         current_auto_timer_enabled: bool = False,
         current_auto_timer_card_types: dict[str, bool] | None = None,
         current_auto_timer_tags: list[str] | str | None = None,
+        current_auto_timer_minutes: int = 30,
+        current_timer_completion_beep: bool = True,
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
         current_default_topic_a_factor: float = 3.5,
@@ -628,6 +630,12 @@ class IncrementoSettingsDialog(QDialog):
         self._auto_timer_enabled_cb.setChecked(bool(current_auto_timer_enabled))
         timer_form.addRow("", self._auto_timer_enabled_cb)
 
+        self._timer_completion_beep_cb = QCheckBox(
+            "Play a beep when the focus timer finishes"
+        )
+        self._timer_completion_beep_cb.setChecked(bool(current_timer_completion_beep))
+        timer_form.addRow("", self._timer_completion_beep_cb)
+
         timer_types = {
             "pdf": True,
             "epub": True,
@@ -683,6 +691,22 @@ class IncrementoSettingsDialog(QDialog):
             self._auto_timer_tags_edit,
         )
 
+        self._auto_timer_minutes_spin = QSpinBox()
+        self._auto_timer_minutes_spin.setRange(1, 1440)
+        try:
+            auto_timer_minutes = int(current_auto_timer_minutes)
+        except Exception:
+            auto_timer_minutes = 30
+        self._auto_timer_minutes_spin.setValue(max(1, min(1440, auto_timer_minutes)))
+        self._auto_timer_minutes_spin.setSuffix(" min")
+        timer_form.addRow(
+            _label_with_info(
+                "Auto-start duration:",
+                "When Incremento automatically starts the focus timer for a matching card, use this many minutes.",
+            ),
+            self._auto_timer_minutes_spin,
+        )
+
         def _sync_auto_timer_widgets() -> None:
             enabled = bool(self._auto_timer_enabled_cb.isChecked())
             for widget in (
@@ -693,6 +717,7 @@ class IncrementoSettingsDialog(QDialog):
                 self._auto_timer_writing_cb,
                 self._auto_timer_local_file_cb,
                 self._auto_timer_tags_edit,
+                self._auto_timer_minutes_spin,
             ):
                 widget.setEnabled(enabled)
 
@@ -1319,6 +1344,14 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def auto_timer_tags(self) -> list[str]:
         return _normalize_tag_list(self._auto_timer_tags_edit.text())
+
+    @property
+    def auto_timer_minutes(self) -> int:
+        return int(self._auto_timer_minutes_spin.value())
+
+    @property
+    def timer_completion_beep(self) -> bool:
+        return bool(self._timer_completion_beep_cb.isChecked())
 
     @property
     def topic_card_types(self) -> dict[str, bool]:
