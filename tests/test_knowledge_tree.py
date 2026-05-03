@@ -276,13 +276,17 @@ class TestTreeMutationHelpers:
         ):
             assert knowledge_tree.lineage_card_ids(30) == [10, 20, 30, 40, 60, 50]
 
-    def test_ensure_extract_lineage_cards_in_tree_links_missing_cards_at_root(self):
+    def test_ensure_extract_lineage_cards_in_tree_links_missing_cards_under_metadata_parents(self):
         link_calls = []
 
         with patch.object(
             knowledge_tree,
             "lineage_card_ids",
             return_value=[10, 20, 30, 40],
+        ), patch.object(
+            knowledge_tree,
+            "metadata_parent_card_id",
+            side_effect=lambda card_id: {20: 10, 30: 20, 40: 30}.get(int(card_id)),
         ), patch.object(
             knowledge_tree,
             "get_knowledge_tree_node",
@@ -310,9 +314,82 @@ class TestTreeMutationHelpers:
         assert result["error_count"] == 0
         assert link_calls == [
             (self.addon_dir, "TestProfile", 10, "topic", None),
-            (self.addon_dir, "TestProfile", 30, "item", None),
-            (self.addon_dir, "TestProfile", 40, "topic", None),
-            (self.addon_dir, "TestProfile", 50, "topic", None),
+            (self.addon_dir, "TestProfile", 30, "item", 20),
+            (self.addon_dir, "TestProfile", 40, "topic", 30),
+            (self.addon_dir, "TestProfile", 50, "topic", 30),
+        ]
+
+    def test_ensure_extract_lineage_cards_in_tree_persists_pdf_as_parent_for_fresh_extract(self):
+        with patch.object(
+            knowledge_tree,
+            "lineage_card_ids",
+            return_value=[10],
+        ), patch.object(
+            knowledge_tree,
+            "metadata_parent_card_id",
+            side_effect=lambda card_id: {20: 10}.get(int(card_id)),
+        ), patch.object(
+            knowledge_tree,
+            "card_exists",
+            return_value=True,
+        ), patch.object(
+            knowledge_tree,
+            "infer_node_kind_for_card",
+            return_value="topic",
+        ), patch.object(
+            knowledge_tree,
+            "apply_node_kind_to_card",
+        ):
+            result = knowledge_tree.ensure_extract_lineage_cards_in_tree(
+                self.addon_dir,
+                "TestProfile",
+                source_card_id=10,
+                created_card_ids=[20],
+                created_node_kind="item",
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == [10, 20]
+        assert result["error_count"] == 0
+        assert [(row["card_id"], row["parent_card_id"], row["node_kind"]) for row in rows] == [
+            (10, None, "topic"),
+            (20, 10, "item"),
+        ]
+
+    def test_ensure_extract_lineage_cards_in_tree_reparents_existing_root_extract_under_pdf(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 20, "parent_card_id": None, "node_kind": "item", "sort_order": 1},
+            ],
+        )
+
+        with patch.object(
+            knowledge_tree,
+            "lineage_card_ids",
+            return_value=[10, 20],
+        ), patch.object(
+            knowledge_tree,
+            "metadata_parent_card_id",
+            side_effect=lambda card_id: {20: 10}.get(int(card_id)),
+        ):
+            result = knowledge_tree.ensure_extract_lineage_cards_in_tree(
+                self.addon_dir,
+                "TestProfile",
+                source_card_id=10,
+                created_card_ids=[20],
+                created_node_kind="item",
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == []
+        assert result["reparented_card_ids"] == [20]
+        assert result["error_count"] == 0
+        assert [(row["card_id"], row["parent_card_id"], row["node_kind"]) for row in rows] == [
+            (10, None, "topic"),
+            (20, 10, "item"),
         ]
 
     def test_link_cards_to_tree_reports_partial_failures_and_keeps_valid_cards(self):

@@ -88,4 +88,4 @@ def test_knowledge_tree_link_state_disables_when_parent_is_not_in_tree():
 
     assert state["enabled"] is False
     assert state["checked"] is True
-    assert "root level" in str(state["tooltip"]).lower()
+    assert "beneath their source parent" in str(state["tooltip"]).lower()

@@ -341,6 +341,41 @@ def test_pending_extract_options_capture_source_card_id(monkeypatch):
     assert options["source_card_id"] == 123
 
 
+def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
+    filled = []
+    fake_dock = types.SimpleNamespace(
+        show=lambda: None,
+        raise_=lambda: None,
+        _set_field=lambda idx, text, mark_topic=False: filled.append((idx, text, mark_topic)),
+    )
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_apply_configured_extract_notetype", lambda: None)
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 55 if source == "pdf" else None)
+    monkeypatch.setattr(dock, "source_note_tags_for_card", lambda source_card_id: ["source"])
+    monkeypatch.setattr(dock, "source_relative_extract_priority_for_source", lambda source: 18)
+    monkeypatch.setattr(
+        dock,
+        "_source_extract_metadata_for_card",
+        lambda source, source_card_id: {"Incremento_Parent_Card_ID": str(source_card_id)},
+    )
+
+    dock.fill_dock_field(
+        0,
+        "Excerpt",
+        include_pdf_citation=False,
+        source_link_kind="pdf",
+    )
+
+    assert filled == [(0, "Excerpt", False)]
+    assert dock.pending_extract_options()["source"] == "pdf"
+    assert dock.pending_extract_options()["source_card_id"] == 55
+    assert dock.pending_extract_options()["priority"] == 18.0
+    assert dock.pending_extract_context()["parent_card_id"] == 55
+    assert dock.pending_extract_context()["metadata"] == {"Incremento_Parent_Card_ID": "55"}
+    dock.clear_pending_extract_options()
+    dock.clear_pending_extract_context()
+
+
 def test_source_card_id_for_transfer_reads_video_source(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
@@ -697,6 +732,51 @@ def test_consume_pending_extract_context_links_lineage_from_source_card_without_
             {
                 "source_card_id": 99,
                 "created_card_ids": [445],
+                "created_node_kind": "item",
+            },
+        ),
+    ]
+
+
+def test_consume_pending_extract_context_resolves_current_pdf_when_option_lacks_card_id(monkeypatch):
+    note = _FakeNote(["item"], note_id=11)
+    link_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [446])
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 123 if source == "pdf" else None)
+    monkeypatch.setitem(
+        sys.modules,
+        "knowledge_tree",
+        types.SimpleNamespace(
+            NODE_KIND_ITEM="item",
+            NODE_KIND_TOPIC="topic",
+            ensure_extract_lineage_cards_in_tree=lambda addon_dir, profile, **kwargs: (
+                link_calls.append((addon_dir, profile, dict(kwargs)))
+                or {"linked_count": 2, "errors": []}
+            ),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "paths",
+        types.SimpleNamespace(get_active_profile=lambda: "TestProfile"),
+    )
+
+    result = dock.consume_pending_extract_context_for_note(
+        note,
+        {"source_card_id": None, "source": "pdf"},
+    )
+
+    assert result is not None
+    assert result["metadata_saved"] is False
+    assert result["knowledge_tree_link_error"] == ""
+    assert link_calls == [
+        (
+            dock._ADDON_DIR,
+            "TestProfile",
+            {
+                "source_card_id": 123,
+                "created_card_ids": [446],
                 "created_node_kind": "item",
             },
         ),

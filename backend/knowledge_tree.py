@@ -270,6 +270,50 @@ def save_knowledge_tree_rows(addon_dir: str, profile: str, rows: list[dict]) -> 
     set_knowledge_tree_structure(addon_dir, profile, normalized)
 
 
+def reparent_knowledge_tree_node(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    parent_card_id: int | None,
+) -> bool:
+    card_id = int(card_id)
+    if parent_card_id is not None:
+        parent_card_id = int(parent_card_id)
+    if parent_card_id == card_id:
+        raise ValueError("Knowledge-tree node cannot be its own parent.")
+
+    rows = get_knowledge_tree_nodes(addon_dir, profile)
+    target = next((row for row in rows if int(row["card_id"]) == card_id), None)
+    if target is None:
+        return False
+    current_parent_id = target.get("parent_card_id")
+    current_parent_id = None if current_parent_id is None else int(current_parent_id)
+    if current_parent_id == parent_card_id:
+        return False
+
+    if parent_card_id is not None and not any(
+        int(row["card_id"]) == parent_card_id for row in rows
+    ):
+        raise ValueError(
+            f"Knowledge-tree parent {parent_card_id} for card {card_id} is missing."
+        )
+
+    grouped = _group_rows(rows)
+    grouped[current_parent_id] = [
+        row for row in grouped.get(current_parent_id, []) if int(row["card_id"]) != card_id
+    ]
+
+    moved = _clone_row(target)
+    moved["parent_card_id"] = parent_card_id
+    new_siblings = list(grouped.get(parent_card_id, []))
+    moved["sort_order"] = len(new_siblings)
+    new_siblings.append(moved)
+    grouped[parent_card_id] = new_siblings
+
+    set_knowledge_tree_structure(addon_dir, profile, _flatten_grouped_rows(grouped))
+    return True
+
+
 def _strip_html(text: str) -> str:
     return " ".join(_HTML_TAG_RE.sub(" ", str(text or "")).split()).strip()
 
@@ -481,16 +525,63 @@ def ensure_extract_lineage_cards_in_tree(
     for created_card_id in list(created_card_ids or []):
         append_card(created_card_id)
 
-    linked_card_ids: list[int] = []
-    errors: list[dict] = []
     created_card_id_set = {
         int(card_id)
         for card_id in list(created_card_ids or [])
         if card_id is not None
     }
+    ordered_card_id_set = set(ordered_card_ids)
+    source_card_id_int = None
+    if source_card_id is not None:
+        try:
+            source_card_id_int = int(source_card_id)
+        except Exception:
+            source_card_id_int = None
+
+    def desired_parent_for_card(card_id: int) -> int | None:
+        metadata_parent_id = metadata_parent_card_id(card_id)
+        if (
+            metadata_parent_id is not None
+            and metadata_parent_id != int(card_id)
+            and (
+                metadata_parent_id in ordered_card_id_set
+                or get_knowledge_tree_node(addon_dir, profile, metadata_parent_id) is not None
+            )
+        ):
+            return metadata_parent_id
+        if (
+            source_card_id_int is not None
+            and int(card_id) != source_card_id_int
+            and int(card_id) in created_card_id_set
+            and (
+                source_card_id_int in ordered_card_id_set
+                or get_knowledge_tree_node(addon_dir, profile, source_card_id_int) is not None
+            )
+        ):
+            return source_card_id_int
+        return None
+
+    linked_card_ids: list[int] = []
+    reparented_card_ids: list[int] = []
+    errors: list[dict] = []
 
     for card_id in ordered_card_ids:
-        if get_knowledge_tree_node(addon_dir, profile, card_id) is not None:
+        existing_node = get_knowledge_tree_node(addon_dir, profile, card_id)
+        desired_parent_id = desired_parent_for_card(card_id)
+        if existing_node is not None:
+            current_parent_id = existing_node.get("parent_card_id")
+            current_parent_id = None if current_parent_id is None else int(current_parent_id)
+            if desired_parent_id is not None and current_parent_id != desired_parent_id:
+                try:
+                    if reparent_knowledge_tree_node(
+                        addon_dir,
+                        profile,
+                        card_id,
+                        desired_parent_id,
+                    ):
+                        reparented_card_ids.append(card_id)
+                except Exception as exc:
+                    errors.append({"card_id": card_id, "error": str(exc)})
             continue
         node_kind = (
             normalize_node_kind(created_node_kind)
@@ -503,7 +594,7 @@ def ensure_extract_lineage_cards_in_tree(
                 profile,
                 card_id,
                 node_kind,
-                parent_card_id=None,
+                parent_card_id=desired_parent_id,
             )
             linked_card_ids.append(card_id)
         except Exception as exc:
@@ -512,6 +603,8 @@ def ensure_extract_lineage_cards_in_tree(
     return {
         "linked_card_ids": linked_card_ids,
         "linked_count": len(linked_card_ids),
+        "reparented_card_ids": reparented_card_ids,
+        "reparented_count": len(reparented_card_ids),
         "errors": errors,
         "error_count": len(errors),
     }

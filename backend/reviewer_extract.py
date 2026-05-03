@@ -52,6 +52,6 @@ def knowledge_tree_link_state(parent_in_tree: bool) -> dict[str, object]:
         "checked": True,
         "tooltip": (
             "Extract lineage is added to the knowledge tree automatically. "
-            "New lineage nodes are appended at the root level."
+            "New extract cards are placed beneath their source parent when available."
         ),
     }

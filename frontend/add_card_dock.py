@@ -936,6 +936,55 @@ def source_note_tags_for_card(source_card_id: int | None) -> list[str]:
         return []
 
 
+def _source_extract_metadata_for_card(source: str, source_card_id: int | None) -> dict:
+    if source_card_id is None:
+        return {}
+    try:
+        source_card_id = int(source_card_id)
+    except Exception:
+        return {}
+    try:
+        source_card = mw.col.get_card(source_card_id)
+        source_note = source_card.note()
+    except Exception:
+        return {}
+
+    parent_label = ""
+    try:
+        fields = list(getattr(source_note, "fields", []) or [])
+        if fields:
+            parent_label = str(fields[0] or "").strip()[:60]
+    except Exception:
+        parent_label = ""
+    if not parent_label:
+        parent_label = f"Card {source_card_id}"
+
+    try:
+        from ..backend.note_metadata import build_incremento_metadata, derive_note_source_metadata
+    except Exception:
+        try:
+            from note_metadata import build_incremento_metadata, derive_note_source_metadata  # type: ignore
+        except Exception:
+            return {}
+
+    try:
+        parent_source = derive_note_source_metadata(source_note)
+    except Exception:
+        parent_source = {}
+
+    source_title = str((parent_source or {}).get("source_title") or parent_label).strip()
+    source_link = str((parent_source or {}).get("source_link") or "").strip()
+    source_author = str((parent_source or {}).get("source_author") or "").strip()
+    return build_incremento_metadata(
+        source_type="Extract",
+        source_title=source_title,
+        source_link=source_link,
+        source_author=source_author,
+        parent=parent_label,
+        parent_card_id=source_card_id,
+    )
+
+
 def copy_source_card_tags_to_note(note, source_card_id: int | None, *, exclude_tags=None) -> list[str]:
     if note is None or source_card_id is None:
         return []
@@ -1244,6 +1293,48 @@ def pending_extract_options() -> dict | None:
     return dict(_pending_extract_options) if _pending_extract_options else None
 
 
+def _source_card_id_from_extract_options(options: dict | None) -> int | None:
+    try:
+        raw_source_card_id = (options or {}).get("source_card_id")
+        if raw_source_card_id is not None:
+            return int(raw_source_card_id)
+    except Exception:
+        pass
+    try:
+        source = str((options or {}).get("source") or "").strip()
+    except Exception:
+        source = ""
+    if not source:
+        return None
+    return _source_card_id_for_transfer(source)
+
+
+def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = False) -> dict | None:
+    normalized_source = str(source or "").strip()
+    if normalized_source not in {"pdf", "epub", "web", "writing", "video"}:
+        return None
+
+    source_card_id = _source_card_id_for_transfer(normalized_source)
+    options = set_pending_extract_options(
+        priority=source_relative_extract_priority_for_source(normalized_source),
+        mark_topic=mark_topic,
+        link_to_knowledge_tree=True,
+        source=normalized_source,
+        source_card_id=source_card_id,
+    )
+    if source_card_id is not None:
+        set_pending_extract_context(
+            metadata=_source_extract_metadata_for_card(normalized_source, source_card_id),
+            parent_card_id=source_card_id,
+            knowledge_tree_link_enabled=False,
+            link_to_knowledge_tree=True,
+            knowledge_tree_tooltip=(
+                "Extract lineage is added to the knowledge tree automatically."
+            ),
+        )
+    return options
+
+
 def set_pending_extract_context(
     *,
     metadata: dict | None = None,
@@ -1378,11 +1469,7 @@ def consume_pending_extract_options_for_note(note) -> dict | None:
 def consume_pending_extract_context_for_note(note, options: dict | None = None) -> dict | None:
     context = pending_extract_context()
     if not context:
-        try:
-            raw_source_card_id = (options or {}).get("source_card_id")
-            if raw_source_card_id is None:
-                return None
-        except Exception:
+        if _source_card_id_from_extract_options(options) is None:
             return None
         context = {}
     else:
@@ -1422,11 +1509,7 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
     link_error = ""
     source_card_id = context.get("parent_card_id")
     if source_card_id is None:
-        try:
-            raw_source_card_id = (options or {}).get("source_card_id")
-            source_card_id = int(raw_source_card_id) if raw_source_card_id is not None else None
-        except Exception:
-            source_card_id = None
+        source_card_id = _source_card_id_from_extract_options(options)
     if source_card_id is not None:
         try:
             from ..backend.knowledge_tree import (
@@ -1901,6 +1984,11 @@ def fill_dock_field(
             citation = None
     if citation and (not link_kind or should_add_extract_source_link(link_kind)):
         text = text + '<br>' + citation
+    if link_kind:
+        prepare_pending_extract_from_source_fill(
+            link_kind,
+            mark_topic=bool(mark_topic),
+        )
     _last_fill_source = link_kind
     _last_fill_seen = time.monotonic()
     if _add_card_dock is None:
