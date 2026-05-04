@@ -77,12 +77,13 @@ def _record_pdf_time(card_id: int, seconds: float) -> None:
         model = mw.col.models.get(note.mid)
         if not model or model.get("name") not in {PDF_NOTE_TYPE, EPUB_NOTE_TYPE}:
             return
+        card_type = "epub" if model.get("name") == EPUB_NOTE_TYPE else "pdf"
 
         cfg = load_scheduler_config()
         sm = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=cfg.day_end_time)
         fake = types.SimpleNamespace(
             card=card_id,
-            card_type="topics",
+            card_type=card_type,
             tag=_primary_tag(note),
             mode="random",
         )

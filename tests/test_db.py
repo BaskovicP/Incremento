@@ -1332,6 +1332,21 @@ class TestExportHelpers:
         assert result["daily"]["date"] == "2026-01-01"
         assert result["lifetime"]["type"]["topics"] == 3
 
+    def test_export_stats_json_preserves_time_scope(self):
+        import json
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "INSERT INTO stats VALUES ('time', NULL, "
+            "'{\"daily\": {\"date\": \"2026-01-01\", \"seconds\": {\"type\": {\"pdf\": 5}, \"tags\": {}}}, "
+            "\"lifetime\": {\"type\": {\"epub\": 9}, \"tags\": {}}}')"
+        )
+        conn.commit()
+
+        result = json.loads(db.export_stats_json(self.addon_dir, "TestProfile"))
+
+        assert result["time"]["daily"]["seconds"]["type"]["pdf"] == 5
+        assert result["time"]["lifetime"]["type"]["epub"] == 9
+
 
 # ---------------------------------------------------------------------------
 # search_pdf_text_index — edge cases

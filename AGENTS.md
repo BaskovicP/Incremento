@@ -20,6 +20,7 @@ Important newer hotspots:
 - `backend/custom_schedule.py`, `frontend/custom_schedule_dialog.py`: browser-side custom scheduling rules and their dialog/workflow.
 - `frontend/reviewer_priority_badge.py`: reviewer overlay that shows priority, topic A-factor, saved browser time, and active custom schedule at a glance.
 - `frontend/writing_dock.py`: markdown writing dock with per-card editor state, word-progress counters, and configurable word-count mode.
+- `backend/statistics.py`, `frontend/stats_dialog.py`, `frontend/timer_widget.py`, `backend/review_time_tracker.py`: normalized count/time statistics, review-time attribution, and logical-day focus timer activity.
 
 ## Read The Local Guide
 
@@ -81,6 +82,8 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - If a knowledge-tree action is exposed in multiple places such as toolbar, inspector, and context menu, keep those entry points aligned.
 - Writing-card editor state is per card and persisted in SQLite. Writing progress counters are also per card; `session` means the current open session for that writing card.
 - Custom-schedule badges in the reviewer should appear only when a real rule exists for that card; missing rules must not fall back to the default preset text.
+- `custom_learn_stats.json` stores normalized count scopes (`daily.counts`, `lifetime`) plus review-time scopes (`time.daily.seconds`, `time.lifetime`). Keep DB stats behavior as compatibility/fallback, not a second shape.
+- EPUB is a concrete document and stat type. Preserve `pdf` and `epub` separately in scheduling, statistics, timer summaries, and UI labels instead of folding EPUB into PDF.
 
 ## Tests / Checks
 

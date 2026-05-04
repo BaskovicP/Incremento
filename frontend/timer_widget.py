@@ -6,6 +6,7 @@ timer_on_card_answered) and accesses live state via the module reference.
 """
 
 import os
+from datetime import date
 
 from aqt import mw
 from aqt.qt import (QWidget, QHBoxLayout, QPushButton, QLabel, QTimer,
@@ -24,6 +25,10 @@ _timer_duration_min:   int  = 30
 _timer_cards_answered: int  = 0
 _timer_pdf_pages:      set  = set()   # {(card_id, page)} unique pages seen since the last timer report
 _timer_epub_pages:     set  = set()   # {(card_id, page)} unique EPUB pages seen since the last timer report
+_timer_daily_logical_date: str = ""
+_timer_daily_cards_answered: int = 0
+_timer_daily_pdf_pages: set = set()    # {(card_id, page)} unique PDF pages seen today
+_timer_daily_epub_pages: set = set()   # {(card_id, page)} unique EPUB pages seen today
 _timer_toolbar               = None   # QToolBar instance, set by build_timer_toolbar
 _timer_widget                = None   # _TimerWidget instance, set by build_timer_toolbar
 
@@ -50,6 +55,47 @@ def _timer_running_set(val: bool) -> None:
     _timer_running = val
 
 
+def _current_day_end_time() -> str:
+    try:
+        try:
+            from ..backend.scheduler_config import load_scheduler_config
+        except Exception:
+            from scheduler_config import load_scheduler_config  # type: ignore
+        cfg = load_scheduler_config()
+        day_end_time = str(getattr(cfg, "day_end_time", "00:00") or "00:00").strip()
+    except Exception:
+        day_end_time = "00:00"
+    return day_end_time or "00:00"
+
+
+def _current_timer_logical_date() -> str:
+    try:
+        try:
+            from ..backend.statistics import _effective_date
+        except Exception:
+            from statistics import _effective_date  # type: ignore
+        logical_date = str(_effective_date(_current_day_end_time()) or "").strip()
+        return logical_date or date.today().isoformat()
+    except Exception:
+        return date.today().isoformat()
+
+
+def reset_daily_activity_counters(logical_date: str | None = None) -> None:
+    """Clear cumulative activity for today's timer report line."""
+    global _timer_daily_logical_date, _timer_daily_cards_answered
+    global _timer_daily_pdf_pages, _timer_daily_epub_pages
+    _timer_daily_logical_date = str(logical_date or _current_timer_logical_date()).strip()
+    _timer_daily_cards_answered = 0
+    _timer_daily_pdf_pages = set()
+    _timer_daily_epub_pages = set()
+
+
+def _ensure_daily_activity_date() -> None:
+    current = _current_timer_logical_date()
+    if _timer_daily_logical_date != current:
+        reset_daily_activity_counters(current)
+
+
 def reset_activity_counters() -> None:
     """Clear card/page activity collected for the next timer report."""
     global _timer_cards_answered, _timer_pdf_pages, _timer_epub_pages
@@ -60,8 +106,10 @@ def reset_activity_counters() -> None:
 
 def record_card_answered() -> None:
     """Count an answered card regardless of whether the focus timer is running."""
-    global _timer_cards_answered
+    global _timer_cards_answered, _timer_daily_cards_answered
+    _ensure_daily_activity_date()
     _timer_cards_answered += 1
+    _timer_daily_cards_answered += 1
 
 
 def record_pdf_page_read(card_id: int, page: int) -> None:
@@ -73,7 +121,9 @@ def record_pdf_page_read(card_id: int, page: int) -> None:
         return
     if cid <= 0 or pg <= 0:
         return
+    _ensure_daily_activity_date()
     _timer_pdf_pages.add((cid, pg))
+    _timer_daily_pdf_pages.add((cid, pg))
 
 
 def record_epub_page_read(card_id: int, page_index: int) -> None:
@@ -85,14 +135,31 @@ def record_epub_page_read(card_id: int, page_index: int) -> None:
         return
     if cid <= 0 or pg <= 0:
         return
+    _ensure_daily_activity_date()
     _timer_epub_pages.add((cid, pg))
+    _timer_daily_epub_pages.add((cid, pg))
 
 
 def begin_timer_session(duration_min: int) -> None:
     """Start a timer period without clearing already collected activity."""
     global _timer_running, _timer_duration_min
+    _ensure_daily_activity_date()
     _timer_running = True
     _timer_duration_min = int(duration_min or 0)
+
+
+def daily_activity_summary() -> dict:
+    """Return cumulative timer-tracked activity for the current logical day."""
+    _ensure_daily_activity_date()
+    pdf_pages = set(_timer_daily_pdf_pages)
+    epub_pages = set(_timer_daily_epub_pages)
+    return {
+        "logical_date": _timer_daily_logical_date,
+        "cards": int(_timer_daily_cards_answered),
+        "pdf_pages": len(pdf_pages),
+        "epub_pages": len(epub_pages),
+        "pages": len(pdf_pages) + len(epub_pages),
+    }
 
 
 def _resolved_config(config: dict | None = None) -> dict:
@@ -409,6 +476,7 @@ def show_timer_summary() -> None:
     cards = _timer_cards_answered
     pdf_pages = set(_timer_pdf_pages)
     epub_pages = set(_timer_epub_pages)
+    daily = daily_activity_summary()
     reset_activity_counters()
 
     dlg = QDialog(mw)
@@ -422,6 +490,16 @@ def show_timer_summary() -> None:
     title_lbl = QLabel(f"⏱  {dur}-minute session complete")
     title_lbl.setStyleSheet("font-size: 17px; font-weight: bold;")
     layout.addWidget(title_lbl)
+
+    daily_pages = int(daily["pages"])
+    daily_cards = int(daily["cards"])
+    today_lbl = QLabel(
+        f"Today so far: <b>{daily_pages}</b> page{'s' if daily_pages != 1 else ''} "
+        f"and <b>{daily_cards}</b> card{'s' if daily_cards != 1 else ''} done in total."
+    )
+    today_lbl.setStyleSheet("font-size: 14px;")
+    today_lbl.setWordWrap(True)
+    layout.addWidget(today_lbl)
 
     cards_lbl = QLabel(f"<b>{cards}</b> card{'s' if cards != 1 else ''} reviewed")
     cards_lbl.setStyleSheet("font-size: 14px;")

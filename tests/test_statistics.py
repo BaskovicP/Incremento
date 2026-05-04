@@ -335,6 +335,59 @@ class TestLoadStats:
         result = load_stats(str(tmp_path), "TestProfile")
         assert result == {}
 
+    def test_normalizes_malformed_values_from_file(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        data = {
+            "daily": {
+                "date": _today(),
+                "counts": {
+                    "type": {"topics": "3", "items": -1, "bad": "nan"},
+                    "tags": {"health": "2", "__no_tags__": 9, "broken": "x"},
+                    "mode": {"random": "1.0", "priority": True},
+                },
+            },
+            "lifetime": {
+                "type": {"pdf": "4"},
+                "tags": {"__internal__": 99, "science": 1.8},
+            },
+            "time": {
+                "daily": {
+                    "date": _today(),
+                    "seconds": {
+                        "type": {"pdf": "12.5", "epub": -3},
+                        "tags": {"reading": "7.25", "__no_tags__": 50},
+                    },
+                },
+                "lifetime": {
+                    "type": {"topics": "30", "bad": "inf"},
+                    "tags": {},
+                },
+            },
+        }
+        stats_file.write_text(json.dumps(data), encoding="utf-8")
+
+        result = load_stats(str(tmp_path), "TestProfile")
+
+        assert result["daily"]["counts"] == {
+            "type": {"topics": 3},
+            "tags": {"health": 2},
+            "mode": {"random": 1},
+        }
+        assert result["lifetime"] == {
+            "type": {"pdf": 4},
+            "tags": {"science": 1},
+            "mode": {},
+        }
+        assert result["time"]["daily"]["seconds"] == {
+            "type": {"pdf": 12.5},
+            "tags": {"reading": 7.25},
+        }
+        assert result["time"]["lifetime"] == {
+            "type": {"topics": 30.0},
+            "tags": {},
+        }
+
 
 class TestDeleteStats:
     def test_delete_daily_removes_daily_key(self, tmp_path):
@@ -395,6 +448,18 @@ class TestDeleteStats:
         assert "daily" not in result.get("time", {})
         assert result.get("time", {}).get("lifetime") == lt_time
 
+    def test_delete_daily_saves_when_only_daily_counts_exist(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        stats_file.write_text(
+            json.dumps({"daily": {"date": _today(), "counts": _empty()}}),
+            encoding="utf-8",
+        )
+
+        delete_daily_stats(str(tmp_path), "TestProfile")
+
+        assert json.loads(stats_file.read_text(encoding="utf-8")) == {}
+
     def test_delete_lifetime_removes_lifetime_time_entry(self, tmp_path):
         """Deleting lifetime stats also removes the lifetime time entry."""
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
@@ -413,6 +478,15 @@ class TestDeleteStats:
         result = json.loads(stats_file.read_text())
         assert "lifetime" not in result.get("time", {})
         assert result.get("time", {}).get("daily") == daily_time
+
+    def test_delete_lifetime_saves_when_only_lifetime_counts_exist(self, tmp_path):
+        stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        stats_file.write_text(json.dumps({"lifetime": _empty()}), encoding="utf-8")
+
+        delete_lifetime_stats(str(tmp_path), "TestProfile")
+
+        assert json.loads(stats_file.read_text(encoding="utf-8")) == {}
 
     def test_delete_daily_exercises_empty_time_cleanup(self, tmp_path):
         """Exercise the branch where deleting daily leaves time dict empty (line 129)."""
@@ -498,6 +572,14 @@ class TestRecordTimeOnly:
         sm.record_time_only(result, 5.0)
         assert sm.lifetime_time["type"]["topics"] == 15.0
 
+    def test_records_pdf_and_epub_time_under_concrete_types(self, tmp_path):
+        sm = StatsManager(str(tmp_path), "TestProfile")
+        sm.record_time_only(make_result(card_type="pdf", tag=None), 10.0)
+        sm.record_time_only(make_result(card_type="epub", tag=None), 20.0)
+
+        assert sm.daily_time["type"] == {"pdf": 10.0, "epub": 20.0}
+        assert sm.lifetime_time["type"] == {"pdf": 10.0, "epub": 20.0}
+
 
 class TestDailyTimeLoading:
     def test_loads_todays_daily_time(self, tmp_path):
@@ -531,3 +613,26 @@ class TestDailyTimeLoading:
         stats_file.write_text(json.dumps(data), encoding="utf-8")
         sm = StatsManager(str(tmp_path), "TestProfile")
         assert sm.daily_time == {"type": {}, "tags": {}}
+
+
+class TestStatsExport:
+    def test_db_export_preserves_full_stats_shape_with_time(self, tmp_path):
+        import db as _db
+
+        stats = {
+            "daily": {"date": _today(), "counts": _empty()},
+            "lifetime": _empty(),
+            "time": {
+                "daily": {
+                    "date": _today(),
+                    "seconds": {"type": {"pdf": 12.0}, "tags": {}},
+                },
+                "lifetime": {"type": {"epub": 30.0}, "tags": {"reading": 30.0}},
+            },
+        }
+
+        save_stats(str(tmp_path), "TestProfile", stats)
+
+        exported = json.loads(_db.export_stats_json(str(tmp_path), "TestProfile"))
+        assert exported["time"]["daily"]["seconds"]["type"] == {"pdf": 12.0}
+        assert exported["time"]["lifetime"]["type"] == {"epub": 30.0}

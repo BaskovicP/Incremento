@@ -78,6 +78,13 @@ def _record_selected_card(
     selected_ids.append(card_id)
 
 
+def _resolved_document_type(card_id: int, fallback: str = "pdf") -> str:
+    try:
+        return card_utils.get_document_card_type(int(card_id)) or fallback
+    except Exception:
+        return fallback
+
+
 def _collect_tag_priority_candidates(
     cfg,
     *,
@@ -118,7 +125,10 @@ def _collect_tag_priority_candidates(
                 continue
             if cid <= 0 or cid in candidates:
                 continue
-            candidates[cid] = (card_type, tag)
+            resolved_type = (
+                _resolved_document_type(cid) if card_type == "pdf" else card_type
+            )
+            candidates[cid] = (resolved_type, tag)
     return candidates
 
 
@@ -145,7 +155,10 @@ def _collect_content_type_priority_candidates(
             continue
         if cid <= 0 or cid in candidates:
             continue
-        candidates[cid] = (content_type, None)
+        resolved_type = (
+            _resolved_document_type(cid) if content_type == "pdf" else content_type
+        )
+        candidates[cid] = (resolved_type, None)
     return candidates
 
 

@@ -25,6 +25,7 @@ def setup_function():
     timer_widget._timer_duration_min = 30
     timer_widget._timer_widget = None
     timer_widget.reset_activity_counters()
+    timer_widget.reset_daily_activity_counters()
 
 
 def test_card_answers_are_counted_even_when_timer_is_not_running():
@@ -74,6 +75,50 @@ def test_timer_summary_clears_activity_after_capturing_counts():
     assert timer_widget._timer_cards_answered == 0
     assert timer_widget._timer_pdf_pages == set()
     assert timer_widget._timer_epub_pages == set()
+
+
+def test_daily_activity_accumulates_across_timer_reports(monkeypatch):
+    monkeypatch.setattr(timer_widget, "_current_timer_logical_date", lambda: "2026-04-23")
+    timer_widget.reset_daily_activity_counters()
+
+    timer_widget.record_card_answered()
+    timer_widget.record_pdf_page_read(10, 4)
+    timer_widget.record_epub_page_read(20, 1)
+
+    timer_widget.show_timer_summary()
+
+    assert timer_widget.daily_activity_summary() == {
+        "logical_date": "2026-04-23",
+        "cards": 1,
+        "pdf_pages": 1,
+        "epub_pages": 1,
+        "pages": 2,
+    }
+
+    timer_widget.record_card_answered()
+    timer_widget.record_pdf_page_read(10, 5)
+
+    assert timer_widget.daily_activity_summary() == {
+        "logical_date": "2026-04-23",
+        "cards": 2,
+        "pdf_pages": 2,
+        "epub_pages": 1,
+        "pages": 3,
+    }
+
+
+def test_daily_activity_resets_on_logical_day_change(monkeypatch):
+    logical_date = {"value": "2026-04-23"}
+    monkeypatch.setattr(timer_widget, "_current_timer_logical_date", lambda: logical_date["value"])
+    timer_widget.reset_daily_activity_counters()
+
+    timer_widget.record_card_answered()
+    logical_date["value"] = "2026-04-24"
+    timer_widget.record_card_answered()
+
+    summary = timer_widget.daily_activity_summary()
+    assert summary["logical_date"] == "2026-04-24"
+    assert summary["cards"] == 1
 
 
 def test_auto_timer_config_defaults_to_disabled_with_pdf_and_epub_selected():

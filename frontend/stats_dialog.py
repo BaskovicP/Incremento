@@ -29,6 +29,8 @@ try:
         _empty_time,
         _is_valid_counts_block,
         _is_valid_time_block,
+        _normalize_counts_block,
+        _normalize_time_block,
     )
     from ..backend.paths import get_active_profile as _active_profile
 except ImportError:
@@ -39,20 +41,27 @@ except ImportError:
         _empty_time,
         _is_valid_counts_block,
         _is_valid_time_block,
+        _normalize_counts_block,
+        _normalize_time_block,
     )
     from paths import get_active_profile as _active_profile  # type: ignore
 
 # ── colour palettes ────────────────────────────────────────────────────────────
-_TYPE_ORDER = ["topics", "items", "pdf", "youtube", "webpage"]
+_TYPE_ORDER = ["topics", "items", "pdf", "epub", "youtube", "webpage"]
 _TYPE_LABELS = {
     "topics": "Topics",
     "items": "Items",
     "pdf": "PDFs",
+    "epub": "EPUBs",
     "youtube": "Videos",
     "webpage": "Web pages",
 }
-_TYPE_COLORS = ["#4a90d9", "#7bc67e", "#e0a020", "#e05050", "#1abc9c"]
+_TYPE_COLORS = ["#4a90d9", "#7bc67e", "#e0a020", "#8e6ad8", "#e05050", "#1abc9c"]
 _MODE_COLORS = ["#e0a020", "#8da0cb"]  # Priority, Random
+_MODE_LABELS = {
+    "priority": "Priority",
+    "random": "Random",
+}
 _TAG_COLORS = [  # cycled for arbitrary tag lists
     "#4a90d9",
     "#7bc67e",
@@ -190,6 +199,93 @@ def _fmt_duration(seconds: float) -> str:
     return f"{s}s"
 
 
+def _positive_items(values: dict) -> list[tuple[str, float]]:
+    if not isinstance(values, dict):
+        return []
+    items: list[tuple[str, float]] = []
+    for key, value in values.items():
+        try:
+            numeric = float(value)
+        except Exception:
+            continue
+        if numeric > 0:
+            items.append((str(key), numeric))
+    return items
+
+
+def _format_count(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return f"{value:g}"
+
+
+def _tag_items(tag_counts: dict) -> list[tuple[str, float]]:
+    if not isinstance(tag_counts, dict):
+        return []
+    visible = {
+        str(key): value
+        for key, value in tag_counts.items()
+        if str(key).strip() and not str(key).startswith("__")
+    }
+    return sorted(
+        _positive_items(visible),
+        key=lambda x: (-x[1], x[0].casefold()),
+    )
+
+
+def _ordered_mode_items(mode_counts: dict) -> list[tuple[str, float]]:
+    if not isinstance(mode_counts, dict):
+        return []
+
+    items: list[tuple[str, float]] = []
+    seen: set[str] = set()
+
+    def _append(key: str) -> None:
+        seen.add(key)
+        try:
+            value = float(mode_counts.get(key, 0) or 0)
+        except Exception:
+            value = 0.0
+        if value > 0:
+            items.append((_MODE_LABELS.get(key, key.replace("_", " ").title()), value))
+
+    for key in ("priority", "random"):
+        _append(key)
+    for key in sorted(str(k) for k in mode_counts.keys()):
+        if key not in seen:
+            _append(key)
+
+    return items
+
+
+def _top_label(items: list[tuple[str, float]], empty: str = "None") -> str:
+    if not items:
+        return empty
+    label, _value = max(items, key=lambda item: (item[1], item[0].casefold()))
+    return label
+
+
+def _summary_metrics(counts: dict, time_stats: dict) -> list[tuple[str, str]]:
+    clean_counts = _normalize_counts_block(counts)
+    clean_time = _normalize_time_block(time_stats)
+
+    total_cards = float(sum(clean_counts["type"].values()))
+    type_time = float(sum(clean_time["type"].values()))
+    tag_time = float(sum(clean_time["tags"].values()))
+    total_seconds = type_time if type_time > 0 else tag_time
+    average_seconds = total_seconds / total_cards if total_cards > 0 else 0.0
+
+    top_type = _top_label(_ordered_type_items(clean_counts["type"]))
+    top_tag = _top_label(_tag_items(clean_counts["tags"]))
+
+    return [
+        ("Cards studied", _format_count(total_cards)),
+        ("Review time", _fmt_duration(total_seconds)),
+        ("Avg/card", _fmt_duration(average_seconds)),
+        ("Top type/tag", f"{top_type} / {top_tag}"),
+    ]
+
+
 def _ordered_type_items(type_counts: dict) -> list[tuple[str, float]]:
     if not isinstance(type_counts, dict):
         return []
@@ -216,6 +312,31 @@ def _ordered_type_items(type_counts: dict) -> list[tuple[str, float]]:
     return items
 
 
+def _metric_card(title: str, value: str, parent: QWidget) -> QFrame:
+    frame = QFrame(parent)
+    frame.setFrameShape(QFrame.Shape.StyledPanel)
+    frame.setStyleSheet(
+        "QFrame { border: 1px solid rgba(128,128,128,0.28); border-radius: 6px; }"
+        "QLabel { border: none; }"
+    )
+    lay = QVBoxLayout(frame)
+    lay.setContentsMargins(8, 6, 8, 6)
+    lay.setSpacing(2)
+
+    value_lbl = QLabel(value)
+    value_lbl.setStyleSheet("font-weight: bold; font-size: 11pt;")
+    value_lbl.setWordWrap(True)
+    lay.addWidget(value_lbl)
+
+    title_lbl = QLabel(title)
+    title_lbl.setStyleSheet("color: gray; font-size: 8pt;")
+    title_lbl.setWordWrap(True)
+    lay.addWidget(title_lbl)
+
+    frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    return frame
+
+
 # ── main dialog ────────────────────────────────────────────────────────────────
 
 
@@ -231,8 +352,8 @@ class StatsDialog(QDialog):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._day_end_time = day_end_time
-        self._session_counts = session_counts or _empty()
-        self._session_time = session_time or _empty_time()
+        self._session_counts = _normalize_counts_block(session_counts or _empty())
+        self._session_time = _normalize_time_block(session_time or _empty_time())
         self._raw = load_stats(addon_dir, _active_profile())
 
         self.setWindowTitle("Incremento — Statistics")
@@ -244,7 +365,7 @@ class StatsDialog(QDialog):
 
     def _get_counts(self, scope: str) -> dict:
         if scope == "session":
-            return self._session_counts
+            return _normalize_counts_block(self._session_counts)
 
         if scope == "daily":
             daily_raw = self._raw.get("daily", {})
@@ -253,16 +374,16 @@ class StatsDialog(QDialog):
                 and daily_raw.get("date") == _effective_date(self._day_end_time)
                 and _is_valid_counts_block(daily_raw.get("counts"))
             ):
-                return daily_raw["counts"]
+                return _normalize_counts_block(daily_raw["counts"])
             return _empty()
 
         # lifetime
         lt = self._raw.get("lifetime")
-        return lt if _is_valid_counts_block(lt) else _empty()
+        return _normalize_counts_block(lt)
 
     def _get_time(self, scope: str) -> dict:
         if scope == "session":
-            return self._session_time
+            return _normalize_time_block(self._session_time)
 
         time_raw = self._raw.get("time")
         if not isinstance(time_raw, dict):
@@ -275,11 +396,11 @@ class StatsDialog(QDialog):
                 and daily.get("date") == _effective_date(self._day_end_time)
                 and _is_valid_time_block(daily.get("seconds"))
             ):
-                return daily["seconds"]
+                return _normalize_time_block(daily["seconds"])
             return _empty_time()
 
         lt = time_raw.get("lifetime")
-        return lt if _is_valid_time_block(lt) else _empty_time()
+        return _normalize_time_block(lt)
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -345,23 +466,24 @@ class StatsDialog(QDialog):
         counts = self._get_counts(scope)
         time_stats = self._get_time(scope)
 
-        total = sum(counts["type"].values())
-        total_seconds = sum(time_stats["type"].values())
+        total = float(sum(counts["type"].values()))
+        type_seconds = float(sum(time_stats["type"].values()))
+        tag_seconds = float(sum(time_stats["tags"].values()))
+        total_seconds = type_seconds if type_seconds > 0 else tag_seconds
 
-        # Total
-        total_lbl = QLabel(f"<b>Total cards studied: {total}</b>")
-        total_lbl.setStyleSheet("padding: 4px 0;")
-        self._clayout.addWidget(total_lbl)
-
-        time_lbl = QLabel(f"<b>Total review time: {_fmt_duration(total_seconds)}</b>")
-        time_lbl.setStyleSheet("padding: 0 0 4px 0;")
-        self._clayout.addWidget(time_lbl)
+        summary = QWidget(self._content)
+        summary_lay = QHBoxLayout(summary)
+        summary_lay.setContentsMargins(0, 0, 0, 4)
+        summary_lay.setSpacing(6)
+        for label, value in _summary_metrics(counts, time_stats):
+            summary_lay.addWidget(_metric_card(label, value, summary))
+        self._clayout.addWidget(summary)
 
         if total == 0 and total_seconds <= 0:
             hint = (
-                "Start a learning session to record data here."
+                "No session statistics recorded yet."
                 if scope == "session"
-                else "No data recorded yet for this scope."
+                else "No clean statistics data recorded for this scope."
             )
             note = QLabel(hint)
             note.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -376,7 +498,7 @@ class StatsDialog(QDialog):
         if type_items:
             self._clayout.addWidget(
                 _section(
-                    "Card Types",
+                    "Card-Type Distribution",
                     type_items,
                     _TYPE_COLORS,
                     self._content,
@@ -384,22 +506,20 @@ class StatsDialog(QDialog):
             )
 
         # Mode
-        n_prio = counts["mode"].get("priority", 0)
-        n_random = counts["mode"].get("random", 0)
-        if n_prio or n_random:
+        mode_items = _ordered_mode_items(counts["mode"])
+        if mode_items:
             self._clayout.addWidget(
                 _section(
-                    "Selection Mode",
-                    [("Priority", n_prio), ("Random", n_random)],
+                    "Mode Distribution",
+                    mode_items,
                     _MODE_COLORS,
                     self._content,
                 )
             )
 
-        # Tags (filter out synthetic internal keys like __no_tags__)
-        tag_data = {k: v for k, v in counts["tags"].items() if not k.startswith("__")}
-        if tag_data:
-            sorted_tags = sorted(tag_data.items(), key=lambda x: x[1], reverse=True)
+        # Tags
+        sorted_tags = _tag_items(counts["tags"])
+        if sorted_tags:
             self._clayout.addWidget(
                 _section(
                     "Tags",
@@ -423,9 +543,8 @@ class StatsDialog(QDialog):
             )
 
         # Time by tag
-        t_tags = {k: v for k, v in time_stats["tags"].items() if not k.startswith("__")}
-        if t_tags:
-            sorted_ttags = sorted(t_tags.items(), key=lambda x: x[1], reverse=True)
+        sorted_ttags = _tag_items(time_stats["tags"])
+        if sorted_ttags:
             self._clayout.addWidget(
                 _section(
                     "Review Time by Tag",

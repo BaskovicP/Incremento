@@ -16,7 +16,7 @@ NO_TAGS_KEY = "__no_tags__"
 
 class SchedulerResult(NamedTuple):
     card: object
-    card_type: str        # "topics" | "items" | "pdf" | "youtube" | "webpage"  (actual, after fallbacks)
+    card_type: str        # "topics" | "items" | "pdf" | "epub" | "youtube" | "webpage"
     tag: str | None       # tag used, or None if fallback ignored it
     mode: str             # "random" | "priority"
 
@@ -127,7 +127,8 @@ def get_card_from_scheduler(
         if pdf_cards:
             ordered = priority_ordered(pdf_cards) if mode == "priority" else pdf_cards
             card = random.choice(ordered) if mode == "random" else ordered[0]
-            return SchedulerResult(card=card, card_type="pdf", tag=pdf_tag, mode=mode)
+            doc_type = card_utils.get_document_card_type(card) or "pdf"
+            return SchedulerResult(card=card, card_type=doc_type, tag=pdf_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
 

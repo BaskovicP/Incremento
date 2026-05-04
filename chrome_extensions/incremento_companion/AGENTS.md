@@ -27,6 +27,10 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - Web-card resume handoff for original-page resume is passed through a URL fragment marker, not server-visible query params.
 - Content scripts sanitize temporary Incremento tracking and resume markers back out of the visible URL after load.
 
+## Backend-Owned Behavior
+
+- Current statistics, focus timer, review-time attribution, and PDF-vs-EPUB document-type behavior are backend/frontend-owned. Do not rebuild the extension for those changes unless `src/` or extension runtime bundles change.
+
 ## Build and Checks
 
 If you change extension source:

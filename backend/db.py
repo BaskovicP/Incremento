@@ -44,9 +44,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 try:
-    from .paths import get_db_checkpoint_dir, get_db_path
+    from .paths import get_db_checkpoint_dir, get_db_path, get_stats_path
 except ImportError:
-    from paths import get_db_checkpoint_dir, get_db_path  # test environment
+    from paths import get_db_checkpoint_dir, get_db_path, get_stats_path  # test environment
 
 _connection: sqlite3.Connection | None = None
 _initialized_for: str | None = None
@@ -1748,6 +1748,24 @@ def get_web_card_sources(addon_dir: str, profile: str, web_card_id: int, url: st
 
 
 def export_stats_json(addon_dir: str, profile: str) -> str:
+    try:
+        from .statistics import _normalize_stats
+    except Exception:
+        try:
+            from statistics import _normalize_stats  # type: ignore
+        except Exception:
+            _normalize_stats = lambda data: data if isinstance(data, dict) else {}
+
+    stats_path = get_stats_path(addon_dir, profile)
+    if stats_path.exists():
+        try:
+            with open(stats_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return json.dumps(_normalize_stats(data), indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
     rows = (
         get_connection(addon_dir, profile)
         .execute("SELECT scope, date, data FROM stats")
@@ -1755,11 +1773,17 @@ def export_stats_json(addon_dir: str, profile: str) -> str:
     )
     result: dict = {}
     for scope, date, data in rows:
+        try:
+            parsed = json.loads(data)
+        except Exception:
+            parsed = {}
         if scope == "daily":
-            result["daily"] = {"date": date, "counts": json.loads(data)}
+            result["daily"] = {"date": date, "counts": parsed}
+        elif scope == "time":
+            result["time"] = parsed if isinstance(parsed, dict) else {}
         else:
-            result[scope] = json.loads(data)
-    return json.dumps(result, indent=2, ensure_ascii=False)
+            result[scope] = parsed
+    return json.dumps(_normalize_stats(result), indent=2, ensure_ascii=False)
 
 
 def normalize_search_text(text: str) -> str:

@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import time
 from datetime import datetime, timedelta
@@ -17,6 +18,108 @@ def _empty() -> dict:
 
 def _empty_time() -> dict:
     return {"type": {}, "tags": {}}
+
+
+def _clean_stat_key(key) -> str | None:
+    try:
+        text = str(key).strip()
+    except Exception:
+        return None
+    if not text or text.startswith("__"):
+        return None
+    return text
+
+
+def _coerce_nonnegative_number(value, *, integer: bool):
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except Exception:
+        return None
+    if not math.isfinite(number) or number < 0:
+        return None
+    if integer:
+        return int(number)
+    return float(number)
+
+
+def _normalize_number_map(raw, *, integer: bool) -> dict:
+    if not isinstance(raw, dict):
+        return {}
+    clean: dict = {}
+    for key, value in raw.items():
+        clean_key = _clean_stat_key(key)
+        if clean_key is None:
+            continue
+        clean_value = _coerce_nonnegative_number(value, integer=integer)
+        if clean_value is None:
+            continue
+        clean[clean_key] = clean.get(clean_key, 0) + clean_value
+    return clean
+
+
+def _normalize_counts_block(raw) -> dict:
+    if not isinstance(raw, dict):
+        return _empty()
+    return {
+        "type": _normalize_number_map(raw.get("type"), integer=True),
+        "tags": _normalize_number_map(raw.get("tags"), integer=True),
+        "mode": _normalize_number_map(raw.get("mode"), integer=True),
+    }
+
+
+def _normalize_time_block(raw) -> dict:
+    if not isinstance(raw, dict):
+        return _empty_time()
+    return {
+        "type": _normalize_number_map(raw.get("type"), integer=False),
+        "tags": _normalize_number_map(raw.get("tags"), integer=False),
+    }
+
+
+def _normalize_stats(raw) -> dict:
+    if not isinstance(raw, dict):
+        return {}
+
+    result: dict = {}
+
+    if "daily" in raw:
+        daily_raw = raw.get("daily")
+        if isinstance(daily_raw, dict):
+            result["daily"] = {
+                "date": str(daily_raw.get("date") or ""),
+                "counts": _normalize_counts_block(daily_raw.get("counts")),
+            }
+        else:
+            result["daily"] = {"date": "", "counts": _empty()}
+
+    if "lifetime" in raw:
+        result["lifetime"] = _normalize_counts_block(raw.get("lifetime"))
+
+    if "time" in raw:
+        time_raw = raw.get("time")
+        time_result: dict = {}
+        if isinstance(time_raw, dict):
+            if "daily" in time_raw:
+                daily_time_raw = time_raw.get("daily")
+                if isinstance(daily_time_raw, dict):
+                    time_result["daily"] = {
+                        "date": str(daily_time_raw.get("date") or ""),
+                        "seconds": _normalize_time_block(
+                            daily_time_raw.get("seconds")
+                        ),
+                    }
+                else:
+                    time_result["daily"] = {"date": "", "seconds": _empty_time()}
+            if "lifetime" in time_raw:
+                time_result["lifetime"] = _normalize_time_block(
+                    time_raw.get("lifetime")
+                )
+        if time_result:
+            result["time"] = time_result
+
+    return result
 
 
 def _today() -> str:
@@ -61,7 +164,7 @@ def load_stats(addon_dir: str, profile: str) -> dict:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return data if isinstance(data, dict) else {}
+            return _normalize_stats(data)
         except Exception:
             return {}
 
@@ -77,14 +180,21 @@ def load_stats(addon_dir: str, profile: str) -> dict:
 
     result: dict = {}
     for scope, date, data in rows:
+        try:
+            parsed = json.loads(data)
+        except Exception:
+            parsed = {}
         if scope == "daily":
-            result["daily"] = {"date": date, "counts": json.loads(data)}
+            result["daily"] = {"date": date, "counts": parsed}
+        elif scope == "time":
+            result["time"] = parsed if isinstance(parsed, dict) else {}
         else:
-            result[scope] = json.loads(data)
-    return result
+            result[scope] = parsed
+    return _normalize_stats(result)
 
 
 def save_stats(addon_dir: str, profile: str, stats: dict) -> None:
+    stats = _normalize_stats(stats)
     path = str(_get_stats_path(addon_dir, profile))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -111,6 +221,14 @@ def save_stats(addon_dir: str, profile: str, stats: dict) -> None:
             )
         else:
             conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
+
+        if "time" in stats:
+            conn.execute(
+                "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
+                ("time", None, json.dumps(stats["time"])),
+            )
+        else:
+            conn.execute("DELETE FROM stats WHERE scope = 'time'")
         conn.commit()
     except Exception:
         pass
@@ -119,13 +237,16 @@ def save_stats(addon_dir: str, profile: str, stats: dict) -> None:
 def delete_daily_stats(addon_dir: str, profile: str) -> None:
     """Remove today's statistics."""
     stats = load_stats(addon_dir, profile)
+    changed = False
     if "daily" in stats:
         del stats["daily"]
+        changed = True
     if isinstance(stats.get("time"), dict) and "daily" in stats["time"]:
         del stats["time"]["daily"]
+        changed = True
         if not stats["time"]:
             del stats["time"]
-    if "daily" in stats or "time" in stats:
+    if changed:
         save_stats(addon_dir, profile, stats)
 
     try:
@@ -139,13 +260,16 @@ def delete_daily_stats(addon_dir: str, profile: str) -> None:
 def delete_lifetime_stats(addon_dir: str, profile: str) -> None:
     """Remove lifetime statistics."""
     stats = load_stats(addon_dir, profile)
+    changed = False
     if "lifetime" in stats:
         del stats["lifetime"]
+        changed = True
     if isinstance(stats.get("time"), dict) and "lifetime" in stats["time"]:
         del stats["time"]["lifetime"]
+        changed = True
         if not stats["time"]:
             del stats["time"]
-    if "lifetime" in stats or "time" in stats:
+    if changed:
         save_stats(addon_dir, profile, stats)
 
     try:
@@ -180,8 +304,7 @@ class StatsManager:
 
         raw = load_stats(addon_dir, profile)
 
-        lt = raw.get("lifetime")
-        self.lifetime = lt if _is_valid_counts_block(lt) else _empty()
+        self.lifetime = _normalize_counts_block(raw.get("lifetime"))
 
         daily_raw = raw.get("daily", {})
         if (
@@ -189,7 +312,7 @@ class StatsManager:
             and daily_raw.get("date") == _effective_date(self._day_end_time)
             and _is_valid_counts_block(daily_raw.get("counts"))
         ):
-            self.daily = daily_raw["counts"]
+            self.daily = _normalize_counts_block(daily_raw["counts"])
         else:
             self.daily = _empty()
 
@@ -201,12 +324,12 @@ class StatsManager:
             and daily_time_raw.get("date") == _effective_date(self._day_end_time)
             and _is_valid_time_block(daily_time_raw.get("seconds"))
         ):
-            self.daily_time = daily_time_raw["seconds"]
+            self.daily_time = _normalize_time_block(daily_time_raw["seconds"])
         else:
             self.daily_time = _empty_time()
 
         lt_time = raw_time.get("lifetime") if isinstance(raw_time, dict) else None
-        self.lifetime_time = lt_time if _is_valid_time_block(lt_time) else _empty_time()
+        self.lifetime_time = _normalize_time_block(lt_time)
 
     def counts_for(self, scope: str) -> dict:
         """Return a LIVE reference to the counts dict for *scope*.

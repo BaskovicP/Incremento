@@ -286,3 +286,41 @@ class TestReviewTimeTrackerIncrementoSessions:
         review_time_tracker._record_pdf_time(123, 15.0)
 
         get_card.assert_not_called()
+
+    def test_reader_time_uses_concrete_pdf_and_epub_types(self):
+        review_time_tracker = _load_review_time_tracker_module()
+        calls = []
+
+        class CapturingStatsManager:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def record_time_only(self, fake, seconds):
+                calls.append((fake.card_type, fake.tag, seconds))
+
+        def make_mw(model_name):
+            note = types.SimpleNamespace(mid=99, tags=["reading"])
+            card = types.SimpleNamespace(nid=10)
+            return types.SimpleNamespace(
+                state="overview",
+                col=types.SimpleNamespace(
+                    decks=types.SimpleNamespace(current=lambda: {"name": "Default"}),
+                    get_card=lambda _cid: card,
+                    get_note=lambda _nid: note,
+                    models=types.SimpleNamespace(get=lambda _mid: {"name": model_name}),
+                ),
+            )
+
+        review_time_tracker.StatsManager = CapturingStatsManager
+        review_time_tracker._runtime_session_time = {"type": {}, "tags": {}}
+
+        review_time_tracker.mw = make_mw("Incremento PDF")
+        review_time_tracker._record_pdf_time(101, 5.0)
+        review_time_tracker.mw = make_mw("Incremento EPUB")
+        review_time_tracker._record_pdf_time(202, 7.0)
+
+        assert calls == [("pdf", "reading", 5.0), ("epub", "reading", 7.0)]
+        assert review_time_tracker.get_runtime_session_time()["type"] == {
+            "pdf": 5.0,
+            "epub": 7.0,
+        }

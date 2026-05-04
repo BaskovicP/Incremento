@@ -42,6 +42,16 @@ npm --prefix frontend run build
 - `Session` means the current open session for that writing card, not the whole Anki run.
 - Word counting mode is configurable from the `Writing` settings tab. `Word-like` is only an approximation of Microsoft Word behavior, not a byte-for-byte clone.
 
+## Statistics and Timer UI
+
+- Main files: `frontend/stats_dialog.py` and `frontend/timer_widget.py`.
+- `StatsDialog` consumes normalized backend stats only. Keep summary cards, count charts, and review-time charts tolerant of missing or dirty data.
+- Card-type display order and colors should keep EPUB distinct from PDF. Current labels include `PDFs` for `pdf` and `EPUBs` for `epub`.
+- Tags beginning with `__` are synthetic/internal and must stay hidden from stats UI tag charts and summary choices.
+- Review-time charts use `time.*.seconds` data and duration formatting. Keep counts and time separate so time-only reader tracking does not imply an answered card.
+- The focus timer tracks answered cards plus unique PDF and EPUB pages even when the timer is not currently running. Starting a timer must not clear already collected activity.
+- Timer completion resets only the per-report counters. The “Today so far” line comes from cumulative daily activity and resets on the scheduler logical date from `day_end_time`.
+
 ## Knowledge Tree Workspace
 
 - Main files:

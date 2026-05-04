@@ -2,17 +2,18 @@ from aqt import mw
 
 try:
     from .priority_manager import get_all_priorities
-    from .epub_manager import DOCUMENT_FILTER
+    from .epub_manager import DOCUMENT_FILTER, EPUB_NOTE_TYPE
     from .topic_scheduler import is_topic_card
     from .paths import get_active_profile as _active_profile
 except ImportError:
     from priority_manager import get_all_priorities  # type: ignore
-    from epub_manager import DOCUMENT_FILTER  # type: ignore
+    from epub_manager import DOCUMENT_FILTER, EPUB_NOTE_TYPE  # type: ignore
     from topic_scheduler import is_topic_card  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
 all_ready_cards_filter = "(is:due OR is:learn OR is:new)"
-_TOPIC_ITEM_CACHE: dict[tuple[str, str, str], tuple[int, ...]] = {}
+PDF_NOTE_TYPE = "Incremento PDF"
+_TOPIC_ITEM_CACHE: dict[tuple[int, str, str, str], tuple[int, ...]] = {}
 
 
 def _sort_by_due(card_ids):
@@ -88,7 +89,12 @@ def _classified_ready_cards(
     ready_filter: str = all_ready_cards_filter,
 ):
     query = _normalized_query(extra_filter, ready_filter)
-    cache_key = (kind, str(extra_filter or "").strip(), str(ready_filter or "").strip())
+    cache_key = (
+        id(getattr(mw, "col", None)),
+        kind,
+        str(extra_filter or "").strip(),
+        str(ready_filter or "").strip(),
+    )
     cached = _TOPIC_ITEM_CACHE.get(cache_key)
     if cached is not None:
         return list(cached)
@@ -188,6 +194,22 @@ def count_ready_item_cards_by_tag(
 def get_all_pdf_cards(pdf_filter: str = DOCUMENT_FILTER):
     """Return all non-suspended document cards, always eligible regardless of due state."""
     return _sort_by_due(mw.col.find_cards(f"{pdf_filter} -is:suspended"))
+
+
+def get_document_card_type(card_id: int) -> str | None:
+    """Return the concrete Incremento document type for a card id."""
+    try:
+        card = mw.col.get_card(int(card_id))
+        note = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+        name = model.get("name") if model else ""
+    except Exception:
+        return None
+    if name == EPUB_NOTE_TYPE:
+        return "epub"
+    if name == PDF_NOTE_TYPE:
+        return "pdf"
+    return None
 
 
 def get_all_youtube_cards(youtube_filter: str = 'note:"Incremento Video"'):

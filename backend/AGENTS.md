@@ -4,7 +4,7 @@ Use this file for work in `backend/`.
 
 ## Ownership
 
-- Scheduling, persistence, browser bridge, content managers, profile-aware file handling, and migration logic live here.
+- Scheduling, persistence, browser bridge, content managers, statistics, profile-aware file handling, and migration logic live here.
 - Knowledge-tree persistence, branch postpone logic, note provenance helpers, and video media/subtitle management also live here.
 
 ## Profile and Path Rules
@@ -60,6 +60,16 @@ Use this file for work in `backend/`.
 - Browser-selected cards can get per-card custom scheduling rules such as `minimum_cadence`, `fixed_repeat`, and `one_time`.
 - `format_custom_schedule_rule(None)` must stay empty. Missing rules must not render as the default preset in the reviewer badge.
 - Topic cards may still keep their topic scheduler state; `fixed_repeat` also updates the stored topic interval so UI and due date stay aligned.
+
+## Statistics and Document Types
+
+- Main files: `backend/statistics.py`, `backend/db.py`, `backend/cards.py`, and `backend/review_time_tracker.py`.
+- `StatsManager` owns transient `session` counts plus persisted `daily` and `lifetime` counts. Count blocks are always `{"type": {}, "tags": {}, "mode": {}}`.
+- Review time is tracked separately as seconds. Time blocks are always `{"type": {}, "tags": {}}`; persisted scopes are `time.daily.seconds` and `time.lifetime`.
+- `custom_learn_stats.json` is the canonical file-backed store. `load_stats()`, `save_stats()`, and `export_stats_json()` normalize bad values and internal keys before returning data.
+- The DB `stats` table remains a backward-compatible fallback/export path. If the stats file exists, `export_stats_json()` should prefer the file and return the normalized shape.
+- Use `StatsManager.record_time_only()` for reader or dock time that must not increment card counts. Runtime review-time mirrors should keep the same concrete type/tag attribution.
+- `get_document_card_type()` returns concrete document types: `pdf` for `Incremento PDF`, `epub` for `Incremento EPUB`, and `None` otherwise. Do not collapse EPUB cards into PDF stats or scheduling results.
 
 ## Card and Media Rules
 

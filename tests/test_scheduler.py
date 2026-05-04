@@ -589,6 +589,15 @@ class TestPdfRatePaths:
         assert result.card == 302
         assert result.card_type == "pdf"
 
+    def test_document_pick_preserves_epub_card_type(self):
+        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+            with _mock_card_utils_with_pdf(pdf_cards=[301]):
+                with patch("scheduler.card_utils.get_document_card_type", return_value="epub"):
+                    result = scheduler.get_card_from_scheduler(pdf_rate=0.2, use_tags=False)
+
+        assert result.card == 301
+        assert result.card_type == "epub"
+
     def test_pdf_type_falls_back_to_topics_when_no_pdf_cards(self):
         """When pdf_cards is empty, fall back to topics (topics_rate >= 0.5)."""
         with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
