@@ -155,6 +155,90 @@ def test_normalize_add_content_payload_keeps_pdf_base64_payload():
     assert payload["pdf_filename"] == "file.pdf"
 
 
+def test_prepare_add_content_request_decodes_pdf_base64_off_main(monkeypatch):
+    monkeypatch.setattr(browser_bridge, "_extract_pdf_pages_text_off_main", lambda path: ["page one"])
+    request = normalize_add_content_request(
+        {
+            "kind": "pdf",
+            "url": "https://example.com/file.pdf",
+            "title": "Example PDF",
+            "pdfBase64": base64.b64encode(b"%PDF-1.4\nfake\n").decode("ascii"),
+        }
+    )
+
+    prepared = browser_bridge.prepare_add_content_request_off_main(request)
+    pdf_path = Path(prepared["items"][0][browser_bridge._PREPARED_PDF_PATH_KEY])
+    try:
+        assert pdf_path.read_bytes().startswith(b"%PDF-")
+        assert prepared["items"][0][browser_bridge._PREPARED_PDF_PAGE_TEXTS_KEY] == ["page one"]
+    finally:
+        browser_bridge.cleanup_prepared_add_content_request(prepared)
+
+    assert not pdf_path.exists()
+
+
+def test_prepare_add_content_request_downloads_pdf_url_off_main(monkeypatch):
+    calls = []
+
+    def fake_download(url, dest_path):
+        calls.append((url, dest_path))
+        Path(dest_path).write_bytes(b"%PDF-1.7\nfake\n")
+
+    monkeypatch.setattr(browser_bridge, "download_pdf_from_url", fake_download)
+    monkeypatch.setattr(browser_bridge, "_extract_pdf_pages_text_off_main", lambda path: [])
+    request = normalize_add_content_request(
+        {
+            "kind": "pdf",
+            "url": "https://example.com/file.pdf",
+            "title": "Example PDF",
+        }
+    )
+
+    prepared = browser_bridge.prepare_add_content_request_off_main(request)
+    pdf_path = Path(prepared["items"][0][browser_bridge._PREPARED_PDF_PATH_KEY])
+    try:
+        assert calls == [("https://example.com/file.pdf", str(pdf_path))]
+        assert pdf_path.read_bytes().startswith(b"%PDF-")
+    finally:
+        browser_bridge.cleanup_prepared_add_content_request(prepared)
+
+    assert not pdf_path.exists()
+
+
+def test_prepare_add_content_request_builds_webpage_markdown_off_main(monkeypatch):
+    calls = []
+
+    def fake_convert(url, html, *, title, content_scope):
+        calls.append((url, html, title, content_scope))
+        return {"title": "Resolved Title", "markdown": "## Body\n\nText"}
+
+    monkeypatch.setattr(browser_bridge, "convert_webpage_html_to_markdown", fake_convert)
+    request = normalize_add_content_request(
+        {
+            "kind": "writing",
+            "url": "https://example.com/article",
+            "title": "Original Title",
+            "writingMode": "webpage_markdown",
+            "pageContentScope": "full",
+            "html": "<html><body>Text</body></html>",
+        }
+    )
+
+    prepared = browser_bridge.prepare_add_content_request_off_main(request)
+
+    assert calls == [
+        (
+            "https://example.com/article",
+            "<html><body>Text</body></html>",
+            "Original Title",
+            "full",
+        )
+    ]
+    assert prepared["items"][0]["title"] == "Resolved Title"
+    assert prepared["items"][0]["markdown"].startswith("# Resolved Title\n")
+    assert "## Body" in prepared["items"][0]["markdown"]
+
+
 def test_normalize_add_content_payload_rejects_invalid_priority():
     try:
         normalize_add_content_payload(

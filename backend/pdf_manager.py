@@ -601,7 +601,7 @@ def set_pdf_daily_limit_override(
 # ---------------------------------------------------------------------------
 
 
-def extract_pdf_pages_text(pdf_path: str) -> list[str]:
+def extract_pdf_pages_text(pdf_path: str, *, allow_qt: bool = True) -> list[str]:
     """Extract per-page text from a PDF.
 
     Extraction order:
@@ -622,20 +622,21 @@ def extract_pdf_pages_text(pdf_path: str) -> list[str]:
         pass
 
     # 2. Qt QPdfDocument
-    doc = QPdfDocument(None)
-    try:
-        doc.load(pdf_path)
-        if doc.pageCount() > 0:
-            pages = []
-            for i in range(doc.pageCount()):
-                sel = doc.getAllText(i)
-                pages.append(sel.text().strip() if sel.isValid() else "")
-            if any(pages):
-                return pages
-    except Exception:
-        pass
-    finally:
-        doc.close()
+    if allow_qt:
+        doc = QPdfDocument(None)
+        try:
+            doc.load(pdf_path)
+            if doc.pageCount() > 0:
+                pages = []
+                for i in range(doc.pageCount()):
+                    sel = doc.getAllText(i)
+                    pages.append(sel.text().strip() if sel.isValid() else "")
+                if any(pages):
+                    return pages
+        except Exception:
+            pass
+        finally:
+            doc.close()
 
     # 3. pdftotext (poppler)
     _candidates = [
@@ -852,6 +853,7 @@ def add_pdf_card(
     metadata: dict[str, str] | None = None,
     daily_page_limit: int | None = None,
     enforcement_mode: str = "warning",
+    precomputed_page_texts: list[str] | None = None,
 ) -> int:
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
@@ -868,7 +870,11 @@ def add_pdf_card(
 
     model = col.models.by_name(PDF_NOTE_TYPE)
 
-    page_texts = extract_pdf_pages_text(dest_path)
+    page_texts = (
+        list(precomputed_page_texts)
+        if precomputed_page_texts is not None
+        else extract_pdf_pages_text(dest_path)
+    )
 
     def _build_note(stored_title: str):
         note = col.new_note(model)

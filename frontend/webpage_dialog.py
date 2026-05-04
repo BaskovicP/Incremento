@@ -29,6 +29,7 @@ def render_webpage_to_pdf(
     url: str = "",
     html: str = "",
     wait_ms: int = 1200,
+    timeout_ms: int = 45000,
 ) -> None:
     source_url = str(url or "").strip()
     html_text = str(html or "")
@@ -40,22 +41,28 @@ def render_webpage_to_pdf(
     view.hide()
 
     loop = QEventLoop()
-    state: dict[str, object] = {"ok": False, "error": ""}
+    state: dict[str, object] = {"ok": False, "error": "", "done": False}
+
+    def _finish(ok: bool, message: str = "") -> None:
+        if state.get("done"):
+            return
+        state["done"] = True
+        state["ok"] = bool(ok)
+        state["error"] = str(message or "")
+        loop.quit()
 
     def _finish_error(message: str) -> None:
-        state["ok"] = False
-        state["error"] = message
-        loop.quit()
+        _finish(False, message)
 
     def _on_pdf_done(_path: str, ok: bool) -> None:
         if not ok:
             _finish_error("Failed to generate PDF.")
             return
-        state["ok"] = True
-        state["error"] = ""
-        loop.quit()
+        _finish(True)
 
     def _start_print() -> None:
+        if state.get("done"):
+            return
         layout = QPageLayout(
             QPageSize(QPageSize.PageSizeId.A4),
             QPageLayout.Orientation.Portrait,
@@ -68,12 +75,19 @@ def render_webpage_to_pdf(
             _finish_error(str(exc))
 
     def _on_load_finished(ok: bool) -> None:
+        if state.get("done"):
+            return
         if not ok:
             _finish_error("Failed to load page.")
             return
         QTimer.singleShot(max(0, int(wait_ms)), _start_print)
 
+    def _on_timeout() -> None:
+        seconds = max(1, int(timeout_ms) // 1000)
+        _finish_error(f"Timed out generating PDF after {seconds} seconds.")
+
     view.loadFinished.connect(_on_load_finished)
+    QTimer.singleShot(max(1000, int(timeout_ms)), _on_timeout)
     if html_text:
         view.setHtml(html_text, QUrl(source_url or "about:blank"))
     else:

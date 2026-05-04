@@ -249,6 +249,37 @@ class TestAddPdfCard:
             enforcement_mode="soft_lock",
         )
 
+    def test_uses_precomputed_page_texts_when_supplied(self):
+        col = MagicMock()
+        note = MagicMock()
+        note.id = 999
+        col.new_note.return_value = note
+        col.add_note.return_value = 1
+        col.find_cards.return_value = [12345]
+        col.models.by_name.return_value = {"name": pdf_manager.PDF_NOTE_TYPE}
+        col.decks.by_name.return_value = {"id": 1}
+
+        with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
+             patch("pdf_manager._copy_to_pdf_dir", return_value="stored-file.pdf"), \
+             patch("pdf_manager.extract_pdf_pages_text") as extract_mock, \
+             patch("pdf_manager.replace_pdf_text_index") as index_mock:
+            result = pdf_manager.add_pdf_card(
+                "/tmp/incremento-test",
+                col,
+                "/tmp/source.pdf",
+                "Guide",
+                precomputed_page_texts=["ready text"],
+            )
+
+        assert result == 12345
+        extract_mock.assert_not_called()
+        index_mock.assert_called_once_with(
+            "/tmp/incremento-test",
+            pdf_manager._paths.get_active_profile(),
+            12345,
+            ["ready text"],
+        )
+
 
 # ---------------------------------------------------------------------------
 # extract_pdf_pages_text — PyMuPDF path

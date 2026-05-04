@@ -43,6 +43,8 @@ _MAX_MARKDOWN_CHARS = 2_000_000
 _MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
 _MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000
 _MAX_MEDIA_FILENAME_STEM = 80
+_PREPARED_PDF_PATH_KEY = "_prepared_pdf_path"
+_PREPARED_PDF_PAGE_TEXTS_KEY = "_prepared_pdf_page_texts"
 
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
@@ -507,6 +509,131 @@ def _refresh_anki_after_import() -> None:
         pass
 
 
+def _make_temp_pdf_path() -> str:
+    fd, temp_path = tempfile.mkstemp(prefix="incremento-webpage-", suffix=".pdf")
+    os.close(fd)
+    return temp_path
+
+
+def _looks_like_normalized_add_content_request(payload) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if "batch" not in payload or "browser_capture" not in payload:
+        return False
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return False
+    return all(isinstance(item, dict) for item in items)
+
+
+def _extract_pdf_pages_text_off_main(pdf_path: str) -> list[str]:
+    try:
+        from .pdf_manager import extract_pdf_pages_text
+    except ImportError:
+        from pdf_manager import extract_pdf_pages_text  # type: ignore
+
+    try:
+        return extract_pdf_pages_text(pdf_path, allow_qt=False)
+    except Exception:
+        return []
+
+
+def _prepare_pdf_item_off_main(normalized: dict) -> None:
+    if normalized.get("kind") != "pdf":
+        return
+    if normalized.get(_PREPARED_PDF_PATH_KEY):
+        return
+    if not normalized.get("pdf_base64") and not url_looks_like_pdf(normalized.get("url", "")):
+        return
+
+    temp_pdf_path = _make_temp_pdf_path()
+    try:
+        if normalized.get("pdf_base64"):
+            try:
+                pdf_bytes = b64decode(str(normalized.get("pdf_base64") or ""), validate=True)
+            except Exception as exc:
+                raise ValueError(f"Invalid PDF payload: {exc}") from exc
+            if not pdf_bytes:
+                raise ValueError("Invalid PDF payload: empty file.")
+            with open(temp_pdf_path, "wb") as handle:
+                handle.write(pdf_bytes)
+        else:
+            download_pdf_from_url(str(normalized.get("url") or ""), temp_pdf_path)
+
+        normalized[_PREPARED_PDF_PATH_KEY] = temp_pdf_path
+        page_texts = _extract_pdf_pages_text_off_main(temp_pdf_path)
+        if page_texts:
+            normalized[_PREPARED_PDF_PAGE_TEXTS_KEY] = page_texts
+    except Exception:
+        try:
+            os.remove(temp_pdf_path)
+        except OSError:
+            pass
+        raise
+
+
+def _prepare_writing_item_off_main(normalized: dict) -> None:
+    if normalized.get("kind") != "writing":
+        return
+    if str(normalized.get("markdown") or "").strip():
+        return
+    if normalized.get("writing_mode") != "webpage_markdown":
+        return
+
+    page_result = convert_webpage_html_to_markdown(
+        str(normalized.get("url") or ""),
+        str(normalized.get("html") or ""),
+        title=str(normalized.get("title") or ""),
+        content_scope=str(normalized.get("page_content_scope") or "main"),
+    )
+    title = _collapse_ws(page_result.get("title", "")) or str(normalized.get("title") or "")
+    normalized["title"] = title
+    normalized["markdown"] = build_writing_markdown(
+        title,
+        str(normalized.get("url") or ""),
+        page_markdown=page_result.get("markdown", ""),
+    )
+
+
+def prepare_add_content_request_off_main(payload_or_request) -> dict:
+    request = (
+        payload_or_request
+        if _looks_like_normalized_add_content_request(payload_or_request)
+        else normalize_add_content_request(payload_or_request)
+    )
+    prepared = {
+        "batch": bool(request["batch"]),
+        "browser_capture": bool(request["browser_capture"]),
+        "items": [dict(item) for item in request["items"]],
+    }
+    if prepared["browser_capture"]:
+        return prepared
+
+    try:
+        for normalized in prepared["items"]:
+            _prepare_writing_item_off_main(normalized)
+            _prepare_pdf_item_off_main(normalized)
+    except Exception:
+        cleanup_prepared_add_content_request(prepared)
+        raise
+    return prepared
+
+
+def cleanup_prepared_add_content_request(request: dict | None) -> None:
+    if not isinstance(request, dict):
+        return
+    for item in request.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        temp_pdf_path = str(item.pop(_PREPARED_PDF_PATH_KEY, "") or "")
+        if not temp_pdf_path:
+            continue
+        try:
+            os.remove(temp_pdf_path)
+        except OSError:
+            pass
+
+
 def _browser_capture_meta_on_main() -> dict:
     from aqt import mw
 
@@ -821,10 +948,14 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             ),
         )
     else:
-        fd, temp_pdf_path = tempfile.mkstemp(prefix="incremento-webpage-", suffix=".pdf")
-        os.close(fd)
+        prepared_pdf_path = str(normalized.get(_PREPARED_PDF_PATH_KEY) or "")
+        temp_pdf_path = prepared_pdf_path or _make_temp_pdf_path()
+        cleanup_temp_pdf = not bool(prepared_pdf_path)
         try:
-            if pdf_base64:
+            if prepared_pdf_path:
+                if not os.path.exists(prepared_pdf_path):
+                    raise RuntimeError("Prepared PDF file was not found.")
+            elif pdf_base64:
                 try:
                     pdf_bytes = b64decode(pdf_base64, validate=True)
                 except Exception as exc:
@@ -853,12 +984,14 @@ def _add_content_item_on_main(normalized: dict) -> dict:
                     source_title=title,
                     source_link=url,
                 ),
+                precomputed_page_texts=normalized.get(_PREPARED_PDF_PAGE_TEXTS_KEY),
             )
         finally:
-            try:
-                os.remove(temp_pdf_path)
-            except OSError:
-                pass
+            if cleanup_temp_pdf:
+                try:
+                    os.remove(temp_pdf_path)
+                except OSError:
+                    pass
 
     set_priority(_addon_dir, _active_profile(), int(card_id), priority)
 
@@ -871,8 +1004,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     }
 
 
-def _add_content_on_main(payload: dict) -> dict:
-    request = normalize_add_content_request(payload)
+def _add_content_request_on_main(request: dict) -> dict:
     if request.get("browser_capture"):
         result = _create_browser_capture_note_on_main(request["items"][0])
         _refresh_anki_after_import()
@@ -914,6 +1046,15 @@ def _add_content_on_main(payload: dict) -> dict:
         "importedCount": imported_count,
         "failedCount": failed_count,
     }
+
+
+def _add_content_on_main(payload: dict) -> dict:
+    request = (
+        payload
+        if _looks_like_normalized_add_content_request(payload)
+        else normalize_add_content_request(payload)
+    )
+    return _add_content_request_on_main(request)
 
 
 def _update_web_card_on_main(payload: dict) -> dict:
@@ -1266,7 +1407,13 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
 
         try:
             if request_path == BRIDGE_PATH:
-                result = _run_on_main_and_wait(lambda: _add_content_on_main(payload))
+                prepared_request = prepare_add_content_request_off_main(payload)
+                try:
+                    result = _run_on_main_and_wait(
+                        lambda: _add_content_request_on_main(prepared_request)
+                    )
+                finally:
+                    cleanup_prepared_add_content_request(prepared_request)
             elif request_path == WEB_TRACK_MEDIA_PATH:
                 result = _run_on_main_and_wait(lambda: _update_web_card_media_on_main(payload))
             elif request_path == WEB_TRACK_PATH:
