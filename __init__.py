@@ -152,6 +152,7 @@ from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
 from .frontend import local_file_dock as _local_file_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
+from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
     create_database_checkpoint,
@@ -2462,13 +2463,13 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
     )
 
 
-def _open_priority_dialog_for_card(card) -> None:
+def _open_priority_dialog_for_card(card) -> bool:
     """Open the priority assignment dialog for a specific card."""
     from .backend.topic_scheduler import is_topic_card
     from .backend.db import get_topic_schedule, set_topic_schedule
 
     if card is None:
-        return
+        return False
 
     current = get_priority(_ADDON_DIR, _active_profile(), card.id)
     note = card.note()
@@ -2498,6 +2499,11 @@ def _open_priority_dialog_for_card(card) -> None:
         if current_card is not None and getattr(current_card, "id", None) == getattr(card, "id", None):
             _sync_reviewer_priority_badge()
         tooltip(msg)
+        return True
+    return False
+
+
+_browser_priority_toolbar_mod.register_open_priority_dialog_callback(_open_priority_dialog_for_card)
 
 
 def _open_priority_dialog() -> None:
