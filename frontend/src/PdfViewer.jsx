@@ -13,6 +13,7 @@ const HL_SOLID = {
   green:  '#00C850',
   blue:   '#1E90FF',
   pink:   '#FF508C',
+  snapshot: '#2563EB',
 };
 const CONTROLS_HEIGHT = 250;
 
@@ -123,6 +124,10 @@ function rectToPdfCoords(rect, layerRect, scale) {
     w: width,
     h: height,
   };
+}
+
+function makeClientHighlightId(prefix = 'hl') {
+  return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function findBestVisibleTextSpan(textLayer) {
@@ -587,6 +592,32 @@ export default function PdfViewer() {
                   w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
   }, []);
 
+  const makeSnapshotHighlight = useCallback((canvasRect) => {
+    const cardId = Number(cardIdRef.current || 0);
+    const scale = Number(lastScaleRef.current || 0);
+    if (!cardId || !scale || !canvasRect) return false;
+
+    const rect = {
+      x: canvasRect.x / scale,
+      y: canvasRect.y / scale,
+      w: canvasRect.w / scale,
+      h: canvasRect.h / scale,
+    };
+    if (rect.w <= 0 || rect.h <= 0) return false;
+
+    const hl = {
+      id: makeClientHighlightId('snapshot'),
+      page: pageRef.current,
+      color: 'snapshot',
+      text: 'Snapshot region',
+      note: '',
+      rects: [rect],
+    };
+    setHighlights(prev => [...prev, hl]);
+    window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId, highlight: hl }));
+    return true;
+  }, [cardIdRef, lastScaleRef, pageRef]);
+
   const handleSnapEnd = useCallback((e) => {
     if (!snapStartRef.current) return;
     const overlayRect = e.currentTarget.getBoundingClientRect();
@@ -616,6 +647,8 @@ export default function PdfViewer() {
     const ch  = cy2 - cy;
     if (cw < 5 || ch < 5) return;
 
+    makeSnapshotHighlight({ x: cx, y: cy, w: cw, h: ch });
+
     const dpr = window.devicePixelRatio || 1;
     const tmp = document.createElement('canvas');
     tmp.width  = Math.round(cw * dpr);
@@ -632,7 +665,7 @@ export default function PdfViewer() {
       page:   pageRef.current,
       image:  tmp.toDataURL('image/png'),
     }));
-  }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, pageRef]);
+  }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
 
   // ── Highlight helpers ──────────────────────────────────────────────────────
   const deleteHighlight = useCallback((id) => {

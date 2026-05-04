@@ -343,6 +343,8 @@ def test_pending_extract_options_capture_source_card_id(monkeypatch):
 
 def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
     filled = []
+    refresh_calls = []
+    delayed_refreshes = []
     fake_dock = types.SimpleNamespace(
         show=lambda: None,
         raise_=lambda: None,
@@ -358,6 +360,12 @@ def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
         "_source_extract_metadata_for_card",
         lambda source, source_card_id: {"Incremento_Parent_Card_ID": str(source_card_id)},
     )
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: refresh_calls.append(True))
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: delayed_refreshes.append(delay),
+    )
 
     dock.fill_dock_field(
         0,
@@ -372,6 +380,8 @@ def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
     assert dock.pending_extract_options()["priority"] == 18.0
     assert dock.pending_extract_context()["parent_card_id"] == 55
     assert dock.pending_extract_context()["metadata"] == {"Incremento_Parent_Card_ID": "55"}
+    assert refresh_calls == [True]
+    assert delayed_refreshes == [80]
     dock.clear_pending_extract_options()
     dock.clear_pending_extract_context()
 
@@ -935,6 +945,37 @@ def test_do_fill_forwards_mark_topic_to_embedded_dock(monkeypatch):
     dock.do_fill(1, "extract text", mark_topic=True)
 
     assert fake_dock.calls == [(1, "extract text", True)]
+
+
+def test_inject_transfer_buttons_shows_extract_options_for_pending_snapshot(monkeypatch):
+    note = _FakeNote(note_id=9)
+    editor = _FakeEditor(note, add_mode=True)
+    editor.web = _FakeWeb()
+
+    monkeypatch.setattr(dock, "_last_selection_source", "")
+    monkeypatch.setattr(dock, "_last_selection_seen", 0.0)
+    monkeypatch.setattr(dock, "_current_extract_priority", None)
+    monkeypatch.setattr(dock, "_current_extract_mark_topic", None)
+    monkeypatch.setattr(dock, "_current_extract_link_to_knowledge_tree", None)
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_options",
+        {
+            "priority": 18.0,
+            "mark_topic": False,
+            "link_to_knowledge_tree": True,
+            "source": "pdf",
+            "source_card_id": 55,
+        },
+    )
+
+    dock._inject_transfer_buttons(editor)
+
+    js = editor.web.eval_calls[-1]
+    assert "var visible = false;" in js
+    assert "var optionsVisible = true;" in js
+    assert "var defaultExtractPriority = 18.0;" in js
+    assert "panel.style.display = this.optionsVisible ? 'flex' : 'none';" in js
 
 
 def test_refresh_add_card_tag_buttons_updates_tracked_editors(monkeypatch):

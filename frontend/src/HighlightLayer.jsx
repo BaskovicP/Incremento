@@ -9,7 +9,12 @@ const HL_COLORS = {
   green:  'rgba(0,200,80,0.4)',
   blue:   'rgba(30,144,255,0.4)',
   pink:   'rgba(255,80,140,0.4)',
+  snapshot: 'rgba(37,99,235,0.12)',
 };
+
+function isSnapshotHighlight(highlight) {
+  return String(highlight?.color || '') === 'snapshot';
+}
 
 export default function HighlightLayer({
   pageHighlights,
@@ -39,7 +44,9 @@ export default function HighlightLayer({
               width:         r.w * renderInfo.scale,
               height:        r.h * renderInfo.scale,
               background:    HL_COLORS[h.color] || HL_COLORS.yellow,
-              mixBlendMode:  'multiply',
+              border:        isSnapshotHighlight(h) ? '2px solid rgba(37,99,235,0.95)' : 'none',
+              boxSizing:     'border-box',
+              mixBlendMode:  isSnapshotHighlight(h) ? 'normal' : 'multiply',
               outline:       h.id === focusedHighlightId ? '2px solid rgba(255,255,255,0.95)' : 'none',
               boxShadow:     h.id === focusedHighlightId ? '0 0 0 3px rgba(56,189,248,0.55)' : 'none',
               pointerEvents: 'none',
@@ -81,7 +88,7 @@ export default function HighlightLayer({
         return (
           <button
             key={`del-${h.id}`}
-            title="Remove highlight"
+            title={isSnapshotHighlight(h) ? 'Remove snapshot highlight' : 'Remove highlight'}
             onClick={() => deleteHighlight(h.id)}
             style={{
               position:   'absolute',

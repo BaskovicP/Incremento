@@ -397,28 +397,41 @@ def _inject_transfer_buttons(editor) -> None:
     except Exception:
         field_names = []
     try:
-        extract_priority = (
-            _extract_priority_for_transfer()
-            if _current_extract_priority is not None
-            else (
-                source_relative_extract_priority_for_source(_last_selection_source)
-                if _has_recent_selection()
-                else configured_extract_priority()
+        pending_options = pending_extract_options() or {}
+        has_recent_selection = _has_recent_selection()
+        options_visible = has_recent_selection or bool(pending_options)
+        if _current_extract_priority is not None:
+            extract_priority = _extract_priority_for_transfer()
+        elif pending_options.get("priority") is not None:
+            extract_priority = _clamp_priority(pending_options.get("priority"))
+        elif has_recent_selection:
+            extract_priority = source_relative_extract_priority_for_source(
+                _last_selection_source
             )
-        )
-        extract_mark_topic = _extract_mark_topic_for_transfer()
+        else:
+            extract_priority = configured_extract_priority()
+
+        if _current_extract_mark_topic is not None:
+            extract_mark_topic = _extract_mark_topic_for_transfer()
+        elif "mark_topic" in pending_options:
+            extract_mark_topic = bool(pending_options.get("mark_topic"))
+        else:
+            extract_mark_topic = configured_extract_mark_topic()
+
         tree_context = pending_extract_context() or {}
         tree_link_enabled = bool(tree_context.get("knowledge_tree_link_enabled"))
-        tree_link_checked = bool(
-            tree_context.get("link_to_knowledge_tree")
-            if _current_extract_link_to_knowledge_tree is None
-            else _current_extract_link_to_knowledge_tree
-        )
+        if _current_extract_link_to_knowledge_tree is not None:
+            tree_link_checked = bool(_current_extract_link_to_knowledge_tree)
+        elif "link_to_knowledge_tree" in pending_options:
+            tree_link_checked = bool(pending_options.get("link_to_knowledge_tree"))
+        else:
+            tree_link_checked = bool(tree_context.get("link_to_knowledge_tree"))
         tree_link_tooltip = str(tree_context.get("knowledge_tree_tooltip") or "")
         editor.web.eval(
             f"""
             (function() {{
-              var visible = {json.dumps(_has_recent_selection())};
+              var visible = {json.dumps(has_recent_selection)};
+              var optionsVisible = {json.dumps(options_visible)};
               var fieldNames = {json.dumps(field_names)};
               var defaultExtractPriority = {json.dumps(extract_priority)};
               var defaultExtractTopic = {json.dumps(extract_mark_topic)};
@@ -485,6 +498,7 @@ def _inject_transfer_buttons(editor) -> None:
 
                 window.incrementoTransferButtons = {{
                   visible: false,
+                  optionsVisible: optionsVisible,
                   fieldNames: [],
                   extractPriority: defaultExtractPriority,
                   extractTopic: defaultExtractTopic,
@@ -609,7 +623,7 @@ def _inject_transfer_buttons(editor) -> None:
                   render: function() {{
                     var panel = this.ensureExtractOptions();
                     if (panel) {{
-                      panel.style.display = this.visible ? 'flex' : 'none';
+                      panel.style.display = this.optionsVisible ? 'flex' : 'none';
                     }}
                     this.fieldNodes().forEach(function(field, fallbackIdx) {{
                       var idx = window.incrementoTransferButtons.fieldIndex(field, fallbackIdx);
@@ -651,6 +665,10 @@ def _inject_transfer_buttons(editor) -> None:
                     this.visible = !!nextVisible;
                     this.render();
                   }},
+                  setOptionsVisible: function(nextVisible) {{
+                    this.optionsVisible = !!nextVisible;
+                    this.render();
+                  }},
                 }};
 
                 if (!window.incrementoTransferButtonsObserver) {{
@@ -667,6 +685,7 @@ def _inject_transfer_buttons(editor) -> None:
               }}
 
               if (window.incrementoTransferButtons) {{
+                window.incrementoTransferButtons.optionsVisible = optionsVisible;
                 window.incrementoTransferButtons.extractPriority = defaultExtractPriority;
                 window.incrementoTransferButtons.extractTopic = defaultExtractTopic;
                 window.incrementoTransferButtons.extractTreeLink = defaultExtractTreeLink;
@@ -1956,7 +1975,7 @@ def open_add_card_dock():
             _apply_configured_extract_notetype()
             editor = _dock_editor()
             if editor is not None:
-                _set_transfer_buttons_visible(editor, _has_recent_selection())
+                _inject_transfer_buttons(editor)
             return
         except RuntimeError:
             _add_card_dock = None
@@ -1993,13 +2012,21 @@ def fill_dock_field(
     _last_fill_seen = time.monotonic()
     if _add_card_dock is None:
         build_add_card_dock()
-        QTimer.singleShot(600, lambda: do_fill(idx, text, mark_topic=mark_topic))
+
+        def _delayed_fill():
+            do_fill(idx, text, mark_topic=mark_topic)
+            _refresh_transfer_buttons()
+            QTimer.singleShot(80, _refresh_transfer_buttons)
+
+        QTimer.singleShot(600, _delayed_fill)
         return
     try:
         _add_card_dock.show()
         _add_card_dock.raise_()
         _apply_configured_extract_notetype()
         do_fill(idx, text, mark_topic=mark_topic)
+        _refresh_transfer_buttons()
+        QTimer.singleShot(80, _refresh_transfer_buttons)
     except RuntimeError:
         _add_card_dock = None
 

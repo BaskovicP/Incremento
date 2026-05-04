@@ -132,6 +132,7 @@ except ImportError:
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 )
+_ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 
 _epub_dock = None
 _current_epub_card_id: int | None = None
@@ -168,6 +169,29 @@ _current_epub_page_index = 0
 _current_epub_total_pages = 0
 _current_epub_section_page = 1
 _current_epub_section_pages = 1
+
+
+def _config(config: dict | None = None) -> dict:
+    if config is not None:
+        return config or {}
+    try:
+        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+    except Exception:
+        return {}
+
+
+def configured_highlight_when_extracting(config: dict | None = None) -> bool:
+    cfg = _config(config)
+    return bool(cfg.get("highlight_when_extracting", True))
+
+
+def _set_highlight_when_extracting(enabled: bool) -> None:
+    cfg = _config()
+    cfg["highlight_when_extracting"] = bool(enabled)
+    try:
+        mw.addonManager.writeConfig(_ADDON_PKG, cfg)
+    except Exception:
+        return
 
 
 def _record_timer_epub_page_read(card_id: int | None, page_index: int | None) -> None:
@@ -831,6 +855,7 @@ def _build_page_script(
         "sectionIndex": int(section_index),
         "scrollRatio": max(0.0, min(float(scroll_ratio), 1.0)),
         "textScale": max(0.7, min(float(text_scale), 2.2)),
+        "autoHighlightOnExtract": configured_highlight_when_extracting(),
         "focusOffset": int(focus_offset),
         "searchQuery": str(search_query or ""),
         "highlights": highlights,
@@ -1075,6 +1100,9 @@ def _build_page_script(
           sel.removeAllRanges();
         }}
       }}
+      window.incrementoSetAutoHighlightOnExtract = function(value) {{
+        STATE.autoHighlightOnExtract = !!value;
+      }};
       window.incrementoAddEpubHighlight = function() {{
         const meta = selectionMeta();
         if (!meta) return false;
@@ -1144,6 +1172,9 @@ def _build_page_script(
           const meta = selectionMeta();
           if (!meta) return;
           event.preventDefault();
+          if (STATE.autoHighlightOnExtract) {{
+            window.incrementoAddEpubHighlight();
+          }}
           send('incremento_epub_fill_field:' + JSON.stringify({{
             idx: Number(key) - 1,
             text: meta.text,
@@ -1280,6 +1311,31 @@ def _make_epub_chip(parent, text: str) -> QLabel:
     return label
 
 
+def _make_epub_toggle(parent, text: str, *, checked: bool = False) -> QCheckBox:
+    toggle = QCheckBox(text, parent)
+    toggle.setChecked(bool(checked))
+    toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+    toggle.setStyleSheet(
+        "QCheckBox {"
+        " color: #d9dee7;"
+        " spacing: 6px;"
+        " padding: 2px 0;"
+        " }"
+        "QCheckBox::indicator {"
+        " width: 14px;"
+        " height: 14px;"
+        " border-radius: 4px;"
+        " border: 1px solid rgba(255,255,255,0.18);"
+        " background: rgba(255,255,255,0.04);"
+        " }"
+        "QCheckBox::indicator:checked {"
+        " border-color: rgba(74,144,217,0.75);"
+        " background: rgba(74,144,217,0.30);"
+        " }"
+    )
+    return toggle
+
+
 def _make_epub_group(parent, title: str, *widgets: QWidget) -> QWidget:
     frame = QFrame(parent)
     frame.setFrameShape(QFrame.Shape.NoFrame)
@@ -1340,10 +1396,15 @@ def _build_epub_dock() -> None:
     dock._title_lbl.setStyleSheet("font-weight: 600; color: #edf2f7;")
     dock._cards_chip = _make_epub_chip(dock, "Cards 0")
     dock._highlights_chip = _make_epub_chip(dock, "Highlights 0")
+    dock._highlight_extract_cb = _make_epub_toggle(
+        dock,
+        "Highlight when extracting",
+        checked=configured_highlight_when_extracting(),
+    )
 
     dock._add_card_btn = _make_epub_button(
         dock,
-        "Card",
+        "Add Card",
         "Add a card from the current selection",
         icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogNewFolder),
     )
@@ -1355,19 +1416,19 @@ def _build_epub_dock() -> None:
     )
     dock._all_cards_btn = _make_epub_button(
         dock,
-        "All",
+        "Open All",
         "Open all cards created from this EPUB",
         icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
     )
     dock._due_review_btn = _make_epub_button(
         dock,
-        "Due",
+        "Review Due",
         "Review due cards from this EPUB",
         icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
     )
     dock._limit_btn = _make_epub_button(
         dock,
-        "Limit",
+        "Reading Limit",
         "Adjust this EPUB's daily reading limit",
         icon=_standard_icon(QStyle.StandardPixmap.SP_MessageBoxWarning),
     )
@@ -1385,25 +1446,25 @@ def _build_epub_dock() -> None:
     )
     dock._highlight_btn = _make_epub_button(
         dock,
-        "Mark",
+        "Highlight",
         "Highlight the current selection (Alt+H)",
         icon=_standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
     )
     dock._snapshot_btn = _make_epub_button(
         dock,
-        "Snap",
+        "Snapshot",
         "Capture the current selection as an image (Alt+S)",
         icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
     )
     dock._bookmark_add_btn = _make_epub_button(
         dock,
-        "Save",
+        "Bookmark",
         "Add a bookmark for this reading position",
         icon=_standard_icon(QStyle.StandardPixmap.SP_DialogYesButton),
     )
     dock._bookmarks_btn = _make_epub_button(
         dock,
-        "Marks",
+        "Bookmarks",
         "Show or hide EPUB bookmarks",
         icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
         checkable=True,
@@ -1417,7 +1478,7 @@ def _build_epub_dock() -> None:
     )
     dock._finished_btn = _make_epub_button(
         dock,
-        "Finished",
+        "Finished Reading",
         "Mark this EPUB as finished or unfinished",
         icon=_standard_icon(QStyle.StandardPixmap.SP_DialogApplyButton),
         checkable=True,
@@ -1459,7 +1520,7 @@ def _build_epub_dock() -> None:
             "Reader",
             dock._text_smaller_btn,
             dock._text_larger_btn,
-            dock._finished_btn,
+            dock._highlight_extract_cb,
         )
     )
     groups_flow.addWidget(
@@ -1476,12 +1537,25 @@ def _build_epub_dock() -> None:
     groups_flow.addWidget(
         _make_epub_group(
             groups_host,
+            "Review",
+            dock._due_review_btn,
+            dock._limit_btn,
+        )
+    )
+    groups_flow.addWidget(
+        _make_epub_group(
+            groups_host,
             "Cards",
             dock._add_card_btn,
             dock._browser_btn,
             dock._all_cards_btn,
-            dock._due_review_btn,
-            dock._limit_btn,
+        )
+    )
+    groups_flow.addWidget(
+        _make_epub_group(
+            groups_host,
+            "Status",
+            dock._finished_btn,
         )
     )
     layout.addWidget(groups_host)
@@ -1543,6 +1617,7 @@ def _build_epub_dock() -> None:
     qconnect(dock._bookmarks_btn.clicked, _toggle_epub_bookmarks_panel)
     qconnect(dock._sources_btn.clicked, _toggle_epub_sources_panel)
     qconnect(dock._finished_btn.clicked, _toggle_finished)
+    qconnect(dock._highlight_extract_cb.toggled, _on_extract_highlight_toggle_changed)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
 
@@ -2370,6 +2445,15 @@ def _request_snapshot() -> None:
         return
     _epub_dock._view.page().runJavaScript(
         "window.incrementoSnapshotEpubSelection && window.incrementoSnapshotEpubSelection();"
+    )
+
+
+def _on_extract_highlight_toggle_changed(checked: bool) -> None:
+    _set_highlight_when_extracting(bool(checked))
+    if _epub_dock is None:
+        return
+    _epub_dock._view.page().runJavaScript(
+        f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(bool(checked))});"
     )
 
 

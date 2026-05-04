@@ -7300,8 +7300,12 @@
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
     blue: "rgba(30,144,255,0.4)",
-    pink: "rgba(255,80,140,0.4)"
+    pink: "rgba(255,80,140,0.4)",
+    snapshot: "rgba(37,99,235,0.12)"
   };
+  function isSnapshotHighlight(highlight) {
+    return String((highlight == null ? void 0 : highlight.color) || "") === "snapshot";
+  }
   function HighlightLayer({
     pageHighlights,
     renderInfo,
@@ -7328,7 +7332,9 @@
               width: r.w * renderInfo.scale,
               height: r.h * renderInfo.scale,
               background: HL_COLORS$1[h.color] || HL_COLORS$1.yellow,
-              mixBlendMode: "multiply",
+              border: isSnapshotHighlight(h) ? "2px solid rgba(37,99,235,0.95)" : "none",
+              boxSizing: "border-box",
+              mixBlendMode: isSnapshotHighlight(h) ? "normal" : "multiply",
               outline: h.id === focusedHighlightId ? "2px solid rgba(255,255,255,0.95)" : "none",
               boxShadow: h.id === focusedHighlightId ? "0 0 0 3px rgba(56,189,248,0.55)" : "none",
               pointerEvents: "none",
@@ -7366,7 +7372,7 @@
         return /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
-            title: "Remove highlight",
+            title: isSnapshotHighlight(h) ? "Remove snapshot highlight" : "Remove highlight",
             onClick: () => deleteHighlight(h.id),
             style: {
               position: "absolute",
@@ -7431,7 +7437,8 @@
     yellow: "#FFE000",
     green: "#00C850",
     blue: "#1E90FF",
-    pink: "#FF508C"
+    pink: "#FF508C",
+    snapshot: "#2563EB"
   };
   const CONTROLS_HEIGHT = 250;
   const DEFAULT_LIMIT_STATUS = {
@@ -7529,6 +7536,9 @@
       w: width,
       h: height
     };
+  }
+  function makeClientHighlightId(prefix = "hl") {
+    return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
   }
   function findBestVisibleTextSpan(textLayer) {
     if (!textLayer) return null;
@@ -7940,6 +7950,29 @@
         h: Math.abs(cy - sy)
       });
     }, []);
+    const makeSnapshotHighlight = reactExports.useCallback((canvasRect) => {
+      const cardId = Number(cardIdRef.current || 0);
+      const scale = Number(lastScaleRef.current || 0);
+      if (!cardId || !scale || !canvasRect) return false;
+      const rect = {
+        x: canvasRect.x / scale,
+        y: canvasRect.y / scale,
+        w: canvasRect.w / scale,
+        h: canvasRect.h / scale
+      };
+      if (rect.w <= 0 || rect.h <= 0) return false;
+      const hl = {
+        id: makeClientHighlightId("snapshot"),
+        page: pageRef.current,
+        color: "snapshot",
+        text: "Snapshot region",
+        note: "",
+        rects: [rect]
+      };
+      setHighlights((prev) => [...prev, hl]);
+      window.pycmd("incremento_pdf_hl_add:" + JSON.stringify({ cardId, highlight: hl }));
+      return true;
+    }, [cardIdRef, lastScaleRef, pageRef]);
     const handleSnapEnd = reactExports.useCallback((e) => {
       if (!snapStartRef.current) return;
       const overlayRect = e.currentTarget.getBoundingClientRect();
@@ -7964,6 +7997,7 @@
       const cw = cx2 - cx;
       const ch = cy2 - cy;
       if (cw < 5 || ch < 5) return;
+      makeSnapshotHighlight({ x: cx, y: cy, w: cw, h: ch });
       const dpr = window.devicePixelRatio || 1;
       const tmp = document.createElement("canvas");
       tmp.width = Math.round(cw * dpr);
@@ -7984,7 +8018,7 @@
         page: pageRef.current,
         image: tmp.toDataURL("image/png")
       }));
-    }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, pageRef]);
+    }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
     const deleteHighlight = reactExports.useCallback((id) => {
       setHighlights((prev) => prev.filter((h) => h.id !== id));
       window.pycmd("incremento_pdf_hl_del:" + JSON.stringify({ cardId: cardIdRef.current, id }));

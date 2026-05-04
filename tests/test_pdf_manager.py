@@ -31,7 +31,8 @@ from note_metadata import (
 )
 sys.modules.setdefault("db", db)
 
-import pdf_manager  # noqa: E402
+pdf_manager = importlib.import_module("pdf_manager")  # noqa: E402
+pdf_manager = importlib.reload(pdf_manager)
 from pdf_manager import pdf_display_label_from_filename  # noqa: E402
 
 

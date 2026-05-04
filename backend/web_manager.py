@@ -22,6 +22,7 @@ TRACK_CARD_ID_PARAM = "inc_card_id"
 TRACK_WEB_FLAG_PARAM = "inc_track_web"
 _DEFAULT_REMEMBER_BROWSER_CARD_SCROLL = True
 _DEFAULT_PREFER_WEB_CARD_RESUME_IN_ORIGINAL_PAGE = True
+_DEFAULT_TRACK_WEB_WINDOW_WITH_EXTENSION = True
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -214,6 +215,18 @@ def configured_prefer_web_card_resume_in_original_page(
         (config or {}).get(
             "prefer_web_card_resume_in_original_page",
             _DEFAULT_PREFER_WEB_CARD_RESUME_IN_ORIGINAL_PAGE,
+        )
+    )
+
+
+def configured_track_web_window_with_extension(
+    config: dict | None = None,
+) -> bool:
+    config = _resolved_config(config)
+    return bool(
+        (config or {}).get(
+            "track_web_window_with_extension",
+            _DEFAULT_TRACK_WEB_WINDOW_WITH_EXTENSION,
         )
     )
 

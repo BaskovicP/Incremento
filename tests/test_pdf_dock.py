@@ -164,3 +164,40 @@ def test_on_add_cards_did_add_note_ignores_reviewer_extract(monkeypatch):
     pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
 
     assert calls == []
+
+
+def test_due_review_prompt_suppression_is_one_shot_and_card_scoped(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(pdf_dock.time, "monotonic", lambda: now[0])
+
+    pdf_dock._suppress_next_due_review_prompt_for_pdf_add(55)
+
+    assert pdf_dock._consume_due_review_prompt_suppression(56) is False
+    assert pdf_dock._consume_due_review_prompt_suppression(55) is True
+    assert pdf_dock._consume_due_review_prompt_suppression(55) is False
+
+    pdf_dock._suppress_next_due_review_prompt_for_pdf_add(55)
+    now[0] += pdf_dock._PDF_ADD_PROMPT_SUPPRESSION_SECONDS + 0.1
+
+    assert pdf_dock._consume_due_review_prompt_suppression(55) is False
+
+
+def test_on_add_cards_did_add_note_suppresses_next_pdf_due_prompt(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", None)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "pdf")
+    monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 7)
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
+
+    assert calls
+    assert pdf_dock._consume_due_review_prompt_suppression(55) is True

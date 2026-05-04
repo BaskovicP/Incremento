@@ -228,6 +228,7 @@ class IncrementoSettingsDialog(QDialog):
         current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
         current_prefer_web_card_resume_in_original_page: bool = True,
+        current_track_web_window_with_extension: bool = True,
         current_use_fail_pass_on_items: bool = False,
         current_item_skip_enabled: bool = False,
         current_item_skip_minutes: int = 30,
@@ -558,6 +559,14 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_prefer_web_card_resume_in_original_page)
         )
         reviewer_controls_layout.addWidget(self._prefer_web_card_resume_in_original_page_cb)
+
+        self._track_web_window_with_extension_cb = QCheckBox(
+            "Track web-card external pages via Chrome extension by default"
+        )
+        self._track_web_window_with_extension_cb.setChecked(
+            bool(current_track_web_window_with_extension)
+        )
+        reviewer_controls_layout.addWidget(self._track_web_window_with_extension_cb)
 
         self._use_fail_pass_on_items_cb = QCheckBox(
             "Use Fail / Pass buttons on items"
@@ -1313,6 +1322,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def prefer_web_card_resume_in_original_page(self) -> bool:
         return bool(self._prefer_web_card_resume_in_original_page_cb.isChecked())
+
+    @property
+    def track_web_window_with_extension(self) -> bool:
+        return bool(self._track_web_window_with_extension_cb.isChecked())
 
     @property
     def use_fail_pass_on_items(self) -> bool:

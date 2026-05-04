@@ -63,6 +63,7 @@ set_web_scroll_position = _wm.set_web_scroll_position
 set_web_bookmark = _wm.set_web_bookmark
 set_web_media_progress = _wm.set_web_media_progress
 configured_remember_browser_card_scroll = _wm.configured_remember_browser_card_scroll
+configured_track_web_window_with_extension = _wm.configured_track_web_window_with_extension
 build_web_restore_payload = _wm.build_web_restore_payload
 build_web_media_resume_target = _wm.build_web_media_resume_target
 reviewer_web_homepage_action = _wm.reviewer_web_homepage_action
@@ -647,6 +648,14 @@ class TestWebUrl:
 
     def test_scroll_setting_respects_config_override(self):
         assert configured_remember_browser_card_scroll({"remember_browser_card_scroll": False}) is False
+
+    def test_track_web_window_with_extension_defaults_true(self):
+        assert configured_track_web_window_with_extension({}) is True
+
+    def test_track_web_window_with_extension_respects_config_override(self):
+        assert configured_track_web_window_with_extension(
+            {"track_web_window_with_extension": False}
+        ) is False
 
     def test_restore_payload_prefers_matching_bookmark(self):
         payload = build_web_restore_payload(

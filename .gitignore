@@ -7,6 +7,7 @@ user_files/*.db-shm
 user_files/*.db-wal
 user_files/*.json
 user_files/*.tmp
+user_files/
 user_files/pdfs/
 user_files/*
 

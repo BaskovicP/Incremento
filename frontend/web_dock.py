@@ -29,6 +29,7 @@ from aqt.qt import (
     QDialog,
     QDockWidget,
     QEvent,
+    QFrame,
     QHBoxLayout,
     QGridLayout,
     QLabel,
@@ -38,6 +39,8 @@ from aqt.qt import (
     QRect,
     QShortcut,
     QKeySequence,
+    QSizePolicy,
+    QStyle,
     QTextBrowser,
     QTimer,
     QVBoxLayout,
@@ -67,6 +70,7 @@ try:
         build_web_media_resume_target,
         build_web_restore_payload,
         build_external_web_url,
+        configured_track_web_window_with_extension,
         configured_prefer_web_card_resume_in_original_page,
         configured_remember_browser_card_scroll,
         ensure_web_note_type,
@@ -88,6 +92,7 @@ except ImportError:
         build_web_media_resume_target,
         build_web_restore_payload,
         build_external_web_url,
+        configured_track_web_window_with_extension,
         configured_prefer_web_card_resume_in_original_page,
         configured_remember_browser_card_scroll,
         ensure_web_note_type,
@@ -150,6 +155,13 @@ def _remember_browser_card_scroll() -> bool:
 def _prefer_web_card_resume_in_original_page() -> bool:
     try:
         return bool(configured_prefer_web_card_resume_in_original_page())
+    except Exception:
+        return True
+
+
+def _track_web_window_with_extension_default() -> bool:
+    try:
+        return bool(configured_track_web_window_with_extension())
     except Exception:
         return True
 
@@ -280,6 +292,53 @@ def _load_web_bridge_js_template() -> str:
         with open(_WEB_BRIDGE_JS_PATH, "r", encoding="utf-8") as fh:
             _runtime.bridge_js_template = fh.read()
     return _runtime.bridge_js_template
+
+
+def _standard_icon(pixmap: QStyle.StandardPixmap):
+    try:
+        return mw.style().standardIcon(pixmap)
+    except Exception:
+        return None
+
+
+def _make_web_button(
+    parent,
+    text: str,
+    tooltip_text: str = "",
+    *,
+    icon=None,
+) -> QPushButton:
+    btn = QPushButton(text, parent)
+    if tooltip_text:
+        btn.setToolTip(tooltip_text)
+    if icon is not None:
+        btn.setIcon(icon)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    return btn
+
+
+def _make_web_group(parent, title: str, *widgets: QWidget) -> QWidget:
+    frame = QFrame(parent)
+    frame.setFrameShape(QFrame.Shape.NoFrame)
+    frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    frame.setStyleSheet(
+        "QFrame {"
+        " background: rgba(255,255,255,0.03);"
+        " border: 1px solid rgba(120,120,120,0.18);"
+        " border-radius: 9px;"
+        " }"
+    )
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(8, 5, 8, 5)
+    row.setSpacing(5)
+
+    tag = QLabel(title, frame)
+    tag.setStyleSheet("color: #777; font-size: 10px; font-weight: 600;")
+    row.addWidget(tag)
+    for widget in widgets:
+        row.addWidget(widget)
+    return frame
 
 
 class _WebDockController:
@@ -781,6 +840,7 @@ class _WebDockController:
             QWebEngineSettings as _WES,
         )
 
+        self.runtime.track_window_with_extension = _track_web_window_with_extension_default()
         dock = QDockWidget("Web", mw)
         dock.setObjectName("incremento_web_dock")
         dock.setMinimumWidth(600)
@@ -821,42 +881,70 @@ class _WebDockController:
         url_lbl = QLabel("")
         url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
         url_lbl.setWordWrap(False)
-        ctrl_layout.addWidget(url_lbl, 0, 0, 1, 5)
+        ctrl_layout.addWidget(url_lbl, 0, 0, 1, 2)
 
-        add_card_btn = QPushButton("+ Add Card")
-        ctrl_layout.addWidget(add_card_btn, 0, 5)
-
-        extract_btn = QPushButton("Extract")
-        extract_btn.setToolTip(
-            "Copy the current text selection into a field in the Add Card dock."
+        add_card_btn = _make_web_button(
+            ctrl,
+            "Add Card",
+            "Open the Add Card dock.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogNewFolder),
         )
-        ctrl_layout.addWidget(extract_btn, 0, 6)
-
-        snapshot_btn = QPushButton("Snapshot")
-        snapshot_btn.setToolTip(
-            "Capture an image from the current viewport, like the PDF snapshot tool."
+        extract_btn = _make_web_button(
+            ctrl,
+            "Extract",
+            "Copy the current text selection into a field in the Add Card dock.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
         )
-        ctrl_layout.addWidget(snapshot_btn, 0, 7)
-
-        bookmark_btn = QPushButton("Bookmark")
-        ctrl_layout.addWidget(bookmark_btn, 0, 8)
-
-        bookmarks_btn = QPushButton("Bookmarks 0")
-        ctrl_layout.addWidget(bookmarks_btn, 0, 9)
-
-        cards_btn = QPushButton("Cards 0")
+        snapshot_btn = _make_web_button(
+            ctrl,
+            "Snapshot",
+            "Capture an image from the current viewport, like the PDF snapshot tool.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+        )
+        bookmark_btn = _make_web_button(
+            ctrl,
+            "Bookmark",
+            "Save the current web location as a permanent interesting-place bookmark.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_DialogYesButton),
+        )
+        bookmarks_btn = _make_web_button(
+            ctrl,
+            "Bookmarks 0",
+            "Show saved web bookmarks for this card.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
+        )
+        cards_btn = _make_web_button(
+            ctrl,
+            "Cards 0",
+            "Show cards created from the current URL.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
+        )
         cards_btn.setVisible(False)
-        ctrl_layout.addWidget(cards_btn, 0, 10)
-
-        home_btn = QPushButton("Home")
-        home_btn.setFixedWidth(70)
-        ctrl_layout.addWidget(home_btn, 1, 0)
-
-        homepage_window_btn = QPushButton("Open in Window (Home)")
-        homepage_window_btn.setToolTip(
-            "Open the original homepage for this web card in your system browser."
+        home_btn = _make_web_button(
+            ctrl,
+            "Home",
+            "Return the dock to the web card's stored homepage.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_DirHomeIcon),
         )
-        ctrl_layout.addWidget(homepage_window_btn, 1, 1)
+        window_btn = _make_web_button(
+            ctrl,
+            "Open Page",
+            "Open the current page in your system browser.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
+        )
+        homepage_window_btn = _make_web_button(
+            ctrl,
+            "Open Home",
+            "Open the original homepage for this web card in your system browser.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
+        )
+        resume_btn = _make_web_button(
+            ctrl,
+            "Resume",
+            "Reopen saved media progress in your system browser.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
+        )
+        resume_btn.setVisible(False)
 
         track_cb = QCheckBox("Track via Chrome extension")
         track_cb.setChecked(bool(self.runtime.track_window_with_extension))
@@ -864,16 +952,38 @@ class _WebDockController:
             "When checked, opening this page externally lets the Incremento Companion "
             "extension keep the web card synced to the latest page visited in that tab."
         )
-        ctrl_layout.addWidget(track_cb, 1, 2)
+        ctrl_layout.addWidget(track_cb, 0, 2, alignment=Qt.AlignmentFlag.AlignRight)
 
-        window_btn = QPushButton("Open in Window")
-        ctrl_layout.addWidget(window_btn, 1, 3)
+        capture_group = _make_web_group(
+            ctrl,
+            "Capture",
+            add_card_btn,
+            extract_btn,
+            snapshot_btn,
+        )
+        saved_group = _make_web_group(
+            ctrl,
+            "Saved",
+            bookmark_btn,
+            bookmarks_btn,
+            cards_btn,
+        )
+        nav_group = _make_web_group(ctrl, "Navigate", home_btn)
+        external_group = _make_web_group(
+            ctrl,
+            "External",
+            window_btn,
+            homepage_window_btn,
+            resume_btn,
+        )
 
-        resume_btn = QPushButton("Resume")
-        resume_btn.setVisible(False)
-        ctrl_layout.addWidget(resume_btn, 1, 4)
+        ctrl_layout.addWidget(capture_group, 1, 0, 1, 2)
+        ctrl_layout.addWidget(saved_group, 1, 2, alignment=Qt.AlignmentFlag.AlignRight)
+        ctrl_layout.addWidget(nav_group, 2, 0)
+        ctrl_layout.addWidget(external_group, 2, 1, 1, 2, alignment=Qt.AlignmentFlag.AlignRight)
 
         ctrl_layout.setColumnStretch(0, 1)
+        ctrl_layout.setColumnStretch(1, 1)
 
         vbox.addWidget(ctrl)
 

@@ -11,6 +11,7 @@ time so there is no practical issue.
 
 import json
 import os
+import time
 from html import escape
 
 from aqt import mw
@@ -162,6 +163,9 @@ _current_pdf_card_id = None
 _current_pdf_filename = None
 _pdf_via_link = False  # True when dock was opened via a cross-reference link
 _pdf_preserve_history = False
+_suppress_due_review_prompt_card_id: int | None = None
+_suppress_due_review_prompt_until = 0.0
+_PDF_ADD_PROMPT_SUPPRESSION_SECONDS = 5.0
 
 
 def _config(config: dict | None = None) -> dict:
@@ -186,6 +190,39 @@ def current_pdf_card_id() -> int | None:
         return None
 _pdf_shortcuts = []
 _pdf_key_filter = None
+
+
+def _suppress_next_due_review_prompt_for_pdf_add(card_id: int) -> None:
+    global _suppress_due_review_prompt_card_id, _suppress_due_review_prompt_until
+    try:
+        normalized_card_id = int(card_id)
+    except Exception:
+        normalized_card_id = 0
+    if normalized_card_id <= 0:
+        return
+    _suppress_due_review_prompt_card_id = normalized_card_id
+    _suppress_due_review_prompt_until = time.monotonic() + _PDF_ADD_PROMPT_SUPPRESSION_SECONDS
+
+
+def _consume_due_review_prompt_suppression(card_id: int) -> bool:
+    global _suppress_due_review_prompt_card_id, _suppress_due_review_prompt_until
+    try:
+        normalized_card_id = int(card_id)
+    except Exception:
+        normalized_card_id = 0
+    now = time.monotonic()
+    if (
+        normalized_card_id <= 0
+        or _suppress_due_review_prompt_card_id != normalized_card_id
+        or now > float(_suppress_due_review_prompt_until or 0.0)
+    ):
+        if now > float(_suppress_due_review_prompt_until or 0.0):
+            _suppress_due_review_prompt_card_id = None
+            _suppress_due_review_prompt_until = 0.0
+        return False
+    _suppress_due_review_prompt_card_id = None
+    _suppress_due_review_prompt_until = 0.0
+    return True
 
 
 def _browse_note_in_browser(note_id: int) -> None:
@@ -1701,7 +1738,7 @@ def show_pdf_in_dock(
     else:
         _pdf_dock._view.page().runJavaScript(js)
 
-    if offer_due_review_prompt:
+    if offer_due_review_prompt and not _consume_due_review_prompt_suppression(int(card_id)):
         QTimer.singleShot(
             0,
             lambda cid=int(card_id), pg=int(page): _offer_due_review_for_pdf(
@@ -1764,6 +1801,7 @@ def on_add_cards_did_add_note(note) -> None:
     source = _add_card_source_for_new_note()
     if source and source != "pdf":
         return
+    _suppress_next_due_review_prompt_for_pdf_add(int(_current_pdf_card_id))
     page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
     import re as _re
 

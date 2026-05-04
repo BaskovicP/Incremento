@@ -154,6 +154,7 @@ _ROLE_CARD_ID = int(Qt.ItemDataRole.UserRole)
 _ROLE_NODE_KIND = _ROLE_CARD_ID + 1
 _ROLE_BASE_TITLE = _ROLE_CARD_ID + 2
 _KEEP_FOCUS = object()
+_KEEP_SELECTION = object()
 _ICON_CACHE: dict[str, QIcon] = {}
 
 
@@ -834,7 +835,7 @@ class KnowledgeTreeDialog(QDialog):
 
         intro_hint = QLabel(
             "Drag to reorder. Drop onto another node to reparent. Double-click a title to rename. "
-            "Right-click a node for branch actions."
+            "Cmd/Ctrl-click or Shift-click to multi-select. Right-click a node for branch actions."
         )
         intro_hint.setObjectName("KnowledgeHint")
         intro_hint.setWordWrap(True)
@@ -862,7 +863,7 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.setColumnCount(2)
         self._tree.setHeaderLabels(["Knowledge", "Priority"])
         self._tree.setAlternatingRowColors(True)
-        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self._tree.setDefaultDropAction(Qt.DropAction.MoveAction)
@@ -1197,11 +1198,15 @@ class KnowledgeTreeDialog(QDialog):
 
     def _show_context_menu(self, pos) -> None:
         clicked_item = self._tree.itemAt(pos)
-        if clicked_item is not None:
+        if clicked_item is not None and not clicked_item.isSelected():
+            self._tree.clearSelection()
+            clicked_item.setSelected(True)
             self._tree.setCurrentItem(clicked_item)
 
-        has_selection = self._selected_item() is not None
-        has_parent = bool(has_selection and get_parent_card_id(
+        selected_count = len(self._selected_items())
+        has_selection = selected_count > 0
+        has_single_selection = selected_count == 1
+        has_parent = bool(has_single_selection and get_parent_card_id(
             self._addon_dir,
             self._profile,
             int(self._selected_card_id() or 0),
@@ -1287,11 +1292,11 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(collapse_action.triggered, lambda _checked=False: self._collapse_selected_branch())
         qconnect(remove_action.triggered, lambda _checked=False: self._remove_selected_node())
 
-        rename_action.setEnabled(has_selection)
-        priority_action.setEnabled(has_selection)
-        study_action.setEnabled(has_selection)
-        subset_action.setEnabled(has_selection)
-        browser_action.setEnabled(has_selection)
+        rename_action.setEnabled(has_single_selection)
+        priority_action.setEnabled(has_single_selection)
+        study_action.setEnabled(has_single_selection)
+        subset_action.setEnabled(has_single_selection)
+        browser_action.setEnabled(has_single_selection)
         parent_action.setEnabled(has_parent)
         expand_action.setEnabled(has_selection)
         collapse_action.setEnabled(has_selection)
@@ -1316,9 +1321,46 @@ class KnowledgeTreeDialog(QDialog):
         menu.addAction(remove_action)
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 
+    def _selected_items(self) -> list[QTreeWidgetItem]:
+        return list(self._tree.selectedItems())
+
     def _selected_item(self) -> QTreeWidgetItem | None:
-        items = self._tree.selectedItems()
+        current = self._tree.currentItem()
+        if current is not None and current.isSelected():
+            return current
+        items = self._selected_items()
         return items[0] if items else None
+
+    def _selected_card_ids(self) -> list[int]:
+        card_ids: list[int] = []
+        seen: set[int] = set()
+        for item in self._selected_items():
+            value = item.data(0, _ROLE_CARD_ID)
+            if value is None:
+                continue
+            card_id = int(value)
+            if card_id in seen:
+                continue
+            seen.add(card_id)
+            card_ids.append(card_id)
+        return card_ids
+
+    def _selected_card_ids_in_tree_order(self) -> list[int]:
+        selected = set(self._selected_card_ids())
+        ordered: list[int] = []
+        if not selected:
+            return ordered
+
+        def visit(item: QTreeWidgetItem) -> None:
+            card_id = int(item.data(0, _ROLE_CARD_ID))
+            if card_id in selected:
+                ordered.append(card_id)
+            for index in range(item.childCount()):
+                visit(item.child(index))
+
+        for index in range(self._tree.topLevelItemCount()):
+            visit(self._tree.topLevelItem(index))
+        return ordered
 
     def _selected_card_id(self) -> int | None:
         item = self._selected_item()
@@ -1326,6 +1368,12 @@ class KnowledgeTreeDialog(QDialog):
             return None
         value = item.data(0, _ROLE_CARD_ID)
         return None if value is None else int(value)
+
+    def _single_selected_card_id(self) -> int | None:
+        card_ids = self._selected_card_ids()
+        if len(card_ids) != 1:
+            return None
+        return int(card_ids[0])
 
     def _selected_parent_card_id_for_insert(self) -> int | None:
         return self._selected_card_id()
@@ -1375,7 +1423,10 @@ class KnowledgeTreeDialog(QDialog):
                 self._profile,
                 self._current_tree_rows(),
             )
-            self.reload(select_card_id=self._selected_card_id())
+            self.reload(
+                select_card_id=self._selected_card_id(),
+                select_card_ids=self._selected_card_ids(),
+            )
         except Exception as exc:
             showInfo(f"Failed to move knowledge-tree node:\n{exc}")
             self.reload()
@@ -1422,6 +1473,7 @@ class KnowledgeTreeDialog(QDialog):
         self,
         *,
         select_card_id: int | None = None,
+        select_card_ids: list[int] | tuple[int, ...] | set[int] | object = _KEEP_SELECTION,
         focus_card_id: int | None | object = _KEEP_FOCUS,
     ) -> None:
         if focus_card_id is not _KEEP_FOCUS:
@@ -1434,6 +1486,16 @@ class KnowledgeTreeDialog(QDialog):
             if select_card_id is not None
             else self._selected_card_id()
         )
+        if select_card_ids is _KEEP_SELECTION:
+            requested_card_ids = self._selected_card_ids()
+        else:
+            requested_card_ids = [
+                int(card_id)
+                for card_id in list(select_card_ids or [])
+                if card_id is not None
+            ]
+        if requested_card_id is not None and requested_card_id not in requested_card_ids:
+            requested_card_ids.insert(0, requested_card_id)
         expanded_card_ids = self._expanded_card_ids()
 
         try:
@@ -1472,7 +1534,9 @@ class KnowledgeTreeDialog(QDialog):
         finally:
             self._building = False
 
-        if requested_card_id is not None:
+        if requested_card_ids:
+            self._apply_selection(requested_card_ids, anchor_card_id=requested_card_id)
+        elif requested_card_id is not None:
             self._select_card_id(requested_card_id)
         elif self._tree.topLevelItemCount():
             self._tree.setCurrentItem(self._tree.topLevelItem(0))
@@ -1493,8 +1557,32 @@ class KnowledgeTreeDialog(QDialog):
                 return
 
     def _select_card_id(self, card_id: int) -> None:
-        if not card_id:
+        self._apply_selection([int(card_id)], anchor_card_id=int(card_id))
+
+    def _apply_selection(
+        self,
+        card_ids: list[int] | tuple[int, ...] | set[int],
+        *,
+        anchor_card_id: int | None = None,
+    ) -> None:
+        normalized_ids: list[int] = []
+        seen: set[int] = set()
+        for raw_card_id in list(card_ids):
+            card_id = int(raw_card_id)
+            if card_id in seen:
+                continue
+            seen.add(card_id)
+            normalized_ids.append(card_id)
+        if not normalized_ids and anchor_card_id is None:
             return
+
+        self._tree.clearSelection()
+
+        anchor_id = (
+            int(anchor_card_id)
+            if anchor_card_id is not None
+            else int(normalized_ids[0])
+        )
 
         def visit(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
             if int(item.data(0, _ROLE_CARD_ID)) == int(card_id):
@@ -1505,19 +1593,32 @@ class KnowledgeTreeDialog(QDialog):
                     return found
             return None
 
-        for index in range(self._tree.topLevelItemCount()):
-            found = visit(self._tree.topLevelItem(index))
-            if found is not None:
+        selected_anchor: QTreeWidgetItem | None = None
+        fallback_anchor: QTreeWidgetItem | None = None
+        for selected_id in normalized_ids:
+            card_id = int(selected_id)
+            for index in range(self._tree.topLevelItemCount()):
+                found = visit(self._tree.topLevelItem(index))
+                if found is None:
+                    continue
                 parent = found.parent()
                 while parent is not None:
                     parent.setExpanded(True)
                     parent = parent.parent()
-                self._tree.setCurrentItem(found)
-                self._tree.scrollToItem(
-                    found,
-                    QAbstractItemView.ScrollHint.PositionAtCenter,
-                )
-                return
+                found.setSelected(True)
+                if fallback_anchor is None:
+                    fallback_anchor = found
+                if card_id == anchor_id:
+                    selected_anchor = found
+                break
+
+        anchor_item = selected_anchor or fallback_anchor
+        if anchor_item is not None:
+            self._tree.setCurrentItem(anchor_item)
+            self._tree.scrollToItem(
+                anchor_item,
+                QAbstractItemView.ScrollHint.PositionAtCenter,
+            )
 
     def _title_for_card_id(self, card_id: int | None) -> str:
         if card_id is None:
@@ -1568,8 +1669,8 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.expandAll()
 
     def _expand_selected_branch(self) -> None:
-        item = self._selected_item()
-        if item is None:
+        items = self._selected_items()
+        if not items:
             return
 
         def visit(node: QTreeWidgetItem) -> None:
@@ -1577,16 +1678,20 @@ class KnowledgeTreeDialog(QDialog):
             for index in range(node.childCount()):
                 visit(node.child(index))
 
-        visit(item)
+        for item in items:
+            visit(item)
 
     def _collapse_selected_branch(self) -> None:
-        item = self._selected_item()
-        if item is None:
+        items = self._selected_items()
+        if not items:
             return
-        for index in range(item.childCount()):
-            self._collapse_branch_children(item.child(index))
-        item.setExpanded(False)
-        self._tree.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
+        anchor = self._selected_item()
+        for item in items:
+            for index in range(item.childCount()):
+                self._collapse_branch_children(item.child(index))
+            item.setExpanded(False)
+        if anchor is not None:
+            self._tree.scrollToItem(anchor, QAbstractItemView.ScrollHint.PositionAtCenter)
 
     def _collapse_branch_children(self, item: QTreeWidgetItem) -> None:
         for index in range(item.childCount()):
@@ -1594,35 +1699,38 @@ class KnowledgeTreeDialog(QDialog):
         item.setExpanded(False)
 
     def _refresh_selection_ui(self) -> None:
+        selected_card_ids = self._selected_card_ids_in_tree_order()
+        selected_count = len(selected_card_ids)
         card_id = self._selected_card_id()
         selected_title = self._title_for_card_id(card_id) if card_id is not None else ""
         parent_card_id = (
             get_parent_card_id(self._addon_dir, self._profile, int(card_id))
-            if card_id is not None
+            if selected_count == 1 and card_id is not None
             else None
         )
         has_selection = card_id is not None
+        has_single_selection = selected_count == 1
         has_parent = parent_card_id is not None
 
-        self._rename_btn.setEnabled(has_selection)
+        self._rename_btn.setEnabled(has_single_selection)
         self._remove_btn.setEnabled(has_selection)
-        self._priority_btn.setEnabled(has_selection)
-        self._study_btn.setEnabled(has_selection)
-        self._subset_btn.setEnabled(has_selection)
-        self._browser_btn.setEnabled(has_selection)
+        self._priority_btn.setEnabled(has_single_selection)
+        self._study_btn.setEnabled(has_single_selection)
+        self._subset_btn.setEnabled(has_single_selection)
+        self._browser_btn.setEnabled(has_single_selection)
         self._parent_btn.setEnabled(has_parent)
         self._postpone_btn.setEnabled(True)
 
-        self._inspector_study_btn.setEnabled(has_selection)
-        self._inspector_subset_btn.setEnabled(has_selection)
+        self._inspector_study_btn.setEnabled(has_single_selection)
+        self._inspector_subset_btn.setEnabled(has_single_selection)
         self._inspector_postpone_btn.setEnabled(True)
-        self._inspector_priority_btn.setEnabled(has_selection)
-        self._inspector_browser_btn.setEnabled(has_selection)
+        self._inspector_priority_btn.setEnabled(has_single_selection)
+        self._inspector_browser_btn.setEnabled(has_single_selection)
         self._inspector_parent_btn.setEnabled(has_parent)
-        self._inspector_rename_btn.setEnabled(has_selection)
+        self._inspector_rename_btn.setEnabled(has_single_selection)
         self._inspector_remove_btn.setEnabled(has_selection)
 
-        self._update_insert_buttons(selected_title)
+        self._update_insert_buttons(selected_title, selected_count)
         self._update_workspace_summary(selected_title, card_id)
 
         if not has_selection:
@@ -1666,6 +1774,68 @@ class KnowledgeTreeDialog(QDialog):
                 str(empty_summary.get("range_line") or ""),
             )
             self._branch_hint.setText(str(empty_summary.get("impact_line") or ""))
+            return
+
+        if selected_count > 1:
+            topic_count = 0
+            item_count = 0
+            for selected_card_id in selected_card_ids:
+                row = self._row_by_card_id.get(int(selected_card_id), {})
+                if normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC) == NODE_KIND_TOPIC:
+                    topic_count += 1
+                else:
+                    item_count += 1
+
+            _set_badge_style(
+                self._kind_badge,
+                f"{selected_count} Selected",
+                background="rgba(74,122,181,0.18)",
+                foreground="palette(text)",
+                border="rgba(74,122,181,0.30)",
+            )
+            if self._focus_card_id is not None and int(self._focus_card_id) in set(selected_card_ids):
+                _set_badge_style(
+                    self._focus_badge,
+                    "Focused Included",
+                    background="rgba(74,122,181,0.18)",
+                    foreground="palette(text)",
+                    border="rgba(74,122,181,0.30)",
+                )
+            else:
+                self._focus_badge.setVisible(False)
+
+            anchor_title = self._title_for_card_id(card_id)
+            self._selection_title.setText(f"{selected_count} nodes selected")
+            meta_parts = []
+            if topic_count:
+                meta_parts.append(f"{topic_count} topic{'' if topic_count == 1 else 's'}")
+            if item_count:
+                meta_parts.append(f"{item_count} item{'' if item_count == 1 else 's'}")
+            meta_parts.append(f"anchor: {anchor_title}")
+            self._selection_meta.setText("  ·  ".join(meta_parts))
+            self._selection_note.setText(
+                "Multi-selection is enabled. Remove, expand, and collapse apply to every selected node. "
+                "Single-node actions like Rename, Priority, Study Branch, Subset Review, Browser, and Parent require exactly one selection."
+            )
+            self._parent_value.setText("Parent branch: Single-node actions require exactly one selected node.")
+            self._lineage_value.setText(f"Anchor lineage: {self._lineage_text_for_card_id(card_id).replace('Lineage: ', '')}")
+            _set_optional_label_text(
+                self._branch_size_value,
+                f"Selected nodes: {selected_count}"
+            )
+            _set_optional_label_text(
+                self._branch_children_value,
+                f"Topics: {topic_count}  ·  Items: {item_count}"
+            )
+            _set_optional_label_text(
+                self._branch_depth_value,
+                "Branch depth and priority summaries are shown for a single selected branch."
+            )
+            _set_optional_label_text(self._branch_priority_value, "")
+            _set_optional_label_text(self._branch_range_value, "")
+            self._branch_hint.setText(
+                "Use Cmd/Ctrl-click or Shift-click to refine the selection, or keep one node selected to inspect a single branch in detail."
+            )
             return
 
         meta = get_card_metadata(
@@ -1741,13 +1911,18 @@ class KnowledgeTreeDialog(QDialog):
         )
         self._branch_hint.setText(str(summary.get("impact_line") or ""))
 
-    def _update_insert_buttons(self, selected_title: str) -> None:
+    def _update_insert_buttons(self, selected_title: str, selected_count: int) -> None:
         if selected_title:
             self._inspector_topic_btn.setText("Add Topic Child")
             self._inspector_item_btn.setText("Add Item Child")
-            self._insert_target_label.setText(
-                f"New cards will be inserted under: {selected_title}"
-            )
+            if selected_count > 1:
+                self._insert_target_label.setText(
+                    f"New cards will be inserted under the anchor node: {selected_title}"
+                )
+            else:
+                self._insert_target_label.setText(
+                    f"New cards will be inserted under: {selected_title}"
+                )
             self._topic_btn.setToolTip(
                 f"Create or link a topic under {selected_title}. Use the menu arrow to link an existing card."
             )
@@ -1805,6 +1980,9 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.editItem(item, 0)
 
     def _rename_selected_node(self) -> None:
+        if self._single_selected_card_id() is None:
+            tooltip("Select exactly one knowledge-tree node to rename it.")
+            return
         item = self._selected_item()
         if item is None:
             return
@@ -1968,24 +2146,30 @@ class KnowledgeTreeDialog(QDialog):
         showInfo("No selected cards could be linked." + (f"\n\n{details}" if details else ""))
 
     def _remove_selected_node(self) -> None:
-        card_id = self._selected_card_id()
-        if card_id is None:
+        card_ids = self._selected_card_ids_in_tree_order()
+        if not card_ids:
             return
 
         try:
-            removed = delete_knowledge_tree_node(self._addon_dir, self._profile, card_id)
+            removed_count = 0
+            for card_id in reversed(card_ids):
+                if delete_knowledge_tree_node(self._addon_dir, self._profile, int(card_id)):
+                    removed_count += 1
         except Exception as exc:
             showInfo(f"Failed to remove the selected node from the knowledge tree:\n{exc}")
             return
 
-        if not removed:
+        if not removed_count:
             return
         self.reload()
-        tooltip("Node removed from the knowledge tree.")
+        tooltip(
+            f"Removed {removed_count} node{'' if removed_count == 1 else 's'} from the knowledge tree."
+        )
 
     def _change_selected_priority(self) -> None:
-        card_id = self._selected_card_id()
+        card_id = self._single_selected_card_id()
         if card_id is None:
+            tooltip("Select exactly one knowledge-tree node to change its priority.")
             return
         meta = get_card_metadata(
             int(card_id),
@@ -2077,8 +2261,9 @@ class KnowledgeTreeDialog(QDialog):
             )
 
     def _study_selected_branch(self) -> None:
-        card_id = self._selected_card_id()
+        card_id = self._single_selected_card_id()
         if card_id is None:
+            tooltip("Select exactly one knowledge-tree node to study its branch.")
             return
 
         handler = self._open_branch_study
@@ -2108,8 +2293,9 @@ class KnowledgeTreeDialog(QDialog):
             showInfo(f"Could not open the branch study session:\n{exc}")
 
     def _open_subset_review_dialog(self) -> None:
-        card_id = self._selected_card_id()
+        card_id = self._single_selected_card_id()
         if card_id is None:
+            tooltip("Select exactly one knowledge-tree node to open subset review.")
             return
 
         dlg = KnowledgeTreeSubsetDialog(
@@ -2151,8 +2337,9 @@ class KnowledgeTreeDialog(QDialog):
             self.reload(select_card_id=self._selected_card_id())
 
     def _go_to_parent(self) -> None:
-        card_id = self._selected_card_id()
+        card_id = self._single_selected_card_id()
         if card_id is None:
+            tooltip("Select exactly one knowledge-tree node to jump to its parent.")
             return
         parent_card_id = get_parent_card_id(
             self._addon_dir,
@@ -2166,8 +2353,9 @@ class KnowledgeTreeDialog(QDialog):
         tooltip("Selected the parent node.")
 
     def _open_selected_in_browser(self) -> None:
-        card_id = self._selected_card_id()
+        card_id = self._single_selected_card_id()
         if card_id is None:
+            tooltip("Select exactly one knowledge-tree node to open it in Browser.")
             return
         meta = get_card_metadata(
             int(card_id),

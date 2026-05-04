@@ -94,6 +94,7 @@ from .backend.topic_a_factor_bulk import (
 )
 from .backend.web_manager import (
     WEB_NOTE_TYPE,
+    configured_track_web_window_with_extension,
     configured_remember_browser_card_scroll,
     configured_prefer_web_card_resume_in_original_page,
     get_web_progress,
@@ -4122,6 +4123,7 @@ def openSettingsFunction() -> None:
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
+        current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_item_skip_enabled=_configured_item_skip_enabled(cfg),
         current_item_skip_minutes=_configured_item_skip_minutes(cfg),
@@ -4169,6 +4171,7 @@ def openSettingsFunction() -> None:
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
+    cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["item_skip_enabled"] = dlg.item_skip_enabled
     cfg["item_skip_minutes"] = dlg.item_skip_minutes
@@ -4199,9 +4202,28 @@ def openSettingsFunction() -> None:
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     mw.addonManager.writeConfig(__name__, cfg)
     try:
+        if _web_dock_mod._runtime.dock is not None:
+            checked = bool(dlg.track_web_window_with_extension)
+            _web_dock_mod._runtime.track_window_with_extension = checked
+            _web_dock_mod._runtime.dock._track_cb.setChecked(checked)
+    except Exception:
+        pass
+    try:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"
         )
+    except Exception:
+        pass
+    try:
+        if getattr(_epub_dock_mod, "_epub_dock", None) is not None:
+            _epub_dock_mod._epub_dock._highlight_extract_cb.blockSignals(True)
+            _epub_dock_mod._epub_dock._highlight_extract_cb.setChecked(
+                bool(dlg.extract_highlight_when_extracting)
+            )
+            _epub_dock_mod._epub_dock._highlight_extract_cb.blockSignals(False)
+            _epub_dock_mod._epub_dock._view.page().runJavaScript(
+                f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"
+            )
     except Exception:
         pass
     _apply_shortcuts_from_config()
