@@ -209,10 +209,8 @@ export function usePdfRender() {
     window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
 
-  const markRead = useCallback((anchor = null) => {
-    const p   = pageRef.current;
-    const cur = readPageRef.current;
-    const newRp = (p <= cur) ? 0 : p;
+  const setReadProgress = useCallback((readPageValue, anchor = null) => {
+    const newRp = Math.max(0, parseInt(readPageValue, 10) || 0);
     readPageRef.current = newRp;
     setReadPage(newRp);
     window.pycmd('incremento_pdf_mark_read:' + JSON.stringify({
@@ -221,6 +219,12 @@ export function usePdfRender() {
       anchor: newRp > 0 ? anchor : null,
     }));
   }, []);
+
+  const markRead = useCallback((anchor = null) => {
+    const p   = pageRef.current;
+    const cur = readPageRef.current;
+    setReadProgress((p <= cur) ? 0 : p, anchor);
+  }, [setReadProgress]);
 
   /* ── Text-layer event isolation ───────────────────────────────────────────── */
   useEffect(() => {
@@ -264,6 +268,6 @@ export function usePdfRender() {
     // Refs read by PdfViewer for keyboard/snapshot/highlight logic
     pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     // Callbacks
-    startViewer, nav, adjustZoom, markRead,
+    startViewer, nav, adjustZoom, markRead, setReadProgress,
   };
 }

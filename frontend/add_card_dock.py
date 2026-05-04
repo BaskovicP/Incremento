@@ -1713,6 +1713,35 @@ def _prime_editor_note_for_extract(
     _schedule_add_card_tag_button_refresh(editor)
 
 
+def _apply_pending_extract_tags_to_editor(
+    editor,
+    *,
+    mark_topic: bool = False,
+) -> bool:
+    note = getattr(editor, "note", None)
+    if note is None:
+        return False
+
+    options = pending_extract_options() or {}
+    tags_changed = False
+    if configured_extract_copy_source_tags():
+        source_tags = options.get("source_tags") or []
+        if not source_tags:
+            source_tags = source_note_tags_for_card(
+                _source_card_id_from_extract_options(options)
+            )
+        tags_changed = bool(copy_source_tags_to_note(note, source_tags))
+
+    if mark_topic and add_topic_tags_to_note(note):
+        tags_changed = True
+
+    if tags_changed:
+        _set_editor_tags(editor, _note_tags(note))
+        _schedule_editor_tag_widget_sync(editor)
+        _schedule_add_card_tag_button_refresh(editor)
+    return tags_changed
+
+
 def prepare_reviewer_extract(
     *,
     selected_text: str,
@@ -1949,18 +1978,21 @@ def build_add_card_dock():
         if note and idx < len(note.fields):
             existing = note.fields[idx]
             note.fields[idx] = (existing + '<br><br>' + text) if existing else text
-            if mark_topic:
-                add_topic_tags_to_note(note)
+            tags_changed = _apply_pending_extract_tags_to_editor(
+                dlg.editor,
+                mark_topic=mark_topic,
+            )
             try:
                 dlg.editor.loadNote()
             except Exception:
                 pass
             _set_transfer_buttons_visible(dlg.editor, _has_recent_selection())
-            if mark_topic:
+            if mark_topic or tags_changed:
                 _set_editor_tags(dlg.editor, _note_tags(note))
                 _schedule_editor_tag_widget_sync(dlg.editor)
-                _set_add_card_tag_button_state(dlg.editor, _TOPIC_TAG_BUTTON_ID, True)
                 _schedule_add_card_tag_button_refresh(dlg.editor)
+                if mark_topic:
+                    _set_add_card_tag_button_state(dlg.editor, _TOPIC_TAG_BUTTON_ID, True)
 
     dock._set_field = _set_field
     return dock

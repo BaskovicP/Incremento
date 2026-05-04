@@ -7223,10 +7223,8 @@
       renderPage(pageRef.current);
       window.pycmd("incremento_pdf_zoom:" + cardIdRef.current + ":" + clamped);
     }, [renderPage]);
-    const markRead = reactExports.useCallback((anchor = null) => {
-      const p = pageRef.current;
-      const cur = readPageRef.current;
-      const newRp = p <= cur ? 0 : p;
+    const setReadProgress = reactExports.useCallback((readPageValue, anchor = null) => {
+      const newRp = Math.max(0, parseInt(readPageValue, 10) || 0);
       readPageRef.current = newRp;
       setReadPage(newRp);
       window.pycmd("incremento_pdf_mark_read:" + JSON.stringify({
@@ -7235,6 +7233,11 @@
         anchor: newRp > 0 ? anchor : null
       }));
     }, []);
+    const markRead = reactExports.useCallback((anchor = null) => {
+      const p = pageRef.current;
+      const cur = readPageRef.current;
+      setReadProgress(p <= cur ? 0 : p, anchor);
+    }, [setReadProgress]);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
       if (!tl) return;
@@ -7293,7 +7296,8 @@
       startViewer,
       nav: nav2,
       adjustZoom,
-      markRead
+      markRead,
+      setReadProgress
     };
   }
   const HL_COLORS$1 = {
@@ -7660,7 +7664,7 @@
       startViewer,
       nav: rawNav,
       adjustZoom,
-      markRead: rawMarkRead
+      setReadProgress: rawSetReadProgress
     } = usePdfRender();
     const [highlights, setHighlights] = reactExports.useState([]);
     const [hlColor, setHlColor] = reactExports.useState("yellow");
@@ -7691,13 +7695,13 @@
     const lastReadAnchorSpanRef = reactExports.useRef(null);
     const pageHighlights = highlights.filter((h) => h.page === page);
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
-    const readMarkerRect = readAnchor && readPage > 0 && Number(readAnchor.page || 0) === page && Number.isFinite(Number(readAnchor.x)) && Number.isFinite(Number(readAnchor.y)) && Number.isFinite(Number(readAnchor.w)) && Number.isFinite(Number(readAnchor.h)) ? {
+    const showReadMarker = readAnchor && readPage > 0 && page === readPage && Number(readAnchor.page || 0) === page;
+    const readMarkerRect = showReadMarker && Number.isFinite(Number(readAnchor.x)) && Number.isFinite(Number(readAnchor.y)) && Number.isFinite(Number(readAnchor.w)) && Number.isFinite(Number(readAnchor.h)) ? {
       x: Number(readAnchor.x || 0),
       y: Number(readAnchor.y || 0),
       w: Number(readAnchor.w || 0),
       h: Number(readAnchor.h || 0)
     } : null;
-    const showReadMarker = readPage > 0 && page === readPage;
     const progressPct = totalPages > 0 && readPage > 0 ? Math.max(0, Math.min(100, Math.round(readPage / totalPages * 100))) : 0;
     const progressSegments = 10;
     const filledSegments = Math.round(progressPct / 100 * progressSegments);
@@ -8081,10 +8085,23 @@
         return;
       }
       const nextReadPage = pageRef.current <= readPage ? 0 : pageRef.current;
-      const anchor = nextReadPage > 0 ? buildReadAnchor() : null;
+      setReadAnchor(null);
+      rawSetReadProgress(nextReadPage, null);
+    }, [canMarkReadAtPage, pageRef, rawSetReadProgress, readPage]);
+    const limitAwareMarkReadAnchor = reactExports.useCallback(() => {
+      const currentPage = pageRef.current;
+      if (!canMarkReadAtPage(currentPage)) {
+        return;
+      }
+      if (showReadMarker) {
+        setReadAnchor(null);
+        rawSetReadProgress(currentPage, null);
+        return;
+      }
+      const anchor = buildReadAnchor();
       setReadAnchor(anchor);
-      rawMarkRead(anchor);
-    }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawMarkRead, readPage]);
+      rawSetReadProgress(currentPage, anchor);
+    }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawSetReadProgress, showReadMarker]);
     reactExports.useEffect(() => {
       const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
         setHighlights(window._incPdfHighlights || []);
@@ -8282,7 +8299,7 @@
                         /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
-                            title: readPage > 0 ? `Read up to page ${readPage} — click to toggle` : "Mark pages as read up to here",
+                            title: readPage > 0 ? `Read up to page ${readPage} — click to toggle progress only` : "Mark pages as read up to here without placing an exact marker",
                             style: {
                               background: readPage > 0 && page <= readPage ? "rgba(34,197,94,0.3)" : "transparent",
                               border: "1px solid rgba(34,197,94,0.6)",
@@ -8300,8 +8317,8 @@
                         /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
-                            title: showReadMarker ? "Remove the READ UP UNTIL HERE marker from this page" : "Place the READ UP UNTIL HERE marker on this page",
-                            "aria-label": "Toggle read marker",
+                            title: showReadMarker ? "Remove the exact READ UP UNTIL HERE marker from this page" : "Place the exact READ UP UNTIL HERE marker at the current text row",
+                            "aria-label": "Toggle exact read marker",
                             style: {
                               display: "inline-flex",
                               alignItems: "center",
@@ -8318,7 +8335,7 @@
                               border: showReadMarker ? "1px solid rgba(14,165,233,0.75)" : "1px solid rgba(180,180,180,0.32)",
                               boxShadow: showReadMarker ? "0 0 0 1px rgba(14,165,233,0.12) inset" : "none"
                             },
-                            onClick: limitAwareMarkRead,
+                            onClick: limitAwareMarkReadAnchor,
                             children: "↦"
                           }
                         ),

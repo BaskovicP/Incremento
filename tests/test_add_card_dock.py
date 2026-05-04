@@ -818,6 +818,72 @@ def test_prime_editor_note_for_extract_copies_source_tags_before_topic_tags(monk
     assert tag_refresh == [editor]
 
 
+def test_pending_pdf_extract_applies_source_tags_to_add_card_editor(monkeypatch):
+    note = _FakeNote(["existing", "Source"], note_id=11)
+    editor = _FakeEditor(note=note, add_mode=True)
+    refreshed = []
+    tag_refresh = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: refreshed.append(current_editor))
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: tag_refresh.append(current_editor))
+
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_options",
+        {
+            "priority": 25.0,
+            "mark_topic": False,
+            "link_to_knowledge_tree": False,
+            "source": "pdf",
+            "source_card_id": 99,
+            "source_tags": ["Topic", "Source", "PDF"],
+            "seen": 0.0,
+        },
+    )
+
+    changed = dock._apply_pending_extract_tags_to_editor(editor)
+
+    assert changed is True
+    assert note.tags == ["existing", "Source", "Topic", "PDF"]
+    assert editor.tags.text() == "existing Source Topic PDF"
+    assert refreshed == [editor]
+    assert tag_refresh == [editor]
+    assert dock.pending_extract_options()["source_tags"] == ["Topic", "Source", "PDF"]
+
+
+def test_pending_pdf_extract_leaves_tags_untouched_when_copy_disabled(monkeypatch):
+    note = _FakeNote(["existing"], note_id=11)
+    editor = _FakeEditor(note=note, add_mode=True)
+    refreshed = []
+    tag_refresh = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: False)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: refreshed.append(current_editor))
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: tag_refresh.append(current_editor))
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_options",
+        {
+            "priority": 25.0,
+            "mark_topic": False,
+            "link_to_knowledge_tree": False,
+            "source": "pdf",
+            "source_card_id": 99,
+            "source_tags": ["Topic", "Source"],
+            "seen": 0.0,
+        },
+    )
+
+    changed = dock._apply_pending_extract_tags_to_editor(editor)
+
+    assert changed is False
+    assert note.tags == ["existing"]
+    assert editor.tags.text() == "existing"
+    assert refreshed == []
+    assert tag_refresh == []
+
+
 def test_prepare_reviewer_extract_primes_native_add_dialog(monkeypatch):
     note = _FakeNote(note_id=22)
     editor = _FakeEditor(note, add_mode=True)

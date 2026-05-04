@@ -250,7 +250,7 @@ export default function PdfViewer() {
     page, totalPages, zoom, error, renderInfo, readPage,
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
-    startViewer, nav: rawNav, adjustZoom, markRead: rawMarkRead,
+    startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
   } = usePdfRender();
 
   // ── Highlight state ────────────────────────────────────────────────────────
@@ -289,10 +289,14 @@ export default function PdfViewer() {
   // ── Highlights for the current page ───────────────────────────────────────
   const pageHighlights = highlights.filter(h => h.page === page);
   const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
-  const readMarkerRect = (
+  const showReadMarker = (
     readAnchor
     && readPage > 0
+    && page === readPage
     && Number(readAnchor.page || 0) === page
+  );
+  const readMarkerRect = (
+    showReadMarker
     && Number.isFinite(Number(readAnchor.x))
     && Number.isFinite(Number(readAnchor.y))
     && Number.isFinite(Number(readAnchor.w))
@@ -305,7 +309,6 @@ export default function PdfViewer() {
         h: Number(readAnchor.h || 0),
       }
     : null;
-  const showReadMarker = readPage > 0 && page === readPage;
   const progressPct = (totalPages > 0 && readPage > 0)
     ? Math.max(0, Math.min(100, Math.round((readPage / totalPages) * 100)))
     : 0;
@@ -739,10 +742,24 @@ export default function PdfViewer() {
       return;
     }
     const nextReadPage = pageRef.current <= readPage ? 0 : pageRef.current;
-    const anchor = nextReadPage > 0 ? buildReadAnchor() : null;
+    setReadAnchor(null);
+    rawSetReadProgress(nextReadPage, null);
+  }, [canMarkReadAtPage, pageRef, rawSetReadProgress, readPage]);
+
+  const limitAwareMarkReadAnchor = useCallback(() => {
+    const currentPage = pageRef.current;
+    if (!canMarkReadAtPage(currentPage)) {
+      return;
+    }
+    if (showReadMarker) {
+      setReadAnchor(null);
+      rawSetReadProgress(currentPage, null);
+      return;
+    }
+    const anchor = buildReadAnchor();
     setReadAnchor(anchor);
-    rawMarkRead(anchor);
-  }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawMarkRead, readPage]);
+    rawSetReadProgress(currentPage, anchor);
+  }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawSetReadProgress, showReadMarker]);
 
   // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
@@ -974,7 +991,7 @@ export default function PdfViewer() {
               <span style={TOOLBAR_LABEL_STYLE}>Reading</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <button
-                  title={readPage > 0 ? `Read up to page ${readPage} — click to toggle` : 'Mark pages as read up to here'}
+                  title={readPage > 0 ? `Read up to page ${readPage} — click to toggle progress only` : 'Mark pages as read up to here without placing an exact marker'}
                   style={{
                     background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
                     border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 8,
@@ -987,8 +1004,8 @@ export default function PdfViewer() {
                   ✓ Read to here
                 </button>
                 <button
-                  title={showReadMarker ? 'Remove the READ UP UNTIL HERE marker from this page' : 'Place the READ UP UNTIL HERE marker on this page'}
-                  aria-label="Toggle read marker"
+                  title={showReadMarker ? 'Remove the exact READ UP UNTIL HERE marker from this page' : 'Place the exact READ UP UNTIL HERE marker at the current text row'}
+                  aria-label="Toggle exact read marker"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1005,7 +1022,7 @@ export default function PdfViewer() {
                     border: showReadMarker ? '1px solid rgba(14,165,233,0.75)' : '1px solid rgba(180,180,180,0.32)',
                     boxShadow: showReadMarker ? '0 0 0 1px rgba(14,165,233,0.12) inset' : 'none',
                   }}
-                  onClick={limitAwareMarkRead}
+                  onClick={limitAwareMarkReadAnchor}
                 >
                   ↦
                 </button>
