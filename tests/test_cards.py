@@ -269,6 +269,7 @@ class TestGetAllReadyCardIds:
         assert result == [1, 2, 3]
         call_arg = mock_mw.col.find_cards.call_args[0][0]
         assert "is:due" in call_arg or "is:new" in call_arg or "is:learn" in call_arg
+        assert "-is:suspended" in call_arg
 
 
 # ---------------------------------------------------------------------------

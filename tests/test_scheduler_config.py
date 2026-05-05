@@ -21,27 +21,27 @@ NO_TAGS_KEY = _mod.NO_TAGS_KEY
 class TestReadyFilter:
     def test_all_included(self):
         cfg = SchedulerConfig(include_new=True, include_learning=True, include_due=True)
-        assert cfg.ready_filter == "(is:new OR is:learn OR is:due)"
+        assert cfg.ready_filter == "(is:new OR is:learn OR is:due) -is:suspended"
 
     def test_only_new(self):
         cfg = SchedulerConfig(include_new=True, include_learning=False, include_due=False)
-        assert cfg.ready_filter == "is:new"
+        assert cfg.ready_filter == "is:new -is:suspended"
 
     def test_only_learning(self):
         cfg = SchedulerConfig(include_new=False, include_learning=True, include_due=False)
-        assert cfg.ready_filter == "is:learn"
+        assert cfg.ready_filter == "is:learn -is:suspended"
 
     def test_only_due(self):
         cfg = SchedulerConfig(include_new=False, include_learning=False, include_due=True)
-        assert cfg.ready_filter == "is:due"
+        assert cfg.ready_filter == "is:due -is:suspended"
 
     def test_new_and_due(self):
         cfg = SchedulerConfig(include_new=True, include_learning=False, include_due=True)
-        assert cfg.ready_filter == "(is:new OR is:due)"
+        assert cfg.ready_filter == "(is:new OR is:due) -is:suspended"
 
     def test_all_false_fallback(self):
         cfg = SchedulerConfig(include_new=False, include_learning=False, include_due=False)
-        assert cfg.ready_filter == "is:new"
+        assert cfg.ready_filter == "is:new -is:suspended"
 
 
 class TestConfigFromDialogDict:

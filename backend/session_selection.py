@@ -7,12 +7,12 @@ from typing import NamedTuple
 
 try:
     from . import cards as card_utils
-    from .scheduler import DOCUMENT_FILTER, get_card_from_scheduler
+    from .scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, get_card_from_scheduler
     from .statistics import StatsManager
     from .paths import get_active_profile as _active_profile
 except ImportError:
     import cards as card_utils  # type: ignore
-    from scheduler import DOCUMENT_FILTER, get_card_from_scheduler  # type: ignore
+    from scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, get_card_from_scheduler  # type: ignore
     from statistics import StatsManager  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
@@ -205,11 +205,70 @@ def _ordered_priority_tiers(cfg) -> list[tuple[int, list[dict]]]:
     return [(order, grouped[order]) for order in sorted(grouped)]
 
 
+def _apportion_counts(total: int, shares: dict[str, float]) -> dict[str, int]:
+    if total <= 0:
+        return {key: 0 for key in shares}
+    raw = {key: max(0.0, float(value or 0.0)) * total for key, value in shares.items()}
+    counts = {key: int(raw[key]) for key in shares}
+    remainder = int(total) - sum(counts.values())
+    if remainder <= 0:
+        return counts
+    ranked = sorted(
+        shares.keys(),
+        key=lambda key: (raw[key] - counts[key], key),
+        reverse=True,
+    )
+    for index in range(remainder):
+        counts[ranked[index % len(ranked)]] += 1
+    return counts
+
+
+def _expected_content_counts(cfg) -> dict[str, int]:
+    target_count = int(getattr(cfg, "session_card_count", 0) or 0)
+    pdf_rate = float(getattr(cfg, "pdf_rate", 0.0) or 0.0)
+    topics_rate = float(getattr(cfg, "topics_rate", 0.0) or 0.0)
+    shares = {
+        "pdf": pdf_rate,
+        "topics": topics_rate * (1.0 - pdf_rate),
+        "items": (1.0 - topics_rate) * (1.0 - pdf_rate),
+    }
+    return _apportion_counts(target_count, shares)
+
+
+def _ordered_tag_quota_target(cfg, tag: str) -> int:
+    tag_weights = dict(getattr(cfg, "tag_weights", {}) or {})
+    normalized_tag = str(tag or "")
+    if normalized_tag not in tag_weights:
+        return 0
+
+    real_weights = {
+        str(key): max(0.0, float(value or 0.0))
+        for key, value in tag_weights.items()
+        if str(key)
+    }
+    total_weight = sum(real_weights.values())
+    if total_weight <= 0.0:
+        return 0
+    if total_weight <= 1.0:
+        shares = dict(real_weights)
+        if bool(getattr(cfg, "include_rest", True)):
+            shares[NO_TAGS_KEY] = max(0.0, 1.0 - total_weight)
+    else:
+        shares = {key: value / total_weight for key, value in real_weights.items()}
+        if bool(getattr(cfg, "include_rest", True)):
+            shares[NO_TAGS_KEY] = 0.0
+
+    target = 0
+    for content_total in _expected_content_counts(cfg).values():
+        target += _apportion_counts(content_total, shares).get(normalized_tag, 0)
+    return max(0, int(target))
+
+
 def _ordered_priority_quota_target(cfg, entry: dict) -> int:
     kind = entry.get("kind")
     value = entry.get("value")
     if kind == "tag":
-        weight = float((getattr(cfg, "tag_weights", {}) or {}).get(value, 0.0) or 0.0)
+        return _ordered_tag_quota_target(cfg, str(value or ""))
     elif kind == "content_type":
         weight = float(
             (getattr(cfg, "content_type_weights", {}) or {}).get(value, 0.0) or 0.0

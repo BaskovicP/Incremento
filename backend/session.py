@@ -109,12 +109,6 @@ def _prepare_filtered_review_deck(
     else:
         did = mw.col.decks.new_filtered(deck_name)
 
-    if preserve_order:
-        for i, cid in enumerate(selected_ids):
-            card = mw.col.get_card(cid)
-            card.due = i
-            mw.col.update_card(card)
-
     fdu = mw.col.sched.get_or_create_filtered_deck(did)
     fdu.config.reschedule = True
     del fdu.config.search_terms[:]
@@ -125,6 +119,16 @@ def _prepare_filtered_review_deck(
     )
     op = mw.col.sched.add_or_update_filtered_deck(fdu)
     mw.col.sched.rebuild_filtered_deck(op.id)
+
+    if preserve_order:
+        position = 0
+        for cid in selected_ids:
+            card = mw.col.get_card(cid)
+            if int(getattr(card, "did", 0) or 0) != int(op.id):
+                continue
+            card.due = position
+            mw.col.update_card(card)
+            position += 1
 
     mw.col.decks.select(op.id)
     return int(op.id)

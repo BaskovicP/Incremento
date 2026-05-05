@@ -51,10 +51,10 @@ class SchedulerConfig:
         if self.include_due:
             parts.append("is:due")
         if not parts:
-            return "is:new"   # safety fallback — never emit an empty filter
+            return "is:new -is:suspended"   # safety fallback — never emit an empty filter
         if len(parts) == 1:
-            return parts[0]
-        return "(" + " OR ".join(parts) + ")"
+            return f"{parts[0]} -is:suspended"
+        return "(" + " OR ".join(parts) + ") -is:suspended"
 
 
 def load_scheduler_config() -> SchedulerConfig:

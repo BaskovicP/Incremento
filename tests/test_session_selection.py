@@ -613,6 +613,56 @@ def test_ordered_priority_tag_frontloads_only_its_configured_share():
     assert "-tag:writing" in scheduler_calls[0]["items_filter"]
 
 
+def test_ordered_priority_tag_quota_matches_content_estimate_total():
+    cfg = SchedulerConfig(
+        session_card_count=50,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"writing": 0.41, "ai": 0.59},
+        include_rest=True,
+        pdf_rate=0.54,
+        topics_rate=9 / 23,
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "tag", "value": "writing", "order": 1}],
+    )
+    writing_ids = list(range(1000, 1030))
+    fill_ids = iter(
+        types.SimpleNamespace(card=card_id, card_type="items", tag="ai", mode="random")
+        for card_id in range(2000, 2029)
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=writing_ids,
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=lambda **_: next(fill_ids),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids[:21] == writing_ids[:21]
+    assert result.picked_meta[writing_ids[20]]["selection_stage"] == "ordered_priority"
+    assert result.picked_meta[2000]["selection_stage"] == "scheduler"
+    assert writing_ids[21] not in result.selected_ids
+    assert result.stats.session["tags"]["writing"] == 21
+
+
 def test_topic_tagged_cards_can_enter_topic_pool_without_topics_deck_filter():
     cfg = SchedulerConfig(
         session_card_count=1,

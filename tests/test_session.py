@@ -261,7 +261,7 @@ class TestIncrementoSessionDeckNaming:
 
 
 class TestPrepareFilteredReviewDeck:
-    def test_preserve_order_uses_due_sort_and_assigns_due_before_rebuild(self, monkeypatch):
+    def test_preserve_order_assigns_due_after_rebuild(self, monkeypatch):
         updated_cards = []
         rebuild_calls = []
 
@@ -276,23 +276,34 @@ class TestPrepareFilteredReviewDeck:
                 search_terms=terms,
             )
         )
+        original_deck_id = 9
+        filtered_deck_id = 55
         cards = {
-            101: types.SimpleNamespace(id=101, due=999),
-            102: types.SimpleNamespace(id=102, due=999),
-            103: types.SimpleNamespace(id=103, due=999),
+            101: types.SimpleNamespace(id=101, due=999, did=original_deck_id),
+            102: types.SimpleNamespace(id=102, due=999, did=original_deck_id),
+            103: types.SimpleNamespace(id=103, due=999, did=original_deck_id),
         }
 
-        fake_sched = types.SimpleNamespace(
-            empty_filtered_deck=lambda did: None,
-            get_or_create_filtered_deck=lambda did: fdu,
-            add_or_update_filtered_deck=lambda fdu_arg: types.SimpleNamespace(id=55),
-            rebuild_filtered_deck=lambda did: rebuild_calls.append(
+        def _rebuild_filtered_deck(did):
+            rebuild_calls.append(
                 {
                     "did": did,
                     "dues": {cid: card.due for cid, card in cards.items()},
                     "terms": list(terms),
                 }
-            ),
+            )
+            cards[101].did = filtered_deck_id
+            cards[101].due = -99999
+            cards[102].did = original_deck_id
+            cards[102].due = -99998
+            cards[103].did = filtered_deck_id
+            cards[103].due = -99997
+
+        fake_sched = types.SimpleNamespace(
+            empty_filtered_deck=lambda did: None,
+            get_or_create_filtered_deck=lambda did: fdu,
+            add_or_update_filtered_deck=lambda fdu_arg: types.SimpleNamespace(id=filtered_deck_id),
+            rebuild_filtered_deck=_rebuild_filtered_deck,
         )
         fake_decks = types.SimpleNamespace(
             by_name=lambda name: None,
@@ -313,12 +324,13 @@ class TestPrepareFilteredReviewDeck:
             preserve_order=True,
         )
 
-        assert did == 55
-        assert updated_cards == [(101, 0), (102, 1), (103, 2)]
+        assert did == filtered_deck_id
+        assert updated_cards == [(101, 0), (103, 1)]
+        assert cards[102].due == -99998
         assert rebuild_calls == [
             {
-                "did": 55,
-                "dues": {101: 0, 102: 1, 103: 2},
+                "did": filtered_deck_id,
+                "dues": {101: 999, 102: 999, 103: 999},
                 "terms": [
                     {
                         "search": "cid:101 OR cid:102 OR cid:103",

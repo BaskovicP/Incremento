@@ -3180,10 +3180,10 @@ class SchedulerConfigDialog(QDialog):
         if self._cb_due.isChecked():
             parts.append("is:due")
         if not parts:
-            return "is:new"
+            return "is:new -is:suspended"
         if len(parts) == 1:
-            return parts[0]
-        return "(" + " OR ".join(parts) + ")"
+            return f"{parts[0]} -is:suspended"
+        return "(" + " OR ".join(parts) + ") -is:suspended"
 
     def _normalized_saved_filter(self, key: str, source: dict | None = None) -> str:
         lookup = self._saved if source is None else (source or {})
