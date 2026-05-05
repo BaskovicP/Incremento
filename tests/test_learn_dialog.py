@@ -111,7 +111,12 @@ def _build_dialog_for_profile_tests(profiles, selected_name=None, current_data=N
     dialog._profile_save_btn = _FakeButton()
     dialog._profile_rename_btn = _FakeButton()
     dialog._profile_delete_btn = _FakeButton()
-    dialog._build_current_dict = lambda *, include_selected_profile=False: dict(current_data or {})
+    def _build_current_dict(*, include_selected_profile=False):
+        data = dict(current_data or {})
+        if include_selected_profile:
+            data["selected_profile"] = dialog.selected_dialog_profile_name()
+        return data
+    dialog._build_current_dict = _build_current_dict
     return dialog
 
 
@@ -144,6 +149,26 @@ class TestWriteNamedSchedulerProfile:
         assert stored_config["dialog"] == {"session_card_count": 50, "topics_slider": 10}
         assert stored_config["profiles"] == updated_profiles
         assert write_calls == [stored_config]
+
+    def test_uses_addon_package_config_key(self, monkeypatch):
+        stored_config = {"dialog": {}, "profiles": {}}
+        seen_names = []
+        addon_manager = SimpleNamespace(
+            getConfig=lambda name: seen_names.append(("get", name)) or stored_config,
+            writeConfig=lambda name, config: seen_names.append(("write", name, config)),
+        )
+        monkeypatch.setattr(_MOD, "mw", SimpleNamespace(addonManager=addon_manager))
+
+        _write_named_scheduler_profile(
+            "Focus",
+            {"session_card_count": 42},
+            stored_config["profiles"],
+        )
+
+        assert seen_names == [
+            ("get", _MOD._ADDON_PKG),
+            ("write", _MOD._ADDON_PKG, stored_config),
+        ]
 
     def test_adds_new_profile_without_mutating_input_mapping(self, monkeypatch):
         stored_config = {"dialog": {"session_card_count": 50}, "profiles": {"Focus": {"session_card_count": 20}}}
@@ -293,9 +318,14 @@ class TestSchedulerConfigDialogProfiles:
             "Focus": {"session_card_count": 20},
             "Fresh": {"session_card_count": 42, "topics_slider": 33},
         }
+        assert stored_config["dialog"] == {
+            "session_card_count": 42,
+            "topics_slider": 33,
+            "selected_profile": "Fresh",
+        }
         assert dialog._profiles == stored_config["profiles"]
         assert dialog.selected_dialog_profile_name() == "Fresh"
-        assert write_calls == [stored_config]
+        assert write_calls == [stored_config, stored_config]
 
     def test_add_profile_does_not_overwrite_duplicate_name(self, monkeypatch):
         stored_config = {"dialog": {"session_card_count": 50}, "profiles": {"Focus": {"session_card_count": 20}}}
@@ -374,9 +404,14 @@ class TestSchedulerConfigDialogProfiles:
             "Focus": {"session_card_count": 42, "topics_slider": 33},
             "Spare": {"session_card_count": 99, "topics_slider": 1},
         }
+        assert stored_config["dialog"] == {
+            "session_card_count": 42,
+            "topics_slider": 33,
+            "selected_profile": "Focus",
+        }
         assert dialog.selected_dialog_profile_name() == "Focus"
         assert dialog._profile_combo.currentText() == "Focus"
-        assert write_calls == [stored_config]
+        assert write_calls == [stored_config, stored_config]
 
     def test_current_settings_selection_keeps_save_disabled(self):
         dialog = _build_dialog_for_profile_tests(
@@ -388,3 +423,32 @@ class TestSchedulerConfigDialogProfiles:
 
         assert dialog._profile_combo.currentText() == SchedulerConfigDialog._CURRENT_SETTINGS_LABEL
         assert dialog._profile_save_btn.enabled is False
+
+
+class TestSchedulerConfigDialogPersistence:
+    def test_save_config_writes_dialog_to_addon_package(self, monkeypatch):
+        stored_config = {"dialog": {"session_card_count": 10}, "profiles": {"Main": {"session_card_count": 20}}}
+        seen_names = []
+        addon_manager = SimpleNamespace(
+            getConfig=lambda name: seen_names.append(("get", name)) or stored_config,
+            writeConfig=lambda name, config: seen_names.append(("write", name, config)),
+        )
+        monkeypatch.setattr(_MOD, "mw", SimpleNamespace(addonManager=addon_manager))
+
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        dialog._build_current_dict = lambda *, include_selected_profile=True: {
+            "session_card_count": 42,
+            "selected_profile": "Main" if include_selected_profile else None,
+        }
+
+        dialog.save_config()
+
+        assert stored_config["dialog"] == {
+            "session_card_count": 42,
+            "selected_profile": "Main",
+        }
+        assert stored_config["profiles"] == {"Main": {"session_card_count": 20}}
+        assert seen_names == [
+            ("get", _MOD._ADDON_PKG),
+            ("write", _MOD._ADDON_PKG, stored_config),
+        ]

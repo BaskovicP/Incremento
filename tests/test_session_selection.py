@@ -211,8 +211,8 @@ def test_ordered_priority_tags_are_selected_before_scheduler_fill():
         session_card_count=3,
         enforce_priority=False,
         scheduler_scope="session",
-        use_tags=False,
-        tag_weights={},
+        use_tags=True,
+        tag_weights={"active_writing": 2 / 3},
         include_rest=True,
         priority_order_enabled=True,
         priority_order_entries=[{"kind": "tag", "value": "active_writing", "order": 1}],
@@ -259,8 +259,8 @@ def test_ordered_priority_tiers_run_in_ascending_order():
         session_card_count=2,
         enforce_priority=False,
         scheduler_scope="session",
-        use_tags=False,
-        tag_weights={},
+        use_tags=True,
+        tag_weights={"first": 0.5, "second": 0.5},
         include_rest=True,
         priority_order_enabled=True,
         priority_order_entries=[
@@ -310,6 +310,7 @@ def test_ordered_priority_content_types_work_before_normal_scheduling():
         use_tags=False,
         tag_weights={},
         include_rest=True,
+        content_type_weights={"pdf": 0.5},
         priority_order_enabled=True,
         priority_order_entries=[{"kind": "content_type", "value": "pdf", "order": 1}],
     )
@@ -365,8 +366,8 @@ def test_ordered_priority_tags_dedupe_cards_across_multiple_tags():
         session_card_count=3,
         enforce_priority=False,
         scheduler_scope="session",
-        use_tags=False,
-        tag_weights={},
+        use_tags=True,
+        tag_weights={"alpha": 1 / 3, "beta": 1 / 3},
         include_rest=True,
         priority_order_enabled=True,
         priority_order_entries=[
@@ -416,9 +417,10 @@ def test_ordered_priority_same_tier_tag_and_content_dedupe_and_priority_sort():
         session_card_count=3,
         enforce_priority=False,
         scheduler_scope="session",
-        use_tags=False,
-        tag_weights={},
+        use_tags=True,
+        tag_weights={"alpha": 1 / 3},
         include_rest=True,
+        content_type_weights={"pdf": 2 / 3},
         priority_order_enabled=True,
         priority_order_entries=[
             {"kind": "content_type", "value": "pdf", "order": 1},
@@ -464,8 +466,8 @@ def test_ordered_priority_respects_session_card_count_cap():
         session_card_count=1,
         enforce_priority=False,
         scheduler_scope="session",
-        use_tags=False,
-        tag_weights={},
+        use_tags=True,
+        tag_weights={"alpha": 1.0},
         include_rest=True,
         priority_order_enabled=True,
         priority_order_entries=[{"kind": "tag", "value": "alpha", "order": 1}],
@@ -503,8 +505,8 @@ def test_ordered_priority_tags_use_branch_scope_in_queries():
         session_card_count=1,
         enforce_priority=False,
         scheduler_scope="session",
-        use_tags=False,
-        tag_weights={},
+        use_tags=True,
+        tag_weights={"medicine": 1.0},
         include_rest=True,
         priority_order_enabled=True,
         priority_order_entries=[{"kind": "tag", "value": "medicine", "order": 1}],
@@ -549,6 +551,66 @@ def test_ordered_priority_tags_use_branch_scope_in_queries():
         and "cid:11" in entry["topics_filter"]
         for entry in seen_kwargs
     )
+
+
+def test_ordered_priority_tag_frontloads_only_its_configured_share():
+    cfg = SchedulerConfig(
+        session_card_count=5,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"writing": 0.4},
+        include_rest=True,
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "tag", "value": "writing", "order": 1}],
+    )
+    queue = iter(
+        [
+            types.SimpleNamespace(card=901, card_type="items", tag=None, mode="random"),
+            types.SimpleNamespace(card=902, card_type="items", tag=None, mode="random"),
+            types.SimpleNamespace(card=903, card_type="items", tag=None, mode="random"),
+        ]
+    )
+
+    scheduler_calls = []
+
+    def _fake_scheduler(**kwargs):
+        scheduler_calls.append(kwargs)
+        return next(queue)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        return_value=[801, 802, 803, 804],
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler", side_effect=_fake_scheduler
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [801, 802, 901, 902, 903]
+    assert result.picked_meta[801]["selection_stage"] == "ordered_priority"
+    assert result.picked_meta[802]["selection_stage"] == "ordered_priority"
+    assert result.picked_meta[901]["selection_stage"] == "scheduler"
+    assert 803 not in result.selected_ids
+    assert 804 not in result.selected_ids
+    assert scheduler_calls
+    assert scheduler_calls[0]["tag_weights"] == {}
+    assert "-tag:writing" in scheduler_calls[0]["topics_filter"]
+    assert "-tag:writing" in scheduler_calls[0]["items_filter"]
 
 
 def test_topic_tagged_cards_can_enter_topic_pool_without_topics_deck_filter():

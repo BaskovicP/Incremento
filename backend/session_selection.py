@@ -205,6 +205,20 @@ def _ordered_priority_tiers(cfg) -> list[tuple[int, list[dict]]]:
     return [(order, grouped[order]) for order in sorted(grouped)]
 
 
+def _ordered_priority_quota_target(cfg, entry: dict) -> int:
+    kind = entry.get("kind")
+    value = entry.get("value")
+    if kind == "tag":
+        weight = float((getattr(cfg, "tag_weights", {}) or {}).get(value, 0.0) or 0.0)
+    elif kind == "content_type":
+        weight = float(
+            (getattr(cfg, "content_type_weights", {}) or {}).get(value, 0.0) or 0.0
+        )
+    else:
+        weight = 0.0
+    return max(0, round(weight * int(getattr(cfg, "session_card_count", 0) or 0)))
+
+
 def _normalize_branch_scope(branch_scope: dict | None) -> dict | None:
     if not isinstance(branch_scope, dict):
         return None
@@ -248,6 +262,15 @@ def _compose_filter(base_filter: str, branch_clause: str) -> str:
     return base
 
 
+def _tag_exclusion_clause(tags: set[str]) -> str:
+    normalized = [str(tag).strip() for tag in sorted(tags) if str(tag).strip()]
+    if not normalized:
+        return ""
+    if len(normalized) == 1:
+        return f"-tag:{normalized[0]}"
+    return "-(" + " OR ".join(f"tag:{tag}" for tag in normalized) + ")"
+
+
 def select_session_cards(
     cfg,
     addon_dir: str,
@@ -282,9 +305,36 @@ def select_session_cards(
     picked_meta: dict[int, dict] = {}
     scheduler_counts = copy.deepcopy(stats.counts_for(cfg.scheduler_scope))
     session_counts = stats.session
+    ordered_tag_values = {
+        str(entry["value"])
+        for entry in _normalized_priority_order_entries(cfg)
+        if str(entry.get("kind")) == "tag"
+    }
+    remaining_tag_weights = {
+        str(tag): weight
+        for tag, weight in (getattr(cfg, "tag_weights", {}) or {}).items()
+        if str(tag) not in ordered_tag_values
+    }
+    remaining_use_tags = bool(remaining_tag_weights)
+
+    remaining_tag_exclusion = _tag_exclusion_clause(ordered_tag_values)
+    remaining_topics_filter = _compose_filter(topics_filter, remaining_tag_exclusion)
+    remaining_items_filter = _compose_filter(items_filter, remaining_tag_exclusion)
+    remaining_pdf_filter = _compose_filter(pdf_filter, remaining_tag_exclusion)
+    remaining_youtube_filter = _compose_filter(youtube_filter, remaining_tag_exclusion)
+    remaining_webpage_filter = _compose_filter(webpage_filter, remaining_tag_exclusion)
 
     def _pick(
-        use_tags: bool, tag_weights: dict, force_card_type=None, force_mode=None
+        use_tags: bool,
+        tag_weights: dict,
+        force_card_type=None,
+        force_mode=None,
+        *,
+        topics_filter_override: str | None = None,
+        items_filter_override: str | None = None,
+        pdf_filter_override: str | None = None,
+        youtube_filter_override: str | None = None,
+        webpage_filter_override: str | None = None,
     ) -> bool:
         result = get_card_from_scheduler(
             counts=scheduler_counts,
@@ -295,13 +345,13 @@ def select_session_cards(
             exclude_ids=added_to_filtered,
             force_card_type=force_card_type,
             force_mode=force_mode,
-            topics_filter=topics_filter,
-            items_filter=items_filter,
+            topics_filter=topics_filter if topics_filter_override is None else topics_filter_override,
+            items_filter=items_filter if items_filter_override is None else items_filter_override,
             ready_filter=cfg.ready_filter,
             pdf_rate=cfg.pdf_rate,
-            pdf_filter=pdf_filter,
-            youtube_filter=youtube_filter,
-            webpage_filter=webpage_filter,
+            pdf_filter=pdf_filter if pdf_filter_override is None else pdf_filter_override,
+            youtube_filter=youtube_filter if youtube_filter_override is None else youtube_filter_override,
+            webpage_filter=webpage_filter if webpage_filter_override is None else webpage_filter_override,
             addon_dir=addon_dir,
             priority_lower_is_more_important=cfg.priority_lower_is_more_important,
         )
@@ -324,8 +374,19 @@ def select_session_cards(
     for order, tier_entries in _ordered_priority_tiers(cfg):
         if len(selected_ids) >= target_count:
             break
+
+        quota_targets: dict[tuple[str, str], int] = {}
         tier_candidates: dict[int, tuple[str, str | None]] = {}
+        candidate_matches: dict[int, list[tuple[str, str]]] = {}
+        entry_meta: dict[tuple[str, str], dict] = {}
         for entry in tier_entries:
+            entry_key = (str(entry["kind"]), str(entry["value"]))
+            quota_target = _ordered_priority_quota_target(cfg, entry)
+            if quota_target <= 0:
+                continue
+            quota_targets[entry_key] = quota_target
+            entry_meta[entry_key] = entry
+
             if entry["kind"] == "tag":
                 entry_candidates = _collect_tag_priority_candidates(
                     cfg,
@@ -343,21 +404,41 @@ def select_session_cards(
                     youtube_filter=youtube_filter,
                     webpage_filter=webpage_filter,
                 )
+
             for card_id, meta in entry_candidates.items():
-                if card_id in added_to_filtered or card_id in tier_candidates:
+                if card_id in added_to_filtered:
                     continue
-                tier_candidates[card_id] = meta
+                if card_id not in tier_candidates:
+                    tier_candidates[card_id] = meta
+                candidate_matches.setdefault(card_id, []).append(entry_key)
+
+        if not quota_targets:
+            continue
 
         ordered_tier_ids = card_utils.sort_cards_for_priority_mode(
             list(tier_candidates.keys()),
             addon_dir=addon_dir,
             lower_is_more_important=cfg.priority_lower_is_more_important,
         )
+        quota_picked = {entry_key: 0 for entry_key in quota_targets}
         for card_id in ordered_tier_ids:
             if len(selected_ids) >= target_count:
                 break
             if card_id in added_to_filtered:
                 continue
+
+            selected_entry_key = next(
+                (
+                    entry_key
+                    for entry_key in candidate_matches.get(card_id, [])
+                    if quota_picked.get(entry_key, 0) < quota_targets.get(entry_key, 0)
+                ),
+                None,
+            )
+            if selected_entry_key is None:
+                continue
+
+            quota_picked[selected_entry_key] += 1
             card_type, tag = tier_candidates[card_id]
             _record_selected_card(
                 card_id=card_id,
@@ -370,7 +451,11 @@ def select_session_cards(
                 added_to_filtered=added_to_filtered,
                 scheduler_counts=scheduler_counts,
                 session_counts=session_counts,
-                extra_meta={"priority_order": order},
+                extra_meta={
+                    "priority_order": order,
+                    "priority_order_kind": entry_meta[selected_entry_key]["kind"],
+                    "priority_order_value": entry_meta[selected_entry_key]["value"],
+                },
             )
 
     if cfg.enforce_priority:
@@ -393,9 +478,14 @@ def select_session_cards(
                         if ct_picked >= ct_target or len(selected_ids) >= target_count:
                             return False
                         ok = _pick(
-                            use_tags=cfg.use_tags,
-                            tag_weights=cfg.tag_weights,
+                            use_tags=remaining_use_tags,
+                            tag_weights=remaining_tag_weights,
                             force_card_type=ct,
+                            topics_filter_override=remaining_topics_filter,
+                            items_filter_override=remaining_items_filter,
+                            pdf_filter_override=remaining_pdf_filter,
+                            youtube_filter_override=remaining_youtube_filter,
+                            webpage_filter_override=remaining_webpage_filter,
                         )
                         if ok:
                             ct_picked += 1
@@ -409,7 +499,7 @@ def select_session_cards(
                     )
 
             elif phase_id == "tags" and cfg.use_tags:
-                ordered = sorted(cfg.tag_weights.items(), key=lambda x: x[1], reverse=True)
+                ordered = sorted(remaining_tag_weights.items(), key=lambda x: x[1], reverse=True)
                 for tag, weight in ordered:
                     tag_target = round(weight * target_count)
                     tag_picked = 0
@@ -444,9 +534,14 @@ def select_session_cards(
                         if type_picked >= type_target or len(selected_ids) >= target_count:
                             return False
                         ok = _pick(
-                            use_tags=cfg.use_tags,
-                            tag_weights=cfg.tag_weights,
+                            use_tags=remaining_use_tags,
+                            tag_weights=remaining_tag_weights,
                             force_card_type=forced_type,
+                            topics_filter_override=remaining_topics_filter,
+                            items_filter_override=remaining_items_filter,
+                            pdf_filter_override=remaining_pdf_filter,
+                            youtube_filter_override=remaining_youtube_filter,
+                            webpage_filter_override=remaining_webpage_filter,
                         )
                         if ok:
                             type_picked += 1
@@ -473,9 +568,14 @@ def select_session_cards(
                         if mode_picked >= mode_target or len(selected_ids) >= target_count:
                             return False
                         ok = _pick(
-                            use_tags=cfg.use_tags,
-                            tag_weights=cfg.tag_weights,
+                            use_tags=remaining_use_tags,
+                            tag_weights=remaining_tag_weights,
                             force_mode=forced_mode,
+                            topics_filter_override=remaining_topics_filter,
+                            items_filter_override=remaining_items_filter,
+                            pdf_filter_override=remaining_pdf_filter,
+                            youtube_filter_override=remaining_youtube_filter,
+                            webpage_filter_override=remaining_webpage_filter,
                         )
                         if ok:
                             mode_picked += 1
@@ -491,7 +591,15 @@ def select_session_cards(
         # Fill Remaining — always runs last in strict mode
         if cfg.include_rest or not cfg.use_tags:
             _attempt_pick_loop(
-                pick_fn=lambda: _pick(use_tags=False, tag_weights={}),
+                pick_fn=lambda: _pick(
+                    use_tags=False,
+                    tag_weights={},
+                    topics_filter_override=remaining_topics_filter,
+                    items_filter_override=remaining_items_filter,
+                    pdf_filter_override=remaining_pdf_filter,
+                    youtube_filter_override=remaining_youtube_filter,
+                    webpage_filter_override=remaining_webpage_filter,
+                ),
                 target_reached_fn=lambda: len(selected_ids) >= target_count,
                 max_attempts=max(target_count * 12, 120),
                 max_consecutive_misses=max(target_count * 2, 20),
@@ -501,14 +609,30 @@ def select_session_cards(
         # Soft mode — all dimensions handled by soft_pick (debt-based stochastic).
         # Phase order / enabled state is ignored; all weights blend together.
         _attempt_pick_loop(
-            pick_fn=lambda: _pick(use_tags=cfg.use_tags, tag_weights=cfg.tag_weights),
+            pick_fn=lambda: _pick(
+                use_tags=remaining_use_tags,
+                tag_weights=remaining_tag_weights,
+                topics_filter_override=remaining_topics_filter,
+                items_filter_override=remaining_items_filter,
+                pdf_filter_override=remaining_pdf_filter,
+                youtube_filter_override=remaining_youtube_filter,
+                webpage_filter_override=remaining_webpage_filter,
+            ),
             target_reached_fn=lambda: len(selected_ids) >= target_count,
             max_attempts=max(target_count * 20, 200),
             max_consecutive_misses=max(target_count * 3, 30),
         )
-        if cfg.use_tags and cfg.include_rest and len(selected_ids) < target_count:
+        if remaining_use_tags and cfg.include_rest and len(selected_ids) < target_count:
             _attempt_pick_loop(
-                pick_fn=lambda: _pick(use_tags=False, tag_weights={}),
+                pick_fn=lambda: _pick(
+                    use_tags=False,
+                    tag_weights={},
+                    topics_filter_override=remaining_topics_filter,
+                    items_filter_override=remaining_items_filter,
+                    pdf_filter_override=remaining_pdf_filter,
+                    youtube_filter_override=remaining_youtube_filter,
+                    webpage_filter_override=remaining_webpage_filter,
+                ),
                 target_reached_fn=lambda: len(selected_ids) >= target_count,
                 max_attempts=max(target_count * 12, 120),
                 max_consecutive_misses=max(target_count * 2, 20),

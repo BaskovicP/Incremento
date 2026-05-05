@@ -21,6 +21,11 @@ import types
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
 from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton
+try:
+    from anki.consts import DYN_DUE, DYN_OLDEST
+except Exception:
+    DYN_OLDEST = 0
+    DYN_DUE = 6
 
 from .scheduler import NO_TAGS_KEY
 from .statistics import StatsManager, _empty, _empty_time
@@ -104,22 +109,22 @@ def _prepare_filtered_review_deck(
     else:
         did = mw.col.decks.new_filtered(deck_name)
 
+    if preserve_order:
+        for i, cid in enumerate(selected_ids):
+            card = mw.col.get_card(cid)
+            card.due = i
+            mw.col.update_card(card)
+
     fdu = mw.col.sched.get_or_create_filtered_deck(did)
     fdu.config.reschedule = True
     del fdu.config.search_terms[:]
     fdu.config.search_terms.add(
         search=search,
         limit=len(selected_ids),
-        order=0 if preserve_order else 1,
+        order=DYN_DUE if preserve_order else DYN_OLDEST,
     )
     op = mw.col.sched.add_or_update_filtered_deck(fdu)
     mw.col.sched.rebuild_filtered_deck(op.id)
-
-    if preserve_order:
-        for i, cid in enumerate(selected_ids):
-            card = mw.col.get_card(cid)
-            card.due = i
-            mw.col.update_card(card)
 
     mw.col.decks.select(op.id)
     return int(op.id)

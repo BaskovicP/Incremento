@@ -54,14 +54,15 @@ except ImportError:
 
 # Addon root: one level above this file (frontend/)
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+_ADDON_PKG = __name__.split(".")[0]
 
 
 def _write_named_scheduler_profile(name: str, profile_data: dict, profiles: dict[str, dict]) -> dict[str, dict]:
     updated_profiles = dict(profiles or {})
     updated_profiles[name] = profile_data
-    config = mw.addonManager.getConfig(__name__) or {}
+    config = mw.addonManager.getConfig(_ADDON_PKG) or {}
     config["profiles"] = updated_profiles
-    mw.addonManager.writeConfig(__name__, config)
+    mw.addonManager.writeConfig(_ADDON_PKG, config)
     return updated_profiles
 
 
@@ -69,13 +70,13 @@ def _rename_named_scheduler_profile(old_name: str, new_name: str, profiles: dict
     updated_profiles: dict[str, dict] = {}
     for name, profile in (profiles or {}).items():
         updated_profiles[new_name if name == old_name else name] = profile
-    config = mw.addonManager.getConfig(__name__) or {}
+    config = mw.addonManager.getConfig(_ADDON_PKG) or {}
     config["profiles"] = updated_profiles
     dialog_config = config.get("dialog") or {}
     if dialog_config.get("selected_profile") == old_name:
         dialog_config["selected_profile"] = new_name
         config["dialog"] = dialog_config
-    mw.addonManager.writeConfig(__name__, config)
+    mw.addonManager.writeConfig(_ADDON_PKG, config)
     return updated_profiles
 
 
@@ -1100,7 +1101,7 @@ class SchedulerConfigDialog(QDialog):
         self._preview_refresh_timer.setSingleShot(True)
         self._preview_refresh_timer.setInterval(180)
         qconnect(self._preview_refresh_timer.timeout, self._refresh_live_preview_if_open)
-        config = mw.addonManager.getConfig(__name__) or {}
+        config = mw.addonManager.getConfig(_ADDON_PKG) or {}
         self._saved = config.get("dialog", {})
         self._saved_priority_order_map = self._priority_order_map_from_dict(self._saved)
         self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
@@ -1670,15 +1671,15 @@ class SchedulerConfigDialog(QDialog):
         ):
             self._priority_order_cb.setChecked(True)
         self._priority_order_cb.setToolTip(
-            "When enabled, rows with an Order value are exhausted first, starting at 1.\n"
+            "When enabled, rows with an Order value front-load their configured share first, starting at 1.\n"
             "Rows with the same number form one tier and are sorted by Incremento priority."
         )
         priority_order_row.addWidget(self._priority_order_cb)
         priority_order_row.addWidget(_info_icon(
-            "Use Order values to run a pre-pass before normal scheduling.\n\n"
-            "Example: active_writing = 1 and PDF = 2 means all matching active_writing\n"
-            "cards are selected first, then all PDF cards, then the normal scheduler fills\n"
-            "the remaining slots. Empty or invalid Order boxes are ignored."
+            "Use Order values to front-load each row's configured share before normal scheduling.\n\n"
+            "Example: writing at 20% with Order = 1 means about the first 20% of the session\n"
+            "will be writing cards. After that, the normal scheduler fills the remaining slots\n"
+            "using your full mix. Empty or invalid Order boxes are ignored."
         ))
         priority_order_row.addStretch()
         layout.addLayout(priority_order_row)
@@ -3327,6 +3328,7 @@ class SchedulerConfigDialog(QDialog):
                 "then start the session again.",
             )
             return
+        self.save_config()
         self._close_live_preview()
         super().accept()
 
@@ -3511,9 +3513,9 @@ class SchedulerConfigDialog(QDialog):
         return data
 
     def save_config(self) -> None:
-        config = mw.addonManager.getConfig(__name__) or {}
+        config = mw.addonManager.getConfig(_ADDON_PKG) or {}
         config["dialog"] = self._build_current_dict(include_selected_profile=True)
-        mw.addonManager.writeConfig(__name__, config)
+        mw.addonManager.writeConfig(_ADDON_PKG, config)
 
     # ------------------------------------------------------------------
     # Profile management
@@ -3557,6 +3559,7 @@ class SchedulerConfigDialog(QDialog):
         if not name or name not in self._profiles:
             return
         self._load_profile_dict(self._profiles[name])
+        self.save_config()
 
     def _add_profile(self) -> None:
         current = self.selected_dialog_profile_name() or ""
@@ -3580,6 +3583,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = name
         self._refresh_profile_combo()
+        self.save_config()
         tooltip(f'Preset "{name}" added.')
 
     def _save_profile(self) -> None:
@@ -3593,6 +3597,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = name
         self._refresh_profile_combo()
+        self.save_config()
         tooltip(f'Preset "{name}" saved.')
 
     def _rename_profile(self) -> None:
@@ -3619,6 +3624,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = new_name
         self._refresh_profile_combo()
+        self.save_config()
         tooltip(f'Preset "{old_name}" renamed to "{new_name}".')
 
     def _delete_profile(self) -> None:
@@ -3633,15 +3639,9 @@ class SchedulerConfigDialog(QDialog):
         if r != QMessageBox.StandardButton.Yes:
             return
         del self._profiles[name]
-        config = mw.addonManager.getConfig(__name__) or {}
-        config["profiles"] = self._profiles
-        dialog_config = config.get("dialog") or {}
-        if dialog_config.get("selected_profile") == name:
-            dialog_config["selected_profile"] = None
-            config["dialog"] = dialog_config
-        mw.addonManager.writeConfig(__name__, config)
         self._selected_profile_name = None
         self._refresh_profile_combo()
+        self.save_config()
         tooltip(f'Preset "{name}" deleted.')
 
     def _load_profile_dict(self, d: dict) -> None:

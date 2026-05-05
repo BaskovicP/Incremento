@@ -258,6 +258,76 @@ class TestIncrementoSessionDeckNaming:
 
     def test_named_dialog_profile_scopes_session_deck(self):
         assert _SESSION_MOD.incremento_session_deck_name("Focus") == "Incremento Session (Focus)"
+
+
+class TestPrepareFilteredReviewDeck:
+    def test_preserve_order_uses_due_sort_and_assigns_due_before_rebuild(self, monkeypatch):
+        updated_cards = []
+        rebuild_calls = []
+
+        class _Terms(list):
+            def add(self, **kwargs):
+                self.append(kwargs)
+
+        terms = _Terms()
+        fdu = types.SimpleNamespace(
+            config=types.SimpleNamespace(
+                reschedule=False,
+                search_terms=terms,
+            )
+        )
+        cards = {
+            101: types.SimpleNamespace(id=101, due=999),
+            102: types.SimpleNamespace(id=102, due=999),
+            103: types.SimpleNamespace(id=103, due=999),
+        }
+
+        fake_sched = types.SimpleNamespace(
+            empty_filtered_deck=lambda did: None,
+            get_or_create_filtered_deck=lambda did: fdu,
+            add_or_update_filtered_deck=lambda fdu_arg: types.SimpleNamespace(id=55),
+            rebuild_filtered_deck=lambda did: rebuild_calls.append(
+                {
+                    "did": did,
+                    "dues": {cid: card.due for cid, card in cards.items()},
+                    "terms": list(terms),
+                }
+            ),
+        )
+        fake_decks = types.SimpleNamespace(
+            by_name=lambda name: None,
+            new_filtered=lambda name: 55,
+            select=lambda did: None,
+        )
+        fake_col = types.SimpleNamespace(
+            decks=fake_decks,
+            sched=fake_sched,
+            get_card=lambda cid: cards[cid],
+            update_card=lambda card: updated_cards.append((card.id, card.due)),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "mw", types.SimpleNamespace(col=fake_col))
+
+        did = _SESSION_MOD._prepare_filtered_review_deck(
+            [101, 102, 103],
+            deck_name="Incremento Session (Test)",
+            preserve_order=True,
+        )
+
+        assert did == 55
+        assert updated_cards == [(101, 0), (102, 1), (103, 2)]
+        assert rebuild_calls == [
+            {
+                "did": 55,
+                "dues": {101: 0, 102: 1, 103: 2},
+                "terms": [
+                    {
+                        "search": "cid:101 OR cid:102 OR cid:103",
+                        "limit": 3,
+                        "order": _SESSION_MOD.DYN_DUE,
+                    }
+                ],
+            }
+        ]
         assert _SESSION_MOD.incremento_session_deck_name("Writing") == "Incremento Session (Writing)"
 
     def test_session_deck_predicate_matches_only_incremento_session_variants(self):
