@@ -11,6 +11,7 @@ time so there is no practical issue.
 
 import json
 import os
+import re
 import time
 from html import escape
 
@@ -689,11 +690,51 @@ def pdf_citation() -> str:
         },
         ensure_ascii=False,
     )
+    onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
     return (
-        f"<a onclick=\"pycmd({json.dumps(cmd)}); return false;\" "
+        f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
-        f"Page {page}. of {name}</a>"
+        f"Page {page}. of {escape(name)}</a>"
     )
+
+
+_LEGACY_PDF_REF_ANCHOR_RE = re.compile(
+    r"(?P<open><a\b[^>]*incremento_open_pdf_ref:[^>]*>)(?P<label>.*?)(?P<close></a>)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def repair_legacy_pdf_reference_links_html(html: str) -> str:
+    """Repair old malformed PDF citation anchors when existing note HTML is rendered."""
+    if not html or "incremento_open_pdf_ref:" not in html or 'onclick="pycmd("' not in html:
+        return html
+
+    def _replace(match: re.Match[str]) -> str:
+        open_tag = match.group("open")
+        label = match.group("label")
+
+        card_id_match = re.search(r'card_id\\?":(?:\s*=""\s*)?(?P<card_id>\d+)', open_tag)
+        filename_match = re.search(r'filename\\?":(?:\s*=""\s*)?\\?"(?P<filename>[^"]+)\\?"', open_tag)
+        page_match = re.search(r'page\\?":(?:\s*=""\s*)?(?P<page>\d+)', open_tag)
+        if not (card_id_match and filename_match and page_match):
+            return match.group(0)
+
+        cmd = "incremento_open_pdf_ref:" + json.dumps(
+            {
+                "card_id": int(card_id_match.group("card_id")),
+                "filename": str(filename_match.group("filename")).strip(),
+                "page": int(page_match.group("page")),
+            },
+            ensure_ascii=False,
+        )
+        onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
+        return (
+            f"<a onclick=\"{onclick}\" "
+            f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
+            f"{label}</a>"
+        )
+
+    return _LEGACY_PDF_REF_ANCHOR_RE.sub(_replace, html)
 
 
 # ── pycmd message protocol constants ─────────────────────────────────────────

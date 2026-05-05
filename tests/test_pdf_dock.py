@@ -146,6 +146,39 @@ def test_add_card_source_for_new_note_prefers_pending_extract_source(monkeypatch
     assert pdf_dock._add_card_source_for_new_note() == "reviewer"
 
 
+def test_pdf_citation_escapes_onclick_payload_and_label(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer's-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 42)
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: 'Writer "First" & <Best>')
+
+    html = pdf_dock.pdf_citation()
+
+    assert 'onclick="pycmd(&quot;incremento_open_pdf_ref:' in html
+    assert "writer&#x27;s-guide.pdf" in html
+    assert "Writer &quot;First&quot; &amp; &lt;Best&gt;" in html
+    assert 'card_id\\&quot;: 55' in html
+    assert '=""' not in html
+
+
+def test_repair_legacy_pdf_reference_links_html_fixes_broken_anchor():
+    html = (
+        'Before <a onclick="pycmd(" incremento_open_pdf_ref:{\\"card_id\\":="" 1776888912488,="" '
+        '\\"filename\\":="" \\"write-a-must-read.pdf\\",="" \\"page\\":="" 42}");="" return="" false;"="" '
+        'style="cursor:pointer; color:#4a90d9; text-decoration:none;">Page 42. of write a must read</a> After'
+    )
+
+    repaired = pdf_dock.repair_legacy_pdf_reference_links_html(html)
+
+    assert 'onclick="pycmd(&quot;incremento_open_pdf_ref:' in repaired
+    assert "write-a-must-read.pdf" in repaired
+    assert "Page 42. of write a must read</a>" in repaired
+    assert '=""' not in repaired
+    assert repaired.startswith("Before ")
+
+
 def test_on_add_cards_did_add_note_ignores_reviewer_extract(monkeypatch):
     calls = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)

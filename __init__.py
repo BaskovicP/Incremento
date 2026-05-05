@@ -1626,6 +1626,13 @@ def _on_js_message(handled, message, context) -> tuple:
     return handled
 
 
+def _repair_legacy_pdf_reference_links(text: str, card, context: str) -> str:
+    try:
+        return _pdf_dock_mod.repair_legacy_pdf_reference_links_html(text)
+    except Exception:
+        return text
+
+
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_epub_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_web_dock_mod.on_add_cards_did_add_note)
@@ -1656,6 +1663,8 @@ gui_hooks.reviewer_will_end.append(_web_dock_mod.on_web_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_writing_dock_mod.on_writing_reviewer_will_end)
 gui_hooks.reviewer_will_end.append(_local_file_dock_mod.on_local_file_reviewer_will_end)
 gui_hooks.profile_will_close.append(_video_dock_mod.flush_video_progress)
+if hasattr(gui_hooks, "card_will_show"):
+    gui_hooks.card_will_show.append(_repair_legacy_pdf_reference_links)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
