@@ -1700,8 +1700,13 @@ def _prime_editor_note_for_extract(
                 note[field_name] = str(value or "")
         except Exception:
             pass
+    classification_excludes = _classification_tag_set()
     if configured_extract_copy_source_tags():
-        copy_source_tags_to_note(note, source_tags or [])
+        copy_source_tags_to_note(
+            note,
+            source_tags or [],
+            exclude_tags=classification_excludes,
+        )
     if mark_topic:
         add_topic_tags_to_note(note)
     try:
@@ -1724,13 +1729,20 @@ def _apply_pending_extract_tags_to_editor(
 
     options = pending_extract_options() or {}
     tags_changed = False
+    classification_excludes = _classification_tag_set()
     if configured_extract_copy_source_tags():
         source_tags = options.get("source_tags") or []
         if not source_tags:
             source_tags = source_note_tags_for_card(
                 _source_card_id_from_extract_options(options)
             )
-        tags_changed = bool(copy_source_tags_to_note(note, source_tags))
+        tags_changed = bool(
+            copy_source_tags_to_note(
+                note,
+                source_tags,
+                exclude_tags=classification_excludes,
+            )
+        )
 
     if mark_topic and add_topic_tags_to_note(note):
         tags_changed = True

@@ -22,9 +22,9 @@ def visible_note_field_values(note) -> dict[str, str]:
 
 def initial_extract_field_values(note, selected_text: str) -> dict[str, str]:
     text = str(selected_text or "")
-    visible_values = visible_note_field_values(note)
     if not text:
-        return visible_values
+        return {}
+    visible_values = visible_note_field_values(note)
     if not visible_values:
         return {}
     first_field_name = next(iter(visible_values.keys()))

@@ -812,8 +812,8 @@ def test_prime_editor_note_for_extract_copies_source_tags_before_topic_tags(monk
     )
 
     assert note.fields[0] == "Selected text"
-    assert note.tags == ["Topic", "Source", "branch"]
-    assert editor.tags.text() == "Topic Source branch"
+    assert note.tags == ["Source", "topic", "branch"]
+    assert editor.tags.text() == "Source topic branch"
     assert refreshed == [editor]
     assert tag_refresh == [editor]
 
@@ -845,8 +845,8 @@ def test_pending_pdf_extract_applies_source_tags_to_add_card_editor(monkeypatch)
     changed = dock._apply_pending_extract_tags_to_editor(editor)
 
     assert changed is True
-    assert note.tags == ["existing", "Source", "Topic", "PDF"]
-    assert editor.tags.text() == "existing Source Topic PDF"
+    assert note.tags == ["existing", "Source", "PDF"]
+    assert editor.tags.text() == "existing Source PDF"
     assert refreshed == [editor]
     assert tag_refresh == [editor]
     assert dock.pending_extract_options()["source_tags"] == ["Topic", "Source", "PDF"]

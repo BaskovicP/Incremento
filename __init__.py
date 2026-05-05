@@ -186,7 +186,6 @@ from .backend.knowledge_tree import (
     apply_node_kind_to_cards as _kt_apply_node_kind_to_cards,
 )
 from .backend.reviewer_extract import (
-    extract_default_notetype_name as _extract_default_notetype_name,
     initial_extract_field_values as _initial_extract_field_values,
     knowledge_tree_link_state as _knowledge_tree_link_state,
 )
@@ -2421,18 +2420,7 @@ def _extract_card() -> None:
 
 
 def _on_extract_selection(selected_text: str, parent_card) -> None:
-    # Defaults: configured extract note type if present, otherwise the parent note type.
     parent_note = parent_card.note()
-    configured_notetype = _add_card_dock_mod.configured_extract_notetype_name()
-    parent_notetype = parent_note.note_type()["name"]
-    default_notetype = _extract_default_notetype_name(
-        selected_text=selected_text,
-        configured_notetype=configured_notetype,
-        parent_notetype=parent_notetype,
-        available_notetype_names=[m["name"] for m in mw.col.models.all()],
-    )
-    parent_deck = mw.col.decks.get(parent_card.did)
-    default_deck = parent_deck["name"] if parent_deck else ""
     initial_field_values = _initial_extract_field_values(parent_note, selected_text)
 
     parent_label = (
@@ -2457,15 +2445,15 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
     tree_link_state = _knowledge_tree_link_state(parent_in_tree)
     _add_card_dock_mod.prepare_reviewer_extract(
         selected_text=selected_text,
-        note_type_name=default_notetype,
-        deck_name=default_deck,
+        note_type_name="",
+        deck_name="",
         field_values=initial_field_values,
         metadata=metadata,
         parent_card_id=int(getattr(parent_card, "id", 0) or 0),
         priority=_add_card_dock_mod.source_relative_extract_priority_for_card(
             getattr(parent_card, "id", None)
         ),
-        mark_topic=_add_card_dock_mod.configured_extract_mark_topic(),
+        mark_topic=False,
         knowledge_tree_link_enabled=bool(tree_link_state.get("enabled")),
         link_to_knowledge_tree=bool(tree_link_state.get("checked")),
         knowledge_tree_tooltip=str(tree_link_state.get("tooltip") or ""),
