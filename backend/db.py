@@ -177,6 +177,111 @@ def list_database_checkpoints(
     return rows
 
 
+def _quote_sqlite_identifier(identifier: str) -> str:
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _is_card_reference_column(column_name: str) -> bool:
+    name = str(column_name or "").strip()
+    return name == "card_id" or "_card_id" in name or name.startswith("card_id_")
+
+
+def find_card_database_entries(
+    addon_dir: str,
+    profile: str,
+    card_ids: list[int] | tuple[int, ...] | set[int],
+) -> dict[str, object]:
+    """Return Incremento DB rows linked to card_ids through card-id columns.
+
+    A linking column contains ``card_id`` as an underscore-delimited token, so
+    fields such as ``card_id``, ``pdf_card_id`` and ``branch_root_card_id`` all
+    match. The database is opened read-only so Browser inspection cannot mutate
+    user data.
+    """
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for raw_card_id in list(card_ids or []):
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            continue
+        if card_id in seen:
+            continue
+        seen.add(card_id)
+        normalized_ids.append(card_id)
+
+    db_path = get_db_path(addon_dir, profile)
+    result: dict[str, object] = {
+        "profile": profile,
+        "db_path": str(db_path),
+        "card_ids": normalized_ids,
+        "entries": [],
+    }
+    if not normalized_ids:
+        return result
+
+    conn = open_database_editor_connection(addon_dir, profile, read_only=True)
+    try:
+        table_rows = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name NOT LIKE 'sqlite_%'
+            ORDER BY name COLLATE NOCASE
+            """
+        ).fetchall()
+        placeholders = ", ".join("?" for _ in normalized_ids)
+        card_id_set = set(normalized_ids)
+        entries: list[dict[str, object]] = []
+        for table_row in table_rows:
+            table_name = str(table_row["name"])
+            quoted_table = _quote_sqlite_identifier(table_name)
+            schema_rows = conn.execute(f"PRAGMA table_info({quoted_table})").fetchall()
+            column_names = [str(row["name"]) for row in schema_rows]
+            card_columns = [
+                name
+                for name in column_names
+                if _is_card_reference_column(name)
+            ]
+            if not card_columns:
+                continue
+            select_columns = ", ".join(
+                f"{quoted_table}.{_quote_sqlite_identifier(name)}"
+                for name in column_names
+            )
+            for column_name in card_columns:
+                quoted_column = _quote_sqlite_identifier(column_name)
+                query = (
+                    f"SELECT rowid AS _incremento_rowid, {select_columns} "
+                    f"FROM {quoted_table} "
+                    f"WHERE {quoted_column} IN ({placeholders}) "
+                    f"ORDER BY {quoted_column}, rowid"
+                )
+                for row in conn.execute(query, normalized_ids).fetchall():
+                    try:
+                        matched_card_id = int(row[column_name])
+                    except Exception:
+                        continue
+                    if matched_card_id not in card_id_set:
+                        continue
+                    values = {name: row[name] for name in column_names}
+                    entries.append(
+                        {
+                            "card_id": matched_card_id,
+                            "table": table_name,
+                            "column": column_name,
+                            "rowid": row["_incremento_rowid"],
+                            "columns": column_names,
+                            "values": values,
+                        }
+                    )
+        result["entries"] = entries
+        return result
+    finally:
+        conn.close()
+
+
 atexit.register(close_connection)
 
 

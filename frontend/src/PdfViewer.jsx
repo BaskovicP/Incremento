@@ -1277,6 +1277,9 @@ export default function PdfViewer() {
                     <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
                       &#x1F4D6; Reading Limit
                     </button>
+                    <button onClick={() => window.pycmd(`incremento_pdf_regenerate_cover:${cardIdRef.current}`)}>
+                      Regenerate Cover
+                    </button>
                   </span>
                 </div>
                 <span style={TOOLBAR_SEPARATOR_STYLE} />

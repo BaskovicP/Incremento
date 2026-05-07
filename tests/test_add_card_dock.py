@@ -956,10 +956,18 @@ def test_reviewer_extract_queue_refresh_suppression_checks_parent_card(monkeypat
     assert dock.consume_reviewer_extract_queue_refresh_suppression(6) is False
 
 
-def test_reviewer_extract_queue_refresh_suppression_ignores_non_reviewer_sources():
+def test_reviewer_extract_queue_refresh_suppression_applies_to_pdf_extract_sources():
     dock._suppress_next_reviewer_queue_refresh = None
 
     dock.mark_reviewer_extract_note_added({"source": "pdf", "source_card_id": 5})
+
+    assert dock.consume_reviewer_extract_queue_refresh_suppression(5) is True
+
+
+def test_reviewer_extract_queue_refresh_suppression_requires_source_card_id():
+    dock._suppress_next_reviewer_queue_refresh = None
+
+    dock.mark_reviewer_extract_note_added({"source": "reviewer"})
 
     assert dock.consume_reviewer_extract_queue_refresh_suppression(5) is False
 

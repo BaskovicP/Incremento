@@ -64,6 +64,7 @@ try:
         get_read_anchor,
         get_read_page,
         pdf_display_label_from_filename,
+        regenerate_pdf_card_cover,
         replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
@@ -86,6 +87,7 @@ except ImportError:
         get_read_anchor,
         get_read_page,
         pdf_display_label_from_filename,
+        regenerate_pdf_card_cover,
         replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
@@ -760,6 +762,7 @@ _MSG_LIMIT_SETTINGS = "incremento_pdf_limit_settings:"
 _MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
 _MSG_DUE_REVIEW = "incremento_pdf_due_review:"
 _MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
+_MSG_REGENERATE_COVER = "incremento_pdf_regenerate_cover:"
 _MSG_HL_NOTE = "incremento_pdf_hl_note:"
 _MSG_BOOKMARK_ADD = "incremento_pdf_bookmark_add:"
 _MSG_BOOKMARK_DELETE = "incremento_pdf_bookmark_delete:"
@@ -911,6 +914,42 @@ def _repair_missing_pdf() -> None:
         )
     except Exception as exc:
         showInfo(f"Could not relink this PDF card.\n\n{exc}")
+
+
+def _regenerate_pdf_cover() -> None:
+    card_id = current_pdf_card_id()
+    if card_id is None:
+        showInfo("Could not determine which PDF card needs a cover refresh.")
+        return
+    try:
+        cover_filename = regenerate_pdf_card_cover(_ADDON_DIR, mw.col, int(card_id))
+    except FileNotFoundError as exc:
+        showInfo(f"Could not regenerate this PDF cover.\n\n{exc}")
+        return
+    except Exception as exc:
+        showInfo(f"Could not regenerate this PDF cover.\n\n{exc}")
+        return
+
+    mw.col.reset()
+    reviewer = getattr(mw, "reviewer", None)
+    current_card = getattr(reviewer, "card", None) if reviewer is not None else None
+    try:
+        current_card_id = int(getattr(current_card, "id", 0) or 0)
+    except Exception:
+        current_card_id = 0
+    if reviewer is not None and current_card_id == int(card_id):
+        try:
+            reviewer.card = mw.col.get_card(int(card_id))
+        except Exception:
+            pass
+        try:
+            reviewer._showQuestion()
+        except Exception:
+            pass
+    if cover_filename:
+        tooltip("PDF cover regenerated from page 1.")
+    else:
+        tooltip("PDF cover cleared because page 1 could not be rendered.")
 
 
 def _edit_pdf_highlight_note(hl_id: str) -> None:
@@ -1337,6 +1376,8 @@ class _PdfDockPage(QWebEnginePage):
                 pass
         elif msg.startswith(_MSG_REPAIR_MISSING):
             _repair_missing_pdf()
+        elif msg.startswith(_MSG_REGENERATE_COVER):
+            _regenerate_pdf_cover()
         elif msg.startswith(_MSG_SNAPSHOT):
             QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
         elif msg.startswith(_MSG_FINISHED):

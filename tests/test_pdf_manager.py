@@ -33,7 +33,7 @@ sys.modules.setdefault("db", db)
 
 pdf_manager = importlib.import_module("pdf_manager")  # noqa: E402
 pdf_manager = importlib.reload(pdf_manager)
-from pdf_manager import pdf_display_label_from_filename  # noqa: E402
+from pdf_manager import PDF_COVER_FIELD, pdf_display_label_from_filename  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +187,61 @@ class TestFindLivePdfCardByFilename:
         assert pdf_manager.find_live_pdf_card_by_filename(col, "paper.pdf") == 123
 
 
+class TestRenderPdfCoverMedia:
+    def test_renders_first_page_and_adds_png_to_media(self, tmp_path):
+        pdf_path = tmp_path / "cover.pdf"
+        pdf_path.write_bytes(b"%PDF fake")
+
+        image = MagicMock()
+        image.isNull.return_value = False
+
+        media = MagicMock()
+        media.add_file.return_value = "stored-cover.png"
+        col = MagicMock(media=media)
+
+        doc = MagicMock()
+        doc.pageCount.return_value = 1
+        doc.pagePointSize.return_value = MagicMock(width=lambda: 200.0, height=lambda: 320.0)
+        doc.render.return_value = image
+        _qpdf_document_cls.return_value = doc
+
+        def _save(path, fmt):
+            with open(path, "wb") as handle:
+                handle.write(b"png")
+            return True
+
+        image.save.side_effect = _save
+
+        with patch.dict(sys.modules, {"PyQt6.QtCore": MagicMock(QSize=lambda w, h: (w, h))}):
+            result = pdf_manager.render_pdf_cover_media(
+                col,
+                str(pdf_path),
+                title="Cover Title",
+                source_filename="cover.pdf",
+            )
+
+        assert result == "stored-cover.png"
+        assert media.add_file.call_count == 1
+        saved_path = media.add_file.call_args.args[0]
+        assert os.path.basename(saved_path).startswith("Cover_Title-cover-")
+        image.save.assert_called_once()
+
+    def test_returns_empty_when_pdf_has_no_pages(self, tmp_path):
+        pdf_path = tmp_path / "empty.pdf"
+        pdf_path.write_bytes(b"%PDF fake")
+
+        col = MagicMock()
+        doc = MagicMock()
+        doc.pageCount.return_value = 0
+        _qpdf_document_cls.return_value = doc
+
+        with patch.dict(sys.modules, {"PyQt6.QtCore": MagicMock(QSize=lambda w, h: (w, h))}):
+            result = pdf_manager.render_pdf_cover_media(col, str(pdf_path))
+
+        assert result == ""
+        col.media.add_file.assert_not_called()
+
+
 class TestAddPdfCard:
     def test_uses_visible_duplicate_suffix_when_title_collides(self):
         col = MagicMock()
@@ -202,6 +257,7 @@ class TestAddPdfCard:
 
         with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
              patch("pdf_manager._copy_to_pdf_dir", return_value="stored-file.pdf"), \
+             patch("pdf_manager.render_pdf_cover_media", return_value="stored-cover.png"), \
              patch("pdf_manager.extract_pdf_pages_text", return_value=["page one"]), \
              patch("pdf_manager.replace_pdf_text_index", return_value=None):
             result = pdf_manager.add_pdf_card("/tmp/incremento-test", col, "/tmp/source.pdf", "Guide")
@@ -209,6 +265,7 @@ class TestAddPdfCard:
         assert result == 12345
         setitem_calls = second_note.__setitem__.call_args_list
         assert any(c.args == ("Title", "Guide [2]") for c in setitem_calls)
+        assert any(c.args == (PDF_COVER_FIELD, "stored-cover.png") for c in setitem_calls)
         assert any(c.args == (INCREMENTO_SOURCE_TYPE_FIELD, "PDF") for c in setitem_calls)
         assert any(c.args == (INCREMENTO_SOURCE_TITLE_FIELD, "Guide") for c in setitem_calls)
         assert any(
@@ -228,6 +285,7 @@ class TestAddPdfCard:
 
         with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
              patch("pdf_manager._copy_to_pdf_dir", return_value="stored-file.pdf"), \
+             patch("pdf_manager.render_pdf_cover_media", return_value="stored-cover.png"), \
              patch("pdf_manager.extract_pdf_pages_text", return_value=["page one"]), \
              patch("pdf_manager.replace_pdf_text_index", return_value=None), \
              patch("pdf_manager.save_pdf_daily_limit_settings") as save_limit:
@@ -261,6 +319,7 @@ class TestAddPdfCard:
 
         with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
              patch("pdf_manager._copy_to_pdf_dir", return_value="stored-file.pdf"), \
+             patch("pdf_manager.render_pdf_cover_media", return_value="stored-cover.png"), \
              patch("pdf_manager.extract_pdf_pages_text") as extract_mock, \
              patch("pdf_manager.replace_pdf_text_index") as index_mock:
             result = pdf_manager.add_pdf_card(
@@ -798,7 +857,9 @@ class TestReplacePdfCardFile:
         col.get_note.return_value = note
 
         with patch("pdf_manager._copy_to_pdf_dir", return_value="new-file.pdf") as copy_mock, \
+             patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
              patch("pdf_manager.get_pdf_dir", return_value=str(tmp_path / "pdfs")), \
+             patch("pdf_manager.render_pdf_cover_media", return_value="new-cover.png") as cover_mock, \
              patch("pdf_manager.extract_pdf_pages_text", return_value=["page one"]) as extract_mock, \
              patch("pdf_manager.replace_pdf_text_index") as index_mock, \
              patch("pdf_manager._paths.get_active_profile", return_value="TestProfile"):
@@ -811,12 +872,133 @@ class TestReplacePdfCardFile:
 
         assert filename == "new-file.pdf"
         copy_mock.assert_called_once_with(str(replacement_pdf))
+        cover_mock.assert_called_once_with(
+            col,
+            os.path.join(str(tmp_path / "pdfs"), "new-file.pdf"),
+            title="Linked PDF",
+            source_filename="new-file.pdf",
+        )
         extract_mock.assert_called_once_with(os.path.join(str(tmp_path / "pdfs"), "new-file.pdf"))
         index_mock.assert_called_once_with(str(tmp_path), "TestProfile", 77, ["page one"])
         assert note["PDF_Filename"] == "new-file.pdf"
+        assert note[PDF_COVER_FIELD] == "new-cover.png"
         assert note["Incremento_Source_Link"] == "pdfs/new-file.pdf"
         assert note["Incremento_Imported_At"] == "2026-04-01 10:00:00"
         assert note["Incremento_Parent"] == "Parent"
         assert note["Incremento_Parent_Card_ID"] == "88"
         assert note["Incremento_Source_Author"] == "Author"
         col.update_note.assert_called_once_with(note)
+
+
+class TestEnsurePdfNoteType:
+    def test_adds_cover_field_when_creating_new_model(self):
+        model = {"flds": [], "tmpls": []}
+
+        class _Models:
+            def by_name(self, name):
+                return None
+
+            def new(self, name):
+                return model
+
+            def new_field(self, name):
+                return {"name": name}
+
+            def add_field(self, model_dict, field):
+                model_dict.setdefault("flds", []).append(field)
+
+            def new_template(self, name):
+                return {"name": name, "qfmt": "", "afmt": ""}
+
+            def add_template(self, model_dict, template):
+                model_dict.setdefault("tmpls", []).append(template)
+
+            def add(self, model_dict):
+                self.added = model_dict
+
+        col = MagicMock(models=_Models())
+
+        pdf_manager.ensure_pdf_note_type(col)
+
+        assert [field["name"] for field in model["flds"][:3]] == ["Title", "PDF_Filename", PDF_COVER_FIELD]
+        assert model["tmpls"][0]["qfmt"] == pdf_manager.CARD_TEMPLATE_FRONT
+
+    def test_updates_existing_model_with_cover_field_and_template(self):
+        model = {
+            "flds": [{"name": "Title"}, {"name": "PDF_Filename"}],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+        }
+
+        class _Models:
+            def __init__(self):
+                self.updated = False
+
+            def by_name(self, name):
+                return model
+
+            def new_field(self, name):
+                return {"name": name}
+
+            def add_field(self, model_dict, field):
+                model_dict["flds"].append(field)
+
+            def update_dict(self, model_dict):
+                self.updated = True
+
+        models = _Models()
+        col = MagicMock(models=models)
+
+        pdf_manager.ensure_pdf_note_type(col)
+
+        assert PDF_COVER_FIELD in [field["name"] for field in model["flds"]]
+        assert model["tmpls"][0]["qfmt"] == pdf_manager.CARD_TEMPLATE_FRONT
+        assert models.updated is True
+
+
+class TestRegeneratePdfCardCover:
+    def test_updates_existing_pdf_note_cover(self, tmp_path):
+        pdf_dir = tmp_path / "pdfs"
+        pdf_dir.mkdir()
+        stored_pdf = pdf_dir / "stored.pdf"
+        stored_pdf.write_bytes(b"%PDF stored")
+
+        note = _FakePdfNote(321, Title="Linked PDF", PDF_Filename="stored.pdf", PDF_Cover_Image="")
+        card = _FakeCard(77, 321)
+        col = MagicMock()
+        col.get_card.return_value = card
+        col.get_note.return_value = note
+
+        with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
+             patch("pdf_manager.render_pdf_cover_media", return_value="fresh-cover.png") as cover_mock, \
+             patch("pdf_manager._paths.get_active_profile", return_value="TestProfile"), \
+             patch("pdf_manager._paths.get_pdf_dir", return_value=pdf_dir):
+            result = pdf_manager.regenerate_pdf_card_cover(str(tmp_path), col, 77)
+
+        assert result == "fresh-cover.png"
+        cover_mock.assert_called_once_with(
+            col,
+            str(stored_pdf),
+            title="Linked PDF",
+            source_filename="stored.pdf",
+        )
+        assert note[PDF_COVER_FIELD] == "fresh-cover.png"
+        col.update_note.assert_called_once_with(note)
+
+    def test_missing_stored_pdf_does_not_update_note(self, tmp_path):
+        note = _FakePdfNote(321, Title="Linked PDF", PDF_Filename="missing.pdf", PDF_Cover_Image="keep.png")
+        card = _FakeCard(77, 321)
+        col = MagicMock()
+        col.get_card.return_value = card
+        col.get_note.return_value = note
+
+        with patch("pdf_manager._paths.get_active_profile", return_value="TestProfile"), \
+             patch("pdf_manager._paths.get_pdf_dir", return_value=tmp_path / "pdfs"):
+            try:
+                pdf_manager.regenerate_pdf_card_cover(str(tmp_path), col, 77)
+            except FileNotFoundError:
+                pass
+            else:
+                raise AssertionError("Expected FileNotFoundError")
+
+        assert note[PDF_COVER_FIELD] == "keep.png"
+        col.update_note.assert_not_called()

@@ -319,6 +319,121 @@ class TestDatabaseEditorHelpers:
         ).fetchone()
         assert row == (44.0,)
 
+    def test_find_card_database_entries_finds_card_id_rows(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)",
+            (101, 72.5),
+        )
+        conn.commit()
+
+        payload = db.find_card_database_entries(self.addon_dir, "TestProfile", [101])
+        entries = payload["entries"]
+
+        assert payload["card_ids"] == [101]
+        assert any(
+            entry["table"] == "priorities"
+            and entry["column"] == "card_id"
+            and entry["values"]["priority"] == 72.5
+            for entry in entries
+        )
+
+    def test_find_card_database_entries_includes_topic_schedule_a_factor(self):
+        db.set_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            111,
+            2.125,
+            7,
+            precise_interval=7.4,
+        )
+
+        payload = db.find_card_database_entries(self.addon_dir, "TestProfile", [111])
+
+        assert any(
+            entry["table"] == "topic_schedule"
+            and entry["column"] == "card_id"
+            and entry["values"]["a_factor"] == 2.125
+            and entry["values"]["interval"] == 7
+            and entry["values"]["precise_interval"] == 7.4
+            for entry in payload["entries"]
+        )
+
+    def test_find_card_database_entries_finds_prefixed_card_id_rows(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "INSERT INTO pdf_card_sources(pdf_card_id, page, note_id, excerpt, pdf_filename) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (201, 3, 9001, "pdf excerpt", "sample.pdf"),
+        )
+        conn.execute(
+            "INSERT INTO epub_card_sources(epub_card_id, section_index, note_id, excerpt) "
+            "VALUES (?, ?, ?, ?)",
+            (201, 4, 9002, "epub excerpt"),
+        )
+        conn.execute(
+            "INSERT INTO web_card_sources(web_card_id, url, note_id, excerpt) "
+            "VALUES (?, ?, ?, ?)",
+            (201, "https://example.test", 9003, "web excerpt"),
+        )
+        conn.commit()
+
+        payload = db.find_card_database_entries(self.addon_dir, "TestProfile", [201])
+        matches = {
+            (entry["table"], entry["column"], entry["values"].get("excerpt"))
+            for entry in payload["entries"]
+        }
+
+        assert ("pdf_card_sources", "pdf_card_id", "pdf excerpt") in matches
+        assert ("epub_card_sources", "epub_card_id", "epub excerpt") in matches
+        assert ("web_card_sources", "web_card_id", "web excerpt") in matches
+
+    def test_find_card_database_entries_finds_card_id_inside_column_name(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "CREATE TABLE future_refs(source_card_id_extra INTEGER NOT NULL, label TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO future_refs(source_card_id_extra, label) VALUES (?, ?)",
+            (211, "future card ref"),
+        )
+        conn.commit()
+
+        payload = db.find_card_database_entries(self.addon_dir, "TestProfile", [211])
+
+        assert any(
+            entry["table"] == "future_refs"
+            and entry["column"] == "source_card_id_extra"
+            and entry["values"]["label"] == "future card ref"
+            for entry in payload["entries"]
+        )
+
+    def test_find_card_database_entries_ignores_unrelated_ids(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "CREATE TABLE unrelated_note_refs(note_id INTEGER NOT NULL, label TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO unrelated_note_refs(note_id, label) VALUES (?, ?)",
+            (301, "not a card row"),
+        )
+        conn.commit()
+
+        payload = db.find_card_database_entries(self.addon_dir, "TestProfile", [301])
+
+        assert not any(
+            entry["table"] == "unrelated_note_refs"
+            for entry in payload["entries"]
+        )
+
+    def test_find_card_database_entries_returns_empty_for_card_without_rows(self):
+        db.get_connection(self.addon_dir, "TestProfile").commit()
+
+        payload = db.find_card_database_entries(self.addon_dir, "TestProfile", [404])
+
+        assert payload["card_ids"] == [404]
+        assert payload["entries"] == []
+
 
 # ---------------------------------------------------------------------------
 # replace_pdf_text_index + search_pdf_text_index

@@ -1577,14 +1577,14 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
 
 def mark_reviewer_extract_note_added(options: dict | None) -> None:
     global _suppress_next_reviewer_queue_refresh
-    if str((options or {}).get("source") or "").strip() != "reviewer":
-        return
     parent_card_id = None
     try:
         raw_parent_card_id = (options or {}).get("source_card_id")
         parent_card_id = int(raw_parent_card_id) if raw_parent_card_id is not None else None
     except Exception:
         parent_card_id = None
+    if parent_card_id is None:
+        return
     _suppress_next_reviewer_queue_refresh = {
         "parent_card_id": parent_card_id,
         "seen": time.monotonic(),

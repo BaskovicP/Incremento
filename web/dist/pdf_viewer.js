@@ -8592,7 +8592,8 @@
                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Review" }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_regenerate_cover:${cardIdRef.current}`), children: "Regenerate Cover" })
                         ] })
                       ] }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),

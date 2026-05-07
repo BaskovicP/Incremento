@@ -37,6 +37,7 @@ from .backend.pdf_manager import (
     get_zoom,
     get_read_page,
     extract_pdf_pages_text,
+    regenerate_pdf_card_cover,
 )
 from .backend.epub_manager import (
     EPUB_NOTE_TYPE,
@@ -156,6 +157,7 @@ from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
     create_database_checkpoint,
+    find_card_database_entries,
     get_connection,
     get_card_browser_media_ref,
     get_custom_schedule_rule,
@@ -1364,6 +1366,184 @@ def _open_browser_a_factor_dialog(browser, card_ids: list[int]) -> None:
     tooltip(msg)
 
 
+def _browser_selected_pdf_card_ids(browser) -> tuple[list[int], int]:
+    selected_card_ids = _browser_selected_incremento_card_ids(browser)
+    if not selected_card_ids:
+        return [], 0
+
+    pdf_card_ids: list[int] = []
+    skipped = 0
+    seen_notes: set[int] = set()
+    for raw_card_id in selected_card_ids:
+        try:
+            card = mw.col.get_card(int(raw_card_id))
+        except Exception:
+            skipped += 1
+            continue
+        if card is None:
+            skipped += 1
+            continue
+        try:
+            note = mw.col.get_note(card.nid)
+            model = mw.col.models.get(note.mid)
+            model_name = str((model or {}).get("name") or "")
+        except Exception:
+            skipped += 1
+            continue
+        if model_name != PDF_NOTE_TYPE:
+            skipped += 1
+            continue
+        note_id = int(getattr(card, "nid", 0) or 0)
+        if note_id > 0 and note_id in seen_notes:
+            continue
+        if note_id > 0:
+            seen_notes.add(note_id)
+        pdf_card_ids.append(int(card.id))
+    return pdf_card_ids, skipped
+
+
+def _regenerate_pdf_covers_for_browser_selection(browser) -> None:
+    pdf_card_ids, skipped = _browser_selected_pdf_card_ids(browser)
+    if not pdf_card_ids:
+        showInfo("No Incremento PDF cards found in the selected Browser rows.")
+        return
+
+    regenerated = 0
+    cleared = 0
+    failed: list[str] = []
+
+    mw.progress.start(label="Regenerating PDF covers…", immediate=True)
+    try:
+        total = len(pdf_card_ids)
+        for index, card_id in enumerate(pdf_card_ids, start=1):
+            try:
+                mw.progress.update(label=f"({index}/{total}) Regenerating PDF covers…")
+            except Exception:
+                pass
+            try:
+                cover_filename = regenerate_pdf_card_cover(_ADDON_DIR, mw.col, int(card_id))
+                if cover_filename:
+                    regenerated += 1
+                else:
+                    cleared += 1
+            except Exception as exc:
+                failed.append(f"Card {card_id}: {exc}")
+    finally:
+        try:
+            mw.progress.finish()
+        except Exception:
+            pass
+
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+    try:
+        browser.search()
+    except Exception:
+        pass
+
+    if failed:
+        details = "\n".join(failed[:10])
+        if len(failed) > 10:
+            details += f"\n… and {len(failed) - 10} more."
+        message = (
+            f"Regenerated {regenerated} PDF cover{'s' if regenerated != 1 else ''} "
+            f"and cleared {cleared}."
+        )
+        if skipped:
+            message += f" Skipped {skipped} non-PDF selected card{'s' if skipped != 1 else ''}."
+        message += f"\n\nFailures:\n{details}"
+        showInfo(message)
+        return
+
+    message = (
+        f"Regenerated {regenerated} PDF cover{'s' if regenerated != 1 else ''} "
+        f"and cleared {cleared}."
+    )
+    if skipped:
+        message += f" Skipped {skipped} non-PDF selected card{'s' if skipped != 1 else ''}."
+    tooltip(message)
+
+
+def _format_database_entry_value(value) -> str:
+    if value is None:
+        return "NULL"
+    if isinstance(value, bytes):
+        return repr(value)
+    return str(value)
+
+
+def _format_browser_database_entries(payload: dict[str, object]) -> str:
+    card_ids = [int(card_id) for card_id in list(payload.get("card_ids") or [])]
+    entries = list(payload.get("entries") or [])
+    lines = [
+        "Selected card IDs: " + ", ".join(str(card_id) for card_id in card_ids),
+        f"Profile: {payload.get('profile') or ''}",
+        f"Database: {payload.get('db_path') or ''}",
+    ]
+    separator = "-" * 72
+    for card_id in card_ids:
+        card_entries = [
+            entry
+            for entry in entries
+            if int((entry or {}).get("card_id") or 0) == int(card_id)
+        ]
+        lines.extend(["", separator, f"Card {card_id}"])
+        if not card_entries:
+            lines.append(f"No Incremento database rows found for card {card_id}.")
+            continue
+
+        current_group = ""
+        for entry in sorted(
+            card_entries,
+            key=lambda item: (
+                str(item.get("table") or ""),
+                str(item.get("column") or ""),
+                int(item.get("rowid") or 0),
+            ),
+        ):
+            group = f"{entry.get('table')}.{entry.get('column')}"
+            if group != current_group:
+                current_group = group
+                lines.extend(["", group])
+            rowid = entry.get("rowid")
+            row_label = f"rowid {rowid}" if rowid is not None else "row"
+            lines.append(f"  {row_label}")
+            values = dict(entry.get("values") or {})
+            columns = list(entry.get("columns") or values.keys())
+            for column in columns:
+                lines.append(f"    {column}: {_format_database_entry_value(values.get(column))}")
+    return "\n".join(lines)
+
+
+def _show_browser_database_entries(browser) -> None:
+    card_ids = _browser_selected_incremento_card_ids(browser)
+    if not card_ids:
+        showInfo("Select one or more Browser rows first.")
+        return
+
+    try:
+        payload = find_card_database_entries(_ADDON_DIR, _active_profile(), card_ids)
+    except Exception as exc:
+        showInfo(f"Could not read Incremento database entries:\n{exc}")
+        return
+
+    dlg = QDialog(mw)
+    dlg.setWindowTitle("Incremento Database Entries")
+    dlg.resize(980, 700)
+    layout = QVBoxLayout(dlg)
+    text = QTextBrowser(dlg)
+    text.setReadOnly(True)
+    text.setPlainText(_format_browser_database_entries(payload))
+    layout.addWidget(text, 1)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dlg)
+    buttons.rejected.connect(dlg.reject)
+    buttons.accepted.connect(dlg.accept)
+    layout.addWidget(buttons)
+    dlg.exec()
+
+
 def _on_browser_context_menu(browser, menu: QMenu) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
@@ -1376,8 +1556,10 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     item_action = QAction(f"Make Item ({count_label})", submenu)
     a_factor_action = QAction(f"Set A-Factor… ({count_label})", submenu)
     schedule_action = QAction(f"Custom Schedule… ({count_label})", submenu)
+    pdf_cover_action = QAction(f"Regenerate PDF Covers ({count_label})", submenu)
     ocr_action = QAction(f"OCR Image Text ({count_label})", submenu)
     hidden_fields_action = QAction(f"Show Hidden Fields ({count_label})", submenu)
+    database_entries_action = QAction(f"Show Database Entries ({count_label})", submenu)
 
     qconnect(
         topic_action.triggered,
@@ -1405,6 +1587,10 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         ),
     )
     qconnect(
+        pdf_cover_action.triggered,
+        lambda _checked=False, b=browser: _regenerate_pdf_covers_for_browser_selection(b),
+    )
+    qconnect(
         ocr_action.triggered,
         lambda _checked=False, b=browser: _ocr_browser_selection(b),
     )
@@ -1412,14 +1598,20 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         hidden_fields_action.triggered,
         lambda _checked=False, b=browser: _show_browser_hidden_fields(b),
     )
+    qconnect(
+        database_entries_action.triggered,
+        lambda _checked=False, b=browser: _show_browser_database_entries(b),
+    )
 
     submenu.addAction(topic_action)
     submenu.addAction(item_action)
     submenu.addSeparator()
     submenu.addAction(a_factor_action)
     submenu.addAction(schedule_action)
+    submenu.addAction(pdf_cover_action)
     submenu.addAction(ocr_action)
     submenu.addAction(hidden_fields_action)
+    submenu.addAction(database_entries_action)
     menu.addMenu(submenu)
 
 

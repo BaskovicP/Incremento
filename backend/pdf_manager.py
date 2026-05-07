@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -140,13 +141,24 @@ def _copy_to_pdf_dir(pdf_path: str) -> str:
     return dest_name
 
 PDF_NOTE_TYPE = "Incremento PDF"
+PDF_COVER_FIELD = "PDF_Cover_Image"
+_PDF_COVER_RENDER_WIDTH = 360
 
 CARD_TEMPLATE_FRONT = """
-<div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
+<div style="text-align:center; padding:36px 20px 44px; font-family:sans-serif; color:#888;">
+  {{#PDF_Cover_Image}}
+    <div style="margin:0 auto 22px; max-width:340px;">
+      <img
+        src="{{PDF_Cover_Image}}"
+        alt="{{Title}} cover"
+        style="display:block; width:100%; height:auto; border-radius:14px; box-shadow:0 16px 42px rgba(0,0,0,0.28);"
+      >
+    </div>
+  {{/PDF_Cover_Image}}
   <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
   <div style="font-size:0.85em;">PDF open in sidebar &nbsp;·&nbsp; select text → ⌘C → ⌘1–4 to fill fields</div>
 </div>
-{{PDF_Filename}}
+<div style="display:none;">{{PDF_Filename}}</div>
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
@@ -678,6 +690,95 @@ def extract_pdf_text(pdf_path: str) -> str:
     return ""
 
 
+def render_pdf_cover_media(col, pdf_path: str, *, title: str = "", source_filename: str = "") -> str:
+    """Render the first PDF page to Anki media and return the stored media filename."""
+    if not pdf_path or not os.path.exists(pdf_path):
+        raise FileNotFoundError("PDF file was not found.")
+
+    try:
+        from PyQt6.QtCore import QSize
+    except Exception:
+        return ""
+
+    doc = QPdfDocument(None)
+    try:
+        doc.load(pdf_path)
+        if doc.pageCount() <= 0:
+            return ""
+
+        render_w = _PDF_COVER_RENDER_WIDTH
+        render_h = int(render_w * 1.414)
+        try:
+            page_size = doc.pagePointSize(0)
+            width = float(page_size.width() or 0)
+            height = float(page_size.height() or 0)
+            if width > 0 and height > 0:
+                render_h = max(1, int(render_w * height / width))
+        except Exception:
+            pass
+
+        image = doc.render(0, QSize(render_w, render_h))
+        if image is None or image.isNull():
+            return ""
+
+        stem_source = title or source_filename or os.path.splitext(os.path.basename(pdf_path))[0]
+        image_name = f"{_safe_pdf_stem(stem_source, fallback='pdf_cover')}-cover-{uuid.uuid4().hex}.png"
+        tmp_dir = tempfile.mkdtemp(prefix="incremento-pdf-cover-")
+        tmp_path = os.path.join(tmp_dir, image_name)
+        try:
+            if not image.save(tmp_path, "PNG"):
+                return ""
+            return str(col.media.add_file(tmp_path) or "").strip()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            try:
+                os.rmdir(tmp_dir)
+            except OSError:
+                pass
+    except Exception:
+        return ""
+    finally:
+        doc.close()
+
+
+def regenerate_pdf_note_cover(col, note, pdf_path: str) -> str:
+    """Refresh a PDF note's stored cover media reference and persist the note."""
+    ensure_pdf_note_type(col)
+    cover_media = render_pdf_cover_media(
+        col,
+        pdf_path,
+        title=str(note["Title"] or "").strip(),
+        source_filename=str(note["PDF_Filename"] or "").strip(),
+    )
+    note[PDF_COVER_FIELD] = cover_media
+    col.update_note(note)
+    return cover_media
+
+
+def regenerate_pdf_card_cover(addon_dir: str, col, card_id: int) -> str:
+    """Regenerate the stored cover preview for an existing PDF card."""
+    cid = int(card_id)
+    card = col.get_card(cid)
+    if card is None:
+        raise RuntimeError("PDF card was not found.")
+    note = col.get_note(card.nid)
+    if note is None:
+        raise RuntimeError("Linked PDF note was not found.")
+
+    pdf_filename = str(note["PDF_Filename"] or "").strip()
+    if not pdf_filename:
+        raise RuntimeError("This PDF note does not have a stored PDF filename.")
+
+    pdf_path = str(_paths.get_pdf_dir(addon_dir, _paths.get_active_profile()) / pdf_filename)
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"Stored PDF file was not found:\n{pdf_path}")
+
+    return regenerate_pdf_note_cover(col, note, pdf_path)
+
+
 def ensure_pdf_note_type(col) -> None:
     """Create the Incremento PDF note type, or update its template/fields if it already exists."""
     models = col.models
@@ -685,7 +786,7 @@ def ensure_pdf_note_type(col) -> None:
 
     if m is None:
         m = models.new(PDF_NOTE_TYPE)
-        for field_name in ("Title", "PDF_Filename"):
+        for field_name in ("Title", "PDF_Filename", PDF_COVER_FIELD):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
         ensure_incremento_metadata_fields(models, m)
@@ -696,6 +797,13 @@ def ensure_pdf_note_type(col) -> None:
         models.add(m)
     else:
         changed = False
+        existing_fields = {str((field or {}).get("name") or "") for field in list(m.get("flds") or [])}
+        for field_name in ("Title", "PDF_Filename", PDF_COVER_FIELD):
+            if field_name in existing_fields:
+                continue
+            fld = models.new_field(field_name)
+            models.add_field(m, fld)
+            changed = True
         if ensure_incremento_metadata_fields(models, m):
             changed = True
         # Sync template
@@ -880,11 +988,18 @@ def add_pdf_card(
         if precomputed_page_texts is not None
         else extract_pdf_pages_text(dest_path)
     )
+    cover_media = render_pdf_cover_media(
+        col,
+        dest_path,
+        title=title,
+        source_filename=media_filename,
+    )
 
     def _build_note(stored_title: str):
         note = col.new_note(model)
         note["Title"] = stored_title
         note["PDF_Filename"] = media_filename
+        note[PDF_COVER_FIELD] = cover_media
         apply_incremento_metadata(
             note,
             metadata
@@ -938,6 +1053,7 @@ def add_pdf_card(
 
 def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> str:
     """Copy a replacement PDF into storage and relink an existing PDF card."""
+    ensure_pdf_note_type(col)
     cid = int(card_id)
     if not pdf_path or not os.path.exists(pdf_path):
         raise FileNotFoundError("Replacement PDF was not found.")
@@ -954,6 +1070,12 @@ def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> s
     page_texts = extract_pdf_pages_text(dest_path)
 
     note["PDF_Filename"] = media_filename
+    note[PDF_COVER_FIELD] = render_pdf_cover_media(
+        col,
+        dest_path,
+        title=str(note["Title"] or "").strip(),
+        source_filename=media_filename,
+    )
     try:
         current_author = str(note[INCREMENTO_SOURCE_AUTHOR_FIELD] or "").strip()
     except Exception:
