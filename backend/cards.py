@@ -11,7 +11,7 @@ except ImportError:
     from topic_scheduler import is_topic_card  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
-all_ready_cards_filter = "(is:due OR is:learn OR is:new) -is:suspended"
+all_ready_cards_filter = "(is:new OR (is:learn is:due) OR (is:review is:due)) -is:suspended"
 PDF_NOTE_TYPE = "Incremento PDF"
 _TOPIC_ITEM_CACHE: dict[tuple[int, str, str, str], tuple[int, ...]] = {}
 

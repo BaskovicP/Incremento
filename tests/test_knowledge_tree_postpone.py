@@ -43,7 +43,7 @@ class _FakeCol:
     def find_cards(self, search: str):
         search = str(search or "")
         ids = {card_id for card_id, card in self._cards.items() if not card.suspended}
-        if "is:due OR is:learn" in search:
+        if "(is:learn is:due)" in search or "(is:review is:due)" in search:
             ids = {
                 card_id
                 for card_id in ids

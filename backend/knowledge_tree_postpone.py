@@ -34,6 +34,7 @@ try:
         configured_priority_lower_is_more_important,
         get_priority,
     )
+    from .scheduler_config import build_ready_filter
     from .topic_scheduler import is_topic_card
 except ImportError:
     from cards import sort_cards_for_priority_mode  # type: ignore
@@ -60,6 +61,7 @@ except ImportError:
         configured_priority_lower_is_more_important,
         get_priority,
     )
+    from scheduler_config import build_ready_filter  # type: ignore
     from topic_scheduler import is_topic_card  # type: ignore
 
 
@@ -436,7 +438,11 @@ def _eligible_scope_ids(
 ) -> list[int]:
     base_filter = "-is:suspended"
     if not include_non_outstanding:
-        base_filter += " (is:due OR is:learn)"
+        base_filter = build_ready_filter(
+            include_new=False,
+            include_learning=True,
+            include_due=True,
+        )
     ids = _normalize_browser_card_ids(candidate_card_ids)
     if not ids:
         return _search_card_ids(base_filter)

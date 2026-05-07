@@ -262,6 +262,10 @@ class TestGetCardsByTag:
 
 
 class TestGetAllReadyCardIds:
+    def test_default_ready_filter_excludes_learning_steps_not_due_yet(self):
+        assert "(is:learn is:due)" in cards.all_ready_cards_filter
+        assert "is:due OR is:learn" not in cards.all_ready_cards_filter
+
     def test_calls_find_cards_with_filter(self):
         with patch("cards.mw") as mock_mw:
             mock_mw.col.find_cards.return_value = [1, 2, 3]

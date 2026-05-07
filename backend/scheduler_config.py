@@ -3,6 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 NO_TAGS_KEY = "__no_tags__"
+READY_NEW_CLAUSE = "is:new"
+READY_LEARNING_CLAUSE = "(is:learn is:due)"
+READY_REVIEW_CLAUSE = "(is:review is:due)"
+
+
+def build_ready_filter(
+    *,
+    include_new: bool,
+    include_learning: bool,
+    include_due: bool,
+) -> str:
+    """Return an Anki search clause for cards ready to study now."""
+    parts = []
+    if include_new:
+        parts.append(READY_NEW_CLAUSE)
+    if include_learning:
+        parts.append(READY_LEARNING_CLAUSE)
+    if include_due:
+        parts.append(READY_REVIEW_CLAUSE)
+    if not parts:
+        return f"{READY_NEW_CLAUSE} -is:suspended"
+    if len(parts) == 1:
+        return f"{parts[0]} -is:suspended"
+    return "(" + " OR ".join(parts) + ") -is:suspended"
 
 # Derive the addon package name from this module's path so getConfig works
 # regardless of which submodule calls it (e.g. "incremento.backend.scheduler_config"
@@ -43,18 +67,11 @@ class SchedulerConfig:
     @property
     def ready_filter(self) -> str:
         """Anki search clause for the card states to include."""
-        parts = []
-        if self.include_new:
-            parts.append("is:new")
-        if self.include_learning:
-            parts.append("is:learn")
-        if self.include_due:
-            parts.append("is:due")
-        if not parts:
-            return "is:new -is:suspended"   # safety fallback — never emit an empty filter
-        if len(parts) == 1:
-            return f"{parts[0]} -is:suspended"
-        return "(" + " OR ".join(parts) + ") -is:suspended"
+        return build_ready_filter(
+            include_new=self.include_new,
+            include_learning=self.include_learning,
+            include_due=self.include_due,
+        )
 
 
 def load_scheduler_config() -> SchedulerConfig:

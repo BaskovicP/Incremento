@@ -84,7 +84,7 @@ try:
         INCREMENTO_PARENT_FIELD,
         INCREMENTO_SOURCE_AUTHOR_FIELD,
     )
-    from .scheduler_config import load_scheduler_config
+    from .scheduler_config import build_ready_filter, load_scheduler_config
     from .statistics import _effective_date
 except ImportError:
     from db import (  # test environment
@@ -108,7 +108,7 @@ except ImportError:
         INCREMENTO_PARENT_FIELD,
         INCREMENTO_SOURCE_AUTHOR_FIELD,
     )
-    from scheduler_config import load_scheduler_config  # type: ignore
+    from scheduler_config import build_ready_filter, load_scheduler_config  # type: ignore
     from statistics import _effective_date  # type: ignore
 
 
@@ -409,8 +409,13 @@ def get_due_pdf_source_cards(
 
     note_ids = sorted(source_by_note)
     note_query = " OR ".join(f"nid:{nid}" for nid in note_ids)
+    ready_filter = build_ready_filter(
+        include_new=False,
+        include_learning=True,
+        include_due=True,
+    )
     try:
-        due_card_ids = list(col.find_cards(f"({note_query}) (is:due OR is:learn) -is:suspended"))
+        due_card_ids = list(col.find_cards(f"({note_query}) {ready_filter}"))
     except Exception:
         return []
 

@@ -23,7 +23,7 @@ except ImportError:
 
 try:
     from ..backend import cards as _card_utils
-    from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY
+    from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY, build_ready_filter
     from ..backend.scheduler_preview import compute_expected_mix
     from ..backend.session_selection import select_session_cards
     from ..backend.pdf_manager import (
@@ -38,7 +38,7 @@ try:
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
     import cards as _card_utils
-    from scheduler_config import SchedulerConfig, NO_TAGS_KEY
+    from scheduler_config import SchedulerConfig, NO_TAGS_KEY, build_ready_filter
     from scheduler_preview import compute_expected_mix
     from session_selection import select_session_cards
     from pdf_manager import (
@@ -1258,7 +1258,7 @@ class SchedulerConfigDialog(QDialog):
         self._cb_new.setChecked(self._saved.get("include_new", True))
         card_types_row.addWidget(self._cb_new)
         self._cb_learning = QCheckBox("Learning")
-        self._cb_learning.setToolTip("Include cards currently in learning steps (is:learn)")
+        self._cb_learning.setToolTip("Include learning/relearning cards that are due now")
         self._cb_learning.setChecked(self._saved.get("include_learning", True))
         card_types_row.addWidget(self._cb_learning)
         self._cb_due = QCheckBox("Due / Review")
@@ -1268,7 +1268,7 @@ class SchedulerConfigDialog(QDialog):
         card_types_row.addWidget(_info_icon(
             "Which Anki scheduling states are included in the session pool.\n\n"
             "• New — cards you've never studied before\n"
-            "• Learning — cards currently in learning / relearning steps\n"
+            "• Learning — learning / relearning cards due now\n"
             "• Due / Review — mature cards scheduled for today\n\n"
             "Note: PDF, YouTube and Webpage cards are always eligible regardless\n"
             "of these checkboxes — they bypass Anki's scheduling state."
@@ -3172,18 +3172,11 @@ class SchedulerConfigDialog(QDialog):
 
     def _ready_filter_from_checks(self) -> str:
         """Build the is:… clause from the card-type checkboxes."""
-        parts = []
-        if self._cb_new.isChecked():
-            parts.append("is:new")
-        if self._cb_learning.isChecked():
-            parts.append("is:learn")
-        if self._cb_due.isChecked():
-            parts.append("is:due")
-        if not parts:
-            return "is:new -is:suspended"
-        if len(parts) == 1:
-            return f"{parts[0]} -is:suspended"
-        return "(" + " OR ".join(parts) + ") -is:suspended"
+        return build_ready_filter(
+            include_new=self._cb_new.isChecked(),
+            include_learning=self._cb_learning.isChecked(),
+            include_due=self._cb_due.isChecked(),
+        )
 
     def _normalized_saved_filter(self, key: str, source: dict | None = None) -> str:
         lookup = self._saved if source is None else (source or {})

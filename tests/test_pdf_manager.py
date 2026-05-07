@@ -757,6 +757,9 @@ class TestPdfDueSourceCards:
         assert rows[0]["title"] == "Earlier card"
         assert rows[1]["due_state"] == "learning"
         assert "nid:203" not in col.searches[0]
+        assert "(is:learn is:due)" in col.searches[0]
+        assert "(is:review is:due)" in col.searches[0]
+        assert "is:due OR is:learn" not in col.searches[0]
 
     def test_due_review_prompt_settings_round_trip(self):
         initial = pdf_manager.get_pdf_due_review_prompt_settings(

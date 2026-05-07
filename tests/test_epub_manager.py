@@ -155,6 +155,7 @@ class _FakeEpubNote:
 
 class _FakeEpubCol:
     def __init__(self):
+        self.searches: list[str] = []
         self._cards = {
             101: _FakeEpubCard(101, 1001, queue=2, due=10),
             102: _FakeEpubCard(102, 1002, queue=1, due=3),
@@ -164,7 +165,8 @@ class _FakeEpubCol:
             1002: _FakeEpubNote("Section Two Card"),
         }
 
-    def find_cards(self, _query: str):
+    def find_cards(self, query: str):
+        self.searches.append(str(query))
         return [101, 102]
 
     def get_card(self, card_id: int):
@@ -180,12 +182,13 @@ class TestEpubWorkflowHelpers:
         db.add_epub_card_source(addon_dir, "TestProfile", epub_card_id=5, section_index=0, note_id=1001, excerpt="earlier")
         db.add_epub_card_source(addon_dir, "TestProfile", epub_card_id=5, section_index=2, note_id=1002, excerpt="later")
 
+        col = _FakeEpubCol()
         rows = epub_manager.get_due_epub_source_cards(
             addon_dir,
             "TestProfile",
             epub_card_id=5,
             max_section_index=2,
-            col=_FakeEpubCol(),
+            col=col,
         )
 
         assert rows == [
@@ -210,6 +213,9 @@ class TestEpubWorkflowHelpers:
                 "due_state": "learning",
             },
         ]
+        assert "(is:learn is:due)" in col.searches[0]
+        assert "(is:review is:due)" in col.searches[0]
+        assert "is:due OR is:learn" not in col.searches[0]
 
     def test_epub_daily_limit_status_uses_sections(self, tmp_path):
         addon_dir = str(tmp_path)

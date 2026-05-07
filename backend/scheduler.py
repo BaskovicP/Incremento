@@ -48,7 +48,7 @@ def get_card_from_scheduler(
         force_mode=None,        # "random" | "priority" | None — skips soft_pick for mode
         topics_filter: str = "deck:Topics",
         items_filter: str = "-deck:Topics",
-        ready_filter: str = "(is:due OR is:learn OR is:new)",
+        ready_filter: str = "(is:new OR (is:learn is:due) OR (is:review is:due)) -is:suspended",
         pdf_rate: float = 0.0,
         pdf_filter: str = DOCUMENT_FILTER,
         youtube_filter: str = 'note:"Incremento Video"',
