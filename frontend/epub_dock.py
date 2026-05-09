@@ -60,9 +60,11 @@ try:
         get_epub_daily_limit_status,
         get_epub_limit_mode_label,
         get_epub_progress,
+        get_read_anchor,
         get_read_section_index,
         get_epub_section_path,
         load_epub_metadata,
+        regenerate_epub_card_cover,
         save_epub_daily_limit_settings,
         save_epub_due_review_prompt_settings,
         set_epub_progress,
@@ -82,9 +84,11 @@ except ImportError:
         get_epub_daily_limit_status,
         get_epub_limit_mode_label,
         get_epub_progress,
+        get_read_anchor,
         get_read_section_index,
         get_epub_section_path,
         load_epub_metadata,
+        regenerate_epub_card_cover,
         save_epub_daily_limit_settings,
         save_epub_due_review_prompt_settings,
         set_epub_progress,
@@ -141,6 +145,7 @@ _current_epub_section_index = 0
 _current_epub_scroll_ratio = 0.0
 _current_epub_finished = False
 _current_epub_font_scale = 1.0
+_current_epub_read_anchor: dict | None = None
 _last_selection_meta: dict[str, object] = {}
 _pending_focus_offset = -1
 _pending_restore_ratio = 0.0
@@ -161,6 +166,7 @@ _MSG_FILL_FIELD = "incremento_epub_fill_field:"
 _MSG_HL_ADD = "incremento_epub_hl_add:"
 _MSG_HL_DEL = "incremento_epub_hl_del:"
 _MSG_PROGRESS = "incremento_epub_progress:"
+_MSG_MARK_READ = "incremento_epub_mark_read:"
 _MSG_SECTION_NAV = "incremento_epub_section_nav:"
 _MSG_SNAPSHOT = "incremento_epub_snapshot:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
@@ -827,6 +833,17 @@ class _EpubDockPage(QWebEnginePage):
             except Exception:
                 pass
             return
+        if msg.startswith(_MSG_MARK_READ):
+            try:
+                data = json.loads(msg[len(_MSG_MARK_READ) :])
+                _set_epub_read_marker(
+                    int(data.get("cardId", _current_epub_card_id or 0) or 0),
+                    int(data.get("sectionIndex", _current_epub_section_index) or 0),
+                    data.get("anchor"),
+                )
+            except Exception as exc:
+                print(f"[Incremento] epub_dock read marker failed: {exc}")
+            return
         if msg.startswith(_MSG_SECTION_NAV):
             try:
                 data = json.loads(msg[len(_MSG_SECTION_NAV) :])
@@ -844,6 +861,7 @@ def _build_page_script(
     section_index: int,
     scroll_ratio: float,
     text_scale: float,
+    read_anchor: dict | None,
     focus_offset: int,
     search_query: str,
     highlights: list[dict],
@@ -855,6 +873,7 @@ def _build_page_script(
         "sectionIndex": int(section_index),
         "scrollRatio": max(0.0, min(float(scroll_ratio), 1.0)),
         "textScale": max(0.7, min(float(text_scale), 2.2)),
+        "readAnchor": read_anchor if isinstance(read_anchor, dict) else None,
         "autoHighlightOnExtract": configured_highlight_when_extracting(),
         "focusOffset": int(focus_offset),
         "searchQuery": str(search_query or ""),
@@ -924,6 +943,29 @@ def _build_page_script(
             border-radius: 2px;
             cursor: pointer;
           }}
+          #incremento-epub-read-marker {{
+            position: absolute;
+            z-index: 2147483000;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px 10px 10px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96));
+            color: #ecfeff;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            border: 1px solid rgba(103,232,249,0.6);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+            pointer-events: none;
+          }}
+          #incremento-epub-read-marker .incremento-epub-read-marker-arrow {{
+            font-size: 26px;
+            line-height: 1;
+          }}
         `;
         document.head.appendChild(style);
       }}
@@ -944,9 +986,12 @@ def _build_page_script(
           NodeFilter.SHOW_TEXT,
           {{
             acceptNode(node) {{
-              return node.nodeValue && node.nodeValue.length
-                ? NodeFilter.FILTER_ACCEPT
-                : NodeFilter.FILTER_REJECT;
+              if (!node.nodeValue || !node.nodeValue.length) return NodeFilter.FILTER_REJECT;
+              const parent = node.parentElement;
+              if (!parent) return NodeFilter.FILTER_REJECT;
+              if (/^(SCRIPT|STYLE|NOSCRIPT)$/i.test(parent.tagName || '')) return NodeFilter.FILTER_REJECT;
+              if (parent.closest && parent.closest('#incremento-epub-read-marker')) return NodeFilter.FILTER_REJECT;
+              return NodeFilter.FILTER_ACCEPT;
             }},
           }}
         );
@@ -1020,6 +1065,125 @@ def _build_page_script(
           startOffset: offsetFromPoint(range.startContainer, range.startOffset),
           endOffset: offsetFromPoint(range.endContainer, range.endOffset),
         }};
+      }}
+      function rangeRect(range) {{
+        if (!range) return null;
+        const rects = Array.from(range.getClientRects()).filter(function(rect) {{
+          return rect && rect.width >= 0 && rect.height > 0;
+        }});
+        return rects.length ? rects[rects.length - 1] : null;
+      }}
+      function rectForOffset(offset) {{
+        const point = pointFromOffset(offset);
+        if (!point || !point.node) return null;
+        const len = point.node.nodeValue.length;
+        const startOffset = Math.max(0, Math.min(point.offset, len));
+        const endOffset = Math.max(startOffset, Math.min(startOffset + 1, len));
+        const range = document.createRange();
+        range.setStart(point.node, startOffset);
+        range.setEnd(point.node, endOffset);
+        let rect = rangeRect(range);
+        if ((!rect || rect.height <= 0) && startOffset > 0) {{
+          range.setStart(point.node, startOffset - 1);
+          range.setEnd(point.node, startOffset);
+          rect = rangeRect(range);
+        }}
+        return rect;
+      }}
+      function currentCaretRange() {{
+        const x = Math.max(24, Math.floor(window.innerWidth * 0.5));
+        const y = Math.max(24, Math.floor(window.innerHeight * 0.48));
+        if (document.caretRangeFromPoint) {{
+          return document.caretRangeFromPoint(x, y);
+        }}
+        if (document.caretPositionFromPoint) {{
+          const pos = document.caretPositionFromPoint(x, y);
+          if (pos && pos.offsetNode) {{
+            const range = document.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+            return range;
+          }}
+        }}
+        return null;
+      }}
+      function bestVisibleTextAnchor() {{
+        const nodes = textNodes();
+        if (!nodes.length) return null;
+        const viewportMid = window.innerHeight / 2;
+        let best = null;
+        let bestDistance = Infinity;
+        for (const node of nodes) {{
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const rects = Array.from(range.getClientRects()).filter(function(rect) {{
+            return rect && rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.top <= window.innerHeight;
+          }});
+          for (const rect of rects) {{
+            const distance = Math.abs((rect.top + (rect.height / 2)) - viewportMid);
+            if (distance < bestDistance) {{
+              best = {{ node, rect }};
+              bestDistance = distance;
+            }}
+          }}
+        }}
+        if (!best) return null;
+        return {{
+          sectionIndex: STATE.sectionIndex,
+          offset: offsetFromPoint(best.node, best.node.nodeValue.length),
+          text: normText(best.node.nodeValue).slice(0, 240),
+        }};
+      }}
+      function buildReadAnchor() {{
+        const sel = window.getSelection ? window.getSelection() : null;
+        if (sel && !sel.isCollapsed && sel.rangeCount) {{
+          const meta = selectionMeta();
+          if (meta) {{
+            return {{
+              sectionIndex: STATE.sectionIndex,
+              offset: Math.max(0, Number(meta.endOffset) || 0),
+              text: meta.text.slice(0, 240),
+            }};
+          }}
+        }}
+        const caret = currentCaretRange();
+        if (caret && caret.startContainer) {{
+          const offset = offsetFromPoint(caret.startContainer, caret.startOffset);
+          if (Number.isFinite(offset) && offset >= 0) {{
+            return {{
+              sectionIndex: STATE.sectionIndex,
+              offset,
+              text: normText(caret.startContainer.nodeValue || '').slice(0, 240),
+            }};
+          }}
+        }}
+        return bestVisibleTextAnchor();
+      }}
+      function removeReadMarker() {{
+        const old = document.getElementById('incremento-epub-read-marker');
+        if (old) old.remove();
+      }}
+      function renderReadMarker() {{
+        removeReadMarker();
+        const anchor = STATE.readAnchor;
+        if (!anchor || Number(anchor.sectionIndex) !== Number(STATE.sectionIndex)) return;
+        const rect = rectForOffset(anchor.offset);
+        if (!rect) return;
+        const marker = document.createElement('div');
+        marker.id = 'incremento-epub-read-marker';
+        marker.title = anchor.text ? ('You stopped at: ' + anchor.text) : 'You marked this as your current stopping point';
+        const arrow = document.createElement('span');
+        arrow.className = 'incremento-epub-read-marker-arrow';
+        arrow.textContent = '↦';
+        const label = document.createElement('span');
+        label.textContent = 'Read Up Until Here';
+        marker.appendChild(arrow);
+        marker.appendChild(label);
+        document.body.appendChild(marker);
+        const left = Math.max(12, rect.left + window.scrollX - 178);
+        const top = Math.max(8, rect.top + window.scrollY + (rect.height / 2) - 18);
+        marker.style.left = left.toFixed(0) + 'px';
+        marker.style.top = top.toFixed(0) + 'px';
       }}
       function selectionRect() {{
         const sel = window.getSelection ? window.getSelection() : null;
@@ -1103,6 +1267,22 @@ def _build_page_script(
       window.incrementoSetAutoHighlightOnExtract = function(value) {{
         STATE.autoHighlightOnExtract = !!value;
       }};
+      window.incrementoSetEpubReadAnchor = function(anchor) {{
+        STATE.readAnchor = anchor || null;
+        renderReadMarker();
+      }};
+      window.incrementoToggleEpubReadMarker = function() {{
+        const anchor = buildReadAnchor();
+        if (!anchor) return false;
+        STATE.readAnchor = anchor;
+        renderReadMarker();
+        send('incremento_epub_mark_read:' + JSON.stringify({{
+          cardId: STATE.cardId,
+          sectionIndex: STATE.sectionIndex,
+          anchor,
+        }}));
+        return true;
+      }};
       window.incrementoAddEpubHighlight = function() {{
         const meta = selectionMeta();
         if (!meta) return false;
@@ -1161,9 +1341,16 @@ def _build_page_script(
       for (const hl of highlights) {{
         try {{ applyHighlight(hl); }} catch (err) {{}}
       }}
+      renderReadMarker();
       document.removeEventListener('selectionchange', window._incrementoEpubSelectionListener, true);
       window._incrementoEpubSelectionListener = reportSelection;
       document.addEventListener('selectionchange', window._incrementoEpubSelectionListener, true);
+
+      window.removeEventListener('resize', window._incrementoEpubResizeListener, true);
+      window._incrementoEpubResizeListener = function() {{
+        setTimeout(renderReadMarker, 40);
+      }};
+      window.addEventListener('resize', window._incrementoEpubResizeListener, true);
 
       document.removeEventListener('keydown', window._incrementoEpubKeyListener, true);
       window._incrementoEpubKeyListener = function(event) {{
@@ -1235,6 +1422,7 @@ def _build_page_script(
             window.find(STATE.searchQuery, false, false, true, false, false, false);
           }} catch (err) {{}}
         }}
+        renderReadMarker();
         reportProgress();
       }}, 60);
     }})();
@@ -1456,11 +1644,27 @@ def _build_epub_dock() -> None:
         "Capture the current selection as an image (Alt+S)",
         icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
     )
+    dock._cover_btn = _make_epub_button(
+        dock,
+        "Cover",
+        "Regenerate this EPUB card's cover image",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
+    )
     dock._bookmark_add_btn = _make_epub_button(
         dock,
         "Bookmark",
         "Add a bookmark for this reading position",
         icon=_standard_icon(QStyle.StandardPixmap.SP_DialogYesButton),
+    )
+    dock._read_marker_btn = _make_epub_button(
+        dock,
+        "↦ Marker",
+        "Place or remove the exact READ UP UNTIL HERE marker",
+        checkable=True,
+        accent=(
+            "QToolButton:checked { background: rgba(14,165,233,0.24);"
+            " border-color: rgba(14,165,233,0.72); color: #ecfeff; }"
+        ),
     )
     dock._bookmarks_btn = _make_epub_button(
         dock,
@@ -1529,6 +1733,8 @@ def _build_epub_dock() -> None:
             "Capture",
             dock._highlight_btn,
             dock._snapshot_btn,
+            dock._cover_btn,
+            dock._read_marker_btn,
             dock._bookmark_add_btn,
             dock._bookmarks_btn,
             dock._sources_btn,
@@ -1613,6 +1819,8 @@ def _build_epub_dock() -> None:
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
     qconnect(dock._highlight_btn.clicked, _request_highlight)
     qconnect(dock._snapshot_btn.clicked, _request_snapshot)
+    qconnect(dock._cover_btn.clicked, _regenerate_epub_cover)
+    qconnect(dock._read_marker_btn.clicked, _request_read_marker)
     qconnect(dock._bookmark_add_btn.clicked, _add_current_epub_bookmark)
     qconnect(dock._bookmarks_btn.clicked, _toggle_epub_bookmarks_panel)
     qconnect(dock._sources_btn.clicked, _toggle_epub_sources_panel)
@@ -1719,6 +1927,95 @@ def _add_current_epub_bookmark() -> None:
         _epub_dock._bookmarks_panel.setVisible(True)
     _refresh_epub_bookmarks_panel()
     tooltip("EPUB bookmark saved.")
+
+
+def _regenerate_epub_cover() -> None:
+    if _current_epub_card_id is None:
+        showInfo("Could not determine which EPUB card needs a cover refresh.")
+        return
+    try:
+        cover_filename = regenerate_epub_card_cover(_ADDON_DIR, mw.col, int(_current_epub_card_id))
+    except FileNotFoundError as exc:
+        showInfo(f"Could not regenerate this EPUB cover.\n\n{exc}")
+        return
+    except Exception as exc:
+        showInfo(f"Could not regenerate this EPUB cover.\n\n{exc}")
+        return
+
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+    reviewer = getattr(mw, "reviewer", None)
+    current_card = getattr(reviewer, "card", None) if reviewer is not None else None
+    try:
+        current_card_id = int(getattr(current_card, "id", 0) or 0)
+    except Exception:
+        current_card_id = 0
+    if reviewer is not None and current_card_id == int(_current_epub_card_id):
+        try:
+            reviewer.card = mw.col.get_card(int(_current_epub_card_id))
+        except Exception:
+            pass
+        try:
+            reviewer._showQuestion()
+        except Exception:
+            pass
+    if cover_filename:
+        tooltip("EPUB cover regenerated from book metadata.")
+    else:
+        tooltip("EPUB cover cleared because the book has no cover image.")
+
+
+def _read_marker_on_current_section() -> bool:
+    if not isinstance(_current_epub_read_anchor, dict):
+        return False
+    try:
+        return int(_current_epub_read_anchor.get("sectionIndex", -1)) == int(_current_epub_section_index)
+    except Exception:
+        return False
+
+
+def _push_epub_read_anchor() -> None:
+    if _epub_dock is None:
+        return
+    _epub_dock._view.page().runJavaScript(
+        f"window.incrementoSetEpubReadAnchor && window.incrementoSetEpubReadAnchor({json.dumps(_current_epub_read_anchor)});"
+    )
+
+
+def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
+    global _current_epub_read_anchor
+    if int(card_id or 0) <= 0 or _current_epub_card_id is None or int(card_id) != int(_current_epub_card_id):
+        return
+    if anchor is not None and not isinstance(anchor, dict):
+        anchor = None
+    try:
+        set_read_section_index(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            int(section_index),
+            anchor,
+        )
+        _current_epub_read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), int(card_id))
+    except Exception as exc:
+        showInfo(f"Could not save EPUB read marker:\n{exc}")
+        return
+    _push_epub_read_anchor()
+    _update_title_and_buttons()
+    tooltip("EPUB read marker updated." if _current_epub_read_anchor else "EPUB read marker cleared.")
+
+
+def _request_read_marker() -> None:
+    if _epub_dock is None or _current_epub_card_id is None:
+        return
+    if _read_marker_on_current_section():
+        _set_epub_read_marker(int(_current_epub_card_id), int(_current_epub_section_index), None)
+        return
+    _epub_dock._view.page().runJavaScript(
+        "window.incrementoToggleEpubReadMarker && window.incrementoToggleEpubReadMarker();"
+    )
 
 
 def _toggle_epub_bookmarks_panel() -> None:
@@ -2118,12 +2415,17 @@ def _update_title_and_buttons() -> None:
     _epub_dock._add_card_btn.setEnabled(has_card)
     _epub_dock._all_cards_btn.setEnabled(has_card)
     _epub_dock._snapshot_btn.setEnabled(has_card)
+    _epub_dock._cover_btn.setEnabled(has_card)
+    _epub_dock._read_marker_btn.setEnabled(has_card)
     _epub_dock._bookmark_add_btn.setEnabled(has_card)
     _epub_dock._bookmarks_btn.setEnabled(has_card)
     _epub_dock._sources_btn.setEnabled(has_card)
     _epub_dock._finished_btn.blockSignals(True)
     _epub_dock._finished_btn.setChecked(bool(_current_epub_finished))
     _epub_dock._finished_btn.blockSignals(False)
+    _epub_dock._read_marker_btn.blockSignals(True)
+    _epub_dock._read_marker_btn.setChecked(bool(_read_marker_on_current_section()))
+    _epub_dock._read_marker_btn.blockSignals(False)
     _epub_dock._bookmarks_btn.blockSignals(True)
     _epub_dock._bookmarks_btn.setChecked(bool(_epub_dock._bookmarks_panel.isVisible()))
     _epub_dock._bookmarks_btn.blockSignals(False)
@@ -2271,6 +2573,7 @@ def _on_load_finished(ok: bool) -> None:
         section_index=_current_epub_section_index,
         scroll_ratio=_pending_restore_ratio if _pending_focus_offset < 0 else 0.0,
         text_scale=_current_epub_font_scale,
+        read_anchor=_current_epub_read_anchor,
         focus_offset=_pending_focus_offset,
         search_query=_pending_search_query,
         highlights=highlights,
@@ -2305,7 +2608,7 @@ def show_epub_in_dock(
     offer_due_review_prompt: bool = True,
 ) -> None:
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _current_epub_section_index
-    global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _pending_focus_offset, _pending_restore_ratio
+    global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _current_epub_read_anchor, _pending_focus_offset, _pending_restore_ratio
     global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
     global _pending_search_query, _pending_explicit_navigation, _last_selection_meta
 
@@ -2328,6 +2631,7 @@ def show_epub_in_dock(
     _last_selection_meta = {}
     _, _, _current_epub_finished = get_epub_progress(_ADDON_DIR, _active_profile(), _current_epub_card_id)
     _current_epub_font_scale = get_epub_font_scale(_ADDON_DIR, _active_profile(), _current_epub_card_id)
+    _current_epub_read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), _current_epub_card_id)
 
     _update_title_and_buttons()
     _update_sources_panel()

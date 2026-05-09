@@ -33,13 +33,71 @@ def item_pass_ease_for_button_count(button_count: int) -> int:
         count = int(button_count)
     except Exception:
         count = 4
+    # Anki's Good button is not always ease 3: active learning steps can expose
+    # only two or three answer buttons, where ease 2 is the Good/pass choice.
     return 2 if count <= 3 else 3
 
 
-def item_fail_pass_buttons(button_count: int) -> tuple[tuple[int, str], ...]:
+def _card_is_new(card) -> bool:
+    if card is None:
+        return False
+    for attr in ("type", "queue"):
+        try:
+            if int(getattr(card, attr, -1) or 0) == 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _card_is_learning(card) -> bool:
+    if card is None:
+        return False
+    for attr in ("type", "queue"):
+        try:
+            if int(getattr(card, attr, -1) or 0) in {1, 3}:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _card_is_review(card) -> bool:
+    if card is None:
+        return False
+    for attr in ("type", "queue"):
+        try:
+            if int(getattr(card, attr, -1) or 0) == 2:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def remap_item_fail_pass_ease(card, ease: int) -> int:
+    try:
+        value = int(ease)
+    except Exception:
+        return 2
+    if value != 2:
+        return value
+    if _card_is_learning(card):
+        return 2
+    if _card_is_new(card) or _card_is_review(card):
+        return 3
+    return 2
+
+
+def item_pass_ease_for_card(card, button_count: int) -> int:
+    del button_count
+    return remap_item_fail_pass_ease(card, 2)
+
+
+def item_fail_pass_buttons(button_count: int, card=None) -> tuple[tuple[int, str], ...]:
+    del button_count, card
     return (
         (1, "Fail"),
-        (item_pass_ease_for_button_count(button_count), "Pass"),
+        (2, "Pass"),
     )
 
 

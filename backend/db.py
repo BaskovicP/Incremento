@@ -340,7 +340,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             scroll_ratio       REAL    NOT NULL DEFAULT 0.0,
             is_finished        INTEGER NOT NULL DEFAULT 0,
             read_section_index INTEGER NOT NULL DEFAULT 0,
-            font_scale         REAL    NOT NULL DEFAULT 1.0
+            font_scale         REAL    NOT NULL DEFAULT 1.0,
+            read_anchor_json   TEXT    NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS epub_daily_limits (
@@ -597,6 +598,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "epub_progress",
         "font_scale",
         "REAL NOT NULL DEFAULT 1.0",
+    )
+    _ensure_column(
+        conn,
+        "epub_progress",
+        "read_anchor_json",
+        "TEXT NOT NULL DEFAULT ''",
     )
     _ensure_column(
         conn,

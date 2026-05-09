@@ -2,7 +2,7 @@ import os
 import sys
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import db
 
@@ -32,6 +32,7 @@ def _write_test_epub(path: Path) -> None:
               </metadata>
               <manifest>
                 <item id="nav" href="toc.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                <item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>
                 <item id="chap1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
                 <item id="chap2" href="chapter2.xhtml" media-type="application/xhtml+xml"/>
               </manifest>
@@ -60,6 +61,7 @@ def _write_test_epub(path: Path) -> None:
             """<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter 2</title></head>
             <body><h1>Chapter 2</h1><p>Second chapter text here.</p></body></html>""",
         )
+        zf.writestr("OEBPS/images/cover.jpg", b"fake jpg")
 
 
 class TestEnsureEpubExtracted:
@@ -72,6 +74,7 @@ class TestEnsureEpubExtracted:
             meta = epub_manager.ensure_epub_extracted(str(src), stored_filename="sample.epub")
 
         assert meta["title"] == "Sample EPUB"
+        assert meta["cover_href"] == "OEBPS/images/cover.jpg"
         assert [section["title"] for section in meta["sections"]] == ["Chapter 1", "Chapter 2"]
         assert "Hello from the first chapter." in meta["sections"][0]["text"]
         assert os.path.isfile(extract_root / "sample.epub" / "metadata.json")
@@ -115,6 +118,7 @@ class TestEpubProgressAndIndex:
         addon_dir = str(tmp_path)
         assert epub_manager.get_epub_progress(addon_dir, "TestProfile", 10) == (0, 0.0, False)
         assert epub_manager.get_read_section_index(addon_dir, "TestProfile", 10) == 0
+        assert epub_manager.get_read_anchor(addon_dir, "TestProfile", 10) is None
         assert epub_manager.get_epub_font_scale(addon_dir, "TestProfile", 10) == 1.0
 
         epub_manager.set_epub_progress(
@@ -123,12 +127,26 @@ class TestEpubProgressAndIndex:
             scroll_ratio=0.45,
             is_finished=True,
         )
-        epub_manager.set_read_section_index(addon_dir, "TestProfile", 10, 2)
+        epub_manager.set_read_section_index(
+            addon_dir,
+            "TestProfile",
+            10,
+            2,
+            {"sectionIndex": 2, "offset": 123, "text": "Last sentence here"},
+        )
         epub_manager.set_epub_font_scale(addon_dir, "TestProfile", 10, 1.35)
 
         assert epub_manager.get_epub_progress(addon_dir, "TestProfile", 10) == (3, 0.45, True)
         assert epub_manager.get_read_section_index(addon_dir, "TestProfile", 10) == 2
+        assert epub_manager.get_read_anchor(addon_dir, "TestProfile", 10) == {
+            "sectionIndex": 2,
+            "offset": 123,
+            "text": "Last sentence here",
+        }
         assert epub_manager.get_epub_font_scale(addon_dir, "TestProfile", 10) == 1.35
+
+        epub_manager.set_read_section_index(addon_dir, "TestProfile", 10, 2, None)
+        assert epub_manager.get_read_anchor(addon_dir, "TestProfile", 10) is None
 
     def test_replace_and_search_epub_text_index(self, tmp_path):
         db.replace_epub_text_index(
@@ -174,6 +192,99 @@ class _FakeEpubCol:
 
     def get_note(self, note_id: int):
         return self._notes[int(note_id)]
+
+
+class _FakeEpubCoverNote:
+    def __init__(self, note_id: int, **fields):
+        self.id = note_id
+        self.mid = 123
+        self.fields = dict(fields)
+
+    def __getitem__(self, name: str):
+        return self.fields.get(name, "")
+
+    def __setitem__(self, name: str, value):
+        self.fields[name] = value
+
+
+class TestEpubCoverMedia:
+    def test_render_epub_cover_media_uses_declared_cover_image(self, tmp_path):
+        src = tmp_path / "sample.epub"
+        _write_test_epub(src)
+        extract_root = tmp_path / "extracted"
+        media = MagicMock()
+        media.add_file.return_value = "stored-cover.jpg"
+        col = MagicMock(media=media)
+
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)):
+            result = epub_manager.render_epub_cover_media(
+                col,
+                str(src),
+                title="Sample EPUB",
+                source_filename="sample.epub",
+            )
+
+        assert result == "stored-cover.jpg"
+        saved_path = media.add_file.call_args.args[0]
+        assert os.path.basename(saved_path).startswith("Sample_EPUB-cover-")
+        assert os.path.basename(saved_path).endswith(".jpg")
+
+    def test_regenerate_epub_card_cover_updates_note(self, tmp_path):
+        epub_dir = tmp_path / "epubs"
+        epub_dir.mkdir()
+        stored_epub = epub_dir / "stored.epub"
+        _write_test_epub(stored_epub)
+
+        note = _FakeEpubCoverNote(
+            321,
+            Title="Linked EPUB",
+            EPUB_Filename="stored.epub",
+            EPUB_Cover_Image="",
+        )
+        card = _FakeEpubCard(77, 321, queue=2, due=10)
+        col = MagicMock()
+        col.get_card.return_value = card
+        col.get_note.return_value = note
+
+        with patch("epub_manager.ensure_epub_note_type", return_value=None), \
+             patch("epub_manager.render_epub_cover_media", return_value="fresh-cover.jpg") as cover_mock, \
+             patch("epub_manager._paths.get_active_profile", return_value="TestProfile"), \
+             patch("epub_manager._paths.get_epub_dir", return_value=epub_dir):
+            result = epub_manager.regenerate_epub_card_cover(str(tmp_path), col, 77)
+
+        assert result == "fresh-cover.jpg"
+        cover_mock.assert_called_once_with(
+            col,
+            str(stored_epub),
+            title="Linked EPUB",
+            source_filename="stored.epub",
+        )
+        assert note[epub_manager.EPUB_COVER_FIELD] == "fresh-cover.jpg"
+        col.update_note.assert_called_once_with(note)
+
+    def test_missing_stored_epub_does_not_update_note(self, tmp_path):
+        note = _FakeEpubCoverNote(
+            321,
+            Title="Linked EPUB",
+            EPUB_Filename="missing.epub",
+            EPUB_Cover_Image="keep.jpg",
+        )
+        card = _FakeEpubCard(77, 321, queue=2, due=10)
+        col = MagicMock()
+        col.get_card.return_value = card
+        col.get_note.return_value = note
+
+        with patch("epub_manager._paths.get_active_profile", return_value="TestProfile"), \
+             patch("epub_manager._paths.get_epub_dir", return_value=tmp_path / "epubs"):
+            try:
+                epub_manager.regenerate_epub_card_cover(str(tmp_path), col, 77)
+            except FileNotFoundError:
+                pass
+            else:
+                raise AssertionError("Expected FileNotFoundError")
+
+        assert note[epub_manager.EPUB_COVER_FIELD] == "keep.jpg"
+        col.update_note.assert_not_called()
 
 
 class TestEpubWorkflowHelpers:

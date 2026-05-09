@@ -14,9 +14,43 @@ def test_item_pass_ease_for_button_count_matches_good_button():
     assert buttons.item_pass_ease_for_button_count(4) == 3
 
 
-def test_item_fail_pass_buttons_use_fail_and_good():
-    assert buttons.item_fail_pass_buttons(4) == ((1, "Fail"), (3, "Pass"))
+def test_item_fail_pass_buttons_use_positional_shortcuts():
+    assert buttons.item_fail_pass_buttons(4) == ((1, "Fail"), (2, "Pass"))
+    assert buttons.item_fail_pass_buttons(3) == ((1, "Fail"), (2, "Pass"))
     assert buttons.item_fail_pass_buttons(2) == ((1, "Fail"), (2, "Pass"))
+
+
+def test_item_pass_remaps_to_graduating_good_for_new_cards():
+    class _Card:
+        type = 0
+        queue = 0
+
+    card = _Card()
+    assert buttons.item_pass_ease_for_card(card, 2) == 3
+    assert buttons.remap_item_fail_pass_ease(card, 2) == 3
+    assert buttons.item_fail_pass_buttons(2, card) == ((1, "Fail"), (2, "Pass"))
+
+
+def test_item_pass_keeps_active_learning_step_for_learning_cards():
+    class _Card:
+        type = 1
+        queue = 1
+
+    card = _Card()
+    assert buttons.item_pass_ease_for_card(card, 2) == 2
+    assert buttons.remap_item_fail_pass_ease(card, 2) == 2
+    assert buttons.item_fail_pass_buttons(2, card) == ((1, "Fail"), (2, "Pass"))
+
+
+def test_item_pass_remaps_to_good_for_review_cards():
+    class _Card:
+        type = 2
+        queue = 2
+
+    card = _Card()
+    assert buttons.item_pass_ease_for_card(card, 4) == 3
+    assert buttons.remap_item_fail_pass_ease(card, 2) == 3
+    assert buttons.item_fail_pass_buttons(4, card) == ((1, "Fail"), (2, "Pass"))
 
 
 def test_reviewer_button_mode_prefers_topic_cards():

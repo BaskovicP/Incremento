@@ -5,6 +5,7 @@ import os
 import posixpath
 import re
 import shutil
+import tempfile
 import uuid
 import zipfile
 from pathlib import Path
@@ -56,6 +57,7 @@ except ImportError:
 
 EPUB_NOTE_TYPE = "Incremento EPUB"
 EPUB_FILE_FIELD = "EPUB_Filename"
+EPUB_COVER_FIELD = "EPUB_Cover_Image"
 DOCUMENT_FILTER = '(note:"Incremento PDF" OR note:"Incremento EPUB")'
 _INVISIBLE_DUPLICATE_MARK = "\u200b"
 _HTML_MEDIA_TYPES = {
@@ -65,6 +67,7 @@ _HTML_MEDIA_TYPES = {
 }
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_FILENAME_STEM = 80
+_EPUB_COVER_EXTS = {".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 _EPUB_LIMIT_MODE_LABELS = {
     "warning": "Warning",
     "soft_lock": "Soft Lock",
@@ -72,11 +75,20 @@ _EPUB_LIMIT_MODE_LABELS = {
 }
 
 CARD_TEMPLATE_FRONT = """
-<div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
+<div style="text-align:center; padding:36px 20px 44px; font-family:sans-serif; color:#888;">
+  {{#EPUB_Cover_Image}}
+    <div style="margin:0 auto 22px; max-width:340px;">
+      <img
+        src="{{EPUB_Cover_Image}}"
+        alt="{{Title}} cover"
+        style="display:block; width:100%; height:auto; border-radius:14px; box-shadow:0 16px 42px rgba(0,0,0,0.28);"
+      >
+    </div>
+  {{/EPUB_Cover_Image}}
   <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
   <div style="font-size:0.85em;">EPUB open in sidebar &nbsp;·&nbsp; select text → ⌘C → ⌘1–4 to fill fields</div>
 </div>
-{{EPUB_Filename}}
+<div style="display:none;">{{EPUB_Filename}}</div>
 """.strip()
 
 CARD_TEMPLATE_BACK = "{{Title}}"
@@ -110,13 +122,17 @@ def _copy_to_epub_dir(epub_path: str) -> str:
     epub_dir = get_epub_dir()
     raw_name = os.path.basename(epub_path)
     stem, ext = os.path.splitext(raw_name)
-    stem = _SAFE_FILENAME_RE.sub("_", stem).strip("._-")
-    stem = stem[:_MAX_FILENAME_STEM].strip("._-") or "book"
+    stem = _safe_epub_stem(stem, fallback="book")
     ext = ext if ext.lower() == ".epub" else ".epub"
     dest_name = f"{stem}-{uuid.uuid4().hex}{ext}"
     dest_path = os.path.join(epub_dir, dest_name)
     shutil.copy2(epub_path, dest_path)
     return dest_name
+
+
+def _safe_epub_stem(value: str, *, fallback: str = "book") -> str:
+    stem = _SAFE_FILENAME_RE.sub("_", str(value or "")).strip("._-")
+    return stem[:_MAX_FILENAME_STEM].strip("._-") or fallback
 
 
 def _safe_zip_members(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
@@ -142,6 +158,44 @@ def _resolve_posix(base_dir: str, href: str) -> str:
     while joined.startswith("../"):
         joined = joined[3:]
     return joined.lstrip("/")
+
+
+def _local_name(element) -> str:
+    return str(getattr(element, "tag", "") or "").rpartition("}")[2]
+
+
+def _item_is_epub_cover_candidate(item: dict | None) -> bool:
+    if not item:
+        return False
+    href = str(item.get("href") or "")
+    media_type = str(item.get("media_type") or "").lower()
+    ext = Path(href).suffix.lower()
+    return media_type.startswith("image/") or ext in _EPUB_COVER_EXTS
+
+
+def _find_epub_cover_href(opf_root, ns: dict[str, str], opf_dir: str, manifest: dict[str, dict]) -> str:
+    for item in manifest.values():
+        properties = {str(prop).strip().lower() for prop in list(item.get("properties") or [])}
+        if "cover-image" in properties and _item_is_epub_cover_candidate(item):
+            return _resolve_posix(opf_dir, item["href"])
+
+    cover_item_id = ""
+    for element in opf_root.iter():
+        if _local_name(element).lower() != "meta":
+            continue
+        if str(element.get("name") or "").strip().lower() == "cover":
+            cover_item_id = str(element.get("content") or "").strip()
+            break
+    if cover_item_id and _item_is_epub_cover_candidate(manifest.get(cover_item_id)):
+        return _resolve_posix(opf_dir, manifest[cover_item_id]["href"])
+
+    for item_id, item in manifest.items():
+        if not _item_is_epub_cover_candidate(item):
+            continue
+        href_stem = Path(str(item.get("href") or "")).stem.lower()
+        if "cover" in item_id.lower() or "cover" in href_stem:
+            return _resolve_posix(opf_dir, item["href"])
+    return ""
 
 
 def _safe_read_text(path: str) -> str:
@@ -336,6 +390,7 @@ def ensure_epub_extracted(epub_path: str, *, stored_filename: str | None = None)
             "properties": [p for p in str(item.get("properties") or "").split() if p],
         }
 
+    cover_href = _find_epub_cover_href(opf_root, ns, opf_dir, manifest)
     nav_labels = _load_nav_labels(extract_dir, opf_dir, manifest)
     sections: list[dict] = []
     for idx, itemref in enumerate(opf_root.findall(".//opf:spine/opf:itemref", ns)):
@@ -365,6 +420,7 @@ def ensure_epub_extracted(epub_path: str, *, stored_filename: str | None = None)
     metadata = {
         "title": title or sections[0]["title"] or Path(stored_name).stem,
         "opf_relpath": opf_relpath,
+        "cover_href": cover_href,
         "sections": sections,
     }
     with open(meta_path, "w", encoding="utf-8") as fh:
@@ -404,6 +460,41 @@ def get_read_section_index(addon_dir: str, profile: str, card_id: int) -> int:
     return int(row[0] or 0) if row else 0
 
 
+def _normalize_read_anchor(anchor) -> dict:
+    if not isinstance(anchor, dict):
+        return {}
+    try:
+        section_index = max(0, int(anchor.get("sectionIndex", anchor.get("section_index", 0)) or 0))
+    except Exception:
+        section_index = 0
+    try:
+        offset = max(0, int(anchor.get("offset", 0) or 0))
+    except Exception:
+        offset = 0
+    text = str(anchor.get("text") or "").strip()
+    normalized = {
+        "sectionIndex": section_index,
+        "offset": offset,
+    }
+    if text:
+        normalized["text"] = text[:240]
+    return normalized
+
+
+def get_read_anchor(addon_dir: str, profile: str, card_id: int) -> dict | None:
+    row = (
+        get_connection(addon_dir, profile)
+        .execute("SELECT read_anchor_json FROM epub_progress WHERE card_id = ?", (card_id,))
+        .fetchone()
+    )
+    if not row or not str(row[0] or "").strip():
+        return None
+    try:
+        return _normalize_read_anchor(json.loads(row[0] or "{}")) or None
+    except Exception:
+        return None
+
+
 def get_epub_font_scale(addon_dir: str, profile: str, card_id: int) -> float:
     row = (
         get_connection(addon_dir, profile)
@@ -431,18 +522,21 @@ def set_epub_progress(
     current_section, current_ratio, current_finished = get_epub_progress(addon_dir, profile, card_id)
     current_read_section = get_read_section_index(addon_dir, profile, card_id)
     current_font_scale = get_epub_font_scale(addon_dir, profile, card_id)
+    current_read_anchor = get_read_anchor(addon_dir, profile, card_id)
+    anchor_json = json.dumps(current_read_anchor, ensure_ascii=False, sort_keys=True) if current_read_anchor else ""
     ratio = current_ratio if scroll_ratio is None else max(0.0, min(float(scroll_ratio), 1.0))
     finished = current_finished if is_finished is None else bool(is_finished)
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished, read_section_index, font_scale) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
+        "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished, read_section_index, font_scale, read_anchor_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "
         "section_index = excluded.section_index, "
         "scroll_ratio = excluded.scroll_ratio, "
         "is_finished = excluded.is_finished, "
         "read_section_index = excluded.read_section_index, "
-        "font_scale = excluded.font_scale",
+        "font_scale = excluded.font_scale, "
+        "read_anchor_json = excluded.read_anchor_json",
         (
             card_id,
             max(0, int(section_index)),
@@ -450,19 +544,39 @@ def set_epub_progress(
             1 if finished else 0,
             max(0, int(current_read_section)),
             max(0.7, min(float(current_font_scale), 2.2)),
+            anchor_json,
         ),
     )
     conn.commit()
 
 
-def set_read_section_index(addon_dir: str, profile: str, card_id: int, read_section_index: int) -> None:
+_READ_ANCHOR_UNSET = object()
+
+
+def set_read_section_index(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    read_section_index: int,
+    read_anchor=_READ_ANCHOR_UNSET,
+) -> None:
     current_section, current_ratio, current_finished = get_epub_progress(addon_dir, profile, card_id)
     current_font_scale = get_epub_font_scale(addon_dir, profile, card_id)
+    if read_anchor is _READ_ANCHOR_UNSET:
+        current_read_anchor = get_read_anchor(addon_dir, profile, card_id)
+        anchor_json = json.dumps(current_read_anchor, ensure_ascii=False, sort_keys=True) if current_read_anchor else ""
+    elif read_anchor:
+        normalized_anchor = _normalize_read_anchor(read_anchor)
+        anchor_json = json.dumps(normalized_anchor, ensure_ascii=False, sort_keys=True) if normalized_anchor else ""
+    else:
+        anchor_json = ""
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished, read_section_index, font_scale) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(card_id) DO UPDATE SET read_section_index = excluded.read_section_index",
+        "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished, read_section_index, font_scale, read_anchor_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "read_section_index = excluded.read_section_index, "
+        "read_anchor_json = excluded.read_anchor_json",
         (
             card_id,
             max(0, int(current_section)),
@@ -470,6 +584,7 @@ def set_read_section_index(addon_dir: str, profile: str, card_id: int, read_sect
             1 if current_finished else 0,
             max(0, int(read_section_index)),
             max(0.7, min(float(current_font_scale), 2.2)),
+            anchor_json,
         ),
     )
     conn.commit()
@@ -478,12 +593,16 @@ def set_read_section_index(addon_dir: str, profile: str, card_id: int, read_sect
 def set_epub_font_scale(addon_dir: str, profile: str, card_id: int, font_scale: float) -> float:
     current_section, current_ratio, current_finished = get_epub_progress(addon_dir, profile, card_id)
     current_read_section = get_read_section_index(addon_dir, profile, card_id)
+    current_read_anchor = get_read_anchor(addon_dir, profile, card_id)
+    anchor_json = json.dumps(current_read_anchor, ensure_ascii=False, sort_keys=True) if current_read_anchor else ""
     clamped = max(0.7, min(float(font_scale), 2.2))
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished, read_section_index, font_scale) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(card_id) DO UPDATE SET font_scale = excluded.font_scale",
+        "INSERT INTO epub_progress (card_id, section_index, scroll_ratio, is_finished, read_section_index, font_scale, read_anchor_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "font_scale = excluded.font_scale, "
+        "read_anchor_json = excluded.read_anchor_json",
         (
             card_id,
             max(0, int(current_section)),
@@ -491,6 +610,7 @@ def set_epub_font_scale(addon_dir: str, profile: str, card_id: int, font_scale: 
             1 if current_finished else 0,
             max(0, int(current_read_section)),
             clamped,
+            anchor_json,
         ),
     )
     conn.commit()
@@ -840,13 +960,117 @@ def set_epub_daily_limit_override(
     )
 
 
+def _load_cover_href_from_extracted_package(stored_filename: str, metadata: dict) -> str:
+    extract_dir = get_epub_extract_dir(stored_filename)
+    opf_relpath = str((metadata or {}).get("opf_relpath") or "").strip()
+    if not opf_relpath:
+        return ""
+    opf_path = os.path.join(extract_dir, opf_relpath)
+    if not os.path.isfile(opf_path):
+        return ""
+    try:
+        opf_root = _decode_xml(opf_path)
+    except Exception:
+        return ""
+    ns = {"opf": opf_root.tag.partition("}")[0].strip("{") or "http://www.idpf.org/2007/opf"}
+    opf_dir = posixpath.dirname(opf_relpath)
+    manifest: dict[str, dict] = {}
+    for item in opf_root.findall(".//opf:manifest/opf:item", ns):
+        item_id = str(item.get("id") or "").strip()
+        href = str(item.get("href") or "").strip()
+        if not item_id or not href:
+            continue
+        manifest[item_id] = {
+            "href": href,
+            "media_type": str(item.get("media-type") or "").strip(),
+            "properties": [p for p in str(item.get("properties") or "").split() if p],
+        }
+    return _find_epub_cover_href(opf_root, ns, opf_dir, manifest)
+
+
+def render_epub_cover_media(col, epub_path: str, *, title: str = "", source_filename: str = "") -> str:
+    """Copy the EPUB package cover image to Anki media and return its media filename."""
+    if not epub_path or not os.path.exists(epub_path):
+        raise FileNotFoundError("EPUB file was not found.")
+
+    try:
+        stored_name = str(source_filename or os.path.basename(epub_path)).strip()
+        metadata = ensure_epub_extracted(epub_path, stored_filename=stored_name)
+        cover_href = str((metadata or {}).get("cover_href") or "").strip()
+        if not cover_href:
+            cover_href = _load_cover_href_from_extracted_package(stored_name, metadata or {})
+        if not cover_href:
+            return ""
+
+        cover_path = os.path.join(get_epub_extract_dir(stored_name), cover_href)
+        if not os.path.isfile(cover_path):
+            return ""
+
+        ext = Path(cover_path).suffix.lower()
+        if ext not in _EPUB_COVER_EXTS:
+            ext = ".img"
+        stem_source = title or source_filename or os.path.splitext(os.path.basename(epub_path))[0]
+        image_name = f"{_safe_epub_stem(stem_source, fallback='epub_cover')}-cover-{uuid.uuid4().hex}{ext}"
+        tmp_dir = tempfile.mkdtemp(prefix="incremento-epub-cover-")
+        tmp_path = os.path.join(tmp_dir, image_name)
+        try:
+            shutil.copy2(cover_path, tmp_path)
+            return str(col.media.add_file(tmp_path) or "").strip()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            try:
+                os.rmdir(tmp_dir)
+            except OSError:
+                pass
+    except Exception:
+        return ""
+
+
+def regenerate_epub_note_cover(col, note, epub_path: str) -> str:
+    """Refresh an EPUB note's stored cover media reference and persist the note."""
+    ensure_epub_note_type(col)
+    cover_media = render_epub_cover_media(
+        col,
+        epub_path,
+        title=str(note["Title"] or "").strip(),
+        source_filename=str(note[EPUB_FILE_FIELD] or "").strip(),
+    )
+    note[EPUB_COVER_FIELD] = cover_media
+    col.update_note(note)
+    return cover_media
+
+
+def regenerate_epub_card_cover(addon_dir: str, col, card_id: int) -> str:
+    """Regenerate the stored cover preview for an existing EPUB card."""
+    cid = int(card_id)
+    card = col.get_card(cid)
+    if card is None:
+        raise RuntimeError("EPUB card was not found.")
+    note = col.get_note(card.nid)
+    if note is None:
+        raise RuntimeError("Linked EPUB note was not found.")
+
+    epub_filename = str(note[EPUB_FILE_FIELD] or "").strip()
+    if not epub_filename:
+        raise RuntimeError("This EPUB note does not have a stored EPUB filename.")
+
+    epub_path = str(_paths.get_epub_dir(addon_dir, _paths.get_active_profile()) / epub_filename)
+    if not os.path.exists(epub_path):
+        raise FileNotFoundError(f"Stored EPUB file was not found:\n{epub_path}")
+
+    return regenerate_epub_note_cover(col, note, epub_path)
+
+
 def ensure_epub_note_type(col) -> None:
     models = col.models
     m = models.by_name(EPUB_NOTE_TYPE)
 
     if m is None:
         m = models.new(EPUB_NOTE_TYPE)
-        for field_name in ("Title", EPUB_FILE_FIELD):
+        for field_name in ("Title", EPUB_FILE_FIELD, EPUB_COVER_FIELD):
             fld = models.new_field(field_name)
             models.add_field(m, fld)
         ensure_incremento_metadata_fields(models, m)
@@ -856,10 +1080,17 @@ def ensure_epub_note_type(col) -> None:
         models.add_template(m, tmpl)
         models.add(m)
     else:
-        tmpl = m["tmpls"][0]
         changed = False
+        existing_fields = {str((field or {}).get("name") or "") for field in list(m.get("flds") or [])}
+        for field_name in ("Title", EPUB_FILE_FIELD, EPUB_COVER_FIELD):
+            if field_name in existing_fields:
+                continue
+            fld = models.new_field(field_name)
+            models.add_field(m, fld)
+            changed = True
         if ensure_incremento_metadata_fields(models, m):
             changed = True
+        tmpl = m["tmpls"][0]
         if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
             tmpl["qfmt"] = CARD_TEMPLATE_FRONT
             tmpl["afmt"] = CARD_TEMPLATE_BACK
@@ -895,6 +1126,12 @@ def add_epub_card(
         note = col.new_note(model)
         note["Title"] = stored_title
         note[EPUB_FILE_FIELD] = stored_filename
+        note[EPUB_COVER_FIELD] = render_epub_cover_media(
+            col,
+            stored_path,
+            title=stored_title,
+            source_filename=stored_filename,
+        )
         apply_incremento_metadata(
             note,
             build_incremento_metadata(

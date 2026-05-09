@@ -43,6 +43,7 @@ from .backend.epub_manager import (
     EPUB_NOTE_TYPE,
     EPUB_FILE_FIELD,
     get_epub_progress,
+    regenerate_epub_card_cover,
 )
 from .backend.video_manager import (
     VIDEO_NOTE_TYPE,
@@ -103,7 +104,7 @@ from .backend.web_manager import (
 from .backend.reviewer_buttons import (
     configured_use_fail_pass_on_items as _configured_use_fail_pass_on_items,
     item_fail_pass_buttons as _item_fail_pass_buttons,
-    item_pass_ease_for_button_count as _item_pass_ease_for_button_count,
+    remap_item_fail_pass_ease as _remap_item_fail_pass_ease,
     reviewer_button_mode as _reviewer_button_mode_for_card,
 )
 from .backend.item_skip import (
@@ -162,6 +163,7 @@ from .backend.db import (
     get_card_browser_media_ref,
     get_custom_schedule_rule,
     get_knowledge_tree_node,
+    get_topic_schedule,
     prune_note_ocr_index_rows,
     get_recent_reviewer_tags,
     replace_pdf_text_index,
@@ -472,7 +474,7 @@ def _topic_review_buttons(_buttons, _reviewer, card):
     if _reviewer_topic_card(card):
         return TOPIC_REVIEW_BUTTONS
     if _reviewer_items_fail_pass(card):
-        return _item_fail_pass_buttons(_current_answer_button_count(card))
+        return _item_fail_pass_buttons(_current_answer_button_count(card), card)
     return _buttons
 
 
@@ -562,31 +564,55 @@ def _perform_item_skip_after_bury(reviewer, card) -> None:
             pass
 
 
-def _release_expired_topic_postpones_now() -> list[int]:
+def _reset_collection_after_queue_change() -> None:
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+
+
+def _reviewer_has_active_card() -> bool:
+    try:
+        reviewer = getattr(mw, "reviewer", None)
+        return (
+            getattr(mw, "state", None) == "review"
+            and getattr(reviewer, "card", None) is not None
+        )
+    except Exception:
+        return False
+
+
+def _release_expired_topic_postpones_now(*, refresh: bool = True) -> list[int]:
     try:
         restored_ids = _release_expired_timed_postpones()
     except Exception:
         restored_ids = []
     if not restored_ids:
         return []
-    try:
-        mw.reset()
-    except Exception:
-        pass
+    if refresh:
+        try:
+            mw.reset()
+        except Exception:
+            pass
+    else:
+        _reset_collection_after_queue_change()
     return restored_ids
 
 
-def _release_expired_item_skips_now() -> list[int]:
+def _release_expired_item_skips_now(*, refresh: bool = True) -> list[int]:
     try:
         restored_ids = _release_expired_timed_item_skips()
     except Exception:
         restored_ids = []
     if not restored_ids:
         return []
-    try:
-        mw.reset()
-    except Exception:
-        pass
+    if refresh:
+        try:
+            mw.reset()
+        except Exception:
+            pass
+    else:
+        _reset_collection_after_queue_change()
     return restored_ids
 
 
@@ -642,7 +668,9 @@ def _schedule_item_skip_timer() -> None:
 
 def _on_topic_postpone_timer_timeout() -> None:
     try:
-        restored_ids = _release_expired_topic_postpones_now()
+        restored_ids = _release_expired_topic_postpones_now(
+            refresh=not _reviewer_has_active_card()
+        )
     except Exception:
         restored_ids = []
 
@@ -658,7 +686,9 @@ def _on_topic_postpone_timer_timeout() -> None:
 
 def _on_item_skip_timer_timeout() -> None:
     try:
-        restored_ids = _release_expired_item_skips_now()
+        restored_ids = _release_expired_item_skips_now(
+            refresh=not _reviewer_has_active_card()
+        )
     except Exception:
         restored_ids = []
 
@@ -700,19 +730,29 @@ def _release_expired_item_skips_on_overview(new_state: str, _old_state: str) -> 
 
 def _topic_reviewer_will_answer_card(response, _reviewer, card):
     proceed, ease = response
-    if not proceed or not _reviewer_topic_card(card):
+    if not proceed:
         return response
-    if (
-        _configured_topic_postpone_enabled()
-        and int(ease) == _TOPIC_POSTPONE_EASE
-    ):
-        QTimer.singleShot(0, lambda r=_reviewer, c=card: _perform_topic_postpone(r, c))
-        return (False, ease)
-    return (proceed, _remap_topic_review_ease(ease))
+    if _reviewer_topic_card(card):
+        if (
+            _configured_topic_postpone_enabled()
+            and int(ease) == _TOPIC_POSTPONE_EASE
+        ):
+            QTimer.singleShot(0, lambda r=_reviewer, c=card: _perform_topic_postpone(r, c))
+            return (False, ease)
+        return (proceed, _remap_topic_review_ease(ease))
+    if _reviewer_items_fail_pass(card):
+        return (proceed, _remap_item_fail_pass_ease(card, ease))
+    return response
 
 
 def _incremento_button_time(self, ease: int, v3_labels) -> str:
     card = getattr(self, "card", None)
+    if _reviewer_items_fail_pass(card):
+        return _ORIGINAL_REVIEWER_BUTTON_TIME(
+            self,
+            _remap_item_fail_pass_ease(card, ease),
+            v3_labels,
+        )
     if not _reviewer_topic_card(card):
         return _ORIGINAL_REVIEWER_BUTTON_TIME(self, ease, v3_labels)
     if not self.mw.col.conf.get("estTimes"):
@@ -726,7 +766,7 @@ def _incremento_default_ease(self) -> int:
     if _reviewer_topic_card(card):
         return 2
     if _reviewer_items_fail_pass(card):
-        return _item_pass_ease_for_button_count(_current_answer_button_count(card))
+        return 2
     return _ORIGINAL_REVIEWER_DEFAULT_EASE(self)
 
 def _incremento_shortcut_keys(self):
@@ -744,7 +784,7 @@ def _incremento_shortcut_keys(self):
         elif _reviewer_items_fail_pass(card):
             visible_eases = {
                 1,
-                _item_pass_ease_for_button_count(_current_answer_button_count(card)),
+                2,
             }
             for ease in (1, 2, 3, 4):
                 key = str(mw.pm.get_answer_key(ease) or "")
@@ -775,14 +815,14 @@ def _incremento_on_enter_key(self) -> None:
         and _reviewer_items_fail_pass(card)
         and mw.pm.spacebar_rates_card()
     ):
-        self._answerCard(_item_pass_ease_for_button_count(_current_answer_button_count(card)))
+        self._answerCard(2)
         return
     _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
 
 
 def _incremento_next_card(self) -> None:
     try:
-        _release_expired_topic_postpones_now()
+        _release_expired_topic_postpones_now(refresh=False)
     except Exception:
         pass
     try:
@@ -790,7 +830,7 @@ def _incremento_next_card(self) -> None:
     except Exception:
         pass
     try:
-        _release_expired_item_skips_now()
+        _release_expired_item_skips_now(refresh=False)
     except Exception:
         pass
     try:
@@ -1402,6 +1442,42 @@ def _browser_selected_pdf_card_ids(browser) -> tuple[list[int], int]:
     return pdf_card_ids, skipped
 
 
+def _browser_selected_epub_card_ids(browser) -> tuple[list[int], int]:
+    selected_card_ids = _browser_selected_incremento_card_ids(browser)
+    if not selected_card_ids:
+        return [], 0
+
+    epub_card_ids: list[int] = []
+    skipped = 0
+    seen_notes: set[int] = set()
+    for raw_card_id in selected_card_ids:
+        try:
+            card = mw.col.get_card(int(raw_card_id))
+        except Exception:
+            skipped += 1
+            continue
+        if card is None:
+            skipped += 1
+            continue
+        try:
+            note = mw.col.get_note(card.nid)
+            model = mw.col.models.get(note.mid)
+            model_name = str((model or {}).get("name") or "")
+        except Exception:
+            skipped += 1
+            continue
+        if model_name != EPUB_NOTE_TYPE:
+            skipped += 1
+            continue
+        note_id = int(getattr(card, "nid", 0) or 0)
+        if note_id > 0 and note_id in seen_notes:
+            continue
+        if note_id > 0:
+            seen_notes.add(note_id)
+        epub_card_ids.append(int(card.id))
+    return epub_card_ids, skipped
+
+
 def _regenerate_pdf_covers_for_browser_selection(browser) -> None:
     pdf_card_ids, skipped = _browser_selected_pdf_card_ids(browser)
     if not pdf_card_ids:
@@ -1466,6 +1542,70 @@ def _regenerate_pdf_covers_for_browser_selection(browser) -> None:
     tooltip(message)
 
 
+def _regenerate_epub_covers_for_browser_selection(browser) -> None:
+    epub_card_ids, skipped = _browser_selected_epub_card_ids(browser)
+    if not epub_card_ids:
+        showInfo("No Incremento EPUB cards found in the selected Browser rows.")
+        return
+
+    regenerated = 0
+    cleared = 0
+    failed: list[str] = []
+
+    mw.progress.start(label="Regenerating EPUB covers…", immediate=True)
+    try:
+        total = len(epub_card_ids)
+        for index, card_id in enumerate(epub_card_ids, start=1):
+            try:
+                mw.progress.update(label=f"({index}/{total}) Regenerating EPUB covers…")
+            except Exception:
+                pass
+            try:
+                cover_filename = regenerate_epub_card_cover(_ADDON_DIR, mw.col, int(card_id))
+                if cover_filename:
+                    regenerated += 1
+                else:
+                    cleared += 1
+            except Exception as exc:
+                failed.append(f"Card {card_id}: {exc}")
+    finally:
+        try:
+            mw.progress.finish()
+        except Exception:
+            pass
+
+    try:
+        mw.col.reset()
+    except Exception:
+        pass
+    try:
+        browser.search()
+    except Exception:
+        pass
+
+    if failed:
+        details = "\n".join(failed[:10])
+        if len(failed) > 10:
+            details += f"\n… and {len(failed) - 10} more."
+        message = (
+            f"Regenerated {regenerated} EPUB cover{'s' if regenerated != 1 else ''} "
+            f"and cleared {cleared}."
+        )
+        if skipped:
+            message += f" Skipped {skipped} non-EPUB selected card{'s' if skipped != 1 else ''}."
+        message += f"\n\nFailures:\n{details}"
+        showInfo(message)
+        return
+
+    message = (
+        f"Regenerated {regenerated} EPUB cover{'s' if regenerated != 1 else ''} "
+        f"and cleared {cleared}."
+    )
+    if skipped:
+        message += f" Skipped {skipped} non-EPUB selected card{'s' if skipped != 1 else ''}."
+    tooltip(message)
+
+
 def _format_database_entry_value(value) -> str:
     if value is None:
         return "NULL"
@@ -1507,14 +1647,58 @@ def _format_browser_database_entries(payload: dict[str, object]) -> str:
             if group != current_group:
                 current_group = group
                 lines.extend(["", group])
-            rowid = entry.get("rowid")
-            row_label = f"rowid {rowid}" if rowid is not None else "row"
+            if entry.get("virtual"):
+                row_label = "effective values (not yet persisted)"
+            else:
+                rowid = entry.get("rowid")
+                row_label = f"rowid {rowid}" if rowid is not None else "row"
             lines.append(f"  {row_label}")
             values = dict(entry.get("values") or {})
             columns = list(entry.get("columns") or values.keys())
             for column in columns:
                 lines.append(f"    {column}: {_format_database_entry_value(values.get(column))}")
     return "\n".join(lines)
+
+
+def _add_effective_topic_schedule_entries(payload: dict[str, object]) -> dict[str, object]:
+    entries = list(payload.get("entries") or [])
+    existing_topic_schedule_ids = {
+        int((entry or {}).get("card_id") or 0)
+        for entry in entries
+        if str((entry or {}).get("table") or "") == "topic_schedule"
+    }
+
+    augmented = dict(payload)
+    for raw_card_id in list(payload.get("card_ids") or []):
+        try:
+            card_id = int(raw_card_id)
+            card = mw.col.get_card(card_id)
+        except Exception:
+            continue
+        if card is None or not _is_topic_card(card) or card_id in existing_topic_schedule_ids:
+            continue
+        try:
+            a_factor, interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card_id)
+        except Exception:
+            continue
+        entries.append(
+            {
+                "card_id": card_id,
+                "table": "topic_schedule (effective default)",
+                "column": "card_id",
+                "rowid": None,
+                "columns": ["card_id", "a_factor", "interval", "persisted"],
+                "values": {
+                    "card_id": card_id,
+                    "a_factor": a_factor,
+                    "interval": interval,
+                    "persisted": "no",
+                },
+                "virtual": True,
+            }
+        )
+    augmented["entries"] = entries
+    return augmented
 
 
 def _show_browser_database_entries(browser) -> None:
@@ -1528,6 +1712,8 @@ def _show_browser_database_entries(browser) -> None:
     except Exception as exc:
         showInfo(f"Could not read Incremento database entries:\n{exc}")
         return
+
+    payload = _add_effective_topic_schedule_entries(payload)
 
     dlg = QDialog(mw)
     dlg.setWindowTitle("Incremento Database Entries")
@@ -1557,6 +1743,7 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     a_factor_action = QAction(f"Set A-Factor… ({count_label})", submenu)
     schedule_action = QAction(f"Custom Schedule… ({count_label})", submenu)
     pdf_cover_action = QAction(f"Regenerate PDF Covers ({count_label})", submenu)
+    epub_cover_action = QAction(f"Regenerate EPUB Covers ({count_label})", submenu)
     ocr_action = QAction(f"OCR Image Text ({count_label})", submenu)
     hidden_fields_action = QAction(f"Show Hidden Fields ({count_label})", submenu)
     database_entries_action = QAction(f"Show Database Entries ({count_label})", submenu)
@@ -1591,6 +1778,10 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         lambda _checked=False, b=browser: _regenerate_pdf_covers_for_browser_selection(b),
     )
     qconnect(
+        epub_cover_action.triggered,
+        lambda _checked=False, b=browser: _regenerate_epub_covers_for_browser_selection(b),
+    )
+    qconnect(
         ocr_action.triggered,
         lambda _checked=False, b=browser: _ocr_browser_selection(b),
     )
@@ -1609,6 +1800,7 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     submenu.addAction(a_factor_action)
     submenu.addAction(schedule_action)
     submenu.addAction(pdf_cover_action)
+    submenu.addAction(epub_cover_action)
     submenu.addAction(ocr_action)
     submenu.addAction(hidden_fields_action)
     submenu.addAction(database_entries_action)

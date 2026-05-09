@@ -162,6 +162,50 @@ def daily_activity_summary() -> dict:
     }
 
 
+def _plural(count: int, singular: str, plural: str | None = None) -> str:
+    return singular if count == 1 else (plural or f"{singular}s")
+
+
+def _timer_run_summary_lines(cards: int, pdf_pages: set, epub_pages: set) -> list[str]:
+    lines = [f"<b>{cards}</b> {_plural(cards, 'card')} reviewed"]
+
+    if pdf_pages:
+        by_pdf: dict[int, set] = {}
+        for cid, page in pdf_pages:
+            by_pdf.setdefault(cid, set()).add(page)
+        total_pages = sum(len(v) for v in by_pdf.values())
+        n_pdfs = len(by_pdf)
+        lines.append(
+            f"<b>{total_pages}</b> PDF {_plural(total_pages, 'page')} read"
+            f" across {n_pdfs} {_plural(n_pdfs, 'book')}"
+        )
+
+    if epub_pages:
+        by_epub: dict[int, set] = {}
+        for cid, page in epub_pages:
+            by_epub.setdefault(cid, set()).add(page)
+        total_pages = sum(len(v) for v in by_epub.values())
+        n_epubs = len(by_epub)
+        lines.append(
+            f"<b>{total_pages}</b> EPUB {_plural(total_pages, 'page')} read"
+            f" across {n_epubs} {_plural(n_epubs, 'book')}"
+        )
+
+    if cards == 0 and not pdf_pages and not epub_pages:
+        lines = ["No cards or pages tracked for this timer run."]
+
+    return lines
+
+
+def _today_summary_line(daily: dict) -> str:
+    daily_pages = int(daily["pages"])
+    daily_cards = int(daily["cards"])
+    return (
+        f"<b>{daily_pages}</b> {_plural(daily_pages, 'page')} read and "
+        f"<b>{daily_cards}</b> {_plural(daily_cards, 'card')} reviewed so far today."
+    )
+
+
 def _resolved_config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
@@ -481,55 +525,36 @@ def show_timer_summary() -> None:
 
     dlg = QDialog(mw)
     dlg.setWindowTitle("Session Complete")
-    dlg.setMinimumWidth(320)
+    dlg.setMinimumWidth(360)
 
     layout = QVBoxLayout(dlg)
-    layout.setSpacing(14)
+    layout.setSpacing(12)
     layout.setContentsMargins(24, 24, 24, 20)
 
-    title_lbl = QLabel(f"⏱  {dur}-minute session complete")
+    title_lbl = QLabel(f"{dur}-minute focus timer complete")
     title_lbl.setStyleSheet("font-size: 17px; font-weight: bold;")
     layout.addWidget(title_lbl)
 
-    daily_pages = int(daily["pages"])
-    daily_cards = int(daily["cards"])
-    today_lbl = QLabel(
-        f"Today so far: <b>{daily_pages}</b> page{'s' if daily_pages != 1 else ''} "
-        f"and <b>{daily_cards}</b> card{'s' if daily_cards != 1 else ''} done in total."
-    )
+    run_heading = QLabel("This focus timer")
+    run_heading.setStyleSheet("font-size: 12px; font-weight: bold;")
+    layout.addWidget(run_heading)
+
+    for line in _timer_run_summary_lines(cards, pdf_pages, epub_pages):
+        line_lbl = QLabel(line)
+        line_lbl.setStyleSheet("font-size: 14px;")
+        line_lbl.setWordWrap(True)
+        layout.addWidget(line_lbl)
+
+    layout.addSpacing(2)
+
+    today_heading = QLabel("Today")
+    today_heading.setStyleSheet("font-size: 12px; font-weight: bold;")
+    layout.addWidget(today_heading)
+
+    today_lbl = QLabel(_today_summary_line(daily))
     today_lbl.setStyleSheet("font-size: 14px;")
     today_lbl.setWordWrap(True)
     layout.addWidget(today_lbl)
-
-    cards_lbl = QLabel(f"<b>{cards}</b> card{'s' if cards != 1 else ''} reviewed")
-    cards_lbl.setStyleSheet("font-size: 14px;")
-    layout.addWidget(cards_lbl)
-
-    if pdf_pages:
-        by_pdf: dict[int, set] = {}
-        for cid, page in pdf_pages:
-            by_pdf.setdefault(cid, set()).add(page)
-        total_pages = sum(len(v) for v in by_pdf.values())
-        n_pdfs = len(by_pdf)
-        pdf_lbl = QLabel(
-            f"<b>{total_pages}</b> PDF page{'s' if total_pages != 1 else ''} read"
-            f" across {n_pdfs} book{'s' if n_pdfs != 1 else ''}"
-        )
-        pdf_lbl.setStyleSheet("font-size: 14px;")
-        layout.addWidget(pdf_lbl)
-
-    if epub_pages:
-        by_epub: dict[int, set] = {}
-        for cid, page in epub_pages:
-            by_epub.setdefault(cid, set()).add(page)
-        total_pages = sum(len(v) for v in by_epub.values())
-        n_epubs = len(by_epub)
-        epub_lbl = QLabel(
-            f"<b>{total_pages}</b> EPUB page{'s' if total_pages != 1 else ''} read"
-            f" across {n_epubs} book{'s' if n_epubs != 1 else ''}"
-        )
-        epub_lbl.setStyleSheet("font-size: 14px;")
-        layout.addWidget(epub_lbl)
 
     layout.addSpacing(4)
 

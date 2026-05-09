@@ -121,6 +121,26 @@ def test_daily_activity_resets_on_logical_day_change(monkeypatch):
     assert summary["cards"] == 1
 
 
+def test_timer_run_summary_lines_are_scoped_to_completed_timer():
+    lines = timer_widget._timer_run_summary_lines(
+        1,
+        {(10, 4), (10, 5)},
+        {(20, 1)},
+    )
+
+    assert lines == [
+        "<b>1</b> card reviewed",
+        "<b>2</b> PDF pages read across 1 book",
+        "<b>1</b> EPUB page read across 1 book",
+    ]
+
+
+def test_today_summary_line_is_clearly_cumulative():
+    line = timer_widget._today_summary_line({"pages": 6, "cards": 1})
+
+    assert line == "<b>6</b> pages read and <b>1</b> card reviewed so far today."
+
+
 def test_auto_timer_config_defaults_to_disabled_with_pdf_and_epub_selected():
     assert timer_widget.configured_auto_timer_enabled({}) is False
     assert timer_widget.configured_auto_timer_minutes({}) == 30

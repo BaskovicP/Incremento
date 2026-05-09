@@ -1337,15 +1337,12 @@ class TestConnectionSwitching:
 
     def test_migration_adds_read_page_column(self):
         """If an existing DB lacks read_page, get_connection adds it (line 121)."""
-        import os
-        import sqlite3 as _sqlite3
-
         addon_dir = _fresh_dir()
         db_path = os.path.join(addon_dir, "user_files", "TestProfile", db.DB_NAME)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
         # Create DB with old schema (no read_page column)
-        old_conn = _sqlite3.connect(db_path)
+        old_conn = sqlite3.connect(db_path)
         old_conn.execute(
             "CREATE TABLE pdf_progress ("
             "card_id INTEGER PRIMARY KEY, "
@@ -1359,6 +1356,27 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
         columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
         assert "read_page" in columns
+        assert "read_anchor_json" in columns
+
+    def test_migrates_old_epub_progress_schema(self):
+        addon_dir = _fresh_dir()
+        db_path = os.path.join(addon_dir, "user_files", "TestProfile", "incremento.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        old_conn = sqlite3.connect(db_path)
+        old_conn.execute(
+            "CREATE TABLE epub_progress ("
+            "card_id INTEGER PRIMARY KEY, "
+            "section_index INTEGER NOT NULL DEFAULT 0, "
+            "scroll_ratio REAL NOT NULL DEFAULT 0.0, "
+            "is_finished INTEGER NOT NULL DEFAULT 0, "
+            "read_section_index INTEGER NOT NULL DEFAULT 0, "
+            "font_scale REAL NOT NULL DEFAULT 1.0)"
+        )
+        old_conn.commit()
+        old_conn.close()
+
+        conn = db.get_connection(addon_dir, "TestProfile")
+        columns = [r[1] for r in conn.execute("PRAGMA table_info(epub_progress)").fetchall()]
         assert "read_anchor_json" in columns
 
 
