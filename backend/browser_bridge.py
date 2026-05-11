@@ -798,6 +798,13 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
         field_name = mappings["selected_text_field"]
         field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _plain_text_to_html(selected_text))
 
+    if mappings["url_field"]:
+        field_name = mappings["url_field"]
+        field_html[field_name] = _append_browser_capture_html(
+            field_html.get(field_name, ""),
+            _plain_text_to_html(normalized["url"]),
+        )
+
     if mappings["snapshot_field"]:
         field_name = mappings["snapshot_field"]
         snapshot_html = ""

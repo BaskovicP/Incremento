@@ -725,6 +725,7 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     assert result["ok"] is True
     assert result["cardId"] == 321
     assert "Selected<br>text" in note["Front"]
+    assert "https://example.com/article" in note["Front"]
     assert "Source:" not in note["Front"]
     assert "Example" in note["Back"]
     assert '<img src="capture.png">' in note["Back"]
@@ -733,6 +734,59 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     assert note[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com/article"
     assert note.tags == ["Incremento", "alpha"]
     assert priority_calls == [("/tmp/incremento-test", 321, 12.5)]
+
+
+def test_create_browser_capture_note_can_insert_only_source_url(monkeypatch):
+    normalized = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "deckName": "Research",
+            "fieldMappings": {
+                "urlField": "Back",
+            },
+        }
+    )
+
+    class FakeNote(dict):
+        def __init__(self):
+            super().__init__()
+            self.id = 445
+            self.tags = []
+            self._note_type = {"did": 0}
+
+        def note_type(self):
+            return self._note_type
+
+        def add_tag(self, tag):
+            self.tags.append(tag)
+
+    note = FakeNote()
+    col = MagicMock()
+    col.models.by_name.return_value = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    col.decks.by_name.return_value = {"id": 9}
+    col.new_note.return_value = note
+    col.find_cards.return_value = [654]
+
+    mw = SimpleNamespace(col=col)
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+
+    priority_module = MagicMock()
+    monkeypatch.setitem(sys.modules, "priority_manager", priority_module)
+    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+
+    result = _create_browser_capture_note_on_main(normalized)
+
+    assert result["ok"] is True
+    assert note["Back"] == "https://example.com/article"
+    assert note[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com/article"
 
 
 def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):
