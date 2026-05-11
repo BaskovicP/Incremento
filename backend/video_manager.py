@@ -1597,6 +1597,7 @@ def add_video_card(
     deck_name: str = "Topics",
     tags: list[str] | None = None,
     local_video_file: str = "",
+    metadata: dict[str, str] | None = None,
 ) -> int:
     """Create an Incremento Video note, return the card id."""
     ensure_video_note_type(col)
@@ -1621,7 +1622,8 @@ def add_video_card(
         )
         apply_incremento_metadata(
             note,
-            build_incremento_metadata(
+            metadata
+            or build_incremento_metadata(
                 source_type="Video",
                 source_title=title,
                 source_link=(local_video_file or "").strip() or youtube_url,

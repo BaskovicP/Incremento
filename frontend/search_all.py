@@ -54,6 +54,80 @@ except ImportError:
     from pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir  # type: ignore
 
 
+_ADDON_PKG = __name__.split(".")[0]
+_MIN_SEARCH_CHARS = 3
+_SEARCH_WHILE_TYPING_CONFIG_KEY = "search_all_search_while_typing"
+_SEARCH_ALL_FILTER_CONFIG_KEYS = {
+    "pdf_highlights": "search_all_filter_pdf_highlights",
+    "epub_highlights": "search_all_filter_epub_highlights",
+    "pdf_sources": "search_all_filter_pdf_sources",
+    "epub_sources": "search_all_filter_epub_sources",
+    "pdf_content": "search_all_filter_pdf_content",
+    "epub_content": "search_all_filter_epub_content",
+    "image_ocr": "search_all_filter_image_ocr",
+    "cards": "search_all_filter_cards",
+    "current_profile": "search_all_filter_current_profile",
+}
+_SEARCH_ALL_FILTER_DEFAULTS = {
+    "pdf_highlights": True,
+    "epub_highlights": True,
+    "pdf_sources": True,
+    "epub_sources": True,
+    "pdf_content": False,
+    "epub_content": True,
+    "image_ocr": True,
+    "cards": True,
+    "current_profile": True,
+}
+
+
+def _config(config: dict | None = None) -> dict:
+    if config is not None:
+        return config or {}
+    try:
+        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+    except Exception:
+        return {}
+
+
+def configured_search_all_search_while_typing(config: dict | None = None) -> bool:
+    cfg = _config(config)
+    return bool(cfg.get(_SEARCH_WHILE_TYPING_CONFIG_KEY, True))
+
+
+def _set_search_all_search_while_typing(enabled: bool) -> None:
+    cfg = _config()
+    cfg[_SEARCH_WHILE_TYPING_CONFIG_KEY] = bool(enabled)
+    try:
+        mw.addonManager.writeConfig(_ADDON_PKG, cfg)
+    except Exception:
+        return
+
+
+def configured_search_all_filter_enabled(
+    filter_id: str,
+    config: dict | None = None,
+) -> bool:
+    cfg = _config(config)
+    key = _SEARCH_ALL_FILTER_CONFIG_KEYS.get(filter_id)
+    default = _SEARCH_ALL_FILTER_DEFAULTS.get(filter_id, True)
+    if not key:
+        return bool(default)
+    return bool(cfg.get(key, default))
+
+
+def _set_search_all_filter_enabled(filter_id: str, enabled: bool) -> None:
+    key = _SEARCH_ALL_FILTER_CONFIG_KEYS.get(filter_id)
+    if not key:
+        return
+    cfg = _config()
+    cfg[key] = bool(enabled)
+    try:
+        mw.addonManager.writeConfig(_ADDON_PKG, cfg)
+    except Exception:
+        return
+
+
 class _SearchAllDialog(QDialog):
     def __init__(self, parent=None, *, addon_dir: str, open_pdf_card, open_epub_card):
         super().__init__(parent)
@@ -68,8 +142,18 @@ class _SearchAllDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
+        search_row = QHBoxLayout()
+        search_row.setSpacing(8)
         self._search = self.__class__._make_search_box()
-        layout.addWidget(self._search)
+        search_row.addWidget(self._search, stretch=1)
+        self._search_btn = QPushButton("Search")
+        self._search_btn.clicked.connect(self._run_search)
+        search_row.addWidget(self._search_btn)
+        self._cb_search_while_typing = QCheckBox("Search while typing")
+        self._cb_search_while_typing.setChecked(configured_search_all_search_while_typing())
+        self._cb_search_while_typing.toggled.connect(self._on_search_while_typing_toggled)
+        search_row.addWidget(self._cb_search_while_typing)
+        layout.addLayout(search_row)
 
         filter_row = QHBoxLayout()
         filter_row.setSpacing(16)
@@ -82,21 +166,28 @@ class _SearchAllDialog(QDialog):
         self._cb_ocr = QCheckBox("Image OCR")
         self._cb_cards = QCheckBox("Cards")
         self._cb_current_profile = QCheckBox("Current Anki Profile Only")
-        for cb in (
-            self._cb_highlights,
-            self._cb_epub_highlights,
-            self._cb_sources,
-            self._cb_epub_sources,
-            self._cb_content,
-            self._cb_epub_content,
-            self._cb_ocr,
-            self._cb_cards,
-        ):
-            cb.setChecked(True)
-            cb.toggled.connect(lambda _: self._refresh(self._search.text()))
+        self._filter_checkboxes = {
+            "pdf_highlights": self._cb_highlights,
+            "epub_highlights": self._cb_epub_highlights,
+            "pdf_sources": self._cb_sources,
+            "epub_sources": self._cb_epub_sources,
+            "pdf_content": self._cb_content,
+            "epub_content": self._cb_epub_content,
+            "image_ocr": self._cb_ocr,
+            "cards": self._cb_cards,
+        }
+        for filter_id, cb in self._filter_checkboxes.items():
+            cb.setChecked(configured_search_all_filter_enabled(filter_id))
+            cb.toggled.connect(
+                lambda checked, fid=filter_id: self._on_filter_toggled(fid, checked)
+            )
             filter_row.addWidget(cb)
-        self._cb_current_profile.setChecked(True)
-        self._cb_current_profile.toggled.connect(lambda _: self._refresh(self._search.text()))
+        self._cb_current_profile.setChecked(
+            configured_search_all_filter_enabled("current_profile")
+        )
+        self._cb_current_profile.toggled.connect(
+            lambda checked: self._on_filter_toggled("current_profile", checked)
+        )
         filter_row.addWidget(self._cb_current_profile)
         filter_row.addStretch()
         layout.addLayout(filter_row)
@@ -132,8 +223,10 @@ class _SearchAllDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
-        self._search.textChanged.connect(self._refresh)
-        self._refresh("")
+        self._search.textChanged.connect(self._on_search_text_changed)
+        self._search.returnPressed.connect(self._run_search)
+        self._update_search_button()
+        self._show_search_hint()
         self._show_placeholder()
 
     @staticmethod
@@ -142,6 +235,59 @@ class _SearchAllDialog(QDialog):
         w = QLineEdit()
         w.setPlaceholderText("Search PDFs, EPUBs, and cards...")
         return w
+
+    def _query_text(self) -> str:
+        return (self._search.text() or "").strip()
+
+    def _query_ready(self) -> bool:
+        return len(self._query_text()) >= _MIN_SEARCH_CHARS
+
+    def _update_search_button(self) -> None:
+        self._search_btn.setEnabled(self._query_ready())
+
+    def _show_search_hint(self) -> None:
+        self._results.setHtml(
+            "<div style='color:#888;padding:10px'>"
+            f"Type at least {_MIN_SEARCH_CHARS} characters to search.</div>"
+        )
+
+    def _show_manual_search_hint(self) -> None:
+        self._results.setHtml(
+            "<div style='color:#888;padding:10px'>Press Search to run the query.</div>"
+        )
+
+    def _on_search_text_changed(self, _text: str) -> None:
+        self._update_search_button()
+        if not self._query_ready():
+            self._show_search_hint()
+            return
+        if self._cb_search_while_typing.isChecked():
+            self._refresh(self._search.text())
+        else:
+            self._show_manual_search_hint()
+
+    def _on_search_while_typing_toggled(self, enabled: bool) -> None:
+        _set_search_all_search_while_typing(enabled)
+        self._maybe_refresh_from_controls()
+
+    def _on_filter_toggled(self, filter_id: str, enabled: bool) -> None:
+        _set_search_all_filter_enabled(filter_id, enabled)
+        self._maybe_refresh_from_controls()
+
+    def _maybe_refresh_from_controls(self) -> None:
+        self._update_search_button()
+        if not self._query_ready():
+            self._show_search_hint()
+            return
+        if self._cb_search_while_typing.isChecked():
+            self._refresh(self._search.text())
+
+    def _run_search(self) -> None:
+        self._update_search_button()
+        if not self._query_ready():
+            self._show_search_hint()
+            return
+        self._refresh(self._search.text())
 
     @staticmethod
     def _snippet(text: str, q: str, max_len: int = 120) -> str:
@@ -294,10 +440,8 @@ class _SearchAllDialog(QDialog):
 
     def _refresh(self, query: str) -> None:
         q = (query or "").strip()
-        if len(q) < 2:
-            self._results.setHtml(
-                "<div style='color:#888;padding:10px'>Type at least 2 characters to search.</div>"
-            )
+        if len(q) < _MIN_SEARCH_CHARS:
+            self._show_search_hint()
             return
 
         html = ["<div style='font-family:sans-serif'>"]

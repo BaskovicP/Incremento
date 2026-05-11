@@ -175,6 +175,18 @@ def _normalize_priority(raw_priority) -> float:
     return priority
 
 
+def _normalize_parent_card_id(raw_parent_card_id) -> int | None:
+    if raw_parent_card_id in (None, ""):
+        return None
+    try:
+        parent_card_id = int(raw_parent_card_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("parentCardId must be a positive integer.") from exc
+    if parent_card_id <= 0:
+        raise ValueError("parentCardId must be a positive integer.")
+    return parent_card_id
+
+
 def _normalize_browser_capture_field_name(raw_name) -> str:
     return _collapse_ws(raw_name)
 
@@ -246,6 +258,7 @@ def normalize_browser_capture_payload(payload) -> dict:
         "note_type_name": note_type_name,
         "tags": _normalize_tags(payload.get("tags")),
         "priority": _normalize_priority(payload.get("priority")),
+        "parent_card_id": _normalize_parent_card_id(payload.get("parentCardId")),
         "selected_text": str(payload.get("selectedText", "") or "").strip(),
         "field_mappings": _normalize_browser_capture_field_mappings(payload.get("fieldMappings")),
         "snapshots": _normalize_browser_capture_snapshots(payload.get("snapshots")),
@@ -314,6 +327,7 @@ def normalize_add_content_payload(payload) -> dict:
         "deck_name": deck_name,
         "tags": _normalize_tags(payload.get("tags")),
         "priority": _normalize_priority(payload.get("priority")),
+        "parent_card_id": _normalize_parent_card_id(payload.get("parentCardId")),
         "selected_text": selected_text,
         "html": html,
         "markdown": markdown,
@@ -342,6 +356,8 @@ def normalize_add_content_batch_payload(payload) -> list[dict]:
         merged = dict(raw_item)
         if "deckName" not in merged and "deckName" in payload:
             merged["deckName"] = payload.get("deckName")
+        if "parentCardId" not in merged and "parentCardId" in payload:
+            merged["parentCardId"] = payload.get("parentCardId")
         normalized.append(normalize_add_content_payload(merged))
     return normalized
 
@@ -744,6 +760,70 @@ def _store_browser_capture_snapshot(col, snapshot: dict, title: str, index: int)
                     pass
 
 
+def _parent_card_title_on_main(parent_card_id: int | None) -> str:
+    if parent_card_id is None:
+        return ""
+    try:
+        from aqt import mw
+
+        card = mw.col.get_card(int(parent_card_id))
+        note = card.note()
+        fields = list(getattr(note, "fields", []) or [])
+        if fields:
+            return _collapse_ws(fields[0])
+    except Exception:
+        return ""
+    return ""
+
+
+def _source_metadata_for_extension_card(
+    *,
+    source_type: str,
+    source_title: str,
+    source_link: str,
+    parent_card_id: int | None = None,
+) -> dict[str, str]:
+    return build_incremento_metadata(
+        source_type=source_type,
+        source_title=source_title,
+        source_link=source_link,
+        parent=_parent_card_title_on_main(parent_card_id),
+        parent_card_id=parent_card_id,
+    )
+
+
+def _sync_parent_child_knowledge_tree_on_main(
+    *,
+    parent_card_id: int | None,
+    child_card_id: int,
+    node_kind: str = "item",
+) -> dict:
+    if parent_card_id is None:
+        return {}
+    try:
+        parent_card_id = int(parent_card_id)
+        child_card_id = int(child_card_id)
+    except Exception:
+        return {}
+    if parent_card_id <= 0 or child_card_id <= 0 or parent_card_id == child_card_id:
+        return {}
+
+    try:
+        from .knowledge_tree import ensure_extract_lineage_cards_in_tree
+        from .paths import get_active_profile as _active_profile
+    except ImportError:
+        from knowledge_tree import ensure_extract_lineage_cards_in_tree  # type: ignore
+        from paths import get_active_profile as _active_profile  # type: ignore
+
+    return ensure_extract_lineage_cards_in_tree(
+        _addon_dir,
+        _active_profile(),
+        source_card_id=parent_card_id,
+        created_card_ids=[child_card_id],
+        created_node_kind=node_kind,
+    )
+
+
 def _create_browser_capture_note_on_main(normalized: dict) -> dict:
     from aqt import mw
 
@@ -821,12 +901,14 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
     for field_name, value in field_html.items():
         note[field_name] = value
 
+    parent_card_id = normalized.get("parent_card_id")
     apply_incremento_metadata(
         note,
-        build_incremento_metadata(
+        _source_metadata_for_extension_card(
             source_type="Browser Capture",
             source_title=normalized["title"],
             source_link=normalized["url"],
+            parent_card_id=parent_card_id,
         ),
     )
 
@@ -855,6 +937,11 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
     except Exception as exc:
         raise RuntimeError("Created note but could not resolve its card id.") from exc
     set_priority(_addon_dir, _active_profile(), int(card_id), normalized["priority"])
+    knowledge_tree_result = _sync_parent_child_knowledge_tree_on_main(
+        parent_card_id=parent_card_id,
+        child_card_id=int(card_id),
+        node_kind="item",
+    )
     return {
         "ok": True,
         "type": "browser_capture",
@@ -863,6 +950,7 @@ def _create_browser_capture_note_on_main(normalized: dict) -> dict:
         "noteTypeName": note_type_name,
         "deckName": deck_name,
         "title": normalized["title"],
+        "knowledgeTree": knowledge_tree_result,
     }
 
 
@@ -893,6 +981,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
     media_url = normalized.get("media_url", "")
     media_title = normalized.get("media_title", "")
     media_seconds = float(normalized.get("media_seconds") or 0.0)
+    parent_card_id = normalized.get("parent_card_id")
 
     if kind == "video":
         video_url = resolve_video_url_for_embed(url)
@@ -904,6 +993,12 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             title=title,
             deck_name=deck_name,
             tags=tags,
+            metadata=_source_metadata_for_extension_card(
+                source_type="Video",
+                source_title=title,
+                source_link=video_url,
+                parent_card_id=parent_card_id,
+            ),
         )
     elif kind == "webpage":
         card_id = add_web_card(
@@ -912,6 +1007,12 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             title=title,
             deck_name=deck_name,
             tags=tags,
+            metadata=_source_metadata_for_extension_card(
+                source_type="Web",
+                source_title=title,
+                source_link=url,
+                parent_card_id=parent_card_id,
+            ),
         )
         if media_seconds > 0:
             set_web_media_progress(
@@ -948,10 +1049,11 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             tags=tags,
             initial_markdown=initial_markdown,
             preferred_filename=preferred_filename,
-            metadata=build_incremento_metadata(
+            metadata=_source_metadata_for_extension_card(
                 source_type="Web",
                 source_title=title,
                 source_link=url,
+                parent_card_id=parent_card_id,
             ),
         )
     else:
@@ -986,10 +1088,11 @@ def _add_content_item_on_main(normalized: dict) -> dict:
                 title,
                 deck_name=deck_name,
                 tags=tags,
-                metadata=build_incremento_metadata(
+                metadata=_source_metadata_for_extension_card(
                     source_type="PDF",
                     source_title=title,
                     source_link=url,
+                    parent_card_id=parent_card_id,
                 ),
                 precomputed_page_texts=normalized.get(_PREPARED_PDF_PAGE_TEXTS_KEY),
             )
@@ -1001,6 +1104,11 @@ def _add_content_item_on_main(normalized: dict) -> dict:
                     pass
 
     set_priority(_addon_dir, _active_profile(), int(card_id), priority)
+    knowledge_tree_result = _sync_parent_child_knowledge_tree_on_main(
+        parent_card_id=parent_card_id,
+        child_card_id=int(card_id),
+        node_kind="item",
+    )
 
     return {
         "ok": True,
@@ -1008,6 +1116,7 @@ def _add_content_item_on_main(normalized: dict) -> dict:
         "cardId": int(card_id),
         "title": title,
         "deckName": deck_name,
+        "knowledgeTree": knowledge_tree_result,
     }
 
 

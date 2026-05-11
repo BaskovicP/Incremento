@@ -408,6 +408,19 @@ export function PopupApp() {
       tags: parseTags(tagsText),
       selectedText: currentSelectionText,
     };
+    let currentLinkedCard = linkedCard;
+    try {
+      const linked = await getLinkedCardContextForTab(currentTab.id, currentPageUrl);
+      currentLinkedCard = linked?.linked && Number(linked.cardId) > 0
+        ? { linked: true, cardId: Number(linked.cardId) || 0 }
+        : { linked: false, cardId: 0 };
+      setLinkedCard(currentLinkedCard);
+    } catch (_error) {
+      currentLinkedCard = linkedCard;
+    }
+    if (currentLinkedCard?.linked && Number(currentLinkedCard.cardId) > 0) {
+      payload.parentCardId = Math.max(0, Math.floor(Number(currentLinkedCard.cardId) || 0));
+    }
     if (kind === "pdf" && currentSnapshot?.html) {
       payload.html = String(currentSnapshot.html);
     }

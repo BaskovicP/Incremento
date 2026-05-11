@@ -931,6 +931,25 @@ function buildImportPayload(kind, context, options = {}) {
   return payload;
 }
 
+async function attachLinkedParentCard(payload, tabId, rawUrl = "") {
+  if (!payload || typeof payload !== "object" || typeof tabId !== "number") {
+    return payload;
+  }
+  try {
+    const linked = await getLinkedCardContextForTab(tabId, rawUrl);
+    const parentCardId = Math.max(0, Math.floor(Number(linked?.cardId) || 0));
+    if (linked?.linked && parentCardId > 0) {
+      return {
+        ...payload,
+        parentCardId,
+      };
+    }
+  } catch (_error) {
+    // Keep imports working if the tab is not linked or Chrome storage is unavailable.
+  }
+  return payload;
+}
+
 async function loadLinkSaveSettings() {
   try {
     const data = await chrome.storage.local.get(LINK_SAVE_SETTINGS_KEY);
@@ -1000,12 +1019,13 @@ async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
     return { ok: false, error: message };
   }
 
-  const payload = buildImportPayload("webpage", {
+  let payload = buildImportPayload("webpage", {
     url,
     title: buildLinkSaveTitle(rawTitle, url),
     selectionText: "",
     html: "",
   });
+  payload = await attachLinkedParentCard(payload, tabId, url);
 
   try {
     const result = await importIntoIncremento(payload);
@@ -1103,6 +1123,7 @@ async function addCurrentPageToIncremento(command) {
   }
 
   try {
+    payload = await attachLinkedParentCard(payload, tab.id, pageUrl);
     const result = await importIntoIncremento(payload);
     if (command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE && Number(result?.cardId) > 0) {
       await registerWebCardTracking(tab.id, Number(result.cardId), pageUrl);
@@ -1503,7 +1524,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "SUBMIT_BROWSER_CAPTURE") {
     void (async () => {
       try {
-        const result = await submitBrowserCapture(msg.payload || {});
+        const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
+        const payload = await attachLinkedParentCard(
+          msg.payload || {},
+          tabId,
+          String(msg.payload?.url || sender?.tab?.url || ""),
+        );
+        const result = await submitBrowserCapture(payload);
         sendResponse?.(result);
       } catch (error) {
         sendResponse?.({ ok: false, error: String(error?.message || "Failed to submit browser capture.") });

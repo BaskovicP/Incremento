@@ -74,8 +74,21 @@ def test_normalize_add_content_payload_defaults_and_aliases():
     assert payload["deck_name"] == "Topics"
     assert payload["tags"] == ["alpha", "beta"]
     assert payload["priority"] == 50.0
+    assert payload["parent_card_id"] is None
     assert payload["html"] == "<html></html>"
     assert payload["media_seconds"] == 0.0
+
+
+def test_normalize_add_content_payload_accepts_parent_card_id():
+    payload = normalize_add_content_payload(
+        {
+            "kind": "webpage",
+            "url": "https://example.com/a",
+            "title": "Example",
+            "parentCardId": "123",
+        }
+    )
+    assert payload["parent_card_id"] == 123
 
 
 def test_normalize_add_content_payload_accepts_webpage_media_timing():
@@ -279,6 +292,24 @@ def test_normalize_add_content_batch_payload_merges_defaults():
     assert payload[1]["tags"] == ["draft", "ideas"]
 
 
+def test_normalize_add_content_batch_payload_inherits_parent_card_id():
+    payload = normalize_add_content_batch_payload(
+        {
+            "parentCardId": 123,
+            "items": [
+                {"kind": "pdf", "url": "https://example.com/guide.pdf", "title": "Guide"},
+                {
+                    "kind": "writing",
+                    "url": "https://example.com/post",
+                    "title": "Post",
+                    "parentCardId": 456,
+                },
+            ],
+        }
+    )
+    assert [item["parent_card_id"] for item in payload] == [123, 456]
+
+
 def test_normalize_add_content_request_detects_batch_mode():
     payload = normalize_add_content_request(
         {
@@ -342,7 +373,22 @@ def test_normalize_browser_capture_payload_accepts_snapshots_and_mappings():
     assert payload["selected_text"] == "Selected text"
     assert payload["field_mappings"]["title_field"] == "Back"
     assert payload["field_mappings"]["snapshot_field"] == "Extra"
+    assert payload["parent_card_id"] is None
     assert payload["snapshots"][0]["bytes"].startswith(b"\x89PNG")
+
+
+def test_normalize_browser_capture_payload_accepts_parent_card_id():
+    payload = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "parentCardId": 123,
+            "fieldMappings": {"titleField": "Front"},
+        }
+    )
+    assert payload["parent_card_id"] == 123
 
 
 def test_normalize_browser_capture_payload_rejects_unknown_snapshot_mime_type():
@@ -787,6 +833,72 @@ def test_create_browser_capture_note_can_insert_only_source_url(monkeypatch):
     assert result["ok"] is True
     assert note["Back"] == "https://example.com/article"
     assert note[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com/article"
+
+
+def test_create_browser_capture_note_records_parent_and_syncs_tree(monkeypatch):
+    normalized = normalize_browser_capture_payload(
+        {
+            "type": "browser_capture",
+            "url": "https://example.com/article",
+            "title": "Example",
+            "noteTypeName": "Basic",
+            "deckName": "Research",
+            "parentCardId": 123,
+            "fieldMappings": {
+                "titleField": "Front",
+            },
+        }
+    )
+
+    class FakeNote(dict):
+        def __init__(self):
+            super().__init__()
+            self.id = 446
+            self.tags = []
+            self._note_type = {"did": 0}
+
+        def note_type(self):
+            return self._note_type
+
+        def add_tag(self, tag):
+            self.tags.append(tag)
+
+    note = FakeNote()
+    col = MagicMock()
+    col.models.by_name.return_value = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    col.decks.by_name.return_value = {"id": 9}
+    col.new_note.return_value = note
+    col.find_cards.return_value = [654]
+
+    mw = SimpleNamespace(col=col)
+    fake_aqt = MagicMock()
+    fake_aqt.mw = mw
+    monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
+    monkeypatch.setitem(sys.modules, "priority_manager", MagicMock())
+    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+
+    sync_calls = []
+    monkeypatch.setattr(
+        browser_bridge,
+        "_sync_parent_child_knowledge_tree_on_main",
+        lambda **kwargs: sync_calls.append(kwargs) or {"linked_count": 2},
+    )
+
+    result = _create_browser_capture_note_on_main(normalized)
+
+    assert result["ok"] is True
+    assert note[INCREMENTO_PARENT_CARD_ID_FIELD] == "123"
+    assert sync_calls == [
+        {
+            "parent_card_id": 123,
+            "child_card_id": 654,
+            "node_kind": "item",
+        }
+    ]
+    assert result["knowledgeTree"] == {"linked_count": 2}
 
 
 def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):

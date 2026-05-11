@@ -685,6 +685,7 @@ def add_web_card(
     title: str,
     deck_name: str = "Topics",
     tags: list[str] | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> int:
     """Create an Incremento Web note, return the card id."""
     ensure_web_note_type(col)
@@ -701,7 +702,8 @@ def add_web_card(
         note["URL"] = url
         apply_incremento_metadata(
             note,
-            build_incremento_metadata(
+            metadata
+            or build_incremento_metadata(
                 source_type="Web",
                 source_title=title,
                 source_link=url,
