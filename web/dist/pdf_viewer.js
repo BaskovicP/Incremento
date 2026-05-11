@@ -7691,8 +7691,11 @@
     const [highlightsScope, setHighlightsScope] = reactExports.useState("all");
     const [focusedHighlightId, setFocusedHighlightId] = reactExports.useState(null);
     const [highlightJumpNonce, setHighlightJumpNonce] = reactExports.useState(0);
+    const [pageJumpEditing, setPageJumpEditing] = reactExports.useState(false);
+    const [pageJumpValue, setPageJumpValue] = reactExports.useState("");
     const pendingHighlightScrollRef = reactExports.useRef(null);
     const lastReadAnchorSpanRef = reactExports.useRef(null);
+    const pageJumpInputRef = reactExports.useRef(null);
     const pageHighlights = highlights.filter((h) => h.page === page);
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
     const showReadMarker = readAnchor && readPage > 0 && page === readPage && Number(readAnchor.page || 0) === page;
@@ -8074,6 +8077,32 @@
       }
       rawNav(delta);
     }, [canMoveToPage, pageRef, rawNav]);
+    const openPageJump = reactExports.useCallback(() => {
+      if (totalPages <= 0) return;
+      setPageJumpValue(String(pageRef.current || page || 1));
+      setPageJumpEditing(true);
+    }, [page, pageRef, totalPages]);
+    const commitPageJump = reactExports.useCallback(() => {
+      const target = parseInt(pageJumpValue, 10);
+      setPageJumpEditing(false);
+      if (!Number.isFinite(target)) return;
+      const clamped = Math.max(1, Math.min(target, totalPages || target));
+      const delta = clamped - pageRef.current;
+      if (delta !== 0) {
+        limitAwareNav(delta);
+      }
+    }, [limitAwareNav, pageJumpValue, pageRef, totalPages]);
+    const cancelPageJump = reactExports.useCallback(() => {
+      setPageJumpEditing(false);
+      setPageJumpValue("");
+    }, []);
+    reactExports.useEffect(() => {
+      if (!pageJumpEditing) return;
+      const input = pageJumpInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    }, [pageJumpEditing]);
     const jumpToBookmark = reactExports.useCallback((bookmark) => {
       var _a;
       const targetPage = Number(((_a = bookmark == null ? void 0 : bookmark.location) == null ? void 0 : _a.page) || 0);
@@ -8275,7 +8304,68 @@
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Navigate" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(-1), children: "← Prev" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { minWidth: 170, textAlign: "center", fontSize: 15, fontWeight: 700 }, children: totalPages > 0 ? `Page ${page} / ${totalPages}` : "Page — / —" }),
+                        pageJumpEditing ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 170, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 15, fontWeight: 700 }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Page" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "input",
+                            {
+                              ref: pageJumpInputRef,
+                              type: "number",
+                              min: "1",
+                              max: totalPages || void 0,
+                              value: pageJumpValue,
+                              onChange: (event) => setPageJumpValue(event.target.value),
+                              onBlur: commitPageJump,
+                              onKeyDown: (event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitPageJump();
+                                } else if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelPageJump();
+                                }
+                              },
+                              style: {
+                                width: 64,
+                                height: 30,
+                                boxSizing: "border-box",
+                                textAlign: "center",
+                                fontSize: 15,
+                                fontWeight: 700,
+                                color: "#f4f4f5",
+                                background: "rgba(255,255,255,0.08)",
+                                border: "1px solid rgba(180,180,180,0.46)",
+                                borderRadius: 8,
+                                outline: "none"
+                              }
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                            "/ ",
+                            totalPages
+                          ] })
+                        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            onClick: openPageJump,
+                            title: totalPages > 0 ? "Go to page" : void 0,
+                            style: {
+                              minWidth: 170,
+                              height: 32,
+                              padding: "0 8px",
+                              textAlign: "center",
+                              fontSize: 15,
+                              fontWeight: 700,
+                              color: "inherit",
+                              background: "transparent",
+                              border: "1px solid transparent",
+                              borderRadius: 8,
+                              cursor: totalPages > 0 ? "pointer" : "default"
+                            },
+                            children: totalPages > 0 ? `Page ${page} / ${totalPages}` : "Page — / —"
+                          }
+                        ),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(1), children: "Next →" })
                       ] })
                     ] }),

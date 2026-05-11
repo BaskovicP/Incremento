@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""Build a clean distributable ZIP for the Incremento Anki add-on.
+"""Build a clean distributable .ankiaddon for the Incremento Anki add-on.
 
-The script stages a release-ready addon directory, creates the initial
-`user_files/` layout expected by the addon, and writes a ZIP that can be:
-
-- uploaded to AnkiWeb (default: excludes local `meta.json`)
-- installed manually into `addons21/`
-
-It keeps the package focused on runtime assets and excludes repo-only files
-such as tests, VCS metadata, caches, local runtime data, and frontend sources
-that are already compiled into `web/dist/pdf_viewer.js`.
+The script stages only runtime files needed by Incremento, writes the Anki
+add-on manifest at the package root, and creates a native `.ankiaddon` archive
+that can be installed with Anki's "Install from file" flow.
 """
 
 from __future__ import annotations
@@ -21,18 +15,14 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
-PACKAGE_ROOT = "incremento"
-RUNTIME_DIRS = (
-    "backend",
-    "frontend",
-    "web",
-    "chrome_extensions",
-)
+PACKAGE_ID = "incremento"
+ADDON_NAME = "Incremento"
+STAGING_DIR_NAME = "incremento"
 ROOT_FILES = (
     "__init__.py",
     "config.json",
@@ -41,42 +31,17 @@ ROOT_FILES = (
     "EXPORTING.md",
     "LICENSE",
 )
-OPTIONAL_ROOT_FILES = (
-    "meta.json",
+WEB_RUNTIME_FILES = (
+    "web/pdf_dock.html",
+    "web/video_player.html",
+    "web/web_dock_bridge.js",
+    "web/dist/pdf_viewer.js",
 )
-FRONTEND_RUNTIME_FILES = (
-    "frontend/__init__.py",
-    "frontend/add_card_dock.py",
-    "frontend/epub_dialog.py",
-    "frontend/epub_dock.py",
-    "frontend/add_video_dialog.py",
-    "frontend/add_web_dialog.py",
-    "frontend/add_writing_dialog.py",
-    "frontend/extract_card_dialog.py",
-    "frontend/learn_dialog.py",
-    "frontend/pdf_dialog.py",
-    "frontend/pdf_dock.py",
-    "frontend/pdf_quick_jump.py",
-    "frontend/priority_dialog.py",
-    "frontend/search_all.py",
-    "frontend/settings_dialog.py",
-    "frontend/stats_dialog.py",
-    "frontend/tag_edit.py",
-    "frontend/timer_widget.py",
-    "frontend/video_dock.py",
-    "frontend/web_dock.py",
-    "frontend/webpage_dialog.py",
-    "frontend/writing_dock.py",
-)
-USER_DIRS = (
-    "user_files",
-    "user_files/epubs",
-    "user_files/epub_extracted",
-    "user_files/pdfs",
-    "user_files/videos",
-    "user_files/writing",
-    "user_files/web_profile",
-    "user_files/video_profile",
+CHROME_EXTENSION_ROOT = Path("chrome_extensions/incremento_companion")
+CHROME_EXTENSION_ROOT_FILES = (
+    "manifest.json",
+    "content-loader.js",
+    "offscreen.html",
 )
 REQUIRED_RUNTIME_PATHS = (
     "__init__.py",
@@ -85,11 +50,13 @@ REQUIRED_RUNTIME_PATHS = (
     "frontend/pdf_dock.py",
     "frontend/web_dock.py",
     "web/pdf_dock.html",
+    "web/video_player.html",
     "web/web_dock_bridge.js",
     "web/dist/pdf_viewer.js",
     "web/pdfjs/pdf.min.js",
     "web/pdfjs/pdf.worker.min.js",
     "chrome_extensions/incremento_companion/manifest.json",
+    "chrome_extensions/incremento_companion/dist",
 )
 EXCLUDE_DIR_NAMES = {
     ".git",
@@ -102,6 +69,8 @@ EXCLUDE_DIR_NAMES = {
     "node_modules",
     "tests",
     ".claude",
+    "dist",
+    "user_files",
 }
 EXCLUDE_FILE_NAMES = {
     ".DS_Store",
@@ -112,20 +81,24 @@ EXCLUDE_FILE_NAMES = {
     "plan.drawio.xml",
     "pytest.ini",
     "pyproject.toml",
+    "package.json",
+    "package-lock.json",
+    "generate_icons.py",
 }
 
 
 @dataclass
 class BuildSummary:
-    zip_path: Path
+    artifact_path: Path
     staged_root: Path
     include_meta: bool
     rebuilt_frontend: bool
+    clean_staging: bool
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Package Incremento as a clean Anki add-on ZIP."
+        description="Package Incremento as a clean Anki .ankiaddon install file."
     )
     parser.add_argument(
         "--repo-root",
@@ -137,17 +110,22 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=Path,
         default=None,
-        help="Directory where the packaged zip and staging folder should be written.",
+        help="Directory where the packaged archive and staging folder should be written.",
     )
     parser.add_argument(
         "--name",
         default=None,
-        help="Output zip filename. Defaults to incremento-addon-YYYYMMDD-HHMMSS.zip",
+        help="Output filename. Defaults to incremento-addon-YYYYMMDD-HHMMSS.ankiaddon",
+    )
+    parser.add_argument(
+        "--human-version",
+        default=None,
+        help="Optional human_version value for the root Anki manifest.json.",
     )
     parser.add_argument(
         "--include-meta",
         action="store_true",
-        help="Include local meta.json in the package. Leave off for AnkiWeb publication.",
+        help="Include local meta.json in the package. Leave off for friend-safe sharing.",
     )
     parser.add_argument(
         "--build-frontend",
@@ -158,6 +136,11 @@ def parse_args() -> argparse.Namespace:
         "--run-tests",
         action="store_true",
         help="Run the Python test suite before packaging.",
+    )
+    parser.add_argument(
+        "--clean-staging",
+        action="store_true",
+        help="Remove the staged dist/incremento folder after creating the archive.",
     )
     return parser.parse_args()
 
@@ -183,22 +166,29 @@ def main() -> int:
     if args.run_tests:
         run_tests(repo_root)
 
-    build_name = args.name or default_zip_name()
-    zip_path = output_dir / build_name
-    staged_root = output_dir / PACKAGE_ROOT
+    artifact_path = output_dir / normalize_artifact_name(args.name)
+    staged_root = output_dir / STAGING_DIR_NAME
 
     if staged_root.exists():
         shutil.rmtree(staged_root)
 
-    stage_package(repo_root, staged_root, include_meta=args.include_meta)
-    write_build_manifest(repo_root, staged_root, zip_path.name, args.include_meta)
-    create_zip(output_dir, staged_root, zip_path)
+    stage_package(
+        repo_root,
+        staged_root,
+        include_meta=args.include_meta,
+        human_version=args.human_version or default_human_version(),
+    )
+    create_archive(output_dir, staged_root, artifact_path)
+
+    if args.clean_staging:
+        shutil.rmtree(staged_root)
 
     summary = BuildSummary(
-        zip_path=zip_path,
+        artifact_path=artifact_path,
         staged_root=staged_root,
         include_meta=args.include_meta,
         rebuilt_frontend=rebuilt_frontend,
+        clean_staging=args.clean_staging,
     )
     print_summary(summary)
     return 0
@@ -251,13 +241,32 @@ def run_command(cmd: list[str], cwd: Path, label: str) -> None:
         raise SystemExit(f"{label} failed with exit code {exc.returncode}") from exc
 
 
-def default_zip_name() -> str:
+def normalize_artifact_name(name: str | None) -> str:
+    if name is None:
+        return default_artifact_name()
+    if Path(name).suffix:
+        return name
+    return f"{name}.ankiaddon"
+
+
+def default_artifact_name() -> str:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"incremento-addon-{stamp}.zip"
+    return f"incremento-addon-{stamp}.ankiaddon"
 
 
-def stage_package(repo_root: Path, staged_root: Path, *, include_meta: bool) -> None:
+def default_human_version() -> str:
+    return datetime.now().strftime("%Y.%m.%d.%H%M%S")
+
+
+def stage_package(
+    repo_root: Path,
+    staged_root: Path,
+    *,
+    include_meta: bool,
+    human_version: str,
+) -> None:
     staged_root.mkdir(parents=True, exist_ok=True)
+    write_anki_manifest(staged_root, human_version)
 
     for relpath in ROOT_FILES:
         copy_file(repo_root / relpath, staged_root / relpath)
@@ -271,25 +280,64 @@ def stage_package(repo_root: Path, staged_root: Path, *, include_meta: bool) -> 
 
     stage_backend(repo_root, staged_root)
     stage_frontend(repo_root, staged_root)
-    stage_directory(repo_root / "web", staged_root / "web")
-    stage_directory(repo_root / "chrome_extensions", staged_root / "chrome_extensions")
-    create_user_dirs(staged_root)
+    stage_web(repo_root, staged_root)
+    stage_chrome_extension(repo_root, staged_root)
+
+
+def write_anki_manifest(staged_root: Path, human_version: str) -> None:
+    manifest = {
+        "package": PACKAGE_ID,
+        "name": ADDON_NAME,
+        "human_version": human_version,
+    }
+    path = staged_root / "manifest.json"
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def stage_backend(repo_root: Path, staged_root: Path) -> None:
-    stage_directory(repo_root / "backend", staged_root / "backend")
+    stage_python_dir(repo_root / "backend", staged_root / "backend")
 
 
 def stage_frontend(repo_root: Path, staged_root: Path) -> None:
-    frontend_dst = staged_root / "frontend"
-    frontend_dst.mkdir(parents=True, exist_ok=True)
-    for relpath in FRONTEND_RUNTIME_FILES:
+    stage_python_dir(repo_root / "frontend", staged_root / "frontend")
+
+
+def stage_python_dir(src: Path, dst: Path) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    for path in sorted(src.glob("*.py")):
+        copy_file(path, dst / path.name)
+
+
+def stage_web(repo_root: Path, staged_root: Path) -> None:
+    for relpath in WEB_RUNTIME_FILES:
         copy_file(repo_root / relpath, staged_root / relpath)
+    pdfjs_dir = repo_root / "web" / "pdfjs"
+    for path in sorted(pdfjs_dir.glob("*.min.js")):
+        copy_file(path, staged_root / "web" / "pdfjs" / path.name)
+
+
+def stage_chrome_extension(repo_root: Path, staged_root: Path) -> None:
+    src = repo_root / CHROME_EXTENSION_ROOT
+    dst = staged_root / CHROME_EXTENSION_ROOT
+
+    for name in CHROME_EXTENSION_ROOT_FILES:
+        path = src / name
+        if path.exists():
+            copy_file(path, dst / name)
+
+    for pattern in ("*.html", "*.css"):
+        for path in sorted(src.glob(pattern)):
+            copy_file(path, dst / path.name)
+
+    for subdir in ("icons", "dist"):
+        source_dir = src / subdir
+        if source_dir.exists():
+            stage_directory(source_dir, dst / subdir)
 
 
 def stage_directory(src: Path, dst: Path) -> None:
     dst.mkdir(parents=True, exist_ok=True)
-    for path in src.rglob("*"):
+    for path in sorted(src.rglob("*")):
         rel = path.relative_to(src)
         if should_skip(path, rel):
             continue
@@ -306,17 +354,9 @@ def should_skip(path: Path, rel: Path) -> bool:
         return True
     if path.name in EXCLUDE_FILE_NAMES:
         return True
-    if path.suffix in {".pyc", ".pyo"}:
+    if path.suffix in {".pyc", ".pyo", ".map"}:
         return True
     return False
-
-
-def create_user_dirs(staged_root: Path) -> None:
-    for relpath in USER_DIRS:
-        target = staged_root / relpath
-        target.mkdir(parents=True, exist_ok=True)
-        keep = target / ".keep"
-        keep.write_text("", encoding="utf-8")
 
 
 def copy_file(src: Path, dst: Path) -> None:
@@ -324,69 +364,34 @@ def copy_file(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def write_build_manifest(
-    repo_root: Path,
-    staged_root: Path,
-    zip_name: str,
-    include_meta: bool,
-) -> None:
-    manifest = {
-        "addon_name": "Incremento",
-        "package_root": PACKAGE_ROOT,
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "zip_name": zip_name,
-        "include_meta": include_meta,
-        "git_commit": git_head(repo_root),
-        "notes": [
-            "PyMuPDF can be auto-installed by the addon on first run.",
-            "Tesseract remains an optional external system dependency for OCR.",
-            "This package intentionally excludes local user_files runtime data.",
-        ],
-    }
-    path = staged_root / "build_manifest.json"
-    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def git_head(repo_root: Path) -> str | None:
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except Exception:
-        return None
-    return proc.stdout.strip() or None
-
-
-def create_zip(output_dir: Path, staged_root: Path, zip_path: Path) -> None:
-    if zip_path.exists():
-        zip_path.unlink()
+def create_archive(output_dir: Path, staged_root: Path, artifact_path: Path) -> None:
+    if artifact_path.exists():
+        artifact_path.unlink()
 
     with tempfile.TemporaryDirectory(dir=output_dir) as temp_dir:
-        temp_zip = Path(temp_dir) / zip_path.name
-        with ZipFile(temp_zip, "w", compression=ZIP_DEFLATED) as zf:
+        temp_archive = Path(temp_dir) / artifact_path.name
+        with ZipFile(temp_archive, "w", compression=ZIP_DEFLATED) as zf:
             for path in sorted(staged_root.rglob("*")):
-                arcname = Path(PACKAGE_ROOT) / path.relative_to(staged_root)
+                arcname = path.relative_to(staged_root)
                 if path.is_dir():
                     zf.writestr(f"{arcname.as_posix().rstrip('/')}/", "")
                 else:
                     zf.write(path, arcname.as_posix())
-        shutil.move(str(temp_zip), zip_path)
+        shutil.move(str(temp_archive), artifact_path)
 
 
 def print_summary(summary: BuildSummary) -> None:
     print("\n[package_addon] Package created")
-    print(f"  zip:     {summary.zip_path}")
-    print(f"  staged:  {summary.staged_root}")
-    print(f"  meta:    {'included' if summary.include_meta else 'excluded'}")
+    print(f"  install file: {summary.artifact_path}")
+    print(f"  staged folder: {summary.staged_root}")
+    print("  user_files: excluded")
+    print(f"  meta.json: {'included' if summary.include_meta else 'excluded'}")
     print(f"  frontend rebuilt: {'yes' if summary.rebuilt_frontend else 'no'}")
-    print("\n[package_addon] Publish guidance")
-    print("  - Use the ZIP for AnkiWeb upload or manual installation.")
-    print("  - Default packaging excludes meta.json, which is usually what you want for publication.")
-    print("  - The staged folder is kept so you can inspect exactly what will be shipped.")
+    print(f"  staging kept: {'no' if summary.clean_staging else 'yes'}")
+    print("\n[package_addon] Install guidance")
+    print("  - In Anki, open Tools -> Add-ons -> Install from file.")
+    print("  - Choose the generated .ankiaddon file and restart Anki when prompted.")
+    print("  - Default packaging excludes meta.json and all user_files runtime data.")
 
 
 if __name__ == "__main__":

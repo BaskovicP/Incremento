@@ -56,7 +56,7 @@ class TestConfigFromDialogDict:
         assert cfg.tag_weights == {}
         assert cfg.include_rest is True
         assert cfg.scheduler_scope == "session"
-        assert cfg.day_end_time == "00:00"
+        assert cfg.day_end_time == "04:00"
         assert cfg.priority_order == ["tags", "type", "mode"]
         assert cfg.enforce_priority is True
         assert cfg.topics_filter == ""
@@ -139,6 +139,11 @@ class TestConfigFromDialogDict:
         cfg = _config_from_dialog_dict({"scheduler_scope": "daily", "day_end_time": "04:00"})
         assert cfg.scheduler_scope == "daily"
         assert cfg.day_end_time == "04:00"
+
+    def test_explicit_midnight_day_end_is_preserved(self):
+        cfg = _config_from_dialog_dict({"day_end_time": "00:00"})
+
+        assert cfg.day_end_time == "00:00"
 
     def test_enforce_priority_false(self):
         cfg = _config_from_dialog_dict({"enforce_priority": False})

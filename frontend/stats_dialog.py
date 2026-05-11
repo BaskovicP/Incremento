@@ -346,7 +346,7 @@ class StatsDialog(QDialog):
         addon_dir: str,
         session_counts: dict | None = None,
         session_time: dict | None = None,
-        day_end_time: str = "00:00",
+        day_end_time: str = "04:00",
         parent=None,
     ) -> None:
         super().__init__(parent)

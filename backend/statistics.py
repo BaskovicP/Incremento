@@ -126,7 +126,7 @@ def _today() -> str:
     return time.strftime("%Y-%m-%d")
 
 
-def _effective_date(day_end: str = "00:00") -> str:
+def _effective_date(day_end: str = "04:00") -> str:
     """Return the logical date string, honouring a non-midnight day boundary.
 
     If day_end is "04:00" and the current time is 03:30, the logical date is
@@ -295,7 +295,7 @@ def delete_all_stats(addon_dir: str, profile: str) -> None:
 
 
 class StatsManager:
-    def __init__(self, addon_dir: str, profile: str, day_end_time: str = "00:00"):
+    def __init__(self, addon_dir: str, profile: str, day_end_time: str = "04:00"):
         self._addon_dir = addon_dir
         self._profile = profile
         self._day_end_time = day_end_time

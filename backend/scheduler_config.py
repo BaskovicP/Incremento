@@ -6,6 +6,7 @@ NO_TAGS_KEY = "__no_tags__"
 READY_NEW_CLAUSE = "is:new"
 READY_LEARNING_CLAUSE = "(is:learn is:due)"
 READY_REVIEW_CLAUSE = "(is:review is:due)"
+DEFAULT_DAY_END_TIME = "04:00"
 
 
 def build_ready_filter(
@@ -43,7 +44,7 @@ class SchedulerConfig:
     tag_weights: dict = field(default_factory=dict)  # {tag: normalised_weight}
     include_rest: bool = True      # fill remaining slots with untagged cards after tag phases
     scheduler_scope: str = "session"   # "session" | "daily" | "lifetime"
-    day_end_time: str = "00:00"        # HH:MM — logical day boundary for "daily" scope
+    day_end_time: str = DEFAULT_DAY_END_TIME  # HH:MM — logical day boundary for "daily" scope
     priority_order: list = field(default_factory=lambda: ["tags", "type", "mode"])
     enforce_priority: bool = True      # False → soft debt-based ordering, no hard quotas
     topics_filter: str = ""   # Optional Anki search filter that further narrows topic cards
@@ -115,7 +116,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     enforce_priority  = d.get("enforce_priority", True)
 
     scheduler_scope = d.get("scheduler_scope", "session")
-    day_end_time    = d.get("day_end_time", "00:00")
+    day_end_time    = d.get("day_end_time", DEFAULT_DAY_END_TIME)
     topics_filter    = str(d.get("topics_filter", "") or "").strip()
     items_filter     = str(d.get("items_filter", "") or "").strip()
     # Migrate old deck/tag defaults to the new classifier-based empty filters.

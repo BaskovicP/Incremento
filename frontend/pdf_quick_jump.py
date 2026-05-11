@@ -231,6 +231,9 @@ class _PdfQuickJumpDialog(QDialog):
         )
         self._preserve_history_cb.setChecked(False)
         layout.addWidget(self._preserve_history_cb)
+        self._study_card_cb = QCheckBox("Open the card also to study")
+        self._study_card_cb.setChecked(False)
+        layout.addWidget(self._study_card_cb)
         layout.addSpacing(10)
 
         cancel_btn = QPushButton("Cancel")
@@ -279,6 +282,7 @@ class _PdfQuickJumpDialog(QDialog):
         self._visible_entries = _filter_quick_open_entries(self._entries_by_mode.get(mode, []), query)
 
         self._preserve_history_cb.setVisible(mode == _MODE_DOCS)
+        self._study_card_cb.setVisible(mode == _MODE_DOCS)
         self._table.setRowCount(0)
 
         for index, entry in enumerate(self._visible_entries, start=1):
@@ -376,3 +380,7 @@ class _PdfQuickJumpDialog(QDialog):
     @property
     def preserve_history(self) -> bool:
         return bool(self._preserve_history_cb.isChecked())
+
+    @property
+    def open_card_to_study(self) -> bool:
+        return bool(self._study_card_cb.isChecked())

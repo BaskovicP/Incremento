@@ -141,6 +141,42 @@ def test_today_summary_line_is_clearly_cumulative():
     assert line == "<b>6</b> pages read and <b>1</b> card reviewed so far today."
 
 
+def test_today_summary_line_shows_reader_breakdown():
+    line = timer_widget._today_summary_line(
+        {"pages": 5, "pdf_pages": 1, "epub_pages": 4, "cards": 0}
+    )
+
+    assert line == (
+        "<b>5</b> pages read (<b>1</b> PDF page and <b>4</b> EPUB pages) "
+        "and <b>0</b> cards reviewed so far today."
+    )
+
+
+def test_report_display_daily_summary_cannot_be_less_than_report(monkeypatch):
+    logical_date = {"value": "2026-04-23"}
+    monkeypatch.setattr(timer_widget, "_current_timer_logical_date", lambda: logical_date["value"])
+    timer_widget.reset_daily_activity_counters()
+
+    timer_widget.record_card_answered()
+    timer_widget.record_pdf_page_read(10, 4)
+    timer_widget.record_epub_page_read(20, 1)
+
+    logical_date["value"] = "2026-04-24"
+    daily = timer_widget._daily_activity_summary_for_report(
+        1,
+        {(10, 4)},
+        {(20, 2)},
+    )
+
+    assert daily == {
+        "logical_date": "2026-04-24",
+        "cards": 1,
+        "pdf_pages": 1,
+        "epub_pages": 1,
+        "pages": 2,
+    }
+
+
 def test_auto_timer_config_defaults_to_disabled_with_pdf_and_epub_selected():
     assert timer_widget.configured_auto_timer_enabled({}) is False
     assert timer_widget.configured_auto_timer_minutes({}) == 30

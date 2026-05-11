@@ -7,7 +7,7 @@ import zipfile
 from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
-from aqt.reviewer import Reviewer
+from aqt.reviewer import QueuedCards, Reviewer, SchedulingContext, V3CardInfo
 from aqt.utils import showInfo, tooltip, tr
 from aqt.operations.scheduling import bury_cards as _bury_cards_op
 from aqt.qt import (
@@ -205,6 +205,8 @@ _shortcut_actions: dict[str, list[object]] = {}
 _topic_postpone_timer: QTimer | None = None
 _item_skip_timer: QTimer | None = None
 _menu: QMenu | None = None
+_direct_review_card_ids: list[int] = []
+_direct_review_active = False
 _timerToggleAction: QAction | None = None
 _knowledge_tree_dialog = None
 _configured_shortcut_filter = None
@@ -745,6 +747,113 @@ def _topic_reviewer_will_answer_card(response, _reviewer, card):
     return response
 
 
+def _direct_review_queue_kind(card) -> int:
+    try:
+        queue = int(getattr(card, "queue", 0) or 0)
+    except Exception:
+        queue = 0
+    try:
+        card_type = int(getattr(card, "type", 0) or 0)
+    except Exception:
+        card_type = 0
+
+    if queue == 0 or card_type == 0:
+        return QueuedCards.NEW
+    if queue in (1, 3) or card_type in (1, 3):
+        return QueuedCards.LEARNING
+    return QueuedCards.REVIEW
+
+
+def _direct_review_counts(card_ids: list[int]) -> tuple[int, int, int]:
+    counts = [0, 0, 0]
+    for raw_card_id in card_ids:
+        try:
+            card = mw.col.get_card(int(raw_card_id))
+        except Exception:
+            continue
+        if card is None:
+            continue
+        try:
+            if int(getattr(card, "queue", 0) or 0) < 0:
+                continue
+        except Exception:
+            continue
+        kind = _direct_review_queue_kind(card)
+        if kind == QueuedCards.NEW:
+            counts[0] += 1
+        elif kind == QueuedCards.LEARNING:
+            counts[1] += 1
+        else:
+            counts[2] += 1
+    return counts[0], counts[1], counts[2]
+
+
+def _direct_review_v3_info(card) -> V3CardInfo | None:
+    try:
+        states = mw.col._backend.get_scheduling_states(int(card.id))
+        new_count, learning_count, review_count = _direct_review_counts(
+            [int(card.id), *_direct_review_card_ids]
+        )
+        try:
+            deck_name = str(mw.col.decks.name(getattr(card, "did", 0)) or "")
+        except Exception:
+            deck_name = ""
+        queued_cards = QueuedCards(
+            cards=[
+                QueuedCards.QueuedCard(
+                    card=card._to_backend_card(),
+                    queue=_direct_review_queue_kind(card),
+                    states=states,
+                    context=SchedulingContext(deck_name=deck_name),
+                )
+            ],
+            new_count=new_count,
+            learning_count=learning_count,
+            review_count=review_count,
+        )
+        return V3CardInfo.from_queue(queued_cards)
+    except Exception as exc:
+        print(f"[Incremento] direct review queue build error: {exc}")
+        return None
+
+
+def _take_direct_review_card():
+    global _direct_review_active
+    if not _direct_review_active:
+        return False, None, None
+
+    while _direct_review_card_ids:
+        card_id = _direct_review_card_ids.pop(0)
+        try:
+            card = mw.col.get_card(int(card_id))
+        except Exception:
+            card = None
+        if card is None:
+            continue
+        try:
+            if int(getattr(card, "queue", 0) or 0) < 0:
+                continue
+        except Exception:
+            continue
+        v3_info = _direct_review_v3_info(card)
+        if v3_info is None:
+            continue
+        try:
+            card.start_timer()
+        except Exception:
+            pass
+        return True, card, v3_info
+
+    _direct_review_active = False
+    return True, None, None
+
+
+def _clear_direct_review_queue(*_args, **_kwargs) -> None:
+    global _direct_review_active
+    _direct_review_card_ids.clear()
+    _direct_review_active = False
+
+
 def _incremento_button_time(self, ease: int, v3_labels) -> str:
     card = getattr(self, "card", None)
     if _reviewer_items_fail_pass(card):
@@ -841,9 +950,20 @@ def _incremento_next_card(self) -> None:
     self.previous_card = self.card
     self.card = None
     self._v3 = None
-    self._get_next_v3_card()
+    direct_handled, direct_card, direct_v3 = _take_direct_review_card()
+    if direct_card is not None:
+        self.card = direct_card
+        self._v3 = direct_v3
+    elif direct_handled:
+        self.card = None
+    else:
+        self._get_next_v3_card()
 
-    if not self.card and _has_session_postponed_cards():
+    if (
+        not direct_handled
+        and not self.card
+        and _has_session_postponed_cards()
+    ):
         try:
             restored_ids = _release_session_postponed_cards()
         except Exception:
@@ -1730,6 +1850,61 @@ def _show_browser_database_entries(browser) -> None:
     dlg.exec()
 
 
+def _start_direct_browser_review(card_ids: list[int]) -> None:
+    global _direct_review_active
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    skipped = 0
+
+    for raw_card_id in card_ids or []:
+        try:
+            card_id = int(raw_card_id)
+        except Exception:
+            skipped += 1
+            continue
+        if card_id <= 0 or card_id in seen:
+            continue
+        seen.add(card_id)
+        try:
+            card = mw.col.get_card(card_id)
+        except Exception:
+            card = None
+        if card is None:
+            skipped += 1
+            continue
+        try:
+            if int(getattr(card, "queue", 0) or 0) < 0:
+                skipped += 1
+                continue
+        except Exception:
+            skipped += 1
+            continue
+        normalized_ids.append(card_id)
+
+    if not normalized_ids:
+        showInfo("No selected cards are available to study.")
+        return
+
+    _direct_review_card_ids[:] = normalized_ids
+    _direct_review_active = True
+
+    if skipped:
+        tooltip(
+            f"Studying {len(normalized_ids)} selected card"
+            f"{'s' if len(normalized_ids) != 1 else ''}. "
+            f"Skipped {skipped} unavailable card{'s' if skipped != 1 else ''}."
+        )
+
+    try:
+        if getattr(mw, "state", None) == "review" and getattr(mw, "reviewer", None):
+            mw.reviewer.nextCard()
+        else:
+            mw.moveToState("review")
+    except Exception as exc:
+        _clear_direct_review_queue()
+        showInfo(f"Could not start studying the selected cards:\n{exc}")
+
+
 def _on_browser_context_menu(browser, menu: QMenu) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
@@ -1738,6 +1913,7 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     menu.addSeparator()
     submenu = QMenu("Incremento", menu)
     count_label = f"{len(card_ids)} selected card{'s' if len(card_ids) != 1 else ''}"
+    study_action = QAction(f"Study Selected Cards ({count_label})", submenu)
     topic_action = QAction(f"Make Topic ({count_label})", submenu)
     item_action = QAction(f"Make Item ({count_label})", submenu)
     a_factor_action = QAction(f"Set A-Factor… ({count_label})", submenu)
@@ -1748,6 +1924,10 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     hidden_fields_action = QAction(f"Show Hidden Fields ({count_label})", submenu)
     database_entries_action = QAction(f"Show Database Entries ({count_label})", submenu)
 
+    qconnect(
+        study_action.triggered,
+        lambda _checked=False, card_ids=list(card_ids): _start_direct_browser_review(card_ids),
+    )
     qconnect(
         topic_action.triggered,
         lambda _checked=False, b=browser: _convert_browser_selection_to_knowledge_kind(
@@ -1794,6 +1974,8 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         lambda _checked=False, b=browser: _show_browser_database_entries(b),
     )
 
+    submenu.addAction(study_action)
+    submenu.addSeparator()
     submenu.addAction(topic_action)
     submenu.addAction(item_action)
     submenu.addSeparator()
@@ -2036,6 +2218,7 @@ gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_apply_custom_schedule_after_answer)
 gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
+gui_hooks.reviewer_will_end.append(_clear_direct_review_queue)
 gui_hooks.reviewer_will_end.append(lambda: _release_session_postponed_cards())
 gui_hooks.state_did_change.append(_release_expired_topic_postpones_on_overview)
 gui_hooks.state_did_change.append(_release_expired_item_skips_on_overview)
@@ -2270,10 +2453,14 @@ def _open_pdf_quick_jump() -> None:
     try:
         if dlg.selected_card_type == "EPUB":
             _open_epub_card(cid)
+            if dlg.open_card_to_study:
+                _start_direct_browser_review([cid])
         elif dlg.selected_card_type == "WRITING":
             _open_writing_card(cid, relpath=dlg.selected_relpath)
         else:
             _open_pdf_card(cid, preserve_history=dlg.preserve_history)
+            if dlg.open_card_to_study:
+                _start_direct_browser_review([cid])
     except Exception as e:
         showInfo(f"Could not open document:\n{e}")
 

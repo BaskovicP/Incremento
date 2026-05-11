@@ -296,15 +296,18 @@ _PDF_LIMIT_MODE_LABELS = {
     "soft_lock": "Soft Lock",
     "hard_stop": "Hard Stop",
 }
+_DEFAULT_DAY_END_TIME = "04:00"
 
 
 def _current_day_end_time() -> str:
     try:
         cfg = load_scheduler_config()
-        day_end_time = str(getattr(cfg, "day_end_time", "00:00") or "00:00").strip()
+        day_end_time = str(
+            getattr(cfg, "day_end_time", _DEFAULT_DAY_END_TIME) or _DEFAULT_DAY_END_TIME
+        ).strip()
     except Exception:
-        day_end_time = "00:00"
-    return day_end_time or "00:00"
+        day_end_time = _DEFAULT_DAY_END_TIME
+    return day_end_time or _DEFAULT_DAY_END_TIME
 
 
 def get_pdf_limit_mode_label(mode: str) -> str:

@@ -1637,7 +1637,7 @@ class SchedulerConfigDialog(QDialog):
         scope_row.addStretch()
         layout.addLayout(scope_row)
 
-        saved_time = self._saved.get("day_end_time", "00:00")
+        saved_time = self._saved.get("day_end_time", "04:00")
         preset_idx = next(
             (i for i in range(self._day_end_preset.count())
              if self._day_end_preset.itemData(i) == saved_time),
@@ -3678,7 +3678,7 @@ class SchedulerConfigDialog(QDialog):
                 self._scope_combo.setCurrentIndex(i)
                 break
 
-        saved_time = d.get("day_end_time", "00:00")
+        saved_time = d.get("day_end_time", "04:00")
         preset_idx = next(
             (i for i in range(self._day_end_preset.count())
              if self._day_end_preset.itemData(i) == saved_time),

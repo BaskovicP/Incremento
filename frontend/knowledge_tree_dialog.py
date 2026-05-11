@@ -10,6 +10,7 @@ from aqt.qt import (
     QComboBox,
     QDialog,
     QFrame,
+    QGridLayout,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -156,6 +157,10 @@ _ROLE_BASE_TITLE = _ROLE_CARD_ID + 2
 _KEEP_FOCUS = object()
 _KEEP_SELECTION = object()
 _ICON_CACHE: dict[str, QIcon] = {}
+_COMPACT_TOOLBAR_WIDTH = 900
+_VERTICAL_SPLITTER_WIDTH = 760
+_STACKED_INSPECTOR_ACTION_WIDTH = 900
+_DISPLAY_TITLE_LIMIT = 180
 
 
 def _priority_text(value) -> str:
@@ -231,6 +236,12 @@ def _set_optional_label_text(label: QLabel, text: str) -> None:
     label.setVisible(bool(value))
 
 
+def _allow_label_shrink(label: QLabel) -> QLabel:
+    label.setMinimumWidth(0)
+    label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+    return label
+
+
 def _row_title(row: dict | None, card_id: int | None = None) -> str:
     if row:
         title = str(row.get("title") or "").strip()
@@ -242,6 +253,13 @@ def _row_title(row: dict | None, card_id: int | None = None) -> str:
     if card_id is not None:
         return f"Card {int(card_id)}"
     return "Unknown card"
+
+
+def _compact_display_text(text: str, *, limit: int = _DISPLAY_TITLE_LIMIT) -> str:
+    value = " ".join(str(text or "").split())
+    if len(value) <= limit:
+        return value
+    return value[: max(0, limit - 3)].rstrip() + "..."
 
 
 class _KnowledgeTreeWidget(QTreeWidget):
@@ -574,6 +592,13 @@ class KnowledgeTreeDialog(QDialog):
         self._rows_cache: list[dict] = []
         self._row_by_card_id: dict[int, dict] = {}
         self._subset_review_dialogs: list[KnowledgeTreeSubsetDialog] = []
+        self._toolbar_buttons: list[QToolButton] = []
+        self._toolbar_button_labels: dict[QToolButton, str] = {}
+        self._toolbar_button_tooltips: dict[QToolButton, str] = {}
+        self._toolbar_compact: bool | None = None
+        self._inspector_actions_stacked: bool | None = None
+        self._splitter_vertical: bool | None = None
+        self._responsive_ready = False
 
         self.setWindowTitle("Incremento — Knowledge tree")
         self.resize(1120, 720)
@@ -585,15 +610,18 @@ class KnowledgeTreeDialog(QDialog):
 
         self._build_toolbar(outer)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        splitter.setChildrenCollapsible(False)
-        outer.addWidget(splitter, 1)
+        self._splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self._splitter.setChildrenCollapsible(True)
+        self._splitter.setHandleWidth(8)
+        outer.addWidget(self._splitter, 1)
 
-        splitter.addWidget(self._build_tree_panel())
-        splitter.addWidget(self._build_inspector_panel())
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 2)
-        splitter.setSizes([770, 350])
+        self._tree_panel = self._build_tree_panel()
+        self._inspector_panel = self._build_inspector_panel()
+        self._splitter.addWidget(self._tree_panel)
+        self._splitter.addWidget(self._inspector_panel)
+        self._splitter.setStretchFactor(0, 5)
+        self._splitter.setStretchFactor(1, 2)
+        self._splitter.setSizes([770, 350])
 
         close_row = QHBoxLayout()
         close_row.addStretch()
@@ -609,7 +637,53 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(self._tree.itemActivated, lambda item, _column: self._start_edit(item))
 
         self._install_context_menu()
+        self._responsive_ready = True
+        self._update_responsive_layout()
         self.reload(select_card_id=self._initial_select_card_id, focus_card_id=self._focus_card_id)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        if not getattr(self, "_responsive_ready", False):
+            return
+
+        width = max(1, self.width())
+        compact_toolbar = width < _COMPACT_TOOLBAR_WIDTH
+        if compact_toolbar != self._toolbar_compact:
+            self._toolbar_compact = compact_toolbar
+            style = (
+                Qt.ToolButtonStyle.ToolButtonIconOnly
+                if compact_toolbar
+                else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+            )
+            for button in self._toolbar_buttons:
+                button.setToolButtonStyle(style)
+                label = self._toolbar_button_labels.get(button, button.toolTip())
+                tool_tip = self._toolbar_button_tooltips.get(button, label)
+                if compact_toolbar:
+                    button.setMinimumWidth(34)
+                    button.setToolTip(tool_tip)
+                else:
+                    button.setMinimumWidth(0)
+                    button.setToolTip(tool_tip)
+
+        stacked_actions = width < _STACKED_INSPECTOR_ACTION_WIDTH
+        if stacked_actions != self._inspector_actions_stacked:
+            self._set_inspector_actions_stacked(stacked_actions)
+
+        vertical_splitter = width < _VERTICAL_SPLITTER_WIDTH
+        if vertical_splitter != self._splitter_vertical:
+            self._splitter_vertical = vertical_splitter
+            self._splitter.setOrientation(
+                Qt.Orientation.Vertical
+                if vertical_splitter
+                else Qt.Orientation.Horizontal
+            )
+            self._splitter.setSizes([430, 290] if vertical_splitter else [770, 350])
+
+        self._tree.setIndentation(16 if compact_toolbar else 22)
 
     def _apply_style(self) -> None:
         self.setStyleSheet(
@@ -634,6 +708,10 @@ class KnowledgeTreeDialog(QDialog):
             QLabel#KnowledgeInspectorTitle {
               font-size: 18px;
               font-weight: 600;
+            }
+            QScrollArea#KnowledgeTitleScroll {
+              background: transparent;
+              border: none;
             }
             QLabel#KnowledgeMeta {
               color: palette(mid);
@@ -706,9 +784,16 @@ class KnowledgeTreeDialog(QDialog):
     def _build_toolbar(self, outer: QVBoxLayout) -> None:
         toolbar = QFrame(self)
         toolbar.setObjectName("KnowledgeToolbar")
-        action_row = QHBoxLayout(toolbar)
-        action_row.setContentsMargins(0, 0, 0, 0)
-        action_row.setSpacing(8)
+        toolbar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar_layout.setSpacing(6)
+        primary_row = QHBoxLayout()
+        primary_row.setContentsMargins(0, 0, 0, 0)
+        primary_row.setSpacing(8)
+        secondary_row = QHBoxLayout()
+        secondary_row.setContentsMargins(0, 0, 0, 0)
+        secondary_row.setSpacing(8)
 
         self._topic_btn = self._build_add_button(
             label="Topic",
@@ -799,26 +884,35 @@ class KnowledgeTreeDialog(QDialog):
             self._item_btn,
             self._toolbar_separator(),
             self._rename_btn,
-            self._priority_btn,
-            self._study_btn,
-            self._subset_btn,
-            self._postpone_btn,
             self._browser_btn,
             self._parent_btn,
             self._remove_btn,
+        ]:
+            primary_row.addWidget(widget)
+
+        for widget in [
+            self._study_btn,
+            self._subset_btn,
+            self._priority_btn,
+            self._postpone_btn,
             self._toolbar_separator(),
             self._refresh_btn,
             self._expand_btn,
             self._collapse_btn,
         ]:
-            action_row.addWidget(widget)
+            secondary_row.addWidget(widget)
 
-        action_row.addStretch(1)
+        primary_row.addStretch(1)
+        secondary_row.addStretch(1)
+        toolbar_layout.addLayout(primary_row)
+        toolbar_layout.addLayout(secondary_row)
         outer.addWidget(toolbar)
 
     def _build_tree_panel(self) -> QWidget:
         panel = QFrame(self)
         panel.setObjectName("KnowledgePanel")
+        panel.setMinimumWidth(0)
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
@@ -839,27 +933,33 @@ class KnowledgeTreeDialog(QDialog):
         )
         intro_hint.setObjectName("KnowledgeHint")
         intro_hint.setWordWrap(True)
+        _allow_label_shrink(intro_hint)
         intro_layout.addWidget(intro_hint)
 
         self._workspace_summary = QLabel("")
         self._workspace_summary.setObjectName("KnowledgeMeta")
         self._workspace_summary.setWordWrap(True)
+        _allow_label_shrink(self._workspace_summary)
         intro_layout.addWidget(self._workspace_summary)
 
         self._workspace_context = QLabel("")
         self._workspace_context.setObjectName("KnowledgeHint")
         self._workspace_context.setWordWrap(True)
+        _allow_label_shrink(self._workspace_context)
         intro_layout.addWidget(self._workspace_context)
 
         self._workspace_focus = QLabel("")
         self._workspace_focus.setObjectName("KnowledgeHint")
         self._workspace_focus.setWordWrap(True)
+        _allow_label_shrink(self._workspace_focus)
         intro_layout.addWidget(self._workspace_focus)
 
         layout.addWidget(intro)
 
         self._tree = _KnowledgeTreeWidget(self._persist_tree_after_drop, panel)
         self._tree.setObjectName("KnowledgeTreeView")
+        self._tree.setMinimumWidth(0)
+        self._tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._tree.setColumnCount(2)
         self._tree.setHeaderLabels(["Knowledge", "Priority"])
         self._tree.setAlternatingRowColors(True)
@@ -875,16 +975,20 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.setAnimated(True)
         self._tree.setIconSize(QSize(20, 20))
         self._tree.setIndentation(22)
+        self._tree.setTextElideMode(Qt.TextElideMode.ElideRight)
         self._tree.header().setStretchLastSection(False)
+        self._tree.header().setMinimumSectionSize(24)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._tree.setColumnWidth(1, 110)
+        self._tree.setColumnWidth(1, 74)
         layout.addWidget(self._tree, 1)
         return panel
 
     def _build_inspector_panel(self) -> QWidget:
         panel = QFrame(self)
         panel.setObjectName("KnowledgeInspector")
+        panel.setMinimumWidth(0)
+        panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(12)
@@ -908,14 +1012,34 @@ class KnowledgeTreeDialog(QDialog):
 
         self._selection_title = QLabel("No node selected")
         self._selection_title.setObjectName("KnowledgeInspectorTitle")
+        self._selection_title.setTextFormat(Qt.TextFormat.PlainText)
         self._selection_title.setWordWrap(True)
-        hero_layout.addWidget(self._selection_title)
+        _allow_label_shrink(self._selection_title)
+        self._selection_title_scroll = QScrollArea(hero)
+        self._selection_title_scroll.setObjectName("KnowledgeTitleScroll")
+        self._selection_title_scroll.setWidgetResizable(True)
+        self._selection_title_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._selection_title_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._selection_title_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self._selection_title_scroll.setMinimumHeight(54)
+        self._selection_title_scroll.setMaximumHeight(156)
+        self._selection_title_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self._selection_title_scroll.setWidget(self._selection_title)
+        hero_layout.addWidget(self._selection_title_scroll)
 
         self._selection_meta = QLabel(
             "Select a topic or item to inspect its branch, open priority tools, or add children."
         )
         self._selection_meta.setObjectName("KnowledgeMeta")
         self._selection_meta.setWordWrap(True)
+        _allow_label_shrink(self._selection_meta)
         hero_layout.addWidget(self._selection_meta)
 
         self._selection_note = QLabel(
@@ -923,6 +1047,7 @@ class KnowledgeTreeDialog(QDialog):
         )
         self._selection_note.setObjectName("KnowledgeHint")
         self._selection_note.setWordWrap(True)
+        _allow_label_shrink(self._selection_note)
         hero_layout.addWidget(self._selection_note)
 
         layout.addWidget(hero)
@@ -940,11 +1065,13 @@ class KnowledgeTreeDialog(QDialog):
         self._parent_value = QLabel("Parent branch: Select a node first.")
         self._parent_value.setObjectName("KnowledgeSummaryLine")
         self._parent_value.setWordWrap(True)
+        _allow_label_shrink(self._parent_value)
         branch_layout.addWidget(self._parent_value)
 
         self._lineage_value = QLabel("Lineage: Select a node first.")
         self._lineage_value.setObjectName("KnowledgeSummaryLine")
         self._lineage_value.setWordWrap(True)
+        _allow_label_shrink(self._lineage_value)
         self._lineage_value.setTextFormat(Qt.TextFormat.RichText)
         self._lineage_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self._lineage_value.setOpenExternalLinks(False)
@@ -954,35 +1081,41 @@ class KnowledgeTreeDialog(QDialog):
         self._branch_size_value = QLabel("Select a topic or item to inspect this branch.")
         self._branch_size_value.setObjectName("KnowledgeSummaryLine")
         self._branch_size_value.setWordWrap(True)
+        _allow_label_shrink(self._branch_size_value)
         branch_layout.addWidget(self._branch_size_value)
 
         self._branch_children_value = QLabel("")
         self._branch_children_value.setObjectName("KnowledgeSummaryLine")
         self._branch_children_value.setWordWrap(True)
+        _allow_label_shrink(self._branch_children_value)
         self._branch_children_value.setVisible(False)
         branch_layout.addWidget(self._branch_children_value)
 
         self._branch_depth_value = QLabel("")
         self._branch_depth_value.setObjectName("KnowledgeSummaryLine")
         self._branch_depth_value.setWordWrap(True)
+        _allow_label_shrink(self._branch_depth_value)
         self._branch_depth_value.setVisible(False)
         branch_layout.addWidget(self._branch_depth_value)
 
         self._branch_priority_value = QLabel("")
         self._branch_priority_value.setObjectName("KnowledgeSummaryLine")
         self._branch_priority_value.setWordWrap(True)
+        _allow_label_shrink(self._branch_priority_value)
         self._branch_priority_value.setVisible(False)
         branch_layout.addWidget(self._branch_priority_value)
 
         self._branch_range_value = QLabel("")
         self._branch_range_value.setObjectName("KnowledgeSummaryLine")
         self._branch_range_value.setWordWrap(True)
+        _allow_label_shrink(self._branch_range_value)
         self._branch_range_value.setVisible(False)
         branch_layout.addWidget(self._branch_range_value)
 
         self._branch_hint = QLabel("")
         self._branch_hint.setObjectName("KnowledgeHint")
         self._branch_hint.setWordWrap(True)
+        _allow_label_shrink(self._branch_hint)
         branch_layout.addWidget(self._branch_hint)
         layout.addWidget(branch_card)
 
@@ -1015,6 +1148,7 @@ class KnowledgeTreeDialog(QDialog):
         self._insert_target_label = QLabel("")
         self._insert_target_label.setObjectName("KnowledgeHint")
         self._insert_target_label.setWordWrap(True)
+        _allow_label_shrink(self._insert_target_label)
         add_layout.addWidget(self._insert_target_label)
         layout.addWidget(add_card)
 
@@ -1070,34 +1204,21 @@ class KnowledgeTreeDialog(QDialog):
             object_name="KnowledgeDangerAction",
         )
 
-        action_columns = QHBoxLayout()
-        action_columns.setContentsMargins(0, 0, 0, 0)
-        action_columns.setSpacing(10)
-        left_actions = QVBoxLayout()
-        left_actions.setContentsMargins(0, 0, 0, 0)
-        left_actions.setSpacing(8)
-        right_actions = QVBoxLayout()
-        right_actions.setContentsMargins(0, 0, 0, 0)
-        right_actions.setSpacing(8)
-
-        for button in (
-            self._inspector_study_btn,
-            self._inspector_postpone_btn,
-            self._inspector_browser_btn,
+        self._inspector_action_buttons = [
             self._inspector_rename_btn,
-        ):
-            left_actions.addWidget(button)
-        for button in (
-            self._inspector_subset_btn,
-            self._inspector_priority_btn,
+            self._inspector_browser_btn,
             self._inspector_parent_btn,
             self._inspector_remove_btn,
-        ):
-            right_actions.addWidget(button)
-
-        action_columns.addLayout(left_actions, 1)
-        action_columns.addLayout(right_actions, 1)
-        action_layout.addLayout(action_columns)
+            self._inspector_study_btn,
+            self._inspector_subset_btn,
+            self._inspector_priority_btn,
+            self._inspector_postpone_btn,
+        ]
+        self._inspector_action_grid = QGridLayout()
+        self._inspector_action_grid.setContentsMargins(0, 0, 0, 0)
+        self._inspector_action_grid.setHorizontalSpacing(10)
+        self._inspector_action_grid.setVerticalSpacing(8)
+        action_layout.addLayout(self._inspector_action_grid)
 
         self._action_hint = QLabel(
             "Study Branch opens the normal Incremento learning dialog, but limits scheduling to this subtree. "
@@ -1107,11 +1228,33 @@ class KnowledgeTreeDialog(QDialog):
         )
         self._action_hint.setObjectName("KnowledgeHint")
         self._action_hint.setWordWrap(True)
+        _allow_label_shrink(self._action_hint)
         action_layout.addWidget(self._action_hint)
         layout.addWidget(action_card)
 
         layout.addStretch(1)
         return panel
+
+    def _set_inspector_actions_stacked(self, stacked: bool) -> None:
+        if not hasattr(self, "_inspector_action_grid"):
+            return
+        self._inspector_actions_stacked = stacked
+        for button in self._inspector_action_buttons:
+            self._inspector_action_grid.removeWidget(button)
+
+        if stacked:
+            for row, button in enumerate(self._inspector_action_buttons):
+                self._inspector_action_grid.addWidget(button, row, 0)
+            self._inspector_action_grid.setColumnStretch(0, 1)
+            self._inspector_action_grid.setColumnStretch(1, 0)
+            return
+
+        for index, button in enumerate(self._inspector_action_buttons):
+            row = index % 4
+            column = 0 if index < 4 else 1
+            self._inspector_action_grid.addWidget(button, row, column)
+        self._inspector_action_grid.setColumnStretch(0, 1)
+        self._inspector_action_grid.setColumnStretch(1, 1)
 
     def _build_add_button(
         self,
@@ -1131,6 +1274,8 @@ class KnowledgeTreeDialog(QDialog):
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         button.setToolTip(f"Create or link a {_kind_label(node_kind).lower()} in the knowledge tree.")
+        button.setMinimumWidth(0)
+        button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         qconnect(button.clicked, lambda _checked=False: create_slot())
 
         menu = QMenu(button)
@@ -1145,6 +1290,7 @@ class KnowledgeTreeDialog(QDialog):
         menu.addAction(create_action)
         menu.addAction(link_action)
         button.setMenu(menu)
+        self._register_toolbar_button(button, label)
         return button
 
     def _build_toolbar_button(
@@ -1163,8 +1309,16 @@ class KnowledgeTreeDialog(QDialog):
         button.setIconSize(QSize(18, 18))
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         button.setToolTip(tool_tip or text)
+        button.setMinimumWidth(0)
+        button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         qconnect(button.clicked, lambda _checked=False: slot())
+        self._register_toolbar_button(button, text)
         return button
+
+    def _register_toolbar_button(self, button: QToolButton, label: str) -> None:
+        self._toolbar_buttons.append(button)
+        self._toolbar_button_labels[button] = label
+        self._toolbar_button_tooltips[button] = button.toolTip() or label
 
     def _build_action_button(
         self,
@@ -1179,6 +1333,7 @@ class KnowledgeTreeDialog(QDialog):
         button.setIcon(icon)
         button.setIconSize(QSize(18, 18))
         button.setFixedHeight(42)
+        button.setMinimumWidth(0)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         qconnect(button.clicked, lambda _checked=False: slot())
         return button
@@ -1308,17 +1463,17 @@ class KnowledgeTreeDialog(QDialog):
         menu.addAction(link_item)
         menu.addSeparator()
         menu.addAction(rename_action)
-        menu.addAction(priority_action)
-        menu.addAction(postpone_action)
-        menu.addAction(study_action)
-        menu.addAction(subset_action)
         menu.addAction(browser_action)
         menu.addAction(parent_action)
+        menu.addAction(remove_action)
+        menu.addSeparator()
+        menu.addAction(study_action)
+        menu.addAction(subset_action)
+        menu.addAction(priority_action)
+        menu.addAction(postpone_action)
         menu.addSeparator()
         menu.addAction(expand_action)
         menu.addAction(collapse_action)
-        menu.addSeparator()
-        menu.addAction(remove_action)
         menu.exec(self._tree.viewport().mapToGlobal(pos))
 
     def _selected_items(self) -> list[QTreeWidgetItem]:
@@ -1641,7 +1796,9 @@ class KnowledgeTreeDialog(QDialog):
             return "Lineage: Root level"
         parts = []
         for ancestor_card_id in lineage_card_ids:
-            title = html.escape(self._title_for_card_id(int(ancestor_card_id)))
+            title = html.escape(
+                _compact_display_text(self._title_for_card_id(int(ancestor_card_id)))
+            )
             parts.append(f'<a href="card:{int(ancestor_card_id)}">{title}</a>')
         return "Lineage: " + " &rarr; ".join(parts)
 
@@ -1703,6 +1860,7 @@ class KnowledgeTreeDialog(QDialog):
         selected_count = len(selected_card_ids)
         card_id = self._selected_card_id()
         selected_title = self._title_for_card_id(card_id) if card_id is not None else ""
+        selected_display_title = _compact_display_text(selected_title)
         parent_card_id = (
             get_parent_card_id(self._addon_dir, self._profile, int(card_id))
             if selected_count == 1 and card_id is not None
@@ -1730,8 +1888,8 @@ class KnowledgeTreeDialog(QDialog):
         self._inspector_rename_btn.setEnabled(has_single_selection)
         self._inspector_remove_btn.setEnabled(has_selection)
 
-        self._update_insert_buttons(selected_title, selected_count)
-        self._update_workspace_summary(selected_title, card_id)
+        self._update_insert_buttons(selected_display_title, selected_count)
+        self._update_workspace_summary(selected_display_title, card_id)
 
         if not has_selection:
             _set_badge_style(
@@ -1742,7 +1900,9 @@ class KnowledgeTreeDialog(QDialog):
                 border="rgba(128,128,128,0.18)",
             )
             self._focus_badge.setVisible(False)
+            self._selection_title.setToolTip("")
             self._selection_title.setText("No node selected")
+            self._selection_title_scroll.verticalScrollBar().setValue(0)
             self._selection_meta.setText(
                 "Select a topic or item to inspect its branch, study that subtree, open priority tools, or add children."
             )
@@ -1804,8 +1964,10 @@ class KnowledgeTreeDialog(QDialog):
             else:
                 self._focus_badge.setVisible(False)
 
-            anchor_title = self._title_for_card_id(card_id)
+            anchor_title = _compact_display_text(self._title_for_card_id(card_id))
             self._selection_title.setText(f"{selected_count} nodes selected")
+            self._selection_title.setToolTip("")
+            self._selection_title_scroll.verticalScrollBar().setValue(0)
             meta_parts = []
             if topic_count:
                 meta_parts.append(f"{topic_count} topic{'' if topic_count == 1 else 's'}")
@@ -1867,7 +2029,10 @@ class KnowledgeTreeDialog(QDialog):
         else:
             self._focus_badge.setVisible(False)
 
-        self._selection_title.setText(str(meta.get("title") or selected_title or f"Card {card_id}"))
+        full_title = str(meta.get("title") or selected_title or f"Card {card_id}")
+        self._selection_title.setText(full_title)
+        self._selection_title.setToolTip(full_title)
+        self._selection_title_scroll.verticalScrollBar().setValue(0)
         meta_parts = [f"card {card_id}"]
         if meta.get("deck_name"):
             meta_parts.append(str(meta["deck_name"]))
@@ -1885,7 +2050,11 @@ class KnowledgeTreeDialog(QDialog):
             "Postpone to delay cards in this branch, or branch tools to spread, randomize, or focus its priority."
         )
 
-        parent_text = self._title_for_card_id(parent_card_id) if has_parent else "Root level"
+        parent_text = (
+            _compact_display_text(self._title_for_card_id(parent_card_id))
+            if has_parent
+            else "Root level"
+        )
         summary = describe_branch_summary(stats)
         self._parent_value.setText(f"Parent branch: {parent_text}")
         self._lineage_value.setText(self._lineage_text_for_card_id(card_id))
@@ -1968,7 +2137,7 @@ class KnowledgeTreeDialog(QDialog):
             self._workspace_focus.setText("")
             return
 
-        focus_title = self._title_for_card_id(self._focus_card_id)
+        focus_title = _compact_display_text(self._title_for_card_id(self._focus_card_id))
         if selected_card_id is not None and int(selected_card_id) == int(self._focus_card_id):
             self._workspace_focus.setText("Focused card is currently selected.")
         else:

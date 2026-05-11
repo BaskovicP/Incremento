@@ -48,6 +48,7 @@ _AUTO_TIMER_TYPE_NOTE_TYPES = {
     "writing": {"Incremento Writing"},
     "local_file": {"Incremento Local File"},
 }
+_DEFAULT_DAY_END_TIME = "04:00"
 
 
 def _timer_running_set(val: bool) -> None:
@@ -62,10 +63,12 @@ def _current_day_end_time() -> str:
         except Exception:
             from scheduler_config import load_scheduler_config  # type: ignore
         cfg = load_scheduler_config()
-        day_end_time = str(getattr(cfg, "day_end_time", "00:00") or "00:00").strip()
+        day_end_time = str(
+            getattr(cfg, "day_end_time", _DEFAULT_DAY_END_TIME) or _DEFAULT_DAY_END_TIME
+        ).strip()
     except Exception:
-        day_end_time = "00:00"
-    return day_end_time or "00:00"
+        day_end_time = _DEFAULT_DAY_END_TIME
+    return day_end_time or _DEFAULT_DAY_END_TIME
 
 
 def _current_timer_logical_date() -> str:
@@ -162,6 +165,21 @@ def daily_activity_summary() -> dict:
     }
 
 
+def _daily_activity_summary_for_report(cards: int, pdf_pages: set, epub_pages: set) -> dict:
+    """Return daily totals for display, including the completed report as a floor."""
+    daily = daily_activity_summary()
+    daily_pdf_pages = set(_timer_daily_pdf_pages) | set(pdf_pages)
+    daily_epub_pages = set(_timer_daily_epub_pages) | set(epub_pages)
+    daily_cards = max(int(daily.get("cards", 0)), int(cards or 0))
+    return {
+        "logical_date": daily.get("logical_date", _timer_daily_logical_date),
+        "cards": daily_cards,
+        "pdf_pages": len(daily_pdf_pages),
+        "epub_pages": len(daily_epub_pages),
+        "pages": len(daily_pdf_pages) + len(daily_epub_pages),
+    }
+
+
 def _plural(count: int, singular: str, plural: str | None = None) -> str:
     return singular if count == 1 else (plural or f"{singular}s")
 
@@ -200,8 +218,20 @@ def _timer_run_summary_lines(cards: int, pdf_pages: set, epub_pages: set) -> lis
 def _today_summary_line(daily: dict) -> str:
     daily_pages = int(daily["pages"])
     daily_cards = int(daily["cards"])
+    page_text = f"<b>{daily_pages}</b> {_plural(daily_pages, 'page')} read"
+
+    breakdown: list[str] = []
+    pdf_pages = int(daily.get("pdf_pages", 0) or 0)
+    epub_pages = int(daily.get("epub_pages", 0) or 0)
+    if pdf_pages:
+        breakdown.append(f"<b>{pdf_pages}</b> PDF {_plural(pdf_pages, 'page')}")
+    if epub_pages:
+        breakdown.append(f"<b>{epub_pages}</b> EPUB {_plural(epub_pages, 'page')}")
+    if breakdown:
+        page_text = f"{page_text} ({' and '.join(breakdown)})"
+
     return (
-        f"<b>{daily_pages}</b> {_plural(daily_pages, 'page')} read and "
+        f"{page_text} and "
         f"<b>{daily_cards}</b> {_plural(daily_cards, 'card')} reviewed so far today."
     )
 
@@ -520,7 +550,7 @@ def show_timer_summary() -> None:
     cards = _timer_cards_answered
     pdf_pages = set(_timer_pdf_pages)
     epub_pages = set(_timer_epub_pages)
-    daily = daily_activity_summary()
+    daily = _daily_activity_summary_for_report(cards, pdf_pages, epub_pages)
     reset_activity_counters()
 
     dlg = QDialog(mw)

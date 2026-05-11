@@ -283,8 +283,11 @@ export default function PdfViewer() {
   const [highlightsScope, setHighlightsScope] = useState('all');
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
+  const [pageJumpEditing, setPageJumpEditing] = useState(false);
+  const [pageJumpValue, setPageJumpValue] = useState('');
   const pendingHighlightScrollRef = useRef(null);
   const lastReadAnchorSpanRef = useRef(null);
+  const pageJumpInputRef = useRef(null);
 
   // ── Highlights for the current page ───────────────────────────────────────
   const pageHighlights = highlights.filter(h => h.page === page);
@@ -731,6 +734,36 @@ export default function PdfViewer() {
     rawNav(delta);
   }, [canMoveToPage, pageRef, rawNav]);
 
+  const openPageJump = useCallback(() => {
+    if (totalPages <= 0) return;
+    setPageJumpValue(String(pageRef.current || page || 1));
+    setPageJumpEditing(true);
+  }, [page, pageRef, totalPages]);
+
+  const commitPageJump = useCallback(() => {
+    const target = parseInt(pageJumpValue, 10);
+    setPageJumpEditing(false);
+    if (!Number.isFinite(target)) return;
+    const clamped = Math.max(1, Math.min(target, totalPages || target));
+    const delta = clamped - pageRef.current;
+    if (delta !== 0) {
+      limitAwareNav(delta);
+    }
+  }, [limitAwareNav, pageJumpValue, pageRef, totalPages]);
+
+  const cancelPageJump = useCallback(() => {
+    setPageJumpEditing(false);
+    setPageJumpValue('');
+  }, []);
+
+  useEffect(() => {
+    if (!pageJumpEditing) return;
+    const input = pageJumpInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, [pageJumpEditing]);
+
   const jumpToBookmark = useCallback((bookmark) => {
     const targetPage = Number(bookmark?.location?.page || 0);
     if (!Number.isFinite(targetPage) || targetPage < 1) return;
@@ -967,9 +1000,64 @@ export default function PdfViewer() {
               <span style={TOOLBAR_LABEL_STYLE}>Navigate</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={() => limitAwareNav(-1)}>&#8592; Prev</button>
-                <span style={{ minWidth: 170, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
-                  {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
-                </span>
+                {pageJumpEditing ? (
+                  <span style={{ minWidth: 170, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 15, fontWeight: 700 }}>
+                    <span>Page</span>
+                    <input
+                      ref={pageJumpInputRef}
+                      type="number"
+                      min="1"
+                      max={totalPages || undefined}
+                      value={pageJumpValue}
+                      onChange={(event) => setPageJumpValue(event.target.value)}
+                      onBlur={commitPageJump}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          commitPageJump();
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault();
+                          cancelPageJump();
+                        }
+                      }}
+                      style={{
+                        width: 64,
+                        height: 30,
+                        boxSizing: 'border-box',
+                        textAlign: 'center',
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: '#f4f4f5',
+                        background: 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(180,180,180,0.46)',
+                        borderRadius: 8,
+                        outline: 'none',
+                      }}
+                    />
+                    <span>/ {totalPages}</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openPageJump}
+                    title={totalPages > 0 ? 'Go to page' : undefined}
+                    style={{
+                      minWidth: 170,
+                      height: 32,
+                      padding: '0 8px',
+                      textAlign: 'center',
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: 'inherit',
+                      background: 'transparent',
+                      border: '1px solid transparent',
+                      borderRadius: 8,
+                      cursor: totalPages > 0 ? 'pointer' : 'default',
+                    }}
+                  >
+                    {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
+                  </button>
+                )}
                 <button onClick={() => limitAwareNav(1)}>Next &#8594;</button>
               </span>
             </div>

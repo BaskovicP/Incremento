@@ -620,10 +620,10 @@ def set_epub_font_scale(addon_dir: str, profile: str, card_id: int, font_scale: 
 def _current_day_end_time() -> str:
     try:
         cfg = load_scheduler_config()
-        day_end_time = str(getattr(cfg, "day_end_time", "00:00") or "00:00").strip()
+        day_end_time = str(getattr(cfg, "day_end_time", "04:00") or "04:00").strip()
     except Exception:
-        day_end_time = "00:00"
-    return day_end_time or "00:00"
+        day_end_time = "04:00"
+    return day_end_time or "04:00"
 
 
 def get_epub_limit_mode_label(mode: str) -> str:

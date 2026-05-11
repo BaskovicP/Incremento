@@ -47,7 +47,7 @@ class TestStatsManagerInit:
         stats_file.parent.mkdir(parents=True)
         lifetime = {"type": {"topics": 3}, "tags": {"health": 1}, "mode": {"random": 2}}
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": lifetime,
         }
         stats_file.write_text(json.dumps(data), encoding="utf-8")
@@ -74,7 +74,7 @@ class TestStatsManagerInit:
         stats_file.parent.mkdir(parents=True)
         today_counts = {"type": {"items": 2}, "tags": {}, "mode": {"priority": 1}}
         data = {
-            "daily": {"date": _today(), "counts": today_counts},
+            "daily": {"date": _effective_date(), "counts": today_counts},
             "lifetime": _empty(),
         }
         stats_file.write_text(json.dumps(data), encoding="utf-8")
@@ -316,7 +316,7 @@ class TestLoadStats:
     def test_returns_data_from_file(self, tmp_path):
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
-        data = {"lifetime": _empty(), "daily": {"date": _today(), "counts": _empty()}}
+        data = {"lifetime": _empty(), "daily": {"date": _effective_date(), "counts": _empty()}}
         stats_file.write_text(json.dumps(data), encoding="utf-8")
         result = load_stats(str(tmp_path), "TestProfile")
         assert "lifetime" in result
@@ -340,7 +340,7 @@ class TestLoadStats:
         stats_file.parent.mkdir(parents=True)
         data = {
             "daily": {
-                "date": _today(),
+                "date": _effective_date(),
                 "counts": {
                     "type": {"topics": "3", "items": -1, "bad": "nan"},
                     "tags": {"health": "2", "__no_tags__": 9, "broken": "x"},
@@ -353,7 +353,7 @@ class TestLoadStats:
             },
             "time": {
                 "daily": {
-                    "date": _today(),
+                    "date": _effective_date(),
                     "seconds": {
                         "type": {"pdf": "12.5", "epub": -3},
                         "tags": {"reading": "7.25", "__no_tags__": 50},
@@ -434,10 +434,10 @@ class TestDeleteStats:
         stats_file.parent.mkdir(parents=True)
         lt_time = {"type": {"topics": 5.0}, "tags": {}}
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
             "time": {
-                "daily": {"date": _today(), "seconds": {"type": {"topics": 2.0}, "tags": {}}},
+                "daily": {"date": _effective_date(), "seconds": {"type": {"topics": 2.0}, "tags": {}}},
                 "lifetime": lt_time,
             },
         }
@@ -452,7 +452,7 @@ class TestDeleteStats:
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
         stats_file.write_text(
-            json.dumps({"daily": {"date": _today(), "counts": _empty()}}),
+            json.dumps({"daily": {"date": _effective_date(), "counts": _empty()}}),
             encoding="utf-8",
         )
 
@@ -464,9 +464,9 @@ class TestDeleteStats:
         """Deleting lifetime stats also removes the lifetime time entry."""
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
-        daily_time = {"date": _today(), "seconds": {"type": {"topics": 1.0}, "tags": {}}}
+        daily_time = {"date": _effective_date(), "seconds": {"type": {"topics": 1.0}, "tags": {}}}
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
             "time": {
                 "daily": daily_time,
@@ -493,9 +493,9 @@ class TestDeleteStats:
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
-            "time": {"daily": {"date": _today(), "seconds": {"type": {}, "tags": {}}}},
+            "time": {"daily": {"date": _effective_date(), "seconds": {"type": {}, "tags": {}}}},
         }
         stats_file.write_text(json.dumps(data), encoding="utf-8")
         delete_daily_stats(str(tmp_path), "TestProfile")  # exercises `if not stats["time"]: del stats["time"]`
@@ -505,7 +505,7 @@ class TestDeleteStats:
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
             "time": {"lifetime": {"type": {}, "tags": {}}},
         }
@@ -527,7 +527,7 @@ class TestDeleteStats:
         # Pre-populate file so the JSON path runs before DB
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
-        data = {"daily": {"date": _today(), "counts": _empty()}, "lifetime": _empty()}
+        data = {"daily": {"date": _effective_date(), "counts": _empty()}, "lifetime": _empty()}
         stats_file.write_text(json.dumps(data), encoding="utf-8")
         # Should not raise even if DB fails
         delete_daily_stats(str(tmp_path), "TestProfile")
@@ -588,10 +588,10 @@ class TestDailyTimeLoading:
         stats_file.parent.mkdir(parents=True)
         time_block = {"type": {"topics": 120.0}, "tags": {"health": 60.0}}
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
             "time": {
-                "daily": {"date": _today(), "seconds": time_block},
+                "daily": {"date": _effective_date(), "seconds": time_block},
                 "lifetime": {"type": {}, "tags": {}},
             },
         }
@@ -603,7 +603,7 @@ class TestDailyTimeLoading:
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
         stats_file.parent.mkdir(parents=True)
         data = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
             "time": {
                 "daily": {"date": "2000-01-01", "seconds": {"type": {"topics": 5}, "tags": {}}},
@@ -620,11 +620,11 @@ class TestStatsExport:
         import db as _db
 
         stats = {
-            "daily": {"date": _today(), "counts": _empty()},
+            "daily": {"date": _effective_date(), "counts": _empty()},
             "lifetime": _empty(),
             "time": {
                 "daily": {
-                    "date": _today(),
+                    "date": _effective_date(),
                     "seconds": {"type": {"pdf": 12.0}, "tags": {}},
                 },
                 "lifetime": {"type": {"epub": 30.0}, "tags": {"reading": 30.0}},
