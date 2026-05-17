@@ -28,14 +28,30 @@ def setup_function():
     timer_widget.reset_daily_activity_counters()
 
 
-def test_card_answers_are_counted_even_when_timer_is_not_running():
+def test_card_answers_only_count_while_timer_is_running():
+    timer_widget.timer_on_card_answered(None, object(), 3)
+    timer_widget.timer_on_card_answered(None, object(), 3)
+
+    assert timer_widget._timer_cards_answered == 0
+    assert timer_widget.daily_activity_summary()["cards"] == 0
+
+    timer_widget.begin_timer_session(25)
     timer_widget.timer_on_card_answered(None, object(), 3)
     timer_widget.timer_on_card_answered(None, object(), 3)
 
     assert timer_widget._timer_cards_answered == 2
+    assert timer_widget.daily_activity_summary()["cards"] == 2
 
 
-def test_pdf_pages_are_counted_even_when_timer_is_not_running():
+def test_pdf_pages_only_count_while_timer_is_running():
+    timer_widget.record_pdf_page_read(10, 4)
+    timer_widget.record_pdf_page_read(10, 4)
+    timer_widget.record_pdf_page_read(10, 5)
+
+    assert timer_widget._timer_pdf_pages == set()
+    assert timer_widget.daily_activity_summary()["pdf_pages"] == 0
+
+    timer_widget.begin_timer_session(25)
     timer_widget.record_pdf_page_read(10, 4)
     timer_widget.record_pdf_page_read(10, 4)
     timer_widget.record_pdf_page_read(10, 5)
@@ -43,7 +59,15 @@ def test_pdf_pages_are_counted_even_when_timer_is_not_running():
     assert timer_widget._timer_pdf_pages == {(10, 4), (10, 5)}
 
 
-def test_epub_pages_are_counted_even_when_timer_is_not_running():
+def test_epub_pages_only_count_while_timer_is_running():
+    timer_widget.record_epub_page_read(10, 0)
+    timer_widget.record_epub_page_read(10, 0)
+    timer_widget.record_epub_page_read(10, 2)
+
+    assert timer_widget._timer_epub_pages == set()
+    assert timer_widget.daily_activity_summary()["epub_pages"] == 0
+
+    timer_widget.begin_timer_session(25)
     timer_widget.record_epub_page_read(10, 0)
     timer_widget.record_epub_page_read(10, 0)
     timer_widget.record_epub_page_read(10, 2)
@@ -51,7 +75,7 @@ def test_epub_pages_are_counted_even_when_timer_is_not_running():
     assert timer_widget._timer_epub_pages == {(10, 1), (10, 3)}
 
 
-def test_timer_start_does_not_clear_already_tracked_activity():
+def test_timer_run_starts_without_pre_timer_activity():
     timer_widget.record_card_answered()
     timer_widget.record_pdf_page_read(10, 4)
     timer_widget.record_epub_page_read(20, 1)
@@ -60,18 +84,28 @@ def test_timer_start_does_not_clear_already_tracked_activity():
 
     assert timer_widget._timer_running is True
     assert timer_widget._timer_duration_min == 25
+    assert timer_widget._timer_cards_answered == 0
+    assert timer_widget._timer_pdf_pages == set()
+    assert timer_widget._timer_epub_pages == set()
+
+    timer_widget.record_card_answered()
+    timer_widget.record_pdf_page_read(10, 4)
+    timer_widget.record_epub_page_read(20, 1)
+
     assert timer_widget._timer_cards_answered == 1
     assert timer_widget._timer_pdf_pages == {(10, 4)}
     assert timer_widget._timer_epub_pages == {(20, 2)}
 
 
 def test_timer_summary_clears_activity_after_capturing_counts():
+    timer_widget.begin_timer_session(25)
     timer_widget.record_card_answered()
     timer_widget.record_pdf_page_read(10, 4)
     timer_widget.record_epub_page_read(20, 1)
 
     timer_widget.show_timer_summary()
 
+    assert timer_widget._timer_running is False
     assert timer_widget._timer_cards_answered == 0
     assert timer_widget._timer_pdf_pages == set()
     assert timer_widget._timer_epub_pages == set()
@@ -81,6 +115,7 @@ def test_daily_activity_accumulates_across_timer_reports(monkeypatch):
     monkeypatch.setattr(timer_widget, "_current_timer_logical_date", lambda: "2026-04-23")
     timer_widget.reset_daily_activity_counters()
 
+    timer_widget.begin_timer_session(25)
     timer_widget.record_card_answered()
     timer_widget.record_pdf_page_read(10, 4)
     timer_widget.record_epub_page_read(20, 1)
@@ -95,6 +130,7 @@ def test_daily_activity_accumulates_across_timer_reports(monkeypatch):
         "pages": 2,
     }
 
+    timer_widget.begin_timer_session(25)
     timer_widget.record_card_answered()
     timer_widget.record_pdf_page_read(10, 5)
 
@@ -112,6 +148,7 @@ def test_daily_activity_resets_on_logical_day_change(monkeypatch):
     monkeypatch.setattr(timer_widget, "_current_timer_logical_date", lambda: logical_date["value"])
     timer_widget.reset_daily_activity_counters()
 
+    timer_widget.begin_timer_session(25)
     timer_widget.record_card_answered()
     logical_date["value"] = "2026-04-24"
     timer_widget.record_card_answered()
@@ -157,6 +194,7 @@ def test_report_display_daily_summary_cannot_be_less_than_report(monkeypatch):
     monkeypatch.setattr(timer_widget, "_current_timer_logical_date", lambda: logical_date["value"])
     timer_widget.reset_daily_activity_counters()
 
+    timer_widget.begin_timer_session(25)
     timer_widget.record_card_answered()
     timer_widget.record_pdf_page_read(10, 4)
     timer_widget.record_epub_page_read(20, 1)
@@ -175,6 +213,18 @@ def test_report_display_daily_summary_cannot_be_less_than_report(monkeypatch):
         "epub_pages": 1,
         "pages": 2,
     }
+
+
+def test_report_display_daily_summary_uses_persisted_daily_card_total(monkeypatch):
+    monkeypatch.setattr(timer_widget, "_load_persisted_daily_reviewed_card_count", lambda: 6)
+    timer_widget.reset_daily_activity_counters("2026-04-23")
+    timer_widget.begin_timer_session(25)
+
+    timer_widget.record_card_answered()
+
+    daily = timer_widget._daily_activity_summary_for_report(1, set(), set())
+
+    assert daily["cards"] == 6
 
 
 def test_auto_timer_config_defaults_to_disabled_with_pdf_and_epub_selected():

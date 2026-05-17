@@ -154,12 +154,15 @@ def test_pdf_citation_escapes_onclick_payload_and_label(monkeypatch):
     monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 42)
     monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: 'Writer "First" & <Best>')
 
-    html = pdf_dock.pdf_citation()
+    html = pdf_dock.pdf_citation('Quoted "excerpt"<br>line')
 
     assert 'onclick="pycmd(&quot;incremento_open_pdf_ref:' in html
     assert "writer&#x27;s-guide.pdf" in html
     assert "Writer &quot;First&quot; &amp; &lt;Best&gt;" in html
     assert 'card_id\\&quot;: 55' in html
+    assert 'excerpt\\&quot;:' in html
+    assert 'Quoted' in html
+    assert 'line' in html
     assert '=""' not in html
 
 
@@ -183,6 +186,31 @@ def test_on_add_cards_did_add_note_ignores_reviewer_extract(monkeypatch):
     calls = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
     monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "reviewer")
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("not a PDF add")),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: calls.append(args),
+    )
+
+    pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
+
+    assert calls == []
+
+
+def test_on_add_cards_did_add_note_ignores_unknown_source_on_non_pdf_reviewer_card(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "")
+    monkeypatch.setattr(
+        pdf_dock,
+        "mw",
+        types.SimpleNamespace(reviewer=types.SimpleNamespace(card=types.SimpleNamespace(id=88))),
+    )
     monkeypatch.setattr(
         pdf_dock,
         "get_page",

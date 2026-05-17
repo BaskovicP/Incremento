@@ -2042,7 +2042,7 @@ def fill_dock_field(
         try:
             from .pdf_dock import pdf_citation
 
-            citation = pdf_citation()
+            citation = pdf_citation(excerpt_text=text)
         except Exception:
             citation = None
     if citation and (not link_kind or should_add_extract_source_link(link_kind)):

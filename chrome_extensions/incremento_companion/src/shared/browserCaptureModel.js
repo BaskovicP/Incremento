@@ -83,6 +83,13 @@ export function updateMappingsForNoteType(settings, noteTypeName, fieldMappings)
   };
 }
 
+export function normalizeBrowserCaptureSelectedText(mode, selectedText, fallbackSelectedText = "") {
+  if (String(mode || "").trim().toLowerCase() === "snapshot") {
+    return String(selectedText || "").trim();
+  }
+  return String(selectedText || fallbackSelectedText || "").trim();
+}
+
 export function buildBrowserCapturePayload(context, formState) {
   return {
     url: String(context?.url || "").trim(),

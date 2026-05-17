@@ -108,7 +108,9 @@ def reset_activity_counters() -> None:
 
 
 def record_card_answered() -> None:
-    """Count an answered card regardless of whether the focus timer is running."""
+    """Count an answered card only while a focus timer is actively running."""
+    if not _timer_running:
+        return
     global _timer_cards_answered, _timer_daily_cards_answered
     _ensure_daily_activity_date()
     _timer_cards_answered += 1
@@ -116,7 +118,7 @@ def record_card_answered() -> None:
 
 
 def record_pdf_page_read(card_id: int, page: int) -> None:
-    """Count a PDF page view regardless of whether the focus timer is running."""
+    """Count a PDF page view only while a focus timer is actively running."""
     try:
         cid = int(card_id)
         pg = int(page)
@@ -124,13 +126,15 @@ def record_pdf_page_read(card_id: int, page: int) -> None:
         return
     if cid <= 0 or pg <= 0:
         return
+    if not _timer_running:
+        return
     _ensure_daily_activity_date()
     _timer_pdf_pages.add((cid, pg))
     _timer_daily_pdf_pages.add((cid, pg))
 
 
 def record_epub_page_read(card_id: int, page_index: int) -> None:
-    """Count an EPUB page view regardless of whether the focus timer is running."""
+    """Count an EPUB page view only while a focus timer is actively running."""
     try:
         cid = int(card_id)
         pg = int(page_index) + 1
@@ -138,13 +142,15 @@ def record_epub_page_read(card_id: int, page_index: int) -> None:
         return
     if cid <= 0 or pg <= 0:
         return
+    if not _timer_running:
+        return
     _ensure_daily_activity_date()
     _timer_epub_pages.add((cid, pg))
     _timer_daily_epub_pages.add((cid, pg))
 
 
 def begin_timer_session(duration_min: int) -> None:
-    """Start a timer period without clearing already collected activity."""
+    """Mark the current focus-timer run as active."""
     global _timer_running, _timer_duration_min
     _ensure_daily_activity_date()
     _timer_running = True
@@ -165,12 +171,36 @@ def daily_activity_summary() -> dict:
     }
 
 
+def _load_persisted_daily_reviewed_card_count() -> int:
+    """Return the actual persisted Incremento daily reviewed-card total."""
+    try:
+        try:
+            from ..backend.scheduler_config import load_scheduler_config
+            from ..backend.statistics import StatsManager
+            from ..backend.paths import get_active_profile as _active_profile
+        except Exception:
+            from scheduler_config import load_scheduler_config  # type: ignore
+            from statistics import StatsManager  # type: ignore
+            from paths import get_active_profile as _active_profile  # type: ignore
+
+        cfg = load_scheduler_config()
+        sm = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=cfg.day_end_time)
+        counts = sm.daily.get("type", {}) if isinstance(sm.daily, dict) else {}
+        return sum(int(value or 0) for value in counts.values())
+    except Exception:
+        return 0
+
+
 def _daily_activity_summary_for_report(cards: int, pdf_pages: set, epub_pages: set) -> dict:
     """Return daily totals for display, including the completed report as a floor."""
     daily = daily_activity_summary()
     daily_pdf_pages = set(_timer_daily_pdf_pages) | set(pdf_pages)
     daily_epub_pages = set(_timer_daily_epub_pages) | set(epub_pages)
-    daily_cards = max(int(daily.get("cards", 0)), int(cards or 0))
+    daily_cards = max(
+        _load_persisted_daily_reviewed_card_count(),
+        int(daily.get("cards", 0)),
+        int(cards or 0),
+    )
     return {
         "logical_date": daily.get("logical_date", _timer_daily_logical_date),
         "cards": daily_cards,
@@ -546,6 +576,7 @@ class _TimerWidget(QWidget):
 
 def show_timer_summary() -> None:
     """Show the end-of-timer summary dialog."""
+    _timer_running_set(False)
     dur   = _timer_duration_min
     cards = _timer_cards_answered
     pdf_pages = set(_timer_pdf_pages)
@@ -624,7 +655,7 @@ def on_timer_question_shown(card) -> None:
 
 
 def timer_on_card_answered(reviewer, card, ease: int) -> None:
-    """Global hook: counts every answered card for the next timer report."""
+    """Global hook: counts answered cards only while the timer is running."""
     record_card_answered()
 
 

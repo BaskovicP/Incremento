@@ -13,7 +13,7 @@ import json
 import os
 import re
 import time
-from html import escape
+from html import escape, unescape
 
 from aqt import mw
 from aqt.qt import (
@@ -169,6 +169,7 @@ _pdf_preserve_history = False
 _suppress_due_review_prompt_card_id: int | None = None
 _suppress_due_review_prompt_until = 0.0
 _PDF_ADD_PROMPT_SUPPRESSION_SECONDS = 5.0
+_PDF_REF_EXCERPT_MAX_CHARS = 320
 
 
 def _config(config: dict | None = None) -> dict:
@@ -675,23 +676,44 @@ def _add_card_source_for_new_note() -> str:
         return ""
 
 
+def _current_reviewer_card_id() -> int | None:
+    try:
+        reviewer = getattr(mw, "reviewer", None)
+        card = getattr(reviewer, "card", None) if reviewer is not None else None
+        card_id = int(card.id) if card is not None else 0
+        return card_id if card_id > 0 else None
+    except Exception:
+        return None
+
+
 # ── Citation helper (called by _fill_dock_field in __init__.py) ───────────────
 
 
-def pdf_citation() -> str:
+def _normalize_pdf_reference_excerpt(text: str | None) -> str:
+    raw = str(text or "")
+    if not raw.strip():
+        return ""
+    raw = re.sub(r"<[^>]+>", " ", raw)
+    raw = unescape(raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+    return raw[:_PDF_REF_EXCERPT_MAX_CHARS].strip()
+
+
+def pdf_citation(excerpt_text: str | None = None) -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
     if not _current_pdf_card_id or not _current_pdf_filename:
         return ""
     page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
     name = pdf_display_label_from_filename(_current_pdf_filename)
-    cmd = "incremento_open_pdf_ref:" + json.dumps(
-        {
-            "card_id": int(_current_pdf_card_id),
-            "filename": str(_current_pdf_filename or "").strip(),
-            "page": int(page),
-        },
-        ensure_ascii=False,
-    )
+    payload = {
+        "card_id": int(_current_pdf_card_id),
+        "filename": str(_current_pdf_filename or "").strip(),
+        "page": int(page),
+    }
+    excerpt = _normalize_pdf_reference_excerpt(excerpt_text)
+    if excerpt:
+        payload["excerpt"] = excerpt
+    cmd = "incremento_open_pdf_ref:" + json.dumps(payload, ensure_ascii=False)
     onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
     return (
         f"<a onclick=\"{onclick}\" "
@@ -1752,6 +1774,7 @@ def show_pdf_in_dock(
     via_link=False,
     read_page=0,
     search_query="",
+    jump_excerpt="",
     preserve_history=False,
     offer_due_review_prompt=True,
 ) -> None:
@@ -1791,20 +1814,30 @@ def show_pdf_in_dock(
         os.path.join(get_pdf_dir(), filename)
     ).toString()
 
+    resolved_read_page = int(read_page or 0)
+    if normalized_card_id > 0 and resolved_read_page <= 0:
+        try:
+            resolved_read_page = int(
+                get_read_page(_ADDON_DIR, _active_profile(), normalized_card_id) or 0
+            )
+        except Exception:
+            resolved_read_page = 0
+
     hls = load_highlights(_ADDON_DIR, _active_profile(), card_id)
     bookmarks = _pdf_bookmarks_payload(card_id)
     limit_status = _current_pdf_limit_status(card_id, current_page=page)
     read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), card_id)
+    normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
 
     js = (
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()
@@ -1878,13 +1911,22 @@ def on_pdf_reviewer_will_end() -> None:
 
 def on_add_cards_did_add_note(note) -> None:
     """When a card is saved in the AddCards dock, record it against the current PDF page."""
-    if _current_pdf_card_id is None:
+    try:
+        tracked_pdf_card_id = int(_current_pdf_card_id or 0)
+    except Exception:
+        tracked_pdf_card_id = 0
+    if tracked_pdf_card_id <= 0:
         return
     source = _add_card_source_for_new_note()
-    if source and source != "pdf":
-        return
-    _suppress_next_due_review_prompt_for_pdf_add(int(_current_pdf_card_id))
-    page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
+    if source:
+        if source != "pdf":
+            return
+    else:
+        reviewer_card_id = _current_reviewer_card_id()
+        if reviewer_card_id is not None and reviewer_card_id != tracked_pdf_card_id:
+            return
+    _suppress_next_due_review_prompt_for_pdf_add(tracked_pdf_card_id)
+    page = get_page(_ADDON_DIR, _active_profile(), tracked_pdf_card_id)
     import re as _re
 
     parts = []
@@ -1897,7 +1939,7 @@ def on_add_cards_did_add_note(note) -> None:
         add_pdf_card_source(
             _ADDON_DIR,
             _active_profile(),
-            _current_pdf_card_id,
+            tracked_pdf_card_id,
             page,
             note.id,
             excerpt,
@@ -1908,7 +1950,7 @@ def on_add_cards_did_add_note(note) -> None:
     if _pdf_dock is None:
         return
     try:
-        cards, counts = _reconcile_pdf_page_sources(_current_pdf_card_id, page)
+        cards, counts = _reconcile_pdf_page_sources(tracked_pdf_card_id, page)
         data = {"page": page, "cards": cards, "pageCounts": counts}
         js = (
             "window.incrementoReceivePageCards && "
@@ -1922,7 +1964,7 @@ def on_add_cards_did_add_note(note) -> None:
     # to call nextCard() via op_executed. If the next card is not a PDF card,
     # on_pdf_question_shown hides the PDF dock. Re-show it so the user can
     # continue reading without interruption.
-    cid = _current_pdf_card_id
+    cid = tracked_pdf_card_id
 
     def _restore_pdf_dock() -> None:
         if _current_pdf_card_id != cid:

@@ -7644,6 +7644,52 @@
       return ((sel == null ? void 0 : sel.toString()) || "").trim();
     }
   }
+  function normalizeJumpText(value) {
+    return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  function clearJumpHitStyles(textLayer) {
+    if (!textLayer) return;
+    textLayer.querySelectorAll('span[data-inc-jump-hit="1"]').forEach((span) => {
+      span.dataset.incJumpHit = "0";
+      span.style.background = "";
+      span.style.outline = "";
+      span.style.borderRadius = "";
+    });
+  }
+  function markJumpHit(spans) {
+    spans.forEach((span) => {
+      span.dataset.incJumpHit = "1";
+      span.style.background = "rgba(59, 130, 246, 0.24)";
+      span.style.outline = "1px solid rgba(96, 165, 250, 0.95)";
+      span.style.borderRadius = "3px";
+    });
+  }
+  function findExcerptSpanMatch(textLayer, excerpt) {
+    const target = normalizeJumpText(excerpt);
+    if (!textLayer || !target) return null;
+    const spans = Array.from(textLayer.querySelectorAll("span")).map((span) => ({ span, text: normalizeJumpText(span.textContent) })).filter(({ text }) => text.length > 0);
+    if (!spans.length) return null;
+    const maxWindow = 48;
+    const maxCombinedLength = Math.max(target.length * 2, target.length + 120);
+    for (let start = 0; start < spans.length; start += 1) {
+      let combined = "";
+      const matched = [];
+      for (let end = start; end < spans.length && end < start + maxWindow; end += 1) {
+        const piece = spans[end].text;
+        combined = combined ? `${combined} ${piece}` : piece;
+        matched.push(spans[end].span);
+        if (combined.includes(target)) {
+          return matched;
+        }
+        if (combined.length > maxCombinedLength) {
+          break;
+        }
+      }
+    }
+    const tokens = target.split(/\s+/).filter((token) => token.length >= 4).slice(0, 6);
+    if (!tokens.length) return null;
+    return spans.filter(({ text }) => tokens.some((token) => text.includes(token))).slice(0, Math.max(1, Math.min(tokens.length, 4))).map(({ span }) => span);
+  }
   function PdfViewer() {
     const {
       page,
@@ -7694,6 +7740,8 @@
     const [pageJumpEditing, setPageJumpEditing] = reactExports.useState(false);
     const [pageJumpValue, setPageJumpValue] = reactExports.useState("");
     const pendingHighlightScrollRef = reactExports.useRef(null);
+    const pendingExcerptJumpRef = reactExports.useRef("");
+    const pendingReadAnchorScrollRef = reactExports.useRef(false);
     const lastReadAnchorSpanRef = reactExports.useRef(null);
     const pageJumpInputRef = reactExports.useRef(null);
     const pageHighlights = highlights.filter((h) => h.page === page);
@@ -7865,31 +7913,84 @@
       }
     }, [limitEnabled, limitNotice == null ? void 0 : limitNotice.kind, limitReached, overrideEnabled]);
     reactExports.useEffect(() => {
-      var _a;
+      var _a, _b;
       const pendingId = pendingHighlightScrollRef.current;
-      if (!pendingId) return;
-      const target = highlights.find((h) => h.id === pendingId);
-      if (!target || target.page !== page || !((_a = target.rects) == null ? void 0 : _a.length)) return;
-      const firstRect = target.rects[0];
       const wrapper = containerRef.current;
       if (!wrapper) return;
-      const wrapperRect = wrapper.getBoundingClientRect();
-      const scale = (renderInfo == null ? void 0 : renderInfo.scale) || 1;
-      const tlLeft = (renderInfo == null ? void 0 : renderInfo.tlLeft) || 0;
-      const targetTop = window.scrollY + wrapperRect.top + firstRect.y * scale - 24;
-      const targetLeft = Math.max(
-        0,
-        window.scrollX + tlLeft + firstRect.x * scale - window.innerWidth * 0.25
-      );
-      window.scrollTo({
-        top: Math.max(0, targetTop),
-        left: targetLeft,
-        behavior: "smooth"
-      });
-      setFocusedHighlightId(pendingId);
-      window.setTimeout(() => setFocusedHighlightId(null), 1400);
-      pendingHighlightScrollRef.current = null;
-    }, [page, renderInfo, highlights, containerRef, highlightJumpNonce]);
+      const scrollToPdfRect = (rect, leftBias = 0.25, topPad = 24) => {
+        if (!rect) return false;
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const scale = (renderInfo == null ? void 0 : renderInfo.scale) || 1;
+        const tlLeft = (renderInfo == null ? void 0 : renderInfo.tlLeft) || 0;
+        const targetTop = window.scrollY + wrapperRect.top + rect.y * scale - topPad;
+        const targetLeft = Math.max(
+          0,
+          window.scrollX + tlLeft + rect.x * scale - window.innerWidth * leftBias
+        );
+        window.scrollTo({
+          top: Math.max(0, targetTop),
+          left: targetLeft,
+          behavior: "smooth"
+        });
+        return true;
+      };
+      if (pendingId) {
+        const target = highlights.find((h) => h.id === pendingId);
+        if (!target || target.page !== page || !((_a = target.rects) == null ? void 0 : _a.length)) return;
+        if (!scrollToPdfRect(target.rects[0])) return;
+        setFocusedHighlightId(pendingId);
+        window.setTimeout(() => setFocusedHighlightId(null), 1400);
+        pendingHighlightScrollRef.current = null;
+        return;
+      }
+      const jumpExcerpt = pendingExcerptJumpRef.current;
+      if (jumpExcerpt) {
+        const normalizedExcerpt = normalizeJumpText(jumpExcerpt);
+        if (!normalizedExcerpt) {
+          pendingExcerptJumpRef.current = "";
+        } else {
+          const highlightTarget = highlights.find((highlight) => {
+            var _a2;
+            if (highlight.page !== page || !((_a2 = highlight.rects) == null ? void 0 : _a2.length)) return false;
+            const highlightText = normalizeJumpText(highlight.text);
+            return highlightText.includes(normalizedExcerpt) || normalizedExcerpt.includes(highlightText);
+          });
+          if (((_b = highlightTarget == null ? void 0 : highlightTarget.rects) == null ? void 0 : _b.length) && scrollToPdfRect(highlightTarget.rects[0])) {
+            setFocusedHighlightId(String(highlightTarget.id || ""));
+            window.setTimeout(() => setFocusedHighlightId(null), 1600);
+            pendingExcerptJumpRef.current = "";
+            pendingReadAnchorScrollRef.current = false;
+            return;
+          }
+          const tl = textLayerRef.current;
+          const spanCount = tl ? tl.querySelectorAll("span").length : 0;
+          if (tl && spanCount > 0) {
+            clearJumpHitStyles(tl);
+            const matchedSpans = findExcerptSpanMatch(tl, normalizedExcerpt);
+            if (matchedSpans == null ? void 0 : matchedSpans.length) {
+              markJumpHit(matchedSpans);
+              try {
+                matchedSpans[0].scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+              } catch (_) {
+              }
+              pendingExcerptJumpRef.current = "";
+              pendingReadAnchorScrollRef.current = false;
+              window.setTimeout(() => clearJumpHitStyles(tl), 2200);
+              return;
+            }
+            pendingExcerptJumpRef.current = "";
+          } else {
+            return;
+          }
+        }
+      }
+      if (pendingReadAnchorScrollRef.current && showReadMarker) {
+        if (readMarkerRect) {
+          scrollToPdfRect(readMarkerRect, 0.15, 80);
+        }
+        pendingReadAnchorScrollRef.current = false;
+      }
+    }, [page, renderInfo, highlights, containerRef, highlightJumpNonce, showReadMarker, readMarkerRect, textLayerRef]);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
       if (!tl) return;
@@ -8132,13 +8233,15 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawSetReadProgress, showReadMarker]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startJumpExcerpt = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
         setHighlights(window._incPdfHighlights || []);
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
         window._incPdfBookmarks = null;
         setSearchQuery(startSearchQuery || "");
         setReadAnchor(startReadAnchor && typeof startReadAnchor === "object" ? startReadAnchor : null);
+        pendingExcerptJumpRef.current = String(startJumpExcerpt || "").trim();
+        pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
         setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
         setLimitNotice(null);
         if (typeof startAutoHighlightOnExtract === "boolean") {
@@ -8178,6 +8281,8 @@
           pending.readPage || 0,
           pending.readAnchor || null,
           pending.searchQuery || "",
+          pending.jumpExcerpt || "",
+          pending.scrollToReadAnchor || false,
           pending.limitStatus || DEFAULT_LIMIT_STATUS,
           pending.autoHighlightOnExtract,
           pending.bookmarks || []

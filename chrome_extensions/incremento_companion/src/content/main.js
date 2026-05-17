@@ -6,6 +6,9 @@ import {
   LINK_SAVE_SETTINGS_KEY,
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
+import {
+  normalizeBrowserCaptureSelectedText,
+} from "../shared/browserCaptureModel.js";
 
 (() => {
   const CONTENT_SCRIPT_VERSION = "browser-capture-v6";
@@ -1347,6 +1350,9 @@ import {
   function startSnapshotCapture(existingSnapshots = []) {
     const ui = ensureBrowserCaptureUiRoot();
     clearShell();
+    const continuedSelectedText = existingSnapshots.length > 0
+      ? browserCaptureState?.context?.selectedText || ""
+      : "";
     browserCaptureState = {
       mode: "snapshot",
       meta: browserCaptureState?.meta || null,
@@ -1354,7 +1360,7 @@ import {
       context: {
         url: window.location.href || "",
         title: document.title || "",
-        selectedText: browserCaptureState?.context?.selectedText || "",
+        selectedText: continuedSelectedText,
       },
       snapshots: [...existingSnapshots],
       statusKind: "",
@@ -1544,7 +1550,7 @@ import {
       context: {
         url: window.location.href || "",
         title: document.title || "",
-        selectedText: String(selectedText || getTrackedSelectionText()).trim(),
+        selectedText: normalizeBrowserCaptureSelectedText(mode, selectedText, getTrackedSelectionText()),
       },
       snapshots: Array.isArray(snapshots) ? snapshots : [],
       statusKind: "",

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildBrowserCapturePayload,
+  normalizeBrowserCaptureSelectedText,
   normalizeBrowserCaptureSettings,
   normalizeFieldMappings,
   parseTags,
@@ -63,6 +64,11 @@ test("updateMappingsForNoteType stores mappings by note type", () => {
     urlField: "Back",
     snapshotField: "Back",
   });
+});
+
+test("normalizeBrowserCaptureSelectedText keeps fresh snapshots blank", () => {
+  assert.equal(normalizeBrowserCaptureSelectedText("snapshot", "", "stale selected text"), "");
+  assert.equal(normalizeBrowserCaptureSelectedText("selection", "", "current selected text"), "current selected text");
 });
 
 test("buildBrowserCapturePayload serializes snapshots and form state", () => {

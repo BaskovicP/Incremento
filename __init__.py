@@ -1989,8 +1989,14 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     menu.addMenu(submenu)
 
 
-def _open_pdf_reference(card_id: int, page: int, filename: str = "") -> None:
+def _open_pdf_reference(
+    card_id: int,
+    page: int,
+    filename: str = "",
+    excerpt: str = "",
+) -> None:
     clean_filename = str(filename or "").strip()
+    clean_excerpt = str(excerpt or "").strip()
     live_card_id = int(card_id or 0)
     try:
         if live_card_id > 0:
@@ -2042,6 +2048,7 @@ def _open_pdf_reference(card_id: int, page: int, filename: str = "") -> None:
             page,
             zoom,
             via_link=True,
+            jump_excerpt=clean_excerpt,
         )
     else:
         _pdf_dock_mod.show_pdf_in_dock(
@@ -2050,6 +2057,7 @@ def _open_pdf_reference(card_id: int, page: int, filename: str = "") -> None:
             page,
             zoom,
             via_link=True,
+            jump_excerpt=clean_excerpt,
             offer_due_review_prompt=False,
         )
 
@@ -2117,6 +2125,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 int(data.get("card_id") or 0),
                 int(data.get("page") or 1),
                 str(data.get("filename") or ""),
+                str(data.get("excerpt") or ""),
             )
         except Exception:
             pass

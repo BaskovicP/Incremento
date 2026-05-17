@@ -386,6 +386,34 @@ def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
     dock.clear_pending_extract_context()
 
 
+def test_fill_dock_field_passes_excerpt_text_to_pdf_citation(monkeypatch):
+    filled = []
+    fake_dock = types.SimpleNamespace(
+        show=lambda: None,
+        raise_=lambda: None,
+        _set_field=lambda idx, text, mark_topic=False: filled.append((idx, text, mark_topic)),
+    )
+    captured = []
+
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_apply_configured_extract_notetype", lambda: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock.QTimer, "singleShot", lambda delay, func: None)
+    monkeypatch.setattr(dock, "__package__", "frontend")
+    monkeypatch.setitem(
+        sys.modules,
+        "frontend.pdf_dock",
+        types.SimpleNamespace(
+            pdf_citation=lambda excerpt_text=None: captured.append(excerpt_text) or "Citation",
+        ),
+    )
+
+    dock.fill_dock_field(0, "Excerpt text")
+
+    assert captured == ["Excerpt text"]
+    assert filled == [(0, "Excerpt text<br>Citation", False)]
+
+
 def test_source_card_id_for_transfer_reads_video_source(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
