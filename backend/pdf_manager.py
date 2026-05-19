@@ -37,7 +37,18 @@ def pdf_display_label_from_filename(filename: str, fallback: str = "PDF") -> str
     return stem or fallback
 
 
-def find_live_pdf_card_by_filename(col, filename: str) -> int | None:
+def _pdf_filename_lookup_key(filename: str) -> str:
+    stem = os.path.splitext(os.path.basename(str(filename or "").strip()))[0].strip("._-")
+    if not stem:
+        return ""
+
+    match = _PDF_UUID_SUFFIX_RE.match(stem)
+    if match:
+        stem = match.group("label").strip("._-")
+    return stem.casefold()
+
+
+def _find_exact_live_pdf_card_by_filename(col, filename: str) -> int | None:
     clean_filename = os.path.basename(str(filename or "").strip())
     if not clean_filename:
         return None
@@ -63,6 +74,50 @@ def find_live_pdf_card_by_filename(col, filename: str) -> int | None:
                     return None
     return None
 
+
+def find_live_pdf_card_by_filename(col, filename: str) -> int | None:
+    clean_filename = os.path.basename(str(filename or "").strip())
+    if not clean_filename:
+        return None
+
+    exact_card_id = _find_exact_live_pdf_card_by_filename(col, clean_filename)
+    if exact_card_id is not None:
+        return exact_card_id
+
+    lookup_key = _pdf_filename_lookup_key(clean_filename)
+    if not lookup_key:
+        return None
+
+    try:
+        note_ids = col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+    except Exception:
+        return None
+
+    fuzzy_card_ids: list[int] = []
+    for nid in note_ids:
+        try:
+            note = col.get_note(nid)
+            stored = str(note["PDF_Filename"] or "").strip()
+        except Exception:
+            continue
+        if _pdf_filename_lookup_key(stored) != lookup_key:
+            continue
+        try:
+            cids = col.find_cards(f"nid:{nid}")
+        except Exception:
+            cids = []
+        if not cids:
+            continue
+        try:
+            fuzzy_card_ids.append(int(cids[0]))
+        except Exception:
+            continue
+
+    unique_card_ids = sorted(set(fuzzy_card_ids))
+    if len(unique_card_ids) == 1:
+        return unique_card_ids[0]
+    return None
+
 try:
     from .db import (
         get_connection,
@@ -84,6 +139,7 @@ try:
         INCREMENTO_PARENT_CARD_ID_FIELD,
         INCREMENTO_PARENT_FIELD,
         INCREMENTO_SOURCE_AUTHOR_FIELD,
+        INCREMENTO_SOURCE_LINK_FIELD,
     )
     from .scheduler_config import build_ready_filter, load_scheduler_config
     from .statistics import _effective_date
@@ -108,6 +164,7 @@ except ImportError:
         INCREMENTO_PARENT_CARD_ID_FIELD,
         INCREMENTO_PARENT_FIELD,
         INCREMENTO_SOURCE_AUTHOR_FIELD,
+        INCREMENTO_SOURCE_LINK_FIELD,
     )
     from scheduler_config import build_ready_filter, load_scheduler_config  # type: ignore
     from statistics import _effective_date  # type: ignore
@@ -1128,3 +1185,94 @@ def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> s
     except Exception:
         pass
     return media_filename
+
+
+def repair_pdf_card_filename(
+    addon_dir: str,
+    profile: str,
+    col,
+    card_id: int,
+    *,
+    missing_filename: str = "",
+) -> str:
+    """Repair a stale stored PDF filename when a unique local replacement exists."""
+    cid = int(card_id)
+    card = col.get_card(cid)
+    if card is None:
+        raise RuntimeError("PDF card was not found.")
+
+    note = col.get_note(card.nid)
+    if note is None:
+        raise RuntimeError("Linked PDF note was not found.")
+
+    pdf_dir = Path(_paths.get_pdf_dir(addon_dir, profile))
+    try:
+        disk_files = sorted(
+            {
+                path.name
+                for path in pdf_dir.iterdir()
+                if path.is_file() and path.suffix.lower() == ".pdf"
+            }
+        )
+    except OSError:
+        return ""
+
+    current_filename = os.path.basename(str(note["PDF_Filename"] or "").strip())
+    if current_filename and (pdf_dir / current_filename).exists():
+        return current_filename
+
+    try:
+        source_link = str(note[INCREMENTO_SOURCE_LINK_FIELD] or "").strip()
+    except Exception:
+        source_link = ""
+    normalized_source_link = source_link.replace("\\", "/")
+    source_filename = (
+        os.path.basename(normalized_source_link)
+        if normalized_source_link.startswith("pdfs/")
+        else ""
+    )
+
+    candidate_filename = ""
+    if source_filename and source_filename in disk_files:
+        candidate_filename = source_filename
+
+    if not candidate_filename:
+        candidate_keys: list[str] = []
+        for raw_name in (missing_filename, current_filename, source_filename):
+            key = _pdf_filename_lookup_key(raw_name)
+            if key and key not in candidate_keys:
+                candidate_keys.append(key)
+
+        try:
+            title_key = _safe_pdf_stem(str(note["Title"] or "").strip(), fallback="").casefold()
+        except Exception:
+            title_key = ""
+        if title_key and title_key not in candidate_keys:
+            candidate_keys.append(title_key)
+
+        if not candidate_keys:
+            return ""
+
+        matches = sorted(
+            {
+                disk_name
+                for disk_name in disk_files
+                if _pdf_filename_lookup_key(disk_name) in candidate_keys
+            }
+        )
+        if len(matches) != 1:
+            return ""
+        candidate_filename = matches[0]
+
+    owner_card_id = _find_exact_live_pdf_card_by_filename(col, candidate_filename)
+    if owner_card_id is not None and owner_card_id != cid:
+        return ""
+
+    note["PDF_Filename"] = candidate_filename
+    if not source_link or normalized_source_link.startswith("pdfs/"):
+        try:
+            note[INCREMENTO_SOURCE_LINK_FIELD] = f"pdfs/{candidate_filename}"
+        except Exception:
+            pass
+    col.update_note(note)
+    return candidate_filename

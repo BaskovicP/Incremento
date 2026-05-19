@@ -65,6 +65,7 @@ try:
         pdf_storage_abspath,
         pdf_display_label_from_filename,
         regenerate_pdf_card_cover,
+        repair_pdf_card_filename,
         replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
@@ -88,6 +89,7 @@ except ImportError:
         pdf_storage_abspath,
         pdf_display_label_from_filename,
         regenerate_pdf_card_cover,
+        repair_pdf_card_filename,
         replace_pdf_card_file,
         save_pdf_daily_limit_settings,
         save_pdf_due_review_prompt_settings,
@@ -1783,8 +1785,33 @@ def show_pdf_in_dock(
         normalized_card_id = int(card_id)
     except Exception:
         normalized_card_id = 0
+    resolved_filename = str(filename or "").strip()
+    if normalized_card_id > 0:
+        try:
+            card = mw.col.get_card(normalized_card_id) if getattr(mw, "col", None) else None
+            note = mw.col.get_note(card.nid) if card is not None else None
+            note_filename = str(note["PDF_Filename"] or "").strip() if note is not None else ""
+        except Exception:
+            note_filename = ""
+        if note_filename:
+            resolved_filename = note_filename
+
+    if normalized_card_id > 0 and resolved_filename and not os.path.exists(_pdf_storage_path(resolved_filename)):
+        try:
+            repaired_filename = repair_pdf_card_filename(
+                _ADDON_DIR,
+                _active_profile(),
+                mw.col,
+                normalized_card_id,
+                missing_filename=resolved_filename,
+            )
+        except Exception:
+            repaired_filename = ""
+        if repaired_filename:
+            resolved_filename = repaired_filename
+
     _current_pdf_card_id = normalized_card_id if normalized_card_id > 0 else 0
-    _current_pdf_filename = filename
+    _current_pdf_filename = resolved_filename
     _pdf_via_link = via_link
     _pdf_preserve_history = bool(preserve_history)
     if _pdf_dock is None:
@@ -1805,12 +1832,12 @@ def show_pdf_in_dock(
         except Exception:
             pass
 
-    if not os.path.exists(_pdf_storage_path(filename)):
-        _show_missing_pdf_screen(filename)
+    if not os.path.exists(_pdf_storage_path(resolved_filename)):
+        _show_missing_pdf_screen(resolved_filename)
         tooltip("Stored PDF file is missing. Choose a replacement PDF to repair this card.")
         return
 
-    pdf_file_url = QUrl.fromLocalFile(_pdf_storage_path(filename)).toString()
+    pdf_file_url = QUrl.fromLocalFile(_pdf_storage_path(resolved_filename)).toString()
 
     resolved_read_page = int(read_page or 0)
     if normalized_card_id > 0 and resolved_read_page <= 0:
@@ -1832,10 +1859,10 @@ def show_pdf_in_dock(
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(filename)}, page: {page}, zoom: {zoom}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(filename)}, {page}, {zoom}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

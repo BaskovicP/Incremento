@@ -202,6 +202,46 @@ class TestFindLivePdfCardByFilename:
 
         assert pdf_manager.find_live_pdf_card_by_filename(col, "paper.pdf") == 123
 
+    def test_falls_back_to_unique_stem_match_when_uuid_differs(self):
+        note = MagicMock()
+        note.__getitem__.side_effect = lambda key: {
+            "PDF_Filename": f"paper-{('a' * 32)}.pdf"
+        }[key]
+        col = MagicMock()
+        col.find_notes.return_value = [11]
+        col.get_note.return_value = note
+        col.find_cards.return_value = [123]
+
+        assert (
+            pdf_manager.find_live_pdf_card_by_filename(
+                col,
+                f"paper-{('b' * 32)}.pdf",
+            )
+            == 123
+        )
+
+    def test_returns_none_when_stem_match_is_ambiguous(self):
+        note_a = MagicMock()
+        note_a.__getitem__.side_effect = lambda key: {
+            "PDF_Filename": f"paper-{('a' * 32)}.pdf"
+        }[key]
+        note_b = MagicMock()
+        note_b.__getitem__.side_effect = lambda key: {
+            "PDF_Filename": f"paper-{('b' * 32)}.pdf"
+        }[key]
+        col = MagicMock()
+        col.find_notes.return_value = [11, 12]
+        col.get_note.side_effect = [note_a, note_b, note_a, note_b]
+        col.find_cards.side_effect = [[123], [124]]
+
+        assert (
+            pdf_manager.find_live_pdf_card_by_filename(
+                col,
+                f"paper-{('c' * 32)}.pdf",
+            )
+            is None
+        )
+
 
 class TestRenderPdfCoverMedia:
     def test_renders_first_page_and_adds_png_to_media(self, tmp_path):
@@ -903,6 +943,41 @@ class TestReplacePdfCardFile:
         assert note["Incremento_Parent"] == "Parent"
         assert note["Incremento_Parent_Card_ID"] == "88"
         assert note["Incremento_Source_Author"] == "Author"
+        col.update_note.assert_called_once_with(note)
+
+
+class TestRepairPdfCardFilename:
+    def test_repairs_note_when_unique_matching_disk_file_exists(self, tmp_path):
+        pdf_dir = tmp_path / "pdfs"
+        pdf_dir.mkdir()
+        expected_filename = f"paper-{('a' * 32)}.pdf"
+        (pdf_dir / expected_filename).write_bytes(b"%PDF repaired")
+
+        note = _FakePdfNote(
+            321,
+            Title="Paper",
+            PDF_Filename=f"paper-{('b' * 32)}.pdf",
+            Incremento_Source_Link=f"pdfs/paper-{('b' * 32)}.pdf",
+        )
+        card = _FakeCard(77, 321)
+        col = MagicMock()
+        col.get_card.return_value = card
+        col.get_note.return_value = note
+        col.find_notes.return_value = [321]
+        col.find_cards.return_value = [77]
+
+        with patch("pdf_manager._paths.get_pdf_dir", return_value=pdf_dir):
+            repaired = pdf_manager.repair_pdf_card_filename(
+                str(tmp_path),
+                "TestProfile",
+                col,
+                77,
+                missing_filename=f"paper-{('c' * 32)}.pdf",
+            )
+
+        assert repaired == expected_filename
+        assert note["PDF_Filename"] == expected_filename
+        assert note["Incremento_Source_Link"] == f"pdfs/{expected_filename}"
         col.update_note.assert_called_once_with(note)
 
 
