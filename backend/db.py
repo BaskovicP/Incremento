@@ -2093,6 +2093,52 @@ def prune_note_ocr_index_rows(
     }
 
 
+def prune_document_text_index_rows(
+    addon_dir: str,
+    profile: str,
+    *,
+    live_card_ids: set[int],
+) -> dict[str, int]:
+    conn = get_connection(addon_dir, profile)
+    counts = {
+        "pdf_text_index": 0,
+        "epub_text_index": 0,
+        "document_text_index_total": 0,
+    }
+
+    for table in ("pdf_text_index", "epub_text_index"):
+        try:
+            rows = conn.execute(f"SELECT card_id FROM {table}").fetchall()
+        except Exception:
+            continue
+
+        stale_card_ids: set[int] = set()
+        stale_row_count = 0
+        for (card_id,) in rows:
+            try:
+                normalized_card_id = int(card_id or 0)
+            except Exception:
+                continue
+            if normalized_card_id in live_card_ids:
+                continue
+            stale_card_ids.add(normalized_card_id)
+            stale_row_count += 1
+
+        if not stale_card_ids:
+            continue
+
+        conn.executemany(
+            f"DELETE FROM {table} WHERE card_id = ?",
+            [(card_id,) for card_id in sorted(stale_card_ids)],
+        )
+        counts[table] = stale_row_count
+        counts["document_text_index_total"] += stale_row_count
+
+    if counts["document_text_index_total"] > 0:
+        conn.commit()
+    return counts
+
+
 def replace_pdf_text_index(addon_dir: str, profile: str, card_id: int, page_texts: list[str]) -> None:
     """Replace stored per-page extracted text for a PDF card."""
     conn = get_connection(addon_dir, profile)

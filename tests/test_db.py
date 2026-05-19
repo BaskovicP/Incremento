@@ -615,6 +615,42 @@ class TestNoteOcrIndex:
             (105, 15, "diagram.png", "gamma text")
         ]
 
+    def test_prune_document_text_index_rows_removes_missing_pdf_and_epub_rows(self):
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 201, ["page one", "page two"])
+        db.replace_pdf_text_index(self.addon_dir, "TestProfile", 202, ["keep pdf"])
+        db.replace_epub_text_index(
+            self.addon_dir,
+            "TestProfile",
+            301,
+            [("Chapter 1", "alpha"), ("Chapter 2", "beta")],
+        )
+        db.replace_epub_text_index(
+            self.addon_dir,
+            "TestProfile",
+            302,
+            [("Keep", "gamma")],
+        )
+
+        counts = db.prune_document_text_index_rows(
+            self.addon_dir,
+            "TestProfile",
+            live_card_ids={202, 302},
+        )
+
+        assert counts == {
+            "pdf_text_index": 2,
+            "epub_text_index": 2,
+            "document_text_index_total": 4,
+        }
+
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        assert conn.execute(
+            "SELECT card_id, page FROM pdf_text_index ORDER BY card_id, page"
+        ).fetchall() == [(202, 1)]
+        assert conn.execute(
+            "SELECT card_id, section_index FROM epub_text_index ORDER BY card_id, section_index"
+        ).fetchall() == [(302, 0)]
+
 
 class TestBrowserMediaRefs:
     def setup_method(self):

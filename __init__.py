@@ -167,6 +167,7 @@ from .backend.db import (
     get_custom_schedule_rule,
     get_knowledge_tree_node,
     get_topic_schedule,
+    prune_document_text_index_rows,
     prune_note_ocr_index_rows,
     get_recent_reviewer_tags,
     replace_pdf_text_index,
@@ -3909,6 +3910,15 @@ def _prune_stale_ocr_rows() -> dict[str, int]:
     )
 
 
+def _prune_stale_document_text_index_rows() -> dict[str, int]:
+    """Delete PDF/EPUB search-index rows whose card_id no longer exists."""
+    return prune_document_text_index_rows(
+        _ADDON_DIR,
+        _active_profile(),
+        live_card_ids=_all_live_card_ids_any_profile(),
+    )
+
+
 def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
     pdf_n = int(counts.get("pdf_progress", 0) or 0)
     video_n = int(counts.get("video_progress", 0) or 0)
@@ -3921,6 +3931,19 @@ def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
         f"• PDF: {pdf_n}\n"
         f"• Video: {video_n}\n"
         f"• Web: {web_n}"
+    )
+
+
+def _format_pruned_document_text_index_summary(counts: dict[str, int]) -> str:
+    pdf_n = int(counts.get("pdf_text_index", 0) or 0)
+    epub_n = int(counts.get("epub_text_index", 0) or 0)
+    total = int(counts.get("document_text_index_total", 0) or 0)
+    if total <= 0:
+        return ""
+    return (
+        f"Stale search index rows removed: {total}\n"
+        f"• PDF pages: {pdf_n}\n"
+        f"• EPUB sections: {epub_n}"
     )
 
 
@@ -4172,6 +4195,33 @@ def _count_stale_ocr_rows() -> dict[str, int]:
     return counts
 
 
+def _count_stale_document_text_index_rows() -> dict[str, int]:
+    """Return stale PDF/EPUB search-index row counts without deleting."""
+    conn = get_connection(_ADDON_DIR, _active_profile())
+    counts = {
+        "pdf_text_index": 0,
+        "epub_text_index": 0,
+        "document_text_index_total": 0,
+    }
+    live_card_ids = _all_live_card_ids_any_profile()
+    for table in ("pdf_text_index", "epub_text_index"):
+        try:
+            rows = conn.execute(f"SELECT card_id FROM {table}").fetchall()
+        except Exception:
+            continue
+        stale = 0
+        for (card_id,) in rows:
+            try:
+                normalized_card_id = int(card_id or 0)
+            except Exception:
+                continue
+            if normalized_card_id not in live_card_ids:
+                stale += 1
+        counts[table] = stale
+        counts["document_text_index_total"] += stale
+    return counts
+
+
 def _scan_orphan_pdfs() -> tuple[str, list[str], int]:
     from .backend.pdf_manager import get_pdf_dir
 
@@ -4253,7 +4303,8 @@ def _scan_orphan_videos() -> tuple[str, list[str], int]:
 def cleanupNonActiveProfileDataFunction() -> None:
     """
     Offer one-shot cleanup of artifacts not referenced by the active profile:
-    orphan PDFs, orphan local videos, stale progress rows, and stale OCR cache rows.
+    orphan PDFs, orphan local videos, stale progress rows, stale search-index rows,
+    and stale OCR cache rows.
     """
     try:
         pdf_dir, orphan_pdfs_all, _pdf_bytes_all = _scan_orphan_pdfs()
@@ -4273,14 +4324,22 @@ def cleanupNonActiveProfileDataFunction() -> None:
             except OSError:
                 pass
         stale_counts = _count_stale_progress_rows()
+        stale_text_index_counts = _count_stale_document_text_index_rows()
         stale_ocr_counts = _count_stale_ocr_rows()
     except Exception as e:
         showInfo(f"Could not scan non-active profile artifacts:\n{e}")
         return
 
     stale_total = sum(int(stale_counts.get(k, 0) or 0) for k in ("pdf_progress", "video_progress", "web_progress"))
+    stale_text_index_total = int(stale_text_index_counts.get("document_text_index_total", 0) or 0)
     stale_ocr_total = int(stale_ocr_counts.get("note_ocr_index_total", 0) or 0)
-    if not orphan_pdfs and not orphan_videos and stale_total <= 0 and stale_ocr_total <= 0:
+    if (
+        not orphan_pdfs
+        and not orphan_videos
+        and stale_total <= 0
+        and stale_text_index_total <= 0
+        and stale_ocr_total <= 0
+    ):
         showInfo(
             "No deletable cross-profile artifacts detected.\n\n"
             "Nothing is safe to delete without affecting some profile."
@@ -4305,6 +4364,8 @@ def cleanupNonActiveProfileDataFunction() -> None:
         f"• Video files: {len(orphan_videos)}",
         f"• Progress rows: {stale_total} (PDF {stale_counts.get('pdf_progress', 0)}, "
         f"Video {stale_counts.get('video_progress', 0)}, Web {stale_counts.get('web_progress', 0)})",
+        f"• Search index rows: {stale_text_index_total} (PDF {stale_text_index_counts.get('pdf_text_index', 0)}, "
+        f"EPUB {stale_text_index_counts.get('epub_text_index', 0)})",
         f"• OCR cache rows: {stale_ocr_total} (missing notes {stale_ocr_counts.get('note_ocr_index_missing_note', 0)}, "
         f"missing cards {stale_ocr_counts.get('note_ocr_index_missing_card', 0)})",
     ]
@@ -4369,6 +4430,15 @@ def cleanupNonActiveProfileDataFunction() -> None:
         pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
         errors.append(f"Rows: {e}")
     try:
+        pruned_text_index_counts = _prune_stale_document_text_index_rows()
+    except Exception as e:
+        pruned_text_index_counts = {
+            "pdf_text_index": 0,
+            "epub_text_index": 0,
+            "document_text_index_total": 0,
+        }
+        errors.append(f"Search index: {e}")
+    try:
         pruned_ocr_counts = _prune_stale_ocr_rows()
     except Exception as e:
         pruned_ocr_counts = {
@@ -4386,6 +4456,10 @@ def cleanupNonActiveProfileDataFunction() -> None:
     if pruned_summary:
         summary.append("")
         summary.append(pruned_summary)
+    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
+    if pruned_text_index_summary:
+        summary.append("")
+        summary.append(pruned_text_index_summary)
     pruned_ocr_summary = _format_pruned_ocr_summary(pruned_ocr_counts)
     if pruned_ocr_summary:
         summary.append("")
@@ -4404,21 +4478,23 @@ def cleanupNonActiveProfileDataFunction() -> None:
 
 
 def cleanupStaleProgressFunction() -> None:
-    """Delete stale progress rows and OCR cache rows for removed cards/notes."""
+    """Delete stale progress, search-index, and OCR rows for removed cards/notes."""
     try:
         counts = _prune_stale_progress_rows()
+        text_index_counts = _prune_stale_document_text_index_rows()
         ocr_counts = _prune_stale_ocr_rows()
     except Exception as e:
         showInfo(f"Could not clean stale Incremento rows:\n{e}")
         return
 
     summary = _format_pruned_progress_summary(counts)
+    text_index_summary = _format_pruned_document_text_index_summary(text_index_counts)
     ocr_summary = _format_pruned_ocr_summary(ocr_counts)
-    chunks = [chunk for chunk in (summary, ocr_summary) if chunk]
+    chunks = [chunk for chunk in (summary, text_index_summary, ocr_summary) if chunk]
     if chunks:
         showInfo("\n\n".join(chunks))
         return
-    showInfo("No stale progress or OCR cache rows found.")
+    showInfo("No stale progress, search-index, or OCR cache rows found.")
 
 
 def cleanupOrphanPdfsFunction() -> None:
@@ -4464,6 +4540,16 @@ def cleanupOrphanPdfsFunction() -> None:
     except Exception:
         pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
     pruned_summary = _format_pruned_progress_summary(pruned_counts)
+    try:
+        pruned_text_index_counts = _prune_stale_document_text_index_rows()
+    except Exception:
+        pruned_text_index_counts = {
+            "pdf_text_index": 0,
+            "epub_text_index": 0,
+            "document_text_index_total": 0,
+        }
+    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
+    cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
 
     if not deletable:
         msg = (
@@ -4475,8 +4561,8 @@ def cleanupOrphanPdfsFunction() -> None:
                 f"\n\nSkipped {len(protected)} file(s) because they are "
                 "referenced by another profile."
             )
-        if pruned_summary:
-            msg += f"\n\n{pruned_summary}"
+        if cleanup_summaries:
+            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
         return
 
@@ -4526,8 +4612,8 @@ def cleanupOrphanPdfsFunction() -> None:
         msg = f"Deleted {deleted} orphaned PDF file(s).\nRecovered {total_str}."
         if protected:
             msg += f"\nSkipped {len(protected)} file(s) tied to other profile(s)."
-        if pruned_summary:
-            msg += f"\n\n{pruned_summary}"
+        if cleanup_summaries:
+            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
     else:
         showInfo(
@@ -4581,6 +4667,16 @@ def cleanupOrphanVideosFunction() -> None:
     except Exception:
         pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
     pruned_summary = _format_pruned_progress_summary(pruned_counts)
+    try:
+        pruned_text_index_counts = _prune_stale_document_text_index_rows()
+    except Exception:
+        pruned_text_index_counts = {
+            "pdf_text_index": 0,
+            "epub_text_index": 0,
+            "document_text_index_total": 0,
+        }
+    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
+    cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
 
     orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
     deletable, protected, refs_map = _partition_any_profile_ties(orphans, "video")
@@ -4594,8 +4690,8 @@ def cleanupOrphanVideosFunction() -> None:
                 f"\n\nSkipped {len(protected)} file(s) because they are "
                 "referenced by another profile."
             )
-        if pruned_summary:
-            msg += f"\n\n{pruned_summary}"
+        if cleanup_summaries:
+            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
         return
 
@@ -4649,8 +4745,8 @@ def cleanupOrphanVideosFunction() -> None:
         msg = f"Deleted {deleted} orphaned video file(s).\nRecovered {total_str}."
         if protected:
             msg += f"\nSkipped {len(protected)} file(s) tied to other profile(s)."
-        if pruned_summary:
-            msg += f"\n\n{pruned_summary}"
+        if cleanup_summaries:
+            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
     else:
         showInfo(
@@ -5056,7 +5152,7 @@ def _build_incremento_menu() -> None:
     qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
     _utilsMenu.addAction(_cleanupOrphanVideosAction)
 
-    _cleanupStaleProgressAction = QAction("Clean Up Stale Progress / OCR Rows…", mw)
+    _cleanupStaleProgressAction = QAction("Clean Up Stale Progress / Search Index / OCR Rows…", mw)
     qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
     _utilsMenu.addAction(_cleanupStaleProgressAction)
 
