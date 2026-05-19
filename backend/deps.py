@@ -101,6 +101,15 @@ def pymupdf_instructions() -> str:
     )
 
 
+def ankiconnect_instructions() -> str:
+    return (
+        "Install the AnkiConnect add-on as well if you want to use the "
+        "Incremento browser companion for page import and video time sync.\n\n"
+        "AnkiConnect is an Anki add-on, so install it from the Anki add-on "
+        "ecosystem and restart Anki afterwards."
+    )
+
+
 # ---------------------------------------------------------------------------
 # PyMuPDF auto-install (background, requires mw.taskman)
 # ---------------------------------------------------------------------------
@@ -169,8 +178,8 @@ def show_setup_dialog(mw, force: bool = False) -> None:
         return row
 
     intro = QLabel(
-        "Incremento uses two optional tools for PDF OCR (scanning text from "
-        "image-based PDFs). Core features work without them."
+        "Incremento uses optional setup components for PDF OCR and browser "
+        "companion sync. Core features work without them."
     )
     intro.setWordWrap(True)
     intro.setStyleSheet("color: gray;")
@@ -219,6 +228,18 @@ def show_setup_dialog(mw, force: bool = False) -> None:
         _tess_browser.setPlainText(tesseract_instructions())
 
     layout.addWidget(_tess_browser)
+
+    _ankiconnect_label = QLabel("AnkiConnect  (needed for browser companion sync/import)")
+    _ankiconnect_label.setStyleSheet("font-weight: bold;")
+    _ankiconnect_label.setWordWrap(True)
+    layout.addWidget(_ankiconnect_label)
+
+    _ankiconnect_browser = QTextBrowser()
+    _ankiconnect_browser.setOpenExternalLinks(True)
+    _ankiconnect_browser.setMaximumHeight(90)
+    _ankiconnect_browser.setStyleSheet("font-size: 12px;")
+    _ankiconnect_browser.setPlainText(ankiconnect_instructions())
+    layout.addWidget(_ankiconnect_browser)
 
     sep2 = QFrame()
     sep2.setFrameShape(QFrame.Shape.HLine)

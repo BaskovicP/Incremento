@@ -178,6 +178,22 @@ class TestPymupdfInstructions:
 
 
 # ---------------------------------------------------------------------------
+# ankiconnect_instructions
+# ---------------------------------------------------------------------------
+
+
+class TestAnkiconnectInstructions:
+    def test_mentions_ankiconnect(self):
+        instructions = deps.ankiconnect_instructions()
+        assert "AnkiConnect" in instructions
+
+    def test_mentions_browser_companion_sync(self):
+        instructions = deps.ankiconnect_instructions().lower()
+        assert "browser companion" in instructions
+        assert "sync" in instructions
+
+
+# ---------------------------------------------------------------------------
 # install_pymupdf
 # ---------------------------------------------------------------------------
 

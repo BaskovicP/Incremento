@@ -11,7 +11,9 @@ from note_metadata import (
     ensure_incremento_ocr_field,
     ensure_incremento_metadata_fields,
     hidden_field_values,
+    inline_pdf_reference_filename,
     matches_hidden_field_reference,
+    source_document_reference,
     visible_field_names,
 )
 
@@ -178,4 +180,55 @@ def test_derive_note_source_metadata_falls_back_to_pdf_fields():
         "source_title": "Imported PDF",
         "source_link": "pdfs/paper.pdf",
         "source_author": "",
+    }
+
+
+def test_inline_pdf_reference_filename_extracts_citation_target():
+    class _FakeNote(dict):
+        fields = [
+            'Excerpt<br><a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"writer-guide.pdf\\", \\"page\\": 42}&quot;); return false;">Page 42</a>'
+        ]
+
+    assert inline_pdf_reference_filename(_FakeNote()) == "writer-guide.pdf"
+
+
+def test_source_document_reference_reports_pdf_metadata_and_inline_state():
+    class _FakeNote(dict):
+        fields = [
+            'Excerpt<br><a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"writer-guide.pdf\\", \\"page\\": 42}&quot;); return false;">Page 42</a>'
+        ]
+
+    note = _FakeNote(
+        Incremento_Source_Title="Deep Work",
+        Incremento_Source_Link="pdfs/writer-guide.pdf",
+    )
+
+    result = source_document_reference(note)
+
+    assert result == {
+        "kind": "pdf",
+        "title": "Deep Work",
+        "link": "pdfs/writer-guide.pdf",
+        "author": "",
+        "filename": "writer-guide.pdf",
+        "has_inline_pdf_reference": True,
+    }
+
+
+def test_source_document_reference_falls_back_to_inline_pdf_reference_when_metadata_is_missing():
+    class _FakeNote(dict):
+        fields = [
+            "Atomic note",
+            'Excerpt<br><a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"writer-guide.pdf\\", \\"page\\": 42}&quot;); return false;">Page 42</a>',
+        ]
+
+    result = source_document_reference(_FakeNote())
+
+    assert result == {
+        "kind": "pdf",
+        "title": "",
+        "link": "pdfs/writer-guide.pdf",
+        "author": "",
+        "filename": "writer-guide.pdf",
+        "has_inline_pdf_reference": True,
     }

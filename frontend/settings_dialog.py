@@ -229,7 +229,7 @@ class IncrementoSettingsDialog(QDialog):
         current_remember_browser_card_scroll: bool = True,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
-        current_use_fail_pass_on_items: bool = False,
+        current_use_fail_pass_on_items: bool = True,
         current_item_skip_enabled: bool = False,
         current_item_skip_minutes: int = 30,
         current_auto_timer_enabled: bool = False,

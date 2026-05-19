@@ -8,7 +8,7 @@ except ImportError:
     from topic_scheduler import is_topic_card  # type: ignore
 
 
-_DEFAULT_USE_FAIL_PASS_ON_ITEMS = False
+_DEFAULT_USE_FAIL_PASS_ON_ITEMS = True
 
 
 def _resolved_config(config: dict | None = None) -> dict:

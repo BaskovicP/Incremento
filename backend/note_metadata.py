@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import copy
+import os
+import re
 from datetime import datetime
+from html import unescape
 
 INCREMENTO_SOURCE_TYPE_FIELD = "Incremento_Source_Type"
 INCREMENTO_SOURCE_TITLE_FIELD = "Incremento_Source_Title"
@@ -24,6 +27,10 @@ INCREMENTO_METADATA_FIELDS = (
 INCREMENTO_HIDDEN_FIELDS = INCREMENTO_METADATA_FIELDS + (INCREMENTO_OCR_TEXT_FIELD,)
 _METADATA_FIELD_SET = {field.casefold() for field in INCREMENTO_METADATA_FIELDS}
 _HIDDEN_FIELD_SET = {field.casefold() for field in INCREMENTO_HIDDEN_FIELDS}
+_INLINE_PDF_FILENAME_RE = re.compile(
+    r'(?:\\?"|")filename(?:\\?"|")\s*:\s*(?:=\s*""\s*)?(?:\\?"|")(?P<filename>[^"]+?)(?:\\?"|")',
+    re.IGNORECASE,
+)
 
 
 def metadata_timestamp(value: datetime | None = None) -> str:
@@ -287,4 +294,52 @@ def derive_note_source_metadata(note) -> dict[str, str]:
         "source_title": source_title,
         "source_link": "",
         "source_author": "",
+    }
+
+
+def inline_pdf_reference_filename(note) -> str:
+    try:
+        values = list(getattr(note, "fields", []) or [])
+    except Exception:
+        values = []
+    for raw_value in values:
+        text = str(raw_value or "")
+        if "incremento_open_pdf_ref:" not in text:
+            continue
+        match = _INLINE_PDF_FILENAME_RE.search(unescape(text))
+        if match:
+            return os.path.basename(str(match.group("filename") or "").strip())
+    return ""
+
+
+def source_document_reference(note) -> dict[str, str | bool]:
+    source = derive_note_source_metadata(note)
+    source_link = str((source or {}).get("source_link") or "").strip()
+    source_title = str((source or {}).get("source_title") or "").strip()
+    source_author = str((source or {}).get("source_author") or "").strip()
+    normalized_link = source_link.replace("\\", "/")
+    filename = ""
+    kind = ""
+    if normalized_link.startswith("pdfs/"):
+        kind = "pdf"
+        filename = os.path.basename(normalized_link)
+    elif normalized_link.startswith("epubs/"):
+        kind = "epub"
+        filename = os.path.basename(normalized_link)
+
+    inline_pdf_filename = inline_pdf_reference_filename(note)
+    if not kind and inline_pdf_filename:
+        kind = "pdf"
+        filename = inline_pdf_filename
+        source_link = f"pdfs/{inline_pdf_filename}"
+        source_title = ""
+        source_author = ""
+
+    return {
+        "kind": kind,
+        "title": source_title,
+        "link": source_link,
+        "author": source_author,
+        "filename": filename,
+        "has_inline_pdf_reference": bool(inline_pdf_filename),
     }

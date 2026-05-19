@@ -961,7 +961,7 @@ def _regenerate_pdf_cover() -> None:
         current_card_id = 0
     if reviewer is not None and current_card_id == int(card_id):
         try:
-            reviewer.card = mw.col.get_card(int(card_id))
+            reviewer.card.load()
         except Exception:
             pass
         try:

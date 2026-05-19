@@ -32,6 +32,7 @@ from .frontend.stats_dialog import StatsDialog
 from .backend.scheduler_config import load_scheduler_config
 from .backend.pdf_manager import (
     PDF_NOTE_TYPE,
+    PDF_COVER_FIELD,
     find_live_pdf_card_by_filename,
     get_page,
     get_zoom,
@@ -68,6 +69,7 @@ from .backend.note_metadata import (
     derive_note_source_metadata,
     hidden_field_values,
     matches_hidden_field_reference,
+    source_document_reference,
 )
 from .backend.db import (
     get_connection,
@@ -116,6 +118,7 @@ from .backend.item_skip import (
     store_timed_item_skip as _store_timed_item_skip,
 )
 from .backend import browser_bridge as _browser_bridge_mod
+from .backend.decks import create_topics_deck as _create_topics_deck
 from .frontend.priority_dialog import PriorityDialog
 from .frontend.custom_schedule_dialog import CustomScheduleDialog
 from .frontend import timer_widget as _timer_mod
@@ -181,7 +184,9 @@ from .backend.session import (
 )
 from .frontend.settings_dialog import IncrementoSettingsDialog, default_shortcuts
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
+from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
+from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.search_all import _SearchAllDialog
 from .backend.knowledge_tree import (
@@ -1136,131 +1141,8 @@ def _sync_topic_answer_button_style(reviewer) -> None:
 
 def _sync_reviewer_extract_button(reviewer) -> None:
     try:
-        shortcut_text = json.dumps(_configured_shortcut_text("extract_card"))
         reviewer.bottom.web.eval(
-            """
-            (function() {
-              var buttonId = "incremento-reviewer-extract-button";
-              var styleId = "incremento-reviewer-extract-button-style";
-              var shortcutText = %s;
-              var attempts = 0;
-
-              function removeExisting() {
-                var existing = document.getElementById(buttonId);
-                if (!existing) {
-                  return;
-                }
-                var cell = existing.closest("td");
-                if (cell && cell.parentElement && cell.parentElement.children.length > 1) {
-                  cell.remove();
-                  return;
-                }
-                existing.remove();
-              }
-
-              function ensureStyle() {
-                var style = document.getElementById(styleId);
-                if (style) {
-                  return;
-                }
-                style = document.createElement("style");
-                style.id = styleId;
-                style.textContent = `
-                  #${buttonId} {
-                    background: rgba(112, 112, 112, 0.16);
-                    border-color: rgba(180, 180, 180, 0.22);
-                    color: #e3e3e3;
-                    min-width: 92px;
-                    transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
-                  }
-                  #${buttonId}:hover,
-                  #${buttonId}:focus {
-                    background: rgba(138, 138, 138, 0.24);
-                    border-color: rgba(210, 210, 210, 0.34);
-                    color: #f4f4f4;
-                    transform: translateY(-1px);
-                  }
-                  #${buttonId} .incremento-reviewer-extract-icon {
-                    margin-right: 6px;
-                    opacity: 0.88;
-                    font-size: 0.95em;
-                  }
-                  #${buttonId} .stattxt {
-                    opacity: 0.72;
-                  }
-                `;
-                document.head.appendChild(style);
-              }
-
-              function install() {
-                var existing = document.getElementById(buttonId);
-                if (existing) {
-                  existing.title = shortcutText
-                    ? "Extract selected content into a new card (" + shortcutText + ")"
-                    : "Extract selected content into a new card";
-                  return;
-                }
-
-                var row = document.querySelector("table tr");
-                if (!row) {
-                  attempts += 1;
-                  if (attempts < 10) {
-                    setTimeout(install, 40);
-                  }
-                  return;
-                }
-
-                var cell = document.createElement("td");
-                cell.className = "stat2";
-                cell.setAttribute("align", "center");
-                cell.id = "incremento-reviewer-extract-cell";
-
-                var button = document.createElement("button");
-                button.id = buttonId;
-                button.title = shortcutText
-                  ? "Extract selected content into a new card (" + shortcutText + ")"
-                  : "Extract selected content into a new card";
-                button.setAttribute("aria-label", "Extract selected content into a new card");
-                button.innerHTML =
-                  '<span class="incremento-reviewer-extract-icon">+</span>Extract';
-                button.onclick = function() {
-                  pycmd("incremento_extract_card");
-                };
-
-                cell.appendChild(button);
-                ensureStyle();
-
-                var insertBeforeCell = null;
-                var rowCells = Array.prototype.slice.call(row.children || []);
-                for (var i = rowCells.length - 1; i >= 0; i -= 1) {
-                  var candidate = rowCells[i];
-                  if (
-                    candidate &&
-                    candidate.querySelector &&
-                    candidate.querySelector("button") &&
-                    !candidate.querySelector("#" + buttonId)
-                  ) {
-                    insertBeforeCell = candidate;
-                    break;
-                  }
-                }
-
-                if (
-                  insertBeforeCell &&
-                  rowCells.length > 2 &&
-                  insertBeforeCell !== row.firstElementChild
-                ) {
-                  row.insertBefore(cell, insertBeforeCell);
-                } else {
-                  row.appendChild(cell);
-                }
-              }
-
-              removeExisting();
-              install();
-            })();
-            """
-            % shortcut_text
+            build_reviewer_extract_button_js(_configured_shortcut_text("extract_card"))
         )
     except Exception:
         pass
@@ -2253,6 +2135,10 @@ def _on_profile_did_open() -> None:
     _web_dock_mod.reset_for_profile_switch()
     _paths.set_active_profile(profile)
     migrate_to_profile_dir(_ADDON_DIR, profile)
+    try:
+        _create_topics_deck()
+    except Exception:
+        pass
 
 
 gui_hooks.profile_did_open.append(_on_profile_did_open)
@@ -2405,10 +2291,95 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
         pass
 
 
+def _reviewer_pdf_source_cover_payload(card) -> dict[str, str] | None:
+    if card is None or getattr(mw, "col", None) is None:
+        return None
+    try:
+        note = mw.col.get_note(card.nid)
+    except Exception:
+        note = None
+    if note is None:
+        return None
+
+    model_name = ""
+    try:
+        model = mw.col.models.get(note.mid)
+        model_name = str((model or {}).get("name") or "").strip()
+    except Exception:
+        model_name = ""
+    if model_name == PDF_NOTE_TYPE:
+        return None
+
+    try:
+        reference = source_document_reference(note)
+    except Exception:
+        reference = {}
+    if str(reference.get("kind") or "").strip() != "pdf":
+        return None
+    if not bool(reference.get("has_inline_pdf_reference")):
+        return None
+
+    filename = os.path.basename(str(reference.get("filename") or "").strip())
+    source_title = str(reference.get("title") or "").strip()
+    cover_media = ""
+    if filename:
+        try:
+            source_card_id = find_live_pdf_card_by_filename(mw.col, filename)
+        except Exception:
+            source_card_id = None
+        if source_card_id is not None:
+            try:
+                source_card = mw.col.get_card(int(source_card_id))
+                source_note = mw.col.get_note(source_card.nid) if source_card is not None else None
+            except Exception:
+                source_note = None
+            if source_note is not None:
+                try:
+                    cover_media = str(source_note[PDF_COVER_FIELD] or "").strip()
+                except Exception:
+                    cover_media = ""
+                try:
+                    source_title = str(source_note["Title"] or "").strip() or source_title
+                except Exception:
+                    pass
+
+    if not source_title and filename:
+        source_title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").strip()
+    if not source_title and not cover_media:
+        return None
+    return {
+        "title": source_title,
+        "cover_media": cover_media,
+        "source_label": "Source PDF",
+    }
+
+
+def _sync_reviewer_source_cover(_card=None) -> None:
+    reviewer = getattr(mw, "reviewer", None)
+    web = getattr(reviewer, "web", None)
+    if web is None:
+        return
+
+    card = getattr(reviewer, "card", None)
+    payload = _reviewer_pdf_source_cover_payload(card)
+    try:
+        web.eval(
+            build_reviewer_source_cover_js(
+                (payload or {}).get("title", ""),
+                cover_media=str((payload or {}).get("cover_media") or ""),
+                source_label=str((payload or {}).get("source_label") or "Source PDF"),
+            )
+        )
+    except Exception:
+        pass
+
+
 gui_hooks.reviewer_did_show_question.append(_install_reviewer_selection_bridge)
 gui_hooks.reviewer_did_show_answer.append(_install_reviewer_selection_bridge)
 gui_hooks.reviewer_did_show_question.append(_sync_reviewer_priority_badge)
 gui_hooks.reviewer_did_show_answer.append(_sync_reviewer_priority_badge)
+gui_hooks.reviewer_did_show_question.append(_sync_reviewer_source_cover)
+gui_hooks.reviewer_did_show_answer.append(_sync_reviewer_source_cover)
 
 
 def _check_deps_first_run() -> None:

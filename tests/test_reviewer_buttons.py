@@ -2,10 +2,13 @@ import reviewer_buttons as buttons
 
 
 def test_configured_use_fail_pass_on_items_reads_config():
-    assert buttons.configured_use_fail_pass_on_items({}) is False
+    assert buttons.configured_use_fail_pass_on_items({}) is True
     assert buttons.configured_use_fail_pass_on_items(
         {"use_fail_pass_on_items": True}
     ) is True
+    assert buttons.configured_use_fail_pass_on_items(
+        {"use_fail_pass_on_items": False}
+    ) is False
 
 
 def test_item_pass_ease_for_button_count_matches_good_button():

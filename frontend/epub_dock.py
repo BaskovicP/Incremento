@@ -1954,7 +1954,7 @@ def _regenerate_epub_cover() -> None:
         current_card_id = 0
     if reviewer is not None and current_card_id == int(_current_epub_card_id):
         try:
-            reviewer.card = mw.col.get_card(int(_current_epub_card_id))
+            reviewer.card.load()
         except Exception:
             pass
         try:

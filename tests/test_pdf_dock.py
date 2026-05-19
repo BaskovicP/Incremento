@@ -243,6 +243,46 @@ def test_due_review_prompt_suppression_is_one_shot_and_card_scoped(monkeypatch):
     assert pdf_dock._consume_due_review_prompt_suppression(55) is False
 
 
+def test_regenerate_pdf_cover_reloads_active_reviewer_card_in_place(monkeypatch):
+    tooltips = []
+    shown = []
+    resets = []
+
+    class _FakeReviewerCard:
+        def __init__(self):
+            self.id = 55
+            self.timer_started = 123.0
+            self.load_calls = 0
+
+        def load(self):
+            self.load_calls += 1
+
+    current_card = _FakeReviewerCard()
+    reviewer = types.SimpleNamespace(
+        card=current_card,
+        _showQuestion=lambda: shown.append(True),
+    )
+    fake_col = types.SimpleNamespace(
+        reset=lambda: resets.append(True),
+        get_card=lambda card_id: (_ for _ in ()).throw(
+            AssertionError("reviewer card should be reloaded in place")
+        ),
+    )
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=fake_col, reviewer=reviewer))
+    monkeypatch.setattr(pdf_dock, "current_pdf_card_id", lambda: 55)
+    monkeypatch.setattr(pdf_dock, "regenerate_pdf_card_cover", lambda addon_dir, col, card_id: "cover.png")
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda message: tooltips.append(message))
+
+    pdf_dock._regenerate_pdf_cover()
+
+    assert resets == [True]
+    assert reviewer.card is current_card
+    assert current_card.load_calls == 1
+    assert current_card.timer_started == 123.0
+    assert shown == [True]
+    assert tooltips == ["PDF cover regenerated from page 1."]
+
+
 def test_on_add_cards_did_add_note_suppresses_next_pdf_due_prompt(monkeypatch):
     calls = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)

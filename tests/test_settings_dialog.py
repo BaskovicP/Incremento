@@ -415,6 +415,16 @@ class TestIncrementoSettingsDialogTimerCompletionBeep:
         assert dialog.timer_completion_beep is False
 
 
+class TestIncrementoSettingsDialogReviewerButtons:
+    def test_fail_pass_defaults_enabled_for_new_profiles(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.use_fail_pass_on_items is True
+
+    def test_fail_pass_respects_explicit_saved_value(self):
+        dialog = IncrementoSettingsDialog({}, current_use_fail_pass_on_items=False)
+        assert dialog.use_fail_pass_on_items is False
+
+
 class TestIncrementoSettingsDialogShortcuts:
     def test_extract_card_shortcut_is_exposed_in_settings(self):
         extract_spec = next(
