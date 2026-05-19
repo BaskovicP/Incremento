@@ -59,10 +59,10 @@ try:
         get_pdf_due_review_prompt_settings,
         get_pdf_daily_limit_status,
         get_pdf_limit_mode_label,
-        get_pdf_dir,
         get_zoom,
         get_read_anchor,
         get_read_page,
+        pdf_storage_abspath,
         pdf_display_label_from_filename,
         regenerate_pdf_card_cover,
         replace_pdf_card_file,
@@ -82,10 +82,10 @@ except ImportError:
         get_pdf_due_review_prompt_settings,
         get_pdf_daily_limit_status,
         get_pdf_limit_mode_label,
-        get_pdf_dir,
         get_zoom,
         get_read_anchor,
         get_read_page,
+        pdf_storage_abspath,
         pdf_display_label_from_filename,
         regenerate_pdf_card_cover,
         replace_pdf_card_file,
@@ -816,13 +816,13 @@ def _push_pdf_limit_status(status: dict) -> None:
 
 
 def _pdf_storage_path(filename: str) -> str:
-    return os.path.join(get_pdf_dir(), str(filename or "").strip())
+    return pdf_storage_abspath(filename)
 
 
 def _missing_pdf_html(filename: str, expected_path: str) -> str:
     escaped_name = escape(str(filename or "").strip() or "(missing filename)")
     escaped_path = escape(str(expected_path or "").strip())
-    cmd = f"{_PYCMD_BRIDGE}{_MSG_REPAIR_MISSING}"
+    onclick = escape(f"pycmd({json.dumps(_MSG_REPAIR_MISSING)}); return false;", quote=True)
     return f"""
 <!DOCTYPE html>
 <html>
@@ -890,7 +890,7 @@ button:hover {{
       </div>
       <div class="copy"><b>Expected file:</b> {escaped_name}</div>
       <div class="path">{escaped_path}</div>
-      <button onclick="pycmd('{cmd}')">Choose Replacement PDF</button>
+      <button onclick="{onclick}">Choose Replacement PDF</button>
     </div>
   </div>
 </body>
@@ -1810,9 +1810,7 @@ def show_pdf_in_dock(
         tooltip("Stored PDF file is missing. Choose a replacement PDF to repair this card.")
         return
 
-    pdf_file_url = QUrl.fromLocalFile(
-        os.path.join(get_pdf_dir(), filename)
-    ).toString()
+    pdf_file_url = QUrl.fromLocalFile(_pdf_storage_path(filename)).toString()
 
     resolved_read_page = int(read_page or 0)
     if normalized_card_id > 0 and resolved_read_page <= 0:

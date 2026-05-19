@@ -788,13 +788,13 @@ class AddPdfDialog(QDialog):
                 add_pdf_card,
                 ocr_pdf_in_place,
                 extract_pdf_pages_text,
-                get_pdf_dir,
+                pdf_storage_abspath,
             )
             from ..backend.db import replace_pdf_text_index
             from ..backend.priority_manager import set_priority
             from ..backend.paths import get_active_profile as _active_profile
         except Exception:
-            from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, get_pdf_dir
+            from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, pdf_storage_abspath
             from db import replace_pdf_text_index
             from priority_manager import set_priority
             from paths import get_active_profile as _active_profile
@@ -827,7 +827,7 @@ class AddPdfDialog(QDialog):
 
         # OCR path: copy is already in pdf_dir; OCR it in background, then re-index
         note = mw.col.get_note(mw.col.get_card(cid).nid)
-        dest_path = os.path.join(get_pdf_dir(), note["PDF_Filename"])
+        dest_path = pdf_storage_abspath(note["PDF_Filename"])
 
         def _progress(current, total, _path=path):
             mw.taskman.run_on_main(

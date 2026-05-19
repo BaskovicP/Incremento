@@ -259,6 +259,14 @@ class TestLocalVideoHelpers:
         got = local_video_abspath(str(tmp_path), "TestProfile", "user_files/videos/a.mp4")
         assert got == os.path.join(str(tmp_path), "user_files", "TestProfile", "videos", "a.mp4")
 
+    def test_abspath_rejects_parent_traversal(self, tmp_path):
+        got = local_video_abspath(str(tmp_path), "TestProfile", "../../../etc/passwd")
+        assert got == ""
+
+    def test_abspath_rejects_absolute_external_path(self, tmp_path):
+        got = local_video_abspath(str(tmp_path), "TestProfile", "/tmp/outside.mp4")
+        assert got == ""
+
     def test_video_download_requirements_reports_missing_tools(self, monkeypatch):
         monkeypatch.setattr(_vm, "_yt_dlp_cmd", lambda allow_auto_install=False: None)
         monkeypatch.setattr(_vm.shutil, "which", lambda _name: None)

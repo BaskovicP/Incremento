@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import db
+import pytest
 
 sys.modules.setdefault("db", db)
 
@@ -79,6 +80,25 @@ class TestEnsureEpubExtracted:
         assert "Hello from the first chapter." in meta["sections"][0]["text"]
         assert os.path.isfile(extract_root / "sample.epub" / "metadata.json")
 
+    def test_rejects_rootfile_outside_extract_root(self, tmp_path):
+        src = tmp_path / "malicious.epub"
+        with zipfile.ZipFile(src, "w") as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+            zf.writestr(
+                "META-INF/container.xml",
+                """<?xml version="1.0"?>
+                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles>
+                    <rootfile full-path="../../outside.opf" media-type="application/oebps-package+xml"/>
+                  </rootfiles>
+                </container>""",
+            )
+
+        extract_root = tmp_path / "extracted"
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)):
+            with pytest.raises(RuntimeError, match="escapes extraction root"):
+                epub_manager.ensure_epub_extracted(str(src), stored_filename="malicious.epub")
+
     def test_load_metadata_reuses_cached_extract(self, tmp_path):
         src = tmp_path / "sample.epub"
         _write_test_epub(src)
@@ -111,6 +131,15 @@ class TestCopyToEpubDir:
         base, _, suffix = stem.rpartition("-")
         assert len(base) <= 80
         assert len(suffix) == 32
+
+
+class TestEpubStorageAbspath:
+    def test_rejects_parent_traversal(self, tmp_path):
+        epub_dir = tmp_path / "epubs"
+        epub_dir.mkdir()
+
+        with patch("epub_manager.get_epub_dir", return_value=str(epub_dir)):
+            assert epub_manager.epub_storage_abspath("../../../etc/passwd") == ""
 
 
 class TestEpubProgressAndIndex:

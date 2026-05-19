@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree as ET
 
 from bs4 import BeautifulSoup
@@ -118,6 +118,25 @@ def get_epub_extract_dir(stored_filename: str) -> str:
     return os.path.join(get_epub_extract_root(), safe)
 
 
+def epub_storage_abspath(stored_filename: str) -> str:
+    raw = str(stored_filename or "").strip().replace("\\", "/")
+    if not raw:
+        return ""
+    if raw.startswith("user_files/") and "/epubs/" in raw:
+        raw = raw.split("/epubs/", 1)[1]
+    elif raw.startswith("epubs/"):
+        raw = raw[len("epubs/"):]
+
+    root = Path(get_epub_dir()).resolve()
+    raw_path = Path(raw)
+    candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return ""
+    return str(candidate)
+
+
 def _copy_to_epub_dir(epub_path: str) -> str:
     epub_dir = get_epub_dir()
     raw_name = os.path.basename(epub_path)
@@ -135,18 +154,40 @@ def _safe_epub_stem(value: str, *, fallback: str = "book") -> str:
     return stem[:_MAX_FILENAME_STEM].strip("._-") or fallback
 
 
-def _safe_zip_members(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
-    out: list[zipfile.ZipInfo] = []
+def _safe_epub_member_name(raw_name: str) -> str | None:
+    name = str(raw_name or "").replace("\\", "/").strip()
+    if not name:
+        return None
+    path = PurePosixPath(name)
+    if path.is_absolute():
+        return None
+    parts = [part for part in path.parts if part not in ("", ".")]
+    if any(part == ".." for part in parts):
+        return None
+    return "/".join(parts)
+
+
+def _safe_zip_members(zf: zipfile.ZipFile) -> list[tuple[zipfile.ZipInfo, str]]:
+    out: list[tuple[zipfile.ZipInfo, str]] = []
     for info in zf.infolist():
-        name = str(info.filename or "").replace("\\", "/")
-        if not name or name.endswith("/"):
-            out.append(info)
+        safe_name = _safe_epub_member_name(str(info.filename or ""))
+        if not safe_name:
             continue
-        parts = [part for part in Path(name).parts if part not in ("", ".")]
-        if any(part == ".." for part in parts):
-            continue
-        out.append(info)
+        out.append((info, safe_name))
     return out
+
+
+def _extract_epub_path(stored_filename: str, relpath: str) -> str:
+    safe_rel = _safe_epub_member_name(relpath)
+    if not safe_rel:
+        return ""
+    root = Path(get_epub_extract_dir(stored_filename)).resolve()
+    candidate = (root / Path(safe_rel)).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return ""
+    return str(candidate)
 
 
 def _decode_xml(path: str) -> ET.Element:
@@ -323,7 +364,9 @@ def load_epub_metadata(addon_dir: str, stored_filename: str) -> dict:
     del addon_dir
     meta_path = _metadata_path(stored_filename)
     if not os.path.isfile(meta_path):
-        epub_path = os.path.join(get_epub_dir(), stored_filename)
+        epub_path = epub_storage_abspath(stored_filename)
+        if not epub_path or not os.path.isfile(epub_path):
+            raise FileNotFoundError("Stored EPUB file was not found.")
         ensure_epub_extracted(epub_path, stored_filename=stored_filename)
     with open(meta_path, "r", encoding="utf-8") as fh:
         return json.load(fh)
@@ -342,11 +385,8 @@ def ensure_epub_extracted(epub_path: str, *, stored_filename: str | None = None)
     os.makedirs(extract_dir, exist_ok=True)
 
     with zipfile.ZipFile(epub_path, "r") as zf:
-        for info in _safe_zip_members(zf):
-            name = str(info.filename or "").replace("\\", "/")
-            if not name:
-                continue
-            target = os.path.join(extract_dir, name)
+        for info, safe_name in _safe_zip_members(zf):
+            target = os.path.join(extract_dir, safe_name)
             if info.is_dir():
                 os.makedirs(target, exist_ok=True)
                 continue
@@ -365,7 +405,9 @@ def ensure_epub_extracted(epub_path: str, *, stored_filename: str | None = None)
     if not opf_relpath:
         raise RuntimeError("Invalid EPUB: empty package rootfile")
 
-    opf_path = os.path.join(extract_dir, opf_relpath)
+    opf_path = _extract_epub_path(stored_name, opf_relpath)
+    if not opf_path:
+        raise RuntimeError("Invalid EPUB: package rootfile escapes extraction root")
     opf_dir = posixpath.dirname(opf_relpath)
     opf_root = _decode_xml(opf_path)
     ns = {
@@ -434,7 +476,10 @@ def get_epub_section_path(addon_dir: str, stored_filename: str, section_index: i
     if not sections:
         raise RuntimeError("EPUB has no readable sections.")
     idx = max(0, min(int(section_index), len(sections) - 1))
-    return os.path.join(get_epub_extract_dir(stored_filename), sections[idx]["href"])
+    section_path = _extract_epub_path(stored_filename, str(sections[idx]["href"] or ""))
+    if not section_path:
+        raise RuntimeError("EPUB section path escapes extraction root.")
+    return section_path
 
 
 def get_epub_progress(addon_dir: str, profile: str, card_id: int) -> tuple[int, float, bool]:
@@ -965,7 +1010,7 @@ def _load_cover_href_from_extracted_package(stored_filename: str, metadata: dict
     opf_relpath = str((metadata or {}).get("opf_relpath") or "").strip()
     if not opf_relpath:
         return ""
-    opf_path = os.path.join(extract_dir, opf_relpath)
+    opf_path = _extract_epub_path(stored_filename, opf_relpath)
     if not os.path.isfile(opf_path):
         return ""
     try:
@@ -1002,7 +1047,7 @@ def render_epub_cover_media(col, epub_path: str, *, title: str = "", source_file
         if not cover_href:
             return ""
 
-        cover_path = os.path.join(get_epub_extract_dir(stored_name), cover_href)
+        cover_path = _extract_epub_path(stored_name, cover_href)
         if not os.path.isfile(cover_path):
             return ""
 
@@ -1057,7 +1102,7 @@ def regenerate_epub_card_cover(addon_dir: str, col, card_id: int) -> str:
     if not epub_filename:
         raise RuntimeError("This EPUB note does not have a stored EPUB filename.")
 
-    epub_path = str(_paths.get_epub_dir(addon_dir, _paths.get_active_profile()) / epub_filename)
+    epub_path = epub_storage_abspath(epub_filename)
     if not os.path.exists(epub_path):
         raise FileNotFoundError(f"Stored EPUB file was not found:\n{epub_path}")
 

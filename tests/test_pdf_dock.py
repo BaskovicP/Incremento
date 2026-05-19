@@ -166,6 +166,24 @@ def test_pdf_citation_escapes_onclick_payload_and_label(monkeypatch):
     assert '=""' not in html
 
 
+def test_missing_pdf_html_uses_plain_repair_message_for_pycmd():
+    html = pdf_dock._missing_pdf_html(
+        "writer's-guide.pdf",
+        r"C:\Users\paulo\pdfs\writer's-guide.pdf",
+    )
+
+    assert 'onclick="pycmd(&quot;incremento_pdf_repair_missing:&quot;); return false;"' in html
+    assert pdf_dock._PYCMD_BRIDGE not in html
+    assert "writer&#x27;s-guide.pdf" in html
+    assert r"C:\Users\paulo\pdfs\writer&#x27;s-guide.pdf" in html
+
+
+def test_pdf_storage_path_rejects_traversal(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "pdf_storage_abspath", lambda _filename: "")
+
+    assert pdf_dock._pdf_storage_path("../../../etc/passwd") == ""
+
+
 def test_repair_legacy_pdf_reference_links_html_fixes_broken_anchor():
     html = (
         'Before <a onclick="pycmd(" incremento_open_pdf_ref:{\\"card_id\\":="" 1776888912488,="" '

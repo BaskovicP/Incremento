@@ -115,6 +115,22 @@ class TestCopyToPdfDir:
         assert len(suffix) == 32
 
 
+class TestPdfStorageAbspath:
+    def test_rejects_parent_traversal(self, tmp_path):
+        pdf_dir = tmp_path / "pdfs"
+        pdf_dir.mkdir()
+
+        with patch("pdf_manager.get_pdf_dir", return_value=str(pdf_dir)):
+            assert pdf_manager.pdf_storage_abspath("../../../etc/passwd") == ""
+
+    def test_accepts_legacy_pdfs_prefix(self, tmp_path):
+        pdf_dir = tmp_path / "pdfs"
+        pdf_dir.mkdir()
+
+        with patch("pdf_manager.get_pdf_dir", return_value=str(pdf_dir)):
+            assert pdf_manager.pdf_storage_abspath("pdfs/stored.pdf") == str(pdf_dir / "stored.pdf")
+
+
 class TestPdfDisplayLabelFromFilename:
     def test_strips_uuid_suffix_and_extension(self):
         filename = f"very_long_pdf_title_for_reading-{('a' * 32)}.pdf"

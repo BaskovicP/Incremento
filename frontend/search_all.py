@@ -39,7 +39,7 @@ try:
         split_search_terms,
     )
     from ..backend.epub_manager import EPUB_NOTE_TYPE, load_epub_metadata
-    from ..backend.pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir
+    from ..backend.pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, pdf_storage_abspath
 except ImportError:
     from db import (  # type: ignore
         get_connection,
@@ -51,7 +51,7 @@ except ImportError:
         split_search_terms,
     )
     from epub_manager import EPUB_NOTE_TYPE, load_epub_metadata  # type: ignore
-    from pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, get_pdf_dir  # type: ignore
+    from pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, pdf_storage_abspath  # type: ignore
 
 
 _ADDON_PKG = __name__.split(".")[0]
@@ -408,13 +408,12 @@ class _SearchAllDialog(QDialog):
                 for cid, page, text in hits[:limit]
             ]
 
-        pdf_dir = get_pdf_dir()
         for cid in self._candidate_pdf_card_ids():
             try:
                 card = mw.col.get_card(cid)
                 note = mw.col.get_note(card.nid)
                 filename = note["PDF_Filename"]
-                pdf_path = os.path.join(pdf_dir, filename)
+                pdf_path = pdf_storage_abspath(filename)
                 page_texts = extract_pdf_pages_text(pdf_path)
                 replace_pdf_text_index(self._addon_dir, _active_profile(), cid, page_texts)
             except Exception:

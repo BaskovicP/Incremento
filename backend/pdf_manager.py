@@ -123,6 +123,26 @@ def get_pdf_dir() -> str:
     return d
 
 
+def pdf_storage_abspath(stored_filename: str) -> str:
+    """Resolve a stored PDF filename inside the managed profile PDF directory."""
+    raw = str(stored_filename or "").strip().replace("\\", "/")
+    if not raw:
+        return ""
+    if raw.startswith("user_files/") and "/pdfs/" in raw:
+        raw = raw.split("/pdfs/", 1)[1]
+    elif raw.startswith("pdfs/"):
+        raw = raw[len("pdfs/"):]
+
+    root = Path(get_pdf_dir()).resolve()
+    raw_path = Path(raw)
+    candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return ""
+    return str(candidate)
+
+
 def _copy_to_pdf_dir(pdf_path: str) -> str:
     """Copy *pdf_path* into the profile PDF dir; return the stored filename.
 
@@ -775,7 +795,7 @@ def regenerate_pdf_card_cover(addon_dir: str, col, card_id: int) -> str:
     if not pdf_filename:
         raise RuntimeError("This PDF note does not have a stored PDF filename.")
 
-    pdf_path = str(_paths.get_pdf_dir(addon_dir, _paths.get_active_profile()) / pdf_filename)
+    pdf_path = pdf_storage_abspath(pdf_filename)
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"Stored PDF file was not found:\n{pdf_path}")
 

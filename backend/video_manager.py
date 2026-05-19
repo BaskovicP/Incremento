@@ -199,7 +199,20 @@ def local_video_abspath(addon_dir: str, profile: str, relpath: str) -> str:
     rel = (relpath or "").strip().replace("\\", "/")
     if rel.startswith("user_files/"):
         rel = rel[len("user_files/"):]
-    return str((_paths.get_user_files_dir(addon_dir, profile) / rel).resolve())
+    profile_prefix = f"{_paths.sanitize_profile_name(profile)}/"
+    if rel.startswith(profile_prefix):
+        rel = rel[len(profile_prefix):]
+    if not rel:
+        return ""
+
+    root = _paths.get_user_files_dir(addon_dir, profile).resolve()
+    raw_path = Path(rel)
+    candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return ""
+    return str(candidate)
 
 
 def supported_local_video_extensions() -> tuple[str, ...]:

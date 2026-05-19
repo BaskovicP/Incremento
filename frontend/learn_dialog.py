@@ -31,8 +31,8 @@ try:
         get_page,
         get_pdf_daily_limit_settings,
         get_pdf_daily_limit_status,
-        get_pdf_dir,
         get_read_page,
+        pdf_storage_abspath,
         save_pdf_daily_limit_settings,
     )
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
@@ -46,8 +46,8 @@ except ImportError:
         get_page,
         get_pdf_daily_limit_settings,
         get_pdf_daily_limit_status,
-        get_pdf_dir,
         get_read_page,
+        pdf_storage_abspath,
         save_pdf_daily_limit_settings,
     )
     from statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
@@ -620,7 +620,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
                         pdf_read_page = None
                     if pdf_filename:
                         try:
-                            pdf_exists = os.path.exists(os.path.join(get_pdf_dir(), pdf_filename))
+                            pdf_exists = os.path.exists(pdf_storage_abspath(pdf_filename))
                         except Exception:
                             pdf_exists = None
                     try:
