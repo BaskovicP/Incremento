@@ -39,6 +39,38 @@ except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
 
 
+def _resolve_pdf_storage_abspath(
+    stored_filename: str,
+    *,
+    pdf_dir: str,
+    storage_abspath_resolver=None,
+) -> str:
+    if callable(storage_abspath_resolver):
+        try:
+            resolved = str(storage_abspath_resolver(stored_filename) or "").strip()
+        except Exception:
+            resolved = ""
+        if resolved:
+            return resolved
+
+    raw = str(stored_filename or "").strip().replace("\\", "/")
+    if not raw:
+        return ""
+    if raw.startswith("user_files/") and "/pdfs/" in raw:
+        raw = raw.split("/pdfs/", 1)[1]
+    elif raw.startswith("pdfs/"):
+        raw = raw[len("pdfs/") :]
+
+    root = Path(pdf_dir).resolve()
+    raw_path = Path(raw)
+    candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return ""
+    return str(candidate)
+
+
 class AddPdfDialog(QDialog):
     def __init__(
         self,
@@ -784,25 +816,22 @@ class AddPdfDialog(QDialog):
         self._update_add_progress(idx, len(entries), path, phase="Starting")
 
         try:
-            from ..backend.pdf_manager import (
-                add_pdf_card,
-                ocr_pdf_in_place,
-                extract_pdf_pages_text,
-                pdf_storage_abspath,
-            )
+            from ..backend import pdf_manager as _pdf_manager
             from ..backend.db import replace_pdf_text_index
             from ..backend.priority_manager import set_priority
+            from ..backend import paths as _paths
             from ..backend.paths import get_active_profile as _active_profile
         except Exception:
-            from pdf_manager import add_pdf_card, ocr_pdf_in_place, extract_pdf_pages_text, pdf_storage_abspath
+            import pdf_manager as _pdf_manager
             from db import replace_pdf_text_index
             from priority_manager import set_priority
+            import paths as _paths
             from paths import get_active_profile as _active_profile
 
         self._set_row_status(path, "OCR…" if do_ocr else "Adding…")
 
         try:
-            cid = add_pdf_card(
+            cid = _pdf_manager.add_pdf_card(
                 self._addon_dir,
                 mw.col,
                 path,
@@ -827,7 +856,11 @@ class AddPdfDialog(QDialog):
 
         # OCR path: copy is already in pdf_dir; OCR it in background, then re-index
         note = mw.col.get_note(mw.col.get_card(cid).nid)
-        dest_path = pdf_storage_abspath(note["PDF_Filename"])
+        dest_path = _resolve_pdf_storage_abspath(
+            note["PDF_Filename"],
+            pdf_dir=str(_paths.get_pdf_dir(self._addon_dir, _active_profile())),
+            storage_abspath_resolver=getattr(_pdf_manager, "pdf_storage_abspath", None),
+        )
 
         def _progress(current, total, _path=path):
             mw.taskman.run_on_main(
@@ -843,9 +876,9 @@ class AddPdfDialog(QDialog):
             )
 
         def ocr_task():
-            success = ocr_pdf_in_place(dest_path, progress_cb=_progress)
+            success = _pdf_manager.ocr_pdf_in_place(dest_path, progress_cb=_progress)
             if success:
-                return extract_pdf_pages_text(dest_path)
+                return _pdf_manager.extract_pdf_pages_text(dest_path)
             return []
 
         def ocr_done(fut) -> None:
