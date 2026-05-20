@@ -6,9 +6,11 @@ creation logic that was previously inline in __init__.py.
 
 Public API:
     INCREMENTO_DECK       — filtered deck name constant
+    INCREMENTO_QUICK_OPEN_REVIEW_DECK — filtered deck for quick-open study
     incremento_session_deck_name() — map an optional dialog profile to a deck name
     is_incremento_session_deck_name() — predicate for Incremento session decks
     learnFunction()       — main entry point; shows config dialog and starts review
+    start_quick_open_review() — study one quick-open doc card in a filtered deck
     reset_session_counts() — clear in-memory session counts
     get_session_counts()  — return a copy of the current session counts
 """
@@ -44,6 +46,7 @@ _ADDON_PKG = __name__.split(".")[0]  # "incremento"
 
 INCREMENTO_DECK = "Incremento Session"
 INCREMENTO_PDF_REVIEW_DECK = "Incremento PDF Review"
+INCREMENTO_QUICK_OPEN_REVIEW_DECK = "Incremento Quick Open Review"
 
 # Most-recent reviewed session counts, updated as cards are answered.
 # Accessed via get_session_counts() from __init__.py for the stats dialog.
@@ -199,6 +202,25 @@ def start_explicit_review(
 
     mw.moveToState("review")
     return True
+
+
+def start_quick_open_review(card_id: int) -> bool:
+    try:
+        normalized_id = int(card_id)
+    except Exception:
+        showInfo("No selected card is available to study.")
+        return False
+
+    if normalized_id <= 0:
+        showInfo("No selected card is available to study.")
+        return False
+
+    return start_explicit_review(
+        [normalized_id],
+        deck_name=INCREMENTO_QUICK_OPEN_REVIEW_DECK,
+        preserve_order=True,
+        empty_message="No selected card is available to study.",
+    )
 
 
 def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> float:

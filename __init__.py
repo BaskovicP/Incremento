@@ -183,6 +183,7 @@ from .backend.session import (
     reset_session_counts,
     get_session_counts,
     get_session_times,
+    start_quick_open_review,
 )
 from .frontend.settings_dialog import IncrementoSettingsDialog, default_shortcuts
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
@@ -2431,13 +2432,13 @@ def _open_pdf_quick_jump() -> None:
         if dlg.selected_card_type == "EPUB":
             _open_epub_card(cid)
             if dlg.open_card_to_study:
-                _start_direct_browser_review([cid])
+                start_quick_open_review(cid)
         elif dlg.selected_card_type == "WRITING":
             _open_writing_card(cid, relpath=dlg.selected_relpath)
         else:
             _open_pdf_card(cid, preserve_history=dlg.preserve_history)
             if dlg.open_card_to_study:
-                _start_direct_browser_review([cid])
+                start_quick_open_review(cid)
     except Exception as e:
         showInfo(f"Could not open document:\n{e}")
 

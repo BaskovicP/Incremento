@@ -260,6 +260,42 @@ class TestIncrementoSessionDeckNaming:
         assert _SESSION_MOD.incremento_session_deck_name("Focus") == "Incremento Session (Focus)"
 
 
+class TestQuickOpenReview:
+    def test_starts_one_card_filtered_review_for_quick_open(self, monkeypatch):
+        calls = []
+
+        def _fake_start_explicit_review(selected_ids, **kwargs):
+            calls.append((list(selected_ids), dict(kwargs)))
+            return True
+
+        monkeypatch.setattr(_SESSION_MOD, "start_explicit_review", _fake_start_explicit_review)
+
+        assert _SESSION_MOD.start_quick_open_review(321) is True
+        assert calls == [
+            (
+                [321],
+                {
+                    "deck_name": _SESSION_MOD.INCREMENTO_QUICK_OPEN_REVIEW_DECK,
+                    "preserve_order": True,
+                    "empty_message": "No selected card is available to study.",
+                },
+            )
+        ]
+
+    def test_rejects_invalid_card_id_before_starting_review(self, monkeypatch):
+        shown = []
+
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "start_explicit_review",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should not start")),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "showInfo", shown.append)
+
+        assert _SESSION_MOD.start_quick_open_review("bad-id") is False
+        assert shown == ["No selected card is available to study."]
+
+
 class TestPrepareFilteredReviewDeck:
     def test_preserve_order_assigns_due_after_rebuild(self, monkeypatch):
         updated_cards = []
