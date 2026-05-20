@@ -1036,6 +1036,65 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
     return False
 
 
+def _find_missing_pdf_card_to_relink(
+    addon_dir: str,
+    profile: str,
+    col,
+    *,
+    incoming_filename: str,
+    title: str,
+) -> int | None:
+    candidate_keys: list[str] = []
+    for raw_name in (incoming_filename, title):
+        key = _pdf_filename_lookup_key(raw_name)
+        if key and key not in candidate_keys:
+            candidate_keys.append(key)
+
+    if not candidate_keys:
+        return None
+
+    try:
+        note_ids = col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
+    except Exception:
+        return None
+
+    live_matches: list[int] = []
+    missing_matches: list[int] = []
+    for nid in note_ids:
+        try:
+            note = col.get_note(nid)
+            stored_filename = os.path.basename(str(note["PDF_Filename"] or "").strip())
+        except Exception:
+            continue
+        if _pdf_filename_lookup_key(stored_filename) not in candidate_keys:
+            continue
+
+        try:
+            card_ids = col.find_cards(f"nid:{nid}")
+        except Exception:
+            card_ids = []
+        if not card_ids:
+            continue
+        try:
+            card_id = int(card_ids[0])
+        except Exception:
+            continue
+
+        stored_path = pdf_storage_abspath(stored_filename)
+        if stored_path and os.path.exists(stored_path):
+            live_matches.append(card_id)
+        else:
+            missing_matches.append(card_id)
+
+    if live_matches:
+        return None
+
+    unique_missing = sorted(set(missing_matches))
+    if len(unique_missing) == 1:
+        return unique_missing[0]
+    return None
+
+
 def add_pdf_card(
     addon_dir: str,
     col,
@@ -1050,6 +1109,29 @@ def add_pdf_card(
 ) -> int:
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
+    profile = _paths.get_active_profile()
+
+    relink_card_id = _find_missing_pdf_card_to_relink(
+        addon_dir,
+        profile,
+        col,
+        incoming_filename=os.path.basename(pdf_path),
+        title=title,
+    )
+    if relink_card_id is not None:
+        replace_pdf_card_file(addon_dir, col, relink_card_id, pdf_path)
+        try:
+            save_pdf_daily_limit_settings(
+                addon_dir,
+                profile,
+                relink_card_id,
+                enabled=bool(int(daily_page_limit or 0) > 0),
+                daily_page_limit=int(daily_page_limit or 0),
+                enforcement_mode=enforcement_mode,
+            )
+        except Exception:
+            pass
+        return relink_card_id
 
     # Copy file to profile-local PDF dir (not Anki media, so it won't sync)
     media_filename = _copy_to_pdf_dir(pdf_path)
@@ -1120,7 +1202,7 @@ def add_pdf_card(
     try:
         save_pdf_daily_limit_settings(
             addon_dir,
-            _paths.get_active_profile(),
+            profile,
             cid,
             enabled=bool(int(daily_page_limit or 0) > 0),
             daily_page_limit=int(daily_page_limit or 0),
@@ -1129,6 +1211,61 @@ def add_pdf_card(
     except Exception:
         pass
     return cid
+
+
+def sync_pdf_card_file_references(
+    addon_dir: str,
+    profile: str,
+    col,
+    card_id: int,
+) -> str:
+    """Canonicalize stored PDF references for one live PDF card."""
+    cid = int(card_id)
+    card = col.get_card(cid)
+    if card is None:
+        raise RuntimeError("PDF card was not found.")
+
+    note = col.get_note(card.nid)
+    if note is None:
+        raise RuntimeError("Linked PDF note was not found.")
+
+    raw_filename = str(note["PDF_Filename"] or "").strip()
+    clean_filename = os.path.basename(raw_filename)
+    if not clean_filename:
+        return ""
+
+    note_changed = False
+    if raw_filename != clean_filename:
+        note["PDF_Filename"] = clean_filename
+        note_changed = True
+
+    desired_source_link = f"pdfs/{clean_filename}"
+    try:
+        current_source_link = str(note[INCREMENTO_SOURCE_LINK_FIELD] or "").strip()
+    except Exception:
+        current_source_link = ""
+    normalized_source_link = current_source_link.replace("\\", "/")
+    if (
+        not current_source_link
+        or normalized_source_link.startswith("pdfs/")
+    ) and normalized_source_link != desired_source_link:
+        try:
+            note[INCREMENTO_SOURCE_LINK_FIELD] = desired_source_link
+            note_changed = True
+        except Exception:
+            pass
+
+    if note_changed:
+        col.update_note(note)
+
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "UPDATE pdf_card_sources SET pdf_filename = ? "
+        "WHERE pdf_card_id = ? AND pdf_filename != ?",
+        (clean_filename, cid, clean_filename),
+    )
+    conn.commit()
+    return clean_filename
 
 
 def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> str:
@@ -1179,6 +1316,7 @@ def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> s
             metadata[field_name] = current_value
     apply_incremento_metadata(note, metadata)
     col.update_note(note)
+    sync_pdf_card_file_references(addon_dir, _paths.get_active_profile(), col, cid)
 
     try:
         replace_pdf_text_index(addon_dir, _paths.get_active_profile(), cid, page_texts)
@@ -1275,4 +1413,4 @@ def repair_pdf_card_filename(
         except Exception:
             pass
     col.update_note(note)
-    return candidate_filename
+    return sync_pdf_card_file_references(addon_dir, profile, col, cid)

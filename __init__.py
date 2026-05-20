@@ -39,6 +39,7 @@ from .backend.pdf_manager import (
     get_read_page,
     extract_pdf_pages_text,
     regenerate_pdf_card_cover,
+    sync_pdf_card_file_references,
 )
 from .backend.epub_manager import (
     EPUB_NOTE_TYPE,
@@ -1887,17 +1888,12 @@ def _open_pdf_reference(
             note = mw.col.get_note(card.nid)
             note_filename = str(note["PDF_Filename"] or "").strip()
             if note_filename:
-                clean_filename = note_filename
-                try:
-                    conn = get_connection(_ADDON_DIR, _active_profile())
-                    conn.execute(
-                        "UPDATE pdf_card_sources SET pdf_filename = ? "
-                        "WHERE pdf_card_id = ? AND pdf_filename = ''",
-                        (clean_filename, live_card_id),
-                    )
-                    conn.commit()
-                except Exception:
-                    pass
+                clean_filename = sync_pdf_card_file_references(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    mw.col,
+                    live_card_id,
+                ) or note_filename
     except Exception:
         pass
 
@@ -4131,11 +4127,19 @@ def _backfill_pdf_source_filenames() -> None:
                 card_ids = mw.col.find_cards(f"nid:{nid}")
                 if not card_ids:
                     continue
-                conn.execute(
-                    "UPDATE pdf_card_sources SET pdf_filename = ? "
-                    "WHERE pdf_card_id = ? AND pdf_filename = ''",
-                    (filename, int(card_ids[0])),
-                )
+                try:
+                    sync_pdf_card_file_references(
+                        _ADDON_DIR,
+                        _active_profile(),
+                        mw.col,
+                        int(card_ids[0]),
+                    )
+                except Exception:
+                    conn.execute(
+                        "UPDATE pdf_card_sources SET pdf_filename = ? "
+                        "WHERE pdf_card_id = ? AND pdf_filename != ?",
+                        (filename, int(card_ids[0]), filename),
+                    )
             except Exception:
                 continue
         conn.commit()

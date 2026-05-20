@@ -299,6 +299,50 @@ class TestRenderPdfCoverMedia:
 
 
 class TestAddPdfCard:
+    def test_relinks_unique_missing_matching_card_instead_of_creating_duplicate(self, tmp_path):
+        pdf_dir = tmp_path / "pdfs"
+        pdf_dir.mkdir()
+        source_pdf = tmp_path / "Guide.pdf"
+        source_pdf.write_bytes(b"%PDF replacement")
+
+        note = _FakePdfNote(
+            321,
+            Title="Guide",
+            PDF_Filename=f"Guide-{('a' * 32)}.pdf",
+            Incremento_Source_Link=f"pdfs/Guide-{('a' * 32)}.pdf",
+        )
+        card = _FakeCard(77, 321)
+        col = MagicMock()
+        col.find_notes.return_value = [321]
+        col.find_cards.side_effect = lambda query: [77] if query == "nid:321" else []
+        col.get_note.return_value = note
+        col.get_card.return_value = card
+
+        with patch("pdf_manager.ensure_pdf_note_type", return_value=None), \
+             patch("pdf_manager._paths.get_active_profile", return_value="TestProfile"), \
+             patch("pdf_manager.get_pdf_dir", return_value=str(pdf_dir)), \
+             patch("pdf_manager.replace_pdf_card_file", return_value="Guide-new.pdf") as relink_mock, \
+             patch("pdf_manager.save_pdf_daily_limit_settings") as save_limit:
+            result = pdf_manager.add_pdf_card(
+                str(tmp_path),
+                col,
+                str(source_pdf),
+                "Guide",
+                daily_page_limit=6,
+            )
+
+        assert result == 77
+        relink_mock.assert_called_once_with(str(tmp_path), col, 77, str(source_pdf))
+        col.add_note.assert_not_called()
+        save_limit.assert_called_once_with(
+            str(tmp_path),
+            "TestProfile",
+            77,
+            enabled=True,
+            daily_page_limit=6,
+            enforcement_mode="warning",
+        )
+
     def test_uses_visible_duplicate_suffix_when_title_collides(self):
         col = MagicMock()
         first_note = MagicMock()
@@ -897,6 +941,15 @@ class TestReplacePdfCardFile:
     def test_relinks_note_and_refreshes_text_index(self, tmp_path):
         replacement_pdf = tmp_path / "replacement.pdf"
         replacement_pdf.write_bytes(b"%PDF replacement")
+        db.add_pdf_card_source(
+            str(tmp_path),
+            "TestProfile",
+            pdf_card_id=77,
+            page=3,
+            note_id=901,
+            excerpt="old extract",
+            pdf_filename="old-file.pdf",
+        )
 
         note = _FakePdfNote(
             321,
@@ -943,6 +996,7 @@ class TestReplacePdfCardFile:
         assert note["Incremento_Parent"] == "Parent"
         assert note["Incremento_Parent_Card_ID"] == "88"
         assert note["Incremento_Source_Author"] == "Author"
+        assert db.get_pdf_card_source_filename(str(tmp_path), "TestProfile", 77, 3) == "new-file.pdf"
         col.update_note.assert_called_once_with(note)
 
 
@@ -965,6 +1019,15 @@ class TestRepairPdfCardFilename:
         col.get_note.return_value = note
         col.find_notes.return_value = [321]
         col.find_cards.return_value = [77]
+        db.add_pdf_card_source(
+            str(tmp_path),
+            "TestProfile",
+            pdf_card_id=77,
+            page=2,
+            note_id=777,
+            excerpt="linked note",
+            pdf_filename=f"paper-{('b' * 32)}.pdf",
+        )
 
         with patch("pdf_manager._paths.get_pdf_dir", return_value=pdf_dir):
             repaired = pdf_manager.repair_pdf_card_filename(
@@ -978,6 +1041,7 @@ class TestRepairPdfCardFilename:
         assert repaired == expected_filename
         assert note["PDF_Filename"] == expected_filename
         assert note["Incremento_Source_Link"] == f"pdfs/{expected_filename}"
+        assert db.get_pdf_card_source_filename(str(tmp_path), "TestProfile", 77, 2) == expected_filename
         col.update_note.assert_called_once_with(note)
 
 
