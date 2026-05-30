@@ -386,6 +386,35 @@ def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
     dock.clear_pending_extract_context()
 
 
+def test_fill_dock_field_resets_current_extract_priority_from_pdf_parent(monkeypatch):
+    fake_dock = types.SimpleNamespace(
+        show=lambda: None,
+        raise_=lambda: None,
+        _set_field=lambda idx, text, mark_topic=False: None,
+    )
+
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_apply_configured_extract_notetype", lambda: None)
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 55 if source == "pdf" else None)
+    monkeypatch.setattr(dock, "source_note_tags_for_card", lambda source_card_id: [])
+    monkeypatch.setattr(dock, "source_relative_extract_priority_for_source", lambda source: 18.0)
+    monkeypatch.setattr(dock, "_source_extract_metadata_for_card", lambda source, source_card_id: {})
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock.QTimer, "singleShot", lambda delay, func: None)
+    monkeypatch.setattr(dock, "_current_extract_priority", 77.0)
+
+    dock.fill_dock_field(
+        0,
+        "Excerpt",
+        include_pdf_citation=False,
+        source_link_kind="pdf",
+    )
+
+    assert dock._current_extract_priority == 18.0
+    dock.clear_pending_extract_options()
+    dock.clear_pending_extract_context()
+
+
 def test_fill_dock_field_passes_excerpt_text_to_pdf_citation(monkeypatch):
     filled = []
     fake_dock = types.SimpleNamespace(

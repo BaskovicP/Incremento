@@ -1334,8 +1334,12 @@ def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = 
         return None
 
     source_card_id = _source_card_id_for_transfer(normalized_source)
+    priority = source_relative_extract_priority_for_source(normalized_source)
+    # A fresh extract from a source card should start from that source-relative
+    # priority, not from a prior manual override left in the Add Card dialog.
+    set_current_extract_options(priority=priority)
     options = set_pending_extract_options(
-        priority=source_relative_extract_priority_for_source(normalized_source),
+        priority=priority,
         mark_topic=mark_topic,
         link_to_knowledge_tree=True,
         source=normalized_source,

@@ -12,6 +12,7 @@ def build_reviewer_extract_button_js(shortcut_text: str | None) -> str:
 (function() {{
   var buttonId = {_BUTTON_ID!r};
   var styleId = {_STYLE_ID!r};
+  var shortcutText = {safe_shortcut};
   var attempts = 0;
 
   function removeExisting() {{
@@ -80,7 +81,38 @@ def build_reviewer_extract_button_js(shortcut_text: str | None) -> str:
       return;
     }}
 
-    var row = document.querySelector("table tr");
+    function findButtonRow() {{
+      var showAnswerButton = document.getElementById("ansbut");
+      if (
+        showAnswerButton &&
+        showAnswerButton.closest &&
+        showAnswerButton.closest("tr")
+      ) {{
+        return showAnswerButton.closest("tr");
+      }}
+
+      var easeButton = document.querySelector('button[data-ease]');
+      if (easeButton && easeButton.closest && easeButton.closest("tr")) {{
+        return easeButton.closest("tr");
+      }}
+
+      var buttonRows = Array.prototype.slice.call(
+        document.querySelectorAll("table tr")
+      );
+      for (var idx = buttonRows.length - 1; idx >= 0; idx -= 1) {{
+        var candidateRow = buttonRows[idx];
+        if (
+          candidateRow &&
+          candidateRow.querySelector &&
+          candidateRow.querySelector("button")
+        ) {{
+          return candidateRow;
+        }}
+      }}
+      return null;
+    }}
+
+    var row = findButtonRow();
     if (!row) {{
       attempts += 1;
       if (attempts < 10) {{

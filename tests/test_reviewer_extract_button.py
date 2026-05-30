@@ -35,3 +35,11 @@ def test_build_reviewer_extract_button_js_handles_missing_shortcut():
     assert 'var shortcutText = "";' in js
     assert '"Extract selected content into a new card"' in js
     assert "incremento-reviewer-extract-cell" in js
+
+
+def test_build_reviewer_extract_button_js_targets_reviewer_button_row():
+    js = build_reviewer_extract_button_js("Alt+X")
+
+    assert 'document.getElementById("ansbut")' in js
+    assert 'document.querySelector(\'button[data-ease]\')' in js
+    assert 'document.querySelectorAll("table tr")' in js
