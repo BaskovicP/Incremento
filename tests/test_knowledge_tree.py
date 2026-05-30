@@ -12,6 +12,7 @@ from note_metadata import (
     build_incremento_metadata,
 )
 import priority_manager
+import topic_scheduler
 
 
 def _fresh_dir():
@@ -83,6 +84,72 @@ class _FakeKindCol:
         if int(card_id) not in self.notes:
             raise KeyError(card_id)
         return _FakeKindCard(self.notes[int(card_id)])
+
+    def update_note(self, note):
+        self.updated_notes.append(note)
+
+
+class _FakeTopicCardNote:
+    def __init__(self, note_type_name: str, tags=None):
+        self._note_type_name = str(note_type_name)
+        self.tags = list(tags or [])
+
+    def note_type(self):
+        return {"name": self._note_type_name}
+
+
+class _FakeTopicCard:
+    def __init__(self, note):
+        self._note = note
+
+    def note(self):
+        return self._note
+
+
+class _FakeTopicCardCol:
+    def __init__(self, card):
+        self._card = card
+
+    def get_card(self, card_id):
+        assert int(card_id) == 10
+        return self._card
+
+
+class _FakeTreeLinkNote:
+    def __init__(self, note_type_name: str, tags=None, fields=None, values=None):
+        self._note_type_name = str(note_type_name)
+        self.tags = list(tags or [])
+        self.fields = list(fields or [])
+        self._values = dict(values or {})
+
+    def note_type(self):
+        return {"name": self._note_type_name}
+
+    def __getitem__(self, key):
+        return self._values.get(str(key), "")
+
+    def __setitem__(self, key, value):
+        self._values[str(key)] = value
+
+
+class _FakeTreeLinkCard:
+    def __init__(self, note, *, nid: int, did: int = 1, odid: int = 0):
+        self._note = note
+        self.nid = int(nid)
+        self.did = int(did)
+        self.odid = int(odid)
+
+    def note(self):
+        return self._note
+
+
+class _FakeTreeLinkCol:
+    def __init__(self, cards: dict[int, _FakeTreeLinkCard]):
+        self._cards = {int(card_id): card for card_id, card in dict(cards).items()}
+        self.updated_notes = []
+
+    def get_card(self, card_id):
+        return self._cards[int(card_id)]
 
     def update_note(self, note):
         self.updated_notes.append(note)
@@ -281,7 +348,7 @@ class TestTreeMutationHelpers:
 
         with patch.object(
             knowledge_tree,
-            "lineage_card_ids",
+            "metadata_ancestor_card_ids",
             return_value=[10, 20, 30, 40],
         ), patch.object(
             knowledge_tree,
@@ -322,7 +389,7 @@ class TestTreeMutationHelpers:
     def test_ensure_extract_lineage_cards_in_tree_persists_pdf_as_parent_for_fresh_extract(self):
         with patch.object(
             knowledge_tree,
-            "lineage_card_ids",
+            "metadata_ancestor_card_ids",
             return_value=[10],
         ), patch.object(
             knowledge_tree,
@@ -368,7 +435,7 @@ class TestTreeMutationHelpers:
 
         with patch.object(
             knowledge_tree,
-            "lineage_card_ids",
+            "metadata_ancestor_card_ids",
             return_value=[10, 20],
         ), patch.object(
             knowledge_tree,
@@ -390,6 +457,54 @@ class TestTreeMutationHelpers:
         assert [(row["card_id"], row["parent_card_id"], row["node_kind"]) for row in rows] == [
             (10, None, "topic"),
             (20, 10, "item"),
+        ]
+
+    def test_ensure_extract_lineage_cards_in_tree_does_not_reparent_existing_descendants_as_side_effect(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                {"card_id": 20, "parent_card_id": None, "node_kind": "item", "sort_order": 1},
+            ],
+        )
+
+        with patch.object(
+            knowledge_tree,
+            "metadata_ancestor_card_ids",
+            return_value=[10],
+        ), patch.object(
+            knowledge_tree,
+            "metadata_parent_card_id",
+            side_effect=lambda card_id: {20: 10, 30: 10}.get(int(card_id)),
+        ), patch.object(
+            knowledge_tree,
+            "card_exists",
+            return_value=True,
+        ), patch.object(
+            knowledge_tree,
+            "infer_node_kind_for_card",
+            return_value="item",
+        ), patch.object(
+            knowledge_tree,
+            "apply_node_kind_to_card",
+        ):
+            result = knowledge_tree.ensure_extract_lineage_cards_in_tree(
+                self.addon_dir,
+                "TestProfile",
+                source_card_id=10,
+                created_card_ids=[30],
+                created_node_kind="item",
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == [30]
+        assert result["reparented_card_ids"] == []
+        assert result["error_count"] == 0
+        assert [(row["card_id"], row["parent_card_id"], row["node_kind"]) for row in rows] == [
+            (10, None, "topic"),
+            (20, None, "item"),
+            (30, 10, "item"),
         ]
 
     def test_link_cards_to_tree_reports_partial_failures_and_keeps_valid_cards(self):
@@ -441,6 +556,104 @@ def test_sync_note_kind_tags_adds_incremento_and_removes_opposite_kind():
 
     assert tags == ["keep", "Incremento", "topic"]
     assert note.tags == ["keep", "Incremento", "topic"]
+
+
+def test_infer_node_kind_for_card_uses_topic_scheduler_for_pdf_topics():
+    note = _FakeTopicCardNote("Incremento PDF", tags=[])
+    fake_mw = SimpleNamespace(col=_FakeTopicCardCol(_FakeTopicCard(note)))
+
+    with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+        topic_scheduler,
+        "configured_topic_card_types",
+        return_value={
+            "pdf_epub": True,
+            "video": False,
+            "writing": False,
+            "web": False,
+        },
+    ), patch.object(
+        topic_scheduler,
+        "configured_effective_topic_tags",
+        return_value=[],
+    ), patch.object(
+        topic_scheduler,
+        "configured_effective_item_tags",
+        return_value=["item"],
+    ), patch.object(
+        topic_scheduler,
+        "_card_in_topics_deck",
+        return_value=False,
+    ):
+        assert knowledge_tree.infer_node_kind_for_card(10) == "topic"
+
+
+def test_extract_lineage_keeps_pdf_source_card_as_topic():
+    addon_dir = _fresh_dir()
+    _reset_db()
+
+    try:
+        source_note = _FakeTreeLinkNote(
+            "Incremento PDF",
+            tags=[],
+            fields=["Source PDF"],
+        )
+        child_note = _FakeTreeLinkNote(
+            "Basic",
+            tags=[],
+            fields=["Child Extract"],
+            values={INCREMENTO_PARENT_CARD_ID_FIELD: "10"},
+        )
+        fake_mw = SimpleNamespace(
+            col=_FakeTreeLinkCol(
+                {
+                    10: _FakeTreeLinkCard(source_note, nid=101),
+                    20: _FakeTreeLinkCard(child_note, nid=202),
+                }
+            )
+        )
+
+        with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+            topic_scheduler,
+            "configured_topic_card_types",
+            return_value={
+                "pdf_epub": True,
+                "video": False,
+                "writing": False,
+                "web": False,
+            },
+        ), patch.object(
+            topic_scheduler,
+            "configured_effective_topic_tags",
+            return_value=[],
+        ), patch.object(
+            topic_scheduler,
+            "configured_effective_item_tags",
+            return_value=["item"],
+        ), patch.object(
+            topic_scheduler,
+            "_card_in_topics_deck",
+            return_value=False,
+        ):
+            result = knowledge_tree.ensure_extract_lineage_cards_in_tree(
+                addon_dir,
+                "TestProfile",
+                source_card_id=10,
+                created_card_ids=[20],
+                created_node_kind="item",
+            )
+
+        rows = db.get_knowledge_tree_nodes(addon_dir, "TestProfile")
+        assert result["linked_card_ids"] == [10, 20]
+        assert result["reparented_card_ids"] == []
+        assert result["error_count"] == 0
+        assert "topic" in [tag.lower() for tag in source_note.tags]
+        assert "item" not in [tag.lower() for tag in source_note.tags]
+        assert [(row["card_id"], row["parent_card_id"], row["node_kind"]) for row in rows] == [
+            (10, None, "topic"),
+            (20, 10, "item"),
+        ]
+    finally:
+        _reset_db()
 
 
 def test_search_linkable_cards_uses_anki_sort_field_and_excludes_linked_cards():

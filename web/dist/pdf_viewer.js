@@ -7314,6 +7314,7 @@
     pageHighlights,
     renderInfo,
     deleteHighlight,
+    editHighlightNote,
     focusedHighlightId,
     showHighlightNote,
     moveHighlightNote,
@@ -7324,6 +7325,48 @@
     handleSnapMove,
     handleSnapEnd
   }) {
+    const renderNoteIcon = (hasNote) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "svg",
+      {
+        "aria-hidden": "true",
+        viewBox: "0 0 16 16",
+        width: "10",
+        height: "10",
+        style: { display: "block" },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "path",
+            {
+              d: "M3 2.5h6.5L13 6v7a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 13z",
+              fill: hasNote ? "rgba(191,219,254,0.98)" : "none",
+              stroke: "currentColor",
+              strokeWidth: "1.2",
+              strokeLinejoin: "round"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "path",
+            {
+              d: "M9.5 2.5V6H13",
+              fill: "none",
+              stroke: "currentColor",
+              strokeWidth: "1.2",
+              strokeLinejoin: "round"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "path",
+            {
+              d: "M5.2 8.1h5.2M5.2 10.2h4",
+              fill: "none",
+              stroke: "currentColor",
+              strokeWidth: "1.1",
+              strokeLinecap: "round"
+            }
+          )
+        ]
+      }
+    );
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       pageHighlights.map(
         (h) => h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -7373,31 +7416,66 @@
       pageHighlights.map((h) => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
+        const hasNote = !!String(h.note || "").trim();
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
           {
-            title: isSnapshotHighlight(h) ? "Remove snapshot highlight" : "Remove highlight",
-            onClick: () => deleteHighlight(h.id),
             style: {
               position: "absolute",
-              left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 8,
+              left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 28,
               top: r.y * renderInfo.scale - 8,
-              width: 16,
-              height: 16,
-              fontSize: 10,
-              lineHeight: "16px",
-              textAlign: "center",
-              padding: 0,
-              border: "none",
-              background: "rgba(80,80,80,0.85)",
-              color: "#fff",
-              borderRadius: "50%",
-              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
               zIndex: 10
             },
-            children: "×"
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  title: hasNote ? "Edit highlight note" : "Add highlight note",
+                  onClick: () => editHighlightNote(h.id),
+                  style: {
+                    width: 16,
+                    height: 16,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    border: hasNote ? "1px solid rgba(96,165,250,0.92)" : "1px solid rgba(148,163,184,0.9)",
+                    background: hasNote ? "rgba(37,99,235,0.92)" : "rgba(55,65,81,0.9)",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    boxShadow: hasNote ? "0 0 0 1px rgba(191,219,254,0.3)" : "none"
+                  },
+                  children: renderNoteIcon(hasNote)
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  title: isSnapshotHighlight(h) ? "Remove snapshot highlight" : "Remove highlight",
+                  onClick: () => deleteHighlight(h.id),
+                  style: {
+                    width: 16,
+                    height: 16,
+                    fontSize: 10,
+                    lineHeight: "16px",
+                    textAlign: "center",
+                    padding: 0,
+                    border: "none",
+                    background: "rgba(80,80,80,0.85)",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    cursor: "pointer"
+                  },
+                  children: "×"
+                }
+              )
+            ]
           },
-          `del-${h.id}`
+          `actions-${h.id}`
         );
       }),
       snapshotMode && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -8131,6 +8209,9 @@
       setHighlights((prev) => prev.filter((h) => h.id !== id));
       window.pycmd("incremento_pdf_hl_del:" + JSON.stringify({ cardId: cardIdRef.current, id }));
     }, [cardIdRef]);
+    const editHighlightNote = reactExports.useCallback((id) => {
+      window.pycmd("incremento_pdf_hl_note:" + JSON.stringify({ id }));
+    }, []);
     const updateHighlightNote = reactExports.useCallback((id, note) => {
       setHighlights((prev) => prev.map((h) => h.id === id ? { ...h, note: String(note || "") } : h));
     }, []);
@@ -9061,7 +9142,7 @@
                             onClick: (e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              window.pycmd("incremento_pdf_hl_note:" + JSON.stringify({ id: hl.id }));
+                              editHighlightNote(hl.id);
                             },
                             style: {
                               border: "1px solid rgba(74,144,217,0.55)",
@@ -9231,6 +9312,7 @@
                     pageHighlights,
                     renderInfo,
                     deleteHighlight,
+                    editHighlightNote,
                     focusedHighlightId,
                     showHighlightNote,
                     moveHighlightNote,

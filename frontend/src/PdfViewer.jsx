@@ -797,6 +797,10 @@ export default function PdfViewer() {
     window.pycmd('incremento_pdf_hl_del:' + JSON.stringify({ cardId: cardIdRef.current, id }));
   }, [cardIdRef]);
 
+  const editHighlightNote = useCallback((id) => {
+    window.pycmd('incremento_pdf_hl_note:' + JSON.stringify({ id }));
+  }, []);
+
   const updateHighlightNote = useCallback((id, note) => {
     setHighlights(prev => prev.map((h) => (
       h.id === id ? { ...h, note: String(note || '') } : h
@@ -1754,7 +1758,7 @@ export default function PdfViewer() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        window.pycmd('incremento_pdf_hl_note:' + JSON.stringify({ id: hl.id }));
+                        editHighlightNote(hl.id);
                       }}
                       style={{
                         border: '1px solid rgba(74,144,217,0.55)',
@@ -1907,6 +1911,7 @@ export default function PdfViewer() {
           pageHighlights={pageHighlights}
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}
+          editHighlightNote={editHighlightNote}
           focusedHighlightId={focusedHighlightId}
           showHighlightNote={showHighlightNote}
           moveHighlightNote={moveHighlightNote}

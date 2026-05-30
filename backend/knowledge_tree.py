@@ -390,6 +390,24 @@ def infer_node_kind_for_card(card_id: int) -> str:
 
     try:
         card = mw.col.get_card(int(card_id))
+    except Exception:
+        return NODE_KIND_ITEM
+
+    try:
+        from .topic_scheduler import is_topic_card as _is_topic_card
+    except ImportError:
+        try:
+            from topic_scheduler import is_topic_card as _is_topic_card  # type: ignore
+        except Exception:
+            _is_topic_card = None  # type: ignore
+
+    if _is_topic_card is not None:
+        try:
+            return NODE_KIND_TOPIC if _is_topic_card(card) else NODE_KIND_ITEM
+        except Exception:
+            pass
+
+    try:
         note = card.note()
         note_tags = {
             str(tag or "").strip().lower()
@@ -469,7 +487,7 @@ def metadata_child_card_ids(card_id: int) -> list[int]:
     return child_card_ids
 
 
-def lineage_card_ids(card_id: int) -> list[int]:
+def metadata_ancestor_card_ids(card_id: int) -> list[int]:
     card_id = int(card_id)
     seen: set[int] = {card_id}
 
@@ -483,6 +501,13 @@ def lineage_card_ids(card_id: int) -> list[int]:
         seen.add(parent_card_id)
         current_card_id = parent_card_id
     ancestors.reverse()
+    return ancestors + [card_id]
+
+
+def lineage_card_ids(card_id: int) -> list[int]:
+    card_id = int(card_id)
+    lineage = metadata_ancestor_card_ids(card_id)
+    seen: set[int] = set(lineage)
 
     descendants: list[int] = []
 
@@ -495,7 +520,7 @@ def lineage_card_ids(card_id: int) -> list[int]:
             visit_children(child_card_id)
 
     visit_children(card_id)
-    return ancestors + [card_id] + descendants
+    return lineage + descendants
 
 
 def ensure_extract_lineage_cards_in_tree(
@@ -520,7 +545,7 @@ def ensure_extract_lineage_cards_in_tree(
         ordered_card_ids.append(resolved_card_id)
 
     if source_card_id is not None:
-        for related_card_id in lineage_card_ids(int(source_card_id)):
+        for related_card_id in metadata_ancestor_card_ids(int(source_card_id)):
             append_card(related_card_id)
     for created_card_id in list(created_card_ids or []):
         append_card(created_card_id)

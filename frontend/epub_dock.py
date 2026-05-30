@@ -165,6 +165,7 @@ _PYCMD_BRIDGE = "__incremento_epub__:"
 _MSG_FILL_FIELD = "incremento_epub_fill_field:"
 _MSG_HL_ADD = "incremento_epub_hl_add:"
 _MSG_HL_DEL = "incremento_epub_hl_del:"
+_MSG_HL_NOTE = "incremento_epub_hl_note:"
 _MSG_PROGRESS = "incremento_epub_progress:"
 _MSG_MARK_READ = "incremento_epub_mark_read:"
 _MSG_SECTION_NAV = "incremento_epub_section_nav:"
@@ -819,6 +820,13 @@ class _EpubDockPage(QWebEnginePage):
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight remove failed: {exc}")
             return
+        if msg.startswith(_MSG_HL_NOTE):
+            try:
+                data = json.loads(msg[len(_MSG_HL_NOTE) :])
+                _edit_current_epub_highlight_note(str(data.get("id") or ""))
+            except Exception as exc:
+                print(f"[Incremento] epub_dock highlight note failed: {exc}")
+            return
         if msg.startswith(_MSG_PROGRESS):
             try:
                 data = json.loads(msg[len(_MSG_PROGRESS) :])
@@ -943,6 +951,50 @@ def _build_page_script(
             border-radius: 2px;
             cursor: pointer;
           }}
+          span.incremento-epub-highlight[data-note-present="1"] {{
+            box-shadow: inset 0 -1px 0 rgba(37, 99, 235, 0.55);
+          }}
+          #incremento-epub-highlight-actions {{
+            position: absolute;
+            z-index: 2147483200;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px;
+            border-radius: 999px;
+            background: rgba(20, 24, 31, 0.96);
+            border: 1px solid rgba(255,255,255,0.14);
+            box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+          }}
+          #incremento-epub-highlight-actions button {{
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+          }}
+          #incremento-epub-highlight-actions button svg {{
+            width: 13px;
+            height: 13px;
+            display: block;
+          }}
+          #incremento-epub-highlight-note-btn {{
+            background: rgba(55, 65, 81, 0.94);
+            color: #f8fafc;
+          }}
+          #incremento-epub-highlight-note-btn[data-has-note="1"] {{
+            background: rgba(37, 99, 235, 0.96);
+            color: #eff6ff;
+            box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.22);
+          }}
+          #incremento-epub-highlight-delete-btn {{
+            background: rgba(127, 29, 29, 0.96);
+            color: #fee2e2;
+          }}
           #incremento-epub-read-marker {{
             position: absolute;
             z-index: 2147483000;
@@ -1034,6 +1086,119 @@ def _build_page_script(
         }}
         node.remove();
       }}
+      function iconSvg(kind) {{
+        if (kind === 'delete') {{
+          return (
+            '<svg aria-hidden="true" viewBox="0 0 16 16">' +
+            '<path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+            '</svg>'
+          );
+        }}
+        return (
+          '<svg aria-hidden="true" viewBox="0 0 16 16">' +
+          '<path d="M3 2.5h6.5L13 6v7a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 13z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>' +
+          '<path d="M9.5 2.5V6H13" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>' +
+          '<path d="M5.2 8.1h5.2M5.2 10.2h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>' +
+          '</svg>'
+        );
+      }}
+      function removeHighlightActionMenu() {{
+        const existing = document.getElementById('incremento-epub-highlight-actions');
+        if (existing && existing.parentNode) {{
+          existing.parentNode.removeChild(existing);
+        }}
+        window._incrementoEpubHighlightActionTarget = null;
+      }}
+      function positionHighlightActionMenu(target, menu) {{
+        if (!target || !menu) return;
+        const rect = target.getBoundingClientRect();
+        const menuWidth = menu.offsetWidth || 58;
+        const menuHeight = menu.offsetHeight || 32;
+        const left = Math.min(
+          window.scrollX + window.innerWidth - menuWidth - 8,
+          Math.max(window.scrollX + 8, window.scrollX + rect.right - menuWidth)
+        );
+        const preferredTop = window.scrollY + rect.top - menuHeight - 10;
+        const fallbackTop = window.scrollY + rect.bottom + 8;
+        const top = preferredTop > window.scrollY + 8 ? preferredTop : fallbackTop;
+        menu.style.left = Math.round(left) + 'px';
+        menu.style.top = Math.round(top) + 'px';
+      }}
+      function syncHighlightActionMenu(target) {{
+        const menu = document.getElementById('incremento-epub-highlight-actions');
+        if (!menu || !target) return;
+        const noteButton = document.getElementById('incremento-epub-highlight-note-btn');
+        const deleteButton = document.getElementById('incremento-epub-highlight-delete-btn');
+        const hasNote = String(target.dataset.note || '').trim().length > 0;
+        if (noteButton) {{
+          noteButton.dataset.hasNote = hasNote ? '1' : '0';
+          noteButton.title = hasNote ? 'Edit highlight note' : 'Add highlight note';
+          noteButton.setAttribute('aria-label', noteButton.title);
+        }}
+        if (deleteButton) {{
+          deleteButton.title = 'Delete highlight';
+          deleteButton.setAttribute('aria-label', 'Delete highlight');
+        }}
+        positionHighlightActionMenu(target, menu);
+      }}
+      function updateHighlightNodeNote(target, note) {{
+        if (!target) return;
+        const trimmed = String(note || '').trim();
+        target.dataset.note = String(note || '');
+        target.dataset.notePresent = trimmed ? '1' : '0';
+        target.title = trimmed || 'Highlight actions';
+      }}
+      function openHighlightActionMenu(target) {{
+        if (!target) return;
+        let menu = document.getElementById('incremento-epub-highlight-actions');
+        if (!menu) {{
+          menu = document.createElement('div');
+          menu.id = 'incremento-epub-highlight-actions';
+          const noteButton = document.createElement('button');
+          noteButton.type = 'button';
+          noteButton.id = 'incremento-epub-highlight-note-btn';
+          noteButton.innerHTML = iconSvg('note');
+          noteButton.addEventListener('click', function(event) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const currentTarget = window._incrementoEpubHighlightActionTarget;
+            if (!currentTarget) return;
+            send('incremento_epub_hl_note:' + JSON.stringify({{
+              cardId: STATE.cardId,
+              id: String(currentTarget.dataset.id || ''),
+            }}));
+            removeHighlightActionMenu();
+          }});
+          const deleteButton = document.createElement('button');
+          deleteButton.type = 'button';
+          deleteButton.id = 'incremento-epub-highlight-delete-btn';
+          deleteButton.innerHTML = iconSvg('delete');
+          deleteButton.addEventListener('click', function(event) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const currentTarget = window._incrementoEpubHighlightActionTarget;
+            if (!currentTarget) return;
+            const id = String(currentTarget.dataset.id || '');
+            unwrapHighlight(currentTarget);
+            removeHighlightActionMenu();
+            send('incremento_epub_hl_del:' + JSON.stringify({{ cardId: STATE.cardId, id }}));
+          }});
+          menu.appendChild(noteButton);
+          menu.appendChild(deleteButton);
+          document.body.appendChild(menu);
+        }}
+        window._incrementoEpubHighlightActionTarget = target;
+        syncHighlightActionMenu(target);
+      }}
+      window.incrementoUpdateEpubHighlightNote = function(id, note) {{
+        const selector = 'span.incremento-epub-highlight[data-id="' + String(id || '').replace(/"/g, '\\"') + '"]';
+        const target = document.querySelector(selector);
+        if (!target) return;
+        updateHighlightNodeNote(target, note);
+        if (window._incrementoEpubHighlightActionTarget === target) {{
+          syncHighlightActionMenu(target);
+        }}
+      }};
       function applyHighlight(hl) {{
         const start = pointFromOffset(hl.startOffset);
         const end = pointFromOffset(hl.endOffset);
@@ -1047,7 +1212,7 @@ def _build_page_script(
         wrapper.className = 'incremento-epub-highlight';
         wrapper.dataset.id = String(hl.id || '');
         wrapper.dataset.color = String(hl.color || 'yellow');
-        wrapper.title = 'Click to remove highlight';
+        updateHighlightNodeNote(wrapper, hl.note || '');
         const fragment = range.extractContents();
         wrapper.appendChild(fragment);
         range.insertNode(wrapper);
@@ -1386,15 +1551,24 @@ def _build_page_script(
 
       document.removeEventListener('click', window._incrementoEpubClickListener, true);
       window._incrementoEpubClickListener = function(event) {{
+        const actionMenu = document.getElementById('incremento-epub-highlight-actions');
+        if (actionMenu && actionMenu.contains(event.target)) {{
+          return;
+        }}
         const target = event.target && event.target.closest
           ? event.target.closest('span.incremento-epub-highlight')
           : null;
-        if (!target) return;
+        if (!target) {{
+          removeHighlightActionMenu();
+          return;
+        }}
         event.preventDefault();
         event.stopPropagation();
-        const id = String(target.dataset.id || '');
-        unwrapHighlight(target);
-        send('incremento_epub_hl_del:' + JSON.stringify({{ cardId: STATE.cardId, id }}));
+        if (window._incrementoEpubHighlightActionTarget === target) {{
+          removeHighlightActionMenu();
+          return;
+        }}
+        openHighlightActionMenu(target);
       }};
       document.addEventListener('click', window._incrementoEpubClickListener, true);
 
@@ -1404,6 +1578,9 @@ def _build_page_script(
       document.removeEventListener('scroll', window._incrementoEpubScrollListener, true);
       window._incrementoEpubScrollListener = function() {{
         clearTimeout(window._incrementoEpubScrollTimer);
+        if (window._incrementoEpubHighlightActionTarget) {{
+          syncHighlightActionMenu(window._incrementoEpubHighlightActionTarget);
+        }}
         window._incrementoEpubScrollTimer = setTimeout(reportProgress, 140);
       }};
       document.addEventListener('scroll', window._incrementoEpubScrollListener, true);
@@ -2167,6 +2344,16 @@ def _edit_current_epub_highlight_note(hl_id: str) -> None:
     if not updated:
         showInfo("That EPUB highlight could not be updated.")
         return
+    escaped_id = json.dumps(str(updated.get("id") or ""))
+    escaped_note = json.dumps(str(updated.get("note") or ""))
+    try:
+        if _epub_dock is not None:
+            _epub_dock._view.page().runJavaScript(
+                "window.incrementoUpdateEpubHighlightNote && "
+                f"window.incrementoUpdateEpubHighlightNote({escaped_id}, {escaped_note});"
+            )
+    except Exception:
+        pass
     _update_sources_panel()
     tooltip("EPUB highlight note saved.")
 

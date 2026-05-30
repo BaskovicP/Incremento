@@ -94,3 +94,82 @@ def test_regenerate_epub_cover_reloads_active_reviewer_card_in_place(monkeypatch
     assert current_card.timer_started == 456.0
     assert shown == [True]
     assert tooltips == ["EPUB cover regenerated from book metadata."]
+
+
+def test_build_page_script_includes_highlight_note_action_menu(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: True)
+
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=1,
+        scroll_ratio=0.2,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[{"id": "hl-1", "startOffset": 0, "endOffset": 7, "text": "Example"}],
+    )
+
+    assert "incremento_epub_hl_note:" in script
+    assert "incremento-epub-highlight-actions" in script
+    assert "incrementoUpdateEpubHighlightNote" in script
+
+
+def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
+    js_calls = []
+    updates = []
+    tooltips = []
+
+    class _FakeDialog:
+        def __init__(self, parent, *, title, excerpt, current_note):
+            assert parent is epub_dock.mw
+            assert title == "EPUB Highlight Note"
+            assert excerpt == "Quoted text"
+            assert current_note == ""
+
+        def exec(self):
+            return True
+
+        def note_text(self):
+            return "New note"
+
+    class _FakePage:
+        def runJavaScript(self, js):
+            js_calls.append(js)
+
+    class _FakeView:
+        def page(self):
+            return _FakePage()
+
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 42)
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 3)
+    monkeypatch.setattr(
+        epub_dock,
+        "load_highlights",
+        lambda addon_dir, profile, card_id: [
+            {"id": "hl-1", "sectionIndex": 3, "text": "Quoted text", "note": ""}
+        ],
+    )
+    monkeypatch.setattr(epub_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(epub_dock, "HighlightNoteDialog", _FakeDialog)
+    monkeypatch.setattr(
+        epub_dock,
+        "update_highlight_note",
+        lambda addon_dir, profile, card_id, hl_id, note: (
+            updates.append((addon_dir, profile, card_id, hl_id, note)) or
+            {"id": hl_id, "note": note}
+        ),
+    )
+    monkeypatch.setattr(epub_dock, "_update_sources_panel", lambda: js_calls.append("sources"))
+    monkeypatch.setattr(epub_dock, "tooltip", lambda message: tooltips.append(message))
+    monkeypatch.setattr(epub_dock, "mw", object())
+    monkeypatch.setattr(epub_dock, "_epub_dock", types.SimpleNamespace(_view=_FakeView()))
+
+    epub_dock._edit_current_epub_highlight_note("hl-1")
+
+    assert updates == [("/tmp/addon", "TestProfile", 42, "hl-1", "New note")]
+    assert any("incrementoUpdateEpubHighlightNote" in js for js in js_calls if isinstance(js, str))
+    assert "sources" in js_calls
+    assert tooltips == ["EPUB highlight note saved."]
