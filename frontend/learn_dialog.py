@@ -92,6 +92,29 @@ def _normalize_selected_scheduler_profile(
     return name
 
 
+def _initial_scheduler_dialog_state(
+    dialog_config: dict | None,
+    profiles: dict[str, dict] | None,
+    selected_profile: str | None,
+) -> dict:
+    base = dict(dialog_config or {})
+    normalized_selected = _normalize_selected_scheduler_profile(
+        selected_profile,
+        profiles,
+    )
+    if not normalized_selected:
+        return base
+
+    selected_profile_data = (profiles or {}).get(normalized_selected)
+    if not isinstance(selected_profile_data, dict):
+        return base
+
+    merged = dict(base)
+    merged.update(copy.deepcopy(selected_profile_data))
+    merged["selected_profile"] = normalized_selected
+    return merged
+
+
 def _compute_expected_mix(
     session_card_count: int,
     topics_slider: int,
@@ -1102,14 +1125,18 @@ class SchedulerConfigDialog(QDialog):
         self._preview_refresh_timer.setInterval(180)
         qconnect(self._preview_refresh_timer.timeout, self._refresh_live_preview_if_open)
         config = mw.addonManager.getConfig(_ADDON_PKG) or {}
-        self._saved = config.get("dialog", {})
-        self._saved_priority_order_map = self._priority_order_map_from_dict(self._saved)
-        self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._profiles: dict[str, dict] = config.get("profiles", {})
         self._selected_profile_name = _normalize_selected_scheduler_profile(
-            self._saved.get("selected_profile"),
+            (config.get("dialog", {}) or {}).get("selected_profile"),
             self._profiles,
         )
+        self._saved = _initial_scheduler_dialog_state(
+            config.get("dialog", {}),
+            self._profiles,
+            self._selected_profile_name,
+        )
+        self._saved_priority_order_map = self._priority_order_map_from_dict(self._saved)
+        self._use_live_preview_enabled = bool(self._saved.get("use_live_preview", False))
         self._pdf_limit_targets: list[dict] = []
         self._pdf_limit_main_loading = False
         self._setup_ui()
@@ -1751,8 +1778,13 @@ class SchedulerConfigDialog(QDialog):
             self._add_tag_row(tag, entry.get("weight", 20),
                               locked=entry.get("locked", False),
                               group_name=entry.get("group", "tags"),
-                              order=self._priority_order_for("tag", tag))
-        self._ensure_other_tag_row(default_enabled=self._saved.get("no_tags_checked", True))
+                              order=self._priority_order_for("tag", tag),
+                              defer_finalize=True)
+        self._ensure_other_tag_row(
+            default_enabled=self._saved.get("no_tags_checked", True),
+            defer_finalize=True,
+        )
+        self._finalize_tag_row_batch_restore()
         if skipped_missing_tags > 0:
             tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
 
@@ -2371,7 +2403,11 @@ class SchedulerConfigDialog(QDialog):
         if cb is not None:
             cb.setChecked(self._current_include_rest_from_other_slider())
 
-    def _ensure_other_tag_row(self, default_enabled: bool = True) -> None:
+    def _ensure_other_tag_row(
+        self,
+        default_enabled: bool = True,
+        defer_finalize: bool = False,
+    ) -> None:
         if self._find_other_tag_row() is not None:
             self._move_other_tag_row_to_bottom()
             return
@@ -2381,7 +2417,24 @@ class SchedulerConfigDialog(QDialog):
             if r.get("tag") != NO_TAGS_KEY
         )
         default_weight = max(0, min(100, 100 - real_total)) if default_enabled else 0
-        self._add_tag_row(NO_TAGS_KEY, weight=default_weight, locked=False, group_name="tags")
+        self._add_tag_row(
+            NO_TAGS_KEY,
+            weight=default_weight,
+            locked=False,
+            group_name="tags",
+            defer_finalize=defer_finalize,
+        )
+
+    def _finalize_tag_row_batch_restore(self) -> None:
+        self._rebalance_tag_groups(changed_row=None)
+        self._move_other_tag_row_to_bottom()
+        for row in self._linked_rows:
+            row["pct_label"].setText(f"{row['slider'].value()}%")
+        self._sync_no_tags_checkbox_from_other_slider()
+        self._update_other_label()
+        self._refresh_expected_mix_preview()
+        self._sync_priority_order_visibility()
+        self._schedule_live_preview_refresh()
 
     def _make_row_base(
         self,
@@ -2437,6 +2490,7 @@ class SchedulerConfigDialog(QDialog):
         locked: bool = False,
         group_name: str = "tags",
         order: int | None = None,
+        defer_finalize: bool = False,
     ) -> None:
         resolved = self._resolve_tag_for_current_profile(tag)
         if not resolved:
@@ -2489,6 +2543,9 @@ class SchedulerConfigDialog(QDialog):
         idx = self._tag_combo.findText(tag)
         if idx >= 0:
             self._tag_combo.removeItem(idx)
+
+        if defer_finalize:
+            return
 
         self._rebalance_tag_groups(changed_row=None)
         self._move_other_tag_row_to_bottom()
@@ -3730,9 +3787,13 @@ class SchedulerConfigDialog(QDialog):
             self._add_tag_row(tag, entry.get("weight", 20),
                               locked=entry.get("locked", False),
                               group_name=entry.get("group", "tags"),
-                              order=self._priority_order_for("tag", tag))
-        self._ensure_other_tag_row(default_enabled=d.get("no_tags_checked", True))
-        self._sync_no_tags_checkbox_from_other_slider()
+                              order=self._priority_order_for("tag", tag),
+                              defer_finalize=True)
+        self._ensure_other_tag_row(
+            default_enabled=d.get("no_tags_checked", True),
+            defer_finalize=True,
+        )
+        self._finalize_tag_row_batch_restore()
         if skipped_missing_tags > 0:
             tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
 

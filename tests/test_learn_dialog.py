@@ -54,6 +54,7 @@ sys.modules["_incremento_learn_dialog"] = _MOD
 _SPEC.loader.exec_module(_MOD)
 
 _normalize_selected_scheduler_profile = _MOD._normalize_selected_scheduler_profile
+_initial_scheduler_dialog_state = _MOD._initial_scheduler_dialog_state
 _write_named_scheduler_profile = _MOD._write_named_scheduler_profile
 _rename_named_scheduler_profile = _MOD._rename_named_scheduler_profile
 SchedulerConfigDialog = _MOD.SchedulerConfigDialog
@@ -264,6 +265,44 @@ class TestSelectedSchedulerProfile:
         assert _normalize_selected_scheduler_profile(None, profiles) is None
         assert _normalize_selected_scheduler_profile("", profiles) is None
         assert _normalize_selected_scheduler_profile("Missing", profiles) is None
+
+
+class TestInitialSchedulerDialogState:
+    def test_selected_profile_overrides_dialog_values_on_restore(self):
+        state = _initial_scheduler_dialog_state(
+            {
+                "session_card_count": 50,
+                "topics_slider": 10,
+                "include_due": False,
+                "selected_profile": "Focus",
+            },
+            {
+                "Focus": {
+                    "session_card_count": 20,
+                    "topics_slider": 80,
+                }
+            },
+            "Focus",
+        )
+
+        assert state == {
+            "session_card_count": 20,
+            "topics_slider": 80,
+            "include_due": False,
+            "selected_profile": "Focus",
+        }
+
+    def test_unknown_selected_profile_keeps_dialog_state(self):
+        state = _initial_scheduler_dialog_state(
+            {"session_card_count": 50, "selected_profile": "Missing"},
+            {"Focus": {"session_card_count": 20}},
+            "Missing",
+        )
+
+        assert state == {
+            "session_card_count": 50,
+            "selected_profile": "Missing",
+        }
 
 
 class TestPriorityOrderState:
