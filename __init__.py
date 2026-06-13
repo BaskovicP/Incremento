@@ -189,6 +189,7 @@ from .frontend.settings_dialog import IncrementoSettingsDialog, default_shortcut
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
+from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.search_all import _SearchAllDialog
@@ -886,6 +887,22 @@ def _incremento_default_ease(self) -> int:
         return 2
     return _ORIGINAL_REVIEWER_DEFAULT_EASE(self)
 
+
+def _shortcut_callback_uses_on_enter(self, callback) -> bool:
+    try:
+        callback_func = getattr(callback, "__func__", None)
+        return (
+            getattr(callback, "__self__", None) is self
+            and callback_func
+            in {
+                getattr(self.onEnterKey, "__func__", None),
+                _ORIGINAL_REVIEWER_ON_ENTER_KEY,
+            }
+        )
+    except Exception:
+        return False
+
+
 def _incremento_shortcut_keys(self):
     shortcuts = list(_ORIGINAL_REVIEWER_SHORTCUT_KEYS(self))
     card = getattr(self, "card", None)
@@ -910,12 +927,14 @@ def _incremento_shortcut_keys(self):
     except Exception:
         hidden_answer_keys = set()
 
-    filtered = []
-    for key, callback in shortcuts:
-        if isinstance(key, str) and key in hidden_answer_keys:
-            continue
-        filtered.append((key, callback))
-    return filtered
+    return filter_reviewer_shortcuts(
+        shortcuts,
+        state=str(getattr(self, "state", "") or ""),
+        hidden_answer_keys=hidden_answer_keys,
+        is_on_enter_callback=lambda callback: _shortcut_callback_uses_on_enter(
+            self, callback
+        ),
+    )
 
 
 def _incremento_on_enter_key(self) -> None:

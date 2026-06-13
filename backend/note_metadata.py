@@ -31,6 +31,14 @@ _INLINE_PDF_FILENAME_RE = re.compile(
     r'(?:\\?"|")filename(?:\\?"|")\s*:\s*(?:=\s*""\s*)?(?:\\?"|")(?P<filename>[^"]+?)(?:\\?"|")',
     re.IGNORECASE,
 )
+_INLINE_PDF_PAGE_RE = re.compile(
+    r'(?:\\?"|")page(?:\\?"|")\s*:\s*(?:=\s*""\s*)?(?P<page>\d+)',
+    re.IGNORECASE,
+)
+_INLINE_PDF_CARD_ID_RE = re.compile(
+    r'(?:\\?"|")card_id(?:\\?"|")\s*:\s*(?:=\s*""\s*)?(?P<card_id>\d+)',
+    re.IGNORECASE,
+)
 
 
 def metadata_timestamp(value: datetime | None = None) -> str:
@@ -297,19 +305,58 @@ def derive_note_source_metadata(note) -> dict[str, str]:
     }
 
 
-def inline_pdf_reference_filename(note) -> str:
+def _inline_pdf_reference_from_text(text: str) -> dict[str, int | str] | None:
+    raw = str(text or "")
+    if "incremento_open_pdf_ref:" not in raw:
+        return None
+
+    snippet = unescape(raw)
+    marker_index = snippet.find("incremento_open_pdf_ref:")
+    if marker_index < 0:
+        return None
+    snippet = snippet[marker_index:]
+
+    filename_match = _INLINE_PDF_FILENAME_RE.search(snippet)
+    if not filename_match:
+        return None
+    filename = os.path.basename(str(filename_match.group("filename") or "").strip())
+    if not filename:
+        return None
+
+    page_match = _INLINE_PDF_PAGE_RE.search(snippet)
+    card_id_match = _INLINE_PDF_CARD_ID_RE.search(snippet)
+
+    try:
+        page = max(1, int(page_match.group("page"))) if page_match else 1
+    except Exception:
+        page = 1
+    try:
+        card_id = max(0, int(card_id_match.group("card_id"))) if card_id_match else 0
+    except Exception:
+        card_id = 0
+
+    return {
+        "filename": filename,
+        "page": page,
+        "card_id": card_id,
+    }
+
+
+def inline_pdf_reference(note) -> dict[str, int | str] | None:
     try:
         values = list(getattr(note, "fields", []) or [])
     except Exception:
         values = []
     for raw_value in values:
-        text = str(raw_value or "")
-        if "incremento_open_pdf_ref:" not in text:
-            continue
-        match = _INLINE_PDF_FILENAME_RE.search(unescape(text))
-        if match:
-            return os.path.basename(str(match.group("filename") or "").strip())
-    return ""
+        reference = _inline_pdf_reference_from_text(str(raw_value or ""))
+        if reference is not None:
+            return reference
+    return None
+
+
+def inline_pdf_reference_filename(note) -> str:
+    reference = inline_pdf_reference(note) or {}
+    return os.path.basename(str(reference.get("filename") or "").strip())
 
 
 def source_document_reference(note) -> dict[str, str | bool]:
@@ -327,7 +374,8 @@ def source_document_reference(note) -> dict[str, str | bool]:
         kind = "epub"
         filename = os.path.basename(normalized_link)
 
-    inline_pdf_filename = inline_pdf_reference_filename(note)
+    inline_reference = inline_pdf_reference(note) or {}
+    inline_pdf_filename = os.path.basename(str(inline_reference.get("filename") or "").strip())
     if not kind and inline_pdf_filename:
         kind = "pdf"
         filename = inline_pdf_filename

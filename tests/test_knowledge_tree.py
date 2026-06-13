@@ -155,6 +155,68 @@ class _FakeTreeLinkCol:
         self.updated_notes.append(note)
 
 
+class _FakeSearchNote:
+    def __init__(self, note_type_name: str, field_names: list[str], values: dict[str, str]):
+        self._note_type_name = str(note_type_name)
+        self._field_names = list(field_names)
+        self._values = {str(key): str(value) for key, value in dict(values).items()}
+        self.fields = [self._values.get(field_name, "") for field_name in self._field_names]
+
+    def note_type(self):
+        return {
+            "name": self._note_type_name,
+            "flds": [{"name": field_name} for field_name in self._field_names],
+        }
+
+    def __getitem__(self, key):
+        return self._values.get(str(key), "")
+
+
+class _FakeSearchCard:
+    def __init__(self, card_id: int, note: _FakeSearchNote):
+        self.id = int(card_id)
+        self.nid = int(card_id) * 10
+        self.did = 1
+        self.odid = 0
+        self._note = note
+
+    def note(self):
+        return self._note
+
+
+class _FakeSearchCol:
+    def __init__(self, cards: dict[int, _FakeSearchCard]):
+        self._cards = {int(card_id): card for card_id, card in dict(cards).items()}
+
+    def get_card(self, card_id):
+        return self._cards[int(card_id)]
+
+
+class _FakePdfTargetNote(dict):
+    def __init__(self, *, fields=None, values=None):
+        super().__init__(values or {})
+        self.fields = list(fields or [])
+
+    def __getitem__(self, key):
+        return self.get(str(key), "")
+
+
+class _FakePdfTargetCard:
+    def __init__(self, note):
+        self._note = note
+
+    def note(self):
+        return self._note
+
+
+class _FakePdfTargetCol:
+    def __init__(self, cards: dict[int, _FakePdfTargetCard]):
+        self._cards = {int(card_id): card for card_id, card in dict(cards).items()}
+
+    def get_card(self, card_id):
+        return self._cards[int(card_id)]
+
+
 class TestTreeMutationHelpers:
     def setup_method(self):
         _reset_db()
@@ -682,6 +744,357 @@ def test_search_linkable_cards_uses_anki_sort_field_and_excludes_linked_cards():
             "deck_name": "Archive",
         },
     ]
+
+
+def test_search_knowledge_tree_nodes_title_only_matches_tree_titles_in_tree_order():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "Alpha root", "deck_name": "Deck A", "note_type_name": "Basic"},
+        {"card_id": 20, "parent_card_id": 10, "node_kind": "item", "sort_order": 0, "title": "Beta leaf", "deck_name": "Deck B", "note_type_name": "Basic"},
+        {"card_id": 30, "parent_card_id": None, "node_kind": "topic", "sort_order": 1, "title": "Alpha branch", "deck_name": "Deck C", "note_type_name": "Cloze"},
+        {"card_id": 40, "parent_card_id": 30, "node_kind": "item", "sort_order": 0, "title": "Gamma detail", "deck_name": "Deck D", "note_type_name": "Basic"},
+    ]
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows):
+        results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "alpha",
+            include_title=True,
+        )
+
+    assert [result["card_id"] for result in results] == [10, 30]
+    assert [result["match_source"] for result in results] == ["title", "title"]
+    assert all(result["matched_fields"] == ["title"] for result in results)
+
+
+def test_search_knowledge_tree_nodes_metadata_matches_deck_note_type_and_card_id():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "Alpha", "deck_name": "Physics Deck", "note_type_name": "Basic"},
+        {"card_id": 20, "parent_card_id": None, "node_kind": "item", "sort_order": 1, "title": "Beta", "deck_name": "History Deck", "note_type_name": "Concept Basic"},
+        {"card_id": 321, "parent_card_id": None, "node_kind": "item", "sort_order": 2, "title": "Gamma", "deck_name": "Math Deck", "note_type_name": "Cloze"},
+    ]
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows):
+        deck_results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "physics",
+            include_title=False,
+            include_metadata=True,
+        )
+        note_type_results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "concept",
+            include_title=False,
+            include_metadata=True,
+        )
+        card_id_results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "321",
+            include_title=False,
+            include_metadata=True,
+        )
+
+    assert [result["card_id"] for result in deck_results] == [10]
+    assert deck_results[0]["matched_fields"] == ["deck_name"]
+    assert [result["card_id"] for result in note_type_results] == [20]
+    assert note_type_results[0]["matched_fields"] == ["note_type_name"]
+    assert [result["card_id"] for result in card_id_results] == [321]
+    assert card_id_results[0]["matched_fields"] == ["card_id"]
+
+
+def test_search_knowledge_tree_nodes_note_text_matches_non_title_visible_fields():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "Root", "deck_name": "Deck A", "note_type_name": "Basic"},
+        {"card_id": 20, "parent_card_id": 10, "node_kind": "item", "sort_order": 0, "title": "Leaf", "deck_name": "Deck B", "note_type_name": "Basic"},
+    ]
+    fake_cards = {
+        10: _FakeSearchCard(
+            10,
+            _FakeSearchNote(
+                "Basic",
+                ["Front", "Back"],
+                {"Front": "Root", "Back": "Contains derivation notes"},
+            ),
+        ),
+        20: _FakeSearchCard(
+            20,
+            _FakeSearchNote(
+                "Basic",
+                ["Front", "Back"],
+                {"Front": "Leaf", "Back": "Irrelevant"},
+            ),
+        ),
+    }
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows), patch.object(
+        knowledge_tree,
+        "mw",
+        SimpleNamespace(col=_FakeSearchCol(fake_cards)),
+    ):
+        results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "derivation",
+            include_title=False,
+            include_note_text=True,
+        )
+
+    assert [result["card_id"] for result in results] == [10]
+    assert results[0]["match_source"] == "note_text"
+    assert results[0]["matched_fields"] == ["field:Back"]
+
+
+def test_search_knowledge_tree_nodes_note_text_excludes_hidden_incremento_fields():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "Root", "deck_name": "Deck A", "note_type_name": "Basic"},
+    ]
+    fake_cards = {
+        10: _FakeSearchCard(
+            10,
+            _FakeSearchNote(
+                "Basic",
+                ["Front", INCREMENTO_SOURCE_TYPE_FIELD, INCREMENTO_PARENT_FIELD, "Back"],
+                {
+                    "Front": "Root",
+                    INCREMENTO_SOURCE_TYPE_FIELD: "Secret Search Token",
+                    INCREMENTO_PARENT_FIELD: "Also Hidden",
+                    "Back": "Visible explanation",
+                },
+            ),
+        )
+    }
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows), patch.object(
+        knowledge_tree,
+        "mw",
+        SimpleNamespace(col=_FakeSearchCol(fake_cards)),
+    ):
+        hidden_results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "secret search token",
+            include_title=False,
+            include_note_text=True,
+        )
+        visible_results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "visible explanation",
+            include_title=False,
+            include_note_text=True,
+        )
+
+    assert hidden_results == []
+    assert [result["card_id"] for result in visible_results] == [10]
+
+
+def test_search_knowledge_tree_nodes_combined_scopes_deduplicate_and_keep_primary_source():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "Quantum Mechanics", "deck_name": "Physics Deck", "note_type_name": "Basic"},
+    ]
+    fake_cards = {
+        10: _FakeSearchCard(
+            10,
+            _FakeSearchNote(
+                "Basic",
+                ["Front", "Back"],
+                {"Front": "Quantum Mechanics", "Back": "Quantum summary"},
+            ),
+        )
+    }
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows), patch.object(
+        knowledge_tree,
+        "mw",
+        SimpleNamespace(col=_FakeSearchCol(fake_cards)),
+    ):
+        results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "quantum",
+            include_title=True,
+            include_metadata=True,
+            include_note_text=True,
+        )
+
+    assert len(results) == 1
+    assert results[0]["card_id"] == 10
+    assert results[0]["match_source"] == "title"
+    assert results[0]["matched_fields"] == ["title", "field:Back"]
+
+
+def test_search_knowledge_tree_nodes_preserves_tree_order():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "Root one", "deck_name": "", "note_type_name": ""},
+        {"card_id": 12, "parent_card_id": 10, "node_kind": "item", "sort_order": 1, "title": "Alpha child second", "deck_name": "", "note_type_name": ""},
+        {"card_id": 11, "parent_card_id": 10, "node_kind": "item", "sort_order": 0, "title": "Alpha child first", "deck_name": "", "note_type_name": ""},
+        {"card_id": 20, "parent_card_id": None, "node_kind": "topic", "sort_order": 1, "title": "Alpha root second", "deck_name": "", "note_type_name": ""},
+    ]
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows):
+        results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "alpha",
+            include_title=True,
+        )
+
+    assert [result["card_id"] for result in results] == [11, 12, 20]
+
+
+def test_search_knowledge_tree_nodes_only_searches_cards_already_in_tree():
+    rows = [
+        {"card_id": 10, "parent_card_id": None, "node_kind": "topic", "sort_order": 0, "title": "In tree", "deck_name": "Deck A", "note_type_name": "Basic"},
+    ]
+    fake_cards = {
+        10: _FakeSearchCard(
+            10,
+            _FakeSearchNote("Basic", ["Front", "Back"], {"Front": "In tree", "Back": "alpha"}),
+        ),
+        999: _FakeSearchCard(
+            999,
+            _FakeSearchNote("Basic", ["Front", "Back"], {"Front": "Outside tree", "Back": "alpha"}),
+        ),
+    }
+
+    with patch.object(knowledge_tree, "load_knowledge_tree_nodes", return_value=rows), patch.object(
+        knowledge_tree,
+        "mw",
+        SimpleNamespace(col=_FakeSearchCol(fake_cards)),
+    ):
+        results = knowledge_tree.search_knowledge_tree_nodes(
+            "/tmp/addon",
+            "TestProfile",
+            "alpha",
+            include_title=False,
+            include_note_text=True,
+        )
+
+    assert [result["card_id"] for result in results] == [10]
+
+
+def test_resolve_card_pdf_target_uses_source_pdf_metadata_and_live_saved_page():
+    note = _FakePdfTargetNote(
+        values={"Incremento_Source_Link": "pdfs/source.pdf"},
+    )
+    fake_mw = SimpleNamespace(
+        col=_FakePdfTargetCol({10: _FakePdfTargetCard(note)})
+    )
+
+    with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+        knowledge_tree,
+        "find_live_pdf_card_by_filename",
+        return_value=901,
+    ), patch.object(
+        knowledge_tree,
+        "get_page",
+        return_value=17,
+    ):
+        result = knowledge_tree.resolve_card_pdf_target(
+            10,
+            addon_dir="/tmp/addon",
+            profile="TestProfile",
+        )
+
+    assert result == {
+        "kind": "pdf",
+        "filename": "source.pdf",
+        "page": 17,
+        "card_id": 901,
+        "has_inline_citation": False,
+    }
+
+
+def test_resolve_card_pdf_target_uses_inline_citation_without_live_pdf_card():
+    note = _FakePdfTargetNote(
+        fields=[
+            'Excerpt<br><a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"inline.pdf\\", \\"page\\": 42}&quot;); return false;">Page 42</a>'
+        ]
+    )
+    fake_mw = SimpleNamespace(
+        col=_FakePdfTargetCol({10: _FakePdfTargetCard(note)})
+    )
+
+    with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+        knowledge_tree,
+        "find_live_pdf_card_by_filename",
+        return_value=None,
+    ):
+        result = knowledge_tree.resolve_card_pdf_target(
+            10,
+            addon_dir="/tmp/addon",
+            profile="TestProfile",
+        )
+
+    assert result == {
+        "kind": "pdf",
+        "filename": "inline.pdf",
+        "page": 42,
+        "card_id": 0,
+        "has_inline_citation": True,
+    }
+
+
+def test_resolve_card_pdf_target_prefers_inline_citation_and_remaps_live_card_by_filename():
+    note = _FakePdfTargetNote(
+        fields=[
+            'Excerpt<br><a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"inline.pdf\\", \\"page\\": 8}&quot;); return false;">Page 8</a>'
+        ],
+        values={"Incremento_Source_Link": "pdfs/source.pdf"},
+    )
+    fake_mw = SimpleNamespace(
+        col=_FakePdfTargetCol({10: _FakePdfTargetCard(note)})
+    )
+
+    with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+        knowledge_tree,
+        "find_live_pdf_card_by_filename",
+        return_value=777,
+    ), patch.object(
+        knowledge_tree,
+        "get_page",
+        return_value=99,
+    ):
+        result = knowledge_tree.resolve_card_pdf_target(
+            10,
+            addon_dir="/tmp/addon",
+            profile="TestProfile",
+        )
+
+    assert result == {
+        "kind": "pdf",
+        "filename": "inline.pdf",
+        "page": 8,
+        "card_id": 777,
+        "has_inline_citation": True,
+    }
+
+
+def test_resolve_card_pdf_target_ignores_non_pdf_source_links():
+    note = _FakePdfTargetNote(
+        values={"Incremento_Source_Link": "https://example.com/article"},
+    )
+    fake_mw = SimpleNamespace(
+        col=_FakePdfTargetCol({10: _FakePdfTargetCard(note)})
+    )
+
+    with patch.object(knowledge_tree, "mw", fake_mw):
+        result = knowledge_tree.resolve_card_pdf_target(
+            10,
+            addon_dir="/tmp/addon",
+            profile="TestProfile",
+        )
+
+    assert result == {
+        "kind": "",
+        "filename": "",
+        "page": 0,
+        "card_id": 0,
+        "has_inline_citation": False,
+    }
 
 
 def test_apply_node_kind_to_cards_converts_multiple_cards_and_reports_errors():

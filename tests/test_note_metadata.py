@@ -11,6 +11,7 @@ from note_metadata import (
     ensure_incremento_ocr_field,
     ensure_incremento_metadata_fields,
     hidden_field_values,
+    inline_pdf_reference,
     inline_pdf_reference_filename,
     matches_hidden_field_reference,
     source_document_reference,
@@ -190,6 +191,20 @@ def test_inline_pdf_reference_filename_extracts_citation_target():
         ]
 
     assert inline_pdf_reference_filename(_FakeNote()) == "writer-guide.pdf"
+
+
+def test_inline_pdf_reference_extracts_first_citation_filename_and_page():
+    class _FakeNote(dict):
+        fields = [
+            'First <a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"writer-guide.pdf\\", \\"page\\": 42}&quot;); return false;">Page 42</a>',
+            'Second <a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 99, \\"filename\\": \\"other.pdf\\", \\"page\\": 7}&quot;); return false;">Page 7</a>',
+        ]
+
+    assert inline_pdf_reference(_FakeNote()) == {
+        "filename": "writer-guide.pdf",
+        "page": 42,
+        "card_id": 55,
+    }
 
 
 def test_source_document_reference_reports_pdf_metadata_and_inline_state():

@@ -1581,12 +1581,7 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
 
 def mark_reviewer_extract_note_added(options: dict | None) -> None:
     global _suppress_next_reviewer_queue_refresh
-    parent_card_id = None
-    try:
-        raw_parent_card_id = (options or {}).get("source_card_id")
-        parent_card_id = int(raw_parent_card_id) if raw_parent_card_id is not None else None
-    except Exception:
-        parent_card_id = None
+    parent_card_id = _source_card_id_from_extract_options(options)
     if parent_card_id is None:
         return
     _suppress_next_reviewer_queue_refresh = {
@@ -1646,6 +1641,56 @@ def on_add_cards_did_add_note(note) -> None:
     mark_reviewer_extract_note_added(options)
     consume_pending_extract_context_for_note(note, options)
     _notify_video_extract_note_added(note, options)
+
+
+def _install_embedded_add_dialog_hooks(dlg) -> None:
+    if dlg is None or getattr(dlg, "_incremento_embedded_add_hooks_installed", False):
+        return
+
+    original_add_current_note = getattr(dlg, "_add_current_note", None)
+    if not callable(original_add_current_note):
+        return
+
+    def _wrapped_add_current_note():
+        note = getattr(getattr(dlg, "editor", None), "note", None)
+        if note is None:
+            return original_add_current_note()
+        if getattr(note, "id", None) != 0:
+            return
+
+        note_can_be_added = getattr(dlg, "_note_can_be_added", None)
+        if not callable(note_can_be_added):
+            return original_add_current_note()
+        if not note_can_be_added(note):
+            return
+
+        deck_chooser = getattr(dlg, "deck_chooser", None)
+        target_deck_id = getattr(deck_chooser, "selected_deck_id", None)
+        if target_deck_id is None:
+            return original_add_current_note()
+
+        try:
+            from aqt.operations.note import add_note
+            from aqt.sound import av_player
+            from aqt.utils import tr
+        except Exception:
+            return original_add_current_note()
+
+        def on_success(changes) -> None:
+            dlg._last_added_note = note
+            dlg.addHistory(note)
+            tooltip(tr.importing_cards_added(count=changes.count), period=500)
+            av_player.stop_and_clear_queue()
+            dlg._load_new_note(sticky_fields_from=note)
+            gui_hooks.add_cards_did_add_note(note)
+
+        mark_reviewer_extract_note_added(pending_extract_options())
+        add_note(parent=dlg, note=note, target_deck_id=target_deck_id).success(
+            on_success
+        ).run_in_background()
+
+    dlg._add_current_note = _wrapped_add_current_note
+    dlg._incremento_embedded_add_hooks_installed = True
 
 
 def _set_editor_note_type_and_deck(editor, note_type_name: str, deck_name: str) -> None:
@@ -1982,6 +2027,7 @@ def build_add_card_dock():
     dlg.setWindowFlags(Qt.WindowType.Widget)
     dock.setWidget(dlg)
     dock._addcards_dialog = dlg
+    _install_embedded_add_dialog_hooks(dlg)
 
     mw.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
     _add_card_dock = dock

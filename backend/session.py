@@ -100,6 +100,7 @@ def _prepare_filtered_review_deck(
     *,
     deck_name: str,
     preserve_order: bool,
+    select_deck: bool = True,
 ) -> int:
     search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
 
@@ -133,8 +134,50 @@ def _prepare_filtered_review_deck(
             mw.col.update_card(card)
             position += 1
 
-    mw.col.decks.select(op.id)
+    if select_deck:
+        mw.col.decks.select(op.id)
     return int(op.id)
+
+
+def _empty_filtered_deck_by_name(deck_name: str) -> bool:
+    name = str(deck_name or "").strip()
+    if not name:
+        return False
+    existing = mw.col.decks.by_name(name)
+    if not existing or not existing.get("dyn"):
+        return False
+    mw.col.sched.empty_filtered_deck(existing["id"])
+    return True
+
+
+def _sync_filtered_deck_by_name(
+    deck_name: str,
+    selected_ids: list[int],
+    *,
+    preserve_order: bool,
+) -> bool:
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for raw in selected_ids or []:
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid <= 0 or cid in seen:
+            continue
+        seen.add(cid)
+        normalized_ids.append(cid)
+
+    if not normalized_ids:
+        return _empty_filtered_deck_by_name(deck_name)
+
+    _prepare_filtered_review_deck(
+        normalized_ids,
+        deck_name=deck_name,
+        preserve_order=preserve_order,
+        select_deck=False,
+    )
+    return True
 
 
 def start_explicit_review(
@@ -164,6 +207,7 @@ def start_explicit_review(
             normalized_ids,
             deck_name=deck_name,
             preserve_order=preserve_order,
+            select_deck=True,
         )
     except Exception as e:
         showInfo(str(e))
@@ -340,16 +384,18 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         _debug_layout.addWidget(_debug_btn)
         _debug_dlg.exec()
 
+    dialog_profile_name = (
+        dlg.selected_dialog_profile_name()
+        if hasattr(dlg, "selected_dialog_profile_name")
+        else None
+    )
+    session_deck_name = incremento_session_deck_name(dialog_profile_name)
     try:
-        dialog_profile_name = (
-            dlg.selected_dialog_profile_name()
-            if hasattr(dlg, "selected_dialog_profile_name")
-            else None
-        )
         _prepare_filtered_review_deck(
             selected_ids,
-            deck_name=incremento_session_deck_name(dialog_profile_name),
+            deck_name=session_deck_name,
             preserve_order=cfg.preserve_order,
+            select_deck=True,
         )
     except Exception as e:
         showInfo(str(e))
@@ -485,6 +531,16 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
                 hook_list.remove(fn)
             except ValueError:
                 pass
+
+        try:
+            remaining_ids = [cid for cid in selected_ids if cid not in _reviewed_ids]
+            _sync_filtered_deck_by_name(
+                session_deck_name,
+                remaining_ids,
+                preserve_order=cfg.preserve_order,
+            )
+        except Exception as e:
+            print(f"[Incremento] session deck cleanup error: {e}")
 
     def _on_state_did_change(new_state: str, old_state: str) -> None:
         if old_state == "review" and new_state != "review":

@@ -386,6 +386,80 @@ class TestPrepareFilteredReviewDeck:
         assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session Focus") is False
         assert _SESSION_MOD.is_incremento_session_deck_name("Incremento PDF Review") is False
 
+    def test_empty_filtered_deck_by_name_only_clears_dynamic_decks(self, monkeypatch):
+        emptied = []
+        fake_sched = types.SimpleNamespace(
+            empty_filtered_deck=lambda did: emptied.append(did),
+        )
+        fake_decks = types.SimpleNamespace(
+            by_name=lambda name: (
+                {"id": 12, "dyn": True}
+                if name == "Incremento Session"
+                else {"id": 99, "dyn": False}
+                if name == "Regular Deck"
+                else None
+            ),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(col=types.SimpleNamespace(decks=fake_decks, sched=fake_sched)),
+        )
+
+        assert _SESSION_MOD._empty_filtered_deck_by_name("Incremento Session") is True
+        assert _SESSION_MOD._empty_filtered_deck_by_name("Regular Deck") is False
+        assert _SESSION_MOD._empty_filtered_deck_by_name("Missing Deck") is False
+        assert emptied == [12]
+
+    def test_sync_filtered_deck_by_name_rebuilds_unfinished_session_without_selecting(self, monkeypatch):
+        calls = []
+
+        def _fake_prepare(selected_ids, *, deck_name, preserve_order, select_deck):
+            calls.append(
+                {
+                    "selected_ids": list(selected_ids),
+                    "deck_name": deck_name,
+                    "preserve_order": preserve_order,
+                    "select_deck": select_deck,
+                }
+            )
+            return 55
+
+        monkeypatch.setattr(_SESSION_MOD, "_prepare_filtered_review_deck", _fake_prepare)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_empty_filtered_deck_by_name",
+            lambda _name: (_ for _ in ()).throw(AssertionError("should not empty deck")),
+        )
+
+        assert _SESSION_MOD._sync_filtered_deck_by_name(
+            "Incremento Session",
+            [101, 102, 101],
+            preserve_order=True,
+        ) is True
+        assert calls == [
+            {
+                "selected_ids": [101, 102],
+                "deck_name": "Incremento Session",
+                "preserve_order": True,
+                "select_deck": False,
+            }
+        ]
+
+    def test_sync_filtered_deck_by_name_empties_when_no_cards_remain(self, monkeypatch):
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_prepare_filtered_review_deck",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should not rebuild")),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "_empty_filtered_deck_by_name", lambda name: name == "Incremento Session")
+
+        assert _SESSION_MOD._sync_filtered_deck_by_name(
+            "Incremento Session",
+            [],
+            preserve_order=True,
+        ) is True
+
 
 class TestReviewTimeTrackerIncrementoSessions:
     def test_profile_scoped_incremento_session_decks_skip_duplicate_pdf_time(self):

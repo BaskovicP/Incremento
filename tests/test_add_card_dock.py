@@ -1029,6 +1029,100 @@ def test_reviewer_extract_queue_refresh_suppression_requires_source_card_id():
     assert dock.consume_reviewer_extract_queue_refresh_suppression(5) is False
 
 
+def test_embedded_add_dialog_arms_queue_suppression_before_background_add(monkeypatch):
+    note = _FakeNote(note_id=0)
+    editor = _FakeEditor(note, add_mode=True)
+    dlg = _FakeAddCardsDialog(editor)
+    dlg.deck_chooser = types.SimpleNamespace(selected_deck_id=7)
+    dlg._last_added_note = None
+    dlg._add_current_note = lambda: None
+    dlg._note_can_be_added = lambda current_note: True
+    history_calls = []
+    load_calls = []
+    hook_calls = []
+    armed = []
+    add_note_calls = []
+    audio_stop_calls = []
+
+    dlg.addHistory = lambda current_note: history_calls.append(current_note)
+    dlg._load_new_note = lambda sticky_fields_from=None: load_calls.append(sticky_fields_from)
+
+    class _FakeAddNoteOp:
+        def __init__(self, parent, current_note, target_deck_id):
+            self.parent = parent
+            self.note = current_note
+            self.target_deck_id = target_deck_id
+            self._success = None
+
+        def success(self, callback):
+            self._success = callback
+            return self
+
+        def run_in_background(self):
+            add_note_calls.append(
+                (self.parent, self.note, self.target_deck_id, len(armed))
+            )
+            assert self._success is not None
+            self._success(types.SimpleNamespace(count=1))
+
+    monkeypatch.setattr(
+        dock,
+        "pending_extract_options",
+        lambda: {"source": "reviewer", "source_card_id": 42},
+    )
+    monkeypatch.setattr(
+        dock,
+        "mark_reviewer_extract_note_added",
+        lambda options: armed.append(dict(options or {})),
+    )
+    monkeypatch.setattr(dock, "tooltip", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        dock,
+        "gui_hooks",
+        types.SimpleNamespace(
+            add_cards_did_add_note=lambda current_note: hook_calls.append(current_note)
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "aqt.operations.note",
+        types.SimpleNamespace(
+            add_note=lambda parent, note, target_deck_id: _FakeAddNoteOp(
+                parent, note, target_deck_id
+            )
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "aqt.sound",
+        types.SimpleNamespace(
+            av_player=types.SimpleNamespace(
+                stop_and_clear_queue=lambda: audio_stop_calls.append(True)
+            )
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "aqt.utils",
+        types.SimpleNamespace(
+            tr=types.SimpleNamespace(
+                importing_cards_added=lambda count: f"{count} card added"
+            )
+        ),
+    )
+
+    dock._install_embedded_add_dialog_hooks(dlg)
+    dlg._add_current_note()
+
+    assert armed == [{"source": "reviewer", "source_card_id": 42}]
+    assert add_note_calls == [(dlg, note, 7, 1)]
+    assert dlg._last_added_note is note
+    assert history_calls == [note]
+    assert load_calls == [note]
+    assert hook_calls == [note]
+    assert audio_stop_calls == [True]
+
+
 def test_set_editor_note_type_saves_metadata_fields_before_switch(monkeypatch):
     note = _FakeNote(note_id=22)
     editor = _FakeEditor(note, add_mode=True)

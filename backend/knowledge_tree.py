@@ -22,9 +22,12 @@ try:
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        inline_pdf_reference,
+        source_document_reference,
         visible_field_names,
     )
     from .paths import get_active_profile as _active_profile
+    from .pdf_manager import find_live_pdf_card_by_filename, get_page
     from .priority_manager import get_priority, set_priority
 except ImportError:
     from db import (  # type: ignore
@@ -37,9 +40,12 @@ except ImportError:
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        inline_pdf_reference,
+        source_document_reference,
         visible_field_names,
     )
     from paths import get_active_profile as _active_profile  # type: ignore
+    from pdf_manager import find_live_pdf_card_by_filename, get_page  # type: ignore
     from priority_manager import get_priority, set_priority  # type: ignore
 
 
@@ -384,6 +390,77 @@ def get_card_metadata(card_id: int, *, addon_dir: str | None = None, profile: st
     }
 
 
+def resolve_card_pdf_target(
+    card_id: int,
+    *,
+    addon_dir: str | None = None,
+    profile: str | None = None,
+) -> dict[str, str | int | bool]:
+    empty = {
+        "kind": "",
+        "filename": "",
+        "page": 0,
+        "card_id": 0,
+        "has_inline_citation": False,
+    }
+    if mw is None or getattr(mw, "col", None) is None:
+        return dict(empty)
+
+    resolved_addon_dir = str(addon_dir or _ADDON_DIR).strip() or _ADDON_DIR
+    resolved_profile = str(profile or _active_profile()).strip() or _active_profile()
+
+    card = mw.col.get_card(int(card_id))
+    note = card.note()
+
+    inline_reference = inline_pdf_reference(note) or {}
+    source_reference = source_document_reference(note)
+
+    filename = ""
+    page = 1
+    has_inline_citation = False
+
+    inline_filename = os.path.basename(str(inline_reference.get("filename") or "").strip())
+    if inline_filename:
+        filename = inline_filename
+        try:
+            page = max(1, int(inline_reference.get("page") or 1))
+        except Exception:
+            page = 1
+        has_inline_citation = True
+    elif str(source_reference.get("kind") or "").strip() == "pdf":
+        filename = os.path.basename(str(source_reference.get("filename") or "").strip())
+    else:
+        return dict(empty)
+
+    if not filename:
+        return dict(empty)
+
+    live_card_id = 0
+    try:
+        resolved_card_id = find_live_pdf_card_by_filename(mw.col, filename)
+        if resolved_card_id is not None:
+            live_card_id = int(resolved_card_id)
+    except Exception:
+        live_card_id = 0
+
+    if not has_inline_citation:
+        if live_card_id > 0:
+            try:
+                page = max(1, int(get_page(resolved_addon_dir, resolved_profile, live_card_id) or 1))
+            except Exception:
+                page = 1
+        else:
+            page = 1
+
+    return {
+        "kind": "pdf",
+        "filename": filename,
+        "page": int(page),
+        "card_id": int(live_card_id),
+        "has_inline_citation": bool(has_inline_citation),
+    }
+
+
 def infer_node_kind_for_card(card_id: int) -> str:
     if mw is None or getattr(mw, "col", None) is None:
         return NODE_KIND_ITEM
@@ -660,6 +737,202 @@ def load_knowledge_tree_nodes(
         return load_knowledge_tree_nodes(addon_dir, profile, cleanup_missing=False)
 
     return enriched
+
+
+def _rows_in_tree_order(rows: list[dict]) -> list[dict]:
+    cloned_rows: list[dict] = []
+    for row in rows:
+        clone = dict(row)
+        clone["card_id"] = int(row["card_id"])
+        clone["parent_card_id"] = (
+            None if row.get("parent_card_id") is None else int(row["parent_card_id"])
+        )
+        clone["node_kind"] = normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC)
+        clone["sort_order"] = int(row.get("sort_order", 0))
+        cloned_rows.append(clone)
+
+    grouped: dict[int | None, list[dict]] = defaultdict(list)
+    for row in cloned_rows:
+        grouped[row.get("parent_card_id")].append(row)
+    for items in grouped.values():
+        items.sort(key=lambda item: (int(item.get("sort_order", 0)), int(item["card_id"])))
+
+    row_by_card_id = {int(row["card_id"]): row for row in cloned_rows}
+
+    ordered: list[dict] = []
+    seen: set[int] = set()
+
+    root_rows: list[dict] = list(grouped.get(None, []))
+    for row in cloned_rows:
+        card_id = int(row["card_id"])
+        parent_card_id = row.get("parent_card_id")
+        if parent_card_id is None:
+            continue
+        parent_card_id = int(parent_card_id)
+        if parent_card_id == card_id or parent_card_id not in row_by_card_id:
+            root_rows.append(row)
+
+    def visit(row: dict) -> None:
+        card_id = int(row["card_id"])
+        if card_id in seen:
+            return
+        seen.add(card_id)
+        ordered.append(row)
+        for child_row in grouped.get(card_id, []):
+            visit(child_row)
+
+    for row in root_rows:
+        visit(row)
+
+    for row in cloned_rows:
+        visit(row)
+
+    return ordered
+
+
+def _visible_note_text_matches(card_id: int, query_text: str) -> list[str]:
+    if mw is None or getattr(mw, "col", None) is None:
+        return []
+
+    try:
+        card = mw.col.get_card(int(card_id))
+        note = card.note()
+    except Exception:
+        return []
+
+    field_defs = []
+    try:
+        note_type = note.note_type()
+        if isinstance(note_type, dict):
+            field_defs = list(note_type.get("flds") or [])
+    except Exception:
+        field_defs = []
+
+    field_names = [
+        str((field or {}).get("name") or "").strip()
+        for field in field_defs
+        if str((field or {}).get("name") or "").strip()
+    ]
+    visible_names = visible_field_names(field_names)
+    if visible_names:
+        visible_names = visible_names[1:]
+
+    matched_fields: list[str] = []
+    for field_name in visible_names:
+        try:
+            raw_value = note[field_name]
+        except Exception:
+            raw_value = ""
+        cleaned_value = _strip_html(str(raw_value or ""))
+        if cleaned_value and query_text in cleaned_value.casefold():
+            matched_fields.append(field_name)
+    return matched_fields
+
+
+def _search_match_reason(match_source: str, matched_fields: list[str]) -> str:
+    if match_source == "title":
+        return "Title match"
+    if match_source == "metadata":
+        labels: list[str] = []
+        if "deck_name" in matched_fields:
+            labels.append("deck")
+        if "note_type_name" in matched_fields:
+            labels.append("note type")
+        if "card_id" in matched_fields:
+            labels.append("card id")
+        if labels:
+            return "Metadata: " + ", ".join(labels)
+        return "Metadata match"
+
+    note_fields = [
+        field_name.split(":", 1)[1]
+        for field_name in matched_fields
+        if field_name.startswith("field:")
+    ]
+    if not note_fields:
+        return "Card text match"
+    summary = ", ".join(note_fields[:2])
+    extra = len(note_fields) - 2
+    if extra > 0:
+        summary += f" +{extra}"
+    return f"Card text: {summary}"
+
+
+def search_knowledge_tree_nodes(
+    addon_dir: str,
+    profile: str,
+    query: str,
+    *,
+    include_title: bool = True,
+    include_metadata: bool = False,
+    include_note_text: bool = False,
+    limit: int | None = None,
+) -> list[dict]:
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return []
+    if not (include_title or include_metadata or include_note_text):
+        return []
+
+    query_text = normalized_query.casefold()
+    rows = load_knowledge_tree_nodes(addon_dir, profile, cleanup_missing=False)
+    ordered_rows = _rows_in_tree_order(rows)
+    max_results = None if limit is None else max(1, int(limit))
+
+    results: list[dict] = []
+    for row in ordered_rows:
+        card_id = int(row["card_id"])
+        matched_fields: list[str] = []
+
+        if include_title:
+            title = str(row.get("title") or "")
+            if title and query_text in title.casefold():
+                matched_fields.append("title")
+
+        if include_metadata:
+            deck_name = str(row.get("deck_name") or "")
+            note_type_name = str(row.get("note_type_name") or "")
+            if deck_name and query_text in deck_name.casefold():
+                matched_fields.append("deck_name")
+            if note_type_name and query_text in note_type_name.casefold():
+                matched_fields.append("note_type_name")
+            if query_text in str(card_id).casefold():
+                matched_fields.append("card_id")
+
+        if include_note_text:
+            matched_fields.extend(
+                [f"field:{name}" for name in _visible_note_text_matches(card_id, query_text)]
+            )
+
+        if not matched_fields:
+            continue
+
+        if "title" in matched_fields:
+            match_source = "title"
+        elif any(
+            field_name in {"deck_name", "note_type_name", "card_id"}
+            for field_name in matched_fields
+        ):
+            match_source = "metadata"
+        else:
+            match_source = "note_text"
+
+        results.append(
+            {
+                "card_id": card_id,
+                "title": str(row.get("title") or f"Card {card_id}").strip() or f"Card {card_id}",
+                "node_kind": normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC),
+                "deck_name": str(row.get("deck_name") or "").strip(),
+                "note_type_name": str(row.get("note_type_name") or "").strip(),
+                "match_source": match_source,
+                "matched_fields": matched_fields,
+                "match_reason": _search_match_reason(match_source, matched_fields),
+            }
+        )
+        if max_results is not None and len(results) >= max_results:
+            break
+
+    return results
 
 
 def _save_note(note) -> None:

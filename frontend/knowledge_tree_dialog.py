@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import html
+import os
 from typing import Callable
 
 from aqt import mw
 from aqt.qt import (
     QAbstractItemView,
     QAction,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFrame,
@@ -109,7 +111,9 @@ try:
         normalize_node_kind,
         randomize_subtree_priorities,
         rename_card_title,
+        resolve_card_pdf_target,
         save_knowledge_tree_rows,
+        search_knowledge_tree_nodes,
         search_linkable_cards,
         set_selected_card_priority,
         shift_subtree_priorities,
@@ -142,7 +146,9 @@ except ImportError:
         normalize_node_kind,
         randomize_subtree_priorities,
         rename_card_title,
+        resolve_card_pdf_target,
         save_knowledge_tree_rows,
+        search_knowledge_tree_nodes,
         search_linkable_cards,
         set_selected_card_priority,
         shift_subtree_priorities,
@@ -262,6 +268,19 @@ def _compact_display_text(text: str, *, limit: int = _DISPLAY_TITLE_LIMIT) -> st
     return value[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _open_pdf_action_state(
+    selected_count: int,
+    pdf_target: dict[str, str | int | bool] | None,
+) -> tuple[bool, str]:
+    if int(selected_count) <= 0:
+        return False, "Select exactly one knowledge-tree node to open its linked PDF."
+    if int(selected_count) != 1:
+        return False, "Open PDF is available only when exactly one knowledge-tree node is selected."
+    if not pdf_target or str(pdf_target.get("kind") or "").strip() != "pdf":
+        return False, "Selected node does not link to a PDF."
+    return True, "Open the linked PDF in the existing PDF dock."
+
+
 class _KnowledgeTreeWidget(QTreeWidget):
     def __init__(self, on_drop_persist: Callable[[], None], parent=None):
         super().__init__(parent)
@@ -270,6 +289,15 @@ class _KnowledgeTreeWidget(QTreeWidget):
     def dropEvent(self, event) -> None:
         super().dropEvent(event)
         self._on_drop_persist()
+
+
+class _SearchLineEdit(QLineEdit):
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            self.clear()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 
 class _CreateNodeDialog(QDialog):
@@ -591,6 +619,8 @@ class KnowledgeTreeDialog(QDialog):
         )
         self._rows_cache: list[dict] = []
         self._row_by_card_id: dict[int, dict] = {}
+        self._search_results_cache: list[dict] = []
+        self._updating_search_results = False
         self._subset_review_dialogs: list[KnowledgeTreeSubsetDialog] = []
         self._toolbar_buttons: list[QToolButton] = []
         self._toolbar_button_labels: dict[QToolButton, str] = {}
@@ -739,6 +769,21 @@ class KnowledgeTreeDialog(QDialog):
             QTreeWidget#KnowledgeTreeView::item:selected {
               background: rgba(74,122,181,0.40);
             }
+            QListWidget#KnowledgeSearchResults {
+              background: palette(base);
+              border: 1px solid rgba(128,128,128,0.20);
+              border-radius: 10px;
+              padding: 4px;
+            }
+            QListWidget#KnowledgeSearchResults::item {
+              padding: 6px 8px;
+            }
+            QListWidget#KnowledgeSearchResults::item:selected {
+              background: rgba(74,122,181,0.24);
+            }
+            QLineEdit#KnowledgeSearchEdit {
+              padding: 6px 8px;
+            }
             QHeaderView::section {
               background: rgba(128,128,128,0.08);
               padding: 6px 8px;
@@ -847,6 +892,12 @@ class KnowledgeTreeDialog(QDialog):
             self._open_selected_in_browser,
             tool_tip="Open the selected node in Anki Browser.",
         )
+        self._open_pdf_btn = self._build_toolbar_button(
+            "Open PDF",
+            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+            self._open_selected_pdf,
+            tool_tip="Open the linked PDF in the existing PDF dock.",
+        )
         self._parent_btn = self._build_toolbar_button(
             "Parent",
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogToParent),
@@ -885,6 +936,7 @@ class KnowledgeTreeDialog(QDialog):
             self._toolbar_separator(),
             self._rename_btn,
             self._browser_btn,
+            self._open_pdf_btn,
             self._parent_btn,
             self._remove_btn,
         ]:
@@ -955,6 +1007,7 @@ class KnowledgeTreeDialog(QDialog):
         intro_layout.addWidget(self._workspace_focus)
 
         layout.addWidget(intro)
+        layout.addWidget(self._build_search_panel(panel))
 
         self._tree = _KnowledgeTreeWidget(self._persist_tree_after_drop, panel)
         self._tree.setObjectName("KnowledgeTreeView")
@@ -983,6 +1036,84 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.setColumnWidth(1, 74)
         layout.addWidget(self._tree, 1)
         return panel
+
+    def _build_search_panel(self, parent: QWidget) -> QWidget:
+        card = QFrame(parent)
+        card.setObjectName("KnowledgeSectionCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        title = QLabel("Search Tree")
+        title.setObjectName("KnowledgeTitle")
+        layout.addWidget(title)
+
+        hint = QLabel(
+            "Jump to linked cards by title first, then optionally include metadata or visible card text."
+        )
+        hint.setObjectName("KnowledgeHint")
+        hint.setWordWrap(True)
+        _allow_label_shrink(hint)
+        layout.addWidget(hint)
+
+        query_row = QHBoxLayout()
+        query_row.setContentsMargins(0, 0, 0, 0)
+        query_row.setSpacing(8)
+        self._search_edit = _SearchLineEdit(card)
+        self._search_edit.setObjectName("KnowledgeSearchEdit")
+        self._search_edit.setPlaceholderText("Search linked titles...")
+        self._search_clear_btn = QPushButton("Clear", card)
+        self._search_clear_btn.setObjectName("KnowledgeActionButton")
+        self._search_clear_btn.setFixedHeight(34)
+        query_row.addWidget(self._search_edit, 1)
+        query_row.addWidget(self._search_clear_btn)
+        layout.addLayout(query_row)
+
+        scope_row = QHBoxLayout()
+        scope_row.setContentsMargins(0, 0, 0, 0)
+        scope_row.setSpacing(12)
+        self._search_titles_toggle = QCheckBox("Titles", card)
+        self._search_titles_toggle.setChecked(True)
+        self._search_metadata_toggle = QCheckBox("Metadata", card)
+        self._search_note_text_toggle = QCheckBox("Card text", card)
+        scope_row.addWidget(self._search_titles_toggle)
+        scope_row.addWidget(self._search_metadata_toggle)
+        scope_row.addWidget(self._search_note_text_toggle)
+        scope_row.addStretch(1)
+        layout.addLayout(scope_row)
+
+        self._search_results_label = QLabel("Search is limited to cards already linked into this tree.")
+        self._search_results_label.setObjectName("KnowledgeMeta")
+        self._search_results_label.setWordWrap(True)
+        _allow_label_shrink(self._search_results_label)
+        layout.addWidget(self._search_results_label)
+
+        self._search_results_list = QListWidget(card)
+        self._search_results_list.setObjectName("KnowledgeSearchResults")
+        self._search_results_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._search_results_list.setWordWrap(True)
+        self._search_results_list.setUniformItemSizes(False)
+        self._search_results_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._search_results_list.setMaximumHeight(180)
+        layout.addWidget(self._search_results_list)
+
+        qconnect(self._search_edit.textChanged, self._refresh_search_results)
+        qconnect(self._search_edit.returnPressed, self._open_first_search_result)
+        qconnect(self._search_clear_btn.clicked, self._clear_search)
+        qconnect(self._search_titles_toggle.toggled, self._refresh_search_results)
+        qconnect(self._search_metadata_toggle.toggled, self._refresh_search_results)
+        qconnect(self._search_note_text_toggle.toggled, self._refresh_search_results)
+        qconnect(
+            self._search_results_list.currentItemChanged,
+            lambda current, _previous: self._select_search_result_item(current),
+        )
+        qconnect(
+            self._search_results_list.itemActivated,
+            lambda item: self._select_search_result_item(item, focus_tree=True),
+        )
+        return card
 
     def _build_inspector_panel(self) -> QWidget:
         panel = QFrame(self)
@@ -1187,6 +1318,11 @@ class KnowledgeTreeDialog(QDialog):
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
             self._open_selected_in_browser,
         )
+        self._inspector_open_pdf_btn = self._build_action_button(
+            "Open PDF",
+            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+            self._open_selected_pdf,
+        )
         self._inspector_parent_btn = self._build_action_button(
             "Go To Parent",
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogToParent),
@@ -1207,6 +1343,7 @@ class KnowledgeTreeDialog(QDialog):
         self._inspector_action_buttons = [
             self._inspector_rename_btn,
             self._inspector_browser_btn,
+            self._inspector_open_pdf_btn,
             self._inspector_parent_btn,
             self._inspector_remove_btn,
             self._inspector_study_btn,
@@ -1224,7 +1361,7 @@ class KnowledgeTreeDialog(QDialog):
             "Study Branch opens the normal Incremento learning dialog, but limits scheduling to this subtree. "
             "Subset Review opens a detailed table for this node and every descendant. "
             "Postpone opens SuperMemo-style bulk delay tools for this branch, all outstanding cards, or the current Browser. "
-            "Browser opens the linked note for editing."
+            "Browser opens the linked note for editing, and Open PDF jumps to the linked source document in the existing dock."
         )
         self._action_hint.setObjectName("KnowledgeHint")
         self._action_hint.setWordWrap(True)
@@ -1249,9 +1386,10 @@ class KnowledgeTreeDialog(QDialog):
             self._inspector_action_grid.setColumnStretch(1, 0)
             return
 
+        rows_per_column = max(1, (len(self._inspector_action_buttons) + 1) // 2)
         for index, button in enumerate(self._inspector_action_buttons):
-            row = index % 4
-            column = 0 if index < 4 else 1
+            row = index % rows_per_column
+            column = index // rows_per_column
             self._inspector_action_grid.addWidget(button, row, column)
         self._inspector_action_grid.setColumnStretch(0, 1)
         self._inspector_action_grid.setColumnStretch(1, 1)
@@ -1361,6 +1499,8 @@ class KnowledgeTreeDialog(QDialog):
         selected_count = len(self._selected_items())
         has_selection = selected_count > 0
         has_single_selection = selected_count == 1
+        pdf_target = self._selected_pdf_target(quiet=True) if has_single_selection else None
+        open_pdf_enabled, open_pdf_tool_tip = _open_pdf_action_state(selected_count, pdf_target)
         has_parent = bool(has_single_selection and get_parent_card_id(
             self._addon_dir,
             self._profile,
@@ -1411,6 +1551,11 @@ class KnowledgeTreeDialog(QDialog):
             "Edit In Browser",
             menu,
         )
+        open_pdf_action = QAction(
+            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+            "Open PDF",
+            menu,
+        )
         parent_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogToParent),
             "Go To Parent",
@@ -1442,6 +1587,7 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(study_action.triggered, lambda _checked=False: self._study_selected_branch())
         qconnect(subset_action.triggered, lambda _checked=False: self._open_subset_review_dialog())
         qconnect(browser_action.triggered, lambda _checked=False: self._open_selected_in_browser())
+        qconnect(open_pdf_action.triggered, lambda _checked=False: self._open_selected_pdf())
         qconnect(parent_action.triggered, lambda _checked=False: self._go_to_parent())
         qconnect(expand_action.triggered, lambda _checked=False: self._expand_selected_branch())
         qconnect(collapse_action.triggered, lambda _checked=False: self._collapse_selected_branch())
@@ -1452,6 +1598,9 @@ class KnowledgeTreeDialog(QDialog):
         study_action.setEnabled(has_single_selection)
         subset_action.setEnabled(has_single_selection)
         browser_action.setEnabled(has_single_selection)
+        open_pdf_action.setEnabled(open_pdf_enabled)
+        open_pdf_action.setToolTip(open_pdf_tool_tip)
+        open_pdf_action.setStatusTip(open_pdf_tool_tip)
         parent_action.setEnabled(has_parent)
         expand_action.setEnabled(has_selection)
         collapse_action.setEnabled(has_selection)
@@ -1464,6 +1613,7 @@ class KnowledgeTreeDialog(QDialog):
         menu.addSeparator()
         menu.addAction(rename_action)
         menu.addAction(browser_action)
+        menu.addAction(open_pdf_action)
         menu.addAction(parent_action)
         menu.addAction(remove_action)
         menu.addSeparator()
@@ -1529,6 +1679,39 @@ class KnowledgeTreeDialog(QDialog):
         if len(card_ids) != 1:
             return None
         return int(card_ids[0])
+
+    def _selected_pdf_target(
+        self,
+        *,
+        quiet: bool = True,
+    ) -> dict[str, str | int | bool] | None:
+        card_id = self._single_selected_card_id()
+        if card_id is None:
+            return None
+        try:
+            target = resolve_card_pdf_target(
+                int(card_id),
+                addon_dir=self._addon_dir,
+                profile=self._profile,
+            )
+        except Exception as exc:
+            if not quiet:
+                showInfo(f"Could not resolve the linked PDF for this knowledge-tree node:\n{exc}")
+            return None
+        if str((target or {}).get("kind") or "").strip() != "pdf":
+            return None
+        return target
+
+    def _apply_open_pdf_action_state(
+        self,
+        selected_count: int,
+        pdf_target: dict[str, str | int | bool] | None,
+    ) -> None:
+        enabled, tool_tip = _open_pdf_action_state(selected_count, pdf_target)
+        self._open_pdf_btn.setEnabled(enabled)
+        self._open_pdf_btn.setToolTip(tool_tip)
+        self._inspector_open_pdf_btn.setEnabled(enabled)
+        self._inspector_open_pdf_btn.setToolTip(tool_tip)
 
     def _selected_parent_card_id_for_insert(self) -> int | None:
         return self._selected_card_id()
@@ -1695,6 +1878,7 @@ class KnowledgeTreeDialog(QDialog):
             self._select_card_id(requested_card_id)
         elif self._tree.topLevelItemCount():
             self._tree.setCurrentItem(self._tree.topLevelItem(0))
+        self._refresh_search_results()
         self._refresh_selection_ui()
 
     def _set_item_expanded(self, card_id: int, expanded: bool) -> None:
@@ -1713,6 +1897,119 @@ class KnowledgeTreeDialog(QDialog):
 
     def _select_card_id(self, card_id: int) -> None:
         self._apply_selection([int(card_id)], anchor_card_id=int(card_id))
+
+    def _clear_search(self) -> None:
+        self._search_edit.clear()
+
+    def _search_scope_options(self) -> dict[str, bool]:
+        return {
+            "include_title": self._search_titles_toggle.isChecked(),
+            "include_metadata": self._search_metadata_toggle.isChecked(),
+            "include_note_text": self._search_note_text_toggle.isChecked(),
+        }
+
+    def _search_result_secondary_text(self, result: dict) -> str:
+        parts = [
+            str(result.get("match_reason") or "").strip(),
+            str(result.get("deck_name") or "").strip(),
+            str(result.get("note_type_name") or "").strip(),
+            f"card {int(result['card_id'])}",
+        ]
+        return "  ·  ".join(part for part in parts if part)
+
+    def _refresh_search_results(self, *_args) -> None:
+        query = self._search_edit.text().strip()
+        scope = self._search_scope_options()
+        if not query:
+            self._search_results_cache = []
+            self._updating_search_results = True
+            try:
+                self._search_results_list.clear()
+            finally:
+                self._updating_search_results = False
+            self._search_results_label.setText(
+                "Search is limited to cards already linked into this tree."
+            )
+            self._search_clear_btn.setEnabled(False)
+            return
+
+        if not any(scope.values()):
+            self._search_results_cache = []
+            self._updating_search_results = True
+            try:
+                self._search_results_list.clear()
+            finally:
+                self._updating_search_results = False
+            self._search_results_label.setText("Enable at least one scope to search the tree.")
+            self._search_clear_btn.setEnabled(True)
+            return
+
+        try:
+            results = search_knowledge_tree_nodes(
+                self._addon_dir,
+                self._profile,
+                query,
+                **scope,
+                limit=100,
+            )
+        except Exception as exc:
+            self._search_results_cache = []
+            self._updating_search_results = True
+            try:
+                self._search_results_list.clear()
+            finally:
+                self._updating_search_results = False
+            self._search_results_label.setText(f"Search failed: {exc}")
+            self._search_clear_btn.setEnabled(True)
+            return
+
+        self._search_results_cache = list(results)
+        self._updating_search_results = True
+        try:
+            self._search_results_list.clear()
+            for result in results:
+                title = str(result.get("title") or "").strip() or f"Card {int(result['card_id'])}"
+                secondary = self._search_result_secondary_text(result)
+                item = QListWidgetItem(
+                    f"{title}  ·  {_kind_label(result.get('node_kind') or NODE_KIND_TOPIC)}\n{secondary}"
+                )
+                item.setData(_ROLE_CARD_ID, int(result["card_id"]))
+                item.setIcon(_kind_icon(result.get("node_kind") or NODE_KIND_TOPIC))
+                item.setToolTip(secondary)
+                item.setSizeHint(QSize(0, 42))
+                self._search_results_list.addItem(item)
+        finally:
+            self._updating_search_results = False
+
+        count = len(results)
+        self._search_results_label.setText(
+            f'{count} result{"s" if count != 1 else ""} for "{query}".'
+        )
+        self._search_clear_btn.setEnabled(True)
+
+    def _select_search_result_item(
+        self,
+        item: QListWidgetItem | None,
+        *,
+        focus_tree: bool = False,
+    ) -> None:
+        if self._updating_search_results or item is None:
+            return
+        value = item.data(_ROLE_CARD_ID)
+        if value is None:
+            return
+        self._select_card_id(int(value))
+        if focus_tree:
+            self._tree.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def _open_first_search_result(self) -> None:
+        if not self._search_results_cache:
+            return
+        first_item = self._search_results_list.item(0)
+        if first_item is None:
+            return
+        self._search_results_list.setCurrentItem(first_item)
+        self._select_search_result_item(first_item, focus_tree=True)
 
     def _apply_selection(
         self,
@@ -1869,6 +2166,7 @@ class KnowledgeTreeDialog(QDialog):
         has_selection = card_id is not None
         has_single_selection = selected_count == 1
         has_parent = parent_card_id is not None
+        pdf_target = self._selected_pdf_target(quiet=True) if has_single_selection else None
 
         self._rename_btn.setEnabled(has_single_selection)
         self._remove_btn.setEnabled(has_selection)
@@ -1878,6 +2176,7 @@ class KnowledgeTreeDialog(QDialog):
         self._browser_btn.setEnabled(has_single_selection)
         self._parent_btn.setEnabled(has_parent)
         self._postpone_btn.setEnabled(True)
+        self._apply_open_pdf_action_state(selected_count, pdf_target)
 
         self._inspector_study_btn.setEnabled(has_single_selection)
         self._inspector_subset_btn.setEnabled(has_single_selection)
@@ -1977,7 +2276,7 @@ class KnowledgeTreeDialog(QDialog):
             self._selection_meta.setText("  ·  ".join(meta_parts))
             self._selection_note.setText(
                 "Multi-selection is enabled. Remove, expand, and collapse apply to every selected node. "
-                "Single-node actions like Rename, Priority, Study Branch, Subset Review, Browser, and Parent require exactly one selection."
+                "Single-node actions like Rename, Priority, Study Branch, Subset Review, Browser, Open PDF, and Parent require exactly one selection."
             )
             self._parent_value.setText("Parent branch: Single-node actions require exactly one selected node.")
             self._lineage_value.setText(f"Anchor lineage: {self._lineage_text_for_card_id(card_id).replace('Lineage: ', '')}")
@@ -2504,6 +2803,50 @@ class KnowledgeTreeDialog(QDialog):
         )
         if dlg.exec():
             self.reload(select_card_id=self._selected_card_id())
+
+    def _open_selected_pdf(self) -> None:
+        selected_count = len(self._selected_card_ids())
+        card_id = self._single_selected_card_id()
+        pdf_target = self._selected_pdf_target(quiet=False) if card_id is not None else None
+        enabled, tool_tip = _open_pdf_action_state(selected_count, pdf_target)
+        if not enabled:
+            tooltip(tool_tip)
+            return
+
+        filename = os.path.basename(str((pdf_target or {}).get("filename") or "").strip())
+        if not filename:
+            showInfo("Could not resolve the linked PDF for this knowledge-tree node.")
+            return
+
+        open_card_id = int((pdf_target or {}).get("card_id") or 0)
+        open_page = max(1, int((pdf_target or {}).get("page") or 1))
+        has_inline_citation = bool((pdf_target or {}).get("has_inline_citation"))
+
+        try:
+            from ..backend.pdf_manager import get_zoom
+        except ImportError:
+            from pdf_manager import get_zoom  # type: ignore
+        try:
+            from . import pdf_dock as _pdf_dock_mod
+        except ImportError:
+            import pdf_dock as _pdf_dock_mod  # type: ignore
+
+        try:
+            zoom = float(get_zoom(self._addon_dir, self._profile, open_card_id))
+        except Exception:
+            zoom = 1.0
+
+        try:
+            _pdf_dock_mod.show_pdf_in_dock(
+                open_card_id,
+                filename,
+                open_page,
+                zoom,
+                via_link=has_inline_citation,
+                offer_due_review_prompt=open_card_id > 0,
+            )
+        except Exception as exc:
+            showInfo(f"Could not open the linked PDF:\n{exc}")
 
     def _go_to_parent(self) -> None:
         card_id = self._single_selected_card_id()
