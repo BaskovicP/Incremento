@@ -435,6 +435,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             card_id       INTEGER NOT NULL,
             reader_type   TEXT    NOT NULL DEFAULT '',
             label         TEXT    NOT NULL DEFAULT '',
+            comment_text  TEXT    NOT NULL DEFAULT '',
             location_json TEXT    NOT NULL DEFAULT '{}',
             created_at    INTEGER NOT NULL DEFAULT 0,
             updated_at    INTEGER NOT NULL DEFAULT 0
@@ -646,6 +647,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "web_progress",
         "media_updated_at",
         "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "reader_bookmarks",
+        "comment_text",
+        "TEXT NOT NULL DEFAULT ''",
     )
     _ensure_column(
         conn,

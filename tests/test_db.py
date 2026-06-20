@@ -140,6 +140,11 @@ class TestGetConnection:
             ).fetchall()
         }
         assert "reader_bookmarks" in tables
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(reader_bookmarks)").fetchall()
+        }
+        assert "comment_text" in columns
 
     def test_creates_writing_progress_table(self):
         addon_dir = _fresh_dir()
@@ -1322,6 +1327,44 @@ class TestWebProgressMigration:
             (7,),
         ).fetchone()
         assert row == ("https://example.com/legacy", 0.0, "", "", "", "", 0.0, 0)
+
+    def test_existing_reader_bookmarks_table_gets_comment_column(self):
+        db_path = os.path.join(self.addon_dir, "user_files", "TestProfile", db.DB_NAME)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            CREATE TABLE reader_bookmarks (
+                id TEXT PRIMARY KEY,
+                card_id INTEGER NOT NULL,
+                reader_type TEXT NOT NULL DEFAULT '',
+                label TEXT NOT NULL DEFAULT '',
+                location_json TEXT NOT NULL DEFAULT '{}',
+                created_at INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO reader_bookmarks (id, card_id, reader_type, label, location_json, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("bm-1", 7, "video", "1:23", '{"seconds": 83.0}', 11, 11),
+        )
+        conn.commit()
+        conn.close()
+
+        reopened = db.get_connection(self.addon_dir, "TestProfile")
+        columns = {
+            row[1]
+            for row in reopened.execute("PRAGMA table_info(reader_bookmarks)").fetchall()
+        }
+        assert "comment_text" in columns
+
+        row = reopened.execute(
+            "SELECT label, comment_text, location_json FROM reader_bookmarks WHERE id = ?",
+            ("bm-1",),
+        ).fetchone()
+        assert row == ("1:23", "", '{"seconds": 83.0}')
 
 
 # ---------------------------------------------------------------------------

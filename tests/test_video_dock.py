@@ -161,6 +161,54 @@ def test_on_video_question_shown_preserves_live_position_for_same_active_card(mo
     ]
 
 
+def test_on_video_question_shown_ignores_older_url_timestamp_than_saved_progress(monkeypatch):
+    shown = []
+    persisted = []
+    fake_note = _FakeNote()
+    fake_note.mid = 7
+    fake_note._values["YouTube_URL"] = "https://www.youtube.com/watch?v=abc&t=45s"
+    fake_card = _FakeCard(card_id=321, nid=99)
+
+    monkeypatch.setattr(video_dock, "_current_video_card_id", None)
+    monkeypatch.setattr(video_dock, "_last_known_position", 0.0)
+    monkeypatch.setattr(video_dock, "_position_lock_card_id", None)
+    monkeypatch.setattr(video_dock, "_position_lock_sec", 0.0)
+    monkeypatch.setattr(video_dock, "_position_lock_until", 0.0)
+    monkeypatch.setattr(video_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(video_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(video_dock, "get_video_position", lambda *args, **kwargs: 120.0)
+    monkeypatch.setattr(video_dock, "set_video_position", lambda *args, **kwargs: persisted.append((args, dict(kwargs))))
+    monkeypatch.setattr(video_dock, "get_video_note_media", lambda note: {})
+    monkeypatch.setattr(video_dock, "extract_start_seconds", lambda url: 45.0)
+    monkeypatch.setattr(video_dock, "show_video_in_dock", lambda *args, **kwargs: shown.append((args, dict(kwargs))))
+    monkeypatch.setattr(
+        video_dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                get_note=lambda nid: fake_note,
+                models=types.SimpleNamespace(get=lambda mid: {"name": video_dock.VIDEO_NOTE_TYPE}),
+            )
+        ),
+    )
+
+    video_dock.on_video_question_shown(fake_card)
+
+    assert shown == [
+        (
+            (321, "https://www.youtube.com/watch?v=abc&t=45s", 120.0, ""),
+            {
+                "target_subtitle_file": "",
+                "target_subtitle_label": "",
+                "reference_subtitle_file": "",
+                "reference_subtitle_label": "",
+                "preserve_loaded": False,
+            },
+        )
+    ]
+    assert persisted == []
+
+
 def test_show_video_in_dock_preserves_loaded_remote_player_for_same_card(monkeypatch):
     load_calls = []
     reset_calls = []
@@ -301,3 +349,91 @@ def test_recent_video_extract_child_does_not_clear_source_video(monkeypatch):
     assert persist_calls == []
     assert video_dock._current_video_card_id == 321
     assert video_dock._current_video_url == "https://youtu.be/abc"
+
+
+def test_refresh_video_bookmarks_panel_renders_comment_actions(monkeypatch):
+    html_calls = []
+    label_calls = []
+
+    class _FakePanel:
+        def setHtml(self, html):
+            html_calls.append(html)
+
+    class _FakeButton:
+        def setText(self, text):
+            label_calls.append(text)
+
+    monkeypatch.setattr(
+        video_dock,
+        "_video_bookmarks",
+        lambda: [
+            {"id": "bm-1", "label": "1:05", "comment_text": "", "location": {"seconds": 65.0}},
+            {"id": "bm-2", "label": "2:30", "comment_text": "Why this matters", "location": {"seconds": 150.0}},
+        ],
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "_video_dock",
+        types.SimpleNamespace(_bookmarks_btn=_FakeButton(), _bookmarks_panel=_FakePanel()),
+    )
+
+    video_dock._refresh_video_bookmarks_panel()
+
+    assert label_calls == ["Bookmarks 2"]
+    assert "Add comment" in html_calls[0]
+    assert "Edit comment" in html_calls[0]
+    assert "Why this matters" in html_calls[0]
+    assert "inc://video-bookmark-comment/bm-2" in html_calls[0]
+
+
+def test_edit_video_bookmark_comment_updates_panel(monkeypatch):
+    updates = []
+    refresh_calls = []
+    tooltips = []
+    visibility = []
+
+    class _FakeDialog:
+        def __init__(self, parent, *, title, context_label, current_comment):
+            assert parent is video_dock.mw
+            assert title == "Video Bookmark Comment"
+            assert context_label == "1:05"
+            assert current_comment == ""
+
+        def exec(self):
+            return True
+
+        def comment_text(self):
+            return "Reason to revisit"
+
+    class _FakePanel:
+        def setVisible(self, value):
+            visibility.append(value)
+
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 42)
+    monkeypatch.setattr(video_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(video_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        video_dock,
+        "_video_bookmarks",
+        lambda: [{"id": "bm-1", "label": "1:05", "comment_text": "", "location": {"seconds": 65.0}}],
+    )
+    monkeypatch.setattr(video_dock, "BookmarkCommentDialog", _FakeDialog)
+    monkeypatch.setattr(
+        video_dock,
+        "update_reader_bookmark_comment",
+        lambda addon_dir, profile, card_id, reader_type, bookmark_id, comment_text: (
+            updates.append((addon_dir, profile, card_id, reader_type, bookmark_id, comment_text)) or
+            {"id": bookmark_id, "comment_text": comment_text}
+        ),
+    )
+    monkeypatch.setattr(video_dock, "_refresh_video_bookmarks_panel", lambda: refresh_calls.append(True))
+    monkeypatch.setattr(video_dock, "tooltip", lambda message: tooltips.append(message))
+    monkeypatch.setattr(video_dock, "mw", object())
+    monkeypatch.setattr(video_dock, "_video_dock", types.SimpleNamespace(_bookmarks_panel=_FakePanel()))
+
+    video_dock._edit_video_bookmark_comment("bm-1")
+
+    assert updates == [("/tmp/addon", "TestProfile", 42, "video", "bm-1", "Reason to revisit")]
+    assert refresh_calls == [True]
+    assert visibility == [True]
+    assert tooltips == ["Video bookmark comment saved."]

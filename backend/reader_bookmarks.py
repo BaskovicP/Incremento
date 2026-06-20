@@ -12,6 +12,7 @@ except ImportError:
 
 
 READER_TYPES = {"pdf", "epub", "web", "writing", "video"}
+BOOKMARK_COMMENT_MAX_LEN = 240
 
 
 def _reader_type(value: str) -> str:
@@ -43,6 +44,10 @@ def _nonnegative_float(value: Any) -> float:
     except Exception:
         number = 0.0
     return max(0.0, number)
+
+
+def _normalize_comment_text(value: Any) -> str:
+    return str(value or "").strip()[:BOOKMARK_COMMENT_MAX_LEN]
 
 
 def normalize_reader_location(reader_type: str, location: dict[str, Any] | None) -> dict[str, Any]:
@@ -133,7 +138,7 @@ def add_reader_bookmark(
     location_json = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
     conn = get_connection(addon_dir, profile)
     existing = conn.execute(
-        "SELECT id, card_id, reader_type, label, location_json, created_at, updated_at "
+        "SELECT id, card_id, reader_type, label, comment_text, location_json, created_at, updated_at "
         "FROM reader_bookmarks "
         "WHERE card_id = ? AND reader_type = ? AND location_json = ? "
         "ORDER BY created_at, id LIMIT 1",
@@ -146,13 +151,14 @@ def add_reader_bookmark(
     bookmark_id = uuid.uuid4().hex
     conn.execute(
         "INSERT INTO reader_bookmarks "
-        "(id, card_id, reader_type, label, location_json, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(id, card_id, reader_type, label, comment_text, location_json, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             bookmark_id,
             int(card_id),
             kind,
             clean_label[:160],
+            "",
             location_json,
             now,
             now,
@@ -164,6 +170,7 @@ def add_reader_bookmark(
         "card_id": int(card_id),
         "reader_type": kind,
         "label": clean_label[:160],
+        "comment_text": "",
         "location": normalized,
         "created_at": now,
         "updated_at": now,
@@ -180,7 +187,7 @@ def list_reader_bookmarks(
     rows = (
         get_connection(addon_dir, profile)
         .execute(
-            "SELECT id, card_id, reader_type, label, location_json, created_at, updated_at "
+            "SELECT id, card_id, reader_type, label, comment_text, location_json, created_at, updated_at "
             "FROM reader_bookmarks WHERE card_id = ? AND reader_type = ?",
             (int(card_id), kind),
         )
@@ -209,6 +216,37 @@ def delete_reader_bookmark(
     return cur.rowcount > 0
 
 
+def update_reader_bookmark_comment(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    reader_type: str,
+    bookmark_id: str,
+    comment_text: str | None,
+) -> dict[str, Any] | None:
+    kind = _reader_type(reader_type)
+    clean_comment = _normalize_comment_text(comment_text)
+    conn = get_connection(addon_dir, profile)
+    now = int(time.time())
+    cur = conn.execute(
+        "UPDATE reader_bookmarks "
+        "SET comment_text = ?, updated_at = ? "
+        "WHERE id = ? AND card_id = ? AND reader_type = ?",
+        (clean_comment, now, str(bookmark_id or ""), int(card_id), kind),
+    )
+    conn.commit()
+    if cur.rowcount <= 0:
+        return None
+    row = conn.execute(
+        "SELECT id, card_id, reader_type, label, comment_text, location_json, created_at, updated_at "
+        "FROM reader_bookmarks WHERE id = ? AND card_id = ? AND reader_type = ?",
+        (str(bookmark_id or ""), int(card_id), kind),
+    ).fetchone()
+    if not row:
+        return None
+    return _bookmark_from_row(kind, row)
+
+
 def _sort_key(reader_type: str, item: dict[str, Any]) -> tuple:
     location = item.get("location") or {}
     if reader_type == "pdf":
@@ -232,7 +270,7 @@ def _sort_key(reader_type: str, item: dict[str, Any]) -> tuple:
 
 def _bookmark_from_row(reader_type: str, row) -> dict[str, Any]:
     try:
-        location = json.loads(row[4] or "{}")
+        location = json.loads(row[5] or "{}")
     except Exception:
         location = {}
     return {
@@ -240,7 +278,8 @@ def _bookmark_from_row(reader_type: str, row) -> dict[str, Any]:
         "card_id": int(row[1] or 0),
         "reader_type": str(row[2] or ""),
         "label": str(row[3] or ""),
+        "comment_text": _normalize_comment_text(row[4]),
         "location": normalize_reader_location(reader_type, location),
-        "created_at": int(row[5] or 0),
-        "updated_at": int(row[6] or 0),
+        "created_at": int(row[6] or 0),
+        "updated_at": int(row[7] or 0),
     }

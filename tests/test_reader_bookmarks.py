@@ -102,6 +102,57 @@ def test_location_normalization_for_all_reader_types(tmp_path):
     assert web["location"]["bookmark_payload"] == {"path": [1]}
     assert writing["location"] == {"cursor_position": 0, "block_number": 0, "scroll_ratio": 0.5}
     assert video["location"] == {"seconds": 12.3}
+    assert video["comment_text"] == ""
+
+
+def test_video_bookmark_comments_round_trip_and_clear(tmp_path):
+    addon_dir = str(tmp_path)
+
+    saved = reader_bookmarks.add_reader_bookmark(
+        addon_dir, "TestProfile", 10, "video", {"seconds": 65.4}
+    )
+    updated = reader_bookmarks.update_reader_bookmark_comment(
+        addon_dir, "TestProfile", 10, "video", saved["id"], "Important explanation"
+    )
+
+    assert updated is not None
+    assert updated["comment_text"] == "Important explanation"
+
+    rows = reader_bookmarks.list_reader_bookmarks(addon_dir, "TestProfile", 10, "video")
+    assert rows == [
+        {
+            **saved,
+            "comment_text": "Important explanation",
+            "updated_at": updated["updated_at"],
+        }
+    ]
+
+    cleared = reader_bookmarks.update_reader_bookmark_comment(
+        addon_dir, "TestProfile", 10, "video", saved["id"], "   "
+    )
+    assert cleared is not None
+    assert cleared["comment_text"] == ""
+    assert reader_bookmarks.list_reader_bookmarks(addon_dir, "TestProfile", 10, "video")[0]["comment_text"] == ""
+
+
+def test_duplicate_video_bookmark_returns_existing_row_with_comment(tmp_path):
+    addon_dir = str(tmp_path)
+    first = reader_bookmarks.add_reader_bookmark(
+        addon_dir, "TestProfile", 10, "video", {"seconds": 90.0}
+    )
+    reader_bookmarks.update_reader_bookmark_comment(
+        addon_dir, "TestProfile", 10, "video", first["id"], "Keep this moment"
+    )
+
+    second = reader_bookmarks.add_reader_bookmark(
+        addon_dir, "TestProfile", 10, "video", {"seconds": 90.0}
+    )
+    rows = reader_bookmarks.list_reader_bookmarks(addon_dir, "TestProfile", 10, "video")
+
+    assert second["id"] == first["id"]
+    assert second["comment_text"] == "Keep this moment"
+    assert len(rows) == 1
+    assert rows[0]["comment_text"] == "Keep this moment"
 
 
 def test_progress_updates_do_not_mutate_reader_bookmarks(tmp_path):
@@ -109,6 +160,10 @@ def test_progress_updates_do_not_mutate_reader_bookmarks(tmp_path):
     saved = reader_bookmarks.add_reader_bookmark(
         addon_dir, "TestProfile", 10, "pdf", {"page": 7}
     )
+    updated = reader_bookmarks.update_reader_bookmark_comment(
+        addon_dir, "TestProfile", 10, "pdf", saved["id"], "Pinned page"
+    )
+    assert updated is not None
 
     pdf_manager.set_page(addon_dir, "TestProfile", 10, 42)
     epub_manager.set_epub_progress(
@@ -121,7 +176,7 @@ def test_progress_updates_do_not_mutate_reader_bookmarks(tmp_path):
 
     assert rows == [
         {
-            **saved,
+            **updated,
             "location": {"page": 7},
         }
     ]

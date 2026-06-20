@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 
 from aqt import mw
-from aqt.utils import tooltip
+from aqt.utils import showInfo, tooltip
 from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
                     QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout,
                     QComboBox, QSlider, QApplication, QDialog, QLineEdit,
@@ -75,7 +75,9 @@ try:
         add_reader_bookmark,
         delete_reader_bookmark,
         list_reader_bookmarks,
+        update_reader_bookmark_comment,
     )
+    from .bookmark_comment_dialog import BookmarkCommentDialog
 except ImportError:
     from video_manager import (
         VIDEO_NOTE_TYPE,
@@ -103,7 +105,13 @@ except ImportError:
         supported_subtitle_extensions,
         update_video_note_media,
     )
-    from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
+    from reader_bookmarks import (  # type: ignore
+        add_reader_bookmark,
+        delete_reader_bookmark,
+        list_reader_bookmarks,
+        update_reader_bookmark_comment,
+    )
+    from bookmark_comment_dialog import BookmarkCommentDialog  # type: ignore
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -862,10 +870,21 @@ def _refresh_video_bookmarks_panel() -> None:
         for bookmark in bookmarks:
             bookmark_id = html.escape(str(bookmark.get("id") or ""))
             label = html.escape(str(bookmark.get("label") or "Bookmark"))
+            comment = str(bookmark.get("comment_text") or "").strip()
+            comment_html = ""
+            action_label = "Add comment"
+            if comment:
+                action_label = "Edit comment"
+                comment_html = (
+                    "<div style='color:#555;margin:2px 0 0 0;white-space:pre-wrap'>"
+                    f"{html.escape(comment)}"
+                    "</div>"
+                )
             html_parts.append(
                 "<li>"
-                f"{label} "
+                f"{label}{comment_html} "
                 f"<a href='inc://video-bookmark-open/{bookmark_id}'>Jump</a> "
+                f"<a href='inc://video-bookmark-comment/{bookmark_id}'>{action_label}</a> "
                 f"<a href='inc://video-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
                 "</li>"
             )
@@ -936,6 +955,9 @@ def _open_video_bookmark_link(url: QUrl) -> None:
             tooltip("Incremento: could not delete video bookmark.")
         _refresh_video_bookmarks_panel()
         return
+    if s.startswith("inc://video-bookmark-comment/"):
+        _edit_video_bookmark_comment(bookmark_id)
+        return
     if not s.startswith("inc://video-bookmark-open/"):
         return
     bookmark = next((item for item in _video_bookmarks() if str(item.get("id") or "") == bookmark_id), None)
@@ -945,6 +967,44 @@ def _open_video_bookmark_link(url: QUrl) -> None:
     _last_known_position = max(0.0, seconds)
     _seek_to_seconds(seconds)
     _set_seek_ui(seconds, _last_known_duration if _last_known_duration > 0 else None)
+
+
+def _edit_video_bookmark_comment(bookmark_id: str) -> None:
+    if _current_video_card_id is None:
+        return
+    bookmark = next((item for item in _video_bookmarks() if str(item.get("id") or "") == str(bookmark_id or "")), None)
+    if not bookmark:
+        showInfo("That video bookmark could not be found.")
+        return
+    dialog = BookmarkCommentDialog(
+        mw,
+        title="Video Bookmark Comment",
+        context_label=str(bookmark.get("label") or "Bookmark"),
+        current_comment=str(bookmark.get("comment_text") or ""),
+    )
+    if not dialog.exec():
+        return
+    try:
+        updated = update_reader_bookmark_comment(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_video_card_id),
+            "video",
+            str(bookmark.get("id") or ""),
+            dialog.comment_text(),
+        )
+    except Exception as exc:
+        showInfo(f"Could not save the video bookmark comment.\n\n{exc}")
+        return
+    if not updated:
+        showInfo("That video bookmark could not be updated.")
+        return
+    _refresh_video_bookmarks_panel()
+    try:
+        _video_dock._bookmarks_panel.setVisible(True)
+    except Exception:
+        pass
+    tooltip("Video bookmark comment saved.")
 
 
 def _seek_to_seconds(seconds: float) -> None:
@@ -2578,8 +2638,9 @@ def on_video_question_shown(card) -> None:
         except Exception:
             url_position = 0.0
         # If URL timestamp was externally updated (e.g., browser extension via
-        # AnkiConnect), honor it and sync DB so resume is deterministic.
-        if url_position > 0.0 and abs(url_position - position) >= 1.0:
+        # AnkiConnect), let it advance resume state but never roll back newer
+        # stored progress.
+        if url_position > (position + 1.0):
             position = url_position
             try:
                 set_video_position(_ADDON_DIR, _active_profile(), card.id, position)
