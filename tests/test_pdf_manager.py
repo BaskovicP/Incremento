@@ -700,6 +700,56 @@ class TestGetSetPage:
         assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=10) == 12
 
 
+class TestPdfScrollRatio:
+    def setup_method(self):
+        import db as _db
+        _db.close_connection()
+        self.addon_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        import db as _db
+        _db.close_connection()
+        shutil.rmtree(self.addon_dir, ignore_errors=True)
+
+    def test_set_and_get_scroll_ratio_round_trip(self):
+        pdf_manager.set_scroll_ratio(self.addon_dir, "TestProfile", card_id=15, scroll_ratio=0.35)
+
+        assert pdf_manager.get_scroll_ratio(self.addon_dir, "TestProfile", card_id=15) == 0.35
+
+    def test_set_scroll_ratio_clamps_invalid_values(self):
+        pdf_manager.set_scroll_ratio(self.addon_dir, "TestProfile", card_id=16, scroll_ratio=8)
+        assert pdf_manager.get_scroll_ratio(self.addon_dir, "TestProfile", card_id=16) == 1.0
+
+        pdf_manager.set_scroll_ratio(self.addon_dir, "TestProfile", card_id=16, scroll_ratio=-2)
+        assert pdf_manager.get_scroll_ratio(self.addon_dir, "TestProfile", card_id=16) == 0.0
+
+    def test_updating_scroll_preserves_page_zoom_and_read_state(self):
+        pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=17, page=9)
+        pdf_manager.set_zoom(self.addon_dir, "TestProfile", card_id=17, zoom=1.75)
+        pdf_manager.set_read_page(
+            self.addon_dir,
+            "TestProfile",
+            17,
+            8,
+            {"page": 8, "x": 10, "y": 20, "w": 30, "h": 5, "text": "Stop here"},
+        )
+
+        pdf_manager.set_scroll_ratio(self.addon_dir, "TestProfile", card_id=17, scroll_ratio=0.6)
+
+        assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=17) == 9
+        assert pdf_manager.get_zoom(self.addon_dir, "TestProfile", card_id=17) == 1.75
+        assert pdf_manager.get_scroll_ratio(self.addon_dir, "TestProfile", card_id=17) == 0.6
+        assert pdf_manager.get_read_page(self.addon_dir, "TestProfile", card_id=17) == 8
+        assert pdf_manager.get_read_anchor(self.addon_dir, "TestProfile", card_id=17) == {
+            "page": 8,
+            "x": 10.0,
+            "y": 20.0,
+            "w": 30.0,
+            "h": 5.0,
+            "text": "Stop here",
+        }
+
+
 class TestPdfDailyLimitStatus:
     def setup_method(self):
         import db as _db

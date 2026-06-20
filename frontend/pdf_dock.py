@@ -60,6 +60,7 @@ try:
         get_pdf_daily_limit_status,
         get_pdf_limit_mode_label,
         get_zoom,
+        get_scroll_ratio,
         get_read_anchor,
         get_read_page,
         pdf_storage_abspath,
@@ -71,6 +72,7 @@ try:
         save_pdf_due_review_prompt_settings,
         set_page,
         set_pdf_daily_limit_override,
+        set_scroll_ratio,
         set_zoom,
         set_read_page,
     )
@@ -84,6 +86,7 @@ except ImportError:
         get_pdf_daily_limit_status,
         get_pdf_limit_mode_label,
         get_zoom,
+        get_scroll_ratio,
         get_read_anchor,
         get_read_page,
         pdf_storage_abspath,
@@ -95,6 +98,7 @@ except ImportError:
         save_pdf_due_review_prompt_settings,
         set_page,
         set_pdf_daily_limit_override,
+        set_scroll_ratio,
         set_zoom,
         set_read_page,
     )
@@ -770,6 +774,7 @@ def repair_legacy_pdf_reference_links_html(html: str) -> str:
 _PYCMD_BRIDGE = "__incremento_pycmd__:"
 _MSG_NAV = "incremento_pdf_nav:"
 _MSG_ZOOM = "incremento_pdf_zoom:"
+_MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
 _MSG_HL_DEL = "incremento_pdf_hl_del:"
 _MSG_MARK_READ = "incremento_pdf_mark_read:"
@@ -1214,259 +1219,274 @@ def _offer_due_review_for_pdf(
 # ── pycmd bridge (console.log interceptor) ───────────────────────────────────
 
 
+def _handle_pdf_js_message(msg: str) -> None:
+    if msg.startswith(_MSG_NAV):
+        parts = msg.split(":")
+        if len(parts) == 3:
+            try:
+                cid = int(parts[1])
+                pg = int(parts[2])
+                if cid > 0:
+                    current_pg = get_page(_ADDON_DIR, _active_profile(), cid)
+                    status_before = _current_pdf_limit_status(cid, current_page=current_pg)
+                    allowed_max = status_before.get("allowed_max_page")
+                    is_blocking = bool(
+                        status_before.get("enabled")
+                        and status_before.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                        and not status_before.get("override_enabled")
+                        and allowed_max is not None
+                        and pg > current_pg
+                        and pg > int(allowed_max)
+                    )
+                    if is_blocking:
+                        _push_pdf_limit_status(status_before)
+                        return
+                    if not _pdf_via_link and not _pdf_preserve_history:
+                        set_page(_ADDON_DIR, _active_profile(), cid, pg)
+                    _timer_mod.record_pdf_page_read(cid, pg)
+                    _push_pdf_limit_status(_current_pdf_limit_status(cid, current_page=pg))
+            except ValueError:
+                pass
+    elif msg.startswith(_MSG_ZOOM):
+        parts = msg.split(":")
+        if len(parts) == 3:
+            try:
+                if int(parts[1]) > 0 and not _pdf_preserve_history:
+                    set_zoom(_ADDON_DIR, _active_profile(), int(parts[1]), float(parts[2]))
+            except ValueError:
+                pass
+    elif msg.startswith(_MSG_SCROLL):
+        try:
+            payload = json.loads(msg[len(_MSG_SCROLL) :])
+            cid = int(payload.get("cardId", 0) or 0)
+            if cid > 0 and not _pdf_preserve_history:
+                set_scroll_ratio(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    cid,
+                    float(payload.get("scrollRatio", 0.0) or 0.0),
+                )
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_HL_ADD):
+        try:
+            data = json.loads(msg[len(_MSG_HL_ADD) :])
+            add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
+        except Exception as e:
+            print(f"[Incremento] pdf_dock: highlight add failed: {e}")
+    elif msg.startswith(_MSG_HL_DEL):
+        try:
+            data = json.loads(msg[len(_MSG_HL_DEL) :])
+            remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["id"])
+        except Exception as e:
+            print(f"[Incremento] pdf_dock: highlight delete failed: {e}")
+    elif msg.startswith(_MSG_MARK_READ):
+        payload_raw = msg[len(_MSG_MARK_READ) :]
+        try:
+            if payload_raw.lstrip().startswith("{"):
+                payload = json.loads(payload_raw)
+                cid = int(payload.get("cardId", 0) or 0)
+                read_page = int(payload.get("readPage", 0) or 0)
+                read_anchor = payload.get("anchor")
+            else:
+                parts = msg.split(":")
+                if len(parts) != 3:
+                    raise ValueError
+                cid = int(parts[1])
+                read_page = int(parts[2])
+                read_anchor = None
+            if cid > 0:
+                status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
+                allowed_max = status.get("allowed_max_page")
+                is_blocking = bool(
+                    status.get("enabled")
+                    and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
+                    and not status.get("override_enabled")
+                    and allowed_max is not None
+                    and read_page > int(allowed_max)
+                )
+                if is_blocking:
+                    _push_pdf_limit_status(status)
+                    return
+                if not _pdf_preserve_history:
+                    set_read_page(
+                        _ADDON_DIR,
+                        _active_profile(),
+                        cid,
+                        read_page,
+                        read_anchor if isinstance(read_anchor, dict) else None,
+                    )
+                _push_pdf_limit_status(status)
+        except ValueError:
+            pass
+    elif msg.startswith(_MSG_CMD1):
+        text = msg[len(_MSG_CMD1) :]
+        if text:
+            QTimer.singleShot(0, lambda t=text: _on_pdf_selection(0, t))
+    elif msg == _MSG_OPEN_ADD_CARD:
+        if _cb_open_add_card_dock:
+            _cb_open_add_card_dock()
+    elif msg.startswith(_MSG_FILL_FIELD):
+        try:
+            data = json.loads(msg[len(_MSG_FILL_FIELD) :])
+            if _cb_fill_dock_field:
+                _cb_fill_dock_field(int(data["idx"]), data["text"])
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_SELECTION_STATE):
+        try:
+            data = json.loads(msg[len(_MSG_SELECTION_STATE) :])
+            from . import add_card_dock as _add_card_dock_mod
+
+            _add_card_dock_mod.update_selection_state(
+                "pdf",
+                has_text=bool(data.get("hasText")),
+            )
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_LIMIT_SETTINGS):
+        try:
+            cid = int(msg[len(_MSG_LIMIT_SETTINGS) :])
+            if cid > 0:
+                _open_pdf_limit_dialog(cid)
+        except Exception as e:
+            showInfo(f"Could not edit PDF reading limit:\n{e}")
+    elif msg.startswith(_MSG_LIMIT_OVERRIDE):
+        try:
+            cid = int(msg[len(_MSG_LIMIT_OVERRIDE) :])
+            if cid > 0:
+                status = set_pdf_daily_limit_override(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    cid,
+                    enabled=True,
+                    current_page=get_page(_ADDON_DIR, _active_profile(), cid),
+                )
+                _push_pdf_limit_status(status)
+                tooltip("PDF reading limit overridden for today.")
+        except Exception as e:
+            showInfo(f"Could not override PDF reading limit:\n{e}")
+    elif msg.startswith(_MSG_DUE_REVIEW):
+        try:
+            parts = msg.split(":")
+            if len(parts) == 3:
+                cid = int(parts[1])
+                if cid > 0:
+                    _offer_due_review_for_pdf(
+                        cid,
+                        current_page=int(parts[2]),
+                        force=True,
+                    )
+        except Exception as e:
+            showInfo(f"Could not open PDF due-card review:\n{e}")
+    elif msg.startswith(_MSG_HL_NOTE):
+        try:
+            payload = json.loads(msg[len(_MSG_HL_NOTE) :])
+            _edit_pdf_highlight_note(str(payload.get("id") or ""))
+        except Exception as e:
+            showInfo(f"Could not edit PDF highlight note.\n\n{e}")
+    elif msg.startswith(_MSG_BOOKMARK_ADD):
+        try:
+            payload = json.loads(msg[len(_MSG_BOOKMARK_ADD) :])
+            cid = int(payload.get("cardId", 0) or 0)
+            page = int(payload.get("page", 1) or 1)
+            if cid > 0:
+                _add_pdf_bookmark(cid, page)
+        except Exception as e:
+            showInfo(f"Could not save PDF bookmark:\n{e}")
+    elif msg.startswith(_MSG_BOOKMARK_DELETE):
+        try:
+            payload = json.loads(msg[len(_MSG_BOOKMARK_DELETE) :])
+            cid = int(payload.get("cardId", 0) or 0)
+            if cid > 0:
+                _delete_pdf_bookmark(cid, str(payload.get("id") or ""))
+        except Exception as e:
+            showInfo(f"Could not delete PDF bookmark:\n{e}")
+    elif msg.startswith(_MSG_BOOKMARK_LIST):
+        try:
+            cid = int(msg[len(_MSG_BOOKMARK_LIST) :])
+            if cid > 0:
+                _push_pdf_bookmarks(cid)
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_REPAIR_MISSING):
+        _repair_missing_pdf()
+    elif msg.startswith(_MSG_REGENERATE_COVER):
+        _regenerate_pdf_cover()
+    elif msg.startswith(_MSG_SNAPSHOT):
+        QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
+    elif msg.startswith(_MSG_FINISHED):
+        try:
+            card_id = int(msg[len(_MSG_FINISHED) :])
+            if card_id > 0:
+                mw.col.sched.suspend_cards([card_id])
+                mw.col.reset()
+                tooltip("PDF card suspended — it won't appear in future sessions.")
+                if _pdf_dock:
+                    _pdf_dock.hide()
+        except Exception as e:
+            showInfo(f"Could not suspend card:\n{e}")
+    elif msg.startswith(_MSG_OPEN_CARD):
+        try:
+            note_id = int(msg[len(_MSG_OPEN_CARD) :])
+            QTimer.singleShot(0, lambda nid=note_id: show_pdf_page_card_preview(nid))
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_OPEN_ALL_CARDS):
+        try:
+            card_id = int(msg[len(_MSG_OPEN_ALL_CARDS) :])
+            if card_id > 0:
+                QTimer.singleShot(0, lambda cid=card_id: _open_all_pdf_cards_in_browser(cid))
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_OPEN_PAGE_CARDS):
+        try:
+            payload = json.loads(msg[len(_MSG_OPEN_PAGE_CARDS) :])
+            note_ids = payload if isinstance(payload, list) else []
+            QTimer.singleShot(
+                0,
+                lambda ids=note_ids: _browse_note_ids_in_browser(
+                    ids,
+                    empty_message="No cards created on this page yet.",
+                ),
+            )
+        except Exception:
+            pass
+    elif msg.startswith("incremento_get_page_cards:"):
+        try:
+            parts = msg.split(":")
+            if len(parts) == 3:
+                cid = int(parts[1])
+                page = int(parts[2])
+                if cid > 0:
+                    cards, counts = _reconcile_pdf_page_sources(cid, page)
+                else:
+                    cards = []
+                    counts = {}
+                data = {"page": page, "cards": cards, "pageCounts": counts}
+                js = (
+                    "window.incrementoReceivePageCards && "
+                    f"window.incrementoReceivePageCards({json.dumps(data)})"
+                )
+                QTimer.singleShot(
+                    0,
+                    lambda j=js: (
+                        _pdf_dock._view.page().runJavaScript(j)
+                        if _pdf_dock
+                        else None
+                    ),
+                )
+        except Exception:
+            pass
+
+
 class _PdfDockPage(QWebEnginePage):
     """Intercepts console.log to get pycmd messages from the PDF viewer JS."""
 
     def javaScriptConsoleMessage(self, level, message, line, source):
         if not message.startswith(_PYCMD_BRIDGE):
             return
-        msg = message[len(_PYCMD_BRIDGE) :]
-
-        if msg.startswith(_MSG_NAV):
-            parts = msg.split(":")
-            if len(parts) == 3:
-                try:
-                    cid = int(parts[1])
-                    pg = int(parts[2])
-                    if cid > 0:
-                        current_pg = get_page(_ADDON_DIR, _active_profile(), cid)
-                        status_before = _current_pdf_limit_status(cid, current_page=current_pg)
-                        allowed_max = status_before.get("allowed_max_page")
-                        is_blocking = bool(
-                            status_before.get("enabled")
-                            and status_before.get("enforcement_mode") in {"soft_lock", "hard_stop"}
-                            and not status_before.get("override_enabled")
-                            and allowed_max is not None
-                            and pg > current_pg
-                            and pg > int(allowed_max)
-                        )
-                        if is_blocking:
-                            _push_pdf_limit_status(status_before)
-                            return
-                        if not _pdf_via_link and not _pdf_preserve_history:
-                            set_page(_ADDON_DIR, _active_profile(), cid, pg)
-                        _timer_mod.record_pdf_page_read(cid, pg)
-                        _push_pdf_limit_status(_current_pdf_limit_status(cid, current_page=pg))
-                except ValueError:
-                    pass
-        elif msg.startswith(_MSG_ZOOM):
-            parts = msg.split(":")
-            if len(parts) == 3:
-                try:
-                    if int(parts[1]) > 0 and not _pdf_preserve_history:
-                        set_zoom(_ADDON_DIR, _active_profile(), int(parts[1]), float(parts[2]))
-                except ValueError:
-                    pass
-        elif msg.startswith(_MSG_HL_ADD):
-            try:
-                data = json.loads(msg[len(_MSG_HL_ADD) :])
-                add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
-            except Exception as e:
-                print(f"[Incremento] pdf_dock: highlight add failed: {e}")
-        elif msg.startswith(_MSG_HL_DEL):
-            try:
-                data = json.loads(msg[len(_MSG_HL_DEL) :])
-                remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["id"])
-            except Exception as e:
-                print(f"[Incremento] pdf_dock: highlight delete failed: {e}")
-        elif msg.startswith(_MSG_MARK_READ):
-            payload_raw = msg[len(_MSG_MARK_READ) :]
-            try:
-                if payload_raw.lstrip().startswith("{"):
-                    payload = json.loads(payload_raw)
-                    cid = int(payload.get("cardId", 0) or 0)
-                    read_page = int(payload.get("readPage", 0) or 0)
-                    read_anchor = payload.get("anchor")
-                else:
-                    parts = msg.split(":")
-                    if len(parts) != 3:
-                        raise ValueError
-                    cid = int(parts[1])
-                    read_page = int(parts[2])
-                    read_anchor = None
-                if cid > 0:
-                    status = _current_pdf_limit_status(cid, current_page=max(1, read_page or 1))
-                    allowed_max = status.get("allowed_max_page")
-                    is_blocking = bool(
-                        status.get("enabled")
-                        and status.get("enforcement_mode") in {"soft_lock", "hard_stop"}
-                        and not status.get("override_enabled")
-                        and allowed_max is not None
-                        and read_page > int(allowed_max)
-                    )
-                    if is_blocking:
-                        _push_pdf_limit_status(status)
-                        return
-                    if not _pdf_preserve_history:
-                        set_read_page(
-                            _ADDON_DIR,
-                            _active_profile(),
-                            cid,
-                            read_page,
-                            read_anchor if isinstance(read_anchor, dict) else None,
-                        )
-                    _push_pdf_limit_status(status)
-            except ValueError:
-                pass
-        elif msg.startswith(_MSG_CMD1):
-            text = msg[len(_MSG_CMD1) :]
-            if text:
-                QTimer.singleShot(0, lambda t=text: _on_pdf_selection(0, t))
-        elif msg == _MSG_OPEN_ADD_CARD:
-            if _cb_open_add_card_dock:
-                _cb_open_add_card_dock()
-        elif msg.startswith(_MSG_FILL_FIELD):
-            try:
-                data = json.loads(msg[len(_MSG_FILL_FIELD) :])
-                if _cb_fill_dock_field:
-                    _cb_fill_dock_field(int(data["idx"]), data["text"])
-            except Exception:
-                pass
-        elif msg.startswith(_MSG_SELECTION_STATE):
-            try:
-                data = json.loads(msg[len(_MSG_SELECTION_STATE) :])
-                from . import add_card_dock as _add_card_dock_mod
-
-                _add_card_dock_mod.update_selection_state(
-                    "pdf",
-                    has_text=bool(data.get("hasText")),
-                )
-            except Exception:
-                pass
-        elif msg.startswith(_MSG_LIMIT_SETTINGS):
-            try:
-                cid = int(msg[len(_MSG_LIMIT_SETTINGS) :])
-                if cid > 0:
-                    _open_pdf_limit_dialog(cid)
-            except Exception as e:
-                showInfo(f"Could not edit PDF reading limit:\n{e}")
-        elif msg.startswith(_MSG_LIMIT_OVERRIDE):
-            try:
-                cid = int(msg[len(_MSG_LIMIT_OVERRIDE) :])
-                if cid > 0:
-                    status = set_pdf_daily_limit_override(
-                        _ADDON_DIR,
-                        _active_profile(),
-                        cid,
-                        enabled=True,
-                        current_page=get_page(_ADDON_DIR, _active_profile(), cid),
-                    )
-                    _push_pdf_limit_status(status)
-                    tooltip("PDF reading limit overridden for today.")
-            except Exception as e:
-                showInfo(f"Could not override PDF reading limit:\n{e}")
-        elif msg.startswith(_MSG_DUE_REVIEW):
-            try:
-                parts = msg.split(":")
-                if len(parts) == 3:
-                    cid = int(parts[1])
-                    if cid > 0:
-                        _offer_due_review_for_pdf(
-                            cid,
-                            current_page=int(parts[2]),
-                            force=True,
-                        )
-            except Exception as e:
-                showInfo(f"Could not open PDF due-card review:\n{e}")
-        elif msg.startswith(_MSG_HL_NOTE):
-            try:
-                payload = json.loads(msg[len(_MSG_HL_NOTE) :])
-                _edit_pdf_highlight_note(str(payload.get("id") or ""))
-            except Exception as e:
-                showInfo(f"Could not edit PDF highlight note.\n\n{e}")
-        elif msg.startswith(_MSG_BOOKMARK_ADD):
-            try:
-                payload = json.loads(msg[len(_MSG_BOOKMARK_ADD) :])
-                cid = int(payload.get("cardId", 0) or 0)
-                page = int(payload.get("page", 1) or 1)
-                if cid > 0:
-                    _add_pdf_bookmark(cid, page)
-            except Exception as e:
-                showInfo(f"Could not save PDF bookmark:\n{e}")
-        elif msg.startswith(_MSG_BOOKMARK_DELETE):
-            try:
-                payload = json.loads(msg[len(_MSG_BOOKMARK_DELETE) :])
-                cid = int(payload.get("cardId", 0) or 0)
-                if cid > 0:
-                    _delete_pdf_bookmark(cid, str(payload.get("id") or ""))
-            except Exception as e:
-                showInfo(f"Could not delete PDF bookmark:\n{e}")
-        elif msg.startswith(_MSG_BOOKMARK_LIST):
-            try:
-                cid = int(msg[len(_MSG_BOOKMARK_LIST) :])
-                if cid > 0:
-                    _push_pdf_bookmarks(cid)
-            except Exception:
-                pass
-        elif msg.startswith(_MSG_REPAIR_MISSING):
-            _repair_missing_pdf()
-        elif msg.startswith(_MSG_REGENERATE_COVER):
-            _regenerate_pdf_cover()
-        elif msg.startswith(_MSG_SNAPSHOT):
-            QTimer.singleShot(0, lambda m=msg: _handle_pdf_snapshot(m))
-        elif msg.startswith(_MSG_FINISHED):
-            try:
-                card_id = int(msg[len(_MSG_FINISHED) :])
-                if card_id > 0:
-                    mw.col.sched.suspend_cards([card_id])
-                    mw.col.reset()
-                    tooltip("PDF card suspended — it won't appear in future sessions.")
-                    if _pdf_dock:
-                        _pdf_dock.hide()
-            except Exception as e:
-                showInfo(f"Could not suspend card:\n{e}")
-        elif msg.startswith(_MSG_OPEN_CARD):
-            try:
-                note_id = int(msg[len(_MSG_OPEN_CARD) :])
-                QTimer.singleShot(0, lambda nid=note_id: show_pdf_page_card_preview(nid))
-            except Exception:
-                pass
-        elif msg.startswith(_MSG_OPEN_ALL_CARDS):
-            try:
-                card_id = int(msg[len(_MSG_OPEN_ALL_CARDS) :])
-                if card_id > 0:
-                    QTimer.singleShot(0, lambda cid=card_id: _open_all_pdf_cards_in_browser(cid))
-            except Exception:
-                pass
-        elif msg.startswith(_MSG_OPEN_PAGE_CARDS):
-            try:
-                payload = json.loads(msg[len(_MSG_OPEN_PAGE_CARDS) :])
-                note_ids = payload if isinstance(payload, list) else []
-                QTimer.singleShot(
-                    0,
-                    lambda ids=note_ids: _browse_note_ids_in_browser(
-                        ids,
-                        empty_message="No cards created on this page yet.",
-                    ),
-                )
-            except Exception:
-                pass
-        elif msg.startswith("incremento_get_page_cards:"):
-            try:
-                parts = msg.split(":")
-                if len(parts) == 3:
-                    cid = int(parts[1])
-                    page = int(parts[2])
-                    if cid > 0:
-                        cards, counts = _reconcile_pdf_page_sources(cid, page)
-                    else:
-                        cards = []
-                        counts = {}
-                    data = {"page": page, "cards": cards, "pageCounts": counts}
-                    js = (
-                        "window.incrementoReceivePageCards && "
-                        f"window.incrementoReceivePageCards({json.dumps(data)})"
-                    )
-                    QTimer.singleShot(
-                        0,
-                        lambda j=js: (
-                            _pdf_dock._view.page().runJavaScript(j)
-                            if _pdf_dock
-                            else None
-                        ),
-                    )
-            except Exception:
-                pass
+        _handle_pdf_js_message(message[len(_PYCMD_BRIDGE) :])
 
 
 class _PdfShortcutFilter(QObject):
@@ -1852,6 +1872,7 @@ def show_pdf_in_dock(
     bookmarks = _pdf_bookmarks_payload(card_id)
     limit_status = _current_pdf_limit_status(card_id, current_page=page)
     read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), card_id)
+    scroll_ratio = get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id)
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
 
     js = (
@@ -1859,10 +1880,10 @@ def show_pdf_in_dock(
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

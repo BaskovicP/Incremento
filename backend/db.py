@@ -294,6 +294,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             card_id   INTEGER PRIMARY KEY,
             page      INTEGER NOT NULL DEFAULT 1,
             zoom      REAL    NOT NULL DEFAULT 1.0,
+            scroll_ratio REAL NOT NULL DEFAULT 0.0,
             read_page INTEGER NOT NULL DEFAULT 0,
             read_anchor_json TEXT NOT NULL DEFAULT ''
         );
@@ -576,6 +577,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_ktpp_branch
             ON knowledge_tree_postpone_presets (branch_root_card_id, name);
     """)
+    _ensure_column(
+        conn,
+        "pdf_progress",
+        "scroll_ratio",
+        "REAL NOT NULL DEFAULT 0.0",
+    )
     _ensure_column(
         conn,
         "pdf_progress",
@@ -1557,16 +1564,17 @@ def export_pdf_progress_json(addon_dir: str, profile: str) -> str:
     rows = (
         get_connection(addon_dir, profile)
         .execute(
-            "SELECT card_id, page, zoom, read_page, read_anchor_json "
+            "SELECT card_id, page, zoom, scroll_ratio, read_page, read_anchor_json "
             "FROM pdf_progress ORDER BY card_id"
         )
         .fetchall()
     )
     result = {}
-    for card_id, page, zoom, read_page, read_anchor_json in rows:
+    for card_id, page, zoom, scroll_ratio, read_page, read_anchor_json in rows:
         item = {
             "page": page,
             "zoom": zoom,
+            "scroll_ratio": max(0.0, min(float(scroll_ratio or 0.0), 1.0)),
             "read_page": read_page,
         }
         if str(read_anchor_json or "").strip():

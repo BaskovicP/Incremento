@@ -253,6 +253,14 @@ def _stored_pdf_title(title: str, attempt: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_scroll_ratio(value) -> float:
+    try:
+        ratio = float(value or 0.0)
+    except Exception:
+        ratio = 0.0
+    return max(0.0, min(ratio, 1.0))
+
+
 def get_page(addon_dir: str, profile: str, card_id: int) -> int:
     row = (
         get_connection(addon_dir, profile)
@@ -271,11 +279,24 @@ def get_zoom(addon_dir: str, profile: str, card_id: int) -> float:
     return row[0] if row else 1.0
 
 
+def get_scroll_ratio(addon_dir: str, profile: str, card_id: int) -> float:
+    row = (
+        get_connection(addon_dir, profile)
+        .execute("SELECT scroll_ratio FROM pdf_progress WHERE card_id = ?", (card_id,))
+        .fetchone()
+    )
+    return _normalize_scroll_ratio(row[0]) if row else 0.0
+
+
 def set_page(addon_dir: str, profile: str, card_id: int, page: int) -> None:
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT INTO pdf_progress (card_id, page, zoom) VALUES (?, ?, 1.0) "
-        "ON CONFLICT(card_id) DO UPDATE SET page = excluded.page",
+        "INSERT INTO pdf_progress (card_id, page, zoom, scroll_ratio) VALUES (?, ?, 1.0, 0.0) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "page = excluded.page, "
+        "scroll_ratio = CASE "
+        "WHEN pdf_progress.page = excluded.page THEN pdf_progress.scroll_ratio "
+        "ELSE 0.0 END",
         (card_id, page),
     )
     conn.commit()
@@ -287,6 +308,16 @@ def set_zoom(addon_dir: str, profile: str, card_id: int, zoom: float) -> None:
         "INSERT INTO pdf_progress (card_id, page, zoom) VALUES (?, 1, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET zoom = excluded.zoom",
         (card_id, round(float(zoom), 2)),
+    )
+    conn.commit()
+
+
+def set_scroll_ratio(addon_dir: str, profile: str, card_id: int, scroll_ratio: float) -> None:
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO pdf_progress (card_id, page, zoom, scroll_ratio) VALUES (?, 1, 1.0, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET scroll_ratio = excluded.scroll_ratio",
+        (card_id, _normalize_scroll_ratio(scroll_ratio)),
     )
     conn.commit()
 

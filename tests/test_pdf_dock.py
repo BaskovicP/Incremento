@@ -1,5 +1,6 @@
 import types
 import sys
+import tempfile
 from unittest.mock import MagicMock
 
 sys.modules.setdefault("session", MagicMock())
@@ -234,6 +235,7 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     monkeypatch.setattr(pdf_dock, "_pdf_bookmarks_payload", lambda card_id: [])
     monkeypatch.setattr(pdf_dock, "_current_pdf_limit_status", lambda *args, **kwargs: {"enabled": False})
     monkeypatch.setattr(pdf_dock, "get_read_anchor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pdf_dock, "get_scroll_ratio", lambda *args, **kwargs: 0.42)
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
     monkeypatch.setattr(pdf_dock, "_show_missing_pdf_screen", lambda filename: events.append(("missing", filename)))
@@ -261,7 +263,51 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     assert events == []
     assert js_calls
     assert '"new-file.pdf"' in js_calls[0]
+    assert "scrollRatio: 0.42" in js_calls[0]
     assert '"old-file.pdf"' not in js_calls[0]
+
+
+def test_pdf_scroll_bridge_persists_updates(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_pdf_preserve_history", False)
+    monkeypatch.setattr(
+        pdf_dock,
+        "set_scroll_ratio",
+        lambda addon_dir, profile, card_id, scroll_ratio: calls.append(
+            (addon_dir, profile, card_id, scroll_ratio)
+        ),
+    )
+
+    pdf_dock._handle_pdf_js_message('incremento_pdf_scroll:{"cardId":55,"scrollRatio":0.63}')
+
+    assert calls == [("/tmp/addon", "TestProfile", 55, 0.63)]
+
+
+def test_pdf_nav_resets_saved_scroll_ratio_for_new_page(monkeypatch):
+    import db as _db
+
+    _db.close_connection()
+    addon_dir = tempfile.mkdtemp()
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", addon_dir)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_pdf_via_link", False)
+    monkeypatch.setattr(pdf_dock, "_pdf_preserve_history", False)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_limit_status", lambda *args, **kwargs: {"enabled": False})
+    monkeypatch.setattr(pdf_dock, "_push_pdf_limit_status", lambda status: None)
+    monkeypatch.setattr(pdf_dock, "_timer_mod", types.SimpleNamespace(record_pdf_page_read=lambda *args, **kwargs: None))
+
+    try:
+        pdf_dock.set_page(addon_dir, "TestProfile", 77, 3)
+        pdf_dock.set_scroll_ratio(addon_dir, "TestProfile", 77, 0.58)
+
+        pdf_dock._handle_pdf_js_message("incremento_pdf_nav:77:4")
+
+        assert pdf_dock.get_page(addon_dir, "TestProfile", 77) == 4
+        assert pdf_dock.get_scroll_ratio(addon_dir, "TestProfile", 77) == 0.0
+    finally:
+        _db.close_connection()
 
 
 def test_repair_legacy_pdf_reference_links_html_fixes_broken_anchor():

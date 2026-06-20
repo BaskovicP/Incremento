@@ -7206,7 +7206,7 @@
       }
       doStart();
     }, [doStart]);
-    const nav2 = reactExports.useCallback((delta) => {
+    const nav = reactExports.useCallback((delta) => {
       const doc = pdfDocRef.current;
       if (!doc) return;
       const next = pageRef.current + delta;
@@ -7294,7 +7294,7 @@
       lastScaleRef,
       // Callbacks
       startViewer,
-      nav: nav2,
+      nav,
       adjustZoom,
       markRead,
       setReadProgress
@@ -7768,6 +7768,23 @@
     if (!tokens.length) return null;
     return spans.filter(({ text }) => tokens.some((token) => text.includes(token))).slice(0, Math.max(1, Math.min(tokens.length, 4))).map(({ span }) => span);
   }
+  function clampScrollRatio(value) {
+    const ratio = Number(value);
+    if (!Number.isFinite(ratio)) return 0;
+    return Math.max(0, Math.min(ratio, 1));
+  }
+  function getPdfViewportMetrics(wrapper) {
+    if (!wrapper) return null;
+    const rect = wrapper.getBoundingClientRect();
+    const pageHeight = Math.max(0, wrapper.offsetHeight || rect.height || 0);
+    const visibleHeight = Math.max(1, window.innerHeight - CONTROLS_HEIGHT);
+    return {
+      pageTop: window.scrollY + rect.top,
+      pageHeight,
+      visibleHeight,
+      maxOffset: Math.max(0, pageHeight - visibleHeight)
+    };
+  }
   function PdfViewer() {
     const {
       page,
@@ -7820,8 +7837,18 @@
     const pendingHighlightScrollRef = reactExports.useRef(null);
     const pendingExcerptJumpRef = reactExports.useRef("");
     const pendingReadAnchorScrollRef = reactExports.useRef(false);
+    const pendingResumeScrollRef = reactExports.useRef(null);
+    const pendingResumePageRef = reactExports.useRef(null);
+    const suppressScrollPersistUntilRef = reactExports.useRef(0);
     const lastReadAnchorSpanRef = reactExports.useRef(null);
     const pageJumpInputRef = reactExports.useRef(null);
+    const clearPendingResumeScroll = reactExports.useCallback(() => {
+      pendingResumeScrollRef.current = null;
+      pendingResumePageRef.current = null;
+    }, []);
+    const suppressScrollPersistence = reactExports.useCallback((ms = 500) => {
+      suppressScrollPersistUntilRef.current = Date.now() + Math.max(0, Number(ms) || 0);
+    }, []);
     const pageHighlights = highlights.filter((h) => h.page === page);
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
     const showReadMarker = readAnchor && readPage > 0 && page === readPage && Number(readAnchor.page || 0) === page;
@@ -8016,6 +8043,8 @@
         const target = highlights.find((h) => h.id === pendingId);
         if (!target || target.page !== page || !((_a = target.rects) == null ? void 0 : _a.length)) return;
         if (!scrollToPdfRect(target.rects[0])) return;
+        clearPendingResumeScroll();
+        suppressScrollPersistence(900);
         setFocusedHighlightId(pendingId);
         window.setTimeout(() => setFocusedHighlightId(null), 1400);
         pendingHighlightScrollRef.current = null;
@@ -8034,6 +8063,8 @@
             return highlightText.includes(normalizedExcerpt) || normalizedExcerpt.includes(highlightText);
           });
           if (((_b = highlightTarget == null ? void 0 : highlightTarget.rects) == null ? void 0 : _b.length) && scrollToPdfRect(highlightTarget.rects[0])) {
+            clearPendingResumeScroll();
+            suppressScrollPersistence(900);
             setFocusedHighlightId(String(highlightTarget.id || ""));
             window.setTimeout(() => setFocusedHighlightId(null), 1600);
             pendingExcerptJumpRef.current = "";
@@ -8047,6 +8078,8 @@
             const matchedSpans = findExcerptSpanMatch(tl, normalizedExcerpt);
             if (matchedSpans == null ? void 0 : matchedSpans.length) {
               markJumpHit(matchedSpans);
+              clearPendingResumeScroll();
+              suppressScrollPersistence(900);
               try {
                 matchedSpans[0].scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
               } catch (_) {
@@ -8064,11 +8097,38 @@
       }
       if (pendingReadAnchorScrollRef.current && showReadMarker) {
         if (readMarkerRect) {
+          clearPendingResumeScroll();
+          suppressScrollPersistence(900);
           scrollToPdfRect(readMarkerRect, 0.15, 80);
         }
         pendingReadAnchorScrollRef.current = false;
+        return;
       }
-    }, [page, renderInfo, highlights, containerRef, highlightJumpNonce, showReadMarker, readMarkerRect, textLayerRef]);
+      const pendingResumePage = pendingResumePageRef.current;
+      const pendingResumeScroll = pendingResumeScrollRef.current;
+      if (pendingResumePage != null && pendingResumeScroll != null && Number(pendingResumePage) === page) {
+        const metrics = getPdfViewportMetrics(wrapper);
+        if (!metrics) return;
+        clearPendingResumeScroll();
+        suppressScrollPersistence(700);
+        window.scrollTo({
+          top: Math.max(0, metrics.pageTop + clampScrollRatio(pendingResumeScroll) * metrics.maxOffset),
+          left: window.scrollX,
+          behavior: "auto"
+        });
+      }
+    }, [
+      page,
+      renderInfo,
+      highlights,
+      containerRef,
+      highlightJumpNonce,
+      showReadMarker,
+      readMarkerRect,
+      textLayerRef,
+      clearPendingResumeScroll,
+      suppressScrollPersistence
+    ]);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
       if (!tl) return;
@@ -8095,12 +8155,42 @@
         if (!firstHit) firstHit = sp;
       }
       if (firstHit) {
+        clearPendingResumeScroll();
+        suppressScrollPersistence(900);
         try {
           firstHit.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
         } catch (_) {
         }
       }
-    }, [searchQuery, page, renderInfo, textLayerRef]);
+    }, [searchQuery, page, renderInfo, textLayerRef, clearPendingResumeScroll, suppressScrollPersistence]);
+    reactExports.useEffect(() => {
+      let timer = 0;
+      const reportScrollRatio = () => {
+        timer = 0;
+        if (!cardIdRef.current || Date.now() < suppressScrollPersistUntilRef.current) {
+          return;
+        }
+        const wrapper = containerRef.current;
+        const metrics = getPdfViewportMetrics(wrapper);
+        if (!metrics) return;
+        const ratio = metrics.maxOffset <= 0 ? 0 : clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.maxOffset);
+        window.pycmd("incremento_pdf_scroll:" + JSON.stringify({
+          cardId: cardIdRef.current,
+          scrollRatio: ratio
+        }));
+      };
+      const scheduleReport = () => {
+        if (timer) window.clearTimeout(timer);
+        timer = window.setTimeout(reportScrollRatio, 180);
+      };
+      window.addEventListener("scroll", scheduleReport, { passive: true });
+      window.addEventListener("resize", scheduleReport);
+      return () => {
+        if (timer) window.clearTimeout(timer);
+        window.removeEventListener("scroll", scheduleReport);
+        window.removeEventListener("resize", scheduleReport);
+      };
+    }, [cardIdRef, containerRef]);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
       if (!tl) return;
@@ -8257,8 +8347,10 @@
           return;
         }
       }
+      clearPendingResumeScroll();
+      suppressScrollPersistence(600);
       rawNav(delta);
-    }, [canMoveToPage, pageRef, rawNav]);
+    }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
     const openPageJump = reactExports.useCallback(() => {
       if (totalPages <= 0) return;
       setPageJumpValue(String(pageRef.current || page || 1));
@@ -8314,7 +8406,7 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawSetReadProgress, showReadMarker]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startJumpExcerpt = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startJumpExcerpt = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
         setHighlights(window._incPdfHighlights || []);
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
@@ -8323,6 +8415,9 @@
         setReadAnchor(startReadAnchor && typeof startReadAnchor === "object" ? startReadAnchor : null);
         pendingExcerptJumpRef.current = String(startJumpExcerpt || "").trim();
         pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
+        pendingResumeScrollRef.current = clampScrollRatio(startScrollRatio);
+        pendingResumePageRef.current = Math.max(1, parseInt(startPage, 10) || 1);
+        suppressScrollPersistence(700);
         setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
         setLimitNotice(null);
         if (typeof startAutoHighlightOnExtract === "boolean") {
@@ -8359,6 +8454,7 @@
           pending.filename,
           pending.page,
           pending.zoom,
+          pending.scrollRatio || 0,
           pending.readPage || 0,
           pending.readAnchor || null,
           pending.searchQuery || "",
@@ -8380,7 +8476,16 @@
         delete window.incrementoReceivePdfBookmarks;
         delete window.incrementoUpdatePdfHighlightNote;
       };
-    }, [startViewer, limitAwareNav, adjustZoom, limitAwareMarkRead, pageRef, updateHighlightNote, applyAutoHighlightSetting]);
+    }, [
+      startViewer,
+      limitAwareNav,
+      adjustZoom,
+      limitAwareMarkRead,
+      pageRef,
+      updateHighlightNote,
+      applyAutoHighlightSetting,
+      suppressScrollPersistence
+    ]);
     reactExports.useEffect(() => {
       if (!pdfDocRef.current || !cardIdRef.current) return;
       setPageCards([]);
@@ -9100,7 +9205,7 @@
                       const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
                       pendingHighlightScrollRef.current = hl.id;
                       setHighlightJumpNonce((n) => n + 1);
-                      nav(targetPage - pageRef.current);
+                      limitAwareNav(targetPage - pageRef.current);
                       setShowHighlightsPanel(false);
                     },
                     style: {

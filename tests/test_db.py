@@ -50,6 +50,7 @@ class TestGetConnection:
         }
         assert "pdf_progress" in tables
         columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
+        assert "scroll_ratio" in columns
         assert "read_anchor_json" in columns
 
     def test_creates_pdf_daily_limits_tables(self):
@@ -1434,6 +1435,7 @@ class TestConnectionSwitching:
         # get_connection should ADD the read_page column and commit (line 121)
         conn = db.get_connection(addon_dir, "TestProfile")
         columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
+        assert "scroll_ratio" in columns
         assert "read_page" in columns
         assert "read_anchor_json" in columns
 
@@ -1495,15 +1497,16 @@ class TestExportHelpers:
         import json
         conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute(
-            "INSERT INTO pdf_progress (card_id, page, zoom, read_page, read_anchor_json) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (10, 3, 1.5, 3, '{"page":3,"x":10.5,"y":22.0,"w":40.0,"h":12.0}'),
+            "INSERT INTO pdf_progress (card_id, page, zoom, scroll_ratio, read_page, read_anchor_json) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (10, 3, 1.5, 0.42, 3, '{"page":3,"x":10.5,"y":22.0,"w":40.0,"h":12.0}'),
         )
         conn.commit()
         result = json.loads(db.export_pdf_progress_json(self.addon_dir, "TestProfile"))
         assert "10" in result
         assert result["10"]["page"] == 3
         assert result["10"]["zoom"] == 1.5
+        assert result["10"]["scroll_ratio"] == 0.42
         assert result["10"]["read_page"] == 3
         assert result["10"]["read_anchor"]["page"] == 3
 
