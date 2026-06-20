@@ -866,7 +866,7 @@ def _refresh_video_bookmarks_panel() -> None:
     html_parts = ["<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>"]
     html_parts.append("<b>Interesting-place bookmarks</b>")
     if bookmarks:
-        html_parts.append("<ul>")
+        html_parts.append("<ul style='margin:8px 0 0 18px;padding:0'>")
         for bookmark in bookmarks:
             bookmark_id = html.escape(str(bookmark.get("id") or ""))
             label = html.escape(str(bookmark.get("label") or "Bookmark"))
@@ -876,16 +876,23 @@ def _refresh_video_bookmarks_panel() -> None:
             if comment:
                 action_label = "Edit comment"
                 comment_html = (
-                    "<div style='color:#555;margin:2px 0 0 0;white-space:pre-wrap'>"
+                    "<div style='color:#b9c1cc;margin:6px 0 0 0;white-space:pre-wrap'>"
                     f"{html.escape(comment)}"
                     "</div>"
                 )
             html_parts.append(
-                "<li>"
-                f"{label}{comment_html} "
-                f"<a href='inc://video-bookmark-open/{bookmark_id}'>Jump</a> "
-                f"<a href='inc://video-bookmark-comment/{bookmark_id}'>{action_label}</a> "
+                "<li style='margin:10px 0 0 0'>"
+                "<div style='margin-top:4px;padding:2px 0 0 0'>"
+                f"<div style='font-weight:600;color:#f2f2f2'>{label}</div>"
+                f"{comment_html}"
+                "<div style='margin-top:6px'>"
+                f"<a href='inc://video-bookmark-open/{bookmark_id}'>Jump</a>"
+                "<span style='color:#6b7280'>  ·  </span>"
+                f"<a href='inc://video-bookmark-comment/{bookmark_id}'>{action_label}</a>"
+                "<span style='color:#6b7280'>  ·  </span>"
                 f"<a href='inc://video-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                "</div>"
+                "</div>"
                 "</li>"
             )
         html_parts.append("</ul>")
