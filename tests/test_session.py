@@ -32,6 +32,20 @@ def _load_repo_module(fullname: str, relpath: str):
     _ensure_package("incremento.backend", os.path.join(_ADDON_ROOT, "backend"))
     _ensure_package("incremento.frontend", os.path.join(_ADDON_ROOT, "frontend"))
 
+    aqt_module = sys.modules.setdefault("aqt", types.ModuleType("aqt"))
+    if not hasattr(aqt_module, "gui_hooks"):
+        aqt_module.gui_hooks = types.SimpleNamespace(
+            reviewer_did_show_question=[],
+            reviewer_did_show_answer=[],
+            reviewer_did_answer_card=[],
+            reviewer_will_end=[],
+            state_did_change=[],
+        )
+    qt_module = sys.modules.setdefault("aqt.qt", types.ModuleType("aqt.qt"))
+    for name in ("QDialog", "QVBoxLayout", "QTextEdit", "QPushButton"):
+        if not hasattr(qt_module, name):
+            setattr(qt_module, name, type(name, (), {"__init__": lambda self, *args, **kwargs: None}))
+
     if "incremento.frontend.learn_dialog" not in sys.modules:
         stub = types.ModuleType("incremento.frontend.learn_dialog")
         stub.SchedulerConfigDialog = object
@@ -459,6 +473,345 @@ class TestPrepareFilteredReviewDeck:
             [],
             preserve_order=True,
         ) is True
+
+
+class TestIncrementoSessionAutoRefill:
+    def _make_state(self, **overrides):
+        picker = types.SimpleNamespace(
+            selected_ids=[1, 2, 3],
+            picked_meta={1: {"card_type": "topics", "tag": None, "mode": "random"}},
+            pick_until=lambda _target: [],
+        )
+        stats = MagicMock()
+        cfg = types.SimpleNamespace(
+            scheduler_scope="session",
+            preserve_order=True,
+            auto_refill_session=True,
+        )
+        state = _SESSION_MOD._ActiveIncrementoSessionState(
+            cfg=cfg,
+            stats=stats,
+            picker=picker,
+            session_deck_name="Incremento Session",
+            window_size=50,
+            preserve_order=True,
+            picked_meta={1: {"card_type": "topics", "tag": None, "mode": "random"}},
+            selected_ids=[1, 2, 3],
+            auto_refill_enabled=True,
+        )
+        for key, value in overrides.items():
+            setattr(state, key, value)
+        return state
+
+    def test_refills_when_live_queue_drops_below_window(self, monkeypatch):
+        rebuilt = []
+        picker = types.SimpleNamespace(selected_ids=list(range(1, 51)), picked_meta={55: {"card_type": "items", "tag": None, "mode": "random"}})
+
+        def _pick_until(_target):
+            picker.selected_ids.append(55)
+            return [55]
+
+        picker.pick_until = _pick_until
+        state = self._make_state(picker=picker, selected_ids=list(range(1, 51)), window_size=50)
+        live_queue = list(range(100, 149))
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(_SESSION_MOD, "_live_filtered_queue_ids", lambda deck_id, fetch_limit: live_queue)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda deck_name, ordered_ids, preserve_order: rebuilt.append((deck_name, list(ordered_ids), preserve_order)) or True,
+        )
+
+        result = _SESSION_MOD._maybe_auto_refill_active_session(state)
+
+        assert result == {"live_queue_ids": live_queue, "new_ids": [55]}
+        assert rebuilt == [("Incremento Session", live_queue + [55], True)]
+        assert state.selected_ids == list(range(1, 51)) + [55]
+        assert state.picked_meta == picker.picked_meta
+
+    def test_live_queue_reader_keeps_active_relearners_even_if_entry_reports_home_deck(self, monkeypatch):
+        queued = [
+            types.SimpleNamespace(card=types.SimpleNamespace(id=301, did=5), did=5),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=302, did=77), did=77),
+        ]
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(
+                col=types.SimpleNamespace(
+                    sched=types.SimpleNamespace(get_queued_cards=lambda fetch_limit=None: queued)
+                )
+            ),
+        )
+
+        assert _SESSION_MOD._live_filtered_queue_ids(77, fetch_limit=10) == [301, 302]
+
+    def test_no_refill_when_learning_card_keeps_live_queue_full(self, monkeypatch):
+        rebuilt = []
+        picker = types.SimpleNamespace(
+            selected_ids=list(range(1, 51)),
+            picked_meta={},
+            pick_until=lambda _target: (_ for _ in ()).throw(AssertionError("should not pick")),
+        )
+        state = self._make_state(picker=picker, selected_ids=list(range(1, 51)), window_size=50)
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit: list(range(200, 250)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda *args, **kwargs: rebuilt.append(args),
+        )
+
+        result = _SESSION_MOD._maybe_auto_refill_active_session(state)
+
+        assert result == {"live_queue_ids": list(range(200, 250)), "new_ids": []}
+        assert rebuilt == []
+
+    def test_duplicate_live_queue_defers_refill_without_picking_or_rebuilding(self, monkeypatch):
+        rebuilt = []
+        picker = types.SimpleNamespace(
+            selected_ids=list(range(1, 51)),
+            picked_meta={},
+            pick_until=lambda _target: (_ for _ in ()).throw(AssertionError("should not pick")),
+        )
+        state = self._make_state(picker=picker, selected_ids=list(range(1, 51)), window_size=50)
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit: [201, 201, 202],
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda *args, **kwargs: rebuilt.append(args),
+        )
+
+        result = _SESSION_MOD._maybe_auto_refill_active_session(state)
+
+        assert result == {"live_queue_ids": [201, 201, 202], "new_ids": []}
+        assert rebuilt == []
+
+    def test_answer_recording_runs_before_live_queue_read(self, monkeypatch):
+        calls = []
+        stats = MagicMock()
+        stats.session_time = {"type": {}, "tags": {}}
+        picker = types.SimpleNamespace(selected_ids=[1], picked_meta={1: {"card_type": "topics", "tag": None, "mode": "random"}})
+        state = self._make_state(stats=stats, picker=picker)
+        state.picked_meta = {1: {"card_type": "topics", "tag": None, "mode": "random"}}
+
+        monkeypatch.setattr(_SESSION_MOD, "_record_session_count", lambda *args, **kwargs: calls.append("session_count"))
+        monkeypatch.setattr(_SESSION_MOD, "_review_seconds", lambda *args, **kwargs: 3.0)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_maybe_auto_refill_active_session",
+            lambda _state: calls.append("live_queue"),
+        )
+
+        def _record(fake, scope):
+            calls.append("record")
+
+        stats.record.side_effect = _record
+
+        _SESSION_MOD._record_incremento_answer(
+            state,
+            reviewer=types.SimpleNamespace(),
+            card=types.SimpleNamespace(id=1),
+        )
+
+        assert calls == ["record", "session_count", "live_queue"]
+
+    def test_cleanup_prefers_live_queue_order(self, monkeypatch):
+        rebuilt = []
+        state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(_SESSION_MOD, "_live_filtered_queue_ids", lambda deck_id, fetch_limit: [3, 1])
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda deck_name, ordered_ids, preserve_order: rebuilt.append((deck_name, list(ordered_ids), preserve_order)) or True,
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_sync_filtered_deck_by_name",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not use fallback")),
+        )
+
+        _SESSION_MOD._sync_session_cleanup_deck(state)
+
+        assert rebuilt == [("Incremento Session", [3, 1], True)]
+
+    def test_cleanup_falls_back_when_live_queue_read_fails(self, monkeypatch):
+        fallback = []
+        state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
+        state.reviewed_ids = {2}
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_sync_filtered_deck_by_name",
+            lambda deck_name, selected_ids, preserve_order: fallback.append((deck_name, list(selected_ids), preserve_order)) or True,
+        )
+
+        _SESSION_MOD._sync_session_cleanup_deck(state)
+
+        assert fallback == [("Incremento Session", [1, 3], True)]
+
+    def test_cleanup_falls_back_when_live_queue_contains_duplicate_entries(self, monkeypatch):
+        fallback = []
+        state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
+        state.reviewed_ids = {2}
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit: [3, 3, 1],
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_sync_filtered_deck_by_name",
+            lambda deck_name, selected_ids, preserve_order: fallback.append((deck_name, list(selected_ids), preserve_order)) or True,
+        )
+
+        _SESSION_MOD._sync_session_cleanup_deck(state)
+
+        assert fallback == [("Incremento Session", [1, 3], True)]
+
+    def test_repeated_refill_cycles_never_schedule_same_new_card_twice(self, monkeypatch):
+        cycle = {"count": 0}
+
+        class _Picker:
+            def __init__(self):
+                self.selected_ids = [1, 2, 3]
+                self.picked_meta = {
+                    4: {"card_type": "items", "tag": None, "mode": "random"},
+                    5: {"card_type": "items", "tag": None, "mode": "random"},
+                }
+
+            def pick_until(self, _target):
+                cycle["count"] += 1
+                if cycle["count"] == 1:
+                    self.selected_ids.append(4)
+                    return [4]
+                if cycle["count"] == 2:
+                    self.selected_ids.append(5)
+                    return [5]
+                return []
+
+        picker = _Picker()
+        state = self._make_state(picker=picker, selected_ids=[1, 2, 3], window_size=3)
+        rebuilt = []
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit: [10, 11] if cycle["count"] == 0 else [11, 12],
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda deck_name, ordered_ids, preserve_order: rebuilt.append(list(ordered_ids)) or True,
+        )
+
+        _SESSION_MOD._maybe_auto_refill_active_session(state)
+        _SESSION_MOD._maybe_auto_refill_active_session(state)
+
+        assert rebuilt == [[10, 11, 4], [11, 12, 5]]
+
+    def test_refill_rolls_back_picker_if_rebuild_fails(self, monkeypatch):
+        class _Picker:
+            def __init__(self):
+                self.selected_ids = [1, 2, 3]
+                self.picked_meta = {1: {"card_type": "topics", "tag": None, "mode": "random"}}
+                self.picked_ids = {1, 2, 3}
+
+            def snapshot(self):
+                return {
+                    "selected_ids": list(self.selected_ids),
+                    "picked_meta": copy.deepcopy(self.picked_meta),
+                }
+
+            def _restore_snapshot(self, snapshot):
+                self.selected_ids = list(snapshot.get("selected_ids", []))
+                self.picked_meta = copy.deepcopy(snapshot.get("picked_meta", {}))
+                self.picked_ids = set(self.selected_ids)
+
+            def pick_until(self, _target):
+                self.selected_ids.append(55)
+                self.picked_ids.add(55)
+                self.picked_meta[55] = {"card_type": "items", "tag": None, "mode": "random"}
+                return [55]
+
+        picker = _Picker()
+        state = self._make_state(
+            picker=picker,
+            selected_ids=[1, 2, 3],
+            picked_meta=copy.deepcopy(picker.picked_meta),
+            window_size=4,
+        )
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(_SESSION_MOD, "_live_filtered_queue_ids", lambda deck_id, fetch_limit: [10, 11, 12])
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+
+        try:
+            _SESSION_MOD._maybe_auto_refill_active_session(state)
+            assert False, "Expected refill rebuild failure to be raised"
+        except RuntimeError as exc:
+            assert str(exc) == "boom"
+
+        assert picker.selected_ids == [1, 2, 3]
+        assert picker.picked_ids == {1, 2, 3}
+        assert 55 not in picker.picked_meta
+        assert state.selected_ids == [1, 2, 3]
+        assert state.picked_meta == {1: {"card_type": "topics", "tag": None, "mode": "random"}}
+
+    def test_answer_recording_does_not_swallow_refill_errors(self, monkeypatch):
+        stats = MagicMock()
+        stats.session_time = {"type": {}, "tags": {}}
+        picker = types.SimpleNamespace(selected_ids=[1], picked_meta={1: {"card_type": "topics", "tag": None, "mode": "random"}})
+        state = self._make_state(stats=stats, picker=picker)
+        state.picked_meta = {1: {"card_type": "topics", "tag": None, "mode": "random"}}
+
+        monkeypatch.setattr(_SESSION_MOD, "_record_session_count", lambda *args, **kwargs: None)
+        monkeypatch.setattr(_SESSION_MOD, "_review_seconds", lambda *args, **kwargs: 3.0)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_maybe_auto_refill_active_session",
+            lambda _state: (_ for _ in ()).throw(RuntimeError("refill failed")),
+        )
+
+        try:
+            _SESSION_MOD._record_incremento_answer(
+                state,
+                reviewer=types.SimpleNamespace(),
+                card=types.SimpleNamespace(id=1),
+            )
+            assert False, "Expected refill failure to propagate"
+        except RuntimeError as exc:
+            assert str(exc) == "refill failed"
+
+        assert stats.record.call_count == 1
+        assert 1 in state.reviewed_ids
 
 
 class TestReviewTimeTrackerIncrementoSessions:

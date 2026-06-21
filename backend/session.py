@@ -19,6 +19,7 @@ import copy
 import os
 import time
 import types
+from dataclasses import dataclass, field
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
@@ -31,7 +32,7 @@ except Exception:
 
 from .scheduler import NO_TAGS_KEY
 from .statistics import StatsManager, _empty, _empty_time
-from .session_selection import select_session_cards
+from .session_selection import SessionPicker, select_session_cards
 from .paths import get_active_profile as _active_profile
 from .topic_postpone import release_expired_timed_postpones
 try:
@@ -52,6 +53,29 @@ INCREMENTO_QUICK_OPEN_REVIEW_DECK = "Incremento Quick Open Review"
 # Accessed via get_session_counts() from __init__.py for the stats dialog.
 _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
 _session_times: dict = _empty_time()
+_active_incremento_session_state = None
+
+
+class _DuplicateLiveQueueEntriesError(RuntimeError):
+    """Raised when Anki's live queue contains duplicate entries for one card."""
+
+
+@dataclass
+class _ActiveIncrementoSessionState:
+    cfg: object
+    stats: StatsManager
+    picker: SessionPicker
+    session_deck_name: str
+    window_size: int
+    preserve_order: bool
+    picked_meta: dict[int, dict]
+    selected_ids: list[int]
+    reviewed_ids: set[int] = field(default_factory=set)
+    question_started_at: dict[int, float] = field(default_factory=dict)
+    measured_review_seconds: dict[int, float] = field(default_factory=dict)
+    last_shown_cid: int | None = None
+    auto_refill_enabled: bool = False
+    session_closed: bool = False
 
 
 def incremento_session_deck_name(dialog_profile_name: str | None = None) -> str:
@@ -180,6 +204,284 @@ def _sync_filtered_deck_by_name(
     return True
 
 
+def _session_deck_id_by_name(deck_name: str) -> int | None:
+    name = str(deck_name or "").strip()
+    if not name:
+        return None
+    existing = mw.col.decks.by_name(name)
+    if not existing or not existing.get("dyn"):
+        return None
+    try:
+        return int(existing["id"])
+    except Exception:
+        return None
+
+
+def _queue_entry_card_id(entry) -> int | None:
+    candidates = []
+    if isinstance(entry, int):
+        candidates.append(entry)
+    for attr in ("id", "card_id", "cid"):
+        candidates.append(getattr(entry, attr, None))
+
+    nested_card = getattr(entry, "card", None)
+    if nested_card is not None:
+        if isinstance(nested_card, int):
+            candidates.append(nested_card)
+        for attr in ("id", "card_id", "cid"):
+            candidates.append(getattr(nested_card, attr, None))
+
+    for raw in candidates:
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid > 0:
+            return cid
+    return None
+
+
+def _live_filtered_queue_ids(deck_id: int, fetch_limit: int) -> list[int]:
+    try:
+        queued = mw.col.sched.get_queued_cards(fetch_limit=fetch_limit)
+    except TypeError:
+        queued = mw.col.sched.get_queued_cards(fetch_limit)
+
+    ordered_ids: list[int] = []
+    for entry in list(queued or []):
+        cid = _queue_entry_card_id(entry)
+        if cid is not None:
+            ordered_ids.append(cid)
+    return ordered_ids
+
+
+def _has_duplicate_ordered_ids(ordered_ids: list[int]) -> bool:
+    seen: set[int] = set()
+    for raw in ordered_ids or []:
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid <= 0:
+            continue
+        if cid in seen:
+            return True
+        seen.add(cid)
+    return False
+
+
+def _snapshot_picker_state(picker) -> object:
+    snapshot = getattr(picker, "snapshot", None)
+    if callable(snapshot):
+        return ("picker_snapshot", snapshot())
+    return (
+        "basic",
+        {
+            "selected_ids": list(getattr(picker, "selected_ids", []) or []),
+            "picked_meta": copy.deepcopy(getattr(picker, "picked_meta", {}) or {}),
+            "picked_ids": set(getattr(picker, "picked_ids", set()) or set()),
+        },
+    )
+
+
+def _restore_picker_state(picker, snapshot: object) -> None:
+    kind, payload = snapshot
+    if kind == "picker_snapshot":
+        restore = getattr(picker, "_restore_snapshot", None)
+        if callable(restore):
+            restore(payload)
+            return
+    if not isinstance(payload, dict):
+        return
+    selected_ids = list(payload.get("selected_ids") or [])
+    picked_meta = copy.deepcopy(payload.get("picked_meta") or {})
+    setattr(picker, "selected_ids", selected_ids)
+    setattr(picker, "picked_meta", picked_meta)
+    if hasattr(picker, "picked_ids"):
+        picked_ids = payload.get("picked_ids")
+        if isinstance(picked_ids, set):
+            setattr(picker, "picked_ids", set(picked_ids))
+        else:
+            setattr(picker, "picked_ids", set(selected_ids))
+
+
+def _rebuild_filtered_deck_with_exact_ids(
+    deck_name: str,
+    ordered_ids: list[int],
+    preserve_order: bool,
+) -> bool:
+    normalized_ids: list[int] = []
+    for raw in ordered_ids or []:
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid > 0:
+            normalized_ids.append(cid)
+
+    if not normalized_ids:
+        return _empty_filtered_deck_by_name(deck_name)
+
+    if _has_duplicate_ordered_ids(normalized_ids):
+        raise _DuplicateLiveQueueEntriesError(
+            "Cannot rebuild a filtered deck from a live queue that contains duplicate card entries."
+        )
+
+    _prepare_filtered_review_deck(
+        normalized_ids,
+        deck_name=deck_name,
+        preserve_order=preserve_order,
+        select_deck=False,
+    )
+    return True
+
+
+def _maybe_auto_refill_active_session(
+    state: _ActiveIncrementoSessionState,
+) -> dict[str, list[int]] | None:
+    if not state.auto_refill_enabled:
+        return None
+
+    deck_id = _session_deck_id_by_name(state.session_deck_name)
+    if deck_id is None:
+        return None
+
+    fetch_limit = max(state.window_size * 3, state.window_size + 20)
+    live_queue_ids = _live_filtered_queue_ids(deck_id, fetch_limit=fetch_limit)
+    if len(live_queue_ids) >= state.window_size:
+        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+
+    if _has_duplicate_ordered_ids(live_queue_ids):
+        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+
+    missing = state.window_size - len(live_queue_ids)
+    picker_snapshot = _snapshot_picker_state(state.picker)
+    new_ids = state.picker.pick_until(len(state.picker.selected_ids) + missing)
+    if not new_ids:
+        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+    combined_ids = list(live_queue_ids) + list(new_ids)
+    try:
+        _rebuild_filtered_deck_with_exact_ids(
+            state.session_deck_name,
+            combined_ids,
+            preserve_order=state.preserve_order,
+        )
+    except Exception:
+        _restore_picker_state(state.picker, picker_snapshot)
+        raise
+    state.selected_ids = list(state.picker.selected_ids)
+    state.picked_meta = copy.deepcopy(state.picker.picked_meta)
+    return {"live_queue_ids": list(live_queue_ids), "new_ids": list(new_ids)}
+
+
+def _sync_session_cleanup_deck(state: _ActiveIncrementoSessionState) -> None:
+    try:
+        deck_id = _session_deck_id_by_name(state.session_deck_name)
+        if deck_id is not None:
+            live_queue_ids = _live_filtered_queue_ids(
+                deck_id,
+                fetch_limit=max(state.window_size * 3, state.window_size + 20),
+            )
+            if _has_duplicate_ordered_ids(live_queue_ids):
+                raise _DuplicateLiveQueueEntriesError(
+                    "Cannot clean up a filtered deck from a live queue that contains duplicate card entries."
+                )
+            _rebuild_filtered_deck_with_exact_ids(
+                state.session_deck_name,
+                live_queue_ids,
+                preserve_order=state.preserve_order,
+            )
+            return
+    except Exception:
+        pass
+
+    remaining_ids = [cid for cid in state.selected_ids if cid not in state.reviewed_ids]
+    _sync_filtered_deck_by_name(
+        state.session_deck_name,
+        remaining_ids,
+        preserve_order=state.preserve_order,
+    )
+
+
+def _record_incremento_answer(
+    state: _ActiveIncrementoSessionState,
+    reviewer,
+    card,
+) -> None:
+    global _session_times
+
+    cid = card.id
+    if cid in state.picked_meta and cid not in state.reviewed_ids:
+        state.reviewed_ids.add(cid)
+        meta = state.picked_meta[cid]
+        tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
+        fake = types.SimpleNamespace(
+            card=cid,
+            card_type=meta["card_type"],
+            tag=tag,
+            mode=meta["mode"],
+            review_seconds=_review_seconds(
+                reviewer,
+                card,
+                measured_seconds=state.measured_review_seconds.pop(cid, None),
+            ),
+        )
+        state.stats.record(fake, state.cfg.scheduler_scope)
+        _record_session_count(fake.card_type, fake.tag, fake.mode)
+        _session_times = copy.deepcopy(state.stats.session_time)
+        state.question_started_at.pop(cid, None)
+
+    if not state.auto_refill_enabled:
+        return
+
+    _maybe_auto_refill_active_session(state)
+
+
+def _flush_unanswered_time_for_state(state: _ActiveIncrementoSessionState) -> None:
+    global _session_times
+    if state.session_closed:
+        return
+    state.session_closed = True
+
+    cid = None
+    try:
+        cur = getattr(getattr(mw, "reviewer", None), "card", None)
+        if cur is not None:
+            cid = cur.id
+        if cid is None:
+            cid = state.last_shown_cid
+        if cid is None and state.question_started_at:
+            cid = next(reversed(state.question_started_at))
+        if cid is not None and cid not in state.measured_review_seconds:
+            started = state.question_started_at.get(cid)
+            if started is not None:
+                state.measured_review_seconds[cid] = max(0.0, time.monotonic() - started)
+    except Exception:
+        pass
+
+    now = time.monotonic()
+    for pending_cid, started in list(state.question_started_at.items()):
+        if pending_cid not in state.measured_review_seconds:
+            state.measured_review_seconds[pending_cid] = max(0.0, now - started)
+
+    for pending_cid, seconds in list(state.measured_review_seconds.items()):
+        if pending_cid in state.reviewed_ids:
+            continue
+        if pending_cid not in state.picked_meta:
+            continue
+        meta = state.picked_meta[pending_cid]
+        tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
+        fake = types.SimpleNamespace(
+            card=pending_cid,
+            card_type=meta["card_type"],
+            tag=tag,
+            mode=meta["mode"],
+        )
+        state.stats.record_time_only(fake, seconds)
+
+    _session_times = copy.deepcopy(state.stats.session_time)
+
+
 def start_explicit_review(
     selected_ids: list[int],
     *,
@@ -306,6 +608,7 @@ def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> fl
 
 
 def learnFunction(*, branch_scope: dict | None = None) -> None:
+    global _active_incremento_session_state
     try:
         release_expired_timed_postpones()
     except Exception:
@@ -325,16 +628,36 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
     cfg = dlg.to_config()
     preview_override = dlg.get_preview_override() if hasattr(dlg, "get_preview_override") else None
     if preview_override:
-        stats = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=cfg.day_end_time)
-        selected_ids = preview_override.get("selected_ids", [])
-        _picked_meta: dict[int, dict] = preview_override.get("picked_meta", {})
+        preview_snapshot = preview_override.get("picker_snapshot")
+        picker = SessionPicker(
+            cfg,
+            _ADDON_DIR,
+            branch_scope=branch_scope,
+            snapshot=preview_snapshot,
+        )
+        stats = picker.stats
+        selected_ids = (
+            list(picker.selected_ids)
+            if preview_snapshot is not None
+            else list(preview_override.get("selected_ids", []))
+        )
+        _picked_meta: dict[int, dict] = (
+            copy.deepcopy(picker.picked_meta)
+            if preview_snapshot is not None
+            else copy.deepcopy(preview_override.get("picked_meta", {}))
+        )
         session_time_snapshot = preview_override.get("session_time", {"type": {}, "tags": {}})
     else:
         selection = select_session_cards(cfg, _ADDON_DIR, branch_scope=branch_scope)
+        picker = SessionPicker(
+            cfg,
+            _ADDON_DIR,
+            branch_scope=branch_scope,
+            snapshot=selection.picker_snapshot,
+        )
         stats = selection.stats
-        selected_ids = selection.selected_ids
-        # Metadata stored at pick-time; daily/lifetime are recorded on actual review.
-        _picked_meta = selection.picked_meta
+        selected_ids = list(selection.selected_ids)
+        _picked_meta = copy.deepcopy(selection.picked_meta)
         session_time_snapshot = stats.session_time
 
     # The picker uses session-shaped counts to build the deck, but the
@@ -401,18 +724,23 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         showInfo(str(e))
         return
 
-    # Hook: record each card to daily/lifetime the first time it is answered.
-    # This ensures only actually reviewed cards count — not just scheduled ones.
-    _reviewed_ids: set[int] = set()
-    _question_started_at: dict[int, float] = {}
-    _measured_review_seconds: dict[int, float] = {}
-    _last_shown_cid: int | None = None
+    state = _ActiveIncrementoSessionState(
+        cfg=cfg,
+        stats=stats,
+        picker=picker,
+        session_deck_name=session_deck_name,
+        window_size=max(0, int(cfg.session_card_count or 0)),
+        preserve_order=bool(cfg.preserve_order),
+        picked_meta=copy.deepcopy(_picked_meta),
+        selected_ids=list(selected_ids),
+        auto_refill_enabled=bool(getattr(cfg, "auto_refill_session", False)),
+    )
+    _active_incremento_session_state = state
 
     def _on_card_shown(card) -> None:
-        nonlocal _last_shown_cid
         try:
-            _last_shown_cid = card.id
-            _question_started_at[card.id] = time.monotonic()
+            state.last_shown_cid = card.id
+            state.question_started_at[card.id] = time.monotonic()
         except Exception:
             pass
 
@@ -420,40 +748,18 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         """Freeze duration at answer reveal (question -> answer shown)."""
         try:
             cid = card.id
-            if cid in _measured_review_seconds:
+            if cid in state.measured_review_seconds:
                 return
-            started = _question_started_at.get(cid)
+            started = state.question_started_at.get(cid)
             if started is None:
                 return
-            _measured_review_seconds[cid] = max(0.0, time.monotonic() - started)
+            state.measured_review_seconds[cid] = max(0.0, time.monotonic() - started)
         except Exception:
             pass
 
     def _on_card_answered(reviewer, card, ease: int) -> None:
-        global _session_times
         try:
-            cid = card.id
-            if cid not in _picked_meta or cid in _reviewed_ids:
-                return
-            _reviewed_ids.add(cid)
-            meta = _picked_meta[cid]
-            # NO_TAGS_KEY is a synthetic key for debt tracking — don't persist it.
-            tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
-            fake = types.SimpleNamespace(
-                card=cid,
-                card_type=meta["card_type"],
-                tag=tag,
-                mode=meta["mode"],
-                review_seconds=_review_seconds(
-                    reviewer,
-                    card,
-                    measured_seconds=_measured_review_seconds.pop(cid, None),
-                ),
-            )
-            stats.record(fake, cfg.scheduler_scope)
-            _record_session_count(fake.card_type, fake.tag, fake.mode)
-            _session_times = copy.deepcopy(stats.session_time)
-            _question_started_at.pop(cid, None)
+            _record_incremento_answer(state, reviewer, card)
         except Exception as e:
             print(f"[Incremento] _on_card_answered error: {e}")
 
@@ -461,64 +767,13 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
     gui_hooks.reviewer_did_show_answer.append(_on_answer_shown)
     gui_hooks.reviewer_did_answer_card.append(_on_card_answered)
 
-    _session_closed = False
-
-    def _flush_unanswered_time() -> None:
-        global _session_times
-        nonlocal _session_closed
-        if _session_closed:
-            return
-        _session_closed = True
-
-        # If user exits while looking at a question and no answer was shown,
-        # freeze elapsed time for that card at exit.
-        cid = None
-        try:
-            cur = getattr(getattr(mw, "reviewer", None), "card", None)
-            if cur is not None:
-                cid = cur.id
-            if cid is None:
-                cid = _last_shown_cid
-            if cid is None and _question_started_at:
-                # Last fallback when reviewer.card is already cleared.
-                cid = next(reversed(_question_started_at))
-            if cid is not None and cid not in _measured_review_seconds:
-                started = _question_started_at.get(cid)
-                if started is not None:
-                    _measured_review_seconds[cid] = max(0.0, time.monotonic() - started)
-        except Exception:
-            pass
-
-        # Freeze any remaining in-flight cards as a final fallback.
-        now = time.monotonic()
-        for pending_cid, started in list(_question_started_at.items()):
-            if pending_cid not in _measured_review_seconds:
-                _measured_review_seconds[pending_cid] = max(0.0, now - started)
-
-        # Persist elapsed time for any unreviewed picked cards as time-only.
-        try:
-            for pending_cid, seconds in list(_measured_review_seconds.items()):
-                if pending_cid in _reviewed_ids:
-                    continue
-                if pending_cid not in _picked_meta:
-                    continue
-                meta = _picked_meta[pending_cid]
-                tag = None if meta["tag"] == NO_TAGS_KEY else meta["tag"]
-                fake = types.SimpleNamespace(
-                    card=pending_cid,
-                    card_type=meta["card_type"],
-                    tag=tag,
-                    mode=meta["mode"],
-                )
-                stats.record_time_only(fake, seconds)
-
-            _session_times = copy.deepcopy(stats.session_time)
-        except Exception as e:
-            print(f"[Incremento] _on_reviewer_end time-only stats error: {e}")
-
     # One-shot hooks: clean up when reviewer is left.
     def _on_reviewer_end() -> None:
-        _flush_unanswered_time()
+        global _active_incremento_session_state
+        try:
+            _flush_unanswered_time_for_state(state)
+        except Exception as e:
+            print(f"[Incremento] _on_reviewer_end time-only stats error: {e}")
 
         for hook_list, fn in (
             (gui_hooks.reviewer_will_end, _on_reviewer_end),
@@ -533,14 +788,12 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
                 pass
 
         try:
-            remaining_ids = [cid for cid in selected_ids if cid not in _reviewed_ids]
-            _sync_filtered_deck_by_name(
-                session_deck_name,
-                remaining_ids,
-                preserve_order=cfg.preserve_order,
-            )
+            _sync_session_cleanup_deck(state)
         except Exception as e:
             print(f"[Incremento] session deck cleanup error: {e}")
+        finally:
+            if _active_incremento_session_state is state:
+                _active_incremento_session_state = None
 
     def _on_state_did_change(new_state: str, old_state: str) -> None:
         if old_state == "review" and new_state != "review":
