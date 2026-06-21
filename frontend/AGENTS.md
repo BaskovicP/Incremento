@@ -6,6 +6,8 @@ Use this file for work in `frontend/`.
 
 - Qt dialogs and docks live here, along with the React PDF viewer source in `frontend/src/`.
 - The main knowledge-tree workspace, subset review window, branch postpone dialog, and reviewer priority badge also live here.
+- The Start Incremental Learning dialog in `frontend/learn_dialog.py` also lives here, including session-size, card-state, and active-session auto-refill controls.
+- The main settings surface lives in `frontend/settings_dialog.py`, but persistence wiring still goes through `__init__.py`.
 
 ## PDF Viewer
 
@@ -31,7 +33,6 @@ npm --prefix frontend run build
 - Tag button state must refresh on editor init, note load, and `editor_did_update_tags`.
 - Edit-note toggles must refresh the visible tag widget immediately and may need a scheduled `editor.loadNote()` so the tag row visibly updates.
 - Relevant config keys: `add_card_topic_tags`, `add_card_item_tags`, `extract_notetype`, `extract_source_links`.
-- Settings UI lives in `frontend/settings_dialog.py`. Save and load wiring lives in `__init__.py`.
 - Generic note editors and field pickers should hide dedicated Incremento provenance fields. Reuse backend `visible_field_names()` behavior rather than duplicating a separate blocklist.
 
 ## Writing Dock
@@ -90,12 +91,36 @@ npm --prefix frontend run build
 - Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority for all cards and topic A-factor, saved browser time, and custom schedule when available. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
 - Custom schedule text must only render when a real schedule exists for the current card; stale default text is a regression.
 
+## Session Builder UI
+
+- Main file: `frontend/learn_dialog.py`.
+- The dialog supports named presets, optional live preview, and branch-scoped study launches from the knowledge tree.
+- The **Card types** checkboxes control whether `New`, `Learning`, and `Due / Review` cards are eligible for session selection at all.
+- The **Advanced** checkbox `Auto-refill session deck to keep this many pending cards` uses **Cards per session** as a live pending-window target after the session starts.
+- PDF, EPUB, video, and web reading cards have additional scheduler flows layered on top of Anki state; when changing eligibility wording, verify the tooltip text still matches actual selection behavior.
+- Keep the checkbox label, tooltip, saved profile key `auto_refill_session`, and backend semantics in `backend/session.py` consistent. If the behavior changes, update `MANUAL.md` and session-related tests too.
+
+## Settings UI
+
+- Main file: `frontend/settings_dialog.py`.
+- Tabs are `Extraction`, `Review`, `Topics`, `Writing`, `Shortcuts`, and `Advanced`.
+- `frontend/settings_dialog.py` owns widget layout and value normalization; `__init__.py` `openSettingsFunction()` owns loading current config into the dialog and writing accepted values back.
+- When adding or renaming a setting, keep these in sync:
+  - `config.json` default
+  - dialog constructor argument
+  - dialog property or parser
+  - `openSettingsFunction()` load/save wiring
+  - `tests/test_settings_dialog.py`
+  - `MANUAL.md`
+- The advanced settings tab opens a guarded database editor. Keep its copy accurate about checkpoint creation and read-only startup.
+
 ## Frontend Checks
 
 - Useful focused suite:
 
 ```bash
 .venv/bin/python -m pytest -o addopts= tests/test_add_card_dock.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_settings_dialog.py tests/test_learn_dialog.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_reviewer_priority_badge.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_writing_dock.py tests/test_reviewer_priority_badge.py -q

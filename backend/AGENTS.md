@@ -6,6 +6,21 @@ Use this file for work in `backend/`.
 
 - Scheduling, persistence, browser bridge, content managers, statistics, profile-aware file handling, and migration logic live here.
 - Knowledge-tree persistence, branch postpone logic, note provenance helpers, and video media/subtitle management also live here.
+- Active Incremento session lifecycle also lives here, especially `backend/session.py` and `backend/scheduler_config.py`.
+
+## Config-Backed Behavior
+
+- Many backend modules expose `configured_*` helpers consumed by `frontend/settings_dialog.py` and `__init__.py`.
+- If you change config semantics, keep the helper's fallback behavior backward-compatible for missing keys and older config shapes where practical.
+- Changes to config-backed behavior usually require aligned updates in `config.json`, `frontend/settings_dialog.py`, `__init__.py`, `tests/test_settings_dialog.py`, and `MANUAL.md`.
+
+## Session Scheduling
+
+- Main files: `backend/session.py`, `backend/session_selection.py`, and `backend/scheduler_config.py`.
+- `include_new`, `include_learning`, and `include_review` define which Anki card states are even eligible for a session build or refill.
+- `auto_refill_session` means the active filtered deck should stay topped up to `session_card_count` pending cards after review answers shrink Anki's live queue below that threshold.
+- Preserve the distinction between the original selected id pool and Anki's current live queue; refill should add only the missing amount and must not duplicate cards already present in the filtered deck.
+- If you change refill behavior, keep `frontend/learn_dialog.py` labels/tooltips and the manual wording aligned with the backend semantics.
 
 ## Profile and Path Rules
 
@@ -58,6 +73,7 @@ Use this file for work in `backend/`.
 
 - Main files: `backend/custom_schedule.py` and the `custom_schedule_rules` table in `backend/db.py`.
 - Browser-selected cards can get per-card custom scheduling rules such as `minimum_cadence`, `fixed_repeat`, and `one_time`.
+- Default custom-schedule mode and preset parsing are config-backed and surfaced in the `Review` settings tab.
 - `format_custom_schedule_rule(None)` must stay empty. Missing rules must not render as the default preset in the reviewer badge.
 - Topic cards may still keep their topic scheduler state; `fixed_repeat` also updates the stored topic interval so UI and due date stay aligned.
 
@@ -79,6 +95,7 @@ Use this file for work in `backend/`.
 - UUID-backed saved filenames keep a short sanitized stem first, then the UUID.
 - The current stem cap is `80` characters across writing, PDF, EPUB, video, and browser-capture media helpers.
 - Some `.pdf` URLs return HTML challenge pages to Python; extension-side PDF fetch is the correct fallback there.
+- Local-file cards can either reference the original absolute path or store a managed copy under the active profile. Preserve that distinction when changing relink or storage behavior.
 
 ## Writing Cards
 
@@ -111,6 +128,8 @@ Use this file for work in `backend/`.
 ```bash
 .venv/bin/python -m pytest -o addopts= tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_knowledge_tree_postpone.py tests/test_db.py tests/test_session_selection.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_session.py tests/test_session_selection.py tests/test_learn_dialog.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_settings_dialog.py tests/test_custom_schedule.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_custom_schedule.py tests/test_db.py -q
 ```
