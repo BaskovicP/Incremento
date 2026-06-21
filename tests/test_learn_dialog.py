@@ -103,6 +103,92 @@ class _FakeComboBox:
         return ""
 
 
+class _FakeCheckBox:
+    def __init__(self, checked=False):
+        self._checked = bool(checked)
+
+    def isChecked(self):
+        return self._checked
+
+    def setChecked(self, checked):
+        self._checked = bool(checked)
+
+
+class _FakeValueWidget:
+    def __init__(self, value=0):
+        self._value = value
+        self.enabled = True
+
+    def value(self):
+        return self._value
+
+    def setValue(self, value):
+        self._value = value
+
+    def setEnabled(self, enabled):
+        self.enabled = bool(enabled)
+
+
+class _FakeLineEdit:
+    def __init__(self, text=""):
+        self._text = str(text)
+
+    def text(self):
+        return self._text
+
+    def setText(self, text):
+        self._text = str(text)
+
+
+class _FakeDataCombo:
+    def __init__(self, items, current_data=None):
+        self.items = list(items)
+        self.current_index = 0 if self.items else -1
+        if current_data is not None:
+            for index, (_label, data) in enumerate(self.items):
+                if data == current_data:
+                    self.current_index = index
+                    break
+
+    def currentData(self):
+        if 0 <= self.current_index < len(self.items):
+            return self.items[self.current_index][1]
+        return None
+
+    def count(self):
+        return len(self.items)
+
+    def itemData(self, index):
+        return self.items[index][1]
+
+    def setCurrentIndex(self, index):
+        self.current_index = index
+
+
+class _FakeFunnel:
+    def __init__(self, order=None, enabled=None):
+        self._order = list(order or [])
+        self._enabled = dict(enabled or {})
+
+    def get_order(self):
+        return list(self._order)
+
+    def get_enabled(self):
+        return dict(self._enabled)
+
+    def set_order(self, order, enabled=None):
+        self._order = list(order)
+        self._enabled = dict(enabled or {})
+
+
+class _FakePreviewDialog:
+    def __init__(self):
+        self.synced = False
+
+    def sync_use_preview_checkbox(self):
+        self.synced = True
+
+
 def _build_dialog_for_profile_tests(profiles, selected_name=None, current_data=None):
     dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
     dialog._profiles = dict(profiles)
@@ -118,6 +204,69 @@ def _build_dialog_for_profile_tests(profiles, selected_name=None, current_data=N
             data["selected_profile"] = dialog.selected_dialog_profile_name()
         return data
     dialog._build_current_dict = _build_current_dict
+    return dialog
+
+
+def _build_dialog_for_state_tests():
+    dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+    dialog._linked_rows = [
+        {
+            "tag": "writing",
+            "slider": _FakeValueWidget(35),
+            "lock_cb": _FakeCheckBox(True),
+            "group_edit": _FakeLineEdit("focus"),
+            "order_edit": _FakeLineEdit("2"),
+        },
+        {
+            "tag": _MOD.NO_TAGS_KEY,
+            "slider": _FakeValueWidget(15),
+            "lock_cb": _FakeCheckBox(False),
+            "group_edit": _FakeLineEdit("tags"),
+        },
+    ]
+    dialog._ct_rows = [
+        {
+            "type": "pdf",
+            "cb": _FakeCheckBox(True),
+            "slider": _FakeValueWidget(25),
+            "pct_label": SimpleNamespace(setText=lambda _text: None),
+            "order_edit": _FakeLineEdit("1"),
+        }
+    ]
+    dialog._count_spin = _FakeValueWidget(42)
+    dialog._topics_slider = _FakeValueWidget(20)
+    dialog._random_slider = _FakeValueWidget(70)
+    dialog._pdf_slider = _FakeValueWidget(25)
+    dialog._topics_lock_cb = _FakeCheckBox(True)
+    dialog._pdf_lock_cb = _FakeCheckBox(False)
+    dialog._priority_lock_cb = _FakeCheckBox(True)
+    dialog._topics_group_edit = _FakeLineEdit("topics")
+    dialog._pdf_group_edit = _FakeLineEdit("docs")
+    dialog._priority_group_edit = _FakeLineEdit("pace")
+    dialog._enforce_cb = _FakeCheckBox(False)
+    dialog._auto_refill_session_cb = _FakeCheckBox(True)
+    dialog._scope_combo = _FakeDataCombo([("Session", "session"), ("Daily", "daily")], current_data="daily")
+    dialog._day_end_preset = _FakeDataCombo([("04:00", "04:00"), ("Custom", None)], current_data="04:00")
+    dialog._priority_order_cb = _FakeCheckBox(True)
+    dialog._funnel = _FakeFunnel(order=["tags", "mode"], enabled={"tags": True, "mode": False})
+    dialog._topics_filter_edit = _FakeLineEdit("deck:Science")
+    dialog._items_filter_edit = _FakeLineEdit("-deck:Science")
+    dialog._cb_new = _FakeCheckBox(False)
+    dialog._cb_learning = _FakeCheckBox(True)
+    dialog._cb_due = _FakeCheckBox(False)
+    dialog._preserve_order_cb = _FakeCheckBox(False)
+    dialog._show_debug_cb = _FakeCheckBox(True)
+    dialog._use_live_preview_enabled = True
+    dialog._selected_profile_name = "Focus"
+    dialog._profiles = {"Focus": {}}
+    dialog._branch_scope = None
+    dialog._current_include_rest_from_other_slider = lambda: True
+    dialog._current_priority_order_entries = lambda: [
+        {"kind": "tag", "value": "writing", "order": 2},
+        {"kind": "content_type", "value": "pdf", "order": 1},
+    ]
+    dialog._parse_order_value = SchedulerConfigDialog._parse_order_value
+    dialog._get_day_end_time = lambda: "04:00"
     return dialog
 
 
@@ -491,3 +640,129 @@ class TestSchedulerConfigDialogPersistence:
             ("get", _MOD._ADDON_PKG),
             ("write", _MOD._ADDON_PKG, stored_config),
         ]
+
+
+class TestSchedulerConfigDialogState:
+    def test_build_current_dict_includes_auto_refill_session(self):
+        dialog = _build_dialog_for_state_tests()
+
+        data = dialog._build_current_dict()
+
+        assert data["auto_refill_session"] is True
+
+    def test_to_config_forwards_auto_refill_session(self):
+        dialog = _build_dialog_for_state_tests()
+
+        cfg = dialog.to_config()
+
+        assert cfg.auto_refill_session is True
+
+    def test_selection_signature_changes_when_auto_refill_changes(self):
+        dialog = _build_dialog_for_state_tests()
+
+        before = dialog._selection_signature_payload()
+        dialog._auto_refill_session_cb.setChecked(False)
+        after = dialog._selection_signature_payload()
+
+        assert before["auto_refill_session"] is True
+        assert after["auto_refill_session"] is False
+        assert before != after
+
+    def test_live_preview_cache_stores_picker_snapshot(self):
+        dialog = _build_dialog_for_state_tests()
+        dialog._live_preview_cache = None
+        dialog._live_preview_signature = None
+        dialog._selection_signature = lambda: "sig-1"
+        dialog._use_live_preview_enabled = True
+        snapshot = SimpleNamespace(selected_ids=[1], ordered_priority_picked={"tag:writing": 1})
+        result = SimpleNamespace(
+            selected_ids=[101, 102],
+            picked_meta={101: {"card_type": "topics"}},
+            stats=SimpleNamespace(
+                session={"type": {"topics": 1}, "tags": {}, "mode": {}},
+                session_time={"type": {}, "tags": {}},
+            ),
+            picker_snapshot=snapshot,
+        )
+
+        dialog._cache_live_preview_result(result)
+        cached = dialog.get_preview_override()
+
+        assert dialog._live_preview_cache["picker_snapshot"].ordered_priority_picked == {"tag:writing": 1}
+        assert cached["picker_snapshot"].selected_ids == [1]
+
+    def test_load_profile_dict_restores_auto_refill_checkbox_state(self):
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        dialog._count_spin = _FakeValueWidget()
+        dialog._topics_slider = _FakeValueWidget()
+        dialog._topics_left_lbl = SimpleNamespace(setText=lambda _text: None)
+        dialog._topics_right_lbl = SimpleNamespace(setText=lambda _text: None)
+        dialog._pdf_slider = _FakeValueWidget()
+        dialog._pdf_left_lbl = SimpleNamespace(setText=lambda _text: None)
+        dialog._pdf_right_lbl = SimpleNamespace(setText=lambda _text: None)
+        dialog._random_slider = _FakeValueWidget()
+        dialog._random_left_lbl = SimpleNamespace(setText=lambda _text: None)
+        dialog._random_right_lbl = SimpleNamespace(setText=lambda _text: None)
+        dialog._topics_lock_cb = _FakeCheckBox()
+        dialog._pdf_lock_cb = _FakeCheckBox()
+        dialog._priority_lock_cb = _FakeCheckBox()
+        dialog._topics_group_edit = _FakeLineEdit()
+        dialog._pdf_group_edit = _FakeLineEdit()
+        dialog._priority_group_edit = _FakeLineEdit()
+        dialog._rebalance_main_pool = lambda changed_key=None: None
+        dialog._cb_new = _FakeCheckBox()
+        dialog._cb_learning = _FakeCheckBox()
+        dialog._cb_due = _FakeCheckBox()
+        dialog._no_tags_cb = _FakeCheckBox()
+        dialog._enforce_cb = _FakeCheckBox()
+        dialog._auto_refill_session_cb = _FakeCheckBox()
+        dialog._scope_combo = _FakeDataCombo([("Session", "session"), ("Daily", "daily")], current_data="session")
+        dialog._day_end_preset = _FakeDataCombo([("04:00", "04:00"), ("Custom", None)], current_data="04:00")
+        dialog._day_end_edit = SimpleNamespace(setTime=lambda _time: None)
+        dialog._update_day_end_visibility = lambda: None
+        dialog._saved_priority_order_map = {}
+        dialog._priority_order_cb = _FakeCheckBox()
+        dialog._funnel = _FakeFunnel()
+        dialog._topics_filter_edit = _FakeLineEdit()
+        dialog._items_filter_edit = _FakeLineEdit()
+        dialog._preserve_order_cb = _FakeCheckBox()
+        dialog._show_debug_cb = _FakeCheckBox()
+        dialog._live_preview_dialog = _FakePreviewDialog()
+        dialog._linked_rows = []
+        dialog._ct_rows = []
+        dialog._normalized_saved_filter = lambda key, source=None: str((source or {}).get(key, "") or "")
+        dialog._priority_order_map_from_dict = SchedulerConfigDialog._priority_order_map_from_dict
+        dialog._resolve_tag_for_current_profile = lambda tag: tag
+        dialog._priority_order_for = lambda kind, value: None
+        dialog._add_tag_row = lambda *args, **kwargs: None
+        dialog._ensure_other_tag_row = lambda **kwargs: None
+        dialog._finalize_tag_row_batch_restore = lambda: None
+        dialog._update_other_label = lambda: None
+        dialog._sync_priority_order_visibility = lambda: None
+        dialog._refresh_expected_mix_preview = lambda: None
+        dialog._refresh_counts = lambda: None
+        dialog._schedule_live_preview_refresh = lambda: None
+        dialog._remove_row = lambda row, allow_other=False: None
+
+        dialog._load_profile_dict({"auto_refill_session": True, "use_live_preview": True})
+
+        assert dialog._auto_refill_session_cb.isChecked() is True
+        assert dialog._live_preview_dialog.synced is True
+
+    def test_named_profile_save_load_preserves_auto_refill_session(self, monkeypatch):
+        stored_config = {"dialog": {}, "profiles": {"Focus": {"session_card_count": 20}}}
+        addon_manager = SimpleNamespace(
+            getConfig=lambda _name: stored_config,
+            writeConfig=lambda _name, config: None,
+        )
+        dialog = _build_dialog_for_profile_tests(
+            stored_config["profiles"],
+            selected_name="Focus",
+            current_data={"session_card_count": 42, "auto_refill_session": True},
+        )
+        monkeypatch.setattr(_MOD, "mw", SimpleNamespace(addonManager=addon_manager))
+        monkeypatch.setattr(_MOD, "tooltip", lambda _message: None)
+
+        dialog._save_profile()
+
+        assert stored_config["profiles"]["Focus"]["auto_refill_session"] is True

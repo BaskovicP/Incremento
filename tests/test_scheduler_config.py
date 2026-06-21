@@ -50,6 +50,7 @@ class TestConfigFromDialogDict:
     def test_empty_dict_gives_defaults(self):
         cfg = _config_from_dialog_dict({})
         assert cfg.session_card_count == 50
+        assert cfg.auto_refill_session is False
         assert cfg.topics_rate == pytest.approx(1.0 - 10 / 100)
         assert cfg.random_rate == pytest.approx(99 / 100)
         assert cfg.use_tags is False
@@ -76,6 +77,16 @@ class TestConfigFromDialogDict:
     def test_session_card_count(self):
         cfg = _config_from_dialog_dict({"session_card_count": 100})
         assert cfg.session_card_count == 100
+
+    def test_auto_refill_session_defaults_false(self):
+        cfg = SchedulerConfig()
+
+        assert cfg.auto_refill_session is False
+
+    def test_auto_refill_session_can_be_enabled(self):
+        cfg = _config_from_dialog_dict({"auto_refill_session": True})
+
+        assert cfg.auto_refill_session is True
 
     def test_topics_slider_sets_rate(self):
         # topics_slider=20 → topics_rate = 1.0 - 20/100 = 0.8

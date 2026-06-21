@@ -38,6 +38,7 @@ _ADDON_PKG = __name__.split(".")[0]
 @dataclass
 class SchedulerConfig:
     session_card_count: int = 50   # number of cards to schedule per session
+    auto_refill_session: bool = False  # keep session deck topped up to session_card_count pending cards
     topics_rate: float = 0.9       # probability of picking a topic card
     random_rate: float = 0.99      # probability of random mode vs priority
     use_tags: bool = False         # True if any real tag rows are active
@@ -129,6 +130,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     include_due      = d.get("include_due",      True)
     preserve_order   = d.get("preserve_order",   True)
     show_debug       = d.get("show_debug",       False)
+    auto_refill_session = d.get("auto_refill_session", False)
     pdf_rate         = d.get("pdf_slider",        0) / 100.0
     priority_lower_is_more_important = d.get("priority_lower_is_more_important", True)
 
@@ -169,6 +171,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
 
     return SchedulerConfig(
         session_card_count=session_card_count,
+        auto_refill_session=bool(auto_refill_session),
         topics_rate=topics_rate,
         random_rate=random_rate,
         use_tags=bool(real_rows),

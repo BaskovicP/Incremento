@@ -4796,6 +4796,7 @@ def openSettingsFunction() -> None:
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
+        current_pdf_scroll_to_top_on_page_change=_pdf_dock_mod.configured_scroll_to_top_on_page_change(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
@@ -4844,6 +4845,7 @@ def openSettingsFunction() -> None:
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
+    cfg["pdf_scroll_to_top_on_page_change"] = dlg.pdf_scroll_to_top_on_page_change
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
@@ -4885,6 +4887,12 @@ def openSettingsFunction() -> None:
     try:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"
+        )
+    except Exception:
+        pass
+    try:
+        _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
+            f"window.incrementoSetScrollToTopOnPageChange && window.incrementoSetScrollToTopOnPageChange({json.dumps(dlg.pdf_scroll_to_top_on_page_change)});"
         )
     except Exception:
         pass

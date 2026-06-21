@@ -425,6 +425,19 @@ class TestIncrementoSettingsDialogReviewerButtons:
         assert dialog.use_fail_pass_on_items is False
 
 
+class TestIncrementoSettingsDialogPdfPaging:
+    def test_scroll_to_top_on_next_page_defaults_enabled(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.pdf_scroll_to_top_on_page_change is True
+
+    def test_scroll_to_top_on_next_page_respects_current_value(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_pdf_scroll_to_top_on_page_change=False,
+        )
+        assert dialog.pdf_scroll_to_top_on_page_change is False
+
+
 class TestIncrementoSettingsDialogShortcuts:
     def test_extract_card_shortcut_is_exposed_in_settings(self):
         extract_spec = next(

@@ -2108,6 +2108,16 @@ class SchedulerConfigDialog(QDialog):
         self._preserve_order_cb.setChecked(self._saved.get("preserve_order", True))
         _adv_body_layout.addWidget(self._preserve_order_cb)
 
+        self._auto_refill_session_cb = QCheckBox(
+            "Auto-refill session deck to keep this many pending cards"
+        )
+        self._auto_refill_session_cb.setToolTip(
+            "When enabled, the session card count becomes the pending-window size.\n"
+            "Incremento refills the filtered deck only after Anki's live queue drops below that number."
+        )
+        self._auto_refill_session_cb.setChecked(self._saved.get("auto_refill_session", False))
+        _adv_body_layout.addWidget(self._auto_refill_session_cb)
+
         self._show_debug_cb = QCheckBox("Show debug information on cards when starting")
         self._show_debug_cb.setChecked(self._saved.get("show_debug", False))
         _adv_body_layout.addWidget(self._show_debug_cb)
@@ -2124,6 +2134,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._topics_filter_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
         qconnect(self._items_filter_edit.textChanged,  lambda _: self._schedule_live_preview_refresh())
         qconnect(self._preserve_order_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._auto_refill_session_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._refresh_counts()
 
@@ -3148,6 +3159,7 @@ class SchedulerConfigDialog(QDialog):
         d = self._build_current_dict()
         return {
             "session_card_count": d.get("session_card_count"),
+            "auto_refill_session": d.get("auto_refill_session"),
             "topics_slider": d.get("topics_slider"),
             "random_slider": d.get("random_slider"),
             "pdf_slider": d.get("pdf_slider"),
@@ -3181,6 +3193,7 @@ class SchedulerConfigDialog(QDialog):
             "picked_meta": copy.deepcopy(result.picked_meta),
             "session_counts": copy.deepcopy(result.stats.session),
             "session_time": copy.deepcopy(result.stats.session_time),
+            "picker_snapshot": copy.deepcopy(result.picker_snapshot),
         }
         self._live_preview_signature = self._selection_signature()
 
@@ -3464,6 +3477,7 @@ class SchedulerConfigDialog(QDialog):
         }
         return SchedulerConfig(
             session_card_count=self._count_spin.value(),
+            auto_refill_session=self._auto_refill_session_cb.isChecked(),
             topics_rate=1.0 - self._topics_slider.value() / 100.0,
             random_rate=self._random_slider.value() / 100.0,
             pdf_rate=(100 - self._pdf_slider.value()) / 100.0,
@@ -3503,6 +3517,7 @@ class SchedulerConfigDialog(QDialog):
         """Serialize dialog state for config persistence or named-profile storage."""
         data = {
             "session_card_count": self._count_spin.value(),
+            "auto_refill_session": self._auto_refill_session_cb.isChecked(),
             "topics_slider":      self._topics_slider.value(),
             "random_slider":      self._random_slider.value(),
             "pdf_slider":         self._pdf_slider.value(),
@@ -3728,6 +3743,7 @@ class SchedulerConfigDialog(QDialog):
         self._cb_due.setChecked(d.get("include_due", True))
         self._no_tags_cb.setChecked(d.get("no_tags_checked", True))
         self._enforce_cb.setChecked(d.get("enforce_priority", True))
+        self._auto_refill_session_cb.setChecked(bool(d.get("auto_refill_session", False)))
 
         saved_scope = d.get("scheduler_scope", "session")
         for i in range(self._scope_combo.count()):

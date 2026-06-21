@@ -227,6 +227,7 @@ class IncrementoSettingsDialog(QDialog):
         current_show_priority_dialog_after_answer: bool = False,
         current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
+        current_pdf_scroll_to_top_on_page_change: bool = True,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
         current_use_fail_pass_on_items: bool = True,
@@ -551,6 +552,14 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_remember_browser_card_scroll)
         )
         reviewer_controls_layout.addWidget(self._remember_browser_card_scroll_cb)
+
+        self._pdf_scroll_to_top_on_page_change_cb = QCheckBox(
+            "Scroll to top when going to the next PDF page"
+        )
+        self._pdf_scroll_to_top_on_page_change_cb.setChecked(
+            bool(current_pdf_scroll_to_top_on_page_change)
+        )
+        reviewer_controls_layout.addWidget(self._pdf_scroll_to_top_on_page_change_cb)
 
         self._prefer_web_card_resume_in_original_page_cb = QCheckBox(
             "Prefer resuming embedded web-card media in the original page"
@@ -1314,6 +1323,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def remember_browser_card_scroll(self) -> bool:
         return bool(self._remember_browser_card_scroll_cb.isChecked())
+
+    @property
+    def pdf_scroll_to_top_on_page_change(self) -> bool:
+        return bool(self._pdf_scroll_to_top_on_page_change_cb.isChecked())
 
     @property
     def show_incremento_fields(self) -> bool:

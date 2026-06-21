@@ -237,6 +237,7 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     monkeypatch.setattr(pdf_dock, "get_read_anchor", lambda *args, **kwargs: None)
     monkeypatch.setattr(pdf_dock, "get_scroll_ratio", lambda *args, **kwargs: 0.42)
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
+    monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
     monkeypatch.setattr(pdf_dock, "_show_missing_pdf_screen", lambda filename: events.append(("missing", filename)))
     monkeypatch.setattr(pdf_dock, "tooltip", lambda message: events.append(("tooltip", message)))
@@ -264,6 +265,7 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     assert js_calls
     assert '"new-file.pdf"' in js_calls[0]
     assert "scrollRatio: 0.42" in js_calls[0]
+    assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert '"old-file.pdf"' not in js_calls[0]
 
 

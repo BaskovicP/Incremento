@@ -192,6 +192,11 @@ def configured_highlight_when_extracting(config: dict | None = None) -> bool:
     return bool(cfg.get("highlight_when_extracting", True))
 
 
+def configured_scroll_to_top_on_page_change(config: dict | None = None) -> bool:
+    cfg = _config(config)
+    return bool(cfg.get("pdf_scroll_to_top_on_page_change", True))
+
+
 def current_pdf_card_id() -> int | None:
     try:
         card_id = int(_current_pdf_card_id) if _current_pdf_card_id is not None else 0
@@ -1880,10 +1885,10 @@ def show_pdf_in_dock(
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

@@ -7810,12 +7810,16 @@
     const [highlights, setHighlights] = reactExports.useState([]);
     const [hlColor, setHlColor] = reactExports.useState("yellow");
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
+    const scrollToTopOnPageChangeRef = reactExports.useRef(true);
     const hlColorRef = reactExports.useRef("yellow");
     const autoHighlightRef = reactExports.useRef(false);
     const applyAutoHighlightSetting = reactExports.useCallback((value) => {
       const enabled = !!value;
       autoHighlightRef.current = enabled;
       setAutoHighlight(enabled);
+    }, []);
+    const applyScrollToTopOnPageChangeSetting = reactExports.useCallback((value) => {
+      scrollToTopOnPageChangeRef.current = !!value;
     }, []);
     const [snapshotMode, setSnapshotMode] = reactExports.useState(false);
     const [snapRect, setSnapRect] = reactExports.useState(null);
@@ -7830,6 +7834,7 @@
     const [limitNotice, setLimitNotice] = reactExports.useState(null);
     const [hoveredHighlightNote, setHoveredHighlightNote] = reactExports.useState(null);
     const [highlightsScope, setHighlightsScope] = reactExports.useState("all");
+    const [highlightsNotesOnly, setHighlightsNotesOnly] = reactExports.useState(false);
     const [focusedHighlightId, setFocusedHighlightId] = reactExports.useState(null);
     const [highlightJumpNonce, setHighlightJumpNonce] = reactExports.useState(0);
     const [pageJumpEditing, setPageJumpEditing] = reactExports.useState(false);
@@ -7837,6 +7842,7 @@
     const pendingHighlightScrollRef = reactExports.useRef(null);
     const pendingExcerptJumpRef = reactExports.useRef("");
     const pendingReadAnchorScrollRef = reactExports.useRef(false);
+    const pendingPageTopScrollRef = reactExports.useRef(false);
     const pendingResumeScrollRef = reactExports.useRef(null);
     const pendingResumePageRef = reactExports.useRef(null);
     const suppressScrollPersistUntilRef = reactExports.useRef(0);
@@ -7865,7 +7871,8 @@
       if ((a.page || 0) !== (b.page || 0)) return (a.page || 0) - (b.page || 0);
       return String(a.id || "").localeCompare(String(b.id || ""));
     });
-    const highlightsForPanel = highlightsScope === "page" ? sortedHighlights.filter((h) => h.page === page) : sortedHighlights;
+    const scopedHighlightsForPanel = highlightsScope === "page" ? sortedHighlights.filter((h) => h.page === page) : sortedHighlights;
+    const highlightsForPanel = highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel;
     const limitEnabled = !!(limitStatus == null ? void 0 : limitStatus.enabled);
     const limitMode = String((limitStatus == null ? void 0 : limitStatus.enforcement_mode) || "warning");
     const limitUsed = Number((limitStatus == null ? void 0 : limitStatus.pages_used) || 0);
@@ -8104,6 +8111,17 @@
         pendingReadAnchorScrollRef.current = false;
         return;
       }
+      if (pendingPageTopScrollRef.current) {
+        pendingPageTopScrollRef.current = false;
+        clearPendingResumeScroll();
+        suppressScrollPersistence(700);
+        window.scrollTo({
+          top: Math.max(0, window.scrollY + wrapper.getBoundingClientRect().top),
+          left: window.scrollX,
+          behavior: "auto"
+        });
+        return;
+      }
       const pendingResumePage = pendingResumePageRef.current;
       const pendingResumeScroll = pendingResumeScrollRef.current;
       if (pendingResumePage != null && pendingResumeScroll != null && Number(pendingResumePage) === page) {
@@ -8340,7 +8358,8 @@
         sel.removeAllRanges();
       }
     }, [makeHighlight]);
-    const limitAwareNav = reactExports.useCallback((delta) => {
+    const limitAwareNav = reactExports.useCallback((delta, options = {}) => {
+      const scrollToTop = options.scrollToTop !== void 0 ? !!options.scrollToTop : delta > 0;
       if (delta > 0) {
         const nextPage = pageRef.current + delta;
         if (!canMoveToPage(nextPage)) {
@@ -8348,6 +8367,7 @@
         }
       }
       clearPendingResumeScroll();
+      pendingPageTopScrollRef.current = !!(scrollToTop && scrollToTopOnPageChangeRef.current);
       suppressScrollPersistence(600);
       rawNav(delta);
     }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
@@ -8363,7 +8383,7 @@
       const clamped = Math.max(1, Math.min(target, totalPages || target));
       const delta = clamped - pageRef.current;
       if (delta !== 0) {
-        limitAwareNav(delta);
+        limitAwareNav(delta, { scrollToTop: false });
       }
     }, [limitAwareNav, pageJumpValue, pageRef, totalPages]);
     const cancelPageJump = reactExports.useCallback(() => {
@@ -8381,7 +8401,7 @@
       var _a;
       const targetPage = Number(((_a = bookmark == null ? void 0 : bookmark.location) == null ? void 0 : _a.page) || 0);
       if (!Number.isFinite(targetPage) || targetPage < 1) return;
-      limitAwareNav(targetPage - pageRef.current);
+      limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
     }, [limitAwareNav, pageRef]);
     const limitAwareMarkRead = reactExports.useCallback(() => {
       if (!canMarkReadAtPage(pageRef.current)) {
@@ -8406,7 +8426,7 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawSetReadProgress, showReadMarker]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startJumpExcerpt = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startBookmarks = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startJumpExcerpt = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null) => {
         setHighlights(window._incPdfHighlights || []);
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
@@ -8415,6 +8435,7 @@
         setReadAnchor(startReadAnchor && typeof startReadAnchor === "object" ? startReadAnchor : null);
         pendingExcerptJumpRef.current = String(startJumpExcerpt || "").trim();
         pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
+        pendingPageTopScrollRef.current = false;
         pendingResumeScrollRef.current = clampScrollRatio(startScrollRatio);
         pendingResumePageRef.current = Math.max(1, parseInt(startPage, 10) || 1);
         suppressScrollPersistence(700);
@@ -8423,6 +8444,7 @@
         if (typeof startAutoHighlightOnExtract === "boolean") {
           applyAutoHighlightSetting(startAutoHighlightOnExtract);
         }
+        applyScrollToTopOnPageChangeSetting(startScrollToTopOnPageChange);
         startViewer(cardId, filename, startPage, startZoom, startReadPage);
       };
       window.incrementoPdfStart = startWithHighlights;
@@ -8431,6 +8453,9 @@
       window.incrementoPdfMarkRead = limitAwareMarkRead;
       window.incrementoSetAutoHighlightOnExtract = (value) => {
         applyAutoHighlightSetting(value);
+      };
+      window.incrementoSetScrollToTopOnPageChange = (value) => {
+        applyScrollToTopOnPageChangeSetting(value);
       };
       window.incrementoReceivePageCards = (data) => {
         if (data.page === pageRef.current) {
@@ -8462,6 +8487,7 @@
           pending.scrollToReadAnchor || false,
           pending.limitStatus || DEFAULT_LIMIT_STATUS,
           pending.autoHighlightOnExtract,
+          pending.scrollToTopOnPageChange,
           pending.bookmarks || []
         );
       }
@@ -8471,6 +8497,7 @@
         delete window.incrementoPdfZoom;
         delete window.incrementoPdfMarkRead;
         delete window.incrementoSetAutoHighlightOnExtract;
+        delete window.incrementoSetScrollToTopOnPageChange;
         delete window.incrementoReceivePageCards;
         delete window.incrementoReceivePdfLimitStatus;
         delete window.incrementoReceivePdfBookmarks;
@@ -8484,6 +8511,7 @@
       pageRef,
       updateHighlightNote,
       applyAutoHighlightSetting,
+      applyScrollToTopOnPageChangeSetting,
       suppressScrollPersistence
     ]);
     reactExports.useEffect(() => {
@@ -9147,7 +9175,7 @@
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }, children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { fontSize: 13 }, children: "PDF Highlights" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
@@ -9183,6 +9211,22 @@
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
+                        onClick: () => setHighlightsNotesOnly((value) => !value),
+                        style: {
+                          border: "1px solid rgba(59,130,246,0.55)",
+                          borderRadius: 4,
+                          background: highlightsNotesOnly ? "rgba(59,130,246,0.2)" : "transparent",
+                          color: highlightsNotesOnly ? "rgb(96,165,250)" : "inherit",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          padding: "1px 8px"
+                        },
+                        children: "Notes only"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
                         onClick: () => setShowHighlightsPanel(false),
                         style: {
                           border: "1px solid rgba(140,140,140,0.5)",
@@ -9198,102 +9242,114 @@
                     )
                   ] })
                 ] }),
-                highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: "No highlights yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.map((hl) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "button",
-                  {
-                    onClick: () => {
-                      const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
-                      pendingHighlightScrollRef.current = hl.id;
-                      setHighlightJumpNonce((n) => n + 1);
-                      limitAwareNav(targetPage - pageRef.current);
-                      setShowHighlightsPanel(false);
-                    },
-                    style: {
-                      textAlign: "left",
-                      border: "1px solid rgba(90,90,90,0.55)",
-                      borderRadius: 6,
-                      background: "rgba(35,35,35,0.75)",
-                      color: "inherit",
-                      cursor: "pointer",
-                      padding: "8px 10px"
-                    },
-                    title: `Go to page ${hl.page || 1}`,
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 3 }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.9 }, children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                            "span",
-                            {
-                              style: {
-                                width: 10,
-                                height: 10,
-                                borderRadius: 999,
-                                background: HL_SOLID[hl.color] || "#9CA3AF",
-                                border: "1px solid rgba(255,255,255,0.35)",
-                                display: "inline-block",
-                                flexShrink: 0
+                highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? "No highlight notes on this page yet." : "No highlight notes yet." : "No highlights yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.map((hl) => {
+                  const note = String(hl.note || "").trim();
+                  const excerpt = String(hl.text || "(no text)").trim();
+                  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      onClick: () => {
+                        const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
+                        pendingHighlightScrollRef.current = hl.id;
+                        setHighlightJumpNonce((n) => n + 1);
+                        limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
+                        setShowHighlightsPanel(false);
+                      },
+                      style: {
+                        textAlign: "left",
+                        border: "1px solid rgba(90,90,90,0.55)",
+                        borderRadius: 6,
+                        background: "rgba(35,35,35,0.75)",
+                        color: "inherit",
+                        cursor: "pointer",
+                        padding: "8px 10px"
+                      },
+                      title: `Go to page ${hl.page || 1}`,
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 3 }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.9 }, children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "span",
+                              {
+                                style: {
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: 999,
+                                  background: HL_SOLID[hl.color] || "#9CA3AF",
+                                  border: "1px solid rgba(255,255,255,0.35)",
+                                  display: "inline-block",
+                                  flexShrink: 0
+                                }
                               }
+                            ),
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                              "Page ",
+                              hl.page || 1
+                            ] })
+                          ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              title: note ? "Edit note for this highlight" : "Add note to this highlight",
+                              onClick: (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                editHighlightNote(hl.id);
+                              },
+                              style: {
+                                border: "1px solid rgba(74,144,217,0.55)",
+                                borderRadius: 4,
+                                background: "rgba(74,144,217,0.12)",
+                                color: "rgba(147,197,253,0.95)",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                padding: "1px 7px",
+                                flexShrink: 0
+                              },
+                              children: note ? "Edit note" : "Add note"
                             }
                           ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                            "Page ",
-                            hl.page || 1
-                          ] })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              title: "Delete this highlight",
+                              onClick: (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                deleteHighlight(hl.id);
+                              },
+                              style: {
+                                border: "1px solid rgba(220,70,70,0.55)",
+                                borderRadius: 4,
+                                background: "rgba(220,70,70,0.12)",
+                                color: "rgba(248,113,113,0.95)",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                padding: "1px 7px",
+                                flexShrink: 0
+                              },
+                              children: "Delete"
+                            }
+                          )
                         ] }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            title: (hl.note || "").trim() ? "Edit note for this highlight" : "Add note to this highlight",
-                            onClick: (e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              editHighlightNote(hl.id);
-                            },
-                            style: {
-                              border: "1px solid rgba(74,144,217,0.55)",
-                              borderRadius: 4,
-                              background: "rgba(74,144,217,0.12)",
-                              color: "rgba(147,197,253,0.95)",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              padding: "1px 7px",
-                              flexShrink: 0
-                            },
-                            children: (hl.note || "").trim() ? "Edit note" : "Add note"
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            title: "Delete this highlight",
-                            onClick: (e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              deleteHighlight(hl.id);
-                            },
-                            style: {
-                              border: "1px solid rgba(220,70,70,0.55)",
-                              borderRadius: 4,
-                              background: "rgba(220,70,70,0.12)",
-                              color: "rgba(248,113,113,0.95)",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              padding: "1px 7px",
-                              flexShrink: 0
-                            },
-                            children: "Delete"
-                          }
-                        )
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: (hl.text || "(no text)").trim() }),
-                      (hl.note || "").trim() && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: [
-                        "Note: ",
-                        String(hl.note).trim()
-                      ] })
-                    ]
-                  },
-                  hl.id
-                )) })
+                        note && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(191,219,254)" }, children: note }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 11, lineHeight: 1.35, color: "rgba(229,231,235,0.72)", marginTop: 6 }, children: [
+                            "Highlight: ",
+                            excerpt
+                          ] })
+                        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: excerpt }),
+                          note && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: [
+                            "Note: ",
+                            note
+                          ] })
+                        ] })
+                      ]
+                    },
+                    hl.id
+                  );
+                }) })
               ]
             }
           ),

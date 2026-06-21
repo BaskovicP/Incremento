@@ -1,5 +1,6 @@
 """Tests for backend/session_selection.py shared pick-loop logic."""
 
+import copy
 import types
 from unittest.mock import patch
 
@@ -716,3 +717,276 @@ def test_soft_mode_keeps_trying_after_a_scheduler_miss():
     assert result.selected_ids == [501, 502]
     assert result.picked_meta[501]["selection_stage"] == "scheduler"
     assert result.picked_meta[502]["selection_stage"] == "scheduler"
+
+
+def test_ordered_priority_quota_continues_across_repeated_pick_until_calls():
+    cfg = SchedulerConfig(
+        session_card_count=3,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"writing": 2 / 3},
+        include_rest=True,
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "tag", "value": "writing", "order": 1}],
+    )
+    queue = iter(
+        [
+            types.SimpleNamespace(card=900, card_type="items", tag=None, mode="random"),
+        ]
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_topic_cards_by_tag",
+        return_value=[101, 102, 103],
+    ), patch(
+        "session_selection.card_utils.get_item_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_youtube_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.get_webpage_cards_by_tag",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=lambda **_: next(queue),
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(2) == [101, 900]
+        assert picker.pick_until(3) == [102]
+
+    assert picker.selected_ids == [101, 900, 102]
+    assert picker.picked_meta[101]["selection_stage"] == "ordered_priority"
+    assert picker.picked_meta[102]["selection_stage"] == "ordered_priority"
+
+
+def test_strict_content_type_quota_continues_across_refill_calls():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=True,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        phase_order=["content_types"],
+        phases_enabled={"content_types": True},
+        content_type_weights={"pdf": 1.0},
+    )
+    calls = []
+    queue = iter(
+        [
+            types.SimpleNamespace(card=501, card_type="pdf", tag=None, mode="random"),
+            types.SimpleNamespace(card=502, card_type="pdf", tag=None, mode="priority"),
+        ]
+    )
+
+    def _fake_get(**kwargs):
+        calls.append(kwargs.get("force_card_type"))
+        return next(queue)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=_fake_get,
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [501]
+        assert picker.pick_until(2) == [502]
+
+    assert calls == ["pdf", "pdf"]
+
+
+def test_strict_tag_quota_continues_cumulatively():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=True,
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"alpha": 1.0},
+        include_rest=True,
+        phase_order=["tags"],
+        phases_enabled={"tags": True},
+    )
+    calls = []
+    queue = iter(
+        [
+            types.SimpleNamespace(card=601, card_type="topics", tag="alpha", mode="priority"),
+            types.SimpleNamespace(card=602, card_type="topics", tag="alpha", mode="priority"),
+        ]
+    )
+
+    def _fake_get(**kwargs):
+        calls.append(dict(kwargs.get("tag_weights") or {}))
+        return next(queue)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=_fake_get,
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [601]
+        assert picker.pick_until(2) == [602]
+
+    assert calls == [{"alpha": 1.0}, {"alpha": 1.0}]
+
+
+def test_strict_type_and_mode_quotas_continue_cumulatively():
+    type_cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=True,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        phase_order=["type"],
+        phases_enabled={"type": True},
+        topics_rate=1.0,
+    )
+    mode_cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=True,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        phase_order=["mode"],
+        phases_enabled={"mode": True},
+        random_rate=0.0,
+    )
+    type_calls = []
+    mode_calls = []
+    type_queue = iter(
+        [
+            types.SimpleNamespace(card=701, card_type="topics", tag=None, mode="random"),
+            types.SimpleNamespace(card=702, card_type="topics", tag=None, mode="random"),
+        ]
+    )
+    mode_queue = iter(
+        [
+            types.SimpleNamespace(card=801, card_type="items", tag=None, mode="priority"),
+            types.SimpleNamespace(card=802, card_type="items", tag=None, mode="priority"),
+        ]
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=lambda **kwargs: type_calls.append(kwargs.get("force_card_type")) or next(type_queue),
+    ):
+        picker = session_selection.SessionPicker(type_cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [701]
+        assert picker.pick_until(2) == [702]
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=lambda **kwargs: mode_calls.append(kwargs.get("force_mode")) or next(mode_queue),
+    ):
+        picker = session_selection.SessionPicker(mode_cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [801]
+        assert picker.pick_until(2) == [802]
+
+    assert type_calls == ["topics", "topics"]
+    assert mode_calls == ["priority", "priority"]
+
+
+def test_soft_mode_continues_from_prior_scheduler_counts():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+    seen_counts = []
+    queue = iter(
+        [
+            types.SimpleNamespace(card=901, card_type="topics", tag=None, mode="random"),
+            types.SimpleNamespace(card=902, card_type="items", tag=None, mode="priority"),
+        ]
+    )
+
+    def _fake_get(**kwargs):
+        seen_counts.append(copy.deepcopy(kwargs["counts"]))
+        return next(queue)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=_fake_get,
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [901]
+        assert picker.pick_until(2) == [902]
+
+    assert seen_counts[0]["type"] == {}
+    assert seen_counts[1]["type"] == {"topics": 1}
+
+
+def test_pick_next_prevents_duplicates_across_many_calls():
+    cfg = SchedulerConfig(
+        session_card_count=3,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+
+    def _fake_get(**kwargs):
+        exclude_ids = set(kwargs.get("exclude_ids") or set())
+        if 701 not in exclude_ids:
+            return types.SimpleNamespace(card=701, card_type="items", tag=None, mode="random")
+        if 702 not in exclude_ids:
+            return types.SimpleNamespace(card=702, card_type="items", tag=None, mode="random")
+        return types.SimpleNamespace(card=None, card_type=None, tag=None, mode=None)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=_fake_get,
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_next() == 701
+        assert picker.pick_next() == 702
+        assert picker.pick_next() is None
+
+    assert picker.selected_ids == [701, 702]
+
+
+def test_snapshot_restore_reproduces_continued_picking():
+    cfg = SchedulerConfig(
+        session_card_count=3,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+
+    def _fake_get(**kwargs):
+        exclude_ids = set(kwargs.get("exclude_ids") or set())
+        for cid, card_type in ((801, "topics"), (802, "items"), (803, "pdf")):
+            if cid not in exclude_ids:
+                return types.SimpleNamespace(card=cid, card_type=card_type, tag=None, mode="random")
+        return types.SimpleNamespace(card=None, card_type=None, tag=None, mode=None)
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        side_effect=_fake_get,
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(2) == [801, 802]
+        snapshot = picker.snapshot()
+
+        restored = session_selection.SessionPicker(
+            cfg,
+            addon_dir="/tmp/unused",
+            snapshot=snapshot,
+        )
+        assert restored.pick_until(3) == [803]
+
+    assert restored.selected_ids == [801, 802, 803]

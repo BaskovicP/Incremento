@@ -337,12 +337,16 @@ export default function PdfViewer() {
   const [highlights,    setHighlights]    = useState([]);
   const [hlColor,       setHlColor]       = useState('yellow');
   const [autoHighlight, setAutoHighlight] = useState(false);
+  const scrollToTopOnPageChangeRef = useRef(true);
   const hlColorRef       = useRef('yellow');
   const autoHighlightRef = useRef(false);
   const applyAutoHighlightSetting = useCallback((value) => {
     const enabled = !!value;
     autoHighlightRef.current = enabled;
     setAutoHighlight(enabled);
+  }, []);
+  const applyScrollToTopOnPageChangeSetting = useCallback((value) => {
+    scrollToTopOnPageChangeRef.current = !!value;
   }, []);
 
   // ── Snapshot state ─────────────────────────────────────────────────────────
@@ -361,6 +365,7 @@ export default function PdfViewer() {
   const [limitNotice, setLimitNotice] = useState(null);
   const [hoveredHighlightNote, setHoveredHighlightNote] = useState(null);
   const [highlightsScope, setHighlightsScope] = useState('all');
+  const [highlightsNotesOnly, setHighlightsNotesOnly] = useState(false);
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
   const [pageJumpEditing, setPageJumpEditing] = useState(false);
@@ -368,6 +373,7 @@ export default function PdfViewer() {
   const pendingHighlightScrollRef = useRef(null);
   const pendingExcerptJumpRef = useRef('');
   const pendingReadAnchorScrollRef = useRef(false);
+  const pendingPageTopScrollRef = useRef(false);
   const pendingResumeScrollRef = useRef(null);
   const pendingResumePageRef = useRef(null);
   const suppressScrollPersistUntilRef = useRef(0);
@@ -415,9 +421,12 @@ export default function PdfViewer() {
     if ((a.page || 0) !== (b.page || 0)) return (a.page || 0) - (b.page || 0);
     return String(a.id || '').localeCompare(String(b.id || ''));
   });
-  const highlightsForPanel = highlightsScope === 'page'
+  const scopedHighlightsForPanel = highlightsScope === 'page'
     ? sortedHighlights.filter((h) => h.page === page)
     : sortedHighlights;
+  const highlightsForPanel = highlightsNotesOnly
+    ? scopedHighlightsForPanel.filter((h) => String(h.note || '').trim())
+    : scopedHighlightsForPanel;
   const limitEnabled = !!limitStatus?.enabled;
   const limitMode = String(limitStatus?.enforcement_mode || 'warning');
   const limitUsed = Number(limitStatus?.pages_used || 0);
@@ -685,6 +694,18 @@ export default function PdfViewer() {
       return;
     }
 
+    if (pendingPageTopScrollRef.current) {
+      pendingPageTopScrollRef.current = false;
+      clearPendingResumeScroll();
+      suppressScrollPersistence(700);
+      window.scrollTo({
+        top: Math.max(0, window.scrollY + wrapper.getBoundingClientRect().top),
+        left: window.scrollX,
+        behavior: 'auto',
+      });
+      return;
+    }
+
     const pendingResumePage = pendingResumePageRef.current;
     const pendingResumeScroll = pendingResumeScrollRef.current;
     if (
@@ -948,7 +969,10 @@ export default function PdfViewer() {
     }
   }, [makeHighlight]);
 
-  const limitAwareNav = useCallback((delta) => {
+  const limitAwareNav = useCallback((delta, options = {}) => {
+    const scrollToTop = options.scrollToTop !== undefined
+      ? !!options.scrollToTop
+      : delta > 0;
     if (delta > 0) {
       const nextPage = pageRef.current + delta;
       if (!canMoveToPage(nextPage)) {
@@ -956,6 +980,7 @@ export default function PdfViewer() {
       }
     }
     clearPendingResumeScroll();
+    pendingPageTopScrollRef.current = !!(scrollToTop && scrollToTopOnPageChangeRef.current);
     suppressScrollPersistence(600);
     rawNav(delta);
   }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
@@ -973,7 +998,7 @@ export default function PdfViewer() {
     const clamped = Math.max(1, Math.min(target, totalPages || target));
     const delta = clamped - pageRef.current;
     if (delta !== 0) {
-      limitAwareNav(delta);
+      limitAwareNav(delta, { scrollToTop: false });
     }
   }, [limitAwareNav, pageJumpValue, pageRef, totalPages]);
 
@@ -993,7 +1018,7 @@ export default function PdfViewer() {
   const jumpToBookmark = useCallback((bookmark) => {
     const targetPage = Number(bookmark?.location?.page || 0);
     if (!Number.isFinite(targetPage) || targetPage < 1) return;
-    limitAwareNav(targetPage - pageRef.current);
+    limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
   }, [limitAwareNav, pageRef]);
 
   const limitAwareMarkRead = useCallback(() => {
@@ -1036,6 +1061,7 @@ export default function PdfViewer() {
       startScrollToReadAnchor = false,
       startLimitStatus = null,
       startAutoHighlightOnExtract = undefined,
+      startScrollToTopOnPageChange = true,
       startBookmarks = null,
     ) => {
       setHighlights(window._incPdfHighlights || []);
@@ -1046,6 +1072,7 @@ export default function PdfViewer() {
       setReadAnchor(startReadAnchor && typeof startReadAnchor === 'object' ? startReadAnchor : null);
       pendingExcerptJumpRef.current = String(startJumpExcerpt || '').trim();
       pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
+      pendingPageTopScrollRef.current = false;
       pendingResumeScrollRef.current = clampScrollRatio(startScrollRatio);
       pendingResumePageRef.current = Math.max(1, parseInt(startPage, 10) || 1);
       suppressScrollPersistence(700);
@@ -1054,6 +1081,7 @@ export default function PdfViewer() {
       if (typeof startAutoHighlightOnExtract === 'boolean') {
         applyAutoHighlightSetting(startAutoHighlightOnExtract);
       }
+      applyScrollToTopOnPageChangeSetting(startScrollToTopOnPageChange);
       startViewer(cardId, filename, startPage, startZoom, startReadPage);
     };
 
@@ -1063,6 +1091,9 @@ export default function PdfViewer() {
     window.incrementoPdfMarkRead = limitAwareMarkRead;
     window.incrementoSetAutoHighlightOnExtract = (value) => {
       applyAutoHighlightSetting(value);
+    };
+    window.incrementoSetScrollToTopOnPageChange = (value) => {
+      applyScrollToTopOnPageChangeSetting(value);
     };
 
     window.incrementoReceivePageCards = (data) => {
@@ -1096,6 +1127,7 @@ export default function PdfViewer() {
         pending.scrollToReadAnchor || false,
         pending.limitStatus || DEFAULT_LIMIT_STATUS,
         pending.autoHighlightOnExtract,
+        pending.scrollToTopOnPageChange,
         pending.bookmarks || [],
       );
     }
@@ -1105,6 +1137,7 @@ export default function PdfViewer() {
       delete window.incrementoPdfZoom;
       delete window.incrementoPdfMarkRead;
       delete window.incrementoSetAutoHighlightOnExtract;
+      delete window.incrementoSetScrollToTopOnPageChange;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfLimitStatus;
       delete window.incrementoReceivePdfBookmarks;
@@ -1118,6 +1151,7 @@ export default function PdfViewer() {
     pageRef,
     updateHighlightNote,
     applyAutoHighlightSetting,
+    applyScrollToTopOnPageChangeSetting,
     suppressScrollPersistence,
   ]);
 
@@ -1785,7 +1819,7 @@ export default function PdfViewer() {
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <strong style={{ fontSize: 13 }}>PDF Highlights</strong>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setHighlightsScope('all')}
                 style={{
@@ -1815,6 +1849,20 @@ export default function PdfViewer() {
                 This page
               </button>
               <button
+                onClick={() => setHighlightsNotesOnly((value) => !value)}
+                style={{
+                  border: '1px solid rgba(59,130,246,0.55)',
+                  borderRadius: 4,
+                  background: highlightsNotesOnly ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  color: highlightsNotesOnly ? 'rgb(96,165,250)' : 'inherit',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: '1px 8px',
+                }}
+              >
+                Notes only
+              </button>
+              <button
                 onClick={() => setShowHighlightsPanel(false)}
                 style={{
                   border: '1px solid rgba(140,140,140,0.5)',
@@ -1832,96 +1880,117 @@ export default function PdfViewer() {
           </div>
 
           {highlightsForPanel.length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.75 }}>No highlights yet.</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              {highlightsNotesOnly
+                ? (highlightsScope === 'page' ? 'No highlight notes on this page yet.' : 'No highlight notes yet.')
+                : 'No highlights yet.'}
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {highlightsForPanel.map((hl) => (
-                <button
-                  key={hl.id}
-                  onClick={() => {
-                    const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
-                    pendingHighlightScrollRef.current = hl.id;
-                    setHighlightJumpNonce((n) => n + 1);
-                    limitAwareNav(targetPage - pageRef.current);
-                    setShowHighlightsPanel(false);
-                  }}
-                  style={{
-                    textAlign: 'left',
-                    border: '1px solid rgba(90,90,90,0.55)',
-                    borderRadius: 6,
-                    background: 'rgba(35,35,35,0.75)',
-                    color: 'inherit',
-                    cursor: 'pointer',
-                    padding: '8px 10px',
-                  }}
-                  title={`Go to page ${hl.page || 1}`}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: 0.9 }}>
-                      <span
+              {highlightsForPanel.map((hl) => {
+                const note = String(hl.note || '').trim();
+                const excerpt = String(hl.text || '(no text)').trim();
+                return (
+                  <button
+                    key={hl.id}
+                    onClick={() => {
+                      const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
+                      pendingHighlightScrollRef.current = hl.id;
+                      setHighlightJumpNonce((n) => n + 1);
+                      limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
+                      setShowHighlightsPanel(false);
+                    }}
+                    style={{
+                      textAlign: 'left',
+                      border: '1px solid rgba(90,90,90,0.55)',
+                      borderRadius: 6,
+                      background: 'rgba(35,35,35,0.75)',
+                      color: 'inherit',
+                      cursor: 'pointer',
+                      padding: '8px 10px',
+                    }}
+                    title={`Go to page ${hl.page || 1}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: 0.9 }}>
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: 999,
+                            background: HL_SOLID[hl.color] || '#9CA3AF',
+                            border: '1px solid rgba(255,255,255,0.35)',
+                            display: 'inline-block',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span>Page {hl.page || 1}</span>
+                      </span>
+                      <button
+                        title={note ? 'Edit note for this highlight' : 'Add note to this highlight'}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          editHighlightNote(hl.id);
+                        }}
                         style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 999,
-                          background: HL_SOLID[hl.color] || '#9CA3AF',
-                          border: '1px solid rgba(255,255,255,0.35)',
-                          display: 'inline-block',
+                          border: '1px solid rgba(74,144,217,0.55)',
+                          borderRadius: 4,
+                          background: 'rgba(74,144,217,0.12)',
+                          color: 'rgba(147,197,253,0.95)',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          padding: '1px 7px',
                           flexShrink: 0,
                         }}
-                      />
-                      <span>Page {hl.page || 1}</span>
-                    </span>
-                    <button
-                      title={(hl.note || '').trim() ? 'Edit note for this highlight' : 'Add note to this highlight'}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        editHighlightNote(hl.id);
-                      }}
-                      style={{
-                        border: '1px solid rgba(74,144,217,0.55)',
-                        borderRadius: 4,
-                        background: 'rgba(74,144,217,0.12)',
-                        color: 'rgba(147,197,253,0.95)',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        padding: '1px 7px',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {(hl.note || '').trim() ? 'Edit note' : 'Add note'}
-                    </button>
-                    <button
-                      title="Delete this highlight"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        deleteHighlight(hl.id);
-                      }}
-                      style={{
-                        border: '1px solid rgba(220,70,70,0.55)',
-                        borderRadius: 4,
-                        background: 'rgba(220,70,70,0.12)',
-                        color: 'rgba(248,113,113,0.95)',
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        padding: '1px 7px',
-                        flexShrink: 0,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.35 }}>
-                    {(hl.text || '(no text)').trim()}
-                  </div>
-                  {(hl.note || '').trim() && (
-                    <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(147,197,253)', marginTop: 6 }}>
-                      Note: {String(hl.note).trim()}
+                      >
+                        {note ? 'Edit note' : 'Add note'}
+                      </button>
+                      <button
+                        title="Delete this highlight"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          deleteHighlight(hl.id);
+                        }}
+                        style={{
+                          border: '1px solid rgba(220,70,70,0.55)',
+                          borderRadius: 4,
+                          background: 'rgba(220,70,70,0.12)',
+                          color: 'rgba(248,113,113,0.95)',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          padding: '1px 7px',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Delete
+                      </button>
                     </div>
-                  )}
-                </button>
-              ))}
+                    {note && highlightsNotesOnly ? (
+                      <>
+                        <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(191,219,254)' }}>
+                          {note}
+                        </div>
+                        <div style={{ fontSize: 11, lineHeight: 1.35, color: 'rgba(229,231,235,0.72)', marginTop: 6 }}>
+                          Highlight: {excerpt}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, lineHeight: 1.35 }}>
+                          {excerpt}
+                        </div>
+                        {note && (
+                          <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(147,197,253)', marginTop: 6 }}>
+                            Note: {note}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
