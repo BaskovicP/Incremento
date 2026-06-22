@@ -1,6 +1,6 @@
 # Incremento
 
-Incremento is an Anki add-on for incremental learning from mixed content. It combines topic-style material such as PDFs, videos, web pages, and writing notes with normal flashcards, then builds study sessions that balance reading, review, priority, and randomness.
+Incremento is a modern Anki add-on for incremental learning from mixed content. It brings a SuperMemo-style long-form learning workflow into Anki, combining PDFs, EPUBs, videos, web pages, writing notes, and local files with normal flashcards so you can study, extract, and review in one place.
 
 ## What It Does
 

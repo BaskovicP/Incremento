@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton
+from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton, QTimer
 try:
     from anki.consts import DYN_DUE, DYN_OLDEST
 except Exception:
@@ -76,6 +76,7 @@ class _ActiveIncrementoSessionState:
     last_shown_cid: int | None = None
     auto_refill_enabled: bool = False
     session_closed: bool = False
+    refill_retry_pending: bool = False
 
 
 def incremento_session_deck_name(dialog_profile_name: str | None = None) -> str:
@@ -241,16 +242,66 @@ def _queue_entry_card_id(entry) -> int | None:
     return None
 
 
-def _live_filtered_queue_ids(deck_id: int, fetch_limit: int) -> list[int]:
+def _queue_entry_matches_deck(entry, deck_id: int) -> bool:
+    try:
+        wanted = int(deck_id)
+    except Exception:
+        return True
+    if wanted <= 0:
+        return True
+
+    seen_deck_metadata = False
+    for raw in (
+        getattr(entry, "did", None),
+        getattr(entry, "deck_id", None),
+        getattr(getattr(entry, "card", None), "did", None),
+        getattr(getattr(entry, "card", None), "deck_id", None),
+    ):
+        try:
+            did = int(raw)
+        except Exception:
+            continue
+        if did <= 0:
+            continue
+        seen_deck_metadata = True
+        if did == wanted:
+            return True
+
+    # When Anki omits deck metadata on a queue entry, keep the card rather than
+    # accidentally hiding a real session card from refill accounting.
+    return not seen_deck_metadata
+
+
+def _live_filtered_queue_ids(
+    deck_id: int,
+    fetch_limit: int,
+    *,
+    scheduled_ids: set[int] | None = None,
+) -> list[int]:
     try:
         queued = mw.col.sched.get_queued_cards(fetch_limit=fetch_limit)
     except TypeError:
         queued = mw.col.sched.get_queued_cards(fetch_limit)
 
+    entries = getattr(queued, "cards", queued)
     ordered_ids: list[int] = []
-    for entry in list(queued or []):
+    scheduled: set[int] = set()
+    for raw in (scheduled_ids or set()):
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid > 0:
+            scheduled.add(cid)
+    for entry in list(entries or []):
         cid = _queue_entry_card_id(entry)
-        if cid is not None:
+        if cid is None:
+            continue
+        if scheduled:
+            if cid in scheduled:
+                ordered_ids.append(cid)
+            continue
+        if _queue_entry_matches_deck(entry, deck_id):
             ordered_ids.append(cid)
     return ordered_ids
 
@@ -347,7 +398,11 @@ def _maybe_auto_refill_active_session(
         return None
 
     fetch_limit = max(state.window_size * 3, state.window_size + 20)
-    live_queue_ids = _live_filtered_queue_ids(deck_id, fetch_limit=fetch_limit)
+    live_queue_ids = _live_filtered_queue_ids(
+        deck_id,
+        fetch_limit=fetch_limit,
+        scheduled_ids=set(state.selected_ids),
+    )
     if len(live_queue_ids) >= state.window_size:
         return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
 
@@ -374,6 +429,29 @@ def _maybe_auto_refill_active_session(
     return {"live_queue_ids": list(live_queue_ids), "new_ids": list(new_ids)}
 
 
+def _schedule_deferred_auto_refill(
+    state: _ActiveIncrementoSessionState,
+    *,
+    reason: str,
+) -> None:
+    if not state.auto_refill_enabled or state.session_closed or state.refill_retry_pending:
+        return
+    state.refill_retry_pending = True
+
+    def _run() -> None:
+        state.refill_retry_pending = False
+        if state.session_closed:
+            return
+        try:
+            result = _maybe_auto_refill_active_session(state)
+            if bool(getattr(state.cfg, "show_debug", False)):
+                print(f"[Incremento] deferred auto-refill ({reason}): {result}")
+        except Exception as exc:
+            print(f"[Incremento] deferred auto-refill error ({reason}): {exc}")
+
+    QTimer.singleShot(0, _run)
+
+
 def _sync_session_cleanup_deck(state: _ActiveIncrementoSessionState) -> None:
     try:
         deck_id = _session_deck_id_by_name(state.session_deck_name)
@@ -381,6 +459,7 @@ def _sync_session_cleanup_deck(state: _ActiveIncrementoSessionState) -> None:
             live_queue_ids = _live_filtered_queue_ids(
                 deck_id,
                 fetch_limit=max(state.window_size * 3, state.window_size + 20),
+                scheduled_ids=set(state.selected_ids),
             )
             if _has_duplicate_ordered_ids(live_queue_ids):
                 raise _DuplicateLiveQueueEntriesError(
@@ -407,7 +486,7 @@ def _record_incremento_answer(
     state: _ActiveIncrementoSessionState,
     reviewer,
     card,
-) -> None:
+) -> dict[str, list[int]] | None:
     global _session_times
 
     cid = card.id
@@ -432,9 +511,9 @@ def _record_incremento_answer(
         state.question_started_at.pop(cid, None)
 
     if not state.auto_refill_enabled:
-        return
+        return None
 
-    _maybe_auto_refill_active_session(state)
+    return _maybe_auto_refill_active_session(state)
 
 
 def _flush_unanswered_time_for_state(state: _ActiveIncrementoSessionState) -> None:
@@ -759,9 +838,12 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
 
     def _on_card_answered(reviewer, card, ease: int) -> None:
         try:
-            _record_incremento_answer(state, reviewer, card)
+            result = _record_incremento_answer(state, reviewer, card)
+            if state.auto_refill_enabled and (not result or not result.get("new_ids")):
+                _schedule_deferred_auto_refill(state, reason="no-immediate-new-cards")
         except Exception as e:
             print(f"[Incremento] _on_card_answered error: {e}")
+            _schedule_deferred_auto_refill(state, reason="immediate-error")
 
     gui_hooks.reviewer_did_show_question.append(_on_card_shown)
     gui_hooks.reviewer_did_show_answer.append(_on_answer_shown)

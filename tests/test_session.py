@@ -45,6 +45,8 @@ def _load_repo_module(fullname: str, relpath: str):
     for name in ("QDialog", "QVBoxLayout", "QTextEdit", "QPushButton"):
         if not hasattr(qt_module, name):
             setattr(qt_module, name, type(name, (), {"__init__": lambda self, *args, **kwargs: None}))
+    if not hasattr(qt_module, "QTimer"):
+        qt_module.QTimer = types.SimpleNamespace(singleShot=lambda _ms, callback: callback())
 
     if "incremento.frontend.learn_dialog" not in sys.modules:
         stub = types.ModuleType("incremento.frontend.learn_dialog")
@@ -516,7 +518,11 @@ class TestIncrementoSessionAutoRefill:
         live_queue = list(range(100, 149))
 
         monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
-        monkeypatch.setattr(_SESSION_MOD, "_live_filtered_queue_ids", lambda deck_id, fetch_limit: live_queue)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit, scheduled_ids=None: live_queue,
+        )
         monkeypatch.setattr(
             _SESSION_MOD,
             "_rebuild_filtered_deck_with_exact_ids",
@@ -545,7 +551,88 @@ class TestIncrementoSessionAutoRefill:
             ),
         )
 
-        assert _SESSION_MOD._live_filtered_queue_ids(77, fetch_limit=10) == [301, 302]
+        assert _SESSION_MOD._live_filtered_queue_ids(
+            77,
+            fetch_limit=10,
+            scheduled_ids={301, 302},
+        ) == [301, 302]
+
+    def test_live_queue_reader_ignores_foreign_deck_entries(self, monkeypatch):
+        queued = [
+            types.SimpleNamespace(card=types.SimpleNamespace(id=401, did=88), did=88),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=402, did=77), did=77),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=403, did=99), did=99),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=404, did=77), did=77),
+        ]
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(
+                col=types.SimpleNamespace(
+                    sched=types.SimpleNamespace(get_queued_cards=lambda fetch_limit=None: queued)
+                )
+            ),
+        )
+
+        assert _SESSION_MOD._live_filtered_queue_ids(77, fetch_limit=10) == [402, 404]
+
+    def test_live_queue_reader_prefers_scheduled_ids_over_deck_metadata(self, monkeypatch):
+        queued = [
+            types.SimpleNamespace(card=types.SimpleNamespace(id=451, did=88), did=88),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=452, did=77), did=77),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=453, did=99), did=99),
+        ]
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(
+                col=types.SimpleNamespace(
+                    sched=types.SimpleNamespace(get_queued_cards=lambda fetch_limit=None: queued)
+                )
+            ),
+        )
+
+        assert _SESSION_MOD._live_filtered_queue_ids(
+            77,
+            fetch_limit=10,
+            scheduled_ids={451, 453},
+        ) == [451, 453]
+
+    def test_live_queue_reader_keeps_entries_without_deck_metadata(self, monkeypatch):
+        queued = [
+            types.SimpleNamespace(card=types.SimpleNamespace(id=501)),
+            types.SimpleNamespace(card=types.SimpleNamespace(id=502, did=77), did=77),
+        ]
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(
+                col=types.SimpleNamespace(
+                    sched=types.SimpleNamespace(get_queued_cards=lambda fetch_limit=None: queued)
+                )
+            ),
+        )
+
+        assert _SESSION_MOD._live_filtered_queue_ids(77, fetch_limit=10) == [501, 502]
+
+    def test_live_queue_reader_handles_anki_queued_cards_objects(self, monkeypatch):
+        queued = types.SimpleNamespace(
+            cards=[
+                types.SimpleNamespace(card=types.SimpleNamespace(id=601, deck_id=77)),
+                types.SimpleNamespace(card=types.SimpleNamespace(id=602, deck_id=88)),
+            ]
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(
+                col=types.SimpleNamespace(
+                    sched=types.SimpleNamespace(get_queued_cards=lambda fetch_limit=None: queued)
+                )
+            ),
+        )
+
+        assert _SESSION_MOD._live_filtered_queue_ids(77, fetch_limit=10) == [601]
 
     def test_no_refill_when_learning_card_keeps_live_queue_full(self, monkeypatch):
         rebuilt = []
@@ -560,7 +647,7 @@ class TestIncrementoSessionAutoRefill:
         monkeypatch.setattr(
             _SESSION_MOD,
             "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit: list(range(200, 250)),
+            lambda deck_id, fetch_limit, scheduled_ids=None: list(range(200, 250)),
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -586,7 +673,7 @@ class TestIncrementoSessionAutoRefill:
         monkeypatch.setattr(
             _SESSION_MOD,
             "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit: [201, 201, 202],
+            lambda deck_id, fetch_limit, scheduled_ids=None: [201, 201, 202],
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -598,6 +685,74 @@ class TestIncrementoSessionAutoRefill:
 
         assert result == {"live_queue_ids": [201, 201, 202], "new_ids": []}
         assert rebuilt == []
+
+    def test_foreign_live_queue_cards_do_not_block_refill(self, monkeypatch):
+        rebuilt = []
+        picker = types.SimpleNamespace(selected_ids=list(range(1, 31)), picked_meta={35: {"card_type": "items", "tag": None, "mode": "random"}})
+
+        def _pick_until(_target):
+            picker.selected_ids.append(35)
+            return [35]
+
+        picker.pick_until = _pick_until
+        state = self._make_state(picker=picker, selected_ids=list(range(1, 31)), window_size=30)
+        live_queue = [701, 702]
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit, scheduled_ids=None: live_queue,
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda deck_name, ordered_ids, preserve_order: rebuilt.append((deck_name, list(ordered_ids), preserve_order)) or True,
+        )
+
+        result = _SESSION_MOD._maybe_auto_refill_active_session(state)
+
+        assert result == {"live_queue_ids": live_queue, "new_ids": [35]}
+        assert rebuilt == [("Incremento Session", [701, 702, 35], True)]
+
+    def test_deferred_refill_runs_after_answer_transition(self, monkeypatch):
+        callbacks = []
+        calls = []
+        state = self._make_state(window_size=30)
+
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda ms, callback: callbacks.append((ms, callback))),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_maybe_auto_refill_active_session",
+            lambda _state: calls.append(_state) or {"live_queue_ids": [1, 2], "new_ids": [3]},
+        )
+
+        _SESSION_MOD._schedule_deferred_auto_refill(state, reason="test")
+
+        assert state.refill_retry_pending is True
+        assert len(callbacks) == 1
+        callbacks[0][1]()
+        assert state.refill_retry_pending is False
+        assert calls == [state]
+
+    def test_deferred_refill_is_not_queued_twice(self, monkeypatch):
+        callbacks = []
+        state = self._make_state(window_size=30)
+
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda ms, callback: callbacks.append((ms, callback))),
+        )
+
+        _SESSION_MOD._schedule_deferred_auto_refill(state, reason="first")
+        _SESSION_MOD._schedule_deferred_auto_refill(state, reason="second")
+
+        assert len(callbacks) == 1
 
     def test_answer_recording_runs_before_live_queue_read(self, monkeypatch):
         calls = []
@@ -633,7 +788,11 @@ class TestIncrementoSessionAutoRefill:
         state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
 
         monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
-        monkeypatch.setattr(_SESSION_MOD, "_live_filtered_queue_ids", lambda deck_id, fetch_limit: [3, 1])
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit, scheduled_ids=None: [3, 1],
+        )
         monkeypatch.setattr(
             _SESSION_MOD,
             "_rebuild_filtered_deck_with_exact_ids",
@@ -658,7 +817,7 @@ class TestIncrementoSessionAutoRefill:
         monkeypatch.setattr(
             _SESSION_MOD,
             "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit: (_ for _ in ()).throw(RuntimeError("boom")),
+            lambda deck_id, fetch_limit, scheduled_ids=None: (_ for _ in ()).throw(RuntimeError("boom")),
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -679,7 +838,7 @@ class TestIncrementoSessionAutoRefill:
         monkeypatch.setattr(
             _SESSION_MOD,
             "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit: [3, 3, 1],
+            lambda deck_id, fetch_limit, scheduled_ids=None: [3, 3, 1],
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -720,7 +879,7 @@ class TestIncrementoSessionAutoRefill:
         monkeypatch.setattr(
             _SESSION_MOD,
             "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit: [10, 11] if cycle["count"] == 0 else [11, 12],
+            lambda deck_id, fetch_limit, scheduled_ids=None: [10, 11] if cycle["count"] == 0 else [11, 12],
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -766,7 +925,11 @@ class TestIncrementoSessionAutoRefill:
         )
 
         monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
-        monkeypatch.setattr(_SESSION_MOD, "_live_filtered_queue_ids", lambda deck_id, fetch_limit: [10, 11, 12])
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit, scheduled_ids=None: [10, 11, 12],
+        )
         monkeypatch.setattr(
             _SESSION_MOD,
             "_rebuild_filtered_deck_with_exact_ids",
