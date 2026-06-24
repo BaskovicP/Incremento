@@ -43,3 +43,10 @@ def test_build_reviewer_extract_button_js_targets_reviewer_button_row():
     assert 'document.getElementById("ansbut")' in js
     assert 'document.querySelector(\'button[data-ease]\')' in js
     assert 'document.querySelectorAll("table tr")' in js
+
+
+def test_build_reviewer_extract_button_js_appends_after_answer_buttons():
+    js = build_reviewer_extract_button_js("Alt+X")
+
+    assert "row.appendChild(cell);" in js
+    assert "row.insertBefore(cell" not in js

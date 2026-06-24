@@ -40,6 +40,7 @@ def get_card_from_scheduler(
         random_rate=0.5,
         tag_weights={"health": 0.5, "psych": 0.3, "other": 0.2},
         use_tags=False,
+        include_rest: bool = True,
         counts=None,
         alpha=0.2,
         epsilon=0.05,
@@ -55,6 +56,7 @@ def get_card_from_scheduler(
         webpage_filter: str = 'note:"Incremento Web"',
         addon_dir: str | None = None,
         priority_lower_is_more_important: bool = True,
+        allow_content_tag_fallback: bool = False,
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
@@ -104,7 +106,7 @@ def get_card_from_scheduler(
         has no cards of this type.  Returns (cards, resolved_tag).
         """
         if use_tags and tag_weights:
-            remainder = max(0.0, 1.0 - sum(tag_weights.values()))
+            remainder = max(0.0, 1.0 - sum(tag_weights.values())) if include_rest else 0.0
             extended = dict(tag_weights)
             if remainder > 1e-6:
                 extended[NO_TAGS_KEY] = remainder
@@ -113,6 +115,8 @@ def get_card_from_scheduler(
                 tagged = available(tag_fn(tag, **fn_kwargs))
                 if tagged:
                     return tagged, tag
+                if not allow_content_tag_fallback:
+                    return [], tag
                 # Tag has no cards of this content type — fall back to full pool
             return available(all_fn(**fn_kwargs)), None
         return available(all_fn(**fn_kwargs)), None
@@ -163,7 +167,7 @@ def get_card_from_scheduler(
     if use_tags:
         # Build extended weights: add an "other cards" bucket for the
         # unallocated fraction (e.g. tags sum to 0.20 → other = 0.80).
-        remainder = max(0.0, 1.0 - sum(tag_weights.values()))
+        remainder = max(0.0, 1.0 - sum(tag_weights.values())) if include_rest else 0.0
         extended = dict(tag_weights)
         if remainder > 1e-6:
             extended[NO_TAGS_KEY] = remainder

@@ -245,6 +245,7 @@ def _build_dialog_for_state_tests():
     dialog._priority_group_edit = _FakeLineEdit("pace")
     dialog._enforce_cb = _FakeCheckBox(False)
     dialog._auto_refill_session_cb = _FakeCheckBox(True)
+    dialog._allow_content_tag_fallback_cb = _FakeCheckBox(False)
     dialog._scope_combo = _FakeDataCombo([("Session", "session"), ("Daily", "daily")], current_data="daily")
     dialog._day_end_preset = _FakeDataCombo([("04:00", "04:00"), ("Custom", None)], current_data="04:00")
     dialog._priority_order_cb = _FakeCheckBox(True)
@@ -657,6 +658,22 @@ class TestSchedulerConfigDialogState:
 
         assert cfg.auto_refill_session is True
 
+    def test_build_current_dict_includes_content_tag_fallback(self):
+        dialog = _build_dialog_for_state_tests()
+        dialog._allow_content_tag_fallback_cb.setChecked(True)
+
+        data = dialog._build_current_dict()
+
+        assert data["allow_content_tag_fallback"] is True
+
+    def test_to_config_forwards_content_tag_fallback(self):
+        dialog = _build_dialog_for_state_tests()
+        dialog._allow_content_tag_fallback_cb.setChecked(True)
+
+        cfg = dialog.to_config()
+
+        assert cfg.allow_content_tag_fallback is True
+
     def test_selection_signature_changes_when_auto_refill_changes(self):
         dialog = _build_dialog_for_state_tests()
 
@@ -666,6 +683,17 @@ class TestSchedulerConfigDialogState:
 
         assert before["auto_refill_session"] is True
         assert after["auto_refill_session"] is False
+        assert before != after
+
+    def test_selection_signature_changes_when_content_tag_fallback_changes(self):
+        dialog = _build_dialog_for_state_tests()
+
+        before = dialog._selection_signature_payload()
+        dialog._allow_content_tag_fallback_cb.setChecked(True)
+        after = dialog._selection_signature_payload()
+
+        assert before["allow_content_tag_fallback"] is False
+        assert after["allow_content_tag_fallback"] is True
         assert before != after
 
     def test_live_preview_cache_stores_picker_snapshot(self):
@@ -716,6 +744,7 @@ class TestSchedulerConfigDialogState:
         dialog._no_tags_cb = _FakeCheckBox()
         dialog._enforce_cb = _FakeCheckBox()
         dialog._auto_refill_session_cb = _FakeCheckBox()
+        dialog._allow_content_tag_fallback_cb = _FakeCheckBox()
         dialog._scope_combo = _FakeDataCombo([("Session", "session"), ("Daily", "daily")], current_data="session")
         dialog._day_end_preset = _FakeDataCombo([("04:00", "04:00"), ("Custom", None)], current_data="04:00")
         dialog._day_end_edit = SimpleNamespace(setTime=lambda _time: None)
@@ -744,9 +773,14 @@ class TestSchedulerConfigDialogState:
         dialog._schedule_live_preview_refresh = lambda: None
         dialog._remove_row = lambda row, allow_other=False: None
 
-        dialog._load_profile_dict({"auto_refill_session": True, "use_live_preview": True})
+        dialog._load_profile_dict({
+            "auto_refill_session": True,
+            "allow_content_tag_fallback": True,
+            "use_live_preview": True,
+        })
 
         assert dialog._auto_refill_session_cb.isChecked() is True
+        assert dialog._allow_content_tag_fallback_cb.isChecked() is True
         assert dialog._live_preview_dialog.synced is True
 
     def test_named_profile_save_load_preserves_auto_refill_session(self, monkeypatch):
@@ -766,3 +800,21 @@ class TestSchedulerConfigDialogState:
         dialog._save_profile()
 
         assert stored_config["profiles"]["Focus"]["auto_refill_session"] is True
+
+    def test_named_profile_save_load_preserves_content_tag_fallback(self, monkeypatch):
+        stored_config = {"dialog": {}, "profiles": {"Focus": {"session_card_count": 20}}}
+        addon_manager = SimpleNamespace(
+            getConfig=lambda _name: stored_config,
+            writeConfig=lambda _name, config: None,
+        )
+        dialog = _build_dialog_for_profile_tests(
+            stored_config["profiles"],
+            selected_name="Focus",
+            current_data={"session_card_count": 42, "allow_content_tag_fallback": True},
+        )
+        monkeypatch.setattr(_MOD, "mw", SimpleNamespace(addonManager=addon_manager))
+        monkeypatch.setattr(_MOD, "tooltip", lambda _message: None)
+
+        dialog._save_profile()
+
+        assert stored_config["profiles"]["Focus"]["allow_content_tag_fallback"] is True

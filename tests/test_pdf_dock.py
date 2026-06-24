@@ -373,6 +373,150 @@ def test_on_add_cards_did_add_note_ignores_unknown_source_on_non_pdf_reviewer_ca
     assert calls == []
 
 
+def test_on_pdf_question_shown_clears_context_for_non_pdf_card(monkeypatch):
+    stopped = []
+
+    class _FakeDock:
+        def __init__(self):
+            self.hidden = False
+
+        def hide(self):
+            self.hidden = True
+
+    fake_dock = _FakeDock()
+    fake_note = types.SimpleNamespace(mid=1)
+    fake_col = types.SimpleNamespace(
+        get_note=lambda note_id: fake_note,
+        models=types.SimpleNamespace(get=lambda mid: {"name": "Basic"}),
+    )
+
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=fake_col))
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", fake_dock)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(
+        pdf_dock,
+        "_cb_pdf_view_stopped",
+        lambda card_id: stopped.append(card_id),
+    )
+
+    pdf_dock.on_pdf_question_shown(types.SimpleNamespace(id=88, nid=123))
+
+    assert fake_dock.hidden is True
+    assert pdf_dock.current_pdf_card_id() is None
+    assert pdf_dock._current_pdf_filename is None
+    assert stopped == [55]
+
+
+def test_non_pdf_transition_prevents_stale_pdf_restore_on_later_add(monkeypatch):
+    class _FakeDock:
+        def __init__(self):
+            self.hidden = False
+            self.shown = False
+
+        def hide(self):
+            self.hidden = True
+
+        def isVisible(self):
+            return False
+
+        def show(self):
+            self.shown = True
+
+    fake_dock = _FakeDock()
+    fake_note = types.SimpleNamespace(mid=1)
+    fake_col = types.SimpleNamespace(
+        get_note=lambda note_id: fake_note,
+        models=types.SimpleNamespace(get=lambda mid: {"name": "Basic"}),
+    )
+
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=fake_col))
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", fake_dock)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(pdf_dock, "_cb_pdf_view_stopped", lambda card_id: None)
+
+    pdf_dock.on_pdf_question_shown(types.SimpleNamespace(id=88, nid=123))
+
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "pdf")
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("stale PDF add")),
+    )
+
+    pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
+
+    assert fake_dock.hidden is True
+    assert fake_dock.shown is False
+    assert pdf_dock.current_pdf_card_id() is None
+
+
+def test_on_add_cards_did_add_note_restores_confirmed_pdf_source_after_context_clear(
+    monkeypatch,
+):
+    starts = []
+    sources = []
+
+    class _FakePage:
+        def runJavaScript(self, js):
+            pass
+
+    class _FakeView:
+        def page(self):
+            return _FakePage()
+
+    class _FakeDock:
+        def __init__(self):
+            self.visible = False
+            self.show_count = 0
+            self._view = _FakeView()
+
+        def isVisible(self):
+            return self.visible
+
+        def show(self):
+            self.visible = True
+            self.show_count += 1
+
+    def _single_shot(_delay, callback):
+        pdf_dock._clear_current_pdf_context()
+        callback()
+
+    fake_dock = _FakeDock()
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", fake_dock)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "pdf")
+    monkeypatch.setattr(
+        pdf_dock,
+        "_cb_pdf_view_started",
+        lambda card_id: starts.append(card_id),
+    )
+    monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 7)
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: sources.append(args),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "_reconcile_pdf_page_sources",
+        lambda card_id, page: ([], {}),
+    )
+    monkeypatch.setattr(pdf_dock.QTimer, "singleShot", _single_shot, raising=False)
+
+    pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
+
+    assert sources
+    assert fake_dock.show_count == 1
+    assert pdf_dock.current_pdf_card_id() == 55
+    assert pdf_dock._current_pdf_filename == "source.pdf"
+    assert starts == [55]
+
+
 def test_due_review_prompt_suppression_is_one_shot_and_card_scoped(monkeypatch):
     now = [100.0]
     monkeypatch.setattr(pdf_dock.time, "monotonic", lambda: now[0])

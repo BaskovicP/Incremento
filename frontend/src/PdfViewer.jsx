@@ -1030,20 +1030,31 @@ export default function PdfViewer() {
     rawSetReadProgress(nextReadPage, null);
   }, [canMarkReadAtPage, pageRef, rawSetReadProgress, readPage]);
 
-  const limitAwareMarkReadAnchor = useCallback(() => {
+  const clearReadAnchor = useCallback(() => {
     const currentPage = pageRef.current;
     if (!canMarkReadAtPage(currentPage)) {
       return;
     }
-    if (showReadMarker) {
-      setReadAnchor(null);
-      rawSetReadProgress(currentPage, null);
+    setReadAnchor(null);
+    rawSetReadProgress(currentPage, null);
+  }, [canMarkReadAtPage, pageRef, rawSetReadProgress]);
+
+  const limitAwareMarkReadAnchor = useCallback((event = null) => {
+    const currentPage = pageRef.current;
+    if (!canMarkReadAtPage(currentPage)) {
+      return;
+    }
+    if (event?.shiftKey) {
+      clearReadAnchor();
       return;
     }
     const anchor = buildReadAnchor();
+    if (!anchor) {
+      return;
+    }
     setReadAnchor(anchor);
     rawSetReadProgress(currentPage, anchor);
-  }, [buildReadAnchor, canMarkReadAtPage, pageRef, rawSetReadProgress, showReadMarker]);
+  }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
 
   // ── Register globals + consume pending ────────────────────────────────────
   useEffect(() => {
@@ -1372,8 +1383,8 @@ export default function PdfViewer() {
                   ✓ Read to here
                 </button>
                 <button
-                  title={showReadMarker ? 'Remove the exact READ UP UNTIL HERE marker from this page' : 'Place the exact READ UP UNTIL HERE marker at the current text row'}
-                  aria-label="Toggle exact read marker"
+                  title={showReadMarker ? 'Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it.' : 'Place the exact READ UP UNTIL HERE marker at the current text row'}
+                  aria-label="Set exact read marker"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',

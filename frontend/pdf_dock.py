@@ -203,6 +203,38 @@ def current_pdf_card_id() -> int | None:
         return card_id if card_id > 0 else None
     except Exception:
         return None
+
+
+def _clear_current_pdf_context() -> int | None:
+    global _current_pdf_card_id, _current_pdf_filename
+    global _pdf_via_link, _pdf_preserve_history
+    previous_card_id = current_pdf_card_id()
+    _current_pdf_card_id = None
+    _current_pdf_filename = None
+    _pdf_via_link = False
+    _pdf_preserve_history = False
+    return previous_card_id
+
+
+def _stop_current_pdf_view() -> None:
+    previous_card_id = _clear_current_pdf_context()
+    if previous_card_id is None or not _cb_pdf_view_stopped:
+        return
+    try:
+        _cb_pdf_view_stopped(previous_card_id)
+    except Exception:
+        pass
+
+
+def _hide_pdf_dock_for_inactive_context() -> None:
+    global _pdf_dock
+    _stop_current_pdf_view()
+    if _pdf_dock is None:
+        return
+    try:
+        _pdf_dock.hide()
+    except RuntimeError:
+        _pdf_dock = None
 _pdf_shortcuts = []
 _pdf_key_filter = None
 
@@ -1691,11 +1723,7 @@ def _build_pdf_dock():
     def _on_visibility_changed(visible: bool) -> None:
         if visible:
             return
-        if _cb_pdf_view_stopped:
-            try:
-                _cb_pdf_view_stopped(_current_pdf_card_id)
-            except Exception:
-                pass
+        _stop_current_pdf_view()
 
     dock.visibilityChanged.connect(_on_visibility_changed)
 
@@ -1929,13 +1957,7 @@ def on_pdf_question_shown(card) -> None:
         except Exception:
             return
         if model is None or model.get("name") != PDF_NOTE_TYPE:
-            if _pdf_dock is not None:
-                try:
-                    _pdf_dock.hide()
-                    if _cb_pdf_view_stopped:
-                        _cb_pdf_view_stopped(_current_pdf_card_id)
-                except RuntimeError:
-                    _pdf_dock = None
+            _hide_pdf_dock_for_inactive_context()
             return
         try:
             filename = note["PDF_Filename"]
@@ -1950,14 +1972,7 @@ def on_pdf_question_shown(card) -> None:
 
 
 def on_pdf_reviewer_will_end() -> None:
-    global _pdf_dock
-    if _pdf_dock is not None:
-        try:
-            _pdf_dock.hide()
-            if _cb_pdf_view_stopped:
-                _cb_pdf_view_stopped(_current_pdf_card_id)
-        except RuntimeError:
-            _pdf_dock = None
+    _hide_pdf_dock_for_inactive_context()
 
 
 def on_add_cards_did_add_note(note) -> None:
@@ -2016,13 +2031,24 @@ def on_add_cards_did_add_note(note) -> None:
     # on_pdf_question_shown hides the PDF dock. Re-show it so the user can
     # continue reading without interruption.
     cid = tracked_pdf_card_id
+    restore_filename = str(_current_pdf_filename or "").strip()
 
     def _restore_pdf_dock() -> None:
-        if _current_pdf_card_id != cid:
+        global _current_pdf_card_id, _current_pdf_filename
+        active_card_id = current_pdf_card_id()
+        if active_card_id is not None and active_card_id != cid:
             return  # a different PDF card became active; don't interfere
         try:
             if _pdf_dock is not None and not _pdf_dock.isVisible():
+                if active_card_id is None:
+                    _current_pdf_card_id = cid
+                    _current_pdf_filename = restore_filename
                 _pdf_dock.show()
+                if _cb_pdf_view_started:
+                    try:
+                        _cb_pdf_view_started(cid)
+                    except Exception:
+                        pass
         except RuntimeError:
             pass
 

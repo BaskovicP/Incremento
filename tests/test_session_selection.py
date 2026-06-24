@@ -112,6 +112,32 @@ def test_priority_direction_is_forwarded_to_scheduler():
     assert captured["addon_dir"] == "/tmp/unused"
 
 
+def test_content_tag_fallback_flag_is_forwarded_to_scheduler():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"statistics": 1.0},
+        include_rest=False,
+        allow_content_tag_fallback=True,
+    )
+    captured = {}
+
+    def _fake_get(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(card=10, card_type="pdf", tag="statistics", mode="priority")
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=_fake_get
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [10]
+    assert captured["allow_content_tag_fallback"] is True
+    assert captured["include_rest"] is False
+
+
 def test_lifetime_scope_uses_working_copy_but_keeps_session_snapshot():
     cfg = SchedulerConfig(
         session_card_count=2,
@@ -336,6 +362,38 @@ def test_ordered_priority_content_types_work_before_normal_scheduling():
     assert result.selected_ids == [501, 999]
     assert result.picked_meta[501]["card_type"] == "pdf"
     assert result.picked_meta[501]["selection_stage"] == "ordered_priority"
+
+
+def test_ordered_priority_content_type_respects_full_tag_budget_by_default():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"statistics": 1.0},
+        include_rest=False,
+        content_type_weights={"pdf": 1.0},
+        priority_order_enabled=True,
+        priority_order_entries=[{"kind": "content_type", "value": "pdf", "order": 1}],
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_all_pdf_cards",
+        return_value=[501],
+    ) as mock_all_pdf, patch(
+        "session_selection.card_utils.get_pdf_cards_by_tag",
+        return_value=[502],
+    ) as mock_pdf_by_tag, patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_: list(ids),
+    ):
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == [502]
+    assert result.picked_meta[502]["card_type"] == "pdf"
+    assert result.picked_meta[502]["tag"] == "statistics"
+    mock_pdf_by_tag.assert_called_once()
+    mock_all_pdf.assert_not_called()
 
 
 def test_ordered_priority_entries_are_ignored_when_disabled():

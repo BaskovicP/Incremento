@@ -355,7 +355,7 @@ class TestOnTopicCardAnswered:
             on_topic_card_answered(MagicMock(), card, ease=3)
         mock_get.assert_not_called()
 
-    def test_schedules_topic_card_with_good(self):
+    def test_schedules_topic_card_with_same(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
              patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
@@ -365,7 +365,7 @@ class TestOnTopicCardAnswered:
             on_topic_card_answered(MagicMock(), card, ease=3)
         mock_set.assert_called_once()
         mock_mw.col.sched.set_due_date.assert_called_once()
-        assert mock_set.call_args.args[3] == pytest.approx(round(3.5 * 1.1, 3))
+        assert mock_set.call_args.args[3] == 3.5
         assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
 
     def test_uses_configured_default_for_unseen_topic_cards(self):
@@ -375,22 +375,36 @@ class TestOnTopicCardAnswered:
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
              patch("topic_scheduler.mw") as mock_mw, \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
-            on_topic_card_answered(MagicMock(), card, ease=2)
+            on_topic_card_answered(MagicMock(), card, ease=3)
         assert mock_get.call_args.kwargs["default_a_factor"] == 4.2
         assert mock_set.call_args.args[3] == 4.2
         mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "4")
 
-    def test_remaps_more_button_to_hard_scheduling(self):
+    def test_more_button_uses_hard_scheduling_after_reviewer_remap(self):
         card = self._make_card()
         with patch("topic_scheduler.is_topic_card", return_value=True), \
              patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
              patch("topic_scheduler.set_topic_schedule") as mock_set, \
              patch("topic_scheduler.mw") as mock_mw, \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
-            on_topic_card_answered(MagicMock(), card, ease=1)
+            on_topic_card_answered(MagicMock(), card, ease=2)
         args = mock_set.call_args.args
         assert args[2] == card.id
         assert args[3] == pytest.approx(round(3.5 * 0.9, 3))
+        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
+        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
+
+    def test_less_button_uses_easy_scheduling_after_reviewer_remap(self):
+        card = self._make_card()
+        with patch("topic_scheduler.is_topic_card", return_value=True), \
+             patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
+             patch("topic_scheduler.set_topic_schedule") as mock_set, \
+             patch("topic_scheduler.mw") as mock_mw, \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
+            on_topic_card_answered(MagicMock(), card, ease=4)
+        args = mock_set.call_args.args
+        assert args[2] == card.id
+        assert args[3] == pytest.approx(round(3.5 * 1.1, 3))
         assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
         mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
 

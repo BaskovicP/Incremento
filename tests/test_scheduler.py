@@ -383,6 +383,24 @@ class TestOtherCardsRemainder:
         assert NO_TAGS_KEY in tag_weights_call
         assert abs(tag_weights_call[NO_TAGS_KEY] - 0.80) < 1e-6
 
+    def test_include_rest_false_does_not_add_remainder_key(self):
+        calls = []
+
+        def capturing_sp(weights, counts, *a, **kw):
+            calls.append(dict(weights))
+            return list(weights.keys())[0]
+
+        with patch("scheduler.soft_pick", side_effect=capturing_sp):
+            with _mock_card_utils(tag_item=[201]):
+                scheduler.get_card_from_scheduler(
+                    use_tags=True,
+                    include_rest=False,
+                    tag_weights={"statistics": 0.20},
+                )
+
+        tag_weights_call = calls[2]
+        assert NO_TAGS_KEY not in tag_weights_call
+
     def test_no_tags_key_selection_uses_general_pool(self):
         """When soft_pick returns NO_TAGS_KEY, the general pool is used."""
         tag_fetch_calls = []
@@ -555,12 +573,20 @@ class TestPriorityModeSort:
 # ---------------------------------------------------------------------------
 
 
-def _mock_card_utils_with_pdf(tag_topic=None, tag_item=None, all_topic=None, all_item=None, pdf_cards=None):
+def _mock_card_utils_with_pdf(
+    tag_topic=None,
+    tag_item=None,
+    all_topic=None,
+    all_item=None,
+    pdf_cards=None,
+    pdf_tag_cards=None,
+):
     tag_topic = [] if tag_topic is None else tag_topic
     tag_item = [] if tag_item is None else tag_item
     all_topic = [] if all_topic is None else all_topic
     all_item = [] if all_item is None else all_item
     pdf_cards = [] if pdf_cards is None else pdf_cards
+    pdf_tag_cards = [] if pdf_tag_cards is None else pdf_tag_cards
     return patch.multiple(
         "scheduler.card_utils",
         get_topic_cards_by_tag=lambda tag, **kw: tag_topic,
@@ -568,6 +594,7 @@ def _mock_card_utils_with_pdf(tag_topic=None, tag_item=None, all_topic=None, all
         get_all_topic_cards=lambda **kw: all_topic,
         get_all_item_cards=lambda **kw: all_item,
         get_all_pdf_cards=lambda **kw: pdf_cards,
+        get_pdf_cards_by_tag=lambda tag, **kw: pdf_tag_cards,
     )
 
 
@@ -625,6 +652,41 @@ class TestPdfRatePaths:
         assert "pdf" in type_weights
         assert "topics" in type_weights
         assert "items" in type_weights
+
+    def test_pdf_tag_miss_does_not_fall_back_to_all_pdfs_by_default(self):
+        with patch(
+            "scheduler.soft_pick",
+            side_effect=["pdf", "priority", "statistics", "statistics"],
+        ):
+            with _mock_card_utils_with_pdf(
+                pdf_cards=[301],
+                pdf_tag_cards=[],
+                tag_topic=[101],
+            ):
+                result = scheduler.get_card_from_scheduler(
+                    pdf_rate=0.2,
+                    topics_rate=0.7,
+                    use_tags=True,
+                    tag_weights={"statistics": 1.0},
+                )
+
+        assert result.card == 101
+        assert result.card_type == "topics"
+        assert result.tag == "statistics"
+
+    def test_pdf_tag_miss_can_use_legacy_full_pool_fallback_when_enabled(self):
+        with patch("scheduler.soft_pick", side_effect=["pdf", "priority", "statistics"]):
+            with _mock_card_utils_with_pdf(pdf_cards=[301], pdf_tag_cards=[]):
+                result = scheduler.get_card_from_scheduler(
+                    pdf_rate=0.2,
+                    use_tags=True,
+                    tag_weights={"statistics": 1.0},
+                    allow_content_tag_fallback=True,
+                )
+
+        assert result.card == 301
+        assert result.card_type == "pdf"
+        assert result.tag is None
 
 
 # ---------------------------------------------------------------------------

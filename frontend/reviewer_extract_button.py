@@ -141,30 +141,7 @@ def build_reviewer_extract_button_js(shortcut_text: str | None) -> str:
     cell.appendChild(button);
     ensureStyle();
 
-    var insertBeforeCell = null;
-    var rowCells = Array.prototype.slice.call(row.children || []);
-    for (var i = rowCells.length - 1; i >= 0; i -= 1) {{
-      var candidate = rowCells[i];
-      if (
-        candidate &&
-        candidate.querySelector &&
-        candidate.querySelector("button") &&
-        !candidate.querySelector("#" + buttonId)
-      ) {{
-        insertBeforeCell = candidate;
-        break;
-      }}
-    }}
-
-    if (
-      insertBeforeCell &&
-      rowCells.length > 2 &&
-      insertBeforeCell !== row.firstElementChild
-    ) {{
-      row.insertBefore(cell, insertBeforeCell);
-    }} else {{
-      row.appendChild(cell);
-    }}
+    row.appendChild(cell);
   }}
 
   removeExisting();

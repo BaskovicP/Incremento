@@ -68,6 +68,7 @@ class TestConfigFromDialogDict:
         assert cfg.preserve_order is True
         assert cfg.show_debug is False
         assert cfg.pdf_rate == pytest.approx(0.0)
+        assert cfg.allow_content_tag_fallback is False
         assert cfg.priority_lower_is_more_important is True
         assert cfg.priority_order_enabled is False
         assert cfg.priority_order_entries == []
@@ -87,6 +88,16 @@ class TestConfigFromDialogDict:
         cfg = _config_from_dialog_dict({"auto_refill_session": True})
 
         assert cfg.auto_refill_session is True
+
+    def test_content_tag_fallback_defaults_false(self):
+        cfg = SchedulerConfig()
+
+        assert cfg.allow_content_tag_fallback is False
+
+    def test_content_tag_fallback_can_be_enabled(self):
+        cfg = _config_from_dialog_dict({"allow_content_tag_fallback": True})
+
+        assert cfg.allow_content_tag_fallback is True
 
     def test_topics_slider_sets_rate(self):
         # topics_slider=20 → topics_rate = 1.0 - 20/100 = 0.8

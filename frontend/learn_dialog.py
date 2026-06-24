@@ -2118,6 +2118,21 @@ class SchedulerConfigDialog(QDialog):
         self._auto_refill_session_cb.setChecked(self._saved.get("auto_refill_session", False))
         _adv_body_layout.addWidget(self._auto_refill_session_cb)
 
+        self._allow_content_tag_fallback_cb = QCheckBox(
+            "Allow document/media picks outside selected tags"
+        )
+        self._allow_content_tag_fallback_cb.setToolTip(
+            "When unchecked, PDF, EPUB, video, and webpage picks must match your active tag rows.\n"
+            "If a selected tag has no cards in that content type, Incremento skips that content-type pick\n"
+            "instead of filling it from unrelated documents or media.\n\n"
+            "Enable this only if you want the older behavior: a tag miss can fall back to any card\n"
+            "from that document/media type."
+        )
+        self._allow_content_tag_fallback_cb.setChecked(
+            bool(self._saved.get("allow_content_tag_fallback", False))
+        )
+        _adv_body_layout.addWidget(self._allow_content_tag_fallback_cb)
+
         self._show_debug_cb = QCheckBox("Show debug information on cards when starting")
         self._show_debug_cb.setChecked(self._saved.get("show_debug", False))
         _adv_body_layout.addWidget(self._show_debug_cb)
@@ -2135,6 +2150,7 @@ class SchedulerConfigDialog(QDialog):
         qconnect(self._items_filter_edit.textChanged,  lambda _: self._schedule_live_preview_refresh())
         qconnect(self._preserve_order_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
         qconnect(self._auto_refill_session_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
+        qconnect(self._allow_content_tag_fallback_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._refresh_counts()
 
@@ -3175,6 +3191,7 @@ class SchedulerConfigDialog(QDialog):
             "priority_order_entries": d.get("priority_order_entries"),
             "tag_rows": d.get("tag_rows"),
             "content_type_rows": d.get("content_type_rows"),
+            "allow_content_tag_fallback": d.get("allow_content_tag_fallback"),
             "topics_filter": d.get("topics_filter"),
             "items_filter": d.get("items_filter"),
             "include_new": d.get("include_new"),
@@ -3484,6 +3501,7 @@ class SchedulerConfigDialog(QDialog):
             use_tags=bool(raw),
             tag_weights={tag: v / 100.0 for tag, v in raw.items()},
             include_rest=self._current_include_rest_from_other_slider(),
+            allow_content_tag_fallback=self._allow_content_tag_fallback_cb.isChecked(),
             scheduler_scope=self._scope_combo.currentData(),
             day_end_time=self._get_day_end_time(),
             priority_order_enabled=self._priority_order_cb.isChecked(),
@@ -3518,6 +3536,7 @@ class SchedulerConfigDialog(QDialog):
         data = {
             "session_card_count": self._count_spin.value(),
             "auto_refill_session": self._auto_refill_session_cb.isChecked(),
+            "allow_content_tag_fallback": self._allow_content_tag_fallback_cb.isChecked(),
             "topics_slider":      self._topics_slider.value(),
             "random_slider":      self._random_slider.value(),
             "pdf_slider":         self._pdf_slider.value(),
@@ -3744,6 +3763,9 @@ class SchedulerConfigDialog(QDialog):
         self._no_tags_cb.setChecked(d.get("no_tags_checked", True))
         self._enforce_cb.setChecked(d.get("enforce_priority", True))
         self._auto_refill_session_cb.setChecked(bool(d.get("auto_refill_session", False)))
+        self._allow_content_tag_fallback_cb.setChecked(
+            bool(d.get("allow_content_tag_fallback", False))
+        )
 
         saved_scope = d.get("scheduler_scope", "session")
         for i in range(self._scope_combo.count()):

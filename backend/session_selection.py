@@ -145,31 +145,63 @@ def _collect_tag_priority_candidates(
 
 def _collect_content_type_priority_candidates(
     *,
+    cfg,
     content_type: str,
     pdf_filter: str,
     youtube_filter: str,
     webpage_filter: str,
 ) -> dict[int, tuple[str, str | None]]:
-    if content_type == "pdf":
-        ids = card_utils.get_all_pdf_cards(pdf_filter=pdf_filter)
-    elif content_type == "youtube":
-        ids = card_utils.get_all_youtube_cards(youtube_filter=youtube_filter)
-    elif content_type == "webpage":
-        ids = card_utils.get_all_webpage_cards(webpage_filter=webpage_filter)
-    else:
+    source_by_type = {
+        "pdf": (
+            lambda: card_utils.get_all_pdf_cards(pdf_filter=pdf_filter),
+            lambda tag: card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter),
+        ),
+        "youtube": (
+            lambda: card_utils.get_all_youtube_cards(youtube_filter=youtube_filter),
+            lambda tag: card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter),
+        ),
+        "webpage": (
+            lambda: card_utils.get_all_webpage_cards(webpage_filter=webpage_filter),
+            lambda tag: card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter),
+        ),
+    }
+    if content_type not in source_by_type:
         return {}
+    all_fn, tag_fn = source_by_type[content_type]
+
+    tag_weights = {
+        str(tag): max(0.0, float(weight or 0.0))
+        for tag, weight in (getattr(cfg, "tag_weights", {}) or {}).items()
+        if str(tag)
+    }
+    has_full_tag_budget = sum(tag_weights.values()) >= 1.0 - 1e-6
+    strict_tags = bool(
+        getattr(cfg, "use_tags", False)
+        and tag_weights
+        and (has_full_tag_budget or not getattr(cfg, "include_rest", True))
+        and not getattr(cfg, "allow_content_tag_fallback", False)
+    )
+
     candidates: dict[int, tuple[str, str | None]] = {}
-    for card_id in ids:
-        try:
-            cid = int(card_id)
-        except Exception:
-            continue
-        if cid <= 0 or cid in candidates:
-            continue
-        resolved_type = (
-            _resolved_document_type(cid) if content_type == "pdf" else content_type
-        )
-        candidates[cid] = (resolved_type, None)
+
+    def _add_ids(ids, tag: str | None) -> None:
+        for card_id in ids:
+            try:
+                cid = int(card_id)
+            except Exception:
+                continue
+            if cid <= 0 or cid in candidates:
+                continue
+            resolved_type = (
+                _resolved_document_type(cid) if content_type == "pdf" else content_type
+            )
+            candidates[cid] = (resolved_type, tag)
+
+    if strict_tags:
+        for tag in tag_weights:
+            _add_ids(tag_fn(tag), tag)
+    else:
+        _add_ids(all_fn(), None)
     return candidates
 
 
@@ -516,6 +548,8 @@ class SessionPicker:
             webpage_filter=self.webpage_filter if webpage_filter_override is None else webpage_filter_override,
             addon_dir=self.addon_dir,
             priority_lower_is_more_important=self.cfg.priority_lower_is_more_important,
+            allow_content_tag_fallback=bool(getattr(self.cfg, "allow_content_tag_fallback", False)),
+            include_rest=bool(getattr(self.cfg, "include_rest", True)),
         )
         if result.card is None:
             return False
@@ -574,6 +608,7 @@ class SessionPicker:
                     )
                 else:
                     entry_candidates = _collect_content_type_priority_candidates(
+                        cfg=self.cfg,
                         content_type=entry["value"],
                         pdf_filter=self.pdf_filter,
                         youtube_filter=self.youtube_filter,

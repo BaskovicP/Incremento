@@ -191,6 +191,7 @@ from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
+from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.search_all import _SearchAllDialog
 from .backend.knowledge_tree import (
@@ -1738,20 +1739,7 @@ def _show_browser_database_entries(browser) -> None:
         return
 
     payload = _add_effective_topic_schedule_entries(payload)
-
-    dlg = QDialog(mw)
-    dlg.setWindowTitle("Incremento Database Entries")
-    dlg.resize(980, 700)
-    layout = QVBoxLayout(dlg)
-    text = QTextBrowser(dlg)
-    text.setReadOnly(True)
-    text.setPlainText(_format_browser_database_entries(payload))
-    layout.addWidget(text, 1)
-    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dlg)
-    buttons.rejected.connect(dlg.reject)
-    buttons.accepted.connect(dlg.accept)
-    layout.addWidget(buttons)
-    dlg.exec()
+    show_database_entries_dialog(mw, text=_format_browser_database_entries(payload))
 
 
 def _start_direct_browser_review(card_ids: list[int]) -> None:

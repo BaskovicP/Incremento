@@ -321,7 +321,11 @@ def topic_due_label(card, review_button_ease: int) -> str:
 
 
 def on_topic_card_answered(reviewer, card, ease: int) -> None:
-    """Hook: override FSRS scheduling with A-factor for topic cards."""
+    """Hook: override FSRS scheduling with A-factor for topic cards.
+
+    The reviewer_will_answer_card hook has already remapped More/Same/Less
+    to Hard/Good/Easy by the time Anki calls reviewer_did_answer_card.
+    """
     if not is_topic_card(card):
         return
     try:
@@ -334,7 +338,7 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
         new_interval, new_a, new_precise_interval = _next_interval_and_afactor(
             precise_interval,
             a_factor,
-            remap_topic_review_ease(ease),
+            ease,
         )
         set_topic_schedule(
             _ADDON_DIR,

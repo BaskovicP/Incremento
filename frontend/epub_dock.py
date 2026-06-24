@@ -1836,7 +1836,7 @@ def _build_epub_dock() -> None:
     dock._read_marker_btn = _make_epub_button(
         dock,
         "↦ Marker",
-        "Place or remove the exact READ UP UNTIL HERE marker",
+        "Place or move the exact READ UP UNTIL HERE marker; hold Shift to clear it",
         checkable=True,
         accent=(
             "QToolButton:checked { background: rgba(14,165,233,0.24);"
@@ -2187,7 +2187,7 @@ def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
 def _request_read_marker() -> None:
     if _epub_dock is None or _current_epub_card_id is None:
         return
-    if _read_marker_on_current_section():
+    if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
         _set_epub_read_marker(int(_current_epub_card_id), int(_current_epub_section_index), None)
         return
     _epub_dock._view.page().runJavaScript(

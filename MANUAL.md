@@ -176,6 +176,8 @@ You can allocate part of each session to specific tags:
 3. Lock any tag whose share should stay fixed.
 4. Use **After exhausting tag groups, fill with rest of cards** if you want leftover slots topped up automatically.
 
+By default, document and media picks also respect active tag rows. For example, if your session only has `data` and `statistics` tag quotas, PDF, EPUB, video, and webpage picks must match those tags instead of falling back to unrelated content.
+
 ### Filters
 
 These are standard Anki search filters:
@@ -196,6 +198,7 @@ Open **Advanced** in the session dialog for a few session-behavior controls:
 
 - **Present cards in scheduler order**: shows cards in the exact order selected by the scheduler instead of randomizing them.
 - **Auto-refill session deck to keep this many pending cards**: keeps the active **Incremento Session** deck topped up to your **Cards per session** count as you study. This is useful if you want one long running session instead of exhausting the original filtered deck and rebuilding manually.
+- **Allow document/media picks outside selected tags**: restores the older fallback behavior where a PDF, EPUB, video, or webpage tag miss can be filled from any card of that content type. Leave this off when tag quotas should be strict.
 
 ### Debug mode
 

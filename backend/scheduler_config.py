@@ -57,6 +57,7 @@ class SchedulerConfig:
     show_debug: bool = False             # show card order debug dialog at session start
     pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
     content_type_weights: dict = field(default_factory=dict)  # {"pdf"|"youtube"|"webpage": fraction}
+    allow_content_tag_fallback: bool = False  # document/media tag misses may fall back to the full content pool
     priority_lower_is_more_important: bool = True
     priority_order_enabled: bool = False
     priority_order_entries: list = field(default_factory=list)  # [{"kind": "tag"|"content_type", "value": str, "order": int}]
@@ -140,6 +141,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         for r in content_type_rows
         if r.get("enabled") and r.get("weight", 0) > 0
     }
+    allow_content_tag_fallback = bool(d.get("allow_content_tag_fallback", False))
     prioritized_tags_first = []
     for raw_tag in d.get("prioritized_tags_first", []):
         tag = str(raw_tag or "").strip()
@@ -190,6 +192,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         show_debug=show_debug,
         pdf_rate=pdf_rate,
         content_type_weights=content_type_weights,
+        allow_content_tag_fallback=allow_content_tag_fallback,
         priority_lower_is_more_important=priority_lower_is_more_important,
         priority_order_enabled=priority_order_enabled,
         priority_order_entries=priority_order_entries,
