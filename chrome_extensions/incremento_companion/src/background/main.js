@@ -41,6 +41,7 @@ const COMMAND_ADD_PAGE_TO_MARKDOWN = "add-page-to-markdown";
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 const CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID = "incremento-save-link-as-webpage";
+let contextMenuSyncQueue = Promise.resolve();
 
 function isHttpUrl(rawUrl) {
   return /^https?:\/\//i.test(String(rawUrl || ""));
@@ -960,31 +961,39 @@ async function loadLinkSaveSettings() {
 }
 
 async function syncLinkSaveContextMenu() {
-  if (!chrome.contextMenus?.removeAll || !chrome.contextMenus?.create) {
-    return;
-  }
-  const settings = await loadLinkSaveSettings();
-  await new Promise((resolve) => {
-    try {
-      chrome.contextMenus.removeAll(() => resolve());
-    } catch (_error) {
-      resolve();
-    }
-  });
-  if (!settings.contextMenuEnabled) {
-    return;
-  }
-  await new Promise((resolve) => {
-    try {
-      chrome.contextMenus.create({
-        id: CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID,
-        title: "Save link to Incremento as webpage",
-        contexts: ["link"],
-      }, () => resolve());
-    } catch (_error) {
-      resolve();
-    }
-  });
+  contextMenuSyncQueue = contextMenuSyncQueue
+    .catch(() => {})
+    .then(async () => {
+      if (!chrome.contextMenus?.removeAll || !chrome.contextMenus?.create) {
+        return;
+      }
+      const settings = await loadLinkSaveSettings();
+      await new Promise((resolve) => {
+        try {
+          chrome.contextMenus.removeAll(() => resolve());
+        } catch (_error) {
+          resolve();
+        }
+      });
+      if (!settings.contextMenuEnabled) {
+        return;
+      }
+      await new Promise((resolve) => {
+        try {
+          chrome.contextMenus.create({
+            id: CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID,
+            title: "Save link to Incremento as webpage",
+            contexts: ["link"],
+          }, () => {
+            void chrome.runtime?.lastError;
+            resolve();
+          });
+        } catch (_error) {
+          resolve();
+        }
+      });
+    });
+  return contextMenuSyncQueue;
 }
 
 async function loadContextMenuLinkInfo(tabId, linkUrl) {

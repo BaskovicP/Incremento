@@ -15,6 +15,7 @@
     "contextMenus"
   ],
   "host_permissions": [
+    "<all_urls>",
     "http://*/*",
     "https://*/*",
     "*://*.youtube.com/*",
