@@ -114,3 +114,19 @@ export function buildBrowserCapturePayload(context, formState) {
       : [],
   };
 }
+
+export function validateBrowserCapturePayload(payload) {
+  if (!String(payload?.noteTypeName || "").trim() || !String(payload?.deckName || "").trim()) {
+    return { ok: false, error: "Choose a note type and deck." };
+  }
+  const hasMappedContent = Boolean(
+    payload?.fieldMappings?.titleField
+    || (payload?.selectedText && payload?.fieldMappings?.selectedTextField)
+    || payload?.fieldMappings?.urlField
+    || ((payload?.snapshots?.length || 0) > 0 && payload?.fieldMappings?.snapshotField)
+  );
+  if (!hasMappedContent) {
+    return { ok: false, error: "Map at least one available capture part to a note field." };
+  }
+  return { ok: true, error: "" };
+}

@@ -8,6 +8,7 @@ import {
   normalizeFieldMappings,
   parseTags,
   updateMappingsForNoteType,
+  validateBrowserCapturePayload,
 } from "../src/shared/browserCaptureModel.js";
 
 test("parseTags splits on whitespace and commas", () => {
@@ -98,4 +99,53 @@ test("buildBrowserCapturePayload serializes snapshots and form state", () => {
   assert.equal(payload.snapshots[0].filename, "snap-1.png");
   assert.equal(payload.fieldMappings.titleField, "Front");
   assert.equal(payload.fieldMappings.snapshotField, "Back");
+});
+
+test("validateBrowserCapturePayload requires note type and deck", () => {
+  assert.deepEqual(
+    validateBrowserCapturePayload({
+      noteTypeName: "",
+      deckName: "Default",
+      selectedText: "",
+      fieldMappings: {},
+      snapshots: [],
+    }),
+    { ok: false, error: "Choose a note type and deck." }
+  );
+});
+
+test("validateBrowserCapturePayload requires mapped content", () => {
+  assert.deepEqual(
+    validateBrowserCapturePayload({
+      noteTypeName: "Basic",
+      deckName: "Default",
+      selectedText: "",
+      fieldMappings: {
+        titleField: "",
+        selectedTextField: "",
+        urlField: "",
+        snapshotField: "",
+      },
+      snapshots: [{ filename: "snap-1.png", base64: "abcd" }],
+    }),
+    { ok: false, error: "Map at least one available capture part to a note field." }
+  );
+});
+
+test("validateBrowserCapturePayload accepts snapshot-only quick create", () => {
+  assert.deepEqual(
+    validateBrowserCapturePayload({
+      noteTypeName: "Basic",
+      deckName: "Default",
+      selectedText: "",
+      fieldMappings: {
+        titleField: "",
+        selectedTextField: "",
+        urlField: "",
+        snapshotField: "Back",
+      },
+      snapshots: [{ filename: "snap-1.png", base64: "abcd" }],
+    }),
+    { ok: true, error: "" }
+  );
 });

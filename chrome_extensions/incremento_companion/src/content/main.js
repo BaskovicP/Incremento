@@ -8,6 +8,7 @@ import {
 } from "../shared/linkSaveModel.js";
 import {
   normalizeBrowserCaptureSelectedText,
+  validateBrowserCapturePayload,
 } from "../shared/browserCaptureModel.js";
 
 (() => {
@@ -556,6 +557,55 @@ import {
     } catch (_err) {
       // ignore storage write failures
     }
+  }
+
+  async function loadSnapshotCaptureState(selectedText = "", snapshots = []) {
+    const meta = browserCaptureState?.meta || await loadBrowserCaptureMeta();
+    if (!Array.isArray(meta?.noteTypes) || meta.noteTypes.length === 0) {
+      throw new Error("No note types are available in Anki.");
+    }
+    if (!Array.isArray(meta?.deckNames) || meta.deckNames.length === 0) {
+      throw new Error("No decks are available in Anki.");
+    }
+    const currentSettings = browserCaptureState?.form || await loadBrowserCaptureSettings(meta);
+    browserCaptureState = {
+      mode: "snapshot",
+      meta,
+      form: currentSettings,
+      context: {
+        url: window.location.href || "",
+        title: document.title || "",
+        selectedText: normalizeBrowserCaptureSelectedText("snapshot", selectedText, getTrackedSelectionText()),
+      },
+      snapshots: Array.isArray(snapshots) ? snapshots : [],
+      statusKind: "",
+      statusText: "",
+      submitting: false,
+    };
+    return browserCaptureState;
+  }
+
+  async function quickCreateSnapshotNote(selectedText = "", snapshots = []) {
+    const state = await loadSnapshotCaptureState(selectedText, snapshots);
+    const payload = buildBrowserCapturePayload(
+      {
+        ...state.context,
+        snapshots: state.snapshots.map((snapshot) => ({
+          filename: snapshot.filename,
+          base64: snapshot.base64,
+        })),
+      },
+      state.form
+    );
+    const validation = validateBrowserCapturePayload(payload);
+    if (!validation.ok) {
+      throw new Error(
+        `${validation.error} Open Continue once to choose the destination fields for snapshot capture.`
+      );
+    }
+    const result = await submitBrowserCapture(payload);
+    await saveBrowserCaptureSettings(state.form);
+    return result;
   }
 
   function isEditableTarget(target) {
@@ -1166,21 +1216,10 @@ import {
         },
         state.form
       );
-      const hasMappedContent = Boolean(
-        payload.fieldMappings.titleField
-        || (payload.selectedText && payload.fieldMappings.selectedTextField)
-        || payload.fieldMappings.urlField
-        || (payload.snapshots.length > 0 && payload.fieldMappings.snapshotField)
-      );
-      if (!payload.noteTypeName || !payload.deckName) {
+      const validation = validateBrowserCapturePayload(payload);
+      if (!validation.ok) {
         state.statusKind = "error";
-        state.statusText = "Choose a note type and deck.";
-        renderBrowserCaptureDialog();
-        return;
-      }
-      if (!hasMappedContent) {
-        state.statusKind = "error";
-        state.statusText = "Map at least one available capture part to a note field.";
+        state.statusText = validation.error;
         renderBrowserCaptureDialog();
         return;
       }
@@ -1428,6 +1467,36 @@ import {
       cancelButton.addEventListener("click", () => closeBrowserCaptureUi());
       toolbar.appendChild(cancelButton);
 
+      const quickCreateButton = document.createElement("button");
+      quickCreateButton.type = "button";
+      quickCreateButton.className = "toolbar-btn";
+      quickCreateButton.textContent = "Extract now";
+      quickCreateButton.disabled = captureInFlight || snapshots.length === 0;
+      quickCreateButton.addEventListener("click", async () => {
+        if (captureInFlight) {
+          return;
+        }
+        if (!snapshots.length) {
+          showToast("Draw at least one region first.");
+          return;
+        }
+        captureInFlight = true;
+        updateToolbar();
+        try {
+          const result = await quickCreateSnapshotNote(
+            browserCaptureState?.context?.selectedText || "",
+            [...snapshots]
+          );
+          showToast(`Created ${result.noteTypeName} note in ${result.deckName}.`);
+          closeBrowserCaptureUi();
+        } catch (error) {
+          captureInFlight = false;
+          updateToolbar();
+          showToast(error?.message || "Failed to create note.");
+        }
+      });
+      toolbar.appendChild(quickCreateButton);
+
       const doneButton = document.createElement("button");
       doneButton.type = "button";
       doneButton.className = "toolbar-btn primary";
@@ -1535,28 +1604,32 @@ import {
   }
 
   async function openBrowserCaptureDialog({ mode, selectedText = "", snapshots = [] }) {
-    const meta = browserCaptureState?.meta || await loadBrowserCaptureMeta();
-    if (!Array.isArray(meta?.noteTypes) || meta.noteTypes.length === 0) {
-      throw new Error("No note types are available in Anki.");
+    if (mode === "snapshot") {
+      await loadSnapshotCaptureState(selectedText, snapshots);
+    } else {
+      const meta = browserCaptureState?.meta || await loadBrowserCaptureMeta();
+      if (!Array.isArray(meta?.noteTypes) || meta.noteTypes.length === 0) {
+        throw new Error("No note types are available in Anki.");
+      }
+      if (!Array.isArray(meta?.deckNames) || meta.deckNames.length === 0) {
+        throw new Error("No decks are available in Anki.");
+      }
+      const currentSettings = browserCaptureState?.form || await loadBrowserCaptureSettings(meta);
+      browserCaptureState = {
+        mode,
+        meta,
+        form: currentSettings,
+        context: {
+          url: window.location.href || "",
+          title: document.title || "",
+          selectedText: normalizeBrowserCaptureSelectedText(mode, selectedText, getTrackedSelectionText()),
+        },
+        snapshots: Array.isArray(snapshots) ? snapshots : [],
+        statusKind: "",
+        statusText: "",
+        submitting: false,
+      };
     }
-    if (!Array.isArray(meta?.deckNames) || meta.deckNames.length === 0) {
-      throw new Error("No decks are available in Anki.");
-    }
-    const currentSettings = browserCaptureState?.form || await loadBrowserCaptureSettings(meta);
-    browserCaptureState = {
-      mode,
-      meta,
-      form: currentSettings,
-      context: {
-        url: window.location.href || "",
-        title: document.title || "",
-        selectedText: normalizeBrowserCaptureSelectedText(mode, selectedText, getTrackedSelectionText()),
-      },
-      snapshots: Array.isArray(snapshots) ? snapshots : [],
-      statusKind: "",
-      statusText: "",
-      submitting: false,
-    };
     await renderBrowserCaptureDialog();
   }
 
