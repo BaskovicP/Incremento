@@ -2,6 +2,7 @@ from reviewer_extract import (
     extract_default_notetype_name,
     initial_extract_field_values,
     knowledge_tree_link_state,
+    parse_batch_qa_text,
     visible_note_field_values,
 )
 
@@ -89,3 +90,57 @@ def test_knowledge_tree_link_state_disables_when_parent_is_not_in_tree():
     assert state["enabled"] is False
     assert state["checked"] is True
     assert "beneath their source parent" in str(state["tooltip"]).lower()
+
+
+def test_parse_batch_qa_text_returns_two_valid_rows():
+    rows = parse_batch_qa_text("Q: One\nA: First\n\nQ: Two\nA: Second")
+
+    assert rows == [
+        {"question": "One", "answer": "First", "valid": True, "error": ""},
+        {"question": "Two", "answer": "Second", "valid": True, "error": ""},
+    ]
+
+
+def test_parse_batch_qa_text_preserves_multiline_question_and_answer():
+    rows = parse_batch_qa_text("Q: Line one\nLine two\nA: Answer one\nAnswer two")
+
+    assert rows == [
+        {
+            "question": "Line one\nLine two",
+            "answer": "Answer one\nAnswer two",
+            "valid": True,
+            "error": "",
+        }
+    ]
+
+
+def test_parse_batch_qa_text_marks_missing_answer_invalid():
+    rows = parse_batch_qa_text("Q: Missing answer")
+
+    assert rows == [
+        {
+            "question": "Missing answer",
+            "answer": "",
+            "valid": False,
+            "error": "Missing A: line.",
+        }
+    ]
+
+
+def test_parse_batch_qa_text_marks_empty_question_or_answer_invalid():
+    rows = parse_batch_qa_text("Q:   \nA: Filled\n\nQ: Filled\nA:   ")
+
+    assert rows == [
+        {
+            "question": "",
+            "answer": "Filled",
+            "valid": False,
+            "error": "Question is empty.",
+        },
+        {
+            "question": "Filled",
+            "answer": "",
+            "valid": False,
+            "error": "Answer is empty.",
+        },
+    ]

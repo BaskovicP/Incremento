@@ -143,6 +143,54 @@ class _FakeCol:
             return str(raw or "").split()
 
 
+class _BatchFakeModels:
+    def __init__(self, model):
+        self._model = model
+        self.updated = []
+
+    def by_name(self, name):
+        return self._model if self._model.get("name") == name else None
+
+    def update_dict(self, model):
+        self.updated.append(model)
+
+
+class _BatchFakeDecks:
+    def __init__(self, deck_name="Topics", deck_id=99):
+        self._deck = {"name": deck_name, "id": deck_id}
+
+    def by_name(self, name):
+        return self._deck if self._deck["name"] == name else None
+
+    def get(self, deck_id):
+        return self._deck if int(deck_id) == self._deck["id"] else None
+
+    def add_normal_deck_with_name(self, name):
+        self._deck = {"name": name, "id": self._deck["id"]}
+        return types.SimpleNamespace(id=self._deck["id"])
+
+
+class _BatchFakeCollection:
+    def __init__(self, model, deck_name="Topics", deck_id=99):
+        self.models = _BatchFakeModels(model)
+        self.decks = _BatchFakeDecks(deck_name=deck_name, deck_id=deck_id)
+        self.created_notes = []
+        self.added = []
+
+    def new_note(self, model):
+        note = _FakeNote(field_names=[field["name"] for field in model["flds"]])
+        note._note_type = model
+        note.cards = lambda: [types.SimpleNamespace(id=note.id * 10 + 1)]
+        self.created_notes.append(note)
+        return note
+
+    def add_note(self, note, deck_id):
+        note.id = len(self.added) + 1
+        note.note_type()["did"] = deck_id
+        self.added.append((note, deck_id))
+        return 1
+
+
 def test_detach_embedded_window_menu_bar_removes_native_menu():
     window = _FakeWindow()
 
@@ -850,6 +898,52 @@ def test_consume_pending_extract_context_resolves_current_pdf_when_option_lacks_
     ]
 
 
+def test_apply_extract_context_to_note_uses_explicit_context_without_consuming_globals(monkeypatch):
+    note = _FakeNote(["item"], note_id=11)
+    link_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [447])
+    monkeypatch.setitem(
+        sys.modules,
+        "knowledge_tree",
+        types.SimpleNamespace(
+            NODE_KIND_ITEM="item",
+            NODE_KIND_TOPIC="topic",
+            ensure_extract_lineage_cards_in_tree=lambda addon_dir, profile, **kwargs: (
+                link_calls.append((addon_dir, profile, dict(kwargs)))
+                or {"linked_count": 1, "errors": []}
+            ),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "paths",
+        types.SimpleNamespace(get_active_profile=lambda: "TestProfile"),
+    )
+    dock._pending_extract_context = {"parent_card_id": 123, "seen": 0.0}
+
+    result = dock.apply_extract_context_to_note(
+        note,
+        options={"source": "pdf", "source_card_id": 55},
+        context={"parent_card_id": 55},
+    )
+
+    assert result is not None
+    assert result["knowledge_tree_link_error"] == ""
+    assert dock._pending_extract_context == {"parent_card_id": 123, "seen": 0.0}
+    assert link_calls == [
+        (
+            dock._ADDON_DIR,
+            "TestProfile",
+            {
+                "source_card_id": 55,
+                "created_card_ids": [447],
+                "created_node_kind": "item",
+            },
+        ),
+    ]
+
+
 def test_prime_editor_note_for_extract_copies_source_tags_before_topic_tags(monkeypatch):
     note = _FakeNote(["stale"], note_id=11)
     editor = _FakeEditor(note=note)
@@ -1201,6 +1295,109 @@ def test_inject_transfer_buttons_shows_extract_options_for_pending_snapshot(monk
     assert "var optionsVisible = true;" in js
     assert "var defaultExtractPriority = 18.0;" in js
     assert "panel.style.display = this.optionsVisible ? 'flex' : 'none';" in js
+    assert "Batch Q/A…" in js
+    assert "pycmd('incremento_open_extract_batch');" in js
+
+
+def test_snapshot_extract_batch_state_requires_two_visible_fields(monkeypatch):
+    note = _FakeNote(field_names=["Front", "Incremento_Parent"])
+    editor = _FakeEditor(note=note, add_mode=True)
+    fake_dock = _FakeDock(editor)
+    fake_dock._addcards_dialog = types.SimpleNamespace(
+        editor=editor,
+        deck_chooser=types.SimpleNamespace(selected_deck_id=99),
+    )
+
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                decks=types.SimpleNamespace(get=lambda deck_id: {"id": deck_id, "name": "Topics"})
+            )
+        ),
+    )
+
+    try:
+        dock.snapshot_extract_batch_state()
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "at least two visible fields" in str(exc)
+
+
+def test_create_extract_batch_notes_uses_selected_field_mapping_and_explicit_state(monkeypatch):
+    model = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}, {"name": "Extra"}],
+    }
+    collection = _BatchFakeCollection(model)
+    priority_calls = []
+    context_calls = []
+    mark_calls = []
+
+    monkeypatch.setattr(dock, "_pending_extract_options", {"priority": 77.0, "source": "pdf"})
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(col=collection),
+    )
+    monkeypatch.setattr(dock, "_ensure_incremento_metadata_fields_saved", lambda models, current_model: False)
+    monkeypatch.setattr(
+        dock,
+        "apply_extract_options_to_note",
+        lambda note, options: (
+            priority_calls.append((note["Back"], dict(options)))
+            or dict(options, priority_cards_changed=1, copied_source_tags=[])
+        ),
+    )
+    monkeypatch.setattr(
+        dock,
+        "apply_extract_context_to_note",
+        lambda note, options=None, context=None: (
+            context_calls.append((note["Back"], dict(options or {}), dict(context or {})))
+            or {"metadata_saved": True, "knowledge_tree_link_error": ""}
+        ),
+    )
+    monkeypatch.setattr(dock, "mark_reviewer_extract_note_added", lambda options: mark_calls.append(dict(options or {})))
+    monkeypatch.setattr(dock, "_notify_video_extract_note_added", lambda note, options: None)
+
+    summary = dock.create_extract_batch_notes(
+        note_type_name="Basic",
+        deck_name="Topics",
+        question_field="Back",
+        answer_field="Extra",
+        rows=[
+            {"question": "Q1", "answer": "A1"},
+            {"question": "Q2", "answer": "A2"},
+        ],
+        extract_options={
+            "priority": 15.0,
+            "mark_topic": False,
+            "source": "reviewer",
+            "source_card_id": 55,
+        },
+        extract_context={"parent_card_id": 55, "metadata": {"source_type": "Extract"}},
+    )
+
+    assert summary["created"] == 2
+    assert summary["skipped"] == 0
+    assert summary["failed"] == 0
+    assert collection.created_notes[0]["Front"] == ""
+    assert collection.created_notes[0]["Back"] == "Q1"
+    assert collection.created_notes[0]["Extra"] == "A1"
+    assert collection.created_notes[1]["Back"] == "Q2"
+    assert collection.created_notes[1]["Extra"] == "A2"
+    assert priority_calls == [
+        ("Q1", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55}),
+        ("Q2", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55}),
+    ]
+    assert context_calls == [
+        ("Q1", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55, "priority_cards_changed": 1, "copied_source_tags": []}, {"parent_card_id": 55, "metadata": {"source_type": "Extract"}}),
+        ("Q2", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55, "priority_cards_changed": 1, "copied_source_tags": []}, {"parent_card_id": 55, "metadata": {"source_type": "Extract"}}),
+    ]
+    assert len(mark_calls) == 2
+    assert dock._pending_extract_options == {"priority": 77.0, "source": "pdf"}
 
 
 def test_refresh_add_card_tag_buttons_updates_tracked_editors(monkeypatch):
@@ -1445,3 +1642,41 @@ def test_toggle_editor_topic_button_removes_item_tags(monkeypatch):
 
     assert editor.note.tags == ["keep", "topic"]
     assert editor.tags.text_value == "keep topic"
+
+
+def test_apply_extract_topic_mark_to_editor_adds_topic_and_removes_item(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "item"], note_id=9), add_mode=True)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+
+    changed = dock.apply_extract_topic_mark_to_editor(editor, True)
+
+    assert changed is True
+    assert editor.note.tags == ["keep", "topic"]
+    assert editor.tags.text_value == "keep topic"
+
+
+def test_apply_extract_topic_mark_to_editor_removes_topic(monkeypatch):
+    editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=True)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
+    monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: func(),
+    )
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+
+    changed = dock.apply_extract_topic_mark_to_editor(editor, False)
+
+    assert changed is True
+    assert editor.note.tags == ["keep"]
+    assert editor.tags.text_value == "keep"

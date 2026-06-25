@@ -492,6 +492,20 @@ def _inject_transfer_buttons(editor) -> None:
                       gap: 4px;
                       white-space: nowrap;
                     }}
+                    .incremento-extract-batch-btn {{
+                      margin-left: auto;
+                      padding: 4px 10px;
+                      border-radius: 8px;
+                      border: 1px solid rgba(45, 91, 209, 0.3);
+                      background: rgba(255, 255, 255, 0.86);
+                      color: #1d4ed8;
+                      font-size: 12px;
+                      font-weight: 700;
+                      cursor: pointer;
+                    }}
+                    .incremento-extract-batch-btn:hover {{
+                      background: rgba(255, 255, 255, 0.96);
+                    }}
                   `;
                   document.head.appendChild(style);
                 }}
@@ -585,13 +599,15 @@ def _inject_transfer_buttons(editor) -> None:
                         '<strong>Extract</strong>',
                         '<label>Priority <input id="incremento-extract-priority" type="number" min="0" max="100" step="0.1"></label>',
                         '<label><input id="incremento-extract-topic" type="checkbox"> Topic</label>',
-                        '<label id="incremento-extract-tree-link-wrap"><input id="incremento-extract-tree-link" type="checkbox"> Tree child</label>'
+                        '<label id="incremento-extract-tree-link-wrap"><input id="incremento-extract-tree-link" type="checkbox"> Tree child</label>',
+                        '<button id="incremento-extract-batch" class="incremento-extract-batch-btn" type="button">Batch Q/A…</button>'
                       ].join('');
                       host.parentElement.insertBefore(panel, host);
                       var prio = panel.querySelector('#incremento-extract-priority');
                       var topic = panel.querySelector('#incremento-extract-topic');
                       var treeLink = panel.querySelector('#incremento-extract-tree-link');
                       var treeLinkWrap = panel.querySelector('#incremento-extract-tree-link-wrap');
+                      var batchBtn = panel.querySelector('#incremento-extract-batch');
                       prio.value = String(this.extractPriority);
                       topic.checked = !!this.extractTopic;
                       treeLink.checked = !!this.extractTreeLink;
@@ -615,6 +631,11 @@ def _inject_transfer_buttons(editor) -> None:
                       treeLink.addEventListener('change', function() {{
                         window.incrementoTransferButtons.extractTreeLink = !!treeLink.checked;
                         window.incrementoTransferButtons.syncExtractOptions();
+                      }});
+                      batchBtn.addEventListener('click', function(evt) {{
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        pycmd('incremento_open_extract_batch');
                       }});
                       this.syncExtractOptions();
                     }}
@@ -1064,6 +1085,67 @@ def _activate_exclusive_note_tag_set(
     _set_note_tags(note, updated)
 
 
+def _finalize_editor_tag_change(editor) -> None:
+    _set_editor_tags(editor, _note_tags(getattr(editor, "note", None)))
+    _schedule_editor_tag_widget_sync(editor)
+    try:
+        if getattr(editor, "tags", None) is not None and hasattr(editor, "on_tag_focus_lost"):
+            editor.on_tag_focus_lost()
+            _schedule_editor_note_reload(editor)
+        elif not getattr(editor, "addMode", False) and hasattr(editor, "_save_current_note"):
+            editor._save_current_note()
+            _schedule_editor_note_reload(editor)
+        else:
+            gui_hooks.editor_did_update_tags(getattr(editor, "note", None))
+    except Exception:
+        pass
+    if getattr(editor, "addMode", False):
+        try:
+            gui_hooks.editor_did_update_tags(getattr(editor, "note", None))
+        except Exception:
+            pass
+    _refresh_add_card_tag_buttons_for_editor(editor)
+
+
+def _set_editor_tag_selection(
+    editor,
+    tags: list[str],
+    *,
+    enabled: bool,
+    opposite_tags: list[str] | None = None,
+    empty_message: str = "",
+) -> bool:
+    note = getattr(editor, "note", None)
+    if note is None:
+        return False
+    normalized_tags = _normalize_tag_list(tags)
+    if not normalized_tags:
+        if empty_message:
+            tooltip(empty_message)
+        _refresh_add_card_tag_buttons_for_editor(editor)
+        return False
+
+    current_tags = _editor_tags(editor, note)
+    if current_tags != _note_tags(note):
+        _set_note_tags(note, current_tags)
+
+    changed = False
+    if enabled:
+        before = _note_tags(note)
+        _activate_exclusive_note_tag_set(note, normalized_tags, opposite_tags)
+        changed = _note_tags(note) != before
+    elif _note_has_any_tags(note, normalized_tags):
+        _toggle_note_tag_set(note, normalized_tags)
+        changed = True
+
+    if not changed:
+        _refresh_add_card_tag_buttons_for_editor(editor)
+        return False
+
+    _finalize_editor_tag_change(editor)
+    return True
+
+
 def _ensure_add_card_tag_button_styles(editor) -> None:
     try:
         editor.web.eval(
@@ -1458,47 +1540,56 @@ def apply_priority_to_note_cards(note, priority: float) -> int:
     return changed
 
 
-def consume_pending_extract_options_for_note(note) -> dict | None:
-    options = pending_extract_options()
-    if not options:
+def apply_extract_options_to_note(note, options: dict | None) -> dict | None:
+    if note is None or not options:
         return None
-    clear_pending_extract_options()
+    applied = dict(options)
     tags_changed = False
     copied_tags: list[str] = []
     classification_excludes = _classification_tag_set()
     if configured_extract_copy_source_tags():
         copied_tags = copy_source_tags_to_note(
             note,
-            options.get("source_tags") or [],
+            applied.get("source_tags") or [],
             exclude_tags=classification_excludes,
         )
         if not copied_tags:
             copied_tags = copy_source_card_tags_to_note(
                 note,
-                options.get("source_card_id"),
+                applied.get("source_card_id"),
                 exclude_tags=classification_excludes,
             )
         tags_changed = bool(copied_tags)
-    if bool(options.get("mark_topic")) and add_topic_tags_to_note(note):
+    if bool(applied.get("mark_topic")) and add_topic_tags_to_note(note):
         tags_changed = True
     if tags_changed:
         _save_note_tag_changes(note)
-    changed = apply_priority_to_note_cards(note, float(options.get("priority", 50.0)))
-    options["copied_source_tags"] = copied_tags
-    options["priority_cards_changed"] = changed
-    return options
+    changed = apply_priority_to_note_cards(note, float(applied.get("priority", 50.0)))
+    applied["copied_source_tags"] = copied_tags
+    applied["priority_cards_changed"] = changed
+    return applied
 
 
-def consume_pending_extract_context_for_note(note, options: dict | None = None) -> dict | None:
-    context = pending_extract_context()
-    if not context:
-        if _source_card_id_from_extract_options(options) is None:
-            return None
-        context = {}
-    else:
-        clear_pending_extract_context()
+def consume_pending_extract_options_for_note(note) -> dict | None:
+    options = pending_extract_options()
+    if not options:
+        return None
+    clear_pending_extract_options()
+    return apply_extract_options_to_note(note, options)
 
-    metadata = dict(context.get("metadata") or {})
+
+def apply_extract_context_to_note(
+    note,
+    options: dict | None = None,
+    context: dict | None = None,
+) -> dict | None:
+    if note is None:
+        return None
+    applied_context = dict(context or {})
+    if not applied_context and _source_card_id_from_extract_options(options) is None:
+        return None
+
+    metadata = dict(applied_context.get("metadata") or {})
     metadata_saved = False
     if metadata:
         try:
@@ -1527,10 +1618,10 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
                 _save_note_tag_changes(note)
                 metadata_saved = True
             except Exception as exc:
-                context["metadata_error"] = str(exc)
+                applied_context["metadata_error"] = str(exc)
 
     link_error = ""
-    source_card_id = context.get("parent_card_id")
+    source_card_id = applied_context.get("parent_card_id")
     if source_card_id is None:
         source_card_id = _source_card_id_from_extract_options(options)
     if source_card_id is not None:
@@ -1574,9 +1665,168 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
             except Exception as exc:
                 link_error = str(exc)
 
-    context["metadata_saved"] = metadata_saved
-    context["knowledge_tree_link_error"] = link_error
-    return context
+    applied_context["metadata_saved"] = metadata_saved
+    applied_context["knowledge_tree_link_error"] = link_error
+    return applied_context
+
+
+def consume_pending_extract_context_for_note(note, options: dict | None = None) -> dict | None:
+    context = pending_extract_context()
+    if not context:
+        if _source_card_id_from_extract_options(options) is None:
+            return None
+        context = {}
+    else:
+        clear_pending_extract_context()
+    return apply_extract_context_to_note(note, options=options, context=context)
+
+
+def snapshot_extract_batch_state() -> dict:
+    editor = _dock_editor()
+    if editor is None or getattr(editor, "note", None) is None:
+        raise RuntimeError("Add Card dock is not available.")
+
+    note = editor.note
+    note_type = note.note_type() or {}
+    note_type_name = str(note_type.get("name") or "").strip()
+    field_names = [
+        str((field or {}).get("name") or "").strip()
+        for field in list(note_type.get("flds") or [])
+        if str((field or {}).get("name") or "").strip()
+    ]
+    try:
+        from ..backend.note_metadata import visible_field_names
+    except Exception:
+        try:
+            from note_metadata import visible_field_names  # type: ignore
+        except Exception:
+            visible_field_names = lambda names: list(names)  # type: ignore
+    visible_fields = visible_field_names(field_names)
+    if len(visible_fields) < 2:
+        raise RuntimeError(
+            f"Note type '{note_type_name or 'Unknown'}' needs at least two visible fields."
+        )
+
+    deck_name = ""
+    dock = get_add_card_dock()
+    dlg = getattr(dock, "_addcards_dialog", None) if dock is not None else None
+    deck_id = None
+    try:
+        deck_id = getattr(getattr(dlg, "deck_chooser", None), "selected_deck_id", None)
+    except Exception:
+        deck_id = None
+    if deck_id is not None:
+        try:
+            deck = mw.col.decks.get(int(deck_id))
+            deck_name = str((deck or {}).get("name") or "").strip()
+        except Exception:
+            deck_name = ""
+
+    options = pending_extract_options() or {}
+    context = pending_extract_context() or {}
+    if not options:
+        source = str(_last_selection_source or "").strip()
+        if not source:
+            raise RuntimeError("No active extract context is available.")
+        source_card_id = _source_card_id_for_transfer(source)
+        options = {
+            "priority": _extract_priority_for_transfer(),
+            "mark_topic": False,
+            "link_to_knowledge_tree": _extract_link_to_knowledge_tree_for_transfer(),
+            "source": source,
+            "source_card_id": source_card_id,
+            "source_tags": source_note_tags_for_card(source_card_id),
+        }
+        if source_card_id is not None:
+            context = {
+                "metadata": _source_extract_metadata_for_card(source, source_card_id),
+                "parent_card_id": source_card_id,
+                "knowledge_tree_link_enabled": False,
+                "link_to_knowledge_tree": True,
+                "knowledge_tree_tooltip": (
+                    "Extract lineage is added to the knowledge tree automatically."
+                ),
+            }
+
+    batch_options = dict(options)
+    batch_options["mark_topic"] = False
+    return {
+        "note_type_name": note_type_name,
+        "deck_name": deck_name,
+        "visible_fields": list(visible_fields),
+        "question_field": visible_fields[0],
+        "answer_field": visible_fields[1],
+        "extract_options": batch_options,
+        "extract_context": dict(context),
+    }
+
+
+def create_extract_batch_notes(
+    *,
+    note_type_name: str,
+    deck_name: str,
+    question_field: str,
+    answer_field: str,
+    rows: list[dict],
+    extract_options: dict | None = None,
+    extract_context: dict | None = None,
+) -> dict[str, object]:
+    if question_field == answer_field:
+        raise ValueError("Question and answer fields must be different.")
+    if mw is None or getattr(mw, "col", None) is None:
+        raise RuntimeError("Anki collection is not available.")
+
+    model = mw.col.models.by_name(str(note_type_name or "").strip())
+    if model is None:
+        raise RuntimeError(f"Note type '{note_type_name}' was not found.")
+    _ensure_incremento_metadata_fields_saved(mw.col.models, model)
+
+    deck = mw.col.decks.by_name(str(deck_name or "").strip()) if str(deck_name or "").strip() else None
+    if deck is None:
+        deck_id = mw.col.decks.add_normal_deck_with_name(str(deck_name or "Topics")).id
+    else:
+        deck_id = deck["id"]
+
+    summary: dict[str, object] = {
+        "created": 0,
+        "skipped": 0,
+        "failed": 0,
+        "errors": [],
+    }
+    base_options = dict(extract_options or {})
+    base_context = dict(extract_context or {})
+
+    for index, row in enumerate(list(rows or []), start=1):
+        question = str((row or {}).get("question") or "").strip()
+        answer = str((row or {}).get("answer") or "").strip()
+        if not question or not answer:
+            summary["skipped"] = int(summary["skipped"]) + 1
+            continue
+        try:
+            note = mw.col.new_note(model)
+            note[question_field] = question
+            note[answer_field] = answer
+            note.note_type()["did"] = deck_id
+            added = mw.col.add_note(note, deck_id)
+            if not added:
+                raise RuntimeError("Anki rejected the note.")
+            applied_options = apply_extract_options_to_note(note, dict(base_options)) or dict(base_options)
+            apply_extract_context_to_note(
+                note,
+                options=applied_options,
+                context=dict(base_context),
+            )
+            if str((applied_options or {}).get("source") or "").strip():
+                mark_reviewer_extract_note_added(applied_options)
+            _notify_video_extract_note_added(note, applied_options)
+            summary["created"] = int(summary["created"]) + 1
+        except Exception as exc:
+            summary["failed"] = int(summary["failed"]) + 1
+            errors = list(summary["errors"])
+            errors.append(f"Row {index}: {exc}")
+            summary["errors"] = errors
+
+    return summary
 
 
 def mark_reviewer_extract_note_added(options: dict | None) -> None:
@@ -1886,42 +2136,27 @@ def _toggle_editor_tag_button(
     *,
     opposite_tags: list[str] | None = None,
 ) -> None:
+    normalized_tags = _normalize_tag_list(tags)
     note = getattr(editor, "note", None)
     if note is None:
         return
-    normalized_tags = _normalize_tag_list(tags)
-    if not normalized_tags:
-        tooltip(empty_message)
-        _refresh_add_card_tag_buttons_for_editor(editor)
-        return
+    _set_editor_tag_selection(
+        editor,
+        normalized_tags,
+        enabled=not _note_has_all_tags(note, normalized_tags),
+        opposite_tags=opposite_tags,
+        empty_message=empty_message,
+    )
 
-    current_tags = _editor_tags(editor, note)
-    if current_tags != _note_tags(note):
-        _set_note_tags(note, current_tags)
 
-    if _note_has_all_tags(note, normalized_tags):
-        _toggle_note_tag_set(note, normalized_tags)
-    else:
-        _activate_exclusive_note_tag_set(note, normalized_tags, opposite_tags)
-    _set_editor_tags(editor, _note_tags(note))
-    _schedule_editor_tag_widget_sync(editor)
-    try:
-        if getattr(editor, "tags", None) is not None and hasattr(editor, "on_tag_focus_lost"):
-            editor.on_tag_focus_lost()
-            _schedule_editor_note_reload(editor)
-        elif not getattr(editor, "addMode", False) and hasattr(editor, "_save_current_note"):
-            editor._save_current_note()
-            _schedule_editor_note_reload(editor)
-        else:
-            gui_hooks.editor_did_update_tags(note)
-    except Exception:
-        pass
-    if getattr(editor, "addMode", False):
-        try:
-            gui_hooks.editor_did_update_tags(note)
-        except Exception:
-            pass
-    _refresh_add_card_tag_buttons_for_editor(editor)
+def apply_extract_topic_mark_to_editor(editor, mark_topic: bool) -> bool:
+    return _set_editor_tag_selection(
+        editor,
+        configured_add_card_topic_tags(),
+        enabled=bool(mark_topic),
+        opposite_tags=configured_add_card_item_tags(),
+        empty_message="No Add Card topic-button tags configured.",
+    )
 
 
 def _sync_extract_mark_topic_from_note(note) -> None:

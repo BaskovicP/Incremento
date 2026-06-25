@@ -158,6 +158,7 @@ from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
 from .frontend import local_file_dock as _local_file_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
+from .frontend.extract_batch_dialog import ExtractBatchDialog
 from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend.db import (
@@ -1987,14 +1988,54 @@ def _on_js_message(handled, message, context) -> tuple:
     if message.startswith("incremento_extract_options:"):
         try:
             data = json.loads(message[len("incremento_extract_options:") :])
+            mark_topic = bool(data.get("markTopic"))
             _add_card_dock_mod.set_current_extract_options(
                 priority=data.get("priority"),
-                mark_topic=bool(data.get("markTopic")),
+                mark_topic=mark_topic,
                 link_to_knowledge_tree=bool(data.get("linkToKnowledgeTree")),
             )
             _add_card_dock_mod.sync_pending_extract_options_from_current()
+            editor = _add_card_dock_mod._dock_editor()
+            if editor is not None:
+                _add_card_dock_mod.apply_extract_topic_mark_to_editor(editor, mark_topic)
+                _add_card_dock_mod._sync_extract_mark_topic_from_note(getattr(editor, "note", None))
         except Exception:
             pass
+        return (True, None)
+
+    if message == "incremento_open_extract_batch":
+        try:
+            snapshot = _add_card_dock_mod.snapshot_extract_batch_state()
+        except Exception as exc:
+            showInfo(str(exc))
+            return (True, None)
+        try:
+            dlg = ExtractBatchDialog(snapshot, parent=mw)
+            if dlg.exec():
+                summary = _add_card_dock_mod.create_extract_batch_notes(
+                    note_type_name=str(snapshot.get("note_type_name") or ""),
+                    deck_name=str(snapshot.get("deck_name") or ""),
+                    question_field=dlg.question_field,
+                    answer_field=dlg.answer_field,
+                    rows=dlg.preview_rows,
+                    extract_options=dict(snapshot.get("extract_options") or {}),
+                    extract_context=dict(snapshot.get("extract_context") or {}),
+                )
+                created = int(summary.get("created") or 0)
+                skipped = int(summary.get("skipped") or 0)
+                failed = int(summary.get("failed") or 0)
+                lines = [f"Created: {created}", f"Skipped: {skipped}", f"Failed: {failed}"]
+                errors = list(summary.get("errors") or [])
+                if errors:
+                    lines.extend(["", *errors[:10]])
+                showInfo("\n".join(lines))
+                if created:
+                    try:
+                        mw.reset()
+                    except Exception:
+                        pass
+        except Exception as exc:
+            showInfo(f"Could not create batch extracts:\n{exc}")
         return (True, None)
 
     if message.startswith("incremento_open_card:"):
