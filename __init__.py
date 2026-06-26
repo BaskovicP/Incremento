@@ -1997,8 +1997,11 @@ def _on_js_message(handled, message, context) -> tuple:
             _add_card_dock_mod.sync_pending_extract_options_from_current()
             editor = _add_card_dock_mod._dock_editor()
             if editor is not None:
-                _add_card_dock_mod.apply_extract_topic_mark_to_editor(editor, mark_topic)
-                _add_card_dock_mod._sync_extract_mark_topic_from_note(getattr(editor, "note", None))
+                _add_card_dock_mod._push_extract_mark_topic_sync_suspension()
+                try:
+                    _add_card_dock_mod.apply_extract_topic_mark_to_editor(editor, mark_topic)
+                finally:
+                    _add_card_dock_mod._pop_extract_mark_topic_sync_suspension()
         except Exception:
             pass
         return (True, None)

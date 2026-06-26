@@ -51,6 +51,7 @@ _current_extract_priority: float | None = None
 _current_extract_mark_topic: bool | None = None
 _current_extract_link_to_knowledge_tree: bool | None = None
 _pending_extract_options: dict | None = None
+_suspend_extract_mark_topic_sync_depth = 0
 _pending_extract_context: dict | None = None
 _suppress_next_reviewer_queue_refresh: dict | None = None
 _last_fill_source = ""
@@ -873,6 +874,20 @@ def _apply_extract_topic_default_to_editor(editor) -> None:
     _schedule_editor_tag_widget_sync(editor)
     _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
     _schedule_add_card_tag_button_refresh(editor)
+
+
+def _push_extract_mark_topic_sync_suspension() -> None:
+    global _suspend_extract_mark_topic_sync_depth
+    _suspend_extract_mark_topic_sync_depth += 1
+
+
+def _pop_extract_mark_topic_sync_suspension() -> None:
+    global _suspend_extract_mark_topic_sync_depth
+    _suspend_extract_mark_topic_sync_depth = max(0, _suspend_extract_mark_topic_sync_depth - 1)
+
+
+def _extract_mark_topic_sync_suspended() -> bool:
+    return _suspend_extract_mark_topic_sync_depth > 0
 
 
 def _schedule_editor_note_reload(editor) -> None:
@@ -2234,7 +2249,7 @@ def _on_editor_did_update_tags(note) -> None:
         if current_note is None:
             continue
         if current_note is note or getattr(current_note, "id", None) == getattr(note, "id", None):
-            if getattr(editor, "addMode", False):
+            if getattr(editor, "addMode", False) and not _extract_mark_topic_sync_suspended():
                 _sync_extract_mark_topic_from_note(current_note)
             _refresh_add_card_tag_buttons_for_editor(editor)
 

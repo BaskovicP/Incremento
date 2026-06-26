@@ -1452,6 +1452,31 @@ def test_on_editor_did_update_tags_syncs_extract_mode_for_add_note(monkeypatch):
     assert dock._current_extract_mark_topic is False
 
 
+def test_on_editor_did_update_tags_skips_extract_mode_sync_when_suspended(monkeypatch):
+    note = _FakeNote(["item"], note_id=42)
+    editor = _FakeEditor(note, add_mode=True)
+    dock._tracked_tag_button_editors.clear()
+    dock._track_tag_button_editor(editor)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    sync_calls = []
+    monkeypatch.setattr(
+        dock,
+        "sync_pending_extract_options_from_current",
+        lambda: sync_calls.append(True),
+    )
+    dock._current_extract_mark_topic = True
+    dock._push_extract_mark_topic_sync_suspension()
+
+    try:
+        dock._on_editor_did_update_tags(_FakeNote(["item"], note_id=42))
+    finally:
+        dock._pop_extract_mark_topic_sync_suspension()
+
+    assert dock._current_extract_mark_topic is True
+    assert sync_calls == []
+
+
 def test_toolbar_buttons_register_even_before_note_is_loaded():
     buttons = []
     editor = _FakeEditor(note=None, add_mode=False)
