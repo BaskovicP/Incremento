@@ -92,6 +92,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "",
     },
     {
+        "id": "search_current_document",
+        "label": "Find In Current Document",
+        "default": "Ctrl+F",
+    },
+    {
         "id": "search_all",
         "label": "Search ALL",
         "default": "Ctrl+Alt+S",

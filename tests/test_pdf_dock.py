@@ -269,6 +269,25 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     assert '"old-file.pdf"' not in js_calls[0]
 
 
+def test_current_card_pdf_search_hits_orders_pages_and_builds_snippets(monkeypatch):
+    monkeypatch.setattr(
+        pdf_dock,
+        "search_pdf_text_index_for_card",
+        lambda addon_dir, profile, card_id, query, limit=250: [
+            (2, "Second page mentions the target phrase"),
+            (5, "Fifth page also mentions the target phrase"),
+        ],
+    )
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+
+    hits = pdf_dock.current_card_pdf_search_hits(77, "target phrase")
+
+    assert [hit["page"] for hit in hits] == [2, 5]
+    assert "target phrase" in hits[0]["snippet"].lower()
+    assert "excerpt" in hits[0]
+
+
 def test_pdf_scroll_bridge_persists_updates(monkeypatch):
     calls = []
     monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")

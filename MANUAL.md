@@ -73,6 +73,7 @@ The add-on menu lives under **Tools -> Incremento**.
 | **Add Content -> Add Local File** | Create a card that opens or tracks a local file |
 | **Show Focus Timer** | Show or hide the timer toolbar |
 | **Statistics** | Open study statistics |
+| **Find In Current Document** | Search within the currently open PDF or EPUB |
 | **Search ALL** | Search PDF/EPUB highlights, sources, content, and cards |
 | **Open Knowledge Tree** | Open the card-backed knowledge-tree workspace |
 | **Export Full Backup** | Create a backup ZIP |
@@ -691,6 +692,7 @@ All Incremento shortcuts can be changed in **Tools -> Incremento -> Settings -> 
 | `Option+H` / `Alt+H` | Highlight selected PDF text |
 | `Alt+P` | Set priority for current card |
 | `Alt+X` | Open Extract Card dialog |
+| `Cmd+F` / `Ctrl+F` | Find in current PDF or EPUB |
 | `Ctrl+Alt+S` | Open Search ALL |
 | `Ctrl+Alt+P` | Quick Open Content |
 | `Ctrl+Alt+Left` | PDF viewer previous page |

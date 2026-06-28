@@ -138,6 +138,15 @@ function makeClientHighlightId(prefix = 'hl') {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function findBestVisibleTextSpan(textLayer) {
   if (!textLayer) return null;
   const spans = Array.from(textLayer.querySelectorAll('span')).filter((span) => /\S/.test(span.textContent || ''));
@@ -278,6 +287,80 @@ function markJumpHit(spans) {
   });
 }
 
+function clearSearchHitStyles(textLayer) {
+  if (!textLayer) return;
+  textLayer.querySelectorAll('span').forEach((span) => {
+    if (span.dataset.incSearchHit === '1') {
+      if (typeof span.dataset.incSearchOriginalText === 'string') {
+        span.textContent = span.dataset.incSearchOriginalText;
+        delete span.dataset.incSearchOriginalText;
+      }
+      span.dataset.incSearchHit = '0';
+    }
+  });
+}
+
+function buildSearchHighlightRegex(query) {
+  const phrase = String(query || '').trim();
+  if (!phrase) return null;
+  const parts = [phrase, ...phrase.split(/\s+/).filter((token) => token.length >= 2)]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const unique = Array.from(new Set(parts.map((part) => part.toLowerCase())))
+    .map((lowered) => parts.find((part) => part.toLowerCase() === lowered))
+    .filter(Boolean);
+  if (!unique.length) return null;
+  const pattern = unique
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  return new RegExp(`(${pattern})`, 'gi');
+}
+
+function highlightSpanText(span, regex) {
+  if (!span || !regex) return false;
+  const originalText = typeof span.dataset.incSearchOriginalText === 'string'
+    ? span.dataset.incSearchOriginalText
+    : String(span.textContent || '');
+  if (!originalText) return false;
+
+  regex.lastIndex = 0;
+  if (!regex.test(originalText)) {
+    span.textContent = originalText;
+    delete span.dataset.incSearchOriginalText;
+    return false;
+  }
+  regex.lastIndex = 0;
+
+  span.dataset.incSearchOriginalText = originalText;
+  span.innerHTML = escapeHtml(originalText).replace(
+    regex,
+    '<span data-inc-search-fragment="1" style="background: rgba(59, 130, 246, 0.28); outline: 1px solid rgba(37, 99, 235, 0.9); border-radius: 2px;">$1</span>',
+  );
+  return true;
+}
+
+function applySearchHitStyles(textLayer, query) {
+  if (!textLayer) return null;
+  clearSearchHitStyles(textLayer);
+
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return null;
+
+  const spans = Array.from(textLayer.querySelectorAll('span')).filter(
+    (span) => span.dataset.incSearchFragment !== '1',
+  );
+  const regex = buildSearchHighlightRegex(query);
+  let firstHit = null;
+  for (const span of spans) {
+    const hit = highlightSpanText(span, regex);
+    if (!hit) continue;
+    span.dataset.incSearchHit = '1';
+    if (!firstHit) firstHit = span;
+  }
+  return firstHit;
+}
+
 function findExcerptSpanMatch(textLayer, excerpt) {
   const target = normalizeJumpText(excerpt);
   if (!textLayer || !target) return null;
@@ -367,7 +450,10 @@ export default function PdfViewer() {
   const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchHits, setSearchHits] = useState([]);
+  const [activeSearchHitIndex, setActiveSearchHitIndex] = useState(-1);
   const [readAnchor, setReadAnchor] = useState(null);
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
   const [limitNotice, setLimitNotice] = useState(null);
@@ -387,10 +473,23 @@ export default function PdfViewer() {
   const suppressScrollPersistUntilRef = useRef(0);
   const lastReadAnchorSpanRef = useRef(null);
   const pageJumpInputRef = useRef(null);
+  const findInputRef = useRef(null);
+  const suppressSearchSyncRef = useRef(false);
+  const [searchJumpNonce, setSearchJumpNonce] = useState(0);
 
   const clearPendingResumeScroll = useCallback(() => {
     pendingResumeScrollRef.current = null;
     pendingResumePageRef.current = null;
+  }, []);
+
+  const openFind = useCallback(() => {
+    setFindOpen(true);
+    window.setTimeout(() => {
+      if (findInputRef.current) {
+        findInputRef.current.focus();
+        findInputRef.current.select();
+      }
+    }, 0);
   }, []);
 
   const suppressScrollPersistence = useCallback((ms = 500) => {
@@ -747,39 +846,61 @@ export default function PdfViewer() {
   useEffect(() => {
     const tl = textLayerRef.current;
     if (!tl) return;
-    const spans = Array.from(tl.querySelectorAll('span'));
-    spans.forEach((sp) => {
-      if (sp.dataset.incSearchHit === '1') {
-        sp.dataset.incSearchHit = '0';
-        sp.style.background = '';
-        sp.style.outline = '';
-      }
-    });
+    let didScroll = false;
+    let rafId = 0;
 
-    const q = (searchQuery || '').trim().toLowerCase();
-    if (!q) return;
-
-    const toks = q.split(/\s+/).filter((t) => t.length >= 2);
-    let firstHit = null;
-    for (const sp of spans) {
-      const txt = (sp.textContent || '').toLowerCase();
-      if (!txt) continue;
-      const hit = txt.includes(q) || (toks.length > 0 && toks.some((t) => txt.includes(t)));
-      if (!hit) continue;
-      sp.dataset.incSearchHit = '1';
-      sp.style.background = 'rgba(255, 153, 0, 0.45)';
-      sp.style.outline = '1px solid rgba(255, 153, 0, 0.95)';
-      if (!firstHit) firstHit = sp;
-    }
-
-    if (firstHit) {
+    const renderSearchHits = () => {
+      const firstHit = applySearchHitStyles(tl, searchQuery);
+      if (!firstHit || didScroll) return;
+      didScroll = true;
       clearPendingResumeScroll();
       suppressScrollPersistence(900);
       try {
         firstHit.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
       } catch (_) {}
+    };
+
+    renderSearchHits();
+
+    const observer = new MutationObserver(() => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(renderSearchHits);
+    });
+    observer.observe(tl, { childList: true, subtree: true, characterData: true });
+
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      observer.disconnect();
+      clearSearchHitStyles(tl);
+    };
+  }, [searchQuery, page, renderInfo, textLayerRef, clearPendingResumeScroll, suppressScrollPersistence, searchJumpNonce]);
+
+  useEffect(() => {
+    if (suppressSearchSyncRef.current) {
+      suppressSearchSyncRef.current = false;
+      return;
     }
-  }, [searchQuery, page, renderInfo, textLayerRef, clearPendingResumeScroll, suppressScrollPersistence]);
+    if (typeof window.pycmd === 'function') {
+      window.pycmd('incremento_pdf_find:' + JSON.stringify({ query: searchQuery || '' }));
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        openFind();
+        return;
+      }
+      if (event.key === 'Escape' && findOpen) {
+        event.preventDefault();
+        setFindOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [findOpen, openFind]);
 
   useEffect(() => {
     let timer = 0;
@@ -1076,6 +1197,8 @@ export default function PdfViewer() {
       startReadPage = 0,
       startReadAnchor = null,
       startSearchQuery = '',
+      startSearchHits = [],
+      startActiveSearchHitIndex = -1,
       startJumpExcerpt = '',
       startScrollToReadAnchor = false,
       startLimitStatus = null,
@@ -1087,7 +1210,10 @@ export default function PdfViewer() {
       window._incPdfHighlights = null;
       setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : (window._incPdfBookmarks || []));
       window._incPdfBookmarks = null;
+      setFindOpen(!!startSearchQuery);
       setSearchQuery(startSearchQuery || '');
+      setSearchHits(Array.isArray(startSearchHits) ? startSearchHits : []);
+      setActiveSearchHitIndex(Number.isInteger(startActiveSearchHitIndex) ? startActiveSearchHitIndex : -1);
       setReadAnchor(startReadAnchor && typeof startReadAnchor === 'object' ? startReadAnchor : null);
       pendingExcerptJumpRef.current = String(startJumpExcerpt || '').trim();
       pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
@@ -1108,6 +1234,7 @@ export default function PdfViewer() {
     window.incrementoPdfNav   = limitAwareNav;
     window.incrementoPdfZoom  = adjustZoom;
     window.incrementoPdfMarkRead = limitAwareMarkRead;
+    window.incrementoPdfOpenFind = openFind;
     window.incrementoSetAutoHighlightOnExtract = (value) => {
       applyAutoHighlightSetting(value);
     };
@@ -1129,6 +1256,19 @@ export default function PdfViewer() {
     window.incrementoUpdatePdfHighlightNote = (id, note) => {
       updateHighlightNote(String(id || ''), String(note || ''));
     };
+    window.incrementoReceivePdfSearchState = (state) => {
+      const payload = state && typeof state === 'object' ? state : {};
+      suppressSearchSyncRef.current = true;
+      setSearchQuery(String(payload.query || ''));
+      setSearchHits(Array.isArray(payload.hits) ? payload.hits : []);
+      setActiveSearchHitIndex(Number.isInteger(payload.activeIndex) ? payload.activeIndex : -1);
+      setFindOpen(!!payload.query);
+      const hit = Array.isArray(payload.hits) ? payload.hits[payload.activeIndex] : null;
+      if (hit && Number(hit.page || 0) === Number(pageRef.current || 0)) {
+        pendingExcerptJumpRef.current = String(hit.excerpt || hit.snippet || '');
+        setSearchJumpNonce((value) => value + 1);
+      }
+    };
 
     const pending = window._incPdfPending;
     if (pending) {
@@ -1142,6 +1282,8 @@ export default function PdfViewer() {
         pending.readPage || 0,
         pending.readAnchor || null,
         pending.searchQuery || '',
+        pending.searchHits || [],
+        pending.activeSearchHitIndex ?? -1,
         pending.jumpExcerpt || '',
         pending.scrollToReadAnchor || false,
         pending.limitStatus || DEFAULT_LIMIT_STATUS,
@@ -1155,12 +1297,14 @@ export default function PdfViewer() {
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
       delete window.incrementoPdfMarkRead;
+      delete window.incrementoPdfOpenFind;
       delete window.incrementoSetAutoHighlightOnExtract;
       delete window.incrementoSetScrollToTopOnPageChange;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfLimitStatus;
       delete window.incrementoReceivePdfBookmarks;
       delete window.incrementoUpdatePdfHighlightNote;
+      delete window.incrementoReceivePdfSearchState;
     };
   }, [
     startViewer,
@@ -1171,6 +1315,7 @@ export default function PdfViewer() {
     updateHighlightNote,
     applyAutoHighlightSetting,
     applyScrollToTopOnPageChangeSetting,
+    openFind,
     suppressScrollPersistence,
   ]);
 
@@ -1462,6 +1607,54 @@ export default function PdfViewer() {
             </span>
           </div>
         </div>
+
+        {findOpen && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: '#d4d4d8', fontWeight: 600 }}>Find</span>
+            <input
+              ref={findInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search this PDF"
+              style={{
+                width: 260,
+                height: 32,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(180,180,180,0.35)',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#f5f5f5',
+              }}
+            />
+            <span style={{ minWidth: 64, textAlign: 'center', color: '#a1a1aa', fontSize: 12 }}>
+              {searchQuery ? (searchHits.length ? `${Math.max(0, activeSearchHitIndex + 1)} / ${searchHits.length}` : '0 results') : ''}
+            </span>
+            <button
+              type="button"
+              disabled={!searchHits.length}
+              onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: -1 }))}
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              disabled={!searchHits.length}
+              onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: 1 }))}
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFindOpen(false);
+                setSearchQuery('');
+              }}
+            >
+              Close
+            </button>
+          </div>
+        )}
 
         {/* ── Row 3: Daily reading limit ── */}
         {limitEnabled && (

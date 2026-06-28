@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from html import escape
 
 from aqt import mw
@@ -19,6 +20,7 @@ from aqt.qt import (
     QKeySequence,
     QLayout,
     QLabel,
+    QLineEdit,
     QPixmap,
     QPoint,
     QPushButton,
@@ -119,6 +121,7 @@ try:
         get_epub_card_sources,
         get_epub_document_source_note_ids,
         get_epub_section_card_counts,
+        search_epub_text_index_for_card,
     )
 except ImportError:
     from db import (  # type: ignore
@@ -126,6 +129,7 @@ except ImportError:
         get_epub_card_sources,
         get_epub_document_source_note_ids,
         get_epub_section_card_counts,
+        search_epub_text_index_for_card,
     )
 try:
     from ..backend.session import start_explicit_review
@@ -150,6 +154,9 @@ _last_selection_meta: dict[str, object] = {}
 _pending_focus_offset = -1
 _pending_restore_ratio = 0.0
 _pending_search_query = ""
+_current_epub_search_query = ""
+_current_epub_search_hits: list[dict] = []
+_current_epub_search_hit_index = -1
 _pending_explicit_navigation = False
 
 _cb_open_add_card_dock = None
@@ -212,6 +219,74 @@ def _record_timer_epub_page_read(card_id: int | None, page_index: int | None) ->
         _timer_mod.record_epub_page_read(int(card_id), int(page_index))
     except Exception:
         pass
+
+
+def _epub_search_snippet(text: str, query: str, max_len: int = 180) -> str:
+    plain = " ".join(str(text or "").split())
+    if not plain:
+        return ""
+    lowered = plain.lower()
+    needle = str(query or "").strip().lower()
+    idx = lowered.find(needle) if needle else -1
+    if idx < 0:
+        for token in [tok for tok in re.findall(r"\w+", needle) if len(tok) >= 2]:
+            idx = lowered.find(token)
+            if idx >= 0:
+                break
+    if idx < 0:
+        return plain[:max_len]
+    start = max(0, idx - (max_len // 3))
+    end = min(len(plain), start + max_len)
+    snippet = plain[start:end]
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(plain):
+        snippet += "..."
+    return snippet
+
+
+def _first_query_offset(text: str, query: str) -> int:
+    lowered = str(text or "").lower()
+    needle = str(query or "").strip().lower()
+    if not lowered or not needle:
+        return -1
+    idx = lowered.find(needle)
+    if idx >= 0:
+        return idx
+    for token in [tok for tok in re.findall(r"\w+", needle) if len(tok) >= 2]:
+        idx = lowered.find(token)
+        if idx >= 0:
+            return idx
+    return -1
+
+
+def current_card_epub_search_hits(card_id: int, query: str, *, limit: int = 250) -> list[dict]:
+    try:
+        normalized_card_id = int(card_id or 0)
+    except Exception:
+        normalized_card_id = 0
+    normalized_query = str(query or "").strip()
+    if normalized_card_id <= 0 or not normalized_query:
+        return []
+    rows = search_epub_text_index_for_card(
+        _ADDON_DIR,
+        _active_profile(),
+        normalized_card_id,
+        normalized_query,
+        limit=limit,
+    )
+    hits: list[dict] = []
+    for section_index, title, text in rows:
+        section_title = str(title or "").strip() or f"Section {int(section_index) + 1}"
+        hits.append(
+            {
+                "sectionIndex": int(section_index),
+                "sectionTitle": section_title,
+                "snippet": _epub_search_snippet(text or title or "", normalized_query),
+                "focusOffset": _first_query_offset(text or "", normalized_query),
+            }
+        )
+    return hits
 
 
 class _ElidedLabel(QLabel):
@@ -1869,6 +1944,12 @@ def _build_epub_dock() -> None:
             "QToolButton:checked { background: rgba(77,156,92,0.22); border-color: rgba(77,156,92,0.60); }"
         ),
     )
+    dock._find_btn = _make_epub_button(
+        dock,
+        "Find",
+        "Find in current document",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+    )
 
     header = QWidget(dock)
     header_layout = QVBoxLayout(header)
@@ -1901,6 +1982,7 @@ def _build_epub_dock() -> None:
             "Reader",
             dock._text_smaller_btn,
             dock._text_larger_btn,
+            dock._find_btn,
             dock._highlight_extract_cb,
         )
     )
@@ -1942,6 +2024,27 @@ def _build_epub_dock() -> None:
         )
     )
     layout.addWidget(groups_host)
+
+    find_bar = QWidget(dock)
+    find_layout = QHBoxLayout(find_bar)
+    find_layout.setContentsMargins(0, 0, 0, 0)
+    find_layout.setSpacing(6)
+    dock._find_input = QLineEdit(find_bar)
+    dock._find_input.setPlaceholderText("Find in current document")
+    dock._find_count_lbl = QLabel("", find_bar)
+    dock._find_count_lbl.setStyleSheet("color: #a0aec0; font-size: 12px;")
+    dock._find_prev_btn = QPushButton("Prev", find_bar)
+    dock._find_next_btn = QPushButton("Next", find_bar)
+    dock._find_close_btn = QPushButton("Close", find_bar)
+    find_layout.addWidget(dock._find_input, 1)
+    find_layout.addWidget(dock._find_count_lbl)
+    find_layout.addWidget(dock._find_prev_btn)
+    find_layout.addWidget(dock._find_next_btn)
+    find_layout.addWidget(dock._find_close_btn)
+    find_bar.setVisible(False)
+    dock._find_bar = find_bar
+    layout.addWidget(find_bar)
+    QShortcut(QKeySequence("Escape"), find_bar).activated.connect(_close_epub_find_bar)
 
     page = _EpubDockPage(dock)
     s = page.settings()
@@ -1994,6 +2097,7 @@ def _build_epub_dock() -> None:
     qconnect(dock._limit_btn.clicked, lambda: _current_epub_card_id and _open_epub_limit_dialog(int(_current_epub_card_id)))
     qconnect(dock._text_smaller_btn.clicked, lambda: _adjust_epub_text_scale(-0.1))
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
+    qconnect(dock._find_btn.clicked, open_current_document_find)
     qconnect(dock._highlight_btn.clicked, _request_highlight)
     qconnect(dock._snapshot_btn.clicked, _request_snapshot)
     qconnect(dock._cover_btn.clicked, _regenerate_epub_cover)
@@ -2003,6 +2107,10 @@ def _build_epub_dock() -> None:
     qconnect(dock._sources_btn.clicked, _toggle_epub_sources_panel)
     qconnect(dock._finished_btn.clicked, _toggle_finished)
     qconnect(dock._highlight_extract_cb.toggled, _on_extract_highlight_toggle_changed)
+    qconnect(dock._find_input.textChanged, _apply_epub_find_query)
+    qconnect(dock._find_prev_btn.clicked, lambda: _step_epub_search(-1))
+    qconnect(dock._find_next_btn.clicked, lambda: _step_epub_search(1))
+    qconnect(dock._find_close_btn.clicked, _close_epub_find_bar)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
 
@@ -2021,9 +2129,15 @@ def _build_epub_dock() -> None:
             sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
             sc.activated.connect(lambda d=delta: _adjust_epub_text_scale(d))
             _epub_shortcuts.append(sc)
+        for seq in ("Ctrl+F", "Meta+F"):
+            sc = QShortcut(QKeySequence(seq), mw)
+            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
+            sc.activated.connect(open_current_document_find)
+            _epub_shortcuts.append(sc)
         _epub_shortcuts_registered = True
 
     _epub_dock = dock
+    _sync_epub_find_bar()
 
 
 def _current_epub_section_title() -> str:
@@ -2031,6 +2145,96 @@ def _current_epub_section_title() -> str:
     if 0 <= int(_current_epub_section_index) < len(sections):
         return str(sections[int(_current_epub_section_index)].get("title") or "").strip()
     return f"Section {int(_current_epub_section_index) + 1}"
+
+
+def _sync_epub_find_bar() -> None:
+    if _epub_dock is None:
+        return
+    total_hits = len(_current_epub_search_hits)
+    active_index = _current_epub_search_hit_index
+    if hasattr(_epub_dock, "_find_input"):
+        _epub_dock._find_input.blockSignals(True)
+        _epub_dock._find_input.setText(str(_current_epub_search_query or ""))
+        _epub_dock._find_input.blockSignals(False)
+    if hasattr(_epub_dock, "_find_count_lbl"):
+        if not _current_epub_search_query:
+            _epub_dock._find_count_lbl.setText("")
+        elif total_hits <= 0:
+            _epub_dock._find_count_lbl.setText("0 results")
+        else:
+            _epub_dock._find_count_lbl.setText(f"{active_index + 1} / {total_hits}")
+    if hasattr(_epub_dock, "_find_prev_btn"):
+        enabled = total_hits > 0
+        _epub_dock._find_prev_btn.setEnabled(enabled)
+        _epub_dock._find_next_btn.setEnabled(enabled)
+
+
+def _close_epub_find_bar() -> None:
+    global _current_epub_search_query, _current_epub_search_hits, _current_epub_search_hit_index
+    if _epub_dock is None:
+        return
+    _current_epub_search_query = ""
+    _current_epub_search_hits = []
+    _current_epub_search_hit_index = -1
+    _epub_dock._find_bar.setVisible(False)
+    _sync_epub_find_bar()
+
+
+def open_current_document_find() -> bool:
+    if _epub_dock is None:
+        return False
+    try:
+        if not _epub_dock.isVisible():
+            return False
+        _epub_dock._find_bar.setVisible(True)
+        _epub_dock._find_input.setFocus()
+        _epub_dock._find_input.selectAll()
+        _sync_epub_find_bar()
+        return True
+    except Exception:
+        return False
+
+
+def _apply_epub_find_query(query: str) -> None:
+    global _current_epub_search_query, _current_epub_search_hits, _current_epub_search_hit_index
+    normalized_query = str(query or "").strip()
+    _current_epub_search_query = normalized_query
+    if _current_epub_card_id is None or not normalized_query:
+        _current_epub_search_hits = []
+        _current_epub_search_hit_index = -1
+        _sync_epub_find_bar()
+        return
+    _current_epub_search_hits = current_card_epub_search_hits(_current_epub_card_id, normalized_query)
+    _current_epub_search_hit_index = 0 if _current_epub_search_hits else -1
+    _sync_epub_find_bar()
+    if _current_epub_search_hit_index >= 0:
+        _open_epub_search_hit(_current_epub_search_hit_index, offer_due_review_prompt=False)
+
+
+def _open_epub_search_hit(index: int, *, offer_due_review_prompt: bool = False) -> None:
+    global _current_epub_search_hit_index
+    if _current_epub_card_id is None or not _current_epub_search_hits:
+        return
+    resolved_index = max(0, min(int(index), len(_current_epub_search_hits) - 1))
+    hit = _current_epub_search_hits[resolved_index]
+    _current_epub_search_hit_index = resolved_index
+    _sync_epub_find_bar()
+    show_epub_in_dock(
+        int(_current_epub_card_id),
+        str(_current_epub_filename or ""),
+        section_index=int(hit.get("sectionIndex", 0) or 0),
+        scroll_ratio=0.0,
+        focus_offset=int(hit.get("focusOffset", -1) or -1),
+        search_query=_current_epub_search_query,
+        offer_due_review_prompt=offer_due_review_prompt,
+    )
+
+
+def _step_epub_search(delta: int) -> None:
+    if not _current_epub_search_hits:
+        return
+    base_index = _current_epub_search_hit_index if _current_epub_search_hit_index >= 0 else 0
+    _open_epub_search_hit(base_index + int(delta), offer_due_review_prompt=False)
 
 
 def _epub_bookmarks() -> list[dict]:
@@ -2798,6 +3002,7 @@ def show_epub_in_dock(
     global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _current_epub_read_anchor, _pending_focus_offset, _pending_restore_ratio
     global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
     global _pending_search_query, _pending_explicit_navigation, _last_selection_meta
+    global _current_epub_search_query
 
     if _epub_dock is None:
         _build_epub_dock()
@@ -2814,6 +3019,8 @@ def show_epub_in_dock(
     _pending_focus_offset = int(focus_offset)
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = str(search_query or "")
+    if str(search_query or "").strip():
+        _current_epub_search_query = str(search_query or "").strip()
     _pending_explicit_navigation = True
     _last_selection_meta = {}
     _, _, _current_epub_finished = get_epub_progress(_ADDON_DIR, _active_profile(), _current_epub_card_id)
@@ -2822,6 +3029,7 @@ def show_epub_in_dock(
 
     _update_title_and_buttons()
     _update_sources_panel()
+    _sync_epub_find_bar()
     _epub_dock.show()
     _epub_dock.raise_()
     if _cb_epub_view_started:

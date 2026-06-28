@@ -173,3 +173,22 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     assert any("incrementoUpdateEpubHighlightNote" in js for js in js_calls if isinstance(js, str))
     assert "sources" in js_calls
     assert tooltips == ["EPUB highlight note saved."]
+
+
+def test_current_card_epub_search_hits_use_section_title_fallback(monkeypatch):
+    monkeypatch.setattr(
+        epub_dock,
+        "search_epub_text_index_for_card",
+        lambda addon_dir, profile, card_id, query, limit=250: [
+            (0, "Chapter One", "The phrase appears here."),
+            (1, "", "Another phrase appears in untitled text."),
+        ],
+    )
+    monkeypatch.setattr(epub_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "TestProfile")
+
+    hits = epub_dock.current_card_epub_search_hits(9, "phrase")
+
+    assert hits[0]["sectionTitle"] == "Chapter One"
+    assert hits[1]["sectionTitle"] == "Section 2"
+    assert hits[0]["focusOffset"] >= 0

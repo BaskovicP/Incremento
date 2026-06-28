@@ -125,6 +125,7 @@ try:
         get_pdf_card_sources,
         get_pdf_document_source_note_ids,
         get_pdf_page_card_counts,
+        search_pdf_text_index_for_card,
     )
 except ImportError:
     from db import (  # type: ignore
@@ -133,6 +134,7 @@ except ImportError:
         get_pdf_card_sources,
         get_pdf_document_source_note_ids,
         get_pdf_page_card_counts,
+        search_pdf_text_index_for_card,
     )
 try:
     from ..backend.note_metadata import visible_field_names
@@ -170,6 +172,9 @@ _pdf_dock = None
 _shortcuts_registered = False
 _current_pdf_card_id = None
 _current_pdf_filename = None
+_current_pdf_search_query = ""
+_current_pdf_search_hits: list[dict] = []
+_current_pdf_search_hit_index = -1
 _pdf_via_link = False  # True when dock was opened via a cross-reference link
 _pdf_preserve_history = False
 _suppress_due_review_prompt_card_id: int | None = None
@@ -207,10 +212,14 @@ def current_pdf_card_id() -> int | None:
 
 def _clear_current_pdf_context() -> int | None:
     global _current_pdf_card_id, _current_pdf_filename
+    global _current_pdf_search_query, _current_pdf_search_hits, _current_pdf_search_hit_index
     global _pdf_via_link, _pdf_preserve_history
     previous_card_id = current_pdf_card_id()
     _current_pdf_card_id = None
     _current_pdf_filename = None
+    _current_pdf_search_query = ""
+    _current_pdf_search_hits = []
+    _current_pdf_search_hit_index = -1
     _pdf_via_link = False
     _pdf_preserve_history = False
     return previous_card_id
@@ -742,6 +751,87 @@ def _normalize_pdf_reference_excerpt(text: str | None) -> str:
     return raw[:_PDF_REF_EXCERPT_MAX_CHARS].strip()
 
 
+def _pdf_search_snippet(text: str, query: str, max_len: int = 180) -> str:
+    plain = " ".join(str(text or "").split())
+    if not plain:
+        return ""
+    lowered = plain.lower()
+    needle = str(query or "").strip().lower()
+    idx = lowered.find(needle) if needle else -1
+    if idx < 0:
+        tokens = [tok for tok in re.findall(r"\w+", needle) if len(tok) >= 2]
+        for token in tokens:
+            idx = lowered.find(token)
+            if idx >= 0:
+                break
+    if idx < 0:
+        return plain[:max_len]
+    start = max(0, idx - (max_len // 3))
+    end = min(len(plain), start + max_len)
+    snippet = plain[start:end]
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(plain):
+        snippet += "..."
+    return snippet
+
+
+def current_card_pdf_search_hits(card_id: int, query: str, *, limit: int = 250) -> list[dict]:
+    try:
+        normalized_card_id = int(card_id or 0)
+    except Exception:
+        normalized_card_id = 0
+    normalized_query = str(query or "").strip()
+    if normalized_card_id <= 0 or not normalized_query:
+        return []
+    rows = search_pdf_text_index_for_card(
+        _ADDON_DIR,
+        _active_profile(),
+        normalized_card_id,
+        normalized_query,
+        limit=limit,
+    )
+    return [
+        {
+            "page": int(page),
+            "snippet": _pdf_search_snippet(text or "", normalized_query),
+            "excerpt": _pdf_search_snippet(text or "", normalized_query, max_len=260),
+        }
+        for page, text in rows
+    ]
+
+
+def _sync_pdf_search_state(
+    query: str,
+    hits: list[dict],
+    active_index: int = -1,
+) -> None:
+    global _current_pdf_search_query, _current_pdf_search_hits, _current_pdf_search_hit_index
+    _current_pdf_search_query = str(query or "")
+    _current_pdf_search_hits = list(hits or [])
+    _current_pdf_search_hit_index = int(active_index) if hits else -1
+    if _current_pdf_search_hit_index < -1:
+        _current_pdf_search_hit_index = -1
+
+
+def _emit_pdf_search_state() -> None:
+    if _pdf_dock is None:
+        return
+    payload = {
+        "query": _current_pdf_search_query,
+        "hits": _current_pdf_search_hits,
+        "activeIndex": _current_pdf_search_hit_index,
+    }
+    js = (
+        "window.incrementoReceivePdfSearchState && "
+        f"window.incrementoReceivePdfSearchState({json.dumps(payload)});"
+    )
+    try:
+        _pdf_dock._view.page().runJavaScript(js)
+    except Exception:
+        pass
+
+
 def pdf_citation(excerpt_text: str | None = None) -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
     if not _current_pdf_card_id or not _current_pdf_filename:
@@ -833,6 +923,8 @@ _MSG_HL_NOTE = "incremento_pdf_hl_note:"
 _MSG_BOOKMARK_ADD = "incremento_pdf_bookmark_add:"
 _MSG_BOOKMARK_DELETE = "incremento_pdf_bookmark_delete:"
 _MSG_BOOKMARK_LIST = "incremento_pdf_bookmark_list:"
+_MSG_FIND = "incremento_pdf_find:"
+_MSG_FIND_NAV = "incremento_pdf_find_nav:"
 
 
 def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
@@ -1092,6 +1184,53 @@ def _push_pdf_bookmarks(card_id: int | None = None) -> None:
         )
     except Exception:
         pass
+
+
+def _update_pdf_search(query: str, *, active_index: int = 0) -> None:
+    card_id = current_pdf_card_id()
+    normalized_query = str(query or "").strip()
+    if card_id is None or not normalized_query:
+        _sync_pdf_search_state("", [], -1)
+        _emit_pdf_search_state()
+        return
+    hits = current_card_pdf_search_hits(card_id, normalized_query)
+    resolved_index = -1
+    if hits:
+        resolved_index = max(0, min(int(active_index), len(hits) - 1))
+    _sync_pdf_search_state(normalized_query, hits, resolved_index)
+    _emit_pdf_search_state()
+
+
+def _jump_to_first_pdf_search_hit(query: str) -> None:
+    card_id = current_pdf_card_id()
+    normalized_query = str(query or "").strip()
+    if card_id is None or not normalized_query:
+        return
+    if not _current_pdf_search_hits:
+        return
+    _open_pdf_search_hit(0)
+
+
+def _open_pdf_search_hit(hit_index: int) -> None:
+    card_id = current_pdf_card_id()
+    if card_id is None or not _current_pdf_search_hits:
+        return
+    resolved_index = max(0, min(int(hit_index), len(_current_pdf_search_hits) - 1))
+    hit = _current_pdf_search_hits[resolved_index]
+    _sync_pdf_search_state(_current_pdf_search_query, _current_pdf_search_hits, resolved_index)
+    show_pdf_in_dock(
+        int(card_id),
+        str(_current_pdf_filename or ""),
+        int(hit.get("page", 1) or 1),
+        get_zoom(_ADDON_DIR, _active_profile(), int(card_id)),
+        read_page=get_read_page(_ADDON_DIR, _active_profile(), int(card_id)),
+        search_query=_current_pdf_search_query,
+        jump_excerpt=str(hit.get("excerpt") or hit.get("snippet") or ""),
+        search_hits=_current_pdf_search_hits,
+        active_search_hit_index=resolved_index,
+        preserve_history=True,
+        offer_due_review_prompt=False,
+    )
 
 
 def _add_pdf_bookmark(card_id: int, page: int) -> None:
@@ -1444,6 +1583,30 @@ def _handle_pdf_js_message(msg: str) -> None:
             cid = int(msg[len(_MSG_BOOKMARK_LIST) :])
             if cid > 0:
                 _push_pdf_bookmarks(cid)
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_FIND):
+        try:
+            payload = json.loads(msg[len(_MSG_FIND) :])
+            query = str(payload.get("query") or "")
+            _update_pdf_search(query)
+            if query.strip():
+                _jump_to_first_pdf_search_hit(query)
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_FIND_NAV):
+        try:
+            payload = json.loads(msg[len(_MSG_FIND_NAV) :])
+            direction = int(payload.get("direction", 0) or 0)
+            if not _current_pdf_search_hits:
+                return
+            if direction == 0:
+                target_index = int(payload.get("index", _current_pdf_search_hit_index) or 0)
+            else:
+                base_index = _current_pdf_search_hit_index if _current_pdf_search_hit_index >= 0 else 0
+                target_index = base_index + (1 if direction > 0 else -1)
+            target_index = max(0, min(target_index, len(_current_pdf_search_hits) - 1))
+            _open_pdf_search_hit(target_index)
         except Exception:
             pass
     elif msg.startswith(_MSG_REPAIR_MISSING):
@@ -1808,6 +1971,7 @@ def trigger_viewer_action(action: str) -> None:
         "zoom_out": "window.incrementoPdfZoom && window.incrementoPdfZoom(-1);",
         "zoom_in": "window.incrementoPdfZoom && window.incrementoPdfZoom(1);",
         "mark_read": "window.incrementoPdfMarkRead && window.incrementoPdfMarkRead();",
+        "open_find": "window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();",
     }
     js = js_by_action.get(action)
     if not js:
@@ -1816,6 +1980,20 @@ def trigger_viewer_action(action: str) -> None:
         view.page().runJavaScript(js)
     except Exception:
         pass
+
+
+def open_current_document_find() -> bool:
+    if _pdf_dock is None:
+        return False
+    try:
+        if not _pdf_dock.isVisible():
+            return False
+        _pdf_dock._view.page().runJavaScript(
+            "window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();",
+        )
+        return True
+    except Exception:
+        return False
 
 
 # ── Show PDF in dock ──────────────────────────────────────────────────────────
@@ -1830,6 +2008,8 @@ def show_pdf_in_dock(
     read_page=0,
     search_query="",
     jump_excerpt="",
+    search_hits: list[dict] | None = None,
+    active_search_hit_index: int = -1,
     preserve_history=False,
     offer_due_review_prompt=True,
 ) -> None:
@@ -1908,15 +2088,25 @@ def show_pdf_in_dock(
     scroll_ratio = get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id)
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
 
+    if search_hits is None:
+        if str(search_query or "").strip():
+            search_hits = current_card_pdf_search_hits(int(card_id), str(search_query or ""))
+        else:
+            search_hits = []
+    resolved_search_index = int(active_search_hit_index)
+    if resolved_search_index < 0 and search_hits:
+        resolved_search_index = 0
+    _sync_pdf_search_state(str(search_query or ""), list(search_hits or []), resolved_search_index)
+
     js = (
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

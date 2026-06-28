@@ -2198,6 +2198,37 @@ def search_pdf_text_index(
     return [(cid, page, text) for _, cid, page, text in ranked[:limit]]
 
 
+def search_pdf_text_index_for_card(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    query: str,
+    limit: int = 120,
+) -> list[tuple[int, str]]:
+    query_terms = split_search_terms(query)
+    if not query_terms:
+        return []
+
+    conn = get_connection(addon_dir, profile)
+    pre = query_terms[0]
+    rows = conn.execute(
+        "SELECT page, text FROM pdf_text_index "
+        "WHERE card_id = ? AND lower(text) LIKE lower(?) "
+        "ORDER BY page LIMIT ?",
+        (int(card_id), f"%{pre}%", max(500, limit * 25)),
+    ).fetchall()
+
+    ranked: list[tuple[tuple[int, int, int, int], int, str]] = []
+    for page, text in rows:
+        score = search_text_match_score(text or "", query)
+        if score is None:
+            continue
+        ranked.append((score, int(page), str(text or "")))
+
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [(page, text) for _, page, text in ranked[:limit]]
+
+
 def replace_epub_text_index(
     addon_dir: str, profile: str, card_id: int, sections: list[tuple[str, str]]
 ) -> None:
@@ -2242,6 +2273,41 @@ def search_epub_text_index(
 
     ranked.sort(key=lambda item: (item[0], item[1], item[2]))
     return [(cid, section_index, title, text) for _, cid, section_index, title, text in ranked[:limit]]
+
+
+def search_epub_text_index_for_card(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    query: str,
+    limit: int = 120,
+) -> list[tuple[int, str, str]]:
+    query_terms = split_search_terms(query)
+    if not query_terms:
+        return []
+
+    conn = get_connection(addon_dir, profile)
+    pre = query_terms[0]
+    rows = conn.execute(
+        "SELECT section_index, title, text FROM epub_text_index "
+        "WHERE card_id = ? AND lower(title || ' ' || text) LIKE lower(?) "
+        "ORDER BY section_index LIMIT ?",
+        (int(card_id), f"%{pre}%", max(500, limit * 25)),
+    ).fetchall()
+
+    ranked: list[tuple[tuple[int, int, int, int], int, str, str]] = []
+    for section_index, title, text in rows:
+        combined = " ".join(part for part in (title or "", text or "") if part)
+        score = search_text_match_score(combined, query)
+        if score is None:
+            continue
+        ranked.append((score, int(section_index), str(title or ""), str(text or "")))
+
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    return [
+        (section_index, title, text)
+        for _, section_index, title, text in ranked[:limit]
+    ]
 
 
 # ── Topic A-factor schedule ───────────────────────────────────────────────────

@@ -2515,6 +2515,7 @@ def _open_pdf_card(
     card_id: int,
     page: int | None = None,
     search_query: str = "",
+    jump_excerpt: str = "",
     preserve_history: bool = False,
 ) -> None:
     global _last_opened_pdf_cid
@@ -2532,6 +2533,7 @@ def _open_pdf_card(
         zoom,
         read_page=read_page,
         search_query=search_query,
+        jump_excerpt=jump_excerpt,
         preserve_history=preserve_history,
     )
 
@@ -2564,6 +2566,13 @@ def _open_search_all() -> None:
         open_pdf_card=_open_pdf_card,
         open_epub_card=_open_epub_card,
     ).exec()
+
+
+def _open_current_document_search() -> None:
+    if _pdf_dock_mod.open_current_document_find():
+        return
+    if _epub_dock_mod.open_current_document_find():
+        return
 
 
 def _current_reviewer_card_id() -> int | None:
@@ -5241,6 +5250,11 @@ def _build_incremento_menu() -> None:
     qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
     _menu.addAction(_quickOpenPdfAction)
     _register_shortcut_action("quick_open_pdf", _quickOpenPdfAction)
+
+    _searchCurrentAction = QAction("Find In Current Document", mw)
+    qconnect(_searchCurrentAction.triggered, _open_current_document_search)
+    _menu.addAction(_searchCurrentAction)
+    _register_shortcut_action("search_current_document", _searchCurrentAction)
 
     _searchAllAction = QAction("Search ALL", mw)
     qconnect(_searchAllAction.triggered, _open_search_all)
