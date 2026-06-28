@@ -8276,7 +8276,11 @@
         if ((event.metaKey || event.ctrlKey) && String(event.key || "").toLowerCase() === "f") {
           event.preventDefault();
           event.stopPropagation();
-          openFind();
+          if (typeof window.pycmd === "function") {
+            window.pycmd("incremento_pdf_open_find_dialog");
+          } else {
+            openFind();
+          }
           return;
         }
         if (event.key === "Escape" && findOpen) {

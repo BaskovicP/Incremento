@@ -192,3 +192,27 @@ def test_current_card_epub_search_hits_use_section_title_fallback(monkeypatch):
     assert hits[0]["sectionTitle"] == "Chapter One"
     assert hits[1]["sectionTitle"] == "Section 2"
     assert hits[0]["focusOffset"] >= 0
+
+
+def test_current_epub_search_context_uses_current_title(monkeypatch):
+    class _VisibleDock:
+        def isVisible(self):
+            return True
+
+    monkeypatch.setattr(epub_dock, "_epub_dock", _VisibleDock())
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 15)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "My Book.epub")
+    monkeypatch.setattr(epub_dock, "_current_epub_search_query", "topic")
+    monkeypatch.setattr(
+        epub_dock,
+        "_current_epub_search_hits",
+        [{"sectionIndex": 2, "sectionTitle": "Chapter 3", "snippet": "topic appears"}],
+    )
+
+    context = epub_dock.current_epub_search_context()
+
+    assert context["documentKind"] == "epub"
+    assert context["documentLabel"] == "My Book"
+    assert context["cardId"] == 15
+    assert context["query"] == "topic"
+    assert context["hits"][0]["sectionIndex"] == 2

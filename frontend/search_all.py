@@ -129,7 +129,15 @@ def _set_search_all_filter_enabled(filter_id: str, enabled: bool) -> None:
 
 
 class _SearchAllDialog(QDialog):
-    def __init__(self, parent=None, *, addon_dir: str, open_pdf_card, open_epub_card):
+    def __init__(
+        self,
+        parent=None,
+        *,
+        addon_dir: str,
+        open_pdf_card,
+        open_epub_card,
+        initial_query: str = "",
+    ):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._open_pdf_card = open_pdf_card
@@ -225,9 +233,14 @@ class _SearchAllDialog(QDialog):
 
         self._search.textChanged.connect(self._on_search_text_changed)
         self._search.returnPressed.connect(self._run_search)
-        self._update_search_button()
-        self._show_search_hint()
-        self._show_placeholder()
+        initial_query = str(initial_query or "").strip()
+        if initial_query:
+            self._search.setText(initial_query)
+            self._run_search()
+        else:
+            self._update_search_button()
+            self._show_search_hint()
+            self._show_placeholder()
 
     @staticmethod
     def _make_search_box():

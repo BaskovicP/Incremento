@@ -288,6 +288,31 @@ def test_current_card_pdf_search_hits_orders_pages_and_builds_snippets(monkeypat
     assert "excerpt" in hits[0]
 
 
+def test_current_pdf_search_context_uses_filename_label(monkeypatch):
+    class _VisibleDock:
+        def isVisible(self):
+            return True
+
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", _VisibleDock())
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "paper_name.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_search_query", "target phrase")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_search_hits", [{"page": 4, "snippet": "hit"}])
+    monkeypatch.setattr(
+        pdf_dock,
+        "pdf_display_label_from_filename",
+        lambda filename, fallback="PDF": "Paper Name",
+    )
+
+    context = pdf_dock.current_pdf_search_context()
+
+    assert context["documentKind"] == "pdf"
+    assert context["documentLabel"] == "Paper Name"
+    assert context["cardId"] == 42
+    assert context["query"] == "target phrase"
+    assert context["hits"][0]["page"] == 4
+
+
 def test_pdf_scroll_bridge_persists_updates(monkeypatch):
     calls = []
     monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")

@@ -194,6 +194,7 @@ from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
 from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
+from .frontend.current_document_search_dialog import _CurrentDocumentSearchDialog
 from .frontend.search_all import _SearchAllDialog
 from .backend.knowledge_tree import (
     NODE_KIND_ITEM as _KT_NODE_KIND_ITEM,
@@ -2559,20 +2560,62 @@ def _open_epub_card(
     )
 
 
-def _open_search_all() -> None:
+def _open_search_all(initial_query: str = "") -> None:
     _SearchAllDialog(
         mw,
         addon_dir=_ADDON_DIR,
         open_pdf_card=_open_pdf_card,
         open_epub_card=_open_epub_card,
+        initial_query=initial_query,
     ).exec()
 
 
-def _open_current_document_search() -> None:
-    if _pdf_dock_mod.open_current_document_find():
-        return
-    if _epub_dock_mod.open_current_document_find():
-        return
+def _open_current_document_search() -> bool:
+    pdf_context = _pdf_dock_mod.current_pdf_search_context()
+    if pdf_context is not None:
+        _CurrentDocumentSearchDialog(
+            mw,
+            document_kind="pdf",
+            document_label=str(pdf_context.get("documentLabel") or "PDF"),
+            initial_query=str(pdf_context.get("query") or ""),
+            search_hits_fn=lambda query: _pdf_dock_mod.current_card_pdf_search_hits(
+                int(pdf_context.get("cardId") or 0),
+                query,
+            ),
+            open_hit_fn=lambda hit, index, query: _pdf_dock_mod.open_current_pdf_search_hit(
+                hit,
+                index,
+                query,
+            ),
+            open_search_all_fn=_open_search_all,
+        ).exec()
+        return True
+
+    epub_context = _epub_dock_mod.current_epub_search_context()
+    if epub_context is not None:
+        _CurrentDocumentSearchDialog(
+            mw,
+            document_kind="epub",
+            document_label=str(epub_context.get("documentLabel") or "EPUB"),
+            initial_query=str(epub_context.get("query") or ""),
+            search_hits_fn=lambda query: _epub_dock_mod.current_card_epub_search_hits(
+                int(epub_context.get("cardId") or 0),
+                query,
+            ),
+            open_hit_fn=lambda hit, index, query: _epub_dock_mod.open_current_epub_search_hit(
+                hit,
+                index,
+                query,
+            ),
+            open_search_all_fn=_open_search_all,
+        ).exec()
+        return True
+
+    return False
+
+
+_pdf_dock_mod.register_current_document_search_callback(_open_current_document_search)
+_epub_dock_mod.register_current_document_search_callback(_open_current_document_search)
 
 
 def _current_reviewer_card_id() -> int | None:

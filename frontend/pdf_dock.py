@@ -691,6 +691,7 @@ _cb_fill_dock_field = None  # (idx: int, text: str) -> None
 _cb_get_add_card_dock = None  # () -> QDockWidget | None
 _cb_pdf_view_started = None  # (card_id: int) -> None
 _cb_pdf_view_stopped = None  # (card_id: int | None) -> None
+_cb_open_current_document_search = None  # () -> bool
 
 
 def register_add_card_callbacks(open_fn, fill_fn, get_dock_fn) -> None:
@@ -710,6 +711,11 @@ def register_pdf_view_callbacks(start_fn, stop_fn) -> None:
     global _cb_pdf_view_started, _cb_pdf_view_stopped
     _cb_pdf_view_started = start_fn
     _cb_pdf_view_stopped = stop_fn
+
+
+def register_current_document_search_callback(open_fn) -> None:
+    global _cb_open_current_document_search
+    _cb_open_current_document_search = open_fn
 
 
 def _add_card_source_for_new_note() -> str:
@@ -799,6 +805,24 @@ def current_card_pdf_search_hits(card_id: int, query: str, *, limit: int = 250) 
         }
         for page, text in rows
     ]
+
+
+def current_pdf_search_context() -> dict | None:
+    card_id = current_pdf_card_id()
+    if card_id is None or _pdf_dock is None:
+        return None
+    try:
+        if not _pdf_dock.isVisible():
+            return None
+    except Exception:
+        return None
+    return {
+        "documentKind": "pdf",
+        "documentLabel": pdf_display_label_from_filename(str(_current_pdf_filename or ""), fallback="PDF"),
+        "cardId": int(card_id),
+        "query": str(_current_pdf_search_query or ""),
+        "hits": list(_current_pdf_search_hits or []),
+    }
 
 
 def _sync_pdf_search_state(
@@ -925,6 +949,7 @@ _MSG_BOOKMARK_DELETE = "incremento_pdf_bookmark_delete:"
 _MSG_BOOKMARK_LIST = "incremento_pdf_bookmark_list:"
 _MSG_FIND = "incremento_pdf_find:"
 _MSG_FIND_NAV = "incremento_pdf_find_nav:"
+_MSG_OPEN_FIND_DIALOG = "incremento_pdf_open_find_dialog"
 
 
 def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
@@ -1609,6 +1634,11 @@ def _handle_pdf_js_message(msg: str) -> None:
             _open_pdf_search_hit(target_index)
         except Exception:
             pass
+    elif msg == _MSG_OPEN_FIND_DIALOG:
+        try:
+            open_current_document_find()
+        except Exception:
+            pass
     elif msg.startswith(_MSG_REPAIR_MISSING):
         _repair_missing_pdf()
     elif msg.startswith(_MSG_REGENERATE_COVER):
@@ -1988,12 +2018,55 @@ def open_current_document_find() -> bool:
     try:
         if not _pdf_dock.isVisible():
             return False
+        if _cb_open_current_document_search is not None:
+            return bool(_cb_open_current_document_search())
+    except Exception:
+        pass
+    try:
         _pdf_dock._view.page().runJavaScript(
             "window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();",
         )
         return True
     except Exception:
         return False
+
+
+def open_current_pdf_search_hit(hit: dict, index: int, query: str) -> bool:
+    card_id = current_pdf_card_id()
+    if card_id is None:
+        return False
+    page = int(hit.get("page", 1) or 1)
+    hits = current_card_pdf_search_hits(int(card_id), query) if str(query or "").strip() else []
+    resolved_index = int(index)
+    if hits:
+        matched = next(
+            (
+                idx
+                for idx, candidate in enumerate(hits)
+                if int(candidate.get("page", 0) or 0) == page
+                and str(candidate.get("excerpt") or candidate.get("snippet") or "")
+                == str(hit.get("excerpt") or hit.get("snippet") or "")
+            ),
+            -1,
+        )
+        if matched >= 0:
+            resolved_index = matched
+        elif resolved_index < 0 or resolved_index >= len(hits):
+            resolved_index = 0
+    show_pdf_in_dock(
+        int(card_id),
+        str(_current_pdf_filename or ""),
+        page,
+        get_zoom(_ADDON_DIR, _active_profile(), int(card_id)),
+        read_page=get_read_page(_ADDON_DIR, _active_profile(), int(card_id)),
+        search_query=str(query or ""),
+        jump_excerpt=str(hit.get("excerpt") or hit.get("snippet") or ""),
+        search_hits=hits,
+        active_search_hit_index=resolved_index,
+        preserve_history=True,
+        offer_due_review_prompt=False,
+    )
+    return True
 
 
 # ── Show PDF in dock ──────────────────────────────────────────────────────────

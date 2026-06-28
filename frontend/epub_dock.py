@@ -164,6 +164,7 @@ _cb_fill_dock_field = None
 _cb_get_add_card_dock = None
 _cb_epub_view_started = None
 _cb_epub_view_stopped = None
+_cb_open_current_document_search = None
 _epub_shortcuts_registered = False
 _epub_shortcuts = []
 _epub_key_filter = None
@@ -289,6 +290,28 @@ def current_card_epub_search_hits(card_id: int, query: str, *, limit: int = 250)
     return hits
 
 
+def current_epub_search_context() -> dict | None:
+    card_id = current_epub_card_id()
+    if card_id is None or _epub_dock is None:
+        return None
+    try:
+        if not _epub_dock.isVisible():
+            return None
+    except Exception:
+        return None
+    raw_label = str(_current_epub_filename or "").strip()
+    label = os.path.splitext(os.path.basename(raw_label))[0].strip() if raw_label else ""
+    if not label:
+        label = "EPUB"
+    return {
+        "documentKind": "epub",
+        "documentLabel": label,
+        "cardId": int(card_id),
+        "query": str(_current_epub_search_query or ""),
+        "hits": list(_current_epub_search_hits or []),
+    }
+
+
 class _ElidedLabel(QLabel):
     def __init__(self, text: str = "", parent=None):
         super().__init__(parent)
@@ -402,6 +425,11 @@ def register_epub_view_callbacks(start_fn, stop_fn) -> None:
     global _cb_epub_view_started, _cb_epub_view_stopped
     _cb_epub_view_started = start_fn
     _cb_epub_view_stopped = stop_fn
+
+
+def register_current_document_search_callback(open_fn) -> None:
+    global _cb_open_current_document_search
+    _cb_open_current_document_search = open_fn
 
 
 def _add_card_source_for_new_note() -> str:
@@ -2186,6 +2214,11 @@ def open_current_document_find() -> bool:
     try:
         if not _epub_dock.isVisible():
             return False
+        if _cb_open_current_document_search is not None:
+            return bool(_cb_open_current_document_search())
+    except Exception:
+        pass
+    try:
         _epub_dock._find_bar.setVisible(True)
         _epub_dock._find_input.setFocus()
         _epub_dock._find_input.selectAll()
@@ -2235,6 +2268,41 @@ def _step_epub_search(delta: int) -> None:
         return
     base_index = _current_epub_search_hit_index if _current_epub_search_hit_index >= 0 else 0
     _open_epub_search_hit(base_index + int(delta), offer_due_review_prompt=False)
+
+
+def open_current_epub_search_hit(hit: dict, index: int, query: str) -> bool:
+    card_id = current_epub_card_id()
+    if card_id is None:
+        return False
+    hits = current_card_epub_search_hits(int(card_id), query) if str(query or "").strip() else []
+    resolved_index = int(index)
+    if hits:
+        matched = next(
+            (
+                idx
+                for idx, candidate in enumerate(hits)
+                if int(candidate.get("sectionIndex", -1) or -1)
+                == int(hit.get("sectionIndex", -2) or -2)
+                and int(candidate.get("focusOffset", -1) or -1)
+                == int(hit.get("focusOffset", -2) or -2)
+            ),
+            -1,
+        )
+        if matched >= 0:
+            resolved_index = matched
+        elif resolved_index < 0 or resolved_index >= len(hits):
+            resolved_index = 0
+    selected_hit = hits[resolved_index] if hits and 0 <= resolved_index < len(hits) else hit
+    show_epub_in_dock(
+        int(card_id),
+        str(_current_epub_filename or ""),
+        section_index=int(selected_hit.get("sectionIndex", 0) or 0),
+        scroll_ratio=0.0,
+        focus_offset=int(selected_hit.get("focusOffset", -1) or -1),
+        search_query=str(query or ""),
+        offer_due_review_prompt=False,
+    )
+    return True
 
 
 def _epub_bookmarks() -> list[dict]:
