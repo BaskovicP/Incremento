@@ -9,6 +9,10 @@ const HL_COLORS = {
   green:  'rgba(0,200,80,0.4)',
   blue:   'rgba(30,144,255,0.4)',
   pink:   'rgba(255,80,140,0.4)',
+  aqua:   'rgba(45,212,191,0.42)',
+  orange: 'rgba(251,146,60,0.42)',
+  red:    'rgba(248,113,113,0.42)',
+  purple: 'rgba(168,85,247,0.4)',
   snapshot: 'rgba(37,99,235,0.12)',
 };
 

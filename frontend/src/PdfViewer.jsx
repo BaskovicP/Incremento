@@ -7,12 +7,20 @@ const HL_COLORS = {
   green:  'rgba(0,200,80,0.4)',
   blue:   'rgba(30,144,255,0.4)',
   pink:   'rgba(255,80,140,0.4)',
+  aqua:   'rgba(45,212,191,0.42)',
+  orange: 'rgba(251,146,60,0.42)',
+  red:    'rgba(248,113,113,0.42)',
+  purple: 'rgba(168,85,247,0.4)',
 };
 const HL_SOLID = {
   yellow: '#FFE000',
   green:  '#00C850',
   blue:   '#1E90FF',
   pink:   '#FF508C',
+  aqua:   '#2DD4BF',
+  orange: '#FB923C',
+  red:    '#F87171',
+  purple: '#A855F7',
   snapshot: '#2563EB',
 };
 const CONTROLS_HEIGHT = 250;

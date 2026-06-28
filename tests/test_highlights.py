@@ -80,6 +80,11 @@ class TestAddHighlight:
         assert result[0]["note"] == ""
         assert result[0]["rects"] == []
 
+    def test_preserves_extended_color_values(self, tmp_path):
+        add_highlight(str(tmp_path), "TestProfile", 5, make_hl("hl-x", color="orange"))
+        result = load_highlights(str(tmp_path), "TestProfile", 5)
+        assert result[0]["color"] == "orange"
+
 
 class TestRemoveHighlight:
     def test_removes_specific_highlight(self, tmp_path):

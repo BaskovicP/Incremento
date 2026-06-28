@@ -2811,6 +2811,13 @@ def addEpubFunction() -> None:
         showInfo(f"All EPUB imports failed ({len(failed)}):\n\n{failed_lines}{extra}")
 
 
+def importNotebookCitationsFunction() -> None:
+    from .frontend.notebook_citation_import_dialog import NotebookCitationImportDialog
+
+    dlg = NotebookCitationImportDialog(addon_dir=_ADDON_DIR, parent=mw)
+    dlg.exec()
+
+
 def exportFunction() -> None:
     import datetime
     import tempfile
@@ -5194,6 +5201,10 @@ def _build_incremento_menu() -> None:
     _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
     qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
     _utilsMenu.addAction(_reindexPdfTextAction)
+
+    _importNotebookCitationsAction = QAction("Import Notebook Citations to PDF Highlights…", mw)
+    qconnect(_importNotebookCitationsAction.triggered, importNotebookCitationsFunction)
+    _utilsMenu.addAction(_importNotebookCitationsAction)
 
     _ocrImageTextAction = QAction("OCR Image Text (Existing Cards)…", mw)
     qconnect(_ocrImageTextAction.triggered, ocrImageTextFunction)
