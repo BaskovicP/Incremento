@@ -765,6 +765,74 @@ def _set_note_tags(note, tags: list[str]) -> None:
         pass
 
 
+def _auto_extract_tag_keys_for_editor(editor, note) -> set[str]:
+    if editor is None or note is None:
+        return set()
+    try:
+        if getattr(editor, "_incremento_auto_extract_tag_note", None) is not note:
+            return set()
+        stored = getattr(editor, "_incremento_auto_extract_tag_keys", []) or []
+    except Exception:
+        return set()
+    return {
+        str(tag or "").strip().lower()
+        for tag in list(stored)
+        if str(tag or "").strip()
+    }
+
+
+def _set_auto_extract_tag_keys_for_editor(editor, note, tags) -> None:
+    if editor is None:
+        return
+    normalized = sorted(
+        {
+            str(tag or "").strip().lower()
+            for tag in list(tags or [])
+            if str(tag or "").strip()
+        }
+    )
+    try:
+        setattr(editor, "_incremento_auto_extract_tag_note", note)
+        setattr(editor, "_incremento_auto_extract_tag_keys", normalized)
+    except Exception:
+        pass
+
+
+def _replace_auto_extract_tags(
+    editor,
+    note,
+    *,
+    source_tags=None,
+    mark_topic: bool = False,
+) -> bool:
+    if note is None:
+        return False
+
+    source_list = _normalize_tag_list(source_tags or [])
+    classification_tags = configured_add_card_topic_tags() if mark_topic else []
+    desired_auto_tags = _normalize_tag_list(list(source_list) + list(classification_tags))
+    desired_auto_keys = {tag.lower() for tag in desired_auto_tags}
+    previous_auto_keys = _auto_extract_tag_keys_for_editor(editor, note)
+
+    existing_tags = _note_tags(note)
+    updated = [
+        tag for tag in existing_tags if tag.lower() not in previous_auto_keys
+    ]
+    updated_keys = {tag.lower() for tag in updated}
+    for tag in desired_auto_tags:
+        lowered = tag.lower()
+        if lowered in updated_keys:
+            continue
+        updated.append(tag)
+        updated_keys.add(lowered)
+
+    changed = updated != existing_tags or previous_auto_keys != desired_auto_keys
+    if changed:
+        _set_note_tags(note, updated)
+    _set_auto_extract_tag_keys_for_editor(editor, note, desired_auto_tags)
+    return changed
+
+
 def _set_editor_web_tags(editor, tags: list[str]) -> None:
     try:
         editor.web.eval(
@@ -2008,6 +2076,7 @@ def _prime_editor_note_for_extract(
         note.tags = []
     except Exception:
         pass
+    _set_auto_extract_tag_keys_for_editor(editor, note, [])
     for field_name, value in dict(field_values or {}).items():
         try:
             if field_name in note:
@@ -2015,14 +2084,19 @@ def _prime_editor_note_for_extract(
         except Exception:
             pass
     classification_excludes = _classification_tag_set()
+    applied_source_tags = []
     if configured_extract_copy_source_tags():
-        copy_source_tags_to_note(
-            note,
-            source_tags or [],
-            exclude_tags=classification_excludes,
-        )
-    if mark_topic:
-        add_topic_tags_to_note(note)
+        applied_source_tags = [
+            tag
+            for tag in _normalize_tag_list(source_tags or [])
+            if tag.lower() not in classification_excludes
+        ]
+    _replace_auto_extract_tags(
+        editor,
+        note,
+        source_tags=applied_source_tags,
+        mark_topic=mark_topic,
+    )
     try:
         editor.loadNote()
     except Exception:
@@ -2042,24 +2116,26 @@ def _apply_pending_extract_tags_to_editor(
         return False
 
     options = pending_extract_options() or {}
-    tags_changed = False
     classification_excludes = _classification_tag_set()
+    source_tags = []
     if configured_extract_copy_source_tags():
         source_tags = options.get("source_tags") or []
         if not source_tags:
             source_tags = source_note_tags_for_card(
                 _source_card_id_from_extract_options(options)
             )
-        tags_changed = bool(
-            copy_source_tags_to_note(
-                note,
-                source_tags,
-                exclude_tags=classification_excludes,
-            )
-        )
+        source_tags = [
+            tag
+            for tag in _normalize_tag_list(source_tags)
+            if tag.lower() not in classification_excludes
+        ]
 
-    if mark_topic and add_topic_tags_to_note(note):
-        tags_changed = True
+    tags_changed = _replace_auto_extract_tags(
+        editor,
+        note,
+        source_tags=source_tags,
+        mark_topic=mark_topic,
+    )
 
     if tags_changed:
         _set_editor_tags(editor, _note_tags(note))
@@ -2502,6 +2578,12 @@ def transfer_selection_to_field(idx: int) -> None:
             else source_relative_extract_priority_for_source(resolved_source)
         )
         mark_topic = _extract_mark_topic_for_transfer()
+        set_pending_extract_options(
+            priority=priority,
+            mark_topic=mark_topic,
+            link_to_knowledge_tree=_extract_link_to_knowledge_tree_for_transfer(),
+            source=resolved_source,
+        )
         fill_dock_field(
             idx,
             text,
@@ -2513,12 +2595,6 @@ def transfer_selection_to_field(idx: int) -> None:
                 else _epub_citation()
             ),
             mark_topic=mark_topic,
-        )
-        set_pending_extract_options(
-            priority=priority,
-            mark_topic=mark_topic,
-            link_to_knowledge_tree=_extract_link_to_knowledge_tree_for_transfer(),
-            source=resolved_source,
         )
 
     def _web_citation() -> str | None:

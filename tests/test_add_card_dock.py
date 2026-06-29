@@ -1003,6 +1003,41 @@ def test_pending_pdf_extract_applies_source_tags_to_add_card_editor(monkeypatch)
     assert dock.pending_extract_options()["source_tags"] == ["Topic", "Source", "PDF"]
 
 
+def test_pending_extract_replaces_previous_auto_tags_when_source_changes(monkeypatch):
+    note = _FakeNote(["keep", "Source", "topic"], note_id=11)
+    editor = _FakeEditor(note=note, add_mode=True)
+    refreshed = []
+    tag_refresh = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: refreshed.append(current_editor))
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: tag_refresh.append(current_editor))
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+
+    dock._set_auto_extract_tag_keys_for_editor(editor, note, ["Source", "topic"])
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_options",
+        {
+            "priority": 25.0,
+            "mark_topic": False,
+            "link_to_knowledge_tree": False,
+            "source": "reviewer",
+            "source_card_id": 55,
+            "source_tags": ["Reviewer"],
+            "seen": 0.0,
+        },
+    )
+
+    changed = dock._apply_pending_extract_tags_to_editor(editor)
+
+    assert changed is True
+    assert note.tags == ["keep", "Reviewer"]
+    assert editor.tags.text() == "keep Reviewer"
+    assert refreshed == [editor]
+    assert tag_refresh == [editor]
+
+
 def test_pending_pdf_extract_leaves_tags_untouched_when_copy_disabled(monkeypatch):
     note = _FakeNote(["existing"], note_id=11)
     editor = _FakeEditor(note=note, add_mode=True)
@@ -1646,6 +1681,37 @@ def test_apply_extract_topic_default_respects_current_item_choice(monkeypatch):
     dock._apply_extract_topic_default_to_editor(editor)
 
     assert note.tags == ["item", "writing"]
+
+
+def test_transfer_selection_to_field_updates_pending_extract_source_before_fill(monkeypatch):
+    pending_sources = []
+
+    monkeypatch.setattr(dock, "_has_recent_selection", lambda: True)
+    monkeypatch.setattr(dock, "_last_selection_source", "reviewer")
+    monkeypatch.setattr(dock, "_last_selection_text", "")
+    monkeypatch.setattr(dock, "_current_extract_priority", None)
+    monkeypatch.setattr(dock, "_resolve_selection_from_source", lambda source, callback: callback(source, "Selection"))
+    monkeypatch.setattr(dock, "source_relative_extract_priority_for_source", lambda source: 15.0)
+    monkeypatch.setattr(dock, "_extract_mark_topic_for_transfer", lambda: False)
+    monkeypatch.setattr(dock, "_extract_link_to_knowledge_tree_for_transfer", lambda: True)
+
+    original_set_pending = dock.set_pending_extract_options
+
+    def _record_pending(**kwargs):
+        result = original_set_pending(**kwargs)
+        pending_sources.append(result["source"])
+        return result
+
+    monkeypatch.setattr(dock, "set_pending_extract_options", _record_pending)
+    monkeypatch.setattr(
+        dock,
+        "fill_dock_field",
+        lambda *args, **kwargs: pending_sources.append((dock.pending_extract_options() or {}).get("source")),
+    )
+
+    dock.transfer_selection_to_field(0)
+
+    assert pending_sources == ["reviewer", "reviewer"]
 
 
 def test_toggle_editor_topic_button_removes_item_tags(monkeypatch):
