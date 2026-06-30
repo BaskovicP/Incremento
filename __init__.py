@@ -230,6 +230,45 @@ def configured_show_incremento_fields(cfg: dict | None = None) -> bool:
     return bool(config.get("show_incremento_fields", False))
 
 
+def configured_auto_create_topics_deck(cfg: dict | None = None) -> bool:
+    config = cfg if cfg is not None else (mw.addonManager.getConfig(__name__) or {})
+    return bool(config.get("auto_create_topics_deck", True))
+
+
+def configured_auto_create_topics_deck_profiles(cfg: dict | None = None) -> list[str]:
+    config = cfg if cfg is not None else (mw.addonManager.getConfig(__name__) or {})
+    raw = config.get("auto_create_topics_deck_profiles", [])
+    if isinstance(raw, str):
+        parts = raw.replace(",", "\n").splitlines()
+    elif isinstance(raw, (list, tuple, set)):
+        parts = list(raw)
+    else:
+        parts = []
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in parts:
+        name = str(item or "").strip()
+        if not name:
+            continue
+        normalized = name.casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        names.append(name)
+    return names
+
+
+def should_auto_create_topics_deck(profile_name: str, cfg: dict | None = None) -> bool:
+    if not configured_auto_create_topics_deck(cfg):
+        return False
+    selected_profiles = configured_auto_create_topics_deck_profiles(cfg)
+    if not selected_profiles:
+        return True
+    target = str(profile_name or "").strip().casefold()
+    return bool(target) and target in {name.casefold() for name in selected_profiles}
+
+
 def _track_editor_for_ocr_sync(editor) -> None:
     try:
         _ocr_sync_editors.add(editor)
@@ -1888,9 +1927,11 @@ def _open_pdf_reference(
     page: int,
     filename: str = "",
     excerpt: str = "",
+    highlight_id: str = "",
 ) -> None:
     clean_filename = str(filename or "").strip()
     clean_excerpt = str(excerpt or "").strip()
+    clean_highlight_id = str(highlight_id or "").strip()
     live_card_id = int(card_id or 0)
     try:
         if live_card_id > 0:
@@ -1938,6 +1979,7 @@ def _open_pdf_reference(
             zoom,
             via_link=True,
             jump_excerpt=clean_excerpt,
+            jump_highlight_id=clean_highlight_id,
         )
     else:
         _pdf_dock_mod.show_pdf_in_dock(
@@ -1947,6 +1989,7 @@ def _open_pdf_reference(
             zoom,
             via_link=True,
             jump_excerpt=clean_excerpt,
+            jump_highlight_id=clean_highlight_id,
             offer_due_review_prompt=False,
         )
 
@@ -2058,6 +2101,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 int(data.get("page") or 1),
                 str(data.get("filename") or ""),
                 str(data.get("excerpt") or ""),
+                str(data.get("highlight_id") or ""),
             )
         except Exception:
             pass
@@ -2179,6 +2223,7 @@ def _on_profile_did_open() -> None:
     """Activate per-profile paths and run one-time migration on first load."""
     from .backend.migration import migrate_to_profile_dir
     profile = _current_profile_name()
+    cfg = mw.addonManager.getConfig(__name__) or {}
     # Reset Qt WebEngine profile singletons before migration so they are
     # recreated with the correct per-profile storage path on next use.
     _video_dock_mod.reset_for_profile_switch()
@@ -2186,7 +2231,8 @@ def _on_profile_did_open() -> None:
     _paths.set_active_profile(profile)
     migrate_to_profile_dir(_ADDON_DIR, profile)
     try:
-        _create_topics_deck()
+        if should_auto_create_topics_deck(profile, cfg):
+            _create_topics_deck()
     except Exception:
         pass
 
@@ -2571,6 +2617,14 @@ def _open_search_all(initial_query: str = "") -> None:
 
 
 def _open_current_document_search() -> bool:
+    if _pdf_dock_mod.open_current_document_find():
+        return True
+    if _epub_dock_mod.open_current_document_find():
+        return True
+    return False
+
+
+def _open_current_document_search_results() -> bool:
     pdf_context = _pdf_dock_mod.current_pdf_search_context()
     if pdf_context is not None:
         _CurrentDocumentSearchDialog(
@@ -2614,8 +2668,8 @@ def _open_current_document_search() -> bool:
     return False
 
 
-_pdf_dock_mod.register_current_document_search_callback(_open_current_document_search)
-_epub_dock_mod.register_current_document_search_callback(_open_current_document_search)
+_pdf_dock_mod.register_current_document_search_results_callback(_open_current_document_search_results)
+_epub_dock_mod.register_current_document_search_results_callback(_open_current_document_search_results)
 
 
 def _current_reviewer_card_id() -> int | None:
@@ -4085,6 +4139,32 @@ def _current_profile_name() -> str:
     return "Unknown"
 
 
+def _available_profile_names() -> list[str]:
+    pm = getattr(mw, "pm", None)
+    names: set[str] = set()
+    current_name = _current_profile_name()
+    if current_name and current_name != "Unknown":
+        names.add(current_name)
+    if pm is None:
+        return sorted(names, key=str.casefold)
+
+    base = getattr(pm, "base", None)
+    try:
+        base = base() if callable(base) else base
+    except Exception:
+        base = None
+    if not base or not os.path.isdir(base):
+        return sorted(names, key=str.casefold)
+
+    for name in os.listdir(base):
+        pdir = os.path.join(base, name)
+        if not os.path.isdir(pdir):
+            continue
+        if os.path.isfile(os.path.join(pdir, "collection.anki2")):
+            names.add(str(name))
+    return sorted(names, key=str.casefold)
+
+
 def _iter_other_profile_collections() -> list[tuple[str, str]]:
     """Return [(profile_name, collection_db_path)] for profiles other than current."""
     pm = getattr(mw, "pm", None)
@@ -4882,6 +4962,7 @@ def openSettingsFunction() -> None:
         current_extract_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(cfg),
         current_extract_copy_source_tags=_add_card_dock_mod.configured_extract_copy_source_tags(cfg),
         current_extract_highlight_when_extracting=_pdf_dock_mod.configured_highlight_when_extracting(cfg),
+        current_pdf_highlight_extract_field=_pdf_dock_mod.configured_pdf_highlight_extract_field(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
@@ -4903,6 +4984,9 @@ def openSettingsFunction() -> None:
         current_default_topic_a_factor=_configured_default_topic_a_factor(cfg),
         current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
         current_add_card_item_tags=_add_card_dock_mod.configured_add_card_item_tags(cfg),
+        current_auto_create_topics_deck=configured_auto_create_topics_deck(cfg),
+        current_auto_create_topics_deck_profiles=configured_auto_create_topics_deck_profiles(cfg),
+        available_profile_names=_available_profile_names(),
         current_topic_postpone_enabled=_configured_topic_postpone_enabled(cfg),
         current_topic_postpone_mode=cfg.get("topic_postpone_mode", "timed"),
         current_topic_postpone_minutes=cfg.get("topic_postpone_minutes", 30),
@@ -4931,6 +5015,7 @@ def openSettingsFunction() -> None:
     cfg["extract_mark_topic"] = dlg.extract_mark_topic
     cfg["extract_copy_source_tags"] = dlg.extract_copy_source_tags
     cfg["highlight_when_extracting"] = dlg.extract_highlight_when_extracting
+    cfg["pdf_highlight_extract_field"] = dlg.pdf_highlight_extract_field
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
@@ -4952,6 +5037,8 @@ def openSettingsFunction() -> None:
     cfg["default_topic_a_factor"] = dlg.default_topic_a_factor
     cfg["add_card_topic_tags"] = dlg.add_card_topic_tags
     cfg["add_card_item_tags"] = dlg.add_card_item_tags
+    cfg["auto_create_topics_deck"] = dlg.auto_create_topics_deck
+    cfg["auto_create_topics_deck_profiles"] = dlg.auto_create_topics_deck_profiles
     cfg["topic_postpone_enabled"] = dlg.topic_postpone_enabled
     cfg["topic_postpone_mode"] = dlg.topic_postpone_mode
     cfg["topic_postpone_minutes"] = dlg.topic_postpone_minutes

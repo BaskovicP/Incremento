@@ -7740,6 +7740,23 @@
   function normalizeJumpText(value) {
     return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
   }
+  function firstHighlightRect(highlight) {
+    const rects = Array.isArray(highlight == null ? void 0 : highlight.rects) ? highlight.rects : [];
+    const first = rects[0] || {};
+    return {
+      x: Number(first.x ?? Number.MAX_SAFE_INTEGER),
+      y: Number(first.y ?? Number.MAX_SAFE_INTEGER)
+    };
+  }
+  function compareHighlights(a, b) {
+    const pageDiff = Number((a == null ? void 0 : a.page) || 0) - Number((b == null ? void 0 : b.page) || 0);
+    if (pageDiff !== 0) return pageDiff;
+    const aRect = firstHighlightRect(a);
+    const bRect = firstHighlightRect(b);
+    if (aRect.y !== bRect.y) return aRect.y - bRect.y;
+    if (aRect.x !== bRect.x) return aRect.x - bRect.x;
+    return String((a == null ? void 0 : a.id) || "").localeCompare(String((b == null ? void 0 : b.id) || ""));
+  }
   function clearJumpHitStyles(textLayer) {
     if (!textLayer) return;
     textLayer.querySelectorAll('span[data-inc-jump-hit="1"]').forEach((span) => {
@@ -7911,6 +7928,7 @@
     const [highlightsScope, setHighlightsScope] = reactExports.useState("all");
     const [highlightsNotesOnly, setHighlightsNotesOnly] = reactExports.useState(false);
     const [focusedHighlightId, setFocusedHighlightId] = reactExports.useState(null);
+    const [activeHighlightId, setActiveHighlightId] = reactExports.useState(null);
     const [highlightJumpNonce, setHighlightJumpNonce] = reactExports.useState(0);
     const [pageJumpEditing, setPageJumpEditing] = reactExports.useState(false);
     const [pageJumpValue, setPageJumpValue] = reactExports.useState("");
@@ -7954,12 +7972,12 @@
     const progressPct = totalPages > 0 && readPage > 0 ? Math.max(0, Math.min(100, Math.round(readPage / totalPages * 100))) : 0;
     const progressSegments = 10;
     const filledSegments = Math.round(progressPct / 100 * progressSegments);
-    const sortedHighlights = [...highlights].sort((a, b) => {
-      if ((a.page || 0) !== (b.page || 0)) return (a.page || 0) - (b.page || 0);
-      return String(a.id || "").localeCompare(String(b.id || ""));
-    });
+    const sortedHighlights = [...highlights].sort(compareHighlights);
     const scopedHighlightsForPanel = highlightsScope === "page" ? sortedHighlights.filter((h) => h.page === page) : sortedHighlights;
     const highlightsForPanel = highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel;
+    const currentHighlightIndex = sortedHighlights.findIndex(
+      (highlight) => String(highlight.id || "") === String(activeHighlightId || "")
+    );
     const limitEnabled = !!(limitStatus == null ? void 0 : limitStatus.enabled);
     const limitMode = String((limitStatus == null ? void 0 : limitStatus.enforcement_mode) || "warning");
     const limitUsed = Number((limitStatus == null ? void 0 : limitStatus.pages_used) || 0);
@@ -8139,6 +8157,7 @@
         if (!scrollToPdfRect(target.rects[0])) return;
         clearPendingResumeScroll();
         suppressScrollPersistence(900);
+        setActiveHighlightId(String(pendingId));
         setFocusedHighlightId(pendingId);
         window.setTimeout(() => setFocusedHighlightId(null), 1400);
         pendingHighlightScrollRef.current = null;
@@ -8159,6 +8178,7 @@
           if (((_b = highlightTarget == null ? void 0 : highlightTarget.rects) == null ? void 0 : _b.length) && scrollToPdfRect(highlightTarget.rects[0])) {
             clearPendingResumeScroll();
             suppressScrollPersistence(900);
+            setActiveHighlightId(String(highlightTarget.id || ""));
             setFocusedHighlightId(String(highlightTarget.id || ""));
             window.setTimeout(() => setFocusedHighlightId(null), 1600);
             pendingExcerptJumpRef.current = "";
@@ -8276,11 +8296,7 @@
         if ((event.metaKey || event.ctrlKey) && String(event.key || "").toLowerCase() === "f") {
           event.preventDefault();
           event.stopPropagation();
-          if (typeof window.pycmd === "function") {
-            window.pycmd("incremento_pdf_open_find_dialog");
-          } else {
-            openFind();
-          }
+          openFind();
           return;
         }
         if (event.key === "Escape" && findOpen) {
@@ -8481,6 +8497,33 @@
       suppressScrollPersistence(600);
       rawNav(delta);
     }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
+    const jumpToHighlight = reactExports.useCallback((highlight, { closePanel = false } = {}) => {
+      if (!(highlight == null ? void 0 : highlight.id)) return;
+      const targetPage = Math.max(1, parseInt(highlight.page || 1, 10));
+      const delta = targetPage - pageRef.current;
+      pendingHighlightScrollRef.current = String(highlight.id);
+      setActiveHighlightId(String(highlight.id));
+      setHighlightJumpNonce((n) => n + 1);
+      if (delta !== 0) {
+        limitAwareNav(delta, { scrollToTop: false });
+      }
+      if (closePanel) {
+        setShowHighlightsPanel(false);
+      }
+    }, [limitAwareNav, pageRef]);
+    const moveHighlightCursor = reactExports.useCallback((direction) => {
+      if (!sortedHighlights.length) return;
+      let baseIndex = currentHighlightIndex;
+      if (baseIndex < 0) {
+        baseIndex = sortedHighlights.findIndex((highlight) => Number(highlight.page || 0) >= Number(pageRef.current || 0));
+        if (baseIndex < 0) {
+          baseIndex = direction > 0 ? -1 : 0;
+        }
+      }
+      const offset = direction >= 0 ? 1 : -1;
+      const nextIndex = (baseIndex + offset + sortedHighlights.length) % sortedHighlights.length;
+      jumpToHighlight(sortedHighlights[nextIndex], { closePanel: false });
+    }, [currentHighlightIndex, jumpToHighlight, pageRef, sortedHighlights]);
     const openPageJump = reactExports.useCallback(() => {
       if (totalPages <= 0) return;
       setPageJumpValue(String(pageRef.current || page || 1));
@@ -8546,8 +8589,8 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null) => {
-        setHighlights(window._incPdfHighlights || []);
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null) => {
+        setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
         window._incPdfBookmarks = null;
@@ -8557,6 +8600,8 @@
         setActiveSearchHitIndex(Number.isInteger(startActiveSearchHitIndex) ? startActiveSearchHitIndex : -1);
         setReadAnchor(startReadAnchor && typeof startReadAnchor === "object" ? startReadAnchor : null);
         pendingExcerptJumpRef.current = String(startJumpExcerpt || "").trim();
+        pendingHighlightScrollRef.current = String(startJumpHighlightId || "").trim();
+        setActiveHighlightId(String(startJumpHighlightId || "").trim() || null);
         pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
         pendingPageTopScrollRef.current = false;
         pendingResumeScrollRef.current = clampScrollRatio(startScrollRatio);
@@ -8585,6 +8630,9 @@
         if (data.page === pageRef.current) {
           setPageCards(data.cards || []);
         }
+      };
+      window.incrementoReceivePdfHighlights = (items) => {
+        setHighlights(Array.isArray(items) ? items.slice().sort(compareHighlights) : []);
       };
       window.incrementoReceivePdfLimitStatus = (status) => {
         setLimitStatus(status || DEFAULT_LIMIT_STATUS);
@@ -8623,6 +8671,7 @@
           pending.searchHits || [],
           pending.activeSearchHitIndex ?? -1,
           pending.jumpExcerpt || "",
+          pending.jumpHighlightId || "",
           pending.scrollToReadAnchor || false,
           pending.limitStatus || DEFAULT_LIMIT_STATUS,
           pending.autoHighlightOnExtract,
@@ -8639,6 +8688,7 @@
         delete window.incrementoSetAutoHighlightOnExtract;
         delete window.incrementoSetScrollToTopOnPageChange;
         delete window.incrementoReceivePageCards;
+        delete window.incrementoReceivePdfHighlights;
         delete window.incrementoReceivePdfLimitStatus;
         delete window.incrementoReceivePdfBookmarks;
         delete window.incrementoUpdatePdfHighlightNote;
@@ -8991,6 +9041,14 @@
                         setSearchQuery("");
                       },
                       children: "Close"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      onClick: () => window.pycmd("incremento_pdf_open_find_dialog"),
+                      children: "All"
                     }
                   )
                 ] }),
@@ -9373,6 +9431,24 @@
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
+                        onClick: () => moveHighlightCursor(-1),
+                        disabled: sortedHighlights.length === 0,
+                        style: { fontSize: 12, padding: "1px 8px" },
+                        children: "Previous Highlight"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        onClick: () => moveHighlightCursor(1),
+                        disabled: sortedHighlights.length === 0,
+                        style: { fontSize: 12, padding: "1px 8px" },
+                        children: "Next Highlight"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
                         onClick: () => setHighlightsScope("all"),
                         style: {
                           border: "1px solid rgba(59,130,246,0.55)",
@@ -9439,21 +9515,18 @@
                 highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? "No highlight notes on this page yet." : "No highlight notes yet." : "No highlights yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.map((hl) => {
                   const note = String(hl.note || "").trim();
                   const excerpt = String(hl.text || "(no text)").trim();
+                  const linkedNoteId = Number(hl.linked_note_id || 0);
+                  const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
+                  const isActive = String(hl.id || "") === String(activeHighlightId || "");
                   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
                     "button",
                     {
-                      onClick: () => {
-                        const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
-                        pendingHighlightScrollRef.current = hl.id;
-                        setHighlightJumpNonce((n) => n + 1);
-                        limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
-                        setShowHighlightsPanel(false);
-                      },
+                      onClick: () => jumpToHighlight(hl, { closePanel: true }),
                       style: {
                         textAlign: "left",
-                        border: "1px solid rgba(90,90,90,0.55)",
+                        border: isActive ? "1px solid rgba(96,165,250,0.75)" : "1px solid rgba(90,90,90,0.55)",
                         borderRadius: 6,
-                        background: "rgba(35,35,35,0.75)",
+                        background: isActive ? "rgba(30,58,138,0.32)" : "rgba(35,35,35,0.75)",
                         color: "inherit",
                         cursor: "pointer",
                         padding: "8px 10px"
@@ -9481,6 +9554,44 @@
                               hl.page || 1
                             ] })
                           ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", fontSize: 11 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "span",
+                            {
+                              style: {
+                                color: hasLinkedCard ? "rgb(147,197,253)" : "rgba(229,231,235,0.72)",
+                                fontWeight: 700
+                              },
+                              children: hasLinkedCard ? "Preview Card" : "Create Card"
+                            }
+                          ) })
+                        ] }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              title: hasLinkedCard ? "Preview the card already linked to this highlight" : "Prefill Add Card from this highlight",
+                              onClick: (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (hasLinkedCard) {
+                                  window.pycmd(`incremento_open_card:${linkedNoteId}`);
+                                  return;
+                                }
+                                window.pycmd("incremento_pdf_hl_card:" + JSON.stringify({ id: hl.id }));
+                              },
+                              style: {
+                                border: "1px solid rgba(74,144,217,0.55)",
+                                borderRadius: 4,
+                                background: "rgba(74,144,217,0.12)",
+                                color: "rgba(147,197,253,0.95)",
+                                cursor: "pointer",
+                                fontSize: 11,
+                                padding: "1px 7px",
+                                flexShrink: 0
+                              },
+                              children: hasLinkedCard ? "Preview Card" : "Create Card"
+                            }
+                          ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {

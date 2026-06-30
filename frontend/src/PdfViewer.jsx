@@ -268,6 +268,25 @@ function normalizeJumpText(value) {
     .trim();
 }
 
+function firstHighlightRect(highlight) {
+  const rects = Array.isArray(highlight?.rects) ? highlight.rects : [];
+  const first = rects[0] || {};
+  return {
+    x: Number(first.x ?? Number.MAX_SAFE_INTEGER),
+    y: Number(first.y ?? Number.MAX_SAFE_INTEGER),
+  };
+}
+
+function compareHighlights(a, b) {
+  const pageDiff = Number(a?.page || 0) - Number(b?.page || 0);
+  if (pageDiff !== 0) return pageDiff;
+  const aRect = firstHighlightRect(a);
+  const bRect = firstHighlightRect(b);
+  if (aRect.y !== bRect.y) return aRect.y - bRect.y;
+  if (aRect.x !== bRect.x) return aRect.x - bRect.x;
+  return String(a?.id || '').localeCompare(String(b?.id || ''));
+}
+
 function clearJumpHitStyles(textLayer) {
   if (!textLayer) return;
   textLayer.querySelectorAll('span[data-inc-jump-hit="1"]').forEach((span) => {
@@ -461,6 +480,7 @@ export default function PdfViewer() {
   const [highlightsScope, setHighlightsScope] = useState('all');
   const [highlightsNotesOnly, setHighlightsNotesOnly] = useState(false);
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
+  const [activeHighlightId, setActiveHighlightId] = useState(null);
   const [highlightJumpNonce, setHighlightJumpNonce] = useState(0);
   const [pageJumpEditing, setPageJumpEditing] = useState(false);
   const [pageJumpValue, setPageJumpValue] = useState('');
@@ -524,16 +544,16 @@ export default function PdfViewer() {
     : 0;
   const progressSegments = 10;
   const filledSegments = Math.round((progressPct / 100) * progressSegments);
-  const sortedHighlights = [...highlights].sort((a, b) => {
-    if ((a.page || 0) !== (b.page || 0)) return (a.page || 0) - (b.page || 0);
-    return String(a.id || '').localeCompare(String(b.id || ''));
-  });
+  const sortedHighlights = [...highlights].sort(compareHighlights);
   const scopedHighlightsForPanel = highlightsScope === 'page'
     ? sortedHighlights.filter((h) => h.page === page)
     : sortedHighlights;
   const highlightsForPanel = highlightsNotesOnly
     ? scopedHighlightsForPanel.filter((h) => String(h.note || '').trim())
     : scopedHighlightsForPanel;
+  const currentHighlightIndex = sortedHighlights.findIndex(
+    (highlight) => String(highlight.id || '') === String(activeHighlightId || ''),
+  );
   const limitEnabled = !!limitStatus?.enabled;
   const limitMode = String(limitStatus?.enforcement_mode || 'warning');
   const limitUsed = Number(limitStatus?.pages_used || 0);
@@ -737,6 +757,7 @@ export default function PdfViewer() {
       if (!scrollToPdfRect(target.rects[0])) return;
       clearPendingResumeScroll();
       suppressScrollPersistence(900);
+      setActiveHighlightId(String(pendingId));
       setFocusedHighlightId(pendingId);
       window.setTimeout(() => setFocusedHighlightId(null), 1400);
       pendingHighlightScrollRef.current = null;
@@ -760,6 +781,7 @@ export default function PdfViewer() {
         if (highlightTarget?.rects?.length && scrollToPdfRect(highlightTarget.rects[0])) {
           clearPendingResumeScroll();
           suppressScrollPersistence(900);
+          setActiveHighlightId(String(highlightTarget.id || ''));
           setFocusedHighlightId(String(highlightTarget.id || ''));
           window.setTimeout(() => setFocusedHighlightId(null), 1600);
           pendingExcerptJumpRef.current = '';
@@ -890,11 +912,7 @@ export default function PdfViewer() {
       if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'f') {
         event.preventDefault();
         event.stopPropagation();
-        if (typeof window.pycmd === 'function') {
-          window.pycmd('incremento_pdf_open_find_dialog');
-        } else {
-          openFind();
-        }
+        openFind();
         return;
       }
       if (event.key === 'Escape' && findOpen) {
@@ -1118,6 +1136,35 @@ export default function PdfViewer() {
     rawNav(delta);
   }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
 
+  const jumpToHighlight = useCallback((highlight, { closePanel = false } = {}) => {
+    if (!highlight?.id) return;
+    const targetPage = Math.max(1, parseInt(highlight.page || 1, 10));
+    const delta = targetPage - pageRef.current;
+    pendingHighlightScrollRef.current = String(highlight.id);
+    setActiveHighlightId(String(highlight.id));
+    setHighlightJumpNonce((n) => n + 1);
+    if (delta !== 0) {
+      limitAwareNav(delta, { scrollToTop: false });
+    }
+    if (closePanel) {
+      setShowHighlightsPanel(false);
+    }
+  }, [limitAwareNav, pageRef]);
+
+  const moveHighlightCursor = useCallback((direction) => {
+    if (!sortedHighlights.length) return;
+    let baseIndex = currentHighlightIndex;
+    if (baseIndex < 0) {
+      baseIndex = sortedHighlights.findIndex((highlight) => Number(highlight.page || 0) >= Number(pageRef.current || 0));
+      if (baseIndex < 0) {
+        baseIndex = direction > 0 ? -1 : 0;
+      }
+    }
+    const offset = direction >= 0 ? 1 : -1;
+    const nextIndex = (baseIndex + offset + sortedHighlights.length) % sortedHighlights.length;
+    jumpToHighlight(sortedHighlights[nextIndex], { closePanel: false });
+  }, [currentHighlightIndex, jumpToHighlight, pageRef, sortedHighlights]);
+
   const openPageJump = useCallback(() => {
     if (totalPages <= 0) return;
     setPageJumpValue(String(pageRef.current || page || 1));
@@ -1204,13 +1251,14 @@ export default function PdfViewer() {
       startSearchHits = [],
       startActiveSearchHitIndex = -1,
       startJumpExcerpt = '',
+      startJumpHighlightId = '',
       startScrollToReadAnchor = false,
       startLimitStatus = null,
       startAutoHighlightOnExtract = undefined,
       startScrollToTopOnPageChange = true,
       startBookmarks = null,
     ) => {
-      setHighlights(window._incPdfHighlights || []);
+      setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       window._incPdfHighlights = null;
       setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : (window._incPdfBookmarks || []));
       window._incPdfBookmarks = null;
@@ -1220,6 +1268,8 @@ export default function PdfViewer() {
       setActiveSearchHitIndex(Number.isInteger(startActiveSearchHitIndex) ? startActiveSearchHitIndex : -1);
       setReadAnchor(startReadAnchor && typeof startReadAnchor === 'object' ? startReadAnchor : null);
       pendingExcerptJumpRef.current = String(startJumpExcerpt || '').trim();
+      pendingHighlightScrollRef.current = String(startJumpHighlightId || '').trim();
+      setActiveHighlightId(String(startJumpHighlightId || '').trim() || null);
       pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
       pendingPageTopScrollRef.current = false;
       pendingResumeScrollRef.current = clampScrollRatio(startScrollRatio);
@@ -1250,6 +1300,9 @@ export default function PdfViewer() {
       if (data.page === pageRef.current) {
         setPageCards(data.cards || []);
       }
+    };
+    window.incrementoReceivePdfHighlights = (items) => {
+      setHighlights(Array.isArray(items) ? items.slice().sort(compareHighlights) : []);
     };
     window.incrementoReceivePdfLimitStatus = (status) => {
       setLimitStatus(status || DEFAULT_LIMIT_STATUS);
@@ -1289,6 +1342,7 @@ export default function PdfViewer() {
         pending.searchHits || [],
         pending.activeSearchHitIndex ?? -1,
         pending.jumpExcerpt || '',
+        pending.jumpHighlightId || '',
         pending.scrollToReadAnchor || false,
         pending.limitStatus || DEFAULT_LIMIT_STATUS,
         pending.autoHighlightOnExtract,
@@ -1305,6 +1359,7 @@ export default function PdfViewer() {
       delete window.incrementoSetAutoHighlightOnExtract;
       delete window.incrementoSetScrollToTopOnPageChange;
       delete window.incrementoReceivePageCards;
+      delete window.incrementoReceivePdfHighlights;
       delete window.incrementoReceivePdfLimitStatus;
       delete window.incrementoReceivePdfBookmarks;
       delete window.incrementoUpdatePdfHighlightNote;
@@ -1656,6 +1711,12 @@ export default function PdfViewer() {
               }}
             >
               Close
+            </button>
+            <button
+              type="button"
+              onClick={() => window.pycmd('incremento_pdf_open_find_dialog')}
+            >
+              All
             </button>
           </div>
         )}
@@ -2037,6 +2098,20 @@ export default function PdfViewer() {
             <strong style={{ fontSize: 13 }}>PDF Highlights</strong>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
+                onClick={() => moveHighlightCursor(-1)}
+                disabled={sortedHighlights.length === 0}
+                style={{ fontSize: 12, padding: '1px 8px' }}
+              >
+                Previous Highlight
+              </button>
+              <button
+                onClick={() => moveHighlightCursor(1)}
+                disabled={sortedHighlights.length === 0}
+                style={{ fontSize: 12, padding: '1px 8px' }}
+              >
+                Next Highlight
+              </button>
+              <button
                 onClick={() => setHighlightsScope('all')}
                 style={{
                   border: '1px solid rgba(59,130,246,0.55)',
@@ -2106,21 +2181,18 @@ export default function PdfViewer() {
               {highlightsForPanel.map((hl) => {
                 const note = String(hl.note || '').trim();
                 const excerpt = String(hl.text || '(no text)').trim();
+                const linkedNoteId = Number(hl.linked_note_id || 0);
+                const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
+                const isActive = String(hl.id || '') === String(activeHighlightId || '');
                 return (
                   <button
                     key={hl.id}
-                    onClick={() => {
-                      const targetPage = Math.max(1, parseInt(hl.page || 1, 10));
-                      pendingHighlightScrollRef.current = hl.id;
-                      setHighlightJumpNonce((n) => n + 1);
-                      limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
-                      setShowHighlightsPanel(false);
-                    }}
+                    onClick={() => jumpToHighlight(hl, { closePanel: true })}
                     style={{
                       textAlign: 'left',
-                      border: '1px solid rgba(90,90,90,0.55)',
+                      border: isActive ? '1px solid rgba(96,165,250,0.75)' : '1px solid rgba(90,90,90,0.55)',
                       borderRadius: 6,
-                      background: 'rgba(35,35,35,0.75)',
+                      background: isActive ? 'rgba(30,58,138,0.32)' : 'rgba(35,35,35,0.75)',
                       color: 'inherit',
                       cursor: 'pointer',
                       padding: '8px 10px',
@@ -2142,6 +2214,42 @@ export default function PdfViewer() {
                         />
                         <span>Page {hl.page || 1}</span>
                       </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 11 }}>
+                        <span
+                          style={{
+                            color: hasLinkedCard ? 'rgb(147,197,253)' : 'rgba(229,231,235,0.72)',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {hasLinkedCard ? 'Preview Card' : 'Create Card'}
+                        </span>
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                      <button
+                        title={hasLinkedCard ? 'Preview the card already linked to this highlight' : 'Prefill Add Card from this highlight'}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (hasLinkedCard) {
+                            window.pycmd(`incremento_open_card:${linkedNoteId}`);
+                            return;
+                          }
+                          window.pycmd('incremento_pdf_hl_card:' + JSON.stringify({ id: hl.id }));
+                        }}
+                        style={{
+                          border: '1px solid rgba(74,144,217,0.55)',
+                          borderRadius: 4,
+                          background: 'rgba(74,144,217,0.12)',
+                          color: 'rgba(147,197,253,0.95)',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          padding: '1px 7px',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {hasLinkedCard ? 'Preview Card' : 'Create Card'}
+                      </button>
                       <button
                         title={note ? 'Edit note for this highlight' : 'Add note to this highlight'}
                         onClick={(e) => {

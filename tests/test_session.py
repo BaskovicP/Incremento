@@ -660,6 +660,39 @@ class TestIncrementoSessionAutoRefill:
         assert result == {"live_queue_ids": list(range(200, 250)), "new_ids": []}
         assert rebuilt == []
 
+    def test_reviewed_learning_card_does_not_block_refill_window(self, monkeypatch):
+        rebuilt = []
+        live_queue = [1] + list(range(200, 229))
+        picker = types.SimpleNamespace(
+            selected_ids=list(range(1, 31)),
+            picked_meta={31: {"card_type": "items", "tag": None, "mode": "random"}},
+        )
+
+        def _pick_until(_target):
+            picker.selected_ids.append(31)
+            return [31]
+
+        picker.pick_until = _pick_until
+        state = self._make_state(picker=picker, selected_ids=list(range(1, 31)), window_size=30)
+        state.reviewed_ids = {1}
+
+        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_live_filtered_queue_ids",
+            lambda deck_id, fetch_limit, scheduled_ids=None: live_queue,
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda deck_name, ordered_ids, preserve_order: rebuilt.append((deck_name, list(ordered_ids), preserve_order)) or True,
+        )
+
+        result = _SESSION_MOD._maybe_auto_refill_active_session(state)
+
+        assert result == {"live_queue_ids": live_queue, "new_ids": [31]}
+        assert rebuilt == [("Incremento Session", live_queue + [31], True)]
+
     def test_duplicate_live_queue_defers_refill_without_picking_or_rebuilding(self, monkeypatch):
         rebuilt = []
         picker = types.SimpleNamespace(

@@ -216,6 +216,32 @@ def _tag_list_text(raw: list[str] | str | tuple[str, ...] | set[str] | None) -> 
     return ", ".join(_normalize_tag_list(raw))
 
 
+def _normalize_name_list(raw: list[str] | str | tuple[str, ...] | set[str] | None) -> list[str]:
+    if isinstance(raw, str):
+        parts = raw.replace(",", "\n").splitlines()
+    elif isinstance(raw, (list, tuple, set)):
+        parts = list(raw)
+    else:
+        parts = []
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in parts:
+        name = str(item or "").strip()
+        if not name:
+            continue
+        normalized = name.casefold()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        names.append(name)
+    return names
+
+
+def _name_list_text(raw: list[str] | str | tuple[str, ...] | set[str] | None) -> str:
+    return "\n".join(_normalize_name_list(raw))
+
+
 class IncrementoSettingsDialog(QDialog):
     def __init__(
         self,
@@ -227,6 +253,7 @@ class IncrementoSettingsDialog(QDialog):
         current_extract_mark_topic: bool = True,
         current_extract_copy_source_tags: bool = False,
         current_extract_highlight_when_extracting: bool = True,
+        current_pdf_highlight_extract_field: int = 1,
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
@@ -248,6 +275,9 @@ class IncrementoSettingsDialog(QDialog):
         current_default_topic_a_factor: float = 3.5,
         current_add_card_topic_tags: list[str] | str | None = None,
         current_add_card_item_tags: list[str] | str | None = None,
+        current_auto_create_topics_deck: bool = True,
+        current_auto_create_topics_deck_profiles: list[str] | str | None = None,
+        available_profile_names: list[str] | None = None,
         current_topic_postpone_enabled: bool = False,
         current_topic_postpone_mode: str = "timed",
         current_topic_postpone_minutes: int = 30,
@@ -444,6 +474,21 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_extract_highlight_when_extracting)
         )
         extraction_form.addRow("", self._extract_highlight_when_extracting_cb)
+
+        self._pdf_highlight_extract_field_spin = QSpinBox()
+        self._pdf_highlight_extract_field_spin.setRange(1, 20)
+        try:
+            highlight_field = int(current_pdf_highlight_extract_field)
+        except Exception:
+            highlight_field = 1
+        self._pdf_highlight_extract_field_spin.setValue(max(1, min(20, highlight_field)))
+        extraction_form.addRow(
+            _label_with_info(
+                "PDF highlight card target field:",
+                "When you create a card from a PDF highlight, Incremento prefills this one-based Add Card field index.",
+            ),
+            self._pdf_highlight_extract_field_spin,
+        )
 
         extraction_layout.addLayout(extraction_form)
         extraction_layout.addWidget(_subsection_title("Saved Provenance"))
@@ -994,6 +1039,42 @@ class IncrementoSettingsDialog(QDialog):
         )
 
         topics_layout.addLayout(topic_form)
+        topics_layout.addWidget(_subsection_title("Topics Deck"))
+
+        topics_deck_layout = _section_body()
+
+        self._auto_create_topics_deck_cb = QCheckBox(
+            "Create the Topics deck automatically when a selected profile opens"
+        )
+        self._auto_create_topics_deck_cb.setChecked(bool(current_auto_create_topics_deck))
+        topics_deck_layout.addWidget(self._auto_create_topics_deck_cb)
+
+        topics_deck_form = _section_form()
+
+        self._auto_create_topics_deck_profiles_edit = QPlainTextEdit()
+        self._auto_create_topics_deck_profiles_edit.setPlaceholderText(
+            "Leave blank for all profiles, or enter one profile name per line"
+        )
+        self._auto_create_topics_deck_profiles_edit.setMinimumHeight(90)
+        self._auto_create_topics_deck_profiles_edit.setPlainText(
+            _name_list_text(current_auto_create_topics_deck_profiles)
+        )
+        topics_deck_form.addRow(
+            _label_with_info(
+                "Only create for these profiles:",
+                "Leave this blank to apply automatic Topics deck creation to every profile. "
+                "If you enter profile names here, only those profiles will get the deck automatically.",
+            ),
+            self._auto_create_topics_deck_profiles_edit,
+        )
+        known_profiles_text = (
+            "Known profiles: " + ", ".join(available_profile_names)
+            if available_profile_names
+            else "Known profiles will appear here when available."
+        )
+        topics_deck_form.addRow("", QLabel(known_profiles_text))
+        topics_deck_layout.addLayout(topics_deck_form)
+        topics_layout.addLayout(topics_deck_layout)
         topics_layout.addWidget(_subsection_title("Postpone Button"))
 
         postpone_layout = _section_body()
@@ -1055,6 +1136,16 @@ class IncrementoSettingsDialog(QDialog):
             lambda _idx: _sync_topic_postpone_widgets()
         )
         _sync_topic_postpone_widgets()
+
+        def _sync_topics_deck_widgets() -> None:
+            self._auto_create_topics_deck_profiles_edit.setEnabled(
+                bool(self._auto_create_topics_deck_cb.isChecked())
+            )
+
+        self._auto_create_topics_deck_cb.toggled.connect(
+            lambda _checked: _sync_topics_deck_widgets()
+        )
+        _sync_topics_deck_widgets()
 
         postpone_layout.addLayout(postpone_form)
         topics_layout.addLayout(postpone_layout)
@@ -1310,6 +1401,10 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._extract_highlight_when_extracting_cb.isChecked())
 
     @property
+    def pdf_highlight_extract_field(self) -> int:
+        return max(1, min(20, int(self._pdf_highlight_extract_field_spin.value())))
+
+    @property
     def extract_source_links(self) -> dict[str, bool]:
         return {
             "pdf": bool(self._extract_pdf_links_cb.isChecked()),
@@ -1408,6 +1503,14 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def add_card_item_tags(self) -> list[str]:
         return _normalize_tag_list(self._add_card_item_tags_edit.text())
+
+    @property
+    def auto_create_topics_deck(self) -> bool:
+        return bool(self._auto_create_topics_deck_cb.isChecked())
+
+    @property
+    def auto_create_topics_deck_profiles(self) -> list[str]:
+        return _normalize_name_list(self._auto_create_topics_deck_profiles_edit.toPlainText())
 
     @property
     def topic_postpone_enabled(self) -> bool:

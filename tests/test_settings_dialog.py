@@ -383,6 +383,23 @@ class TestIncrementoSettingsDialogExtractionHighlight:
         assert dialog.extract_highlight_when_extracting is False
 
 
+class TestIncrementoSettingsDialogPdfHighlightExtractField:
+    def test_pdf_highlight_extract_field_defaults_to_first_field(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.pdf_highlight_extract_field == 1
+
+    def test_pdf_highlight_extract_field_respects_current_value(self):
+        dialog = IncrementoSettingsDialog({}, current_pdf_highlight_extract_field=4)
+        assert dialog._pdf_highlight_extract_field_spin.value() == 4
+        assert dialog.pdf_highlight_extract_field == 4
+
+    def test_pdf_highlight_extract_field_clamps_to_safe_range(self):
+        low = IncrementoSettingsDialog({}, current_pdf_highlight_extract_field=-2)
+        high = IncrementoSettingsDialog({}, current_pdf_highlight_extract_field=99)
+        assert low.pdf_highlight_extract_field == 1
+        assert high.pdf_highlight_extract_field == 20
+
+
 class TestIncrementoSettingsDialogExtractCopySourceTags:
     def test_checkbox_reflects_incoming_value(self):
         dialog = IncrementoSettingsDialog(
@@ -436,6 +453,28 @@ class TestIncrementoSettingsDialogPdfPaging:
             current_pdf_scroll_to_top_on_page_change=False,
         )
         assert dialog.pdf_scroll_to_top_on_page_change is False
+
+
+class TestIncrementoSettingsDialogTopicsDeckCreation:
+    def test_topics_deck_creation_defaults_enabled_for_all_profiles(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.auto_create_topics_deck is True
+        assert dialog.auto_create_topics_deck_profiles == []
+
+    def test_topics_deck_creation_respects_saved_checkbox_value(self):
+        dialog = IncrementoSettingsDialog({}, current_auto_create_topics_deck=False)
+        assert dialog._auto_create_topics_deck_cb.isChecked() is False
+        assert dialog.auto_create_topics_deck is False
+
+    def test_topics_deck_profile_list_is_normalized_and_deduplicated(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_auto_create_topics_deck_profiles=["Main", "Work"],
+        )
+        dialog._auto_create_topics_deck_profiles_edit.setPlainText(
+            " Main \nwork\nMAIN\nResearch "
+        )
+        assert dialog.auto_create_topics_deck_profiles == ["Main", "work", "Research"]
 
 
 class TestIncrementoSettingsDialogShortcuts:

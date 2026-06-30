@@ -2109,11 +2109,11 @@ class SchedulerConfigDialog(QDialog):
         _adv_body_layout.addWidget(self._preserve_order_cb)
 
         self._auto_refill_session_cb = QCheckBox(
-            "Auto-refill session deck to keep this many pending cards"
+            "Auto-refill session deck to keep this many unreviewed cards"
         )
         self._auto_refill_session_cb.setToolTip(
-            "When enabled, the session card count becomes the pending-window size.\n"
-            "Incremento refills the filtered deck only after Anki's live queue drops below that number."
+            "When enabled, the session card count becomes the not-yet-answered card window.\n"
+            "Learning repeats stay in the filtered deck, so Anki's visible queue can be larger."
         )
         self._auto_refill_session_cb.setChecked(self._saved.get("auto_refill_session", False))
         _adv_body_layout.addWidget(self._auto_refill_session_cb)

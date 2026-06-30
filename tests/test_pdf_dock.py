@@ -160,12 +160,13 @@ def test_pdf_citation_escapes_onclick_payload_and_label(monkeypatch):
     monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 42)
     monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: 'Writer "First" & <Best>')
 
-    html = pdf_dock.pdf_citation('Quoted "excerpt"<br>line')
+    html = pdf_dock.pdf_citation('Quoted "excerpt"<br>line', highlight_id="hl-7", page=42)
 
     assert 'onclick="pycmd(&quot;incremento_open_pdf_ref:' in html
     assert "writer&#x27;s-guide.pdf" in html
     assert "Writer &quot;First&quot; &amp; &lt;Best&gt;" in html
     assert 'card_id\\&quot;: 55' in html
+    assert 'highlight_id\\&quot;: \\&quot;hl-7\\&quot;' in html
     assert 'excerpt\\&quot;:' in html
     assert 'Quoted' in html
     assert 'line' in html
@@ -182,6 +183,53 @@ def test_missing_pdf_html_uses_plain_repair_message_for_pycmd():
     assert pdf_dock._PYCMD_BRIDGE not in html
     assert "writer&#x27;s-guide.pdf" in html
     assert r"C:\Users\paulo\pdfs\writer&#x27;s-guide.pdf" in html
+
+
+def test_open_or_create_pdf_highlight_card_previews_existing_link(monkeypatch):
+    previews = []
+    monkeypatch.setattr(pdf_dock, "current_pdf_card_id", lambda: 55)
+    monkeypatch.setattr(
+        pdf_dock,
+        "_current_pdf_highlight_by_id",
+        lambda hl_id: {"id": hl_id, "page": 3, "text": "Excerpt"},
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_card_source_for_highlight",
+        lambda *args, **kwargs: {"note_id": 321},
+    )
+    monkeypatch.setattr(pdf_dock, "_note_exists", lambda note_id: True)
+    monkeypatch.setattr(pdf_dock, "show_pdf_page_card_preview", lambda note_id: previews.append(note_id))
+
+    pdf_dock._open_or_create_pdf_highlight_card("hl-1")
+
+    assert previews == [321]
+
+
+def test_open_or_create_pdf_highlight_card_prefills_configured_field(monkeypatch):
+    fills = []
+    monkeypatch.setattr(pdf_dock, "current_pdf_card_id", lambda: 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(
+        pdf_dock,
+        "_current_pdf_highlight_by_id",
+        lambda hl_id: {"id": hl_id, "page": 4, "text": "Excerpt text"},
+    )
+    monkeypatch.setattr(pdf_dock, "get_pdf_card_source_for_highlight", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pdf_dock, "configured_pdf_highlight_extract_field", lambda *args, **kwargs: 3)
+    monkeypatch.setattr(pdf_dock, "_cb_open_add_card_dock", lambda: None)
+    monkeypatch.setattr(
+        pdf_dock,
+        "_cb_fill_dock_field",
+        lambda *args, **kwargs: fills.append((args, kwargs)),
+    )
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda _message: None)
+
+    pdf_dock._open_or_create_pdf_highlight_card("hl-9")
+
+    assert fills[0][0] == (2, "Excerpt text")
+    assert fills[0][1]["source_link_kind"] == "pdf"
+    assert "highlight_id" in fills[0][1]["citation_html"]
 
 
 def test_pdf_storage_path_rejects_traversal(monkeypatch):
@@ -231,7 +279,7 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     monkeypatch.setattr(pdf_dock, "_build_pdf_dock", lambda: (_ for _ in ()).throw(AssertionError("unexpected build")))
     monkeypatch.setattr(pdf_dock, "mw", fake_mw)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
-    monkeypatch.setattr(pdf_dock, "load_highlights", lambda *args, **kwargs: [])
+    monkeypatch.setattr(pdf_dock, "_pdf_highlights_payload", lambda card_id: [])
     monkeypatch.setattr(pdf_dock, "_pdf_bookmarks_payload", lambda card_id: [])
     monkeypatch.setattr(pdf_dock, "_current_pdf_limit_status", lambda *args, **kwargs: {"enabled": False})
     monkeypatch.setattr(pdf_dock, "get_read_anchor", lambda *args, **kwargs: None)
@@ -543,7 +591,7 @@ def test_on_add_cards_did_add_note_restores_confirmed_pdf_source_after_context_c
     monkeypatch.setattr(
         pdf_dock,
         "add_pdf_card_source",
-        lambda *args, **kwargs: sources.append(args),
+        lambda *args, **kwargs: sources.append((args, kwargs)),
     )
     monkeypatch.setattr(
         pdf_dock,
@@ -555,6 +603,7 @@ def test_on_add_cards_did_add_note_restores_confirmed_pdf_source_after_context_c
     pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
 
     assert sources
+    assert sources[0][1]["highlight_id"] == ""
     assert fake_dock.show_count == 1
     assert pdf_dock.current_pdf_card_id() == 55
     assert pdf_dock._current_pdf_filename == "source.pdf"
@@ -629,10 +678,93 @@ def test_on_add_cards_did_add_note_suppresses_next_pdf_due_prompt(monkeypatch):
     monkeypatch.setattr(
         pdf_dock,
         "add_pdf_card_source",
-        lambda *args, **kwargs: calls.append(args),
+        lambda *args, **kwargs: calls.append((args, kwargs)),
     )
 
     pdf_dock.on_add_cards_did_add_note(types.SimpleNamespace(id=123, fields=["Front"]))
 
     assert calls
+    assert calls[0][1]["highlight_id"] == ""
     assert pdf_dock._consume_due_review_prompt_suppression(55) is True
+
+
+def test_on_add_cards_did_add_note_records_exact_highlight_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", None)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "pdf")
+    monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 7)
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    note = types.SimpleNamespace(
+        id=123,
+        fields=[
+            'Front <a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"source.pdf\\", \\"page\\": 7, \\"highlight_id\\": \\"hl-22\\"}&quot;); return false;">Page 7. of source</a>'
+        ],
+    )
+
+    pdf_dock.on_add_cards_did_add_note(note)
+
+    assert calls[0][1]["highlight_id"] == "hl-22"
+    assert calls[0][0][3] == 7
+
+
+def test_on_add_cards_did_add_note_uses_highlight_citation_page(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "source.pdf")
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", None)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_add_card_source_for_new_note", lambda: "pdf")
+    monkeypatch.setattr(pdf_dock, "get_page", lambda addon_dir, profile, card_id: 2)
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    note = types.SimpleNamespace(
+        id=123,
+        fields=[
+            'Front <a onclick="pycmd(&quot;incremento_open_pdf_ref:{\\"card_id\\": 55, \\"filename\\": \\"source.pdf\\", \\"page\\": 9, \\"highlight_id\\": \\"hl-9\\"}&quot;); return false;">Page 9. of source</a>'
+        ],
+    )
+
+    pdf_dock.on_add_cards_did_add_note(note)
+
+    assert calls[0][0][3] == 9
+    assert calls[0][1]["highlight_id"] == "hl-9"
+
+
+def test_pdf_highlight_delete_prunes_exact_source(monkeypatch):
+    removed = []
+    deleted = []
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "remove_highlight",
+        lambda addon_dir, profile, card_id, highlight_id: removed.append(
+            (addon_dir, profile, card_id, highlight_id)
+        ),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "delete_pdf_card_source_for_highlight",
+        lambda addon_dir, profile, card_id, highlight_id: deleted.append(
+            (addon_dir, profile, card_id, highlight_id)
+        ),
+    )
+
+    pdf_dock._handle_pdf_js_message('incremento_pdf_hl_del:{"cardId":55,"id":"hl-9"}')
+
+    assert removed == [("/tmp/addon", "TestProfile", 55, "hl-9")]
+    assert deleted == [("/tmp/addon", "TestProfile", 55, "hl-9")]

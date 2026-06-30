@@ -121,8 +121,12 @@ except ImportError:
 try:
     from ..backend.db import (
         add_pdf_card_source,
+        count_pdf_card_sources_for_highlight,
+        delete_pdf_card_source_for_highlight,
         delete_pdf_card_sources_for_note_ids,
         get_pdf_card_sources,
+        get_pdf_card_source_for_highlight,
+        get_pdf_card_sources_for_highlights,
         get_pdf_document_source_note_ids,
         get_pdf_page_card_counts,
         search_pdf_text_index_for_card,
@@ -130,8 +134,12 @@ try:
 except ImportError:
     from db import (  # type: ignore
         add_pdf_card_source,
+        count_pdf_card_sources_for_highlight,
+        delete_pdf_card_source_for_highlight,
         delete_pdf_card_sources_for_note_ids,
         get_pdf_card_sources,
+        get_pdf_card_source_for_highlight,
+        get_pdf_card_sources_for_highlights,
         get_pdf_document_source_note_ids,
         get_pdf_page_card_counts,
         search_pdf_text_index_for_card,
@@ -195,6 +203,15 @@ def _config(config: dict | None = None) -> dict:
 def configured_highlight_when_extracting(config: dict | None = None) -> bool:
     cfg = _config(config)
     return bool(cfg.get("highlight_when_extracting", True))
+
+
+def configured_pdf_highlight_extract_field(config: dict | None = None) -> int:
+    cfg = _config(config)
+    try:
+        value = int(cfg.get("pdf_highlight_extract_field", 1))
+    except Exception:
+        value = 1
+    return max(1, min(20, value))
 
 
 def configured_scroll_to_top_on_page_change(config: dict | None = None) -> bool:
@@ -329,6 +346,98 @@ def _note_exists(note_id: int) -> bool:
     except Exception:
         return False
     return note is not None
+
+
+def _resolve_pdf_highlight_extract_field_index(config: dict | None = None) -> int:
+    return configured_pdf_highlight_extract_field(config) - 1
+
+
+def _sorted_pdf_highlights(highlights: list[dict]) -> list[dict]:
+    def _sort_key(row: dict) -> tuple[int, float, float, str]:
+        rects = list(row.get("rects") or [])
+        first = rects[0] if rects else {}
+        return (
+            int(row.get("page", 0) or 0),
+            float(first.get("y", 10**9) or 10**9),
+            float(first.get("x", 10**9) or 10**9),
+            str(row.get("id") or ""),
+        )
+
+    return sorted(list(highlights or []), key=_sort_key)
+
+
+def _reconcile_pdf_highlight_sources(pdf_card_id: int) -> dict[str, dict]:
+    if int(pdf_card_id or 0) <= 0:
+        return {}
+    highlights = load_highlights(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+    highlight_ids = [
+        str(row.get("id") or "").strip()
+        for row in highlights
+        if str(row.get("id") or "").strip()
+    ]
+    source_map = get_pdf_card_sources_for_highlights(
+        _ADDON_DIR,
+        _active_profile(),
+        int(pdf_card_id),
+        highlight_ids,
+    )
+    stale_note_ids: set[int] = set()
+    stale_highlight_ids: list[str] = []
+    for highlight_id, row in list(source_map.items()):
+        note_id = int(row.get("note_id", 0) or 0)
+        if note_id <= 0 or _note_exists(note_id):
+            continue
+        stale_note_ids.add(note_id)
+        stale_highlight_ids.append(highlight_id)
+    if stale_note_ids:
+        delete_pdf_card_sources_for_note_ids(
+            _ADDON_DIR,
+            _active_profile(),
+            int(pdf_card_id),
+            stale_note_ids,
+        )
+        for highlight_id in stale_highlight_ids:
+            source_map.pop(highlight_id, None)
+    return source_map
+
+
+def _pdf_highlights_payload(pdf_card_id: int) -> list[dict]:
+    highlights = _sorted_pdf_highlights(
+        load_highlights(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+    )
+    source_map = _reconcile_pdf_highlight_sources(int(pdf_card_id))
+    payload: list[dict] = []
+    for row in highlights:
+        enriched = dict(row)
+        highlight_id = str(row.get("id") or "").strip()
+        source_row = source_map.get(highlight_id) or {}
+        enriched["linked_note_id"] = int(source_row.get("note_id", 0) or 0)
+        enriched["linked_highlight_count"] = count_pdf_card_sources_for_highlight(
+            _ADDON_DIR,
+            _active_profile(),
+            int(pdf_card_id),
+            highlight_id,
+        )
+        payload.append(enriched)
+    return payload
+
+
+def _push_pdf_highlights(card_id: int | None = None) -> None:
+    if _pdf_dock is None:
+        return
+    try:
+        cid = int(card_id if card_id is not None else _current_pdf_card_id)
+    except Exception:
+        cid = 0
+    if cid <= 0:
+        return
+    payload = json.dumps(_pdf_highlights_payload(cid))
+    try:
+        _pdf_dock._view.page().runJavaScript(
+            f"window.incrementoReceivePdfHighlights && window.incrementoReceivePdfHighlights({payload});"
+        )
+    except Exception:
+        pass
 
 
 def _reconcile_pdf_page_sources(
@@ -691,7 +800,7 @@ _cb_fill_dock_field = None  # (idx: int, text: str) -> None
 _cb_get_add_card_dock = None  # () -> QDockWidget | None
 _cb_pdf_view_started = None  # (card_id: int) -> None
 _cb_pdf_view_stopped = None  # (card_id: int | None) -> None
-_cb_open_current_document_search = None  # () -> bool
+_cb_open_current_document_search_results = None  # () -> bool
 
 
 def register_add_card_callbacks(open_fn, fill_fn, get_dock_fn) -> None:
@@ -713,9 +822,9 @@ def register_pdf_view_callbacks(start_fn, stop_fn) -> None:
     _cb_pdf_view_stopped = stop_fn
 
 
-def register_current_document_search_callback(open_fn) -> None:
-    global _cb_open_current_document_search
-    _cb_open_current_document_search = open_fn
+def register_current_document_search_results_callback(open_fn) -> None:
+    global _cb_open_current_document_search_results
+    _cb_open_current_document_search_results = open_fn
 
 
 def _add_card_source_for_new_note() -> str:
@@ -856,26 +965,35 @@ def _emit_pdf_search_state() -> None:
         pass
 
 
-def pdf_citation(excerpt_text: str | None = None) -> str:
+def pdf_citation(
+    excerpt_text: str | None = None,
+    *,
+    highlight_id: str = "",
+    page: int | None = None,
+) -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
-    if not _current_pdf_card_id or not _current_pdf_filename:
+    card_id = current_pdf_card_id()
+    if not card_id or not _current_pdf_filename:
         return ""
-    page = get_page(_ADDON_DIR, _active_profile(), _current_pdf_card_id)
+    resolved_page = int(page or get_page(_ADDON_DIR, _active_profile(), card_id) or 1)
     name = pdf_display_label_from_filename(_current_pdf_filename)
     payload = {
-        "card_id": int(_current_pdf_card_id),
+        "card_id": int(card_id),
         "filename": str(_current_pdf_filename or "").strip(),
-        "page": int(page),
+        "page": resolved_page,
     }
     excerpt = _normalize_pdf_reference_excerpt(excerpt_text)
     if excerpt:
         payload["excerpt"] = excerpt
+    normalized_highlight_id = str(highlight_id or "").strip()
+    if normalized_highlight_id:
+        payload["highlight_id"] = normalized_highlight_id
     cmd = "incremento_open_pdf_ref:" + json.dumps(payload, ensure_ascii=False)
     onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
     return (
         f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
-        f"Page {page}. of {escape(name)}</a>"
+        f"Page {resolved_page}. of {escape(name)}</a>"
     )
 
 
@@ -883,6 +1001,8 @@ _LEGACY_PDF_REF_ANCHOR_RE = re.compile(
     r"(?P<open><a\b[^>]*incremento_open_pdf_ref:[^>]*>)(?P<label>.*?)(?P<close></a>)",
     re.IGNORECASE | re.DOTALL,
 )
+_PDF_REF_HIGHLIGHT_RE = re.compile(r'"highlight_id"\s*:\s*"([^"]+)"')
+_PDF_REF_PAGE_RE = re.compile(r'"page"\s*:\s*(\d+)')
 
 
 def repair_legacy_pdf_reference_links_html(html: str) -> str:
@@ -918,6 +1038,24 @@ def repair_legacy_pdf_reference_links_html(html: str) -> str:
     return _LEGACY_PDF_REF_ANCHOR_RE.sub(_replace, html)
 
 
+def _extract_pdf_reference_from_note(note) -> dict[str, object]:
+    for field in list(getattr(note, "fields", []) or []):
+        field_text = unescape(str(field or "")).replace('\\"', '"')
+        highlight_match = _PDF_REF_HIGHLIGHT_RE.search(field_text)
+        if not highlight_match:
+            continue
+        page_match = _PDF_REF_PAGE_RE.search(field_text)
+        try:
+            page = int(page_match.group(1)) if page_match else 0
+        except Exception:
+            page = 0
+        return {
+            "highlight_id": str(highlight_match.group(1) or "").strip(),
+            "page": page if page > 0 else None,
+        }
+    return {}
+
+
 # ── pycmd message protocol constants ─────────────────────────────────────────
 # All pycmd messages from the PDF viewer JS are prefixed with _PYCMD_BRIDGE.
 # Each handler constant names one message type, making typos compile-time errors.
@@ -944,6 +1082,7 @@ _MSG_DUE_REVIEW = "incremento_pdf_due_review:"
 _MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
 _MSG_REGENERATE_COVER = "incremento_pdf_regenerate_cover:"
 _MSG_HL_NOTE = "incremento_pdf_hl_note:"
+_MSG_HL_CARD = "incremento_pdf_hl_card:"
 _MSG_BOOKMARK_ADD = "incremento_pdf_bookmark_add:"
 _MSG_BOOKMARK_DELETE = "incremento_pdf_bookmark_delete:"
 _MSG_BOOKMARK_LIST = "incremento_pdf_bookmark_list:"
@@ -1184,6 +1323,70 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
     except Exception:
         pass
     tooltip("PDF highlight note saved.")
+
+
+def _current_pdf_highlight_by_id(hl_id: str) -> dict | None:
+    card_id = current_pdf_card_id()
+    if card_id is None:
+        return None
+    return next(
+        (
+            row
+            for row in load_highlights(_ADDON_DIR, _active_profile(), int(card_id))
+            if str(row.get("id") or "") == str(hl_id or "")
+        ),
+        None,
+    )
+
+
+def _open_or_create_pdf_highlight_card(hl_id: str) -> None:
+    card_id = current_pdf_card_id()
+    if card_id is None:
+        showInfo("Could not determine which PDF card owns this highlight.")
+        return
+    highlight = _current_pdf_highlight_by_id(hl_id)
+    if not highlight:
+        showInfo("That PDF highlight could not be found.")
+        return
+
+    source_row = get_pdf_card_source_for_highlight(
+        _ADDON_DIR,
+        _active_profile(),
+        int(card_id),
+        str(hl_id or ""),
+    )
+    note_id = int((source_row or {}).get("note_id", 0) or 0)
+    if note_id > 0 and _note_exists(note_id):
+        show_pdf_page_card_preview(note_id)
+        return
+    if source_row and note_id > 0 and not _note_exists(note_id):
+        delete_pdf_card_source_for_highlight(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+            str(hl_id or ""),
+        )
+
+    excerpt = str(highlight.get("text") or "").strip()
+    if not excerpt:
+        tooltip("This highlight has no text to prefill.")
+        return
+    if _cb_open_add_card_dock:
+        _cb_open_add_card_dock()
+    target_field_idx = _resolve_pdf_highlight_extract_field_index()
+    citation_html = pdf_citation(
+        excerpt,
+        highlight_id=str(hl_id or ""),
+        page=int(highlight.get("page", 1) or 1),
+    )
+    if _cb_fill_dock_field:
+        _cb_fill_dock_field(
+            target_field_idx,
+            excerpt,
+            citation_html=citation_html,
+            source_link_kind="pdf",
+        )
+    tooltip(f"PDF highlight sent to Add Card field {target_field_idx + 1}.")
 
 
 def _pdf_bookmarks_payload(card_id: int) -> list[dict]:
@@ -1478,7 +1681,15 @@ def _handle_pdf_js_message(msg: str) -> None:
     elif msg.startswith(_MSG_HL_DEL):
         try:
             data = json.loads(msg[len(_MSG_HL_DEL) :])
-            remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["id"])
+            card_id = int(data["cardId"])
+            highlight_id = str(data["id"] or "")
+            remove_highlight(_ADDON_DIR, _active_profile(), card_id, highlight_id)
+            delete_pdf_card_source_for_highlight(
+                _ADDON_DIR,
+                _active_profile(),
+                card_id,
+                highlight_id,
+            )
         except Exception as e:
             print(f"[Incremento] pdf_dock: highlight delete failed: {e}")
     elif msg.startswith(_MSG_MARK_READ):
@@ -1586,6 +1797,12 @@ def _handle_pdf_js_message(msg: str) -> None:
             _edit_pdf_highlight_note(str(payload.get("id") or ""))
         except Exception as e:
             showInfo(f"Could not edit PDF highlight note.\n\n{e}")
+    elif msg.startswith(_MSG_HL_CARD):
+        try:
+            payload = json.loads(msg[len(_MSG_HL_CARD) :])
+            _open_or_create_pdf_highlight_card(str(payload.get("id") or ""))
+        except Exception as e:
+            showInfo(f"Could not open the PDF highlight card workflow.\n\n{e}")
     elif msg.startswith(_MSG_BOOKMARK_ADD):
         try:
             payload = json.loads(msg[len(_MSG_BOOKMARK_ADD) :])
@@ -1636,7 +1853,7 @@ def _handle_pdf_js_message(msg: str) -> None:
             pass
     elif msg == _MSG_OPEN_FIND_DIALOG:
         try:
-            open_current_document_find()
+            open_current_document_search_results()
         except Exception:
             pass
     elif msg.startswith(_MSG_REPAIR_MISSING):
@@ -2018,15 +2235,19 @@ def open_current_document_find() -> bool:
     try:
         if not _pdf_dock.isVisible():
             return False
-        if _cb_open_current_document_search is not None:
-            return bool(_cb_open_current_document_search())
-    except Exception:
-        pass
-    try:
         _pdf_dock._view.page().runJavaScript(
             "window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();",
         )
         return True
+    except Exception:
+        return False
+
+
+def open_current_document_search_results() -> bool:
+    if _cb_open_current_document_search_results is None:
+        return False
+    try:
+        return bool(_cb_open_current_document_search_results())
     except Exception:
         return False
 
@@ -2081,6 +2302,7 @@ def show_pdf_in_dock(
     read_page=0,
     search_query="",
     jump_excerpt="",
+    jump_highlight_id="",
     search_hits: list[dict] | None = None,
     active_search_hit_index: int = -1,
     preserve_history=False,
@@ -2154,7 +2376,7 @@ def show_pdf_in_dock(
         except Exception:
             resolved_read_page = 0
 
-    hls = load_highlights(_ADDON_DIR, _active_profile(), card_id)
+    hls = _pdf_highlights_payload(card_id) if int(card_id or 0) > 0 else []
     bookmarks = _pdf_bookmarks_payload(card_id)
     limit_status = _current_pdf_limit_status(card_id, current_page=page)
     read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), card_id)
@@ -2176,10 +2398,10 @@ def show_pdf_in_dock(
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()
@@ -2239,7 +2461,7 @@ def on_pdf_reviewer_will_end() -> None:
 
 
 def on_add_cards_did_add_note(note) -> None:
-    """When a card is saved in the AddCards dock, record it against the current PDF page."""
+    """When a card is saved in the AddCards dock, record it against the current PDF context."""
     try:
         tracked_pdf_card_id = int(_current_pdf_card_id or 0)
     except Exception:
@@ -2256,6 +2478,13 @@ def on_add_cards_did_add_note(note) -> None:
             return
     _suppress_next_due_review_prompt_for_pdf_add(tracked_pdf_card_id)
     page = get_page(_ADDON_DIR, _active_profile(), tracked_pdf_card_id)
+    pdf_reference = _extract_pdf_reference_from_note(note)
+    highlight_id = str(pdf_reference.get("highlight_id") or "")
+    if highlight_id:
+        try:
+            page = int(pdf_reference.get("page") or page)
+        except Exception:
+            pass
     import re as _re
 
     parts = []
@@ -2273,6 +2502,7 @@ def on_add_cards_did_add_note(note) -> None:
             note.id,
             excerpt,
             str(_current_pdf_filename or "").strip(),
+            highlight_id=highlight_id,
         )
     except Exception:
         pass
@@ -2286,6 +2516,7 @@ def on_add_cards_did_add_note(note) -> None:
             f"window.incrementoReceivePageCards({json.dumps(data)})"
         )
         _pdf_dock._view.page().runJavaScript(js)
+        _push_pdf_highlights(tracked_pdf_card_id)
     except Exception:
         pass
 

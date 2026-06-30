@@ -76,6 +76,36 @@ class TestGetConnection:
         }
         assert "pdf_highlights" in tables
 
+    def test_creates_pdf_card_sources_highlight_id_column_and_unique_index(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+        columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_card_sources)").fetchall()]
+        indexes = conn.execute("PRAGMA index_list(pdf_card_sources)").fetchall()
+        assert "highlight_id" in columns
+        assert any(row[1] == "idx_pcs_card_highlight_unique" for row in indexes)
+
+    def test_migrates_existing_pdf_card_sources_to_add_highlight_id(self):
+        addon_dir = _fresh_dir()
+        db_path = os.path.join(addon_dir, "user_files", "TestProfile", "incremento.db")
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE pdf_card_sources ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "pdf_card_id INTEGER NOT NULL, "
+            "page INTEGER NOT NULL, "
+            "note_id INTEGER NOT NULL, "
+            "excerpt TEXT NOT NULL DEFAULT '', "
+            "pdf_filename TEXT NOT NULL DEFAULT '')"
+        )
+        conn.commit()
+        conn.close()
+
+        upgraded = db.get_connection(addon_dir, "TestProfile")
+        columns = [r[1] for r in upgraded.execute("PRAGMA table_info(pdf_card_sources)").fetchall()]
+
+        assert "highlight_id" in columns
+
     def test_creates_priorities_table(self):
         addon_dir = _fresh_dir()
         conn = db.get_connection(addon_dir, "TestProfile")
@@ -1028,8 +1058,73 @@ class TestPdfCardSources:
         assert len(sources) == 1
         assert sources[0]["note_id"] == 999
         assert sources[0]["excerpt"] == "test excerpt"
+        assert sources[0]["highlight_id"] == ""
         assert db.get_pdf_card_source_filename(self.addon_dir, "TestProfile", 1, 3) == "paper.pdf"
         assert db.get_pdf_referenced_filenames(self.addon_dir, "TestProfile") == ["paper.pdf"]
+
+    def test_add_and_retrieve_exact_highlight_card_source(self):
+        db.add_pdf_card_source(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=1,
+            page=3,
+            note_id=999,
+            excerpt="test excerpt",
+            pdf_filename="paper.pdf",
+            highlight_id="hl-1",
+        )
+
+        source = db.get_pdf_card_source_for_highlight(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=1,
+            highlight_id="hl-1",
+        )
+
+        assert source == {
+            "page": 3,
+            "note_id": 999,
+            "excerpt": "test excerpt",
+            "pdf_filename": "paper.pdf",
+            "highlight_id": "hl-1",
+        }
+        assert db.count_pdf_card_sources_for_highlight(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=1,
+            highlight_id="hl-1",
+        ) == 1
+
+    def test_duplicate_exact_highlight_updates_existing_row(self):
+        db.add_pdf_card_source(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=7,
+            page=2,
+            note_id=101,
+            excerpt="old excerpt",
+            pdf_filename="paper.pdf",
+            highlight_id="hl-dup",
+        )
+        db.add_pdf_card_source(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=7,
+            page=4,
+            note_id=202,
+            excerpt="new excerpt",
+            pdf_filename="paper.pdf",
+            highlight_id="hl-dup",
+        )
+
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        rows = conn.execute(
+            "SELECT page, note_id, excerpt, highlight_id FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? AND highlight_id = ?",
+            (7, "hl-dup"),
+        ).fetchall()
+
+        assert rows == [(4, 202, "new excerpt", "hl-dup")]
 
     def test_get_pdf_page_card_counts(self):
         db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=2, page=1, note_id=101)
@@ -1053,11 +1148,36 @@ class TestPdfCardSources:
 
         assert deleted == 1
         assert db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=2, page=1) == [
-            {"note_id": 102, "excerpt": ""}
+            {"note_id": 102, "excerpt": "", "highlight_id": ""}
         ]
         assert db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=3, page=1) == [
-            {"note_id": 101, "excerpt": ""}
+            {"note_id": 101, "excerpt": "", "highlight_id": ""}
         ]
+
+    def test_delete_pdf_card_source_for_highlight(self):
+        db.add_pdf_card_source(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=4,
+            page=1,
+            note_id=303,
+            highlight_id="hl-delete",
+        )
+
+        deleted = db.delete_pdf_card_source_for_highlight(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=4,
+            highlight_id="hl-delete",
+        )
+
+        assert deleted == 1
+        assert db.get_pdf_card_source_for_highlight(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=4,
+            highlight_id="hl-delete",
+        ) is None
 
     def test_get_pdf_card_sources_up_to_page(self):
         db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=4, page=2, note_id=201, excerpt="two")

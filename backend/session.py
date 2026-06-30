@@ -321,6 +321,23 @@ def _has_duplicate_ordered_ids(ordered_ids: list[int]) -> bool:
     return False
 
 
+def _unreviewed_live_queue_ids(
+    live_queue_ids: list[int],
+    reviewed_ids: set[int],
+) -> list[int]:
+    reviewed: set[int] = set()
+    for raw in reviewed_ids or set():
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid > 0:
+            reviewed.add(cid)
+    if not reviewed:
+        return list(live_queue_ids)
+    return [cid for cid in live_queue_ids if cid not in reviewed]
+
+
 def _snapshot_picker_state(picker) -> object:
     snapshot = getattr(picker, "snapshot", None)
     if callable(snapshot):
@@ -403,13 +420,20 @@ def _maybe_auto_refill_active_session(
         fetch_limit=fetch_limit,
         scheduled_ids=set(state.selected_ids),
     )
-    if len(live_queue_ids) >= state.window_size:
-        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
-
     if _has_duplicate_ordered_ids(live_queue_ids):
         return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
 
-    missing = state.window_size - len(live_queue_ids)
+    # Answered new cards often remain in Anki's queue as learning/relearning
+    # repeats. Keep them in the filtered deck, but do not let them occupy the
+    # live window reserved for not-yet-answered session cards.
+    unreviewed_live_queue_ids = _unreviewed_live_queue_ids(
+        live_queue_ids,
+        state.reviewed_ids,
+    )
+    if len(unreviewed_live_queue_ids) >= state.window_size:
+        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+
+    missing = state.window_size - len(unreviewed_live_queue_ids)
     picker_snapshot = _snapshot_picker_state(state.picker)
     new_ids = state.picker.pick_until(len(state.picker.selected_ids) + missing)
     if not new_ids:

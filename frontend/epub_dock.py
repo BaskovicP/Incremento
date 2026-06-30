@@ -164,7 +164,7 @@ _cb_fill_dock_field = None
 _cb_get_add_card_dock = None
 _cb_epub_view_started = None
 _cb_epub_view_stopped = None
-_cb_open_current_document_search = None
+_cb_open_current_document_search_results = None
 _epub_shortcuts_registered = False
 _epub_shortcuts = []
 _epub_key_filter = None
@@ -427,9 +427,9 @@ def register_epub_view_callbacks(start_fn, stop_fn) -> None:
     _cb_epub_view_stopped = stop_fn
 
 
-def register_current_document_search_callback(open_fn) -> None:
-    global _cb_open_current_document_search
-    _cb_open_current_document_search = open_fn
+def register_current_document_search_results_callback(open_fn) -> None:
+    global _cb_open_current_document_search_results
+    _cb_open_current_document_search_results = open_fn
 
 
 def _add_card_source_for_new_note() -> str:
@@ -2064,11 +2064,13 @@ def _build_epub_dock() -> None:
     dock._find_prev_btn = QPushButton("Prev", find_bar)
     dock._find_next_btn = QPushButton("Next", find_bar)
     dock._find_close_btn = QPushButton("Close", find_bar)
+    dock._find_all_btn = QPushButton("All", find_bar)
     find_layout.addWidget(dock._find_input, 1)
     find_layout.addWidget(dock._find_count_lbl)
     find_layout.addWidget(dock._find_prev_btn)
     find_layout.addWidget(dock._find_next_btn)
     find_layout.addWidget(dock._find_close_btn)
+    find_layout.addWidget(dock._find_all_btn)
     find_bar.setVisible(False)
     dock._find_bar = find_bar
     layout.addWidget(find_bar)
@@ -2139,6 +2141,7 @@ def _build_epub_dock() -> None:
     qconnect(dock._find_prev_btn.clicked, lambda: _step_epub_search(-1))
     qconnect(dock._find_next_btn.clicked, lambda: _step_epub_search(1))
     qconnect(dock._find_close_btn.clicked, _close_epub_find_bar)
+    qconnect(dock._find_all_btn.clicked, open_current_document_search_results)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
 
@@ -2214,16 +2217,20 @@ def open_current_document_find() -> bool:
     try:
         if not _epub_dock.isVisible():
             return False
-        if _cb_open_current_document_search is not None:
-            return bool(_cb_open_current_document_search())
-    except Exception:
-        pass
-    try:
         _epub_dock._find_bar.setVisible(True)
         _epub_dock._find_input.setFocus()
         _epub_dock._find_input.selectAll()
         _sync_epub_find_bar()
         return True
+    except Exception:
+        return False
+
+
+def open_current_document_search_results() -> bool:
+    if _cb_open_current_document_search_results is None:
+        return False
+    try:
+        return bool(_cb_open_current_document_search_results())
     except Exception:
         return False
 

@@ -467,7 +467,8 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             page        INTEGER NOT NULL,
             note_id     INTEGER NOT NULL,
             excerpt     TEXT    NOT NULL DEFAULT '',
-            pdf_filename TEXT   NOT NULL DEFAULT ''
+            pdf_filename TEXT   NOT NULL DEFAULT '',
+            highlight_id TEXT   NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_pcs_card_page
             ON pdf_card_sources (pdf_card_id, page);
@@ -691,6 +692,18 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "pdf_filename",
         "TEXT NOT NULL DEFAULT ''",
     )
+    _ensure_column(
+        conn,
+        "pdf_card_sources",
+        "highlight_id",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_pcs_card_highlight_unique "
+        "ON pdf_card_sources (pdf_card_id, highlight_id) "
+        "WHERE highlight_id != ''"
+    )
+    conn.commit()
 
 
 def _ensure_column(
@@ -1618,13 +1631,46 @@ def add_pdf_card_source(
     note_id: int,
     excerpt: str = "",
     pdf_filename: str = "",
+    highlight_id: str = "",
 ) -> None:
     """Record that note_id was created while reading pdf_card_id at page."""
     conn = get_connection(addon_dir, profile)
-    conn.execute(
-        "INSERT INTO pdf_card_sources (pdf_card_id, page, note_id, excerpt, pdf_filename) VALUES (?, ?, ?, ?, ?)",
-        (pdf_card_id, page, note_id, excerpt, str(pdf_filename or "").strip()),
-    )
+    normalized_highlight_id = str(highlight_id or "").strip()
+    if normalized_highlight_id:
+        conn.execute(
+            "INSERT INTO pdf_card_sources "
+            "(pdf_card_id, page, note_id, excerpt, pdf_filename, highlight_id) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (pdf_card_id, highlight_id) WHERE highlight_id != '' "
+            "DO UPDATE SET "
+            "page = excluded.page, "
+            "note_id = excluded.note_id, "
+            "excerpt = excluded.excerpt, "
+            "pdf_filename = CASE "
+            "WHEN excluded.pdf_filename != '' THEN excluded.pdf_filename "
+            "ELSE pdf_card_sources.pdf_filename END",
+            (
+                int(pdf_card_id),
+                int(page),
+                int(note_id),
+                excerpt,
+                str(pdf_filename or "").strip(),
+                normalized_highlight_id,
+            ),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO pdf_card_sources "
+            "(pdf_card_id, page, note_id, excerpt, pdf_filename, highlight_id) "
+            "VALUES (?, ?, ?, ?, ?, '')",
+            (
+                int(pdf_card_id),
+                int(page),
+                int(note_id),
+                excerpt,
+                str(pdf_filename or "").strip(),
+            ),
+        )
     conn.commit()
 
 
@@ -1633,13 +1679,105 @@ def get_pdf_card_sources(addon_dir: str, profile: str, pdf_card_id: int, page: i
     rows = (
         get_connection(addon_dir, profile)
         .execute(
-            "SELECT note_id, excerpt FROM pdf_card_sources "
+            "SELECT note_id, excerpt, highlight_id FROM pdf_card_sources "
             "WHERE pdf_card_id = ? AND page = ? ORDER BY id",
             (pdf_card_id, page),
         )
         .fetchall()
     )
-    return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
+    return [
+        {"note_id": r[0], "excerpt": r[1], "highlight_id": str(r[2] or "")}
+        for r in rows
+    ]
+
+
+def get_pdf_card_source_for_highlight(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    highlight_id: str,
+) -> dict | None:
+    normalized_highlight_id = str(highlight_id or "").strip()
+    if not normalized_highlight_id:
+        return None
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT page, note_id, excerpt, pdf_filename, highlight_id "
+            "FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? AND highlight_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (int(pdf_card_id), normalized_highlight_id),
+        )
+        .fetchone()
+    )
+    if not row:
+        return None
+    return {
+        "page": int(row[0]),
+        "note_id": int(row[1]),
+        "excerpt": str(row[2] or ""),
+        "pdf_filename": str(row[3] or ""),
+        "highlight_id": str(row[4] or ""),
+    }
+
+
+def get_pdf_card_sources_for_highlights(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    highlight_ids: list[str] | tuple[str, ...] | set[str],
+) -> dict[str, dict]:
+    normalized = [
+        str(highlight_id or "").strip()
+        for highlight_id in list(highlight_ids or [])
+        if str(highlight_id or "").strip()
+    ]
+    if not normalized:
+        return {}
+    placeholders = ",".join("?" for _ in normalized)
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT page, note_id, excerpt, pdf_filename, highlight_id "
+            "FROM pdf_card_sources "
+            f"WHERE pdf_card_id = ? AND highlight_id IN ({placeholders}) "
+            "ORDER BY id",
+            (int(pdf_card_id), *normalized),
+        )
+        .fetchall()
+    )
+    result: dict[str, dict] = {}
+    for row in rows:
+        result[str(row[4] or "")] = {
+            "page": int(row[0]),
+            "note_id": int(row[1]),
+            "excerpt": str(row[2] or ""),
+            "pdf_filename": str(row[3] or ""),
+            "highlight_id": str(row[4] or ""),
+        }
+    return result
+
+
+def count_pdf_card_sources_for_highlight(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    highlight_id: str,
+) -> int:
+    normalized_highlight_id = str(highlight_id or "").strip()
+    if not normalized_highlight_id:
+        return 0
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT COUNT(*) FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? AND highlight_id = ?",
+            (int(pdf_card_id), normalized_highlight_id),
+        )
+        .fetchone()
+    )
+    return int(row[0] or 0) if row else 0
 
 
 def delete_pdf_card_sources_for_note_ids(
@@ -1663,6 +1801,24 @@ def delete_pdf_card_sources_for_note_ids(
     cursor = conn.execute(
         f"DELETE FROM pdf_card_sources WHERE pdf_card_id = ? AND note_id IN ({placeholders})",
         (int(pdf_card_id), *normalized),
+    )
+    conn.commit()
+    return int(cursor.rowcount or 0)
+
+
+def delete_pdf_card_source_for_highlight(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+    highlight_id: str,
+) -> int:
+    normalized_highlight_id = str(highlight_id or "").strip()
+    if not normalized_highlight_id:
+        return 0
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        "DELETE FROM pdf_card_sources WHERE pdf_card_id = ? AND highlight_id = ?",
+        (int(pdf_card_id), normalized_highlight_id),
     )
     conn.commit()
     return int(cursor.rowcount or 0)

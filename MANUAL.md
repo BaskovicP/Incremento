@@ -35,7 +35,7 @@ Incremento works with two broad card groups:
 | **Topics** | Long-form material you work through gradually | PDFs, videos, webpages, writing notes, article notes |
 | **Items** | Normal fact/review cards | Basic, cloze, Q&A, vocabulary |
 
-By default, cards in `deck:Topics` count as topics and everything else counts as items. You can change that in the scheduler filters.
+By default, cards in `deck:Topics` count as topics and everything else counts as items. Incremento can also auto-create that `Topics` deck for selected profiles from the settings dialog. You can change the topic/item rules in the scheduler filters.
 
 ### Incremental learning
 
@@ -120,7 +120,7 @@ Good first-run defaults:
 
 Controls how many cards Incremento puts into the session.
 
-If you later enable **Auto-refill session deck to keep this many pending cards** in **Advanced**, this same number becomes the live pending-window target. Incremento refills the active filtered deck only after Anki's visible queue drops below that count.
+If you later enable **Auto-refill session deck to keep this many unreviewed cards** in **Advanced**, this same number becomes the live not-yet-answered card target. Incremento preserves learning repeats in the filtered deck, so Anki's visible queue can temporarily be larger than this count.
 
 ### Card states to include
 
@@ -198,7 +198,7 @@ Use the **Test** buttons to see how many cards currently match.
 Open **Advanced** in the session dialog for a few session-behavior controls:
 
 - **Present cards in scheduler order**: shows cards in the exact order selected by the scheduler instead of randomizing them.
-- **Auto-refill session deck to keep this many pending cards**: keeps the active **Incremento Session** deck topped up to your **Cards per session** count as you study. This is useful if you want one long running session instead of exhausting the original filtered deck and rebuilding manually.
+- **Auto-refill session deck to keep this many unreviewed cards**: keeps the active **Incremento Session** deck topped up to your **Cards per session** count of not-yet-answered cards as you study. Learning repeats stay in the filtered deck, so the visible Anki queue can temporarily exceed this number.
 - **Allow document/media picks outside selected tags**: restores the older fallback behavior where a PDF, EPUB, video, or webpage tag miss can be filled from any card of that content type. Leave this off when tag quotas should be strict.
 
 ### Debug mode
@@ -336,6 +336,8 @@ Incremento remembers:
 
 If the target field already contains text, the new excerpt is appended rather than replacing the old content.
 
+PDF highlights can also be turned into cards from the **Highlights** panel. Incremento prefills the configured Add Card field, includes a citation that points back to the exact highlight when possible, and switches to **Preview Card** after that highlight already has a linked note.
+
 ### Highlights
 
 You can highlight text in the current color with:
@@ -347,7 +349,7 @@ Highlights are saved per PDF and reappear whenever you reopen the card.
 
 ### Cross-references
 
-Citations added from PDF extraction link back to the exact PDF page. Clicking one while reviewing any card opens that PDF in the dock at the cited page.
+Citations added from PDF extraction link back to the exact PDF page. Highlight-created cards also try to reopen and scroll to the exact cited highlight before falling back to page/excerpt matching.
 
 ### Searchable PDF text
 
@@ -598,6 +600,7 @@ Settings can control:
 - whether extracts start as topics
 - whether source tags are copied
 - whether extraction also creates a highlight
+- which Add Card field PDF highlight cards should prefill
 - which provenance links are stored in dedicated Incremento metadata fields
 
 ### Add Card dock
@@ -640,9 +643,9 @@ For full restore guidance, see `EXPORTING.md`.
 
 Open **Tools -> Incremento -> Settings** for six tabs:
 
-- **Extraction**: default extract note type, extract priority behavior, topic/tag defaults, and saved provenance link types
+- **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, topic/tag defaults, and saved provenance link types
 - **Review**: priority direction, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
-- **Topics**: which card types/tags count as topics, the default topic A-factor, Add Card topic/item tags, and the red Postpone button behavior
+- **Topics**: which card types/tags count as topics, the default topic A-factor, Add Card topic/item tags, whether Incremento auto-creates the `Topics` deck, which profiles that applies to, and the red Postpone button behavior
 - **Writing**: editor defaults, automatic backup intervals, progress visibility, default progress scope, and word-count mode
 - **Shortcuts**: assign or clear shortcuts for Incremento actions
 - **Advanced**: open the guarded profile database inspector

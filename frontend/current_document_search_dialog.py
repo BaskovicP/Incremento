@@ -145,7 +145,6 @@ class _CurrentDocumentSearchDialog(QDialog):
             return
         query = str(self._search.text() or "").strip()
         self._open_hit_fn(self._hits[index], index, query)
-        self.accept()
 
     def _open_search_all(self) -> None:
         query = str(self._search.text() or "").strip()
