@@ -551,6 +551,10 @@ export default function PdfViewer() {
   const highlightsForPanel = highlightsNotesOnly
     ? scopedHighlightsForPanel.filter((h) => String(h.note || '').trim())
     : scopedHighlightsForPanel;
+  const missingCardHighlightCount = sortedHighlights.filter((highlight) => {
+    const linkedNoteId = Number(highlight.linked_note_id || 0);
+    return !(Number.isInteger(linkedNoteId) && linkedNoteId > 0) && !!String(highlight.text || '').trim();
+  }).length;
   const currentHighlightIndex = sortedHighlights.findIndex(
     (highlight) => String(highlight.id || '') === String(activeHighlightId || ''),
   );
@@ -2138,6 +2142,24 @@ export default function PdfViewer() {
                 }}
               >
                 This page
+              </button>
+              <button
+                onClick={() => window.pycmd('incremento_pdf_hl_bulk_cards')}
+                disabled={missingCardHighlightCount === 0}
+                style={{
+                  border: '1px solid rgba(59,130,246,0.55)',
+                  borderRadius: 4,
+                  background: missingCardHighlightCount > 0 ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  color: missingCardHighlightCount > 0 ? 'rgb(96,165,250)' : 'rgba(229,231,235,0.45)',
+                  cursor: missingCardHighlightCount > 0 ? 'pointer' : 'default',
+                  fontSize: 12,
+                  padding: '1px 8px',
+                }}
+                title={missingCardHighlightCount > 0
+                  ? `Create cards for ${missingCardHighlightCount} unlinked highlight${missingCardHighlightCount === 1 ? '' : 's'} in this PDF`
+                  : 'No unlinked text highlights remain in this PDF'}
+              >
+                Create Missing Cards{missingCardHighlightCount > 0 ? ` (${missingCardHighlightCount})` : ''}
               </button>
               <button
                 onClick={() => setHighlightsNotesOnly((value) => !value)}

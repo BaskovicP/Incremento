@@ -1361,6 +1361,35 @@ def test_snapshot_extract_batch_state_requires_two_visible_fields(monkeypatch):
         assert "at least two visible fields" in str(exc)
 
 
+def test_snapshot_add_card_target_state_allows_one_visible_field(monkeypatch):
+    note = _FakeNote(field_names=["Front", "Incremento_Parent"])
+    editor = _FakeEditor(note=note, add_mode=True)
+    fake_dock = _FakeDock(editor)
+    fake_dock._addcards_dialog = types.SimpleNamespace(
+        editor=editor,
+        deck_chooser=types.SimpleNamespace(selected_deck_id=99),
+    )
+
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                decks=types.SimpleNamespace(get=lambda deck_id: {"id": deck_id, "name": "Topics"})
+            )
+        ),
+    )
+
+    snapshot = dock.snapshot_add_card_target_state(min_visible_fields=1)
+
+    assert snapshot["note_type_name"] == "Basic"
+    assert snapshot["deck_id"] == 99
+    assert snapshot["deck_name"] == "Topics"
+    assert snapshot["visible_fields"] == ["Front"]
+    assert snapshot["note_type_model"]["flds"] == [{"name": "Front"}, {"name": "Incremento_Parent"}]
+
+
 def test_create_extract_batch_notes_uses_selected_field_mapping_and_explicit_state(monkeypatch):
     model = {
         "name": "Basic",

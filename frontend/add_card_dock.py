@@ -1764,7 +1764,7 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
     return apply_extract_context_to_note(note, options=options, context=context)
 
 
-def snapshot_extract_batch_state() -> dict:
+def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
     editor = _dock_editor()
     if editor is None or getattr(editor, "note", None) is None:
         raise RuntimeError("Add Card dock is not available.")
@@ -1785,15 +1785,22 @@ def snapshot_extract_batch_state() -> dict:
         except Exception:
             visible_field_names = lambda names: list(names)  # type: ignore
     visible_fields = visible_field_names(field_names)
-    if len(visible_fields) < 2:
+    min_fields = max(1, int(min_visible_fields or 1))
+    if len(visible_fields) < min_fields:
+        if min_fields == 2:
+            field_message = "two visible fields"
+        elif min_fields == 1:
+            field_message = "one visible field"
+        else:
+            field_message = f"{min_fields} visible fields"
         raise RuntimeError(
-            f"Note type '{note_type_name or 'Unknown'}' needs at least two visible fields."
+            f"Note type '{note_type_name or 'Unknown'}' needs at least {field_message}."
         )
 
     deck_name = ""
+    deck_id = None
     dock = get_add_card_dock()
     dlg = getattr(dock, "_addcards_dialog", None) if dock is not None else None
-    deck_id = None
     try:
         deck_id = getattr(getattr(dlg, "deck_chooser", None), "selected_deck_id", None)
     except Exception:
@@ -1834,14 +1841,22 @@ def snapshot_extract_batch_state() -> dict:
     batch_options = dict(options)
     batch_options["mark_topic"] = False
     return {
+        "note_type_model": dict(note_type),
         "note_type_name": note_type_name,
+        "deck_id": int(deck_id) if deck_id is not None else None,
         "deck_name": deck_name,
         "visible_fields": list(visible_fields),
-        "question_field": visible_fields[0],
-        "answer_field": visible_fields[1],
         "extract_options": batch_options,
         "extract_context": dict(context),
     }
+
+
+def snapshot_extract_batch_state() -> dict:
+    state = snapshot_add_card_target_state(min_visible_fields=2)
+    visible_fields = list(state.get("visible_fields") or [])
+    state["question_field"] = visible_fields[0]
+    state["answer_field"] = visible_fields[1]
+    return state
 
 
 def create_extract_batch_notes(

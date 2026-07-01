@@ -12,6 +12,11 @@ sys.modules.setdefault("PyQt6.QtCore", MagicMock())
 import aqt
 
 import pdf_dock
+from pdf_highlight_bulk_dialog import (
+    can_create_pdf_highlight_bulk_rows,
+    normalize_pdf_highlight_bulk_row,
+    remap_pdf_highlight_bulk_row_fields,
+)
 
 
 class _FakeNote:
@@ -39,6 +44,75 @@ class _FakeNote:
 
     def cards(self):
         return [object(), object()]
+
+
+class _BatchPdfNote:
+    def __init__(self, field_names):
+        self.id = 0
+        self.fields = ["" for _ in field_names]
+        self._field_names = list(field_names)
+        self._field_map = {name: index for index, name in enumerate(field_names)}
+        self._note_type = {
+            "name": "Basic",
+            "flds": [{"name": name} for name in field_names],
+        }
+
+    def note_type(self):
+        return self._note_type
+
+    def __getitem__(self, key):
+        return self.fields[self._field_map[key]]
+
+    def __setitem__(self, key, value):
+        self.fields[self._field_map[key]] = value
+
+
+class _BatchPdfModels:
+    def __init__(self, model):
+        self._model = model
+
+    def by_name(self, name):
+        return self._model if self._model.get("name") == name else None
+
+
+class _BatchPdfDecks:
+    def __init__(self, deck_name="Topics", deck_id=99):
+        self._deck = {"name": deck_name, "id": deck_id}
+
+    def by_name(self, name):
+        return self._deck if self._deck["name"] == name else None
+
+    def get(self, deck_id):
+        return self._deck if int(deck_id) == self._deck["id"] else None
+
+    def add_normal_deck_with_name(self, name):
+        self._deck = {"name": name, "id": self._deck["id"]}
+        return types.SimpleNamespace(id=self._deck["id"])
+
+
+class _BatchPdfCollection:
+    def __init__(self, model, add_results=None, deck_name="Topics", deck_id=99):
+        self.models = _BatchPdfModels(model)
+        self.decks = _BatchPdfDecks(deck_name=deck_name, deck_id=deck_id)
+        self.created_notes = []
+        self._add_results = list(add_results or [])
+
+    def new_note(self, model):
+        note = _BatchPdfNote([field["name"] for field in model["flds"]])
+        note._note_type = model
+        self.created_notes.append(note)
+        return note
+
+    def add_note(self, note, deck_id):
+        if self._add_results:
+            result = self._add_results.pop(0)
+        else:
+            result = 1
+        if not result:
+            return 0
+        note.id = len([created for created in self.created_notes if created.id > 0]) + 1
+        note.note_type()["did"] = deck_id
+        return 1
 
 
 def test_load_pdf_page_note_preview_filters_hidden_and_empty_fields(monkeypatch):
@@ -230,6 +304,365 @@ def test_open_or_create_pdf_highlight_card_prefills_configured_field(monkeypatch
     assert fills[0][0] == (2, "Excerpt text")
     assert fills[0][1]["source_link_kind"] == "pdf"
     assert "highlight_id" in fills[0][1]["citation_html"]
+
+
+def test_pdf_highlight_bulk_row_defaults_to_checked_and_validates_target_text():
+    normalized = normalize_pdf_highlight_bulk_row(
+        {
+            "highlight_id": "hl-1",
+            "page": 2,
+            "text": "Excerpt",
+            "fields": {"Back": "Excerpt<br>Citation", "Front": ""},
+        },
+        visible_fields=["Front", "Back"],
+        target_field="Back",
+    )
+
+    assert normalized["create"] is True
+    assert normalized["valid"] is True
+    assert normalized["fields"]["Back"] == "Excerpt<br>Citation"
+
+    edited = normalize_pdf_highlight_bulk_row(
+        dict(normalized, fields={"Front": "", "Back": ""}),
+        visible_fields=["Front", "Back"],
+        target_field="Back",
+    )
+    assert edited["valid"] is False
+    assert "Back is empty" in edited["error"]
+
+    recovered = normalize_pdf_highlight_bulk_row(
+        dict(edited, fields={"Front": "", "Back": "Recovered"}),
+        visible_fields=["Front", "Back"],
+        target_field="Back",
+    )
+    assert recovered["valid"] is True
+    assert recovered["error"] == ""
+
+
+def test_pdf_highlight_bulk_row_remap_preserves_hidden_field_edits():
+    original = normalize_pdf_highlight_bulk_row(
+        {
+            "highlight_id": "hl-1",
+            "page": 2,
+            "text": "Excerpt",
+            "generated_text": "Generated citation",
+            "fields": {"Back": "Edited back", "Front": "Edited front"},
+        },
+        visible_fields=["Front", "Back"],
+        target_field="Back",
+    )
+
+    switched = remap_pdf_highlight_bulk_row_fields(
+        original,
+        visible_fields=["Front", "Extra"],
+        target_field="Extra",
+    )
+    assert switched["fields"]["Front"] == "Edited front"
+    assert switched["fields"]["Extra"] == "Generated citation"
+
+    restored = remap_pdf_highlight_bulk_row_fields(
+        switched,
+        visible_fields=["Front", "Back"],
+        target_field="Back",
+    )
+    assert restored["fields"]["Back"] == "Edited back"
+    assert restored["fields"]["Front"] == "Edited front"
+
+
+def test_pdf_highlight_bulk_create_state_requires_checked_valid_rows():
+    assert can_create_pdf_highlight_bulk_rows(
+        [{"create": True, "valid": True}, {"create": False, "valid": False}]
+    )
+    assert not can_create_pdf_highlight_bulk_rows(
+        [{"create": False, "valid": True}, {"create": True, "valid": False}]
+    )
+
+
+def test_missing_pdf_highlight_card_rows_excludes_linked_and_empty(monkeypatch):
+    monkeypatch.setattr(
+        pdf_dock,
+        "_pdf_highlights_payload",
+        lambda card_id: [
+            {"id": "hl-1", "page": 1, "text": "First", "note": "", "linked_note_id": 0},
+            {"id": "hl-2", "page": 2, "text": "Already linked", "note": "", "linked_note_id": 77},
+            {"id": "hl-3", "page": 3, "text": "   ", "note": "", "linked_note_id": 0},
+        ],
+    )
+    monkeypatch.setattr(pdf_dock, "_add_card_dock_module", lambda: types.SimpleNamespace(should_add_extract_source_link=lambda kind: False))
+
+    rows = pdf_dock._missing_pdf_highlight_card_rows(
+        55,
+        {
+            "visible_fields": ["Front", "Back"],
+            "target_field": "Back",
+        },
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["highlight_id"] == "hl-1"
+    assert rows[0]["fields"]["Back"] == "First"
+
+
+def test_pdf_highlight_bulk_snapshot_uses_first_compatible_note_type(monkeypatch):
+    fake_add_card_dock = types.SimpleNamespace(
+        prepare_pending_extract_from_source_fill=lambda source: None,
+        snapshot_add_card_target_state=lambda min_visible_fields=1: {
+            "note_type_name": "Incompatible",
+            "note_type_model": {
+                "name": "Incompatible",
+                "flds": [{"name": "Only"}],
+            },
+            "deck_name": "Topics",
+            "visible_fields": ["Only"],
+            "extract_options": {},
+            "extract_context": {},
+        },
+    )
+    monkeypatch.setattr(pdf_dock, "_add_card_dock_module", lambda: fake_add_card_dock)
+    monkeypatch.setattr(pdf_dock, "_cb_open_add_card_dock", lambda: None)
+    monkeypatch.setattr(pdf_dock, "_resolve_pdf_highlight_extract_field_index", lambda config=None: 1)
+    monkeypatch.setattr(pdf_dock, "visible_field_names", lambda names: list(names))
+    monkeypatch.setattr(
+        pdf_dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                models=types.SimpleNamespace(
+                    all=lambda: [
+                        {"name": "Incompatible", "flds": [{"name": "Only"}]},
+                        {"name": "Compatible", "flds": [{"name": "Front"}, {"name": "Back"}]},
+                    ]
+                ),
+                decks=types.SimpleNamespace(
+                    all_names_and_ids=lambda: [types.SimpleNamespace(name="Topics")]
+                ),
+            )
+        ),
+    )
+
+    snapshot = pdf_dock._pdf_highlight_bulk_snapshot()
+
+    assert snapshot["note_type_name"] == "Compatible"
+    assert snapshot["visible_fields"] == ["Front", "Back"]
+    assert snapshot["target_field"] == "Back"
+    assert snapshot["note_type_options"][0]["name"] == "Compatible"
+
+
+def test_pdf_highlights_payload_prunes_stale_link_and_makes_highlight_creatable(monkeypatch):
+    deleted = []
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "load_highlights",
+        lambda addon_dir, profile, card_id: [{"id": "hl-stale", "page": 4, "text": "Recovered", "note": ""}],
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_card_sources_for_highlights",
+        lambda *args, **kwargs: {
+            "hl-stale": {"note_id": 123, "highlight_id": "hl-stale", "page": 4, "excerpt": "Recovered"}
+        },
+    )
+    monkeypatch.setattr(pdf_dock, "_note_exists", lambda note_id: False)
+    monkeypatch.setattr(
+        pdf_dock,
+        "delete_pdf_card_sources_for_note_ids",
+        lambda addon_dir, profile, pdf_card_id, note_ids: deleted.append(sorted(note_ids)),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "count_pdf_card_sources_for_highlight",
+        lambda *args, **kwargs: 0,
+    )
+
+    payload = pdf_dock._pdf_highlights_payload(88)
+    rows = pdf_dock._missing_pdf_highlight_card_rows(
+        88,
+        {"visible_fields": ["Front"], "target_field": "Front"},
+    )
+
+    assert deleted == [[123], [123]]
+    assert payload[0]["linked_note_id"] == 0
+    assert rows[0]["highlight_id"] == "hl-stale"
+
+
+def test_create_pdf_highlight_batch_notes_creates_notes_and_records_highlight_ids(monkeypatch):
+    model = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    collection = _BatchPdfCollection(model)
+    source_calls = []
+    apply_calls = []
+
+    fake_add_card_dock = types.SimpleNamespace(
+        _ensure_incremento_metadata_fields_saved=lambda models, current_model: False,
+        apply_extract_options_to_note=lambda note, options: apply_calls.append((note["Back"], dict(options))) or dict(options),
+        apply_extract_context_to_note=lambda note, options=None, context=None: {"metadata_saved": True},
+        mark_reviewer_extract_note_added=lambda options: None,
+        _notify_video_extract_note_added=lambda note, options: None,
+    )
+
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=collection))
+    monkeypatch.setattr(pdf_dock, "_add_card_dock_module", lambda: fake_add_card_dock)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "get_pdf_card_source_for_highlight", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pdf_dock, "_note_exists", lambda note_id: False)
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_pdf_card_source",
+        lambda *args, **kwargs: source_calls.append((args, kwargs)),
+    )
+
+    summary = pdf_dock.create_pdf_highlight_batch_notes(
+        pdf_card_id=55,
+        pdf_filename="source.pdf",
+        snapshot={
+            "note_type_name": "Basic",
+            "deck_name": "Topics",
+            "deck_id": 99,
+            "visible_fields": ["Front", "Back"],
+            "target_field": "Back",
+            "extract_options": {"priority": 33.0, "source": "pdf", "source_card_id": 55},
+            "extract_context": {"parent_card_id": 55},
+        },
+        rows=[
+            {
+                "highlight_id": "hl-1",
+                "page": 7,
+                "text": "Excerpt",
+                "fields": {"Front": "", "Back": "Excerpt<br>Citation"},
+            }
+        ],
+    )
+
+    assert summary == {
+        "created": 1,
+        "skipped": 0,
+        "failed": 0,
+        "errors": [],
+        "created_note_ids": [1],
+    }
+    assert collection.created_notes[0]["Back"] == "Excerpt<br>Citation"
+    assert apply_calls == [("Excerpt<br>Citation", {"priority": 33.0, "source": "pdf", "source_card_id": 55})]
+    assert source_calls[0][1]["highlight_id"] == "hl-1"
+
+
+def test_create_pdf_highlight_batch_notes_prefers_selected_deck_name_over_stale_id(monkeypatch):
+    model = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    collection = _BatchPdfCollection(model, deck_name="New Deck", deck_id=7)
+    fake_add_card_dock = types.SimpleNamespace(
+        _ensure_incremento_metadata_fields_saved=lambda models, current_model: False,
+        apply_extract_options_to_note=lambda note, options: dict(options),
+        apply_extract_context_to_note=lambda note, options=None, context=None: {"metadata_saved": True},
+        mark_reviewer_extract_note_added=lambda options: None,
+        _notify_video_extract_note_added=lambda note, options: None,
+    )
+
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=collection))
+    monkeypatch.setattr(pdf_dock, "_add_card_dock_module", lambda: fake_add_card_dock)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "get_pdf_card_source_for_highlight", lambda *args, **kwargs: None)
+    monkeypatch.setattr(pdf_dock, "_note_exists", lambda note_id: False)
+    monkeypatch.setattr(pdf_dock, "add_pdf_card_source", lambda *args, **kwargs: None)
+
+    summary = pdf_dock.create_pdf_highlight_batch_notes(
+        pdf_card_id=55,
+        pdf_filename="source.pdf",
+        snapshot={
+            "note_type_name": "Basic",
+            "deck_name": "New Deck",
+            "deck_id": None,
+            "visible_fields": ["Front", "Back"],
+            "target_field": "Back",
+            "extract_options": {"source": "pdf"},
+            "extract_context": {},
+        },
+        rows=[
+            {
+                "highlight_id": "hl-1",
+                "page": 7,
+                "text": "Excerpt",
+                "fields": {"Front": "", "Back": "Excerpt"},
+            }
+        ],
+    )
+
+    assert summary["created"] == 1
+    assert collection.created_notes[0].note_type()["did"] == 7
+
+
+def test_create_pdf_highlight_batch_notes_skips_duplicates_and_reports_failures(monkeypatch):
+    model = {
+        "name": "Basic",
+        "flds": [{"name": "Front"}, {"name": "Back"}],
+    }
+    collection = _BatchPdfCollection(model, add_results=[1, 0])
+    fake_add_card_dock = types.SimpleNamespace(
+        _ensure_incremento_metadata_fields_saved=lambda models, current_model: False,
+        apply_extract_options_to_note=lambda note, options: dict(options),
+        apply_extract_context_to_note=lambda note, options=None, context=None: {"metadata_saved": True},
+        mark_reviewer_extract_note_added=lambda options: None,
+        _notify_video_extract_note_added=lambda note, options: None,
+    )
+
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=collection))
+    monkeypatch.setattr(pdf_dock, "_add_card_dock_module", lambda: fake_add_card_dock)
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_note_exists", lambda note_id: note_id == 88)
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_card_source_for_highlight",
+        lambda addon_dir, profile, pdf_card_id, highlight_id: {"note_id": 88} if highlight_id == "hl-linked" else None,
+    )
+    monkeypatch.setattr(pdf_dock, "add_pdf_card_source", lambda *args, **kwargs: None)
+
+    summary = pdf_dock.create_pdf_highlight_batch_notes(
+        pdf_card_id=55,
+        pdf_filename="source.pdf",
+        snapshot={
+            "note_type_name": "Basic",
+            "deck_name": "Topics",
+            "deck_id": 99,
+            "visible_fields": ["Front", "Back"],
+            "target_field": "Back",
+            "extract_options": {"source": "pdf"},
+            "extract_context": {},
+        },
+        rows=[
+            {
+                "highlight_id": "hl-linked",
+                "page": 3,
+                "text": "Existing",
+                "fields": {"Front": "", "Back": "Existing"},
+            },
+            {
+                "highlight_id": "hl-new",
+                "page": 4,
+                "text": "First create",
+                "fields": {"Front": "", "Back": "First create"},
+            },
+            {
+                "highlight_id": "hl-fail",
+                "page": 5,
+                "text": "Will fail",
+                "fields": {"Front": "", "Back": "Will fail"},
+            },
+        ],
+    )
+
+    assert summary["created"] == 1
+    assert summary["skipped"] == 1
+    assert summary["failed"] == 1
+    assert summary["created_note_ids"] == [1]
+    assert "hl-fail" in summary["errors"][0]
 
 
 def test_pdf_storage_path_rejects_traversal(monkeypatch):

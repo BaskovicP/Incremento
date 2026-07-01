@@ -843,6 +843,14 @@ def _add_card_source_for_new_note() -> str:
         return ""
 
 
+def _add_card_dock_module():
+    try:
+        from . import add_card_dock as _add_card_dock_mod
+    except Exception:
+        import add_card_dock as _add_card_dock_mod  # type: ignore
+    return _add_card_dock_mod
+
+
 def _current_reviewer_card_id() -> int | None:
     try:
         reviewer = getattr(mw, "reviewer", None)
@@ -1083,6 +1091,7 @@ _MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
 _MSG_REGENERATE_COVER = "incremento_pdf_regenerate_cover:"
 _MSG_HL_NOTE = "incremento_pdf_hl_note:"
 _MSG_HL_CARD = "incremento_pdf_hl_card:"
+_MSG_HL_BULK_CARDS = "incremento_pdf_hl_bulk_cards"
 _MSG_BOOKMARK_ADD = "incremento_pdf_bookmark_add:"
 _MSG_BOOKMARK_DELETE = "incremento_pdf_bookmark_delete:"
 _MSG_BOOKMARK_LIST = "incremento_pdf_bookmark_list:"
@@ -1387,6 +1396,329 @@ def _open_or_create_pdf_highlight_card(hl_id: str) -> None:
             source_link_kind="pdf",
         )
     tooltip(f"PDF highlight sent to Add Card field {target_field_idx + 1}.")
+
+
+def _pdf_highlight_bulk_snapshot() -> dict[str, object]:
+    add_card_dock = _add_card_dock_module()
+    add_card_dock.prepare_pending_extract_from_source_fill("pdf")
+    if _cb_open_add_card_dock:
+        _cb_open_add_card_dock()
+    snapshot = dict(add_card_dock.snapshot_add_card_target_state(min_visible_fields=1))
+    target_field_idx = _resolve_pdf_highlight_extract_field_index()
+    current_visible_fields = [
+        str(name or "").strip()
+        for name in list(snapshot.get("visible_fields") or [])
+        if str(name or "").strip()
+    ]
+    note_type_options: list[dict[str, object]] = []
+    seen_note_types: set[str] = set()
+    try:
+        all_models = list(mw.col.models.all() or [])
+    except Exception:
+        all_models = []
+    current_note_type_name = str(snapshot.get("note_type_name") or "").strip()
+    current_model = snapshot.get("note_type_model") or {}
+    if current_model:
+        all_models.insert(0, current_model)
+    for model in all_models:
+        note_type_name = str((model or {}).get("name") or "").strip()
+        if not note_type_name or note_type_name in seen_note_types:
+            continue
+        model_fields = [
+            str((field or {}).get("name") or "").strip()
+            for field in list((model or {}).get("flds") or [])
+            if str((field or {}).get("name") or "").strip()
+        ]
+        model_visible_fields = visible_field_names(model_fields)
+        if target_field_idx < 0 or target_field_idx >= len(model_visible_fields):
+            continue
+        seen_note_types.add(note_type_name)
+        note_type_options.append(
+            {
+                "name": note_type_name,
+                "visible_fields": list(model_visible_fields),
+                "target_field": model_visible_fields[target_field_idx],
+                "target_field_index": target_field_idx,
+            }
+        )
+    current_target_field = ""
+    if 0 <= target_field_idx < len(current_visible_fields):
+        current_target_field = current_visible_fields[target_field_idx]
+    if not note_type_options:
+        raise RuntimeError(
+            "No compatible note type exposes the configured PDF highlight target field."
+        )
+    note_type_options.sort(
+        key=lambda spec: (
+            0 if str(spec.get("name") or "") == current_note_type_name and str(spec.get("target_field") or "") == current_target_field else 1,
+            str(spec.get("name") or "").lower(),
+        )
+    )
+    default_note_type = note_type_options[0]
+    snapshot["note_type_name"] = str(default_note_type.get("name") or "").strip()
+    snapshot["visible_fields"] = list(default_note_type.get("visible_fields") or [])
+    snapshot["target_field"] = str(default_note_type.get("target_field") or "").strip()
+    snapshot["target_field_index"] = int(default_note_type.get("target_field_index", 0) or 0)
+    deck_names: list[str] = []
+    seen_deck_names: set[str] = set()
+    current_deck_name = str(snapshot.get("deck_name") or "").strip()
+    if current_deck_name:
+        deck_names.append(current_deck_name)
+        seen_deck_names.add(current_deck_name)
+    try:
+        for deck in list(mw.col.decks.all_names_and_ids() or []):
+            deck_name = str(getattr(deck, "name", "") or "")
+            if not deck_name or deck_name in seen_deck_names:
+                continue
+            seen_deck_names.add(deck_name)
+            deck_names.append(deck_name)
+    except Exception:
+        pass
+    snapshot["note_type_options"] = note_type_options
+    snapshot["deck_names"] = deck_names
+    return snapshot
+
+
+def _pdf_highlight_bulk_generated_text(highlight: dict) -> str:
+    excerpt = str(highlight.get("text") or "").strip()
+    citation_html = pdf_citation(
+        excerpt,
+        highlight_id=str(highlight.get("id") or ""),
+        page=int(highlight.get("page", 1) or 1),
+    )
+    if citation_html and _add_card_dock_module().should_add_extract_source_link("pdf"):
+        return excerpt + "<br>" + citation_html
+    return excerpt
+
+
+def _missing_pdf_highlight_card_rows(
+    pdf_card_id: int,
+    snapshot: dict[str, object] | None = None,
+) -> list[dict[str, object]]:
+    if int(pdf_card_id or 0) <= 0:
+        return []
+    resolved_snapshot = dict(snapshot or _pdf_highlight_bulk_snapshot())
+    target_field = str(resolved_snapshot.get("target_field") or "").strip()
+    visible_fields = [
+        str(name or "").strip()
+        for name in list(resolved_snapshot.get("visible_fields") or [])
+        if str(name or "").strip()
+    ]
+    rows: list[dict[str, object]] = []
+    for highlight in _pdf_highlights_payload(int(pdf_card_id)):
+        highlight_id = str(highlight.get("id") or "").strip()
+        text = str(highlight.get("text") or "").strip()
+        linked_note_id = int(highlight.get("linked_note_id", 0) or 0)
+        if not highlight_id or linked_note_id > 0 or not text:
+            continue
+        generated_text = _pdf_highlight_bulk_generated_text(highlight)
+        fields = {field_name: "" for field_name in visible_fields}
+        if target_field:
+            fields[target_field] = generated_text
+        rows.append(
+            {
+                "highlight_id": highlight_id,
+                "page": int(highlight.get("page", 0) or 0),
+                "text": text,
+                "note": str(highlight.get("note") or "").strip(),
+                "generated_text": generated_text,
+                "linked_note_id": linked_note_id,
+                "fields": fields,
+                "create": True,
+                "valid": bool(str(fields.get(target_field) or "").strip()),
+            }
+        )
+    return rows
+
+
+def create_pdf_highlight_batch_notes(
+    *,
+    pdf_card_id: int,
+    pdf_filename: str,
+    snapshot: dict[str, object],
+    rows: list[dict],
+) -> dict[str, object]:
+    if mw is None or getattr(mw, "col", None) is None:
+        raise RuntimeError("Anki collection is not available.")
+
+    add_card_dock = _add_card_dock_module()
+    note_type_name = str(snapshot.get("note_type_name") or "").strip()
+    model = mw.col.models.by_name(note_type_name)
+    if model is None:
+        raise RuntimeError(f"Note type '{note_type_name}' was not found.")
+    add_card_dock._ensure_incremento_metadata_fields_saved(mw.col.models, model)
+
+    deck_name = str(snapshot.get("deck_name") or "").strip()
+    deck_id = snapshot.get("deck_id")
+    deck = None
+    if deck_id is not None:
+        try:
+            deck = mw.col.decks.get(int(deck_id))
+        except Exception:
+            deck = None
+    if deck is None and deck_name:
+        deck = mw.col.decks.by_name(deck_name)
+    if deck is None:
+        created_deck_name = deck_name or "Topics"
+        deck_id = mw.col.decks.add_normal_deck_with_name(created_deck_name).id
+    else:
+        deck_id = deck["id"]
+
+    visible_fields = [
+        str(name or "").strip()
+        for name in list(snapshot.get("visible_fields") or [])
+        if str(name or "").strip()
+    ]
+    target_field = str(snapshot.get("target_field") or "").strip()
+    if target_field not in visible_fields:
+        raise RuntimeError("The configured PDF highlight target field is not visible.")
+
+    summary: dict[str, object] = {
+        "created": 0,
+        "skipped": 0,
+        "failed": 0,
+        "errors": [],
+        "created_note_ids": [],
+    }
+    base_options = dict(snapshot.get("extract_options") or {})
+    base_context = dict(snapshot.get("extract_context") or {})
+    normalized_filename = str(pdf_filename or "").strip()
+
+    for index, row in enumerate(list(rows or []), start=1):
+        highlight_id = str((row or {}).get("highlight_id") or "").strip()
+        fields = dict((row or {}).get("fields") or {})
+        target_text = str(fields.get(target_field) or "").strip()
+        if not highlight_id or not target_text:
+            summary["skipped"] = int(summary["skipped"]) + 1
+            continue
+        source_row = get_pdf_card_source_for_highlight(
+            _ADDON_DIR,
+            _active_profile(),
+            int(pdf_card_id),
+            highlight_id,
+        )
+        linked_note_id = int((source_row or {}).get("note_id", 0) or 0)
+        if linked_note_id > 0 and _note_exists(linked_note_id):
+            summary["skipped"] = int(summary["skipped"]) + 1
+            continue
+        if source_row and linked_note_id > 0 and not _note_exists(linked_note_id):
+            delete_pdf_card_source_for_highlight(
+                _ADDON_DIR,
+                _active_profile(),
+                int(pdf_card_id),
+                highlight_id,
+            )
+        try:
+            note = mw.col.new_note(model)
+            for field_name in visible_fields:
+                note[field_name] = str(fields.get(field_name) or "")
+            note.note_type()["did"] = deck_id
+            added = mw.col.add_note(note, deck_id)
+            if not added:
+                raise RuntimeError("Anki rejected the note.")
+            applied_options = add_card_dock.apply_extract_options_to_note(
+                note,
+                dict(base_options),
+            ) or dict(base_options)
+            add_card_dock.apply_extract_context_to_note(
+                note,
+                options=applied_options,
+                context=dict(base_context),
+            )
+            if str((applied_options or {}).get("source") or "").strip():
+                add_card_dock.mark_reviewer_extract_note_added(applied_options)
+            add_card_dock._notify_video_extract_note_added(note, applied_options)
+            add_pdf_card_source(
+                _ADDON_DIR,
+                _active_profile(),
+                int(pdf_card_id),
+                int((row or {}).get("page", 1) or 1),
+                note.id,
+                str((row or {}).get("text") or "")[:200],
+                normalized_filename,
+                highlight_id=highlight_id,
+            )
+            summary["created"] = int(summary["created"]) + 1
+            note_ids = list(summary["created_note_ids"])
+            note_ids.append(int(note.id))
+            summary["created_note_ids"] = note_ids
+        except Exception as exc:
+            summary["failed"] = int(summary["failed"]) + 1
+            errors = list(summary["errors"])
+            errors.append(f"Row {index} ({highlight_id}): {exc}")
+            summary["errors"] = errors
+
+    return summary
+
+
+def _refresh_pdf_highlight_card_links(pdf_card_id: int) -> None:
+    if _pdf_dock is None or int(pdf_card_id or 0) <= 0:
+        return
+    try:
+        current_page = get_page(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+        cards, counts = _reconcile_pdf_page_sources(int(pdf_card_id), current_page)
+        data = {"page": current_page, "cards": cards, "pageCounts": counts}
+        js = (
+            "window.incrementoReceivePageCards && "
+            f"window.incrementoReceivePageCards({json.dumps(data)})"
+        )
+        _pdf_dock._view.page().runJavaScript(js)
+        _push_pdf_highlights(int(pdf_card_id))
+    except Exception:
+        pass
+
+
+def _open_pdf_highlight_bulk_create_dialog() -> None:
+    card_id = current_pdf_card_id()
+    if card_id is None:
+        showInfo("Could not determine which PDF is currently open.")
+        return
+    try:
+        snapshot = _pdf_highlight_bulk_snapshot()
+    except Exception as exc:
+        showInfo(f"Could not read the current Add Card target.\n\n{exc}")
+        return
+
+    rows = _missing_pdf_highlight_card_rows(int(card_id), snapshot)
+    if not rows:
+        tooltip("No unlinked text highlights remain for this PDF.")
+        return
+
+    try:
+        try:
+            from .pdf_highlight_bulk_dialog import PdfHighlightBulkDialog
+        except Exception:
+            from pdf_highlight_bulk_dialog import PdfHighlightBulkDialog  # type: ignore
+        dlg = PdfHighlightBulkDialog(snapshot, rows, parent=mw)
+    except Exception as exc:
+        showInfo(f"Could not open the PDF bulk highlight dialog.\n\n{exc}")
+        return
+
+    if dlg.exec() != QDialog.DialogCode.Accepted:
+        return
+
+    summary = create_pdf_highlight_batch_notes(
+        pdf_card_id=int(card_id),
+        pdf_filename=str(_current_pdf_filename or ""),
+        snapshot=dlg.selected_snapshot,
+        rows=dlg.selected_rows,
+    )
+    _refresh_pdf_highlight_card_links(int(card_id))
+
+    created = int(summary.get("created", 0) or 0)
+    skipped = int(summary.get("skipped", 0) or 0)
+    failed = int(summary.get("failed", 0) or 0)
+    if failed:
+        errors = "\n".join(str(error) for error in list(summary.get("errors") or []))
+        showInfo(
+            "Finished creating PDF highlight cards.\n\n"
+            f"Created: {created}\nSkipped: {skipped}\nFailed: {failed}\n\n{errors}"
+        )
+    else:
+        tooltip(
+            f"Created {created} PDF highlight card{'s' if created != 1 else ''}."
+            + (f" Skipped {skipped}." if skipped else "")
+        )
 
 
 def _pdf_bookmarks_payload(card_id: int) -> list[dict]:
@@ -1803,6 +2135,11 @@ def _handle_pdf_js_message(msg: str) -> None:
             _open_or_create_pdf_highlight_card(str(payload.get("id") or ""))
         except Exception as e:
             showInfo(f"Could not open the PDF highlight card workflow.\n\n{e}")
+    elif msg == _MSG_HL_BULK_CARDS:
+        try:
+            _open_pdf_highlight_bulk_create_dialog()
+        except Exception as e:
+            showInfo(f"Could not open the bulk PDF highlight workflow.\n\n{e}")
     elif msg.startswith(_MSG_BOOKMARK_ADD):
         try:
             payload = json.loads(msg[len(_MSG_BOOKMARK_ADD) :])
