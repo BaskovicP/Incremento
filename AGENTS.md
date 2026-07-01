@@ -16,13 +16,19 @@ Important newer hotspots:
 
 - `backend/knowledge_tree.py`, `backend/knowledge_tree_postpone.py`, `frontend/knowledge_tree_dialog.py`: the knowledge-tree workspace, branch study, branch priority tools, postpone flow, and subset review.
 - `backend/session.py`, `backend/scheduler_config.py`, `frontend/learn_dialog.py`: Incremento session construction, active-session auto-refill, and the scheduler dialog controls for card states and pending-window behavior.
+- `backend/session_selection.py`, `backend/scheduler.py`, `backend/topic_scheduler.py`: session candidate filtering, tag-aware selection, refill preview behavior, and reader-card scheduler integration.
 - `frontend/settings_dialog.py`, `config.json`, `__init__.py`: config-backed settings tabs, persisted defaults, and save/load wiring for extraction, review, topics, writing, shortcuts, and advanced tools.
 - `backend/note_metadata.py`: shared Incremento provenance fields and helpers. New note-creation paths should use this instead of appending source/parent text into content fields.
+- `frontend/add_card_dock.py`, `backend/reviewer_extract.py`, `frontend/extract_batch_dialog.py`: transfer-to-note flows, topic/item tag toggles, batch Q/A extraction, and reviewer-side extract plumbing.
+- `frontend/pdf_dock.py`, `frontend/epub_dock.py`, `frontend/current_document_search_dialog.py`, `frontend/src/PdfViewer.jsx`: PDF and EPUB reader UX, in-document find, current-document search results, per-card scroll restore, and highlight-driven actions.
+- `frontend/pdf_highlight_bulk_dialog.py`, `backend/notebook_citations.py`, `frontend/notebook_citation_import_dialog.py`: PDF highlight card creation, bulk highlight workflows, and Kindle notebook citation import into highlights.
 - `backend/video_manager.py`, `frontend/video_dock.py`: video import, deferred local download, subtitle management, and local dual-caption playback.
 - `backend/custom_schedule.py`, `frontend/custom_schedule_dialog.py`: browser-side custom scheduling rules and their dialog/workflow.
 - `frontend/reviewer_priority_badge.py`: reviewer overlay that shows priority, topic A-factor, saved browser time, and active custom schedule at a glance.
 - `frontend/writing_dock.py`: markdown writing dock with per-card editor state, word-progress counters, and configurable word-count mode.
 - `backend/statistics.py`, `frontend/stats_dialog.py`, `frontend/timer_widget.py`, `backend/review_time_tracker.py`: normalized count/time statistics, review-time attribution, and logical-day focus timer activity.
+- `frontend/database_entries_dialog.py`: database-backed reader entry inspection surfaced from the learning dialog.
+- `chrome_extensions/incremento_companion/src/`: browser snapshot quick-create, context-menu sync, and extension-side capture model behavior. Keep built `dist/` output aligned with source changes.
 
 ## Read The Local Guide
 
@@ -80,14 +86,19 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - When moving shipped assets, update both source references and generated or runtime references.
 - If you change PDF viewer React source or extension source, rebuild before finishing.
 - Keep provenance in dedicated `Incremento_*` note fields. Do not reintroduce inline `Source:` / parent blocks into the main content field for new notes.
+- Reader search and find features span both Python docks and the shipped PDF viewer bundle. Keep `frontend/pdf_dock.py`, `frontend/epub_dock.py`, `frontend/current_document_search_dialog.py`, `frontend/src/PdfViewer.jsx`, and `web/dist/pdf_viewer.js` aligned when changing document search UX.
+- PDF highlight workflows now include single-highlight actions, bulk card creation, and Kindle citation import. Preserve highlight metadata, selection context, and per-profile document references across those paths.
+- Session refill must preserve the distinction between the original selected id pool and Anki's live filtered-deck queue. Refill only the missing pending amount and do not duplicate cards already present.
 - Session auto-refill uses `session_card_count` as a live pending-window size after the deck starts. Keep the frontend label, scheduler config, backend refill behavior, and docs aligned when changing this flow.
 - When changing config-backed settings, keep `config.json`, `frontend/settings_dialog.py`, `__init__.py`, `tests/test_settings_dialog.py`, and `MANUAL.md` aligned.
 - Knowledge-tree nodes are card-backed. One tree node maps to one `card_id`, with at most one parent and any number of children.
 - If a knowledge-tree action is exposed in multiple places such as toolbar, inspector, and context menu, keep those entry points aligned.
+- Add-card extraction flows are shared between the persistent Add dialog, reviewer extraction, browser capture imports, and batch dialogs. Keep tag-toggle state, duplicate handling, and metadata/provenance behavior consistent across those entry points.
 - Writing-card editor state is per card and persisted in SQLite. Writing progress counters are also per card; `session` means the current open session for that writing card.
 - Custom-schedule badges in the reviewer should appear only when a real rule exists for that card; missing rules must not fall back to the default preset text.
 - `custom_learn_stats.json` stores normalized count scopes (`daily.counts`, `lifetime`) plus review-time scopes (`time.daily.seconds`, `time.lifetime`). Keep DB stats behavior as compatibility/fallback, not a second shape.
 - EPUB is a concrete document and stat type. Preserve `pdf` and `epub` separately in scheduling, statistics, timer summaries, and UI labels instead of folding EPUB into PDF.
+- Browser snapshot quick-create and context-menu behavior live partly in the Chrome extension source and partly in generated `dist/` files. If you touch the extension, update the built artifacts before finishing.
 
 ## Tests / Checks
 
@@ -105,6 +116,8 @@ Useful focused suites:
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_db.py tests/test_session_selection.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_session.py tests/test_learn_dialog.py tests/test_session_selection.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_settings_dialog.py tests/test_learn_dialog.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_pdf_dock.py tests/test_epub_dock.py tests/test_current_document_search_dialog.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_add_card_dock.py tests/test_extract_batch_dialog.py tests/test_reviewer_extract.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py tests/test_custom_schedule.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_db.py tests/test_writing_dock.py -q
