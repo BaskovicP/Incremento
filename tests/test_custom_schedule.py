@@ -89,6 +89,7 @@ def test_apply_custom_schedule_after_answer_fixed_repeat_updates_topic_interval(
             },
         ),
         patch.object(custom_schedule, "is_topic_card", return_value=True),
+        patch.object(custom_schedule, "sync_card_review_interval") as sync_interval,
         patch.object(custom_schedule, "get_topic_schedule", return_value=(1.8, 9)),
         patch.object(custom_schedule, "set_topic_schedule") as set_topic_schedule,
         patch.object(custom_schedule, "_active_profile", return_value="TestProfile"),
@@ -96,6 +97,7 @@ def test_apply_custom_schedule_after_answer_fixed_repeat_updates_topic_interval(
         custom_schedule.apply_custom_schedule_after_answer(None, fake_card, 3)
 
     fake_sched.set_due_date.assert_called_once_with([12], "2")
+    sync_interval.assert_called_once_with(12, 2)
     set_topic_schedule.assert_called_once_with(
         custom_schedule._ADDON_DIR,
         "TestProfile",
@@ -124,6 +126,7 @@ def test_apply_custom_schedule_after_answer_one_time_clears_rule():
                 "interval_unit": "weeks",
             },
         ),
+        patch.object(custom_schedule, "is_topic_card", return_value=False),
         patch.object(custom_schedule, "clear_custom_schedule_rule") as clear_rule,
         patch.object(custom_schedule, "_active_profile", return_value="TestProfile"),
     ):

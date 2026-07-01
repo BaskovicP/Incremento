@@ -1,5 +1,6 @@
 """Tests for backend/topic_scheduler.py — pure logic + mocked-mw functions."""
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # topic_scheduler imports `from aqt import mw` at module level.
@@ -13,6 +14,7 @@ configured_topic_card_types = topic_scheduler.configured_topic_card_types
 configured_default_topic_a_factor = topic_scheduler.configured_default_topic_a_factor
 is_topic_card = topic_scheduler.is_topic_card
 remap_topic_review_ease = topic_scheduler.remap_topic_review_ease
+sync_card_review_interval = topic_scheduler.sync_card_review_interval
 topic_due_label = topic_scheduler.topic_due_label
 _A_MIN = topic_scheduler._A_MIN
 _A_MAX = topic_scheduler._A_MAX
@@ -333,6 +335,31 @@ class TestTopicDueLabel:
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             assert topic_due_label(card, 2) == "4d"
         assert mock_get.call_args.kwargs["default_a_factor"] == 4.2
+
+
+class TestSyncCardReviewInterval:
+    def test_updates_stale_anki_interval_after_manual_due_date(self):
+        fake_card = SimpleNamespace(id=42, ivl=3)
+        fake_col = MagicMock()
+        fake_col.get_card.return_value = fake_card
+        fake_mw = SimpleNamespace(col=fake_col)
+
+        with patch("topic_scheduler.mw", fake_mw):
+            sync_card_review_interval(42, 24)
+
+        assert fake_card.ivl == 24
+        fake_col.update_card.assert_called_once_with(fake_card)
+
+    def test_skips_update_when_interval_is_already_aligned(self):
+        fake_card = SimpleNamespace(id=42, ivl=24)
+        fake_col = MagicMock()
+        fake_col.get_card.return_value = fake_card
+        fake_mw = SimpleNamespace(col=fake_col)
+
+        with patch("topic_scheduler.mw", fake_mw):
+            sync_card_review_interval(42, 24)
+
+        fake_col.update_card.assert_not_called()
 
 
 # ── on_topic_card_answered ────────────────────────────────────────────────────

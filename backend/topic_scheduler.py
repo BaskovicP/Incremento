@@ -320,6 +320,33 @@ def topic_due_label(card, review_button_ease: int) -> str:
     return f"{new_interval}d"
 
 
+def sync_card_review_interval(card_id: int, interval_days: int) -> None:
+    """Keep Anki's card interval aligned after manually setting a due date.
+
+    Anki's set_due_date() reliably moves the due day, but on existing review
+    cards it can leave card.ivl at the scheduler/FSRS-computed value.
+    """
+    try:
+        normalized_card_id = int(card_id)
+        normalized_interval = max(1, int(interval_days))
+    except Exception:
+        return
+
+    try:
+        card = mw.col.get_card(normalized_card_id)
+    except Exception:
+        card = None
+    if card is None:
+        return
+
+    try:
+        if int(getattr(card, "ivl", 0) or 0) != normalized_interval:
+            card.ivl = normalized_interval
+            mw.col.update_card(card)
+    except Exception:
+        pass
+
+
 def on_topic_card_answered(reviewer, card, ease: int) -> None:
     """Hook: override FSRS scheduling with A-factor for topic cards.
 
@@ -349,5 +376,6 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
             precise_interval=new_precise_interval,
         )
         mw.col.sched.set_due_date([card.id], str(new_interval))
+        sync_card_review_interval(card.id, new_interval)
     except Exception as e:
         print(f"[Incremento] A-factor scheduling error: {e}")

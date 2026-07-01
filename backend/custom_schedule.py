@@ -17,7 +17,7 @@ try:
         set_topic_schedule,
     )
     from .paths import get_active_profile as _active_profile
-    from .topic_scheduler import is_topic_card
+    from .topic_scheduler import is_topic_card, sync_card_review_interval
 except ImportError:
     from db import (  # type: ignore
         clear_custom_schedule_rule,
@@ -27,7 +27,7 @@ except ImportError:
         set_topic_schedule,
     )
     from paths import get_active_profile as _active_profile  # type: ignore
-    from topic_scheduler import is_topic_card  # type: ignore
+    from topic_scheduler import is_topic_card, sync_card_review_interval  # type: ignore
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -244,7 +244,10 @@ def apply_rule_now_to_card(card_id: int, rule: dict | None = None, *, today: dat
             return False
 
     mw.col.sched.set_due_date([int(card_id)], str(target_days))
-    if mode == MODE_FIXED_REPEAT and is_topic_card(card):
+    topic_card = is_topic_card(card)
+    if topic_card:
+        sync_card_review_interval(int(card_id), target_days)
+    if mode == MODE_FIXED_REPEAT and topic_card:
         try:
             a_factor, _interval = get_topic_schedule(_ADDON_DIR, _active_profile(), int(card_id))
             set_topic_schedule(_ADDON_DIR, _active_profile(), int(card_id), a_factor, target_days)
@@ -280,7 +283,10 @@ def apply_custom_schedule_after_answer(reviewer, card, ease: int) -> None:
             return
 
     mw.col.sched.set_due_date([int(card.id)], str(target_days))
-    if mode == MODE_FIXED_REPEAT and is_topic_card(latest_card):
+    topic_card = is_topic_card(latest_card)
+    if topic_card:
+        sync_card_review_interval(int(card.id), target_days)
+    if mode == MODE_FIXED_REPEAT and topic_card:
         try:
             a_factor, _interval = get_topic_schedule(_ADDON_DIR, _active_profile(), int(card.id))
             set_topic_schedule(_ADDON_DIR, _active_profile(), int(card.id), a_factor, target_days)
