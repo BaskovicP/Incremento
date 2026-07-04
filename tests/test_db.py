@@ -2,6 +2,7 @@
 import sqlite3
 import tempfile
 import os
+from unittest.mock import patch
 
 import db
 import pytest
@@ -470,6 +471,29 @@ class TestDatabaseEditorHelpers:
         assert payload["card_ids"] == [404]
         assert payload["entries"] == []
 
+    def test_find_card_database_entries_batches_card_id_inputs(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        for card_id in range(1, 6):
+            conn.execute(
+                "INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)",
+                (card_id, float(card_id)),
+            )
+        conn.commit()
+
+        with patch.object(db, "_SQL_VARIABLE_CHUNK_SIZE", 2):
+            payload = db.find_card_database_entries(
+                self.addon_dir,
+                "TestProfile",
+                [1, 2, 3, 4, 5],
+            )
+
+        matched = {
+            entry["card_id"]
+            for entry in payload["entries"]
+            if entry["table"] == "priorities"
+        }
+        assert matched == {1, 2, 3, 4, 5}
+
 
 # ---------------------------------------------------------------------------
 # replace_pdf_text_index + search_pdf_text_index
@@ -784,6 +808,27 @@ class TestCustomScheduleRules:
         rules = db.get_custom_schedule_rules(self.addon_dir, "TestProfile", [2, 3])
         assert set(rules) == {2}
         assert rules[2]["mode"] == "one_time"
+
+    def test_get_custom_schedule_rules_batches_card_id_inputs(self):
+        for card_id in range(1, 6):
+            db.set_custom_schedule_rule(
+                self.addon_dir,
+                "TestProfile",
+                card_id,
+                mode="minimum_cadence",
+                interval_value=card_id,
+                interval_unit="days",
+            )
+
+        with patch.object(db, "_SQL_VARIABLE_CHUNK_SIZE", 2):
+            rules = db.get_custom_schedule_rules(
+                self.addon_dir,
+                "TestProfile",
+                [1, 2, 3, 4, 5],
+            )
+
+        assert set(rules) == {1, 2, 3, 4, 5}
+        assert rules[5]["interval_value"] == 5
 
     def test_clear_custom_schedule_rule_removes_row(self):
         db.set_custom_schedule_rule(
@@ -1153,6 +1198,40 @@ class TestPdfCardSources:
         assert db.get_pdf_card_sources(self.addon_dir, "TestProfile", pdf_card_id=3, page=1) == [
             {"note_id": 101, "excerpt": "", "highlight_id": ""}
         ]
+
+    def test_pdf_card_source_helpers_batch_large_inputs(self):
+        for index in range(1, 6):
+            db.add_pdf_card_source(
+                self.addon_dir,
+                "TestProfile",
+                pdf_card_id=2,
+                page=index,
+                note_id=100 + index,
+                highlight_id=f"h{index}",
+            )
+
+        with patch.object(db, "_SQL_VARIABLE_CHUNK_SIZE", 2):
+            sources = db.get_pdf_card_sources_for_highlights(
+                self.addon_dir,
+                "TestProfile",
+                pdf_card_id=2,
+                highlight_ids=["h1", "h2", "h3", "h4", "h5"],
+            )
+            deleted = db.delete_pdf_card_sources_for_note_ids(
+                self.addon_dir,
+                "TestProfile",
+                pdf_card_id=2,
+                note_ids=[101, 102, 103, 104, 105],
+            )
+
+        assert set(sources) == {"h1", "h2", "h3", "h4", "h5"}
+        assert deleted == 5
+        assert db.get_pdf_card_sources_up_to_page(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=2,
+            max_page=10,
+        ) == []
 
     def test_delete_pdf_card_source_for_highlight(self):
         db.add_pdf_card_source(
@@ -1896,6 +1975,29 @@ class TestKnowledgeTree:
                 "updated_at": rows[2]["updated_at"],
             },
         ]
+
+    def test_set_knowledge_tree_structure_deletes_stale_nodes_in_batches(self):
+        db.set_knowledge_tree_structure(
+            self.addon_dir,
+            "TestProfile",
+            [
+                {"card_id": card_id, "parent_card_id": None, "node_kind": "topic", "sort_order": card_id}
+                for card_id in range(1, 6)
+            ],
+        )
+
+        with patch.object(db, "_SQL_VARIABLE_CHUNK_SIZE", 2):
+            db.set_knowledge_tree_structure(
+                self.addon_dir,
+                "TestProfile",
+                [
+                    {"card_id": 2, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+                    {"card_id": 5, "parent_card_id": None, "node_kind": "item", "sort_order": 1},
+                ],
+            )
+
+        rows = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        assert [row["card_id"] for row in rows] == [2, 5]
 
     def test_set_structure_rejects_duplicate_card_ids(self):
         try:

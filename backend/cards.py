@@ -14,22 +14,34 @@ except ImportError:
 all_ready_cards_filter = "(is:new OR (is:learn is:due) OR (is:review is:due)) -is:suspended"
 PDF_NOTE_TYPE = "Incremento PDF"
 _TOPIC_ITEM_CACHE: dict[tuple[int, str, str, str], tuple[int, ...]] = {}
+_SQL_VARIABLE_CHUNK_SIZE = 900
+
+
+def _card_due_map(card_ids) -> dict[int, int]:
+    """Return due values for card_ids without exceeding SQLite variable limits."""
+    due_map: dict[int, int] = {}
+    ids = list(card_ids)
+    for start in range(0, len(ids), _SQL_VARIABLE_CHUNK_SIZE):
+        chunk = ids[start : start + _SQL_VARIABLE_CHUNK_SIZE]
+        if not chunk:
+            continue
+        placeholders = ",".join("?" * len(chunk))
+        rows = mw.col.db.all(
+            f"SELECT id, due FROM cards WHERE id IN ({placeholders})", *chunk
+        )
+        due_map.update({row[0]: row[1] for row in rows})
+    return due_map
 
 
 def _sort_by_due(card_ids):
     """Return card_ids sorted by ascending due date (most overdue first).
 
-    Uses a single bulk SQL query instead of one get_card() call per card,
-    reducing N individual DB round-trips to one.
+    Fetches due dates in bounded chunks to avoid SQLite's variable limit.
     """
     if not card_ids:
         return list(card_ids)
     ids = list(card_ids)
-    placeholders = ",".join("?" * len(ids))
-    rows = mw.col.db.all(
-        f"SELECT id, due FROM cards WHERE id IN ({placeholders})", *ids
-    )
-    due_map = {row[0]: row[1] for row in rows}
+    due_map = _card_due_map(ids)
     ids.sort(key=lambda cid: due_map.get(cid, 0))
     return ids
 
@@ -48,11 +60,7 @@ def sort_cards_for_priority_mode(
         return list(card_ids)
 
     ids = list(card_ids)
-    placeholders = ",".join("?" * len(ids))
-    rows = mw.col.db.all(
-        f"SELECT id, due FROM cards WHERE id IN ({placeholders})", *ids
-    )
-    due_map = {row[0]: row[1] for row in rows}
+    due_map = _card_due_map(ids)
     priority_map = get_all_priorities(addon_dir, _active_profile()) if addon_dir else {}
 
     if lower_is_more_important:

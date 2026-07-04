@@ -1449,8 +1449,10 @@ class _FakeSubsetDb:
             int(card_id): int(review_id)
             for card_id, review_id in dict(latest_review_by_card or {}).items()
         }
+        self.calls: list[tuple[str, tuple[int, ...]]] = []
 
     def all(self, sql: str, *params):
+        self.calls.append((str(sql), tuple(int(param) for param in params)))
         if "FROM revlog" not in str(sql):
             return []
         rows = []
@@ -1576,3 +1578,18 @@ class TestSubsetReviewRows:
 
         assert len(rows) == 1
         assert rows[0]["card_id"] == 10
+
+    def test_latest_revlog_lookup_batches_card_id_inputs(self):
+        latest_reviews = {card_id: 1700000000000 + card_id for card_id in range(1, 6)}
+        fake_mw = _FakeSubsetMw({}, latest_reviews, today=100)
+
+        with patch.object(knowledge_tree, "mw", fake_mw), patch.object(
+            knowledge_tree,
+            "_SQL_VARIABLE_CHUNK_SIZE",
+            2,
+        ):
+            result = knowledge_tree._latest_revlog_by_card_id([1, 2, 3, 4, 5])
+
+        assert result == latest_reviews
+        assert len(fake_mw.col.db.calls) == 3
+        assert all(len(params) <= 2 for _sql, params in fake_mw.col.db.calls)

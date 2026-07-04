@@ -59,6 +59,7 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 )
+_SQL_VARIABLE_CHUNK_SIZE = 900
 
 
 def normalize_node_kind(node_kind: str) -> str:
@@ -1567,24 +1568,25 @@ def _latest_revlog_by_card_id(card_ids: list[int]) -> dict[int, int]:
     if db is None or not hasattr(db, "all"):
         return {}
 
-    placeholders = ",".join("?" * len(card_ids))
-    sql = (
-        f"SELECT cid, MAX(id) "
-        f"FROM revlog "
-        f"WHERE cid IN ({placeholders}) "
-        f"GROUP BY cid"
-    )
-    try:
-        rows = list(db.all(sql, *card_ids) or [])
-    except Exception:
-        return {}
-
     latest: dict[int, int] = {}
-    for cid, review_id in rows:
+    for start in range(0, len(card_ids), _SQL_VARIABLE_CHUNK_SIZE):
+        chunk = card_ids[start : start + _SQL_VARIABLE_CHUNK_SIZE]
+        placeholders = ",".join("?" * len(chunk))
+        sql = (
+            f"SELECT cid, MAX(id) "
+            f"FROM revlog "
+            f"WHERE cid IN ({placeholders}) "
+            f"GROUP BY cid"
+        )
         try:
-            latest[int(cid)] = int(review_id or 0)
+            rows = list(db.all(sql, *chunk) or [])
         except Exception:
             continue
+        for cid, review_id in rows:
+            try:
+                latest[int(cid)] = int(review_id or 0)
+            except Exception:
+                continue
     return latest
 
 

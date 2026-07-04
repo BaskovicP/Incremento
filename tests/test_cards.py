@@ -13,7 +13,7 @@ import cards
 def _make_mock_mw(find_cards_return=None, db_rows=None):
     """Build a minimal mw mock.
 
-    db.all() is the SQL path used by _sort_by_due.
+    db.all() is the SQL path used by card due lookups.
     """
     mock_mw = MagicMock()
     mock_mw.col.find_cards.return_value = find_cards_return or []
@@ -76,6 +76,23 @@ class TestSortByDue:
             cards._sort_by_due(card_ids)
             sql_arg = mock_mw.col.db.all.call_args[0][0]
         assert sql_arg.count("?") == 3
+
+    def test_due_lookup_batches_large_inputs(self):
+        """Large collections must not generate one oversized SQL variable list."""
+        card_ids = [5, 4, 3, 2, 1]
+
+        def db_all(_sql, *params):
+            assert len(params) <= 2
+            return [(cid, cid) for cid in params]
+
+        with patch("cards.mw") as mock_mw, patch.object(
+            cards, "_SQL_VARIABLE_CHUNK_SIZE", 2
+        ):
+            mock_mw.col.db.all.side_effect = db_all
+            result = cards._sort_by_due(card_ids)
+
+        assert result == [1, 2, 3, 4, 5]
+        assert mock_mw.col.db.all.call_count == 3
 
 
 class TestSortCardsForPriorityMode:

@@ -56,6 +56,16 @@ _SEARCH_WORD_RE = re.compile(r"\w+", re.UNICODE)
 _TOPIC_A_FACTOR_MIN = 1.1
 _TOPIC_A_FACTOR_MAX = 100.0
 _DEFAULT_TOPIC_A_FACTOR = 3.5
+_SQL_VARIABLE_CHUNK_SIZE = 900
+
+
+def _iter_sql_chunks(values, chunk_size: int | None = None):
+    chunk_size = int(chunk_size or _SQL_VARIABLE_CHUNK_SIZE)
+    values = list(values or [])
+    for start in range(0, len(values), chunk_size):
+        chunk = values[start : start + chunk_size]
+        if chunk:
+            yield chunk
 
 
 def close_connection() -> None:
@@ -231,7 +241,6 @@ def find_card_database_entries(
             ORDER BY name COLLATE NOCASE
             """
         ).fetchall()
-        placeholders = ", ".join("?" for _ in normalized_ids)
         card_id_set = set(normalized_ids)
         entries: list[dict[str, object]] = []
         for table_row in table_rows:
@@ -252,30 +261,32 @@ def find_card_database_entries(
             )
             for column_name in card_columns:
                 quoted_column = _quote_sqlite_identifier(column_name)
-                query = (
-                    f"SELECT rowid AS _incremento_rowid, {select_columns} "
-                    f"FROM {quoted_table} "
-                    f"WHERE {quoted_column} IN ({placeholders}) "
-                    f"ORDER BY {quoted_column}, rowid"
-                )
-                for row in conn.execute(query, normalized_ids).fetchall():
-                    try:
-                        matched_card_id = int(row[column_name])
-                    except Exception:
-                        continue
-                    if matched_card_id not in card_id_set:
-                        continue
-                    values = {name: row[name] for name in column_names}
-                    entries.append(
-                        {
-                            "card_id": matched_card_id,
-                            "table": table_name,
-                            "column": column_name,
-                            "rowid": row["_incremento_rowid"],
-                            "columns": column_names,
-                            "values": values,
-                        }
+                for chunk in _iter_sql_chunks(normalized_ids):
+                    placeholders = ", ".join("?" for _ in chunk)
+                    query = (
+                        f"SELECT rowid AS _incremento_rowid, {select_columns} "
+                        f"FROM {quoted_table} "
+                        f"WHERE {quoted_column} IN ({placeholders}) "
+                        f"ORDER BY {quoted_column}, rowid"
                     )
+                    for row in conn.execute(query, tuple(chunk)).fetchall():
+                        try:
+                            matched_card_id = int(row[column_name])
+                        except Exception:
+                            continue
+                        if matched_card_id not in card_id_set:
+                            continue
+                        values = {name: row[name] for name in column_names}
+                        entries.append(
+                            {
+                                "card_id": matched_card_id,
+                                "table": table_name,
+                                "column": column_name,
+                                "rowid": row["_incremento_rowid"],
+                                "columns": column_names,
+                                "values": values,
+                            }
+                        )
         result["entries"] = entries
         return result
     finally:
@@ -1735,18 +1746,19 @@ def get_pdf_card_sources_for_highlights(
     ]
     if not normalized:
         return {}
-    placeholders = ",".join("?" for _ in normalized)
-    rows = (
-        get_connection(addon_dir, profile)
-        .execute(
-            "SELECT page, note_id, excerpt, pdf_filename, highlight_id "
-            "FROM pdf_card_sources "
-            f"WHERE pdf_card_id = ? AND highlight_id IN ({placeholders}) "
-            "ORDER BY id",
-            (int(pdf_card_id), *normalized),
+    conn = get_connection(addon_dir, profile)
+    rows = []
+    for chunk in _iter_sql_chunks(normalized):
+        placeholders = ",".join("?" for _ in chunk)
+        rows.extend(
+            conn.execute(
+                "SELECT page, note_id, excerpt, pdf_filename, highlight_id "
+                "FROM pdf_card_sources "
+                f"WHERE pdf_card_id = ? AND highlight_id IN ({placeholders}) "
+                "ORDER BY id",
+                (int(pdf_card_id), *chunk),
+            ).fetchall()
         )
-        .fetchall()
-    )
     result: dict[str, dict] = {}
     for row in rows:
         result[str(row[4] or "")] = {
@@ -1796,14 +1808,17 @@ def delete_pdf_card_sources_for_note_ids(
     if not normalized:
         return 0
 
-    placeholders = ",".join("?" for _ in normalized)
     conn = get_connection(addon_dir, profile)
-    cursor = conn.execute(
-        f"DELETE FROM pdf_card_sources WHERE pdf_card_id = ? AND note_id IN ({placeholders})",
-        (int(pdf_card_id), *normalized),
-    )
+    deleted = 0
+    for chunk in _iter_sql_chunks(normalized):
+        placeholders = ",".join("?" for _ in chunk)
+        cursor = conn.execute(
+            f"DELETE FROM pdf_card_sources WHERE pdf_card_id = ? AND note_id IN ({placeholders})",
+            (int(pdf_card_id), *chunk),
+        )
+        deleted += int(cursor.rowcount or 0)
     conn.commit()
-    return int(cursor.rowcount or 0)
+    return deleted
 
 
 def delete_pdf_card_source_for_highlight(
@@ -2641,16 +2656,17 @@ def get_custom_schedule_rules(
     )
     if not normalized_ids:
         return {}
-    rows = (
-        get_connection(addon_dir, profile)
-        .execute(
-            "SELECT card_id, enabled, mode, interval_value, interval_unit, preset_label, "
-            "created_at, updated_at FROM custom_schedule_rules "
-            f"WHERE card_id IN ({','.join('?' for _ in normalized_ids)})",
-            tuple(normalized_ids),
+    conn = get_connection(addon_dir, profile)
+    rows = []
+    for chunk in _iter_sql_chunks(normalized_ids):
+        rows.extend(
+            conn.execute(
+                "SELECT card_id, enabled, mode, interval_value, interval_unit, preset_label, "
+                "created_at, updated_at FROM custom_schedule_rules "
+                f"WHERE card_id IN ({','.join('?' for _ in chunk)})",
+                tuple(chunk),
+            ).fetchall()
         )
-        .fetchall()
-    )
     return {
         int(row[0]): {
             "card_id": int(row[0] or 0),
@@ -2830,10 +2846,16 @@ def set_knowledge_tree_structure(
 
     conn.execute("BEGIN")
     try:
-        conn.execute(
-            "DELETE FROM knowledge_tree_nodes WHERE card_id NOT IN (%s)" % ",".join("?" for _ in valid_ids),
-            tuple(valid_ids),
-        ) if valid_ids else conn.execute("DELETE FROM knowledge_tree_nodes")
+        if valid_ids:
+            stale_ids = sorted(set(existing) - valid_ids)
+            for chunk in _iter_sql_chunks(stale_ids):
+                conn.execute(
+                    "DELETE FROM knowledge_tree_nodes WHERE card_id IN (%s)"
+                    % ",".join("?" for _ in chunk),
+                    tuple(chunk),
+                )
+        else:
+            conn.execute("DELETE FROM knowledge_tree_nodes")
 
         grouped: dict[int | None, list[tuple[int, str, int]]] = {}
         for card_id, parent_card_id, node_kind, sort_order in normalized_rows:
