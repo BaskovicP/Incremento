@@ -629,6 +629,8 @@ class KnowledgeTreeDialog(QDialog):
         self._inspector_actions_stacked: bool | None = None
         self._splitter_vertical: bool | None = None
         self._responsive_ready = False
+        self._workspace_collapsed = False
+        self._search_collapsed = False
 
         self.setWindowTitle("Incremento — Knowledge tree")
         self.resize(1120, 720)
@@ -969,6 +971,39 @@ class KnowledgeTreeDialog(QDialog):
         toolbar_layout.addLayout(secondary_row)
         outer.addWidget(toolbar)
 
+    def _build_section_toggle(self, title: str, slot: Callable[[], None]) -> QToolButton:
+        button = QToolButton(self)
+        button.setText("−")
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        button.setAutoRaise(True)
+        button.setFixedSize(28, 28)
+        button.setToolTip(f"Minimize {title}")
+        qconnect(button.clicked, lambda _checked=False: slot())
+        return button
+
+    def _toggle_tree_section(self, section: str) -> None:
+        if section == "workspace":
+            self._workspace_collapsed = not self._workspace_collapsed
+            collapsed = self._workspace_collapsed
+            self._workspace_content.setVisible(not collapsed)
+            self._workspace_toggle.setText("+" if collapsed else "−")
+            self._workspace_toggle.setToolTip(
+                "Expand Branch Workspace" if collapsed else "Minimize Branch Workspace"
+            )
+        elif section == "search":
+            self._search_collapsed = not self._search_collapsed
+            collapsed = self._search_collapsed
+            self._search_content.setVisible(not collapsed)
+            self._search_toggle.setText("+" if collapsed else "−")
+            self._search_toggle.setToolTip(
+                "Expand Search Tree" if collapsed else "Minimize Search Tree"
+            )
+
+        splitter = getattr(self, "_tree_vertical_splitter", None)
+        if splitter is not None:
+            splitter.updateGeometry()
+            splitter.setSizes(splitter.sizes())
+
     def _build_tree_panel(self) -> QWidget:
         panel = QFrame(self)
         panel.setObjectName("KnowledgePanel")
@@ -990,7 +1025,21 @@ class KnowledgeTreeDialog(QDialog):
 
         intro_title = QLabel("Branch Workspace")
         intro_title.setObjectName("KnowledgeTitle")
-        intro_layout.addWidget(intro_title)
+        intro_header = QHBoxLayout()
+        intro_header.setContentsMargins(0, 0, 0, 0)
+        intro_header.addWidget(intro_title)
+        intro_header.addStretch(1)
+        self._workspace_toggle = self._build_section_toggle(
+            "Branch Workspace",
+            lambda: self._toggle_tree_section("workspace"),
+        )
+        intro_header.addWidget(self._workspace_toggle)
+        intro_layout.addLayout(intro_header)
+
+        intro_content = QWidget(intro)
+        intro_content_layout = QVBoxLayout(intro_content)
+        intro_content_layout.setContentsMargins(0, 0, 0, 0)
+        intro_content_layout.setSpacing(4)
 
         intro_hint = QLabel(
             "Drag to reorder. Drop onto another node to reparent. Double-click a title to rename. "
@@ -999,25 +1048,28 @@ class KnowledgeTreeDialog(QDialog):
         intro_hint.setObjectName("KnowledgeHint")
         intro_hint.setWordWrap(True)
         _allow_label_shrink(intro_hint)
-        intro_layout.addWidget(intro_hint)
+        intro_content_layout.addWidget(intro_hint)
 
         self._workspace_summary = QLabel("")
         self._workspace_summary.setObjectName("KnowledgeMeta")
         self._workspace_summary.setWordWrap(True)
         _allow_label_shrink(self._workspace_summary)
-        intro_layout.addWidget(self._workspace_summary)
+        intro_content_layout.addWidget(self._workspace_summary)
 
         self._workspace_context = QLabel("")
         self._workspace_context.setObjectName("KnowledgeHint")
         self._workspace_context.setWordWrap(True)
         _allow_label_shrink(self._workspace_context)
-        intro_layout.addWidget(self._workspace_context)
+        intro_content_layout.addWidget(self._workspace_context)
 
         self._workspace_focus = QLabel("")
         self._workspace_focus.setObjectName("KnowledgeHint")
         self._workspace_focus.setWordWrap(True)
         _allow_label_shrink(self._workspace_focus)
-        intro_layout.addWidget(self._workspace_focus)
+        intro_content_layout.addWidget(self._workspace_focus)
+
+        intro_layout.addWidget(intro_content)
+        self._workspace_content = intro_content
 
         search_panel = self._build_search_panel(panel)
 
@@ -1074,7 +1126,21 @@ class KnowledgeTreeDialog(QDialog):
 
         title = QLabel("Search Tree")
         title.setObjectName("KnowledgeTitle")
-        layout.addWidget(title)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.addWidget(title)
+        header.addStretch(1)
+        self._search_toggle = self._build_section_toggle(
+            "Search Tree",
+            lambda: self._toggle_tree_section("search"),
+        )
+        header.addWidget(self._search_toggle)
+        layout.addLayout(header)
+
+        search_content = QWidget(card)
+        search_content_layout = QVBoxLayout(search_content)
+        search_content_layout.setContentsMargins(0, 0, 0, 0)
+        search_content_layout.setSpacing(8)
 
         hint = QLabel(
             "Jump to linked cards by title first, then optionally include metadata or visible card text."
@@ -1082,7 +1148,7 @@ class KnowledgeTreeDialog(QDialog):
         hint.setObjectName("KnowledgeHint")
         hint.setWordWrap(True)
         _allow_label_shrink(hint)
-        layout.addWidget(hint)
+        search_content_layout.addWidget(hint)
 
         query_row = QHBoxLayout()
         query_row.setContentsMargins(0, 0, 0, 0)
@@ -1095,7 +1161,7 @@ class KnowledgeTreeDialog(QDialog):
         self._search_clear_btn.setFixedHeight(34)
         query_row.addWidget(self._search_edit, 1)
         query_row.addWidget(self._search_clear_btn)
-        layout.addLayout(query_row)
+        search_content_layout.addLayout(query_row)
 
         scope_row = QHBoxLayout()
         scope_row.setContentsMargins(0, 0, 0, 0)
@@ -1108,13 +1174,13 @@ class KnowledgeTreeDialog(QDialog):
         scope_row.addWidget(self._search_metadata_toggle)
         scope_row.addWidget(self._search_note_text_toggle)
         scope_row.addStretch(1)
-        layout.addLayout(scope_row)
+        search_content_layout.addLayout(scope_row)
 
         self._search_results_label = QLabel("Search is limited to cards already linked into this tree.")
         self._search_results_label.setObjectName("KnowledgeMeta")
         self._search_results_label.setWordWrap(True)
         _allow_label_shrink(self._search_results_label)
-        layout.addWidget(self._search_results_label)
+        search_content_layout.addWidget(self._search_results_label)
 
         self._search_results_list = QListWidget(card)
         self._search_results_list.setObjectName("KnowledgeSearchResults")
@@ -1130,7 +1196,9 @@ class KnowledgeTreeDialog(QDialog):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Maximum,
         )
-        layout.addWidget(self._search_results_list)
+        search_content_layout.addWidget(self._search_results_list)
+        layout.addWidget(search_content)
+        self._search_content = search_content
 
         qconnect(self._search_edit.textChanged, self._refresh_search_results)
         qconnect(self._search_edit.returnPressed, self._open_first_search_result)
