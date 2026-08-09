@@ -267,6 +267,34 @@ def test_configured_extract_priority_clamps_values():
     assert dock.configured_extract_priority({"extract_priority": "37.125"}) == 37.125
 
 
+def test_scratch_priority_defaults_to_neutral_value():
+    editor = _FakeEditor(_FakeNote(note_id=1), add_mode=True)
+
+    assert dock.scratch_priority_for_editor(editor) == 50.0
+    assert dock.scratch_priority_for_note(editor.note) == 50.0
+
+
+def test_set_scratch_priority_for_editor_clamps_and_stores_on_note():
+    editor = _FakeEditor(_FakeNote(note_id=2), add_mode=True)
+
+    assert dock.set_scratch_priority_for_editor(editor, 120) == 100.0
+    assert dock.scratch_priority_for_editor(editor) == 100.0
+
+    token = getattr(editor, "_incremento_scratch_priority_token")
+    assert getattr(editor.note, f"_incremento_scratch_priority_{token}") == 100.0
+
+
+def test_set_scratch_priority_for_editor_keeps_editors_isolated():
+    first = _FakeEditor(_FakeNote(note_id=3), add_mode=True)
+    second = _FakeEditor(_FakeNote(note_id=4), add_mode=True)
+
+    dock.set_scratch_priority_for_editor(first, 10)
+    dock.set_scratch_priority_for_editor(second, 90)
+
+    assert dock.scratch_priority_for_editor(first) == 10.0
+    assert dock.scratch_priority_for_editor(second) == 90.0
+
+
 def test_configured_extract_priority_multiplier_defaults_by_direction():
     assert dock.configured_extract_priority_multiplier({}) == 0.98
     assert dock.configured_extract_priority_multiplier({"priority_lower_is_more_important": False}) == 1.02
@@ -279,6 +307,21 @@ def test_calculate_extract_priority_uses_source_multiplier():
 
 def test_calculate_extract_priority_falls_back_without_source():
     assert dock.calculate_extract_priority(None, {"extract_priority": 33}) == 33.0
+
+
+def test_source_card_priority_for_card_uses_exact_stored_priority(monkeypatch):
+    monkeypatch.setattr(dock, "_priority_for_card_id", lambda card_id: 24.5)
+
+    assert dock.source_card_priority_for_card(
+        123,
+        {"extract_priority": 80, "extract_priority_multiplier": 0.25},
+    ) == 24.5
+
+
+def test_source_card_priority_for_card_falls_back_without_source(monkeypatch):
+    monkeypatch.setattr(dock, "_priority_for_card_id", lambda card_id: None)
+
+    assert dock.source_card_priority_for_card(123, {"extract_priority": 33}) == 33.0
 
 
 def test_configured_extract_mark_topic_defaults_enabled():
@@ -528,6 +571,76 @@ def test_on_add_cards_did_add_note_notifies_video_extract_source(monkeypatch):
     dock.on_add_cards_did_add_note(note)
 
     assert notify_calls == [(321, [701]), (321, [701])]
+
+
+def test_on_add_cards_did_add_note_applies_scratch_priority_when_no_extract_options(monkeypatch):
+    note = _FakeNote(note_id=12)
+    priority_calls = []
+
+    note._incremento_scratch_priority_active_token = "1"
+    note._incremento_scratch_priority_1 = "77.25"
+
+    monkeypatch.setattr(dock, "consume_pending_extract_options_for_note", lambda current_note: None)
+    monkeypatch.setattr(
+        dock,
+        "apply_priority_to_note_cards",
+        lambda current_note, priority: priority_calls.append((current_note, priority)) or 2,
+    )
+    monkeypatch.setattr(dock, "_notify_video_extract_note_added", lambda current_note, options: None)
+    monkeypatch.setattr(dock, "mark_reviewer_extract_note_added", lambda options: None)
+    monkeypatch.setattr(dock, "consume_pending_extract_context_for_note", lambda current_note, options=None: None)
+
+    dock.on_add_cards_did_add_note(note)
+
+    assert priority_calls == [(note, 77.25)]
+
+
+def test_on_add_cards_did_add_note_falls_back_to_default_scratch_priority(monkeypatch):
+    note = _FakeNote(note_id=13)
+    priority_calls = []
+
+    note._incremento_scratch_priority_active_token = "1"
+    note._incremento_scratch_priority_1 = "not-a-number"
+
+    monkeypatch.setattr(dock, "consume_pending_extract_options_for_note", lambda current_note: None)
+    monkeypatch.setattr(
+        dock,
+        "apply_priority_to_note_cards",
+        lambda current_note, priority: priority_calls.append(priority) or 1,
+    )
+    monkeypatch.setattr(dock, "_notify_video_extract_note_added", lambda current_note, options: None)
+    monkeypatch.setattr(dock, "mark_reviewer_extract_note_added", lambda options: None)
+    monkeypatch.setattr(dock, "consume_pending_extract_context_for_note", lambda current_note, options=None: None)
+
+    dock.on_add_cards_did_add_note(note)
+
+    assert priority_calls == [50.0]
+
+
+def test_on_add_cards_did_add_note_keeps_extract_priority_when_pending_options_exist(monkeypatch):
+    note = _FakeNote(note_id=14)
+    priority_calls = []
+
+    note._incremento_scratch_priority_active_token = "1"
+    note._incremento_scratch_priority_1 = 90.0
+
+    monkeypatch.setattr(
+        dock,
+        "consume_pending_extract_options_for_note",
+        lambda current_note: {"priority": 25.0, "source": "pdf", "priority_cards_changed": 1},
+    )
+    monkeypatch.setattr(
+        dock,
+        "apply_priority_to_note_cards",
+        lambda current_note, priority: priority_calls.append(priority) or 1,
+    )
+    monkeypatch.setattr(dock, "_notify_video_extract_note_added", lambda current_note, options: None)
+    monkeypatch.setattr(dock, "mark_reviewer_extract_note_added", lambda options: None)
+    monkeypatch.setattr(dock, "consume_pending_extract_context_for_note", lambda current_note, options=None: None)
+
+    dock.on_add_cards_did_add_note(note)
+
+    assert priority_calls == []
 
 
 def test_sync_pending_extract_options_from_current_carries_tree_link(monkeypatch):

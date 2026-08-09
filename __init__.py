@@ -2050,6 +2050,19 @@ def _on_js_message(handled, message, context) -> tuple:
             pass
         return (True, None)
 
+    if message.startswith("incremento_scratch_priority:"):
+        try:
+            data = json.loads(message[len("incremento_scratch_priority:") :])
+            editor = _add_card_dock_mod._current_add_mode_editor()
+            if editor is not None:
+                _add_card_dock_mod.set_scratch_priority_for_editor(
+                    editor,
+                    data.get("priority"),
+                )
+        except Exception:
+            pass
+        return (True, None)
+
     if message == "incremento_open_extract_batch":
         try:
             snapshot = _add_card_dock_mod.snapshot_extract_batch_state()
@@ -3163,7 +3176,7 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         field_values=initial_field_values,
         metadata=metadata,
         parent_card_id=int(getattr(parent_card, "id", 0) or 0),
-        priority=_add_card_dock_mod.source_relative_extract_priority_for_card(
+        priority=_add_card_dock_mod.source_card_priority_for_card(
             getattr(parent_card, "id", None)
         ),
         mark_topic=False,

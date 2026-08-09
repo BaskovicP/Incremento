@@ -57,8 +57,10 @@ _suppress_next_reviewer_queue_refresh: dict | None = None
 _last_fill_source = ""
 _last_fill_seen = 0.0
 _tracked_tag_button_editors: list[weakref.ReferenceType] = []
+_scratch_priority_token_counter = 0
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
+_DEFAULT_SCRATCH_PRIORITY = 50.0
 _DEFAULT_EXTRACT_SOURCE_LINKS = {
     "pdf": True,
     "epub": True,
@@ -75,7 +77,7 @@ def _clamp_priority(value) -> float:
     try:
         number = float(value)
     except Exception:
-        number = 50.0
+        number = _DEFAULT_SCRATCH_PRIORITY
     return round(max(0.0, min(100.0, number)), 4)
 
 
@@ -411,6 +413,7 @@ def _inject_transfer_buttons(editor) -> None:
             )
         else:
             extract_priority = configured_extract_priority()
+        scratch_priority = scratch_priority_for_editor(editor)
 
         if _current_extract_mark_topic is not None:
             extract_mark_topic = _extract_mark_topic_for_transfer()
@@ -435,6 +438,7 @@ def _inject_transfer_buttons(editor) -> None:
               var optionsVisible = {json.dumps(options_visible)};
               var fieldNames = {json.dumps(field_names)};
               var defaultExtractPriority = {json.dumps(extract_priority)};
+              var defaultScratchPriority = {json.dumps(scratch_priority)};
               var defaultExtractTopic = {json.dumps(extract_mark_topic)};
               var defaultExtractTreeLink = {json.dumps(tree_link_checked)};
               var extractTreeLinkEnabled = {json.dumps(tree_link_enabled)};
@@ -493,6 +497,30 @@ def _inject_transfer_buttons(editor) -> None:
                       gap: 4px;
                       white-space: nowrap;
                     }}
+                    .incremento-scratch-priority {{
+                      display: none;
+                      align-items: center;
+                      gap: 8px;
+                      margin: 7px 0 9px;
+                      padding: 6px 0 0;
+                      color: inherit;
+                      font-size: 12px;
+                    }}
+                    .incremento-scratch-priority label {{
+                      display: inline-flex;
+                      align-items: center;
+                      gap: 6px;
+                      white-space: nowrap;
+                    }}
+                    .incremento-scratch-priority input[type="number"] {{
+                      width: 70px;
+                      padding: 2px 5px;
+                      border-radius: 6px;
+                      border: 1px solid rgba(120, 132, 156, 0.42);
+                      background: rgba(255, 255, 255, 0.92);
+                      color: #101828;
+                      font-weight: 700;
+                    }}
                     .incremento-extract-batch-btn {{
                       margin-left: auto;
                       padding: 4px 10px;
@@ -516,6 +544,7 @@ def _inject_transfer_buttons(editor) -> None:
                   optionsVisible: optionsVisible,
                   fieldNames: [],
                   extractPriority: defaultExtractPriority,
+                  scratchPriority: defaultScratchPriority,
                   extractTopic: defaultExtractTopic,
                   extractTreeLink: defaultExtractTreeLink,
                   syncExtractOptions: function() {{
@@ -523,6 +552,11 @@ def _inject_transfer_buttons(editor) -> None:
                       priority: this.extractPriority,
                       markTopic: this.extractTopic,
                       linkToKnowledgeTree: this.extractTreeLink
+                    }}));
+                  }},
+                  syncScratchPriority: function() {{
+                    pycmd('incremento_scratch_priority:' + JSON.stringify({{
+                      priority: this.scratchPriority
                     }}));
                   }},
                   fieldNodes: function() {{
@@ -642,10 +676,48 @@ def _inject_transfer_buttons(editor) -> None:
                     }}
                     return panel;
                   }},
+                  ensureScratchPriority: function() {{
+                    var firstField = this.fieldNodes()[0];
+                    if (!firstField) {{
+                      return null;
+                    }}
+                    var host = this.fieldHost(firstField) || firstField.parentElement;
+                    if (!host || !host.parentElement) {{
+                      return null;
+                    }}
+                    var panel = document.getElementById('incremento-scratch-priority');
+                    if (!panel) {{
+                      panel = document.createElement('div');
+                      panel.id = 'incremento-scratch-priority';
+                      panel.className = 'incremento-scratch-priority';
+                      panel.innerHTML = [
+                        '<label>Card priority <input id="incremento-scratch-priority-input" type="number" min="0" max="100" step="0.1"></label>'
+                      ].join('');
+                      host.parentElement.insertBefore(panel, host);
+                      var input = panel.querySelector('#incremento-scratch-priority-input');
+                      input.value = String(this.scratchPriority);
+                      input.addEventListener('change', function() {{
+                        var value = Number(input.value);
+                        if (!Number.isFinite(value)) {{
+                          value = defaultScratchPriority;
+                        }}
+                        value = Math.max(0, Math.min(100, value));
+                        input.value = String(value);
+                        window.incrementoTransferButtons.scratchPriority = value;
+                        window.incrementoTransferButtons.syncScratchPriority();
+                      }});
+                      this.syncScratchPriority();
+                    }}
+                    return panel;
+                  }},
                   render: function() {{
                     var panel = this.ensureExtractOptions();
+                    var scratchPanel = this.ensureScratchPriority();
                     if (panel) {{
                       panel.style.display = this.optionsVisible ? 'flex' : 'none';
+                    }}
+                    if (scratchPanel) {{
+                      scratchPanel.style.display = this.optionsVisible ? 'none' : 'flex';
                     }}
                     this.fieldNodes().forEach(function(field, fallbackIdx) {{
                       var idx = window.incrementoTransferButtons.fieldIndex(field, fallbackIdx);
@@ -709,9 +781,11 @@ def _inject_transfer_buttons(editor) -> None:
               if (window.incrementoTransferButtons) {{
                 window.incrementoTransferButtons.optionsVisible = optionsVisible;
                 window.incrementoTransferButtons.extractPriority = defaultExtractPriority;
+                window.incrementoTransferButtons.scratchPriority = defaultScratchPriority;
                 window.incrementoTransferButtons.extractTopic = defaultExtractTopic;
                 window.incrementoTransferButtons.extractTreeLink = defaultExtractTreeLink;
                 var existingPanel = document.getElementById('incremento-extract-options');
+                var existingScratchPanel = document.getElementById('incremento-scratch-priority');
                 if (existingPanel) {{
                   var existingPrio = existingPanel.querySelector('#incremento-extract-priority');
                   var existingTopic = existingPanel.querySelector('#incremento-extract-topic');
@@ -732,6 +806,12 @@ def _inject_transfer_buttons(editor) -> None:
                     existingTreeLinkWrap.title = extractTreeLinkTooltip;
                   }}
                   window.incrementoTransferButtons.syncExtractOptions();
+                }}
+                if (existingScratchPanel) {{
+                  var existingScratchInput = existingScratchPanel.querySelector('#incremento-scratch-priority-input');
+                  if (existingScratchInput) {{
+                    existingScratchInput.value = String(defaultScratchPriority);
+                  }}
                 }}
               }}
               window.incrementoTransferButtons.setFieldNames(fieldNames);
@@ -1346,6 +1426,81 @@ def _refresh_add_card_tag_buttons_for_editor(editor) -> None:
     )
 
 
+def _next_scratch_priority_editor_token() -> str:
+    global _scratch_priority_token_counter
+    _scratch_priority_token_counter += 1
+    return str(_scratch_priority_token_counter)
+
+
+def _scratch_priority_editor_token(editor) -> str:
+    token = str(getattr(editor, "_incremento_scratch_priority_token", "") or "").strip()
+    if token:
+        return token
+    token = _next_scratch_priority_editor_token()
+    try:
+        setattr(editor, "_incremento_scratch_priority_token", token)
+    except Exception:
+        pass
+    return token
+
+
+def _scratch_priority_attr_name(token: str) -> str:
+    return f"_incremento_scratch_priority_{str(token or '').strip()}"
+
+
+def _set_note_scratch_priority(note, token: str, priority) -> float:
+    value = _clamp_priority(priority)
+    if note is None:
+        return value
+    attr_name = _scratch_priority_attr_name(token)
+    try:
+        setattr(note, attr_name, value)
+        setattr(note, "_incremento_scratch_priority_active_token", str(token))
+    except Exception:
+        pass
+    return value
+
+
+def scratch_priority_for_editor(editor) -> float:
+    note = getattr(editor, "note", None)
+    token = _scratch_priority_editor_token(editor)
+    if note is None:
+        return _DEFAULT_SCRATCH_PRIORITY
+    attr_name = _scratch_priority_attr_name(token)
+    try:
+        if hasattr(note, attr_name):
+            return _clamp_priority(getattr(note, attr_name))
+    except Exception:
+        pass
+    return _set_note_scratch_priority(note, token, _DEFAULT_SCRATCH_PRIORITY)
+
+
+def set_scratch_priority_for_editor(editor, priority) -> float:
+    note = getattr(editor, "note", None)
+    token = _scratch_priority_editor_token(editor)
+    return _set_note_scratch_priority(note, token, priority)
+
+
+def scratch_priority_for_note(note) -> float:
+    if note is None:
+        return _DEFAULT_SCRATCH_PRIORITY
+    token = str(getattr(note, "_incremento_scratch_priority_active_token", "") or "").strip()
+    if token:
+        attr_name = _scratch_priority_attr_name(token)
+        try:
+            if hasattr(note, attr_name):
+                return _clamp_priority(getattr(note, attr_name))
+        except Exception:
+            pass
+    try:
+        for key, value in vars(note).items():
+            if str(key).startswith("_incremento_scratch_priority_"):
+                return _clamp_priority(value)
+    except Exception:
+        pass
+    return _DEFAULT_SCRATCH_PRIORITY
+
+
 def set_current_extract_options(priority=None, mark_topic=None, link_to_knowledge_tree=None) -> None:
     global _current_extract_priority, _current_extract_mark_topic, _current_extract_link_to_knowledge_tree
     if priority is not None:
@@ -1433,6 +1588,13 @@ def source_relative_extract_priority_for_card(card_id: int | None) -> float:
 
 def source_relative_extract_priority_for_source(source: str) -> float:
     return source_relative_extract_priority_for_card(_source_card_id_for_transfer(source))
+
+
+def source_card_priority_for_card(card_id: int | None, config: dict | None = None) -> float:
+    priority = _priority_for_card_id(card_id)
+    if priority is None:
+        return configured_extract_priority(config)
+    return _clamp_priority(priority)
 
 
 def set_pending_extract_options(
@@ -1985,6 +2147,8 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
 
 def on_add_cards_did_add_note(note) -> None:
     options = consume_pending_extract_options_for_note(note)
+    if not options:
+        apply_priority_to_note_cards(note, scratch_priority_for_note(note))
     _notify_video_extract_note_added(note, options)
     mark_reviewer_extract_note_added(options)
     consume_pending_extract_context_for_note(note, options)
@@ -2330,6 +2494,7 @@ def _on_editor_did_load_note(editor) -> None:
     _track_tag_button_editor(editor)
     if getattr(editor, "addMode", False):
         _last_add_mode_editor = editor
+        scratch_priority_for_editor(editor)
         _inject_transfer_buttons(editor)
     _refresh_add_card_tag_buttons_for_editor(editor)
 
@@ -2480,15 +2645,14 @@ def get_add_card_dock():
 
 
 def _refresh_transfer_buttons() -> None:
-    dock = get_add_card_dock()
-    if dock is None:
-        return
-    try:
-        editor = _dock_editor()
-        if editor is not None:
+    for editor in _iter_tracked_tag_button_editors():
+        if not getattr(editor, "addMode", False):
+            continue
+        try:
+            scratch_priority_for_editor(editor)
             _inject_transfer_buttons(editor)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
 
 def _expire_selection_if_stale(expected_seen: float) -> None:

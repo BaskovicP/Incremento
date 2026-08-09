@@ -24,6 +24,7 @@ const HL_SOLID = {
   snapshot: '#2563EB',
 };
 const CONTROLS_HEIGHT = 250;
+const COLLAPSED_CONTROLS_HEIGHT = 58;
 
 const DEFAULT_LIMIT_STATUS = {
   enabled: false,
@@ -72,6 +73,20 @@ const TOOLBAR_SEPARATOR_STYLE = {
   width: 1,
   alignSelf: 'stretch',
   background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))',
+};
+
+const CONTROL_GROUPS = [
+  ['navigation', 'Navigation'],
+  ['reading', 'Reading'],
+  ['annotation', 'Annotation & capture'],
+  ['review', 'Review & cards'],
+];
+
+const DEFAULT_CONTROL_VISIBILITY = {
+  navigation: true,
+  reading: true,
+  annotation: true,
+  review: true,
 };
 
 function calculateTextWidth(text, font) {
@@ -425,7 +440,14 @@ function getPdfViewportMetrics(wrapper) {
   if (!wrapper) return null;
   const rect = wrapper.getBoundingClientRect();
   const pageHeight = Math.max(0, wrapper.offsetHeight || rect.height || 0);
-  const visibleHeight = Math.max(1, window.innerHeight - CONTROLS_HEIGHT);
+  const configuredControlsHeight = Number.parseInt(
+    window.getComputedStyle(document.documentElement).getPropertyValue('--pdf-controls-height'),
+    10,
+  );
+  const controlsHeight = Number.isFinite(configuredControlsHeight)
+    ? configuredControlsHeight
+    : CONTROLS_HEIGHT;
+  const visibleHeight = Math.max(1, window.innerHeight - controlsHeight);
   return {
     pageTop: window.scrollY + rect.top,
     pageHeight,
@@ -496,6 +518,26 @@ export default function PdfViewer() {
   const findInputRef = useRef(null);
   const suppressSearchSyncRef = useRef(false);
   const [searchJumpNonce, setSearchJumpNonce] = useState(0);
+  const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const [showControlChooser, setShowControlChooser] = useState(false);
+  const [controlVisibility, setControlVisibility] = useState(DEFAULT_CONTROL_VISIBILITY);
+
+  // On short windows the reader should start in a focused mode. Keep this as
+  // an initial preference only, so manually expanding the toolbar is stable
+  // while the window is being resized.
+  const controlsInitialisedRef = useRef(false);
+  useEffect(() => {
+    if (!controlsInitialisedRef.current) {
+      setControlsCollapsed(window.innerHeight < 760 || window.innerWidth < 900);
+      controlsInitialisedRef.current = true;
+    }
+  }, []);
+
+  const visibleControlsHeight = controlsCollapsed ? COLLAPSED_CONTROLS_HEIGHT : CONTROLS_HEIGHT;
+  useEffect(() => {
+    document.documentElement.style.setProperty('--pdf-controls-height', `${visibleControlsHeight}px`);
+    return () => document.documentElement.style.removeProperty('--pdf-controls-height');
+  }, [visibleControlsHeight]);
 
   const clearPendingResumeScroll = useCallback(() => {
     pendingResumeScrollRef.current = null;
@@ -1475,7 +1517,7 @@ export default function PdfViewer() {
       style={{
         width: '100%',
         minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : undefined,
-        paddingBottom: `${CONTROLS_HEIGHT}px`,
+        paddingBottom: `${visibleControlsHeight}px`,
       }}
     >
 
@@ -1500,9 +1542,78 @@ export default function PdfViewer() {
         }}
       >
 
+        {controlsCollapsed ? (
+          <div
+            style={{
+              minHeight: COLLAPSED_CONTROLS_HEIGHT - 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
+          >
+            <button onClick={() => limitAwareNav(-1)} title="Previous page">&#8592; Prev</button>
+            <button
+              type="button"
+              onClick={openPageJump}
+              title="Go to page"
+              style={{ minWidth: 132, fontWeight: 700 }}
+            >
+              Page {page} / {totalPages || '\u2014'}
+            </button>
+            <button onClick={() => limitAwareNav(1)} title="Next page">Next &#8594;</button>
+            <span style={{ color: '#d4d4d8', fontWeight: 700, minWidth: 48, textAlign: 'center' }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => setControlsCollapsed(false)}
+              aria-expanded="false"
+              style={{
+                border: '1px solid rgba(96,165,250,0.65)',
+                color: 'rgb(147,197,253)',
+                background: 'rgba(59,130,246,0.14)',
+                fontWeight: 700,
+              }}
+            >
+              Show controls
+            </button>
+            <button type="button" onClick={() => setShowControlChooser(true)} title="Choose which control groups are visible">
+              Customize
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowControlChooser(true)}
+                title="Choose which control groups are visible"
+                style={{ padding: '2px 9px', fontSize: 11 }}
+              >
+                Customize controls
+              </button>
+              <button
+                type="button"
+                onClick={() => setControlsCollapsed(true)}
+                aria-expanded="true"
+                title="Minimize reader controls to give the PDF more room"
+                style={{
+                  border: '1px solid rgba(180,180,180,0.35)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'rgba(235,235,235,0.82)',
+                  padding: '2px 9px',
+                  fontSize: 11,
+                }}
+              >
+                Minimize controls
+              </button>
+            </div>
+
         {/* ── Row 1: Reader status and navigation ── */}
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-          <div style={TOOLBAR_GROUP_STYLE}>
+          {controlVisibility.navigation && <div style={TOOLBAR_GROUP_STYLE}>
             <div style={TOOLBAR_STACK_STYLE}>
               <span style={TOOLBAR_LABEL_STYLE}>Navigate</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -1579,9 +1690,9 @@ export default function PdfViewer() {
                 <button onClick={() => adjustZoom(1)}>&#43;</button>
               </span>
             </div>
-          </div>
+          </div>}
 
-          <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12 }}>
+          {controlVisibility.reading && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12 }}>
             <div style={TOOLBAR_STACK_STYLE}>
               <span style={TOOLBAR_LABEL_STYLE}>Reading</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1668,10 +1779,10 @@ export default function PdfViewer() {
                 ))}
               </span>
             </span>
-          </div>
+          </div>}
         </div>
 
-        {findOpen && (
+        {controlVisibility.reading && findOpen && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
             <span style={{ color: '#d4d4d8', fontWeight: 600 }}>Find</span>
             <input
@@ -1726,7 +1837,7 @@ export default function PdfViewer() {
         )}
 
         {/* ── Row 3: Daily reading limit ── */}
-        {limitEnabled && (
+        {controlVisibility.reading && limitEnabled && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
             <span
               style={{
@@ -1762,7 +1873,7 @@ export default function PdfViewer() {
           </div>
         )}
 
-        {limitNotice && (
+        {controlVisibility.reading && limitNotice && (
           <div
             style={{
               display: 'flex',
@@ -1803,7 +1914,7 @@ export default function PdfViewer() {
 
         {/* ── Row 4: Tools + card management ── */}
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          {hasPdfCard && (
+          {hasPdfCard && controlVisibility.annotation && (
             <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
               <div style={TOOLBAR_STACK_STYLE}>
                 <span style={TOOLBAR_LABEL_STYLE}>Annotate</span>
@@ -1914,7 +2025,7 @@ export default function PdfViewer() {
             </div>
           )}
 
-          <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
+          {controlVisibility.review && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
             {hasPdfCard && (
               <>
                 <div style={TOOLBAR_STACK_STYLE}>
@@ -1994,17 +2105,97 @@ export default function PdfViewer() {
                 </button>
               </div>
             )}
-          </div>
+          </div>}
         </div>
+
+          </>
+        )}
 
       </div>
 
+      {showControlChooser && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Customize PDF controls"
+          onClick={() => setShowControlChooser(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+            background: 'rgba(0,0,0,0.48)',
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 'min(380px, calc(100vw - 40px))',
+              padding: 18,
+              borderRadius: 14,
+              background: 'linear-gradient(180deg, rgba(48,48,48,0.99), rgba(27,27,27,0.99))',
+              border: '1px solid rgba(170,170,170,0.32)',
+              boxShadow: '0 18px 50px rgba(0,0,0,0.5)',
+              color: '#f4f4f5',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>Customize controls</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: 'rgba(220,220,220,0.68)' }}>
+                  Choose which groups stay visible in the reader toolbar.
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowControlChooser(false)} aria-label="Close">×</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {CONTROL_GROUPS.map(([key, label]) => (
+                <label
+                  key={key}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderRadius: 9,
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.09)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!controlVisibility[key]}
+                    onChange={(event) => setControlVisibility((current) => ({
+                      ...current,
+                      [key]: event.target.checked,
+                    }))}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button type="button" onClick={() => setControlVisibility(DEFAULT_CONTROL_VISIBILITY)}>
+                Show all
+              </button>
+              <button type="button" onClick={() => setShowControlChooser(false)} style={{ fontWeight: 700 }}>
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bookmarks panel */}
-      {hasPdfCard && showBookmarksPanel && (
+      {hasPdfCard && controlVisibility.annotation && showBookmarksPanel && (
         <div
           style={{
             position: 'fixed',
-            top: CONTROLS_HEIGHT + 8,
+            top: visibleControlsHeight + 8,
             right: 12,
             width: 'min(420px, calc(100vw - 24px))',
             maxHeight: 'calc(100vh - 220px)',
@@ -2081,11 +2272,11 @@ export default function PdfViewer() {
       )}
 
       {/* Highlights panel */}
-      {hasPdfCard && showHighlightsPanel && (
+      {hasPdfCard && controlVisibility.annotation && showHighlightsPanel && (
         <div
           style={{
             position: 'fixed',
-            top: CONTROLS_HEIGHT + 8,
+            top: visibleControlsHeight + 8,
             right: 12,
             width: 'min(520px, calc(100vw - 24px))',
             maxHeight: 'calc(100vh - 220px)',

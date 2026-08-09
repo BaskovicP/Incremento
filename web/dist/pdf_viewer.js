@@ -7535,6 +7535,7 @@
     snapshot: "#2563EB"
   };
   const CONTROLS_HEIGHT = 250;
+  const COLLAPSED_CONTROLS_HEIGHT = 58;
   const DEFAULT_LIMIT_STATUS = {
     enabled: false,
     daily_page_limit: 0,
@@ -7578,6 +7579,18 @@
     width: 1,
     alignSelf: "stretch",
     background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))"
+  };
+  const CONTROL_GROUPS = [
+    ["navigation", "Navigation"],
+    ["reading", "Reading"],
+    ["annotation", "Annotation & capture"],
+    ["review", "Review & cards"]
+  ];
+  const DEFAULT_CONTROL_VISIBILITY = {
+    navigation: true,
+    reading: true,
+    annotation: true,
+    review: true
   };
   function calculateTextWidth(text, font) {
     const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement("canvas"));
@@ -7866,7 +7879,12 @@
     if (!wrapper) return null;
     const rect = wrapper.getBoundingClientRect();
     const pageHeight = Math.max(0, wrapper.offsetHeight || rect.height || 0);
-    const visibleHeight = Math.max(1, window.innerHeight - CONTROLS_HEIGHT);
+    const configuredControlsHeight = Number.parseInt(
+      window.getComputedStyle(document.documentElement).getPropertyValue("--pdf-controls-height"),
+      10
+    );
+    const controlsHeight = Number.isFinite(configuredControlsHeight) ? configuredControlsHeight : CONTROLS_HEIGHT;
+    const visibleHeight = Math.max(1, window.innerHeight - controlsHeight);
     return {
       pageTop: window.scrollY + rect.top,
       pageHeight,
@@ -7944,6 +7962,21 @@
     const findInputRef = reactExports.useRef(null);
     const suppressSearchSyncRef = reactExports.useRef(false);
     const [searchJumpNonce, setSearchJumpNonce] = reactExports.useState(0);
+    const [controlsCollapsed, setControlsCollapsed] = reactExports.useState(false);
+    const [showControlChooser, setShowControlChooser] = reactExports.useState(false);
+    const [controlVisibility, setControlVisibility] = reactExports.useState(DEFAULT_CONTROL_VISIBILITY);
+    const controlsInitialisedRef = reactExports.useRef(false);
+    reactExports.useEffect(() => {
+      if (!controlsInitialisedRef.current) {
+        setControlsCollapsed(window.innerHeight < 760 || window.innerWidth < 900);
+        controlsInitialisedRef.current = true;
+      }
+    }, []);
+    const visibleControlsHeight = controlsCollapsed ? COLLAPSED_CONTROLS_HEIGHT : CONTROLS_HEIGHT;
+    reactExports.useEffect(() => {
+      document.documentElement.style.setProperty("--pdf-controls-height", `${visibleControlsHeight}px`);
+      return () => document.documentElement.style.removeProperty("--pdf-controls-height");
+    }, [visibleControlsHeight]);
     const clearPendingResumeScroll = reactExports.useCallback(() => {
       pendingResumeScrollRef.current = null;
       pendingResumePageRef.current = null;
@@ -8789,10 +8822,10 @@
         style: {
           width: "100%",
           minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : void 0,
-          paddingBottom: `${CONTROLS_HEIGHT}px`
+          paddingBottom: `${visibleControlsHeight}px`
         },
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {
               id: "pdf-controls",
@@ -8812,9 +8845,89 @@
                 borderTop: "1px solid rgba(130,130,130,0.35)",
                 boxShadow: "0 -3px 10px rgba(0,0,0,0.28)"
               },
-              children: [
+              children: controlsCollapsed ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  style: {
+                    minHeight: COLLAPSED_CONTROLS_HEIGHT - 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    flexWrap: "wrap"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(-1), title: "Previous page", children: "← Prev" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: openPageJump,
+                        title: "Go to page",
+                        style: { minWidth: 132, fontWeight: 700 },
+                        children: [
+                          "Page ",
+                          page,
+                          " / ",
+                          totalPages || "—"
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(1), title: "Next page", children: "Next →" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "#d4d4d8", fontWeight: 700, minWidth: 48, textAlign: "center" }, children: [
+                      Math.round(zoom * 100),
+                      "%"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => setControlsCollapsed(false),
+                        "aria-expanded": "false",
+                        style: {
+                          border: "1px solid rgba(96,165,250,0.65)",
+                          color: "rgb(147,197,253)",
+                          background: "rgba(59,130,246,0.14)",
+                          fontWeight: 700
+                        },
+                        children: "Show controls"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(true), title: "Choose which control groups are visible", children: "Customize" })
+                  ]
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginBottom: 4 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      onClick: () => setShowControlChooser(true),
+                      title: "Choose which control groups are visible",
+                      style: { padding: "2px 9px", fontSize: 11 },
+                      children: "Customize controls"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      onClick: () => setControlsCollapsed(true),
+                      "aria-expanded": "true",
+                      title: "Minimize reader controls to give the PDF more room",
+                      style: {
+                        border: "1px solid rgba(180,180,180,0.35)",
+                        background: "rgba(255,255,255,0.04)",
+                        color: "rgba(235,235,235,0.82)",
+                        padding: "2px 9px",
+                        fontSize: 11
+                      },
+                      children: "Minimize controls"
+                    }
+                  )
+                ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "stretch", justifyContent: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_GROUP_STYLE, children: [
+                  controlVisibility.navigation && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_GROUP_STYLE, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Navigate" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
@@ -8897,7 +9010,7 @@
                       ] })
                     ] })
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12 }, children: [
+                  controlVisibility.reading && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12 }, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Reading" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
@@ -8996,7 +9109,7 @@
                     )
                   ] })
                 ] }),
-                findOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }, children: [
+                controlVisibility.reading && findOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }, children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#d4d4d8", fontWeight: 600 }, children: "Find" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "input",
@@ -9056,7 +9169,7 @@
                     }
                   )
                 ] }),
-                limitEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }, children: [
+                controlVisibility.reading && limitEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }, children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs(
                     "span",
                     {
@@ -9090,7 +9203,7 @@
                     allowedMaxPage
                   ] })
                 ] }),
-                limitNotice && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                controlVisibility.reading && limitNotice && /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   "div",
                   {
                     style: {
@@ -9115,7 +9228,7 @@
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "stretch", justifyContent: "center", gap: 12, flexWrap: "wrap" }, children: [
-                  hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
+                  hasPdfCard && controlVisibility.annotation && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Annotate" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
@@ -9251,7 +9364,7 @@
                       ] })
                     ] })
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
+                  controlVisibility.review && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
                     hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Review" }),
@@ -9332,15 +9445,92 @@
                     ] })
                   ] })
                 ] })
-              ]
+              ] })
             }
           ),
-          hasPdfCard && showBookmarksPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          showControlChooser && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              role: "dialog",
+              "aria-modal": "true",
+              "aria-label": "Customize PDF controls",
+              onClick: () => setShowControlChooser(false),
+              style: {
+                position: "fixed",
+                inset: 0,
+                zIndex: 100,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 20,
+                background: "rgba(0,0,0,0.48)"
+              },
+              children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  onClick: (event) => event.stopPropagation(),
+                  style: {
+                    width: "min(380px, calc(100vw - 40px))",
+                    padding: 18,
+                    borderRadius: 14,
+                    background: "linear-gradient(180deg, rgba(48,48,48,0.99), rgba(27,27,27,0.99))",
+                    border: "1px solid rgba(170,170,170,0.32)",
+                    boxShadow: "0 18px 50px rgba(0,0,0,0.5)",
+                    color: "#f4f4f5"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 16, fontWeight: 700 }, children: "Customize controls" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { marginTop: 4, fontSize: 12, color: "rgba(220,220,220,0.68)" }, children: "Choose which groups stay visible in the reader toolbar." })
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(false), "aria-label": "Close", children: "×" })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: CONTROL_GROUPS.map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "label",
+                      {
+                        style: {
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 12px",
+                          borderRadius: 9,
+                          background: "rgba(255,255,255,0.05)",
+                          border: "1px solid rgba(255,255,255,0.09)",
+                          cursor: "pointer"
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "input",
+                            {
+                              type: "checkbox",
+                              checked: !!controlVisibility[key],
+                              onChange: (event) => setControlVisibility((current) => ({
+                                ...current,
+                                [key]: event.target.checked
+                              }))
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: label })
+                        ]
+                      },
+                      key
+                    )) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setControlVisibility(DEFAULT_CONTROL_VISIBILITY), children: "Show all" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(false), style: { fontWeight: 700 }, children: "Done" })
+                    ] })
+                  ]
+                }
+              )
+            }
+          ),
+          hasPdfCard && controlVisibility.annotation && showBookmarksPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
               style: {
                 position: "fixed",
-                top: CONTROLS_HEIGHT + 8,
+                top: visibleControlsHeight + 8,
                 right: 12,
                 width: "min(420px, calc(100vw - 24px))",
                 maxHeight: "calc(100vh - 220px)",
@@ -9411,12 +9601,12 @@
               ]
             }
           ),
-          hasPdfCard && showHighlightsPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          hasPdfCard && controlVisibility.annotation && showHighlightsPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
               style: {
                 position: "fixed",
-                top: CONTROLS_HEIGHT + 8,
+                top: visibleControlsHeight + 8,
                 right: 12,
                 width: "min(520px, calc(100vw - 24px))",
                 maxHeight: "calc(100vh - 220px)",
