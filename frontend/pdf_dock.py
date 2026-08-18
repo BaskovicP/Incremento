@@ -177,6 +177,7 @@ _WORKER_URL = bytes(
 # ── Module state ──────────────────────────────────────────────────────────────
 
 _pdf_dock = None
+_pdf_showing_missing_screen = False
 _shortcuts_registered = False
 _current_pdf_card_id = None
 _current_pdf_filename = None
@@ -230,7 +231,7 @@ def current_pdf_card_id() -> int | None:
 def _clear_current_pdf_context() -> int | None:
     global _current_pdf_card_id, _current_pdf_filename
     global _current_pdf_search_query, _current_pdf_search_hits, _current_pdf_search_hit_index
-    global _pdf_via_link, _pdf_preserve_history
+    global _pdf_via_link, _pdf_preserve_history, _pdf_showing_missing_screen
     previous_card_id = current_pdf_card_id()
     _current_pdf_card_id = None
     _current_pdf_filename = None
@@ -239,6 +240,7 @@ def _clear_current_pdf_context() -> int | None:
     _current_pdf_search_hit_index = -1
     _pdf_via_link = False
     _pdf_preserve_history = False
+    _pdf_showing_missing_screen = False
     return previous_card_id
 
 
@@ -1208,9 +1210,11 @@ button:hover {{
 
 
 def _show_missing_pdf_screen(filename: str) -> None:
+    global _pdf_showing_missing_screen
     if _pdf_dock is None:
         return
     expected_path = _pdf_storage_path(filename)
+    _pdf_showing_missing_screen = True
     _pdf_dock._view.setHtml(_missing_pdf_html(filename, expected_path), QUrl(_DOCK_HTML))
 
 
@@ -2646,6 +2650,7 @@ def show_pdf_in_dock(
     offer_due_review_prompt=True,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
+    global _pdf_showing_missing_screen
     try:
         normalized_card_id = int(card_id)
     except Exception:
@@ -2742,7 +2747,9 @@ def show_pdf_in_dock(
     )
 
     current = _pdf_dock._view.url().toString()
-    if current != _DOCK_HTML:
+    was_showing_missing_screen = _pdf_showing_missing_screen
+    _pdf_showing_missing_screen = False
+    if was_showing_missing_screen or current != _DOCK_HTML:
 
         def _on_first_load(ok):
             _pdf_dock._view.loadFinished.disconnect(_on_first_load)

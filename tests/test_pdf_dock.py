@@ -671,9 +671,10 @@ def test_pdf_storage_path_rejects_traversal(monkeypatch):
     assert pdf_dock._pdf_storage_path("../../../etc/passwd") == ""
 
 
-def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monkeypatch):
+def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch):
     events = []
     js_calls = []
+    load_calls = []
 
     class _FakeUrl:
         def toString(self):
@@ -683,15 +684,33 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
         def runJavaScript(self, js):
             js_calls.append(js)
 
+    class _FakeSignal:
+        def __init__(self):
+            self.callback = None
+
+        def connect(self, callback):
+            self.callback = callback
+
+        def disconnect(self, callback):
+            if self.callback == callback:
+                self.callback = None
+
     class _FakeView:
         def __init__(self):
             self._page = _FakePage()
+            self.loadFinished = _FakeSignal()
 
         def url(self):
             return _FakeUrl()
 
         def page(self):
             return self._page
+
+        def load(self, url):
+            load_calls.append(url)
+            callback = self.loadFinished.callback
+            if callback is not None:
+                callback(True)
 
     fake_dock = types.SimpleNamespace(
         show=lambda: None,
@@ -708,7 +727,16 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
         )
     )
 
+    class _FakeQUrl:
+        def __init__(self, path):
+            self.path = path
+
+        @staticmethod
+        def fromLocalFile(path):
+            return types.SimpleNamespace(toString=lambda: path)
+
     monkeypatch.setattr(pdf_dock, "_pdf_dock", fake_dock)
+    monkeypatch.setattr(pdf_dock, "_pdf_showing_missing_screen", True)
     monkeypatch.setattr(pdf_dock, "_build_pdf_dock", lambda: (_ for _ in ()).throw(AssertionError("unexpected build")))
     monkeypatch.setattr(pdf_dock, "mw", fake_mw)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
@@ -725,7 +753,7 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     monkeypatch.setattr(
         pdf_dock,
         "QUrl",
-        types.SimpleNamespace(fromLocalFile=lambda path: types.SimpleNamespace(toString=lambda: path)),
+        _FakeQUrl,
     )
     monkeypatch.setattr(
         pdf_dock,
@@ -742,7 +770,9 @@ def test_show_pdf_in_dock_prefers_current_note_filename_over_stale_argument(monk
     pdf_dock.show_pdf_in_dock(77, "old-file.pdf", 3, offer_due_review_prompt=False)
 
     assert pdf_dock._current_pdf_filename == "new-file.pdf"
+    assert pdf_dock._pdf_showing_missing_screen is False
     assert events == []
+    assert len(load_calls) == 1
     assert js_calls
     assert '"new-file.pdf"' in js_calls[0]
     assert "scrollRatio: 0.42" in js_calls[0]
