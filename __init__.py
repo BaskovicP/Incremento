@@ -126,6 +126,8 @@ from .frontend import timer_widget as _timer_mod
 from .backend.topic_scheduler import (
     TOPIC_REVIEW_BUTTONS,
     configured_default_topic_a_factor as _configured_default_topic_a_factor,
+    configured_topic_less_adjustment_percent as _configured_topic_less_adjustment_percent,
+    configured_topic_more_adjustment_percent as _configured_topic_more_adjustment_percent,
     configured_topic_card_tags as _configured_topic_card_tags,
     configured_topic_card_types as _configured_topic_card_types,
     is_topic_card as _is_topic_card,
@@ -158,6 +160,8 @@ from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
 from .frontend import local_file_dock as _local_file_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
+from .frontend import image_rotation as _image_rotation_mod
+from .frontend import browser_quick_tags as _browser_quick_tags_mod
 from .frontend.extract_batch_dialog import ExtractBatchDialog
 from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
@@ -4995,6 +4999,8 @@ def openSettingsFunction() -> None:
         current_topic_card_types=_configured_topic_card_types(cfg),
         current_topic_card_tags=_configured_topic_card_tags(cfg),
         current_default_topic_a_factor=_configured_default_topic_a_factor(cfg),
+        current_topic_more_adjustment_percent=_configured_topic_more_adjustment_percent(cfg),
+        current_topic_less_adjustment_percent=_configured_topic_less_adjustment_percent(cfg),
         current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
         current_add_card_item_tags=_add_card_dock_mod.configured_add_card_item_tags(cfg),
         current_auto_create_topics_deck=configured_auto_create_topics_deck(cfg),
@@ -5048,6 +5054,8 @@ def openSettingsFunction() -> None:
     cfg["topic_card_types"] = dlg.topic_card_types
     cfg["topic_card_tags"] = dlg.topic_card_tags
     cfg["default_topic_a_factor"] = dlg.default_topic_a_factor
+    cfg["topic_more_adjustment_percent"] = dlg.topic_more_adjustment_percent
+    cfg["topic_less_adjustment_percent"] = dlg.topic_less_adjustment_percent
     cfg["add_card_topic_tags"] = dlg.add_card_topic_tags
     cfg["add_card_item_tags"] = dlg.add_card_item_tags
     cfg["auto_create_topics_deck"] = dlg.auto_create_topics_deck
@@ -5423,3 +5431,9 @@ gui_hooks.browser_will_show.append(_prune_incremento_hidden_browser_active_colum
 gui_hooks.editor_did_load_note.append(_hide_incremento_hidden_fields_in_editor)
 gui_hooks.browser_did_fetch_columns.append(_filter_incremento_hidden_browser_columns)
 gui_hooks.browser_will_show_context_menu.append(_on_browser_context_menu)
+gui_hooks.browser_menus_did_init.append(
+    lambda browser: _browser_quick_tags_mod.install_browser_quick_tag_action(
+        browser,
+        _ADDON_DIR,
+    )
+)

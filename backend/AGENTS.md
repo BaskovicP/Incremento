@@ -57,6 +57,16 @@ Use this file for work in `backend/`.
 - Refresh the Anki UI after successful imports.
 - Browser-capture provenance now belongs in Incremento metadata fields. Do not reintroduce URL or source blocks into mapped content fields when the backend can write metadata separately.
 
+## Browser Quick Tag History
+
+- `browser_recent_tag_groups` stores up to nine complete Browser quick-tag sets per profile; it is separate from the reviewer-side single-tag history.
+- Use `get_recent_browser_tag_groups()` and `touch_recent_browser_tag_group()` instead of reading or writing the table directly.
+- Tag-set identity is case-insensitive and independent of tag order, while the stored display spelling/order is preserved for the picker.
+- Reusing a stored set updates its display spelling without changing `used_at`, so its number remains stable. `seed_recent_browser_tag_groups()` fills empty positions below existing sets; a newly introduced tag set may be inserted at the front.
+- `backend/reviewer_tags.py` owns tag-set normalization and deduplication, including the first-use conversion of newest-first Anki note-tag rows into recent sets.
+- `browser_tag_colors` assigns each normalized tag a unique persistent color index plus an optional `custom_color` per profile. Use `assign_browser_tag_color_indexes()`, `get_browser_tag_custom_colors()`, and `set_browser_tag_custom_color()`; do not derive or overwrite assignments directly from dialog positions. The `topic` reservation may relocate the previous green-slot occupant without creating an index collision.
+- `browser_quick_tag_settings` stores the profile's automatic-recent versus user-fixed mode and nine fixed tag-set slots. Use `get_browser_quick_tag_settings()` and `set_browser_quick_tag_settings()`; normalize each slot while preserving its position.
+
 ## Knowledge Tree
 
 - Main files: `backend/knowledge_tree.py`, `backend/knowledge_tree_postpone.py`, and the related tables in `backend/db.py`.
@@ -76,6 +86,11 @@ Use this file for work in `backend/`.
 - Default custom-schedule mode and preset parsing are config-backed and surfaced in the `Review` settings tab.
 - `format_custom_schedule_rule(None)` must stay empty. Missing rules must not render as the default preset in the reviewer badge.
 - Topic cards may still keep their topic scheduler state; `fixed_repeat` also updates the stored topic interval so UI and due date stay aligned.
+
+## Topic Scheduling
+
+- Topic `More / Same / Less` choices affect the immediate next interval as well as future A-factor growth. Starting from the normal `precise_interval × A-factor` result, `More` subtracts the configured `topic_more_adjustment_percent`, `Same` uses 100%, and `Less` adds `topic_less_adjustment_percent`; `More` and `Less` apply the same multiplier to the persistent A-factor. Both percentages default to 10% and are normalized to 0–100%.
+- Keep the duration labels, persisted precise interval, rounded Anki due date, and `card.ivl` synchronized when changing this behavior. Item `Fail / Pass` semantics are separate.
 
 ## Statistics and Document Types
 

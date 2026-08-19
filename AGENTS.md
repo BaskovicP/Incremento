@@ -28,6 +28,7 @@ Important newer hotspots:
 - `frontend/writing_dock.py`: markdown writing dock with per-card editor state, word-progress counters, and configurable word-count mode.
 - `backend/statistics.py`, `frontend/stats_dialog.py`, `frontend/timer_widget.py`, `backend/review_time_tracker.py`: normalized count/time statistics, review-time attribution, and logical-day focus timer activity.
 - `frontend/database_entries_dialog.py`: database-backed reader entry inspection surfaced from the learning dialog.
+- `frontend/browser_quick_tags.py`, `frontend/tag_colors.py`, `backend/reviewer_tags.py`, `backend/db.py`: Browser quick-tag sets, stable per-tag color chips, recent-set inference, and profile-scoped tag-set history.
 - `chrome_extensions/incremento_companion/src/`: browser snapshot quick-create, context-menu sync, and extension-side capture model behavior. Keep built `dist/` output aligned with source changes.
 
 ## Read The Local Guide
@@ -99,6 +100,9 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - `custom_learn_stats.json` stores normalized count scopes (`daily.counts`, `lifetime`) plus review-time scopes (`time.daily.seconds`, `time.lifetime`). Keep DB stats behavior as compatibility/fallback, not a second shape.
 - EPUB is a concrete document and stat type. Preserve `pdf` and `epub` separately in scheduling, statistics, timer summaries, and UI labels instead of folding EPUB into PDF.
 - Browser snapshot quick-create and context-menu behavior live partly in the Chrome extension source and partly in generated `dist/` files. If you touch the extension, update the built artifacts before finishing.
+- Browser quick tags are a two-step flow: `Cmd+T` / `Ctrl+T`, then `1`–`9`, applies one complete tag set to every distinct selected note. Keep the nine stable numbered positions in a standard row-major 3×3 grid (`1/2/3` top, `4/5/6` middle, `7/8/9` bottom), first-use inference from recently modified tagged notes, profile-scoped `browser_recent_tag_groups` history, and Browser Notes-menu action aligned. Reusing an existing set must not reorder it; only a newest set that introduces a previously unseen tag may enter at the front.
+- Quick-tag colors are case-insensitive, persistent, and collision-free within a profile. `topic` reserves the green major-color slot by default; users may override visible tag colors through the dialog's Settings button. The same tag must retain its accessible chip color across tag sets and sessions, while two different tags must not share a color. Keep the `browser_tag_colors` registry (including `custom_color` migration), allocator, settings dialog, and centralized palette in `frontend/tag_colors.py` aligned.
+- Quick-tag Settings also supports profile-scoped fixed mode. When `Use my fixed tag sets` is enabled, the nine user-defined `browser_quick_tag_settings` slots replace recent-set inference completely and never reorder; keep fixed-set editing, color assignment for newly typed tags, validation, persistence, and immediate dialog reload aligned.
 
 ## Tests / Checks
 
@@ -121,6 +125,7 @@ Useful focused suites:
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_reviewer_priority_badge.py tests/test_custom_schedule.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_db.py tests/test_writing_dock.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_reviewer_tags.py tests/test_tag_colors.py tests/test_db.py -q
 ```
 
 If the local environment lacks `pytest-cov` but `pytest.ini` expects it, use:

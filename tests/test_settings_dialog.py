@@ -370,6 +370,38 @@ class TestIncrementoSettingsDialogDefaultTopicAFactor:
         assert dialog.default_topic_a_factor == 6.789
 
 
+class TestIncrementoSettingsDialogTopicAdjustments:
+    def test_initializes_topic_adjustment_spins(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_topic_more_adjustment_percent=15.5,
+            current_topic_less_adjustment_percent=22.0,
+        )
+        assert dialog.topic_more_adjustment_percent == 15.5
+        assert dialog.topic_less_adjustment_percent == 22.0
+        assert dialog._topic_more_adjustment_percent_spin.minimum() == 0.0
+        assert dialog._topic_more_adjustment_percent_spin.maximum() == 100.0
+        assert dialog._topic_less_adjustment_percent_spin.minimum() == 0.0
+        assert dialog._topic_less_adjustment_percent_spin.maximum() == 100.0
+
+    def test_topic_adjustment_spins_default_to_ten_percent(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.topic_more_adjustment_percent == 10.0
+        assert dialog.topic_less_adjustment_percent == 10.0
+
+    def test_topic_adjustment_spins_clamp_for_save(self):
+        low = IncrementoSettingsDialog(
+            {},
+            current_topic_more_adjustment_percent=-5,
+        )
+        high = IncrementoSettingsDialog(
+            {},
+            current_topic_less_adjustment_percent=150,
+        )
+        assert low.topic_more_adjustment_percent == 0.0
+        assert high.topic_less_adjustment_percent == 100.0
+
+
 class TestIncrementoSettingsDialogExtractionHighlight:
     def test_highlight_when_extracting_defaults_enabled(self):
         dialog = IncrementoSettingsDialog({})

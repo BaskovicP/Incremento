@@ -2174,3 +2174,220 @@ class TestReviewerRecentTags:
             "One",
             "three",
         ]
+
+
+class TestBrowserRecentTagGroups:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_returns_empty_list_by_default(self):
+        assert db.get_recent_browser_tag_groups(self.addon_dir, "TestProfile") == []
+
+    def test_touch_keeps_existing_tag_set_in_its_original_position(self):
+        db.touch_recent_browser_tag_group(
+            self.addon_dir,
+            "TestProfile",
+            ["spiritual", "topic"],
+            used_at=100,
+        )
+        db.touch_recent_browser_tag_group(
+            self.addon_dir,
+            "TestProfile",
+            ["topic", "psychology"],
+            used_at=200,
+        )
+        db.touch_recent_browser_tag_group(
+            self.addon_dir,
+            "TestProfile",
+            ["TOPIC", "Spiritual"],
+            used_at=300,
+        )
+
+        assert db.get_recent_browser_tag_groups(self.addon_dir, "TestProfile") == [
+            ["topic", "psychology"],
+            ["TOPIC", "Spiritual"],
+        ]
+
+    def test_touch_trims_old_tag_sets(self):
+        for used_at, tags in enumerate((["one"], ["two"], ["three"]), start=1):
+            db.touch_recent_browser_tag_group(
+                self.addon_dir,
+                "TestProfile",
+                tags,
+                limit=2,
+                used_at=used_at,
+            )
+
+        assert db.get_recent_browser_tag_groups(
+            self.addon_dir,
+            "TestProfile",
+            limit=5,
+        ) == [["three"], ["two"]]
+
+    def test_new_tag_set_enters_at_front_when_timestamps_tie(self):
+        db.touch_recent_browser_tag_group(
+            self.addon_dir,
+            "TestProfile",
+            ["topic"],
+            used_at=100,
+        )
+        db.touch_recent_browser_tag_group(
+            self.addon_dir,
+            "TestProfile",
+            ["new-tag"],
+            used_at=100,
+        )
+
+        assert db.get_recent_browser_tag_groups(self.addon_dir, "TestProfile") == [
+            ["new-tag"],
+            ["topic"],
+        ]
+
+    def test_seed_fills_empty_slots_without_reordering_existing_groups(self):
+        db.touch_recent_browser_tag_group(
+            self.addon_dir,
+            "TestProfile",
+            ["topic", "psychology"],
+            used_at=300,
+        )
+        db.seed_recent_browser_tag_groups(
+            self.addon_dir,
+            "TestProfile",
+            [["spiritual", "topic"], ["science"], ["topic", "psychology"]],
+            used_at=200,
+        )
+
+        assert db.get_recent_browser_tag_groups(self.addon_dir, "TestProfile") == [
+            ["topic", "psychology"],
+            ["spiritual", "topic"],
+            ["science"],
+        ]
+
+
+class TestBrowserTagColors:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_assigns_unique_indexes_and_keeps_them_stable(self):
+        first = db.assign_browser_tag_color_indexes(
+            self.addon_dir,
+            "TestProfile",
+            ["habits", "psychology", "topic"],
+            palette_size=24,
+        )
+        second = db.assign_browser_tag_color_indexes(
+            self.addon_dir,
+            "TestProfile",
+            ["TOPIC", "psychology", "habits", "spiritual"],
+            palette_size=24,
+        )
+
+        assert len(set(first.values())) == 3
+        assert first["habits"] != first["psychology"]
+        assert second["habits"] == first["habits"]
+        assert second["psychology"] == first["psychology"]
+        assert second["topic"] == first["topic"]
+        assert second["spiritual"] not in set(first.values())
+
+    def test_reserved_topic_index_moves_previous_occupant_without_collision(self):
+        initial = db.assign_browser_tag_color_indexes(
+            self.addon_dir,
+            "TestProfile",
+            ["spiritual", "psychology", "data"],
+            palette_size=24,
+        )
+        assert initial["data"] == 2
+
+        updated = db.assign_browser_tag_color_indexes(
+            self.addon_dir,
+            "TestProfile",
+            ["topic", "data", "spiritual", "psychology"],
+            palette_size=24,
+            reserved_indexes={"topic": 2},
+        )
+
+        assert updated["topic"] == 2
+        assert updated["data"] != 2
+        assert len(set(updated.values())) == len(updated)
+
+    def test_custom_color_can_be_saved_loaded_and_cleared(self):
+        db.assign_browser_tag_color_indexes(
+            self.addon_dir,
+            "TestProfile",
+            ["topic"],
+            palette_size=24,
+            reserved_indexes={"topic": 2},
+        )
+        db.set_browser_tag_custom_color(
+            self.addon_dir,
+            "TestProfile",
+            "TOPIC",
+            "#123abc",
+        )
+        assert db.get_browser_tag_custom_colors(
+            self.addon_dir,
+            "TestProfile",
+            ["topic"],
+        ) == {"topic": "#123ABC"}
+
+        db.set_browser_tag_custom_color(
+            self.addon_dir,
+            "TestProfile",
+            "topic",
+            "",
+        )
+        assert db.get_browser_tag_custom_colors(
+            self.addon_dir,
+            "TestProfile",
+            ["topic"],
+        ) == {}
+
+
+class TestBrowserQuickTagSettings:
+    def setup_method(self):
+        _reset_db_module()
+        self.addon_dir = _fresh_dir()
+
+    def teardown_method(self):
+        _reset_db_module()
+
+    def test_defaults_to_recent_mode_with_nine_empty_fixed_slots(self):
+        settings = db.get_browser_quick_tag_settings(
+            self.addon_dir,
+            "TestProfile",
+        )
+
+        assert settings["use_fixed_sets"] is False
+        assert settings["fixed_tag_groups"] == [[] for _ in range(9)]
+
+    def test_fixed_tag_sets_are_normalized_and_persisted_by_slot(self):
+        db.set_browser_quick_tag_settings(
+            self.addon_dir,
+            "TestProfile",
+            use_fixed_sets=True,
+            fixed_tag_groups=[
+                ["topic", "psychology"],
+                " habits, topic ",
+                ["#spiritual", "Topic"],
+            ],
+        )
+
+        settings = db.get_browser_quick_tag_settings(
+            self.addon_dir,
+            "TestProfile",
+        )
+        assert settings["use_fixed_sets"] is True
+        assert settings["fixed_tag_groups"][:3] == [
+            ["topic", "psychology"],
+            ["habits", "topic"],
+            ["spiritual", "Topic"],
+        ]
+        assert settings["fixed_tag_groups"][3:] == [[] for _ in range(6)]

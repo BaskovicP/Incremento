@@ -652,6 +652,8 @@ Open **Tools -> Incremento -> Settings** for six tabs:
 
 The advanced database editor creates a timestamped checkpoint first and starts read-only until you explicitly unlock writes.
 
+Topic cards use **More / Same / Less** instead of flashcard grading. The normal next interval is the previous precise topic interval multiplied by its A-factor. In the Topics settings, **More adjustment** and **Less adjustment** independently control how strongly those buttons change both the immediate interval and persistent A-factor. With the 10% defaults, **More** schedules 90% and multiplies the A-factor by 0.9, **Same** schedules the normal interval, and **Less** schedules 110% and multiplies the A-factor by 1.1. The duration shown below each button is the interval that will be applied immediately.
+
 ### Dependency setup
 
 On first run, Incremento can show a dependency setup dialog.
@@ -685,7 +687,7 @@ These are maintenance tools, not normal daily workflow tools.
 
 ## 14. Keyboard Shortcuts
 
-All Incremento shortcuts can be changed in **Tools -> Incremento -> Settings -> Shortcuts**. Leave a shortcut field empty if you want to disable that action entirely.
+Incremento's configurable shortcuts can be changed in **Tools -> Incremento -> Settings -> Shortcuts**. Leave a shortcut field empty if you want to disable that action entirely. The Browser quick-tag shortcut is fixed to `Cmd+T` / `Ctrl+T`.
 
 ### Default shortcuts
 
@@ -695,6 +697,7 @@ All Incremento shortcuts can be changed in **Tools -> Incremento -> Settings -> 
 | `Option+H` / `Alt+H` | Highlight selected PDF text |
 | `Alt+P` | Set priority for current card |
 | `Alt+X` | Open Extract Card dialog |
+| `Cmd+T` / `Ctrl+T` | In the Browser, open nine quick tag sets for the selected notes |
 | `Cmd+F` / `Ctrl+F` | Open current-document search results for the active PDF or EPUB |
 | `Ctrl+Alt+S` | Open Search ALL |
 | `Ctrl+Alt+P` | Quick Open Content |
@@ -705,6 +708,12 @@ All Incremento shortcuts can be changed in **Tools -> Incremento -> Settings -> 
 | `Ctrl+Alt+M` | Mark current PDF as finished reading |
 
 Many menu actions have no default shortcut but can still be assigned here, including Start Incremental Learning, Add PDF, Add EPUB, Add Video, Add Writing, Web Page, Add Local File, Statistics, Settings, Export, and knowledge-tree actions.
+
+### Browser quick tags
+
+Select one or more rows in the Browser and press `Cmd+T` on macOS or `Ctrl+T` on Windows/Linux. The picker shows up to nine distinct tag sets in a standard 3×3 block (`1/2/3` top, `4/5/6` middle, `7/8/9` bottom), so one choice can apply combinations such as `spiritual + topic`. Press `1`–`9`, or click a numbered set, to apply every tag in it immediately to every selected note. Existing sets keep their number when reused; the order changes only when the newest tagged note introduces a tag not represented in the current list. Every tag receives a persistent color chip unique within the profile, `topic` is green by default, and the same tag keeps its color across tag sets and future sessions. Use the dialog's **Settings…** button to choose a custom color for any visible tag or restore its automatic color; duplicate effective colors are rejected. If multiple selected cards belong to the same note, that note is updated only once.
+
+In **Settings…**, enable **Use my fixed tag sets instead of recent tag sets** to define the numbered slots yourself. Each slot may contain one or several tags separated by spaces, commas, or semicolons. Fill slots consecutively from 1; fixed mode replaces automatic recent-tag discovery and never reorders the slots. Tags introduced in fixed slots are added to the same color editor, so their colors can be chosen before using the picker.
 
 ### Quick Open Content dialog shortcuts
 

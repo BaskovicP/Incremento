@@ -273,6 +273,8 @@ class IncrementoSettingsDialog(QDialog):
         current_topic_card_types: dict[str, bool] | None = None,
         current_topic_card_tags: list[str] | str | None = None,
         current_default_topic_a_factor: float = 3.5,
+        current_topic_more_adjustment_percent: float = 10.0,
+        current_topic_less_adjustment_percent: float = 10.0,
         current_add_card_topic_tags: list[str] | str | None = None,
         current_add_card_item_tags: list[str] | str | None = None,
         current_auto_create_topics_deck: bool = True,
@@ -964,6 +966,47 @@ class IncrementoSettingsDialog(QDialog):
             ),
         )
 
+        def _topic_adjustment_spin(value) -> QDoubleSpinBox:
+            spin = QDoubleSpinBox()
+            spin.setRange(0.0, 100.0)
+            spin.setDecimals(1)
+            spin.setSingleStep(1.0)
+            spin.setSuffix(" %")
+            try:
+                parsed = float(value)
+            except Exception:
+                parsed = 10.0
+            spin.setValue(max(0.0, min(100.0, parsed)))
+            return spin
+
+        self._topic_more_adjustment_percent_spin = _topic_adjustment_spin(
+            current_topic_more_adjustment_percent
+        )
+        self._topic_more_adjustment_percent_spin.setToolTip(
+            "How strongly More shortens the immediate interval and reduces the persistent A-factor."
+        )
+        topic_form.addRow(
+            _label_with_info(
+                "More adjustment:",
+                "For example, 10% schedules 90% of the normal next interval and multiplies the persistent A-factor by 0.9.",
+            ),
+            self._topic_more_adjustment_percent_spin,
+        )
+
+        self._topic_less_adjustment_percent_spin = _topic_adjustment_spin(
+            current_topic_less_adjustment_percent
+        )
+        self._topic_less_adjustment_percent_spin.setToolTip(
+            "How strongly Less lengthens the immediate interval and increases the persistent A-factor."
+        )
+        topic_form.addRow(
+            _label_with_info(
+                "Less adjustment:",
+                "For example, 10% schedules 110% of the normal next interval and multiplies the persistent A-factor by 1.1.",
+            ),
+            self._topic_less_adjustment_percent_spin,
+        )
+
         topic_types = {
             "pdf_epub": True,
             "video": True,
@@ -1495,6 +1538,14 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def default_topic_a_factor(self) -> float:
         return round(float(self._default_topic_a_factor_spin.value()), 3)
+
+    @property
+    def topic_more_adjustment_percent(self) -> float:
+        return round(float(self._topic_more_adjustment_percent_spin.value()), 3)
+
+    @property
+    def topic_less_adjustment_percent(self) -> float:
+        return round(float(self._topic_less_adjustment_percent_spin.value()), 3)
 
     @property
     def add_card_topic_tags(self) -> list[str]:

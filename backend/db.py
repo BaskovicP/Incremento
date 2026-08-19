@@ -28,6 +28,9 @@ web_progress    — last URL, scroll position, bookmark state, and media resume 
 reader_bookmarks — permanent interesting-place bookmarks per reader card
 browser_media_refs — latest manually saved browser media reference per card
 reviewer_recent_tags — latest reviewer-added tags for quick reuse
+browser_recent_tag_groups — latest Browser tag sets used for quick reuse
+browser_tag_colors — persistent unique color indexes for Browser quick tags
+browser_quick_tag_settings — automatic/fixed picker mode and nine fixed slots
 topic_postpones — timed postpone expiry timestamps per topic card
 item_postpones  — timed skip expiry timestamps per non-topic card
 custom_schedule_rules — per-card recurring custom scheduling rules
@@ -472,6 +475,29 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_rrt_used_at
             ON reviewer_recent_tags (used_at DESC, normalized_tag);
 
+        CREATE TABLE IF NOT EXISTS browser_recent_tag_groups (
+            normalized_tags TEXT PRIMARY KEY,
+            display_tags    TEXT    NOT NULL DEFAULT '[]',
+            used_at         INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_brtg_used_at
+            ON browser_recent_tag_groups (used_at DESC, normalized_tags);
+
+        CREATE TABLE IF NOT EXISTS browser_tag_colors (
+            normalized_tag TEXT PRIMARY KEY,
+            display_tag    TEXT    NOT NULL DEFAULT '',
+            color_index    INTEGER NOT NULL UNIQUE,
+            custom_color   TEXT    NOT NULL DEFAULT '',
+            assigned_at    INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS browser_quick_tag_settings (
+            id                  INTEGER PRIMARY KEY CHECK (id = 1),
+            use_fixed_sets      INTEGER NOT NULL DEFAULT 0,
+            fixed_tag_sets_json TEXT    NOT NULL DEFAULT '[]',
+            updated_at          INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS pdf_card_sources (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             pdf_card_id INTEGER NOT NULL,
@@ -707,6 +733,12 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         conn,
         "pdf_card_sources",
         "highlight_id",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "browser_tag_colors",
+        "custom_color",
         "TEXT NOT NULL DEFAULT ''",
     )
     conn.execute(
@@ -1568,6 +1600,419 @@ def touch_recent_reviewer_tags(
         "  ORDER BY used_at DESC, normalized_tag ASC LIMIT ?"
         ")",
         (max_rows,),
+    )
+    conn.commit()
+
+
+def _normalize_browser_recent_tag_group(tags) -> list[str]:
+    if isinstance(tags, str):
+        raw_tags = (
+            tags.replace("\n", " ")
+            .replace(",", " ")
+            .replace(";", " ")
+            .split()
+        )
+    elif isinstance(tags, (list, tuple, set)):
+        raw_tags = list(tags)
+    else:
+        raw_tags = []
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_tags:
+        tag = str(item or "").strip().lstrip("#")
+        key = tag.casefold()
+        if not tag or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(tag)
+    return cleaned
+
+
+def _browser_recent_tag_group_key(tags: list[str]) -> str:
+    return "\x1f".join(sorted(tag.casefold() for tag in tags))
+
+
+def get_recent_browser_tag_groups(
+    addon_dir: str,
+    profile: str,
+    *,
+    limit: int = 9,
+) -> list[list[str]]:
+    try:
+        max_rows = max(1, int(limit or 9))
+    except Exception:
+        max_rows = 9
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT display_tags FROM browser_recent_tag_groups "
+        "ORDER BY used_at DESC, normalized_tags ASC LIMIT ?",
+        (max_rows,),
+    ).fetchall()
+    groups: list[list[str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        try:
+            raw_tags = json.loads(str(row[0] if row else "[]"))
+        except Exception:
+            raw_tags = []
+        tags = _normalize_browser_recent_tag_group(raw_tags)
+        key = _browser_recent_tag_group_key(tags)
+        if not tags or key in seen:
+            continue
+        seen.add(key)
+        groups.append(tags)
+    return groups
+
+
+def touch_recent_browser_tag_group(
+    addon_dir: str,
+    profile: str,
+    tags,
+    *,
+    limit: int = 9,
+    used_at: int | None = None,
+) -> None:
+    cleaned = _normalize_browser_recent_tag_group(tags)
+    if not cleaned:
+        return
+    try:
+        max_rows = max(1, int(limit or 9))
+    except Exception:
+        max_rows = 9
+    timestamp = _normalize_browser_media_ref_updated_at(
+        int(time.time() * 1000) if used_at is None else used_at
+    )
+    conn = get_connection(addon_dir, profile)
+    newest_row = conn.execute(
+        "SELECT MAX(used_at) FROM browser_recent_tag_groups"
+    ).fetchone()
+    if newest_row and newest_row[0] is not None:
+        timestamp = max(timestamp, int(newest_row[0]) + 1)
+    conn.execute(
+        "INSERT INTO browser_recent_tag_groups "
+        "(normalized_tags, display_tags, used_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(normalized_tags) DO UPDATE SET "
+        "display_tags = excluded.display_tags",
+        (
+            _browser_recent_tag_group_key(cleaned),
+            json.dumps(cleaned, ensure_ascii=False),
+            timestamp,
+        ),
+    )
+    conn.execute(
+        "DELETE FROM browser_recent_tag_groups "
+        "WHERE normalized_tags NOT IN ("
+        "  SELECT normalized_tags FROM browser_recent_tag_groups "
+        "  ORDER BY used_at DESC, normalized_tags ASC LIMIT ?"
+        ")",
+        (max_rows,),
+    )
+    conn.commit()
+
+
+def seed_recent_browser_tag_groups(
+    addon_dir: str,
+    profile: str,
+    tag_groups,
+    *,
+    limit: int = 9,
+    used_at: int | None = None,
+) -> None:
+    try:
+        max_rows = max(1, int(limit or 9))
+    except Exception:
+        max_rows = 9
+
+    cleaned_groups: list[list[str]] = []
+    seen: set[str] = set()
+    for raw_group in tag_groups or []:
+        tags = _normalize_browser_recent_tag_group(raw_group)
+        key = _browser_recent_tag_group_key(tags)
+        if not tags or key in seen:
+            continue
+        seen.add(key)
+        cleaned_groups.append(tags)
+        if len(cleaned_groups) >= max_rows:
+            break
+    if not cleaned_groups:
+        return
+
+    conn = get_connection(addon_dir, profile)
+    oldest_row = conn.execute(
+        "SELECT MIN(used_at) FROM browser_recent_tag_groups"
+    ).fetchone()
+    if oldest_row and oldest_row[0] is not None:
+        base_timestamp = max(1, int(oldest_row[0]) - 1)
+    else:
+        base_timestamp = _normalize_browser_media_ref_updated_at(
+            int(time.time() * 1000) if used_at is None else used_at
+        )
+
+    for offset, tags in enumerate(cleaned_groups):
+        conn.execute(
+            "INSERT OR IGNORE INTO browser_recent_tag_groups "
+            "(normalized_tags, display_tags, used_at) VALUES (?, ?, ?)",
+            (
+                _browser_recent_tag_group_key(tags),
+                json.dumps(tags, ensure_ascii=False),
+                max(1, base_timestamp - offset),
+            ),
+        )
+    conn.execute(
+        "DELETE FROM browser_recent_tag_groups "
+        "WHERE normalized_tags NOT IN ("
+        "  SELECT normalized_tags FROM browser_recent_tag_groups "
+        "  ORDER BY used_at DESC, normalized_tags ASC LIMIT ?"
+        ")",
+        (max_rows,),
+    )
+    conn.commit()
+
+
+def _normalize_browser_fixed_tag_groups(raw_groups) -> list[list[str]]:
+    if isinstance(raw_groups, str):
+        try:
+            raw_groups = json.loads(raw_groups)
+        except Exception:
+            raw_groups = []
+    if not isinstance(raw_groups, (list, tuple)):
+        raw_groups = []
+    groups = [
+        _normalize_browser_recent_tag_group(raw_group)
+        for raw_group in list(raw_groups)[:9]
+    ]
+    while len(groups) < 9:
+        groups.append([])
+    return groups
+
+
+def get_browser_quick_tag_settings(addon_dir: str, profile: str) -> dict:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT use_fixed_sets, fixed_tag_sets_json "
+        "FROM browser_quick_tag_settings WHERE id = 1"
+    ).fetchone()
+    if not row:
+        return {"use_fixed_sets": False, "fixed_tag_groups": [[] for _ in range(9)]}
+    return {
+        "use_fixed_sets": bool(int(row[0] or 0)),
+        "fixed_tag_groups": _normalize_browser_fixed_tag_groups(row[1]),
+    }
+
+
+def set_browser_quick_tag_settings(
+    addon_dir: str,
+    profile: str,
+    *,
+    use_fixed_sets: bool,
+    fixed_tag_groups,
+) -> None:
+    groups = _normalize_browser_fixed_tag_groups(fixed_tag_groups)
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO browser_quick_tag_settings "
+        "(id, use_fixed_sets, fixed_tag_sets_json, updated_at) "
+        "VALUES (1, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "use_fixed_sets = excluded.use_fixed_sets, "
+        "fixed_tag_sets_json = excluded.fixed_tag_sets_json, "
+        "updated_at = excluded.updated_at",
+        (
+            1 if use_fixed_sets else 0,
+            json.dumps(groups, ensure_ascii=False),
+            int(time.time() * 1000),
+        ),
+    )
+    conn.commit()
+
+
+def assign_browser_tag_color_indexes(
+    addon_dir: str,
+    profile: str,
+    tags,
+    *,
+    palette_size: int,
+    reserved_indexes: dict[str, int] | None = None,
+) -> dict[str, int]:
+    """Assign each tag a persistent color slot unique within the profile."""
+    try:
+        base_palette_size = max(1, int(palette_size))
+    except Exception:
+        base_palette_size = 1
+
+    cleaned = _normalize_browser_recent_tag_group(tags)
+    if not cleaned:
+        return {}
+
+    conn = get_connection(addon_dir, profile)
+    rows = conn.execute(
+        "SELECT normalized_tag, color_index FROM browser_tag_colors"
+    ).fetchall()
+    assignments = {
+        str(row[0] or "").casefold(): max(0, int(row[1] or 0))
+        for row in rows
+        if row and str(row[0] or "").strip()
+    }
+    used_indexes = set(assignments.values())
+    assigned_at = int(time.time() * 1000)
+
+    normalized_reserved: dict[str, int] = {}
+    for raw_tag, raw_index in (reserved_indexes or {}).items():
+        key = str(raw_tag or "").strip().lstrip("#").casefold()
+        try:
+            color_index = max(0, int(raw_index))
+        except Exception:
+            continue
+        if key and color_index < base_palette_size:
+            normalized_reserved[key] = color_index
+
+    cleaned_keys = {tag.casefold() for tag in cleaned}
+    for key, target_index in normalized_reserved.items():
+        if key not in cleaned_keys:
+            continue
+        current_index = assignments.get(key)
+        if current_index == target_index:
+            continue
+
+        occupant = next(
+            (
+                other_key
+                for other_key, other_index in assignments.items()
+                if other_index == target_index and other_key != key
+            ),
+            None,
+        )
+        if occupant is not None:
+            temporary_index = -1
+            while temporary_index in used_indexes:
+                temporary_index -= 1
+            conn.execute(
+                "UPDATE browser_tag_colors SET color_index = ? WHERE normalized_tag = ?",
+                (temporary_index, occupant),
+            )
+            assignments[occupant] = temporary_index
+            used_indexes.discard(target_index)
+            used_indexes.add(temporary_index)
+
+        if current_index is not None:
+            conn.execute(
+                "UPDATE browser_tag_colors SET color_index = ? WHERE normalized_tag = ?",
+                (target_index, key),
+            )
+            assignments[key] = target_index
+            used_indexes.discard(current_index)
+            used_indexes.add(target_index)
+        else:
+            display_tag = next(
+                tag for tag in cleaned if tag.casefold() == key
+            )
+            conn.execute(
+                "INSERT INTO browser_tag_colors "
+                "(normalized_tag, display_tag, color_index, assigned_at) "
+                "VALUES (?, ?, ?, ?)",
+                (key, display_tag, target_index, assigned_at),
+            )
+            assignments[key] = target_index
+            used_indexes.add(target_index)
+
+        if occupant is not None:
+            replacement_index = 0
+            reserved_values = set(normalized_reserved.values())
+            while replacement_index in used_indexes or replacement_index in reserved_values:
+                replacement_index += 1
+            conn.execute(
+                "UPDATE browser_tag_colors SET color_index = ? WHERE normalized_tag = ?",
+                (replacement_index, occupant),
+            )
+            used_indexes.discard(assignments[occupant])
+            assignments[occupant] = replacement_index
+            used_indexes.add(replacement_index)
+
+    for tag in cleaned:
+        key = tag.casefold()
+        if key in assignments:
+            conn.execute(
+                "UPDATE browser_tag_colors SET display_tag = ? WHERE normalized_tag = ?",
+                (tag, key),
+            )
+            continue
+
+        color_index = 0
+        while color_index in used_indexes:
+            color_index += 1
+        # The first palette-sized block contains the most distinct major colors.
+        # Higher indexes remain unique and are rendered by the frontend fallback.
+        if color_index >= base_palette_size:
+            color_index = max(base_palette_size, color_index)
+            while color_index in used_indexes:
+                color_index += 1
+        conn.execute(
+            "INSERT INTO browser_tag_colors "
+            "(normalized_tag, display_tag, color_index, assigned_at) "
+            "VALUES (?, ?, ?, ?)",
+            (key, tag, color_index, assigned_at),
+        )
+        assignments[key] = color_index
+        used_indexes.add(color_index)
+
+    conn.commit()
+    return {tag.casefold(): assignments[tag.casefold()] for tag in cleaned}
+
+
+def get_browser_tag_custom_colors(
+    addon_dir: str,
+    profile: str,
+    tags=None,
+) -> dict[str, str]:
+    cleaned = _normalize_browser_recent_tag_group(tags) if tags is not None else []
+    conn = get_connection(addon_dir, profile)
+    if cleaned:
+        keys = [tag.casefold() for tag in cleaned]
+        placeholders = ",".join("?" for _ in keys)
+        rows = conn.execute(
+            "SELECT normalized_tag, custom_color FROM browser_tag_colors "
+            f"WHERE normalized_tag IN ({placeholders})",
+            keys,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT normalized_tag, custom_color FROM browser_tag_colors"
+        ).fetchall()
+    return {
+        str(row[0] or "").casefold(): str(row[1] or "").upper()
+        for row in rows
+        if row and re.fullmatch(r"#[0-9A-Fa-f]{6}", str(row[1] or ""))
+    }
+
+
+def get_browser_tag_color_indexes(
+    addon_dir: str,
+    profile: str,
+) -> dict[str, int]:
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT normalized_tag, color_index FROM browser_tag_colors"
+    ).fetchall()
+    return {
+        str(row[0] or "").casefold(): max(0, int(row[1] or 0))
+        for row in rows
+        if row and str(row[0] or "").strip()
+    }
+
+
+def set_browser_tag_custom_color(
+    addon_dir: str,
+    profile: str,
+    tag: str,
+    color: str,
+) -> None:
+    key = str(tag or "").strip().lstrip("#").casefold()
+    normalized_color = str(color or "").strip().upper()
+    if not key:
+        return
+    if normalized_color and not re.fullmatch(r"#[0-9A-F]{6}", normalized_color):
+        raise ValueError("Tag color must use #RRGGBB format.")
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "UPDATE browser_tag_colors SET custom_color = ? WHERE normalized_tag = ?",
+        (normalized_color, key),
     )
     conn.commit()
 

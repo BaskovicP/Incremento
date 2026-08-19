@@ -12,6 +12,8 @@ _topics_deck_name = topic_scheduler._topics_deck_name
 configured_topic_card_tags = topic_scheduler.configured_topic_card_tags
 configured_topic_card_types = topic_scheduler.configured_topic_card_types
 configured_default_topic_a_factor = topic_scheduler.configured_default_topic_a_factor
+configured_topic_more_adjustment_percent = topic_scheduler.configured_topic_more_adjustment_percent
+configured_topic_less_adjustment_percent = topic_scheduler.configured_topic_less_adjustment_percent
 is_topic_card = topic_scheduler.is_topic_card
 remap_topic_review_ease = topic_scheduler.remap_topic_review_ease
 sync_card_review_interval = topic_scheduler.sync_card_review_interval
@@ -53,10 +55,21 @@ class TestNextIntervalAndAfactor:
         _, afactor, _ = _next_interval_and_afactor(10, _A_MIN, 2)
         assert afactor == _A_MIN
 
-    def test_hard_uses_normal_interval(self):
+    def test_hard_shortens_immediate_interval(self):
         interval, _, precise = _next_interval_and_afactor(10, 3.5, 2)
-        assert interval == max(1, round(10 * 3.5))
-        assert precise == pytest.approx(10 * 3.5)
+        assert interval == max(1, round(10 * 3.5 * 0.9))
+        assert precise == pytest.approx(10 * 3.5 * 0.9)
+
+    def test_hard_uses_configured_adjustment_strength(self):
+        interval, afactor, precise = _next_interval_and_afactor(
+            10,
+            3.5,
+            2,
+            more_adjustment_percent=20,
+        )
+        assert interval == 28
+        assert afactor == pytest.approx(2.8)
+        assert precise == pytest.approx(28.0)
 
     # ── ease == 3 (Good) ──────────────────────────────────────────────────
 
@@ -96,10 +109,21 @@ class TestNextIntervalAndAfactor:
         _, afactor, _ = _next_interval_and_afactor(10, _A_MAX, 4)
         assert afactor == _A_MAX
 
-    def test_easy_uses_normal_interval(self):
+    def test_easy_lengthens_immediate_interval(self):
         interval, _, precise = _next_interval_and_afactor(10, 3.5, 4)
-        assert interval == max(1, round(10 * 3.5))
-        assert precise == pytest.approx(10 * 3.5)
+        assert interval == max(1, round(10 * 3.5 * 1.1))
+        assert precise == pytest.approx(10 * 3.5 * 1.1)
+
+    def test_easy_uses_configured_adjustment_strength(self):
+        interval, afactor, precise = _next_interval_and_afactor(
+            10,
+            3.5,
+            4,
+            less_adjustment_percent=25,
+        )
+        assert interval == 44
+        assert afactor == pytest.approx(4.375)
+        assert precise == pytest.approx(43.75)
 
     # ── boundary / cumulative ─────────────────────────────────────────────
 
@@ -184,6 +208,21 @@ class TestTopicConfigHelpers:
         assert configured_default_topic_a_factor({"default_topic_a_factor": 1000}) == 100.0
         assert configured_default_topic_a_factor({"default_topic_a_factor": 1.0001}) == 1.1
         assert configured_default_topic_a_factor({"default_topic_a_factor": 2.34567}) == 2.346
+
+    def test_topic_adjustment_percentages_default_to_ten(self):
+        assert configured_topic_more_adjustment_percent({}) == 10.0
+        assert configured_topic_less_adjustment_percent({}) == 10.0
+
+    def test_topic_adjustment_percentages_read_clamp_and_round_config(self):
+        cfg = {
+            "topic_more_adjustment_percent": 17.4567,
+            "topic_less_adjustment_percent": 250,
+        }
+        assert configured_topic_more_adjustment_percent(cfg) == 17.457
+        assert configured_topic_less_adjustment_percent(cfg) == 100.0
+        assert configured_topic_more_adjustment_percent(
+            {"topic_more_adjustment_percent": -4}
+        ) == 0.0
 
 
 class TestTopicReviewEaseRemap:
@@ -321,12 +360,25 @@ class TestIsTopicCard:
 
 
 class TestTopicDueLabel:
-    def test_uses_remapped_topic_button_ease(self):
+    def test_topic_buttons_show_distinct_immediate_intervals(self):
         card = MagicMock()
         card.id = 42
         with patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 7.0, 7)), \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
-            assert topic_due_label(card, 1) == "24d"
+            assert topic_due_label(card, 1) == "22d"
+            assert topic_due_label(card, 2) == "24d"
+            assert topic_due_label(card, 3) == "27d"
+
+    def test_uses_configured_adjustments_in_displayed_intervals(self):
+        card = MagicMock()
+        card.id = 42
+        with patch("topic_scheduler.get_topic_schedule_state", return_value=(3.5, 10.0, 10)), \
+             patch("topic_scheduler.configured_default_topic_a_factor", return_value=3.5), \
+             patch("topic_scheduler.configured_topic_more_adjustment_percent", return_value=20.0), \
+             patch("topic_scheduler.configured_topic_less_adjustment_percent", return_value=25.0):
+            assert topic_due_label(card, 1) == "28d"
+            assert topic_due_label(card, 2) == "35d"
+            assert topic_due_label(card, 3) == "44d"
 
     def test_passes_configured_default_for_unseen_topic_cards(self):
         card = MagicMock()
@@ -418,8 +470,8 @@ class TestOnTopicCardAnswered:
         args = mock_set.call_args.args
         assert args[2] == card.id
         assert args[3] == pytest.approx(round(3.5 * 0.9, 3))
-        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
-        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
+        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(22.05)
+        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "22")
 
     def test_less_button_uses_easy_scheduling_after_reviewer_remap(self):
         card = self._make_card()
@@ -432,8 +484,8 @@ class TestOnTopicCardAnswered:
         args = mock_set.call_args.args
         assert args[2] == card.id
         assert args[3] == pytest.approx(round(3.5 * 1.1, 3))
-        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(24.5)
-        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "24")
+        assert mock_set.call_args.kwargs["precise_interval"] == pytest.approx(26.95)
+        mock_mw.col.sched.set_due_date.assert_called_once_with([card.id], "27")
 
     def test_handles_exception_gracefully(self):
         card = self._make_card()

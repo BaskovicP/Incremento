@@ -29,63 +29,20 @@ def configured_use_fail_pass_on_items(config: dict | None = None) -> bool:
 
 
 def item_pass_ease_for_button_count(button_count: int) -> int:
-    try:
-        count = int(button_count)
-    except Exception:
-        count = 4
-    # Anki's Good button is not always ease 3: active learning steps can expose
-    # only two or three answer buttons, where ease 2 is the Good/pass choice.
-    return 2 if count <= 3 else 3
-
-
-def _card_is_new(card) -> bool:
-    if card is None:
-        return False
-    for attr in ("type", "queue"):
-        try:
-            if int(getattr(card, attr, -1) or 0) == 0:
-                return True
-        except Exception:
-            continue
-    return False
-
-
-def _card_is_learning(card) -> bool:
-    if card is None:
-        return False
-    for attr in ("type", "queue"):
-        try:
-            if int(getattr(card, attr, -1) or 0) in {1, 3}:
-                return True
-        except Exception:
-            continue
-    return False
-
-
-def _card_is_review(card) -> bool:
-    if card is None:
-        return False
-    for attr in ("type", "queue"):
-        try:
-            if int(getattr(card, attr, -1) or 0) == 2:
-                return True
-        except Exception:
-            continue
-    return False
+    del button_count
+    return 3
 
 
 def remap_item_fail_pass_ease(card, ease: int) -> int:
+    del card
     try:
         value = int(ease)
     except Exception:
-        return 2
-    if value != 2:
-        return value
-    if _card_is_learning(card):
-        return 2
-    if _card_is_new(card) or _card_is_review(card):
         return 3
-    return 2
+    # Item buttons have fixed semantics in every Anki card state:
+    # Fail is Again (1), while Pass is Good (3). In particular, Pass must not
+    # become Hard (2) on learning/relearning cards or they can loop forever.
+    return 3 if value == 2 else value
 
 
 def item_pass_ease_for_card(card, button_count: int) -> int:

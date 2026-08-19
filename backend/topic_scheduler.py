@@ -5,17 +5,19 @@ formula:
 
     next_interval = current_interval × A-factor   (spec: topics)
 
-The ease button does NOT change the current interval — it only shifts the
-A-factor to signal how urgently the topic should be reviewed in future:
+The ease button changes both the immediate next interval and the persistent
+A-factor to signal how urgently the topic should be reviewed. The percentages
+below are defaults and can be changed independently in Topics settings:
 
   Again (1) — reset to 1 day; A-factor unchanged
-  Hard  (2) — normal interval; A-factor ×0.9  (important → show sooner)
+  Hard  (2) — 90% of normal interval; A-factor ×0.9  (important → show sooner)
   Good  (3) — normal interval; A-factor unchanged
-  Easy  (4) — normal interval; A-factor ×1.1  (less urgent → grow faster)
+  Easy  (4) — 110% of normal interval; A-factor ×1.1  (less urgent → grow faster)
 
 A-factor is clamped to [1.1, 100.0]. Default: 3.5.
 """
 
+import math
 import os
 
 from aqt import mw
@@ -40,6 +42,8 @@ _ADDON_DIR = os.path.normpath(
 _A_MIN = 1.1
 _A_MAX = 100.0
 _DEFAULT_TOPIC_A_FACTOR = 3.5
+_DEFAULT_TOPIC_MORE_ADJUSTMENT_PERCENT = 10.0
+_DEFAULT_TOPIC_LESS_ADJUSTMENT_PERCENT = 10.0
 TOPIC_REVIEW_BUTTONS: tuple[tuple[int, str], ...] = (
     (1, "More"),
     (2, "Same"),
@@ -132,6 +136,36 @@ def configured_default_topic_a_factor(config: dict | None = None) -> float:
     except Exception:
         value = _DEFAULT_TOPIC_A_FACTOR
     return round(max(_A_MIN, min(_A_MAX, value)), 3)
+
+
+def _normalize_topic_adjustment_percent(value, default: float = 10.0) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        parsed = float(default)
+    if not math.isfinite(parsed):
+        parsed = float(default)
+    return round(max(0.0, min(100.0, parsed)), 3)
+
+
+def configured_topic_more_adjustment_percent(config: dict | None = None) -> float:
+    cfg = _resolved_config(config)
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return _normalize_topic_adjustment_percent(
+        cfg.get("topic_more_adjustment_percent"),
+        _DEFAULT_TOPIC_MORE_ADJUSTMENT_PERCENT,
+    )
+
+
+def configured_topic_less_adjustment_percent(config: dict | None = None) -> float:
+    cfg = _resolved_config(config)
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return _normalize_topic_adjustment_percent(
+        cfg.get("topic_less_adjustment_percent"),
+        _DEFAULT_TOPIC_LESS_ADJUSTMENT_PERCENT,
+    )
 
 
 def configured_effective_topic_tags(config: dict | None = None) -> list[str]:
@@ -269,33 +303,56 @@ def is_topic_card(card) -> bool:
 
 
 def _next_interval_and_afactor(
-    last_interval: float, a_factor: float, ease: int
+    last_interval: float,
+    a_factor: float,
+    ease: int,
+    *,
+    more_adjustment_percent: float = _DEFAULT_TOPIC_MORE_ADJUSTMENT_PERCENT,
+    less_adjustment_percent: float = _DEFAULT_TOPIC_LESS_ADJUSTMENT_PERCENT,
 ) -> tuple[int, float, float]:
     """Return (new_interval_days, new_a_factor, new_precise_interval).
 
     Interval formula matches SuperMemo spec for topics:
         next_interval = current_interval × A-factor
 
-    Ease buttons only affect the A-factor for *future* reviews, not the
-    current interval (except Again which resets to 1 day):
+    Ease buttons affect both the interval scheduled now and the A-factor used
+    for future reviews:
       Again (1) — reset to 1 day; A-factor unchanged
-      Hard  (2) — normal interval; A-factor ×0.9  (topic is important → show sooner)
+      Hard  (2) — 90% of normal interval; A-factor ×0.9
       Good  (3) — normal interval; A-factor unchanged
-      Easy  (4) — normal interval; A-factor ×1.1  (topic less urgent → grow faster)
+      Easy  (4) — 110% of normal interval; A-factor ×1.1
     """
-    new_precise_interval = max(1.0, float(last_interval) * float(a_factor))
-    new_interval = max(1, round(new_precise_interval))
+    normal_precise_interval = max(
+        1.0,
+        float(last_interval) * float(a_factor),
+    )
+    more_multiplier = 1.0 - (
+        _normalize_topic_adjustment_percent(more_adjustment_percent) / 100.0
+    )
+    less_multiplier = 1.0 + (
+        _normalize_topic_adjustment_percent(less_adjustment_percent) / 100.0
+    )
 
     if ease == 1:  # Again — reset interval, leave A-factor alone
         return 1, a_factor, 1.0
-    if ease == 2:  # Hard — signal topic is important, tighten future intervals
-        return new_interval, max(_A_MIN, round(a_factor * 0.9, 3)), new_precise_interval
+    if ease == 2:  # Hard/More — shorten this interval and future growth
+        new_precise_interval = max(1.0, normal_precise_interval * more_multiplier)
+        return (
+            max(1, round(new_precise_interval)),
+            max(_A_MIN, round(a_factor * more_multiplier, 3)),
+            new_precise_interval,
+        )
     if ease == 3:  # Good — pure spec formula, no A-factor change
-        return new_interval, a_factor, new_precise_interval
-    # Easy — topic less urgent, loosen future intervals
+        return (
+            max(1, round(normal_precise_interval)),
+            a_factor,
+            normal_precise_interval,
+        )
+    # Easy/Less — lengthen this interval and future growth
+    new_precise_interval = max(1.0, normal_precise_interval * less_multiplier)
     return (
-        new_interval,
-        min(_A_MAX, round(a_factor * 1.1, 3)),
+        max(1, round(new_precise_interval)),
+        min(_A_MAX, round(a_factor * less_multiplier, 3)),
         new_precise_interval,
     )
 
@@ -314,6 +371,8 @@ def topic_due_label(card, review_button_ease: int) -> str:
             precise_interval,
             a_factor,
             remap_topic_review_ease(review_button_ease),
+            more_adjustment_percent=configured_topic_more_adjustment_percent(),
+            less_adjustment_percent=configured_topic_less_adjustment_percent(),
         )
     except Exception:
         return ""
@@ -366,6 +425,8 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
             precise_interval,
             a_factor,
             ease,
+            more_adjustment_percent=configured_topic_more_adjustment_percent(),
+            less_adjustment_percent=configured_topic_less_adjustment_percent(),
         )
         set_topic_schedule(
             _ADDON_DIR,
