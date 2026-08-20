@@ -275,6 +275,7 @@ class IncrementoSettingsDialog(QDialog):
         current_default_topic_a_factor: float = 3.5,
         current_topic_more_adjustment_percent: float = 10.0,
         current_topic_less_adjustment_percent: float = 10.0,
+        current_topic_maximum_interval_days: int = 36500,
         current_add_card_topic_tags: list[str] | str | None = None,
         current_add_card_item_tags: list[str] | str | None = None,
         current_auto_create_topics_deck: bool = True,
@@ -931,6 +932,7 @@ class IncrementoSettingsDialog(QDialog):
         topics_layout.addWidget(_section_title("Topic Identity"))
         topic_section_hint = QLabel(
             "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading."
+            " All three choices submit Good to Anki; Incremento alone uses More or Less to change topic frequency."
             " You can also add a red Postpone button for difficult topics."
         )
         topic_section_hint.setWordWrap(True)
@@ -964,6 +966,27 @@ class IncrementoSettingsDialog(QDialog):
             QLabel(
                 "Used only when a topic card does not yet have stored topic-schedule state."
             ),
+        )
+
+        self._topic_maximum_interval_days_spin = QSpinBox()
+        self._topic_maximum_interval_days_spin.setRange(1, 36500)
+        try:
+            topic_maximum_interval_days = int(current_topic_maximum_interval_days)
+        except Exception:
+            topic_maximum_interval_days = 36500
+        self._topic_maximum_interval_days_spin.setValue(
+            max(1, min(36500, topic_maximum_interval_days))
+        )
+        self._topic_maximum_interval_days_spin.setSuffix(" days")
+        self._topic_maximum_interval_days_spin.setToolTip(
+            "Hard cap for topic intervals. The deck preset's Maximum interval also applies; Incremento uses whichever cap is lower."
+        )
+        topic_form.addRow(
+            _label_with_info(
+                "Maximum topic interval:",
+                "Topic A-factor and custom schedules cannot exceed this many days. The card's Anki deck-options maximum interval remains an additional cap.",
+            ),
+            self._topic_maximum_interval_days_spin,
         )
 
         def _topic_adjustment_spin(value) -> QDoubleSpinBox:
@@ -1006,6 +1029,13 @@ class IncrementoSettingsDialog(QDialog):
             ),
             self._topic_less_adjustment_percent_spin,
         )
+
+        fsrs_note = QLabel(
+            "Anki still records each topic answer as Good and updates that card's FSRS memory state. "
+            "Keep topic cards in a dedicated deck-options preset if you want topic reviews isolated from item-card FSRS optimization."
+        )
+        fsrs_note.setWordWrap(True)
+        topic_form.addRow("", fsrs_note)
 
         topic_types = {
             "pdf_epub": True,
@@ -1546,6 +1576,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def topic_less_adjustment_percent(self) -> float:
         return round(float(self._topic_less_adjustment_percent_spin.value()), 3)
+
+    @property
+    def topic_maximum_interval_days(self) -> int:
+        return int(self._topic_maximum_interval_days_spin.value())
 
     @property
     def add_card_topic_tags(self) -> list[str]:

@@ -53,6 +53,7 @@ try:
         tag_chip_reserved_indexes,
         tag_chip_stylesheet,
     )
+    from .quick_tag_shortcuts import quick_tag_shortcut_keys
 except ImportError:
     from backend.db import (
         assign_browser_tag_color_indexes,
@@ -79,6 +80,7 @@ except ImportError:
         tag_chip_reserved_indexes,
         tag_chip_stylesheet,
     )
+    from quick_tag_shortcuts import quick_tag_shortcut_keys
 
 
 _RECENT_TAG_LIMIT = 9
@@ -463,7 +465,7 @@ class BrowserQuickTagDialog(QDialog):
         if groups:
             intro_text = (
                 f"Apply one tag set to {selected_note_count} selected {noun}. "
-                "Press 1–9, or click a set. Numbers run across each row. "
+                "Press 1–9 or A–I, or click a set. Slots run across each row. "
                 "Each tag always keeps the same color."
             )
         else:
@@ -483,18 +485,23 @@ class BrowserQuickTagDialog(QDialog):
         visible_tags = [tag for group in groups for tag in group]
         self._tag_colors = tag_colors or assign_unique_tag_chip_colors(visible_tags)
         for index, tags in enumerate(groups):
-            key = str(index + 1)
+            number_key, letter_key = quick_tag_shortcut_keys(index)
+            shortcut_label = f"{number_key} / {letter_key}"
             button = QPushButton(self)
             button.setMinimumHeight(42)
-            button.setAccessibleName(f"{key}: {', '.join(tags)}")
-            button.setToolTip(" + ".join(tags))
+            button.setAccessibleName(
+                f"{number_key} or {letter_key}: {', '.join(tags)}"
+            )
+            button.setToolTip(
+                f"{number_key} or {letter_key}: {' + '.join(tags)}"
+            )
 
             button_layout = QHBoxLayout(button)
             button_layout.setContentsMargins(10, 5, 10, 5)
             button_layout.setSpacing(6)
 
-            key_label = QLabel(key, button)
-            key_label.setFixedWidth(18)
+            key_label = QLabel(shortcut_label, button)
+            key_label.setFixedWidth(48)
             key_label.setStyleSheet("font-weight: 700;")
             key_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
             button_layout.addWidget(key_label)
@@ -518,9 +525,13 @@ class BrowserQuickTagDialog(QDialog):
             # Standard 3×3 order: 1/2/3, then 4/5/6, then 7/8/9.
             grid.addWidget(button, index // 3, index % 3)
 
-            shortcut = QShortcut(QKeySequence(key), self)
-            qconnect(shortcut.activated, lambda values=list(tags): self._choose(values))
-            self._shortcuts.append(shortcut)
+            for shortcut_key in (number_key, letter_key):
+                shortcut = QShortcut(QKeySequence(shortcut_key), self)
+                qconnect(
+                    shortcut.activated,
+                    lambda values=list(tags): self._choose(values),
+                )
+                self._shortcuts.append(shortcut)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
         if self._color_settings_callback is not None:

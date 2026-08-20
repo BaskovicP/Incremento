@@ -5,31 +5,65 @@ formula:
 
     next_interval = current_interval × A-factor   (spec: topics)
 
-The ease button changes both the immediate next interval and the persistent
-A-factor to signal how urgently the topic should be reviewed. The percentages
-below are defaults and can be changed independently in Topics settings:
+The topic choice changes both the immediate next interval and the persistent
+A-factor to signal how urgently the topic should be reviewed. More, Same, and
+Less are frequency preferences rather than recall grades, so all three submit
+Anki Good while Incremento retains the original choice independently. The
+percentages below are defaults and can be changed in Topics settings:
 
-  Again (1) — reset to 1 day; A-factor unchanged
-  Hard  (2) — 90% of normal interval; A-factor ×0.9  (important → show sooner)
-  Good  (3) — normal interval; A-factor unchanged
-  Easy  (4) — 110% of normal interval; A-factor ×1.1  (less urgent → grow faster)
+  More — 90% of normal interval; A-factor ×0.9  (important → show sooner)
+  Same — normal interval; A-factor unchanged
+  Less — 110% of normal interval; A-factor ×1.1  (less urgent → grow faster)
 
 A-factor is clamped to [1.1, 100.0]. Default: 3.5.
 """
 
 import math
 import os
+from typing import Literal
 
 from aqt import mw
 
 try:
-    from .db import get_topic_schedule, get_topic_schedule_state, set_topic_schedule
+    from .answer_schedule import (
+        ReviewRevlogTracker,
+        answer_revlog_snapshot,
+        apply_review_interval,
+        card_schedule_snapshot,
+        current_answer_undo_step,
+        is_nonrescheduling_filtered_card,
+        new_answer_revlog_id,
+        restore_card_schedule,
+    )
+    from .db import (
+        commit_topic_review,
+        get_custom_schedule_rule,
+        get_topic_schedule_state,
+        reconcile_topic_review_state,
+        topic_schedule_exists,
+    )
     from .knowledge_tree import configured_topic_tags as configured_add_card_topic_tags
     from .knowledge_tree import configured_item_tags as configured_add_card_item_tags
     from .scheduler_config import load_scheduler_config
     from .paths import get_active_profile as _active_profile
 except ImportError:
-    from db import get_topic_schedule, get_topic_schedule_state, set_topic_schedule  # type: ignore
+    from answer_schedule import (  # type: ignore
+        ReviewRevlogTracker,
+        answer_revlog_snapshot,
+        apply_review_interval,
+        card_schedule_snapshot,
+        current_answer_undo_step,
+        is_nonrescheduling_filtered_card,
+        new_answer_revlog_id,
+        restore_card_schedule,
+    )
+    from db import (  # type: ignore
+        commit_topic_review,
+        get_custom_schedule_rule,
+        get_topic_schedule_state,
+        reconcile_topic_review_state,
+        topic_schedule_exists,
+    )
     from knowledge_tree import configured_topic_tags as configured_add_card_topic_tags  # type: ignore
     from knowledge_tree import configured_item_tags as configured_add_card_item_tags  # type: ignore
     from scheduler_config import load_scheduler_config  # type: ignore
@@ -44,16 +78,22 @@ _A_MAX = 100.0
 _DEFAULT_TOPIC_A_FACTOR = 3.5
 _DEFAULT_TOPIC_MORE_ADJUSTMENT_PERCENT = 10.0
 _DEFAULT_TOPIC_LESS_ADJUSTMENT_PERCENT = 10.0
+_DEFAULT_TOPIC_MAXIMUM_INTERVAL_DAYS = 36500
 TOPIC_REVIEW_BUTTONS: tuple[tuple[int, str], ...] = (
     (1, "More"),
     (2, "Same"),
     (3, "Less"),
 )
-TOPIC_REVIEW_EASE_MAP: dict[int, int] = {
-    1: 2,
-    2: 3,
-    3: 4,
+TopicChoice = Literal["more", "same", "less"]
+TOPIC_BUTTON_CHOICE_MAP: dict[int, TopicChoice] = {
+    1: "more",
+    2: "same",
+    3: "less",
 }
+TOPIC_ANKI_EASE = 3
+_PENDING_TOPIC_CHOICES: dict[int, dict[str, float | int | str]] = {}
+_TOPIC_REVLOG_TRACKER = ReviewRevlogTracker()
+_HANDLED_TOPIC_ANSWER_IDS: set[int] = set()
 _DEFAULT_TOPIC_CARD_TYPES = {
     "pdf_epub": True,
     "video": True,
@@ -86,7 +126,8 @@ def _resolved_config(config: dict | None = None) -> dict:
         from aqt import mw as _mw
 
         addon_name = __name__.split(".")[0]
-        return _mw.addonManager.getConfig(addon_name) or {}
+        resolved = _mw.addonManager.getConfig(addon_name) or {}
+        return resolved if isinstance(resolved, dict) else {}
     except Exception:
         return {}
 
@@ -168,6 +209,31 @@ def configured_topic_less_adjustment_percent(config: dict | None = None) -> floa
     )
 
 
+def configured_topic_maximum_interval_days(config: dict | None = None) -> int:
+    cfg = _resolved_config(config)
+    try:
+        value = int(cfg.get("topic_maximum_interval_days", _DEFAULT_TOPIC_MAXIMUM_INTERVAL_DAYS))
+    except Exception:
+        value = _DEFAULT_TOPIC_MAXIMUM_INTERVAL_DAYS
+    return max(1, min(_DEFAULT_TOPIC_MAXIMUM_INTERVAL_DAYS, value))
+
+
+def effective_topic_maximum_interval_days(card, config: dict | None = None) -> int:
+    """Return the stricter of Incremento's and the deck preset's interval cap."""
+    maximum = configured_topic_maximum_interval_days(config)
+    try:
+        deck_id = int(getattr(card, "odid", 0) or getattr(card, "did", 0) or 0)
+        deck_config = mw.col.decks.config_dict_for_deck_id(deck_id)
+        if not isinstance(deck_config, dict):
+            return maximum
+        deck_maximum = int((deck_config.get("rev") or {}).get("maxIvl") or maximum)
+        if deck_maximum > 0:
+            maximum = min(maximum, deck_maximum)
+    except Exception:
+        pass
+    return max(1, maximum)
+
+
 def configured_effective_topic_tags(config: dict | None = None) -> list[str]:
     combined: list[str] = []
     seen: set[str] = set()
@@ -191,12 +257,102 @@ def configured_effective_item_tags(config: dict | None = None) -> list[str]:
     return configured_add_card_item_tags(config)
 
 
-def remap_topic_review_ease(ease: int) -> int:
+def topic_choice_for_button(button_ease: int) -> TopicChoice:
     try:
-        value = int(ease)
+        value = int(button_ease)
     except Exception:
-        return 3
-    return TOPIC_REVIEW_EASE_MAP.get(value, value)
+        return "same"
+    return TOPIC_BUTTON_CHOICE_MAP.get(value, "same")
+
+
+def prepare_topic_answer(card, button_ease: int) -> int:
+    """Remember the frequency choice and return neutral Anki Good.
+
+    Anki must receive a real answer to preserve its normal review transaction,
+    timing, and revlog behavior. The topic choice itself is consumed after the
+    answer and remains independent from Anki's Hard/Good/Easy memory grades.
+    """
+    try:
+        card_id = int(card.id)
+    except Exception:
+        return TOPIC_ANKI_EASE
+    try:
+        seed_interval = float(getattr(card, "ivl", 0) or 0)
+    except Exception:
+        seed_interval = 0.0
+    if not math.isfinite(seed_interval) or seed_interval < 1.0:
+        seed_interval = 1.0
+    revlog_snapshot_valid, previous_revlog_id = _answer_revlog_snapshot(card_id)
+    _PENDING_TOPIC_CHOICES[card_id] = {
+        "choice": topic_choice_for_button(button_ease),
+        "seed_interval": seed_interval,
+        "previous_revlog_id": previous_revlog_id,
+        "revlog_snapshot_valid": 1 if revlog_snapshot_valid else 0,
+        "preview_only": 1
+        if is_nonrescheduling_filtered_card(
+            card,
+            collection=getattr(mw, "col", None),
+        )
+        else 0,
+    }
+    return TOPIC_ANKI_EASE
+
+
+def consume_pending_topic_choice(card) -> TopicChoice:
+    try:
+        card_id = int(card.id)
+    except Exception:
+        return "same"
+    pending = _PENDING_TOPIC_CHOICES.pop(card_id, None)
+    if not isinstance(pending, dict):
+        return "same"
+    choice = str(pending.get("choice") or "same").lower()
+    return choice if choice in {"more", "same", "less"} else "same"  # type: ignore[return-value]
+
+
+def _consume_pending_topic_answer(
+    card,
+) -> tuple[TopicChoice, float, int, bool, bool]:
+    try:
+        card_id = int(card.id)
+    except Exception:
+        return "same", 1.0, 0, False, False
+    pending = _PENDING_TOPIC_CHOICES.pop(card_id, None)
+    if not isinstance(pending, dict):
+        return "same", 1.0, 0, False, False
+    raw_choice = str(pending.get("choice") or "same").lower()
+    choice: TopicChoice = (
+        raw_choice if raw_choice in {"more", "same", "less"} else "same"
+    )  # type: ignore[assignment]
+    try:
+        seed_interval = max(1.0, float(pending.get("seed_interval") or 1.0))
+    except Exception:
+        seed_interval = 1.0
+    try:
+        previous_revlog_id = max(0, int(pending.get("previous_revlog_id") or 0))
+    except Exception:
+        previous_revlog_id = 0
+    revlog_snapshot_valid = bool(pending.get("revlog_snapshot_valid"))
+    preview_only = bool(pending.get("preview_only"))
+    return (
+        choice,
+        seed_interval,
+        previous_revlog_id,
+        revlog_snapshot_valid,
+        preview_only,
+    )
+
+
+def consume_handled_topic_answer(card_id: int) -> bool:
+    """Return whether the preceding topic hook handled this answer."""
+    try:
+        normalized_card_id = int(card_id)
+    except Exception:
+        return False
+    if normalized_card_id not in _HANDLED_TOPIC_ANSWER_IDS:
+        return False
+    _HANDLED_TOPIC_ANSWER_IDS.discard(normalized_card_id)
+    return True
 
 
 def _card_in_topics_deck(card) -> bool:
@@ -305,23 +461,27 @@ def is_topic_card(card) -> bool:
 def _next_interval_and_afactor(
     last_interval: float,
     a_factor: float,
-    ease: int,
+    choice: TopicChoice,
     *,
     more_adjustment_percent: float = _DEFAULT_TOPIC_MORE_ADJUSTMENT_PERCENT,
     less_adjustment_percent: float = _DEFAULT_TOPIC_LESS_ADJUSTMENT_PERCENT,
+    maximum_interval_days: int = _DEFAULT_TOPIC_MAXIMUM_INTERVAL_DAYS,
 ) -> tuple[int, float, float]:
     """Return (new_interval_days, new_a_factor, new_precise_interval).
 
     Interval formula matches SuperMemo spec for topics:
         next_interval = current_interval × A-factor
 
-    Ease buttons affect both the interval scheduled now and the A-factor used
-    for future reviews:
-      Again (1) — reset to 1 day; A-factor unchanged
-      Hard  (2) — 90% of normal interval; A-factor ×0.9
-      Good  (3) — normal interval; A-factor unchanged
-      Easy  (4) — 110% of normal interval; A-factor ×1.1
+    Frequency choices affect both the interval scheduled now and the A-factor
+    used for future topic reviews:
+      More — 90% of normal interval; A-factor ×0.9
+      Same — normal interval; A-factor unchanged
+      Less — 110% of normal interval; A-factor ×1.1
     """
+    maximum_interval = max(
+        1,
+        min(_DEFAULT_TOPIC_MAXIMUM_INTERVAL_DAYS, int(maximum_interval_days or 1)),
+    )
     normal_precise_interval = max(
         1.0,
         float(last_interval) * float(a_factor),
@@ -333,23 +493,32 @@ def _next_interval_and_afactor(
         _normalize_topic_adjustment_percent(less_adjustment_percent) / 100.0
     )
 
-    if ease == 1:  # Again — reset interval, leave A-factor alone
-        return 1, a_factor, 1.0
-    if ease == 2:  # Hard/More — shorten this interval and future growth
-        new_precise_interval = max(1.0, normal_precise_interval * more_multiplier)
+    normalized_choice = choice if choice in {"more", "same", "less"} else "same"
+    if normalized_choice == "more":
+        new_precise_interval = min(
+            float(maximum_interval),
+            max(1.0, normal_precise_interval * more_multiplier),
+        )
         return (
             max(1, round(new_precise_interval)),
             max(_A_MIN, round(a_factor * more_multiplier, 3)),
             new_precise_interval,
         )
-    if ease == 3:  # Good — pure spec formula, no A-factor change
-        return (
-            max(1, round(normal_precise_interval)),
-            a_factor,
+    if normalized_choice == "same":
+        new_precise_interval = min(
+            float(maximum_interval),
             normal_precise_interval,
         )
-    # Easy/Less — lengthen this interval and future growth
-    new_precise_interval = max(1.0, normal_precise_interval * less_multiplier)
+        return (
+            max(1, round(new_precise_interval)),
+            a_factor,
+            new_precise_interval,
+        )
+    # Less — lengthen this interval and future growth.
+    new_precise_interval = min(
+        float(maximum_interval),
+        max(1.0, normal_precise_interval * less_multiplier),
+    )
     return (
         max(1, round(new_precise_interval)),
         min(_A_MAX, round(a_factor * less_multiplier, 3)),
@@ -360,19 +529,39 @@ def _next_interval_and_afactor(
 def topic_due_label(card, review_button_ease: int) -> str:
     if card is None:
         return ""
+    if is_nonrescheduling_filtered_card(
+        card,
+        collection=getattr(mw, "col", None),
+    ):
+        return ""
     try:
-        a_factor, precise_interval, _last_interval = get_topic_schedule_state(
+        a_factor, precise_interval, last_interval = get_topic_schedule_state(
             _ADDON_DIR,
             _active_profile(),
             card.id,
             default_a_factor=configured_default_topic_a_factor(),
+            default_interval=max(1.0, float(getattr(card, "ivl", 0) or 1.0)),
         )
+        maximum_interval = effective_topic_maximum_interval_days(card)
         new_interval, _new_a_factor, _new_precise_interval = _next_interval_and_afactor(
             precise_interval,
             a_factor,
-            remap_topic_review_ease(review_button_ease),
+            topic_choice_for_button(review_button_ease),
             more_adjustment_percent=configured_topic_more_adjustment_percent(),
             less_adjustment_percent=configured_topic_less_adjustment_percent(),
+            maximum_interval_days=maximum_interval,
+        )
+        try:
+            from .custom_schedule import resolve_topic_custom_schedule
+        except ImportError:
+            from custom_schedule import resolve_topic_custom_schedule  # type: ignore
+        rule = get_custom_schedule_rule(_ADDON_DIR, _active_profile(), int(card.id))
+        new_interval = int(
+            resolve_topic_custom_schedule(
+                new_interval,
+                rule,
+                maximum_interval_days=maximum_interval,
+            )["interval_days"]
         )
     except Exception:
         return ""
@@ -406,37 +595,199 @@ def sync_card_review_interval(card_id: int, interval_days: int) -> None:
         pass
 
 
+def _current_answer_undo_step() -> int:
+    return current_answer_undo_step(collection=getattr(mw, "col", None))
+
+
+def _apply_topic_interval_to_anki_card(
+    card_id: int,
+    interval_days: int,
+    *,
+    answer_undo_step: int = 0,
+):
+    """Compatibility wrapper around the shared atomic answer override."""
+    return apply_review_interval(
+        card_id,
+        interval_days,
+        answer_undo_step=answer_undo_step,
+        collection=getattr(mw, "col", None),
+    )
+
+
+def _card_schedule_snapshot(card) -> dict[str, int]:
+    return card_schedule_snapshot(card)
+
+
+def _restore_anki_card_schedule(
+    card_id: int,
+    snapshot: dict[str, int],
+    *,
+    answer_undo_step: int = 0,
+) -> None:
+    restore_card_schedule(
+        card_id,
+        snapshot,
+        answer_undo_step=answer_undo_step,
+        collection=getattr(mw, "col", None),
+    )
+
+
+def _answer_revlog_snapshot(card_id: int) -> tuple[bool, int]:
+    return answer_revlog_snapshot(card_id, collection=getattr(mw, "col", None))
+
+
+def _new_answer_revlog_id(card_id: int, previous_revlog_id: int) -> int:
+    return new_answer_revlog_id(
+        card_id,
+        previous_revlog_id,
+        collection=getattr(mw, "col", None),
+    )
+
+
+def _track_topic_review_state(card_id: int, revlog_id: int) -> None:
+    _TOPIC_REVLOG_TRACKER.track(_active_profile(), card_id, revlog_id)
+
+
+def reset_topic_answer_runtime_state() -> None:
+    """Discard pending and undo state before or after a profile switch."""
+    _PENDING_TOPIC_CHOICES.clear()
+    _HANDLED_TOPIC_ANSWER_IDS.clear()
+    _TOPIC_REVLOG_TRACKER.clear()
+
+
+def reconcile_topic_state_after_anki_operation(undo_info=None) -> None:
+    """Reconcile Incremento state when Anki removes/restores linked revlogs."""
+    transitions = _TOPIC_REVLOG_TRACKER.transitions(
+        undo_info,
+        collection=getattr(mw, "col", None),
+    )
+    for profile, card_id, current, previous in transitions:
+        try:
+            reconcile_topic_review_state(
+                _ADDON_DIR,
+                profile,
+                card_id,
+                current,
+                previous,
+            )
+        except Exception as exc:
+            print(f"[Incremento] topic undo/redo reconciliation error: {exc}")
+
+
 def on_topic_card_answered(reviewer, card, ease: int) -> None:
     """Hook: override FSRS scheduling with A-factor for topic cards.
 
-    The reviewer_will_answer_card hook has already remapped More/Same/Less
-    to Hard/Good/Easy by the time Anki calls reviewer_did_answer_card.
+    The reviewer_will_answer_card hook saved the original More/Same/Less
+    choice and submitted neutral Good to Anki before this hook runs.
     """
-    if not is_topic_card(card):
+    try:
+        card_id = int(card.id)
+    except Exception:
+        return
+    if card_id not in _PENDING_TOPIC_CHOICES and not is_topic_card(card):
+        return
+    _HANDLED_TOPIC_ANSWER_IDS.add(card_id)
+    choice, seed_interval, previous_revlog_id, revlog_snapshot_valid, preview_only = (
+        _consume_pending_topic_answer(card)
+    )
+    if preview_only:
+        return
+    if not revlog_snapshot_valid:
+        print("[Incremento] A-factor scheduling error: pre-answer revlog query failed")
         return
     try:
-        a_factor, precise_interval, _last_interval = get_topic_schedule_state(
+        profile = _active_profile()
+        previous_schedule_exists = topic_schedule_exists(
             _ADDON_DIR,
-            _active_profile(),
-            card.id,
-            default_a_factor=configured_default_topic_a_factor(),
+            profile,
+            card_id,
         )
-        new_interval, new_a, new_precise_interval = _next_interval_and_afactor(
+        a_factor, precise_interval, last_interval = get_topic_schedule_state(
+            _ADDON_DIR,
+            profile,
+            card_id,
+            default_a_factor=configured_default_topic_a_factor(),
+            default_interval=seed_interval,
+        )
+        maximum_interval = effective_topic_maximum_interval_days(card)
+        requested_interval, new_a, requested_precise_interval = _next_interval_and_afactor(
             precise_interval,
             a_factor,
-            ease,
+            choice,
             more_adjustment_percent=configured_topic_more_adjustment_percent(),
             less_adjustment_percent=configured_topic_less_adjustment_percent(),
+            maximum_interval_days=maximum_interval,
         )
-        set_topic_schedule(
+        try:
+            from .custom_schedule import resolve_topic_custom_schedule
+        except ImportError:
+            from custom_schedule import resolve_topic_custom_schedule  # type: ignore
+        custom_rule = get_custom_schedule_rule(
             _ADDON_DIR,
-            _active_profile(),
-            card.id,
-            new_a,
-            new_interval,
-            precise_interval=new_precise_interval,
+            profile,
+            card_id,
         )
-        mw.col.sched.set_due_date([card.id], str(new_interval))
-        sync_card_review_interval(card.id, new_interval)
+        resolved = resolve_topic_custom_schedule(
+            requested_interval,
+            custom_rule,
+            maximum_interval_days=maximum_interval,
+        )
+        new_interval = int(resolved["interval_days"])
+        custom_mode = str(resolved["mode"] or "")
+        if custom_mode in {"fixed_repeat", "one_time"} or (
+            custom_mode and new_interval != requested_interval
+        ):
+            new_precise_interval = float(new_interval)
+        else:
+            new_precise_interval = requested_precise_interval
+        answer_undo_step = _current_answer_undo_step()
+        if answer_undo_step <= 0:
+            raise RuntimeError("Anki answer undo step is unavailable")
+        revlog_id = _new_answer_revlog_id(card_id, previous_revlog_id)
+        if revlog_id <= 0:
+            raise RuntimeError("Anki did not create a new answer revlog")
+        post_good_card = mw.col.get_card(card_id)
+        post_good_snapshot = _card_schedule_snapshot(post_good_card)
+        try:
+            _apply_topic_interval_to_anki_card(
+                card_id,
+                new_interval,
+                answer_undo_step=answer_undo_step,
+            )
+            commit_topic_review(
+                _ADDON_DIR,
+                profile,
+                card_id,
+                choice,
+                anki_revlog_id=revlog_id,
+                anki_ease=ease,
+                previous_schedule_exists=previous_schedule_exists,
+                previous_a_factor=a_factor,
+                new_a_factor=new_a,
+                previous_precise_interval=precise_interval,
+                previous_interval=last_interval,
+                requested_precise_interval=requested_precise_interval,
+                new_precise_interval=new_precise_interval,
+                requested_interval=requested_interval,
+                scheduled_interval=new_interval,
+                custom_schedule_mode=custom_mode,
+                custom_schedule_rule=resolved["rule"],
+                consumed_one_time=bool(resolved["consumed_one_time"]),
+            )
+        except Exception:
+            try:
+                _restore_anki_card_schedule(
+                    card_id,
+                    post_good_snapshot,
+                    answer_undo_step=answer_undo_step,
+                )
+            except Exception as restore_error:
+                print(
+                    "[Incremento] failed to restore Anki schedule after topic error: "
+                    f"{restore_error}"
+                )
+            raise
+        if revlog_id > 0:
+            _track_topic_review_state(card_id, revlog_id)
     except Exception as e:
         print(f"[Incremento] A-factor scheduling error: {e}")

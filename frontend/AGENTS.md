@@ -38,11 +38,11 @@ npm --prefix frontend run build
 ## Browser Quick Tags
 
 - `frontend/browser_quick_tags.py` owns the Browser-local `Cmd+T` / `Ctrl+T` action and numbered recent-tag-set picker.
-- The picker is intentionally a two-step workflow: open it, then press `1`–`9` (or click the corresponding row) to apply the entire displayed tag set to every distinct selected note.
+- The picker is intentionally a two-step workflow: open it, then press `1`–`9`, the matching `A`–`I` alternative, or click the corresponding row to apply the entire displayed tag set to every distinct selected note. Slot mappings are `1/A` through `9/I` and come from the pure `frontend/quick_tag_shortcuts.py` helper.
 - Lay out the nine choices as a standard row-major 3×3 block: `1/2/3` across the top row, `4/5/6` across the middle, and `7/8/9` across the bottom.
 - Each tag is rendered as an individual color chip inside its numbered row. Color identity is persistent and case-insensitive; reuse `frontend/tag_colors.py` plus the profile `browser_tag_colors` registry so the same tag never changes color and two different tags never share a color. `topic` is green automatically. The quick-tag dialog's Settings button opens `BrowserTagColorSettingsDialog`, where visible tag colors can be customized or restored to Automatic without permitting a duplicate effective color.
 - `BrowserTagColorSettingsDialog` also owns `Use my fixed tag sets`. It exposes nine row-major slots, accepts one or more space/comma/semicolon-separated tags per slot, requires contiguous unique non-empty sets from slot 1, and reloads the picker after saving. Fixed mode bypasses recent-tag inference entirely.
-- Keep chip text readable in both light and dark Anki themes, and preserve the numbered row as one accessible click target even though it contains multiple chip labels.
+- Keep chip text readable in both light and dark Anki themes, and preserve each numbered/lettered row as one accessible click target even though it contains multiple chip labels.
 - Exact recent-set order is profile-scoped in `browser_recent_tag_groups`; collection-note inference supplies the initial nine choices before any quick-tag history exists. Number positions are muscle-memory stable: selecting an existing set does not promote it, and only the newest inferred set introducing a previously unseen tag may enter at the front.
 
 ## Writing Dock
@@ -92,7 +92,7 @@ npm --prefix frontend run build
 ## Reviewer Behavior
 
 - Reviewer patching is centralized in `__init__.py`, but frontend-visible button styling and behavior changes must stay aligned with it.
-- Topic cards use `More / Same / Less`. All three affect the interval being scheduled immediately. The Topics settings expose separate percentage strengths for `More` and `Less` (10% defaults): `More` subtracts its percentage from the normal interval and persistent A-factor multiplier, `Same` uses the normal interval, and `Less` adds its percentage to both.
+- Topic cards use `More / Same / Less`. They are Incremento frequency preferences, so all three submit Anki `Good` while Incremento separately retains the original choice. Never map `More` to Hard or `Less` to Easy. All three affect the interval being scheduled immediately. The Topics settings expose separate percentage strengths for `More` and `Less` (10% defaults), a maximum topic interval, and guidance to use a dedicated deck-options preset for FSRS isolation. The effective cap is the lower of that setting and Anki's deck-preset maximum.
 - Topic cards can optionally show the red Postpone button.
 - Item cards can optionally use `Fail / Pass`. Its semantics are fixed across new, learning/relearning, and review states: `Fail` always submits Anki `Again` (ease 1), while `Pass` always submits Anki `Good` (ease 3). Topic-card buttons and A-factor scheduling are separate.
 - Topic review button styling is patched after `_showEaseButtons()`.

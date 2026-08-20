@@ -243,6 +243,7 @@ class TestGetConnection:
             ).fetchall()
         }
         assert "custom_schedule_rules" in tables
+        assert "custom_schedule_review_history" in tables
 
     def test_creates_knowledge_tree_nodes_table(self):
         addon_dir = _fresh_dir()
@@ -787,6 +788,72 @@ class TestCustomScheduleRules:
         assert loaded["interval_value"] == 2
         assert loaded["interval_unit"] == "weeks"
         assert loaded["preset_label"] == "Every 2 weeks"
+        assert saved["revision"] == 1
+        assert loaded["revision"] == 1
+
+    def test_resaving_identical_rule_still_creates_a_new_version(self):
+        first = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        second = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+
+        assert second["revision"] == first["revision"] + 1
+        assert second["updated_at"] > first["updated_at"]
+
+    def test_answer_consumes_only_the_rule_version_it_captured(self):
+        captured = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        newer = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+
+        db.commit_custom_schedule_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            anki_revlog_id=700,
+            scheduled_interval=2,
+            custom_schedule_mode="one_time",
+            custom_schedule_rule=captured,
+            consumed_one_time=True,
+            reviewed_at=100,
+        )
+
+        preserved = db.get_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        )
+        assert preserved is not None
+        assert preserved["revision"] == newer["revision"]
+        consumed = db.get_connection(self.addon_dir, "TestProfile").execute(
+            "SELECT consumed_one_time FROM custom_schedule_review_history "
+            "WHERE anki_revlog_id = 700"
+        ).fetchone()[0]
+        assert consumed == 0
 
     def test_get_custom_schedule_rules_filters_to_requested_ids(self):
         db.set_custom_schedule_rule(
@@ -1857,6 +1924,17 @@ class TestTopicSchedule:
         assert a_factor == 4.25
         assert interval == 1
 
+    def test_get_default_when_not_set_uses_existing_anki_interval_seed(self):
+        a_factor, precise_interval, interval = db.get_topic_schedule_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            default_interval=18.25,
+        )
+        assert a_factor == 3.5
+        assert precise_interval == pytest.approx(18.25)
+        assert interval == 18
+
     def test_get_default_when_not_set_clamps_override(self):
         a_factor, interval = db.get_topic_schedule(
             self.addon_dir,
@@ -1921,6 +1999,560 @@ class TestTopicSchedule:
             for row in conn.execute("PRAGMA table_info(topic_schedule)").fetchall()
         }
         assert "precise_interval" in columns
+
+    def test_records_topic_choice_separately_from_anki_good(self):
+        row_id = db.record_topic_review_choice(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "more",
+            anki_ease=3,
+            previous_a_factor=3.5,
+            new_a_factor=3.15,
+            previous_precise_interval=7.0,
+            new_precise_interval=22.05,
+            scheduled_interval=22,
+            reviewed_at=100,
+        )
+
+        history = db.get_topic_review_history(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        )
+
+        assert history == [
+            {
+                "id": row_id,
+                "card_id": 42,
+                "choice": "more",
+                "anki_revlog_id": 0,
+                "anki_ease": 3,
+                "previous_schedule_exists": False,
+                "previous_a_factor": 3.5,
+                "new_a_factor": 3.15,
+                "previous_precise_interval": 7.0,
+                "previous_interval": 7,
+                "requested_precise_interval": 22.05,
+                "new_precise_interval": 22.05,
+                "requested_interval": 22,
+                "scheduled_interval": 22,
+                "custom_schedule_mode": "",
+                "custom_schedule_rule_json": "",
+                "consumed_one_time": False,
+                "reviewed_at": 100,
+            }
+        ]
+
+    def test_topic_review_commit_and_undo_redo_reconciliation_are_atomic(self):
+        rule = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+            preset_label="In two days",
+        )
+        row_id = db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "more",
+            anki_revlog_id=9001,
+            anki_ease=3,
+            previous_schedule_exists=False,
+            previous_a_factor=3.5,
+            new_a_factor=3.15,
+            previous_precise_interval=18.0,
+            requested_precise_interval=56.7,
+            new_precise_interval=2.0,
+            requested_interval=57,
+            scheduled_interval=2,
+            custom_schedule_mode="one_time",
+            custom_schedule_rule=rule,
+            consumed_one_time=True,
+            reviewed_at=100,
+        )
+
+        assert row_id > 0
+        assert db.get_topic_schedule(self.addon_dir, "TestProfile", 42) == (3.15, 2)
+        assert db.get_custom_schedule_rule(self.addon_dir, "TestProfile", 42) is None
+
+        history = db.get_topic_review_history(self.addon_dir, "TestProfile", 42)
+        assert history[0]["anki_revlog_id"] == 9001
+        assert history[0]["requested_interval"] == 57
+        assert history[0]["scheduled_interval"] == 2
+        assert history[0]["consumed_one_time"] is True
+
+        assert db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            set(),
+        ) is True
+        assert db.topic_schedule_exists(self.addon_dir, "TestProfile", 42) is False
+        restored_rule = db.get_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        )
+        assert restored_rule is not None
+        assert restored_rule["mode"] == "one_time"
+        assert restored_rule["interval_value"] == 2
+
+        assert db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            {9001},
+        ) is True
+        assert db.get_topic_schedule(self.addon_dir, "TestProfile", 42) == (3.15, 2)
+        assert db.get_custom_schedule_rule(self.addon_dir, "TestProfile", 42) is None
+
+    def test_topic_redo_preserves_identically_resaved_one_time_rule(self):
+        original = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            43,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            43,
+            "same",
+            anki_revlog_id=9002,
+            anki_ease=3,
+            previous_schedule_exists=False,
+            previous_a_factor=3.5,
+            new_a_factor=3.5,
+            previous_precise_interval=10.0,
+            previous_interval=10,
+            requested_precise_interval=35.0,
+            new_precise_interval=2.0,
+            requested_interval=35,
+            scheduled_interval=2,
+            custom_schedule_mode="one_time",
+            custom_schedule_rule=original,
+            consumed_one_time=True,
+            reviewed_at=100,
+        )
+        db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            43,
+            set(),
+            {9002},
+        )
+        resaved = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            43,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+
+        db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            43,
+            {9002},
+            set(),
+        )
+        preserved = db.get_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            43,
+        )
+        assert preserved is not None
+        assert preserved["revision"] == resaved["revision"]
+
+    def test_branch_undo_restores_rule_consumed_by_current_answer(self):
+        first_rule = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        common = {
+            "anki_ease": 3,
+            "previous_schedule_exists": False,
+            "previous_a_factor": 3.5,
+            "new_a_factor": 3.15,
+            "previous_precise_interval": 10.0,
+            "requested_precise_interval": 31.5,
+            "new_precise_interval": 2.0,
+            "requested_interval": 32,
+            "scheduled_interval": 2,
+            "custom_schedule_mode": "one_time",
+            "consumed_one_time": True,
+        }
+        db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "more",
+            anki_revlog_id=100,
+            custom_schedule_rule=first_rule,
+            reviewed_at=100,
+            **common,
+        )
+        current_rule = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            mode="one_time",
+            interval_value=5,
+            interval_unit="days",
+        )
+        db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "more",
+            anki_revlog_id=200,
+            custom_schedule_rule=current_rule,
+            reviewed_at=200,
+            **common,
+        )
+
+        db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            set(),
+            {200},
+        )
+        restored = db.get_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        )
+        assert restored is not None
+        assert restored["interval_value"] == 5
+
+    def test_undo_restores_manual_topic_state_between_answers_exactly(self):
+        db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "same",
+            anki_revlog_id=100,
+            previous_schedule_exists=False,
+            previous_a_factor=3.5,
+            new_a_factor=3.5,
+            previous_precise_interval=10.0,
+            previous_interval=10,
+            requested_precise_interval=35.0,
+            new_precise_interval=35.0,
+            requested_interval=35,
+            scheduled_interval=35,
+            reviewed_at=100,
+        )
+        db.set_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            8.0,
+            77,
+            precise_interval=77.0,
+        )
+        db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "same",
+            anki_revlog_id=200,
+            previous_schedule_exists=True,
+            previous_a_factor=8.0,
+            new_a_factor=8.0,
+            previous_precise_interval=77.0,
+            previous_interval=77,
+            requested_precise_interval=616.0,
+            new_precise_interval=616.0,
+            requested_interval=616,
+            scheduled_interval=616,
+            reviewed_at=200,
+        )
+
+        assert db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            {100},
+            {100, 200},
+        ) is True
+        assert db.get_topic_schedule_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        ) == (8.0, 77.0, 77)
+
+        assert db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            {100, 200},
+            {100},
+        ) is True
+        assert db.get_topic_schedule_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        ) == (8.0, 616.0, 616)
+
+    def test_undo_and_redo_preserve_manual_topic_edit_made_after_answer(self):
+        db.commit_topic_review(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "more",
+            anki_revlog_id=300,
+            previous_schedule_exists=False,
+            previous_a_factor=3.5,
+            new_a_factor=3.15,
+            previous_precise_interval=10.0,
+            previous_interval=10,
+            requested_precise_interval=31.5,
+            new_precise_interval=31.5,
+            requested_interval=32,
+            scheduled_interval=32,
+            reviewed_at=300,
+        )
+        db.set_topic_schedule(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            8.0,
+            77,
+            precise_interval=77.0,
+        )
+
+        assert db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            set(),
+            {300},
+        ) is True
+        assert db.get_topic_schedule_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        ) == (8.0, 77.0, 77)
+
+        assert db.reconcile_topic_review_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            {300},
+            set(),
+        ) is True
+        assert db.get_topic_schedule_state(
+            self.addon_dir,
+            "TestProfile",
+            42,
+        ) == (8.0, 77.0, 77)
+
+    def test_non_topic_one_time_rule_follows_answer_undo_and_redo(self):
+        rule = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            88,
+            mode="one_time",
+            interval_value=5,
+            interval_unit="days",
+        )
+        db.commit_custom_schedule_review(
+            self.addon_dir,
+            "TestProfile",
+            88,
+            anki_revlog_id=900,
+            scheduled_interval=5,
+            custom_schedule_mode="one_time",
+            custom_schedule_rule=rule,
+            consumed_one_time=True,
+            reviewed_at=100,
+        )
+        assert db.get_custom_schedule_rule(
+            self.addon_dir, "TestProfile", 88
+        ) is None
+
+        assert db.reconcile_custom_schedule_review_state(
+            self.addon_dir,
+            "TestProfile",
+            88,
+            set(),
+            {900},
+        ) is True
+        restored = db.get_custom_schedule_rule(
+            self.addon_dir, "TestProfile", 88
+        )
+        assert restored is not None
+        assert restored["mode"] == "one_time"
+        assert restored["interval_value"] == 5
+
+        assert db.reconcile_custom_schedule_review_state(
+            self.addon_dir,
+            "TestProfile",
+            88,
+            {900},
+            set(),
+        ) is True
+        assert db.get_custom_schedule_rule(
+            self.addon_dir, "TestProfile", 88
+        ) is None
+
+    def test_redo_does_not_delete_a_newer_custom_rule(self):
+        original = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            89,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        db.commit_custom_schedule_review(
+            self.addon_dir,
+            "TestProfile",
+            89,
+            anki_revlog_id=901,
+            scheduled_interval=2,
+            custom_schedule_mode="one_time",
+            custom_schedule_rule=original,
+            consumed_one_time=True,
+            reviewed_at=100,
+        )
+        db.reconcile_custom_schedule_review_state(
+            self.addon_dir,
+            "TestProfile",
+            89,
+            set(),
+            {901},
+        )
+        db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            89,
+            mode="fixed_repeat",
+            interval_value=9,
+            interval_unit="days",
+        )
+
+        db.reconcile_custom_schedule_review_state(
+            self.addon_dir,
+            "TestProfile",
+            89,
+            {901},
+            set(),
+        )
+        preserved = db.get_custom_schedule_rule(
+            self.addon_dir, "TestProfile", 89
+        )
+        assert preserved is not None
+        assert preserved["mode"] == "fixed_repeat"
+        assert preserved["interval_value"] == 9
+
+    def test_redo_does_not_delete_identically_resaved_custom_rule(self):
+        original = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            90,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        db.commit_custom_schedule_review(
+            self.addon_dir,
+            "TestProfile",
+            90,
+            anki_revlog_id=902,
+            scheduled_interval=2,
+            custom_schedule_mode="one_time",
+            custom_schedule_rule=original,
+            consumed_one_time=True,
+            reviewed_at=100,
+        )
+        db.reconcile_custom_schedule_review_state(
+            self.addon_dir,
+            "TestProfile",
+            90,
+            set(),
+            {902},
+        )
+        resaved = db.set_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            90,
+            mode="one_time",
+            interval_value=2,
+            interval_unit="days",
+        )
+        assert resaved["revision"] == original["revision"] + 1
+
+        db.reconcile_custom_schedule_review_state(
+            self.addon_dir,
+            "TestProfile",
+            90,
+            {902},
+            set(),
+        )
+        preserved = db.get_custom_schedule_rule(
+            self.addon_dir,
+            "TestProfile",
+            90,
+        )
+        assert preserved is not None
+        assert preserved["revision"] == resaved["revision"]
+
+    def test_topic_choice_history_is_newest_first_and_card_scoped(self):
+        base_kwargs = {
+            "anki_ease": 3,
+            "previous_a_factor": 3.5,
+            "new_a_factor": 3.5,
+            "previous_precise_interval": 1.0,
+            "new_precise_interval": 3.5,
+            "scheduled_interval": 4,
+        }
+        db.record_topic_review_choice(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "more",
+            reviewed_at=100,
+            **base_kwargs,
+        )
+        db.record_topic_review_choice(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            "less",
+            reviewed_at=200,
+            **base_kwargs,
+        )
+        db.record_topic_review_choice(
+            self.addon_dir,
+            "TestProfile",
+            99,
+            "same",
+            reviewed_at=300,
+            **base_kwargs,
+        )
+
+        history = db.get_topic_review_history(
+            self.addon_dir,
+            "TestProfile",
+            42,
+            limit=1,
+        )
+
+        assert [entry["choice"] for entry in history] == ["less"]
 
 
 # ---------------------------------------------------------------------------

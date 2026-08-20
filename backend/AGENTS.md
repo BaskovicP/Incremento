@@ -79,17 +79,23 @@ Use this file for work in `backend/`.
 - Child creation and other tree-driven note creation should preserve provenance through `build_incremento_metadata(...)`.
 - If you change subtree behavior, cover both selection helpers and the caller that consumes them.
 
-## Custom Scheduling
+## Answer Overrides and Custom Scheduling
 
-- Main files: `backend/custom_schedule.py` and the `custom_schedule_rules` table in `backend/db.py`.
+- Main files: `backend/answer_schedule.py`, `backend/custom_schedule.py`, and the custom-schedule tables in `backend/db.py`.
 - Browser-selected cards can get per-card custom scheduling rules such as `minimum_cadence`, `fixed_repeat`, and `one_time`.
 - Default custom-schedule mode and preset parsing are config-backed and surfaced in the `Review` settings tab.
 - `format_custom_schedule_rule(None)` must stay empty. Missing rules must not render as the default preset in the reviewer badge.
-- Topic cards may still keep their topic scheduler state; `fixed_repeat` also updates the stored topic interval so UI and due date stay aligned.
+- Topic answers resolve custom-rule precedence inside `topic_scheduler` before anything is written. `fixed_repeat` and `one_time` replace the A-factor interval; `minimum_cadence` uses the earlier of the two intervals. The separate custom-schedule after-answer hook must skip topic answers.
+- Review-time topic and non-topic interval overrides share `answer_schedule.apply_review_interval()`. Capture the latest revlog before answering, require a different positive revlog afterward, update the post-answer card, and merge into the existing Answer Card undo step. Do not call `set_due_date()` from an after-answer hook; it creates a manual revlog and a second undo operation. `apply_rule_now_to_card()` is intentionally still a manual Browser operation. A filtered deck with `resched = false` is Anki Preview: capture that state before answering, show no Incremento topic interval promise, and do not override the card, persist topic/custom review history, or consume a one-time rule.
+- Track only revlogs created during the active profile session. Clear pending answers and trackers on profile close/open. Treat a missing revlog as Undo only when Anki exposes a redo action, and accept its reappearance as Redo only after that Undo was observed. When Anki clears the Redo stack without a revlog delta, retire all still-undone candidates so a later sync cannot impersonate Redo.
+- One-time-rule consumption is stored transactionally in topic/custom review history. Rules have a monotonic `revision`; Undo must restore the exact consumed revision without overwriting a newer user-authored rule, and Redo may consume only that matching revision—even if a newer rule has identical visible settings.
 
 ## Topic Scheduling
 
 - Topic `More / Same / Less` choices affect the immediate next interval as well as future A-factor growth. Starting from the normal `precise_interval × A-factor` result, `More` subtracts the configured `topic_more_adjustment_percent`, `Same` uses 100%, and `Less` adds `topic_less_adjustment_percent`; `More` and `Less` apply the same multiplier to the persistent A-factor. Both percentages default to 10% and are normalized to 0–100%.
+- Topic choices are frequency preferences, not Anki memory grades. The pre-answer hook must retain `more` / `same` / `less` and submit Anki `Good` (ease 3) for all three in every card state. The post-answer hook consumes that choice for A-factor scheduling and records it in `topic_review_history`. Do not map topic choices back to Hard or Easy.
+- Apply the final interval by updating the post-answer card directly and merging the update into Anki's Answer Card undo step. Do not use `set_due_date()` here: it adds a manual revlog and a second undo operation. Each history row stores exact before/after topic state. Undo/Redo must compare the live topic state with the transition side it expects before writing, so a newer manual/bulk edit made between or after answers wins instead of being overwritten.
+- An unseen topic card starts from its positive pre-answer `card.ivl`; only genuinely new/learning cards fall back to one day. Clamp schedules to the lower of `topic_maximum_interval_days` and the card's deck-preset `rev.maxIvl`.
 - Keep the duration labels, persisted precise interval, rounded Anki due date, and `card.ivl` synchronized when changing this behavior. Item `Fail / Pass` semantics are separate.
 
 ## Statistics and Document Types

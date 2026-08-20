@@ -402,6 +402,26 @@ class TestIncrementoSettingsDialogTopicAdjustments:
         assert high.topic_less_adjustment_percent == 100.0
 
 
+class TestIncrementoSettingsDialogTopicMaximumInterval:
+    def test_defaults_to_anki_hundred_year_cap(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.topic_maximum_interval_days == 36500
+        assert dialog._topic_maximum_interval_days_spin.minimum() == 1
+        assert dialog._topic_maximum_interval_days_spin.maximum() == 36500
+
+    def test_reads_and_clamps_topic_maximum_interval(self):
+        configured = IncrementoSettingsDialog(
+            {},
+            current_topic_maximum_interval_days=120,
+        )
+        too_high = IncrementoSettingsDialog(
+            {},
+            current_topic_maximum_interval_days=99999,
+        )
+        assert configured.topic_maximum_interval_days == 120
+        assert too_high.topic_maximum_interval_days == 36500
+
+
 class TestIncrementoSettingsDialogExtractionHighlight:
     def test_highlight_when_extracting_defaults_enabled(self):
         dialog = IncrementoSettingsDialog({})

@@ -92,6 +92,9 @@ from .backend.custom_schedule import (
     configured_custom_schedule_default_mode as _configured_custom_schedule_default_mode,
     configured_custom_schedule_presets as _configured_custom_schedule_presets,
     format_custom_schedule_rule as _format_custom_schedule_rule,
+    prepare_custom_schedule_answer as _prepare_custom_schedule_answer,
+    reconcile_custom_schedule_state_after_anki_operation as _reconcile_custom_schedule_state_after_anki_operation,
+    reset_custom_schedule_answer_runtime_state as _reset_custom_schedule_answer_runtime_state,
     save_custom_schedule_rule as _save_custom_schedule_rule,
 )
 from .backend.topic_a_factor_bulk import (
@@ -127,12 +130,15 @@ from .backend.topic_scheduler import (
     TOPIC_REVIEW_BUTTONS,
     configured_default_topic_a_factor as _configured_default_topic_a_factor,
     configured_topic_less_adjustment_percent as _configured_topic_less_adjustment_percent,
+    configured_topic_maximum_interval_days as _configured_topic_maximum_interval_days,
     configured_topic_more_adjustment_percent as _configured_topic_more_adjustment_percent,
     configured_topic_card_tags as _configured_topic_card_tags,
     configured_topic_card_types as _configured_topic_card_types,
     is_topic_card as _is_topic_card,
     on_topic_card_answered as _on_topic_card_answered,
-    remap_topic_review_ease as _remap_topic_review_ease,
+    prepare_topic_answer as _prepare_topic_answer,
+    reconcile_topic_state_after_anki_operation as _reconcile_topic_state_after_anki_operation,
+    reset_topic_answer_runtime_state as _reset_topic_answer_runtime_state,
     topic_due_label as _topic_due_label,
 )
 from .backend.topic_postpone import (
@@ -796,7 +802,8 @@ def _topic_reviewer_will_answer_card(response, _reviewer, card):
         ):
             QTimer.singleShot(0, lambda r=_reviewer, c=card: _perform_topic_postpone(r, c))
             return (False, ease)
-        return (proceed, _remap_topic_review_ease(ease))
+        return (proceed, _prepare_topic_answer(card, ease))
+    _prepare_custom_schedule_answer(card)
     if _reviewer_items_fail_pass(card):
         return (proceed, _remap_item_fail_pass_ease(card, ease))
     return response
@@ -2241,6 +2248,8 @@ def _on_profile_did_open() -> None:
     from .backend.migration import migrate_to_profile_dir
     profile = _current_profile_name()
     cfg = mw.addonManager.getConfig(__name__) or {}
+    _reset_topic_answer_runtime_state()
+    _reset_custom_schedule_answer_runtime_state()
     # Reset Qt WebEngine profile singletons before migration so they are
     # recreated with the correct per-profile storage path on next use.
     _video_dock_mod.reset_for_profile_switch()
@@ -2255,6 +2264,14 @@ def _on_profile_did_open() -> None:
 
 
 gui_hooks.profile_did_open.append(_on_profile_did_open)
+
+
+def _reset_answer_schedule_runtime_state() -> None:
+    _reset_topic_answer_runtime_state()
+    _reset_custom_schedule_answer_runtime_state()
+
+
+gui_hooks.profile_will_close.append(_reset_answer_schedule_runtime_state)
 
 
 def _sync_pdf_note_type() -> None:
@@ -5001,6 +5018,7 @@ def openSettingsFunction() -> None:
         current_default_topic_a_factor=_configured_default_topic_a_factor(cfg),
         current_topic_more_adjustment_percent=_configured_topic_more_adjustment_percent(cfg),
         current_topic_less_adjustment_percent=_configured_topic_less_adjustment_percent(cfg),
+        current_topic_maximum_interval_days=_configured_topic_maximum_interval_days(cfg),
         current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
         current_add_card_item_tags=_add_card_dock_mod.configured_add_card_item_tags(cfg),
         current_auto_create_topics_deck=configured_auto_create_topics_deck(cfg),
@@ -5056,6 +5074,7 @@ def openSettingsFunction() -> None:
     cfg["default_topic_a_factor"] = dlg.default_topic_a_factor
     cfg["topic_more_adjustment_percent"] = dlg.topic_more_adjustment_percent
     cfg["topic_less_adjustment_percent"] = dlg.topic_less_adjustment_percent
+    cfg["topic_maximum_interval_days"] = dlg.topic_maximum_interval_days
     cfg["add_card_topic_tags"] = dlg.add_card_topic_tags
     cfg["add_card_item_tags"] = dlg.add_card_item_tags
     cfg["auto_create_topics_deck"] = dlg.auto_create_topics_deck
@@ -5427,6 +5446,10 @@ gui_hooks.main_window_did_init.append(_build_incremento_menu)
 gui_hooks.main_window_did_init.append(_build_timer_toolbar)
 gui_hooks.state_did_change.append(lambda *_: _build_incremento_menu())
 gui_hooks.operation_did_execute.append(_sync_ocr_index_for_open_editor_notes)
+gui_hooks.undo_state_did_change.append(_reconcile_topic_state_after_anki_operation)
+gui_hooks.undo_state_did_change.append(
+    _reconcile_custom_schedule_state_after_anki_operation
+)
 gui_hooks.browser_will_show.append(_prune_incremento_hidden_browser_active_columns)
 gui_hooks.editor_did_load_note.append(_hide_incremento_hidden_fields_in_editor)
 gui_hooks.browser_did_fetch_columns.append(_filter_incremento_hidden_browser_columns)

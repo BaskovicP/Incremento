@@ -31,15 +31,19 @@ reviewer_recent_tags — latest reviewer-added tags for quick reuse
 browser_recent_tag_groups — latest Browser tag sets used for quick reuse
 browser_tag_colors — persistent unique color indexes for Browser quick tags
 browser_quick_tag_settings — automatic/fixed picker mode and nine fixed slots
+topic_schedule  — current per-card topic A-factor and interval state
+topic_review_history — original More/Same/Less topic choices and resulting schedule
 topic_postpones — timed postpone expiry timestamps per topic card
 item_postpones  — timed skip expiry timestamps per non-topic card
 custom_schedule_rules — per-card recurring custom scheduling rules
+custom_schedule_review_history — non-topic answer overrides and one-time-rule undo links
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
 knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
 """
 
 import atexit
 import json
+import math
 import re
 import sqlite3
 import time
@@ -566,6 +570,29 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             precise_interval REAL    NOT NULL DEFAULT 1.0
         );
 
+        CREATE TABLE IF NOT EXISTS topic_review_history (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id                   INTEGER NOT NULL,
+            choice                    TEXT    NOT NULL DEFAULT 'same',
+            anki_revlog_id             INTEGER NOT NULL DEFAULT 0,
+            anki_ease                 INTEGER NOT NULL DEFAULT 3,
+            previous_schedule_exists  INTEGER NOT NULL DEFAULT 0,
+            previous_a_factor         REAL    NOT NULL DEFAULT 3.5,
+            new_a_factor              REAL    NOT NULL DEFAULT 3.5,
+            previous_precise_interval REAL    NOT NULL DEFAULT 1.0,
+            previous_interval         INTEGER NOT NULL DEFAULT 1,
+            requested_precise_interval REAL   NOT NULL DEFAULT 1.0,
+            new_precise_interval      REAL    NOT NULL DEFAULT 1.0,
+            requested_interval        INTEGER NOT NULL DEFAULT 1,
+            scheduled_interval        INTEGER NOT NULL DEFAULT 1,
+            custom_schedule_mode      TEXT    NOT NULL DEFAULT '',
+            custom_schedule_rule_json TEXT    NOT NULL DEFAULT '',
+            consumed_one_time         INTEGER NOT NULL DEFAULT 0,
+            reviewed_at               INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_topic_review_history_card_time
+            ON topic_review_history (card_id, reviewed_at DESC, id DESC);
+
         CREATE TABLE IF NOT EXISTS topic_postpones (
             card_id  INTEGER PRIMARY KEY,
             until_ts INTEGER NOT NULL DEFAULT 0
@@ -588,10 +615,24 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             interval_unit  TEXT    NOT NULL DEFAULT 'days',
             preset_label   TEXT    NOT NULL DEFAULT '',
             created_at     INTEGER NOT NULL DEFAULT 0,
-            updated_at     INTEGER NOT NULL DEFAULT 0
+            updated_at     INTEGER NOT NULL DEFAULT 0,
+            revision       INTEGER NOT NULL DEFAULT 1
         );
         CREATE INDEX IF NOT EXISTS idx_csr_enabled_mode
             ON custom_schedule_rules (enabled, mode, interval_unit, interval_value);
+
+        CREATE TABLE IF NOT EXISTS custom_schedule_review_history (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id                   INTEGER NOT NULL,
+            anki_revlog_id             INTEGER NOT NULL,
+            scheduled_interval        INTEGER NOT NULL DEFAULT 1,
+            custom_schedule_mode      TEXT    NOT NULL DEFAULT '',
+            custom_schedule_rule_json TEXT    NOT NULL DEFAULT '',
+            consumed_one_time         INTEGER NOT NULL DEFAULT 0,
+            reviewed_at               INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_custom_schedule_review_card_time
+            ON custom_schedule_review_history (card_id, reviewed_at, id);
 
         CREATE TABLE IF NOT EXISTS knowledge_tree_nodes (
             card_id        INTEGER PRIMARY KEY,
@@ -704,6 +745,60 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "topic_schedule",
         "precise_interval",
         "REAL NOT NULL DEFAULT 1.0",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "anki_revlog_id",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "previous_schedule_exists",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "previous_interval",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "requested_precise_interval",
+        "REAL NOT NULL DEFAULT 1.0",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "requested_interval",
+        "INTEGER NOT NULL DEFAULT 1",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "custom_schedule_mode",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "custom_schedule_rule_json",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+    _ensure_column(
+        conn,
+        "topic_review_history",
+        "consumed_one_time",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    _ensure_column(
+        conn,
+        "custom_schedule_rules",
+        "revision",
+        "INTEGER NOT NULL DEFAULT 0",
     )
     _ensure_column(
         conn,
@@ -2954,6 +3049,7 @@ def get_topic_schedule_state(
     profile: str,
     card_id: int,
     default_a_factor: float = _DEFAULT_TOPIC_A_FACTOR,
+    default_interval: float = 1.0,
 ) -> tuple[float, float, int]:
     """Return (a_factor, precise_interval, rounded_interval) for a topic card."""
     row = (
@@ -2966,7 +3062,8 @@ def get_topic_schedule_state(
     )
     if not row:
         a_factor = _normalize_topic_a_factor(default_a_factor)
-        return a_factor, 1.0, 1
+        precise_interval = _normalize_topic_interval(default_interval)
+        return a_factor, precise_interval, _rounded_topic_interval(precise_interval)
 
     a_factor = _normalize_topic_a_factor(row[0])
     rounded_interval = _rounded_topic_interval(row[1], 1.0)
@@ -2980,6 +3077,7 @@ def get_topic_schedule(
     profile: str,
     card_id: int,
     default_a_factor: float = _DEFAULT_TOPIC_A_FACTOR,
+    default_interval: float = 1.0,
 ) -> tuple[float, int]:
     """Return (a_factor, last_interval) for a topic card, or defaults if unseen."""
     a_factor, _precise_interval, rounded_interval = get_topic_schedule_state(
@@ -2987,8 +3085,17 @@ def get_topic_schedule(
         profile,
         card_id,
         default_a_factor=default_a_factor,
+        default_interval=default_interval,
     )
     return a_factor, rounded_interval
+
+
+def topic_schedule_exists(addon_dir: str, profile: str, card_id: int) -> bool:
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT 1 FROM topic_schedule WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    return row is not None
 
 
 def set_topic_schedule(
@@ -3021,6 +3128,660 @@ def set_topic_schedule(
     conn.commit()
 
 
+def _normalize_topic_review_choice(value) -> str:
+    choice = str(value or "").strip().lower()
+    return choice if choice in {"more", "same", "less"} else "same"
+
+
+def record_topic_review_choice(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    choice: str,
+    *,
+    anki_ease: int = 3,
+    previous_a_factor: float,
+    new_a_factor: float,
+    previous_precise_interval: float,
+    new_precise_interval: float,
+    scheduled_interval: int,
+    previous_interval: int | None = None,
+    anki_revlog_id: int = 0,
+    previous_schedule_exists: bool = False,
+    requested_precise_interval: float | None = None,
+    requested_interval: int | None = None,
+    custom_schedule_mode: str = "",
+    custom_schedule_rule: dict | None = None,
+    consumed_one_time: bool = False,
+    reviewed_at: int | None = None,
+) -> int:
+    """Persist the semantic topic choice separately from Anki's Good rating."""
+    timestamp = int(time.time()) if reviewed_at is None else max(0, int(reviewed_at))
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        """
+        INSERT INTO topic_review_history (
+            card_id,
+            choice,
+            anki_revlog_id,
+            anki_ease,
+            previous_schedule_exists,
+            previous_a_factor,
+            new_a_factor,
+            previous_precise_interval,
+            previous_interval,
+            requested_precise_interval,
+            new_precise_interval,
+            requested_interval,
+            scheduled_interval,
+            custom_schedule_mode,
+            custom_schedule_rule_json,
+            consumed_one_time,
+            reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(card_id),
+            _normalize_topic_review_choice(choice),
+            max(0, int(anki_revlog_id or 0)),
+            int(anki_ease),
+            1 if previous_schedule_exists else 0,
+            _normalize_topic_a_factor(previous_a_factor),
+            _normalize_topic_a_factor(new_a_factor),
+            _normalize_topic_interval(previous_precise_interval),
+            _rounded_topic_interval(
+                previous_precise_interval
+                if previous_interval is None
+                else previous_interval
+            ),
+            _normalize_topic_interval(
+                new_precise_interval
+                if requested_precise_interval is None
+                else requested_precise_interval
+            ),
+            _normalize_topic_interval(new_precise_interval),
+            _rounded_topic_interval(
+                scheduled_interval if requested_interval is None else requested_interval
+            ),
+            _rounded_topic_interval(scheduled_interval),
+            str(custom_schedule_mode or "").strip().lower(),
+            json.dumps(custom_schedule_rule or {}, sort_keys=True, separators=(",", ":"))
+            if custom_schedule_rule
+            else "",
+            1 if consumed_one_time else 0,
+            timestamp,
+        ),
+    )
+    conn.commit()
+    return int(cursor.lastrowid)
+
+
+def get_topic_review_history(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    limit: int = 100,
+) -> list[dict[str, int | float | str]]:
+    rows = get_connection(addon_dir, profile).execute(
+        """
+        SELECT
+            id,
+            card_id,
+            choice,
+            anki_revlog_id,
+            anki_ease,
+            previous_schedule_exists,
+            previous_a_factor,
+            new_a_factor,
+            previous_precise_interval,
+            previous_interval,
+            requested_precise_interval,
+            new_precise_interval,
+            requested_interval,
+            scheduled_interval,
+            custom_schedule_mode,
+            custom_schedule_rule_json,
+            consumed_one_time,
+            reviewed_at
+        FROM topic_review_history
+        WHERE card_id = ?
+        ORDER BY reviewed_at DESC, id DESC
+        LIMIT ?
+        """,
+        (int(card_id), max(1, min(100000, int(limit)))),
+    ).fetchall()
+    return [
+        {
+            "id": int(row[0]),
+            "card_id": int(row[1]),
+            "choice": _normalize_topic_review_choice(row[2]),
+            "anki_revlog_id": int(row[3]),
+            "anki_ease": int(row[4]),
+            "previous_schedule_exists": bool(row[5]),
+            "previous_a_factor": float(row[6]),
+            "new_a_factor": float(row[7]),
+            "previous_precise_interval": float(row[8]),
+            "previous_interval": (
+                int(row[9])
+                if int(row[9] or 0) > 0
+                else _rounded_topic_interval(float(row[8]))
+            ),
+            "requested_precise_interval": float(row[10]),
+            "new_precise_interval": float(row[11]),
+            "requested_interval": int(row[12]),
+            "scheduled_interval": int(row[13]),
+            "custom_schedule_mode": str(row[14] or ""),
+            "custom_schedule_rule_json": str(row[15] or ""),
+            "consumed_one_time": bool(row[16]),
+            "reviewed_at": int(row[17]),
+        }
+        for row in rows
+    ]
+
+
+def _upsert_topic_schedule_on_connection(
+    conn: sqlite3.Connection,
+    card_id: int,
+    a_factor: float,
+    precise_interval: float,
+    scheduled_interval: int | float,
+) -> None:
+    normalized_precise = _normalize_topic_interval(precise_interval)
+    conn.execute(
+        "INSERT INTO topic_schedule (card_id, a_factor, interval, precise_interval) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "a_factor = excluded.a_factor, interval = excluded.interval, precise_interval = excluded.precise_interval",
+        (
+            int(card_id),
+            _normalize_topic_a_factor(a_factor),
+            _rounded_topic_interval(scheduled_interval),
+            normalized_precise,
+        ),
+    )
+
+
+def _topic_schedule_state_on_connection(
+    conn: sqlite3.Connection,
+    card_id: int,
+) -> tuple[float, float, int] | None:
+    row = conn.execute(
+        "SELECT a_factor, precise_interval, interval FROM topic_schedule "
+        "WHERE card_id = ?",
+        (int(card_id),),
+    ).fetchone()
+    if not row:
+        return None
+    return (
+        _normalize_topic_a_factor(row[0]),
+        _normalize_topic_interval(row[1]),
+        _rounded_topic_interval(row[2]),
+    )
+
+
+def _topic_schedule_matches_on_connection(
+    conn: sqlite3.Connection,
+    card_id: int,
+    *,
+    expected_exists: bool,
+    a_factor: float,
+    precise_interval: float,
+    interval: int | float,
+) -> bool:
+    current = _topic_schedule_state_on_connection(conn, card_id)
+    if not expected_exists:
+        return current is None
+    if current is None:
+        return False
+    return (
+        math.isclose(
+            current[0],
+            _normalize_topic_a_factor(a_factor),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+        and math.isclose(
+            current[1],
+            _normalize_topic_interval(precise_interval),
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+        and current[2] == _rounded_topic_interval(interval)
+    )
+
+
+def _upsert_custom_schedule_rule_on_connection(
+    conn: sqlite3.Connection,
+    card_id: int,
+    rule: dict,
+) -> None:
+    normalized = {
+        "card_id": int(card_id),
+        "enabled": bool(rule.get("enabled", True)),
+        "mode": _normalize_custom_schedule_mode(rule.get("mode")),
+        "interval_value": _normalize_custom_schedule_interval_value(
+            rule.get("interval_value")
+        ),
+        "interval_unit": _normalize_custom_schedule_unit(rule.get("interval_unit")),
+        "preset_label": _normalize_custom_schedule_preset_label(rule.get("preset_label")),
+        "created_at": max(0, int(rule.get("created_at") or 0)),
+        "updated_at": max(0, int(rule.get("updated_at") or 0)),
+        "revision": _normalize_custom_schedule_revision(rule.get("revision")),
+    }
+    conn.execute(
+        "INSERT INTO custom_schedule_rules "
+        "(card_id, enabled, mode, interval_value, interval_unit, preset_label, "
+        "created_at, updated_at, revision) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "enabled = excluded.enabled, mode = excluded.mode, "
+        "interval_value = excluded.interval_value, interval_unit = excluded.interval_unit, "
+        "preset_label = excluded.preset_label, created_at = excluded.created_at, "
+        "updated_at = excluded.updated_at, revision = excluded.revision",
+        (
+            normalized["card_id"],
+            1 if normalized["enabled"] else 0,
+            normalized["mode"],
+            normalized["interval_value"],
+            normalized["interval_unit"],
+            normalized["preset_label"],
+            normalized["created_at"],
+            normalized["updated_at"],
+            normalized["revision"],
+        ),
+    )
+
+
+def _same_custom_schedule_rule(left: dict | None, right: dict | None) -> bool:
+    """Compare the exact persisted rule version consumed by an answer."""
+    if not isinstance(left, dict) or not isinstance(right, dict):
+        return False
+    return (
+        bool(left.get("enabled", True)),
+        _normalize_custom_schedule_mode(left.get("mode")),
+        _normalize_custom_schedule_interval_value(left.get("interval_value")),
+        _normalize_custom_schedule_unit(left.get("interval_unit")),
+        _normalize_custom_schedule_preset_label(left.get("preset_label")),
+        _normalize_custom_schedule_revision(left.get("revision")),
+    ) == (
+        bool(right.get("enabled", True)),
+        _normalize_custom_schedule_mode(right.get("mode")),
+        _normalize_custom_schedule_interval_value(right.get("interval_value")),
+        _normalize_custom_schedule_unit(right.get("interval_unit")),
+        _normalize_custom_schedule_preset_label(right.get("preset_label")),
+        _normalize_custom_schedule_revision(right.get("revision")),
+    )
+
+
+def _consume_custom_schedule_rule_version_on_connection(
+    conn: sqlite3.Connection,
+    card_id: int,
+    rule: dict | None,
+) -> bool:
+    if not isinstance(rule, dict):
+        return False
+    cursor = conn.execute(
+        "DELETE FROM custom_schedule_rules WHERE card_id = ? AND revision = ?",
+        (
+            int(card_id),
+            _normalize_custom_schedule_revision(rule.get("revision")),
+        ),
+    )
+    return int(getattr(cursor, "rowcount", 0) or 0) > 0
+
+
+def commit_topic_review(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    choice: str,
+    *,
+    anki_revlog_id: int,
+    anki_ease: int = 3,
+    previous_schedule_exists: bool,
+    previous_a_factor: float,
+    new_a_factor: float,
+    previous_precise_interval: float,
+    requested_precise_interval: float,
+    new_precise_interval: float,
+    requested_interval: int,
+    scheduled_interval: int,
+    previous_interval: int | None = None,
+    custom_schedule_mode: str = "",
+    custom_schedule_rule: dict | None = None,
+    consumed_one_time: bool = False,
+    reviewed_at: int | None = None,
+) -> int:
+    """Atomically store the topic result, semantic choice, and rule consumption."""
+    timestamp = int(time.time()) if reviewed_at is None else max(0, int(reviewed_at))
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        _upsert_topic_schedule_on_connection(
+            conn,
+            int(card_id),
+            new_a_factor,
+            new_precise_interval,
+            scheduled_interval,
+        )
+        actually_consumed_one_time = bool(consumed_one_time) and (
+            _consume_custom_schedule_rule_version_on_connection(
+                conn,
+                int(card_id),
+                custom_schedule_rule,
+            )
+        )
+        cursor = conn.execute(
+            """
+            INSERT INTO topic_review_history (
+                card_id, choice, anki_revlog_id, anki_ease,
+                previous_schedule_exists, previous_a_factor, new_a_factor,
+                previous_precise_interval, previous_interval, requested_precise_interval,
+                new_precise_interval, requested_interval, scheduled_interval,
+                custom_schedule_mode, custom_schedule_rule_json,
+                consumed_one_time, reviewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(card_id),
+                _normalize_topic_review_choice(choice),
+                max(0, int(anki_revlog_id or 0)),
+                int(anki_ease),
+                1 if previous_schedule_exists else 0,
+                _normalize_topic_a_factor(previous_a_factor),
+                _normalize_topic_a_factor(new_a_factor),
+                _normalize_topic_interval(previous_precise_interval),
+                _rounded_topic_interval(
+                    previous_precise_interval
+                    if previous_interval is None
+                    else previous_interval
+                ),
+                _normalize_topic_interval(requested_precise_interval),
+                _normalize_topic_interval(new_precise_interval),
+                _rounded_topic_interval(requested_interval),
+                _rounded_topic_interval(scheduled_interval),
+                str(custom_schedule_mode or "").strip().lower(),
+                json.dumps(custom_schedule_rule or {}, sort_keys=True, separators=(",", ":"))
+                if custom_schedule_rule
+                else "",
+                1 if actually_consumed_one_time else 0,
+                timestamp,
+            ),
+        )
+    return int(cursor.lastrowid)
+
+
+def get_topic_review_revlog_ids(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+) -> list[int]:
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT anki_revlog_id FROM topic_review_history "
+        "WHERE card_id = ? AND anki_revlog_id > 0 ORDER BY reviewed_at, id",
+        (int(card_id),),
+    ).fetchall()
+    return [int(row[0]) for row in rows]
+
+
+def reconcile_topic_review_state(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    existing_anki_revlog_ids: set[int] | frozenset[int],
+    previous_existing_anki_revlog_ids: set[int] | frozenset[int] | None = None,
+) -> bool:
+    """Apply the exact topic state transition represented by Undo or Redo.
+
+    Each history row stores both sides of one answer.  Undo restores the
+    earliest removed row's previous state; Redo applies the latest restored
+    row's resulting state.  This deliberately does not reconstruct state from
+    an older surviving review, because a manual/bulk A-factor edit may have
+    occurred between the two answers.
+    """
+    rows = get_connection(addon_dir, profile).execute(
+        """
+        SELECT id, anki_revlog_id, previous_schedule_exists,
+               previous_a_factor, new_a_factor, previous_precise_interval,
+               previous_interval, new_precise_interval, scheduled_interval,
+               custom_schedule_rule_json, consumed_one_time
+        FROM topic_review_history
+        WHERE card_id = ? AND anki_revlog_id > 0
+        ORDER BY reviewed_at, id
+        """,
+        (int(card_id),),
+    ).fetchall()
+    if not rows:
+        return False
+
+    existing = {int(value) for value in existing_anki_revlog_ids}
+    previous_existing = (
+        None
+        if previous_existing_anki_revlog_ids is None
+        else {int(value) for value in previous_existing_anki_revlog_ids}
+    )
+
+    if previous_existing is None:
+        # Backward-compatible fallback for callers that provide only the final
+        # snapshot. Runtime Undo/Redo always supplies both snapshots.
+        applied_rows = [row for row in rows if int(row[1]) in existing]
+        if applied_rows:
+            added_rows = [applied_rows[-1]]
+            removed_rows = []
+        else:
+            added_rows = []
+            removed_rows = [rows[0]]
+    else:
+        removed_rows = [
+            row
+            for row in rows
+            if int(row[1]) in previous_existing and int(row[1]) not in existing
+        ]
+        added_rows = [
+            row
+            for row in rows
+            if int(row[1]) not in previous_existing and int(row[1]) in existing
+        ]
+
+    if removed_rows and added_rows:
+        # A normal Anki operation cannot simultaneously undo and redo answers
+        # for one card. Refuse to guess if an external history rewrite does so.
+        return False
+    if not removed_rows and not added_rows:
+        return False
+
+    transition_row = removed_rows[0] if removed_rows else added_rows[-1]
+    undoing = bool(removed_rows)
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        previous_interval = int(transition_row[6] or 0)
+        if previous_interval <= 0:
+            previous_interval = _rounded_topic_interval(float(transition_row[5]))
+
+        if undoing:
+            topic_state_matches = _topic_schedule_matches_on_connection(
+                conn,
+                int(card_id),
+                expected_exists=True,
+                a_factor=float(transition_row[4]),
+                precise_interval=float(transition_row[7]),
+                interval=int(transition_row[8]),
+            )
+        else:
+            topic_state_matches = _topic_schedule_matches_on_connection(
+                conn,
+                int(card_id),
+                expected_exists=bool(transition_row[2]),
+                a_factor=float(transition_row[3]),
+                precise_interval=float(transition_row[5]),
+                interval=previous_interval,
+            )
+
+        if undoing:
+            if topic_state_matches and bool(transition_row[2]):
+                _upsert_topic_schedule_on_connection(
+                    conn,
+                    int(card_id),
+                    float(transition_row[3]),
+                    float(transition_row[5]),
+                    previous_interval,
+                )
+            elif topic_state_matches:
+                conn.execute(
+                    "DELETE FROM topic_schedule WHERE card_id = ?",
+                    (int(card_id),),
+                )
+        elif topic_state_matches:
+            _upsert_topic_schedule_on_connection(
+                conn,
+                int(card_id),
+                float(transition_row[4]),
+                float(transition_row[7]),
+                int(transition_row[8]),
+            )
+
+        if bool(transition_row[10]):
+            try:
+                recorded_rule = json.loads(str(transition_row[9] or "{}"))
+            except Exception:
+                recorded_rule = {}
+            current_rule = get_custom_schedule_rule(addon_dir, profile, card_id)
+            if undoing:
+                # Never overwrite a newer rule created after the answer.
+                if current_rule is None and isinstance(recorded_rule, dict) and recorded_rule:
+                    _upsert_custom_schedule_rule_on_connection(
+                        conn,
+                        int(card_id),
+                        recorded_rule,
+                    )
+            elif _same_custom_schedule_rule(current_rule, recorded_rule):
+                # Redo consumes only the exact rule restored by Undo; a newer
+                # user-authored rule must survive.
+                conn.execute(
+                    "DELETE FROM custom_schedule_rules WHERE card_id = ?",
+                    (int(card_id),),
+                )
+    return True
+
+
+def commit_custom_schedule_review(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    *,
+    anki_revlog_id: int,
+    scheduled_interval: int,
+    custom_schedule_mode: str,
+    custom_schedule_rule: dict,
+    consumed_one_time: bool,
+    reviewed_at: int | None = None,
+) -> int:
+    """Atomically record a non-topic override and consume its one-time rule."""
+    timestamp = int(time.time()) if reviewed_at is None else max(0, int(reviewed_at))
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        actually_consumed_one_time = bool(consumed_one_time) and (
+            _consume_custom_schedule_rule_version_on_connection(
+                conn,
+                int(card_id),
+                custom_schedule_rule,
+            )
+        )
+        cursor = conn.execute(
+            """
+            INSERT INTO custom_schedule_review_history (
+                card_id, anki_revlog_id, scheduled_interval,
+                custom_schedule_mode, custom_schedule_rule_json,
+                consumed_one_time, reviewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(card_id),
+                max(0, int(anki_revlog_id or 0)),
+                _rounded_topic_interval(scheduled_interval),
+                _normalize_custom_schedule_mode(custom_schedule_mode),
+                json.dumps(
+                    custom_schedule_rule or {},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                1 if actually_consumed_one_time else 0,
+                timestamp,
+            ),
+        )
+    return int(cursor.lastrowid)
+
+
+def reconcile_custom_schedule_review_state(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    existing_anki_revlog_ids: set[int] | frozenset[int],
+    previous_existing_anki_revlog_ids: set[int] | frozenset[int] | None = None,
+) -> bool:
+    """Restore/consume a non-topic one-time rule with Anki Undo/Redo."""
+    rows = get_connection(addon_dir, profile).execute(
+        """
+        SELECT id, anki_revlog_id, custom_schedule_rule_json, consumed_one_time
+        FROM custom_schedule_review_history
+        WHERE card_id = ? AND anki_revlog_id > 0
+        ORDER BY reviewed_at, id
+        """,
+        (int(card_id),),
+    ).fetchall()
+    if not rows:
+        return False
+
+    existing = {int(value) for value in existing_anki_revlog_ids}
+    if previous_existing_anki_revlog_ids is None:
+        applied_rows = [row for row in rows if int(row[1]) in existing]
+        added_rows = [applied_rows[-1]] if applied_rows else []
+        removed_rows = [] if applied_rows else [rows[0]]
+    else:
+        previous_existing = {
+            int(value) for value in previous_existing_anki_revlog_ids
+        }
+        removed_rows = [
+            row
+            for row in rows
+            if int(row[1]) in previous_existing and int(row[1]) not in existing
+        ]
+        added_rows = [
+            row
+            for row in rows
+            if int(row[1]) not in previous_existing and int(row[1]) in existing
+        ]
+
+    if removed_rows and added_rows:
+        return False
+    if not removed_rows and not added_rows:
+        return False
+
+    transition_row = removed_rows[0] if removed_rows else added_rows[-1]
+    if not bool(transition_row[3]):
+        return True
+    try:
+        recorded_rule = json.loads(str(transition_row[2] or "{}"))
+    except Exception:
+        recorded_rule = {}
+
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        current_rule = get_custom_schedule_rule(addon_dir, profile, card_id)
+        if removed_rows:
+            if current_rule is None and isinstance(recorded_rule, dict) and recorded_rule:
+                _upsert_custom_schedule_rule_on_connection(
+                    conn,
+                    int(card_id),
+                    recorded_rule,
+                )
+        elif _same_custom_schedule_rule(current_rule, recorded_rule):
+            conn.execute(
+                "DELETE FROM custom_schedule_rules WHERE card_id = ?",
+                (int(card_id),),
+            )
+    return True
+
+
 # ── Custom schedule rules ────────────────────────────────────────────────────
 
 
@@ -3034,6 +3795,7 @@ def _default_custom_schedule_rule() -> dict:
         "preset_label": "",
         "created_at": 0,
         "updated_at": 0,
+        "revision": 0,
     }
 
 
@@ -3063,12 +3825,20 @@ def _normalize_custom_schedule_preset_label(value) -> str:
     return str(value or "").strip()[:120]
 
 
+def _normalize_custom_schedule_revision(value) -> int:
+    try:
+        parsed = int(value)
+    except Exception:
+        parsed = 0
+    return max(0, parsed)
+
+
 def get_custom_schedule_rule(addon_dir: str, profile: str, card_id: int) -> dict | None:
     row = (
         get_connection(addon_dir, profile)
         .execute(
             "SELECT card_id, enabled, mode, interval_value, interval_unit, preset_label, "
-            "created_at, updated_at FROM custom_schedule_rules WHERE card_id = ?",
+            "created_at, updated_at, revision FROM custom_schedule_rules WHERE card_id = ?",
             (int(card_id),),
         )
         .fetchone()
@@ -3084,6 +3854,7 @@ def get_custom_schedule_rule(addon_dir: str, profile: str, card_id: int) -> dict
         "preset_label": _normalize_custom_schedule_preset_label(row[5]),
         "created_at": int(row[6] or 0),
         "updated_at": int(row[7] or 0),
+        "revision": _normalize_custom_schedule_revision(row[8]),
     }
 
 
@@ -3107,7 +3878,7 @@ def get_custom_schedule_rules(
         rows.extend(
             conn.execute(
                 "SELECT card_id, enabled, mode, interval_value, interval_unit, preset_label, "
-                "created_at, updated_at FROM custom_schedule_rules "
+                "created_at, updated_at, revision FROM custom_schedule_rules "
                 f"WHERE card_id IN ({','.join('?' for _ in chunk)})",
                 tuple(chunk),
             ).fetchall()
@@ -3122,6 +3893,7 @@ def get_custom_schedule_rules(
             "preset_label": _normalize_custom_schedule_preset_label(row[5]),
             "created_at": int(row[6] or 0),
             "updated_at": int(row[7] or 0),
+            "revision": _normalize_custom_schedule_revision(row[8]),
         }
         for row in rows
     }
@@ -3138,9 +3910,12 @@ def set_custom_schedule_rule(
     interval_unit: str = "days",
     preset_label: str = "",
 ) -> dict:
-    now = int(time.time())
     card_id = int(card_id)
     existing = get_custom_schedule_rule(addon_dir, profile, card_id) or {}
+    now = max(
+        int(time.time()),
+        int(existing.get("updated_at") or 0) + (1 if existing else 0),
+    )
     created_at = int(existing.get("created_at") or now)
     normalized = {
         "card_id": card_id,
@@ -3151,19 +3926,25 @@ def set_custom_schedule_rule(
         "preset_label": _normalize_custom_schedule_preset_label(preset_label),
         "created_at": created_at,
         "updated_at": now,
+        "revision": max(
+            1,
+            _normalize_custom_schedule_revision(existing.get("revision")) + 1,
+        ),
     }
     conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT INTO custom_schedule_rules "
-        "(card_id, enabled, mode, interval_value, interval_unit, preset_label, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "(card_id, enabled, mode, interval_value, interval_unit, preset_label, "
+        "created_at, updated_at, revision) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(card_id) DO UPDATE SET "
         "enabled = excluded.enabled, "
         "mode = excluded.mode, "
         "interval_value = excluded.interval_value, "
         "interval_unit = excluded.interval_unit, "
         "preset_label = excluded.preset_label, "
-        "updated_at = excluded.updated_at",
+        "updated_at = excluded.updated_at, "
+        "revision = excluded.revision",
         (
             normalized["card_id"],
             1 if normalized["enabled"] else 0,
@@ -3173,6 +3954,7 @@ def set_custom_schedule_rule(
             normalized["preset_label"],
             normalized["created_at"],
             normalized["updated_at"],
+            normalized["revision"],
         ),
     )
     conn.commit()
