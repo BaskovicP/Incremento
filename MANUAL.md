@@ -1,11 +1,12 @@
 # Incremento - User Manual
 
-Incremento is an Anki add-on for incremental learning from mixed content. It combines long-form material such as PDFs, videos, webpages, and writing notes with normal flashcards, then builds balanced study sessions inside Anki.
+Incremento is an Anki add-on for incremental learning from mixed content. It combines long-form material such as PDFs, EPUBs, videos, webpages, writing notes, and local files with normal flashcards, then builds balanced study sessions inside Anki.
 
 ---
 
 ## Table of Contents
 
+0. [Installation](#installation)
 1. [Core Concepts](#1-core-concepts)
 2. [Incremento Menu Overview](#2-incremento-menu-overview)
 3. [Starting a Study Session](#3-starting-a-study-session)
@@ -24,6 +25,30 @@ Incremento is an Anki add-on for incremental learning from mixed content. It com
 
 ---
 
+## Installation
+
+### Install from AnkiWeb (recommended)
+
+Incremento is available from [AnkiWeb Add-ons](https://ankiweb.net/shared/info/1013949798).
+
+1. In Anki, open **Tools → Add-ons → Get Add-ons…**.
+2. Enter the add-on code **`1013949798`**.
+3. Restart Anki after installation.
+
+### Install from source
+
+For development or manual installation, clone or copy the repository into Anki's `addons21` folder as `incremento`, then restart Anki.
+
+| Platform | Source installation path |
+|---|---|
+| macOS | `~/Library/Application Support/Anki2/addons21/incremento/` |
+| Windows | `%APPDATA%\Anki2\addons21\incremento\` |
+| Linux | `~/.local/share/Anki2/addons21/incremento/` |
+
+The source repository does not ship `meta.json`; Anki creates and manages that local installation metadata.
+
+---
+
 ## 1. Core Concepts
 
 ### Topics vs Items
@@ -35,7 +60,7 @@ Incremento works with two broad card groups:
 | **Topics** | Long-form material you work through gradually | PDFs, videos, webpages, writing notes, article notes |
 | **Items** | Normal fact/review cards | Basic, cloze, Q&A, vocabulary |
 
-By default, cards in `deck:Topics` count as topics and everything else counts as items. Incremento can also auto-create that `Topics` deck for selected profiles from the settings dialog. You can change the topic/item rules in the scheduler filters.
+Incremento classifies a card as a topic when it is in the `Topics` deck, matches one of the configured topic tags, or belongs to an enabled topic content type such as PDF/EPUB, video, or writing. Configured item tags take precedence. The optional scheduler Topic and Item filters narrow these classified pools; they do not replace the classifier. Incremento can also auto-create the `Topics` deck for selected profiles from the settings dialog.
 
 ### Incremental learning
 
@@ -46,38 +71,49 @@ Instead of reviewing one deck in isolation, Incremento builds a temporary filter
 When you review Incremento cards, the source opens in a dock:
 
 - PDF cards open the PDF viewer
+- EPUB cards open the EPUB reader
 - Video cards open the video dock
 - Web cards open the web browser dock
 - Writing cards open the markdown editor dock
+- Local-file cards open a file-management dock
 
 These docks persist across reviews and save progress automatically.
+
+### Profile-isolated data
+
+Runtime data is stored separately for every Anki profile under `user_files/<ProfileName>/`. This includes the profile's `incremento.db`, statistics, PDFs, EPUBs, videos, writing files, managed local files, and browser/video session data. Switching Anki profiles therefore switches Incremento's content and database context as well.
 
 ---
 
 ## 2. Incremento Menu Overview
 
-The add-on menu lives under **Tools -> Incremento**.
+Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 
 ### Main actions
 
 | Menu item | What it does |
 |---|---|
 | **Start Incremental Learning** | Build a new Incremento session |
+| **Settings** | Configure extraction, review, topic, writing, shortcut, and advanced options |
 | **About** | Show a summary of addon capabilities |
-| **Add Content -> Add PDF** | Import a PDF as a topic card |
-| **Add Content -> Add EPUB** | Import one or more EPUBs as topic cards |
-| **Add Content -> Webpage to PDF** | Render a webpage into a PDF card |
-| **Add Content -> Add Video** | Add a YouTube, Vimeo, or local video card |
-| **Add Content -> Add Writing** | Create a writing card backed by a markdown file |
-| **Add Content -> Web Page** | Create a browsable web page card |
-| **Add Content -> Add Local File** | Create a card that opens or tracks a local file |
+| **Add Content → Add PDF** | Import a PDF as a topic card |
+| **Add Content → Add EPUB** | Import one or more EPUBs as topic cards |
+| **Add Content → Webpage to PDF** | Render a webpage into a PDF card |
+| **Add Content → Add Video** | Add a YouTube, Vimeo, or local video card |
+| **Add Content → Add to Markdown** | Create a writing card backed by a markdown file |
+| **Add Content → Web Page** | Create a browsable web page card |
+| **Add Content → Add Local File** | Create a card that opens or tracks a local file |
+| **Download Current Video Locally** | Download the active remote video into the current profile |
+| **Configure Current Video Captions…** | Manage target/reference captions for the active video |
+| **Open Knowledge tree** | Open the card-backed knowledge-tree workspace |
+| **Reveal Current Card In Knowledge Tree** | Select the current reviewer card in the tree |
+| **Go To Parent In Knowledge Tree** | Move from the current tree card to its parent |
 | **Show Focus Timer** | Show or hide the timer toolbar |
 | **Statistics** | Open study statistics |
+| **Quick Open Content** | Fuzzy-search and open PDF, EPUB, or writing cards |
 | **Find In Current Document** | Open a small results dialog for the currently open PDF or EPUB, with a Search ALL handoff |
 | **Search ALL** | Search PDF/EPUB highlights, sources, content, and cards |
-| **Open Knowledge Tree** | Open the card-backed knowledge-tree workspace |
 | **Export Full Backup** | Create a backup ZIP |
-| **Settings** | Configure extraction, review, topic, writing, shortcut, and advanced options |
 
 ### Utils submenu
 
@@ -85,17 +121,20 @@ The add-on menu lives under **Tools -> Incremento**.
 |---|---|
 | **Check Dependencies...** | Check/install optional PDF tools |
 | **Reindex PDF Text (Existing Cards)** | Rebuild searchable PDF text index |
+| **Import Notebook Citations to PDF Highlights…** | Import supported notebook citations as PDF highlights |
+| **OCR Image Text (Existing Cards)…** | Extract searchable text from image-based cards |
+| **Reindex OCR Search Cache (From Hidden Field)** | Rebuild cached OCR search text |
 | **Clean Non-Active Profile Data...** | Remove orphaned data not tied to live cards |
 | **Clean Up Orphaned PDF Files...** | Delete unreferenced PDF files |
 | **Clean Up Orphaned Video Files...** | Delete unreferenced video files |
-| **Clean Up Stale Progress Rows...** | Remove saved progress for deleted cards |
+| **Clean Up Stale Progress / Search Index / OCR Rows…** | Remove stale runtime rows for deleted cards |
 
 ---
 
 ## 3. Starting a Study Session
 
 1. Open Anki.
-2. Go to **Tools -> Incremento -> Start Incremental Learning**.
+2. Choose **Incremento → Start Incremental Learning**.
 3. Adjust the scheduler settings or accept the defaults.
 4. Incremento builds the **Incremento Session** filtered deck and opens the reviewer.
 
@@ -108,8 +147,9 @@ The session dialog also supports:
 Good first-run defaults:
 
 - 50 cards
-- 10% topics / 90% items
+- 90% topics / 10% items
 - 99% random / 1% priority
+- 0% Docs in the soft document mix
 - all card states enabled
 
 ---
@@ -229,19 +269,19 @@ Incremento now supports several kinds of topic material.
 
 ### Add PDF
 
-Use **Add Content -> Add PDF** to import a PDF file into Incremento.
+Use **Incremento → Add Content → Add PDF** to import a PDF file into Incremento.
 
-This creates an **Incremento PDF** note and copies the PDF into `user_files/pdfs/`.
+This creates an **Incremento PDF** note and copies the PDF into `user_files/<ProfileName>/pdfs/`.
 
 ### Add EPUB
 
-Use **Add Content -> Add EPUB** to import one or more EPUB books.
+Use **Incremento → Add Content → Add EPUB** to import one or more EPUB books.
 
-Incremento stores the source EPUB under `user_files/epubs/` and extracts readable section data under `user_files/epub_extracted/` for the reader and search features.
+Incremento stores the source EPUB under `user_files/<ProfileName>/epubs/` and extracts readable section data under `user_files/<ProfileName>/epub_extracted/` for the reader and search features.
 
 ### Webpage to PDF
 
-Use **Add Content -> Webpage to PDF** when you want a normal PDF-style reading workflow for an online article.
+Use **Incremento → Add Content → Webpage to PDF** when you want a normal PDF-style reading workflow for an online article.
 
 Incremento loads the page in a hidden browser view, renders it to PDF, and imports the result as a PDF card.
 
@@ -254,13 +294,13 @@ This is useful when you want:
 
 ### Add Video
 
-Use **Add Content -> Add Video** for:
+Use **Incremento → Add Content → Add Video** for:
 
 - YouTube URLs
 - Vimeo URLs
 - local video files
 
-For remote videos, you can keep them as streaming links or download/compress a local copy into `user_files/videos/`.
+For remote videos, you can keep them as streaming links or download/compress a local copy into `user_files/<ProfileName>/videos/`.
 
 For local files, Incremento can either:
 
@@ -268,9 +308,9 @@ For local files, Incremento can either:
 - encode H.264 high quality
 - encode H.264 smaller size
 
-### Add Writing
+### Add to Markdown
 
-Use **Add Content -> Add Writing** to create an **Incremento Writing** note backed by a markdown file under `user_files/writing/`.
+Use **Incremento → Add Content → Add to Markdown** to create an **Incremento Writing** note backed by a markdown file under `user_files/<ProfileName>/writing/`.
 
 You can provide:
 
@@ -282,13 +322,13 @@ You can provide:
 
 ### Web Page
 
-Use **Add Content -> Web Page** to create a browsable **Incremento Web** card.
+Use **Incremento → Add Content → Web Page** to create a browsable **Incremento Web** card.
 
 Unlike **Webpage to PDF**, this keeps the content as a live webpage inside the dock instead of converting it into a PDF.
 
 ### Add Local File
 
-Use **Add Content -> Add Local File** to make a card for any local document or asset that you want to open from review.
+Use **Incremento → Add Content → Add Local File** to make a card for any local document or asset that you want to open from review.
 
 You can either:
 
@@ -370,7 +410,7 @@ Incremento stores searchable PDF content in two ways:
 - the note's `Content` field for normal Anki browser search
 - a page-level PDF text index used by **Search ALL**
 
-If old cards are missing page-level search results, run **Utils -> Reindex PDF Text (Existing Cards)**.
+If old cards are missing page-level search results, run **Incremento → Utils → Reindex PDF Text (Existing Cards)**.
 
 ### EPUB cards and reader
 
@@ -443,7 +483,7 @@ Web cards open a persistent browser dock with:
 - a **Track via Chrome extension** checkbox for that external window flow
 - saved last visited URL
 - optional remembered scroll position for browser cards
-- persistent cookies/session storage under `user_files/web_profile/`
+- persistent cookies/session storage under `user_files/<ProfileName>/web_profile/`
 
 This works well for long-form websites, documentation, and pages that you want to revisit in-place inside Anki.
 
@@ -453,7 +493,7 @@ When a bookmark is saved, Incremento reopens that web card at the bookmarked poi
 
 If a page does not behave properly inside Anki's built-in web view, use **Open in Window** to open the current page externally. When **Track via Chrome extension** is checked, the companion extension keeps syncing the same web card to the latest page visited in that browser tab.
 
-In **Settings -> Review**, you can also choose whether web-card media should try to resume in the original page first and whether browser-card scroll should be remembered by default.
+In **Incremento → Settings → Review**, you can also choose whether web-card media should try to resume in the original page first and whether browser-card scroll should be remembered by default.
 
 ### Writing cards
 
@@ -462,7 +502,7 @@ Writing cards open a markdown editor and live preview side by side.
 Features:
 
 - autosave while typing
-- markdown file stored in `user_files/writing/`
+- markdown file stored in `user_files/<ProfileName>/writing/`
 - live rendered preview
 - **Open Folder** button
 - text selection transfer into the Add Card dock
@@ -481,7 +521,7 @@ From the dock you can:
 - open it in the default native app
 - relink the card if the original file moved
 
-Managed-copy local files live under the active profile's local-files area. Referenced local files keep pointing at the original path outside Incremento.
+Managed-copy local files live under `user_files/<ProfileName>/files/`. Referenced local files keep pointing at the original path outside Incremento.
 
 ---
 
@@ -489,7 +529,7 @@ Managed-copy local files live under the active profile's local-files area. Refer
 
 ### Search ALL
 
-Open **Search ALL** from the menu or use its shortcut.
+Choose **Incremento → Search ALL** or use its shortcut.
 
 It searches across:
 
@@ -503,7 +543,7 @@ Search results include a preview panel. PDF hits can open directly to the matchi
 
 ### Quick Open Content
 
-Use **Quick Open Content** to fuzzy-search document and writing cards by title.
+Choose **Incremento → Quick Open Content** to fuzzy-search document and writing cards by title.
 
 It shows:
 
@@ -524,7 +564,7 @@ It also supports fast actions inside the dialog:
 
 ### Knowledge Tree
 
-Open **Knowledge Tree** from the Incremento menu to work in a card-backed topic tree.
+Choose **Incremento → Open Knowledge tree** to work in a card-backed topic tree.
 
 The knowledge tree lets you:
 
@@ -568,7 +608,7 @@ Features:
 - reset
 - end-of-session summary
 
-In **Settings -> Review**, you can also make the focus timer auto-start for selected card types and optional tag filters, and choose whether it plays a beep when the timer ends.
+In **Incremento → Settings → Review**, you can also make the focus timer auto-start for selected card types and optional tag filters, and choose whether it plays a beep when the timer ends.
 
 The summary shows:
 
@@ -639,7 +679,7 @@ Use **Export Full Backup** to create a single ZIP for migration to a new compute
 The backup includes:
 
 - `anki/all_decks.apkg` for the currently open Anki profile
-- the full `user_files/` tree
+- the full `user_files/` tree, including all per-profile runtime folders
 - `config.json`
 - `manifest.json`
 - JSON copies of priorities, PDF progress, highlights, and stats
@@ -653,7 +693,7 @@ For full restore guidance, see `EXPORTING.md`.
 
 ### Settings dialog
 
-Open **Tools -> Incremento -> Settings** for six tabs:
+Choose **Incremento → Settings** to open six tabs:
 
 - **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, topic/tag defaults, and saved provenance link types
 - **Review**: priority direction, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
@@ -707,7 +747,7 @@ These are maintenance tools, not normal daily workflow tools.
 
 ## 14. Keyboard Shortcuts
 
-Incremento's configurable shortcuts can be changed in **Tools -> Incremento -> Settings -> Shortcuts**. Leave a shortcut field empty if you want to disable that action entirely. The Browser quick-tag shortcut is fixed to `Cmd+T` / `Ctrl+T`.
+Incremento's configurable shortcuts can be changed in **Incremento → Settings → Shortcuts**. Leave a shortcut field empty if you want to disable that action entirely. The Browser quick-tag shortcut is fixed to `Cmd+T` / `Ctrl+T`.
 
 ### Default shortcuts
 
@@ -727,7 +767,7 @@ Incremento's configurable shortcuts can be changed in **Tools -> Incremento -> S
 | `Ctrl+Alt+=` | PDF viewer zoom in |
 | `Ctrl+Alt+M` | Mark current PDF as finished reading |
 
-Many menu actions have no default shortcut but can still be assigned here, including Start Incremental Learning, Add PDF, Add EPUB, Add Video, Add Writing, Web Page, Add Local File, Statistics, Settings, Export, and knowledge-tree actions.
+Many menu actions have no default shortcut but can still be assigned here, including Start Incremental Learning, Add PDF, Add EPUB, Add Video, Add to Markdown, Web Page, Add Local File, Statistics, Settings, Export, and knowledge-tree actions.
 
 ### Browser quick tags
 
@@ -751,7 +791,7 @@ Inside the quick-open dialog:
 
 ### Workflow A: Classic incremental reading from PDFs
 
-1. Add a PDF with **Add Content -> Add PDF**.
+1. Add a PDF with **Incremento → Add Content → Add PDF**.
 2. Start a session with some topic share.
 3. Read in the PDF dock.
 4. Use `Ctrl/Cmd+1..4` to extract key text into new cards.
@@ -761,7 +801,7 @@ Inside the quick-open dialog:
 ### Workflow B: Turn articles into durable reading material
 
 1. Open an online article.
-2. Use **Add Content -> Webpage to PDF**.
+2. Use **Incremento → Add Content → Webpage to PDF**.
 3. Review it like a normal PDF card.
 4. Highlight and extract passages as you read.
 
@@ -781,7 +821,7 @@ Inside the quick-open dialog:
 
 ### Workflow E: Writing-first study
 
-1. Create a writing card with **Add Writing**.
+1. Create a writing card with **Incremento → Add Content → Add to Markdown**.
 2. Draft notes in markdown while reviewing the card.
 3. Let Incremento autosave continuously.
 4. Select passages from your writing and turn them into review cards.
