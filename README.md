@@ -4,19 +4,33 @@ Incremento is a modern Anki add-on for incremental learning from mixed content. 
 
 ## What It Does
 
-- Builds filtered Anki study sessions with configurable topic/item balance
-- Supports PDF-based topic cards with an in-app viewer, highlights, and extraction into new cards
-- Supports video, web page, and writing cards
-- Tracks reading progress, priorities, highlights, and study statistics
-- Includes a browser bridge and Chrome extension for importing content from the web
+- Builds filtered study sessions with configurable card states, topic/item and document mixes, tags, priorities, ordering, and optional auto-refill
+- Opens PDF, EPUB, video, web, writing, and local-file material in persistent reviewer docks that remember progress
+- Creates cards from selections and highlights while preserving source metadata and links
+- Provides topic A-factor scheduling, per-card custom schedules, postpone tools, and Anki-compatible Undo/Redo behavior
+- Includes document search, colored Browser quick tags, a card-backed knowledge tree, statistics, and a focus timer
+- Keeps runtime content and databases isolated per Anki profile
+- Includes a browser bridge and companion Chrome/Brave extension for capture, import, and playback synchronization
 
 ## Install
 
-This repository is set up for source installation, not direct AnkiWeb distribution. The repo intentionally does not ship `meta.json`, because that file contains the private add-on package ID.
+### Install from AnkiWeb (recommended)
+
+Incremento is available from [AnkiWeb Add-ons](https://ankiweb.net/shared/info/1013949798).
+
+1. In Anki, open **Tools → Add-ons → Get Add-ons…**.
+2. Enter the code **`1013949798`**.
+3. Restart Anki after installation.
+
+### Install from source
+
+For development or manual installation:
 
 1. Clone or copy this repo into your Anki add-ons folder as `incremento`.
 2. Make sure the final path ends with `addons21/incremento`.
 3. Restart Anki.
+
+The repository intentionally does not ship `meta.json`; Anki creates and manages that local installation metadata.
 
 Common add-on paths:
 
@@ -39,9 +53,9 @@ Incremento can guide first-run setup from inside Anki. Platform-specific details
 
 After installing and restarting Anki:
 
-1. Open **Tools → Start Incremental Learning** to build a study session.
-2. Use **Tools → Add PDF to Topics** to add a PDF-backed topic card.
-3. Use **Tools → Export Full Backup** to create a migration/backup ZIP.
+1. Open **Incremento → Start Incremental Learning** to build a study session.
+2. Use **Incremento → Add Content → Add PDF** to add a PDF-backed topic card.
+3. Use **Incremento → Export Full Backup** to create a migration/backup ZIP.
 
 For a full walkthrough, see [MANUAL.md](MANUAL.md).
 
@@ -102,7 +116,7 @@ npm run test:extension
 
 ## Release Packaging
 
-Build a clean addon ZIP with:
+Build a clean installable `.ankiaddon` package with:
 
 ```bash
 python3 scripts/package_addon.py
@@ -121,10 +135,10 @@ python3 scripts/package_addon.py --run-tests
 python3 scripts/package_addon.py --include-meta
 ```
 
-The script writes a publishable ZIP into `dist/`, stages the exact packaged folder next to it for inspection, and creates the initial `user_files/` directory structure expected on first run.
+The script writes the `.ankiaddon` into `dist/` and stages the exact packaged folder next to it for inspection. Runtime `user_files/`, tests, caches, and local installation metadata are excluded; Incremento creates its per-profile runtime storage when needed.
 
 ## Repository Hygiene
 
-- `meta.json` is ignored because it contains the private Anki add-on package ID
+- `meta.json` is ignored because it is local Anki installation metadata
 - `user_files/` is ignored because it contains local runtime data, imported media, and user databases
 - Generated viewer assets in `web/` are intentionally tracked because they are shipped with the add-on
