@@ -36,6 +36,7 @@ topic_review_history — original More/Same/Less topic choices and resulting sch
 topic_postpones — timed postpone expiry timestamps per topic card
 item_postpones  — timed skip expiry timestamps per non-topic card
 custom_schedule_rules — per-card recurring custom scheduling rules
+custom_schedule_rule_versions — persistent per-card custom-rule revision ledger
 custom_schedule_review_history — non-topic answer overrides and one-time-rule undo links
 knowledge_tree_nodes — per-profile hierarchy of linked card ids
 knowledge_tree_postpone_presets — saved postpone presets for tree/global/browser scopes
@@ -621,6 +622,11 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_csr_enabled_mode
             ON custom_schedule_rules (enabled, mode, interval_unit, interval_value);
 
+        CREATE TABLE IF NOT EXISTS custom_schedule_rule_versions (
+            card_id       INTEGER PRIMARY KEY,
+            last_revision INTEGER NOT NULL DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS custom_schedule_review_history (
             id                        INTEGER PRIMARY KEY AUTOINCREMENT,
             card_id                   INTEGER NOT NULL,
@@ -800,6 +806,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "revision",
         "INTEGER NOT NULL DEFAULT 0",
     )
+    _backfill_custom_schedule_rule_versions(conn)
     _ensure_column(
         conn,
         "writing_progress",
@@ -895,6 +902,61 @@ def _ensure_column(
 # ── Browser media refs ────────────────────────────────────────────────────────
 
 
+# Custom schedule rule revision ledger.
+def _record_custom_schedule_rule_revision_on_connection(
+    conn: sqlite3.Connection,
+    card_id: int,
+    revision: int,
+) -> None:
+    normalized_revision = max(0, int(revision or 0))
+    conn.execute(
+        "INSERT INTO custom_schedule_rule_versions (card_id, last_revision) "
+        "VALUES (?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET "
+        "last_revision = MAX(custom_schedule_rule_versions.last_revision, excluded.last_revision)",
+        (int(card_id), normalized_revision),
+    )
+
+
+def _backfill_custom_schedule_rule_versions(conn: sqlite3.Connection) -> None:
+    """Seed the durable revision ledger from active rules and answer history."""
+    revisions: dict[int, int] = {}
+
+    for card_id, revision in conn.execute(
+        "SELECT card_id, revision FROM custom_schedule_rules"
+    ).fetchall():
+        normalized_card_id = int(card_id)
+        revisions[normalized_card_id] = max(
+            revisions.get(normalized_card_id, 0),
+            max(0, int(revision or 0)),
+        )
+
+    for table_name in ("topic_review_history", "custom_schedule_review_history"):
+        rows = conn.execute(
+            f"SELECT card_id, custom_schedule_rule_json FROM {table_name} "
+            "WHERE consumed_one_time != 0 AND custom_schedule_rule_json != ''"
+        ).fetchall()
+        for card_id, rule_json in rows:
+            try:
+                rule = json.loads(str(rule_json or "{}"))
+                revision = max(0, int(rule.get("revision") or 0))
+            except Exception:
+                continue
+            normalized_card_id = int(card_id)
+            revisions[normalized_card_id] = max(
+                revisions.get(normalized_card_id, 0),
+                revision,
+            )
+
+    for card_id, revision in revisions.items():
+        _record_custom_schedule_rule_revision_on_connection(
+            conn,
+            card_id,
+            revision,
+        )
+
+
+# Browser media refs.
 _PDF_LIMIT_MODES = {"warning", "soft_lock", "hard_stop"}
 
 
@@ -3368,6 +3430,11 @@ def _upsert_custom_schedule_rule_on_connection(
         "updated_at": max(0, int(rule.get("updated_at") or 0)),
         "revision": _normalize_custom_schedule_revision(rule.get("revision")),
     }
+    _record_custom_schedule_rule_revision_on_connection(
+        conn,
+        normalized["card_id"],
+        normalized["revision"],
+    )
     conn.execute(
         "INSERT INTO custom_schedule_rules "
         "(card_id, enabled, mode, interval_value, interval_unit, preset_label, "
@@ -3912,6 +3979,15 @@ def set_custom_schedule_rule(
 ) -> dict:
     card_id = int(card_id)
     existing = get_custom_schedule_rule(addon_dir, profile, card_id) or {}
+    conn = get_connection(addon_dir, profile)
+    ledger_row = conn.execute(
+        "SELECT last_revision FROM custom_schedule_rule_versions WHERE card_id = ?",
+        (card_id,),
+    ).fetchone()
+    last_revision = max(
+        _normalize_custom_schedule_revision(existing.get("revision")),
+        _normalize_custom_schedule_revision(ledger_row[0] if ledger_row else 0),
+    )
     now = max(
         int(time.time()),
         int(existing.get("updated_at") or 0) + (1 if existing else 0),
@@ -3926,38 +4002,39 @@ def set_custom_schedule_rule(
         "preset_label": _normalize_custom_schedule_preset_label(preset_label),
         "created_at": created_at,
         "updated_at": now,
-        "revision": max(
-            1,
-            _normalize_custom_schedule_revision(existing.get("revision")) + 1,
-        ),
+        "revision": max(1, last_revision + 1),
     }
-    conn = get_connection(addon_dir, profile)
-    conn.execute(
-        "INSERT INTO custom_schedule_rules "
-        "(card_id, enabled, mode, interval_value, interval_unit, preset_label, "
-        "created_at, updated_at, revision) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(card_id) DO UPDATE SET "
-        "enabled = excluded.enabled, "
-        "mode = excluded.mode, "
-        "interval_value = excluded.interval_value, "
-        "interval_unit = excluded.interval_unit, "
-        "preset_label = excluded.preset_label, "
-        "updated_at = excluded.updated_at, "
-        "revision = excluded.revision",
-        (
-            normalized["card_id"],
-            1 if normalized["enabled"] else 0,
-            normalized["mode"],
-            normalized["interval_value"],
-            normalized["interval_unit"],
-            normalized["preset_label"],
-            normalized["created_at"],
-            normalized["updated_at"],
+    with conn:
+        _record_custom_schedule_rule_revision_on_connection(
+            conn,
+            card_id,
             normalized["revision"],
-        ),
-    )
-    conn.commit()
+        )
+        conn.execute(
+            "INSERT INTO custom_schedule_rules "
+            "(card_id, enabled, mode, interval_value, interval_unit, preset_label, "
+            "created_at, updated_at, revision) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(card_id) DO UPDATE SET "
+            "enabled = excluded.enabled, "
+            "mode = excluded.mode, "
+            "interval_value = excluded.interval_value, "
+            "interval_unit = excluded.interval_unit, "
+            "preset_label = excluded.preset_label, "
+            "updated_at = excluded.updated_at, "
+            "revision = excluded.revision",
+            (
+                normalized["card_id"],
+                1 if normalized["enabled"] else 0,
+                normalized["mode"],
+                normalized["interval_value"],
+                normalized["interval_unit"],
+                normalized["preset_label"],
+                normalized["created_at"],
+                normalized["updated_at"],
+                normalized["revision"],
+            ),
+        )
     return dict(normalized)
 
 

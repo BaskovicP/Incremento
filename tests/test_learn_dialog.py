@@ -4,6 +4,8 @@ import sys
 from types import SimpleNamespace
 import types
 
+import pytest
+
 
 def _dummy_class(name):
     return type(name, (), {"__init__": lambda self, *args, **kwargs: None})
@@ -657,6 +659,19 @@ class TestSchedulerConfigDialogState:
         cfg = dialog.to_config()
 
         assert cfg.auto_refill_session is True
+
+    def test_to_config_uses_left_hand_docs_percentage_and_ignores_zero_tags(self):
+        dialog = _build_dialog_for_state_tests()
+        dialog._pdf_slider.setValue(80)
+        for row in dialog._linked_rows:
+            if row["tag"] != _MOD.NO_TAGS_KEY:
+                row["slider"].setValue(0)
+
+        cfg = dialog.to_config()
+
+        assert cfg.pdf_rate == pytest.approx(0.20)
+        assert cfg.use_tags is False
+        assert cfg.tag_weights == {}
 
     def test_build_current_dict_includes_content_tag_fallback(self):
         dialog = _build_dialog_for_state_tests()

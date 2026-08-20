@@ -777,6 +777,86 @@ def test_soft_mode_keeps_trying_after_a_scheduler_miss():
     assert result.picked_meta[502]["selection_stage"] == "scheduler"
 
 
+def test_large_empty_session_stops_after_a_bounded_number_of_misses():
+    cfg = SchedulerConfig(
+        session_card_count=9999,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+
+    empty = types.SimpleNamespace(card=None, card_type="items", tag=None, mode="priority")
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler",
+        return_value=empty,
+    ) as mock_scheduler:
+        result = session_selection.select_session_cards(cfg, addon_dir="/tmp/unused")
+
+    assert result.selected_ids == []
+    assert mock_scheduler.call_count == session_selection._MAX_CONSECUTIVE_PICK_MISSES
+
+
+def test_large_priority_overdue_catchup_reuses_pools_and_stops_at_exhaustion():
+    cfg = SchedulerConfig(
+        session_card_count=9999,
+        enforce_priority=True,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        topics_rate=1.0,
+        random_rate=0.0,
+        pdf_rate=0.0,
+        content_type_weights={"pdf": 0.20},
+        phase_order=["content_types", "type", "mode"],
+        phases_enabled={"content_types": True, "type": True, "mode": True},
+    )
+    pdf_ids = list(range(1, 21))
+    topic_ids = list(range(1000, 3000))
+    get_pdfs = patch(
+        "session_selection.card_utils.get_all_pdf_cards",
+        return_value=pdf_ids,
+    )
+    get_topics = patch(
+        "session_selection.card_utils.get_all_topic_cards",
+        return_value=topic_ids,
+    )
+    get_items = patch(
+        "session_selection.card_utils.get_all_item_cards",
+        return_value=[],
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), get_pdfs as pdf_pool, get_topics as topic_pool, get_items as item_pool, patch(
+        "session_selection.card_utils.get_document_card_type",
+        return_value="pdf",
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_kwargs: list(ids),
+    ) as sort_pool, patch(
+        "session_selection.get_card_from_scheduler",
+        wraps=session_selection.get_card_from_scheduler,
+    ) as scheduler_calls:
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        first_batch = picker.pick_until(1000)
+        second_batch = picker.pick_until(cfg.session_card_count)
+        result = picker.result()
+
+    assert len(first_batch) == 1000
+    assert len(second_batch) == len(pdf_ids) + len(topic_ids) - len(first_batch)
+    assert len(result.selected_ids) == len(pdf_ids) + len(topic_ids)
+    assert set(result.selected_ids[: len(pdf_ids)]) == set(pdf_ids)
+    assert set(result.selected_ids[len(pdf_ids) :]) == set(topic_ids)
+    pdf_pool.assert_called_once()
+    topic_pool.assert_called_once()
+    item_pool.assert_called_once()
+    # The second transaction models auto-refill. It must reuse the first
+    # transaction's sorted pools instead of sorting thousands of cards again.
+    assert sort_pool.call_count <= 3
+    assert scheduler_calls.call_count <= len(result.selected_ids) + 5 * session_selection._MAX_CONSECUTIVE_PICK_MISSES
+
+
 def test_ordered_priority_quota_continues_across_repeated_pick_until_calls():
     cfg = SchedulerConfig(
         session_card_count=3,
@@ -1048,3 +1128,37 @@ def test_snapshot_restore_reproduces_continued_picking():
         assert restored.pick_until(3) == [803]
 
     assert restored.selected_ids == [801, 802, 803]
+
+
+def test_same_picker_rollback_rewinds_priority_cursor_without_resorting():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        topics_rate=0.0,
+        random_rate=0.0,
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_all_item_cards",
+        return_value=[901, 902],
+    ), patch(
+        "session_selection.card_utils.get_all_topic_cards",
+        return_value=[],
+    ), patch(
+        "session_selection.card_utils.sort_cards_for_priority_mode",
+        side_effect=lambda ids, **_kwargs: list(ids),
+    ) as sort_pool:
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [901]
+        snapshot = picker.snapshot()
+        assert picker.pick_until(2) == [902]
+
+        picker._restore_snapshot(snapshot)
+        assert picker.pick_until(2) == [902]
+
+    assert picker.selected_ids == [901, 902]
+    sort_pool.assert_called_once()

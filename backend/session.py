@@ -127,7 +127,24 @@ def _prepare_filtered_review_deck(
     preserve_order: bool,
     select_deck: bool = True,
 ) -> int:
-    search = " OR ".join(f"cid:{cid}" for cid in selected_ids)
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for raw in selected_ids or []:
+        try:
+            cid = int(raw)
+        except Exception:
+            continue
+        if cid <= 0 or cid in seen:
+            continue
+        seen.add(cid)
+        normalized_ids.append(cid)
+    if not normalized_ids:
+        raise ValueError("Cannot build a filtered deck without valid card IDs.")
+
+    # Anki supports a comma-separated cid list.  Keeping this as one search
+    # node avoids constructing/parsing thousands of OR expressions for large
+    # sessions (for example a user-configured 9,999-card catch-up session).
+    search = "cid:" + ",".join(str(cid) for cid in normalized_ids)
 
     existing = mw.col.decks.by_name(deck_name)
     if existing:
@@ -143,7 +160,7 @@ def _prepare_filtered_review_deck(
     del fdu.config.search_terms[:]
     fdu.config.search_terms.add(
         search=search,
-        limit=len(selected_ids),
+        limit=len(normalized_ids),
         order=DYN_DUE if preserve_order else DYN_OLDEST,
     )
     op = mw.col.sched.add_or_update_filtered_deck(fdu)
@@ -151,13 +168,27 @@ def _prepare_filtered_review_deck(
 
     if preserve_order:
         position = 0
-        for cid in selected_ids:
+        cards_to_update = []
+        for cid in normalized_ids:
             card = mw.col.get_card(cid)
             if int(getattr(card, "did", 0) or 0) != int(op.id):
                 continue
             card.due = position
-            mw.col.update_card(card)
+            cards_to_update.append(card)
             position += 1
+        if cards_to_update:
+            update_cards = getattr(mw.col, "update_cards", None)
+            if callable(update_cards):
+                try:
+                    update_cards(cards_to_update, skip_undo_entry=True)
+                except TypeError:
+                    update_cards(cards_to_update)
+            else:
+                for card in cards_to_update:
+                    try:
+                        mw.col.update_card(card, skip_undo_entry=True)
+                    except TypeError:
+                        mw.col.update_card(card)
 
     if select_deck:
         mw.col.decks.select(op.id)

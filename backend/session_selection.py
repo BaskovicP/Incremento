@@ -20,6 +20,7 @@ except ImportError:
 
 _YOUTUBE_FILTER = 'note:"Incremento Video"'
 _WEBPAGE_FILTER = 'note:"Incremento Web"'
+_MAX_CONSECUTIVE_PICK_MISSES = 64
 
 
 @dataclass
@@ -45,9 +46,22 @@ def _attempt_pick_loop(
     max_attempts: int,
     max_consecutive_misses: int,
 ) -> None:
+    """Pick until the target is met or the candidate pools appear exhausted.
+
+    Retry budgets used to grow with the requested session size.  A manually
+    configured 9,999-card session could consequently perform tens of thousands
+    of identical failed searches after the last eligible card was selected.
+    Keep enough retries for weighted/tagged fallbacks, but make exhaustion a
+    fixed-cost operation.
+    """
     attempts = 0
     consecutive_misses = 0
-    while attempts < max_attempts and consecutive_misses < max_consecutive_misses:
+    safe_max_attempts = max(0, int(max_attempts or 0))
+    safe_max_misses = min(
+        max(1, int(max_consecutive_misses or 1)),
+        _MAX_CONSECUTIVE_PICK_MISSES,
+    )
+    while attempts < safe_max_attempts and consecutive_misses < safe_max_misses:
         if target_reached_fn():
             break
         attempts += 1
@@ -409,6 +423,7 @@ class SessionPicker:
         self.selected_ids: list[int] = []
         self.picked_meta: dict[int, dict] = {}
         self.picked_ids: set[int] = set()
+        self._scheduler_pool_cache: dict = {}
         self.ordered_priority_entries = _normalized_priority_order_entries(cfg)
         self.ordered_priority_picked: dict[str, int] = {}
 
@@ -516,6 +531,12 @@ class SessionPicker:
             str(key): max(0, int(value or 0))
             for key, value in dict(snap.get("ordered_priority_picked") or {}).items()
         }
+        # A failed filtered-deck rebuild may roll selected_ids back while the
+        # cached priority cursor has already advanced.  Rewind only cursors;
+        # the immutable sorted order remains valid and avoids another DB sort.
+        for key in list(self._scheduler_pool_cache):
+            if isinstance(key, tuple) and key and key[0] == "scheduler_priority_cursor":
+                self._scheduler_pool_cache.pop(key, None)
 
     def _pick(
         self,
@@ -550,6 +571,7 @@ class SessionPicker:
             priority_lower_is_more_important=self.cfg.priority_lower_is_more_important,
             allow_content_tag_fallback=bool(getattr(self.cfg, "allow_content_tag_fallback", False)),
             include_rest=bool(getattr(self.cfg, "include_rest", True)),
+            pool_cache=self._scheduler_pool_cache,
         )
         if result.card is None:
             return False

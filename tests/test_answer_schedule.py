@@ -28,6 +28,17 @@ def test_new_answer_revlog_rejects_the_pre_answer_row():
     ) == 101
 
 
+def test_new_answer_revlog_rejects_an_older_surviving_row():
+    col = MagicMock()
+    col.db.scalar.return_value = 99
+
+    assert answer_schedule.new_answer_revlog_id(
+        42,
+        100,
+        collection=col,
+    ) == 0
+
+
 def test_revlog_query_failure_is_distinct_from_an_empty_history():
     col = MagicMock()
     col.db.scalar.side_effect = RuntimeError("db unavailable")

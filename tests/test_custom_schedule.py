@@ -1,6 +1,6 @@
 import importlib.util
 import os
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +28,25 @@ def test_configured_custom_schedule_defaults():
 def test_add_calendar_months_clamps_to_end_of_month():
     assert custom_schedule.add_calendar_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
     assert custom_schedule.rule_days_from_today(1, "months", today=date(2026, 1, 31)) == 28
+
+
+def test_calendar_rules_use_anki_logical_day_before_rollover():
+    next_rollover = int(datetime(2026, 2, 1, 4, 0, 0).timestamp())
+    fake_col = SimpleNamespace(
+        sched=SimpleNamespace(day_cutoff=next_rollover),
+    )
+
+    assert custom_schedule.anki_logical_today(collection=fake_col) == date(
+        2026,
+        1,
+        31,
+    )
+    with patch.object(
+        custom_schedule,
+        "anki_logical_today",
+        return_value=date(2026, 1, 31),
+    ):
+        assert custom_schedule.rule_days_from_today(1, "months") == 28
 
 
 def test_format_custom_schedule_rule_uses_preset_label_when_present():

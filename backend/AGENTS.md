@@ -17,10 +17,13 @@ Use this file for work in `backend/`.
 ## Session Scheduling
 
 - Main files: `backend/session.py`, `backend/session_selection.py`, and `backend/scheduler_config.py`.
-- `include_new`, `include_learning`, and `include_review` define which Anki card states are even eligible for a session build or refill.
+- `include_new`, `include_learning`, and `include_due` define which Anki card states are even eligible for a session build or refill. If all three are off, the normal topic/item search must match nothing; document/media pools remain intentionally state-independent.
 - `auto_refill_session` means the active filtered deck should stay topped up to `session_card_count` pending cards after review answers shrink Anki's live queue below that threshold.
 - Preserve the distinction between the original selected id pool and Anki's current live queue; refill should add only the missing amount and must not duplicate cards already present in the filtered deck.
 - If you change refill behavior, keep `frontend/learn_dialog.py` labels/tooltips and the manual wording aligned with the backend semantics.
+- The Docs/Other slider is stored as its left-to-right UI position, so backend `pdf_rate` is `1 - pdf_slider / 100`. A stored value of 100 means 0% Docs.
+- A scheduler weight of 0 disables that bucket completely; smoothing/epsilon applies only to positive-weight buckets. Forced card types in strict phases must not fall back and consume another type's quota.
+- `SessionPicker` caches raw Anki candidate pools and their priority order for the active session, including later auto-refills. A failed deck rebuild must rewind priority cursors without discarding the immutable order. Keep exhaustion retries bounded independently of a 9,999-card request. Large filtered decks use one comma-separated `cid:` search and batch their order updates.
 
 ## Profile and Path Rules
 
@@ -84,11 +87,12 @@ Use this file for work in `backend/`.
 - Main files: `backend/answer_schedule.py`, `backend/custom_schedule.py`, and the custom-schedule tables in `backend/db.py`.
 - Browser-selected cards can get per-card custom scheduling rules such as `minimum_cadence`, `fixed_repeat`, and `one_time`.
 - Default custom-schedule mode and preset parsing are config-backed and surfaced in the `Review` settings tab.
+- Calendar-month rules are measured from Anki's logical scheduler date, not the operating-system date, so reviews between midnight and Anki's rollover do not land a day early.
 - `format_custom_schedule_rule(None)` must stay empty. Missing rules must not render as the default preset in the reviewer badge.
 - Topic answers resolve custom-rule precedence inside `topic_scheduler` before anything is written. `fixed_repeat` and `one_time` replace the A-factor interval; `minimum_cadence` uses the earlier of the two intervals. The separate custom-schedule after-answer hook must skip topic answers.
 - Review-time topic and non-topic interval overrides share `answer_schedule.apply_review_interval()`. Capture the latest revlog before answering, require a different positive revlog afterward, update the post-answer card, and merge into the existing Answer Card undo step. Do not call `set_due_date()` from an after-answer hook; it creates a manual revlog and a second undo operation. `apply_rule_now_to_card()` is intentionally still a manual Browser operation. A filtered deck with `resched = false` is Anki Preview: capture that state before answering, show no Incremento topic interval promise, and do not override the card, persist topic/custom review history, or consume a one-time rule.
 - Track only revlogs created during the active profile session. Clear pending answers and trackers on profile close/open. Treat a missing revlog as Undo only when Anki exposes a redo action, and accept its reappearance as Redo only after that Undo was observed. When Anki clears the Redo stack without a revlog delta, retire all still-undone candidates so a later sync cannot impersonate Redo.
-- One-time-rule consumption is stored transactionally in topic/custom review history. Rules have a monotonic `revision`; Undo must restore the exact consumed revision without overwriting a newer user-authored rule, and Redo may consume only that matching revision—even if a newer rule has identical visible settings.
+- One-time-rule consumption is stored transactionally in topic/custom review history. Rules have a monotonic `revision`; `custom_schedule_rule_versions` retains the last revision after the active rule is consumed or cleared and is backfilled from existing history. Undo must restore the exact consumed revision without overwriting a newer user-authored rule, and Redo may consume only that matching revision—even if an identical replacement was created before Undo.
 
 ## Topic Scheduling
 

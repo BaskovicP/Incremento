@@ -120,6 +120,8 @@ Good first-run defaults:
 
 Controls how many cards Incremento puts into the session.
 
+The accepted range is **1–9,999 cards**. Large catch-up sessions use the same scheduling rules; Incremento stops searching once eligible pools are exhausted instead of continuing to retry up to the requested total.
+
 If you later enable **Auto-refill session deck to keep this many unreviewed cards** in **Advanced**, this same number becomes the live not-yet-answered card target. Incremento preserves learning repeats in the filtered deck, so Anki's visible queue can temporarily be larger than this count.
 
 ### Card states to include
@@ -132,6 +134,8 @@ You can include any combination of:
 
 To let never-seen cards enter Incremento sessions at all, keep **New** enabled here. If **New** is off, auto-refill can still top up the session, but it will only pull from the other enabled card states.
 
+If all three boxes are off, no ordinary topic/item card is eligible. Incremento document and media cards remain state-independent, as indicated in the dialog.
+
 ### Topics <-> Items balance
 
 Controls what share of the session goes to topics versus normal review cards.
@@ -140,6 +144,17 @@ Controls what share of the session goes to topics versus normal review cards.
 - Move right for more items
 
 Incremento also shows the current number of ready topic and item cards.
+
+The 0% and 100% endpoints are exact: a bucket set to 0% is disabled and is not reintroduced by scheduler smoothing.
+
+### Docs <-> Other balance
+
+Controls how often PDF and EPUB reading cards are woven into normal scheduling.
+
+- Move left for more Docs
+- Move fully right for 0% Docs
+
+Document cards are eligible regardless of New/Learning/Due state. Separate content-type priorities can still reserve a hard document quota in strict mode.
 
 ### Priority <-> Random balance
 
@@ -186,10 +201,7 @@ These are standard Anki search filters:
 - **Topics filter**: what counts as a topic card
 - **Items filter**: what counts as an item card
 
-Default setup:
-
-- Topics: `deck:Topics`
-- Items: `-deck:Topics`
+Both fields are blank by default. Incremento first classifies cards with its configured topic note types/tags, item tags, and Topics deck behavior; an optional filter here narrows the corresponding classified pool further.
 
 Use the **Test** buttons to see how many cards currently match.
 
@@ -656,7 +668,7 @@ Topic cards use **More / Same / Less** instead of flashcard grading. All three c
 
 If a topic card also has a custom schedule, Incremento resolves one final interval before saving anything: **Repeat exactly** and **One-time set due** replace the topic interval, while **Minimum cadence** pulls it closer only when the topic interval would be later. A one-time rule is consumed in the same database transaction. The card update is merged into Anki's single **Answer Card** undo step, and Undo/Redo also restores or reapplies the Incremento topic state and consumed one-time rule. Newer manual topic edits and newer custom-rule versions take priority during reconciliation, including an identically configured rule that you deliberately saved again. This avoids extra manual review-history rows.
 
-The same single-step behavior applies to custom schedules on non-topic cards during review: Incremento attaches the interval override to the answer instead of creating a separate **Set Due Date** operation. A one-time rule returns when that answer is undone and is consumed again on Redo. In a filtered deck with rescheduling disabled (Anki Preview), Incremento leaves the original schedule and custom rule unchanged and records no topic/custom scheduling transition. The Browser dialog's **Apply now** command remains an explicit manual scheduling action and therefore has its own normal Anki undo entry.
+The same single-step behavior applies to custom schedules on non-topic cards during review: Incremento attaches the interval override to the answer instead of creating a separate **Set Due Date** operation. A one-time rule returns when that answer is undone and is consumed again on Redo. Calendar-month rules use Anki's logical scheduler day, so reviewing after midnight but before Anki's configured rollover does not shift the due date one day early. In a filtered deck with rescheduling disabled (Anki Preview), Incremento leaves the original schedule and custom rule unchanged and records no topic/custom scheduling transition. The Browser dialog's **Apply now** command remains an explicit manual scheduling action and therefore has its own normal Anki undo entry.
 
 Incremento does not rewrite Anki's answer revlog with unsupported SQL. Card Info therefore keeps the interval Anki originally calculated for the real Good/Hard/Easy answer, while the card's current due date and interval contain the applied override. Incremento records the requested and applied topic/custom interval in its own per-profile review history for accurate reconciliation.
 

@@ -22,9 +22,26 @@ class SchedulerResult(NamedTuple):
 
 
 def soft_pick(weights: dict, counts: dict, alpha=0.2, epsilon=0.05) -> str:
-    """Debt-based weighted random selection"""
+    """Debt-based weighted random selection.
+
+    A zero weight means that the bucket is disabled.  It must not receive the
+    epsilon floor used to keep *enabled* but over-represented buckets
+    selectable; otherwise endpoint settings such as 100% Topics or 100%
+    Priority occasionally leak cards from the 0% bucket.
+    """
+    positive_weights = {key: weight for key, weight in weights.items() if weight > 0}
+    if not positive_weights:
+        # Invalid callers are safer with the historical uniform fallback than
+        # with a crash in the middle of session construction.
+        positive_weights = {key: 1.0 for key in weights}
+    if len(positive_weights) == 1:
+        return next(iter(positive_weights))
+
     n = sum(counts.values())
-    probs = {k: max(w * n - counts.get(k, 0) + alpha, epsilon) for k, w in weights.items()}
+    probs = {
+        key: max(weight * n - counts.get(key, 0) + alpha, epsilon)
+        for key, weight in positive_weights.items()
+    }
     total = sum(probs.values())
 
     r = random.random()
@@ -57,10 +74,11 @@ def get_card_from_scheduler(
         addon_dir: str | None = None,
         priority_lower_is_more_important: bool = True,
         allow_content_tag_fallback: bool = False,
+        pool_cache: dict | None = None,
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
-    exclude = set(exclude_ids) if exclude_ids else set()
+    exclude = exclude_ids if isinstance(exclude_ids, set) else set(exclude_ids or ())
 
     # 1. Decisions
     if force_card_type is not None:
@@ -79,26 +97,67 @@ def get_card_from_scheduler(
     mode = force_mode if force_mode is not None else soft_pick(
         {"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
 
-    # 2. Fetch with fallbacks (track what we actually used)
+    # 2. Fetch with fallbacks (track what we actually used).  A forced type is
+    # a strict quota request: if that pool is empty, report a miss so the
+    # session picker can advance to the next phase without consuming another
+    # type's cards under the wrong quota.
+    allow_type_fallback = force_card_type is None
     actual_type = card_type
     actual_tag = None
 
-    def available(raw):
-        return [c for c in raw if c not in exclude]
+    def cached_pool(key, loader):
+        if pool_cache is None:
+            return loader()
+        cache_key = ("scheduler_pool",) + tuple(key)
+        if cache_key not in pool_cache:
+            pool_cache[cache_key] = tuple(loader())
+        return pool_cache[cache_key]
 
-    def priority_ordered(raw):
-        return card_utils.sort_cards_for_priority_mode(
-            raw,
-            addon_dir=addon_dir,
-            lower_is_more_important=priority_lower_is_more_important,
+    def priority_available(raw):
+        if pool_cache is None:
+            return card_utils.sort_cards_for_priority_mode(
+                [c for c in raw if c not in exclude],
+                addon_dir=addon_dir,
+                lower_is_more_important=priority_lower_is_more_important,
+            )
+
+        order_key = (
+            "scheduler_priority_order",
+            id(raw),
+            str(addon_dir or ""),
+            bool(priority_lower_is_more_important),
         )
+        if order_key not in pool_cache:
+            pool_cache[order_key] = tuple(
+                card_utils.sort_cards_for_priority_mode(
+                    raw,
+                    addon_dir=addon_dir,
+                    lower_is_more_important=priority_lower_is_more_important,
+                )
+            )
+        ordered = pool_cache[order_key]
+        cursor_key = ("scheduler_priority_cursor",) + order_key[1:]
+        cursor = max(0, int(pool_cache.get(cursor_key, 0) or 0))
+        while cursor < len(ordered) and ordered[cursor] in exclude:
+            cursor += 1
+        pool_cache[cursor_key] = cursor
+        if cursor >= len(ordered):
+            return []
+        # Priority mode only ever consumes the first available candidate.  Do
+        # not rebuild a shrinking list of every remaining card on each pick.
+        return [ordered[cursor]]
+
+    def available(raw):
+        if mode == "priority":
+            return priority_available(raw)
+        return [c for c in raw if c not in exclude]
 
     # When PDF cards are scheduled separately, exclude them from topics/items pools
     pdf_exclusion = f" -({pdf_filter})" if pdf_rate > 0 else ""
     effective_topics_filter = topics_filter + pdf_exclusion
     effective_items_filter  = items_filter  + pdf_exclusion
 
-    def _ct_pick(all_fn, tag_fn, fn_kwargs):
+    def _ct_pick(cache_prefix, all_fn, tag_fn, fn_kwargs):
         """Tag-aware pick within a content-type pool (pdf / youtube / webpage).
 
         If use_tags is on, does a soft_pick over tag weights first then fetches
@@ -112,55 +171,114 @@ def get_card_from_scheduler(
                 extended[NO_TAGS_KEY] = remainder
             tag = soft_pick(extended, counts["tags"], alpha, epsilon)
             if tag != NO_TAGS_KEY:
-                tagged = available(tag_fn(tag, **fn_kwargs))
+                tagged = available(
+                    cached_pool(
+                        (cache_prefix, "tag", tag, tuple(sorted(fn_kwargs.items()))),
+                        lambda: tag_fn(tag, **fn_kwargs),
+                    )
+                )
                 if tagged:
                     return tagged, tag
                 if not allow_content_tag_fallback:
                     return [], tag
                 # Tag has no cards of this content type — fall back to full pool
-            return available(all_fn(**fn_kwargs)), None
-        return available(all_fn(**fn_kwargs)), None
+            return available(
+                cached_pool(
+                    (cache_prefix, "all", tuple(sorted(fn_kwargs.items()))),
+                    lambda: all_fn(**fn_kwargs),
+                )
+            ), None
+        return available(
+            cached_pool(
+                (cache_prefix, "all", tuple(sorted(fn_kwargs.items()))),
+                lambda: all_fn(**fn_kwargs),
+            )
+        ), None
+
+    def all_topics():
+        return cached_pool(
+            ("topics", "all", effective_topics_filter, ready_filter),
+            lambda: card_utils.get_all_topic_cards(
+                topics_filter=effective_topics_filter,
+                ready_filter=ready_filter,
+            ),
+        )
+
+    def all_items():
+        return cached_pool(
+            ("items", "all", effective_items_filter, ready_filter),
+            lambda: card_utils.get_all_item_cards(
+                items_filter=effective_items_filter,
+                ready_filter=ready_filter,
+            ),
+        )
+
+    def tagged_topics(tag):
+        return cached_pool(
+            ("topics", "tag", tag, effective_topics_filter, ready_filter),
+            lambda: card_utils.get_topic_cards_by_tag(
+                tag,
+                topics_filter=effective_topics_filter,
+                ready_filter=ready_filter,
+            ),
+        )
+
+    def tagged_items(tag):
+        return cached_pool(
+            ("items", "tag", tag, effective_items_filter, ready_filter),
+            lambda: card_utils.get_item_cards_by_tag(
+                tag,
+                items_filter=effective_items_filter,
+                ready_filter=ready_filter,
+            ),
+        )
 
     # 2a. PDF pick path — no ready_filter, always eligible
     if card_type == "pdf":
         pdf_cards, pdf_tag = _ct_pick(
+            "pdf",
             card_utils.get_all_pdf_cards,
             card_utils.get_pdf_cards_by_tag,
             {"pdf_filter": pdf_filter},
         )
         if pdf_cards:
-            ordered = priority_ordered(pdf_cards) if mode == "priority" else pdf_cards
-            card = random.choice(ordered) if mode == "random" else ordered[0]
+            card = random.choice(pdf_cards) if mode == "random" else pdf_cards[0]
             doc_type = card_utils.get_document_card_type(card) or "pdf"
             return SchedulerResult(card=card, card_type=doc_type, tag=pdf_tag, mode=mode)
+        if not allow_type_fallback:
+            return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
 
     # 2b. YouTube pick path — no ready_filter, always eligible
     if card_type == "youtube":
         yt_cards, yt_tag = _ct_pick(
+            "youtube",
             card_utils.get_all_youtube_cards,
             card_utils.get_youtube_cards_by_tag,
             {"youtube_filter": youtube_filter},
         )
         if yt_cards:
-            ordered = priority_ordered(yt_cards) if mode == "priority" else yt_cards
-            card = random.choice(ordered) if mode == "random" else ordered[0]
+            card = random.choice(yt_cards) if mode == "random" else yt_cards[0]
             return SchedulerResult(card=card, card_type="youtube", tag=yt_tag, mode=mode)
+        if not allow_type_fallback:
+            return SchedulerResult(card=None, card_type="youtube", tag=yt_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
 
     # 2c. Webpage pick path — no ready_filter, always eligible
     if card_type == "webpage":
         wp_cards, wp_tag = _ct_pick(
+            "webpage",
             card_utils.get_all_webpage_cards,
             card_utils.get_webpage_cards_by_tag,
             {"webpage_filter": webpage_filter},
         )
         if wp_cards:
-            ordered = priority_ordered(wp_cards) if mode == "priority" else wp_cards
-            card = random.choice(ordered) if mode == "random" else ordered[0]
+            card = random.choice(wp_cards) if mode == "random" else wp_cards[0]
             return SchedulerResult(card=card, card_type="webpage", tag=wp_tag, mode=mode)
+        if not allow_type_fallback:
+            return SchedulerResult(card=None, card_type="webpage", tag=wp_tag, mode=mode)
         actual_type = "topics" if topics_rate >= 0.5 else "items"
         card_type = actual_type
 
@@ -178,40 +296,32 @@ def get_card_from_scheduler(
         if tag == NO_TAGS_KEY:
             # "Other" bucket selected — fetch from the general pool (no tag filter).
             if card_type == "topics":
-                cards = available(card_utils.get_all_topic_cards(
-                    topics_filter=effective_topics_filter, ready_filter=ready_filter))
+                cards = available(all_topics())
             else:
-                cards = available(card_utils.get_all_item_cards(
-                    items_filter=effective_items_filter, ready_filter=ready_filter))
-            if not cards:
+                cards = available(all_items())
+            if not cards and allow_type_fallback:
                 actual_type = "items" if card_type == "topics" else "topics"
                 if card_type == "topics":
-                    cards = available(card_utils.get_all_item_cards(
-                        items_filter=effective_items_filter, ready_filter=ready_filter))
+                    cards = available(all_items())
                 else:
-                    cards = available(card_utils.get_all_topic_cards(
-                        topics_filter=effective_topics_filter, ready_filter=ready_filter))
+                    cards = available(all_topics())
             if not cards:
                 return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
         else:
             # Tag-constrained pick.
             # Primary: requested type + tag
             if card_type == "topics":
-                cards = available(card_utils.get_topic_cards_by_tag(
-                    tag, topics_filter=effective_topics_filter, ready_filter=ready_filter))
+                cards = available(tagged_topics(tag))
             else:
-                cards = available(card_utils.get_item_cards_by_tag(
-                    tag, items_filter=effective_items_filter, ready_filter=ready_filter))
+                cards = available(tagged_items(tag))
 
             # Type fallback: try the other type, but STAY within the tag
-            if not cards:
+            if not cards and allow_type_fallback:
                 actual_type = "items" if card_type == "topics" else "topics"
                 if card_type == "topics":
-                    cards = available(card_utils.get_item_cards_by_tag(
-                        tag, items_filter=effective_items_filter, ready_filter=ready_filter))
+                    cards = available(tagged_items(tag))
                 else:
-                    cards = available(card_utils.get_topic_cards_by_tag(
-                        tag, topics_filter=effective_topics_filter, ready_filter=ready_filter))
+                    cards = available(tagged_topics(tag))
 
             # No cards at all for this tag → caller handles it (next tag or Phase 2)
             if not cards:
@@ -220,25 +330,20 @@ def get_card_from_scheduler(
     else:
         # No tag constraint — fetch all cards of the chosen type
         if card_type == "topics":
-            cards = available(card_utils.get_all_topic_cards(
-                topics_filter=effective_topics_filter, ready_filter=ready_filter))
+            cards = available(all_topics())
         else:
-            cards = available(card_utils.get_all_item_cards(
-                items_filter=effective_items_filter, ready_filter=ready_filter))
+            cards = available(all_items())
 
         # Type fallback across all cards
-        if not cards:
+        if not cards and allow_type_fallback:
             actual_type = "items" if card_type == "topics" else "topics"
             if card_type == "topics":
-                cards = available(card_utils.get_all_item_cards(
-                    items_filter=effective_items_filter, ready_filter=ready_filter))
+                cards = available(all_items())
             else:
-                cards = available(card_utils.get_all_topic_cards(
-                    topics_filter=effective_topics_filter, ready_filter=ready_filter))
+                cards = available(all_topics())
 
         if not cards:
             return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
 
-    ordered = priority_ordered(cards) if mode == "priority" else cards
-    card = random.choice(ordered) if mode == "random" else ordered[0]
+    card = random.choice(cards) if mode == "random" else cards[0]
     return SchedulerResult(card=card, card_type=actual_type, tag=actual_tag, mode=mode)

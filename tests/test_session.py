@@ -366,7 +366,9 @@ class TestPrepareFilteredReviewDeck:
             decks=fake_decks,
             sched=fake_sched,
             get_card=lambda cid: cards[cid],
-            update_card=lambda card: updated_cards.append((card.id, card.due)),
+            update_cards=lambda batch, skip_undo_entry=False: updated_cards.append(
+                ([(card.id, card.due) for card in batch], skip_undo_entry)
+            ),
         )
         monkeypatch.setattr(_SESSION_MOD, "mw", types.SimpleNamespace(col=fake_col))
 
@@ -377,7 +379,7 @@ class TestPrepareFilteredReviewDeck:
         )
 
         assert did == filtered_deck_id
-        assert updated_cards == [(101, 0), (103, 1)]
+        assert updated_cards == [([(101, 0), (103, 1)], True)]
         assert cards[102].due == -99998
         assert rebuild_calls == [
             {
@@ -385,7 +387,7 @@ class TestPrepareFilteredReviewDeck:
                 "dues": {101: 999, 102: 999, 103: 999},
                 "terms": [
                     {
-                        "search": "cid:101 OR cid:102 OR cid:103",
+                        "search": "cid:101,102,103",
                         "limit": 3,
                         "order": _SESSION_MOD.DYN_DUE,
                     }
@@ -393,6 +395,48 @@ class TestPrepareFilteredReviewDeck:
             }
         ]
         assert _SESSION_MOD.incremento_session_deck_name("Writing") == "Incremento Session (Writing)"
+
+    def test_prepare_deduplicates_ids_before_building_search_and_order(self, monkeypatch):
+        class _Terms(list):
+            def add(self, **kwargs):
+                self.append(kwargs)
+
+        terms = _Terms()
+        fdu = types.SimpleNamespace(
+            config=types.SimpleNamespace(reschedule=False, search_terms=terms)
+        )
+        cards = {
+            cid: types.SimpleNamespace(id=cid, due=99, did=55)
+            for cid in (101, 102)
+        }
+        updated = []
+        fake_col = types.SimpleNamespace(
+            decks=types.SimpleNamespace(
+                by_name=lambda _name: None,
+                new_filtered=lambda _name: 55,
+                select=lambda _did: None,
+            ),
+            sched=types.SimpleNamespace(
+                get_or_create_filtered_deck=lambda _did: fdu,
+                add_or_update_filtered_deck=lambda _fdu: types.SimpleNamespace(id=55),
+                rebuild_filtered_deck=lambda _did: None,
+            ),
+            get_card=lambda cid: cards[cid],
+            update_cards=lambda batch, skip_undo_entry=False: updated.extend(
+                (card.id, card.due, skip_undo_entry) for card in batch
+            ),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "mw", types.SimpleNamespace(col=fake_col))
+
+        _SESSION_MOD._prepare_filtered_review_deck(
+            [101, "bad", 102, 101, -1],
+            deck_name="Incremento Session",
+            preserve_order=True,
+        )
+
+        assert terms[0]["search"] == "cid:101,102"
+        assert terms[0]["limit"] == 2
+        assert updated == [(101, 0, True), (102, 1, True)]
 
     def test_session_deck_predicate_matches_only_incremento_session_variants(self):
         assert _SESSION_MOD.is_incremento_session_deck_name("Incremento Session") is True

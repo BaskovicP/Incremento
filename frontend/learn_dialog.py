@@ -23,7 +23,12 @@ except ImportError:
 
 try:
     from ..backend import cards as _card_utils
-    from ..backend.scheduler_config import SchedulerConfig, NO_TAGS_KEY, build_ready_filter
+    from ..backend.scheduler_config import (
+        MAX_SESSION_CARD_COUNT,
+        SchedulerConfig,
+        NO_TAGS_KEY,
+        build_ready_filter,
+    )
     from ..backend.scheduler_preview import compute_expected_mix
     from ..backend.session_selection import select_session_cards
     from ..backend.pdf_manager import (
@@ -38,7 +43,12 @@ try:
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
     import cards as _card_utils
-    from scheduler_config import SchedulerConfig, NO_TAGS_KEY, build_ready_filter
+    from scheduler_config import (
+        MAX_SESSION_CARD_COUNT,
+        SchedulerConfig,
+        NO_TAGS_KEY,
+        build_ready_filter,
+    )
     from scheduler_preview import compute_expected_mix
     from session_selection import select_session_cards
     from pdf_manager import (
@@ -1266,7 +1276,7 @@ class SchedulerConfigDialog(QDialog):
         count_row = QHBoxLayout()
         count_row.addWidget(QLabel("Cards per session:"))
         self._count_spin = QSpinBox()
-        self._count_spin.setRange(1, 500)
+        self._count_spin.setRange(1, MAX_SESSION_CARD_COUNT)
         self._count_spin.setValue(self._saved.get("session_card_count", 50))
         count_row.addWidget(self._count_spin)
         count_row.addWidget(_info_icon(
@@ -1417,7 +1427,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(pdf_limit_card)
 
         # ── 5. PDF soft-mix rate ──────────────────────────────────────────────
-        pdf_val = self._saved.get("pdf_slider", 0)
+        pdf_val = self._saved.get("pdf_slider", 100)
         pdf_row = QHBoxLayout()
         self._pdf_left_lbl = QLabel(f"{100 - pdf_val}%")
         self._pdf_left_lbl.setFixedWidth(36)
@@ -3485,7 +3495,7 @@ class SchedulerConfigDialog(QDialog):
         raw = {
             r["tag"]: r["slider"].value()
             for r in self._linked_rows
-            if r["tag"] != NO_TAGS_KEY
+            if r["tag"] != NO_TAGS_KEY and r["slider"].value() > 0
         }
         ct_weights = {
             r["type"]: r["slider"].value() / 100.0
@@ -3737,7 +3747,7 @@ class SchedulerConfigDialog(QDialog):
         self._topics_left_lbl.setText(f"{100 - topics_val}%")
         self._topics_right_lbl.setText(f"{topics_val}%")
 
-        pdf_val = d.get("pdf_slider", 0)
+        pdf_val = d.get("pdf_slider", 100)
         self._pdf_slider.setValue(pdf_val)
         self._pdf_left_lbl.setText(f"{100 - pdf_val}%")
         self._pdf_right_lbl.setText(f"{pdf_val}%")

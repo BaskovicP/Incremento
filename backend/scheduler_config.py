@@ -7,6 +7,63 @@ READY_NEW_CLAUSE = "is:new"
 READY_LEARNING_CLAUSE = "(is:learn is:due)"
 READY_REVIEW_CLAUSE = "(is:review is:due)"
 DEFAULT_DAY_END_TIME = "04:00"
+MAX_SESSION_CARD_COUNT = 9999
+_VALID_SCOPES = {"session", "daily", "lifetime"}
+_VALID_PHASE_IDS = ("content_types", "tags", "type", "mode")
+
+
+def _bounded_number(value, default: float, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except Exception:
+        number = float(default)
+    if number != number:  # NaN
+        number = float(default)
+    return min(float(maximum), max(float(minimum), number))
+
+
+def _bounded_int(value, default: int, minimum: int, maximum: int) -> int:
+    return int(_bounded_number(value, default, minimum, maximum))
+
+
+def _config_bool(value, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "on", "1"}:
+            return True
+        if normalized in {"false", "no", "off", "0", ""}:
+            return False
+    return bool(default)
+
+
+def _normalized_day_end_time(value) -> str:
+    text = str(value or "").strip()
+    try:
+        hour_text, minute_text = text.split(":", 1)
+        hour = int(hour_text)
+        minute = int(minute_text)
+    except Exception:
+        return DEFAULT_DAY_END_TIME
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return DEFAULT_DAY_END_TIME
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _normalized_phase_order(value) -> list[str]:
+    raw = value if isinstance(value, (list, tuple)) else []
+    normalized: list[str] = []
+    for phase_id in raw:
+        phase = str(phase_id or "").strip()
+        if phase in _VALID_PHASE_IDS and phase not in normalized:
+            normalized.append(phase)
+    for phase in _VALID_PHASE_IDS:
+        if phase not in normalized:
+            normalized.append(phase)
+    return normalized
 
 
 def build_ready_filter(
@@ -24,7 +81,7 @@ def build_ready_filter(
     if include_due:
         parts.append(READY_REVIEW_CLAUSE)
     if not parts:
-        return f"{READY_NEW_CLAUSE} -is:suspended"
+        return "cid:0 -is:suspended"
     if len(parts) == 1:
         return f"{parts[0]} -is:suspended"
     return "(" + " OR ".join(parts) + ") -is:suspended"
@@ -86,64 +143,109 @@ def load_scheduler_config() -> SchedulerConfig:
     from aqt import mw
     config = mw.addonManager.getConfig(_ADDON_PKG) or {}
     cfg = _config_from_dialog_dict(config.get("dialog", {}))
-    cfg.priority_lower_is_more_important = bool(
+    cfg.priority_lower_is_more_important = _config_bool(
         config.get(
             "priority_lower_is_more_important",
             cfg.priority_lower_is_more_important,
-        )
+        ),
+        cfg.priority_lower_is_more_important,
     )
     return cfg
 
 
 def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     """Build a SchedulerConfig from the raw ``dialog`` config sub-dict."""
-    session_card_count = int(d.get("session_card_count", 50))
-    topics_rate = 1.0 - d.get("topics_slider", 10) / 100.0
-    random_rate = d.get("random_slider", 99) / 100.0
+    d = d if isinstance(d, dict) else {}
+    session_card_count = _bounded_int(
+        d.get("session_card_count", 50),
+        50,
+        1,
+        MAX_SESSION_CARD_COUNT,
+    )
+    topics_slider = _bounded_number(d.get("topics_slider", 10), 10, 0, 100)
+    random_slider = _bounded_number(d.get("random_slider", 99), 99, 0, 100)
+    topics_rate = 1.0 - topics_slider / 100.0
+    random_rate = random_slider / 100.0
 
-    tag_rows = d.get("tag_rows", [])
-    no_tags_checked = d.get("no_tags_checked", True)
+    raw_tag_rows = d.get("tag_rows")
+    tag_rows = [row for row in raw_tag_rows if isinstance(row, dict)] if isinstance(raw_tag_rows, list) else []
+    no_tags_checked = _config_bool(d.get("no_tags_checked", True), True)
 
     other_rows = [r for r in tag_rows if r.get("tag") == NO_TAGS_KEY]
-    real_rows = [r for r in tag_rows if r.get("tag") != NO_TAGS_KEY]
-    raw = {r["tag"]: r["weight"] for r in real_rows}
+    real_rows = [
+        r
+        for r in tag_rows
+        if str(r.get("tag") or "").strip()
+        and r.get("tag") != NO_TAGS_KEY
+    ]
     # Each slider value is an absolute % of the session (0–100).
     # Do NOT normalise across tags — the remainder goes to "other cards".
-    tag_weights = {tag: v / 100.0 for tag, v in raw.items()}
+    tag_weights = {
+        str(row.get("tag") or "").strip(): weight / 100.0
+        for row in real_rows
+        if (weight := _bounded_number(row.get("weight", 0), 0, 0, 100)) > 0
+    }
     include_rest = no_tags_checked
     if other_rows:
-        include_rest = float(other_rows[0].get("weight", 0) or 0) > 0.0
+        include_rest = _bounded_number(
+            other_rows[0].get("weight", 0), 0, 0, 100
+        ) > 0.0
 
-    priority_order    = d.get("priority_order", ["tags", "type", "mode"])
-    enforce_priority  = d.get("enforce_priority", True)
+    priority_order = d.get("priority_order", ["tags", "type", "mode"])
+    if not isinstance(priority_order, list):
+        priority_order = ["tags", "type", "mode"]
+    enforce_priority = _config_bool(d.get("enforce_priority", True), True)
 
-    scheduler_scope = d.get("scheduler_scope", "session")
-    day_end_time    = d.get("day_end_time", DEFAULT_DAY_END_TIME)
-    topics_filter    = str(d.get("topics_filter", "") or "").strip()
-    items_filter     = str(d.get("items_filter", "") or "").strip()
+    scheduler_scope = str(d.get("scheduler_scope") or "session").strip().lower()
+    if scheduler_scope not in _VALID_SCOPES:
+        scheduler_scope = "session"
+    day_end_time = _normalized_day_end_time(
+        d.get("day_end_time", DEFAULT_DAY_END_TIME)
+    )
+    topics_filter = str(d.get("topics_filter", "") or "").strip()
+    items_filter = str(d.get("items_filter", "") or "").strip()
     # Migrate old deck/tag defaults to the new classifier-based empty filters.
     if topics_filter in {"deck:Topics", "deck:Topics OR tag:Incremento"}:
         topics_filter = ""
     if items_filter in {"-deck:Topics", "-deck:Topics -tag:Incremento"}:
         items_filter = ""
-    include_new      = d.get("include_new",      True)
-    include_learning = d.get("include_learning", True)
-    include_due      = d.get("include_due",      True)
-    preserve_order   = d.get("preserve_order",   True)
-    show_debug       = d.get("show_debug",       False)
-    auto_refill_session = d.get("auto_refill_session", False)
-    pdf_rate         = d.get("pdf_slider",        0) / 100.0
-    priority_lower_is_more_important = d.get("priority_lower_is_more_important", True)
+    include_new = _config_bool(d.get("include_new", True), True)
+    include_learning = _config_bool(d.get("include_learning", True), True)
+    include_due = _config_bool(d.get("include_due", True), True)
+    preserve_order = _config_bool(d.get("preserve_order", True), True)
+    show_debug = _config_bool(d.get("show_debug", False), False)
+    auto_refill_session = _config_bool(d.get("auto_refill_session", False), False)
+    # The UI slider runs from Docs on the left to Other on the right.
+    pdf_slider = _bounded_number(d.get("pdf_slider", 100), 100, 0, 100)
+    pdf_rate = 1.0 - pdf_slider / 100.0
+    priority_lower_is_more_important = _config_bool(
+        d.get("priority_lower_is_more_important", True), True
+    )
 
-    content_type_rows = d.get("content_type_rows", [])
+    raw_content_type_rows = d.get("content_type_rows")
+    content_type_rows = (
+        [row for row in raw_content_type_rows if isinstance(row, dict)]
+        if isinstance(raw_content_type_rows, list)
+        else []
+    )
     content_type_weights = {
-        r["type"]: r["weight"] / 100.0
+        str(r.get("type") or "").strip().lower(): weight / 100.0
         for r in content_type_rows
-        if r.get("enabled") and r.get("weight", 0) > 0
+        if _config_bool(r.get("enabled", False), False)
+        and str(r.get("type") or "").strip().lower()
+        in {"pdf", "youtube", "webpage"}
+        and (weight := _bounded_number(r.get("weight", 0), 0, 0, 100)) > 0
     }
-    allow_content_tag_fallback = bool(d.get("allow_content_tag_fallback", False))
+    allow_content_tag_fallback = _config_bool(
+        d.get("allow_content_tag_fallback", False), False
+    )
     prioritized_tags_first = []
-    for raw_tag in d.get("prioritized_tags_first", []):
+    raw_prioritized_tags = d.get("prioritized_tags_first", [])
+    if isinstance(raw_prioritized_tags, str):
+        raw_prioritized_tags = raw_prioritized_tags.replace(",", "\n").splitlines()
+    elif not isinstance(raw_prioritized_tags, (list, tuple, set)):
+        raw_prioritized_tags = []
+    for raw_tag in raw_prioritized_tags:
         tag = str(raw_tag or "").strip()
         if not tag or tag.casefold() in {t.casefold() for t in prioritized_tags_first}:
             continue
@@ -158,7 +260,9 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         or any("order" in r for r in real_rows)
         or any("order" in r for r in content_type_rows)
     )
-    priority_order_enabled = bool(d.get("priority_order_enabled", False))
+    priority_order_enabled = _config_bool(
+        d.get("priority_order_enabled", False), False
+    )
     priority_order_entries = _normalize_priority_order_entries(
         d.get("priority_order_entries"),
         real_rows=real_rows,
@@ -173,10 +277,10 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
 
     return SchedulerConfig(
         session_card_count=session_card_count,
-        auto_refill_session=bool(auto_refill_session),
+        auto_refill_session=auto_refill_session,
         topics_rate=topics_rate,
         random_rate=random_rate,
-        use_tags=bool(real_rows),
+        use_tags=bool(tag_weights),
         tag_weights=tag_weights,
         include_rest=include_rest,
         scheduler_scope=scheduler_scope,
@@ -198,8 +302,16 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         priority_order_entries=priority_order_entries,
         prioritized_tags_first=prioritized_tags_first,
         prioritized_tags_mode=prioritized_tags_mode,
-        phase_order=d.get("phase_order", ["content_types", "tags", "type", "mode"]),
-        phases_enabled=d.get("phases_enabled", {}),
+        phase_order=_normalized_phase_order(d.get("phase_order")),
+        phases_enabled={
+            str(phase): _config_bool(enabled, True)
+            for phase, enabled in (
+                d.get("phases_enabled", {}).items()
+                if isinstance(d.get("phases_enabled"), dict)
+                else []
+            )
+            if str(phase) in _VALID_PHASE_IDS
+        },
     )
 
 

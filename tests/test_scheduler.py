@@ -45,6 +45,18 @@ class TestSoftPick:
         for _ in range(20):
             assert scheduler.soft_pick({"only": 1.0}, {}) == "only"
 
+    def test_zero_weight_option_is_never_selected(self):
+        with patch("scheduler.random.random", return_value=0.0):
+            for _ in range(20):
+                assert scheduler.soft_pick({"disabled": 0.0, "enabled": 1.0}, {}) == "enabled"
+
+    def test_zero_weight_option_stays_disabled_with_historical_counts(self):
+        with patch("scheduler.random.random", return_value=0.0):
+            assert scheduler.soft_pick(
+                {"topics": 1.0, "items": 0.0},
+                {"topics": 20, "items": 2000},
+            ) == "topics"
+
     def test_higher_weight_selected_more_often(self):
         # With n=0 (empty counts), alpha dominates and all items are equal.
         # Seed counts so n > 0, letting weights drive the distribution.
@@ -467,6 +479,17 @@ class TestForcedDimensions:
         assert result.card == 201
         assert result.card_type == "items"
 
+    def test_forced_topic_does_not_consume_an_item_when_topic_pool_is_empty(self):
+        with patch("scheduler.soft_pick", return_value="priority"):
+            with _mock_card_utils(all_topic=[], all_item=[201]):
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="topics",
+                    use_tags=False,
+                )
+
+        assert result.card is None
+        assert result.card_type == "topics"
+
     def test_force_mode_priority(self):
         """force_mode bypasses soft_pick and pins the mode."""
         with patch("scheduler.soft_pick", side_effect=["items"]) as mock_sp:
@@ -528,6 +551,37 @@ class TestPriorityModeSort:
             with patch("scheduler.soft_pick", side_effect=["items", "priority"]):
                 result = scheduler.get_card_from_scheduler(use_tags=False)
         assert result.card == 301  # due=1, already first
+
+    def test_large_shared_priority_pool_is_sorted_only_once(self):
+        card_ids = list(range(1, 1001))
+        pool_cache = {}
+        excluded = set()
+        get_items = MagicMock(return_value=card_ids)
+
+        with patch.multiple(
+            "scheduler.card_utils",
+            get_all_item_cards=get_items,
+            get_all_topic_cards=MagicMock(return_value=[]),
+            sort_cards_for_priority_mode=MagicMock(
+                side_effect=lambda ids, **_kwargs: list(reversed(ids))
+            ),
+        ) as _unused:
+            sort_cards = scheduler.card_utils.sort_cards_for_priority_mode
+            picked = []
+            for _ in card_ids:
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="items",
+                    force_mode="priority",
+                    use_tags=False,
+                    exclude_ids=excluded,
+                    pool_cache=pool_cache,
+                )
+                picked.append(result.card)
+                excluded.add(result.card)
+
+        assert picked == list(reversed(card_ids))
+        get_items.assert_called_once()
+        sort_cards.assert_called_once()
 
     def test_random_mode_uses_choice_not_first_sorted(self):
         """Random mode calls random.choice, not the sorted first card."""
@@ -634,6 +688,42 @@ class TestPdfRatePaths:
                 )
         assert result.card == 101
         assert result.card_type == "topics"
+
+    def test_forced_pdf_does_not_consume_a_topic_when_pdf_pool_is_empty(self):
+        with patch("scheduler.soft_pick", return_value="priority"):
+            with _mock_card_utils_with_pdf(pdf_cards=[], all_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="pdf",
+                    topics_rate=0.7,
+                    use_tags=False,
+                )
+
+        assert result.card is None
+        assert result.card_type == "pdf"
+
+    def test_shared_pool_cache_avoids_requerying_the_same_document_pool(self):
+        cache = {}
+        get_all_pdf_cards = MagicMock(return_value=[301, 302])
+        with patch("scheduler.soft_pick", return_value="priority"), patch.multiple(
+            "scheduler.card_utils",
+            get_all_pdf_cards=get_all_pdf_cards,
+            get_pdf_cards_by_tag=MagicMock(return_value=[]),
+            get_document_card_type=MagicMock(return_value="pdf"),
+        ):
+            first = scheduler.get_card_from_scheduler(
+                force_card_type="pdf",
+                use_tags=False,
+                pool_cache=cache,
+            )
+            second = scheduler.get_card_from_scheduler(
+                force_card_type="pdf",
+                use_tags=False,
+                exclude_ids={first.card},
+                pool_cache=cache,
+            )
+
+        assert (first.card, second.card) == (301, 302)
+        get_all_pdf_cards.assert_called_once()
 
     def test_pdf_soft_pick_uses_three_way_weights(self):
         """With pdf_rate > 0, soft_pick receives a 3-key weights dict."""

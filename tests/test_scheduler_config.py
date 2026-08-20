@@ -41,9 +41,9 @@ class TestReadyFilter:
         cfg = SchedulerConfig(include_new=True, include_learning=False, include_due=True)
         assert cfg.ready_filter == "(is:new OR (is:review is:due)) -is:suspended"
 
-    def test_all_false_fallback(self):
+    def test_all_false_matches_no_topic_or_item_cards(self):
         cfg = SchedulerConfig(include_new=False, include_learning=False, include_due=False)
-        assert cfg.ready_filter == "is:new -is:suspended"
+        assert cfg.ready_filter == "cid:0 -is:suspended"
 
 
 class TestConfigFromDialogDict:
@@ -129,7 +129,43 @@ class TestConfigFromDialogDict:
 
     def test_pdf_slider_sets_rate(self):
         cfg = _config_from_dialog_dict({"pdf_slider": 25})
-        assert cfg.pdf_rate == pytest.approx(0.25)
+        assert cfg.pdf_rate == pytest.approx(0.75)
+
+    def test_saved_twenty_percent_docs_remains_twenty_percent(self):
+        cfg = _config_from_dialog_dict({"pdf_slider": 80})
+        assert cfg.pdf_rate == pytest.approx(0.20)
+
+    def test_zero_weight_tag_rows_are_inactive(self):
+        cfg = _config_from_dialog_dict(
+            {"tag_rows": [{"tag": "unused", "weight": 0}]}
+        )
+        assert cfg.use_tags is False
+        assert cfg.tag_weights == {}
+
+    def test_malformed_values_fall_back_or_are_bounded(self):
+        cfg = _config_from_dialog_dict(
+            {
+                "session_card_count": "999999999",
+                "topics_slider": "bad",
+                "random_slider": -10,
+                "pdf_slider": 120,
+                "scheduler_scope": "unknown",
+                "day_end_time": "29:87",
+                "phase_order": ["mode", "mode", "bad"],
+                "phases_enabled": {"mode": "false", "bad": True},
+                "tag_rows": [None, {"tag": "health", "weight": 500}],
+            }
+        )
+
+        assert cfg.session_card_count == _mod.MAX_SESSION_CARD_COUNT
+        assert cfg.topics_rate == pytest.approx(0.9)
+        assert cfg.random_rate == pytest.approx(0.0)
+        assert cfg.pdf_rate == pytest.approx(0.0)
+        assert cfg.scheduler_scope == "session"
+        assert cfg.day_end_time == "04:00"
+        assert cfg.phase_order == ["mode", "content_types", "tags", "type"]
+        assert cfg.phases_enabled == {"mode": False}
+        assert cfg.tag_weights == {"health": pytest.approx(1.0)}
 
     def test_migrate_old_topics_filter(self):
         cfg = _config_from_dialog_dict({"topics_filter": "deck:Topics"})

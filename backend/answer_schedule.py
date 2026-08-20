@@ -54,11 +54,11 @@ def new_answer_revlog_id(
     *,
     collection=None,
 ) -> int:
-    """Return the new answer revlog, rejecting a stale pre-answer row."""
+    """Return the new answer revlog, rejecting stale or older history rows."""
     succeeded, latest = answer_revlog_snapshot(card_id, collection=collection)
     if not succeeded:
         return 0
-    if latest <= 0 or latest == max(0, int(previous_revlog_id or 0)):
+    if latest <= max(0, int(previous_revlog_id or 0)):
         return 0
     return latest
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 from calendar import monthrange
 
 from aqt import mw
@@ -230,13 +230,26 @@ def add_calendar_months(start: date, months: int) -> date:
     return date(year, month, day)
 
 
+def anki_logical_today(*, collection=None) -> date:
+    """Return the calendar date at the start of Anki's current logical day."""
+    try:
+        col = collection or mw.col
+        next_day_at = int(col.sched.day_cutoff)
+        if next_day_at > 0:
+            next_rollover_date = datetime.fromtimestamp(next_day_at).date()
+            return next_rollover_date - timedelta(days=1)
+    except Exception:
+        pass
+    return date.today()
+
+
 def rule_days_from_today(
     interval_value: int,
     interval_unit: str,
     *,
     today: date | None = None,
 ) -> int:
-    today = today or date.today()
+    today = today or anki_logical_today()
     interval_value = normalize_custom_schedule_interval_value(interval_value)
     interval_unit = normalize_custom_schedule_unit(interval_unit)
     if interval_unit == UNIT_DAYS:

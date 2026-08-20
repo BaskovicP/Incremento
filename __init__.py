@@ -201,6 +201,7 @@ from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
+from .frontend.reviewer_focus import schedule_reviewer_focus_restore
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
 from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
@@ -2510,6 +2511,19 @@ gui_hooks.reviewer_did_show_question.append(_sync_reviewer_priority_badge)
 gui_hooks.reviewer_did_show_answer.append(_sync_reviewer_priority_badge)
 gui_hooks.reviewer_did_show_question.append(_sync_reviewer_source_cover)
 gui_hooks.reviewer_did_show_answer.append(_sync_reviewer_source_cover)
+
+
+def _restore_reviewer_focus_after_incremento_hooks(_card) -> None:
+    schedule_reviewer_focus_restore(
+        mw,
+        timer=QTimer,
+        application=QApplication.instance(),
+    )
+
+
+gui_hooks.reviewer_did_show_question.append(
+    _restore_reviewer_focus_after_incremento_hooks
+)
 
 
 def _check_deps_first_run() -> None:

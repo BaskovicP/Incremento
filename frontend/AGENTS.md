@@ -100,12 +100,14 @@ npm --prefix frontend run build
 - If you change reviewer button behavior, verify both scheduling logic and injected web styling.
 - Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority for all cards and topic A-factor, saved browser time, and custom schedule when available. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
 - Custom schedule text must only render when a real schedule exists for the current card; stale default text is a regression.
+- Reader docks can steal keyboard focus while their question-shown hooks open or raise. Keep the final deferred `reviewer_did_show_question` focus recovery in `frontend/reviewer_focus.py` so Anki's Space, `1`–`4`, and editor shortcuts continue on every card. Never reclaim focus from a modal, popup, or separate active Anki window.
 
 ## Session Builder UI
 
 - Main file: `frontend/learn_dialog.py`.
 - The dialog supports named presets, optional live preview, and branch-scoped study launches from the knowledge tree.
 - The **Card types** checkboxes control whether `New`, `Learning`, and `Due / Review` cards are eligible for session selection at all.
+- **Cards per session** and backend normalization share the inclusive 1–9,999 range. The Docs/Other slider stores 100 at its fully-right 0%-Docs endpoint; keep its UI direction and backend conversion aligned.
 - The **Advanced** checkbox `Auto-refill session deck to keep this many pending cards` uses **Cards per session** as a live pending-window target after the session starts.
 - PDF, EPUB, video, and web reading cards have additional scheduler flows layered on top of Anki state; when changing eligibility wording, verify the tooltip text still matches actual selection behavior.
 - Keep the checkbox label, tooltip, saved profile key `auto_refill_session`, and backend semantics in `backend/session.py` consistent. If the behavior changes, update `MANUAL.md` and session-related tests too.
