@@ -20,6 +20,7 @@ A-factor is clamped to [1.1, 100.0]. Default: 3.5.
 
 import math
 import os
+from dataclasses import dataclass
 from typing import Literal
 
 from aqt import mw
@@ -108,10 +109,30 @@ _TOPIC_TYPE_NOTE_TYPES = {
 }
 
 
-def _topics_deck_name() -> str:
+@dataclass(frozen=True)
+class TopicCardClassifier:
+    """Resolved topic/item rules that are safe to reuse for a whole scan."""
+
+    enabled_note_type_names: frozenset[str]
+    topic_tags: frozenset[str]
+    item_tags: frozenset[str]
+    topics_deck_name: str
+
+    @property
+    def cache_key(self) -> tuple:
+        return (
+            tuple(sorted(self.enabled_note_type_names)),
+            tuple(sorted(self.topic_tags)),
+            tuple(sorted(self.item_tags)),
+            self.topics_deck_name,
+        )
+
+
+def _topics_deck_name(scheduler_config=None) -> str:
     """Parse deck name from the configured topics_filter (e.g. 'deck:Topics')."""
     try:
-        tf = (load_scheduler_config().topics_filter or "deck:Topics").strip()
+        resolved = scheduler_config if scheduler_config is not None else load_scheduler_config()
+        tf = (getattr(resolved, "topics_filter", "") or "deck:Topics").strip()
         if tf.lower().startswith("deck:"):
             return tf[5:].strip('"').strip("'")
     except Exception:
@@ -257,6 +278,35 @@ def configured_effective_item_tags(config: dict | None = None) -> list[str]:
     return configured_add_card_item_tags(config)
 
 
+def resolve_topic_card_classifier(
+    config: dict | None = None,
+    *,
+    scheduler_config=None,
+) -> TopicCardClassifier:
+    """Resolve config-backed topic rules once instead of once per candidate card."""
+    resolved_config = _resolved_config(config)
+    enabled_types = configured_topic_card_types(resolved_config)
+    enabled_note_type_names: set[str] = set()
+    for key, enabled in enabled_types.items():
+        if enabled:
+            enabled_note_type_names.update(_TOPIC_TYPE_NOTE_TYPES.get(key, set()))
+
+    return TopicCardClassifier(
+        enabled_note_type_names=frozenset(enabled_note_type_names),
+        topic_tags=frozenset(
+            str(tag or "").strip().casefold()
+            for tag in configured_effective_topic_tags(resolved_config)
+            if str(tag or "").strip()
+        ),
+        item_tags=frozenset(
+            str(tag or "").strip().casefold()
+            for tag in configured_effective_item_tags(resolved_config)
+            if str(tag or "").strip()
+        ),
+        topics_deck_name=_topics_deck_name(scheduler_config),
+    )
+
+
 def topic_choice_for_button(button_ease: int) -> TopicChoice:
     try:
         value = int(button_ease)
@@ -355,15 +405,21 @@ def consume_handled_topic_answer(card_id: int) -> bool:
     return True
 
 
-def _card_in_topics_deck(card) -> bool:
+def _card_in_topics_deck(
+    card,
+    *,
+    col=None,
+    topics_deck_name: str | None = None,
+) -> bool:
     """Return True if *card* lives in the configured Topics deck."""
     try:
+        collection = col if col is not None else mw.col
         did = card.odid if card.odid else card.did
-        deck = mw.col.decks.get(did)
+        deck = collection.decks.get(did)
         if not deck:
             return False
         name = deck["name"]
-        target = _topics_deck_name()
+        target = str(topics_deck_name or _topics_deck_name()).strip() or "Topics"
         return name == target or name.startswith(target + "::")
     except Exception:
         return False
@@ -397,12 +453,34 @@ def _card_tags(card) -> set[str]:
         note = card.note()
     except Exception:
         return set()
+    return _normalized_note_tags(note)
 
+
+def _note_type_name(note) -> str:
+    if note is None:
+        return ""
     try:
-        raw_tags = getattr(note, "tags", None) or []
+        note_type = note.note_type()
+        if isinstance(note_type, dict):
+            return str(note_type.get("name") or "").strip()
+    except Exception:
+        pass
+    try:
+        model = getattr(note, "_model", None)
+        if isinstance(model, dict):
+            return str(model.get("name") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _normalized_note_tags(note) -> set[str]:
+    if note is None:
+        return set()
+    try:
         return {
-            str(tag or "").strip().lower()
-            for tag in raw_tags
+            str(tag or "").strip().casefold()
+            for tag in (getattr(note, "tags", None) or [])
             if str(tag or "").strip()
         }
     except Exception:
@@ -439,20 +517,32 @@ def _card_matches_item_tags(card, item_tags: list[str]) -> bool:
     return bool(card_tags & wanted)
 
 
-def is_topic_card(card) -> bool:
+def is_topic_card(
+    card,
+    *,
+    classifier: TopicCardClassifier | None = None,
+    col=None,
+) -> bool:
     """Return True if *card* should use topic-card A-factor scheduling."""
     if card is None:
         return False
     try:
-        enabled_types = configured_topic_card_types()
-        topic_tags = configured_effective_topic_tags()
-        item_tags = configured_effective_item_tags()
-        if _card_matches_item_tags(card, item_tags):
+        resolved = classifier or resolve_topic_card_classifier()
+        try:
+            note = card.note()
+        except Exception:
+            note = None
+        card_tags = _normalized_note_tags(note)
+        if card_tags & resolved.item_tags:
             return False
         return (
-            _card_matches_enabled_type(card, enabled_types)
-            or _card_matches_topic_tags(card, topic_tags)
-            or _card_in_topics_deck(card)
+            _note_type_name(note) in resolved.enabled_note_type_names
+            or bool(card_tags & resolved.topic_tags)
+            or _card_in_topics_deck(
+                card,
+                col=col,
+                topics_deck_name=resolved.topics_deck_name,
+            )
         )
     except Exception:
         return False

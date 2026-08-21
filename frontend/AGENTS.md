@@ -109,6 +109,7 @@ npm --prefix frontend run build
 - The **Card types** checkboxes control whether `New`, `Learning`, and `Due / Review` cards are eligible for session selection at all.
 - **Cards per session** and backend normalization share the inclusive 1–9,999 range. The Docs/Other slider stores 100 at its fully-right 0%-Docs endpoint; keep its UI direction and backend conversion aligned.
 - The **Advanced** checkbox `Auto-refill session deck to keep this many pending cards` uses **Cards per session** as a live pending-window target after the session starts.
+- Starting a session must not synchronously recount/classify cards in `accept()`. Backend session construction and filtered-deck rebuilding run as a background collection operation; an empty result is reported after that operation completes.
 - PDF, EPUB, video, and web reading cards have additional scheduler flows layered on top of Anki state; when changing eligibility wording, verify the tooltip text still matches actual selection behavior.
 - Keep the checkbox label, tooltip, saved profile key `auto_refill_session`, and backend semantics in `backend/session.py` consistent. If the behavior changes, update `MANUAL.md` and session-related tests too.
 

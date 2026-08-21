@@ -103,9 +103,10 @@ def _record_selected_card(
     selected_ids.append(card_id)
 
 
-def _resolved_document_type(card_id: int, fallback: str = "pdf") -> str:
+def _resolved_document_type(card_id: int, fallback: str = "pdf", *, col=None) -> str:
     try:
-        return card_utils.get_document_card_type(int(card_id)) or fallback
+        kwargs = {"col": col} if col is not None else {}
+        return card_utils.get_document_card_type(int(card_id), **kwargs) or fallback
     except Exception:
         return fallback
 
@@ -119,18 +120,25 @@ def _collect_tag_priority_candidates(
     pdf_filter: str,
     youtube_filter: str,
     webpage_filter: str,
+    col=None,
+    topic_classifier=None,
 ) -> dict[int, tuple[str, str | None]]:
     candidates: dict[int, tuple[str, str | None]] = {}
+    collection_kwargs = {"col": col} if col is not None else {}
+    classified_kwargs = dict(collection_kwargs)
+    if topic_classifier is not None:
+        classified_kwargs["topic_classifier"] = topic_classifier
     pool_ids = [
-        ("pdf", card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter)),
-        ("youtube", card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter)),
-        ("webpage", card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter)),
+        ("pdf", card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter, **collection_kwargs)),
+        ("youtube", card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter, **collection_kwargs)),
+        ("webpage", card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter, **collection_kwargs)),
         (
             "topics",
             card_utils.get_topic_cards_by_tag(
                 tag,
                 topics_filter=topics_filter,
                 ready_filter=cfg.ready_filter,
+                **classified_kwargs,
             ),
         ),
         (
@@ -139,6 +147,7 @@ def _collect_tag_priority_candidates(
                 tag,
                 items_filter=items_filter,
                 ready_filter=cfg.ready_filter,
+                **classified_kwargs,
             ),
         ),
     ]
@@ -151,7 +160,7 @@ def _collect_tag_priority_candidates(
             if cid <= 0 or cid in candidates:
                 continue
             resolved_type = (
-                _resolved_document_type(cid) if card_type == "pdf" else card_type
+                _resolved_document_type(cid, col=col) if card_type == "pdf" else card_type
             )
             candidates[cid] = (resolved_type, tag)
     return candidates
@@ -164,19 +173,21 @@ def _collect_content_type_priority_candidates(
     pdf_filter: str,
     youtube_filter: str,
     webpage_filter: str,
+    col=None,
 ) -> dict[int, tuple[str, str | None]]:
+    collection_kwargs = {"col": col} if col is not None else {}
     source_by_type = {
         "pdf": (
-            lambda: card_utils.get_all_pdf_cards(pdf_filter=pdf_filter),
-            lambda tag: card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter),
+            lambda: card_utils.get_all_pdf_cards(pdf_filter=pdf_filter, **collection_kwargs),
+            lambda tag: card_utils.get_pdf_cards_by_tag(tag, pdf_filter=pdf_filter, **collection_kwargs),
         ),
         "youtube": (
-            lambda: card_utils.get_all_youtube_cards(youtube_filter=youtube_filter),
-            lambda tag: card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter),
+            lambda: card_utils.get_all_youtube_cards(youtube_filter=youtube_filter, **collection_kwargs),
+            lambda tag: card_utils.get_youtube_cards_by_tag(tag, youtube_filter=youtube_filter, **collection_kwargs),
         ),
         "webpage": (
-            lambda: card_utils.get_all_webpage_cards(webpage_filter=webpage_filter),
-            lambda tag: card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter),
+            lambda: card_utils.get_all_webpage_cards(webpage_filter=webpage_filter, **collection_kwargs),
+            lambda tag: card_utils.get_webpage_cards_by_tag(tag, webpage_filter=webpage_filter, **collection_kwargs),
         ),
     }
     if content_type not in source_by_type:
@@ -207,7 +218,7 @@ def _collect_content_type_priority_candidates(
             if cid <= 0 or cid in candidates:
                 continue
             resolved_type = (
-                _resolved_document_type(cid) if content_type == "pdf" else content_type
+                _resolved_document_type(cid, col=col) if content_type == "pdf" else content_type
             )
             candidates[cid] = (resolved_type, tag)
 
@@ -406,10 +417,16 @@ class SessionPicker:
         *,
         branch_scope: dict | None = None,
         snapshot: SessionPickerSnapshot | dict | None = None,
+        col=None,
+        topic_classifier=None,
+        profile: str | None = None,
     ) -> None:
         card_utils.clear_topic_item_cache()
         self.cfg = cfg
         self.addon_dir = addon_dir
+        self.col = col
+        self.topic_classifier = topic_classifier
+        self.profile = profile
         self.branch_scope = _normalize_branch_scope(branch_scope)
         self._branch_scope_requested = branch_scope is not None
         self._branch_scope_empty = bool(
@@ -417,7 +434,8 @@ class SessionPicker:
             and (self.branch_scope is None or not self.branch_scope.get("card_ids"))
         )
 
-        self.stats = StatsManager(addon_dir, _active_profile(), day_end_time=cfg.day_end_time)
+        resolved_profile = profile if profile is not None else _active_profile()
+        self.stats = StatsManager(addon_dir, resolved_profile, day_end_time=cfg.day_end_time)
         self.scheduler_counts = copy.deepcopy(self.stats.counts_for(cfg.scheduler_scope))
         self.session_counts = self.stats.session
         self.selected_ids: list[int] = []
@@ -535,7 +553,11 @@ class SessionPicker:
         # cached priority cursor has already advanced.  Rewind only cursors;
         # the immutable sorted order remains valid and avoids another DB sort.
         for key in list(self._scheduler_pool_cache):
-            if isinstance(key, tuple) and key and key[0] == "scheduler_priority_cursor":
+            if (
+                isinstance(key, tuple)
+                and key
+                and key[0] in {"scheduler_priority_cursor", "scheduler_random_cursor"}
+            ):
                 self._scheduler_pool_cache.pop(key, None)
 
     def _pick(
@@ -572,6 +594,9 @@ class SessionPicker:
             allow_content_tag_fallback=bool(getattr(self.cfg, "allow_content_tag_fallback", False)),
             include_rest=bool(getattr(self.cfg, "include_rest", True)),
             pool_cache=self._scheduler_pool_cache,
+            col=self.col,
+            topic_classifier=self.topic_classifier,
+            profile=self.profile,
         )
         if result.card is None:
             return False
@@ -627,6 +652,8 @@ class SessionPicker:
                         pdf_filter=self.pdf_filter,
                         youtube_filter=self.youtube_filter,
                         webpage_filter=self.webpage_filter,
+                        col=self.col,
+                        topic_classifier=self.topic_classifier,
                     )
                 else:
                     entry_candidates = _collect_content_type_priority_candidates(
@@ -635,6 +662,7 @@ class SessionPicker:
                         pdf_filter=self.pdf_filter,
                         youtube_filter=self.youtube_filter,
                         webpage_filter=self.webpage_filter,
+                        col=self.col,
                     )
 
                 for card_id, meta in entry_candidates.items():
@@ -647,10 +675,16 @@ class SessionPicker:
             if not quota_targets:
                 continue
 
+            sort_kwargs = {
+                "addon_dir": self.addon_dir,
+                "lower_is_more_important": self.cfg.priority_lower_is_more_important,
+            }
+            if self.col is not None:
+                sort_kwargs["col"] = self.col
+            if self.profile is not None:
+                sort_kwargs["profile"] = self.profile
             ordered_tier_ids = card_utils.sort_cards_for_priority_mode(
-                list(tier_candidates.keys()),
-                addon_dir=self.addon_dir,
-                lower_is_more_important=self.cfg.priority_lower_is_more_important,
+                list(tier_candidates.keys()), **sort_kwargs
             )
             for card_id in ordered_tier_ids:
                 if len(self.selected_ids) >= total_target_count:
@@ -868,8 +902,18 @@ def select_session_cards(
     addon_dir: str,
     *,
     branch_scope: dict | None = None,
+    col=None,
+    topic_classifier=None,
+    profile: str | None = None,
 ) -> SessionSelectionResult:
     """Run the scheduler pick loop and return selected card IDs + pick metadata."""
-    picker = SessionPicker(cfg, addon_dir, branch_scope=branch_scope)
+    picker = SessionPicker(
+        cfg,
+        addon_dir,
+        branch_scope=branch_scope,
+        col=col,
+        topic_classifier=topic_classifier,
+        profile=profile,
+    )
     picker.pick_until(cfg.session_card_count)
     return picker.result()

@@ -230,6 +230,30 @@ class TestGetAllItemCards:
             result = cards.get_all_item_cards()
         assert result == []
 
+    def test_topic_and_item_results_share_one_classification_scan(self):
+        card_map = {1: object(), 2: object(), 3: object()}
+        classifier = MagicMock()
+        classifier.cache_key = ("stable-rules",)
+        with patch("cards.mw") as mock_mw, patch(
+            "cards.resolve_topic_card_classifier", return_value=classifier
+        ) as resolve_classifier, patch(
+            "cards.is_topic_card",
+            side_effect=lambda card, **_kwargs: card in {card_map[1], card_map[3]},
+        ) as classify:
+            mock_mw.col.find_cards.return_value = [3, 2, 1]
+            mock_mw.col.db.all.return_value = [(1, 1), (2, 2), (3, 3)]
+            mock_mw.col.get_card.side_effect = lambda cid: card_map[cid]
+            cards.clear_topic_item_cache()
+
+            topics = cards.get_all_topic_cards(ready_filter="is:due")
+            items = cards.get_all_item_cards(ready_filter="is:due")
+
+        assert topics == [1, 3]
+        assert items == [2]
+        assert mock_mw.col.find_cards.call_count == 1
+        assert classify.call_count == 3
+        assert resolve_classifier.call_count == 2
+
 
 # ---------------------------------------------------------------------------
 # get_topic_cards_by_tag / get_item_cards_by_tag

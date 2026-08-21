@@ -792,9 +792,20 @@ class TestIncrementoSessionAutoRefill:
         assert result == {"live_queue_ids": live_queue, "new_ids": [35]}
         assert rebuilt == [("Incremento Session", [701, 702, 35], True)]
 
+    def test_huge_requested_window_does_not_request_a_huge_live_queue(self):
+        state = self._make_state(selected_ids=list(range(1, 41)), window_size=9999)
+
+        assert _SESSION_MOD._live_queue_fetch_limit(state) == 120
+
+    def test_long_running_refill_history_does_not_grow_queue_reads(self):
+        state = self._make_state(selected_ids=list(range(1, 1001)), window_size=50)
+
+        assert _SESSION_MOD._live_queue_fetch_limit(state) == 150
+
     def test_deferred_refill_runs_after_answer_transition(self, monkeypatch):
         callbacks = []
         calls = []
+        operations = []
         state = self._make_state(window_size=30)
 
         monkeypatch.setattr(
@@ -805,7 +816,13 @@ class TestIncrementoSessionAutoRefill:
         monkeypatch.setattr(
             _SESSION_MOD,
             "_maybe_auto_refill_active_session",
-            lambda _state: calls.append(_state) or {"live_queue_ids": [1, 2], "new_ids": [3]},
+            lambda _state, **kwargs: calls.append((_state, kwargs))
+            or types.SimpleNamespace(changes=object(), live_queue_ids=[1, 2], new_ids=[3]),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
         )
 
         _SESSION_MOD._schedule_deferred_auto_refill(state, reason="test")
@@ -813,8 +830,13 @@ class TestIncrementoSessionAutoRefill:
         assert state.refill_retry_pending is True
         assert len(callbacks) == 1
         callbacks[0][1]()
+        assert state.refill_retry_pending is True
+        assert len(operations) == 1
+        fake_col = object()
+        result = operations[0]["op"](fake_col)
+        assert calls == [(state, {"col": fake_col, "return_result": True})]
+        operations[0]["success"](result)
         assert state.refill_retry_pending is False
-        assert calls == [state]
 
     def test_deferred_refill_is_not_queued_twice(self, monkeypatch):
         callbacks = []
@@ -831,7 +853,66 @@ class TestIncrementoSessionAutoRefill:
 
         assert len(callbacks) == 1
 
-    def test_answer_recording_runs_before_live_queue_read(self, monkeypatch):
+    def test_deferred_refill_failure_releases_pending_guard(self, monkeypatch):
+        callbacks = []
+        operations = []
+        state = self._make_state(window_size=30)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda _ms, callback: callbacks.append(callback)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+
+        _SESSION_MOD._schedule_deferred_auto_refill(state, reason="test-failure")
+        callbacks[0]()
+        assert state.refill_retry_pending is True
+
+        operations[0]["failure"](RuntimeError("boom"))
+
+        assert state.refill_retry_pending is False
+
+    def test_reviewer_advance_waits_until_refill_finishes(
+        self, monkeypatch
+    ):
+        callbacks = []
+        next_calls = []
+
+        class _Reviewer:
+            def nextCard(self):
+                next_calls.append("next")
+
+        reviewer = _Reviewer()
+        state = self._make_state(selected_ids=[1], window_size=1)
+        state.reviewed_ids = {1}
+        state.refill_retry_pending = True
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(
+                singleShot=lambda ms, callback: callbacks.append((ms, callback))
+            ),
+        )
+
+        assert _SESSION_MOD._defer_next_card_until_refill_finishes(state, reviewer)
+
+        reviewer.nextCard()
+        assert next_calls == []
+        delay, wait_callback = callbacks.pop(0)
+        assert delay == 0
+        wait_callback()
+        assert callbacks[-1][0] == 25
+        assert next_calls == []
+
+        state.refill_retry_pending = False
+        callbacks[-1][1]()
+        assert next_calls == ["next"]
+
+    def test_answer_recording_does_not_read_live_queue_on_ui_thread(self, monkeypatch):
         calls = []
         stats = MagicMock()
         stats.session_time = {"type": {}, "tags": {}}
@@ -858,7 +939,7 @@ class TestIncrementoSessionAutoRefill:
             card=types.SimpleNamespace(id=1),
         )
 
-        assert calls == ["record", "session_count", "live_queue"]
+        assert calls == ["record", "session_count"]
 
     def test_cleanup_prefers_live_queue_order(self, monkeypatch):
         rebuilt = []
@@ -1025,7 +1106,7 @@ class TestIncrementoSessionAutoRefill:
         assert state.selected_ids == [1, 2, 3]
         assert state.picked_meta == {1: {"card_type": "topics", "tag": None, "mode": "random"}}
 
-    def test_answer_recording_does_not_swallow_refill_errors(self, monkeypatch):
+    def test_answer_recording_is_isolated_from_refill_failures(self, monkeypatch):
         stats = MagicMock()
         stats.session_time = {"type": {}, "tags": {}}
         picker = types.SimpleNamespace(selected_ids=[1], picked_meta={1: {"card_type": "topics", "tag": None, "mode": "random"}})
@@ -1040,18 +1121,113 @@ class TestIncrementoSessionAutoRefill:
             lambda _state: (_ for _ in ()).throw(RuntimeError("refill failed")),
         )
 
-        try:
-            _SESSION_MOD._record_incremento_answer(
-                state,
-                reviewer=types.SimpleNamespace(),
-                card=types.SimpleNamespace(id=1),
-            )
-            assert False, "Expected refill failure to propagate"
-        except RuntimeError as exc:
-            assert str(exc) == "refill failed"
+        _SESSION_MOD._record_incremento_answer(
+            state,
+            reviewer=types.SimpleNamespace(),
+            card=types.SimpleNamespace(id=1),
+        )
 
         assert stats.record.call_count == 1
         assert 1 in state.reviewed_ids
+
+
+class TestBackgroundSessionStartup:
+    def test_selection_and_filtered_deck_build_start_in_collection_operation(
+        self, monkeypatch
+    ):
+        operations = []
+        picker_events = []
+        activation = []
+        cfg = types.SimpleNamespace(session_card_count=500, preserve_order=True)
+
+        class _Dialog:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def exec(self):
+                return True
+
+            def save_config(self):
+                pass
+
+            def to_config(self):
+                return cfg
+
+            def get_preview_override(self):
+                return None
+
+            def selected_dialog_profile_name(self):
+                return None
+
+        class _Picker:
+            def __init__(self, *_args, **kwargs):
+                picker_events.append(("init", kwargs))
+                self.selected_ids = []
+                self.picked_meta = {}
+                self.stats = types.SimpleNamespace(session_time={"type": {}, "tags": {}})
+
+            def pick_until(self, target):
+                picker_events.append(("pick", target))
+                self.selected_ids = [101, 102]
+                self.picked_meta = {
+                    101: {"card_type": "topics", "tag": None, "mode": "random"},
+                    102: {"card_type": "items", "tag": None, "mode": "priority"},
+                }
+
+        fake_mw = types.SimpleNamespace(
+            addonManager=types.SimpleNamespace(getConfig=lambda _pkg: {}),
+        )
+        classifier = object()
+        monkeypatch.setattr(_SESSION_MOD, "mw", fake_mw)
+        monkeypatch.setattr(_SESSION_MOD, "SchedulerConfigDialog", _Dialog)
+        monkeypatch.setattr(_SESSION_MOD, "SessionPicker", _Picker)
+        monkeypatch.setattr(_SESSION_MOD, "release_expired_timed_postpones", lambda: None)
+        monkeypatch.setattr(_SESSION_MOD, "_active_profile", lambda: "Profile")
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "resolve_topic_card_classifier",
+            lambda *_args, **_kwargs: classifier,
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_prepare_filtered_review_deck",
+            lambda ids, **kwargs: _SESSION_MOD._FilteredDeckBuildResult(
+                deck_id=77,
+                changes=(ids, kwargs),
+            ),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_activate_incremento_session",
+            lambda result, **kwargs: activation.append((result, kwargs)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+        )
+
+        _SESSION_MOD.learnFunction()
+
+        assert len(operations) == 1
+        assert picker_events == []
+        fake_col = object()
+        result = operations[0]["op"](fake_col)
+        assert picker_events[0][0] == "init"
+        assert picker_events[0][1]["col"] is fake_col
+        assert picker_events[0][1]["topic_classifier"] is classifier
+        assert picker_events[1] == ("pick", 500)
+        assert result.selected_ids == [101, 102]
+        assert result.changes[1]["col"] is fake_col
+        assert result.changes[1]["return_result"] is True
+
+        operations[0]["success"](result)
+        assert activation[0][0] is result
 
 
 class TestReviewTimeTrackerIncrementoSessions:

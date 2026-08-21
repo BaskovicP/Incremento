@@ -32,8 +32,9 @@ except Exception:
 
 from .scheduler import NO_TAGS_KEY
 from .statistics import StatsManager, _empty, _empty_time
-from .session_selection import SessionPicker, select_session_cards
+from .session_selection import SessionPicker
 from .paths import get_active_profile as _active_profile
+from .topic_scheduler import resolve_topic_card_classifier
 from .topic_postpone import release_expired_timed_postpones
 try:
     from ..frontend.learn_dialog import SchedulerConfigDialog
@@ -77,6 +78,72 @@ class _ActiveIncrementoSessionState:
     auto_refill_enabled: bool = False
     session_closed: bool = False
     refill_retry_pending: bool = False
+
+
+@dataclass
+class _FilteredDeckBuildResult:
+    deck_id: int | None
+    changes: object
+
+
+@dataclass
+class _SessionBuildOperationResult:
+    changes: object
+    picker: SessionPicker
+    stats: StatsManager
+    selected_ids: list[int]
+    picked_meta: dict[int, dict]
+    session_time_snapshot: dict
+    deck_id: int | None
+
+
+@dataclass
+class _RefillOperationResult:
+    changes: object
+    live_queue_ids: list[int]
+    new_ids: list[int]
+
+
+def _empty_op_changes():
+    from anki.collection import OpChanges
+
+    return OpChanges()
+
+
+def _merge_op_changes(target, *operation_results) -> None:
+    for result in operation_results:
+        if result is None:
+            continue
+        changes = getattr(result, "changes", result)
+        if changes is None:
+            continue
+        try:
+            target.MergeFrom(changes)
+        except (TypeError, ValueError):
+            # Compatibility with older/mocked Anki APIs that do not expose
+            # protobuf operation changes. The actual mutation still succeeds.
+            continue
+
+
+def _run_collection_operation(
+    *,
+    parent,
+    op,
+    success,
+    failure=None,
+    initiator=None,
+) -> None:
+    """Run a collection mutation without blocking Qt's main event loop."""
+    from aqt.operations import CollectionOp
+
+    operation = CollectionOp(parent, op).success(success)
+    if failure is not None:
+        operation = operation.failure(failure)
+    operation.run_in_background(initiator=initiator)
+
+
+def _optional_col_kwargs(col) -> dict:
+    return {"col": col} if col is not None else {}
 
 
 def incremento_session_deck_name(dialog_profile_name: str | None = None) -> str:
@@ -126,7 +193,11 @@ def _prepare_filtered_review_deck(
     deck_name: str,
     preserve_order: bool,
     select_deck: bool = True,
-) -> int:
+    col=None,
+    return_result: bool = False,
+) -> int | _FilteredDeckBuildResult:
+    collection = col if col is not None else mw.col
+    changes = _empty_op_changes() if return_result else None
     normalized_ids: list[int] = []
     seen: set[int] = set()
     for raw in selected_ids or []:
@@ -146,16 +217,18 @@ def _prepare_filtered_review_deck(
     # sessions (for example a user-configured 9,999-card catch-up session).
     search = "cid:" + ",".join(str(cid) for cid in normalized_ids)
 
-    existing = mw.col.decks.by_name(deck_name)
+    existing = collection.decks.by_name(deck_name)
     if existing:
         if not existing.get("dyn"):
             raise RuntimeError(f"'{deck_name}' is a normal deck. Delete or rename it first.")
         did = existing["id"]
-        mw.col.sched.empty_filtered_deck(did)
+        empty_result = collection.sched.empty_filtered_deck(did)
+        if changes is not None:
+            _merge_op_changes(changes, empty_result)
     else:
-        did = mw.col.decks.new_filtered(deck_name)
+        did = collection.decks.new_filtered(deck_name)
 
-    fdu = mw.col.sched.get_or_create_filtered_deck(did)
+    fdu = collection.sched.get_or_create_filtered_deck(did)
     fdu.config.reschedule = True
     del fdu.config.search_terms[:]
     fdu.config.search_terms.add(
@@ -163,46 +236,64 @@ def _prepare_filtered_review_deck(
         limit=len(normalized_ids),
         order=DYN_DUE if preserve_order else DYN_OLDEST,
     )
-    op = mw.col.sched.add_or_update_filtered_deck(fdu)
-    mw.col.sched.rebuild_filtered_deck(op.id)
+    op = collection.sched.add_or_update_filtered_deck(fdu)
+    rebuild_result = collection.sched.rebuild_filtered_deck(op.id)
+    if changes is not None:
+        _merge_op_changes(changes, op, rebuild_result)
 
     if preserve_order:
         position = 0
         cards_to_update = []
         for cid in normalized_ids:
-            card = mw.col.get_card(cid)
+            card = collection.get_card(cid)
             if int(getattr(card, "did", 0) or 0) != int(op.id):
                 continue
             card.due = position
             cards_to_update.append(card)
             position += 1
         if cards_to_update:
-            update_cards = getattr(mw.col, "update_cards", None)
+            update_cards = getattr(collection, "update_cards", None)
             if callable(update_cards):
                 try:
-                    update_cards(cards_to_update, skip_undo_entry=True)
+                    update_result = update_cards(cards_to_update, skip_undo_entry=True)
                 except TypeError:
-                    update_cards(cards_to_update)
+                    update_result = update_cards(cards_to_update)
+                if changes is not None:
+                    _merge_op_changes(changes, update_result)
             else:
                 for card in cards_to_update:
                     try:
-                        mw.col.update_card(card, skip_undo_entry=True)
+                        update_result = collection.update_card(card, skip_undo_entry=True)
                     except TypeError:
-                        mw.col.update_card(card)
+                        update_result = collection.update_card(card)
+                    if changes is not None:
+                        _merge_op_changes(changes, update_result)
 
     if select_deck:
-        mw.col.decks.select(op.id)
+        collection.decks.select(op.id)
+    if return_result:
+        return _FilteredDeckBuildResult(deck_id=int(op.id), changes=changes)
     return int(op.id)
 
 
-def _empty_filtered_deck_by_name(deck_name: str) -> bool:
+def _empty_filtered_deck_by_name(
+    deck_name: str,
+    *,
+    col=None,
+    return_result: bool = False,
+) -> bool | _FilteredDeckBuildResult:
+    collection = col if col is not None else mw.col
+    changes = _empty_op_changes() if return_result else None
     name = str(deck_name or "").strip()
     if not name:
-        return False
-    existing = mw.col.decks.by_name(name)
+        return _FilteredDeckBuildResult(None, changes) if return_result else False
+    existing = collection.decks.by_name(name)
     if not existing or not existing.get("dyn"):
-        return False
-    mw.col.sched.empty_filtered_deck(existing["id"])
+        return _FilteredDeckBuildResult(None, changes) if return_result else False
+    empty_result = collection.sched.empty_filtered_deck(existing["id"])
+    if changes is not None:
+        _merge_op_changes(changes, empty_result)
+        return _FilteredDeckBuildResult(int(existing["id"]), changes)
     return True
 
 
@@ -211,6 +302,7 @@ def _sync_filtered_deck_by_name(
     selected_ids: list[int],
     *,
     preserve_order: bool,
+    col=None,
 ) -> bool:
     normalized_ids: list[int] = []
     seen: set[int] = set()
@@ -225,22 +317,24 @@ def _sync_filtered_deck_by_name(
         normalized_ids.append(cid)
 
     if not normalized_ids:
-        return _empty_filtered_deck_by_name(deck_name)
+        return bool(_empty_filtered_deck_by_name(deck_name, **_optional_col_kwargs(col)))
 
     _prepare_filtered_review_deck(
         normalized_ids,
         deck_name=deck_name,
         preserve_order=preserve_order,
         select_deck=False,
+        **_optional_col_kwargs(col),
     )
     return True
 
 
-def _session_deck_id_by_name(deck_name: str) -> int | None:
+def _session_deck_id_by_name(deck_name: str, *, col=None) -> int | None:
+    collection = col if col is not None else mw.col
     name = str(deck_name or "").strip()
     if not name:
         return None
-    existing = mw.col.decks.by_name(name)
+    existing = collection.decks.by_name(name)
     if not existing or not existing.get("dyn"):
         return None
     try:
@@ -308,11 +402,13 @@ def _live_filtered_queue_ids(
     fetch_limit: int,
     *,
     scheduled_ids: set[int] | None = None,
+    col=None,
 ) -> list[int]:
+    collection = col if col is not None else mw.col
     try:
-        queued = mw.col.sched.get_queued_cards(fetch_limit=fetch_limit)
+        queued = collection.sched.get_queued_cards(fetch_limit=fetch_limit)
     except TypeError:
-        queued = mw.col.sched.get_queued_cards(fetch_limit)
+        queued = collection.sched.get_queued_cards(fetch_limit)
 
     entries = getattr(queued, "cards", queued)
     ordered_ids: list[int] = []
@@ -369,6 +465,16 @@ def _unreviewed_live_queue_ids(
     return [cid for cid in live_queue_ids if cid not in reviewed]
 
 
+def _live_queue_fetch_limit(state: _ActiveIncrementoSessionState) -> int:
+    """Bound queue reads by cards actually admitted, not a huge requested cap."""
+    selected_count = len(set(state.selected_ids or []))
+    if selected_count <= 0:
+        return max(20, min(max(0, int(state.window_size or 0)), 100))
+    window_size = max(0, int(state.window_size or 0))
+    active_capacity = min(selected_count, window_size) if window_size else selected_count
+    return max(active_capacity * 3, active_capacity + 20)
+
+
 def _snapshot_picker_state(picker) -> object:
     snapshot = getattr(picker, "snapshot", None)
     if callable(snapshot):
@@ -408,7 +514,10 @@ def _rebuild_filtered_deck_with_exact_ids(
     deck_name: str,
     ordered_ids: list[int],
     preserve_order: bool,
-) -> bool:
+    *,
+    col=None,
+    return_result: bool = False,
+) -> bool | _FilteredDeckBuildResult:
     normalized_ids: list[int] = []
     for raw in ordered_ids or []:
         try:
@@ -419,40 +528,65 @@ def _rebuild_filtered_deck_with_exact_ids(
             normalized_ids.append(cid)
 
     if not normalized_ids:
-        return _empty_filtered_deck_by_name(deck_name)
+        kwargs = _optional_col_kwargs(col)
+        if return_result:
+            kwargs["return_result"] = True
+        return _empty_filtered_deck_by_name(deck_name, **kwargs)
 
     if _has_duplicate_ordered_ids(normalized_ids):
         raise _DuplicateLiveQueueEntriesError(
             "Cannot rebuild a filtered deck from a live queue that contains duplicate card entries."
         )
 
-    _prepare_filtered_review_deck(
+    kwargs = _optional_col_kwargs(col)
+    if return_result:
+        kwargs["return_result"] = True
+    result = _prepare_filtered_review_deck(
         normalized_ids,
         deck_name=deck_name,
         preserve_order=preserve_order,
         select_deck=False,
+        **kwargs,
     )
-    return True
+    return result if return_result else True
 
 
 def _maybe_auto_refill_active_session(
     state: _ActiveIncrementoSessionState,
-) -> dict[str, list[int]] | None:
+    *,
+    col=None,
+    return_result: bool = False,
+) -> dict[str, list[int]] | _RefillOperationResult | None:
+    def _result(live_ids: list[int], new_ids: list[int], changes=None):
+        if return_result:
+            return _RefillOperationResult(
+                changes=changes if changes is not None else _empty_op_changes(),
+                live_queue_ids=list(live_ids),
+                new_ids=list(new_ids),
+            )
+        return {"live_queue_ids": list(live_ids), "new_ids": list(new_ids)}
+
     if not state.auto_refill_enabled:
-        return None
+        return _result([], []) if return_result else None
+    if state.session_closed:
+        return _result([], [])
 
-    deck_id = _session_deck_id_by_name(state.session_deck_name)
+    deck_id = _session_deck_id_by_name(
+        state.session_deck_name,
+        **_optional_col_kwargs(col),
+    )
     if deck_id is None:
-        return None
+        return _result([], []) if return_result else None
 
-    fetch_limit = max(state.window_size * 3, state.window_size + 20)
+    fetch_limit = _live_queue_fetch_limit(state)
     live_queue_ids = _live_filtered_queue_ids(
         deck_id,
         fetch_limit=fetch_limit,
         scheduled_ids=set(state.selected_ids),
+        **_optional_col_kwargs(col),
     )
     if _has_duplicate_ordered_ids(live_queue_ids):
-        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+        return _result(live_queue_ids, [])
 
     # Answered new cards often remain in Anki's queue as learning/relearning
     # repeats. Keep them in the filtered deck, but do not let them occupy the
@@ -462,26 +596,34 @@ def _maybe_auto_refill_active_session(
         state.reviewed_ids,
     )
     if len(unreviewed_live_queue_ids) >= state.window_size:
-        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+        return _result(live_queue_ids, [])
 
     missing = state.window_size - len(unreviewed_live_queue_ids)
     picker_snapshot = _snapshot_picker_state(state.picker)
     new_ids = state.picker.pick_until(len(state.picker.selected_ids) + missing)
     if not new_ids:
-        return {"live_queue_ids": list(live_queue_ids), "new_ids": []}
+        return _result(live_queue_ids, [])
+    if state.session_closed:
+        _restore_picker_state(state.picker, picker_snapshot)
+        return _result(live_queue_ids, [])
     combined_ids = list(live_queue_ids) + list(new_ids)
     try:
-        _rebuild_filtered_deck_with_exact_ids(
+        rebuild_kwargs = _optional_col_kwargs(col)
+        if return_result:
+            rebuild_kwargs["return_result"] = True
+        rebuild_result = _rebuild_filtered_deck_with_exact_ids(
             state.session_deck_name,
             combined_ids,
             preserve_order=state.preserve_order,
+            **rebuild_kwargs,
         )
     except Exception:
         _restore_picker_state(state.picker, picker_snapshot)
         raise
     state.selected_ids = list(state.picker.selected_ids)
     state.picked_meta = copy.deepcopy(state.picker.picked_meta)
-    return {"live_queue_ids": list(live_queue_ids), "new_ids": list(new_ids)}
+    changes = getattr(rebuild_result, "changes", None) if return_result else None
+    return _result(live_queue_ids, new_ids, changes)
 
 
 def _schedule_deferred_auto_refill(
@@ -494,17 +636,82 @@ def _schedule_deferred_auto_refill(
     state.refill_retry_pending = True
 
     def _run() -> None:
-        state.refill_retry_pending = False
         if state.session_closed:
+            state.refill_retry_pending = False
             return
-        try:
-            result = _maybe_auto_refill_active_session(state)
+
+        def _op(col):
+            return _maybe_auto_refill_active_session(
+                state,
+                col=col,
+                return_result=True,
+            )
+
+        def _success(result) -> None:
+            state.refill_retry_pending = False
             if bool(getattr(state.cfg, "show_debug", False)):
                 print(f"[Incremento] deferred auto-refill ({reason}): {result}")
-        except Exception as exc:
+
+        def _failure(exc: Exception) -> None:
+            state.refill_retry_pending = False
             print(f"[Incremento] deferred auto-refill error ({reason}): {exc}")
 
+        try:
+            _run_collection_operation(
+                parent=mw,
+                op=_op,
+                success=_success,
+                failure=_failure,
+                initiator=state,
+            )
+        except Exception as exc:
+            _failure(exc)
+
     QTimer.singleShot(0, _run)
+
+
+def _defer_next_card_until_refill_finishes(
+    state: _ActiveIncrementoSessionState,
+    reviewer,
+) -> bool:
+    """Do not show the next card while refill may rebuild its filtered deck."""
+    if reviewer is None or not state.auto_refill_enabled:
+        return False
+    try:
+        original_next = reviewer.nextCard
+        instance_dict = getattr(reviewer, "__dict__", {})
+        had_instance_override = "nextCard" in instance_dict
+        previous_instance_value = instance_dict.get("nextCard")
+    except Exception:
+        return False
+
+    def _restore() -> None:
+        try:
+            if had_instance_override:
+                reviewer.nextCard = previous_instance_value
+            else:
+                delattr(reviewer, "nextCard")
+        except Exception:
+            try:
+                reviewer.nextCard = original_next
+            except Exception:
+                pass
+
+    def _wait_then_continue() -> None:
+        if state.refill_retry_pending:
+            QTimer.singleShot(25, _wait_then_continue)
+            return
+        original_next()
+
+    def _deferred_next() -> None:
+        _restore()
+        QTimer.singleShot(0, _wait_then_continue)
+
+    try:
+        reviewer.nextCard = _deferred_next
+    except Exception:
+        return False
+    return True
 
 
 def _sync_session_cleanup_deck(state: _ActiveIncrementoSessionState) -> None:
@@ -513,7 +720,7 @@ def _sync_session_cleanup_deck(state: _ActiveIncrementoSessionState) -> None:
         if deck_id is not None:
             live_queue_ids = _live_filtered_queue_ids(
                 deck_id,
-                fetch_limit=max(state.window_size * 3, state.window_size + 20),
+                fetch_limit=_live_queue_fetch_limit(state),
                 scheduled_ids=set(state.selected_ids),
             )
             if _has_duplicate_ordered_ids(live_queue_ids):
@@ -541,7 +748,7 @@ def _record_incremento_answer(
     state: _ActiveIncrementoSessionState,
     reviewer,
     card,
-) -> dict[str, list[int]] | None:
+) -> None:
     global _session_times
 
     cid = card.id
@@ -565,10 +772,7 @@ def _record_incremento_answer(
         _session_times = copy.deepcopy(state.stats.session_time)
         state.question_started_at.pop(cid, None)
 
-    if not state.auto_refill_enabled:
-        return None
-
-    return _maybe_auto_refill_active_session(state)
+    return None
 
 
 def _flush_unanswered_time_for_state(state: _ActiveIncrementoSessionState) -> None:
@@ -741,66 +945,55 @@ def _review_seconds(reviewer, card, measured_seconds: float | None = None) -> fl
     return 0.0
 
 
-def learnFunction(*, branch_scope: dict | None = None) -> None:
-    global _active_incremento_session_state
-    try:
-        release_expired_timed_postpones()
-    except Exception:
-        pass
-
-    config = mw.addonManager.getConfig(_ADDON_PKG) or {}
-
-    dlg = SchedulerConfigDialog(
-        mw,
-        on_clear_session=reset_session_counts,
-        branch_scope=branch_scope,
-    )
-    if not dlg.exec():
-        return
-
-    dlg.save_config()
-    cfg = dlg.to_config()
-    preview_override = dlg.get_preview_override() if hasattr(dlg, "get_preview_override") else None
-    if preview_override:
-        preview_snapshot = preview_override.get("picker_snapshot")
-        picker = SessionPicker(
-            cfg,
-            _ADDON_DIR,
-            branch_scope=branch_scope,
-            snapshot=preview_snapshot,
+def _show_scheduled_debug(
+    selected_ids: list[int],
+    picked_meta: dict[int, dict],
+    branch_scope: dict | None,
+) -> None:
+    debug_dlg = QDialog(mw)
+    branch_title = str((branch_scope or {}).get("root_title") or "").strip()
+    debug_title = f"DEBUG — Scheduled order ({len(selected_ids)} cards)"
+    if branch_title:
+        debug_title += f" — {branch_title}"
+    debug_dlg.setWindowTitle(debug_title)
+    debug_dlg.resize(700, 500)
+    debug_layout = QVBoxLayout(debug_dlg)
+    debug_txt = QTextEdit()
+    debug_txt.setReadOnly(True)
+    debug_txt.setFontFamily("Courier")
+    debug_lines = ["#    type     mode       tag                  first field", "-" * 80]
+    for index, card_id in enumerate(selected_ids):
+        meta = picked_meta.get(card_id, {})
+        card = mw.col.get_card(card_id)
+        note = mw.col.get_note(card.nid)
+        first_field = note.fields[0][:55].replace("\n", " ") if note.fields else str(card_id)
+        debug_lines.append(
+            f"{index + 1:3}.  {meta.get('card_type', '?'):7}  {meta.get('mode', '?'):9}  "
+            f"{(meta.get('tag') or 'no-tag'):20} {first_field}"
         )
-        stats = picker.stats
-        selected_ids = (
-            list(picker.selected_ids)
-            if preview_snapshot is not None
-            else list(preview_override.get("selected_ids", []))
-        )
-        _picked_meta: dict[int, dict] = (
-            copy.deepcopy(picker.picked_meta)
-            if preview_snapshot is not None
-            else copy.deepcopy(preview_override.get("picked_meta", {}))
-        )
-        session_time_snapshot = preview_override.get("session_time", {"type": {}, "tags": {}})
-    else:
-        selection = select_session_cards(cfg, _ADDON_DIR, branch_scope=branch_scope)
-        picker = SessionPicker(
-            cfg,
-            _ADDON_DIR,
-            branch_scope=branch_scope,
-            snapshot=selection.picker_snapshot,
-        )
-        stats = selection.stats
-        selected_ids = list(selection.selected_ids)
-        _picked_meta = copy.deepcopy(selection.picked_meta)
-        session_time_snapshot = stats.session_time
+    debug_txt.setPlainText("\n".join(debug_lines))
+    debug_layout.addWidget(debug_txt)
+    debug_btn = QPushButton("Continue")
+    debug_btn.clicked.connect(debug_dlg.accept)
+    debug_layout.addWidget(debug_btn)
+    debug_dlg.exec()
 
-    # The picker uses session-shaped counts to build the deck, but the
-    # statistics dialog should show cards actually reviewed.
-    global _session_counts, _session_times
+
+def _activate_incremento_session(
+    result: _SessionBuildOperationResult,
+    *,
+    cfg,
+    branch_scope: dict | None,
+    session_deck_name: str,
+) -> None:
+    global _active_incremento_session_state, _session_counts, _session_times
+
+    # Selection counts are scheduler bookkeeping. The public session counts
+    # intentionally track cards actually answered by the reviewer.
     _session_counts = _empty()
-    _session_times = copy.deepcopy(session_time_snapshot)
+    _session_times = copy.deepcopy(result.session_time_snapshot)
 
-    if not selected_ids:
+    if not result.selected_ids:
         branch_title = str((branch_scope or {}).get("root_title") or "").strip()
         if branch_title:
             showInfo(f'No cards available to study in branch "{branch_title}".')
@@ -808,65 +1001,18 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
             showInfo("No cards available to study.")
         return
 
-    # DEBUG: show scheduled card order before building the filtered deck
-    if cfg.show_debug:
-        _debug_dlg = QDialog(mw)
-        branch_title = str((branch_scope or {}).get("root_title") or "").strip()
-        debug_title = f"DEBUG — Scheduled order ({len(selected_ids)} cards)"
-        if branch_title:
-            debug_title += f" — {branch_title}"
-        _debug_dlg.setWindowTitle(debug_title)
-        _debug_dlg.resize(700, 500)
-        _debug_layout = QVBoxLayout(_debug_dlg)
-        _debug_txt = QTextEdit()
-        _debug_txt.setReadOnly(True)
-        _debug_txt.setFontFamily("Courier")
-        _debug_lines = ["#    type     mode       tag                  first field"]
-        _debug_lines.append("-" * 80)
-        for _i, _cid in enumerate(selected_ids):
-            _meta = _picked_meta.get(_cid, {})
-            _card = mw.col.get_card(_cid)
-            _note = mw.col.get_note(_card.nid)
-            _field = (
-                (_note.fields[0][:55].replace("\n", " ")) if _note.fields else str(_cid)
-            )
-            _debug_lines.append(
-                f"{_i + 1:3}.  {_meta.get('card_type', '?'):7}  {_meta.get('mode', '?'):9}  "
-                f"{(_meta.get('tag') or 'no-tag'):20} {_field}"
-            )
-        _debug_txt.setPlainText("\n".join(_debug_lines))
-        _debug_layout.addWidget(_debug_txt)
-        _debug_btn = QPushButton("Continue")
-        _debug_btn.clicked.connect(_debug_dlg.accept)
-        _debug_layout.addWidget(_debug_btn)
-        _debug_dlg.exec()
-
-    dialog_profile_name = (
-        dlg.selected_dialog_profile_name()
-        if hasattr(dlg, "selected_dialog_profile_name")
-        else None
-    )
-    session_deck_name = incremento_session_deck_name(dialog_profile_name)
-    try:
-        _prepare_filtered_review_deck(
-            selected_ids,
-            deck_name=session_deck_name,
-            preserve_order=cfg.preserve_order,
-            select_deck=True,
-        )
-    except Exception as e:
-        showInfo(str(e))
-        return
+    if bool(getattr(cfg, "show_debug", False)):
+        _show_scheduled_debug(result.selected_ids, result.picked_meta, branch_scope)
 
     state = _ActiveIncrementoSessionState(
         cfg=cfg,
-        stats=stats,
-        picker=picker,
+        stats=result.stats,
+        picker=result.picker,
         session_deck_name=session_deck_name,
         window_size=max(0, int(cfg.session_card_count or 0)),
         preserve_order=bool(cfg.preserve_order),
-        picked_meta=copy.deepcopy(_picked_meta),
-        selected_ids=list(selected_ids),
+        picked_meta=copy.deepcopy(result.picked_meta),
+        selected_ids=list(result.selected_ids),
         auto_refill_enabled=bool(getattr(cfg, "auto_refill_session", False)),
     )
     _active_incremento_session_state = state
@@ -893,12 +1039,14 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
 
     def _on_card_answered(reviewer, card, ease: int) -> None:
         try:
-            result = _record_incremento_answer(state, reviewer, card)
-            if state.auto_refill_enabled and (not result or not result.get("new_ids")):
-                _schedule_deferred_auto_refill(state, reason="no-immediate-new-cards")
+            _record_incremento_answer(state, reviewer, card)
         except Exception as e:
             print(f"[Incremento] _on_card_answered error: {e}")
-            _schedule_deferred_auto_refill(state, reason="immediate-error")
+        if state.auto_refill_enabled:
+            if _defer_next_card_until_refill_finishes(state, reviewer):
+                _schedule_deferred_auto_refill(state, reason="card-answered")
+            else:
+                print("[Incremento] auto-refill skipped: reviewer advance could not be deferred")
 
     gui_hooks.reviewer_did_show_question.append(_on_card_shown)
     gui_hooks.reviewer_did_show_answer.append(_on_answer_shown)
@@ -939,3 +1087,120 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
     gui_hooks.reviewer_will_end.append(_on_reviewer_end)
     gui_hooks.state_did_change.append(_on_state_did_change)
     mw.moveToState("review")
+
+
+def learnFunction(*, branch_scope: dict | None = None) -> None:
+    """Configure and start an Incremento session without blocking Anki's UI."""
+    try:
+        release_expired_timed_postpones()
+    except Exception:
+        pass
+
+    dlg = SchedulerConfigDialog(
+        mw,
+        on_clear_session=reset_session_counts,
+        branch_scope=branch_scope,
+    )
+    if not dlg.exec():
+        return
+
+    dlg.save_config()
+    addon_config = mw.addonManager.getConfig(_ADDON_PKG) or {}
+    cfg = dlg.to_config()
+    preview_override = (
+        dlg.get_preview_override() if hasattr(dlg, "get_preview_override") else None
+    )
+    dialog_profile_name = (
+        dlg.selected_dialog_profile_name()
+        if hasattr(dlg, "selected_dialog_profile_name")
+        else None
+    )
+
+    session_deck_name = incremento_session_deck_name(dialog_profile_name)
+    branch_scope_copy = copy.deepcopy(branch_scope)
+    preview_copy = copy.deepcopy(preview_override)
+    profile = _active_profile()
+    topic_classifier = resolve_topic_card_classifier(
+        copy.deepcopy(addon_config),
+        scheduler_config=cfg,
+    )
+
+    def _build_session(col) -> _SessionBuildOperationResult:
+        preview_snapshot = (preview_copy or {}).get("picker_snapshot")
+        if preview_copy and preview_snapshot is None:
+            preview_snapshot = {
+                "scheduler_counts": copy.deepcopy(preview_copy.get("session_counts") or {}),
+                "session_counts": copy.deepcopy(preview_copy.get("session_counts") or {}),
+                "selected_ids": list(preview_copy.get("selected_ids") or []),
+                "picked_meta": copy.deepcopy(preview_copy.get("picked_meta") or {}),
+            }
+
+        picker = SessionPicker(
+            cfg,
+            _ADDON_DIR,
+            branch_scope=branch_scope_copy,
+            snapshot=preview_snapshot,
+            col=col,
+            topic_classifier=topic_classifier,
+            profile=profile,
+        )
+        if not preview_copy:
+            picker.pick_until(cfg.session_card_count)
+
+        selected_ids = list(picker.selected_ids)
+        picked_meta = copy.deepcopy(picker.picked_meta)
+        session_time_snapshot = copy.deepcopy(
+            (preview_copy or {}).get("session_time", picker.stats.session_time)
+        )
+        if not selected_ids:
+            return _SessionBuildOperationResult(
+                changes=_empty_op_changes(),
+                picker=picker,
+                stats=picker.stats,
+                selected_ids=[],
+                picked_meta=picked_meta,
+                session_time_snapshot=session_time_snapshot,
+                deck_id=None,
+            )
+
+        deck_result = _prepare_filtered_review_deck(
+            selected_ids,
+            deck_name=session_deck_name,
+            preserve_order=bool(cfg.preserve_order),
+            select_deck=True,
+            col=col,
+            return_result=True,
+        )
+        return _SessionBuildOperationResult(
+            changes=deck_result.changes,
+            picker=picker,
+            stats=picker.stats,
+            selected_ids=selected_ids,
+            picked_meta=picked_meta,
+            session_time_snapshot=session_time_snapshot,
+            deck_id=deck_result.deck_id,
+        )
+
+    def _success(result: _SessionBuildOperationResult) -> None:
+        # CollectionOp dispatches change hooks after its success callback.
+        # Enter review on the next event-loop turn so those resets finish
+        # before the reviewer claims keyboard focus.
+        QTimer.singleShot(
+            0,
+            lambda: _activate_incremento_session(
+                result,
+                cfg=cfg,
+                branch_scope=branch_scope_copy,
+                session_deck_name=session_deck_name,
+            ),
+        )
+
+    def _failure(exc: Exception) -> None:
+        showInfo(f"Could not start the Incremento session:\n\n{exc}")
+
+    _run_collection_operation(
+        parent=mw,
+        op=_build_session,
+        success=_success,
+        failure=_failure,
+    )

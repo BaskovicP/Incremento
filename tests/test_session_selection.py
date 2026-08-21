@@ -1130,6 +1130,45 @@ def test_snapshot_restore_reproduces_continued_picking():
     assert restored.selected_ids == [801, 802, 803]
 
 
+def test_picker_forwards_background_collection_and_resolved_classifier():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+    )
+    collection = object()
+    classifier = object()
+    captured = {}
+
+    def _fake_get(**kwargs):
+        captured.update(kwargs)
+        return types.SimpleNamespace(
+            card=901,
+            card_type="items",
+            tag=None,
+            mode="random",
+        )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=_fake_get
+    ):
+        picker = session_selection.SessionPicker(
+            cfg,
+            addon_dir="/tmp/unused",
+            col=collection,
+            topic_classifier=classifier,
+            profile="Profile",
+        )
+        assert picker.pick_until(1) == [901]
+
+    assert captured["col"] is collection
+    assert captured["topic_classifier"] is classifier
+    assert captured["profile"] == "Profile"
+
+
 def test_same_picker_rollback_rewinds_priority_cursor_without_resorting():
     cfg = SchedulerConfig(
         session_card_count=2,
@@ -1162,3 +1201,41 @@ def test_same_picker_rollback_rewinds_priority_cursor_without_resorting():
 
     assert picker.selected_ids == [901, 902]
     sort_pool.assert_called_once()
+
+
+def test_same_picker_rollback_rewinds_random_cursor_without_reshuffling():
+    cfg = SchedulerConfig(
+        session_card_count=2,
+        enforce_priority=False,
+        scheduler_scope="session",
+        use_tags=False,
+        tag_weights={},
+        include_rest=True,
+        topics_rate=0.0,
+        random_rate=1.0,
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.card_utils.get_all_item_cards",
+        return_value=[911, 912],
+    ) as item_pool, patch(
+        "session_selection.card_utils.get_all_topic_cards",
+        return_value=[],
+    ), patch(
+        "scheduler.random.shuffle",
+        side_effect=lambda _ids: None,
+    ) as shuffle, patch(
+        "scheduler.random.choice",
+        side_effect=lambda ids: ids[0],
+    ):
+        picker = session_selection.SessionPicker(cfg, addon_dir="/tmp/unused")
+        assert picker.pick_until(1) == [911]
+        snapshot = picker.snapshot()
+        assert picker.pick_until(2) == [912]
+
+        picker._restore_snapshot(snapshot)
+        assert picker.pick_until(2) == [912]
+
+    assert picker.selected_ids == [911, 912]
+    item_pool.assert_called_once()
+    shuffle.assert_called_once()

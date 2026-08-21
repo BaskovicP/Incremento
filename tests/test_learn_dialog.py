@@ -646,6 +646,34 @@ class TestSchedulerConfigDialogPersistence:
 
 
 class TestSchedulerConfigDialogState:
+    def test_accept_does_not_scan_cards_on_the_qt_thread(self, monkeypatch):
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        dialog._use_live_preview_enabled = False
+        dialog._live_preview_cache_is_current = lambda: False
+        dialog.save_config = lambda: None
+        dialog._close_live_preview = lambda: None
+        accepted = []
+        monkeypatch.setattr(
+            _MOD.QDialog,
+            "accept",
+            lambda _self: accepted.append(True),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            _MOD._card_utils,
+            "clear_topic_item_cache",
+            lambda: (_ for _ in ()).throw(AssertionError("accept must not scan")),
+        )
+        monkeypatch.setattr(
+            _MOD._card_utils,
+            "count_ready_topic_cards",
+            lambda **_kwargs: (_ for _ in ()).throw(AssertionError("accept must not count")),
+        )
+
+        dialog.accept()
+
+        assert accepted == [True]
+
     def test_build_current_dict_includes_auto_refill_session(self):
         dialog = _build_dialog_for_state_tests()
 

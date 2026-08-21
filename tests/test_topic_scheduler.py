@@ -390,6 +390,27 @@ class TestIsTopicCard:
             result = is_topic_card(card)
         assert result is False
 
+    def test_resolved_classifier_fetches_note_once_and_uses_explicit_collection(self):
+        note = MagicMock()
+        note.note_type.return_value = {"name": "Basic"}
+        note.tags = []
+        card = MagicMock(did=9, odid=0)
+        card.did = 9
+        card.odid = 0
+        card.note.return_value = note
+        collection = MagicMock()
+        collection.decks.get.return_value = {"name": "Topics"}
+        classifier = topic_scheduler.TopicCardClassifier(
+            enabled_note_type_names=frozenset(),
+            topic_tags=frozenset({"topic"}),
+            item_tags=frozenset({"item"}),
+            topics_deck_name="Topics",
+        )
+
+        assert is_topic_card(card, classifier=classifier, col=collection) is True
+        card.note.assert_called_once_with()
+        collection.decks.get.assert_called_once_with(9)
+
     def test_uses_odid_when_in_filtered_deck(self):
         """When odid != 0, use odid (original deck) instead of did."""
         card = self._make_card(did=999, odid=1)

@@ -23,7 +23,10 @@ Use this file for work in `backend/`.
 - If you change refill behavior, keep `frontend/learn_dialog.py` labels/tooltips and the manual wording aligned with the backend semantics.
 - The Docs/Other slider is stored as its left-to-right UI position, so backend `pdf_rate` is `1 - pdf_slider / 100`. A stored value of 100 means 0% Docs.
 - A scheduler weight of 0 disables that bucket completely; smoothing/epsilon applies only to positive-weight buckets. Forced card types in strict phases must not fall back and consume another type's quota.
-- `SessionPicker` caches raw Anki candidate pools and their priority order for the active session, including later auto-refills. A failed deck rebuild must rewind priority cursors without discarding the immutable order. Keep exhaustion retries bounded independently of a 9,999-card request. Large filtered decks use one comma-separated `cid:` search and batch their order updates.
+- `SessionPicker` caches raw Anki candidate pools plus their priority/random order for the active session, including later auto-refills. A failed deck rebuild must rewind selection cursors without discarding immutable orders. Keep exhaustion retries bounded independently of a 9,999-card request. Large filtered decks use one comma-separated `cid:` search and batch their order updates.
+- Session selection, filtered-deck creation, and active-session refill are collection mutations and must run through `CollectionOp`, using the operation-provided `col` rather than `mw.col`. Keep Qt/UI work in success callbacks, and enter review on the next event-loop turn after operation change hooks finish.
+- Because Anki calls `Reviewer.nextCard()` immediately after the answer hook, auto-refill must defer that advance until its background operation finishes. Do not rebuild a filtered deck after the next card is already on screen: empty/rebuild can move that active card and leave the reviewer holding stale scheduling state.
+- Resolve topic classification rules once per session scan and pass them through `SessionPicker`/scheduler/card helpers. Do not reload addon settings or fetch the same note repeatedly for every candidate card. Bound live-queue reads by the active window and cards actually admitted, never directly by a potentially 9,999-card requested maximum.
 
 ## Profile and Path Rules
 

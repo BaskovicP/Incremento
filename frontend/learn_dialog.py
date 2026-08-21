@@ -3376,39 +3376,7 @@ class SchedulerConfigDialog(QDialog):
         showInfo(f'{label.title()} filter "{query_label}" leaves {count} ready classified card(s){scope_note}.')
 
     def accept(self) -> None:
-        """Warn if both filters return no cards, then accept."""
-        try:
-            ready = self._ready_filter_from_checks()
-            tf = self._topics_filter_edit.text().strip()
-            itf = self._items_filter_edit.text().strip()
-            _card_utils.clear_topic_item_cache()
-            n_topics = _card_utils.count_ready_topic_cards(
-                topics_filter=self._apply_branch_scope_query(tf),
-                ready_filter=ready,
-            )
-            n_items = _card_utils.count_ready_item_cards(
-                items_filter=self._apply_branch_scope_query(itf),
-                ready_filter=ready,
-            )
-            if n_topics == 0 and n_items == 0:
-                from aqt.qt import QMessageBox
-                no_cards_msg = (
-                    "The current topic/item classification plus your extra filters returned 0 ready cards inside the active branch.\n"
-                    "The session will be empty.\n\nContinue anyway?"
-                    if self._branch_scope
-                    else
-                    "The current topic/item classification plus your extra filters returned 0 ready cards.\n"
-                    "The session will be empty.\n\nContinue anyway?"
-                )
-                r = QMessageBox.warning(
-                    self, "No Cards Found",
-                    no_cards_msg,
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                )
-                if r != QMessageBox.StandardButton.Yes:
-                    return
-        except Exception:
-            pass
+        """Validate preview state, then let background session construction run."""
         if self._use_live_preview_enabled and not self._live_preview_cache_is_current():
             QMessageBox.warning(
                 self,

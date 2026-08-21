@@ -583,6 +583,38 @@ class TestPriorityModeSort:
         get_items.assert_called_once()
         sort_cards.assert_called_once()
 
+    def test_large_shared_random_pool_is_queried_and_shuffled_only_once(self):
+        card_ids = list(range(1, 1001))
+        pool_cache = {}
+        excluded = set()
+        get_items = MagicMock(return_value=card_ids)
+
+        with patch.multiple(
+            "scheduler.card_utils",
+            get_all_item_cards=get_items,
+            get_all_topic_cards=MagicMock(return_value=[]),
+        ), patch(
+            "scheduler.random.shuffle",
+            side_effect=lambda values: values.reverse(),
+        ) as shuffle, patch(
+            "scheduler.random.choice", side_effect=lambda values: values[0]
+        ):
+            picked = []
+            for _ in card_ids:
+                result = scheduler.get_card_from_scheduler(
+                    force_card_type="items",
+                    force_mode="random",
+                    use_tags=False,
+                    exclude_ids=excluded,
+                    pool_cache=pool_cache,
+                )
+                picked.append(result.card)
+                excluded.add(result.card)
+
+        assert picked == list(reversed(card_ids))
+        get_items.assert_called_once()
+        shuffle.assert_called_once()
+
     def test_random_mode_uses_choice_not_first_sorted(self):
         """Random mode calls random.choice, not the sorted first card."""
         with patch("cards.mw", self._make_db_mock({401: 10, 402: 1, 403: 5})):

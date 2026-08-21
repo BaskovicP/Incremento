@@ -75,6 +75,9 @@ def get_card_from_scheduler(
         priority_lower_is_more_important: bool = True,
         allow_content_tag_fallback: bool = False,
         pool_cache: dict | None = None,
+        col=None,
+        topic_classifier=None,
+        profile: str | None = None,
 ):
     if counts is None:
         counts = {"type": {}, "tags": {}, "mode": {}}
@@ -115,10 +118,16 @@ def get_card_from_scheduler(
 
     def priority_available(raw):
         if pool_cache is None:
+            sort_kwargs = {
+                "addon_dir": addon_dir,
+                "lower_is_more_important": priority_lower_is_more_important,
+            }
+            if col is not None:
+                sort_kwargs["col"] = col
+            if profile is not None:
+                sort_kwargs["profile"] = profile
             return card_utils.sort_cards_for_priority_mode(
-                [c for c in raw if c not in exclude],
-                addon_dir=addon_dir,
-                lower_is_more_important=priority_lower_is_more_important,
+                [c for c in raw if c not in exclude], **sort_kwargs
             )
 
         order_key = (
@@ -128,12 +137,16 @@ def get_card_from_scheduler(
             bool(priority_lower_is_more_important),
         )
         if order_key not in pool_cache:
+            sort_kwargs = {
+                "addon_dir": addon_dir,
+                "lower_is_more_important": priority_lower_is_more_important,
+            }
+            if col is not None:
+                sort_kwargs["col"] = col
+            if profile is not None:
+                sort_kwargs["profile"] = profile
             pool_cache[order_key] = tuple(
-                card_utils.sort_cards_for_priority_mode(
-                    raw,
-                    addon_dir=addon_dir,
-                    lower_is_more_important=priority_lower_is_more_important,
-                )
+                card_utils.sort_cards_for_priority_mode(raw, **sort_kwargs)
             )
         ordered = pool_cache[order_key]
         cursor_key = ("scheduler_priority_cursor",) + order_key[1:]
@@ -147,10 +160,31 @@ def get_card_from_scheduler(
         # not rebuild a shrinking list of every remaining card on each pick.
         return [ordered[cursor]]
 
+    def random_available(raw):
+        if pool_cache is None:
+            return [c for c in raw if c not in exclude]
+
+        order_key = ("scheduler_random_order", id(raw))
+        if order_key not in pool_cache:
+            shuffled = list(raw)
+            random.shuffle(shuffled)
+            pool_cache[order_key] = tuple(shuffled)
+        ordered = pool_cache[order_key]
+        cursor_key = ("scheduler_random_cursor", id(raw))
+        cursor = max(0, int(pool_cache.get(cursor_key, 0) or 0))
+        while cursor < len(ordered) and ordered[cursor] in exclude:
+            cursor += 1
+        pool_cache[cursor_key] = cursor
+        if cursor >= len(ordered):
+            return []
+        # A cached random pool is shuffled once. Returning its next candidate
+        # avoids rebuilding an ever-shrinking list for every session pick.
+        return [ordered[cursor]]
+
     def available(raw):
         if mode == "priority":
             return priority_available(raw)
-        return [c for c in raw if c not in exclude]
+        return random_available(raw)
 
     # When PDF cards are scheduled separately, exclude them from topics/items pools
     pdf_exclusion = f" -({pdf_filter})" if pdf_rate > 0 else ""
@@ -164,6 +198,9 @@ def get_card_from_scheduler(
         only cards matching that tag.  Falls back to the full pool if the tag
         has no cards of this type.  Returns (cards, resolved_tag).
         """
+        loader_kwargs = dict(fn_kwargs)
+        if col is not None:
+            loader_kwargs["col"] = col
         if use_tags and tag_weights:
             remainder = max(0.0, 1.0 - sum(tag_weights.values())) if include_rest else 0.0
             extended = dict(tag_weights)
@@ -174,7 +211,7 @@ def get_card_from_scheduler(
                 tagged = available(
                     cached_pool(
                         (cache_prefix, "tag", tag, tuple(sorted(fn_kwargs.items()))),
-                        lambda: tag_fn(tag, **fn_kwargs),
+                        lambda: tag_fn(tag, **loader_kwargs),
                     )
                 )
                 if tagged:
@@ -185,52 +222,70 @@ def get_card_from_scheduler(
             return available(
                 cached_pool(
                     (cache_prefix, "all", tuple(sorted(fn_kwargs.items()))),
-                    lambda: all_fn(**fn_kwargs),
+                    lambda: all_fn(**loader_kwargs),
                 )
             ), None
         return available(
             cached_pool(
                 (cache_prefix, "all", tuple(sorted(fn_kwargs.items()))),
-                lambda: all_fn(**fn_kwargs),
+                lambda: all_fn(**loader_kwargs),
             )
         ), None
 
     def all_topics():
+        kwargs = {
+            "topics_filter": effective_topics_filter,
+            "ready_filter": ready_filter,
+        }
+        if col is not None:
+            kwargs["col"] = col
+        if topic_classifier is not None:
+            kwargs["topic_classifier"] = topic_classifier
         return cached_pool(
             ("topics", "all", effective_topics_filter, ready_filter),
-            lambda: card_utils.get_all_topic_cards(
-                topics_filter=effective_topics_filter,
-                ready_filter=ready_filter,
-            ),
+            lambda: card_utils.get_all_topic_cards(**kwargs),
         )
 
     def all_items():
+        kwargs = {
+            "items_filter": effective_items_filter,
+            "ready_filter": ready_filter,
+        }
+        if col is not None:
+            kwargs["col"] = col
+        if topic_classifier is not None:
+            kwargs["topic_classifier"] = topic_classifier
         return cached_pool(
             ("items", "all", effective_items_filter, ready_filter),
-            lambda: card_utils.get_all_item_cards(
-                items_filter=effective_items_filter,
-                ready_filter=ready_filter,
-            ),
+            lambda: card_utils.get_all_item_cards(**kwargs),
         )
 
     def tagged_topics(tag):
+        kwargs = {
+            "topics_filter": effective_topics_filter,
+            "ready_filter": ready_filter,
+        }
+        if col is not None:
+            kwargs["col"] = col
+        if topic_classifier is not None:
+            kwargs["topic_classifier"] = topic_classifier
         return cached_pool(
             ("topics", "tag", tag, effective_topics_filter, ready_filter),
-            lambda: card_utils.get_topic_cards_by_tag(
-                tag,
-                topics_filter=effective_topics_filter,
-                ready_filter=ready_filter,
-            ),
+            lambda: card_utils.get_topic_cards_by_tag(tag, **kwargs),
         )
 
     def tagged_items(tag):
+        kwargs = {
+            "items_filter": effective_items_filter,
+            "ready_filter": ready_filter,
+        }
+        if col is not None:
+            kwargs["col"] = col
+        if topic_classifier is not None:
+            kwargs["topic_classifier"] = topic_classifier
         return cached_pool(
             ("items", "tag", tag, effective_items_filter, ready_filter),
-            lambda: card_utils.get_item_cards_by_tag(
-                tag,
-                items_filter=effective_items_filter,
-                ready_filter=ready_filter,
-            ),
+            lambda: card_utils.get_item_cards_by_tag(tag, **kwargs),
         )
 
     # 2a. PDF pick path — no ready_filter, always eligible
@@ -243,7 +298,8 @@ def get_card_from_scheduler(
         )
         if pdf_cards:
             card = random.choice(pdf_cards) if mode == "random" else pdf_cards[0]
-            doc_type = card_utils.get_document_card_type(card) or "pdf"
+            doc_kwargs = {"col": col} if col is not None else {}
+            doc_type = card_utils.get_document_card_type(card, **doc_kwargs) or "pdf"
             return SchedulerResult(card=card, card_type=doc_type, tag=pdf_tag, mode=mode)
         if not allow_type_fallback:
             return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
