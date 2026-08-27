@@ -142,6 +142,16 @@ def _run_collection_operation(
     operation.run_in_background(initiator=initiator)
 
 
+def _defer_collection_ui_action(callback) -> None:
+    """Run UI work after CollectionOp hooks and its modal progress UI settle."""
+    progress = getattr(mw, "progress", None)
+    single_shot = getattr(progress, "single_shot", None)
+    if callable(single_shot):
+        single_shot(0, callback, True)
+        return
+    QTimer.singleShot(0, callback)
+
+
 def _optional_col_kwargs(col) -> dict:
     return {"col": col} if col is not None else {}
 
@@ -698,8 +708,12 @@ def _defer_next_card_until_refill_finishes(
                 pass
 
     def _wait_then_continue() -> None:
+        if state.session_closed:
+            return
         if state.refill_retry_pending:
             QTimer.singleShot(25, _wait_then_continue)
+            return
+        if str(getattr(mw, "state", "review") or "") != "review":
             return
         original_next()
 
@@ -712,36 +726,6 @@ def _defer_next_card_until_refill_finishes(
     except Exception:
         return False
     return True
-
-
-def _sync_session_cleanup_deck(state: _ActiveIncrementoSessionState) -> None:
-    try:
-        deck_id = _session_deck_id_by_name(state.session_deck_name)
-        if deck_id is not None:
-            live_queue_ids = _live_filtered_queue_ids(
-                deck_id,
-                fetch_limit=_live_queue_fetch_limit(state),
-                scheduled_ids=set(state.selected_ids),
-            )
-            if _has_duplicate_ordered_ids(live_queue_ids):
-                raise _DuplicateLiveQueueEntriesError(
-                    "Cannot clean up a filtered deck from a live queue that contains duplicate card entries."
-                )
-            _rebuild_filtered_deck_with_exact_ids(
-                state.session_deck_name,
-                live_queue_ids,
-                preserve_order=state.preserve_order,
-            )
-            return
-    except Exception:
-        pass
-
-    remaining_ids = [cid for cid in state.selected_ids if cid not in state.reviewed_ids]
-    _sync_filtered_deck_by_name(
-        state.session_deck_name,
-        remaining_ids,
-        preserve_order=state.preserve_order,
-    )
 
 
 def _record_incremento_answer(
@@ -1072,13 +1056,13 @@ def _activate_incremento_session(
             except ValueError:
                 pass
 
-        try:
-            _sync_session_cleanup_deck(state)
-        except Exception as e:
-            print(f"[Incremento] session deck cleanup error: {e}")
-        finally:
-            if _active_incremento_session_state is state:
-                _active_incremento_session_state = None
+        # Anki already returns completed cards to their home decks and keeps
+        # unfinished learning/relearning cards in the filtered deck. Rebuilding
+        # here would perform collection work inside reviewer_will_end, block the
+        # UI, and race any auto-refill operation still finishing in the
+        # background. Leave Anki's live filtered-deck queue untouched.
+        if _active_incremento_session_state is state:
+            _active_incremento_session_state = None
 
     def _on_state_did_change(new_state: str, old_state: str) -> None:
         if old_state == "review" and new_state != "review":
@@ -1182,11 +1166,11 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         )
 
     def _success(result: _SessionBuildOperationResult) -> None:
-        # CollectionOp dispatches change hooks after its success callback.
-        # Enter review on the next event-loop turn so those resets finish
-        # before the reviewer claims keyboard focus.
-        QTimer.singleShot(
-            0,
+        # CollectionOp invokes success before dispatching its change hooks, and
+        # its application-modal progress window may remain alive briefly. Wait
+        # for both before entering review so Anki's main window cannot remain
+        # blocked behind a hidden progress dialog.
+        _defer_collection_ui_action(
             lambda: _activate_incremento_session(
                 result,
                 cfg=cfg,
@@ -1196,7 +1180,9 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         )
 
     def _failure(exc: Exception) -> None:
-        showInfo(f"Could not start the Incremento session:\n\n{exc}")
+        _defer_collection_ui_action(
+            lambda: showInfo(f"Could not start the Incremento session:\n\n{exc}")
+        )
 
     _run_collection_operation(
         parent=mw,

@@ -897,6 +897,11 @@ class TestIncrementoSessionAutoRefill:
                 singleShot=lambda ms, callback: callbacks.append((ms, callback))
             ),
         )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(state="review"),
+        )
 
         assert _SESSION_MOD._defer_next_card_until_refill_finishes(state, reviewer)
 
@@ -911,6 +916,43 @@ class TestIncrementoSessionAutoRefill:
         state.refill_retry_pending = False
         callbacks[-1][1]()
         assert next_calls == ["next"]
+
+    def test_reviewer_advance_is_cancelled_when_session_closes_during_refill(
+        self, monkeypatch
+    ):
+        callbacks = []
+        next_calls = []
+
+        class _Reviewer:
+            def nextCard(self):
+                next_calls.append("next")
+
+        reviewer = _Reviewer()
+        state = self._make_state(selected_ids=[1], window_size=1)
+        state.refill_retry_pending = True
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(
+                singleShot=lambda ms, callback: callbacks.append((ms, callback))
+            ),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(state="review"),
+        )
+
+        assert _SESSION_MOD._defer_next_card_until_refill_finishes(state, reviewer)
+
+        reviewer.nextCard()
+        callbacks.pop(0)[1]()
+        assert callbacks[-1][0] == 25
+
+        state.session_closed = True
+        callbacks[-1][1]()
+
+        assert next_calls == []
 
     def test_answer_recording_does_not_read_live_queue_on_ui_thread(self, monkeypatch):
         calls = []
@@ -940,73 +982,6 @@ class TestIncrementoSessionAutoRefill:
         )
 
         assert calls == ["record", "session_count"]
-
-    def test_cleanup_prefers_live_queue_order(self, monkeypatch):
-        rebuilt = []
-        state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
-
-        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit, scheduled_ids=None: [3, 1],
-        )
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_rebuild_filtered_deck_with_exact_ids",
-            lambda deck_name, ordered_ids, preserve_order: rebuilt.append((deck_name, list(ordered_ids), preserve_order)) or True,
-        )
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_sync_filtered_deck_by_name",
-            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not use fallback")),
-        )
-
-        _SESSION_MOD._sync_session_cleanup_deck(state)
-
-        assert rebuilt == [("Incremento Session", [3, 1], True)]
-
-    def test_cleanup_falls_back_when_live_queue_read_fails(self, monkeypatch):
-        fallback = []
-        state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
-        state.reviewed_ids = {2}
-
-        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit, scheduled_ids=None: (_ for _ in ()).throw(RuntimeError("boom")),
-        )
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_sync_filtered_deck_by_name",
-            lambda deck_name, selected_ids, preserve_order: fallback.append((deck_name, list(selected_ids), preserve_order)) or True,
-        )
-
-        _SESSION_MOD._sync_session_cleanup_deck(state)
-
-        assert fallback == [("Incremento Session", [1, 3], True)]
-
-    def test_cleanup_falls_back_when_live_queue_contains_duplicate_entries(self, monkeypatch):
-        fallback = []
-        state = self._make_state(selected_ids=[1, 2, 3], window_size=3)
-        state.reviewed_ids = {2}
-
-        monkeypatch.setattr(_SESSION_MOD, "_session_deck_id_by_name", lambda _name: 77)
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_live_filtered_queue_ids",
-            lambda deck_id, fetch_limit, scheduled_ids=None: [3, 3, 1],
-        )
-        monkeypatch.setattr(
-            _SESSION_MOD,
-            "_sync_filtered_deck_by_name",
-            lambda deck_name, selected_ids, preserve_order: fallback.append((deck_name, list(selected_ids), preserve_order)) or True,
-        )
-
-        _SESSION_MOD._sync_session_cleanup_deck(state)
-
-        assert fallback == [("Incremento Session", [1, 3], True)]
 
     def test_repeated_refill_cycles_never_schedule_same_new_card_twice(self, monkeypatch):
         cycle = {"count": 0}
@@ -1132,6 +1107,38 @@ class TestIncrementoSessionAutoRefill:
 
 
 class TestBackgroundSessionStartup:
+    def test_ui_action_waits_for_anki_progress_manager(self, monkeypatch):
+        deferred = []
+        called = []
+        fake_progress = types.SimpleNamespace(
+            single_shot=lambda ms, callback, requires_collection: deferred.append(
+                (ms, callback, requires_collection)
+            )
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(progress=fake_progress),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(
+                singleShot=lambda *_args: (_ for _ in ()).throw(
+                    AssertionError("Anki's progress-aware timer should be used")
+                )
+            ),
+        )
+
+        _SESSION_MOD._defer_collection_ui_action(lambda: called.append(True))
+
+        assert called == []
+        assert len(deferred) == 1
+        assert deferred[0][0] == 0
+        assert deferred[0][2] is True
+        deferred[0][1]()
+        assert called == [True]
+
     def test_selection_and_filtered_deck_build_start_in_collection_operation(
         self, monkeypatch
     ):
@@ -1228,6 +1235,80 @@ class TestBackgroundSessionStartup:
 
         operations[0]["success"](result)
         assert activation[0][0] is result
+
+
+class TestIncrementoSessionExit:
+    def test_exit_leaves_anki_managed_filtered_deck_untouched(self, monkeypatch):
+        hooks = types.SimpleNamespace(
+            reviewer_will_end=[],
+            state_did_change=[],
+            reviewer_did_show_question=[],
+            reviewer_did_show_answer=[],
+            reviewer_did_answer_card=[],
+        )
+        moves = []
+        fake_mw = types.SimpleNamespace(
+            state="review",
+            reviewer=types.SimpleNamespace(card=None),
+            moveToState=lambda state: moves.append(state),
+        )
+        stats = MagicMock()
+        stats.session_time = {"type": {}, "tags": {}}
+        picker = types.SimpleNamespace(selected_ids=[101], picked_meta={})
+        result = _SESSION_MOD._SessionBuildOperationResult(
+            changes=object(),
+            picker=picker,
+            stats=stats,
+            selected_ids=[101],
+            picked_meta={},
+            session_time_snapshot={"type": {}, "tags": {}},
+            deck_id=77,
+        )
+        cfg = types.SimpleNamespace(
+            show_debug=False,
+            session_card_count=1,
+            preserve_order=True,
+            auto_refill_session=True,
+        )
+        collection_calls = []
+
+        monkeypatch.setattr(_SESSION_MOD, "gui_hooks", hooks)
+        monkeypatch.setattr(_SESSION_MOD, "mw", fake_mw)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_session_deck_id_by_name",
+            lambda *_args, **_kwargs: collection_calls.append("read-deck"),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_rebuild_filtered_deck_with_exact_ids",
+            lambda *_args, **_kwargs: collection_calls.append("rebuild"),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_sync_filtered_deck_by_name",
+            lambda *_args, **_kwargs: collection_calls.append("sync"),
+        )
+
+        _SESSION_MOD._activate_incremento_session(
+            result,
+            cfg=cfg,
+            branch_scope=None,
+            session_deck_name="Incremento Session",
+        )
+        state = _SESSION_MOD._active_incremento_session_state
+        assert state is not None
+        state.refill_retry_pending = True
+        assert moves == ["review"]
+        assert len(hooks.reviewer_will_end) == 1
+
+        hooks.reviewer_will_end[0]()
+
+        assert state.session_closed is True
+        assert _SESSION_MOD._active_incremento_session_state is None
+        assert collection_calls == []
+        assert hooks.reviewer_will_end == []
+        assert hooks.state_did_change == []
 
 
 class TestReviewTimeTrackerIncrementoSessions:

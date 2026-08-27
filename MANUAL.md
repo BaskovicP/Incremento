@@ -138,6 +138,8 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 3. Adjust the scheduler settings or accept the defaults.
 4. Incremento builds the **Incremento Session** filtered deck and opens the reviewer.
 
+If you leave before finishing, Anki keeps the unfinished cards in **Incremento Session** so you can open that deck and continue later. Completed cards return to their original decks automatically. Incremento leaves this live queue untouched while exiting, so returning to the deck list does not trigger another potentially slow deck rebuild.
+
 The session dialog also supports:
 
 - named presets that you can save, load, rename, and delete
