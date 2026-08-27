@@ -68,6 +68,7 @@ _ADDON_DIR = os.path.normpath(
 )
 _PENDING_CUSTOM_SCHEDULE_ANSWERS: dict[int, dict] = {}
 _CUSTOM_SCHEDULE_REVLOG_TRACKER = ReviewRevlogTracker()
+_diagnostic_event_callback = None
 
 MODE_FIXED_REPEAT = "fixed_repeat"
 MODE_MINIMUM_CADENCE = "minimum_cadence"
@@ -88,6 +89,22 @@ _DEFAULT_PRESETS = [
     {"label": "Every 2 weeks", "interval_value": 2, "interval_unit": UNIT_WEEKS},
     {"label": "Monthly", "interval_value": 1, "interval_unit": UNIT_MONTHS},
 ]
+
+
+def register_diagnostic_event_callback(callback) -> None:
+    """Install the privacy-safe event sink supplied by the add-on entry point."""
+    global _diagnostic_event_callback
+    _diagnostic_event_callback = callback if callable(callback) else None
+
+
+def _emit_diagnostic_event(event: str, **fields) -> None:
+    callback = _diagnostic_event_callback
+    if callback is None:
+        return
+    try:
+        callback(str(event), dict(fields))
+    except Exception:
+        pass
 
 
 def _resolved_config(config: dict | None = None) -> dict:
@@ -371,6 +388,13 @@ def prepare_custom_schedule_answer(card) -> None:
         profile = _active_profile()
         rule = get_custom_schedule_rule(_ADDON_DIR, profile, card_id)
     except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode="none",
+            stage="prepare",
+            error_type=type(exc).__name__,
+            restore_failed=False,
+        )
         print(f"[Incremento] custom schedule preparation error: {exc}")
         return
     if not rule or not bool(rule.get("enabled")):
@@ -380,6 +404,13 @@ def prepare_custom_schedule_answer(card) -> None:
         collection=getattr(mw, "col", None),
     )
     if not snapshot_valid:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=normalize_custom_schedule_mode(rule.get("mode")),
+            stage="revlog_snapshot",
+            error_type="RuntimeError",
+            restore_failed=False,
+        )
         print("[Incremento] custom schedule preparation error: revlog query failed")
         return
     _PENDING_CUSTOM_SCHEDULE_ANSWERS[card_id] = {
@@ -399,10 +430,18 @@ def reset_custom_schedule_answer_runtime_state() -> None:
 
 
 def reconcile_custom_schedule_state_after_anki_operation(undo_info=None) -> None:
-    transitions = _CUSTOM_SCHEDULE_REVLOG_TRACKER.transitions(
-        undo_info,
-        collection=getattr(mw, "col", None),
-    )
+    try:
+        transitions = _CUSTOM_SCHEDULE_REVLOG_TRACKER.transitions(
+            undo_info,
+            collection=getattr(mw, "col", None),
+        )
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_reconcile_failed",
+            error_type=type(exc).__name__,
+        )
+        print(f"[Incremento] custom schedule undo/redo tracking error: {exc}")
+        return
     for profile, card_id, current, previous in transitions:
         try:
             reconcile_custom_schedule_review_state(
@@ -413,6 +452,10 @@ def reconcile_custom_schedule_state_after_anki_operation(undo_info=None) -> None
                 previous,
             )
         except Exception as exc:
+            _emit_diagnostic_event(
+                "custom_schedule_reconcile_failed",
+                error_type=type(exc).__name__,
+            )
             print(f"[Incremento] custom schedule undo/redo reconciliation error: {exc}")
 
 
@@ -432,42 +475,116 @@ def apply_custom_schedule_after_answer(reviewer, card, ease: int) -> None:
     pending = _PENDING_CUSTOM_SCHEDULE_ANSWERS.pop(card_id, None)
     if not isinstance(pending, dict):
         return
-    if bool(pending.get("preview_only")):
+    try:
+        profile = str(pending.get("profile") or _active_profile())
+        normalized = normalize_custom_schedule_rule(pending.get("rule"))
+        previous_revlog_id = max(0, int(pending.get("previous_revlog_id") or 0))
+        target_days = rule_days_from_today(
+            int(normalized["interval_value"]),
+            str(normalized["interval_unit"]),
+        )
+        mode = str(normalized["mode"])
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode="none",
+            stage="resolve",
+            error_type=type(exc).__name__,
+            restore_failed=False,
+        )
+        print(f"[Incremento] custom schedule resolution error: {exc}")
         return
-    profile = str(pending.get("profile") or _active_profile())
-    normalized = normalize_custom_schedule_rule(pending.get("rule"))
-    previous_revlog_id = max(0, int(pending.get("previous_revlog_id") or 0))
-    target_days = rule_days_from_today(
-        int(normalized["interval_value"]),
-        str(normalized["interval_unit"]),
-    )
-    mode = str(normalized["mode"])
+    if bool(pending.get("preview_only")):
+        _emit_diagnostic_event(
+            "custom_schedule_skipped",
+            mode=mode,
+            reason="preview",
+            target_interval_days=target_days,
+        )
+        return
     try:
         latest_card = mw.col.get_card(card_id)
     except Exception:
         latest_card = card
+    previous_interval = _current_card_interval_days(latest_card) or 0
 
     if mode == MODE_MINIMUM_CADENCE:
         current_days = _current_card_interval_days(latest_card)
         if current_days is not None and current_days <= target_days:
+            _emit_diagnostic_event(
+                "custom_schedule_skipped",
+                mode=mode,
+                reason="minimum_already_met",
+                current_interval_days=current_days,
+                target_interval_days=target_days,
+            )
             return
 
-    answer_undo_step = current_answer_undo_step(
-        collection=getattr(mw, "col", None)
-    )
+    try:
+        answer_undo_step = current_answer_undo_step(
+            collection=getattr(mw, "col", None)
+        )
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=mode,
+            stage="undo_step",
+            error_type=type(exc).__name__,
+            restore_failed=False,
+        )
+        print(f"[Incremento] custom schedule undo-step error: {exc}")
+        return
     if answer_undo_step <= 0:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=mode,
+            stage="undo_step",
+            error_type="RuntimeError",
+            restore_failed=False,
+        )
         print("[Incremento] custom schedule error: Anki answer undo step is unavailable")
         return
-    revlog_id = new_answer_revlog_id(
-        card_id,
-        previous_revlog_id,
-        collection=getattr(mw, "col", None),
-    )
+    try:
+        revlog_id = new_answer_revlog_id(
+            card_id,
+            previous_revlog_id,
+            collection=getattr(mw, "col", None),
+        )
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=mode,
+            stage="revlog",
+            error_type=type(exc).__name__,
+            restore_failed=False,
+        )
+        print(f"[Incremento] custom schedule revlog error: {exc}")
+        return
     if revlog_id <= 0:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=mode,
+            stage="revlog",
+            error_type="RuntimeError",
+            restore_failed=False,
+        )
         print("[Incremento] custom schedule error: Anki did not create a new answer revlog")
         return
 
-    post_answer_snapshot = card_schedule_snapshot(latest_card)
+    try:
+        post_answer_snapshot = card_schedule_snapshot(latest_card)
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=mode,
+            stage="load_state",
+            error_type=type(exc).__name__,
+            restore_failed=False,
+        )
+        print(f"[Incremento] custom schedule snapshot error: {exc}")
+        return
+    failure_stage = "apply"
+    restore_failed = False
     try:
         apply_review_interval(
             card_id,
@@ -475,6 +592,7 @@ def apply_custom_schedule_after_answer(reviewer, card, ease: int) -> None:
             answer_undo_step=answer_undo_step,
             collection=getattr(mw, "col", None),
         )
+        failure_stage = "commit"
         commit_custom_schedule_review(
             _ADDON_DIR,
             profile,
@@ -494,13 +612,35 @@ def apply_custom_schedule_after_answer(reviewer, card, ease: int) -> None:
                 collection=getattr(mw, "col", None),
             )
         except Exception as restore_error:
+            restore_failed = True
             print(
                 "[Incremento] failed to restore Anki schedule after custom error: "
                 f"{restore_error}"
             )
+        _emit_diagnostic_event(
+            "custom_schedule_failed",
+            mode=mode,
+            stage=failure_stage,
+            error_type=type(exc).__name__,
+            restore_failed=restore_failed,
+        )
         print(f"[Incremento] custom schedule error: {exc}")
         return
-    _CUSTOM_SCHEDULE_REVLOG_TRACKER.track(profile, card_id, revlog_id)
+    try:
+        _CUSTOM_SCHEDULE_REVLOG_TRACKER.track(profile, card_id, revlog_id)
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "custom_schedule_reconcile_failed",
+            error_type=type(exc).__name__,
+        )
+        print(f"[Incremento] custom schedule review tracking error: {exc}")
+    _emit_diagnostic_event(
+        "custom_schedule_applied",
+        mode=mode,
+        previous_interval_days=previous_interval,
+        scheduled_interval_days=target_days,
+        consumed_one_time=mode == MODE_ONE_TIME,
+    )
 
 
 def save_custom_schedule_rule(

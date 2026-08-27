@@ -58,6 +58,8 @@ class TestDirectoryHelpers:
         base = tmp_path / "user_files" / "P"
         assert p.get_db_path(str(tmp_path), "P") == base / "incremento.db"
         assert p.get_stats_path(str(tmp_path), "P") == base / "custom_learn_stats.json"
+        assert p.get_diagnostics_dir(str(tmp_path), "P") == base / "diagnostics"
+        assert p.get_diagnostic_events_path(str(tmp_path), "P") == base / "diagnostics" / "events.jsonl"
         assert p.get_pdf_dir(str(tmp_path), "P") == base / "pdfs"
         assert p.get_epub_dir(str(tmp_path), "P") == base / "epubs"
         assert p.get_epub_extract_root(str(tmp_path), "P") == base / "epub_extracted"

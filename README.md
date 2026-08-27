@@ -6,9 +6,11 @@ Incremento is a modern Anki add-on for incremental learning from mixed content. 
 
 - Builds filtered study sessions with configurable card states, topic/item and document mixes, tags, priorities, ordering, and optional auto-refill
 - Opens PDF, EPUB, video, web, writing, and local-file material in persistent reviewer docks that remember progress
+- Reviews cards attached to the current PDF, EPUB, or video with Topic/Item, direct/nested, media-range, due-state, ordering, and count controls, then restores the source position
 - Creates cards from selections and highlights while preserving source metadata and links
 - Provides topic A-factor scheduling, per-card custom schedules, postpone tools, and Anki-compatible Undo/Redo behavior
 - Includes document search, colored Browser quick tags, a card-backed knowledge tree, statistics, and a focus timer
+- Exports a privacy-safe support bundle with redacted settings, recent typed events, version data, and code fingerprints for easier bug reports
 - Keeps runtime content and databases isolated per Anki profile
 - Includes a browser bridge and companion Chrome/Brave extension for capture, import, and playback synchronization
 
@@ -56,8 +58,11 @@ After installing and restarting Anki:
 1. Open **Incremento → Start Incremental Learning** to build a study session.
 2. Use **Incremento → Add Content → Add PDF** to add a PDF-backed topic card.
 3. Use **Incremento → Export Full Backup** to create a migration/backup ZIP.
+4. If something goes wrong, use **Incremento → Export Support Bundle…** to create a diagnostic ZIP that is safe to attach to a bug report.
 
 For a full walkthrough, see [MANUAL.md](MANUAL.md).
+
+The support bundle is separate from **Export Full Backup**. It never contains card/note text, raw card or note IDs, deck/tag/profile names, media, user or media filenames, local filesystem paths, URLs, database rows, exception messages, or precise activity timestamps. Private and free-text configuration values are replaced with redaction markers. Fixed shipped-code filenames may appear beside their hashes so the developer can identify the installed build.
 
 ## Companion Extension
 

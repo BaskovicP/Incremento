@@ -1231,3 +1231,70 @@ def test_pdf_highlight_delete_prunes_exact_source(monkeypatch):
 
     assert removed == [("/tmp/addon", "TestProfile", 55, "hl-9")]
     assert deleted == [("/tmp/addon", "TestProfile", 55, "hl-9")]
+
+
+def test_pdf_review_all_bridge_opens_attached_review(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "_start_all_pdf_review",
+        lambda card_id, *, current_page: calls.append((card_id, current_page)) or True,
+    )
+
+    pdf_dock._handle_pdf_js_message("incremento_pdf_review_all:55:7")
+
+    assert calls == [(55, 7)]
+
+
+def test_start_all_pdf_review_passes_reader_context_and_restores_reader(monkeypatch):
+    starts = []
+    selected_decks = []
+    restored = []
+    fake_note = {"PDF_Filename": "source.pdf"}
+    fake_col = types.SimpleNamespace(
+        get_card=lambda card_id: types.SimpleNamespace(nid=9),
+        get_note=lambda note_id: fake_note,
+        decks=types.SimpleNamespace(
+            current=lambda: {"id": 44},
+            select=lambda deck_id: selected_decks.append(deck_id),
+        ),
+    )
+    fake_launcher = types.SimpleNamespace(
+        start_attached_media_review=lambda **kwargs: starts.append(kwargs) or True,
+    )
+    monkeypatch.setitem(sys.modules, "media_review_dialog", fake_launcher)
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=fake_col))
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "get_zoom", lambda *_args: 1.25)
+    monkeypatch.setattr(pdf_dock, "get_read_page", lambda *_args: 6)
+    monkeypatch.setattr(
+        pdf_dock,
+        "show_pdf_in_dock",
+        lambda *args, **kwargs: restored.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "QTimer",
+        types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+    )
+
+    assert pdf_dock._start_all_pdf_review(55, current_page=7) is True
+    assert starts[0]["source_card_id"] == 55
+    assert starts[0]["media_label"] == "PDF"
+    assert starts[0]["media_kind"] == "pdf"
+    assert starts[0]["current_position"] == 7
+    assert starts[0]["deck_name"] == pdf_dock.INCREMENTO_PDF_REVIEW_DECK
+
+    starts[0]["on_finished"]()
+    assert selected_decks == [44]
+    assert restored == [
+        (
+            (55, "source.pdf", 7, 1.25),
+            {
+                "read_page": 6,
+                "preserve_history": False,
+                "offer_due_review_prompt": False,
+            },
+        )
+    ]

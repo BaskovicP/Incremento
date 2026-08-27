@@ -13,6 +13,8 @@ Public API:
     start_quick_open_review() — study one quick-open doc card in a filtered deck
     reset_session_counts() — clear in-memory session counts
     get_session_counts()  — return a copy of the current session counts
+    diagnostic_session_snapshot() — privacy-safe active-session counters/flags
+    register_diagnostic_event_callback() — install the optional event sink
 """
 
 import copy
@@ -48,6 +50,8 @@ _ADDON_PKG = __name__.split(".")[0]  # "incremento"
 
 INCREMENTO_DECK = "Incremento Session"
 INCREMENTO_PDF_REVIEW_DECK = "Incremento PDF Review"
+INCREMENTO_EPUB_REVIEW_DECK = "Incremento EPUB Review"
+INCREMENTO_VIDEO_REVIEW_DECK = "Incremento Video Review"
 INCREMENTO_QUICK_OPEN_REVIEW_DECK = "Incremento Quick Open Review"
 
 # Most-recent reviewed session counts, updated as cards are answered.
@@ -55,6 +59,7 @@ INCREMENTO_QUICK_OPEN_REVIEW_DECK = "Incremento Quick Open Review"
 _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
 _session_times: dict = _empty_time()
 _active_incremento_session_state = None
+_diagnostic_event_callback = None
 
 
 class _DuplicateLiveQueueEntriesError(RuntimeError):
@@ -102,6 +107,16 @@ class _RefillOperationResult:
     changes: object
     live_queue_ids: list[int]
     new_ids: list[int]
+    outcome: str = "other"
+
+
+@dataclass
+class _ExplicitReviewOperationResult:
+    changes: object
+    requested_ids: list[int]
+    selected_ids: list[int]
+    unavailable_ids: list[int]
+    deck_id: int | None
 
 
 def _empty_op_changes():
@@ -187,6 +202,76 @@ def get_session_counts() -> dict:
 def get_session_times() -> dict:
     """Return review-time stats for the last/active session."""
     return _session_times
+
+
+def register_diagnostic_event_callback(callback) -> None:
+    """Install a best-effort sink that receives only typed, content-free fields."""
+    global _diagnostic_event_callback
+    _diagnostic_event_callback = callback if callable(callback) else None
+
+
+def _emit_diagnostic_event(event: str, **fields) -> None:
+    callback = _diagnostic_event_callback
+    if callback is None:
+        return
+    try:
+        callback(str(event), dict(fields))
+    except Exception:
+        # Diagnostics must never alter scheduling or reviewer control flow.
+        pass
+
+
+def record_media_review_inspection_started(content_kind: str) -> None:
+    _emit_diagnostic_event(
+        "media_review_inspection_started",
+        content_kind=content_kind,
+    )
+
+
+def record_media_review_inspection_finished(
+    content_kind: str,
+    candidate_count: int,
+) -> None:
+    _emit_diagnostic_event(
+        "media_review_inspection_finished",
+        content_kind=content_kind,
+        candidate_count=candidate_count,
+    )
+
+
+def record_media_review_inspection_failed(
+    content_kind: str,
+    exc: Exception,
+) -> None:
+    _emit_diagnostic_event(
+        "media_review_inspection_failed",
+        content_kind=content_kind,
+        error_type=type(exc).__name__,
+    )
+
+
+def diagnostic_session_snapshot() -> dict[str, object]:
+    """Return counters/flags only; never expose card ids, tags, or deck names."""
+    state = _active_incremento_session_state
+    if state is None:
+        return {
+            "active": False,
+            "selected_count": 0,
+            "reviewed_count": 0,
+            "window_size": 0,
+            "auto_refill": False,
+            "refill_pending": False,
+            "closed": False,
+        }
+    return {
+        "active": not bool(state.session_closed),
+        "selected_count": len(state.selected_ids),
+        "reviewed_count": len(state.reviewed_ids),
+        "window_size": max(0, int(state.window_size or 0)),
+        "auto_refill": bool(state.auto_refill_enabled),
+        "refill_pending": bool(state.refill_retry_pending),
+        "closed": bool(state.session_closed),
+    }
 
 
 def _record_session_count(card_type: str, tag: str | None, mode: str) -> None:
@@ -567,26 +652,33 @@ def _maybe_auto_refill_active_session(
     col=None,
     return_result: bool = False,
 ) -> dict[str, list[int]] | _RefillOperationResult | None:
-    def _result(live_ids: list[int], new_ids: list[int], changes=None):
+    def _result(
+        live_ids: list[int],
+        new_ids: list[int],
+        changes=None,
+        *,
+        outcome: str = "other",
+    ):
         if return_result:
             return _RefillOperationResult(
                 changes=changes if changes is not None else _empty_op_changes(),
                 live_queue_ids=list(live_ids),
                 new_ids=list(new_ids),
+                outcome=str(outcome or "other"),
             )
         return {"live_queue_ids": list(live_ids), "new_ids": list(new_ids)}
 
     if not state.auto_refill_enabled:
-        return _result([], []) if return_result else None
+        return _result([], [], outcome="disabled") if return_result else None
     if state.session_closed:
-        return _result([], [])
+        return _result([], [], outcome="closed")
 
     deck_id = _session_deck_id_by_name(
         state.session_deck_name,
         **_optional_col_kwargs(col),
     )
     if deck_id is None:
-        return _result([], []) if return_result else None
+        return _result([], [], outcome="missing_deck") if return_result else None
 
     fetch_limit = _live_queue_fetch_limit(state)
     live_queue_ids = _live_filtered_queue_ids(
@@ -596,7 +688,7 @@ def _maybe_auto_refill_active_session(
         **_optional_col_kwargs(col),
     )
     if _has_duplicate_ordered_ids(live_queue_ids):
-        return _result(live_queue_ids, [])
+        return _result(live_queue_ids, [], outcome="duplicate_queue")
 
     # Answered new cards often remain in Anki's queue as learning/relearning
     # repeats. Keep them in the filtered deck, but do not let them occupy the
@@ -606,16 +698,16 @@ def _maybe_auto_refill_active_session(
         state.reviewed_ids,
     )
     if len(unreviewed_live_queue_ids) >= state.window_size:
-        return _result(live_queue_ids, [])
+        return _result(live_queue_ids, [], outcome="window_full")
 
     missing = state.window_size - len(unreviewed_live_queue_ids)
     picker_snapshot = _snapshot_picker_state(state.picker)
     new_ids = state.picker.pick_until(len(state.picker.selected_ids) + missing)
     if not new_ids:
-        return _result(live_queue_ids, [])
+        return _result(live_queue_ids, [], outcome="exhausted")
     if state.session_closed:
         _restore_picker_state(state.picker, picker_snapshot)
-        return _result(live_queue_ids, [])
+        return _result(live_queue_ids, [], outcome="closed")
     combined_ids = list(live_queue_ids) + list(new_ids)
     try:
         rebuild_kwargs = _optional_col_kwargs(col)
@@ -633,7 +725,7 @@ def _maybe_auto_refill_active_session(
     state.selected_ids = list(state.picker.selected_ids)
     state.picked_meta = copy.deepcopy(state.picker.picked_meta)
     changes = getattr(rebuild_result, "changes", None) if return_result else None
-    return _result(live_queue_ids, new_ids, changes)
+    return _result(live_queue_ids, new_ids, changes, outcome="added")
 
 
 def _schedule_deferred_auto_refill(
@@ -641,13 +733,40 @@ def _schedule_deferred_auto_refill(
     *,
     reason: str,
 ) -> None:
-    if not state.auto_refill_enabled or state.session_closed or state.refill_retry_pending:
+    if not state.auto_refill_enabled:
+        _emit_diagnostic_event(
+            "incremento_session_refill_skipped",
+            reason="disabled",
+        )
+        return
+    if state.session_closed:
+        _emit_diagnostic_event(
+            "incremento_session_refill_skipped",
+            reason="closed",
+        )
+        return
+    if state.refill_retry_pending:
+        _emit_diagnostic_event(
+            "incremento_session_refill_skipped",
+            reason="already_pending",
+        )
         return
     state.refill_retry_pending = True
+    diagnostic_reason = "card_answered" if reason == "card-answered" else "other"
+    _emit_diagnostic_event(
+        "incremento_session_refill_requested",
+        reason=diagnostic_reason,
+    )
 
     def _run() -> None:
         if state.session_closed:
             state.refill_retry_pending = False
+            _emit_diagnostic_event(
+                "incremento_session_refill_finished",
+                live_count=0,
+                added_count=0,
+                outcome="closed",
+            )
             return
 
         def _op(col):
@@ -659,11 +778,22 @@ def _schedule_deferred_auto_refill(
 
         def _success(result) -> None:
             state.refill_retry_pending = False
+            _emit_diagnostic_event(
+                "incremento_session_refill_finished",
+                live_count=len(list(getattr(result, "live_queue_ids", []) or [])),
+                added_count=len(list(getattr(result, "new_ids", []) or [])),
+                outcome=str(getattr(result, "outcome", "other") or "other"),
+            )
             if bool(getattr(state.cfg, "show_debug", False)):
                 print(f"[Incremento] deferred auto-refill ({reason}): {result}")
 
         def _failure(exc: Exception) -> None:
             state.refill_retry_pending = False
+            _emit_diagnostic_event(
+                "incremento_session_refill_failed",
+                reason=diagnostic_reason,
+                error_type=type(exc).__name__,
+            )
             print(f"[Incremento] deferred auto-refill error ({reason}): {exc}")
 
         try:
@@ -804,6 +934,73 @@ def _flush_unanswered_time_for_state(state: _ActiveIncrementoSessionState) -> No
     _session_times = copy.deepcopy(state.stats.session_time)
 
 
+def _normalize_explicit_review_ids(selected_ids) -> list[int]:
+    normalized_ids: list[int] = []
+    seen: set[int] = set()
+    for cid in selected_ids or []:
+        try:
+            value = int(cid)
+        except Exception:
+            continue
+        if value <= 0 or value in seen:
+            continue
+        seen.add(value)
+        normalized_ids.append(value)
+    return normalized_ids
+
+
+def _register_explicit_review_finished_callback(
+    on_finished,
+    *,
+    diagnostic_source: str = "other",
+    diagnostic_content_kind: str = "other",
+) -> None:
+
+    finished = False
+
+    def _finish_once() -> None:
+        nonlocal finished
+        if finished:
+            return
+        finished = True
+        for hook_list, fn in (
+            (gui_hooks.reviewer_will_end, _on_reviewer_end),
+            (gui_hooks.state_did_change, _on_state_did_change),
+        ):
+            try:
+                hook_list.remove(fn)
+            except ValueError:
+                pass
+        _emit_diagnostic_event(
+            "explicit_review_ended",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+        )
+        if on_finished is None:
+            return
+        try:
+            on_finished()
+        except Exception as e:
+            _emit_diagnostic_event(
+                "explicit_review_failed",
+                source=diagnostic_source,
+                content_kind=diagnostic_content_kind,
+                stage="review",
+                error_type=type(e).__name__,
+            )
+            print(f"[Incremento] explicit review finish callback error: {e}")
+
+    def _on_reviewer_end() -> None:
+        _finish_once()
+
+    def _on_state_did_change(new_state: str, old_state: str) -> None:
+        if old_state == "review" and new_state != "review":
+            _finish_once()
+
+    gui_hooks.reviewer_will_end.append(_on_reviewer_end)
+    gui_hooks.state_did_change.append(_on_state_did_change)
+
+
 def start_explicit_review(
     selected_ids: list[int],
     *,
@@ -811,22 +1008,37 @@ def start_explicit_review(
     preserve_order: bool = True,
     empty_message: str = "No cards available to review.",
     on_finished=None,
+    diagnostic_source: str = "selected_cards",
+    diagnostic_content_kind: str = "other",
 ) -> bool:
-    normalized_ids: list[int] = []
-    for cid in selected_ids or []:
-        try:
-            value = int(cid)
-        except Exception:
-            continue
-        if value > 0:
-            normalized_ids.append(value)
+    normalized_ids = _normalize_explicit_review_ids(selected_ids)
+    _emit_diagnostic_event(
+        "explicit_review_requested",
+        source=diagnostic_source,
+        content_kind=diagnostic_content_kind,
+        requested_count=len(normalized_ids),
+        preserve_order=bool(preserve_order),
+    )
 
     if not normalized_ids:
+        _emit_diagnostic_event(
+            "explicit_review_build_finished",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            requested_count=0,
+            selected_count=0,
+            unavailable_count=0,
+        )
         if empty_message:
             showInfo(empty_message)
         return False
 
     try:
+        _emit_diagnostic_event(
+            "explicit_review_build_started",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+        )
         _prepare_filtered_review_deck(
             normalized_ids,
             deck_name=deck_name,
@@ -834,41 +1046,232 @@ def start_explicit_review(
             select_deck=True,
         )
     except Exception as e:
+        _emit_diagnostic_event(
+            "explicit_review_failed",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            stage="deck_build",
+            error_type=type(e).__name__,
+        )
         showInfo(str(e))
         return False
 
-    if on_finished is not None:
-        finished = False
+    _emit_diagnostic_event(
+        "explicit_review_build_finished",
+        source=diagnostic_source,
+        content_kind=diagnostic_content_kind,
+        requested_count=len(normalized_ids),
+        selected_count=len(normalized_ids),
+        unavailable_count=0,
+    )
+    try:
+        mw.moveToState("review")
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "explicit_review_failed",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            stage="activation",
+            error_type=type(exc).__name__,
+        )
+        showInfo(f"Could not enter review:\n{exc}")
+        return False
+    _register_explicit_review_finished_callback(
+        on_finished,
+        diagnostic_source=diagnostic_source,
+        diagnostic_content_kind=diagnostic_content_kind,
+    )
+    _emit_diagnostic_event(
+        "explicit_review_started",
+        source=diagnostic_source,
+        content_kind=diagnostic_content_kind,
+        selected_count=len(normalized_ids),
+    )
+    return True
 
-        def _finish_once() -> None:
-            nonlocal finished
-            if finished:
-                return
-            finished = True
-            for hook_list, fn in (
-                (gui_hooks.reviewer_will_end, _on_reviewer_end),
-                (gui_hooks.state_did_change, _on_state_did_change),
-            ):
-                try:
-                    hook_list.remove(fn)
-                except ValueError:
-                    pass
+
+def start_explicit_review_from_selector(
+    select_ids,
+    *,
+    deck_name: str = INCREMENTO_DECK,
+    preserve_order: bool = True,
+    empty_message: str = "No cards available to review.",
+    error_message: str = "Could not start review",
+    on_finished=None,
+    diagnostic_source: str = "selected_cards",
+    diagnostic_content_kind: str = "other",
+    diagnostic_media_order: str | None = None,
+    diagnostic_media_card_kind: str | None = None,
+    diagnostic_media_tree_scope: str | None = None,
+    diagnostic_media_range: str | None = None,
+    diagnostic_media_state: str | None = None,
+    diagnostic_limit: int | None = None,
+) -> bool:
+    """Resolve and build an explicit review in a background collection operation."""
+    if not callable(select_ids):
+        _emit_diagnostic_event(
+            "explicit_review_failed",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            stage="selection",
+            error_type="TypeError",
+        )
+        showInfo(f"{error_message}: no card selector was provided.")
+        return False
+
+    request_fields = {
+        "source": diagnostic_source,
+        "content_kind": diagnostic_content_kind,
+        "requested_count": 0,
+        "preserve_order": bool(preserve_order),
+    }
+    for key, value in (
+        ("media_order", diagnostic_media_order),
+        ("media_card_kind", diagnostic_media_card_kind),
+        ("media_tree_scope", diagnostic_media_tree_scope),
+        ("media_range", diagnostic_media_range),
+        ("media_state", diagnostic_media_state),
+        ("limit", diagnostic_limit),
+    ):
+        if value is not None:
+            request_fields[key] = value
+    _emit_diagnostic_event("explicit_review_requested", **request_fields)
+    failure_stage = {"value": "selection"}
+
+    def _build(col) -> _ExplicitReviewOperationResult:
+        failure_stage["value"] = "selection"
+        _emit_diagnostic_event(
+            "explicit_review_build_started",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+        )
+        normalized_ids = _normalize_explicit_review_ids(select_ids(col))
+        if not normalized_ids:
+            _emit_diagnostic_event(
+                "explicit_review_build_finished",
+                source=diagnostic_source,
+                content_kind=diagnostic_content_kind,
+                requested_count=0,
+                selected_count=0,
+                unavailable_count=0,
+            )
+            return _ExplicitReviewOperationResult(
+                changes=_empty_op_changes(),
+                requested_ids=[],
+                selected_ids=[],
+                unavailable_ids=[],
+                deck_id=None,
+            )
+        failure_stage["value"] = "deck_build"
+        deck_result = _prepare_filtered_review_deck(
+            normalized_ids,
+            deck_name=deck_name,
+            preserve_order=preserve_order,
+            select_deck=False,
+            col=col,
+            return_result=True,
+        )
+        included_ids: list[int] = []
+        for card_id in normalized_ids:
             try:
-                on_finished()
-            except Exception as e:
-                print(f"[Incremento] explicit review finish callback error: {e}")
+                card = col.get_card(int(card_id))
+                if int(getattr(card, "did", 0) or 0) == int(deck_result.deck_id):
+                    included_ids.append(int(card_id))
+            except Exception:
+                continue
+        included_id_set = set(included_ids)
+        unavailable_ids = [
+            card_id for card_id in normalized_ids if card_id not in included_id_set
+        ]
+        if included_ids:
+            col.decks.select(int(deck_result.deck_id))
+        _emit_diagnostic_event(
+            "explicit_review_build_finished",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            requested_count=len(normalized_ids),
+            selected_count=len(included_ids),
+            unavailable_count=len(unavailable_ids),
+        )
+        return _ExplicitReviewOperationResult(
+            changes=deck_result.changes,
+            requested_ids=normalized_ids,
+            selected_ids=included_ids,
+            unavailable_ids=unavailable_ids,
+            deck_id=deck_result.deck_id,
+        )
 
-        def _on_reviewer_end() -> None:
-            _finish_once()
+    def _finish_success(result: _ExplicitReviewOperationResult) -> None:
+        if not result.selected_ids or result.deck_id is None:
+            message = str(empty_message or "").strip()
+            if result.unavailable_ids:
+                count = len(result.unavailable_ids)
+                unavailable = (
+                    f"{count} linked card{' was' if count == 1 else 's were'} "
+                    "unavailable because Anki cannot move suspended, buried, or "
+                    "already-filtered cards into this review deck."
+                )
+                message = f"{message}\n\n{unavailable}" if message else unavailable
+            if message:
+                showInfo(message)
+            return
+        if result.unavailable_ids:
+            count = len(result.unavailable_ids)
+            showInfo(
+                f"{count} requested card{' was' if count == 1 else 's were'} not added. "
+                "Anki cannot move suspended, buried, or already-filtered cards "
+                "into this review deck. The remaining linked cards will be reviewed."
+            )
+        try:
+            mw.moveToState("review")
+        except Exception as exc:
+            _emit_diagnostic_event(
+                "explicit_review_failed",
+                source=diagnostic_source,
+                content_kind=diagnostic_content_kind,
+                stage="activation",
+                error_type=type(exc).__name__,
+            )
+            showInfo(f"{error_message}:\n{exc}")
+            return
+        _register_explicit_review_finished_callback(
+            on_finished,
+            diagnostic_source=diagnostic_source,
+            diagnostic_content_kind=diagnostic_content_kind,
+        )
+        _emit_diagnostic_event(
+            "explicit_review_started",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            selected_count=len(result.selected_ids),
+        )
 
-        def _on_state_did_change(new_state: str, old_state: str) -> None:
-            if old_state == "review" and new_state != "review":
-                _finish_once()
+    def _success(result: _ExplicitReviewOperationResult) -> None:
+        _defer_collection_ui_action(lambda: _finish_success(result))
 
-        gui_hooks.reviewer_will_end.append(_on_reviewer_end)
-        gui_hooks.state_did_change.append(_on_state_did_change)
+    def _failure(exc: Exception) -> None:
+        _emit_diagnostic_event(
+            "explicit_review_failed",
+            source=diagnostic_source,
+            content_kind=diagnostic_content_kind,
+            stage=str(failure_stage.get("value") or "other"),
+            error_type=type(exc).__name__,
+        )
+        _defer_collection_ui_action(
+            lambda: showInfo(f"{error_message}:\n{exc}")
+        )
 
-    mw.moveToState("review")
+    try:
+        _run_collection_operation(
+            parent=mw,
+            op=_build,
+            success=_success,
+            failure=_failure,
+            initiator=select_ids,
+        )
+    except Exception as exc:
+        _failure(exc)
+        return False
     return True
 
 
@@ -888,6 +1291,7 @@ def start_quick_open_review(card_id: int) -> bool:
         deck_name=INCREMENTO_QUICK_OPEN_REVIEW_DECK,
         preserve_order=True,
         empty_message="No selected card is available to study.",
+        diagnostic_source="quick_open",
     )
 
 
@@ -978,6 +1382,10 @@ def _activate_incremento_session(
     _session_times = copy.deepcopy(result.session_time_snapshot)
 
     if not result.selected_ids:
+        _emit_diagnostic_event(
+            "incremento_session_not_started",
+            reason="no_cards",
+        )
         branch_title = str((branch_scope or {}).get("root_title") or "").strip()
         if branch_title:
             showInfo(f'No cards available to study in branch "{branch_title}".')
@@ -1000,6 +1408,32 @@ def _activate_incremento_session(
         auto_refill_enabled=bool(getattr(cfg, "auto_refill_session", False)),
     )
     _active_incremento_session_state = state
+    _emit_diagnostic_event(
+        "incremento_session_phase",
+        phase="activation_started",
+        selected_count=len(state.selected_ids),
+    )
+    entered_review = False
+
+    def _mark_entered_review() -> None:
+        nonlocal entered_review
+        if entered_review or state.session_closed:
+            return
+        if str(getattr(mw, "state", "") or "") != "review":
+            return
+        entered_review = True
+        _emit_diagnostic_event(
+            "incremento_session_phase",
+            phase="entered_review",
+            selected_count=len(state.selected_ids),
+        )
+        _emit_diagnostic_event(
+            "incremento_session_started",
+            selected_count=len(state.selected_ids),
+            window_size=state.window_size,
+            auto_refill=state.auto_refill_enabled,
+            preserve_order=state.preserve_order,
+        )
 
     def _on_card_shown(card) -> None:
         try:
@@ -1025,11 +1459,25 @@ def _activate_incremento_session(
         try:
             _record_incremento_answer(state, reviewer, card)
         except Exception as e:
+            _emit_diagnostic_event(
+                "incremento_session_answer_tracking_failed",
+                error_type=type(e).__name__,
+            )
             print(f"[Incremento] _on_card_answered error: {e}")
+        _emit_diagnostic_event(
+            "incremento_session_card_answered",
+            rating=ease,
+            reviewed_count=len(state.reviewed_ids),
+            selected_count=len(state.selected_ids),
+        )
         if state.auto_refill_enabled:
             if _defer_next_card_until_refill_finishes(state, reviewer):
                 _schedule_deferred_auto_refill(state, reason="card-answered")
             else:
+                _emit_diagnostic_event(
+                    "incremento_session_refill_skipped",
+                    reason="advance_not_deferred",
+                )
                 print("[Incremento] auto-refill skipped: reviewer advance could not be deferred")
 
     gui_hooks.reviewer_did_show_question.append(_on_card_shown)
@@ -1037,13 +1485,7 @@ def _activate_incremento_session(
     gui_hooks.reviewer_did_answer_card.append(_on_card_answered)
 
     # One-shot hooks: clean up when reviewer is left.
-    def _on_reviewer_end() -> None:
-        global _active_incremento_session_state
-        try:
-            _flush_unanswered_time_for_state(state)
-        except Exception as e:
-            print(f"[Incremento] _on_reviewer_end time-only stats error: {e}")
-
+    def _remove_session_hooks() -> None:
         for hook_list, fn in (
             (gui_hooks.reviewer_will_end, _on_reviewer_end),
             (gui_hooks.state_did_change, _on_state_did_change),
@@ -1056,6 +1498,26 @@ def _activate_incremento_session(
             except ValueError:
                 pass
 
+    def _on_reviewer_end() -> None:
+        global _active_incremento_session_state
+        try:
+            _flush_unanswered_time_for_state(state)
+        except Exception as e:
+            _emit_diagnostic_event(
+                "incremento_session_exit_tracking_failed",
+                error_type=type(e).__name__,
+            )
+            print(f"[Incremento] _on_reviewer_end time-only stats error: {e}")
+
+        _emit_diagnostic_event(
+            "incremento_session_ended",
+            reviewed_count=len(state.reviewed_ids),
+            selected_count=len(state.selected_ids),
+            refill_pending=bool(state.refill_retry_pending),
+        )
+
+        _remove_session_hooks()
+
         # Anki already returns completed cards to their home decks and keeps
         # unfinished learning/relearning cards in the filtered deck. Rebuilding
         # here would perform collection work inside reviewer_will_end, block the
@@ -1065,12 +1527,26 @@ def _activate_incremento_session(
             _active_incremento_session_state = None
 
     def _on_state_did_change(new_state: str, old_state: str) -> None:
+        if new_state == "review" and old_state != "review":
+            _mark_entered_review()
         if old_state == "review" and new_state != "review":
             _on_reviewer_end()
 
     gui_hooks.reviewer_will_end.append(_on_reviewer_end)
     gui_hooks.state_did_change.append(_on_state_did_change)
-    mw.moveToState("review")
+    try:
+        mw.moveToState("review")
+        QTimer.singleShot(0, _mark_entered_review)
+    except Exception as exc:
+        state.session_closed = True
+        _remove_session_hooks()
+        if _active_incremento_session_state is state:
+            _active_incremento_session_state = None
+        _emit_diagnostic_event(
+            "incremento_session_activation_failed",
+            error_type=type(exc).__name__,
+        )
+        showInfo(f"Could not enter the Incremento review session:\n\n{exc}")
 
 
 def learnFunction(*, branch_scope: dict | None = None) -> None:
@@ -1091,6 +1567,15 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
     dlg.save_config()
     addon_config = mw.addonManager.getConfig(_ADDON_PKG) or {}
     cfg = dlg.to_config()
+    _emit_diagnostic_event(
+        "incremento_session_requested",
+        branch_scoped=bool(branch_scope),
+        target_count=max(0, int(getattr(cfg, "session_card_count", 0) or 0)),
+        auto_refill=bool(getattr(cfg, "auto_refill_session", False)),
+        include_new=bool(getattr(cfg, "include_new", True)),
+        include_learning=bool(getattr(cfg, "include_learning", True)),
+        include_due=bool(getattr(cfg, "include_due", True)),
+    )
     preview_override = (
         dlg.get_preview_override() if hasattr(dlg, "get_preview_override") else None
     )
@@ -1110,6 +1595,11 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
     )
 
     def _build_session(col) -> _SessionBuildOperationResult:
+        _emit_diagnostic_event(
+            "incremento_session_phase",
+            phase="selection_started",
+            selected_count=0,
+        )
         preview_snapshot = (preview_copy or {}).get("picker_snapshot")
         if preview_copy and preview_snapshot is None:
             preview_snapshot = {
@@ -1132,6 +1622,11 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
             picker.pick_until(cfg.session_card_count)
 
         selected_ids = list(picker.selected_ids)
+        _emit_diagnostic_event(
+            "incremento_session_phase",
+            phase="selection_finished",
+            selected_count=len(selected_ids),
+        )
         picked_meta = copy.deepcopy(picker.picked_meta)
         session_time_snapshot = copy.deepcopy(
             (preview_copy or {}).get("session_time", picker.stats.session_time)
@@ -1147,6 +1642,11 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
                 deck_id=None,
             )
 
+        _emit_diagnostic_event(
+            "incremento_session_phase",
+            phase="deck_build_started",
+            selected_count=len(selected_ids),
+        )
         deck_result = _prepare_filtered_review_deck(
             selected_ids,
             deck_name=session_deck_name,
@@ -1154,6 +1654,11 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
             select_deck=True,
             col=col,
             return_result=True,
+        )
+        _emit_diagnostic_event(
+            "incremento_session_phase",
+            phase="deck_build_finished",
+            selected_count=len(selected_ids),
         )
         return _SessionBuildOperationResult(
             changes=deck_result.changes,
@@ -1166,6 +1671,16 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         )
 
     def _success(result: _SessionBuildOperationResult) -> None:
+        _emit_diagnostic_event(
+            "incremento_session_build_succeeded",
+            selected_count=len(result.selected_ids),
+            auto_refill=bool(getattr(cfg, "auto_refill_session", False)),
+        )
+        _emit_diagnostic_event(
+            "incremento_session_phase",
+            phase="activation_scheduled",
+            selected_count=len(result.selected_ids),
+        )
         # CollectionOp invokes success before dispatching its change hooks, and
         # its application-modal progress window may remain alive briefly. Wait
         # for both before entering review so Anki's main window cannot remain
@@ -1180,6 +1695,10 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         )
 
     def _failure(exc: Exception) -> None:
+        _emit_diagnostic_event(
+            "incremento_session_build_failed",
+            error_type=type(exc).__name__,
+        )
         _defer_collection_ui_action(
             lambda: showInfo(f"Could not start the Incremento session:\n\n{exc}")
         )
@@ -1189,4 +1708,5 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         op=_build_session,
         success=_success,
         failure=_failure,
+        initiator=_build_session,
     )

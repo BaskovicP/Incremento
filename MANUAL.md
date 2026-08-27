@@ -113,6 +113,7 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 | **Quick Open Content** | Fuzzy-search and open PDF, EPUB, or writing cards |
 | **Find In Current Document** | Open a small results dialog for the currently open PDF or EPUB, with a Search ALL handoff |
 | **Search ALL** | Search PDF/EPUB highlights, sources, content, and cards |
+| **Export Support Bundle…** | Create a privacy-safe diagnostic ZIP for a bug report |
 | **Export Full Backup** | Create a backup ZIP |
 
 ### Utils submenu
@@ -372,6 +373,8 @@ Main controls include:
 - zoom out / zoom in
 - highlight color selection
 - **Add Card**
+- **Review Due** for due extracted cards near the current reading point
+- **Review All** for every available card linked to this PDF
 - **Highlight when extracting**
 - **Mark this PDF as finished reading**
 
@@ -391,6 +394,33 @@ Incremento remembers:
 If the target field already contains text, the new excerpt is appended rather than replacing the old content.
 
 PDF highlights can also be turned into cards from the **Highlights** panel. Incremento prefills the configured Add Card field, includes a citation that points back to the exact highlight when possible, and switches to **Preview Card** after that highlight already has a linked note.
+
+### Reviewing all cards attached to media
+
+While a PDF, EPUB, or video card is open, press **Review All** to open the attached-card review picker. Incremento recognizes older PDF/EPUB extraction records, current parent-card metadata, saved reader links, recent video extracts, and nested descendants in the source card's knowledge-tree branch.
+
+The picker lets you choose:
+
+- **Topics and items**, **Topics only**, or **Items only**. This uses the same Topic/Item classifier as the normal Incremento reviewer, including configured topic note types/tags, item-tag overrides, and Topics-deck behavior.
+- **Direct and nested cards** or **Direct attachments only**.
+- The **entire media** or only cards **up to the current position**. Media position means PDF page, EPUB section, or video timestamp. A nested card inherits the nearest known ancestor position; a card with no known position is excluded from the up-to-current range and reported in the preview.
+- **All available cards** or only due review and ready learning/relearning cards. The due-only choice does not include new or future cards.
+- A maximum number of cards, applied after filtering and ordering. Leave it at **All** for no limit.
+
+Available review orders are:
+
+- attached/source order
+- media position, from the beginning toward the end
+- creation date, oldest or newest first
+- due and learning cards first
+- shortest or longest current interval first
+- random
+
+Incremento first scans the links in the background, then shows a live preview with the number of Topics and Items that will be reviewed. It also reports exclusion counts such as suspended, buried, already filtered, nested, beyond the current position, unknown position, not due, or past the chosen limit. The source card itself is never included.
+
+After you confirm, Incremento resolves the links again and builds the temporary filtered deck in a background collection operation. Rechecking prevents stale preview data from scheduling a card that changed while the dialog was open. The selected order is preserved. Cards already in another filtered deck remain there and are not silently moved.
+
+These are real Anki reviews, including cards that were not yet due, so each answer updates that card's schedule normally. When the linked-card review ends, Incremento reopens the PDF, EPUB, or video at its saved reading or playback position.
 
 ### Highlights
 
@@ -425,6 +455,7 @@ Current EPUB features include:
 - highlights and highlight notes
 - per-book daily reading limits
 - optional prompts to review due extracted cards near the current reading point
+- **Review All** with the shared Topic/Item, scope, state, limit, and order picker
 - searchable extracted section text used by **Search ALL**
 
 EPUBs are treated as a distinct document type throughout Incremento. They appear separately from PDFs in quick open, statistics, and focus-timer summaries.
@@ -452,6 +483,7 @@ The dock includes:
 - current time display
 - seek bar
 - **Add Card at this point**
+- **Review All…** for linked video cards, with Topic/Item, timestamp range, nested scope, due-state, limit, and ordering controls
 - **Open in Browser**
 
 For local playback, extra controls appear:
@@ -674,7 +706,24 @@ The settings dialog also lets you choose the tags applied by the dock's **Topic*
 
 ---
 
-## 12. Export and Restore Notes
+## 12. Support Bundles, Export, and Restore
+
+### Privacy-safe support bundle
+
+If Incremento behaves unexpectedly, choose **Incremento → Export Support Bundle…** and attach the resulting ZIP to the issue report. Incremento automatically keeps a small per-profile diagnostic history after this version is installed; events from older versions cannot be reconstructed.
+
+The support bundle contains:
+
+- sanitized Incremento configuration: booleans, numbers, safe modes/enums, and shortcuts remain visible, while names, labels, tags, filters, paths, URLs, hashes, and other free text become redaction markers
+- recent UI state transitions, Anki operation categories, numeric card queue/type/final-interval states, answer ratings, Incremento session build phases/refill outcomes/exit events, media Review All lifecycle plus normalized picker choices/counts, and privacy-safe topic/custom-schedule results or failure stages
+- Anki, Python, add-on, operating-system family, architecture, and enabled-add-on counts
+- safe current-session counts/flags, diagnostic-writer health and dropped-event counters, known Incremento database table row/column counts plus a schema fingerprint, and hashes of a fixed list of shipped code files
+
+It does **not** contain card or note text, raw card/note IDs, deck/tag/profile names, media, user or media filenames, local filesystem paths, URLs, browser history, database rows, exception messages/tracebacks, or precise activity timestamps. Fixed shipped-code filenames are included only beside their hashes so an installed build can be identified. Error events retain only the exception class, such as `OperationalError`. Event timing is elapsed time within an Anki run.
+
+Diagnostic logs are stored under the active profile's `user_files/<ProfileName>/diagnostics/` directory. They are capped at three 1 MB files, and an export includes at most the latest 5,000 validated events. Reviewer and scheduler hooks only enqueue typed events into a bounded 2,048-event memory queue; a background writer performs filesystem work, and a full queue drops events instead of delaying review. The bundle includes those dropped-event and writer-health counters. The exporter parses and revalidates every event instead of copying the raw log files, and it runs outside Anki's serialized collection-task queue so it can still capture diagnostics when a collection operation is stalled.
+
+### Full backup and restore
 
 Use **Export Full Backup** to create a single ZIP for migration to a new computer.
 
@@ -688,6 +737,8 @@ The backup includes:
 - `restore.txt` with the restore order
 
 For full restore guidance, see `EXPORTING.md`.
+
+The full backup is private and intentionally contains your cards, media, database, paths, and raw configuration. Do not attach a full backup to a public issue; use **Export Support Bundle…** instead.
 
 ---
 

@@ -216,3 +216,65 @@ def test_current_epub_search_context_uses_current_title(monkeypatch):
     assert context["cardId"] == 15
     assert context["query"] == "topic"
     assert context["hits"][0]["sectionIndex"] == 2
+
+
+def test_start_all_epub_review_passes_reader_context_and_restores_reader(monkeypatch):
+    starts = []
+    selected_decks = []
+    restored = []
+    read_markers = []
+    fake_note = {epub_dock.EPUB_FILE_FIELD: "book.epub"}
+    fake_col = types.SimpleNamespace(
+        get_card=lambda card_id: types.SimpleNamespace(nid=9),
+        get_note=lambda note_id: fake_note,
+        decks=types.SimpleNamespace(
+            current=lambda: {"id": 33},
+            select=lambda deck_id: selected_decks.append(deck_id),
+        ),
+    )
+    fake_launcher = types.SimpleNamespace(
+        start_attached_media_review=lambda **kwargs: starts.append(kwargs) or True,
+    )
+    monkeypatch.setitem(sys.modules, "media_review_dialog", fake_launcher)
+    monkeypatch.setattr(epub_dock, "mw", types.SimpleNamespace(col=fake_col))
+    monkeypatch.setattr(epub_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 4)
+    monkeypatch.setattr(epub_dock, "_current_epub_scroll_ratio", 0.35)
+    monkeypatch.setattr(epub_dock, "get_read_section_index", lambda *_args: 3)
+    monkeypatch.setattr(
+        epub_dock,
+        "set_read_section_index",
+        lambda *args: read_markers.append(args),
+    )
+    monkeypatch.setattr(
+        epub_dock,
+        "show_epub_in_dock",
+        lambda *args, **kwargs: restored.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        epub_dock,
+        "QTimer",
+        types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+    )
+
+    assert epub_dock._start_all_epub_review(66) is True
+    assert starts[0]["source_card_id"] == 66
+    assert starts[0]["media_label"] == "EPUB"
+    assert starts[0]["media_kind"] == "epub"
+    assert starts[0]["current_position"] == 4
+    assert starts[0]["deck_name"] == epub_dock.INCREMENTO_EPUB_REVIEW_DECK
+
+    starts[0]["on_finished"]()
+    assert selected_decks == [33]
+    assert restored == [
+        (
+            (66, "book.epub"),
+            {
+                "section_index": 4,
+                "scroll_ratio": 0.35,
+                "offer_due_review_prompt": False,
+            },
+        )
+    ]
+    assert read_markers == [("/tmp/addon", "TestProfile", 66, 3)]

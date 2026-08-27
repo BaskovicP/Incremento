@@ -141,6 +141,7 @@ _position_lock_until   = 0.0
 _position_lock_sec     = 0.0
 _recent_video_extract_source_card_id = None
 _recent_video_extract_child_card_ids: set[int] = set()
+_recent_video_extract_child_positions: dict[int, float] = {}
 _recent_video_extract_until = 0.0
 _recent_video_extract_position_sec = 0.0
 _remote_resume_target  = 0.0
@@ -293,9 +294,15 @@ def _build_video_dock():
     resume_input.setPlaceholderText("mm:ss or 123s")
     resume_input.setMaximumWidth(150)
     resume_btn = QPushButton("Set time")
+    review_all_btn = QPushButton("Review All…")
+    review_all_btn.setToolTip(
+        "Choose Topics, Items, scope, due state, limit, and order for cards attached to this video"
+    )
+    review_all_btn.setEnabled(False)
     manual_layout.addWidget(resume_lbl)
     manual_layout.addWidget(resume_input, 1)
     manual_layout.addWidget(resume_btn)
+    manual_layout.addWidget(review_all_btn)
     manual_layout.addStretch()
     vbox.addWidget(manual_ctrl)
 
@@ -379,6 +386,7 @@ def _build_video_dock():
     dock._captions_btn = captions_btn
     dock._resume_input = resume_input
     dock._resume_btn = resume_btn
+    dock._review_all_btn = review_all_btn
     dock._caption_ctrl = caption_ctrl
     dock._target_cc_btn = target_cc_btn
     dock._reference_cc_btn = reference_cc_btn
@@ -391,6 +399,7 @@ def _build_video_dock():
     qconnect(captions_btn.clicked, configure_current_video_captions)
     qconnect(resume_btn.clicked, _on_manual_time_submit)
     qconnect(resume_input.returnPressed, _on_manual_time_submit)
+    qconnect(review_all_btn.clicked, _start_all_video_review)
     qconnect(seek_slider.sliderPressed, _on_seek_slider_pressed)
     qconnect(seek_slider.sliderReleased, _on_seek_slider_released)
     qconnect(seek_slider.valueChanged, _on_seek_slider_value_changed)
@@ -562,6 +571,18 @@ def _set_browser_button_enabled(enabled: bool) -> None:
     if _video_dock is None:
         return
     btn = getattr(_video_dock, "_browser_btn", None)
+    if btn is None:
+        return
+    try:
+        btn.setEnabled(bool(enabled))
+    except Exception:
+        pass
+
+
+def _set_review_all_button_enabled(enabled: bool) -> None:
+    if _video_dock is None:
+        return
+    btn = getattr(_video_dock, "_review_all_btn", None)
     if btn is None:
         return
     try:
@@ -1204,7 +1225,15 @@ def reset_for_profile_switch() -> None:
     with the correct per-profile storage path on next dock open.
     """
     global _video_profile, _video_dock
+    global _recent_video_extract_source_card_id
+    global _recent_video_extract_child_card_ids, _recent_video_extract_child_positions
+    global _recent_video_extract_until, _recent_video_extract_position_sec
     _video_profile = None
+    _recent_video_extract_source_card_id = None
+    _recent_video_extract_child_card_ids = set()
+    _recent_video_extract_child_positions = {}
+    _recent_video_extract_until = 0.0
+    _recent_video_extract_position_sec = 0.0
     if _video_dock is not None:
         try:
             _video_dock.hide()
@@ -1296,6 +1325,7 @@ def show_video_in_dock(
             _build_video_dock()
     existing_dock_reused = previous_dock is not None and _video_dock is previous_dock
     _set_browser_button_enabled(bool(build_remote_video_watch_url(_current_video_url, start_sec=0)))
+    _set_review_all_button_enabled(True)
     _set_download_button_enabled(
         bool(is_supported_video_url(_current_video_url)),
         has_local_copy=bool(local_video_file),
@@ -1510,6 +1540,7 @@ def _arm_video_extract_position_protection(
     global _last_known_position
     global _position_lock_card_id, _position_lock_until, _position_lock_sec
     global _recent_video_extract_source_card_id
+    global _recent_video_extract_child_card_ids, _recent_video_extract_child_positions
     global _recent_video_extract_until, _recent_video_extract_position_sec
     if card_id is None:
         return 0.0
@@ -1517,6 +1548,16 @@ def _arm_video_extract_position_protection(
         source_card_id = int(card_id)
     except Exception:
         return 0.0
+    try:
+        source_changed = (
+            _recent_video_extract_source_card_id is not None
+            and int(_recent_video_extract_source_card_id) != source_card_id
+        )
+    except Exception:
+        source_changed = True
+    if source_changed:
+        _recent_video_extract_child_card_ids = set()
+        _recent_video_extract_child_positions = {}
     target = _best_protected_video_position(source_card_id, position_sec)
     if target <= 0.0:
         return 0.0
@@ -1549,6 +1590,97 @@ def _video_note_payload_for_card(card_id: int) -> tuple[str, dict]:
     except Exception:
         media = {}
     return video_url, media
+
+
+def _start_all_video_review() -> bool:
+    card_id = current_video_card_id()
+    if card_id is None:
+        showInfo("Could not determine the current video card.")
+        return False
+
+    _persist_position_now()
+    video_url, media = _video_note_payload_for_card(int(card_id))
+    local_video_file = str((media or {}).get("local_video_file") or "").strip()
+    try:
+        position = max(
+            float(_last_known_position or 0.0),
+            float(get_video_position(_ADDON_DIR, _active_profile(), int(card_id)) or 0.0),
+        )
+    except Exception:
+        position = max(0.0, float(_last_known_position or 0.0))
+
+    try:
+        previous_did = (mw.col.decks.current() or {}).get("id")
+    except Exception:
+        previous_did = None
+
+    def _restore_video() -> None:
+        try:
+            if previous_did:
+                mw.col.decks.select(previous_did)
+        except Exception:
+            pass
+        QTimer.singleShot(
+            0,
+            lambda: show_video_in_dock(
+                int(card_id),
+                video_url,
+                position,
+                local_video_file,
+                target_subtitle_file=str((media or {}).get("target_subtitle_file") or ""),
+                target_subtitle_label=str((media or {}).get("target_subtitle_label") or ""),
+                reference_subtitle_file=str((media or {}).get("reference_subtitle_file") or ""),
+                reference_subtitle_label=str((media or {}).get("reference_subtitle_label") or ""),
+                preserve_loaded=False,
+            ),
+        )
+
+    try:
+        from ..backend.session import INCREMENTO_VIDEO_REVIEW_DECK
+        from .media_review_dialog import start_attached_media_review
+    except ImportError:
+        from session import INCREMENTO_VIDEO_REVIEW_DECK  # type: ignore
+        from media_review_dialog import start_attached_media_review  # type: ignore
+
+    recent_child_card_ids: list[int] = []
+    recent_child_positions: dict[int, float] = {}
+    try:
+        if (
+            _recent_video_extract_source_card_id is not None
+            and int(_recent_video_extract_source_card_id) == int(card_id)
+        ):
+            recent_child_card_ids = sorted(
+                int(child_card_id)
+                for child_card_id in _recent_video_extract_child_card_ids
+                if int(child_card_id) > 0
+            )
+            recent_child_positions = {
+                int(child_card_id): float(
+                    _recent_video_extract_child_positions.get(
+                        int(child_card_id),
+                        _recent_video_extract_position_sec,
+                    )
+                    or 0.0
+                )
+                for child_card_id in recent_child_card_ids
+            }
+    except Exception:
+        recent_child_card_ids = []
+        recent_child_positions = {}
+
+    return start_attached_media_review(
+        addon_dir=_ADDON_DIR,
+        profile=_active_profile(),
+        source_card_id=int(card_id),
+        media_label="video",
+        media_kind="video",
+        deck_name=INCREMENTO_VIDEO_REVIEW_DECK,
+        current_position=position,
+        linked_card_ids=recent_child_card_ids,
+        linked_card_positions=recent_child_positions,
+        on_finished=_restore_video,
+        parent=mw,
+    )
 
 
 def _restore_video_extract_position(
@@ -1645,23 +1777,27 @@ def _should_preserve_for_recent_video_extract(non_video_card_id: int | None) -> 
 
 
 def on_video_extract_note_added(source_card_id, created_card_ids=None) -> None:
-    global _recent_video_extract_child_card_ids
+    global _recent_video_extract_child_card_ids, _recent_video_extract_child_positions
     try:
         source_id = int(source_card_id)
     except Exception:
         return
-    children = set(_recent_video_extract_child_card_ids or set())
-    for raw_card_id in list(created_card_ids or []):
-        try:
-            children.add(int(raw_card_id))
-        except Exception:
-            pass
-    _recent_video_extract_child_card_ids = children
     target = _arm_video_extract_position_protection(
         source_id,
         float(_recent_video_extract_position_sec or _last_known_position or 0.0),
         ttl_sec=60.0,
     )
+    children = set(_recent_video_extract_child_card_ids or set())
+    child_positions = dict(_recent_video_extract_child_positions or {})
+    for raw_card_id in list(created_card_ids or []):
+        try:
+            child_card_id = int(raw_card_id)
+        except Exception:
+            continue
+        children.add(child_card_id)
+        child_positions[child_card_id] = max(0.0, float(target or 0.0))
+    _recent_video_extract_child_card_ids = children
+    _recent_video_extract_child_positions = child_positions
     if target > 0.0:
         _schedule_video_extract_position_restores(source_id, target, ttl_sec=60.0)
 
@@ -2576,6 +2712,7 @@ def on_video_question_shown(card) -> None:
             _current_reference_subtitle_label = ""
             _set_local_controls_visible(False)
             _set_browser_button_enabled(False)
+            _set_review_all_button_enabled(False)
             _set_download_button_enabled(False, has_local_copy=False)
             _set_captions_button_enabled(False)
             _set_caption_controls_state(
@@ -2705,6 +2842,7 @@ def on_video_reviewer_will_end() -> None:
     _current_reference_subtitle_label = ""
     _set_local_controls_visible(False)
     _set_browser_button_enabled(False)
+    _set_review_all_button_enabled(False)
     _set_download_button_enabled(False, has_local_copy=False)
     _set_captions_button_enabled(False)
     _set_caption_controls_state(

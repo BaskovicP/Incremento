@@ -40,6 +40,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "backend/__init__.py",
         "backend/db.py",
         "backend/browser_bridge.py",
+        "backend/diagnostics.py",
         "backend/scheduler.py",
         "backend/__pycache__/db.cpython-312.pyc",
     ):
@@ -162,6 +163,7 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
     required = {
         "backend/db.py",
         "backend/browser_bridge.py",
+        "backend/diagnostics.py",
         "backend/scheduler.py",
         "frontend/pdf_dock.py",
         "frontend/web_dock.py",

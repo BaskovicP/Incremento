@@ -580,6 +580,7 @@ class TestOnTopicCardAnswered:
         )
         fake_mw = MagicMock()
         fake_mw.col.get_card.return_value = latest_card
+        diagnostic_events = []
         with patch("topic_scheduler.is_topic_card", return_value=True), \
              patch("topic_scheduler.topic_schedule_exists", return_value=schedule_exists), \
              patch("topic_scheduler.get_topic_schedule_state", return_value=state) as get_state, \
@@ -591,9 +592,14 @@ class TestOnTopicCardAnswered:
              patch("topic_scheduler._track_topic_review_state"), \
              patch("topic_scheduler.commit_topic_review") as commit_review, \
              patch("topic_scheduler.mw", fake_mw), \
+             patch(
+                 "topic_scheduler._diagnostic_event_callback",
+                 lambda event, fields: diagnostic_events.append((event, fields)),
+             ), \
              patch("topic_scheduler.configured_default_topic_a_factor", return_value=4.2):
             assert prepare_topic_answer(card, button_ease) == 3
             on_topic_card_answered(MagicMock(), card, ease=3)
+        self.last_diagnostic_events = diagnostic_events
         return get_state, apply_interval, commit_review
 
     def test_skips_non_topic_card(self):
@@ -607,12 +613,17 @@ class TestOnTopicCardAnswered:
         card = self._make_card(did=9, odid=1)
         fake_col = MagicMock()
         fake_col.decks.get.return_value = {"dyn": 1, "resched": False}
+        diagnostic_events = []
         with patch("topic_scheduler.mw", SimpleNamespace(col=fake_col)), \
              patch("topic_scheduler._answer_revlog_snapshot", return_value=(True, 100)), \
              patch("topic_scheduler.is_topic_card", return_value=True), \
              patch("topic_scheduler.get_topic_schedule_state") as get_state, \
              patch("topic_scheduler._apply_topic_interval_to_anki_card") as apply_interval, \
-             patch("topic_scheduler.commit_topic_review") as commit_review:
+             patch("topic_scheduler.commit_topic_review") as commit_review, \
+             patch(
+                 "topic_scheduler._diagnostic_event_callback",
+                 lambda event, fields: diagnostic_events.append((event, fields)),
+             ):
             assert prepare_topic_answer(card, 1) == 3
             on_topic_card_answered(MagicMock(), card, ease=3)
 
@@ -620,6 +631,9 @@ class TestOnTopicCardAnswered:
         apply_interval.assert_not_called()
         commit_review.assert_not_called()
         assert topic_scheduler.consume_handled_topic_answer(card.id) is True
+        assert diagnostic_events == [
+            ("topic_schedule_skipped", {"choice": "more", "reason": "preview"})
+        ]
 
     def test_schedules_topic_card_with_same(self):
         card = self._make_card()
@@ -650,6 +664,21 @@ class TestOnTopicCardAnswered:
         assert commit_review.call_args.args[3] == "more"
         assert commit_review.call_args.kwargs["new_a_factor"] == pytest.approx(3.15)
         assert commit_review.call_args.kwargs["new_precise_interval"] == pytest.approx(22.05)
+        assert self.last_diagnostic_events == [
+            (
+                "topic_schedule_applied",
+                {
+                    "choice": "more",
+                    "anki_rating": 3,
+                    "previous_interval_days": 7,
+                    "requested_interval_days": 22,
+                    "scheduled_interval_days": 22,
+                    "previous_a_factor": 3.5,
+                    "new_a_factor": pytest.approx(3.15),
+                    "custom_mode": "none",
+                },
+            )
+        ]
 
     def test_less_choice_changes_only_incremento_schedule_after_anki_good(self):
         card = self._make_card()
@@ -677,10 +706,31 @@ class TestOnTopicCardAnswered:
         assert commit_review.call_args.kwargs["scheduled_interval"] == 2
         assert commit_review.call_args.kwargs["new_precise_interval"] == 2.0
         assert commit_review.call_args.kwargs["consumed_one_time"] is True
+        assert self.last_diagnostic_events[0][1]["custom_mode"] == "one_time"
+        assert self.last_diagnostic_events[0][1]["scheduled_interval_days"] == 2
 
     def test_handles_exception_gracefully(self):
         card = self._make_card()
+        diagnostic_events = []
         with patch("topic_scheduler.is_topic_card", return_value=True), \
-             patch("topic_scheduler.get_topic_schedule_state", side_effect=Exception("db error")):
+             patch("topic_scheduler._answer_revlog_snapshot", return_value=(True, 122)), \
+             patch("topic_scheduler.get_topic_schedule_state", side_effect=Exception("db error")), \
+             patch(
+                 "topic_scheduler._diagnostic_event_callback",
+                 lambda event, fields: diagnostic_events.append((event, fields)),
+             ):
             # Should not raise
+            assert prepare_topic_answer(card, 2) == 3
             on_topic_card_answered(MagicMock(), card, ease=3)
+        assert diagnostic_events == [
+            (
+                "topic_schedule_failed",
+                {
+                    "choice": "same",
+                    "stage": "load_state",
+                    "error_type": "Exception",
+                    "restore_failed": False,
+                },
+            )
+        ]
+        assert "db error" not in repr(diagnostic_events)

@@ -2034,6 +2034,12 @@ export default function PdfViewer() {
                     <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
                       &#x1F9E0; Review Due
                     </button>
+                    <button
+                      title="Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF"
+                      onClick={() => window.pycmd(`incremento_pdf_review_all:${cardIdRef.current}:${pageRef.current}`)}
+                    >
+                      &#x25B6; Review All
+                    </button>
                     <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
                       &#x1F4D6; Reading Limit
                     </button>

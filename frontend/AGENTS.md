@@ -15,6 +15,7 @@ Use this file for work in `frontend/`.
 - Main React code: `frontend/src/`.
 - Build output must land in `web/dist/pdf_viewer.js`.
 - Imported PDFs are stored under `user_files/<profile>/pdfs/` and referenced by `PDF_Filename`. Do not confuse user PDFs with shipped viewer assets.
+- The PDF Review group exposes both due-nearby review and Review All. Review All opens the shared Topic/Item, scope, state, limit, and order picker, reviews linked cards in a dedicated filtered deck, then restores the PDF page/zoom/read state.
 - `frontend/vite.config.js` controls where the shipped PDF viewer bundle is written. Keep it aligned with `web/pdf_dock.html`.
 
 If you change PDF viewer React source:
@@ -87,6 +88,7 @@ npm --prefix frontend run build
 - Original-page resume should not depend on the live `Track via Chrome extension` checkbox being enabled at click time.
 - `video_dock.py` now also owns deferred `Download Local Copy…`, caption management, and target/reference caption toggles.
 - Dual captions currently render through the local HTML player wrapper, not provider-native remote playback. If remote playback cannot support a caption flow, guide the user toward local download instead of faking parity.
+- The video dock's Review All action uses `frontend/media_review_dialog.py`, passes the current playback timestamp plus recent child positions, preserves playback and captions, and restores the source video after the linked-card review ends. Recent child ids/positions are transient and must be cleared by `reset_for_profile_switch()`.
 - Keep per-profile `QWebEngineProfile` singletons reset-safe on profile switches for both web and video docks.
 
 ## Reviewer Behavior
@@ -112,6 +114,8 @@ npm --prefix frontend run build
 - Starting a session must not synchronously recount/classify cards in `accept()`. Backend session construction and filtered-deck rebuilding run as a background collection operation; an empty result is reported after that operation completes.
 - PDF, EPUB, video, and web reading cards have additional scheduler flows layered on top of Anki state; when changing eligibility wording, verify the tooltip text still matches actual selection behavior.
 - Keep the checkbox label, tooltip, saved profile key `auto_refill_session`, and backend semantics in `backend/session.py` consistent. If the behavior changes, update `MANUAL.md` and session-related tests too.
+- PDF, EPUB, and video Review All is separate from the normal session builder. Keep Topic/Item, direct/nested, entire/up-to-current, due-only, limit, position-order, preview, and unavailable-card wording aligned. Run the initial inspection with `QueryOp`, re-resolve and build with `CollectionOp`, and never scan or mutate a potentially large linked-card deck on Qt's main thread.
+- Keep Review All diagnostics aligned with that two-operation lifecycle: inspection start/finish/failure, normalized picker enums and numeric limit, filtered-deck counts, and review start/end. Never forward source titles, card IDs, filenames, positions, or exception messages to the diagnostic sink.
 
 ## Settings UI
 

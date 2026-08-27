@@ -437,3 +437,151 @@ def test_edit_video_bookmark_comment_updates_panel(monkeypatch):
     assert refresh_calls == [True]
     assert visibility == [True]
     assert tooltips == ["Video bookmark comment saved."]
+
+
+def test_start_all_video_review_preserves_position_and_restores_video(monkeypatch):
+    starts = []
+    selected_decks = []
+    restored = []
+    persisted = []
+    fake_launcher = types.SimpleNamespace(
+        start_attached_media_review=lambda **kwargs: starts.append(kwargs) or True,
+    )
+    monkeypatch.setitem(sys.modules, "media_review_dialog", fake_launcher)
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 321)
+    monkeypatch.setattr(video_dock, "_last_known_position", 72.0)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_source_card_id", 321)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_card_ids", {701})
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_positions", {701: 45.0})
+    monkeypatch.setattr(video_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(video_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(video_dock, "_persist_position_now", lambda: persisted.append(True))
+    monkeypatch.setattr(video_dock, "get_video_position", lambda *_args: 75.0)
+    monkeypatch.setattr(
+        video_dock,
+        "_video_note_payload_for_card",
+        lambda card_id: (
+            "https://youtu.be/example",
+            {
+                "local_video_file": "clip.mp4",
+                "target_subtitle_file": "target.vtt",
+                "target_subtitle_label": "Target",
+                "reference_subtitle_file": "reference.vtt",
+                "reference_subtitle_label": "Reference",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                decks=types.SimpleNamespace(
+                    current=lambda: {"id": 88},
+                    select=lambda deck_id: selected_decks.append(deck_id),
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "show_video_in_dock",
+        lambda *args, **kwargs: restored.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "QTimer",
+        types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+    )
+
+    assert video_dock._start_all_video_review() is True
+    assert persisted == [True]
+    assert starts[0]["source_card_id"] == 321
+    assert starts[0]["media_label"] == "video"
+    assert starts[0]["media_kind"] == "video"
+    assert starts[0]["current_position"] == 75.0
+    assert starts[0]["linked_card_ids"] == [701]
+    assert starts[0]["linked_card_positions"] == {701: 45.0}
+    assert starts[0]["deck_name"] == sys.modules["session"].INCREMENTO_VIDEO_REVIEW_DECK
+
+    starts[0]["on_finished"]()
+    assert selected_decks == [88]
+    assert restored == [
+        (
+            (321, "https://youtu.be/example", 75.0, "clip.mp4"),
+            {
+                "target_subtitle_file": "target.vtt",
+                "target_subtitle_label": "Target",
+                "reference_subtitle_file": "reference.vtt",
+                "reference_subtitle_label": "Reference",
+                "preserve_loaded": False,
+            },
+        )
+    ]
+
+
+def test_switching_video_source_clears_recent_child_position_cache(monkeypatch):
+    monkeypatch.setattr(video_dock, "_recent_video_extract_source_card_id", 111)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_card_ids", {701})
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_positions", {701: 12.0})
+    monkeypatch.setattr(
+        video_dock,
+        "_best_protected_video_position",
+        lambda *_args: 30.0,
+    )
+    monkeypatch.setattr(video_dock, "set_video_position", lambda *_args: None)
+
+    assert video_dock._arm_video_extract_position_protection(222, 30.0) == 30.0
+    assert video_dock._recent_video_extract_source_card_id == 222
+    assert video_dock._recent_video_extract_child_card_ids == set()
+    assert video_dock._recent_video_extract_child_positions == {}
+
+
+def test_video_extract_records_position_for_each_created_child(monkeypatch):
+    monkeypatch.setattr(video_dock, "_recent_video_extract_source_card_id", 321)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_card_ids", {701})
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_positions", {701: 40.0})
+    monkeypatch.setattr(
+        video_dock,
+        "_arm_video_extract_position_protection",
+        lambda *_args, **_kwargs: 84.0,
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "_schedule_video_extract_position_restores",
+        lambda *_args, **_kwargs: None,
+    )
+
+    video_dock.on_video_extract_note_added(321, [702])
+
+    assert video_dock._recent_video_extract_child_card_ids == {701, 702}
+    assert video_dock._recent_video_extract_child_positions == {
+        701: 40.0,
+        702: 84.0,
+    }
+
+
+def test_profile_switch_clears_recent_video_extract_links(monkeypatch):
+    dock_calls = []
+    fake_dock = types.SimpleNamespace(
+        hide=lambda: dock_calls.append("hide"),
+        deleteLater=lambda: dock_calls.append("delete"),
+    )
+    monkeypatch.setattr(video_dock, "_video_profile", object())
+    monkeypatch.setattr(video_dock, "_video_dock", fake_dock)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_source_card_id", 321)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_card_ids", {701})
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_positions", {701: 40.0})
+    monkeypatch.setattr(video_dock, "_recent_video_extract_until", 99.0)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_position_sec", 40.0)
+
+    video_dock.reset_for_profile_switch()
+
+    assert video_dock._video_profile is None
+    assert video_dock._video_dock is None
+    assert video_dock._recent_video_extract_source_card_id is None
+    assert video_dock._recent_video_extract_child_card_ids == set()
+    assert video_dock._recent_video_extract_child_positions == {}
+    assert video_dock._recent_video_extract_until == 0.0
+    assert video_dock._recent_video_extract_position_sec == 0.0
+    assert dock_calls == ["hide", "delete"]

@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import sqlite3
@@ -7,6 +8,7 @@ import zipfile
 from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
+from aqt.errors import show_exception
 from aqt.reviewer import QueuedCards, Reviewer, SchedulingContext, V3CardInfo
 from aqt.utils import showInfo, tooltip, tr
 from aqt.operations.scheduling import bury_cards as _bury_cards_op
@@ -94,6 +96,7 @@ from .backend.custom_schedule import (
     format_custom_schedule_rule as _format_custom_schedule_rule,
     prepare_custom_schedule_answer as _prepare_custom_schedule_answer,
     reconcile_custom_schedule_state_after_anki_operation as _reconcile_custom_schedule_state_after_anki_operation,
+    register_diagnostic_event_callback as _register_custom_schedule_diagnostic_event_callback,
     reset_custom_schedule_answer_runtime_state as _reset_custom_schedule_answer_runtime_state,
     save_custom_schedule_rule as _save_custom_schedule_rule,
 )
@@ -122,6 +125,7 @@ from .backend.item_skip import (
     store_timed_item_skip as _store_timed_item_skip,
 )
 from .backend import browser_bridge as _browser_bridge_mod
+from .backend import diagnostics as _diagnostics_mod
 from .backend.decks import create_topics_deck as _create_topics_deck
 from .frontend.priority_dialog import PriorityDialog
 from .frontend.custom_schedule_dialog import CustomScheduleDialog
@@ -138,6 +142,7 @@ from .backend.topic_scheduler import (
     on_topic_card_answered as _on_topic_card_answered,
     prepare_topic_answer as _prepare_topic_answer,
     reconcile_topic_state_after_anki_operation as _reconcile_topic_state_after_anki_operation,
+    register_diagnostic_event_callback as _register_topic_diagnostic_event_callback,
     reset_topic_answer_runtime_state as _reset_topic_answer_runtime_state,
     topic_due_label as _topic_due_label,
 )
@@ -190,7 +195,9 @@ from .backend.reviewer_tags import append_missing_tags, normalize_tag_list
 from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
 from .backend.session import (
+    diagnostic_session_snapshot,
     learnFunction,
+    register_diagnostic_event_callback,
     reset_session_counts,
     get_session_counts,
     get_session_times,
@@ -234,6 +241,8 @@ _timerToggleAction: QAction | None = None
 _knowledge_tree_dialog = None
 _configured_shortcut_filter = None
 _ocr_sync_editors: "weakref.WeakSet[object]" = weakref.WeakSet()
+_diagnostic_recorder: _diagnostics_mod.DiagnosticRecorder | None = None
+_diagnostic_pending_final_interval: int | None = None
 
 
 def configured_show_incremento_fields(cfg: dict | None = None) -> bool:
@@ -543,16 +552,29 @@ def _topic_review_buttons(_buttons, _reviewer, card):
 
 
 def _perform_topic_postpone(reviewer, card) -> None:
+    action_failed = False
+
+    def _failed(stage: str, exc: Exception) -> None:
+        nonlocal action_failed
+        action_failed = True
+        _record_diagnostic_event(
+            "review_action_failed",
+            action="topic_postpone",
+            stage=stage,
+            error_type=type(exc).__name__,
+        )
+
     try:
         mode = _configured_topic_postpone_mode()
         if mode == "session":
             _postpone_topic_card(card, mode="session", bury=False)
     except Exception as e:
+        _failed("requested", e)
         print(f"[Incremento] topic postpone error: {e}")
         try:
             reviewer.nextCard()
-        except Exception:
-            pass
+        except Exception as advance_error:
+            _failed("advance", advance_error)
         return
 
     def _after_bury(_changes) -> None:
@@ -563,9 +585,14 @@ def _perform_topic_postpone(reviewer, card) -> None:
                     minutes=_configured_topic_postpone_minutes(),
                     bury=False,
                 )
+            except Exception as e:
+                _failed("store", e)
+                print(f"[Incremento] topic postpone timed save error: {e}")
+            try:
                 _schedule_topic_postpone_timer()
             except Exception as e:
-                print(f"[Incremento] topic postpone timed save error: {e}")
+                _failed("timer", e)
+                print(f"[Incremento] topic postpone timer error: {e}")
         try:
             if mode == "session":
                 tooltip("Topic postponed to later in this review.")
@@ -580,28 +607,63 @@ def _perform_topic_postpone(reviewer, card) -> None:
             if current is not None and getattr(current, "id", None) == getattr(card, "id", None):
                 reviewer.nextCard()
         except Exception as e:
+            _failed("advance", e)
             print(f"[Incremento] topic postpone nextCard error: {e}")
+        if not action_failed:
+            _record_diagnostic_event(
+                "review_action_completed",
+                action="topic_postpone",
+                stage="completed",
+            )
+
+    def _after_bury_failure(exc: Exception) -> None:
+        _failed("bury", exc)
+        print(f"[Incremento] topic postpone bury error: {exc}")
+        show_exception(parent=reviewer.mw, exception=exc)
 
     try:
-        _bury_cards_op(parent=reviewer.mw, card_ids=[card.id]).success(_after_bury).run_in_background()
+        (
+            _bury_cards_op(parent=reviewer.mw, card_ids=[card.id])
+            .success(_after_bury)
+            .failure(_after_bury_failure)
+            .run_in_background()
+        )
     except Exception as e:
+        _failed("bury", e)
         print(f"[Incremento] topic postpone bury error: {e}")
         try:
             reviewer.nextCard()
-        except Exception:
-            pass
+        except Exception as advance_error:
+            _failed("advance", advance_error)
 
 
 def _perform_item_skip(reviewer, card) -> None:
+    action_failed = False
+
+    def _failed(stage: str, exc: Exception) -> None:
+        nonlocal action_failed
+        action_failed = True
+        _record_diagnostic_event(
+            "review_action_failed",
+            action="item_skip",
+            stage=stage,
+            error_type=type(exc).__name__,
+        )
+
     try:
         _store_timed_item_skip(
             card,
             minutes=_configured_item_skip_minutes(),
             bury=False,
         )
+    except Exception as e:
+        _failed("store", e)
+        print(f"[Incremento] item skip error: {e}")
+    try:
         _schedule_item_skip_timer()
     except Exception as e:
-        print(f"[Incremento] item skip error: {e}")
+        _failed("timer", e)
+        print(f"[Incremento] item skip timer error: {e}")
     try:
         tooltip(f"Skipped for {_configured_item_skip_minutes()} minutes.")
     except Exception:
@@ -611,21 +673,54 @@ def _perform_item_skip(reviewer, card) -> None:
         if current is not None and getattr(current, "id", None) == getattr(card, "id", None):
             reviewer.nextCard()
     except Exception as e:
+        _failed("advance", e)
         print(f"[Incremento] item skip nextCard error: {e}")
+    if not action_failed:
+        _record_diagnostic_event(
+            "review_action_completed",
+            action="item_skip",
+            stage="completed",
+        )
 
 
 def _perform_item_skip_after_bury(reviewer, card) -> None:
     def _after_bury(_changes) -> None:
         _perform_item_skip(reviewer, card)
 
+    def _after_bury_failure(exc: Exception) -> None:
+        _record_diagnostic_event(
+            "review_action_failed",
+            action="item_skip",
+            stage="bury",
+            error_type=type(exc).__name__,
+        )
+        print(f"[Incremento] item skip bury error: {exc}")
+        show_exception(parent=reviewer.mw, exception=exc)
+
     try:
-        _bury_cards_op(parent=reviewer.mw, card_ids=[card.id]).success(_after_bury).run_in_background()
+        (
+            _bury_cards_op(parent=reviewer.mw, card_ids=[card.id])
+            .success(_after_bury)
+            .failure(_after_bury_failure)
+            .run_in_background()
+        )
     except Exception as e:
+        _record_diagnostic_event(
+            "review_action_failed",
+            action="item_skip",
+            stage="bury",
+            error_type=type(e).__name__,
+        )
         print(f"[Incremento] item skip bury error: {e}")
         try:
             reviewer.nextCard()
-        except Exception:
-            pass
+        except Exception as advance_error:
+            _record_diagnostic_event(
+                "review_action_failed",
+                action="item_skip",
+                stage="advance",
+                error_type=type(advance_error).__name__,
+            )
 
 
 def _reset_collection_after_queue_change() -> None:
@@ -876,6 +971,13 @@ def _direct_review_v3_info(card) -> V3CardInfo | None:
         )
         return V3CardInfo.from_queue(queued_cards)
     except Exception as exc:
+        _record_diagnostic_event(
+            "explicit_review_failed",
+            source="selected_cards",
+            content_kind="other",
+            stage="review",
+            error_type=type(exc).__name__,
+        )
         print(f"[Incremento] direct review queue build error: {exc}")
         return None
 
@@ -908,13 +1010,25 @@ def _take_direct_review_card():
         return True, card, v3_info
 
     _direct_review_active = False
+    _record_diagnostic_event(
+        "explicit_review_ended",
+        source="selected_cards",
+        content_kind="other",
+    )
     return True, None, None
 
 
 def _clear_direct_review_queue(*_args, **_kwargs) -> None:
     global _direct_review_active
+    was_active = _direct_review_active
     _direct_review_card_ids.clear()
     _direct_review_active = False
+    if was_active and bool(_kwargs.get("emit_diagnostic", True)):
+        _record_diagnostic_event(
+            "explicit_review_ended",
+            source="selected_cards",
+            content_kind="other",
+        )
 
 
 def _incremento_button_time(self, ease: int, v3_labels) -> str:
@@ -1797,11 +1911,25 @@ def _show_browser_database_entries(browser) -> None:
 
 def _start_direct_browser_review(card_ids: list[int]) -> None:
     global _direct_review_active
+    requested_ids = list(card_ids or [])
+    requested_count = len(requested_ids)
+    _record_diagnostic_event(
+        "explicit_review_requested",
+        source="selected_cards",
+        content_kind="other",
+        requested_count=requested_count,
+        preserve_order=True,
+    )
+    _record_diagnostic_event(
+        "explicit_review_build_started",
+        source="selected_cards",
+        content_kind="other",
+    )
     normalized_ids: list[int] = []
     seen: set[int] = set()
     skipped = 0
 
-    for raw_card_id in card_ids or []:
+    for raw_card_id in requested_ids:
         try:
             card_id = int(raw_card_id)
         except Exception:
@@ -1826,6 +1954,15 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
             continue
         normalized_ids.append(card_id)
 
+    _record_diagnostic_event(
+        "explicit_review_build_finished",
+        source="selected_cards",
+        content_kind="other",
+        requested_count=requested_count,
+        selected_count=len(normalized_ids),
+        unavailable_count=skipped,
+    )
+
     if not normalized_ids:
         showInfo("No selected cards are available to study.")
         return
@@ -1845,8 +1982,21 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
             mw.reviewer.nextCard()
         else:
             mw.moveToState("review")
+        _record_diagnostic_event(
+            "explicit_review_started",
+            source="selected_cards",
+            content_kind="other",
+            selected_count=len(normalized_ids),
+        )
     except Exception as exc:
-        _clear_direct_review_queue()
+        _record_diagnostic_event(
+            "explicit_review_failed",
+            source="selected_cards",
+            content_kind="other",
+            stage="activation",
+            error_type=type(exc).__name__,
+        )
+        _clear_direct_review_queue(emit_diagnostic=False)
         showInfo(f"Could not start studying the selected cards:\n{exc}")
 
 
@@ -2244,19 +2394,183 @@ if hasattr(gui_hooks, "card_will_show"):
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
+def _diagnostic_addon_version() -> str:
+    try:
+        addon_id = mw.addonManager.addonFromModule(__name__)
+        addon_meta = getattr(mw.addonManager, "addon_meta", None)
+        if callable(addon_meta):
+            metadata = addon_meta(addon_id)
+        else:
+            metadata = mw.addonManager.addonMeta(addon_id)
+        for key in ("human_version", "version"):
+            if isinstance(metadata, dict):
+                value = metadata.get(key)
+            else:
+                value = getattr(metadata, key, None)
+            if value:
+                return str(value)
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _diagnostic_enabled_addon_count() -> int:
+    try:
+        addon_ids = list(mw.addonManager.allAddons() or [])
+    except Exception:
+        return 0
+    enabled = 0
+    for addon_id in addon_ids:
+        try:
+            if mw.addonManager.isEnabled(addon_id):
+                enabled += 1
+        except Exception:
+            continue
+    return enabled
+
+
+def _diagnostic_environment_values() -> dict[str, object]:
+    metadata = getattr(getattr(mw, "pm", None), "meta", {}) or {}
+    anki_version = metadata.get("ankiVersion", "unknown") if isinstance(metadata, dict) else "unknown"
+    if not anki_version or anki_version == "unknown":
+        try:
+            from anki.buildinfo import version as anki_version
+        except Exception:
+            anki_version = "unknown"
+    return {
+        "anki_version": str(anki_version or "unknown"),
+        "addon_version": _diagnostic_addon_version(),
+        "enabled_addons": _diagnostic_enabled_addon_count(),
+    }
+
+
+def _record_diagnostic_event(event: str, fields: dict | None = None, **kwargs) -> None:
+    global _diagnostic_pending_final_interval
+    payload = dict(fields or {})
+    payload.update(kwargs)
+    if event in {"topic_schedule_applied", "custom_schedule_applied"}:
+        try:
+            scheduled_interval = int(payload.get("scheduled_interval_days") or 0)
+            _diagnostic_pending_final_interval = (
+                scheduled_interval if scheduled_interval > 0 else None
+            )
+        except Exception:
+            _diagnostic_pending_final_interval = None
+    recorder = _diagnostic_recorder
+    if recorder is None:
+        return
+    try:
+        recorder.record(event, **payload)
+    except Exception:
+        # Diagnostics must never interfere with normal Anki or Incremento work.
+        pass
+
+
+def _record_diagnostic_state_change(new_state: str, old_state: str) -> None:
+    _record_diagnostic_event(
+        "ui_state_changed",
+        from_state=old_state,
+        to_state=new_state,
+    )
+
+
+def _diagnostic_operation_scope(handler) -> str:
+    return _diagnostics_mod.operation_scope_for(handler, __name__)
+
+
+def _record_diagnostic_operation(changes, handler=None) -> None:
+    _record_diagnostic_event(
+        "anki_operation_completed",
+        scope=_diagnostic_operation_scope(handler),
+        browser_sidebar_changed=bool(getattr(changes, "browser_sidebar", False)),
+        browser_table_changed=bool(getattr(changes, "browser_table", False)),
+        card_changed=bool(getattr(changes, "card", False)),
+        note_changed=bool(getattr(changes, "note", False)),
+        note_text_changed=bool(getattr(changes, "note_text", False)),
+        deck_changed=bool(getattr(changes, "deck", False)),
+        deck_config_changed=bool(getattr(changes, "deck_config", False)),
+        config_changed=bool(getattr(changes, "config", False)),
+        notetype_changed=bool(getattr(changes, "notetype", False)),
+        schema_changed=bool(getattr(changes, "schema", False)),
+        study_queues_changed=bool(getattr(changes, "study_queues", False)),
+        tag_changed=bool(getattr(changes, "tag", False)),
+    )
+
+
+def _diagnostic_card_fields(card) -> dict[str, int]:
+    def _number(name: str, default: int = 0) -> int:
+        try:
+            return int(getattr(card, name, default) or 0)
+        except Exception:
+            return default
+
+    return {
+        "card_type": _number("type"),
+        "queue": _number("queue"),
+        "interval_days": max(0, _number("ivl")),
+    }
+
+
+def _record_diagnostic_question(card) -> None:
+    global _diagnostic_pending_final_interval
+    # Clear a result that could not be consumed because another hook aborted a
+    # previous answer. This is runtime state only; no card identifier is kept.
+    _diagnostic_pending_final_interval = None
+    _record_diagnostic_event("review_question_shown", **_diagnostic_card_fields(card))
+
+
+def _record_diagnostic_answer(_reviewer, card, ease: int) -> None:
+    global _diagnostic_pending_final_interval
+    card_fields = _diagnostic_card_fields(card)
+    if _diagnostic_pending_final_interval is not None:
+        card_fields["interval_days"] = _diagnostic_pending_final_interval
+    _diagnostic_pending_final_interval = None
+    _record_diagnostic_event(
+        "review_answered",
+        rating=ease,
+        **card_fields,
+    )
+
+
+def _close_diagnostic_profile() -> None:
+    global _diagnostic_pending_final_interval, _diagnostic_recorder
+    _record_diagnostic_event("profile_closing")
+    if _diagnostic_recorder is not None:
+        # Profile shutdown is UI-thread work. Stop accepting immediately and
+        # let the daemon worker drain without delaying Anki's transition.
+        _diagnostic_recorder.close(timeout=0.0)
+    _diagnostic_recorder = None
+    _diagnostic_pending_final_interval = None
+
+
+register_diagnostic_event_callback(_record_diagnostic_event)
+_register_topic_diagnostic_event_callback(_record_diagnostic_event)
+_register_custom_schedule_diagnostic_event_callback(_record_diagnostic_event)
+
+
 def _on_profile_did_open() -> None:
     """Activate per-profile paths and run one-time migration on first load."""
+    global _diagnostic_pending_final_interval, _diagnostic_recorder
     from .backend.migration import migrate_to_profile_dir
     profile = _current_profile_name()
     cfg = mw.addonManager.getConfig(__name__) or {}
     _reset_topic_answer_runtime_state()
     _reset_custom_schedule_answer_runtime_state()
+    _diagnostic_pending_final_interval = None
     # Reset Qt WebEngine profile singletons before migration so they are
     # recreated with the correct per-profile storage path on next use.
     _video_dock_mod.reset_for_profile_switch()
     _web_dock_mod.reset_for_profile_switch()
     _paths.set_active_profile(profile)
     migrate_to_profile_dir(_ADDON_DIR, profile)
+    if _diagnostic_recorder is not None:
+        # A defensive profile-open without its matching close must not leave a
+        # second recorder accepting events for the previous profile.
+        _diagnostic_recorder.close(timeout=0.0)
+    _diagnostic_recorder = _diagnostics_mod.DiagnosticRecorder(_ADDON_DIR, profile)
+    environment = _diagnostic_environment_values()
+    _record_diagnostic_event("profile_opened")
+    _record_diagnostic_event("addon_started", **environment)
     try:
         if should_auto_create_topics_deck(profile, cfg):
             _create_topics_deck()
@@ -2265,6 +2579,7 @@ def _on_profile_did_open() -> None:
 
 
 gui_hooks.profile_did_open.append(_on_profile_did_open)
+gui_hooks.profile_will_close.append(_close_diagnostic_profile)
 
 
 def _reset_answer_schedule_runtime_state() -> None:
@@ -3166,6 +3481,94 @@ def exportFunction() -> None:
         )
 
     mw.taskman.run_in_background(_task, _on_done)
+
+
+def exportSupportBundleFunction() -> None:
+    """Export redacted settings and recent typed diagnostics for bug reports."""
+    import datetime
+    from aqt.qt import QFileDialog
+
+    global _diagnostic_recorder
+
+    today = datetime.date.today().isoformat()
+    default_name = os.path.expanduser(f"~/incremento_support_bundle_{today}.zip")
+    path, _ = QFileDialog.getSaveFileName(
+        mw,
+        "Export Privacy-Safe Incremento Support Bundle",
+        default_name,
+        "ZIP files (*.zip)",
+    )
+    if not path:
+        return
+    if not path.casefold().endswith(".zip"):
+        path += ".zip"
+
+    profile = _active_profile()
+    if _diagnostic_recorder is None:
+        _diagnostic_recorder = _diagnostics_mod.DiagnosticRecorder(
+            _ADDON_DIR,
+            profile,
+        )
+    recorder = _diagnostic_recorder
+    _record_diagnostic_event("support_bundle_requested")
+
+    current_config = copy.deepcopy(mw.addonManager.getConfig(__name__) or {})
+    try:
+        with open(os.path.join(_ADDON_DIR, "config.json"), "r", encoding="utf-8") as handle:
+            default_config = json.load(handle)
+    except Exception:
+        default_config = {}
+    environment = _diagnostic_environment_values()
+    runtime_state = {
+        "ui_state": str(getattr(mw, "state", "unknown") or "unknown"),
+        "incremento_session": diagnostic_session_snapshot(),
+    }
+
+    mw.progress.start(label="Creating privacy-safe support bundle…", immediate=True)
+
+    def _task():
+        return _diagnostics_mod.build_support_bundle(
+            path,
+            addon_dir=_ADDON_DIR,
+            profile=profile,
+            recorder=recorder,
+            config=current_config,
+            default_config=default_config,
+            environment=environment,
+            runtime_state=runtime_state,
+        )
+
+    def _on_done(future) -> None:
+        mw.progress.finish()
+        try:
+            result = future.result()
+        except Exception as exc:
+            _record_diagnostic_event(
+                "support_bundle_failed",
+                error_type=_diagnostics_mod.safe_exception_type(exc),
+            )
+            showInfo(f"Could not create the support bundle:\n\n{exc}")
+            return
+
+        _record_diagnostic_event(
+            "support_bundle_created",
+            event_count=result.get("event_count", 0),
+            bundle_bytes=result.get("bundle_bytes", 0),
+        )
+        showInfo(
+            "Privacy-safe support bundle created.\n\n"
+            f"Included {result.get('event_count', 0)} recent diagnostic event(s).\n"
+            "It contains no card/note text, raw IDs, deck/tag/profile names, media, "
+            "user/media filenames, local paths, URLs, database rows, exception "
+            "messages, or exact activity timestamps. Fixed shipped-code filenames "
+            "appear only beside their hashes.\n\n"
+            f"Saved to:\n{path}"
+        )
+
+    # The bundle reads its own SQLite connection and fixed shipped files. It
+    # must not wait behind a stalled CollectionOp, which is often the problem
+    # the user is trying to capture.
+    mw.taskman.run_in_background(_task, _on_done, uses_collection=False)
 
 
 def _extract_card() -> None:
@@ -5445,6 +5848,12 @@ def _build_incremento_menu() -> None:
     _menu.addAction(_searchAllAction)
     _register_shortcut_action("search_all", _searchAllAction)
 
+    _menu.addSeparator()
+
+    _supportBundleAction = QAction("Export Support Bundle…", mw)
+    qconnect(_supportBundleAction.triggered, exportSupportBundleFunction)
+    _menu.addAction(_supportBundleAction)
+
     _exportAction = QAction("Export Full Backup", mw)
     qconnect(_exportAction.triggered, exportFunction)
     _menu.addAction(_exportAction)
@@ -5459,7 +5868,11 @@ def _build_incremento_menu() -> None:
 gui_hooks.main_window_did_init.append(_build_incremento_menu)
 gui_hooks.main_window_did_init.append(_build_timer_toolbar)
 gui_hooks.state_did_change.append(lambda *_: _build_incremento_menu())
+gui_hooks.state_did_change.append(_record_diagnostic_state_change)
 gui_hooks.operation_did_execute.append(_sync_ocr_index_for_open_editor_notes)
+gui_hooks.operation_did_execute.append(_record_diagnostic_operation)
+gui_hooks.reviewer_did_show_question.append(_record_diagnostic_question)
+gui_hooks.reviewer_did_answer_card.append(_record_diagnostic_answer)
 gui_hooks.undo_state_did_change.append(_reconcile_topic_state_after_anki_operation)
 gui_hooks.undo_state_did_change.append(
     _reconcile_custom_schedule_state_after_anki_operation

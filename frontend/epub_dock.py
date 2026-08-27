@@ -132,9 +132,9 @@ except ImportError:
         search_epub_text_index_for_card,
     )
 try:
-    from ..backend.session import start_explicit_review
+    from ..backend.session import INCREMENTO_EPUB_REVIEW_DECK, start_explicit_review
 except ImportError:
-    from session import start_explicit_review  # type: ignore
+    from session import INCREMENTO_EPUB_REVIEW_DECK, start_explicit_review  # type: ignore
 
 
 _ADDON_DIR = os.path.normpath(
@@ -786,13 +786,82 @@ def _start_due_epub_review(card_id: int, *, current_section_index: int, due_card
 
     started = start_explicit_review(
         selected_ids,
-        deck_name="Incremento EPUB Review",
+        deck_name=INCREMENTO_EPUB_REVIEW_DECK,
         preserve_order=True,
         empty_message="No due extracted cards are available to review for this EPUB.",
         on_finished=_restore_epub,
+        diagnostic_source="epub_due_review",
+        diagnostic_content_kind="epub",
     )
     if not started:
         return
+
+
+def _start_all_epub_review(card_id: int) -> bool:
+    try:
+        note = mw.col.get_note(mw.col.get_card(int(card_id)).nid)
+        filename = str(note[EPUB_FILE_FIELD] or "").strip()
+    except Exception:
+        filename = str(_current_epub_filename or "").strip()
+    if not filename:
+        showInfo("Could not reopen this EPUB after review.")
+        return False
+
+    section_index = max(0, int(_current_epub_section_index or 0))
+    scroll_ratio = float(_current_epub_scroll_ratio or 0.0)
+    read_section_index = get_read_section_index(
+        _ADDON_DIR,
+        _active_profile(),
+        int(card_id),
+    )
+    try:
+        previous_did = (mw.col.decks.current() or {}).get("id")
+    except Exception:
+        previous_did = None
+
+    def _restore_epub() -> None:
+        try:
+            if previous_did:
+                mw.col.decks.select(previous_did)
+        except Exception:
+            pass
+
+        def _restore() -> None:
+            show_epub_in_dock(
+                int(card_id),
+                filename,
+                section_index=section_index,
+                scroll_ratio=scroll_ratio,
+                offer_due_review_prompt=False,
+            )
+            try:
+                set_read_section_index(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    int(card_id),
+                    read_section_index,
+                )
+            except Exception:
+                pass
+
+        QTimer.singleShot(0, _restore)
+
+    try:
+        from .media_review_dialog import start_attached_media_review
+    except ImportError:
+        from media_review_dialog import start_attached_media_review  # type: ignore
+
+    return start_attached_media_review(
+        addon_dir=_ADDON_DIR,
+        profile=_active_profile(),
+        source_card_id=int(card_id),
+        media_label="EPUB",
+        media_kind="epub",
+        deck_name=INCREMENTO_EPUB_REVIEW_DECK,
+        current_position=section_index,
+        on_finished=_restore_epub,
+        parent=mw,
+    )
 
 
 def _offer_due_review_for_epub(
@@ -1894,6 +1963,12 @@ def _build_epub_dock() -> None:
         "Review due cards from this EPUB",
         icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
     )
+    dock._all_review_btn = _make_epub_button(
+        dock,
+        "Review All",
+        "Choose Topics, Items, scope, due state, limit, and order for cards attached to this EPUB",
+        icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
+    )
     dock._limit_btn = _make_epub_button(
         dock,
         "Reading Limit",
@@ -2032,6 +2107,7 @@ def _build_epub_dock() -> None:
             groups_host,
             "Review",
             dock._due_review_btn,
+            dock._all_review_btn,
             dock._limit_btn,
         )
     )
@@ -2123,7 +2199,16 @@ def _build_epub_dock() -> None:
     qconnect(dock._add_card_btn.clicked, lambda: _cb_open_add_card_dock and _cb_open_add_card_dock())
     qconnect(dock._browser_btn.clicked, _browse_current_epub_note)
     qconnect(dock._all_cards_btn.clicked, _open_all_epub_cards_in_browser)
-    qconnect(dock._due_review_btn.clicked, lambda: _current_epub_card_id and _offer_due_review_for_epub(int(_current_epub_card_id), force=True))
+    qconnect(
+        dock._due_review_btn.clicked,
+        lambda: _current_epub_card_id
+        and _offer_due_review_for_epub(int(_current_epub_card_id), force=True),
+    )
+    qconnect(
+        dock._all_review_btn.clicked,
+        lambda: _current_epub_card_id
+        and _start_all_epub_review(int(_current_epub_card_id)),
+    )
     qconnect(dock._limit_btn.clicked, lambda: _current_epub_card_id and _open_epub_limit_dialog(int(_current_epub_card_id)))
     qconnect(dock._text_smaller_btn.clicked, lambda: _adjust_epub_text_scale(-0.1))
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
@@ -2874,6 +2959,7 @@ def _update_title_and_buttons() -> None:
     has_card = _current_epub_card_id is not None
     _epub_dock._browser_btn.setEnabled(has_card)
     _epub_dock._due_review_btn.setEnabled(has_card)
+    _epub_dock._all_review_btn.setEnabled(has_card)
     _epub_dock._limit_btn.setEnabled(has_card)
     _epub_dock._text_smaller_btn.setEnabled(has_card)
     _epub_dock._text_larger_btn.setEnabled(has_card)

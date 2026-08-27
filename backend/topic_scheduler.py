@@ -95,6 +95,7 @@ TOPIC_ANKI_EASE = 3
 _PENDING_TOPIC_CHOICES: dict[int, dict[str, float | int | str]] = {}
 _TOPIC_REVLOG_TRACKER = ReviewRevlogTracker()
 _HANDLED_TOPIC_ANSWER_IDS: set[int] = set()
+_diagnostic_event_callback = None
 _DEFAULT_TOPIC_CARD_TYPES = {
     "pdf_epub": True,
     "video": True,
@@ -107,6 +108,22 @@ _TOPIC_TYPE_NOTE_TYPES = {
     "writing": {"Incremento Writing"},
     "web": {"Incremento Web"},
 }
+
+
+def register_diagnostic_event_callback(callback) -> None:
+    """Install the privacy-safe event sink supplied by the add-on entry point."""
+    global _diagnostic_event_callback
+    _diagnostic_event_callback = callback if callable(callback) else None
+
+
+def _emit_diagnostic_event(event: str, **fields) -> None:
+    callback = _diagnostic_event_callback
+    if callback is None:
+        return
+    try:
+        callback(str(event), dict(fields))
+    except Exception:
+        pass
 
 
 @dataclass(frozen=True)
@@ -747,10 +764,18 @@ def reset_topic_answer_runtime_state() -> None:
 
 def reconcile_topic_state_after_anki_operation(undo_info=None) -> None:
     """Reconcile Incremento state when Anki removes/restores linked revlogs."""
-    transitions = _TOPIC_REVLOG_TRACKER.transitions(
-        undo_info,
-        collection=getattr(mw, "col", None),
-    )
+    try:
+        transitions = _TOPIC_REVLOG_TRACKER.transitions(
+            undo_info,
+            collection=getattr(mw, "col", None),
+        )
+    except Exception as exc:
+        _emit_diagnostic_event(
+            "topic_schedule_reconcile_failed",
+            error_type=type(exc).__name__,
+        )
+        print(f"[Incremento] topic undo/redo tracking error: {exc}")
+        return
     for profile, card_id, current, previous in transitions:
         try:
             reconcile_topic_review_state(
@@ -761,6 +786,10 @@ def reconcile_topic_state_after_anki_operation(undo_info=None) -> None:
                 previous,
             )
         except Exception as exc:
+            _emit_diagnostic_event(
+                "topic_schedule_reconcile_failed",
+                error_type=type(exc).__name__,
+            )
             print(f"[Incremento] topic undo/redo reconciliation error: {exc}")
 
 
@@ -781,10 +810,24 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
         _consume_pending_topic_answer(card)
     )
     if preview_only:
+        _emit_diagnostic_event(
+            "topic_schedule_skipped",
+            choice=choice,
+            reason="preview",
+        )
         return
     if not revlog_snapshot_valid:
+        _emit_diagnostic_event(
+            "topic_schedule_failed",
+            choice=choice,
+            stage="revlog_snapshot",
+            error_type="RuntimeError",
+            restore_failed=False,
+        )
         print("[Incremento] A-factor scheduling error: pre-answer revlog query failed")
         return
+    failure_stage = "load_state"
+    restore_failed = False
     try:
         profile = _active_profile()
         previous_schedule_exists = topic_schedule_exists(
@@ -799,6 +842,7 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
             default_a_factor=configured_default_topic_a_factor(),
             default_interval=seed_interval,
         )
+        failure_stage = "resolve"
         maximum_interval = effective_topic_maximum_interval_days(card)
         requested_interval, new_a, requested_precise_interval = _next_interval_and_afactor(
             precise_interval,
@@ -830,20 +874,24 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
             new_precise_interval = float(new_interval)
         else:
             new_precise_interval = requested_precise_interval
+        failure_stage = "undo_step"
         answer_undo_step = _current_answer_undo_step()
         if answer_undo_step <= 0:
             raise RuntimeError("Anki answer undo step is unavailable")
+        failure_stage = "revlog"
         revlog_id = _new_answer_revlog_id(card_id, previous_revlog_id)
         if revlog_id <= 0:
             raise RuntimeError("Anki did not create a new answer revlog")
         post_good_card = mw.col.get_card(card_id)
         post_good_snapshot = _card_schedule_snapshot(post_good_card)
         try:
+            failure_stage = "apply"
             _apply_topic_interval_to_anki_card(
                 card_id,
                 new_interval,
                 answer_undo_step=answer_undo_step,
             )
+            failure_stage = "commit"
             commit_topic_review(
                 _ADDON_DIR,
                 profile,
@@ -876,8 +924,34 @@ def on_topic_card_answered(reviewer, card, ease: int) -> None:
                     "[Incremento] failed to restore Anki schedule after topic error: "
                     f"{restore_error}"
                 )
+                restore_failed = True
             raise
         if revlog_id > 0:
-            _track_topic_review_state(card_id, revlog_id)
+            try:
+                _track_topic_review_state(card_id, revlog_id)
+            except Exception as track_error:
+                _emit_diagnostic_event(
+                    "topic_schedule_reconcile_failed",
+                    error_type=type(track_error).__name__,
+                )
+                print(f"[Incremento] topic review tracking error: {track_error}")
+        _emit_diagnostic_event(
+            "topic_schedule_applied",
+            choice=choice,
+            anki_rating=ease,
+            previous_interval_days=last_interval,
+            requested_interval_days=requested_interval,
+            scheduled_interval_days=new_interval,
+            previous_a_factor=a_factor,
+            new_a_factor=new_a,
+            custom_mode=custom_mode or "none",
+        )
     except Exception as e:
+        _emit_diagnostic_event(
+            "topic_schedule_failed",
+            choice=choice,
+            stage=failure_stage,
+            error_type=type(e).__name__,
+            restore_failed=restore_failed,
+        )
         print(f"[Incremento] A-factor scheduling error: {e}")

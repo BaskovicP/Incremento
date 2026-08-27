@@ -2535,6 +2535,40 @@ def get_pdf_document_source_note_ids(addon_dir: str, profile: str, pdf_card_id: 
     return ordered
 
 
+def get_pdf_document_source_rows(
+    addon_dir: str,
+    profile: str,
+    pdf_card_id: int,
+) -> list[dict]:
+    """Return every PDF source-note link with its page and insertion order."""
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT page, note_id FROM pdf_card_sources "
+            "WHERE pdf_card_id = ? ORDER BY id",
+            (int(pdf_card_id),),
+        )
+        .fetchall()
+    )
+    resolved: list[dict] = []
+    for row in rows:
+        try:
+            position = int(row[0])
+            note_id = int(row[1])
+        except Exception:
+            continue
+        if position < 0 or note_id <= 0:
+            continue
+        resolved.append(
+            {
+                "position": position,
+                "note_id": note_id,
+                "source_rank": len(resolved),
+            }
+        )
+    return resolved
+
+
 def add_epub_card_source(
     addon_dir: str, profile: str, epub_card_id: int, section_index: int, note_id: int, excerpt: str = ""
 ) -> None:
@@ -2619,6 +2653,40 @@ def get_epub_document_source_note_ids(addon_dir: str, profile: str, epub_card_id
         seen.add(note_id)
         ordered.append(note_id)
     return ordered
+
+
+def get_epub_document_source_rows(
+    addon_dir: str,
+    profile: str,
+    epub_card_id: int,
+) -> list[dict]:
+    """Return every EPUB source-note link with its section and insertion order."""
+    rows = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT section_index, note_id FROM epub_card_sources "
+            "WHERE epub_card_id = ? ORDER BY id",
+            (int(epub_card_id),),
+        )
+        .fetchall()
+    )
+    resolved: list[dict] = []
+    for row in rows:
+        try:
+            position = int(row[0])
+            note_id = int(row[1])
+        except Exception:
+            continue
+        if position < 0 or note_id <= 0:
+            continue
+        resolved.append(
+            {
+                "position": position,
+                "note_id": note_id,
+                "source_rank": len(resolved),
+            }
+        )
+    return resolved
 
 
 def add_web_card_source(

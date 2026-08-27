@@ -71,6 +71,14 @@ def get_stats_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "custom_learn_stats.json"
 
 
+def get_diagnostics_dir(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "diagnostics"
+
+
+def get_diagnostic_events_path(addon_dir: str, profile: str) -> Path:
+    return get_diagnostics_dir(addon_dir, profile) / "events.jsonl"
+
+
 def get_pdf_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "pdfs"
 

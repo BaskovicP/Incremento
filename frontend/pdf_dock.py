@@ -1089,6 +1089,7 @@ _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MSG_LIMIT_SETTINGS = "incremento_pdf_limit_settings:"
 _MSG_LIMIT_OVERRIDE = "incremento_pdf_limit_override:"
 _MSG_DUE_REVIEW = "incremento_pdf_due_review:"
+_MSG_REVIEW_ALL = "incremento_pdf_review_all:"
 _MSG_REPAIR_MISSING = "incremento_pdf_repair_missing:"
 _MSG_REGENERATE_COVER = "incremento_pdf_regenerate_cover:"
 _MSG_HL_NOTE = "incremento_pdf_hl_note:"
@@ -1910,9 +1911,66 @@ def _start_due_pdf_review(card_id: int, *, current_page: int, due_cards: list[di
         preserve_order=True,
         empty_message="No due extracted cards are available to review for this PDF.",
         on_finished=_restore_pdf,
+        diagnostic_source="pdf_due_review",
+        diagnostic_content_kind="pdf",
     )
     if not started:
         return
+
+
+def _start_all_pdf_review(card_id: int, *, current_page: int) -> bool:
+    try:
+        note = mw.col.get_note(mw.col.get_card(int(card_id)).nid)
+        filename = str(note["PDF_Filename"] or "").strip()
+    except Exception:
+        filename = str(_current_pdf_filename or "").strip()
+    if not filename:
+        showInfo("Could not reopen this PDF after review.")
+        return False
+
+    zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
+    read_page = get_read_page(_ADDON_DIR, _active_profile(), int(card_id))
+
+    try:
+        previous_did = (mw.col.decks.current() or {}).get("id")
+    except Exception:
+        previous_did = None
+
+    def _restore_pdf() -> None:
+        try:
+            if previous_did:
+                mw.col.decks.select(previous_did)
+        except Exception:
+            pass
+        QTimer.singleShot(
+            0,
+            lambda: show_pdf_in_dock(
+                int(card_id),
+                filename,
+                max(1, int(current_page or 1)),
+                zoom,
+                read_page=read_page,
+                preserve_history=False,
+                offer_due_review_prompt=False,
+            ),
+        )
+
+    try:
+        from .media_review_dialog import start_attached_media_review
+    except ImportError:
+        from media_review_dialog import start_attached_media_review  # type: ignore
+
+    return start_attached_media_review(
+        addon_dir=_ADDON_DIR,
+        profile=_active_profile(),
+        source_card_id=int(card_id),
+        media_label="PDF",
+        media_kind="pdf",
+        deck_name=INCREMENTO_PDF_REVIEW_DECK,
+        current_position=max(1, int(current_page or 1)),
+        on_finished=_restore_pdf,
+        parent=mw,
+    )
 
 
 def _offer_due_review_for_pdf(
@@ -2127,6 +2185,18 @@ def _handle_pdf_js_message(msg: str) -> None:
                     )
         except Exception as e:
             showInfo(f"Could not open PDF due-card review:\n{e}")
+    elif msg.startswith(_MSG_REVIEW_ALL):
+        try:
+            parts = msg.split(":")
+            if len(parts) == 3:
+                cid = int(parts[1])
+                if cid > 0:
+                    _start_all_pdf_review(
+                        cid,
+                        current_page=int(parts[2]),
+                    )
+        except Exception as e:
+            showInfo(f"Could not open attached PDF card review:\n{e}")
     elif msg.startswith(_MSG_HL_NOTE):
         try:
             payload = json.loads(msg[len(_MSG_HL_NOTE) :])

@@ -267,6 +267,89 @@ class TestRuntimeSessionStats:
         assert _SESSION_MOD.get_session_times() == {"type": {}, "tags": {}}
 
 
+class TestSessionDiagnostics:
+    def test_snapshot_contains_only_safe_counts_and_flags(self, monkeypatch):
+        state = types.SimpleNamespace(
+            session_closed=False,
+            selected_ids=[101, 202],
+            reviewed_ids={101},
+            window_size=40,
+            auto_refill_enabled=True,
+            refill_retry_pending=True,
+            session_deck_name="Private Deck Name",
+            picked_meta={101: {"tag": "private-tag", "text": "private content"}},
+        )
+        monkeypatch.setattr(_SESSION_MOD, "_active_incremento_session_state", state)
+
+        snapshot = _SESSION_MOD.diagnostic_session_snapshot()
+
+        assert snapshot == {
+            "active": True,
+            "selected_count": 2,
+            "reviewed_count": 1,
+            "window_size": 40,
+            "auto_refill": True,
+            "refill_pending": True,
+            "closed": False,
+        }
+        encoded = repr(snapshot)
+        assert "101" not in encoded
+        assert "202" not in encoded
+        assert "private-tag" not in encoded
+        assert "Private Deck Name" not in encoded
+
+    def test_diagnostic_sink_failure_never_escapes(self, monkeypatch):
+        def _broken_sink(_event, _fields):
+            raise RuntimeError("diagnostics unavailable")
+
+        monkeypatch.setattr(_SESSION_MOD, "_diagnostic_event_callback", _broken_sink)
+        _SESSION_MOD._emit_diagnostic_event(
+            "incremento_session_requested",
+            target_count=500,
+        )
+
+    def test_registered_sink_receives_separate_event_and_field_mapping(self, monkeypatch):
+        received = []
+        monkeypatch.setattr(_SESSION_MOD, "_diagnostic_event_callback", None)
+        _SESSION_MOD.register_diagnostic_event_callback(
+            lambda event, fields: received.append((event, fields))
+        )
+
+        _SESSION_MOD._emit_diagnostic_event(
+            "incremento_session_requested",
+            target_count=500,
+            auto_refill=True,
+        )
+
+        assert received == [
+            (
+                "incremento_session_requested",
+                {"target_count": 500, "auto_refill": True},
+            )
+        ]
+
+    def test_media_inspection_failure_records_only_type_and_kind(self, monkeypatch):
+        received = []
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: received.append((event, fields)),
+        )
+
+        _SESSION_MOD.record_media_review_inspection_failed(
+            "pdf",
+            RuntimeError("private filename and card content"),
+        )
+
+        assert received == [
+            (
+                "media_review_inspection_failed",
+                {"content_kind": "pdf", "error_type": "RuntimeError"},
+            )
+        ]
+        assert "private filename" not in repr(received)
+
+
 class TestIncrementoSessionDeckNaming:
     def test_no_dialog_profile_uses_base_session_deck(self):
         assert _SESSION_MOD.incremento_session_deck_name(None) == "Incremento Session"
@@ -294,6 +377,7 @@ class TestQuickOpenReview:
                     "deck_name": _SESSION_MOD.INCREMENTO_QUICK_OPEN_REVIEW_DECK,
                     "preserve_order": True,
                     "empty_message": "No selected card is available to study.",
+                    "diagnostic_source": "quick_open",
                 },
             )
         ]
@@ -310,6 +394,299 @@ class TestQuickOpenReview:
 
         assert _SESSION_MOD.start_quick_open_review("bad-id") is False
         assert shown == ["No selected card is available to study."]
+
+
+class TestExplicitReviewSelector:
+    def test_resolves_and_builds_review_inside_collection_operation(self, monkeypatch):
+        operations = []
+        selection_calls = []
+        prepare_calls = []
+        moved = []
+        selected_decks = []
+        diagnostic_events = []
+        hooks = types.SimpleNamespace(reviewer_will_end=[], state_did_change=[])
+        fake_col = types.SimpleNamespace(
+            get_card=lambda card_id: types.SimpleNamespace(did=77),
+            decks=types.SimpleNamespace(
+                select=lambda deck_id: selected_decks.append(deck_id)
+            ),
+        )
+
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "gui_hooks", hooks)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_prepare_filtered_review_deck",
+            lambda ids, **kwargs: prepare_calls.append((list(ids), dict(kwargs)))
+            or _SESSION_MOD._FilteredDeckBuildResult(deck_id=77, changes="changes"),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(moveToState=lambda state: moved.append(state)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_defer_collection_ui_action",
+            lambda callback: callback(),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+        )
+
+        def _selector(col):
+            selection_calls.append(col)
+            return [30, "20", 30, 0, "bad"]
+
+        assert _SESSION_MOD.start_explicit_review_from_selector(
+            _selector,
+            deck_name="Incremento Video Review",
+            diagnostic_source="media_review",
+            diagnostic_content_kind="video",
+            diagnostic_media_order="created_oldest",
+            diagnostic_media_card_kind="both",
+            diagnostic_media_tree_scope="nested",
+            diagnostic_media_range="all",
+            diagnostic_media_state="due",
+            diagnostic_limit=25,
+        ) is True
+        assert selection_calls == []
+        assert len(operations) == 1
+
+        result = operations[0]["op"](fake_col)
+        assert selection_calls == [fake_col]
+        assert result.selected_ids == [30, 20]
+        assert prepare_calls == [
+            (
+                [30, 20],
+                {
+                    "deck_name": "Incremento Video Review",
+                    "preserve_order": True,
+                    "select_deck": False,
+                    "col": fake_col,
+                    "return_result": True,
+                },
+            )
+        ]
+        assert selected_decks == [77]
+
+        operations[0]["success"](result)
+        assert moved == ["review"]
+        assert len(hooks.reviewer_will_end) == 1
+        hooks.reviewer_will_end[0]()
+        assert [event for event, _fields in diagnostic_events] == [
+            "explicit_review_requested",
+            "explicit_review_build_started",
+            "explicit_review_build_finished",
+            "explicit_review_started",
+            "explicit_review_ended",
+        ]
+        assert all(
+            fields.get("source") == "media_review"
+            and fields.get("content_kind") == "video"
+            for _event, fields in diagnostic_events
+        )
+        assert diagnostic_events[0][1] == {
+            "source": "media_review",
+            "content_kind": "video",
+            "requested_count": 0,
+            "preserve_order": True,
+            "media_order": "created_oldest",
+            "media_card_kind": "both",
+            "media_tree_scope": "nested",
+            "media_range": "all",
+            "media_state": "due",
+            "limit": 25,
+        }
+
+    def test_selector_failure_is_reported_as_selection_stage(self, monkeypatch):
+        operations = []
+        diagnostic_events = []
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_defer_collection_ui_action",
+            lambda callback: callback(),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "showInfo", lambda _message: None)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        )
+
+        def _broken_selector(_col):
+            raise RuntimeError("private selector detail")
+
+        assert _SESSION_MOD.start_explicit_review_from_selector(_broken_selector)
+        try:
+            operations[0]["op"](object())
+        except RuntimeError as exc:
+            operations[0]["failure"](exc)
+
+        assert diagnostic_events[-1] == (
+            "explicit_review_failed",
+            {
+                "source": "selected_cards",
+                "content_kind": "other",
+                "stage": "selection",
+                "error_type": "RuntimeError",
+            },
+        )
+        assert "private selector detail" not in repr(diagnostic_events)
+
+    def test_empty_background_selection_shows_message_without_building(self, monkeypatch):
+        operations = []
+        shown = []
+        moved = []
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "_empty_op_changes", object)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_prepare_filtered_review_deck",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("an empty selection must not build a deck")
+            ),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "showInfo", shown.append)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(moveToState=lambda state: moved.append(state)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_defer_collection_ui_action",
+            lambda callback: callback(),
+        )
+
+        assert _SESSION_MOD.start_explicit_review_from_selector(
+            lambda _col: [],
+            empty_message="No attached cards.",
+        ) is True
+        result = operations[0]["op"](object())
+        operations[0]["success"](result)
+
+        assert shown == ["No attached cards."]
+        assert moved == []
+
+    def test_reports_cards_that_anki_cannot_move_from_another_filtered_deck(
+        self, monkeypatch
+    ):
+        operations = []
+        shown = []
+        moved = []
+        fake_col = types.SimpleNamespace(
+            get_card=lambda card_id: types.SimpleNamespace(
+                did=77 if int(card_id) == 10 else 88
+            ),
+            decks=types.SimpleNamespace(select=lambda _deck_id: None),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_prepare_filtered_review_deck",
+            lambda *_args, **_kwargs: _SESSION_MOD._FilteredDeckBuildResult(
+                deck_id=77,
+                changes="changes",
+            ),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "showInfo", shown.append)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(moveToState=lambda state: moved.append(state)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+        )
+
+        assert _SESSION_MOD.start_explicit_review_from_selector(
+            lambda _col: [10, 20],
+        ) is True
+        result = operations[0]["op"](fake_col)
+
+        assert result.requested_ids == [10, 20]
+        assert result.selected_ids == [10]
+        assert result.unavailable_ids == [20]
+        operations[0]["success"](result)
+        assert "1 requested card was not added" in shown[0]
+        assert moved == ["review"]
+
+    def test_all_unavailable_cards_leave_current_deck_selected(self, monkeypatch):
+        operations = []
+        shown = []
+        moved = []
+        selected_decks = []
+        fake_col = types.SimpleNamespace(
+            get_card=lambda _card_id: types.SimpleNamespace(did=88),
+            decks=types.SimpleNamespace(
+                select=lambda deck_id: selected_decks.append(deck_id)
+            ),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_prepare_filtered_review_deck",
+            lambda *_args, **_kwargs: _SESSION_MOD._FilteredDeckBuildResult(
+                deck_id=77,
+                changes="changes",
+            ),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "showInfo", shown.append)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(moveToState=lambda state: moved.append(state)),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_defer_collection_ui_action",
+            lambda callback: callback(),
+        )
+
+        assert _SESSION_MOD.start_explicit_review_from_selector(
+            lambda _col: [10, 20],
+            empty_message="No attached cards.",
+        ) is True
+        result = operations[0]["op"](fake_col)
+        operations[0]["success"](result)
+
+        assert result.selected_ids == []
+        assert result.unavailable_ids == [10, 20]
+        assert selected_decks == []
+        assert moved == []
+        assert shown[0].startswith("No attached cards.")
+        assert "2 linked cards were unavailable" in shown[0]
 
 
 class TestPrepareFilteredReviewDeck:
@@ -806,6 +1183,7 @@ class TestIncrementoSessionAutoRefill:
         callbacks = []
         calls = []
         operations = []
+        diagnostic_events = []
         state = self._make_state(window_size=30)
 
         monkeypatch.setattr(
@@ -817,12 +1195,22 @@ class TestIncrementoSessionAutoRefill:
             _SESSION_MOD,
             "_maybe_auto_refill_active_session",
             lambda _state, **kwargs: calls.append((_state, kwargs))
-            or types.SimpleNamespace(changes=object(), live_queue_ids=[1, 2], new_ids=[3]),
+            or types.SimpleNamespace(
+                changes=object(),
+                live_queue_ids=[1, 2],
+                new_ids=[3],
+                outcome="added",
+            ),
         )
         monkeypatch.setattr(
             _SESSION_MOD,
             "_run_collection_operation",
             lambda **kwargs: operations.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
         )
 
         _SESSION_MOD._schedule_deferred_auto_refill(state, reason="test")
@@ -837,9 +1225,17 @@ class TestIncrementoSessionAutoRefill:
         assert calls == [(state, {"col": fake_col, "return_result": True})]
         operations[0]["success"](result)
         assert state.refill_retry_pending is False
+        assert diagnostic_events == [
+            ("incremento_session_refill_requested", {"reason": "other"}),
+            (
+                "incremento_session_refill_finished",
+                {"live_count": 2, "added_count": 1, "outcome": "added"},
+            ),
+        ]
 
     def test_deferred_refill_is_not_queued_twice(self, monkeypatch):
         callbacks = []
+        diagnostic_events = []
         state = self._make_state(window_size=30)
 
         monkeypatch.setattr(
@@ -847,11 +1243,20 @@ class TestIncrementoSessionAutoRefill:
             "QTimer",
             types.SimpleNamespace(singleShot=lambda ms, callback: callbacks.append((ms, callback))),
         )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        )
 
         _SESSION_MOD._schedule_deferred_auto_refill(state, reason="first")
         _SESSION_MOD._schedule_deferred_auto_refill(state, reason="second")
 
         assert len(callbacks) == 1
+        assert diagnostic_events == [
+            ("incremento_session_refill_requested", {"reason": "other"}),
+            ("incremento_session_refill_skipped", {"reason": "already_pending"}),
+        ]
 
     def test_deferred_refill_failure_releases_pending_guard(self, monkeypatch):
         callbacks = []
@@ -1145,6 +1550,7 @@ class TestBackgroundSessionStartup:
         operations = []
         picker_events = []
         activation = []
+        diagnostic_events = []
         cfg = types.SimpleNamespace(session_card_count=500, preserve_order=True)
 
         class _Dialog:
@@ -1186,6 +1592,11 @@ class TestBackgroundSessionStartup:
         )
         classifier = object()
         monkeypatch.setattr(_SESSION_MOD, "mw", fake_mw)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        )
         monkeypatch.setattr(_SESSION_MOD, "SchedulerConfigDialog", _Dialog)
         monkeypatch.setattr(_SESSION_MOD, "SessionPicker", _Picker)
         monkeypatch.setattr(_SESSION_MOD, "release_expired_timed_postpones", lambda: None)
@@ -1222,6 +1633,7 @@ class TestBackgroundSessionStartup:
         _SESSION_MOD.learnFunction()
 
         assert len(operations) == 1
+        assert operations[0]["initiator"] is operations[0]["op"]
         assert picker_events == []
         fake_col = object()
         result = operations[0]["op"](fake_col)
@@ -1235,6 +1647,17 @@ class TestBackgroundSessionStartup:
 
         operations[0]["success"](result)
         assert activation[0][0] is result
+        assert [
+            fields.get("phase")
+            for event, fields in diagnostic_events
+            if event == "incremento_session_phase"
+        ] == [
+            "selection_started",
+            "selection_finished",
+            "deck_build_started",
+            "deck_build_finished",
+            "activation_scheduled",
+        ]
 
 
 class TestIncrementoSessionExit:
@@ -1248,10 +1671,15 @@ class TestIncrementoSessionExit:
         )
         moves = []
         fake_mw = types.SimpleNamespace(
-            state="review",
+            state="overview",
             reviewer=types.SimpleNamespace(card=None),
-            moveToState=lambda state: moves.append(state),
         )
+
+        def _move_to_state(new_state):
+            moves.append(new_state)
+            fake_mw.state = new_state
+
+        fake_mw.moveToState = _move_to_state
         stats = MagicMock()
         stats.session_time = {"type": {}, "tags": {}}
         picker = types.SimpleNamespace(selected_ids=[101], picked_meta={})
@@ -1271,9 +1699,20 @@ class TestIncrementoSessionExit:
             auto_refill_session=True,
         )
         collection_calls = []
+        diagnostic_events = []
 
         monkeypatch.setattr(_SESSION_MOD, "gui_hooks", hooks)
         monkeypatch.setattr(_SESSION_MOD, "mw", fake_mw)
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "QTimer",
+            types.SimpleNamespace(singleShot=lambda _ms, callback: callback()),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        )
         monkeypatch.setattr(
             _SESSION_MOD,
             "_session_deck_id_by_name",
@@ -1301,6 +1740,15 @@ class TestIncrementoSessionExit:
         state.refill_retry_pending = True
         assert moves == ["review"]
         assert len(hooks.reviewer_will_end) == 1
+        assert [event for event, _fields in diagnostic_events[:3]] == [
+            "incremento_session_phase",
+            "incremento_session_phase",
+            "incremento_session_started",
+        ]
+        assert [fields["phase"] for event, fields in diagnostic_events[:2]] == [
+            "activation_started",
+            "entered_review",
+        ]
 
         hooks.reviewer_will_end[0]()
 

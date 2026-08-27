@@ -1430,6 +1430,21 @@ class TestPdfCardSources:
 
         assert note_ids == [301, 302]
 
+    def test_get_pdf_document_source_rows_preserves_page_and_insert_order(self):
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=9, page=4, note_id=301)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=9, page=2, note_id=302)
+        db.add_pdf_card_source(self.addon_dir, "TestProfile", pdf_card_id=9, page=7, note_id=301)
+
+        assert db.get_pdf_document_source_rows(
+            self.addon_dir,
+            "TestProfile",
+            pdf_card_id=9,
+        ) == [
+            {"position": 4, "note_id": 301, "source_rank": 0},
+            {"position": 2, "note_id": 302, "source_rank": 1},
+            {"position": 7, "note_id": 301, "source_rank": 2},
+        ]
+
 
 class TestPdfDueReviewPromptConfig:
     def setup_method(self):
@@ -1570,6 +1585,19 @@ class TestEpubCardSources:
         )
 
         assert note_ids == [401, 402]
+
+    def test_get_epub_document_source_rows_preserves_section_and_insert_order(self):
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=7, section_index=3, note_id=401)
+        db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=7, section_index=1, note_id=402)
+
+        assert db.get_epub_document_source_rows(
+            self.addon_dir,
+            "TestProfile",
+            epub_card_id=7,
+        ) == [
+            {"position": 3, "note_id": 401, "source_rank": 0},
+            {"position": 1, "note_id": 402, "source_rank": 1},
+        ]
 
 
 class TestWebCardSources:

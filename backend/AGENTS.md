@@ -37,6 +37,15 @@ Use this file for work in `backend/`.
 - Use the preferred import pattern for `_active_profile` from `paths.py`.
 - Keep `backend/migration.py` idempotent. It owns migration from legacy flat `user_files/` into per-profile layout.
 
+## Privacy-Safe Diagnostics
+
+- `backend/diagnostics.py` owns bounded per-profile JSONL events and the support-bundle exporter. Paths belong in `backend/paths.py`; current logs live under `user_files/<profile>/diagnostics/`.
+- `DiagnosticRecorder.record()` must accept only event names and typed fields declared in `_EVENT_SCHEMAS`. Ignore undeclared fields and reject undeclared events. Never introduce a generic message/context/payload string field.
+- Do not record card/note contents, raw card/note IDs, deck/tag/profile names, user/media filenames, local filesystem paths, URLs, database rows, exception messages/tracebacks, or wall-clock activity timestamps. Store exception class names only and use run-relative elapsed time. Fixed shipped-code paths are allowed only in the code-fingerprint manifest.
+- Configuration export must preserve safe behavioral values while replacing private/free-text values with redaction descriptors. Support ZIP creation must parse and revalidate stored events; never copy raw logs or `meta.json`.
+- Diagnostics are best-effort and must not change scheduler, reviewer, or collection control flow. `record()` must perform only schema sanitization plus a non-blocking bounded-queue enqueue; all log filesystem I/O belongs on the recorder worker. Export recorder health/drop counters and run support-bundle construction with `uses_collection=False`, so a stalled collection operation cannot hide its own diagnostics. Close recorders without delaying profile shutdown.
+- `session.py`, `topic_scheduler.py`, and `custom_schedule.py` expose best-effort diagnostic callback registration. Emit fixed stages/outcomes only, after the scheduling result is known; topic results retain the original More/Same/Less choice. The root callback carries the just-committed override interval to the generic answer event in memory and clears it on consumption or the next question; do not add a per-answer collection query merely for diagnostics.
+
 ## Note Metadata
 
 - Shared provenance lives in `backend/note_metadata.py`.
@@ -125,6 +134,8 @@ Use this file for work in `backend/`.
 - The current stem cap is `80` characters across writing, PDF, EPUB, video, and browser-capture media helpers.
 - Some `.pdf` URLs return HTML challenge pages to Python; extension-side PDF fetch is the correct fallback there.
 - Local-file cards can either reference the original absolute path or store a managed copy under the active profile. Preserve that distinction when changing relink or storage behavior.
+- `backend/media_review.py` resolves Review All cards for PDF, EPUB, and video sources. It unions legacy positioned PDF/EPUB source rows, exact `Incremento_Parent_Card_ID` matches, saved reader links, recent explicit video card positions, and knowledge-tree descendants. Preserve Topic/Item classification through one resolved classifier per scan; direct/nested depth; inherited media position; Anki due-state search; suspended, buried, missing, and other-filtered-deck diagnostics; post-filter limits; deterministic preview/build random order; and exact selected order in the rescheduling filtered deck.
+- Large linked-media reviews must resolve and build through `start_explicit_review_from_selector()` in a background `CollectionOp`. Preserve the caller's order when creating the filtered deck, and let Anki grade each reviewed card normally.
 
 ## Writing Cards
 

@@ -177,6 +177,7 @@ def test_apply_custom_schedule_after_answer_one_time_clears_rule():
     fake_col.get_card.return_value = latest_card
     fake_col.sched = fake_sched
     fake_mw = SimpleNamespace(col=fake_col)
+    diagnostic_events = []
     with (
         patch.object(custom_schedule, "mw", fake_mw),
         patch.object(
@@ -199,6 +200,11 @@ def test_apply_custom_schedule_after_answer_one_time_clears_rule():
         patch.object(custom_schedule, "apply_review_interval") as apply_interval,
         patch.object(custom_schedule, "commit_custom_schedule_review") as commit_review,
         patch.object(custom_schedule._CUSTOM_SCHEDULE_REVLOG_TRACKER, "track") as track,
+        patch.object(
+            custom_schedule,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        ),
     ):
         custom_schedule.prepare_custom_schedule_answer(fake_card)
         custom_schedule.apply_custom_schedule_after_answer(None, fake_card, 3)
@@ -213,6 +219,17 @@ def test_apply_custom_schedule_after_answer_one_time_clears_rule():
     assert commit_review.call_args.kwargs["anki_revlog_id"] == 200
     assert commit_review.call_args.kwargs["consumed_one_time"] is True
     track.assert_called_once_with("TestProfile", 15, 200)
+    assert diagnostic_events == [
+        (
+            "custom_schedule_applied",
+            {
+                "mode": "one_time",
+                "previous_interval_days": 12,
+                "scheduled_interval_days": 7,
+                "consumed_one_time": True,
+            },
+        )
+    ]
 
 
 def test_preview_answer_does_not_apply_or_consume_custom_schedule():
@@ -227,6 +244,7 @@ def test_preview_answer_does_not_apply_or_consume_custom_schedule():
         "interval_unit": "days",
         "revision": 1,
     }
+    diagnostic_events = []
     with (
         patch.object(custom_schedule, "mw", fake_mw),
         patch.object(custom_schedule, "is_topic_card", return_value=False),
@@ -236,12 +254,70 @@ def test_preview_answer_does_not_apply_or_consume_custom_schedule():
         patch.object(custom_schedule, "answer_revlog_snapshot", return_value=(True, 100)),
         patch.object(custom_schedule, "apply_review_interval") as apply_interval,
         patch.object(custom_schedule, "commit_custom_schedule_review") as commit_review,
+        patch.object(
+            custom_schedule,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        ),
     ):
         custom_schedule.prepare_custom_schedule_answer(card)
         custom_schedule.apply_custom_schedule_after_answer(None, card, 3)
 
     apply_interval.assert_not_called()
     commit_review.assert_not_called()
+    assert diagnostic_events == [
+        (
+            "custom_schedule_skipped",
+            {
+                "mode": "one_time",
+                "reason": "preview",
+                "target_interval_days": 2,
+            },
+        )
+    ]
+
+
+def test_minimum_cadence_skip_reports_current_and_target_intervals():
+    card = SimpleNamespace(id=19, ivl=2)
+    fake_col = MagicMock()
+    fake_col.get_card.return_value = card
+    fake_mw = SimpleNamespace(col=fake_col)
+    rule = {
+        "enabled": True,
+        "mode": "minimum_cadence",
+        "interval_value": 3,
+        "interval_unit": "days",
+    }
+    diagnostic_events = []
+    with (
+        patch.object(custom_schedule, "mw", fake_mw),
+        patch.object(custom_schedule, "is_topic_card", return_value=False),
+        patch.object(custom_schedule, "consume_handled_topic_answer", return_value=False),
+        patch.object(custom_schedule, "get_custom_schedule_rule", return_value=rule),
+        patch.object(custom_schedule, "_active_profile", return_value="TestProfile"),
+        patch.object(custom_schedule, "answer_revlog_snapshot", return_value=(True, 100)),
+        patch.object(custom_schedule, "apply_review_interval") as apply_interval,
+        patch.object(
+            custom_schedule,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        ),
+    ):
+        custom_schedule.prepare_custom_schedule_answer(card)
+        custom_schedule.apply_custom_schedule_after_answer(None, card, 3)
+
+    apply_interval.assert_not_called()
+    assert diagnostic_events == [
+        (
+            "custom_schedule_skipped",
+            {
+                "mode": "minimum_cadence",
+                "reason": "minimum_already_met",
+                "current_interval_days": 2,
+                "target_interval_days": 3,
+            },
+        )
+    ]
 
 
 def test_custom_schedule_after_answer_requires_a_new_revlog():
@@ -283,6 +359,7 @@ def test_custom_schedule_commit_failure_restores_post_answer_card():
         "interval_value": 2,
         "interval_unit": "days",
     }
+    diagnostic_events = []
     with (
         patch.object(custom_schedule, "mw", fake_mw),
         patch.object(custom_schedule, "is_topic_card", return_value=False),
@@ -301,6 +378,11 @@ def test_custom_schedule_commit_failure_restores_post_answer_card():
         ),
         patch.object(custom_schedule, "restore_card_schedule") as restore,
         patch.object(custom_schedule._CUSTOM_SCHEDULE_REVLOG_TRACKER, "track") as track,
+        patch.object(
+            custom_schedule,
+            "_diagnostic_event_callback",
+            lambda event, fields: diagnostic_events.append((event, fields)),
+        ),
     ):
         custom_schedule.prepare_custom_schedule_answer(card)
         custom_schedule.apply_custom_schedule_after_answer(None, card, 3)
@@ -312,6 +394,18 @@ def test_custom_schedule_commit_failure_restores_post_answer_card():
         collection=fake_col,
     )
     track.assert_not_called()
+    assert diagnostic_events == [
+        (
+            "custom_schedule_failed",
+            {
+                "mode": "fixed_repeat",
+                "stage": "commit",
+                "error_type": "RuntimeError",
+                "restore_failed": False,
+            },
+        )
+    ]
+    assert "db failed" not in repr(diagnostic_events)
 
 
 def test_profile_reset_discards_pending_and_tracked_custom_schedule_state():
