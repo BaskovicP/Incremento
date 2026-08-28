@@ -295,6 +295,25 @@ def test_set_scratch_priority_for_editor_keeps_editors_isolated():
     assert dock.scratch_priority_for_editor(second) == 90.0
 
 
+def test_current_add_mode_editor_prefers_originating_bridge_context(monkeypatch):
+    dock_editor = _FakeEditor(_FakeNote(note_id=5), add_mode=True)
+    native_editor = _FakeEditor(_FakeNote(note_id=6), add_mode=True)
+
+    monkeypatch.setattr(dock, "_dock_editor", lambda: dock_editor)
+    monkeypatch.setattr(dock, "_last_add_mode_editor", dock_editor)
+
+    assert dock._current_add_mode_editor(native_editor) is native_editor
+
+
+def test_current_add_mode_editor_ignores_non_add_bridge_context(monkeypatch):
+    dock_editor = _FakeEditor(_FakeNote(note_id=7), add_mode=True)
+    browser_editor = _FakeEditor(_FakeNote(note_id=8), add_mode=False)
+
+    monkeypatch.setattr(dock, "_dock_editor", lambda: dock_editor)
+
+    assert dock._current_add_mode_editor(browser_editor) is dock_editor
+
+
 def test_configured_extract_priority_multiplier_defaults_by_direction():
     assert dock.configured_extract_priority_multiplier({}) == 0.98
     assert dock.configured_extract_priority_multiplier({"priority_lower_is_more_important": False}) == 1.02
@@ -424,6 +443,35 @@ def test_pending_extract_options_are_consumed_once(monkeypatch):
     assert dock.consume_pending_extract_options_for_note(note) is None
 
 
+def test_apply_priority_to_note_cards_updates_every_generated_card(monkeypatch):
+    note = _FakeNote(note_id=12)
+    priority_calls = []
+
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [201, 202])
+    monkeypatch.setitem(
+        sys.modules,
+        "priority_manager",
+        types.SimpleNamespace(
+            set_priority=lambda addon_dir, profile, card_id, priority: priority_calls.append(
+                (addon_dir, profile, card_id, priority)
+            )
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "paths",
+        types.SimpleNamespace(get_active_profile=lambda: "TestProfile"),
+    )
+
+    changed = dock.apply_priority_to_note_cards(note, 17.25)
+
+    assert changed == 2
+    assert priority_calls == [
+        (dock._ADDON_DIR, "TestProfile", 201, 17.25),
+        (dock._ADDON_DIR, "TestProfile", 202, 17.25),
+    ]
+
+
 def test_pending_extract_options_capture_source_card_id(monkeypatch):
     monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 123 if source == "pdf" else None)
 
@@ -504,6 +552,34 @@ def test_fill_dock_field_resets_current_extract_priority_from_pdf_parent(monkeyp
     assert dock._current_extract_priority == 18.0
     dock.clear_pending_extract_options()
     dock.clear_pending_extract_context()
+
+
+def test_prepare_source_fill_clears_stale_context_without_current_source_card(monkeypatch):
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: None)
+    monkeypatch.setattr(dock, "source_relative_extract_priority_for_source", lambda source: 40.0)
+    monkeypatch.setattr(dock, "source_note_tags_for_card", lambda source_card_id: [])
+    dock._pending_extract_context = {"parent_card_id": 99, "seen": 0.0}
+
+    options = dock.prepare_pending_extract_from_source_fill("pdf")
+
+    assert options is not None
+    assert options["source_card_id"] is None
+    assert dock.pending_extract_context() is None
+
+
+def test_explicit_missing_source_snapshot_does_not_later_bind_to_another_pdf(monkeypatch):
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 202)
+
+    assert dock._source_card_id_from_extract_options(
+        {
+            "source": "pdf",
+            "source_card_id": None,
+            "source_card_id_is_snapshot": True,
+        }
+    ) is None
+    assert dock._source_card_id_from_extract_options(
+        {"source": "pdf", "source_card_id": None}
+    ) == 202
 
 
 def test_fill_dock_field_passes_excerpt_text_to_pdf_citation(monkeypatch):
@@ -1151,6 +1227,127 @@ def test_pending_extract_replaces_previous_auto_tags_when_source_changes(monkeyp
     assert tag_refresh == [editor]
 
 
+def test_cmd1_pdf_switch_replaces_sticky_auto_tags_on_next_add_note(monkeypatch):
+    first_note = _FakeNote(["manual"], note_id=0)
+    editor = _FakeEditor(note=first_note, add_mode=True)
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_inject_transfer_buttons", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda current_editor: None)
+
+    dock._pending_extract_options = {
+        "priority": 25.0,
+        "mark_topic": False,
+        "link_to_knowledge_tree": False,
+        "source": "pdf",
+        "source_card_id": 101,
+        "source_tags": ["FirstPdf", "Shared"],
+        "seen": 0.0,
+    }
+    assert dock._apply_pending_extract_tags_to_editor(editor) is True
+    assert first_note.tags == ["manual", "FirstPdf", "Shared"]
+
+    # Anki deliberately copies tags to the next blank Add note. The editor
+    # load hook must carry Incremento's ownership record with those sticky
+    # tags so the next Cmd+1 can clean them up safely.
+    second_note = _FakeNote(list(first_note.tags), note_id=0)
+    editor.note = second_note
+    editor.tags.setText(second_note.string_tags())
+    dock._on_editor_did_load_note(editor)
+
+    dock._pending_extract_options = {
+        "priority": 25.0,
+        "mark_topic": False,
+        "link_to_knowledge_tree": False,
+        "source": "pdf",
+        "source_card_id": 202,
+        "source_tags": ["SecondPdf", "Shared"],
+        "seen": 0.0,
+    }
+    assert dock._apply_pending_extract_tags_to_editor(editor) is True
+
+    assert second_note.tags == ["manual", "SecondPdf", "Shared"]
+    assert dock._auto_extract_tag_keys_for_editor(editor, second_note) == {
+        "secondpdf",
+        "shared",
+    }
+
+
+def test_add_note_hook_carries_auto_tag_ownership_before_editor_load(monkeypatch):
+    added_note = _FakeNote(["manual", "FirstPdf"], note_id=11)
+    next_note = _FakeNote(list(added_note.tags), note_id=0)
+    editor = _FakeEditor(note=next_note, add_mode=True)
+    editor._incremento_auto_extract_tag_note = added_note
+    editor._incremento_auto_extract_tag_keys = ["firstpdf"]
+
+    monkeypatch.setattr(dock, "_iter_tracked_tag_button_editors", lambda: [editor])
+
+    dock._carry_auto_extract_tag_keys_after_add(added_note)
+
+    assert dock._auto_extract_tag_keys_for_editor(editor, next_note) == {"firstpdf"}
+
+
+def test_extract_tag_refresh_does_not_claim_preexisting_manual_tag(monkeypatch):
+    note = _FakeNote(["manual", "Shared"], note_id=0)
+    editor = _FakeEditor(note=note, add_mode=True)
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: None)
+
+    dock._pending_extract_options = {
+        "priority": 25.0,
+        "mark_topic": False,
+        "link_to_knowledge_tree": False,
+        "source": "pdf",
+        "source_card_id": 101,
+        "source_tags": ["Shared", "FirstPdf"],
+        "seen": 0.0,
+    }
+    dock._apply_pending_extract_tags_to_editor(editor)
+    assert dock._auto_extract_tag_keys_for_editor(editor, note) == {"firstpdf"}
+
+    dock._pending_extract_options = {
+        "priority": 25.0,
+        "mark_topic": False,
+        "link_to_knowledge_tree": False,
+        "source": "pdf",
+        "source_card_id": 202,
+        "source_tags": ["SecondPdf"],
+        "seen": 0.0,
+    }
+    dock._apply_pending_extract_tags_to_editor(editor)
+
+    assert note.tags == ["manual", "Shared", "SecondPdf"]
+
+
+def test_auto_topic_default_is_owned_and_cleaned_when_extract_mode_changes(monkeypatch):
+    first_note = _FakeNote(["manual"], note_id=0)
+    editor = _FakeEditor(note=first_note, add_mode=True)
+
+    monkeypatch.setattr(dock, "_has_recent_selection", lambda: True)
+    monkeypatch.setattr(dock, "_extract_mark_topic_for_transfer", lambda: True)
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+    monkeypatch.setattr(dock, "_set_add_card_tag_button_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda current_editor: None)
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda current_editor: None)
+
+    dock._apply_extract_topic_default_to_editor(editor)
+
+    assert first_note.tags == ["manual", "topic"]
+    assert dock._auto_extract_tag_keys_for_editor(editor, first_note) == {"topic"}
+
+    second_note = _FakeNote(list(first_note.tags), note_id=0)
+    editor.note = second_note
+    dock._carry_auto_extract_tag_keys_to_note(editor, second_note)
+    dock._replace_auto_extract_tags(editor, second_note, mark_topic=False)
+
+    assert second_note.tags == ["manual"]
+
+
 def test_pending_pdf_extract_leaves_tags_untouched_when_copy_disabled(monkeypatch):
     note = _FakeNote(["existing"], note_id=11)
     editor = _FakeEditor(note=note, add_mode=True)
@@ -1447,6 +1644,29 @@ def test_inject_transfer_buttons_shows_extract_options_for_pending_snapshot(monk
     assert "pycmd('incremento_open_extract_batch');" in js
 
 
+def test_inject_transfer_buttons_shows_immediately_synced_priority_for_scratch_note(monkeypatch):
+    note = _FakeNote(note_id=10)
+    editor = _FakeEditor(note, add_mode=True)
+    editor.web = _FakeWeb()
+
+    monkeypatch.setattr(dock, "_last_selection_source", "")
+    monkeypatch.setattr(dock, "_last_selection_seen", 0.0)
+    monkeypatch.setattr(dock, "_current_extract_priority", None)
+    monkeypatch.setattr(dock, "_current_extract_mark_topic", None)
+    monkeypatch.setattr(dock, "_current_extract_link_to_knowledge_tree", None)
+    monkeypatch.setattr(dock, "_pending_extract_options", None)
+
+    dock.set_scratch_priority_for_editor(editor, 27.5)
+    dock._inject_transfer_buttons(editor)
+
+    js = editor.web.eval_calls[-1]
+    assert "var optionsVisible = false;" in js
+    assert "var defaultScratchPriority = 27.5;" in js
+    assert "scratchPanel.style.display = this.optionsVisible ? 'none' : 'flex';" in js
+    assert "input.addEventListener('input'" in js
+    assert "window.incrementoTransferButtons.syncScratchPriority();" in js
+
+
 def test_snapshot_extract_batch_state_requires_two_visible_fields(monkeypatch):
     note = _FakeNote(field_names=["Front", "Incremento_Parent"])
     editor = _FakeEditor(note=note, add_mode=True)
@@ -1663,6 +1883,53 @@ def test_toolbar_buttons_register_even_before_note_is_loaded():
     assert [button["label"] for button in buttons] == ["T", "I"]
 
 
+def test_add_mode_toolbar_includes_new_card_priority_button():
+    buttons = []
+    editor = _FakeEditor(note=None, add_mode=True)
+
+    dock._add_add_card_tag_toolbar_buttons(buttons, editor)
+
+    assert [button["label"] for button in buttons] == ["P", "T", "I"]
+    assert buttons[0]["id"] == dock._ADD_CARD_PRIORITY_BUTTON_ID
+
+
+def test_new_card_priority_button_stores_dialog_value_on_originating_note(monkeypatch):
+    editor = _FakeEditor(_FakeNote(note_id=0), add_mode=True)
+    dialog_calls = []
+    refresh_calls = []
+    messages = []
+
+    class _FakePriorityDialog:
+        priority = 12.75
+
+        def __init__(self, **kwargs):
+            dialog_calls.append(kwargs)
+
+        def exec(self):
+            return True
+
+    monkeypatch.setattr(dock, "_priority_dialog_class", lambda: _FakePriorityDialog)
+    monkeypatch.setattr(
+        dock,
+        "_config",
+        lambda config=None: {"priority_lower_is_more_important": False},
+    )
+    monkeypatch.setattr(
+        dock,
+        "_inject_transfer_buttons",
+        lambda current_editor: refresh_calls.append(current_editor),
+    )
+    monkeypatch.setattr(dock, "tooltip", lambda message: messages.append(message))
+
+    dock._on_add_card_priority_button(editor)
+
+    assert dialog_calls[0]["current_priority"] == 50.0
+    assert dialog_calls[0]["lower_is_more_important"] is False
+    assert dock.scratch_priority_for_note(editor.note) == 12.75
+    assert refresh_calls == [editor]
+    assert messages == ["New-card priority set to 12.75"]
+
+
 def test_toggle_editor_tag_button_saves_edit_current_note(monkeypatch):
     editor = _FakeEditor(_FakeNote(["keep"], note_id=9), add_mode=False)
     monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
@@ -1705,6 +1972,27 @@ def test_toggle_editor_item_button_removes_topic_tags(monkeypatch):
 
     assert editor.note.tags == ["keep", "item"]
     assert editor.tags.text_value == "keep item"
+
+
+def test_topic_button_releases_classification_tags_from_auto_ownership(monkeypatch):
+    note = _FakeNote(["Source", "topic"], note_id=0)
+    editor = _FakeEditor(note, add_mode=True)
+    toggle_calls = []
+
+    dock._set_auto_extract_tag_keys_for_editor(editor, note, ["Source", "topic"])
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+    monkeypatch.setattr(
+        dock,
+        "_toggle_editor_tag_button",
+        lambda *args, **kwargs: toggle_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(dock, "_sync_extract_mark_topic_from_note", lambda current_note: None)
+
+    dock._on_topic_tag_button(editor)
+
+    assert len(toggle_calls) == 1
+    assert dock._auto_extract_tag_keys_for_editor(editor, note) == {"source"}
 
 
 def test_item_button_switches_pending_extract_mode_to_item(monkeypatch):

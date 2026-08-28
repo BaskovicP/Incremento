@@ -69,6 +69,7 @@ _DEFAULT_EXTRACT_SOURCE_LINKS = {
 }
 _DEFAULT_ADD_CARD_TOPIC_TAGS = ["topic"]
 _DEFAULT_ADD_CARD_ITEM_TAGS = ["item"]
+_ADD_CARD_PRIORITY_BUTTON_ID = "incremento-add-card-priority"
 _TOPIC_TAG_BUTTON_ID = "incremento-add-card-topic-tag"
 _ITEM_TAG_BUTTON_ID = "incremento-add-card-item-tag"
 
@@ -162,13 +163,29 @@ def _dock_editor():
         return None
 
 
-def _current_add_mode_editor():
+def _is_live_add_mode_editor(editor) -> bool:
+    try:
+        return bool(
+            editor is not None
+            and getattr(editor, "addMode", False)
+            and getattr(editor, "note", None) is not None
+        )
+    except Exception:
+        return False
+
+
+def _current_add_mode_editor(context=None):
+    # Editor webviews pass their owning Editor as the JS bridge context. Prefer
+    # it so a native Add window never updates the embedded dock's note (or vice
+    # versa) when both are open.
+    if _is_live_add_mode_editor(context):
+        return context
     editor = _dock_editor()
-    if editor is not None:
+    if _is_live_add_mode_editor(editor):
         return editor
     global _last_add_mode_editor
     try:
-        if _last_add_mode_editor is not None and getattr(_last_add_mode_editor, "note", None) is not None:
+        if _is_live_add_mode_editor(_last_add_mode_editor):
             return _last_add_mode_editor
     except Exception:
         _last_add_mode_editor = None
@@ -696,15 +713,30 @@ def _inject_transfer_buttons(editor) -> None:
                       host.parentElement.insertBefore(panel, host);
                       var input = panel.querySelector('#incremento-scratch-priority-input');
                       input.value = String(this.scratchPriority);
-                      input.addEventListener('change', function() {{
-                        var value = Number(input.value);
+                      var syncScratchPriorityInput = function(normalizeDisplay) {{
+                        var rawValue = String(input.value || '').trim();
+                        if (!rawValue) {{
+                          return;
+                        }}
+                        var value = Number(rawValue);
                         if (!Number.isFinite(value)) {{
+                          if (!normalizeDisplay) {{
+                            return;
+                          }}
                           value = defaultScratchPriority;
                         }}
                         value = Math.max(0, Math.min(100, value));
-                        input.value = String(value);
+                        if (normalizeDisplay) {{
+                          input.value = String(value);
+                        }}
                         window.incrementoTransferButtons.scratchPriority = value;
                         window.incrementoTransferButtons.syncScratchPriority();
+                      }};
+                      input.addEventListener('input', function() {{
+                        syncScratchPriorityInput(false);
+                      }});
+                      input.addEventListener('change', function() {{
+                        syncScratchPriorityInput(true);
                       }});
                       this.syncScratchPriority();
                     }}
@@ -845,12 +877,10 @@ def _set_note_tags(note, tags: list[str]) -> None:
         pass
 
 
-def _auto_extract_tag_keys_for_editor(editor, note) -> set[str]:
-    if editor is None or note is None:
+def _stored_auto_extract_tag_keys_for_editor(editor) -> set[str]:
+    if editor is None:
         return set()
     try:
-        if getattr(editor, "_incremento_auto_extract_tag_note", None) is not note:
-            return set()
         stored = getattr(editor, "_incremento_auto_extract_tag_keys", []) or []
     except Exception:
         return set()
@@ -859,6 +889,17 @@ def _auto_extract_tag_keys_for_editor(editor, note) -> set[str]:
         for tag in list(stored)
         if str(tag or "").strip()
     }
+
+
+def _auto_extract_tag_keys_for_editor(editor, note) -> set[str]:
+    if editor is None or note is None:
+        return set()
+    try:
+        if getattr(editor, "_incremento_auto_extract_tag_note", None) is not note:
+            return set()
+    except Exception:
+        return set()
+    return _stored_auto_extract_tag_keys_for_editor(editor)
 
 
 def _set_auto_extract_tag_keys_for_editor(editor, note, tags) -> None:
@@ -878,6 +919,51 @@ def _set_auto_extract_tag_keys_for_editor(editor, note, tags) -> None:
         pass
 
 
+def _carry_auto_extract_tag_keys_to_note(editor, note) -> set[str]:
+    """Keep ownership of Anki's sticky auto-tags when Add loads a new note."""
+    if editor is None or note is None:
+        return set()
+    try:
+        previous_note = getattr(editor, "_incremento_auto_extract_tag_note", None)
+    except Exception:
+        previous_note = None
+    if previous_note is note:
+        return _auto_extract_tag_keys_for_editor(editor, note)
+
+    inherited_keys = _stored_auto_extract_tag_keys_for_editor(editor).intersection(
+        {tag.lower() for tag in _note_tags(note)}
+    )
+    _set_auto_extract_tag_keys_for_editor(editor, note, inherited_keys)
+    return inherited_keys
+
+
+def _carry_auto_extract_tag_keys_after_add(added_note) -> None:
+    """Bind sticky auto-tags to Anki's next blank note without waiting for JS."""
+    for editor in _iter_tracked_tag_button_editors():
+        try:
+            if getattr(editor, "_incremento_auto_extract_tag_note", None) is not added_note:
+                continue
+            next_note = getattr(editor, "note", None)
+        except Exception:
+            continue
+        if next_note is None or next_note is added_note:
+            continue
+        _carry_auto_extract_tag_keys_to_note(editor, next_note)
+
+
+def _release_auto_extract_tag_keys_for_editor(editor, note, tags) -> None:
+    """Treat explicitly toggled tags as user-owned instead of extract-owned."""
+    released_keys = {
+        str(tag or "").strip().lower()
+        for tag in list(tags or [])
+        if str(tag or "").strip()
+    }
+    if not released_keys:
+        return
+    remaining = _carry_auto_extract_tag_keys_to_note(editor, note) - released_keys
+    _set_auto_extract_tag_keys_for_editor(editor, note, remaining)
+
+
 def _replace_auto_extract_tags(
     editor,
     note,
@@ -891,25 +977,29 @@ def _replace_auto_extract_tags(
     source_list = _normalize_tag_list(source_tags or [])
     classification_tags = configured_add_card_topic_tags() if mark_topic else []
     desired_auto_tags = _normalize_tag_list(list(source_list) + list(classification_tags))
-    desired_auto_keys = {tag.lower() for tag in desired_auto_tags}
     previous_auto_keys = _auto_extract_tag_keys_for_editor(editor, note)
 
     existing_tags = _note_tags(note)
+    # Tags that predated Incremento's current extract remain user-owned even
+    # when they happen to match the new source. Only remove tags that the
+    # extract flow can prove it added (or that Anki carried to the next note).
     updated = [
         tag for tag in existing_tags if tag.lower() not in previous_auto_keys
     ]
     updated_keys = {tag.lower() for tag in updated}
+    desired_auto_keys: set[str] = set()
     for tag in desired_auto_tags:
         lowered = tag.lower()
         if lowered in updated_keys:
             continue
         updated.append(tag)
         updated_keys.add(lowered)
+        desired_auto_keys.add(lowered)
 
     changed = updated != existing_tags or previous_auto_keys != desired_auto_keys
     if changed:
         _set_note_tags(note, updated)
-    _set_auto_extract_tag_keys_for_editor(editor, note, desired_auto_tags)
+    _set_auto_extract_tag_keys_for_editor(editor, note, desired_auto_keys)
     return changed
 
 
@@ -1015,9 +1105,16 @@ def _apply_extract_topic_default_to_editor(editor) -> None:
         return
     if _note_has_any_tags(note, configured_add_card_item_tags()):
         return
+    before_keys = {tag.lower() for tag in _note_tags(note)}
     if not add_topic_tags_to_note(note):
         _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
         return
+    added_keys = {
+        tag.lower() for tag in _note_tags(note) if tag.lower() not in before_keys
+    }
+    if added_keys:
+        owned_keys = _auto_extract_tag_keys_for_editor(editor, note)
+        _set_auto_extract_tag_keys_for_editor(editor, note, owned_keys | added_keys)
     _set_editor_tags(editor, _note_tags(note))
     _schedule_editor_tag_widget_sync(editor)
     _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
@@ -1624,6 +1721,7 @@ def set_pending_extract_options(
         "source_card_id": (
             int(resolved_source_card_id) if resolved_source_card_id is not None else None
         ),
+        "source_card_id_is_snapshot": True,
         "source_tags": source_tags,
         "seen": time.monotonic(),
     }
@@ -1644,8 +1742,10 @@ def _source_card_id_from_extract_options(options: dict | None) -> int | None:
         raw_source_card_id = (options or {}).get("source_card_id")
         if raw_source_card_id is not None:
             return int(raw_source_card_id)
+        if bool((options or {}).get("source_card_id_is_snapshot")):
+            return None
     except Exception:
-        pass
+        return None
     try:
         source = str((options or {}).get("source") or "").strip()
     except Exception:
@@ -1682,6 +1782,10 @@ def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = 
                 "Extract lineage is added to the knowledge tree automatically."
             ),
         )
+    else:
+        # A missing/standalone source must never inherit provenance from the
+        # previously open PDF, EPUB, web page, writing card, or video.
+        clear_pending_extract_context()
     return options
 
 
@@ -1987,6 +2091,7 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
             "link_to_knowledge_tree": _extract_link_to_knowledge_tree_for_transfer(),
             "source": source,
             "source_card_id": source_card_id,
+            "source_card_id_is_snapshot": True,
             "source_tags": source_note_tags_for_card(source_card_id),
         }
         if source_card_id is not None:
@@ -2153,6 +2258,7 @@ def on_add_cards_did_add_note(note) -> None:
     mark_reviewer_extract_note_added(options)
     consume_pending_extract_context_for_note(note, options)
     _notify_video_extract_note_added(note, options)
+    _carry_auto_extract_tag_keys_after_add(note)
 
 
 def _install_embedded_add_dialog_hooks(dlg) -> None:
@@ -2442,6 +2548,11 @@ def _sync_extract_mark_topic_from_note(note) -> None:
 
 
 def _on_topic_tag_button(editor) -> None:
+    _release_auto_extract_tag_keys_for_editor(
+        editor,
+        getattr(editor, "note", None),
+        configured_add_card_topic_tags() + configured_add_card_item_tags(),
+    )
     _toggle_editor_tag_button(
         editor,
         configured_add_card_topic_tags(),
@@ -2452,6 +2563,11 @@ def _on_topic_tag_button(editor) -> None:
 
 
 def _on_item_tag_button(editor) -> None:
+    _release_auto_extract_tag_keys_for_editor(
+        editor,
+        getattr(editor, "note", None),
+        configured_add_card_topic_tags() + configured_add_card_item_tags(),
+    )
     _toggle_editor_tag_button(
         editor,
         configured_add_card_item_tags(),
@@ -2461,7 +2577,50 @@ def _on_item_tag_button(editor) -> None:
     _sync_extract_mark_topic_from_note(getattr(editor, "note", None))
 
 
+def _priority_dialog_class():
+    try:
+        from .priority_dialog import PriorityDialog
+    except Exception:
+        from priority_dialog import PriorityDialog  # type: ignore
+    return PriorityDialog
+
+
+def _on_add_card_priority_button(editor) -> None:
+    if not _is_live_add_mode_editor(editor):
+        return
+    try:
+        dialog_class = _priority_dialog_class()
+        lower_is_more_important = bool(
+            _config().get("priority_lower_is_more_important", True)
+        )
+        dlg = dialog_class(
+            current_priority=scratch_priority_for_editor(editor),
+            card_label="Priority for every card generated by this new note.",
+            lower_is_more_important=lower_is_more_important,
+            parent=getattr(editor, "parentWindow", None) or mw,
+        )
+        if not dlg.exec():
+            return
+        value = set_scratch_priority_for_editor(editor, dlg.priority)
+        _inject_transfer_buttons(editor)
+        tooltip(f"New-card priority set to {value:g}")
+    except Exception:
+        tooltip("Could not open the new-card priority control.")
+
+
 def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
+    if getattr(editor, "addMode", False):
+        buttons.append(
+            editor.addButton(
+                None,
+                "incrementoSetNewCardPriority",
+                _on_add_card_priority_button,
+                tip="Set priority for every card created from this new note",
+                label="P",
+                id=_ADD_CARD_PRIORITY_BUTTON_ID,
+                disables=False,
+            )
+        )
     buttons.append(
         editor.addButton(
             None,
@@ -2494,6 +2653,7 @@ def _on_editor_did_load_note(editor) -> None:
     _track_tag_button_editor(editor)
     if getattr(editor, "addMode", False):
         _last_add_mode_editor = editor
+        _carry_auto_extract_tag_keys_to_note(editor, note)
         scratch_priority_for_editor(editor)
         _inject_transfer_buttons(editor)
     _refresh_add_card_tag_buttons_for_editor(editor)

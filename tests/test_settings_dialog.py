@@ -346,6 +346,7 @@ _SPEC.loader.exec_module(_MOD)
 
 IncrementoSettingsDialog = _MOD.IncrementoSettingsDialog
 default_shortcuts = _MOD.default_shortcuts
+resolved_runtime_shortcuts = _MOD.resolved_runtime_shortcuts
 SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
 
 
@@ -537,3 +538,43 @@ class TestIncrementoSettingsDialogShortcuts:
 
         assert extract_spec["label"] == "Extract Card"
         assert default_shortcuts()["extract_card"] == "Alt+X"
+
+    def test_document_bookshelf_shortcut_is_exposed_in_settings(self):
+        bookshelf_spec = next(
+            spec
+            for spec in SHORTCUT_ACTION_SPECS
+            if spec["id"] == "document_bookshelf"
+        )
+
+        assert bookshelf_spec["label"] == "Document Bookshelf"
+        assert default_shortcuts()["document_bookshelf"] == "Alt+Shift+P"
+
+    def test_document_bookshelf_wins_legacy_option_shift_p_collision(self):
+        resolved = resolved_runtime_shortcuts(
+            {
+                "quick_open_pdf": "Alt+Shift+P",
+            }
+        )
+
+        assert resolved["document_bookshelf"] == "Alt+Shift+P"
+        assert resolved["quick_open_pdf"] == ""
+
+    def test_legacy_pdf_bookshelf_shortcut_is_migrated(self):
+        resolved = resolved_runtime_shortcuts(
+            {
+                "pdf_bookshelf": "Ctrl+Shift+B",
+            }
+        )
+
+        assert resolved["document_bookshelf"] == "Ctrl+Shift+B"
+        assert "pdf_bookshelf" not in resolved
+
+    def test_quick_open_keeps_a_distinct_custom_shortcut(self):
+        resolved = resolved_runtime_shortcuts(
+            {
+                "quick_open_pdf": "Ctrl+Alt+O",
+            }
+        )
+
+        assert resolved["document_bookshelf"] == "Alt+Shift+P"
+        assert resolved["quick_open_pdf"] == "Ctrl+Alt+O"

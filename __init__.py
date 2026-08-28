@@ -203,8 +203,15 @@ from .backend.session import (
     get_session_times,
     start_quick_open_review,
 )
-from .frontend.settings_dialog import IncrementoSettingsDialog, default_shortcuts
+from .frontend.settings_dialog import (
+    IncrementoSettingsDialog,
+    resolved_runtime_shortcuts,
+)
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
+from .frontend.pdf_bookshelf import (
+    _DocumentBookshelfDialog,
+    _load_bookshelf_entries,
+)
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
@@ -304,11 +311,11 @@ def _register_shortcut_action(action_id: str, action_obj) -> None:
 
 def _apply_shortcuts_from_config() -> None:
     cfg = mw.addonManager.getConfig(__name__) or {}
-    defaults = default_shortcuts()
     user_shortcuts = cfg.get("shortcuts") or {}
+    runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
 
     for action_id, action_targets in _shortcut_actions.items():
-        shortcut_text = user_shortcuts.get(action_id, defaults.get(action_id, ""))
+        shortcut_text = runtime_shortcuts.get(action_id, "")
         seq = QKeySequence(shortcut_text) if shortcut_text else QKeySequence()
         for action_obj in action_targets:
             if hasattr(action_obj, "setShortcut"):
@@ -319,9 +326,9 @@ def _apply_shortcuts_from_config() -> None:
 
 def _configured_shortcut_text(action_id: str) -> str:
     cfg = mw.addonManager.getConfig(__name__) or {}
-    defaults = default_shortcuts()
     user_shortcuts = cfg.get("shortcuts") or {}
-    return str(user_shortcuts.get(action_id, defaults.get(action_id, "")) or "").strip()
+    runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
+    return str(runtime_shortcuts.get(action_id, "") or "").strip()
 
 
 def _event_matches_shortcut_text(event, shortcut_text: str) -> bool:
@@ -1386,6 +1393,7 @@ mw.addonManager.setWebExports(__name__, r"web/.*")
 # Last cards opened via the Quick Open dialog (used by Ctrl+L).
 _last_opened_pdf_cid: int | None = None
 _last_opened_writing_cid: int | None = None
+_last_opened_document_cid: int | None = None
 
 
 # Wire add_card_dock callbacks to pdf_dock.
@@ -2215,7 +2223,7 @@ def _on_js_message(handled, message, context) -> tuple:
     if message.startswith("incremento_scratch_priority:"):
         try:
             data = json.loads(message[len("incremento_scratch_priority:") :])
-            editor = _add_card_dock_mod._current_add_mode_editor()
+            editor = _add_card_dock_mod._current_add_mode_editor(context)
             if editor is not None:
                 _add_card_dock_mod.set_scratch_priority_for_editor(
                     editor,
@@ -2904,6 +2912,48 @@ def _open_pdf_quick_jump() -> None:
         showInfo(f"Could not open document:\n{e}")
 
 
+def _open_document_bookshelf() -> None:
+    from aqt.operations import QueryOp
+
+    def load_entries(col):
+        return _load_bookshelf_entries(_ADDON_DIR, collection=col)
+
+    def show_bookshelf(entries) -> None:
+        dlg = _DocumentBookshelfDialog(
+            mw,
+            addon_dir=_ADDON_DIR,
+            last_opened_card_id=_last_opened_document_cid,
+            entries=list(entries or []),
+        )
+        if not dlg.exec():
+            return
+        card_id = dlg.selected_card_id
+        if card_id is None:
+            return
+        try:
+            if dlg.selected_card_type == "EPUB":
+                _open_epub_card(card_id)
+            else:
+                _open_pdf_card(card_id, preserve_history=dlg.preserve_history)
+            if dlg.open_card_to_study:
+                start_quick_open_review(card_id)
+        except Exception as exc:
+            showInfo(f"Could not open document:\n{exc}")
+
+    def failed(exc: Exception) -> None:
+        showInfo(f"Could not load the Document Bookshelf:\n{exc}")
+
+    try:
+        (
+            QueryOp(parent=mw, op=load_entries, success=show_bookshelf)
+            .failure(failed)
+            .with_progress("Loading document bookshelf…")
+            .run_in_background()
+        )
+    except Exception as exc:
+        failed(exc)
+
+
 def _open_writing_card(card_id: int, *, relpath: str = "") -> None:
     global _last_opened_writing_cid
     card = mw.col.get_card(card_id)
@@ -2928,7 +2978,7 @@ def _open_pdf_card(
     jump_excerpt: str = "",
     preserve_history: bool = False,
 ) -> None:
-    global _last_opened_pdf_cid
+    global _last_opened_document_cid, _last_opened_pdf_cid
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
     filename = note["PDF_Filename"]
@@ -2936,6 +2986,7 @@ def _open_pdf_card(
     zoom = get_zoom(_ADDON_DIR, _active_profile(), card_id)
     read_page = get_read_page(_ADDON_DIR, _active_profile(), card_id)
     _last_opened_pdf_cid = card_id
+    _last_opened_document_cid = card_id
     _pdf_dock_mod.show_pdf_in_dock(
         card_id,
         filename,
@@ -2955,6 +3006,7 @@ def _open_epub_card(
     focus_offset: int = -1,
     search_query: str = "",
 ) -> None:
+    global _last_opened_document_cid
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
     filename = note[EPUB_FILE_FIELD]
@@ -2967,6 +3019,7 @@ def _open_epub_card(
         focus_offset=focus_offset,
         search_query=search_query,
     )
+    _last_opened_document_cid = card_id
 
 
 def _open_search_all(initial_query: str = "") -> None:
@@ -3175,6 +3228,11 @@ _pdf_jump_shortcut = QShortcut(QKeySequence("Ctrl+Alt+P"), mw)
 _pdf_jump_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_pdf_jump_shortcut.activated, _open_pdf_quick_jump)
 _register_shortcut_action("quick_open_pdf", _pdf_jump_shortcut)
+
+_document_bookshelf_shortcut = QShortcut(QKeySequence("Alt+Shift+P"), mw)
+_document_bookshelf_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(_document_bookshelf_shortcut.activated, _open_document_bookshelf)
+_register_shortcut_action("document_bookshelf", _document_bookshelf_shortcut)
 
 _configured_shortcut_filter = _ConfiguredShortcutFilter(QApplication.instance() or mw)
 (QApplication.instance() or mw).installEventFilter(_configured_shortcut_filter)
@@ -5837,6 +5895,11 @@ def _build_incremento_menu() -> None:
     qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
     _menu.addAction(_quickOpenPdfAction)
     _register_shortcut_action("quick_open_pdf", _quickOpenPdfAction)
+
+    _documentBookshelfAction = QAction("Document Bookshelf", mw)
+    qconnect(_documentBookshelfAction.triggered, _open_document_bookshelf)
+    _menu.addAction(_documentBookshelfAction)
+    _register_shortcut_action("document_bookshelf", _documentBookshelfAction)
 
     _searchCurrentAction = QAction("Find In Current Document", mw)
     qconnect(_searchCurrentAction.triggered, _open_current_document_search)

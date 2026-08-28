@@ -6,6 +6,7 @@ Incremento is a modern Anki add-on for incremental learning from mixed content. 
 
 - Builds filtered study sessions with configurable card states, topic/item and document mixes, tags, priorities, ordering, and optional auto-refill
 - Opens PDF, EPUB, video, web, writing, and local-file material in persistent reviewer docks that remember progress
+- Provides a searchable PDF-and-EPUB Document Bookshelf on `Option+Shift+P` / `Alt+Shift+P`, with a format selector and visual one-click opening
 - Reviews cards attached to the current PDF, EPUB, or video with Topic/Item, direct/nested, media-range, due-state, ordering, and count controls, then restores the source position
 - Creates cards from selections and highlights while preserving source metadata and links
 - Provides topic A-factor scheduling, per-card custom schedules, postpone tools, and Anki-compatible Undo/Redo behavior

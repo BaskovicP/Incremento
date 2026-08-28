@@ -122,6 +122,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "Ctrl+Alt+P",
     },
     {
+        "id": "document_bookshelf",
+        "label": "Document Bookshelf",
+        "default": "Alt+Shift+P",
+    },
+    {
         "id": "set_priority",
         "label": "Set Priority",
         "default": "Alt+P",
@@ -188,6 +193,39 @@ DEFAULT_WRITING_BACKUP_TIERS = ("1m", "30m", "1d")
 
 def default_shortcuts() -> dict[str, str]:
     return {spec["id"]: spec["default"] for spec in SHORTCUT_ACTION_SPECS}
+
+
+def _migrated_shortcuts(
+    current_shortcuts: dict[str, str] | None,
+) -> dict[str, str]:
+    """Map the former PDF-only action onto the document bookshelf action."""
+    current = {
+        str(action_id): str(shortcut or "").strip()
+        for action_id, shortcut in dict(current_shortcuts or {}).items()
+    }
+    if "document_bookshelf" not in current and "pdf_bookshelf" in current:
+        current["document_bookshelf"] = current["pdf_bookshelf"]
+    current.pop("pdf_bookshelf", None)
+    return current
+
+
+def resolved_runtime_shortcuts(current_shortcuts: dict[str, str] | None) -> dict[str, str]:
+    """Merge shortcut defaults and give the bookshelf its requested key on conflict."""
+    resolved = default_shortcuts()
+    resolved.update(_migrated_shortcuts(current_shortcuts))
+
+    def identity(shortcut: str) -> str:
+        return "".join(str(shortcut or "").split()).casefold()
+
+    bookshelf_key = identity(resolved.get("document_bookshelf", ""))
+    quick_open_key = identity(resolved.get("quick_open_pdf", ""))
+    if bookshelf_key and bookshelf_key == quick_open_key:
+        # Older profiles may already use Option+Shift+P for Quick Open Content.
+        # A single key cannot trigger both dialogs, and the dedicated bookshelf
+        # is the action explicitly assigned to that default. Quick Open Content
+        # remains available from the menu or after assigning it another key.
+        resolved["quick_open_pdf"] = ""
+    return resolved
 
 
 def _normalize_tag_list(raw: list[str] | str | tuple[str, ...] | set[str] | None) -> list[str]:
@@ -1380,10 +1418,11 @@ class IncrementoSettingsDialog(QDialog):
         form = QFormLayout()
         form.setHorizontalSpacing(16)
         form.setVerticalSpacing(8)
+        runtime_shortcuts = resolved_runtime_shortcuts(current_shortcuts)
         for spec in SHORTCUT_ACTION_SPECS:
             action_id = spec["id"]
             editor = QKeySequenceEdit()
-            configured = (current_shortcuts or {}).get(
+            configured = runtime_shortcuts.get(
                 action_id, self._defaults[action_id]
             )
             editor.setKeySequence(QKeySequence(configured))
