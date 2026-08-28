@@ -20,8 +20,9 @@ try:
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
     )
+    from .note_type_updates import NoteTypeSpec, ensure_note_type
     from .video_providers import (
         extract_youtube_id as _extract_youtube_id,
         extract_vimeo_id,
@@ -40,8 +41,9 @@ except ImportError:
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
     )
+    from note_type_updates import NoteTypeSpec, ensure_note_type  # type: ignore
     from video_providers import (
         extract_youtube_id as _extract_youtube_id,
         extract_vimeo_id,
@@ -1512,90 +1514,29 @@ def set_video_position(addon_dir: str, profile: str, card_id: int, position: flo
     conn.commit()
 
 
-def _normalize_field_ordinals(model_dict) -> bool:
-    """
-    Ensure every field has a valid integer `ord` so Anki can sort note fields.
-    Returns True when a repair was applied.
-    """
-    try:
-        fields = model_dict["flds"]
-    except Exception:
-        return False
-    if not isinstance(fields, list):
-        return False
-
-    seen: set[int] = set()
-    needs_fix = False
-    for f in fields:
-        if not isinstance(f, dict):
-            needs_fix = True
-            continue
-        ord_val = f.get("ord")
-        if not isinstance(ord_val, int) or ord_val < 0 or ord_val in seen:
-            needs_fix = True
-        else:
-            seen.add(ord_val)
-
-    if not needs_fix:
-        return False
-
-    for idx, f in enumerate(fields):
-        if isinstance(f, dict):
-            f["ord"] = idx
-    return True
-
-
-def ensure_video_note_type(col) -> None:
-    """Create the Incremento Video note type, or sync its template if it already exists."""
-    models = col.models
-    m = models.by_name(VIDEO_NOTE_TYPE)
-    if m is None:
-        m = models.new(VIDEO_NOTE_TYPE)
-        for field_name in (
+def video_note_type_spec() -> NoteTypeSpec:
+    return NoteTypeSpec(
+        name=VIDEO_NOTE_TYPE,
+        fields=(
             "Title",
             "YouTube_URL",
             LOCAL_VIDEO_FIELD,
             *VIDEO_SUBTITLE_FIELDS,
-        ):
-            fld = models.new_field(field_name)
-            models.add_field(m, fld)
-        ensure_incremento_metadata_fields(models, m)
-        tmpl = models.new_template("Card 1")
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        models.add_template(m, tmpl)
-        models.add(m)
-    else:
-        changed = False
-        if ensure_incremento_metadata_fields(models, m):
-            changed = True
-        # Keep old collections forward-compatible by adding new fields lazily.
-        try:
-            fields = m["flds"]
-            if isinstance(fields, list):
-                existing = {f.get("name", "") for f in fields if isinstance(f, dict)}
-            else:
-                existing = set()
-        except Exception:
-            existing = set()
-        for field_name in (LOCAL_VIDEO_FIELD, *VIDEO_SUBTITLE_FIELDS):
-            if field_name in existing:
-                continue
-            fld = models.new_field(field_name)
-            models.add_field(m, fld)
-            changed = True
+            *INCREMENTO_METADATA_FIELDS,
+        ),
+        question_template=CARD_TEMPLATE_FRONT,
+        answer_template=CARD_TEMPLATE_BACK,
+        normalize_field_ordinals=True,
+    )
 
-        if _normalize_field_ordinals(m):
-            changed = True
 
-        tmpl = m["tmpls"][0]
-        if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
-            tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-            tmpl["afmt"] = CARD_TEMPLATE_BACK
-            changed = True
-
-        if changed:
-            models.update_dict(m)
+def ensure_video_note_type(col, *, allow_existing_update: bool = False) -> None:
+    """Create the video type, but require consent for existing-schema updates."""
+    ensure_note_type(
+        col,
+        video_note_type_spec(),
+        allow_existing_update=allow_existing_update,
+    )
 
 
 def add_video_card(

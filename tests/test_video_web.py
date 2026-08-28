@@ -852,17 +852,22 @@ def _make_mock_col(note_type_exists=False, template_matches=True):
     if not note_type_exists:
         col.models.by_name.return_value = None
     else:
-        m = MagicMock()
-        if template_matches:
-            m.__getitem__ = lambda self, key: (
-                [{"qfmt": _vm.CARD_TEMPLATE_FRONT, "afmt": _vm.CARD_TEMPLATE_BACK}]
-                if key == "tmpls" else MagicMock()
-            )
-        else:
-            m.__getitem__ = lambda self, key: (
-                [{"qfmt": "old front", "afmt": "old back"}]
-                if key == "tmpls" else MagicMock()
-            )
+        m = {
+            "flds": [
+                {"name": name, "ord": ordinal}
+                for ordinal, name in enumerate(_vm.video_note_type_spec().fields)
+            ],
+            "tmpls": [
+                {
+                    "qfmt": (
+                        _vm.CARD_TEMPLATE_FRONT if template_matches else "old front"
+                    ),
+                    "afmt": (
+                        _vm.CARD_TEMPLATE_BACK if template_matches else "old back"
+                    ),
+                }
+            ],
+        }
         col.models.by_name.return_value = m
     return col
 
@@ -887,7 +892,7 @@ class TestEnsureVideoNoteType:
         }
         col.models.by_name.return_value = model
 
-        ensure_video_note_type(col)
+        ensure_video_note_type(col, allow_existing_update=True)
 
         added_field_names = [call.args[1]["name"] for call in col.models.add_field.call_args_list]
         for field_name in VIDEO_SUBTITLE_FIELDS:
@@ -901,7 +906,7 @@ class TestEnsureVideoNoteType:
 
     def test_updates_template_when_stale(self):
         col = _make_mock_col(note_type_exists=True, template_matches=False)
-        ensure_video_note_type(col)
+        ensure_video_note_type(col, allow_existing_update=True)
         col.models.update_dict.assert_called_once()
 
     def test_repairs_invalid_field_ordinals(self):
@@ -916,7 +921,7 @@ class TestEnsureVideoNoteType:
             "tmpls": [{"qfmt": _vm.CARD_TEMPLATE_FRONT, "afmt": _vm.CARD_TEMPLATE_BACK}],
         }
         col.models.by_name.return_value = m
-        ensure_video_note_type(col)
+        ensure_video_note_type(col, allow_existing_update=True)
         assert [f["ord"] for f in m["flds"]] == [0, 1, 2]
         col.models.update_dict.assert_called_once()
 
@@ -931,11 +936,15 @@ class TestEnsureWebNoteType:
     def test_does_not_create_when_already_exists_with_matching_template(self):
         from unittest.mock import MagicMock
         col = MagicMock()
-        m = MagicMock()
-        m.__getitem__ = lambda self, key: (
-            [{"qfmt": _wm.CARD_TEMPLATE_FRONT, "afmt": _wm.CARD_TEMPLATE_BACK}]
-            if key == "tmpls" else MagicMock()
-        )
+        m = {
+            "flds": [
+                {"name": name, "ord": ordinal}
+                for ordinal, name in enumerate(_wm.web_note_type_spec().fields)
+            ],
+            "tmpls": [
+                {"qfmt": _wm.CARD_TEMPLATE_FRONT, "afmt": _wm.CARD_TEMPLATE_BACK}
+            ],
+        }
         col.models.by_name.return_value = m
         ensure_web_note_type(col)
         col.models.add.assert_not_called()
@@ -943,13 +952,15 @@ class TestEnsureWebNoteType:
     def test_updates_template_when_stale(self):
         from unittest.mock import MagicMock
         col = MagicMock()
-        m = MagicMock()
-        m.__getitem__ = lambda self, key: (
-            [{"qfmt": "old", "afmt": "old"}]
-            if key == "tmpls" else MagicMock()
-        )
+        m = {
+            "flds": [
+                {"name": name, "ord": ordinal}
+                for ordinal, name in enumerate(_wm.web_note_type_spec().fields)
+            ],
+            "tmpls": [{"qfmt": "old", "afmt": "old"}],
+        }
         col.models.by_name.return_value = m
-        ensure_web_note_type(col)
+        ensure_web_note_type(col, allow_existing_update=True)
         col.models.update_dict.assert_called_once()
 
 

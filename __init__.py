@@ -179,6 +179,11 @@ from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
 from .backend import anki_compat as _anki_compat
 from .backend import reconciliation as _reconciliation_mod
+from .backend.note_type_updates import (
+    NoteTypeApplyError as _NoteTypeApplyError,
+    apply_incremento_note_type_updates as _apply_incremento_note_type_updates,
+    detect_incremento_note_type_updates as _detect_incremento_note_type_updates,
+)
 from .backend.db import (
     close_current_connection,
     create_database_checkpoint,
@@ -230,6 +235,11 @@ from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.current_document_search_dialog import _CurrentDocumentSearchDialog
 from .frontend.search_all import _SearchAllDialog
+from .frontend.note_type_update_dialog import (
+    ACTION_APPLY as _NOTE_TYPE_ACTION_APPLY,
+    ACTION_SYNC_FIRST as _NOTE_TYPE_ACTION_SYNC_FIRST,
+    IncrementoNoteTypeUpdateDialog,
+)
 from .backend.knowledge_tree import (
     NODE_KIND_ITEM as _KT_NODE_KIND_ITEM,
     NODE_KIND_TOPIC as _KT_NODE_KIND_TOPIC,
@@ -2603,24 +2613,106 @@ def _reset_answer_schedule_runtime_state() -> None:
 gui_hooks.profile_will_close.append(_reset_answer_schedule_runtime_state)
 
 
-def _sync_pdf_note_type() -> None:
-    """Update the PDF card template to the current code version on startup."""
-    from .backend.pdf_manager import ensure_pdf_note_type
+_note_type_update_prompted_profiles: set[str] = set()
 
-    # This mutates Anki's note-type registry and therefore must not run through
-    # an arbitrary file-worker thread. The other reader note-type synchronizers
-    # are likewise small, main-thread startup operations.
+
+def _start_native_anki_sync() -> None:
+    """Open Anki's own sync flow after Incremento's explanatory dialog closes."""
     try:
-        ensure_pdf_note_type(mw.col)
+        _anki_compat.start_native_sync(mw)
+    except Exception as exc:
+        showInfo(f"Anki sync could not be started automatically:\n{exc}")
+
+
+def _show_incremento_note_type_updates(*, manual: bool = False) -> None:
+    profile = _active_profile()
+    if not profile or mw.col is None:
+        return
+    if not manual and profile in _note_type_update_prompted_profiles:
+        return
+
+    try:
+        pending = _detect_incremento_note_type_updates(mw.col)
+    except Exception as exc:
+        if manual:
+            showInfo(f"Incremento could not inspect card formats:\n{exc}")
+        return
+    if not pending:
+        if manual:
+            showInfo("All existing Incremento card formats are up to date.")
+        return
+
+    _note_type_update_prompted_profiles.add(profile)
+    dialog = IncrementoNoteTypeUpdateDialog(pending, parent=mw)
+    if not dialog.exec():
+        return
+
+    if dialog.selected_action == _NOTE_TYPE_ACTION_SYNC_FIRST:
+        # A successful native sync will trigger sync_did_finish and show the
+        # consent dialog again with a freshly inspected collection.
+        _note_type_update_prompted_profiles.discard(profile)
+        showInfo(
+            "Incremento has not changed the collection. Anki Sync will open now. "
+            "After every device is synchronized, return to Incremento > Utils > "
+            "Card Format Updates and apply the update."
+        )
+        QTimer.singleShot(0, _start_native_anki_sync)
+        return
+
+    if dialog.selected_action != _NOTE_TYPE_ACTION_APPLY:
+        return
+
+    # Re-detect after the modal dialog so only still-pending updates are saved.
+    try:
+        latest = _detect_incremento_note_type_updates(mw.col)
+        originally_shown = {update.note_type for update in pending}
+        approved = tuple(
+            update for update in latest if update.note_type in originally_shown
+        )
+        applied = _apply_incremento_note_type_updates(mw.col, approved)
+    except _NoteTypeApplyError as exc:
+        _note_type_update_prompted_profiles.discard(profile)
+        already_applied = ", ".join(exc.applied) or "none confirmed"
+        showInfo(
+            "Incremento stopped the card-format update because Anki reported "
+            f"an error while updating {exc.note_type}.\n\n"
+            f"Formats confirmed as saved before the error: {already_applied}.\n\n"
+            "Do not choose a one-way sync yet. Restart Anki, then open "
+            "Incremento > Utils > Card Format Updates and retry. If the error "
+            f"continues, export a support bundle.\n\nTechnical detail: {exc.cause}"
+        )
+        return
+    except Exception as exc:
+        _note_type_update_prompted_profiles.discard(profile)
+        showInfo(f"Incremento could not apply the card-format update:\n{exc}")
+        return
+
+    if not applied:
+        showInfo("The Incremento card formats were already up to date.")
+        return
+
+    showInfo(
+        "Incremento updated the approved card formats. Anki Sync will open next. "
+        "This device now contains the updated schema: choose Upload to AnkiWeb. "
+        "Then choose Download on your other devices."
+    )
+    QTimer.singleShot(0, _start_native_anki_sync)
+
+
+def _schedule_incremento_note_type_update_check(*_args) -> None:
+    QTimer.singleShot(0, lambda: _show_incremento_note_type_updates(manual=False))
+
+
+def _schedule_note_type_update_after_profile_open(*_args) -> None:
+    """Wait for Anki's automatic opening sync instead of racing it."""
+    try:
+        auto_sync_pending = bool(mw.can_auto_sync())
     except Exception:
-        pass
+        auto_sync_pending = False
+    if not auto_sync_pending:
+        _schedule_incremento_note_type_update_check()
 
 
-gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
-gui_hooks.main_window_did_init.append(_epub_dock_mod.sync_epub_note_type)
-gui_hooks.main_window_did_init.append(_video_dock_mod.sync_video_note_type)
-gui_hooks.main_window_did_init.append(_web_dock_mod.sync_web_note_type)
-gui_hooks.main_window_did_init.append(_writing_dock_mod.sync_writing_note_type)
 def _initialize_topic_postpone_runtime() -> None:
     try:
         _release_expired_topic_postpones_now()
@@ -6004,6 +6096,13 @@ def _build_incremento_menu() -> None:
     qconnect(_checkDepsAction.triggered, _check_deps_manual)
     _utilsMenu.addAction(_checkDepsAction)
 
+    _cardFormatUpdatesAction = QAction("Card Format Updates…", mw)
+    qconnect(
+        _cardFormatUpdatesAction.triggered,
+        lambda _checked=False: _show_incremento_note_type_updates(manual=True),
+    )
+    _utilsMenu.addAction(_cardFormatUpdatesAction)
+
     _utilsMenu.addSeparator()
 
     _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
@@ -6084,6 +6183,9 @@ def _build_incremento_menu() -> None:
 # Build menu first (sets _timerToggleAction), then build timer toolbar which uses it.
 gui_hooks.main_window_did_init.append(_build_incremento_menu)
 gui_hooks.main_window_did_init.append(_build_timer_toolbar)
+gui_hooks.main_window_did_init.append(_schedule_note_type_update_after_profile_open)
+gui_hooks.profile_did_open.append(_schedule_note_type_update_after_profile_open)
+gui_hooks.sync_did_finish.append(_schedule_incremento_note_type_update_check)
 gui_hooks.state_did_change.append(lambda *_: _build_incremento_menu())
 gui_hooks.state_did_change.append(_record_diagnostic_state_change)
 gui_hooks.operation_did_execute.append(_sync_ocr_index_for_open_editor_notes)

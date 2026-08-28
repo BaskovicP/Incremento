@@ -92,7 +92,8 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - Preserve profile-aware error paths so users can locate files under `user_files/<profile>/...`.
 - All shipped Python config reads/writes go through `backend/config_service.py`; preserve unknown forward-compatible keys and the legacy scheduler-preset alias.
 - New SQLite schema changes require a monotonic `backend/db_schema.py` migration and rollback regression. Do not add startup-time unversioned DDL.
-- External-content creation must use `ImportOperation`, journal profile-relative paths before creating them, and put the operation's stable `Incremento_Content_ID` on the new note. Never delete untracked files during automatic reconciliation.
+- External-content creation must use `ImportOperation` and journal profile-relative paths before creating them. Stable content identity is canonical in Incremento SQLite; `Incremento_Content_ID` is optional legacy metadata and must never be auto-added to an Anki note type. Recovery may use the existing provenance source link. Never delete untracked files during automatic reconciliation.
+- Existing Anki note types must never be changed automatically at startup or from a background import. Detect changes through `backend/note_type_updates.py`, explain the full-sync consequence in `frontend/note_type_update_dialog.py`, and require explicit user consent before applying them.
 - Background work captures the profile at launch, passes it through storage helpers, and drops UI callbacks after a profile switch.
 - Private reviewer/V3 APIs belong in `backend/anki_compat.py`. An unavailable capability must fail closed without modifying the selected cards.
 - Avoid touching `user_files/` unless the task is explicitly about migration or cleanup.

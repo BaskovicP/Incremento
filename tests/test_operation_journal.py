@@ -53,6 +53,21 @@ def test_committed_import_registers_stable_content_item(tmp_path):
     assert conn.execute("SELECT state FROM import_journal").fetchone() == ("committed",)
 
 
+def test_pending_descriptors_expose_only_identity_kind_and_safe_paths(tmp_path):
+    operation = operation_journal.ImportOperation(str(tmp_path), "Profile", "pdf")
+    operation.track_created_relpath("pdfs/book.pdf")
+
+    assert operation_journal.pending_import_descriptors(
+        str(tmp_path), "Profile"
+    ) == (
+        {
+            "content_id": operation.content_id,
+            "kind": "pdf",
+            "relpaths": ("pdfs/book.pdf",),
+        },
+    )
+
+
 def test_recovery_preserves_pending_import_when_card_exists(tmp_path):
     addon_dir = str(tmp_path)
     profile = "TestProfile"

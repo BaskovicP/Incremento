@@ -1,4 +1,4 @@
-"""Narrow compatibility boundary around private Anki reviewer APIs."""
+"""Narrow compatibility boundary around version-sensitive Anki APIs."""
 
 from __future__ import annotations
 
@@ -26,6 +26,16 @@ REQUIRED_REVIEWER_METHODS = (
 
 class AnkiCompatibilityError(RuntimeError):
     pass
+
+
+def start_native_sync(main_window) -> None:
+    """Invoke Anki's native sync action across supported naming generations."""
+    for method_name in ("on_sync_button_clicked", "onSync"):
+        method = getattr(main_window, method_name, None)
+        if callable(method):
+            method()
+            return
+    raise AnkiCompatibilityError("Anki's native sync action is unavailable")
 
 
 @dataclass(frozen=True)

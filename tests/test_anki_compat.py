@@ -54,6 +54,34 @@ def test_custom_next_card_requires_all_private_dependencies():
     assert anki_compat.custom_next_card_supported(_Reviewer) is True
 
 
+def test_native_sync_prefers_current_public_action():
+    calls = []
+
+    class _MainWindow:
+        def on_sync_button_clicked(self):
+            calls.append("current")
+
+        def onSync(self):
+            calls.append("legacy")
+
+    anki_compat.start_native_sync(_MainWindow())
+
+    assert calls == ["current"]
+
+
+def test_native_sync_falls_back_to_legacy_action_and_fails_closed():
+    calls = []
+
+    class _LegacyMainWindow:
+        def onSync(self):
+            calls.append("legacy")
+
+    anki_compat.start_native_sync(_LegacyMainWindow())
+    assert calls == ["legacy"]
+    with pytest.raises(anki_compat.AnkiCompatibilityError):
+        anki_compat.start_native_sync(object())
+
+
 def test_reviewer_actions_are_routed_through_checked_adapters():
     calls = []
 

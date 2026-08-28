@@ -787,6 +787,22 @@ Incremento does not rewrite Anki's answer revlog with unsupported SQL. Card Info
 
 Because topic interaction is a frequency preference rather than a recall test, consider assigning topic decks their own Anki deck-options preset. This keeps topic review history out of the FSRS parameter set used by ordinary item cards.
 
+### Card-format updates and AnkiWeb sync
+
+Incremento does not silently update existing Anki note-type fields or card templates at startup. It first inspects the existing Incremento PDF, EPUB, video, web, writing, and local-file note types without saving anything. If an update is needed, an **Incremento Card Format Update** dialog lists the affected note types and explicitly states that the collection has not yet been changed.
+
+The dialog offers:
+
+- **Later**: closes the dialog without changing the collection
+- **Sync Before Updating**: leaves the collection untouched and opens Anki's normal sync, so you can first synchronize this device and your other devices
+- **Apply Update**: enabled only after you confirm that this device contains the collection you intend to keep
+
+After an approved note-type update, Incremento explains the required direction and opens Anki's native sync. If Anki requests a one-way sync, choose **Upload to AnkiWeb** on the device where you applied the update, then choose **Download** on the other devices. If another device has unsynchronized work, choose **Later** instead and resolve that work before applying the update.
+
+You can reopen the same workflow manually with **Incremento → Utils → Card Format Updates…**. Creating a previously unused Incremento content type remains lazy: Incremento does not create all possible note types merely because Anki started.
+
+`Incremento_Content_ID` from an earlier development build is tolerated as an optional hidden field, but Incremento neither adds nor removes it automatically. New installations keep this internal identity in the per-profile SQLite journal, so this implementation detail does not force an Anki full sync.
+
 ### Dependency setup
 
 On first run, Incremento can show a dependency setup dialog.

@@ -42,7 +42,8 @@ Focused suites for common hotspots:
 
 - If you change browser import behavior, cover backend normalization and extension-facing behavior.
 - If you change profile-aware paths or migration behavior, keep assertions explicitly profile-scoped.
-- SQLite lifecycle changes need connection isolation plus schema-ledger success/rollback coverage. Cross-store imports need before-card rollback, after-card preservation, content-ID rebind, and path-containment cases.
+- SQLite lifecycle changes need connection isolation plus schema-ledger success/rollback coverage. Cross-store imports need before-card rollback, after-card preservation, optional content-ID/source-link rebind, and path-containment cases.
+- Note-type update regressions must prove inspection is non-mutating, absent unused types are not created at startup, implicit changes to existing types fail closed, consent applies only the displayed changes, and internal content identity never makes `Incremento_Content_ID` a required Anki field.
 - Search/index changes need unchanged/error/cancel/force behavior plus bounded repository results; no test may require a Qt-thread library scan.
 - Bridge changes require handshake, origin, token/protocol, body-limit, concurrency, and extension retry tests.
 - If you change reviewer or dock behavior, prefer regression tests that exercise the user-visible state transition instead of only helper internals.

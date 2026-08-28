@@ -296,6 +296,27 @@ def pending_import_content_ids(addon_dir: str, profile: str) -> set[str]:
     }
 
 
+def pending_import_descriptors(addon_dir: str, profile: str) -> tuple[dict, ...]:
+    """Return the minimum non-content data needed to recover pending imports."""
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT content_id, operation_kind, created_relpaths "
+        "FROM import_journal WHERE state='pending'"
+    ).fetchall()
+    descriptors: list[dict] = []
+    for content_id, operation_kind, relpaths_json in rows:
+        normalized_content_id = str(content_id or "").strip()
+        if not normalized_content_id:
+            continue
+        descriptors.append(
+            {
+                "content_id": normalized_content_id,
+                "kind": str(operation_kind or "unknown").strip().lower() or "unknown",
+                "relpaths": tuple(_decode_relpaths(relpaths_json)),
+            }
+        )
+    return tuple(descriptors)
+
+
 def prune_finished_journal(
     addon_dir: str,
     profile: str,

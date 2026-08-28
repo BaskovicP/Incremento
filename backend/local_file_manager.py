@@ -10,18 +10,20 @@ try:
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
         INCREMENTO_CONTENT_ID_FIELD,
     )
+    from .note_type_updates import NoteTypeSpec, ensure_note_type
 except ImportError:
     import paths as _paths
     from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
         INCREMENTO_CONTENT_ID_FIELD,
     )
+    from note_type_updates import NoteTypeSpec, ensure_note_type  # type: ignore
 
 
 LOCAL_FILE_NOTE_TYPE = "Incremento Local File"
@@ -180,50 +182,28 @@ def _stored_local_file_title(title: str, attempt: int) -> str:
     return f"{base_title} [{attempt + 1}]"
 
 
-def ensure_local_file_note_type(col) -> None:
-    models = col.models
-    model = models.by_name(LOCAL_FILE_NOTE_TYPE)
-    required_fields = (
-        "Title",
-        LOCAL_FILE_NAME_FIELD,
-        LOCAL_FILE_PATH_FIELD,
-        LOCAL_FILE_MODE_FIELD,
-        LOCAL_FILE_NOTE_FIELD,
+def local_file_note_type_spec() -> NoteTypeSpec:
+    return NoteTypeSpec(
+        name=LOCAL_FILE_NOTE_TYPE,
+        fields=(
+            "Title",
+            LOCAL_FILE_NAME_FIELD,
+            LOCAL_FILE_PATH_FIELD,
+            LOCAL_FILE_MODE_FIELD,
+            LOCAL_FILE_NOTE_FIELD,
+            *INCREMENTO_METADATA_FIELDS,
+        ),
+        question_template=CARD_TEMPLATE_FRONT,
+        answer_template=CARD_TEMPLATE_BACK,
     )
-    if model is None:
-        model = models.new(LOCAL_FILE_NOTE_TYPE)
-        for field_name in required_fields:
-            fld = models.new_field(field_name)
-            models.add_field(model, fld)
-        ensure_incremento_metadata_fields(models, model)
-        tmpl = models.new_template("Card 1")
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        models.add_template(model, tmpl)
-        models.add(model)
-        return
 
-    changed = False
-    existing = {
-        str(field.get("name") or "").strip()
-        for field in model.get("flds", [])
-        if isinstance(field, dict)
-    }
-    for field_name in required_fields:
-        if field_name in existing:
-            continue
-        fld = models.new_field(field_name)
-        models.add_field(model, fld)
-        changed = True
-    if ensure_incremento_metadata_fields(models, model):
-        changed = True
-    tmpl = model["tmpls"][0]
-    if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        changed = True
-    if changed:
-        models.update_dict(model)
+
+def ensure_local_file_note_type(col, *, allow_existing_update: bool = False) -> None:
+    ensure_note_type(
+        col,
+        local_file_note_type_spec(),
+        allow_existing_update=allow_existing_update,
+    )
 
 
 def add_local_file_card(

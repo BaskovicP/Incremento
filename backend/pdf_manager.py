@@ -137,7 +137,7 @@ try:
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
         INCREMENTO_CONTENT_ID_FIELD,
         INCREMENTO_IMPORTED_AT_FIELD,
         INCREMENTO_PARENT_CARD_ID_FIELD,
@@ -145,6 +145,7 @@ try:
         INCREMENTO_SOURCE_AUTHOR_FIELD,
         INCREMENTO_SOURCE_LINK_FIELD,
     )
+    from .note_type_updates import NoteTypeSpec, ensure_note_type
     from .scheduler_config import build_ready_filter, load_scheduler_config
     from .statistics import _effective_date
 except ImportError:
@@ -164,7 +165,7 @@ except ImportError:
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
         INCREMENTO_CONTENT_ID_FIELD,
         INCREMENTO_IMPORTED_AT_FIELD,
         INCREMENTO_PARENT_CARD_ID_FIELD,
@@ -172,6 +173,7 @@ except ImportError:
         INCREMENTO_SOURCE_AUTHOR_FIELD,
         INCREMENTO_SOURCE_LINK_FIELD,
     )
+    from note_type_updates import NoteTypeSpec, ensure_note_type  # type: ignore
     from scheduler_config import build_ready_filter, load_scheduler_config  # type: ignore
     from statistics import _effective_date  # type: ignore
 
@@ -937,41 +939,22 @@ def regenerate_pdf_card_cover(addon_dir: str, col, card_id: int) -> str:
     return regenerate_pdf_note_cover(col, note, pdf_path)
 
 
-def ensure_pdf_note_type(col) -> None:
-    """Create the Incremento PDF note type, or update its template/fields if it already exists."""
-    models = col.models
-    m = models.by_name(PDF_NOTE_TYPE)
+def pdf_note_type_spec() -> NoteTypeSpec:
+    return NoteTypeSpec(
+        name=PDF_NOTE_TYPE,
+        fields=("Title", "PDF_Filename", PDF_COVER_FIELD, *INCREMENTO_METADATA_FIELDS),
+        question_template=CARD_TEMPLATE_FRONT,
+        answer_template=CARD_TEMPLATE_BACK,
+    )
 
-    if m is None:
-        m = models.new(PDF_NOTE_TYPE)
-        for field_name in ("Title", "PDF_Filename", PDF_COVER_FIELD):
-            fld = models.new_field(field_name)
-            models.add_field(m, fld)
-        ensure_incremento_metadata_fields(models, m)
-        tmpl = models.new_template("Card 1")
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        models.add_template(m, tmpl)
-        models.add(m)
-    else:
-        changed = False
-        existing_fields = {str((field or {}).get("name") or "") for field in list(m.get("flds") or [])}
-        for field_name in ("Title", "PDF_Filename", PDF_COVER_FIELD):
-            if field_name in existing_fields:
-                continue
-            fld = models.new_field(field_name)
-            models.add_field(m, fld)
-            changed = True
-        if ensure_incremento_metadata_fields(models, m):
-            changed = True
-        # Sync template
-        tmpl = m["tmpls"][0]
-        if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
-            tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-            tmpl["afmt"] = CARD_TEMPLATE_BACK
-            changed = True
-        if changed:
-            models.update_dict(m)
+
+def ensure_pdf_note_type(col, *, allow_existing_update: bool = False) -> None:
+    """Create the PDF type, but never silently update an existing Anki schema."""
+    ensure_note_type(
+        col,
+        pdf_note_type_spec(),
+        allow_existing_update=allow_existing_update,
+    )
 
 
 # ---------------------------------------------------------------------------

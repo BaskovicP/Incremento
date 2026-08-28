@@ -117,3 +117,96 @@ def test_collection_adapter_recovers_pending_import_by_content_id(tmp_path):
     assert db.get_connection(addon_dir, profile).execute(
         "SELECT state, card_id, note_id FROM import_journal"
     ).fetchone() == ("committed", 7, 8)
+
+
+def test_collection_adapter_recovers_without_adding_content_id_field(tmp_path):
+    addon_dir = str(tmp_path)
+    profile = "TestProfile"
+    from operation_journal import ImportOperation
+
+    operation = ImportOperation(addon_dir, profile, "writing")
+    operation.track_created_relpath("writing/draft.md")
+
+    class _DB:
+        def list(self, query):
+            return [7] if "cards" in query else [8]
+
+    class _Note:
+        def __getitem__(self, field):
+            if field == "Incremento_Source_Link":
+                return "writing/draft.md"
+            raise KeyError(field)
+
+    class _Collection:
+        db = _DB()
+
+        def find_notes(self, query):
+            if "Incremento_Source_Link" in query and "writing/draft.md" in query:
+                return [8]
+            return []
+
+        def get_note(self, note_id):
+            assert note_id == 8
+            return _Note()
+
+        def find_cards(self, query):
+            assert query == "nid:8"
+            return [7]
+
+    result = reconciliation.reconcile_collection(addon_dir, profile, _Collection())
+
+    assert result["pending_recovered"] == 1
+    assert db.get_connection(addon_dir, profile).execute(
+        "SELECT state, card_id, note_id FROM import_journal"
+    ).fetchone() == ("committed", 7, 8)
+
+
+def test_source_link_recovery_escapes_anki_search_syntax(tmp_path):
+    addon_dir = str(tmp_path)
+    profile = "TestProfile"
+    from operation_journal import ImportOperation
+
+    operation = ImportOperation(addon_dir, profile, "writing")
+    source_link = 'writing/a "quoted" draft.md'
+    operation.track_created_relpath(source_link)
+    seen_queries = []
+
+    class _DB:
+        def list(self, query):
+            return [7] if "cards" in query else [8]
+
+    class _Note:
+        def __getitem__(self, field):
+            if field == "Incremento_Source_Link":
+                return source_link
+            raise KeyError(field)
+
+    class _Collection:
+        db = _DB()
+
+        def find_notes(self, query):
+            seen_queries.append(query)
+            if "Incremento_Source_Link" in query:
+                return [8]
+            return []
+
+        def get_note(self, note_id):
+            return _Note()
+
+        def find_cards(self, query):
+            return [7]
+
+    result = reconciliation.reconcile_collection(addon_dir, profile, _Collection())
+
+    assert result["pending_recovered"] == 1
+    source_queries = [
+        query for query in seen_queries if "Incremento_Source_Link" in query
+    ]
+    assert source_queries
+    assert '\\"quoted\\"' in source_queries[0]
+
+
+def test_anki_search_value_escapes_quotes_and_backslashes():
+    assert reconciliation._escape_anki_search_value('a\\b "quoted"') == (
+        'a\\\\b \\"quoted\\"'
+    )

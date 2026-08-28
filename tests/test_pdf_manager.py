@@ -1165,7 +1165,7 @@ class TestEnsurePdfNoteType:
         models = _Models()
         col = MagicMock(models=models)
 
-        pdf_manager.ensure_pdf_note_type(col)
+        pdf_manager.ensure_pdf_note_type(col, allow_existing_update=True)
 
         assert PDF_COVER_FIELD in [field["name"] for field in model["flds"]]
         assert model["tmpls"][0]["qfmt"] == pdf_manager.CARD_TEMPLATE_FRONT

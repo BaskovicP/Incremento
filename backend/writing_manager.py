@@ -12,18 +12,20 @@ try:
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
         INCREMENTO_CONTENT_ID_FIELD,
     )
+    from .note_type_updates import NoteTypeSpec, ensure_note_type
 except ImportError:
     import paths as _paths
     from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
         INCREMENTO_CONTENT_ID_FIELD,
     )
+    from note_type_updates import NoteTypeSpec, ensure_note_type  # type: ignore
 
 
 WRITING_NOTE_TYPE = "Incremento Writing"
@@ -277,32 +279,21 @@ def restore_writing_backup(addon_dir: str, relpath: str, tier_key: str) -> dict:
     return meta or {"tier_key": normalized_tier, "label": selected_label, "path": backup_path}
 
 
-def ensure_writing_note_type(col) -> None:
-    models = col.models
-    m = models.by_name(WRITING_NOTE_TYPE)
-    if m is None:
-        m = models.new(WRITING_NOTE_TYPE)
-        for field_name in ("Title", WRITING_FILE_FIELD):
-            fld = models.new_field(field_name)
-            models.add_field(m, fld)
-        ensure_incremento_metadata_fields(models, m)
-        tmpl = models.new_template("Card 1")
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        models.add_template(m, tmpl)
-        models.add(m)
-        return
+def writing_note_type_spec() -> NoteTypeSpec:
+    return NoteTypeSpec(
+        name=WRITING_NOTE_TYPE,
+        fields=("Title", WRITING_FILE_FIELD, *INCREMENTO_METADATA_FIELDS),
+        question_template=CARD_TEMPLATE_FRONT,
+        answer_template=CARD_TEMPLATE_BACK,
+    )
 
-    changed = False
-    if ensure_incremento_metadata_fields(models, m):
-        changed = True
-    tmpl = m["tmpls"][0]
-    if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        changed = True
-    if changed:
-        models.update_dict(m)
+
+def ensure_writing_note_type(col, *, allow_existing_update: bool = False) -> None:
+    ensure_note_type(
+        col,
+        writing_note_type_spec(),
+        allow_existing_update=allow_existing_update,
+    )
 
 
 def add_writing_card(

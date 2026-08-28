@@ -25,10 +25,17 @@ INCREMENTO_METADATA_FIELDS = (
     INCREMENTO_IMPORTED_AT_FIELD,
     INCREMENTO_PARENT_FIELD,
     INCREMENTO_PARENT_CARD_ID_FIELD,
-    INCREMENTO_CONTENT_ID_FIELD,
 )
-INCREMENTO_HIDDEN_FIELDS = INCREMENTO_METADATA_FIELDS + (INCREMENTO_OCR_TEXT_FIELD,)
-_METADATA_FIELD_SET = {field.casefold() for field in INCREMENTO_METADATA_FIELDS}
+INCREMENTO_OPTIONAL_METADATA_FIELDS = (INCREMENTO_CONTENT_ID_FIELD,)
+INCREMENTO_HIDDEN_FIELDS = (
+    INCREMENTO_METADATA_FIELDS
+    + INCREMENTO_OPTIONAL_METADATA_FIELDS
+    + (INCREMENTO_OCR_TEXT_FIELD,)
+)
+_METADATA_FIELD_SET = {
+    field.casefold()
+    for field in INCREMENTO_METADATA_FIELDS + INCREMENTO_OPTIONAL_METADATA_FIELDS
+}
 _HIDDEN_FIELD_SET = {field.casefold() for field in INCREMENTO_HIDDEN_FIELDS}
 _INLINE_PDF_FILENAME_RE = re.compile(
     r'(?:\\?"|")filename(?:\\?"|")\s*:\s*(?:=\s*""\s*)?(?:\\?"|")(?P<filename>[^"]+?)(?:\\?"|")',
@@ -219,7 +226,10 @@ def build_incremento_metadata(
 
 
 def apply_incremento_metadata(note, metadata: dict[str, str] | None) -> None:
-    for field_name in INCREMENTO_METADATA_FIELDS:
+    # Content_ID is optional for backward compatibility.  New installations
+    # keep identity in Incremento's SQLite journal instead of changing Anki's
+    # note-type schema solely to add this internal field.
+    for field_name in INCREMENTO_METADATA_FIELDS + INCREMENTO_OPTIONAL_METADATA_FIELDS:
         value = str((metadata or {}).get(field_name) or "").strip()
         if field_name == INCREMENTO_CONTENT_ID_FIELD and not value:
             value = uuid.uuid4().hex

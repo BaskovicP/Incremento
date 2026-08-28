@@ -62,6 +62,10 @@ def test_ensure_incremento_metadata_fields_adds_missing_fields():
     assert [field["name"] for field in model["flds"]][-len(INCREMENTO_METADATA_FIELDS):] == list(
         INCREMENTO_METADATA_FIELDS
     )
+    assert INCREMENTO_CONTENT_ID_FIELD not in [
+        field["name"] for field in model["flds"]
+    ]
+    assert INCREMENTO_CONTENT_ID_FIELD in INCREMENTO_HIDDEN_FIELDS
 
 
 def test_ensure_incremento_metadata_fields_save_refreshes_ordinals():

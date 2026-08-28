@@ -7,20 +7,31 @@ import time
 
 try:
     from .db import get_connection
-    from .note_metadata import INCREMENTO_CONTENT_ID_FIELD
+    from .note_metadata import (
+        INCREMENTO_CONTENT_ID_FIELD,
+        INCREMENTO_SOURCE_LINK_FIELD,
+    )
     from .operation_journal import (
-        pending_import_content_ids,
+        pending_import_descriptors,
         prune_finished_journal,
         recover_interrupted_imports,
     )
 except ImportError:
     from db import get_connection  # type: ignore
-    from note_metadata import INCREMENTO_CONTENT_ID_FIELD  # type: ignore
+    from note_metadata import (  # type: ignore
+        INCREMENTO_CONTENT_ID_FIELD,
+        INCREMENTO_SOURCE_LINK_FIELD,
+    )
     from operation_journal import (  # type: ignore
-        pending_import_content_ids,
+        pending_import_descriptors,
         prune_finished_journal,
         recover_interrupted_imports,
     )
+
+
+def _escape_anki_search_value(value: str) -> str:
+    """Escape a literal embedded in an Anki quoted search value."""
+    return str(value or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
 _CARD_TABLES = (
@@ -215,9 +226,13 @@ def reconcile_collection(addon_dir: str, profile: str, collection) -> dict[str, 
         for note_id in collection.db.list("SELECT id FROM notes")
     }
     content_matches: dict[str, tuple[int, int | None]] = {}
-    for content_id in pending_import_content_ids(addon_dir, profile):
-        # Pending imports are normally zero or one row, so an exact Anki field
-        # lookup avoids an expensive full-note scan on every profile open.
+    for descriptor in pending_import_descriptors(addon_dir, profile):
+        content_id = str(descriptor.get("content_id") or "").strip()
+        if not content_id:
+            continue
+        # Existing installations may have the optional Content_ID field. New
+        # installations recover by the already-established source-link field,
+        # avoiding a note-type schema change solely for an internal UUID.
         note_ids: list[int] = []
         for query in (
             f'{INCREMENTO_CONTENT_ID_FIELD}:{content_id}',
@@ -229,10 +244,46 @@ def reconcile_collection(addon_dir: str, profile: str, collection) -> dict[str, 
                 note_ids = []
             if note_ids:
                 break
+        expected_source_links: set[str] = set()
+        if not note_ids:
+            expected_source_links = {
+                str(value or "").strip()
+                for value in descriptor.get("relpaths", ())
+                if str(value or "").strip()
+            }
+            for source_link in sorted(expected_source_links):
+                escaped_source_link = _escape_anki_search_value(source_link)
+                for query in (
+                    f'{INCREMENTO_SOURCE_LINK_FIELD}:"{escaped_source_link}"',
+                    f'"{INCREMENTO_SOURCE_LINK_FIELD}:{escaped_source_link}"',
+                ):
+                    try:
+                        note_ids = [int(value) for value in collection.find_notes(query)]
+                    except Exception:
+                        note_ids = []
+                    if note_ids:
+                        break
+                if note_ids:
+                    break
         for note_id in note_ids:
             try:
                 note = collection.get_note(note_id)
-                if str(note[INCREMENTO_CONTENT_ID_FIELD] or "").strip() != content_id:
+                try:
+                    note_content_id = str(
+                        note[INCREMENTO_CONTENT_ID_FIELD] or ""
+                    ).strip()
+                except Exception:
+                    note_content_id = ""
+                try:
+                    note_source_link = str(
+                        note[INCREMENTO_SOURCE_LINK_FIELD] or ""
+                    ).strip()
+                except Exception:
+                    note_source_link = ""
+                if note_content_id != content_id and (
+                    not expected_source_links
+                    or note_source_link not in expected_source_links
+                ):
                     continue
                 card_ids = [
                     int(value)

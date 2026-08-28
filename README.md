@@ -16,6 +16,7 @@ Incremento supports Anki 24.11 and newer. Optional features that depend on Anki'
 - Exports a privacy-safe support bundle with redacted settings, recent typed events, version data, and code fingerprints for easier bug reports
 - Keeps runtime content and databases isolated per Anki profile
 - Includes a browser bridge and companion Chrome/Brave extension for capture, import, and playback synchronization
+- Detects Incremento card-format changes without touching the collection, then explains and requests consent before any Anki full-sync-requiring update
 
 ## Install
 

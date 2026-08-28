@@ -141,6 +141,11 @@ npm --prefix frontend run build
   - `MANUAL.md`
 - The advanced settings tab opens a guarded database editor. Keep its copy accurate about checkpoint creation and read-only startup.
 
+## Card-format updates
+
+- `frontend/note_type_update_dialog.py` explains pending Anki note-type changes before they happen. It must state that the collection is still untouched, offer Later and Sync Before Updating, require an explicit confirmation before Apply, and explain Upload/Download direction after the approved change.
+- Startup may detect and prompt, but it must never create or update note types. The manual **Incremento → Utils → Card Format Updates…** action uses the same workflow.
+
 ## Frontend Checks
 
 - Useful focused suite:

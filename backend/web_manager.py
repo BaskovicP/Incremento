@@ -4,16 +4,18 @@ try:
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
     )
+    from .note_type_updates import NoteTypeSpec, ensure_note_type
 except ImportError:
     from config_service import load_addon_config  # type: ignore
     from db import get_connection
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
-        ensure_incremento_metadata_fields,
+        INCREMENTO_METADATA_FIELDS,
     )
+    from note_type_updates import NoteTypeSpec, ensure_note_type  # type: ignore
 import json
 import time
 from typing import Literal, TypedDict
@@ -653,32 +655,22 @@ def build_external_web_url(
         return out
 
 
-def ensure_web_note_type(col) -> None:
-    """Create the Incremento Web note type, or sync its template if it already exists."""
-    models = col.models
-    m = models.by_name(WEB_NOTE_TYPE)
-    if m is None:
-        m = models.new(WEB_NOTE_TYPE)
-        for field_name in ("Title", "URL"):
-            fld = models.new_field(field_name)
-            models.add_field(m, fld)
-        ensure_incremento_metadata_fields(models, m)
-        tmpl = models.new_template("Card 1")
-        tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-        tmpl["afmt"] = CARD_TEMPLATE_BACK
-        models.add_template(m, tmpl)
-        models.add(m)
-    else:
-        tmpl = m["tmpls"][0]
-        changed = False
-        if ensure_incremento_metadata_fields(models, m):
-            changed = True
-        if tmpl["qfmt"] != CARD_TEMPLATE_FRONT or tmpl["afmt"] != CARD_TEMPLATE_BACK:
-            tmpl["qfmt"] = CARD_TEMPLATE_FRONT
-            tmpl["afmt"] = CARD_TEMPLATE_BACK
-            changed = True
-        if changed:
-            models.update_dict(m)
+def web_note_type_spec() -> NoteTypeSpec:
+    return NoteTypeSpec(
+        name=WEB_NOTE_TYPE,
+        fields=("Title", "URL", *INCREMENTO_METADATA_FIELDS),
+        question_template=CARD_TEMPLATE_FRONT,
+        answer_template=CARD_TEMPLATE_BACK,
+    )
+
+
+def ensure_web_note_type(col, *, allow_existing_update: bool = False) -> None:
+    """Create the web type, but require consent for existing-schema updates."""
+    ensure_note_type(
+        col,
+        web_note_type_spec(),
+        allow_existing_update=allow_existing_update,
+    )
 
 
 def add_web_card(

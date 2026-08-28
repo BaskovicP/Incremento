@@ -74,13 +74,17 @@ Anki collection reads and mutations follow Anki's operation model:
 
 Creating PDF, EPUB, writing, managed local-file, or downloaded/local-video content crosses Anki, SQLite, and profile files. These workflows use `backend/operation_journal.py`:
 
-1. create a pending journal row and stable `Incremento_Content_ID`;
+1. create a pending journal row and stable SQLite content ID;
 2. journal each profile-relative path before creating it;
-3. create the managed file and Anki note/card using that content ID;
+3. create the managed file and Anki note/card using the existing provenance fields;
 4. bind the card/note identity;
 5. atomically register `content_items` and mark the journal committed.
 
-Before an Anki card exists, failure removes only paths explicitly created by that operation. Once a card exists, recovery preserves user content rather than guessing. On the next profile open, `backend/reconciliation.py` can rebind an interrupted import through the exact `Incremento_Content_ID`, remove rows whose Anki owner is definitely gone, and repair unambiguous knowledge-tree links.
+Before an Anki card exists, failure removes only paths explicitly created by that operation. Once a card exists, recovery preserves user content rather than guessing. On the next profile open, `backend/reconciliation.py` can rebind an interrupted import through an optional legacy `Incremento_Content_ID` or the exact existing provenance source link, remove rows whose Anki owner is definitely gone, and repair unambiguous knowledge-tree links. New installations do not add `Incremento_Content_ID` to Anki note types; the canonical identity lives in SQLite.
+
+## Anki note-type updates
+
+`backend/note_type_updates.py` inspects existing Incremento card formats without mutating the collection. Startup never creates unused note types and never silently changes existing fields or templates. When an update is actually pending, `frontend/note_type_update_dialog.py` explains the one-way-sync consequence and requires explicit confirmation. The user can defer, run a normal sync first, or apply the approved update and then enter Anki's native full-sync flow. Existing optional fields are tolerated and never removed automatically.
 
 Reconciliation deliberately does not delete arbitrary untracked files. Cleanup of ambiguous legacy files remains an explicit user maintenance action.
 
