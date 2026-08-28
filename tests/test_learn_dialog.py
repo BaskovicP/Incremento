@@ -42,6 +42,10 @@ _aqt_module = types.ModuleType("aqt")
 _aqt_module.mw = SimpleNamespace(addonManager=None)
 _aqt_module.qt = _qt_module
 
+_original_modules = {
+    name: sys.modules.get(name)
+    for name in ("aqt", "aqt.qt", "aqt.utils")
+}
 sys.modules["aqt"] = _aqt_module
 sys.modules["aqt.qt"] = _qt_module
 sys.modules["aqt.utils"] = _utils_module
@@ -53,7 +57,14 @@ _SPEC = importlib.util.spec_from_file_location(
 )
 _MOD = importlib.util.module_from_spec(_SPEC)
 sys.modules["_incremento_learn_dialog"] = _MOD
-_SPEC.loader.exec_module(_MOD)
+try:
+    _SPEC.loader.exec_module(_MOD)
+finally:
+    for _name, _original in _original_modules.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
 
 _normalize_selected_scheduler_profile = _MOD._normalize_selected_scheduler_profile
 _initial_scheduler_dialog_state = _MOD._initial_scheduler_dialog_state

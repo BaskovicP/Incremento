@@ -1,6 +1,8 @@
 try:
+    from .config_service import load_addon_config
     from .db import get_connection
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from db import get_connection  # test environment (backend/ on sys.path)
 
 
@@ -15,7 +17,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         from aqt import mw
 
         addon_name = __name__.split(".")[0]
-        return mw.addonManager.getConfig(addon_name) or {}
+        return load_addon_config(mw.addonManager, addon_name)
     except Exception:
         return {}
 

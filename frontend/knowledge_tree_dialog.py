@@ -2834,10 +2834,10 @@ class KnowledgeTreeDialog(QDialog):
         if handler is None:
             try:
                 from ..backend.knowledge_tree import build_branch_study_scope
-                from ..backend.session import learnFunction
+                from .session_launcher import learnFunction
             except ImportError:
                 from knowledge_tree import build_branch_study_scope  # type: ignore
-                from session import learnFunction  # type: ignore
+                from session_launcher import learnFunction  # type: ignore
 
             def _default_branch_study(target_card_id: int) -> None:
                 branch_scope = build_branch_study_scope(

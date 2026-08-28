@@ -9,6 +9,7 @@ from calendar import monthrange
 from aqt import mw
 
 try:
+    from .config_service import load_addon_config
     from .answer_schedule import (
         ReviewRevlogTracker,
         answer_revlog_snapshot,
@@ -36,6 +37,7 @@ try:
         sync_card_review_interval,
     )
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from answer_schedule import (  # type: ignore
         ReviewRevlogTracker,
         answer_revlog_snapshot,
@@ -112,7 +114,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         return config or {}
     try:
         addon_name = __name__.split(".")[0]
-        resolved = mw.addonManager.getConfig(addon_name) or {}
+        resolved = load_addon_config(mw.addonManager, addon_name)
         return resolved if isinstance(resolved, dict) else {}
     except Exception:
         return {}

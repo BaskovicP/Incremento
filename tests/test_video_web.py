@@ -36,6 +36,7 @@ get_video_position = _vm.get_video_position
 set_video_position = _vm.set_video_position
 local_video_relpath = _vm.local_video_relpath
 local_video_abspath = _vm.local_video_abspath
+import_local_video_file = _vm.import_local_video_file
 video_download_requirements = _vm.video_download_requirements
 parse_ytdlp_percent = _vm._parse_ytdlp_percent
 hms_to_seconds = _vm._hms_to_seconds
@@ -271,6 +272,36 @@ class TestLocalVideoHelpers:
         monkeypatch.setattr(_vm, "_yt_dlp_cmd", lambda allow_auto_install=False: None)
         monkeypatch.setattr(_vm.shutil, "which", lambda _name: None)
         assert video_download_requirements() == ["yt-dlp", "ffmpeg (optional for compression)"]
+
+    def test_ytdlp_resolution_never_installs_packages(self, monkeypatch):
+        monkeypatch.setattr(_vm.shutil, "which", lambda _name: None)
+        calls = []
+
+        def run(command, **_kwargs):
+            calls.append(command)
+            return types.SimpleNamespace(returncode=1)
+
+        monkeypatch.setattr(_vm.subprocess, "run", run)
+        assert _vm._yt_dlp_cmd(allow_auto_install=True) is None
+        assert all("install" not in command for command in calls)
+
+    def test_local_import_reports_managed_path_before_completion(self, tmp_path):
+        source = tmp_path / "clip.mp4"
+        source.write_bytes(b"video")
+        tracked = []
+
+        relpath = import_local_video_file(
+            str(tmp_path / "addon"),
+            "Profile",
+            str(source),
+            encode_mode="original",
+            created_relpath_cb=tracked.append,
+        )
+
+        assert tracked == [relpath]
+        assert os.path.isfile(
+            local_video_abspath(str(tmp_path / "addon"), "Profile", relpath)
+        )
 
     def test_parse_ytdlp_percent(self):
         assert parse_ytdlp_percent("[download]  23.4% of 10.00MiB") == pytest.approx(23.4)

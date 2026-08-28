@@ -25,6 +25,7 @@ sys.modules["PyQt6.QtPdf"] = _qt_pdf_mock
 # pdf_manager's relative-import fallback resolves to the real db module.
 import db  # noqa: E402  (db is on sys.path via conftest)
 from note_metadata import (
+    INCREMENTO_CONTENT_ID_FIELD,
     INCREMENTO_SOURCE_LINK_FIELD,
     INCREMENTO_SOURCE_TITLE_FIELD,
     INCREMENTO_SOURCE_TYPE_FIELD,
@@ -332,7 +333,13 @@ class TestAddPdfCard:
             )
 
         assert result == 77
-        relink_mock.assert_called_once_with(str(tmp_path), col, 77, str(source_pdf))
+        relink_mock.assert_called_once_with(
+            str(tmp_path),
+            col,
+            77,
+            str(source_pdf),
+            profile="TestProfile",
+        )
         col.add_note.assert_not_called()
         save_limit.assert_called_once_with(
             str(tmp_path),
@@ -1009,6 +1016,7 @@ class TestReplacePdfCardFile:
             Incremento_Parent="Parent",
             Incremento_Parent_Card_ID="88",
             Incremento_Source_Author="Author",
+            Incremento_Content_ID="stable-pdf-content-id",
         )
         card = _FakeCard(77, 321)
         col = MagicMock()
@@ -1030,7 +1038,10 @@ class TestReplacePdfCardFile:
             )
 
         assert filename == "new-file.pdf"
-        copy_mock.assert_called_once_with(str(replacement_pdf))
+        copy_mock.assert_called_once_with(
+            str(replacement_pdf),
+            profile="TestProfile",
+        )
         cover_mock.assert_called_once_with(
             col,
             os.path.join(str(tmp_path / "pdfs"), "new-file.pdf"),
@@ -1046,6 +1057,7 @@ class TestReplacePdfCardFile:
         assert note["Incremento_Parent"] == "Parent"
         assert note["Incremento_Parent_Card_ID"] == "88"
         assert note["Incremento_Source_Author"] == "Author"
+        assert note[INCREMENTO_CONTENT_ID_FIELD] == "stable-pdf-content-id"
         assert db.get_pdf_card_source_filename(str(tmp_path), "TestProfile", 77, 3) == "new-file.pdf"
         col.update_note.assert_called_once_with(note)
 

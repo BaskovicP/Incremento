@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import {
@@ -9,19 +9,35 @@ import {
   saveBrowserMediaRef,
   submitBrowserCapture,
 } from "../src/shared/bridge.js";
+import { resetBridgeAuthorizationForTests } from "../src/shared/bridgeAuth.js";
+
+beforeEach(() => resetBridgeAuthorizationForTests());
+
+function withHandshake(handler) {
+  return async (url, options) => {
+    if (String(url).endsWith("/incremento/handshake")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, protocol: 2, token: "test-token" }),
+      };
+    }
+    return handler(url, options);
+  };
+}
 
 test("importIntoIncremento posts JSON payload and returns successful response", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = withHandshake(async (url, options) => {
     calls.push({ url, options });
     return {
       ok: true,
       status: 200,
       json: async () => ({ ok: true, kind: "pdf", title: "Example" }),
     };
-  };
+  });
 
   try {
     const payload = {
@@ -36,7 +52,8 @@ test("importIntoIncremento posts JSON payload and returns successful response", 
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "http://127.0.0.1:8766/incremento/add-content");
     assert.equal(calls[0].options.method, "POST");
-    assert.equal(calls[0].options.headers["Content-Type"], "application/json");
+    assert.equal(calls[0].options.headers.get("Content-Type"), "application/json");
+    assert.equal(calls[0].options.headers.get("X-Incremento-Token"), "test-token");
     assert.deepEqual(JSON.parse(calls[0].options.body), payload);
   } finally {
     globalThis.fetch = originalFetch;
@@ -46,11 +63,11 @@ test("importIntoIncremento posts JSON payload and returns successful response", 
 test("importIntoIncremento throws bridge errors from the response body", async () => {
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async () => ({
+  globalThis.fetch = withHandshake(async () => ({
     ok: false,
     status: 500,
     json: async () => ({ ok: false, error: "Bridge failure" }),
-  });
+  }));
 
   try {
     await assert.rejects(
@@ -76,14 +93,14 @@ test("loadBrowserCaptureMeta loads browser capture metadata", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = withHandshake(async (url, options) => {
     calls.push({ url, options });
     return {
       ok: true,
       status: 200,
       json: async () => ({ ok: true, noteTypes: [{ name: "Basic", fields: ["Front", "Back"] }], deckNames: ["Default"] }),
     };
-  };
+  });
 
   try {
     const result = await loadBrowserCaptureMeta();
@@ -100,14 +117,14 @@ test("submitBrowserCapture posts a browser_capture payload", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = withHandshake(async (url, options) => {
     calls.push({ url, options });
     return {
       ok: true,
       status: 200,
       json: async () => ({ ok: true, noteTypeName: "Basic", deckName: "Default" }),
     };
-  };
+  });
 
   try {
     await submitBrowserCapture({
@@ -126,14 +143,14 @@ test("loadBrowserMediaRef loads the saved browser media record for a card", asyn
   const calls = [];
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = withHandshake(async (url, options) => {
     calls.push({ url, options });
     return {
       ok: true,
       status: 200,
       json: async () => ({ ok: true, cardId: 42, hasReference: true, timeText: "12:34" }),
     };
-  };
+  });
 
   try {
     const result = await loadBrowserMediaRef(42);
@@ -150,14 +167,14 @@ test("saveBrowserMediaRef posts a browser media payload", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;
 
-  globalThis.fetch = async (url, options) => {
+  globalThis.fetch = withHandshake(async (url, options) => {
     calls.push({ url, options });
     return {
       ok: true,
       status: 200,
       json: async () => ({ ok: true, cardId: 42, timeText: "12:34" }),
     };
-  };
+  });
 
   try {
     const payload = {

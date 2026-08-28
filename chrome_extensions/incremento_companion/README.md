@@ -165,6 +165,10 @@ Incremento Companion communicates with Anki only through local loopback addresse
 
 It does not upload captured page data to an Incremento cloud service or another third-party service. The extension stores its settings, linked-tab session state, and latest video time in browser extension storage.
 
+Port `8766` uses Incremento bridge protocol 2. The extension first performs a local handshake, Anki binds the exact Chrome/Brave extension origin, and every later request carries a short-lived token plus protocol header. The token is regenerated whenever the bridge restarts and is not written to extension storage. Request paths, origin, body size, and concurrent request count are bounded by the add-on.
+
+One extension origin is bound per Anki bridge run. If you alternate between separately installed Chrome and Brave copies, restart Anki before connecting the other browser. Ordinary browser tabs do not receive the bridge token; only the extension runtime does.
+
 Broad site access is required because capture, link saving, webpage import, and media tracking must work on pages chosen by the user. The bookmarks permission is used only by the bookmark importer, and clipboard permission is used to copy the latest video time.
 
 ## Troubleshooting
@@ -175,6 +179,7 @@ Broad site access is required because capture, link saving, webpage import, and 
 - Confirm Incremento is enabled in **Tools → Add-ons**.
 - Restart Anki so the local bridge on port `8766` starts cleanly.
 - Reload the extension from `chrome://extensions` or `brave://extensions`, then reload the webpage.
+- If you switched between Chrome and Brave, restart Anki so the new extension origin can perform the protocol-2 handshake.
 
 ### Decks do not load
 

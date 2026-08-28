@@ -43,9 +43,11 @@ class TestMigrateToProfileDir:
     def test_is_idempotent(self, tmp_path):
         _make_legacy(tmp_path, "incremento.db")
         m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
-        # Second call: target exists, nothing changes
-        m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
+        # Second call checks for unfinished items but changes no migrated data.
+        report = m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
         assert (tmp_path / "user_files" / "MyProfile" / "incremento.db").exists()
+        assert report["completed"] is True
+        assert report["moved"] == []
 
     def test_fresh_install_creates_profile_dir(self, tmp_path):
         (tmp_path / "user_files").mkdir()
@@ -78,5 +80,51 @@ class TestMigrateToProfileDir:
         existing = profile_dir / "incremento.db"
         existing.write_text("existing")
         # src also exists; dst should not be overwritten
-        m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
+        report = m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
         assert existing.read_text() == "existing"
+        assert report["completed"] is False
+        assert report["conflicts"] == ["incremento.db"]
+
+    def test_resumes_when_profile_directory_already_exists(self, tmp_path):
+        profile_dir = tmp_path / "user_files" / "MyProfile"
+        profile_dir.mkdir(parents=True)
+        (profile_dir / "already-moved.txt").write_text("safe")
+        _make_legacy(tmp_path, "custom_learn_stats.json")
+
+        report = m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
+
+        assert report["completed"] is True
+        assert (profile_dir / "custom_learn_stats.json").read_text() == "data"
+        assert (profile_dir / "already-moved.txt").read_text() == "safe"
+
+    def test_merges_partially_moved_directory_without_overwrite(self, tmp_path):
+        legacy_pdfs = tmp_path / "user_files" / "pdfs"
+        legacy_pdfs.mkdir(parents=True)
+        (legacy_pdfs / "remaining.pdf").write_text("remaining")
+        (legacy_pdfs / "conflict.pdf").write_text("legacy")
+        profile_pdfs = tmp_path / "user_files" / "MyProfile" / "pdfs"
+        profile_pdfs.mkdir(parents=True)
+        (profile_pdfs / "moved.pdf").write_text("moved")
+        (profile_pdfs / "conflict.pdf").write_text("profile")
+
+        report = m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
+
+        assert (profile_pdfs / "remaining.pdf").read_text() == "remaining"
+        assert (profile_pdfs / "moved.pdf").read_text() == "moved"
+        assert (profile_pdfs / "conflict.pdf").read_text() == "profile"
+        assert (legacy_pdfs / "conflict.pdf").read_text() == "legacy"
+        assert report["completed"] is False
+        assert report["conflicts"] == ["pdfs/conflict.pdf"]
+
+    def test_writes_atomic_completion_marker(self, tmp_path):
+        report = m.migrate_to_profile_dir(str(tmp_path), "MyProfile")
+        marker = (
+            tmp_path
+            / "user_files"
+            / "MyProfile"
+            / ".incremento_profile_migration.json"
+        )
+
+        assert marker.exists()
+        assert not marker.with_suffix(marker.suffix + ".tmp").exists()
+        assert report["completed"] is True

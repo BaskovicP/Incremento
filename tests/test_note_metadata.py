@@ -1,4 +1,5 @@
 from note_metadata import (
+    INCREMENTO_CONTENT_ID_FIELD,
     INCREMENTO_HIDDEN_FIELDS,
     INCREMENTO_IMPORTED_AT_FIELD,
     INCREMENTO_METADATA_FIELDS,
@@ -35,12 +36,14 @@ def test_build_incremento_metadata_uses_explicit_values():
         imported_at="2026-04-16 10:11:12",
         parent="Parent Topic",
         parent_card_id=123,
+        content_id="stable-content-id",
     )
 
     assert result[INCREMENTO_SOURCE_TYPE_FIELD] == "Web"
     assert result[INCREMENTO_SOURCE_TITLE_FIELD] == "Example"
     assert result[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com"
     assert result[INCREMENTO_IMPORTED_AT_FIELD] == "2026-04-16 10:11:12"
+    assert result[INCREMENTO_CONTENT_ID_FIELD] == "stable-content-id"
 
 
 def test_ensure_incremento_metadata_fields_adds_missing_fields():

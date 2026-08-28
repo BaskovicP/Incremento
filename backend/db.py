@@ -1,8 +1,9 @@
 """
 Central SQLite database for all Incremento user data.
 
-One connection is kept open per addon_dir (re-initialised if the path changes).
-WAL mode + NORMAL synchronous gives fast writes while staying crash-safe.
+One connection is kept per live worker thread and active profile. WAL mode,
+NORMAL synchronous and a bounded busy timeout keep short UI/background writes
+responsive without sharing one Python connection across threads.
 
 Tables
 ------
@@ -53,11 +54,14 @@ from urllib.parse import urlparse
 
 try:
     from .paths import get_db_checkpoint_dir, get_db_path, get_stats_path
+    from .db_connection import ProfileConnectionManager
+    from .db_schema import initialize_schema
 except ImportError:
     from paths import get_db_checkpoint_dir, get_db_path, get_stats_path  # test environment
+    from db_connection import ProfileConnectionManager  # type: ignore
+    from db_schema import initialize_schema  # type: ignore
 
-_connection: sqlite3.Connection | None = None
-_initialized_for: str | None = None
+_connection_manager = ProfileConnectionManager(busy_timeout_ms=5000)
 
 DB_NAME = "incremento.db"
 _SEARCH_WORD_RE = re.compile(r"\w+", re.UNICODE)
@@ -76,34 +80,46 @@ def _iter_sql_chunks(values, chunk_size: int | None = None):
             yield chunk
 
 
-def close_connection() -> None:
-    global _connection, _initialized_for
-    if _connection is not None:
-        try:
-            _connection.close()
-        except Exception:
-            pass
-    _connection = None
-    _initialized_for = None
+def _connection_cache_key(addon_dir: str, profile: str) -> str:
+    return str(get_db_path(addon_dir, profile).resolve())
+
+
+def close_connection(addon_dir: str | None = None, profile: str | None = None) -> None:
+    """Close managed SQLite connections.
+
+    With no arguments this preserves the historical API and closes every
+    connection.  Passing both values closes only the selected profile DB.
+    """
+    if addon_dir is not None and profile is not None:
+        _connection_manager.close_all(
+            cache_key=_connection_cache_key(addon_dir, profile)
+        )
+        return
+    _connection_manager.close_all()
+
+
+def close_current_connection(addon_dir: str, profile: str) -> None:
+    """Close only the caller thread's handle for one profile database.
+
+    Use this on profile-transition hooks so live background workers can finish
+    with their own thread-scoped handles. ``close_connection()`` remains the
+    force-close API for process shutdown, tests, and pre-migration moves.
+    """
+    _connection_manager.close_current(
+        cache_key=_connection_cache_key(addon_dir, profile)
+    )
 
 
 # ── Connection ────────────────────────────────────────────────────────────────
 
 
 def get_connection(addon_dir: str, profile: str) -> sqlite3.Connection:
-    global _connection, _initialized_for
-    cache_key = f"{addon_dir}::{profile}"
-    if _connection is None or _initialized_for != cache_key:
-        close_connection()
-        p = get_db_path(addon_dir, profile)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(p), check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        _create_tables(conn)
-        _connection = conn
-        _initialized_for = cache_key
-    return _connection
+    db_path = get_db_path(addon_dir, profile)
+    return _connection_manager.get(
+        cache_key=_connection_cache_key(addon_dir, profile),
+        db_path=db_path,
+        initialize=_initialize_database,
+    )
 
 
 def open_database_editor_connection(
@@ -307,8 +323,202 @@ atexit.register(close_connection)
 # ── Schema ────────────────────────────────────────────────────────────────────
 
 
+def _begin_migration_script(conn: sqlite3.Connection, script: str) -> None:
+    """Run DDL inside a transaction that the migration ledger will commit."""
+    if conn.in_transaction:
+        raise RuntimeError("schema migration started with an active transaction")
+    # sqlite3.executescript() otherwise commits before running its script.
+    # An explicit BEGIN leaves the transaction open so the schema and ledger
+    # version are committed (or rolled back) together by initialize_schema().
+    conn.executescript("BEGIN IMMEDIATE;\n" + script)
+
+
+def _migration_2_operation_lifecycle(conn: sqlite3.Connection) -> None:
+    """Add durable bookkeeping for cross-store operations and reconciliation."""
+    _begin_migration_script(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS import_journal (
+            operation_id       TEXT PRIMARY KEY,
+            content_id         TEXT NOT NULL DEFAULT '',
+            operation_kind     TEXT NOT NULL,
+            state              TEXT NOT NULL,
+            card_id            INTEGER,
+            note_id            INTEGER,
+            created_relpaths   TEXT NOT NULL DEFAULT '[]',
+            error_code         TEXT NOT NULL DEFAULT '',
+            created_at         INTEGER NOT NULL,
+            updated_at         INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_import_journal_state_updated
+            ON import_journal (state, updated_at);
+
+        CREATE TABLE IF NOT EXISTS content_items (
+            content_id    TEXT PRIMARY KEY,
+            kind          TEXT NOT NULL,
+            card_id       INTEGER,
+            note_id       INTEGER,
+            storage_key   TEXT NOT NULL DEFAULT '',
+            created_at    INTEGER NOT NULL,
+            updated_at    INTEGER NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_content_items_kind_card
+            ON content_items (kind, card_id) WHERE card_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_content_items_note
+            ON content_items (note_id) WHERE note_id IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS reconciliation_runs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            started_at      INTEGER NOT NULL,
+            finished_at     INTEGER NOT NULL DEFAULT 0,
+            stale_rows      INTEGER NOT NULL DEFAULT 0,
+            orphan_files    INTEGER NOT NULL DEFAULT 0,
+            repaired_rows   INTEGER NOT NULL DEFAULT 0,
+            details_json    TEXT NOT NULL DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_topic_history_revlog
+            ON topic_review_history (anki_revlog_id) WHERE anki_revlog_id > 0;
+        CREATE INDEX IF NOT EXISTS idx_custom_history_revlog
+            ON custom_schedule_review_history (anki_revlog_id)
+            WHERE anki_revlog_id > 0;
+        """
+    )
+
+
+def _migration_3_search_fts(conn: sqlite3.Connection) -> None:
+    """Create optional FTS5 mirrors with triggers for document/OCR search."""
+    try:
+        _begin_migration_script(
+            conn,
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS pdf_text_fts USING fts5(
+                card_id UNINDEXED,
+                page UNINDEXED,
+                text,
+                tokenize='unicode61 remove_diacritics 2'
+            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS epub_text_fts USING fts5(
+                card_id UNINDEXED,
+                section_index UNINDEXED,
+                title,
+                text,
+                tokenize='unicode61 remove_diacritics 2'
+            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS note_ocr_fts USING fts5(
+                note_id UNINDEXED,
+                card_id UNINDEXED,
+                image_name UNINDEXED,
+                text,
+                tokenize='unicode61 remove_diacritics 2'
+            );
+
+            DELETE FROM pdf_text_fts;
+            INSERT INTO pdf_text_fts(card_id, page, text)
+                SELECT card_id, page, text FROM pdf_text_index;
+            DELETE FROM epub_text_fts;
+            INSERT INTO epub_text_fts(card_id, section_index, title, text)
+                SELECT card_id, section_index, title, text FROM epub_text_index;
+            DELETE FROM note_ocr_fts;
+            INSERT INTO note_ocr_fts(note_id, card_id, image_name, text)
+                SELECT note_id, card_id, image_name, text FROM note_ocr_index;
+
+            CREATE TRIGGER IF NOT EXISTS pdf_text_fts_ai AFTER INSERT ON pdf_text_index BEGIN
+                INSERT INTO pdf_text_fts(card_id, page, text)
+                    VALUES (new.card_id, new.page, new.text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS pdf_text_fts_ad AFTER DELETE ON pdf_text_index BEGIN
+                DELETE FROM pdf_text_fts
+                    WHERE card_id = old.card_id AND page = old.page;
+            END;
+            CREATE TRIGGER IF NOT EXISTS pdf_text_fts_au AFTER UPDATE ON pdf_text_index BEGIN
+                DELETE FROM pdf_text_fts
+                    WHERE card_id = old.card_id AND page = old.page;
+                INSERT INTO pdf_text_fts(card_id, page, text)
+                    VALUES (new.card_id, new.page, new.text);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS epub_text_fts_ai AFTER INSERT ON epub_text_index BEGIN
+                INSERT INTO epub_text_fts(card_id, section_index, title, text)
+                    VALUES (new.card_id, new.section_index, new.title, new.text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS epub_text_fts_ad AFTER DELETE ON epub_text_index BEGIN
+                DELETE FROM epub_text_fts
+                    WHERE card_id = old.card_id AND section_index = old.section_index;
+            END;
+            CREATE TRIGGER IF NOT EXISTS epub_text_fts_au AFTER UPDATE ON epub_text_index BEGIN
+                DELETE FROM epub_text_fts
+                    WHERE card_id = old.card_id AND section_index = old.section_index;
+                INSERT INTO epub_text_fts(card_id, section_index, title, text)
+                    VALUES (new.card_id, new.section_index, new.title, new.text);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS note_ocr_fts_ai AFTER INSERT ON note_ocr_index BEGIN
+                INSERT INTO note_ocr_fts(note_id, card_id, image_name, text)
+                    VALUES (new.note_id, new.card_id, new.image_name, new.text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS note_ocr_fts_ad AFTER DELETE ON note_ocr_index BEGIN
+                DELETE FROM note_ocr_fts
+                    WHERE note_id = old.note_id AND card_id = old.card_id;
+            END;
+            CREATE TRIGGER IF NOT EXISTS note_ocr_fts_au AFTER UPDATE ON note_ocr_index BEGIN
+                DELETE FROM note_ocr_fts
+                    WHERE note_id = old.note_id AND card_id = old.card_id;
+                INSERT INTO note_ocr_fts(note_id, card_id, image_name, text)
+                    VALUES (new.note_id, new.card_id, new.image_name, new.text);
+            END;
+            """
+        )
+    except sqlite3.OperationalError as exc:
+        # Some custom Python/Anki SQLite builds may omit FTS5. Plain-table
+        # search remains fully functional and the capability is recorded.
+        if "fts5" not in str(exc).casefold():
+            raise
+        if conn.in_transaction:
+            conn.rollback()
+
+
+def _migration_4_content_identity(conn: sqlite3.Connection) -> None:
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(import_journal)").fetchall()
+    }
+    if "content_id" not in columns:
+        conn.execute(
+            "ALTER TABLE import_journal "
+            "ADD COLUMN content_id TEXT NOT NULL DEFAULT ''"
+        )
+
+
+def _migration_5_document_index_state(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS document_index_state ("
+        "kind TEXT NOT NULL, card_id INTEGER NOT NULL, "
+        "source_mtime_ns INTEGER NOT NULL DEFAULT 0, "
+        "source_size INTEGER NOT NULL DEFAULT 0, "
+        "status TEXT NOT NULL DEFAULT '', indexed_at INTEGER NOT NULL DEFAULT 0, "
+        "PRIMARY KEY (kind, card_id))"
+    )
+
+
+_SCHEMA_MIGRATIONS = (
+    (2, "operation_lifecycle", _migration_2_operation_lifecycle),
+    (3, "search_fts", _migration_3_search_fts),
+    (4, "content_identity", _migration_4_content_identity),
+    (5, "document_index_state", _migration_5_document_index_state),
+)
+
+
+def _initialize_database(conn: sqlite3.Connection) -> None:
+    initialize_schema(
+        conn,
+        bootstrap=_create_tables,
+        migrations=_SCHEMA_MIGRATIONS,
+    )
+
+
 def _create_tables(conn: sqlite3.Connection) -> None:
-    conn.executescript("""
+    _begin_migration_script(conn, """
         CREATE TABLE IF NOT EXISTS pdf_progress (
             card_id   INTEGER PRIMARY KEY,
             page      INTEGER NOT NULL DEFAULT 1,
@@ -563,6 +773,16 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_eti_card_section
             ON epub_text_index (card_id, section_index);
+
+        CREATE TABLE IF NOT EXISTS document_index_state (
+            kind             TEXT    NOT NULL,
+            card_id          INTEGER NOT NULL,
+            source_mtime_ns  INTEGER NOT NULL DEFAULT 0,
+            source_size      INTEGER NOT NULL DEFAULT 0,
+            status           TEXT    NOT NULL DEFAULT '',
+            indexed_at       INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (kind, card_id)
+        );
 
         CREATE TABLE IF NOT EXISTS topic_schedule (
             card_id          INTEGER PRIMARY KEY,
@@ -848,7 +1068,6 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "ON pdf_card_sources (pdf_card_id, highlight_id) "
         "WHERE highlight_id != ''"
     )
-    conn.commit()
 
 
 def _ensure_column(
@@ -867,36 +1086,6 @@ def _ensure_column(
     if column_name in columns:
         return
     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}")
-    conn.commit()
-    # Add read_page/read_anchor_json to existing pdf_progress tables that predate them
-    try:
-        conn.execute(
-            "ALTER TABLE pdf_progress ADD COLUMN read_page INTEGER NOT NULL DEFAULT 0"
-        )
-        conn.commit()
-    except Exception:
-        pass  # column already exists
-    try:
-        conn.execute(
-            "ALTER TABLE pdf_progress ADD COLUMN read_anchor_json TEXT NOT NULL DEFAULT ''"
-        )
-        conn.commit()
-    except Exception:
-        pass  # column already exists
-    for statement in (
-        "ALTER TABLE web_progress ADD COLUMN scroll_ratio REAL NOT NULL DEFAULT 0.0",
-        "ALTER TABLE web_progress ADD COLUMN bookmark_url TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE web_progress ADD COLUMN bookmark_payload TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE web_progress ADD COLUMN media_url TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE web_progress ADD COLUMN media_title TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE web_progress ADD COLUMN media_seconds REAL NOT NULL DEFAULT 0.0",
-        "ALTER TABLE web_progress ADD COLUMN media_updated_at INTEGER NOT NULL DEFAULT 0",
-    ):
-        try:
-            conn.execute(statement)
-            conn.commit()
-        except Exception:
-            pass
 
 
 # ── Browser media refs ────────────────────────────────────────────────────────
@@ -2766,6 +2955,19 @@ def split_search_terms(text: str, *, min_len: int = 2) -> list[str]:
     ]
 
 
+def _fts_prefix_query(query_terms: list[str]) -> str:
+    """Build a safe prefix-AND expression from already-tokenized words."""
+    return " AND ".join(f'"{term.replace(chr(34), chr(34) * 2)}"*' for term in query_terms)
+
+
+def _fts_table_available(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (str(table_name),),
+    ).fetchone()
+    return bool(row)
+
+
 def _find_consecutive_prefix_match(
     query_terms: list[str], text_terms: list[str]
 ) -> tuple[int, int] | None:
@@ -2880,13 +3082,22 @@ def search_note_ocr_index(
         return []
 
     conn = get_connection(addon_dir, profile)
-    pre = query_terms[0]
-    rows = conn.execute(
-        "SELECT note_id, card_id, image_name, text FROM note_ocr_index "
-        "WHERE lower(text) LIKE lower(?) "
-        "ORDER BY note_id, card_id, image_name LIMIT ?",
-        (f"%{pre}%", max(500, limit * 25)),
-    ).fetchall()
+    candidate_limit = max(500, limit * 25)
+    if _fts_table_available(conn, "note_ocr_fts"):
+        rows = conn.execute(
+            "SELECT note_id, card_id, image_name, text FROM note_ocr_fts "
+            "WHERE note_ocr_fts MATCH ? "
+            "ORDER BY rank, note_id, card_id LIMIT ?",
+            (_fts_prefix_query(query_terms), candidate_limit),
+        ).fetchall()
+    else:
+        pre = query_terms[0]
+        rows = conn.execute(
+            "SELECT note_id, card_id, image_name, text FROM note_ocr_index "
+            "WHERE lower(text) LIKE lower(?) "
+            "ORDER BY note_id, card_id, image_name LIMIT ?",
+            (f"%{pre}%", candidate_limit),
+        ).fetchall()
 
     ranked: list[tuple[tuple[int, int, int, int], int, int, str, str]] = []
     for note_id, card_id, image_name, text in rows:
@@ -3021,12 +3232,20 @@ def search_pdf_text_index(
         return []
 
     conn = get_connection(addon_dir, profile)
-    pre = query_terms[0]
-    rows = conn.execute(
-        "SELECT card_id, page, text FROM pdf_text_index "
-        "WHERE lower(text) LIKE lower(?) ORDER BY card_id, page LIMIT ?",
-        (f"%{pre}%", max(500, limit * 25)),
-    ).fetchall()
+    candidate_limit = max(500, limit * 25)
+    if _fts_table_available(conn, "pdf_text_fts"):
+        rows = conn.execute(
+            "SELECT card_id, page, text FROM pdf_text_fts "
+            "WHERE pdf_text_fts MATCH ? ORDER BY rank, card_id, page LIMIT ?",
+            (_fts_prefix_query(query_terms), candidate_limit),
+        ).fetchall()
+    else:
+        pre = query_terms[0]
+        rows = conn.execute(
+            "SELECT card_id, page, text FROM pdf_text_index "
+            "WHERE lower(text) LIKE lower(?) ORDER BY card_id, page LIMIT ?",
+            (f"%{pre}%", candidate_limit),
+        ).fetchall()
 
     ranked: list[tuple[tuple[int, int, int, int], int, int, str]] = []
     for cid, page, text in rows:
@@ -3051,13 +3270,22 @@ def search_pdf_text_index_for_card(
         return []
 
     conn = get_connection(addon_dir, profile)
-    pre = query_terms[0]
-    rows = conn.execute(
-        "SELECT page, text FROM pdf_text_index "
-        "WHERE card_id = ? AND lower(text) LIKE lower(?) "
-        "ORDER BY page LIMIT ?",
-        (int(card_id), f"%{pre}%", max(500, limit * 25)),
-    ).fetchall()
+    candidate_limit = max(500, limit * 25)
+    if _fts_table_available(conn, "pdf_text_fts"):
+        rows = conn.execute(
+            "SELECT page, text FROM pdf_text_fts "
+            "WHERE pdf_text_fts MATCH ? AND card_id = ? "
+            "ORDER BY rank, page LIMIT ?",
+            (_fts_prefix_query(query_terms), int(card_id), candidate_limit),
+        ).fetchall()
+    else:
+        pre = query_terms[0]
+        rows = conn.execute(
+            "SELECT page, text FROM pdf_text_index "
+            "WHERE card_id = ? AND lower(text) LIKE lower(?) "
+            "ORDER BY page LIMIT ?",
+            (int(card_id), f"%{pre}%", candidate_limit),
+        ).fetchall()
 
     ranked: list[tuple[tuple[int, int, int, int], int, str]] = []
     for page, text in rows:
@@ -3096,13 +3324,22 @@ def search_epub_text_index(
         return []
 
     conn = get_connection(addon_dir, profile)
-    pre = query_terms[0]
-    rows = conn.execute(
-        "SELECT card_id, section_index, title, text FROM epub_text_index "
-        "WHERE lower(title || ' ' || text) LIKE lower(?) "
-        "ORDER BY card_id, section_index LIMIT ?",
-        (f"%{pre}%", max(500, limit * 25)),
-    ).fetchall()
+    candidate_limit = max(500, limit * 25)
+    if _fts_table_available(conn, "epub_text_fts"):
+        rows = conn.execute(
+            "SELECT card_id, section_index, title, text FROM epub_text_fts "
+            "WHERE epub_text_fts MATCH ? "
+            "ORDER BY rank, card_id, section_index LIMIT ?",
+            (_fts_prefix_query(query_terms), candidate_limit),
+        ).fetchall()
+    else:
+        pre = query_terms[0]
+        rows = conn.execute(
+            "SELECT card_id, section_index, title, text FROM epub_text_index "
+            "WHERE lower(title || ' ' || text) LIKE lower(?) "
+            "ORDER BY card_id, section_index LIMIT ?",
+            (f"%{pre}%", candidate_limit),
+        ).fetchall()
 
     ranked: list[tuple[tuple[int, int, int, int], int, int, str, str]] = []
     for cid, section_index, title, text in rows:
@@ -3128,13 +3365,22 @@ def search_epub_text_index_for_card(
         return []
 
     conn = get_connection(addon_dir, profile)
-    pre = query_terms[0]
-    rows = conn.execute(
-        "SELECT section_index, title, text FROM epub_text_index "
-        "WHERE card_id = ? AND lower(title || ' ' || text) LIKE lower(?) "
-        "ORDER BY section_index LIMIT ?",
-        (int(card_id), f"%{pre}%", max(500, limit * 25)),
-    ).fetchall()
+    candidate_limit = max(500, limit * 25)
+    if _fts_table_available(conn, "epub_text_fts"):
+        rows = conn.execute(
+            "SELECT section_index, title, text FROM epub_text_fts "
+            "WHERE epub_text_fts MATCH ? AND card_id = ? "
+            "ORDER BY rank, section_index LIMIT ?",
+            (_fts_prefix_query(query_terms), int(card_id), candidate_limit),
+        ).fetchall()
+    else:
+        pre = query_terms[0]
+        rows = conn.execute(
+            "SELECT section_index, title, text FROM epub_text_index "
+            "WHERE card_id = ? AND lower(title || ' ' || text) LIKE lower(?) "
+            "ORDER BY section_index LIMIT ?",
+            (int(card_id), f"%{pre}%", candidate_limit),
+        ).fetchall()
 
     ranked: list[tuple[tuple[int, int, int, int], int, str, str]] = []
     for section_index, title, text in rows:

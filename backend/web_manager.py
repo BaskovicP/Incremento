@@ -1,4 +1,5 @@
 try:
+    from .config_service import load_addon_config
     from .db import get_connection
     from .note_metadata import (
         apply_incremento_metadata,
@@ -6,6 +7,7 @@ try:
         ensure_incremento_metadata_fields,
     )
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from db import get_connection
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
@@ -192,7 +194,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         from aqt import mw
 
         addon_name = __name__.split(".")[0]
-        return mw.addonManager.getConfig(addon_name) or {}
+        return load_addon_config(mw.addonManager, addon_name)
     except Exception:
         return {}
 

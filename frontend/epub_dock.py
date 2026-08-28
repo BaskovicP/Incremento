@@ -48,8 +48,12 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile
+    from config_service import load_addon_config, save_addon_config  # type: ignore
+    from anki_compat import show_reviewer_question  # type: ignore
 
 try:
     from ..backend.epub_manager import (
@@ -190,7 +194,7 @@ def _config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
     try:
-        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+        return load_addon_config(mw.addonManager, _ADDON_PKG)
     except Exception:
         return {}
 
@@ -204,7 +208,7 @@ def _set_highlight_when_extracting(enabled: bool) -> None:
     cfg = _config()
     cfg["highlight_when_extracting"] = bool(enabled)
     try:
-        mw.addonManager.writeConfig(_ADDON_PKG, cfg)
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
     except Exception:
         return
 
@@ -2499,7 +2503,7 @@ def _regenerate_epub_cover() -> None:
         except Exception:
             pass
         try:
-            reviewer._showQuestion()
+            show_reviewer_question(reviewer)
         except Exception:
             pass
     if cover_filename:

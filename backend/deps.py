@@ -15,6 +15,8 @@ import platform
 import shutil
 import sys
 
+PYMUPDF_REQUIREMENT = "PyMuPDF>=1.24,<2"
+
 
 # ---------------------------------------------------------------------------
 # Detection
@@ -96,7 +98,7 @@ def pymupdf_instructions() -> str:
     return (
         "PyMuPDF can be installed automatically by Incremento.\n\n"
         "If automatic installation fails, run this command in a terminal:\n\n"
-        f"    {sys.executable} -m pip install PyMuPDF\n\n"
+        f"    {sys.executable} -m pip install \"{PYMUPDF_REQUIREMENT}\"\n\n"
         "Then restart Anki."
     )
 
@@ -124,7 +126,16 @@ def install_pymupdf(mw, on_done: "Callable[[bool], None] | None" = None) -> None
 
     def _task() -> bool:
         proc = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--quiet", "PyMuPDF"],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                "--disable-pip-version-check",
+                "--no-input",
+                PYMUPDF_REQUIREMENT,
+            ],
             capture_output=True,
             timeout=180,
         )
@@ -274,7 +285,10 @@ def show_setup_dialog(mw, force: bool = False) -> None:
                     "See instructions below.</span>"
                 )
                 from aqt.qt import QLabel as _QL
-                _fallback = _QL(f"Manual install:\n    {sys.executable} -m pip install PyMuPDF")
+                _fallback = _QL(
+                    f"Manual install:\n    {sys.executable} -m pip install "
+                    f'"{PYMUPDF_REQUIREMENT}"'
+                )
                 _fallback.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
                 _fallback.setWordWrap(True)
                 layout.insertWidget(layout.indexOf(buttons), _fallback)

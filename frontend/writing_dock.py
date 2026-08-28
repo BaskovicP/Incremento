@@ -40,6 +40,7 @@ from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase, QColor, QTextCha
 
 try:
     from ..backend import paths as _paths
+    from ..backend.config_service import load_addon_config
     from .file_shell import reveal_local_file
     from ..backend.db import (
         get_writing_progress,
@@ -66,6 +67,7 @@ try:
         list_reader_bookmarks,
     )
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     import paths as _paths
     from file_shell import reveal_local_file  # type: ignore
     from db import (
@@ -121,7 +123,7 @@ def _config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
     try:
-        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+        return load_addon_config(mw.addonManager, _ADDON_PKG)
     except Exception:
         return {}
 

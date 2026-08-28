@@ -8,17 +8,21 @@ from pathlib import Path
 
 try:
     from . import paths as _paths
+    from .operation_journal import ImportOperation
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
 except ImportError:
     import paths as _paths
+    from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
 
 
@@ -117,7 +121,12 @@ def _stored_writing_title(title: str, attempt: int) -> str:
     return f"{base_title} [{attempt + 1}]"
 
 
-def writing_file_abspath(addon_dir: str, relpath: str) -> str:
+def writing_file_abspath(
+    addon_dir: str,
+    relpath: str,
+    *,
+    profile: str | None = None,
+) -> str:
     rel = (relpath or "").strip().replace("\\", "/")
     # Strip any user_files/…/writing/ prefix (handles both legacy and new paths)
     _, found, after = rel.partition("writing/")
@@ -125,7 +134,10 @@ def writing_file_abspath(addon_dir: str, relpath: str) -> str:
         rel = after
     rel = os.path.basename(rel)
     rel = _sanitize_filename(rel, fallback="writing-note")
-    writing_dir = _paths.get_writing_dir(addon_dir, _paths.get_active_profile())
+    writing_dir = _paths.get_writing_dir(
+        addon_dir,
+        profile or _paths.get_active_profile(),
+    )
     path = (writing_dir / rel).resolve()
     return str(path)
 
@@ -202,8 +214,14 @@ def _refresh_due_backups(
     return created
 
 
-def ensure_writing_file(addon_dir: str, relpath: str, initial_text: str = "") -> str:
-    path = writing_file_abspath(addon_dir, relpath)
+def ensure_writing_file(
+    addon_dir: str,
+    relpath: str,
+    initial_text: str = "",
+    *,
+    profile: str | None = None,
+) -> str:
+    path = writing_file_abspath(addon_dir, relpath, profile=profile)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if not os.path.exists(path):
         with open(path, "w", encoding="utf-8") as f:
@@ -298,10 +316,43 @@ def add_writing_card(
     metadata: dict[str, str] | None = None,
 ) -> int:
     ensure_writing_note_type(col)
+    profile = _paths.get_active_profile()
+    with ImportOperation(addon_dir, profile, "writing") as operation:
+        return _create_new_writing_card(
+            addon_dir,
+            col,
+            title=title,
+            deck_name=deck_name,
+            tags=tags,
+            initial_markdown=initial_markdown,
+            preferred_filename=preferred_filename,
+            metadata=metadata,
+            operation=operation,
+        )
+
+
+def _create_new_writing_card(
+    addon_dir: str,
+    col,
+    *,
+    title: str,
+    deck_name: str,
+    tags: list[str] | None,
+    initial_markdown: str,
+    preferred_filename: str,
+    metadata: dict[str, str] | None,
+    operation: ImportOperation,
+) -> int:
 
     relpath = build_writing_relpath(title=title, preferred_filename=preferred_filename or None)
     default_text = initial_markdown if initial_markdown else f"# {title}\n\n"
-    ensure_writing_file(addon_dir, relpath, initial_text=default_text)
+    operation.track_created_relpath(relpath)
+    ensure_writing_file(
+        addon_dir,
+        relpath,
+        initial_text=default_text,
+        profile=operation.profile,
+    )
 
     deck = col.decks.by_name(deck_name)
     if deck is None:
@@ -310,19 +361,22 @@ def add_writing_card(
         deck_id = deck["id"]
 
     model = col.models.by_name(WRITING_NOTE_TYPE)
+    resolved_metadata = dict(
+        metadata
+        or build_incremento_metadata(
+            source_type="Writing",
+            source_title=title,
+            source_link=relpath,
+            content_id=operation.content_id,
+        )
+    )
+    resolved_metadata[INCREMENTO_CONTENT_ID_FIELD] = operation.content_id
+
     def _build_note(stored_title: str):
         note = col.new_note(model)
         note["Title"] = stored_title
         note[WRITING_FILE_FIELD] = relpath
-        apply_incremento_metadata(
-            note,
-            metadata
-            or build_incremento_metadata(
-                source_type="Writing",
-                source_title=title,
-                source_link=relpath,
-            ),
-        )
+        apply_incremento_metadata(note, resolved_metadata)
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue
@@ -341,5 +395,8 @@ def add_writing_card(
             continue
         cards = col.find_cards(f"nid:{note.id}")
         if cards:
-            return cards[0]
+            card_id = cards[0]
+            operation.bind_anki(card_id=card_id, note_id=getattr(note, "id", None))
+            operation.commit(storage_key=relpath)
+            return card_id
     raise RuntimeError("Failed to add writing card. Anki rejected the note.")

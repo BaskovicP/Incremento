@@ -42,6 +42,9 @@ Focused suites for common hotspots:
 
 - If you change browser import behavior, cover backend normalization and extension-facing behavior.
 - If you change profile-aware paths or migration behavior, keep assertions explicitly profile-scoped.
+- SQLite lifecycle changes need connection isolation plus schema-ledger success/rollback coverage. Cross-store imports need before-card rollback, after-card preservation, content-ID rebind, and path-containment cases.
+- Search/index changes need unchanged/error/cancel/force behavior plus bounded repository results; no test may require a Qt-thread library scan.
+- Bridge changes require handshake, origin, token/protocol, body-limit, concurrency, and extension retry tests.
 - If you change reviewer or dock behavior, prefer regression tests that exercise the user-visible state transition instead of only helper internals.
 - Document Bookshelf regressions should cover combined PDF/EPUB loading (including suspended cards), format filtering, first-page/EPUB cover and source metadata, legacy cards without stored covers, title filtering, dark/light caption contrast, media-path containment, type-correct reader opening, PDF-only preserve-history, both-format open-to-study behavior, and migration of the configurable `Alt+Shift+P` default.
 - Item-card `Fail / Pass` regressions must cover every Anki state: `Fail` remains `Again` (ease 1), and `Pass` becomes `Good` (ease 3), including learning and relearning cards. Keep topic-card behavior separate.
@@ -68,5 +71,5 @@ Focused suites for common hotspots:
 
 ## Current Baseline
 
-- As of 2026-04-18, the full suite has one known unrelated failure in `tests/test_epub_manager.py` around section-title casing (`chapter1` vs `Chapter 1`). Treat that as existing baseline noise unless your change touches EPUB extraction.
-- Some UI tests replace `aqt.qt`/`PyQt6` modules at import time. A monolithic collection can therefore fail later UI-module imports depending on file order even when each suite passes. Verify affected frontend/session groups in separate pytest processes when that collection-only contamination appears.
+- The full suite must collect and pass in one pytest process. UI tests that temporarily replace `aqt`, `aqt.qt`, or `PyQt6` modules must restore the original dependency modules immediately after importing their isolated module; do not leave collection-order contamination as accepted baseline noise.
+- Release verification also compiles all shipped Python, runs extension tests, rebuilds both generated web targets, and validates the `.ankiaddon` contents.

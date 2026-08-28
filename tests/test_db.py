@@ -1771,17 +1771,106 @@ class TestConnectionSwitching:
 
     def test_close_exception_is_swallowed(self):
         """If the old connection's close() raises, get_connection still succeeds."""
+        import threading
+        import weakref
+        from types import SimpleNamespace
         from unittest.mock import MagicMock
+
         dir1 = _fresh_dir()
-        # Set up a fake existing connection that raises on close
         fake_conn = MagicMock()
         fake_conn.close.side_effect = Exception("close failed")
-        db._connection = fake_conn
-        db._initialized_for = "/some/stale/path"
-        # Requesting a new dir should try close() on the fake conn, swallow the error
+        manager = db._connection_manager
+        manager._records[manager._thread_key()] = SimpleNamespace(
+            cache_key="/some/stale/path",
+            connection=fake_conn,
+            thread_ref=weakref.ref(threading.current_thread()),
+        )
+
         conn = db.get_connection(dir1, "TestProfile")
         fake_conn.close.assert_called_once()
         assert isinstance(conn, sqlite3.Connection)
+
+    def test_connection_has_busy_timeout_and_schema_version(self):
+        addon_dir = _fresh_dir()
+        conn = db.get_connection(addon_dir, "TestProfile")
+
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        migrations = conn.execute(
+            "SELECT version, name FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert migrations == [
+            (1, "legacy_schema_baseline"),
+            (2, "operation_lifecycle"),
+            (3, "search_fts"),
+            (4, "content_identity"),
+            (5, "document_index_state"),
+        ]
+
+    def test_worker_thread_gets_a_distinct_connection(self):
+        import threading
+
+        addon_dir = _fresh_dir()
+        main_conn = db.get_connection(addon_dir, "TestProfile")
+        worker_connections = []
+
+        def worker():
+            worker_conn = db.get_connection(addon_dir, "TestProfile")
+            worker_conn.execute(
+                "INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)",
+                (123, 42),
+            )
+            worker_conn.commit()
+            worker_connections.append(worker_conn)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join()
+
+        assert worker_connections[0] is not main_conn
+        assert main_conn.execute(
+            "SELECT priority FROM priorities WHERE card_id=123"
+        ).fetchone() == (42.0,)
+
+    def test_profile_hook_close_does_not_invalidate_live_worker(self):
+        import threading
+
+        addon_dir = _fresh_dir()
+        main_conn = db.get_connection(addon_dir, "TestProfile")
+        worker_ready = threading.Event()
+        worker_continue = threading.Event()
+        worker_errors = []
+
+        def worker():
+            try:
+                worker_conn = db.get_connection(addon_dir, "TestProfile")
+                worker_ready.set()
+                worker_continue.wait(2.0)
+                worker_conn.execute(
+                    "INSERT OR REPLACE INTO priorities(card_id, priority) VALUES (?, ?)",
+                    (456, 33),
+                )
+                worker_conn.commit()
+            except Exception as exc:
+                worker_errors.append(exc)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        assert worker_ready.wait(2.0)
+
+        db.close_current_connection(addon_dir, "TestProfile")
+        with pytest.raises(sqlite3.ProgrammingError):
+            main_conn.execute("SELECT 1")
+
+        worker_continue.set()
+        thread.join(2.0)
+        assert not thread.is_alive()
+        assert worker_errors == []
+
+        reopened = db.get_connection(addon_dir, "TestProfile")
+        assert reopened.execute(
+            "SELECT priority FROM priorities WHERE card_id=456"
+        ).fetchone() == (33.0,)
 
     def test_migration_adds_read_page_column(self):
         """If an existing DB lacks read_page, get_connection adds it (line 121)."""

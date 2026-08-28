@@ -22,6 +22,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 PACKAGE_ID = "incremento"
 ADDON_NAME = "Incremento"
+MIN_ANKI_POINT_VERSION = 241100
 STAGING_DIR_NAME = "incremento"
 ROOT_FILES = (
     "__init__.py",
@@ -29,6 +30,7 @@ ROOT_FILES = (
     "README.md",
     "MANUAL.md",
     "EXPORTING.md",
+    "ARCHITECTURE.md",
     "LICENSE",
 )
 WEB_RUNTIME_FILES = (
@@ -45,9 +47,19 @@ CHROME_EXTENSION_ROOT_FILES = (
 )
 REQUIRED_RUNTIME_PATHS = (
     "__init__.py",
+    "ARCHITECTURE.md",
     "backend/db.py",
+    "backend/db_connection.py",
+    "backend/db_schema.py",
+    "backend/operation_journal.py",
+    "backend/reconciliation.py",
+    "backend/config_service.py",
+    "backend/anki_compat.py",
+    "backend/search_indexer.py",
+    "backend/search_repository.py",
     "backend/browser_bridge.py",
     "frontend/pdf_dock.py",
+    "frontend/session_launcher.py",
     "frontend/web_dock.py",
     "web/pdf_dock.html",
     "web/video_player.html",
@@ -93,6 +105,9 @@ class BuildSummary:
     staged_root: Path
     include_meta: bool
     rebuilt_frontend: bool
+    rebuilt_extension: bool
+    tests_run: bool
+    extension_tests_run: bool
     clean_staging: bool
 
 
@@ -138,6 +153,24 @@ def parse_args() -> argparse.Namespace:
         help="Run the Python test suite before packaging.",
     )
     parser.add_argument(
+        "--build-extension",
+        action="store_true",
+        help="Rebuild the Chrome/Brave companion bundle before packaging.",
+    )
+    parser.add_argument(
+        "--run-extension-tests",
+        action="store_true",
+        help="Run the companion extension test suite before packaging.",
+    )
+    parser.add_argument(
+        "--release",
+        action="store_true",
+        help=(
+            "Run all release gates: Python tests/compile, PDF viewer and "
+            "extension builds, and extension tests."
+        ),
+    )
+    parser.add_argument(
         "--clean-staging",
         action="store_true",
         help="Remove the staged dist/incremento folder after creating the archive.",
@@ -159,12 +192,25 @@ def main() -> int:
     ensure_required_runtime_paths(repo_root)
 
     rebuilt_frontend = False
-    if args.build_frontend:
+    rebuilt_extension = False
+    tests_run = False
+    extension_tests_run = False
+    if args.build_frontend or args.release:
         run_frontend_build(repo_root)
         rebuilt_frontend = True
 
-    if args.run_tests:
+    if args.build_extension or args.release:
+        run_extension_build(repo_root)
+        rebuilt_extension = True
+
+    if args.run_tests or args.release:
+        run_compile_check(repo_root)
         run_tests(repo_root)
+        tests_run = True
+
+    if args.run_extension_tests or args.release:
+        run_extension_tests(repo_root)
+        extension_tests_run = True
 
     artifact_path = output_dir / normalize_artifact_name(args.name)
     staged_root = output_dir / STAGING_DIR_NAME
@@ -179,6 +225,7 @@ def main() -> int:
         human_version=args.human_version or default_human_version(),
     )
     create_archive(output_dir, staged_root, artifact_path)
+    validate_archive(artifact_path)
 
     if args.clean_staging:
         shutil.rmtree(staged_root)
@@ -188,6 +235,9 @@ def main() -> int:
         staged_root=staged_root,
         include_meta=args.include_meta,
         rebuilt_frontend=rebuilt_frontend,
+        rebuilt_extension=rebuilt_extension,
+        tests_run=tests_run,
+        extension_tests_run=extension_tests_run,
         clean_staging=args.clean_staging,
     )
     print_summary(summary)
@@ -222,6 +272,38 @@ def run_frontend_build(repo_root: Path) -> None:
             "Run `npm install` in frontend/ first, or package the already-built web assets without --build-frontend."
         )
     run_command(["npm", "run", "build"], cwd=frontend_dir, label="frontend build")
+
+
+def run_extension_build(repo_root: Path) -> None:
+    frontend_dir = repo_root / "frontend"
+    if not (frontend_dir / "node_modules").exists():
+        raise SystemExit(
+            "frontend/node_modules is missing; cannot build the extension.\n"
+            "Run `npm install` in frontend/ first."
+        )
+    run_command(
+        ["npm", "run", "build:extension"],
+        cwd=frontend_dir,
+        label="companion extension build",
+    )
+
+
+def run_extension_tests(repo_root: Path) -> None:
+    run_command(
+        ["npm", "test"],
+        cwd=repo_root / CHROME_EXTENSION_ROOT,
+        label="companion extension tests",
+    )
+
+
+def run_compile_check(repo_root: Path) -> None:
+    python = repo_root / ".venv" / "bin" / "python"
+    executable = str(python) if python.exists() else sys.executable
+    run_command(
+        [executable, "-m", "compileall", "-q", "__init__.py", "backend", "frontend", "scripts"],
+        cwd=repo_root,
+        label="Python compile check",
+    )
 
 
 def run_tests(repo_root: Path) -> None:
@@ -289,6 +371,7 @@ def write_anki_manifest(staged_root: Path, human_version: str) -> None:
         "package": PACKAGE_ID,
         "name": ADDON_NAME,
         "human_version": human_version,
+        "min_point_version": MIN_ANKI_POINT_VERSION,
     }
     path = staged_root / "manifest.json"
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -380,6 +463,35 @@ def create_archive(output_dir: Path, staged_root: Path, artifact_path: Path) -> 
         shutil.move(str(temp_archive), artifact_path)
 
 
+def validate_archive(artifact_path: Path) -> None:
+    """Fail packaging if the archive is corrupt, incomplete, or leaks runtime data."""
+    with ZipFile(artifact_path) as zf:
+        corrupt = zf.testzip()
+        if corrupt is not None:
+            raise SystemExit(f"Packaged archive is corrupt at: {corrupt}")
+        names = {name.rstrip("/") for name in zf.namelist() if name.rstrip("/")}
+    missing = sorted(path for path in REQUIRED_RUNTIME_PATHS if path not in names)
+    if missing:
+        raise SystemExit(
+            "Packaged archive is missing required runtime paths:\n"
+            + "\n".join(f"- {path}" for path in missing)
+        )
+    unsafe = sorted(
+        name
+        for name in names
+        if name.startswith("user_files/")
+        or "../" in name
+        or name.startswith("/")
+        or "/__pycache__/" in f"/{name}"
+        or name.endswith((".pyc", ".pyo"))
+    )
+    if unsafe:
+        raise SystemExit(
+            "Packaged archive contains forbidden paths:\n"
+            + "\n".join(f"- {path}" for path in unsafe)
+        )
+
+
 def print_summary(summary: BuildSummary) -> None:
     print("\n[package_addon] Package created")
     print(f"  install file: {summary.artifact_path}")
@@ -387,6 +499,9 @@ def print_summary(summary: BuildSummary) -> None:
     print("  user_files: excluded")
     print(f"  meta.json: {'included' if summary.include_meta else 'excluded'}")
     print(f"  frontend rebuilt: {'yes' if summary.rebuilt_frontend else 'no'}")
+    print(f"  extension rebuilt: {'yes' if summary.rebuilt_extension else 'no'}")
+    print(f"  Python gates run: {'yes' if summary.tests_run else 'no'}")
+    print(f"  extension tests run: {'yes' if summary.extension_tests_run else 'no'}")
     print(f"  staging kept: {'no' if summary.clean_staging else 'yes'}")
     print("\n[package_addon] Install guidance")
     print("  - In Anki, open Tools -> Add-ons -> Install from file.")

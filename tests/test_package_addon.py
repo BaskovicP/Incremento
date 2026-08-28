@@ -25,6 +25,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "README.md",
         "MANUAL.md",
         "EXPORTING.md",
+        "ARCHITECTURE.md",
         "LICENSE",
     ):
         write_file(repo, relpath)
@@ -39,6 +40,14 @@ def make_fake_repo(tmp_path: Path) -> Path:
     for relpath in (
         "backend/__init__.py",
         "backend/db.py",
+        "backend/db_connection.py",
+        "backend/db_schema.py",
+        "backend/operation_journal.py",
+        "backend/reconciliation.py",
+        "backend/config_service.py",
+        "backend/anki_compat.py",
+        "backend/search_indexer.py",
+        "backend/search_repository.py",
         "backend/browser_bridge.py",
         "backend/diagnostics.py",
         "backend/scheduler.py",
@@ -49,6 +58,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
     for relpath in (
         "frontend/__init__.py",
         "frontend/pdf_dock.py",
+        "frontend/session_launcher.py",
         "frontend/web_dock.py",
         "frontend/stats_dialog.py",
         "frontend/src/App.jsx",
@@ -155,17 +165,28 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
         "package": "incremento",
         "name": "Incremento",
         "human_version": "1.2.3",
+        "min_point_version": 241100,
     }
     assert "__init__.py" in names
+    assert "ARCHITECTURE.md" in names
     assert "incremento/__init__.py" not in names
     assert "build_manifest.json" not in names
 
     required = {
         "backend/db.py",
+        "backend/db_connection.py",
+        "backend/db_schema.py",
+        "backend/operation_journal.py",
+        "backend/reconciliation.py",
+        "backend/config_service.py",
+        "backend/anki_compat.py",
+        "backend/search_indexer.py",
+        "backend/search_repository.py",
         "backend/browser_bridge.py",
         "backend/diagnostics.py",
         "backend/scheduler.py",
         "frontend/pdf_dock.py",
+        "frontend/session_launcher.py",
         "frontend/web_dock.py",
         "frontend/stats_dialog.py",
         "web/pdf_dock.html",

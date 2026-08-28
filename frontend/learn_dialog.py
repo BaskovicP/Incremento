@@ -23,6 +23,7 @@ except ImportError:
 
 try:
     from ..backend import cards as _card_utils
+    from ..backend.config_service import load_addon_config, save_addon_config
     from ..backend.scheduler_config import (
         MAX_SESSION_CARD_COUNT,
         SchedulerConfig,
@@ -43,6 +44,7 @@ try:
     from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
 except ImportError:
     import cards as _card_utils
+    from config_service import load_addon_config, save_addon_config  # type: ignore
     from scheduler_config import (
         MAX_SESSION_CARD_COUNT,
         SchedulerConfig,
@@ -70,9 +72,10 @@ _ADDON_PKG = __name__.split(".")[0]
 def _write_named_scheduler_profile(name: str, profile_data: dict, profiles: dict[str, dict]) -> dict[str, dict]:
     updated_profiles = dict(profiles or {})
     updated_profiles[name] = profile_data
-    config = mw.addonManager.getConfig(_ADDON_PKG) or {}
+    config = load_addon_config(mw.addonManager, _ADDON_PKG)
+    config["scheduler_presets"] = updated_profiles
     config["profiles"] = updated_profiles
-    mw.addonManager.writeConfig(_ADDON_PKG, config)
+    save_addon_config(mw.addonManager, _ADDON_PKG, config)
     return updated_profiles
 
 
@@ -80,13 +83,14 @@ def _rename_named_scheduler_profile(old_name: str, new_name: str, profiles: dict
     updated_profiles: dict[str, dict] = {}
     for name, profile in (profiles or {}).items():
         updated_profiles[new_name if name == old_name else name] = profile
-    config = mw.addonManager.getConfig(_ADDON_PKG) or {}
+    config = load_addon_config(mw.addonManager, _ADDON_PKG)
+    config["scheduler_presets"] = updated_profiles
     config["profiles"] = updated_profiles
     dialog_config = config.get("dialog") or {}
     if dialog_config.get("selected_profile") == old_name:
         dialog_config["selected_profile"] = new_name
         config["dialog"] = dialog_config
-    mw.addonManager.writeConfig(_ADDON_PKG, config)
+    save_addon_config(mw.addonManager, _ADDON_PKG, config)
     return updated_profiles
 
 
@@ -1134,8 +1138,8 @@ class SchedulerConfigDialog(QDialog):
         self._preview_refresh_timer.setSingleShot(True)
         self._preview_refresh_timer.setInterval(180)
         qconnect(self._preview_refresh_timer.timeout, self._refresh_live_preview_if_open)
-        config = mw.addonManager.getConfig(_ADDON_PKG) or {}
-        self._profiles: dict[str, dict] = config.get("profiles", {})
+        config = load_addon_config(mw.addonManager, _ADDON_PKG)
+        self._profiles: dict[str, dict] = config.get("scheduler_presets", {})
         self._selected_profile_name = _normalize_selected_scheduler_profile(
             (config.get("dialog", {}) or {}).get("selected_profile"),
             self._profiles,
@@ -3575,9 +3579,9 @@ class SchedulerConfigDialog(QDialog):
         return data
 
     def save_config(self) -> None:
-        config = mw.addonManager.getConfig(_ADDON_PKG) or {}
+        config = load_addon_config(mw.addonManager, _ADDON_PKG)
         config["dialog"] = self._build_current_dict(include_selected_profile=True)
-        mw.addonManager.writeConfig(_ADDON_PKG, config)
+        save_addon_config(mw.addonManager, _ADDON_PKG, config)
 
     # ------------------------------------------------------------------
     # Profile management

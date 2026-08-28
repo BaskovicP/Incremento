@@ -35,7 +35,7 @@ try:
         normalize_node_kind,
     )
     from ..backend.knowledge_tree_postpone import SCOPE_CURRENT_BROWSER
-    from ..backend.session import learnFunction
+    from .session_launcher import learnFunction
 except ImportError:
     from knowledge_tree import (  # type: ignore
         NODE_KIND_TOPIC,
@@ -44,7 +44,7 @@ except ImportError:
         normalize_node_kind,
     )
     from knowledge_tree_postpone import SCOPE_CURRENT_BROWSER  # type: ignore
-    from session import learnFunction  # type: ignore
+    from session_launcher import learnFunction  # type: ignore
 
 try:
     from .knowledge_tree_postpone_dialog import KnowledgeTreePostponeDialog

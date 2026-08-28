@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+try:
+    from .config_service import load_addon_config
+except ImportError:
+    from config_service import load_addon_config  # type: ignore
+
 NO_TAGS_KEY = "__no_tags__"
 READY_NEW_CLAUSE = "is:new"
 READY_LEARNING_CLAUSE = "(is:learn is:due)"
@@ -141,7 +146,7 @@ def load_scheduler_config() -> SchedulerConfig:
     without opening the dialog.
     """
     from aqt import mw
-    config = mw.addonManager.getConfig(_ADDON_PKG) or {}
+    config = load_addon_config(mw.addonManager, _ADDON_PKG)
     cfg = _config_from_dialog_dict(config.get("dialog", {}))
     cfg.priority_lower_is_more_important = _config_bool(
         config.get(

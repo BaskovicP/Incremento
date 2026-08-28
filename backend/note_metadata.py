@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import os
 import re
+import uuid
 from datetime import datetime
 from html import unescape
 
@@ -13,6 +14,7 @@ INCREMENTO_SOURCE_AUTHOR_FIELD = "Incremento_Source_Author"
 INCREMENTO_IMPORTED_AT_FIELD = "Incremento_Imported_At"
 INCREMENTO_PARENT_FIELD = "Incremento_Parent"
 INCREMENTO_PARENT_CARD_ID_FIELD = "Incremento_Parent_Card_ID"
+INCREMENTO_CONTENT_ID_FIELD = "Incremento_Content_ID"
 INCREMENTO_OCR_TEXT_FIELD = "Incremento_OCR_Text"
 
 INCREMENTO_METADATA_FIELDS = (
@@ -23,6 +25,7 @@ INCREMENTO_METADATA_FIELDS = (
     INCREMENTO_IMPORTED_AT_FIELD,
     INCREMENTO_PARENT_FIELD,
     INCREMENTO_PARENT_CARD_ID_FIELD,
+    INCREMENTO_CONTENT_ID_FIELD,
 )
 INCREMENTO_HIDDEN_FIELDS = INCREMENTO_METADATA_FIELDS + (INCREMENTO_OCR_TEXT_FIELD,)
 _METADATA_FIELD_SET = {field.casefold() for field in INCREMENTO_METADATA_FIELDS}
@@ -197,6 +200,7 @@ def build_incremento_metadata(
     imported_at: str | None = None,
     parent: str = "",
     parent_card_id: int | str | None = None,
+    content_id: str | None = None,
 ) -> dict[str, str]:
     parent_card_text = ""
     if parent_card_id not in (None, ""):
@@ -210,16 +214,35 @@ def build_incremento_metadata(
         INCREMENTO_IMPORTED_AT_FIELD: str(imported_at or metadata_timestamp()).strip(),
         INCREMENTO_PARENT_FIELD: str(parent or "").strip(),
         INCREMENTO_PARENT_CARD_ID_FIELD: parent_card_text,
+        INCREMENTO_CONTENT_ID_FIELD: str(content_id or uuid.uuid4().hex).strip(),
     }
 
 
 def apply_incremento_metadata(note, metadata: dict[str, str] | None) -> None:
     for field_name in INCREMENTO_METADATA_FIELDS:
         value = str((metadata or {}).get(field_name) or "").strip()
+        if field_name == INCREMENTO_CONTENT_ID_FIELD and not value:
+            value = uuid.uuid4().hex
         try:
             note[field_name] = value
         except Exception:
             continue
+
+
+def ensure_note_content_id(note) -> str:
+    """Return a stable Incremento UUID, assigning one to a compatible note."""
+    try:
+        current = str(note[INCREMENTO_CONTENT_ID_FIELD] or "").strip()
+    except Exception:
+        current = ""
+    if current:
+        return current
+    generated = uuid.uuid4().hex
+    try:
+        note[INCREMENTO_CONTENT_ID_FIELD] = generated
+    except Exception:
+        return ""
+    return generated
 
 
 def _note_value(note, field_name: str) -> str:

@@ -26,6 +26,11 @@ from aqt.qt import (
 from aqt.utils import tooltip
 
 try:
+    from ..backend.config_service import load_addon_config
+except ImportError:
+    from config_service import load_addon_config  # type: ignore
+
+try:
     from ..backend.reviewer_tags import append_missing_tags
 except Exception:
     try:
@@ -86,7 +91,7 @@ def _config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
     try:
-        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+        return load_addon_config(mw.addonManager, _ADDON_PKG)
     except Exception:
         return {}
 

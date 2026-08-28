@@ -31,6 +31,13 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 
 - Current statistics, focus timer, review-time attribution, and PDF-vs-EPUB document-type behavior are backend/frontend-owned. Do not rebuild the extension for those changes unless `src/` or extension runtime bundles change.
 
+## Local Bridge Authentication
+
+- All port `8766` requests go through `src/shared/bridgeAuth.js`; do not add direct bridge `fetch()` calls elsewhere.
+- Protocol 2 obtains an ephemeral token from `/incremento/handshake`, then sends `X-Incremento-Token` and `X-Incremento-Protocol` on every request.
+- A `401` triggers exactly one fresh handshake/retry. Do not persist the token in extension storage.
+- The backend binds one exact `chrome-extension://<id>` origin per bridge run and applies body/concurrency limits. Keep source, extension tests, and generated `dist/` aligned when the protocol changes.
+
 ## Build and Checks
 
 If you change extension source:

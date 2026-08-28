@@ -1,3 +1,5 @@
+import { bridgeFetch } from "./bridgeAuth.js";
+
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 const BROWSER_MEDIA_REF_URL = "http://127.0.0.1:8766/incremento/browser-media-ref";
@@ -12,7 +14,7 @@ async function parseBridgeResponse(response) {
 }
 
 export async function importIntoIncremento(payload) {
-  const response = await fetch(BRIDGE_URL, {
+  const response = await bridgeFetch(BRIDGE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -21,21 +23,21 @@ export async function importIntoIncremento(payload) {
 }
 
 export async function loadBrowserCaptureMeta() {
-  const response = await fetch(BROWSER_CAPTURE_META_URL, {
+  const response = await bridgeFetch(BROWSER_CAPTURE_META_URL, {
     method: "GET",
   });
   return parseBridgeResponse(response);
 }
 
 export async function loadBrowserMediaRef(cardId) {
-  const response = await fetch(`${BROWSER_MEDIA_REF_URL}?cardId=${encodeURIComponent(String(cardId || ""))}`, {
+  const response = await bridgeFetch(`${BROWSER_MEDIA_REF_URL}?cardId=${encodeURIComponent(String(cardId || ""))}`, {
     method: "GET",
   });
   return parseBridgeResponse(response);
 }
 
 export async function saveBrowserMediaRef(payload) {
-  const response = await fetch(BROWSER_MEDIA_REF_URL, {
+  const response = await bridgeFetch(BROWSER_MEDIA_REF_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -44,7 +46,7 @@ export async function saveBrowserMediaRef(payload) {
 }
 
 export async function submitBrowserCapture(payload) {
-  const response = await fetch(BRIDGE_URL, {
+  const response = await bridgeFetch(BRIDGE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

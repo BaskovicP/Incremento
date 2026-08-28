@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Literal
 
 try:
+    from .config_service import load_addon_config
     from .topic_scheduler import is_topic_card
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from topic_scheduler import is_topic_card  # type: ignore
 
 
@@ -18,7 +20,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         from aqt import mw
 
         addon_name = __name__.split(".")[0]
-        return mw.addonManager.getConfig(addon_name) or {}
+        return load_addon_config(mw.addonManager, addon_name)
     except Exception:
         return {}
 

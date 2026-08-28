@@ -2,20 +2,25 @@ import os
 import re
 import shutil
 import uuid
+from collections.abc import Callable
 
 try:
     from . import paths as _paths
+    from .operation_journal import ImportOperation
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
 except ImportError:
     import paths as _paths
+    from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
 
 
@@ -107,24 +112,44 @@ def local_file_exists(addon_dir: str, profile: str, stored_path: str, mode: str)
     return bool(resolved) and os.path.isfile(resolved)
 
 
-def import_local_file_copy(addon_dir: str, profile: str, source_path: str) -> str:
+def import_local_file_copy(
+    addon_dir: str,
+    profile: str,
+    source_path: str,
+    *,
+    created_relpath_cb: Callable[[str], None] | None = None,
+) -> str:
     src = os.path.abspath(str(source_path or "").strip())
     if not os.path.isfile(src):
         raise FileNotFoundError("Selected file does not exist.")
     relpath = build_managed_local_file_relpath(src)
     dest = managed_local_file_abspath(addon_dir, profile, relpath)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if created_relpath_cb is not None:
+        created_relpath_cb(relpath)
     shutil.copy2(src, dest)
     return relpath
 
 
-def prepare_local_file_storage(addon_dir: str, profile: str, source_path: str, mode: str) -> tuple[str, str]:
+def prepare_local_file_storage(
+    addon_dir: str,
+    profile: str,
+    source_path: str,
+    mode: str,
+    *,
+    created_relpath_cb: Callable[[str], None] | None = None,
+) -> tuple[str, str]:
     normalized_mode = normalize_local_file_mode(mode)
     src = os.path.abspath(str(source_path or "").strip())
     if not os.path.isfile(src):
         raise FileNotFoundError("Selected file does not exist.")
     if normalized_mode == LOCAL_FILE_MODE_MANAGED_COPY:
-        stored_path = import_local_file_copy(addon_dir, profile, src)
+        stored_path = import_local_file_copy(
+            addon_dir,
+            profile,
+            src,
+            created_relpath_cb=created_relpath_cb,
+        )
     else:
         stored_path = src
     return stored_path, os.path.basename(src)
@@ -215,7 +240,43 @@ def add_local_file_card(
     metadata: dict[str, str] | None = None,
 ) -> int:
     ensure_local_file_note_type(col)
-    stored_path, filename = prepare_local_file_storage(addon_dir, profile, source_path, mode)
+    with ImportOperation(addon_dir, profile, "local_file") as operation:
+        return _create_new_local_file_card(
+            addon_dir,
+            profile,
+            col,
+            source_path=source_path,
+            title=title,
+            deck_name=deck_name,
+            tags=tags,
+            mode=mode,
+            note_text=note_text,
+            metadata=metadata,
+            operation=operation,
+        )
+
+
+def _create_new_local_file_card(
+    addon_dir: str,
+    profile: str,
+    col,
+    *,
+    source_path: str,
+    title: str,
+    deck_name: str,
+    tags: list[str] | None,
+    mode: str,
+    note_text: str,
+    metadata: dict[str, str] | None,
+    operation: ImportOperation,
+) -> int:
+    stored_path, filename = prepare_local_file_storage(
+        addon_dir,
+        profile,
+        source_path,
+        mode,
+        created_relpath_cb=operation.track_created_relpath,
+    )
     normalized_mode = normalize_local_file_mode(mode)
 
     deck = col.decks.by_name(deck_name)
@@ -225,6 +286,16 @@ def add_local_file_card(
         deck_id = deck["id"]
 
     model = col.models.by_name(LOCAL_FILE_NOTE_TYPE)
+    resolved_metadata = dict(
+        metadata
+        or build_incremento_metadata(
+            source_type="Local File",
+            source_title=title,
+            source_link=stored_path,
+            content_id=operation.content_id,
+        )
+    )
+    resolved_metadata[INCREMENTO_CONTENT_ID_FIELD] = operation.content_id
 
     def _build_note(stored_title: str):
         note = col.new_note(model)
@@ -233,15 +304,7 @@ def add_local_file_card(
         note[LOCAL_FILE_PATH_FIELD] = stored_path
         note[LOCAL_FILE_MODE_FIELD] = normalized_mode
         note[LOCAL_FILE_NOTE_FIELD] = str(note_text or "").strip()
-        apply_incremento_metadata(
-            note,
-            metadata
-            or build_incremento_metadata(
-                source_type="Local File",
-                source_title=title,
-                source_link=stored_path,
-            ),
-        )
+        apply_incremento_metadata(note, resolved_metadata)
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue
@@ -260,5 +323,8 @@ def add_local_file_card(
             continue
         cards = col.find_cards(f"nid:{note.id}")
         if cards:
-            return cards[0]
+            card_id = cards[0]
+            operation.bind_anki(card_id=card_id, note_id=getattr(note, "id", None))
+            operation.commit(storage_key=stored_path)
+            return card_id
     raise RuntimeError("Failed to add local file card. Anki rejected the note.")

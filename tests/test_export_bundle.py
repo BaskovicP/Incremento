@@ -42,3 +42,21 @@ def test_snapshot_tree_copies_files_and_skips_transient_entries():
         assert not os.path.exists(os.path.join(dst_dir, "__pycache__", "module.pyc"))
         assert stats["files_copied"] == 1
         assert stats["files_skipped"] == 2
+
+
+def test_snapshot_tree_does_not_follow_profile_symlinks(tmp_path):
+    source = tmp_path / "profile"
+    destination = tmp_path / "snapshot"
+    outside = tmp_path / "outside.txt"
+    source.mkdir()
+    outside.write_text("private outside data", encoding="utf-8")
+    try:
+        (source / "linked.txt").symlink_to(outside)
+    except OSError:
+        return
+
+    stats = export_bundle.snapshot_tree(str(source), str(destination))
+
+    assert not (destination / "linked.txt").exists()
+    assert stats["files_copied"] == 0
+    assert stats["files_skipped"] == 1

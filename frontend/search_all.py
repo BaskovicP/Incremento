@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from html import escape
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -21,7 +22,7 @@ from aqt.qt import (
     Qt,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import QTimer, QUrl
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
@@ -30,32 +31,46 @@ except ImportError:
 
 try:
     from ..backend.db import (
-        get_connection,
         search_note_ocr_index,
         search_epub_text_index,
-        replace_pdf_text_index,
         search_pdf_text_index,
         search_text_match_score,
         split_search_terms,
+    )
+    from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.search_indexer import index_pdf_documents
+    from ..backend.search_repository import (
+        epub_section_text,
+        pdf_candidate_card_ids,
+        pdf_page_text,
+        search_excerpt_rows,
     )
     from ..backend.epub_manager import EPUB_NOTE_TYPE, load_epub_metadata
-    from ..backend.pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, pdf_storage_abspath
+    from ..backend.pdf_manager import PDF_NOTE_TYPE, pdf_storage_abspath
 except ImportError:
     from db import (  # type: ignore
-        get_connection,
         search_note_ocr_index,
         search_epub_text_index,
-        replace_pdf_text_index,
         search_pdf_text_index,
         search_text_match_score,
         split_search_terms,
     )
+    from config_service import load_addon_config, save_addon_config  # type: ignore
+    from search_indexer import index_pdf_documents  # type: ignore
+    from search_repository import (  # type: ignore
+        epub_section_text,
+        pdf_candidate_card_ids,
+        pdf_page_text,
+        search_excerpt_rows,
+    )
     from epub_manager import EPUB_NOTE_TYPE, load_epub_metadata  # type: ignore
-    from pdf_manager import PDF_NOTE_TYPE, extract_pdf_pages_text, pdf_storage_abspath  # type: ignore
+    from pdf_manager import PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
 
 
 _ADDON_PKG = __name__.split(".")[0]
 _MIN_SEARCH_CHARS = 3
+_SEARCH_DEBOUNCE_MS = 250
+_MAX_CARD_SEARCH_CANDIDATES = 1000
 _SEARCH_WHILE_TYPING_CONFIG_KEY = "search_all_search_while_typing"
 _SEARCH_ALL_FILTER_CONFIG_KEYS = {
     "pdf_highlights": "search_all_filter_pdf_highlights",
@@ -85,7 +100,7 @@ def _config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
     try:
-        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+        return load_addon_config(mw.addonManager, _ADDON_PKG)
     except Exception:
         return {}
 
@@ -99,7 +114,7 @@ def _set_search_all_search_while_typing(enabled: bool) -> None:
     cfg = _config()
     cfg[_SEARCH_WHILE_TYPING_CONFIG_KEY] = bool(enabled)
     try:
-        mw.addonManager.writeConfig(_ADDON_PKG, cfg)
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
     except Exception:
         return
 
@@ -123,7 +138,7 @@ def _set_search_all_filter_enabled(filter_id: str, enabled: bool) -> None:
     cfg = _config()
     cfg[key] = bool(enabled)
     try:
-        mw.addonManager.writeConfig(_ADDON_PKG, cfg)
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
     except Exception:
         return
 
@@ -142,7 +157,23 @@ class _SearchAllDialog(QDialog):
         self._addon_dir = addon_dir
         self._open_pdf_card = open_pdf_card
         self._open_epub_card = open_epub_card
-        self._current_profile_card_ids = self._load_current_profile_card_ids()
+        # Runtime data is already per-profile. Cache only the bounded card IDs
+        # encountered in results instead of loading every card in the
+        # collection when the dialog opens.
+        self._live_card_cache: dict[int, bool] = {}
+        self._pdf_index_cancel = threading.Event()
+        self._pdf_index_running = False
+        self._pdf_index_attempted = False
+        self._pdf_index_generation = 0
+        self._closed = False
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(_SEARCH_DEBOUNCE_MS)
+        self._search_debounce.timeout.connect(
+            lambda: self._refresh(self._query_text())
+            if self._query_ready() and self._cb_search_while_typing.isChecked()
+            else None
+        )
         self.setWindowTitle("Search ALL")
         self.resize(1280, 700)
 
@@ -199,6 +230,16 @@ class _SearchAllDialog(QDialog):
         filter_row.addWidget(self._cb_current_profile)
         filter_row.addStretch()
         layout.addLayout(filter_row)
+
+        index_row = QHBoxLayout()
+        self._pdf_index_status = QLabel("")
+        self._pdf_index_status.setVisible(False)
+        index_row.addWidget(self._pdf_index_status, stretch=1)
+        self._pdf_index_cancel_btn = QPushButton("Cancel PDF indexing")
+        self._pdf_index_cancel_btn.setVisible(False)
+        self._pdf_index_cancel_btn.clicked.connect(self._cancel_pdf_index)
+        index_row.addWidget(self._pdf_index_cancel_btn)
+        layout.addLayout(index_row)
 
         # ── Splitter: results (left) | preview (right) ────────────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -272,11 +313,13 @@ class _SearchAllDialog(QDialog):
     def _on_search_text_changed(self, _text: str) -> None:
         self._update_search_button()
         if not self._query_ready():
+            self._search_debounce.stop()
             self._show_search_hint()
             return
         if self._cb_search_while_typing.isChecked():
-            self._refresh(self._search.text())
+            self._search_debounce.start()
         else:
+            self._search_debounce.stop()
             self._show_manual_search_hint()
 
     def _on_search_while_typing_toggled(self, enabled: bool) -> None:
@@ -296,6 +339,7 @@ class _SearchAllDialog(QDialog):
             self._refresh(self._search.text())
 
     def _run_search(self) -> None:
+        self._search_debounce.stop()
         self._update_search_button()
         if not self._query_ready():
             self._show_search_hint()
@@ -327,15 +371,16 @@ class _SearchAllDialog(QDialog):
             s = s + "..."
         return s
 
-    @staticmethod
-    def _load_current_profile_card_ids() -> set[int]:
-        try:
-            return {int(cid) for cid in mw.col.db.list("SELECT id FROM cards")}
-        except Exception:
-            return set()
-
     def _is_current_profile_card(self, card_id: int) -> bool:
-        return int(card_id) in self._current_profile_card_ids
+        cid = int(card_id)
+        if cid in self._live_card_cache:
+            return self._live_card_cache[cid]
+        try:
+            is_live = mw.col.get_card(cid) is not None
+        except Exception:
+            is_live = False
+        self._live_card_cache[cid] = is_live
+        return is_live
 
     def _filter_current_profile_rows(self, rows: list[tuple]) -> list[tuple]:
         if not self._cb_current_profile.isChecked():
@@ -376,42 +421,174 @@ class _SearchAllDialog(QDialog):
         except Exception:
             return f"EPUB card {card_id}"
 
-    def _candidate_pdf_card_ids(self) -> list[int]:
+    def _candidate_pdf_card_ids(self, collection, profile: str) -> list[int]:
         cids: set[int] = set()
         try:
-            cids.update(mw.col.find_cards(f'note:"{PDF_NOTE_TYPE}"'))
+            cids.update(collection.find_cards(f'note:"{PDF_NOTE_TYPE}"'))
         except Exception:
             pass
         try:
-            cids.update(mw.col.find_cards("PDF_Filename:*"))
+            cids.update(collection.find_cards("PDF_Filename:*"))
         except Exception:
             pass
         try:
-            rows = (
-                get_connection(self._addon_dir, _active_profile())
-                .execute("SELECT DISTINCT card_id FROM pdf_highlights")
-                .fetchall()
+            cids.update(
+                pdf_candidate_card_ids(self._addon_dir, profile)
             )
-            cids.update(int(r[0]) for r in rows)
         except Exception:
             pass
-        try:
-            rows = (
-                get_connection(self._addon_dir, _active_profile())
-                .execute("SELECT DISTINCT card_id FROM pdf_progress")
-                .fetchall()
-            )
-            cids.update(int(r[0]) for r in rows)
-        except Exception:
-            pass
-        if self._cb_current_profile.isChecked():
-            cids = {cid for cid in cids if self._is_current_profile_card(cid)}
         return sorted(cids)
+
+    def _candidate_pdf_documents(
+        self,
+        collection,
+        profile: str,
+    ) -> list[tuple[int, str]]:
+        documents: list[tuple[int, str]] = []
+        for card_id in self._candidate_pdf_card_ids(collection, profile):
+            try:
+                card = collection.get_card(card_id)
+                note = collection.get_note(card.nid)
+                filename = str(note["PDF_Filename"] or "").strip()
+                if filename:
+                    path = pdf_storage_abspath(filename, profile=profile)
+                    if path and os.path.isfile(path):
+                        documents.append((card_id, path))
+            except Exception:
+                continue
+        return documents
+
+    def _cancel_pdf_index(self) -> None:
+        self._pdf_index_cancel.set()
+        self._pdf_index_status.setText("Stopping PDF indexing after the current file…")
+        self._pdf_index_cancel_btn.setEnabled(False)
+
+    def _update_pdf_index_progress(
+        self,
+        generation: int,
+        completed: int,
+        total: int,
+    ) -> None:
+        if self._closed or generation != self._pdf_index_generation:
+            return
+        self._pdf_index_status.setText(
+            f"Indexing PDF text in the background… {completed}/{total}"
+        )
+
+    def _start_pdf_index(self) -> None:
+        if self._pdf_index_running or self._pdf_index_attempted or self._closed:
+            return
+        self._pdf_index_attempted = True
+        profile = _active_profile()
+        self._pdf_index_running = True
+        self._pdf_index_generation += 1
+        generation = self._pdf_index_generation
+        self._pdf_index_cancel = threading.Event()
+        self._pdf_index_status.setText("Preparing the PDF index in the background…")
+        self._pdf_index_status.setVisible(True)
+        self._pdf_index_cancel_btn.setEnabled(True)
+        self._pdf_index_cancel_btn.setVisible(True)
+
+        def collected(documents: list[tuple[int, str]]) -> None:
+            if generation != self._pdf_index_generation:
+                return
+            if self._closed or _active_profile() != profile:
+                self._pdf_index_running = False
+                return
+            if self._pdf_index_cancel.is_set():
+                self._pdf_index_running = False
+                self._pdf_index_cancel_btn.setVisible(False)
+                self._pdf_index_status.setText("PDF indexing cancelled.")
+                return
+            if not documents:
+                self._pdf_index_running = False
+                self._pdf_index_cancel_btn.setVisible(False)
+                self._pdf_index_status.setText("No readable PDFs need indexing.")
+                return
+
+            self._pdf_index_status.setText(
+                f"Indexing PDF text in the background… 0/{len(documents)}"
+            )
+            self._run_pdf_file_index(
+                documents,
+                profile=profile,
+                generation=generation,
+            )
+
+        def collection_failed(_exc: Exception) -> None:
+            if generation != self._pdf_index_generation:
+                return
+            self._pdf_index_running = False
+            self._pdf_index_cancel_btn.setVisible(False)
+            if not self._closed:
+                self._pdf_index_status.setText(
+                    "Could not prepare the PDF index; existing indexed search remains available."
+                )
+
+        from aqt.operations import QueryOp
+
+        QueryOp(
+            parent=self,
+            op=lambda col: self._candidate_pdf_documents(col, profile),
+            success=collected,
+        ).failure(collection_failed).run_in_background()
+
+    def _run_pdf_file_index(
+        self,
+        documents: list[tuple[int, str]],
+        *,
+        profile: str,
+        generation: int,
+    ) -> None:
+
+        def progress(completed: int, total: int) -> None:
+            mw.taskman.run_on_main(
+                lambda c=completed, t=total: self._update_pdf_index_progress(
+                    generation, c, t
+                )
+            )
+
+        def task():
+            return index_pdf_documents(
+                self._addon_dir,
+                profile,
+                documents,
+                cancelled=self._pdf_index_cancel.is_set,
+                progress=progress,
+            )
+
+        def done(future) -> None:
+            if generation != self._pdf_index_generation:
+                return
+            self._pdf_index_running = False
+            self._pdf_index_cancel_btn.setVisible(False)
+            if self._closed:
+                return
+            if _active_profile() != profile:
+                self._pdf_index_status.setText(
+                    "PDF indexing finished for the previously open profile."
+                )
+                return
+            try:
+                result = future.result()
+            except Exception:
+                self._pdf_index_status.setText("PDF indexing failed; indexed search remains available.")
+                return
+            if result.cancelled:
+                self._pdf_index_status.setText("PDF indexing cancelled.")
+            else:
+                self._pdf_index_status.setText(
+                    f"PDF index ready ({result.indexed} updated, {result.failed} failed)."
+                )
+                if self._query_ready() and self._cb_content.isChecked():
+                    self._refresh(self._query_text())
+
+        mw.taskman.run_in_background(task, done, uses_collection=False)
 
     def _search_pdf_file_hits(
         self, q: str, limit: int = 120
     ) -> list[tuple[int, int, str]]:
-        """Search SQLite-backed PDF page-text index; build missing index on demand."""
+        """Search indexed PDF text and start any missing extraction off-thread."""
         search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
         hits = search_pdf_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
         hits = self._filter_current_profile_rows(hits)
@@ -421,23 +598,14 @@ class _SearchAllDialog(QDialog):
                 for cid, page, text in hits[:limit]
             ]
 
-        for cid in self._candidate_pdf_card_ids():
-            try:
-                card = mw.col.get_card(cid)
-                note = mw.col.get_note(card.nid)
-                filename = note["PDF_Filename"]
-                pdf_path = pdf_storage_abspath(filename)
-                page_texts = extract_pdf_pages_text(pdf_path)
-                replace_pdf_text_index(self._addon_dir, _active_profile(), cid, page_texts)
-            except Exception:
-                continue
+        self._start_pdf_index()
+        return []
 
-        hits = search_pdf_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
-        hits = self._filter_current_profile_rows(hits)
-        return [
-            (cid, page, self._snippet(text or "", q, max_len=180))
-            for cid, page, text in hits[:limit]
-        ]
+    def closeEvent(self, event) -> None:
+        self._closed = True
+        self._search_debounce.stop()
+        self._pdf_index_cancel.set()
+        super().closeEvent(event)
 
     def _search_epub_file_hits(
         self, q: str, limit: int = 120
@@ -462,28 +630,16 @@ class _SearchAllDialog(QDialog):
         def _score_text(text: str):
             return search_text_match_score(text or "", q)
 
-        def _rank_rows(rows: list[tuple], *, text_index: int, limit: int = 120) -> list[tuple]:
-            ranked: list[tuple[tuple[int, int, int, int], tuple]] = []
-            for row in rows:
-                score = _score_text(row[text_index] or "")
-                if score is None:
-                    continue
-                ranked.append((score, row))
-            ranked.sort(key=lambda item: (item[0],) + tuple(item[1][:2]))
-            return [row for _, row in ranked[:limit]]
-
         # PDF highlights (go directly to page)
         if self._cb_highlights.isChecked():
             try:
-                rows = (
-                    get_connection(self._addon_dir, _active_profile())
-                    .execute(
-                        "SELECT card_id, page, text FROM pdf_highlights ORDER BY card_id, page"
-                    )
-                    .fetchall()
+                rows = search_excerpt_rows(
+                    self._addon_dir,
+                    _active_profile(),
+                    "pdf_highlights",
+                    q,
                 )
                 rows = self._filter_current_profile_rows(rows)
-                rows = _rank_rows(rows, text_index=2)
             except Exception:
                 rows = []
 
@@ -507,15 +663,13 @@ class _SearchAllDialog(QDialog):
         # Cards created from PDF pages (go to page)
         if self._cb_sources.isChecked():
             try:
-                rows = (
-                    get_connection(self._addon_dir, _active_profile())
-                    .execute(
-                        "SELECT pdf_card_id, page, excerpt FROM pdf_card_sources ORDER BY id DESC"
-                    )
-                    .fetchall()
+                rows = search_excerpt_rows(
+                    self._addon_dir,
+                    _active_profile(),
+                    "pdf_sources",
+                    q,
                 )
                 rows = self._filter_current_profile_rows(rows)
-                rows = _rank_rows(rows, text_index=2)
             except Exception:
                 rows = []
 
@@ -538,15 +692,13 @@ class _SearchAllDialog(QDialog):
 
         if self._cb_epub_highlights.isChecked():
             try:
-                rows = (
-                    get_connection(self._addon_dir, _active_profile())
-                    .execute(
-                        "SELECT card_id, section_index, text FROM epub_highlights ORDER BY card_id, section_index"
-                    )
-                    .fetchall()
+                rows = search_excerpt_rows(
+                    self._addon_dir,
+                    _active_profile(),
+                    "epub_highlights",
+                    q,
                 )
                 rows = self._filter_current_profile_rows(rows)
-                rows = _rank_rows(rows, text_index=2)
             except Exception:
                 rows = []
 
@@ -569,15 +721,13 @@ class _SearchAllDialog(QDialog):
 
         if self._cb_epub_sources.isChecked():
             try:
-                rows = (
-                    get_connection(self._addon_dir, _active_profile())
-                    .execute(
-                        "SELECT epub_card_id, section_index, excerpt FROM epub_card_sources ORDER BY id DESC"
-                    )
-                    .fetchall()
+                rows = search_excerpt_rows(
+                    self._addon_dir,
+                    _active_profile(),
+                    "epub_sources",
+                    q,
                 )
                 rows = self._filter_current_profile_rows(rows)
-                rows = _rank_rows(rows, text_index=2)
             except Exception:
                 rows = []
 
@@ -670,7 +820,7 @@ class _SearchAllDialog(QDialog):
 
         # All cards/notes (open in Browser)
         if self._cb_cards.isChecked():
-            note_ids = self._safe_find_notes(q)
+            note_ids = self._safe_find_notes(q)[:_MAX_CARD_SEARCH_CANDIDATES]
             if note_ids:
                 ranked_notes: list[tuple[tuple[int, int, int, int], int, object, str]] = []
                 for nid in note_ids:
@@ -753,15 +903,12 @@ class _SearchAllDialog(QDialog):
     def _preview_pdf_page(self, cid: int, page: int, q: str) -> None:
         title = self._pdf_title(cid)
         try:
-            row = (
-                get_connection(self._addon_dir, _active_profile())
-                .execute(
-                    "SELECT text FROM pdf_text_index WHERE card_id=? AND page=?",
-                    (cid, page),
-                )
-                .fetchone()
+            text = pdf_page_text(
+                self._addon_dir,
+                _active_profile(),
+                cid,
+                page,
             )
-            text = (row[0] or "") if row else ""
         except Exception:
             text = ""
 
@@ -797,16 +944,12 @@ class _SearchAllDialog(QDialog):
     def _preview_epub_section(self, cid: int, section_index: int, q: str) -> None:
         title = self._epub_title(cid)
         try:
-            row = (
-                get_connection(self._addon_dir, _active_profile())
-                .execute(
-                    "SELECT title, text FROM epub_text_index WHERE card_id=? AND section_index=?",
-                    (cid, section_index),
-                )
-                .fetchone()
+            section_title, text = epub_section_text(
+                self._addon_dir,
+                _active_profile(),
+                cid,
+                section_index,
             )
-            section_title = str((row[0] or "") if row else "")
-            text = str((row[1] or "") if row else "")
         except Exception:
             section_title = ""
             text = ""

@@ -118,6 +118,13 @@ npm --prefix frontend run build
 - PDF, EPUB, video, and web reading cards have additional scheduler flows layered on top of Anki state; when changing eligibility wording, verify the tooltip text still matches actual selection behavior.
 - Keep the checkbox label, tooltip, saved profile key `auto_refill_session`, and backend semantics in `backend/session.py` consistent. If the behavior changes, update `MANUAL.md` and session-related tests too.
 - PDF, EPUB, and video Review All is separate from the normal session builder. Keep Topic/Item, direct/nested, entire/up-to-current, due-only, limit, position-order, preview, and unavailable-card wording aligned. Run the initial inspection with `QueryOp`, re-resolve and build with `CollectionOp`, and never scan or mutate a potentially large linked-card deck on Qt's main thread.
+- `frontend/session_launcher.py` owns the dialog/debug-renderer adapter passed into `backend/session.py`. Do not make the backend import `frontend.learn_dialog` again.
+
+## Search ALL
+
+- `frontend/search_all.py` consumes bounded helpers from `backend/search_repository.py`; do not issue raw Incremento SQLite queries in the dialog.
+- Missing PDF text starts `backend/search_indexer.py` through the background task runner. Keep progress, cancel-after-current-file, profile capture, stale-callback guards, and persistent retry state intact.
+- A query must never synchronously extract an entire PDF library on the Qt thread. Manual forced reindexing follows the same background/cancellable rule.
 - Keep Review All diagnostics aligned with that two-operation lifecycle: inspection start/finish/failure, normalized picker enums and numeric limit, filtered-deck counts, and review start/end. Never forward source titles, card IDs, filenames, positions, or exception messages to the diagnostic sink.
 
 ## Settings UI

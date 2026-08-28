@@ -7,9 +7,11 @@ from typing import Literal
 from aqt import mw
 
 try:
+    from .config_service import load_addon_config
     from .db import get_connection
     from .paths import get_active_profile as _active_profile
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from db import get_connection  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
@@ -28,7 +30,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         return config or {}
     try:
         addon_name = __name__.split(".")[0]
-        return mw.addonManager.getConfig(addon_name) or {}
+        return load_addon_config(mw.addonManager, addon_name)
     except Exception:
         return {}
 

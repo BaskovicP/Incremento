@@ -13,6 +13,11 @@ from aqt.qt import (QWidget, QHBoxLayout, QPushButton, QLabel, QTimer,
                     QDialog, QVBoxLayout, Qt, QToolBar, QSizePolicy,
                     QApplication, qconnect)
 
+try:
+    from ..backend.config_service import load_addon_config
+except ImportError:
+    from config_service import load_addon_config  # type: ignore
+
 # Addon root — same derivation used by learn_dialog.py and scheduler_config.py
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -271,7 +276,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         return config or {}
     try:
         addon_name = __name__.split(".")[0]
-        return mw.addonManager.getConfig(addon_name) or {}
+        return load_addon_config(mw.addonManager, addon_name)
     except Exception:
         return {}
 
@@ -683,7 +688,7 @@ def build_timer_toolbar(timer_toggle_action) -> None:
 
     # Restore saved visibility and sync the menu action checkmark
     _addon_pkg = __name__.split(".")[0]   # "incremento"
-    cfg = mw.addonManager.getConfig(_addon_pkg) or {}
+    cfg = load_addon_config(mw.addonManager, _addon_pkg)
     visible = cfg.get("show_timer", True)
     tb.setVisible(visible)
     timer_toggle_action.setChecked(visible)

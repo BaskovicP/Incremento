@@ -14,6 +14,11 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 
 Important newer hotspots:
 
+- `backend/db_connection.py`, `backend/db_schema.py`, `backend/db.py`: per-thread/profile SQLite lifecycle, atomic schema ledger, legacy repository surface, and ordered migrations.
+- `backend/operation_journal.py`, `backend/reconciliation.py`, `backend/migration.py`, `backend/note_metadata.py`: stable content identity, crash-safe cross-store imports, profile-open repair, and resumable legacy storage migration.
+- `backend/config_service.py`, `config.json`: versioned config normalization and the canonical config read/write boundary.
+- `backend/search_indexer.py`, `backend/search_repository.py`, `frontend/search_all.py`: cancellable off-main PDF indexing, optional FTS-backed bounded search, and the Search ALL read model.
+- `backend/anki_compat.py`, `frontend/session_launcher.py`, `backend/session.py`: private Anki reviewer compatibility boundary and frontend-owned session launch UI.
 - `backend/knowledge_tree.py`, `backend/knowledge_tree_postpone.py`, `frontend/knowledge_tree_dialog.py`: the knowledge-tree workspace, branch study, branch priority tools, postpone flow, and subset review.
 - `backend/session.py`, `backend/scheduler_config.py`, `frontend/learn_dialog.py`: Incremento session construction, active-session auto-refill, and the scheduler dialog controls for card states and pending-window behavior.
 - `backend/session_selection.py`, `backend/scheduler.py`, `backend/topic_scheduler.py`: session candidate filtering, tag-aware selection, refill preview behavior, and reader-card scheduler integration.
@@ -80,10 +85,16 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - Shipped HTML, JS, and CSS belong under `web/`.
 - Any helper that returns a path under `user_files/` must go through `backend/paths.py`.
 - When adding functions that read or write under `user_files/`, thread `profile` from the call site instead of reaching for global state deep inside helper stacks.
+- Treat Anki's collection as canonical for cards, notes, decks, scheduling, revlog, and Undo/Redo. SQLite stores only Incremento-owned supplemental state.
 
 ## Cross-Cutting Rules
 
 - Preserve profile-aware error paths so users can locate files under `user_files/<profile>/...`.
+- All shipped Python config reads/writes go through `backend/config_service.py`; preserve unknown forward-compatible keys and the legacy scheduler-preset alias.
+- New SQLite schema changes require a monotonic `backend/db_schema.py` migration and rollback regression. Do not add startup-time unversioned DDL.
+- External-content creation must use `ImportOperation`, journal profile-relative paths before creating them, and put the operation's stable `Incremento_Content_ID` on the new note. Never delete untracked files during automatic reconciliation.
+- Background work captures the profile at launch, passes it through storage helpers, and drops UI callbacks after a profile switch.
+- Private reviewer/V3 APIs belong in `backend/anki_compat.py`. An unavailable capability must fail closed without modifying the selected cards.
 - Avoid touching `user_files/` unless the task is explicitly about migration or cleanup.
 - When moving shipped assets, update both source references and generated or runtime references.
 - If you change PDF viewer React source or extension source, rebuild before finishing.
@@ -106,6 +117,7 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - `custom_learn_stats.json` stores normalized count scopes (`daily.counts`, `lifetime`) plus review-time scopes (`time.daily.seconds`, `time.lifetime`). Keep DB stats behavior as compatibility/fallback, not a second shape.
 - EPUB is a concrete document and stat type. Preserve `pdf` and `epub` separately in scheduling, statistics, timer summaries, and UI labels instead of folding EPUB into PDF.
 - Browser snapshot quick-create and context-menu behavior live partly in the Chrome extension source and partly in generated `dist/` files. If you touch the extension, update the built artifacts before finishing.
+- Port `8766` uses bridge protocol 2: exact extension-origin binding, ephemeral handshake token, protocol/token headers, and request-size/concurrency limits. Extension bridge calls must use `src/shared/bridgeAuth.js`.
 - Privacy-safe support diagnostics live in `backend/diagnostics.py` and are exported through **Incremento → Export Support Bundle…**. Event names and fields must remain explicitly schema-whitelisted. Never add card/note content, raw IDs, deck/tag/profile names, user/media filenames, local paths, URLs, raw database rows, exception messages/tracebacks, or absolute activity timestamps. `record()` must remain a bounded, non-blocking enqueue; filesystem writes belong to the worker, dropped/write-failure counters belong in the bundle, and export must use the non-collection task executor and revalidate persisted events rather than copying logs verbatim. Keep session, topic-scheduler, and custom-scheduler callback registration in `__init__.py`; scheduling result events must describe the committed final interval and original topic choice, and the generic answer event must consume that in-memory final interval without adding a collection query.
 - PDF, EPUB, and video Review All combines legacy source rows, canonical parent metadata, saved reader links, recent video children, and knowledge-tree descendants. Keep Topic/Item, direct/nested, entire/up-to-current, due-only, limit, media-position ordering, live exclusion preview, background re-resolution/deck creation, and post-review reader restoration aligned across all three docks. These are rescheduling filtered decks: every answer remains a real Anki review.
 - Browser quick tags are a two-step flow: `Cmd+T` / `Ctrl+T`, then `1`–`9`, applies one complete tag set to every distinct selected note. Keep the nine stable numbered positions in a standard row-major 3×3 grid (`1/2/3` top, `4/5/6` middle, `7/8/9` bottom), first-use inference from recently modified tagged notes, profile-scoped `browser_recent_tag_groups` history, and Browser Notes-menu action aligned. Reusing an existing set must not reorder it; only a newest set that introduces a previously unseen tag may enter at the front.

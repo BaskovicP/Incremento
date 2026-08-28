@@ -47,8 +47,12 @@ from PyQt6.QtCore import QEvent, QObject, QUrl
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.config_service import load_addon_config
+    from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile
+    from config_service import load_addon_config  # type: ignore
+    from anki_compat import show_reviewer_question  # type: ignore
 
 try:
     from ..backend.pdf_manager import (
@@ -196,7 +200,7 @@ def _config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
     try:
-        return mw.addonManager.getConfig(_ADDON_PKG) or {}
+        return load_addon_config(mw.addonManager, _ADDON_PKG)
     except Exception:
         return {}
 
@@ -1234,7 +1238,13 @@ def _repair_missing_pdf() -> None:
     if not selected_path:
         return
     try:
-        new_filename = replace_pdf_card_file(_ADDON_DIR, mw.col, int(card_id), selected_path)
+        new_filename = replace_pdf_card_file(
+            _ADDON_DIR,
+            mw.col,
+            int(card_id),
+            selected_path,
+            profile=_active_profile(),
+        )
         page = get_page(_ADDON_DIR, _active_profile(), int(card_id))
         zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
         read_page = get_read_page(_ADDON_DIR, _active_profile(), int(card_id))
@@ -1279,7 +1289,7 @@ def _regenerate_pdf_cover() -> None:
         except Exception:
             pass
         try:
-            reviewer._showQuestion()
+            show_reviewer_question(reviewer)
         except Exception:
             pass
     if cover_filename:

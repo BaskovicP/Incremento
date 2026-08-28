@@ -2,6 +2,8 @@
 
 Incremento is a modern Anki add-on for incremental learning from mixed content. It brings a SuperMemo-style long-form learning workflow into Anki, combining PDFs, EPUBs, videos, web pages, writing notes, and local files with normal flashcards so you can study, extract, and review in one place.
 
+Incremento supports Anki 24.11 and newer. Optional features that depend on Anki's private reviewer API check compatibility at runtime and fail closed without rescheduling cards when the API is unavailable.
+
 ## What It Does
 
 - Builds filtered study sessions with configurable card states, topic/item and document mixes, tags, priorities, ordering, and optional auto-refill
@@ -47,10 +49,11 @@ Common add-on paths:
 
 Core functionality works without extra system setup, but some PDF features improve when these are available:
 
-- `PyMuPDF`: PDF rendering and text extraction
+- `PyMuPDF >=1.24,<2`: PDF rendering and text extraction
 - `Tesseract`: OCR for image-only PDFs
+- `yt-dlp`: optional local YouTube/Vimeo downloads
 
-Incremento can guide first-run setup from inside Anki. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
+Incremento can guide first-run setup from inside Anki. PyMuPDF installation is an explicit user action and yt-dlp is never silently installed into Anki's Python environment. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
 
 ## Quick Start
 
@@ -85,6 +88,7 @@ Extension details and install steps:
 
 - User manual: [MANUAL.md](MANUAL.md)
 - Export and restore guide: [EXPORTING.md](EXPORTING.md)
+- Persistence and software architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Internal agent/developer notes: [AGENTS.md](AGENTS.md) with nested area-specific guides under `backend/`, `frontend/`, `chrome_extensions/incremento_companion/`, and `tests/`
 
 ## Development
@@ -137,11 +141,14 @@ python3 scripts/package_addon.py --build-frontend
 # Run tests before packaging
 python3 scripts/package_addon.py --run-tests
 
+# Run every release gate, rebuild generated assets, and remove staging
+.venv/bin/python scripts/package_addon.py --release --clean-staging
+
 # Include local meta.json for a manual/private package
 python3 scripts/package_addon.py --include-meta
 ```
 
-The script writes the `.ankiaddon` into `dist/` and stages the exact packaged folder next to it for inspection. Runtime `user_files/`, tests, caches, and local installation metadata are excluded; Incremento creates its per-profile runtime storage when needed.
+The script writes the `.ankiaddon` into `dist/` and stages the exact packaged folder next to it for inspection unless `--clean-staging` is used. Runtime `user_files/`, tests, caches, bytecode, and local installation metadata are excluded; the archive is reopened and validated before success is reported.
 
 ## Repository Hygiene
 

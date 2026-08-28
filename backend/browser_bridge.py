@@ -1,5 +1,8 @@
 import json
+import hmac
 import os
+import re
+import secrets
 import tempfile
 import threading
 import time
@@ -37,7 +40,12 @@ BROWSER_CAPTURE_META_PATH = "/incremento/browser-capture-meta"
 WEB_TRACK_PATH = "/incremento/update-web-card"
 WEB_TRACK_MEDIA_PATH = "/incremento/update-web-card-media"
 BROWSER_MEDIA_REF_PATH = "/incremento/browser-media-ref"
+BRIDGE_HANDSHAKE_PATH = "/incremento/handshake"
+BRIDGE_PROTOCOL_VERSION = 2
 _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
+_EXTENSION_ORIGIN_RE = re.compile(r"^chrome-extension://[a-p]{32}$")
+_MAX_REQUEST_BYTES = 64 * 1024 * 1024
+_MAX_ACTIVE_REQUESTS = 8
 _MAX_HTML_CHARS = 2_000_000
 _MAX_MARKDOWN_CHARS = 2_000_000
 _MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
@@ -49,7 +57,11 @@ _PREPARED_PDF_PAGE_TEXTS_KEY = "_prepared_pdf_page_texts"
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
 _server_lock = threading.Lock()
+_bridge_identity_lock = threading.Lock()
+_request_slots = threading.BoundedSemaphore(_MAX_ACTIVE_REQUESTS)
 _addon_dir: str = ""
+_bridge_token: str = ""
+_allowed_extension_origin: str = ""
 
 
 def _collapse_ws(value) -> str:
@@ -1428,22 +1440,55 @@ def _load_browser_media_ref_on_main(card_id: int) -> dict:
 
 
 class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
-    server_version = "IncrementoBrowserBridge/1.0"
+    server_version = "IncrementoBrowserBridge/2.0"
 
     def log_message(self, format, *args):
         return
 
-    def _request_origin_allowed(self) -> bool:
+    def _request_origin_allowed(self, *, allow_unbound: bool = False) -> bool:
         origin = str(self.headers.get("Origin") or "")
-        return not origin or origin.startswith(_ALLOWED_ORIGIN_PREFIX)
+        if not origin:
+            return str(self.client_address[0] or "") in {"127.0.0.1", "::1"}
+        if not _EXTENSION_ORIGIN_RE.fullmatch(origin):
+            return False
+        with _bridge_identity_lock:
+            if _allowed_extension_origin:
+                return hmac.compare_digest(origin, _allowed_extension_origin)
+        return bool(allow_unbound)
+
+    def _bind_handshake_origin(self) -> bool:
+        global _allowed_extension_origin
+        origin = str(self.headers.get("Origin") or "")
+        if not origin:
+            return str(self.client_address[0] or "") in {"127.0.0.1", "::1"}
+        if not _EXTENSION_ORIGIN_RE.fullmatch(origin):
+            return False
+        with _bridge_identity_lock:
+            if not _allowed_extension_origin:
+                _allowed_extension_origin = origin
+            return hmac.compare_digest(origin, _allowed_extension_origin)
+
+    def _request_authenticated(self) -> bool:
+        token = str(self.headers.get("X-Incremento-Token") or "")
+        protocol = str(self.headers.get("X-Incremento-Protocol") or "")
+        with _bridge_identity_lock:
+            expected = _bridge_token
+        return (
+            bool(expected)
+            and protocol == str(BRIDGE_PROTOCOL_VERSION)
+            and hmac.compare_digest(token, expected)
+        )
 
     def _send_cors_headers(self) -> None:
         origin = str(self.headers.get("Origin") or "")
-        if origin.startswith(_ALLOWED_ORIGIN_PREFIX):
+        if _EXTENSION_ORIGIN_RE.fullmatch(origin):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, X-Incremento-Token, X-Incremento-Protocol",
+        )
 
     def _send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -1461,6 +1506,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         request_path = urlsplit(self.path).path
         if request_path not in {
             BRIDGE_PATH,
+            BRIDGE_HANDSHAKE_PATH,
             BROWSER_CAPTURE_META_PATH,
             WEB_TRACK_PATH,
             WEB_TRACK_MEDIA_PATH,
@@ -1468,7 +1514,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         }:
             self.send_error(404)
             return
-        if not self._request_origin_allowed():
+        if not self._request_origin_allowed(allow_unbound=True):
             self.send_error(403)
             return
         self.send_response(204)
@@ -1477,13 +1523,40 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        if not _request_slots.acquire(blocking=False):
+            self._send_json(503, {"ok": False, "error": "Bridge is busy."})
+            return
+        try:
+            self._do_GET()
+        finally:
+            _request_slots.release()
+
+    def _do_GET(self) -> None:
         parsed = urlsplit(self.path)
         request_path = parsed.path
+        if request_path == BRIDGE_HANDSHAKE_PATH:
+            if not self._request_origin_allowed(allow_unbound=True) or not self._bind_handshake_origin():
+                self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+                return
+            with _bridge_identity_lock:
+                token = _bridge_token
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "protocol": BRIDGE_PROTOCOL_VERSION,
+                    "token": token,
+                },
+            )
+            return
         if request_path not in {BROWSER_CAPTURE_META_PATH, BROWSER_MEDIA_REF_PATH}:
             self._send_json(404, {"ok": False, "error": "Unknown path."})
             return
         if not self._request_origin_allowed():
             self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+            return
+        if not self._request_authenticated():
+            self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
             return
 
         try:
@@ -1501,6 +1574,15 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         self._send_json(200, result)
 
     def do_POST(self) -> None:
+        if not _request_slots.acquire(blocking=False):
+            self._send_json(503, {"ok": False, "error": "Bridge is busy."})
+            return
+        try:
+            self._do_POST()
+        finally:
+            _request_slots.release()
+
+    def _do_POST(self) -> None:
         request_path = urlsplit(self.path).path
         if request_path not in {BRIDGE_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH, BROWSER_MEDIA_REF_PATH}:
             self._send_json(404, {"ok": False, "error": "Unknown path."})
@@ -1508,12 +1590,20 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         if not self._request_origin_allowed():
             self._send_json(403, {"ok": False, "error": "Origin not allowed."})
             return
+        if not self._request_authenticated():
+            self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+            return
 
         try:
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
-            length = 0
-        raw = self.rfile.read(max(0, length))
+            self._send_json(400, {"ok": False, "error": "Invalid Content-Length."})
+            return
+        if length < 0 or length > _MAX_REQUEST_BYTES:
+            self.close_connection = True
+            self._send_json(413, {"ok": False, "error": "Request is too large."})
+            return
+        raw = self.rfile.read(length)
 
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
@@ -1544,12 +1634,15 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
 
 
 def start_browser_bridge(addon_dir: str) -> None:
-    global _server, _server_thread, _addon_dir
+    global _server, _server_thread, _addon_dir, _bridge_token, _allowed_extension_origin
 
     with _server_lock:
         _addon_dir = addon_dir
         if _server is not None and _server_thread is not None and _server_thread.is_alive():
             return
+        with _bridge_identity_lock:
+            _bridge_token = secrets.token_urlsafe(32)
+            _allowed_extension_origin = ""
         try:
             server = ThreadingHTTPServer((BRIDGE_HOST, BRIDGE_PORT), _IncrementoBridgeHandler)
         except OSError as exc:
@@ -1566,13 +1659,17 @@ def start_browser_bridge(addon_dir: str) -> None:
 
 
 def stop_browser_bridge(*_args, **_kwargs) -> None:
-    global _server, _server_thread
+    global _server, _server_thread, _bridge_token, _allowed_extension_origin
 
     with _server_lock:
         server = _server
         thread = _server_thread
         _server = None
         _server_thread = None
+
+    with _bridge_identity_lock:
+        _bridge_token = ""
+        _allowed_extension_origin = ""
 
     if server is not None:
         try:

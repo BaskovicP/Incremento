@@ -10,6 +10,7 @@ Use this file for work in `backend/`.
 
 ## Config-Backed Behavior
 
+- `backend/config_service.py` is the only shipped Python boundary for `getConfig()`/`writeConfig()`. It versions and normalizes config while preserving unknown keys.
 - Many backend modules expose `configured_*` helpers consumed by `frontend/settings_dialog.py` and `__init__.py`.
 - If you change config semantics, keep the helper's fallback behavior backward-compatible for missing keys and older config shapes where practical.
 - Changes to config-backed behavior usually require aligned updates in `config.json`, `frontend/settings_dialog.py`, `__init__.py`, `tests/test_settings_dialog.py`, and `MANUAL.md`.
@@ -36,6 +37,23 @@ Use this file for work in `backend/`.
 - Keep `backend/paths.py` pure. Do not import Anki there.
 - Use the preferred import pattern for `_active_profile` from `paths.py`.
 - Keep `backend/migration.py` idempotent. It owns migration from legacy flat `user_files/` into per-profile layout.
+- Capture the active profile before starting background work. Do not call `_active_profile()` later to decide where that worker writes.
+
+## Persistence and Recovery
+
+- Anki is authoritative for notes/cards/decks/tags/scheduling/revlog. `incremento.db` contains only Incremento supplemental state.
+- `backend/db_connection.py` owns one WAL connection per live thread/profile. Do not cache or share a raw connection outside this manager. Profile hooks close only their own thread's handle; never invalidate another live worker's connection during a profile transition.
+- `backend/db_schema.py` owns `schema_migrations` plus `PRAGMA user_version`. Every new schema change needs one ordered migration; schema DDL, ledger entry, and version must commit or roll back together.
+- `backend/operation_journal.py` owns imports spanning Anki, SQLite, and profile files. Journal each unique profile-relative output before the side effect, force the operation's `Incremento_Content_ID` onto the new note, bind Anki identities, then commit `content_items`.
+- Before a card exists, rollback may remove only paths tracked by that operation. After a card exists, preserve the data and let profile-open reconciliation recover it. `backend/reconciliation.py` may rebind through exact content ID and delete only rows whose Anki owner is definitely gone; it must not guess-delete legacy files.
+- `backend/migration.py` is resumable and non-overwriting. Conflicts remain in the legacy location and are reported by the profile migration marker.
+- `custom_learn_stats.json` remains canonical. Stats mutations, including deletes, must use the profile lock/read-modify-write path; SQLite is only mirror/fallback.
+
+## Search and Indexing
+
+- `backend/search_indexer.py` performs PDF extraction off the UI thread, records source signature/status, backs off errors, and checks cancellation between files.
+- `backend/search_repository.py` provides bounded frontend read models. Do not add raw Incremento SQL to Search ALL.
+- FTS5 mirrors are optional. Preserve plain-table fallback for Anki SQLite builds without FTS5.
 
 ## Privacy-Safe Diagnostics
 
@@ -64,6 +82,8 @@ Use this file for work in `backend/`.
 
 - Main file: `backend/browser_bridge.py`.
 - Main endpoint: `http://127.0.0.1:8766/incremento/add-content`.
+- Protocol 2 requires `/incremento/handshake`, binds one exact extension origin per bridge run, and requires ephemeral token/protocol headers on every data request.
+- Keep body-size validation before reads and preserve the bounded handler semaphore. Never expose the bridge on a non-loopback interface.
 - Browser-capture metadata endpoint: `http://127.0.0.1:8766/incremento/browser-capture-meta`.
 - The bridge supports single-item imports, batch `items`, direct PDF bytes via `pdfBase64`, generic browser-capture note creation, writing imports in `selection` and `webpage_markdown` modes, and tracked web-card media progress updates.
 - Field mappings include `titleField`, `selectedTextField`, `urlField`, and `snapshotField`.
@@ -72,6 +92,12 @@ Use this file for work in `backend/`.
 - Stored browser-capture image filenames must stay sanitized and capped before the UUID suffix.
 - Refresh the Anki UI after successful imports.
 - Browser-capture provenance now belongs in Incremento metadata fields. Do not reintroduce URL or source blocks into mapped content fields when the backend can write metadata separately.
+
+## Anki Compatibility Boundary
+
+- Private reviewer queue/method access belongs in `backend/anki_compat.py`; callers must not import V3 queue wrappers directly.
+- Patch installation is idempotent and preserves the true original method. Missing methods skip only that patch.
+- Direct selected-card review must preflight compatibility and queue construction. On failure it must leave cards unchanged and give a user-visible fallback.
 
 ## Browser Quick Tag History
 

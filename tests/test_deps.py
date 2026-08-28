@@ -267,3 +267,14 @@ class TestInstallPymupdf:
         with patch("subprocess.run", return_value=proc):
             result = _task_fn()
         assert result is False
+
+    def test_installer_uses_bounded_noninteractive_requirement(self):
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        task, _ = mw.taskman.run_in_background.call_args[0]
+        proc = MagicMock(returncode=0)
+        with patch("subprocess.run", return_value=proc) as run:
+            task()
+        command = run.call_args.args[0]
+        assert deps.PYMUPDF_REQUIREMENT in command
+        assert "--no-input" in command

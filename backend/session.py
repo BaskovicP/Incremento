@@ -9,7 +9,7 @@ Public API:
     INCREMENTO_QUICK_OPEN_REVIEW_DECK — filtered deck for quick-open study
     incremento_session_deck_name() — map an optional dialog profile to a deck name
     is_incremento_session_deck_name() — predicate for Incremento session decks
-    learnFunction()       — main entry point; shows config dialog and starts review
+    learnFunction()       — dialog-agnostic session orchestration entry point
     start_quick_open_review() — study one quick-open doc card in a filtered deck
     reset_session_counts() — clear in-memory session counts
     get_session_counts()  — return a copy of the current session counts
@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 
 from aqt import mw, gui_hooks
 from aqt.utils import showInfo
-from aqt.qt import QDialog, QVBoxLayout, QTextEdit, QPushButton, QTimer
+from aqt.qt import QTimer
 try:
     from anki.consts import DYN_DUE, DYN_OLDEST
 except Exception:
@@ -33,15 +33,18 @@ except Exception:
     DYN_DUE = 6
 
 from .scheduler import NO_TAGS_KEY
+from .config_service import load_addon_config
 from .statistics import StatsManager, _empty, _empty_time
 from .session_selection import SessionPicker
 from .paths import get_active_profile as _active_profile
 from .topic_scheduler import resolve_topic_card_classifier
 from .topic_postpone import release_expired_timed_postpones
-try:
-    from ..frontend.learn_dialog import SchedulerConfigDialog
-except ImportError:
-    from learn_dialog import SchedulerConfigDialog  # tests add frontend/ to sys.path
+from .anki_compat import install_one_shot_next_card_override
+
+# Compatibility seam for callers/tests that inject a dialog factory. Shipped
+# UI entry points pass SchedulerConfigDialog through frontend.session_launcher;
+# backend never imports frontend.
+SchedulerConfigDialog = None
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -60,6 +63,7 @@ _session_counts: dict = {"type": {}, "tags": {}, "mode": {}}
 _session_times: dict = _empty_time()
 _active_incremento_session_state = None
 _diagnostic_event_callback = None
+_session_debug_callback = None
 
 
 class _DuplicateLiveQueueEntriesError(RuntimeError):
@@ -208,6 +212,12 @@ def register_diagnostic_event_callback(callback) -> None:
     """Install a best-effort sink that receives only typed, content-free fields."""
     global _diagnostic_event_callback
     _diagnostic_event_callback = callback if callable(callback) else None
+
+
+def register_session_debug_callback(callback) -> None:
+    """Install the optional frontend renderer for scheduled-order debugging."""
+    global _session_debug_callback
+    _session_debug_callback = callback if callable(callback) else None
 
 
 def _emit_diagnostic_event(event: str, **fields) -> None:
@@ -817,45 +827,28 @@ def _defer_next_card_until_refill_finishes(
     """Do not show the next card while refill may rebuild its filtered deck."""
     if reviewer is None or not state.auto_refill_enabled:
         return False
-    try:
-        original_next = reviewer.nextCard
-        instance_dict = getattr(reviewer, "__dict__", {})
-        had_instance_override = "nextCard" in instance_dict
-        previous_instance_value = instance_dict.get("nextCard")
-    except Exception:
-        return False
 
-    def _restore() -> None:
-        try:
-            if had_instance_override:
-                reviewer.nextCard = previous_instance_value
-            else:
-                delattr(reviewer, "nextCard")
-        except Exception:
-            try:
-                reviewer.nextCard = original_next
-            except Exception:
-                pass
+    def _replacement_factory(original_next, restore):
+        def _wait_then_continue() -> None:
+            if state.session_closed:
+                return
+            if state.refill_retry_pending:
+                QTimer.singleShot(25, _wait_then_continue)
+                return
+            if str(getattr(mw, "state", "review") or "") != "review":
+                return
+            original_next()
 
-    def _wait_then_continue() -> None:
-        if state.session_closed:
-            return
-        if state.refill_retry_pending:
-            QTimer.singleShot(25, _wait_then_continue)
-            return
-        if str(getattr(mw, "state", "review") or "") != "review":
-            return
-        original_next()
+        def _deferred_next() -> None:
+            restore()
+            QTimer.singleShot(0, _wait_then_continue)
 
-    def _deferred_next() -> None:
-        _restore()
-        QTimer.singleShot(0, _wait_then_continue)
+        return _deferred_next
 
-    try:
-        reviewer.nextCard = _deferred_next
-    except Exception:
-        return False
-    return True
+    return install_one_shot_next_card_override(
+        reviewer,
+        _replacement_factory,
+    )
 
 
 def _record_incremento_answer(
@@ -1338,33 +1331,9 @@ def _show_scheduled_debug(
     picked_meta: dict[int, dict],
     branch_scope: dict | None,
 ) -> None:
-    debug_dlg = QDialog(mw)
-    branch_title = str((branch_scope or {}).get("root_title") or "").strip()
-    debug_title = f"DEBUG — Scheduled order ({len(selected_ids)} cards)"
-    if branch_title:
-        debug_title += f" — {branch_title}"
-    debug_dlg.setWindowTitle(debug_title)
-    debug_dlg.resize(700, 500)
-    debug_layout = QVBoxLayout(debug_dlg)
-    debug_txt = QTextEdit()
-    debug_txt.setReadOnly(True)
-    debug_txt.setFontFamily("Courier")
-    debug_lines = ["#    type     mode       tag                  first field", "-" * 80]
-    for index, card_id in enumerate(selected_ids):
-        meta = picked_meta.get(card_id, {})
-        card = mw.col.get_card(card_id)
-        note = mw.col.get_note(card.nid)
-        first_field = note.fields[0][:55].replace("\n", " ") if note.fields else str(card_id)
-        debug_lines.append(
-            f"{index + 1:3}.  {meta.get('card_type', '?'):7}  {meta.get('mode', '?'):9}  "
-            f"{(meta.get('tag') or 'no-tag'):20} {first_field}"
-        )
-    debug_txt.setPlainText("\n".join(debug_lines))
-    debug_layout.addWidget(debug_txt)
-    debug_btn = QPushButton("Continue")
-    debug_btn.clicked.connect(debug_dlg.accept)
-    debug_layout.addWidget(debug_btn)
-    debug_dlg.exec()
+    callback = _session_debug_callback
+    if callback is not None:
+        callback(selected_ids, picked_meta, branch_scope)
 
 
 def _activate_incremento_session(
@@ -1549,14 +1518,23 @@ def _activate_incremento_session(
         showInfo(f"Could not enter the Incremento review session:\n\n{exc}")
 
 
-def learnFunction(*, branch_scope: dict | None = None) -> None:
-    """Configure and start an Incremento session without blocking Anki's UI."""
+def learnFunction(
+    *,
+    branch_scope: dict | None = None,
+    dialog_factory=None,
+) -> None:
+    """Configure and start a session using a frontend-supplied dialog factory."""
     try:
         release_expired_timed_postpones()
     except Exception:
         pass
 
-    dlg = SchedulerConfigDialog(
+    factory = dialog_factory or SchedulerConfigDialog
+    if factory is None:
+        showInfo("Incremento's scheduler dialog is unavailable in this Anki build.")
+        return
+
+    dlg = factory(
         mw,
         on_clear_session=reset_session_counts,
         branch_scope=branch_scope,
@@ -1565,7 +1543,7 @@ def learnFunction(*, branch_scope: dict | None = None) -> None:
         return
 
     dlg.save_config()
-    addon_config = mw.addonManager.getConfig(_ADDON_PKG) or {}
+    addon_config = load_addon_config(mw.addonManager, _ADDON_PKG)
     cfg = dlg.to_config()
     _emit_diagnostic_event(
         "incremento_session_requested",

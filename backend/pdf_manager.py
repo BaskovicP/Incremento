@@ -4,7 +4,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtPdf import QPdfDocument
@@ -131,10 +133,12 @@ try:
         set_pdf_daily_limit_usage,
     )
     from . import paths as _paths
+    from .operation_journal import ImportOperation
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
         INCREMENTO_IMPORTED_AT_FIELD,
         INCREMENTO_PARENT_CARD_ID_FIELD,
         INCREMENTO_PARENT_FIELD,
@@ -156,10 +160,12 @@ except ImportError:
         set_pdf_daily_limit_usage,
     )
     import paths as _paths
+    from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
         INCREMENTO_IMPORTED_AT_FIELD,
         INCREMENTO_PARENT_CARD_ID_FIELD,
         INCREMENTO_PARENT_FIELD,
@@ -170,17 +176,17 @@ except ImportError:
     from statistics import _effective_date  # type: ignore
 
 
-def get_pdf_dir() -> str:
+def get_pdf_dir(profile: str | None = None) -> str:
     """Return (and create) the addon's user_files/<profile>/pdfs/ folder."""
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    d = str(_paths.get_pdf_dir(addon_dir, _paths.get_active_profile()))
+    d = str(_paths.get_pdf_dir(addon_dir, profile or _paths.get_active_profile()))
     os.makedirs(d, exist_ok=True)
     return d
 
 
-def pdf_storage_abspath(stored_filename: str) -> str:
+def pdf_storage_abspath(stored_filename: str, *, profile: str | None = None) -> str:
     """Resolve a stored PDF filename inside the managed profile PDF directory."""
     raw = str(stored_filename or "").strip().replace("\\", "/")
     if not raw:
@@ -190,7 +196,7 @@ def pdf_storage_abspath(stored_filename: str) -> str:
     elif raw.startswith("pdfs/"):
         raw = raw[len("pdfs/"):]
 
-    root = Path(get_pdf_dir()).resolve()
+    root = Path(get_pdf_dir(profile)).resolve()
     raw_path = Path(raw)
     candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
     try:
@@ -200,13 +206,18 @@ def pdf_storage_abspath(stored_filename: str) -> str:
     return str(candidate)
 
 
-def _copy_to_pdf_dir(pdf_path: str) -> str:
+def _copy_to_pdf_dir(
+    pdf_path: str,
+    *,
+    profile: str | None = None,
+    created_relpath_cb: Callable[[str], None] | None = None,
+) -> str:
     """Copy *pdf_path* into the profile PDF dir; return the stored filename.
 
     Stored filenames always get a UUID suffix so repeated imports never reuse
     an older file just because the basename matches.
     """
-    pdf_dir = get_pdf_dir()
+    pdf_dir = get_pdf_dir(profile)
     raw_name = os.path.basename(pdf_path)
     stem, ext = os.path.splitext(raw_name)
     stem = _safe_pdf_stem(stem, fallback="document")
@@ -214,8 +225,44 @@ def _copy_to_pdf_dir(pdf_path: str) -> str:
     dest_name = f"{stem}-{uuid.uuid4().hex}{ext}"
     dest_path = os.path.join(pdf_dir, dest_name)
 
+    if created_relpath_cb is not None:
+        created_relpath_cb(f"pdfs/{dest_name}")
     shutil.copy2(pdf_path, dest_path)
     return dest_name
+
+
+def _record_pdf_index_state(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    pdf_path: str,
+    page_texts: list[str],
+) -> None:
+    """Record the source signature for text that was indexed successfully."""
+    stat = os.stat(pdf_path)
+    status = (
+        "ready"
+        if any(str(page or "").strip() for page in list(page_texts or []))
+        else "empty"
+    )
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        conn.execute(
+            "INSERT INTO document_index_state "
+            "(kind, card_id, source_mtime_ns, source_size, status, indexed_at) "
+            "VALUES ('pdf', ?, ?, ?, ?, ?) "
+            "ON CONFLICT(kind, card_id) DO UPDATE SET "
+            "source_mtime_ns=excluded.source_mtime_ns, "
+            "source_size=excluded.source_size, status=excluded.status, "
+            "indexed_at=excluded.indexed_at",
+            (
+                int(card_id),
+                int(stat.st_mtime_ns),
+                int(stat.st_size),
+                status,
+                int(time.time()),
+            ),
+        )
 
 PDF_NOTE_TYPE = "Incremento PDF"
 PDF_COVER_FIELD = "PDF_Cover_Image"
@@ -1150,7 +1197,13 @@ def add_pdf_card(
         title=title,
     )
     if relink_card_id is not None:
-        replace_pdf_card_file(addon_dir, col, relink_card_id, pdf_path)
+        replace_pdf_card_file(
+            addon_dir,
+            col,
+            relink_card_id,
+            pdf_path,
+            profile=profile,
+        )
         try:
             save_pdf_daily_limit_settings(
                 addon_dir,
@@ -1164,9 +1217,47 @@ def add_pdf_card(
             pass
         return relink_card_id
 
+    with ImportOperation(addon_dir, profile, "pdf") as operation:
+        return _create_new_pdf_card(
+            addon_dir,
+            profile,
+            col,
+            pdf_path=pdf_path,
+            title=title,
+            deck_name=deck_name,
+            tags=tags,
+            metadata=metadata,
+            daily_page_limit=daily_page_limit,
+            enforcement_mode=enforcement_mode,
+            precomputed_page_texts=precomputed_page_texts,
+            operation=operation,
+        )
+
+
+def _create_new_pdf_card(
+    addon_dir: str,
+    profile: str,
+    col,
+    *,
+    pdf_path: str,
+    title: str,
+    deck_name: str,
+    tags: list[str] | None,
+    metadata: dict[str, str] | None,
+    daily_page_limit: int | None,
+    enforcement_mode: str,
+    precomputed_page_texts: list[str] | None,
+    operation: ImportOperation,
+) -> int:
+    """Create one new PDF card inside a durable cross-store operation."""
+
     # Copy file to profile-local PDF dir (not Anki media, so it won't sync)
-    media_filename = _copy_to_pdf_dir(pdf_path)
-    dest_path = os.path.join(get_pdf_dir(), media_filename)
+    media_filename = _copy_to_pdf_dir(
+        pdf_path,
+        profile=profile,
+        created_relpath_cb=operation.track_created_relpath,
+    )
+    dest_path = os.path.join(get_pdf_dir(profile), media_filename)
 
     deck = col.decks.by_name(deck_name)
     if deck is None:
@@ -1188,20 +1279,25 @@ def add_pdf_card(
         source_filename=media_filename,
     )
 
+    resolved_metadata = dict(
+        metadata
+        or build_incremento_metadata(
+            source_type="PDF",
+            source_title=title,
+            source_link=f"pdfs/{media_filename}",
+            content_id=operation.content_id,
+        )
+    )
+    # A new external content item always gets the journal's identity. Caller
+    # metadata may describe the source, but must not reuse another item's ID.
+    resolved_metadata[INCREMENTO_CONTENT_ID_FIELD] = operation.content_id
+
     def _build_note(stored_title: str):
         note = col.new_note(model)
         note["Title"] = stored_title
         note["PDF_Filename"] = media_filename
         note[PDF_COVER_FIELD] = cover_media
-        apply_incremento_metadata(
-            note,
-            metadata
-            or build_incremento_metadata(
-                source_type="PDF",
-                source_title=title,
-                source_link=f"pdfs/{media_filename}",
-            ),
-        )
+        apply_incremento_metadata(note, resolved_metadata)
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue
@@ -1226,8 +1322,17 @@ def add_pdf_card(
     if not cid:
         raise RuntimeError("Failed to add PDF card. Anki rejected the note.")
 
+    operation.bind_anki(card_id=cid, note_id=getattr(note, "id", None))
+
     try:
-        replace_pdf_text_index(addon_dir, _paths.get_active_profile(), cid, page_texts)
+        replace_pdf_text_index(addon_dir, profile, cid, page_texts)
+        _record_pdf_index_state(
+            addon_dir,
+            profile,
+            cid,
+            dest_path,
+            page_texts,
+        )
     except Exception:
         pass
     try:
@@ -1241,6 +1346,7 @@ def add_pdf_card(
         )
     except Exception:
         pass
+    operation.commit(storage_key=f"pdfs/{media_filename}")
     return cid
 
 
@@ -1299,10 +1405,18 @@ def sync_pdf_card_file_references(
     return clean_filename
 
 
-def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> str:
+def replace_pdf_card_file(
+    addon_dir: str,
+    col,
+    card_id: int,
+    pdf_path: str,
+    *,
+    profile: str | None = None,
+) -> str:
     """Copy a replacement PDF into storage and relink an existing PDF card."""
     ensure_pdf_note_type(col)
     cid = int(card_id)
+    profile_name = str(profile or _paths.get_active_profile())
     if not pdf_path or not os.path.exists(pdf_path):
         raise FileNotFoundError("Replacement PDF was not found.")
 
@@ -1313,26 +1427,41 @@ def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> s
     if note is None:
         raise RuntimeError("Linked PDF note was not found.")
 
-    media_filename = _copy_to_pdf_dir(pdf_path)
-    dest_path = os.path.join(get_pdf_dir(), media_filename)
-    page_texts = extract_pdf_pages_text(dest_path)
+    media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
+    dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
+    try:
+        page_texts = extract_pdf_pages_text(dest_path)
+        cover_media = render_pdf_cover_media(
+            col,
+            dest_path,
+            title=str(note["Title"] or "").strip(),
+            source_filename=media_filename,
+        )
+    except Exception:
+        # The unique replacement file is not referenced yet, so it is safe to
+        # compensate this attempt without touching the card's old source.
+        try:
+            os.remove(dest_path)
+        except OSError:
+            pass
+        raise
 
     note["PDF_Filename"] = media_filename
-    note[PDF_COVER_FIELD] = render_pdf_cover_media(
-        col,
-        dest_path,
-        title=str(note["Title"] or "").strip(),
-        source_filename=media_filename,
-    )
+    note[PDF_COVER_FIELD] = cover_media
     try:
         current_author = str(note[INCREMENTO_SOURCE_AUTHOR_FIELD] or "").strip()
     except Exception:
         current_author = ""
+    try:
+        current_content_id = str(note[INCREMENTO_CONTENT_ID_FIELD] or "").strip()
+    except Exception:
+        current_content_id = ""
     metadata = build_incremento_metadata(
         source_type="PDF",
         source_title=str(note["Title"] or "").strip(),
         source_link=f"pdfs/{media_filename}",
         source_author=current_author,
+        content_id=current_content_id or None,
     )
     for field_name in (
         INCREMENTO_IMPORTED_AT_FIELD,
@@ -1346,11 +1475,35 @@ def replace_pdf_card_file(addon_dir: str, col, card_id: int, pdf_path: str) -> s
         if current_value:
             metadata[field_name] = current_value
     apply_incremento_metadata(note, metadata)
-    col.update_note(note)
-    sync_pdf_card_file_references(addon_dir, _paths.get_active_profile(), col, cid)
+    try:
+        col.update_note(note)
+    except Exception:
+        try:
+            os.remove(dest_path)
+        except OSError:
+            pass
+        raise
+    sync_pdf_card_file_references(addon_dir, profile_name, col, cid)
 
     try:
-        replace_pdf_text_index(addon_dir, _paths.get_active_profile(), cid, page_texts)
+        replace_pdf_text_index(addon_dir, profile_name, cid, page_texts)
+        _record_pdf_index_state(
+            addon_dir,
+            profile_name,
+            cid,
+            dest_path,
+            page_texts,
+        )
+    except Exception:
+        pass
+    try:
+        conn = get_connection(addon_dir, profile_name)
+        with conn:
+            conn.execute(
+                "UPDATE content_items SET storage_key=?, updated_at=? "
+                "WHERE kind='pdf' AND card_id=?",
+                (f"pdfs/{media_filename}", int(time.time()), cid),
+            )
     except Exception:
         pass
     return media_filename

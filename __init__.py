@@ -9,7 +9,7 @@ from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
 from aqt.errors import show_exception
-from aqt.reviewer import QueuedCards, Reviewer, SchedulingContext, V3CardInfo
+from aqt.reviewer import Reviewer
 from aqt.utils import showInfo, tooltip, tr
 from aqt.operations.scheduling import bury_cards as _bury_cards_op
 from aqt.qt import (
@@ -74,6 +74,7 @@ from .backend.note_metadata import (
     matches_hidden_field_reference,
     source_document_reference,
 )
+from .backend.operation_journal import ImportOperation
 from .backend.db import (
     get_connection,
     get_pdf_card_source_filename,
@@ -176,7 +177,10 @@ from .frontend import browser_quick_tags as _browser_quick_tags_mod
 from .frontend.extract_batch_dialog import ExtractBatchDialog
 from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
+from .backend import anki_compat as _anki_compat
+from .backend import reconciliation as _reconciliation_mod
 from .backend.db import (
+    close_current_connection,
     create_database_checkpoint,
     find_card_database_entries,
     get_connection,
@@ -194,15 +198,20 @@ from .backend.db import (
 from .backend.reviewer_tags import append_missing_tags, normalize_tag_list
 from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
+from .backend.config_service import (
+    load_addon_config as _load_addon_config,
+    migrate_persisted_config as _migrate_persisted_config,
+    save_addon_config as _save_addon_config,
+)
 from .backend.session import (
     diagnostic_session_snapshot,
-    learnFunction,
     register_diagnostic_event_callback,
     reset_session_counts,
     get_session_counts,
     get_session_times,
     start_quick_open_review,
 )
+from .frontend.session_launcher import learnFunction
 from .frontend.settings_dialog import (
     IncrementoSettingsDialog,
     resolved_runtime_shortcuts,
@@ -253,17 +262,17 @@ _diagnostic_pending_final_interval: int | None = None
 
 
 def configured_show_incremento_fields(cfg: dict | None = None) -> bool:
-    config = cfg if cfg is not None else (mw.addonManager.getConfig(__name__) or {})
+    config = cfg if cfg is not None else _load_addon_config(mw.addonManager, __name__)
     return bool(config.get("show_incremento_fields", False))
 
 
 def configured_auto_create_topics_deck(cfg: dict | None = None) -> bool:
-    config = cfg if cfg is not None else (mw.addonManager.getConfig(__name__) or {})
+    config = cfg if cfg is not None else _load_addon_config(mw.addonManager, __name__)
     return bool(config.get("auto_create_topics_deck", True))
 
 
 def configured_auto_create_topics_deck_profiles(cfg: dict | None = None) -> list[str]:
-    config = cfg if cfg is not None else (mw.addonManager.getConfig(__name__) or {})
+    config = cfg if cfg is not None else _load_addon_config(mw.addonManager, __name__)
     raw = config.get("auto_create_topics_deck_profiles", [])
     if isinstance(raw, str):
         parts = raw.replace(",", "\n").splitlines()
@@ -310,7 +319,7 @@ def _register_shortcut_action(action_id: str, action_obj) -> None:
 
 
 def _apply_shortcuts_from_config() -> None:
-    cfg = mw.addonManager.getConfig(__name__) or {}
+    cfg, _config_changed = _migrate_persisted_config(mw.addonManager, __name__)
     user_shortcuts = cfg.get("shortcuts") or {}
     runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
 
@@ -325,7 +334,7 @@ def _apply_shortcuts_from_config() -> None:
 
 
 def _configured_shortcut_text(action_id: str) -> str:
-    cfg = mw.addonManager.getConfig(__name__) or {}
+    cfg = _load_addon_config(mw.addonManager, __name__)
     user_shortcuts = cfg.get("shortcuts") or {}
     runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
     return str(runtime_shortcuts.get(action_id, "") or "").strip()
@@ -447,10 +456,8 @@ class _ConfiguredShortcutFilter(QObject):
             return False
 
 
-_ORIGINAL_REVIEWER_AFTER_ANSWERING = getattr(
-    Reviewer._after_answering,
-    "_incremento_original",
-    Reviewer._after_answering,
+_ORIGINAL_REVIEWER_AFTER_ANSWERING = _anki_compat.original_reviewer_method(
+    Reviewer, "_after_answering"
 )
 
 
@@ -475,53 +482,36 @@ def _incremento_after_answering(self, ease: int) -> None:
         self.nextCard = original_next_card
 
 
-_incremento_after_answering._incremento_original = _ORIGINAL_REVIEWER_AFTER_ANSWERING
-Reviewer._after_answering = _incremento_after_answering
+_anki_compat.install_reviewer_patch(
+    Reviewer, "_after_answering", _incremento_after_answering
+)
 
-_ORIGINAL_REVIEWER_BUTTON_TIME = getattr(
-    Reviewer._buttonTime,
-    "_incremento_original",
-    Reviewer._buttonTime,
+_ORIGINAL_REVIEWER_BUTTON_TIME = _anki_compat.original_reviewer_method(
+    Reviewer, "_buttonTime"
 )
-_ORIGINAL_REVIEWER_DEFAULT_EASE = getattr(
-    Reviewer._defaultEase,
-    "_incremento_original",
-    Reviewer._defaultEase,
+_ORIGINAL_REVIEWER_DEFAULT_EASE = _anki_compat.original_reviewer_method(
+    Reviewer, "_defaultEase"
 )
-_ORIGINAL_REVIEWER_SHORTCUT_KEYS = getattr(
-    Reviewer._shortcutKeys,
-    "_incremento_original",
-    Reviewer._shortcutKeys,
+_ORIGINAL_REVIEWER_SHORTCUT_KEYS = _anki_compat.original_reviewer_method(
+    Reviewer, "_shortcutKeys"
 )
-_ORIGINAL_REVIEWER_ON_ENTER_KEY = getattr(
-    Reviewer.onEnterKey,
-    "_incremento_original",
-    Reviewer.onEnterKey,
+_ORIGINAL_REVIEWER_ON_ENTER_KEY = _anki_compat.original_reviewer_method(
+    Reviewer, "onEnterKey"
 )
-_ORIGINAL_REVIEWER_NEXT_CARD = getattr(
-    Reviewer.nextCard,
-    "_incremento_original",
-    Reviewer.nextCard,
+_ORIGINAL_REVIEWER_NEXT_CARD = _anki_compat.original_reviewer_method(
+    Reviewer, "nextCard"
 )
-_ORIGINAL_REVIEWER_OP_EXECUTED = getattr(
-    Reviewer.op_executed,
-    "_incremento_original",
-    Reviewer.op_executed,
+_ORIGINAL_REVIEWER_OP_EXECUTED = _anki_compat.original_reviewer_method(
+    Reviewer, "op_executed"
 )
-_ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON = getattr(
-    Reviewer._showAnswerButton,
-    "_incremento_original",
-    Reviewer._showAnswerButton,
+_ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON = _anki_compat.original_reviewer_method(
+    Reviewer, "_showAnswerButton"
 )
-_ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS = getattr(
-    Reviewer._showEaseButtons,
-    "_incremento_original",
-    Reviewer._showEaseButtons,
+_ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS = _anki_compat.original_reviewer_method(
+    Reviewer, "_showEaseButtons"
 )
-_ORIGINAL_REVIEWER_LINK_HANDLER = getattr(
-    Reviewer._linkHandler,
-    "_incremento_original",
-    Reviewer._linkHandler,
+_ORIGINAL_REVIEWER_LINK_HANDLER = _anki_compat.original_reviewer_method(
+    Reviewer, "_linkHandler"
 )
 
 
@@ -579,7 +569,7 @@ def _perform_topic_postpone(reviewer, card) -> None:
         _failed("requested", e)
         print(f"[Incremento] topic postpone error: {e}")
         try:
-            reviewer.nextCard()
+            _anki_compat.advance_reviewer(reviewer)
         except Exception as advance_error:
             _failed("advance", advance_error)
         return
@@ -612,7 +602,7 @@ def _perform_topic_postpone(reviewer, card) -> None:
         try:
             current = getattr(reviewer, "card", None)
             if current is not None and getattr(current, "id", None) == getattr(card, "id", None):
-                reviewer.nextCard()
+                _anki_compat.advance_reviewer(reviewer)
         except Exception as e:
             _failed("advance", e)
             print(f"[Incremento] topic postpone nextCard error: {e}")
@@ -639,7 +629,7 @@ def _perform_topic_postpone(reviewer, card) -> None:
         _failed("bury", e)
         print(f"[Incremento] topic postpone bury error: {e}")
         try:
-            reviewer.nextCard()
+            _anki_compat.advance_reviewer(reviewer)
         except Exception as advance_error:
             _failed("advance", advance_error)
 
@@ -678,7 +668,7 @@ def _perform_item_skip(reviewer, card) -> None:
     try:
         current = getattr(reviewer, "card", None)
         if current is not None and getattr(current, "id", None) == getattr(card, "id", None):
-            reviewer.nextCard()
+            _anki_compat.advance_reviewer(reviewer)
     except Exception as e:
         _failed("advance", e)
         print(f"[Incremento] item skip nextCard error: {e}")
@@ -720,7 +710,7 @@ def _perform_item_skip_after_bury(reviewer, card) -> None:
         )
         print(f"[Incremento] item skip bury error: {e}")
         try:
-            reviewer.nextCard()
+            _anki_compat.advance_reviewer(reviewer)
         except Exception as advance_error:
             _record_diagnostic_event(
                 "review_action_failed",
@@ -912,71 +902,13 @@ def _topic_reviewer_will_answer_card(response, _reviewer, card):
     return response
 
 
-def _direct_review_queue_kind(card) -> int:
+def _direct_review_v3_info(card):
     try:
-        queue = int(getattr(card, "queue", 0) or 0)
-    except Exception:
-        queue = 0
-    try:
-        card_type = int(getattr(card, "type", 0) or 0)
-    except Exception:
-        card_type = 0
-
-    if queue == 0 or card_type == 0:
-        return QueuedCards.NEW
-    if queue in (1, 3) or card_type in (1, 3):
-        return QueuedCards.LEARNING
-    return QueuedCards.REVIEW
-
-
-def _direct_review_counts(card_ids: list[int]) -> tuple[int, int, int]:
-    counts = [0, 0, 0]
-    for raw_card_id in card_ids:
-        try:
-            card = mw.col.get_card(int(raw_card_id))
-        except Exception:
-            continue
-        if card is None:
-            continue
-        try:
-            if int(getattr(card, "queue", 0) or 0) < 0:
-                continue
-        except Exception:
-            continue
-        kind = _direct_review_queue_kind(card)
-        if kind == QueuedCards.NEW:
-            counts[0] += 1
-        elif kind == QueuedCards.LEARNING:
-            counts[1] += 1
-        else:
-            counts[2] += 1
-    return counts[0], counts[1], counts[2]
-
-
-def _direct_review_v3_info(card) -> V3CardInfo | None:
-    try:
-        states = mw.col._backend.get_scheduling_states(int(card.id))
-        new_count, learning_count, review_count = _direct_review_counts(
+        return _anki_compat.build_direct_review_v3_info(
+            mw.col,
+            card,
             [int(card.id), *_direct_review_card_ids]
         )
-        try:
-            deck_name = str(mw.col.decks.name(getattr(card, "did", 0)) or "")
-        except Exception:
-            deck_name = ""
-        queued_cards = QueuedCards(
-            cards=[
-                QueuedCards.QueuedCard(
-                    card=card._to_backend_card(),
-                    queue=_direct_review_queue_kind(card),
-                    states=states,
-                    context=SchedulingContext(deck_name=deck_name),
-                )
-            ],
-            new_count=new_count,
-            learning_count=learning_count,
-            review_count=review_count,
-        )
-        return V3CardInfo.from_queue(queued_cards)
     except Exception as exc:
         _record_diagnostic_event(
             "explicit_review_failed",
@@ -1119,14 +1051,20 @@ def _incremento_on_enter_key(self) -> None:
         and _reviewer_topic_card(card)
         and mw.pm.spacebar_rates_card()
     ):
-        self._answerCard(2)
+        try:
+            _anki_compat.answer_reviewer_card(self, 2)
+        except _anki_compat.AnkiCompatibilityError:
+            _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
         return
     if (
         self.state == "answer"
         and _reviewer_items_fail_pass(card)
         and mw.pm.spacebar_rates_card()
     ):
-        self._answerCard(2)
+        try:
+            _anki_compat.answer_reviewer_card(self, 2)
+        except _anki_compat.AnkiCompatibilityError:
+            _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
         return
     _ORIGINAL_REVIEWER_ON_ENTER_KEY(self)
 
@@ -1159,7 +1097,7 @@ def _incremento_next_card(self) -> None:
     elif direct_handled:
         self.card = None
     else:
-        self._get_next_v3_card()
+        _anki_compat.fetch_next_v3_card(self)
 
     if (
         not direct_handled
@@ -1171,19 +1109,18 @@ def _incremento_next_card(self) -> None:
         except Exception:
             restored_ids = []
         if restored_ids:
-            self._get_next_v3_card()
+            _anki_compat.fetch_next_v3_card(self)
 
-    self._previous_card_info.set_card(self.previous_card)
-    self._card_info.set_card(self.card)
+    _anki_compat.update_reviewer_card_info(self)
 
     if not self.card:
         self.mw.moveToState("overview")
         return
 
     if self._reps is None:
-        self._initWeb()
+        _anki_compat.initialize_reviewer_web(self)
 
-    self._showQuestion()
+    _anki_compat.show_reviewer_question(self)
 
 
 def _incremento_op_executed(self, changes, handler, focused) -> bool:
@@ -1368,24 +1305,25 @@ def _incremento_link_handler(self, url: str) -> None:
     _ORIGINAL_REVIEWER_LINK_HANDLER(self, url)
 
 
-_incremento_button_time._incremento_original = _ORIGINAL_REVIEWER_BUTTON_TIME
-Reviewer._buttonTime = _incremento_button_time
-_incremento_default_ease._incremento_original = _ORIGINAL_REVIEWER_DEFAULT_EASE
-Reviewer._defaultEase = _incremento_default_ease
-_incremento_shortcut_keys._incremento_original = _ORIGINAL_REVIEWER_SHORTCUT_KEYS
-Reviewer._shortcutKeys = _incremento_shortcut_keys
-_incremento_on_enter_key._incremento_original = _ORIGINAL_REVIEWER_ON_ENTER_KEY
-Reviewer.onEnterKey = _incremento_on_enter_key
-_incremento_next_card._incremento_original = _ORIGINAL_REVIEWER_NEXT_CARD
-Reviewer.nextCard = _incremento_next_card
-_incremento_op_executed._incremento_original = _ORIGINAL_REVIEWER_OP_EXECUTED
-Reviewer.op_executed = _incremento_op_executed
-_incremento_show_answer_button._incremento_original = _ORIGINAL_REVIEWER_SHOW_ANSWER_BUTTON
-Reviewer._showAnswerButton = _incremento_show_answer_button
-_incremento_show_ease_buttons._incremento_original = _ORIGINAL_REVIEWER_SHOW_EASE_BUTTONS
-Reviewer._showEaseButtons = _incremento_show_ease_buttons
-_incremento_link_handler._incremento_original = _ORIGINAL_REVIEWER_LINK_HANDLER
-Reviewer._linkHandler = _incremento_link_handler
+for _reviewer_method_name, _reviewer_replacement in (
+    ("_buttonTime", _incremento_button_time),
+    ("_defaultEase", _incremento_default_ease),
+    ("_shortcutKeys", _incremento_shortcut_keys),
+    ("onEnterKey", _incremento_on_enter_key),
+    ("nextCard", _incremento_next_card),
+    ("op_executed", _incremento_op_executed),
+    ("_showAnswerButton", _incremento_show_answer_button),
+    ("_showEaseButtons", _incremento_show_ease_buttons),
+    ("_linkHandler", _incremento_link_handler),
+):
+    if (
+        _reviewer_method_name == "nextCard"
+        and not _anki_compat.custom_next_card_supported(Reviewer)
+    ):
+        continue
+    _anki_compat.install_reviewer_patch(
+        Reviewer, _reviewer_method_name, _reviewer_replacement
+    )
 
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
@@ -1499,7 +1437,7 @@ def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
         showInfo("Select one or more Browser rows first.")
         return
 
-    cfg = mw.addonManager.getConfig(__name__) or {}
+    cfg = _load_addon_config(mw.addonManager, __name__)
     dlg = CustomScheduleDialog(
         _ADDON_DIR,
         normalized_ids,
@@ -1933,6 +1871,20 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
         source="selected_cards",
         content_kind="other",
     )
+    if not _anki_compat.custom_next_card_supported(Reviewer):
+        _record_diagnostic_event(
+            "explicit_review_failed",
+            source="selected_cards",
+            content_kind="other",
+            stage="compatibility",
+            error_type="UnsupportedAnkiReviewerAPI",
+        )
+        showInfo(
+            "Review Selected is unavailable with this Anki reviewer version. "
+            "Incremento left the selected cards unchanged. Please update Anki "
+            "or use a normal filtered-deck review."
+        )
+        return
     normalized_ids: list[int] = []
     seen: set[int] = set()
     skipped = 0
@@ -1975,6 +1927,18 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
         showInfo("No selected cards are available to study.")
         return
 
+    try:
+        first_card = mw.col.get_card(normalized_ids[0])
+    except Exception:
+        first_card = None
+    if first_card is None or _direct_review_v3_info(first_card) is None:
+        showInfo(
+            "Review Selected could not create a compatible Anki review queue. "
+            "Incremento left the selected cards unchanged; use a normal "
+            "filtered-deck review instead."
+        )
+        return
+
     _direct_review_card_ids[:] = normalized_ids
     _direct_review_active = True
 
@@ -1987,7 +1951,7 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
 
     try:
         if getattr(mw, "state", None) == "review" and getattr(mw, "reviewer", None):
-            mw.reviewer.nextCard()
+            _anki_compat.advance_reviewer(mw.reviewer)
         else:
             mw.moveToState("review")
         _record_diagnostic_event(
@@ -2561,7 +2525,7 @@ def _on_profile_did_open() -> None:
     global _diagnostic_pending_final_interval, _diagnostic_recorder
     from .backend.migration import migrate_to_profile_dir
     profile = _current_profile_name()
-    cfg = mw.addonManager.getConfig(__name__) or {}
+    cfg = _load_addon_config(mw.addonManager, __name__)
     _reset_topic_answer_runtime_state()
     _reset_custom_schedule_answer_runtime_state()
     _diagnostic_pending_final_interval = None
@@ -2579,6 +2543,14 @@ def _on_profile_did_open() -> None:
     environment = _diagnostic_environment_values()
     _record_diagnostic_event("profile_opened")
     _record_diagnostic_event("addon_started", **environment)
+    compatibility = _anki_compat.compatibility_report(Reviewer, mw.col)
+    _record_diagnostic_event(
+        "anki_compatibility_checked",
+        required_methods=compatibility.required_methods,
+        missing_methods=compatibility.missing_methods,
+        private_scheduler_available=compatibility.private_scheduler_available,
+        custom_next_card_supported=compatibility.custom_next_card_supported,
+    )
     try:
         if should_auto_create_topics_deck(profile, cfg):
             _create_topics_deck()
@@ -2588,6 +2560,39 @@ def _on_profile_did_open() -> None:
 
 gui_hooks.profile_did_open.append(_on_profile_did_open)
 gui_hooks.profile_will_close.append(_close_diagnostic_profile)
+
+
+def _start_profile_reconciliation() -> None:
+    """Repair unambiguous stale external rows without blocking profile open."""
+    from aqt.operations import QueryOp
+
+    profile = _active_profile()
+
+    def reconcile(col):
+        return _reconciliation_mod.reconcile_collection(_ADDON_DIR, profile, col)
+
+    def succeeded(result) -> None:
+        if profile != _active_profile():
+            return
+        _record_diagnostic_event(
+            "profile_reconciled",
+            stale_rows=int((result or {}).get("stale_rows", 0)),
+            repaired_links=int((result or {}).get("repaired_links", 0)),
+            pending_recovered=int((result or {}).get("pending_recovered", 0)),
+            pending_rolled_back=int((result or {}).get("pending_rolled_back", 0)),
+        )
+
+    def failed(exc: Exception) -> None:
+        if profile == _active_profile():
+            _record_diagnostic_event(
+                "profile_reconciliation_failed",
+                error_type=type(exc).__name__,
+            )
+
+    QueryOp(parent=mw, op=reconcile, success=succeeded).failure(failed).run_in_background()
+
+
+gui_hooks.profile_did_open.append(_start_profile_reconciliation)
 
 
 def _reset_answer_schedule_runtime_state() -> None:
@@ -2602,13 +2607,13 @@ def _sync_pdf_note_type() -> None:
     """Update the PDF card template to the current code version on startup."""
     from .backend.pdf_manager import ensure_pdf_note_type
 
-    def _run() -> None:
-        try:
-            ensure_pdf_note_type(mw.col)
-        except Exception:
-            pass
-
-    mw.taskman.run_in_background(_run)
+    # This mutates Anki's note-type registry and therefore must not run through
+    # an arbitrary file-worker thread. The other reader note-type synchronizers
+    # are likewise small, main-thread startup operations.
+    try:
+        ensure_pdf_note_type(mw.col)
+    except Exception:
+        pass
 
 
 gui_hooks.main_window_did_init.append(_sync_pdf_note_type)
@@ -2644,6 +2649,14 @@ gui_hooks.main_window_did_init.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )
 gui_hooks.profile_will_close.append(_browser_bridge_mod.stop_browser_bridge)
+
+
+def _close_profile_database() -> None:
+    """Release the UI thread's handle without disrupting live workers."""
+    close_current_connection(_ADDON_DIR, _active_profile())
+
+
+gui_hooks.profile_will_close.append(_close_profile_database)
 
 
 def _install_reviewer_selection_bridge(_card=None) -> None:
@@ -2852,18 +2865,18 @@ gui_hooks.reviewer_did_show_question.append(
 def _check_deps_first_run() -> None:
     """On first run after install, show the dependency setup dialog if anything is missing."""
     from .backend.deps import status
-    config = mw.addonManager.getConfig(__name__) or {}
+    config = _load_addon_config(mw.addonManager, __name__)
     if config.get("deps_notified"):
         return
     s = status()
     if s["pymupdf"] and s["tesseract"]:
         # Everything present — mark as notified and skip
         config["deps_notified"] = True
-        mw.addonManager.writeConfig(__name__, config)
+        _save_addon_config(mw.addonManager, __name__, config)
         return
     # Something is missing — show the setup dialog once
     config["deps_notified"] = True
-    mw.addonManager.writeConfig(__name__, config)
+    _save_addon_config(mw.addonManager, __name__, config)
 
     def _show():
         from .backend.deps import show_setup_dialog
@@ -3364,11 +3377,15 @@ def exportFunction() -> None:
     from .backend.export_bundle import snapshot_tree
 
     today = datetime.date.today().isoformat()
-    default_name = os.path.expanduser(f"~/incremento_full_backup_{today}.zip")
+    profile = _active_profile()
+    profile_display_name = _current_profile_name()
+    default_name = os.path.expanduser(
+        f"~/incremento_{profile}_full_backup_{today}.zip"
+    )
 
     path, _ = QFileDialog.getSaveFileName(
         mw,
-        "Export Incremento Full Backup",
+        "Export Current Incremento Profile Backup",
         default_name,
         "ZIP files (*.zip)",
     )
@@ -3377,18 +3394,25 @@ def exportFunction() -> None:
     if not path.lower().endswith(".zip"):
         path += ".zip"
 
-    user_files_dir = str(_paths.get_user_files_dir(_ADDON_DIR, _active_profile()))
-    config = mw.addonManager.getConfig(__name__) or {}
+    user_files_dir = str(_paths.get_user_files_dir(_ADDON_DIR, profile))
+    config = _load_addon_config(mw.addonManager, __name__)
+    collection = mw.col
+    archive_fd, archive_tmp_path = tempfile.mkstemp(
+        prefix=".incremento-backup-",
+        suffix=".zip",
+        dir=os.path.dirname(os.path.abspath(path)),
+    )
+    os.close(archive_fd)
 
     def _restore_instructions() -> str:
         return "\n".join(
             [
-                "Incremento Full Backup Restore",
+                "Incremento Current-Profile Backup Restore",
                 "==============================",
                 "",
                 "This archive contains:",
                 "1. anki/all_decks.apkg  -> import this into a fresh Anki profile",
-                "2. user_files/          -> copy into addons21/incremento/user_files/",
+                f"2. user_files/{profile}/ -> restore this Incremento profile folder",
                 "3. config.json          -> restore Incremento add-on config if needed",
                 "",
                 "Recommended restore order:",
@@ -3396,25 +3420,44 @@ def exportFunction() -> None:
                 "2. Install the Incremento add-on.",
                 "3. Import anki/all_decks.apkg in Anki.",
                 "4. Close Anki.",
-                "5. Replace the add-on's user_files/ folder with the exported user_files/ folder.",
+                f"5. Copy user_files/{profile}/ into the add-on's user_files/ folder.",
+                "   Do not delete other profile folders that are already there.",
                 "6. If needed, paste config.json into Tools -> Add-ons -> Incremento -> Config.",
                 "7. Start Anki and verify PDFs, videos, writing notes, highlights, and progress.",
                 "",
                 "Notes:",
-                "- The APKG is generated from the currently open Anki profile.",
-                "- The user_files snapshot contains Incremento runtime data such as PDFs, videos, writing files, and browser profiles.",
+                f"- This backup belongs to the Anki profile: {profile_display_name}",
+                "- Both the APKG and Incremento runtime snapshot cover that profile only.",
+                "- The runtime snapshot includes PDFs, EPUBs, videos, writing files, browser profiles, and the database.",
             ]
         )
 
     def _progress(label: str) -> None:
         mw.taskman.run_on_main(lambda: mw.progress.update(label=label))
 
+    try:
+        # This touches Qt/WebEngine-owned dock state and must stay on the main
+        # thread. The archive worker only receives already-flushed files.
+        _video_dock_mod.flush_video_progress()
+    except Exception:
+        pass
+
     mw.progress.start(label="Preparing full backup…", immediate=True)
 
     def _task():
-        _video_dock_mod.flush_video_progress()
-        conn = get_connection(_ADDON_DIR, _active_profile())
+        if _active_profile() != profile:
+            raise RuntimeError("The active profile changed before backup started")
+        conn = get_connection(_ADDON_DIR, profile)
         conn.commit()
+
+        database_integrity = str(
+            conn.execute("PRAGMA integrity_check").fetchone()[0]
+        )
+        if database_integrity.casefold() != "ok":
+            raise RuntimeError("Incremento database integrity check failed")
+        database_schema_version = int(
+            conn.execute("PRAGMA user_version").fetchone()[0]
+        )
 
         priority_count = conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0]
         highlight_count = conn.execute("SELECT COUNT(*) FROM pdf_highlights").fetchone()[0]
@@ -3427,7 +3470,7 @@ def exportFunction() -> None:
             db_snapshot_path = tmp_root / DB_NAME
 
             _progress("Creating Anki package…")
-            exporter = AnkiPackageExporter(mw.col)
+            exporter = AnkiPackageExporter(collection)
             exporter.includeSched = True
             exporter.includeMedia = True
             exporter.did = None
@@ -3442,6 +3485,9 @@ def exportFunction() -> None:
             finally:
                 hooks.media_files_did_export.remove(_exported_media_count)
 
+            if _active_profile() != profile:
+                raise RuntimeError("The active profile changed while backup was running")
+
             _progress("Snapshotting Incremento user_files…")
             snapshot_conn = sqlite3.connect(str(db_snapshot_path))
             try:
@@ -3451,20 +3497,24 @@ def exportFunction() -> None:
 
             stage_root = tmp_root / "bundle"
             user_files_stage = stage_root / "user_files"
-            user_files_stage.mkdir(parents=True, exist_ok=True)
+            profile_stage = user_files_stage / profile
+            profile_stage.mkdir(parents=True, exist_ok=True)
 
             user_files_stats = snapshot_tree(
                 user_files_dir,
-                str(user_files_stage),
+                str(profile_stage),
                 skip_relpaths={DB_NAME, f"{DB_NAME}-wal", f"{DB_NAME}-shm"},
             )
-            db_stage_path = user_files_stage / DB_NAME
+            db_stage_path = profile_stage / DB_NAME
             db_stage_path.write_bytes(db_snapshot_path.read_bytes())
 
+            if _active_profile() != profile:
+                raise RuntimeError("The active profile changed while backup was running")
+
             _progress("Writing backup ZIP…")
-            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(archive_tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(apkg_path, "anki/all_decks.apkg")
-                zf.write(db_stage_path, f"user_files/{DB_NAME}")
+                zf.write(db_stage_path, f"user_files/{profile}/{DB_NAME}")
 
                 for root, _, filenames in os.walk(user_files_stage):
                     for filename in filenames:
@@ -3476,18 +3526,25 @@ def exportFunction() -> None:
 
                 zf.writestr("config.json", json.dumps(config, ensure_ascii=False, indent=2))
                 zf.writestr("restore.txt", _restore_instructions())
-                zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR, _active_profile()))
-                zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR, _active_profile()))
-                zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR, _active_profile()))
-                zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR, _active_profile()))
+                zf.writestr("data/priorities.json", export_priorities_json(_ADDON_DIR, profile))
+                zf.writestr("data/pdf_progress.json", export_pdf_progress_json(_ADDON_DIR, profile))
+                zf.writestr("data/highlights.json", export_highlights_json(_ADDON_DIR, profile))
+                zf.writestr("data/stats.json", export_stats_json(_ADDON_DIR, profile))
 
                 manifest = {
+                    "schema_version": 2,
                     "export_date": today,
                     "addon": "Incremento",
+                    "scope": "current_profile",
                     "anki_version": getattr(mw.pm, "meta", {}).get(
                         "ankiVersion", "unknown"
                     ),
-                    "profile": _current_profile_name(),
+                    "profile": profile_display_name,
+                    "profile_storage_key": profile,
+                    "database": {
+                        "integrity_check": database_integrity,
+                        "schema_version": database_schema_version,
+                    },
                     "counts": {
                         "anki_cards_exported": int(getattr(exporter, "count", 0) or 0),
                         "priorities": int(priority_count or 0),
@@ -3501,7 +3558,7 @@ def exportFunction() -> None:
                     },
                     "files": {
                         "anki/all_decks.apkg": "All decks from the current Anki profile, including scheduling and media",
-                        "user_files/": "Full Incremento runtime snapshot (PDFs, videos, writing, browser profiles, database)",
+                        f"user_files/{profile}/": "Incremento runtime snapshot for the current profile (PDFs, EPUBs, videos, writing, browser profiles, database)",
                         "config.json": "Incremento add-on config",
                         "restore.txt": "Restore instructions for a fresh install",
                         "data/priorities.json": "Card priorities (human-readable copy)",
@@ -3514,6 +3571,14 @@ def exportFunction() -> None:
                     "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
                 )
 
+            with zipfile.ZipFile(archive_tmp_path, "r") as check_zip:
+                corrupt_member = check_zip.testzip()
+            if corrupt_member:
+                raise RuntimeError("Backup ZIP validation failed")
+            if _active_profile() != profile:
+                raise RuntimeError("The active profile changed while backup was running")
+            os.replace(archive_tmp_path, path)
+
             return {
                 "anki_cards_exported": int(getattr(exporter, "count", 0) or 0),
                 "priority_count": int(priority_count or 0),
@@ -3523,9 +3588,19 @@ def exportFunction() -> None:
 
     def _on_done(fut) -> None:
         mw.progress.finish()
+        if profile != _active_profile():
+            try:
+                os.remove(archive_tmp_path)
+            except OSError:
+                pass
+            return
         try:
             result = fut.result()
         except Exception as e:
+            try:
+                os.remove(archive_tmp_path)
+            except OSError:
+                pass
             showInfo(f"Export failed:\n{e}")
             return
 
@@ -3570,7 +3645,7 @@ def exportSupportBundleFunction() -> None:
     recorder = _diagnostic_recorder
     _record_diagnostic_event("support_bundle_requested")
 
-    current_config = copy.deepcopy(mw.addonManager.getConfig(__name__) or {})
+    current_config = copy.deepcopy(_load_addon_config(mw.addonManager, __name__))
     try:
         with open(os.path.join(_ADDON_DIR, "config.json"), "r", encoding="utf-8") as handle:
             default_config = json.load(handle)
@@ -3861,6 +3936,7 @@ def addVideoFunction() -> None:
     source_mode = dlg.source_mode
     deck_name = dlg.deck_name
     tags = dlg.tags
+    active_profile = _active_profile()
 
     if source_mode in ("youtube", "vimeo"):
         url = resolve_video_url_for_embed(dlg.video_url)
@@ -3887,16 +3963,31 @@ def addVideoFunction() -> None:
         original_quality = False
         local_encode_mode = dlg.local_encode_mode
 
+    import_operation: ImportOperation | None = None
+
     def _add_card(local_relpath: str = "", youtube_url: str = url) -> bool:
         try:
-            add_video_card(
+            metadata = None
+            if import_operation is not None:
+                metadata = build_incremento_metadata(
+                    source_type="Video",
+                    source_title=title,
+                    source_link=local_relpath or youtube_url,
+                    content_id=import_operation.content_id,
+                )
+            card_id = add_video_card(
                 mw.col,
                 youtube_url,
                 title,
                 deck_name=deck_name,
                 tags=tags,
                 local_video_file=local_relpath,
+                metadata=metadata,
             )
+            if import_operation is not None:
+                note_id = int(mw.col.get_card(int(card_id)).nid)
+                import_operation.bind_anki(card_id=int(card_id), note_id=note_id)
+                import_operation.commit(storage_key=local_relpath)
             mw.col.reset()
             if local_relpath:
                 tooltip(f"Video card '{title}' added to {deck_name} (local copy ready).")
@@ -3904,10 +3995,15 @@ def addVideoFunction() -> None:
                 tooltip(f"Video card '{title}' added to {deck_name}.")
             return True
         except Exception as e:
+            if import_operation is not None:
+                import_operation.rollback(error_code=type(e).__name__)
             showInfo(f"Failed to add video card:\n{e}")
             return False
 
     if source_mode == "local":
+        import_operation = ImportOperation(
+            _ADDON_DIR, active_profile, "video"
+        )
         try:
             label = (
                 "Importing local video…"
@@ -3935,10 +4031,11 @@ def addVideoFunction() -> None:
         def _task():
             return import_local_video_file(
                 _ADDON_DIR,
-                _active_profile(),
+                active_profile,
                 local_path,
                 encode_mode=local_encode_mode,
                 progress_cb=_progress_cb,
+                created_relpath_cb=import_operation.track_created_relpath,
             )
 
         def _on_done(fut) -> None:
@@ -3946,16 +4043,25 @@ def addVideoFunction() -> None:
             try:
                 local_relpath = fut.result()
             except Exception as e:
+                import_operation.rollback(error_code=type(e).__name__)
                 showInfo(f"Local video import failed:\n{e}")
+                return
+            if _active_profile() != active_profile:
+                import_operation.rollback(error_code="profile_changed")
+                showInfo("The Anki profile changed, so the video import was cancelled safely.")
                 return
             _add_card(local_relpath=local_relpath, youtube_url="")
 
-        mw.taskman.run_in_background(_task, _on_done)
+        mw.taskman.run_in_background(_task, _on_done, uses_collection=False)
         return
 
     if not dlg.download_locally:
         _add_card()
         return
+
+    import_operation = ImportOperation(
+        _ADDON_DIR, active_profile, "video"
+    )
 
     try:
         label = (
@@ -3984,12 +4090,13 @@ def addVideoFunction() -> None:
     def _task():
         return download_and_compress_video(
             _ADDON_DIR,
-            _active_profile(),
+            active_profile,
             url,
             overwrite=(max_height is not None) or original_quality,
             progress_cb=_progress_cb,
             max_height=max_height,
             original_quality=original_quality,
+            created_relpath_cb=import_operation.track_created_relpath,
         )
 
     def _on_done(fut) -> None:
@@ -3997,11 +4104,16 @@ def addVideoFunction() -> None:
         try:
             local_relpath = fut.result()
         except Exception as e:
+            import_operation.rollback(error_code=type(e).__name__)
             showInfo(f"Video download/compression failed:\n{e}")
+            return
+        if _active_profile() != active_profile:
+            import_operation.rollback(error_code="profile_changed")
+            showInfo("The Anki profile changed, so the video import was cancelled safely.")
             return
         _add_card(local_relpath=local_relpath)
 
-    mw.taskman.run_in_background(_task, _on_done)
+    mw.taskman.run_in_background(_task, _on_done, uses_collection=False)
 
 
 def addWritingFunction() -> None:
@@ -4105,6 +4217,12 @@ def addWebpageFunction() -> None:
 
 
 def reindexPdfTextFunction() -> None:
+    import threading
+
+    from .backend.pdf_manager import get_pdf_dir
+    from .backend.search_indexer import index_pdf_documents
+
+    profile = _active_profile()
     try:
         note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
     except Exception as e:
@@ -4115,50 +4233,86 @@ def reindexPdfTextFunction() -> None:
         showInfo("No PDF cards found to reindex.")
         return
 
-    indexed = 0
-    skipped = 0  # file missing or no text
-    failed: list[tuple[str, str]] = []
-    from .backend.pdf_manager import get_pdf_dir
-    pdf_dir = get_pdf_dir()
+    pdf_dir = get_pdf_dir(profile)
+    documents: list[tuple[int, str]] = []
+    missing = 0
+    for note_id in note_ids:
+        try:
+            note = mw.col.get_note(note_id)
+            pdf_path = os.path.join(pdf_dir, str(note["PDF_Filename"] or ""))
+            if not os.path.isfile(pdf_path):
+                missing += 1
+                continue
+            documents.extend(
+                (int(card_id), pdf_path)
+                for card_id in mw.col.find_cards(f"nid:{int(note_id)}")
+            )
+        except Exception:
+            missing += 1
 
-    mw.progress.start(label="Reindexing PDF text…", immediate=True)
+    if not documents:
+        showInfo("No readable PDF files were found to reindex.")
+        return
+
+    cancelled = threading.Event()
     try:
-        total = len(note_ids)
-        for i, nid in enumerate(note_ids, start=1):
+        mw.progress.start(
+            label="Reindexing PDF text in the background…",
+            immediate=True,
+            max=len(documents),
+            can_cancel=True,
+        )
+    except TypeError:
+        mw.progress.start(label="Reindexing PDF text in the background…", immediate=True)
+
+    def progress(completed: int, total: int) -> None:
+        def update() -> None:
             try:
-                mw.progress.update(label=f"({i}/{total}) Reindexing PDF text…")
+                mw.progress.update(
+                    label=f"Reindexing PDF text… {completed}/{total}",
+                    value=completed,
+                    max=total,
+                )
+            except TypeError:
+                mw.progress.update(label=f"Reindexing PDF text… {completed}/{total}")
+            try:
+                want_cancel = getattr(mw.progress, "want_cancel", None)
+                if callable(want_cancel) and want_cancel():
+                    cancelled.set()
             except Exception:
                 pass
 
-            try:
-                note = mw.col.get_note(nid)
-                filename = note["PDF_Filename"]
-                pdf_path = os.path.join(pdf_dir, filename)
-                if not os.path.exists(pdf_path):
-                    skipped += 1
-                    continue
-                page_texts = extract_pdf_pages_text(pdf_path)
-                if not any(page_texts):
-                    skipped += 1
-                    continue
-                for cid in mw.col.find_cards(f"nid:{nid}"):
-                    replace_pdf_text_index(_ADDON_DIR, _active_profile(), cid, page_texts)
-                indexed += 1
-            except Exception as e:
-                failed.append((str(nid), str(e)))
-    finally:
-        mw.progress.finish()
+        mw.taskman.run_on_main(update)
 
-    lines = [f"PDF text reindex complete.\n"]
-    lines.append(f"Indexed:  {indexed}")
-    lines.append(f"Skipped (no text / missing file):  {skipped}")
-    if failed:
-        lines.append(f"Errors:   {len(failed)}")
-        for nid_str, msg in failed[:10]:
-            lines.append(f"  • nid:{nid_str}: {msg}")
-        if len(failed) > 10:
-            lines.append(f"  …and {len(failed) - 10} more")
-    showInfo("\n".join(lines))
+    def task():
+        return index_pdf_documents(
+            _ADDON_DIR,
+            profile,
+            documents,
+            cancelled=cancelled.is_set,
+            progress=progress,
+            force=True,
+        )
+
+    def done(future) -> None:
+        mw.progress.finish()
+        if profile != _active_profile():
+            return
+        try:
+            result = future.result()
+        except Exception as exc:
+            showInfo(f"PDF text reindex failed:\n{exc}")
+            return
+        status = "cancelled" if result.cancelled else "complete"
+        showInfo(
+            f"PDF text reindex {status}.\n\n"
+            f"Processed: {result.indexed}\n"
+            f"Unchanged/skipped: {result.skipped}\n"
+            f"Missing before start: {missing}\n"
+            f"Errors: {result.failed}"
+        )
+
+    mw.taskman.run_in_background(task, done, uses_collection=False)
 
 
 def _ocr_note_ids_for_card_ids(card_ids: list[int] | None = None) -> list[int]:
@@ -5459,7 +5613,7 @@ def cleanupOrphanVideosFunction() -> None:
 
 
 def openSettingsFunction() -> None:
-    cfg = mw.addonManager.getConfig(__name__) or {}
+    cfg = _load_addon_config(mw.addonManager, __name__)
     previous_priority_direction = configured_priority_lower_is_more_important(cfg)
     note_type_names = sorted(m.name for m in mw.col.models.all_names_and_ids())
     dlg = IncrementoSettingsDialog(
@@ -5569,7 +5723,7 @@ def openSettingsFunction() -> None:
     cfg["writing_word_count_mode"] = dlg.writing_word_count_mode
     cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
-    mw.addonManager.writeConfig(__name__, cfg)
+    _save_addon_config(mw.addonManager, __name__, cfg)
     try:
         if _web_dock_mod._runtime.dock is not None:
             checked = bool(dlg.track_web_window_with_extension)
@@ -5829,9 +5983,9 @@ def _build_incremento_menu() -> None:
     def _on_timer_toggle(checked: bool) -> None:
         if _timer_mod._timer_toolbar is not None:
             _timer_mod._timer_toolbar.setVisible(checked)
-        cfg = mw.addonManager.getConfig(__name__) or {}
+        cfg = _load_addon_config(mw.addonManager, __name__)
         cfg["show_timer"] = checked
-        mw.addonManager.writeConfig(__name__, cfg)
+        _save_addon_config(mw.addonManager, __name__, cfg)
 
     qconnect(_timerToggleAction.triggered, _on_timer_toggle)
     _menu.addAction(_timerToggleAction)

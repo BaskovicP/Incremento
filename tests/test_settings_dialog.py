@@ -330,6 +330,10 @@ _aqt_module = types.ModuleType("aqt")
 _aqt_module.qt = _qt_module
 _aqt_module.mw = types.SimpleNamespace(addonManager=None)
 
+_original_modules = {
+    name: sys.modules.get(name)
+    for name in ("aqt", "aqt.qt")
+}
 sys.modules["aqt"] = _aqt_module
 sys.modules["aqt.qt"] = _qt_module
 
@@ -342,7 +346,14 @@ _SPEC = importlib.util.spec_from_file_location(
 )
 _MOD = importlib.util.module_from_spec(_SPEC)
 sys.modules["_incremento_settings_dialog"] = _MOD
-_SPEC.loader.exec_module(_MOD)
+try:
+    _SPEC.loader.exec_module(_MOD)
+finally:
+    for _name, _original in _original_modules.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
 
 IncrementoSettingsDialog = _MOD.IncrementoSettingsDialog
 default_shortcuts = _MOD.default_shortcuts

@@ -3,7 +3,18 @@ import sys
 import types
 
 
-def _install_pdf_dialog_stubs() -> None:
+def _install_pdf_dialog_stubs() -> dict[str, object | None]:
+    module_names = (
+        "aqt",
+        "aqt.qt",
+        "PyQt6",
+        "PyQt6.QtGui",
+        "PyQt6.QtPdf",
+        "incremento",
+        "incremento.frontend",
+        "incremento.frontend.tag_edit",
+    )
+    originals = {name: sys.modules.get(name) for name in module_names}
     aqt_mod = types.ModuleType("aqt")
     aqt_mod.mw = types.SimpleNamespace()
     sys.modules["aqt"] = aqt_mod
@@ -65,11 +76,19 @@ def _install_pdf_dialog_stubs() -> None:
     sys.modules["incremento"] = incremento_pkg
     sys.modules["incremento.frontend"] = frontend_pkg
     sys.modules["incremento.frontend.tag_edit"] = tag_edit_mod
+    return originals
 
 
-_install_pdf_dialog_stubs()
+_original_modules = _install_pdf_dialog_stubs()
 sys.modules.pop("pdf_dialog", None)
-pdf_dialog = importlib.import_module("pdf_dialog")
+try:
+    pdf_dialog = importlib.import_module("pdf_dialog")
+finally:
+    for _name, _original in _original_modules.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
 
 
 def test_resolve_pdf_storage_abspath_uses_backend_resolver_when_available(tmp_path):

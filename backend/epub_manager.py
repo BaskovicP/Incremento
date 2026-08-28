@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from xml.etree import ElementTree as ET
 
@@ -26,10 +27,12 @@ try:
         set_epub_daily_limit_usage,
     )
     from . import paths as _paths
+    from .operation_journal import ImportOperation
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
     from .scheduler_config import build_ready_filter, load_scheduler_config
     from .statistics import _effective_date
@@ -46,10 +49,12 @@ except ImportError:
         set_epub_daily_limit_usage,
     )
     import paths as _paths
+    from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
         ensure_incremento_metadata_fields,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
     from scheduler_config import build_ready_filter, load_scheduler_config  # type: ignore
     from statistics import _effective_date  # type: ignore
@@ -94,31 +99,36 @@ CARD_TEMPLATE_FRONT = """
 CARD_TEMPLATE_BACK = "{{Title}}"
 
 
-def get_epub_dir() -> str:
+def get_epub_dir(profile: str | None = None) -> str:
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    d = str(_paths.get_epub_dir(addon_dir, _paths.get_active_profile()))
+    d = str(_paths.get_epub_dir(addon_dir, profile or _paths.get_active_profile()))
     os.makedirs(d, exist_ok=True)
     return d
 
 
-def get_epub_extract_root() -> str:
+def get_epub_extract_root(profile: str | None = None) -> str:
     addon_dir = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     )
-    d = str(_paths.get_epub_extract_root(addon_dir, _paths.get_active_profile()))
+    d = str(
+        _paths.get_epub_extract_root(
+            addon_dir,
+            profile or _paths.get_active_profile(),
+        )
+    )
     os.makedirs(d, exist_ok=True)
     return d
 
 
-def get_epub_extract_dir(stored_filename: str) -> str:
+def get_epub_extract_dir(stored_filename: str, *, profile: str | None = None) -> str:
     stem = Path(str(stored_filename or "")).name
     safe = stem.replace(os.sep, "_")
-    return os.path.join(get_epub_extract_root(), safe)
+    return os.path.join(get_epub_extract_root(profile), safe)
 
 
-def epub_storage_abspath(stored_filename: str) -> str:
+def epub_storage_abspath(stored_filename: str, *, profile: str | None = None) -> str:
     raw = str(stored_filename or "").strip().replace("\\", "/")
     if not raw:
         return ""
@@ -127,7 +137,7 @@ def epub_storage_abspath(stored_filename: str) -> str:
     elif raw.startswith("epubs/"):
         raw = raw[len("epubs/"):]
 
-    root = Path(get_epub_dir()).resolve()
+    root = Path(get_epub_dir(profile)).resolve()
     raw_path = Path(raw)
     candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
     try:
@@ -137,14 +147,21 @@ def epub_storage_abspath(stored_filename: str) -> str:
     return str(candidate)
 
 
-def _copy_to_epub_dir(epub_path: str) -> str:
-    epub_dir = get_epub_dir()
+def _copy_to_epub_dir(
+    epub_path: str,
+    *,
+    profile: str | None = None,
+    created_relpath_cb: Callable[[str], None] | None = None,
+) -> str:
+    epub_dir = get_epub_dir(profile)
     raw_name = os.path.basename(epub_path)
     stem, ext = os.path.splitext(raw_name)
     stem = _safe_epub_stem(stem, fallback="book")
     ext = ext if ext.lower() == ".epub" else ".epub"
     dest_name = f"{stem}-{uuid.uuid4().hex}{ext}"
     dest_path = os.path.join(epub_dir, dest_name)
+    if created_relpath_cb is not None:
+        created_relpath_cb(f"epubs/{dest_name}")
     shutil.copy2(epub_path, dest_path)
     return dest_name
 
@@ -177,11 +194,16 @@ def _safe_zip_members(zf: zipfile.ZipFile) -> list[tuple[zipfile.ZipInfo, str]]:
     return out
 
 
-def _extract_epub_path(stored_filename: str, relpath: str) -> str:
+def _extract_epub_path(
+    stored_filename: str,
+    relpath: str,
+    *,
+    profile: str | None = None,
+) -> str:
     safe_rel = _safe_epub_member_name(relpath)
     if not safe_rel:
         return ""
-    root = Path(get_epub_extract_dir(stored_filename)).resolve()
+    root = Path(get_epub_extract_dir(stored_filename, profile=profile)).resolve()
     candidate = (root / Path(safe_rel)).resolve()
     try:
         candidate.relative_to(root)
@@ -356,25 +378,42 @@ def _html_text_and_title(path: str, fallback_title: str) -> tuple[str, str]:
     return (" ".join(text.split()).strip(), title.strip() or fallback_title)
 
 
-def _metadata_path(stored_filename: str) -> str:
-    return os.path.join(get_epub_extract_dir(stored_filename), "metadata.json")
+def _metadata_path(stored_filename: str, *, profile: str | None = None) -> str:
+    return os.path.join(
+        get_epub_extract_dir(stored_filename, profile=profile),
+        "metadata.json",
+    )
 
 
-def load_epub_metadata(addon_dir: str, stored_filename: str) -> dict:
+def load_epub_metadata(
+    addon_dir: str,
+    stored_filename: str,
+    *,
+    profile: str | None = None,
+) -> dict:
     del addon_dir
-    meta_path = _metadata_path(stored_filename)
+    meta_path = _metadata_path(stored_filename, profile=profile)
     if not os.path.isfile(meta_path):
-        epub_path = epub_storage_abspath(stored_filename)
+        epub_path = epub_storage_abspath(stored_filename, profile=profile)
         if not epub_path or not os.path.isfile(epub_path):
             raise FileNotFoundError("Stored EPUB file was not found.")
-        ensure_epub_extracted(epub_path, stored_filename=stored_filename)
+        ensure_epub_extracted(
+            epub_path,
+            stored_filename=stored_filename,
+            profile=profile,
+        )
     with open(meta_path, "r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def ensure_epub_extracted(epub_path: str, *, stored_filename: str | None = None) -> dict:
+def ensure_epub_extracted(
+    epub_path: str,
+    *,
+    stored_filename: str | None = None,
+    profile: str | None = None,
+) -> dict:
     stored_name = str(stored_filename or os.path.basename(epub_path))
-    extract_dir = get_epub_extract_dir(stored_name)
+    extract_dir = get_epub_extract_dir(stored_name, profile=profile)
     meta_path = os.path.join(extract_dir, "metadata.json")
     if os.path.isfile(meta_path):
         with open(meta_path, "r", encoding="utf-8") as fh:
@@ -405,7 +444,7 @@ def ensure_epub_extracted(epub_path: str, *, stored_filename: str | None = None)
     if not opf_relpath:
         raise RuntimeError("Invalid EPUB: empty package rootfile")
 
-    opf_path = _extract_epub_path(stored_name, opf_relpath)
+    opf_path = _extract_epub_path(stored_name, opf_relpath, profile=profile)
     if not opf_path:
         raise RuntimeError("Invalid EPUB: package rootfile escapes extraction root")
     opf_dir = posixpath.dirname(opf_relpath)
@@ -1005,12 +1044,17 @@ def set_epub_daily_limit_override(
     )
 
 
-def _load_cover_href_from_extracted_package(stored_filename: str, metadata: dict) -> str:
-    extract_dir = get_epub_extract_dir(stored_filename)
+def _load_cover_href_from_extracted_package(
+    stored_filename: str,
+    metadata: dict,
+    *,
+    profile: str | None = None,
+) -> str:
+    extract_dir = get_epub_extract_dir(stored_filename, profile=profile)
     opf_relpath = str((metadata or {}).get("opf_relpath") or "").strip()
     if not opf_relpath:
         return ""
-    opf_path = _extract_epub_path(stored_filename, opf_relpath)
+    opf_path = _extract_epub_path(stored_filename, opf_relpath, profile=profile)
     if not os.path.isfile(opf_path):
         return ""
     try:
@@ -1033,21 +1077,36 @@ def _load_cover_href_from_extracted_package(stored_filename: str, metadata: dict
     return _find_epub_cover_href(opf_root, ns, opf_dir, manifest)
 
 
-def render_epub_cover_media(col, epub_path: str, *, title: str = "", source_filename: str = "") -> str:
+def render_epub_cover_media(
+    col,
+    epub_path: str,
+    *,
+    title: str = "",
+    source_filename: str = "",
+    profile: str | None = None,
+) -> str:
     """Copy the EPUB package cover image to Anki media and return its media filename."""
     if not epub_path or not os.path.exists(epub_path):
         raise FileNotFoundError("EPUB file was not found.")
 
     try:
         stored_name = str(source_filename or os.path.basename(epub_path)).strip()
-        metadata = ensure_epub_extracted(epub_path, stored_filename=stored_name)
+        metadata = ensure_epub_extracted(
+            epub_path,
+            stored_filename=stored_name,
+            profile=profile,
+        )
         cover_href = str((metadata or {}).get("cover_href") or "").strip()
         if not cover_href:
-            cover_href = _load_cover_href_from_extracted_package(stored_name, metadata or {})
+            cover_href = _load_cover_href_from_extracted_package(
+                stored_name,
+                metadata or {},
+                profile=profile,
+            )
         if not cover_href:
             return ""
 
-        cover_path = _extract_epub_path(stored_name, cover_href)
+        cover_path = _extract_epub_path(stored_name, cover_href, profile=profile)
         if not os.path.isfile(cover_path):
             return ""
 
@@ -1153,10 +1212,45 @@ def add_epub_card(
     tags: list[str] | None = None,
 ) -> int:
     ensure_epub_note_type(col)
+    profile = _paths.get_active_profile()
+    with ImportOperation(addon_dir, profile, "epub") as operation:
+        return _create_new_epub_card(
+            addon_dir,
+            profile,
+            col,
+            epub_path=epub_path,
+            title=title,
+            deck_name=deck_name,
+            tags=tags,
+            operation=operation,
+        )
 
-    stored_filename = _copy_to_epub_dir(epub_path)
-    stored_path = os.path.join(get_epub_dir(), stored_filename)
-    metadata = ensure_epub_extracted(stored_path, stored_filename=stored_filename)
+
+def _create_new_epub_card(
+    addon_dir: str,
+    profile: str,
+    col,
+    *,
+    epub_path: str,
+    title: str,
+    deck_name: str,
+    tags: list[str] | None,
+    operation: ImportOperation,
+) -> int:
+    """Create one EPUB card and compensate extracted files on failure."""
+
+    stored_filename = _copy_to_epub_dir(
+        epub_path,
+        profile=profile,
+        created_relpath_cb=operation.track_created_relpath,
+    )
+    operation.track_created_relpath(f"epub_extracted/{Path(stored_filename).name}")
+    stored_path = os.path.join(get_epub_dir(profile), stored_filename)
+    metadata = ensure_epub_extracted(
+        stored_path,
+        stored_filename=stored_filename,
+        profile=profile,
+    )
 
     deck = col.decks.by_name(deck_name)
     if deck is None:
@@ -1176,6 +1270,7 @@ def add_epub_card(
             stored_path,
             title=stored_title,
             source_filename=stored_filename,
+            profile=profile,
         )
         apply_incremento_metadata(
             note,
@@ -1183,6 +1278,7 @@ def add_epub_card(
                 source_type="EPUB",
                 source_title=base_title,
                 source_link=f"epubs/{stored_filename}",
+                content_id=operation.content_id,
             ),
         )
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
@@ -1209,13 +1305,16 @@ def add_epub_card(
     if not cid:
         raise RuntimeError("Failed to add EPUB card. Anki rejected the note.")
 
+    operation.bind_anki(card_id=cid, note_id=getattr(note, "id", None))
+
     try:
         replace_epub_text_index(
             addon_dir,
-            _paths.get_active_profile(),
+            profile,
             cid,
             [(section["title"], section["text"]) for section in (metadata.get("sections") or [])],
         )
     except Exception:
         pass
+    operation.commit(storage_key=f"epubs/{stored_filename}")
     return cid

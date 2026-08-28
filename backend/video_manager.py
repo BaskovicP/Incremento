@@ -274,7 +274,12 @@ def update_video_note_media(
     return changed
 
 
-def _yt_dlp_cmd(allow_auto_install: bool = True) -> list[str] | None:
+def _yt_dlp_cmd(allow_auto_install: bool = False) -> list[str] | None:
+    """Resolve yt-dlp without mutating Anki's Python environment.
+
+    ``allow_auto_install`` remains only for compatibility with older callers;
+    installs now require an explicit user action outside this resolver.
+    """
     yt_bin = shutil.which("yt-dlp")
     if yt_bin:
         return [yt_bin]
@@ -292,36 +297,11 @@ def _yt_dlp_cmd(allow_auto_install: bool = True) -> list[str] | None:
     if check is not None and check.returncode == 0:
         return [sys.executable, "-m", "yt_dlp"]
 
-    if not allow_auto_install:
-        return None
-
-    # Best-effort bootstrap for fresh installs.
-    try:
-        install = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--quiet", "yt-dlp"],
-            capture_output=True,
-            text=True,
-            timeout=240,
-        )
-    except Exception:
-        return None
-    if install.returncode != 0:
-        return None
-    try:
-        check2 = subprocess.run(
-            [sys.executable, "-m", "yt_dlp", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except Exception:
-        return None
-    if check2.returncode == 0:
-        return [sys.executable, "-m", "yt_dlp"]
+    del allow_auto_install
     return None
 
 
-def _video_tools(allow_auto_install_yt: bool = True) -> tuple[list[str] | None, str | None]:
+def _video_tools(allow_auto_install_yt: bool = False) -> tuple[list[str] | None, str | None]:
     return _yt_dlp_cmd(allow_auto_install=allow_auto_install_yt), shutil.which("ffmpeg")
 
 
@@ -573,7 +553,7 @@ def list_available_video_resolutions(addon_dir: str, profile: str, video_url: st
     if not yt_dlp_cmd:
         raise RuntimeError(
             "Missing required tool: yt-dlp.\n"
-            "Automatic install failed. Install manually with:\n"
+            "Install it explicitly, then restart Anki:\n"
             f"{sys.executable} -m pip install yt-dlp"
         )
 
@@ -694,7 +674,7 @@ def list_available_video_subtitles(addon_dir: str, profile: str, video_url: str)
     if not yt_dlp_cmd:
         raise RuntimeError(
             "Missing required tool: yt-dlp.\n"
-            "Automatic install failed. Install manually with:\n"
+            "Install it explicitly, then restart Anki:\n"
             f"{sys.executable} -m pip install yt-dlp"
         )
 
@@ -755,7 +735,7 @@ def _run_ytdlp_subtitle_download(
     if not yt_dlp_cmd:
         raise RuntimeError(
             "Missing required tool: yt-dlp.\n"
-            "Automatic install failed. Install manually with:\n"
+            "Install it explicitly, then restart Anki:\n"
             f"{sys.executable} -m pip install yt-dlp"
         )
 
@@ -1249,6 +1229,7 @@ def import_local_video_file(
     *,
     encode_mode: str = "h264_high",
     progress_cb: Callable[[int, str], None] | None = None,
+    created_relpath_cb: Callable[[str], None] | None = None,
 ) -> str:
     """
     Import a local video file into user_files/videos and return relpath.
@@ -1271,12 +1252,15 @@ def import_local_video_file(
     mode = (encode_mode or "h264_high").strip().lower()
     if mode == "original":
         target = _unique_target_path(out_dir, src.stem, ext)
+        relpath = f"videos/{target.name}"
+        if created_relpath_cb is not None:
+            created_relpath_cb(relpath)
         if src.resolve() == target.resolve():
             _emit_progress(progress_cb, 100, "Local video already in user_files/videos.")
-            return f"videos/{target.name}"
+            return relpath
         _copy_with_progress(src, target, progress_cb=progress_cb)
         _emit_progress(progress_cb, 100, "Local video imported.")
-        return f"videos/{target.name}"
+        return relpath
 
     ffmpeg_bin = shutil.which("ffmpeg")
     if not ffmpeg_bin:
@@ -1286,6 +1270,9 @@ def import_local_video_file(
         )
 
     target = _unique_target_path(out_dir, src.stem, ".mp4")
+    relpath = f"videos/{target.name}"
+    if created_relpath_cb is not None:
+        created_relpath_cb(relpath)
     with tempfile.TemporaryDirectory(prefix="incremento_local_video_") as tmp_dir:
         tmp_dst = Path(tmp_dir) / f"{target.stem}.mp4"
         _encode_local_video_h264(
@@ -1299,7 +1286,7 @@ def import_local_video_file(
             target.unlink()
         tmp_dst.replace(target)
     _emit_progress(progress_cb, 100, "Local video imported.")
-    return f"videos/{target.name}"
+    return relpath
 
 
 def import_local_subtitle_file(
@@ -1425,6 +1412,7 @@ def download_and_compress_video(
     progress_cb: Callable[[int, str], None] | None = None,
     max_height: int | None = None,
     original_quality: bool = False,
+    created_relpath_cb: Callable[[str], None] | None = None,
 ) -> str:
     """
     Download a YouTube/Vimeo video into user_files/videos/.
@@ -1442,7 +1430,7 @@ def download_and_compress_video(
     if not yt_dlp_cmd:
         raise RuntimeError(
             "Missing required tool: yt-dlp.\n"
-            "Automatic install failed. Install manually with:\n"
+            "Install it explicitly, then restart Anki:\n"
             f"{sys.executable} -m pip install yt-dlp"
         )
 
@@ -1472,19 +1460,26 @@ def download_and_compress_video(
         if original_quality:
             final_ext = source_path.suffix.lower() or ".mp4"
             final_path = _unique_target_path(out_dir, video_key, final_ext)
+            relpath = f"videos/{final_path.name}"
+            if created_relpath_cb is not None:
+                created_relpath_cb(relpath)
             source_path.replace(final_path)
             _emit_progress(progress_cb, 100, "Video ready (original quality).")
-            return f"videos/{final_path.name}"
+            return relpath
 
         final_ext = ".mp4"
         final_path = _unique_target_path(out_dir, video_key, final_ext)
         if ffmpeg_bin:
+            if created_relpath_cb is not None:
+                created_relpath_cb(f"videos/{final_path.name}")
             encoded_path = tmp / f"{video_key}.compressed.mp4"
             _compress_video(ffmpeg_bin, source_path, encoded_path, progress_cb=progress_cb)
             encoded_path.replace(final_path)
         else:
             final_ext = source_path.suffix.lower() or ".mp4"
             final_path = _unique_target_path(out_dir, video_key, final_ext)
+            if created_relpath_cb is not None:
+                created_relpath_cb(f"videos/{final_path.name}")
             source_path.replace(final_path)
     _emit_progress(progress_cb, 100, "Video ready.")
     return f"videos/{final_path.name}"

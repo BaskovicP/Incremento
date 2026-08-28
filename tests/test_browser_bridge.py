@@ -32,6 +32,60 @@ from browser_bridge import (
     normalize_update_web_card_media_payload,
     url_looks_like_pdf,
 )
+
+
+def _bare_bridge_handler(headers=None, *, origin=""):
+    handler = object.__new__(browser_bridge._IncrementoBridgeHandler)
+    resolved_headers = dict(headers or {})
+    if origin:
+        resolved_headers["Origin"] = origin
+    handler.headers = resolved_headers
+    handler.client_address = ("127.0.0.1", 12345)
+    handler.close_connection = False
+    return handler
+
+
+def test_bridge_binds_one_exact_extension_origin(monkeypatch):
+    first = "chrome-extension://" + "a" * 32
+    second = "chrome-extension://" + "b" * 32
+    monkeypatch.setattr(browser_bridge, "_allowed_extension_origin", "")
+
+    handler = _bare_bridge_handler(origin=first)
+    assert handler._request_origin_allowed(allow_unbound=True) is True
+    assert handler._bind_handshake_origin() is True
+    assert _bare_bridge_handler(origin=first)._request_origin_allowed() is True
+    assert _bare_bridge_handler(origin=second)._request_origin_allowed() is False
+
+
+def test_bridge_requires_matching_protocol_and_token(monkeypatch):
+    monkeypatch.setattr(browser_bridge, "_bridge_token", "secret")
+
+    assert _bare_bridge_handler(
+        {"X-Incremento-Token": "secret", "X-Incremento-Protocol": "2"}
+    )._request_authenticated() is True
+    assert _bare_bridge_handler(
+        {"X-Incremento-Token": "wrong", "X-Incremento-Protocol": "2"}
+    )._request_authenticated() is False
+    assert _bare_bridge_handler(
+        {"X-Incremento-Token": "secret", "X-Incremento-Protocol": "1"}
+    )._request_authenticated() is False
+
+
+def test_bridge_rejects_oversized_body_before_reading(monkeypatch):
+    handler = _bare_bridge_handler(
+        {"Content-Length": str(browser_bridge._MAX_REQUEST_BYTES + 1)}
+    )
+    handler.path = browser_bridge.BRIDGE_PATH
+    handler.rfile = type("_Body", (), {"read": lambda *_args: (_ for _ in ()).throw(AssertionError("read"))})()
+    responses = []
+    handler._request_origin_allowed = lambda: True
+    handler._request_authenticated = lambda: True
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    handler._do_POST()
+
+    assert responses[0][0] == 413
+    assert handler.close_connection is True
 from webpage_markdown import convert_webpage_html_to_markdown
 from writing_manager import build_writing_relpath, add_writing_card, _stored_writing_title
 

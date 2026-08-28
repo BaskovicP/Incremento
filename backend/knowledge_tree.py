@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from collections import defaultdict
 
 try:
+    from .config_service import load_addon_config
     from aqt import mw
 except Exception:
     mw = None
@@ -30,6 +31,7 @@ try:
     from .pdf_manager import find_live_pdf_card_by_filename, get_page
     from .priority_manager import get_priority, set_priority
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from db import (  # type: ignore
         get_knowledge_tree_node,
         get_knowledge_tree_nodes,
@@ -105,7 +107,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         return config or {}
     try:
         addon_name = __name__.split(".")[0]
-        return mw.addonManager.getConfig(addon_name) or {}
+        return load_addon_config(mw.addonManager, addon_name)
     except Exception:
         return {}
 

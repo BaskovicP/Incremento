@@ -26,6 +26,7 @@ from typing import Literal
 from aqt import mw
 
 try:
+    from .config_service import load_addon_config
     from .answer_schedule import (
         ReviewRevlogTracker,
         answer_revlog_snapshot,
@@ -48,6 +49,7 @@ try:
     from .scheduler_config import load_scheduler_config
     from .paths import get_active_profile as _active_profile
 except ImportError:
+    from config_service import load_addon_config  # type: ignore
     from answer_schedule import (  # type: ignore
         ReviewRevlogTracker,
         answer_revlog_snapshot,
@@ -164,7 +166,7 @@ def _resolved_config(config: dict | None = None) -> dict:
         from aqt import mw as _mw
 
         addon_name = __name__.split(".")[0]
-        resolved = _mw.addonManager.getConfig(addon_name) or {}
+        resolved = load_addon_config(_mw.addonManager, addon_name)
         return resolved if isinstance(resolved, dict) else {}
     except Exception:
         return {}

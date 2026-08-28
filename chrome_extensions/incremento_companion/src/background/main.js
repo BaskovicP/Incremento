@@ -1,4 +1,5 @@
 import { importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
+import { bridgeFetch } from "../shared/bridgeAuth.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
   buildLinkSaveTitle,
@@ -60,14 +61,14 @@ async function parseBridgeResponse(response) {
 }
 
 async function loadBrowserCaptureMeta() {
-  const response = await fetch(BROWSER_CAPTURE_META_URL, {
+  const response = await bridgeFetch(BROWSER_CAPTURE_META_URL, {
     method: "GET",
   });
   return parseBridgeResponse(response);
 }
 
 async function submitBrowserCapture(payload) {
-  const response = await fetch(BRIDGE_URL, {
+  const response = await bridgeFetch(BRIDGE_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -481,7 +482,7 @@ async function updateTrackedWebCard(cardId, url, title = "") {
     return { ok: false };
   }
   try {
-    const response = await fetch(WEB_TRACK_BRIDGE_URL, {
+    const response = await bridgeFetch(WEB_TRACK_BRIDGE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -514,7 +515,7 @@ async function updateTrackedWebMedia(cardId, url, mediaUrl = "", mediaTitle = ""
     return { ok: false };
   }
   try {
-    const response = await fetch(WEB_TRACK_MEDIA_BRIDGE_URL, {
+    const response = await bridgeFetch(WEB_TRACK_MEDIA_BRIDGE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

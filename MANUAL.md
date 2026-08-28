@@ -27,6 +27,8 @@ Incremento is an Anki add-on for incremental learning from mixed content. It com
 
 ## Installation
 
+Incremento supports Anki 24.11 and newer. When a newer Anki release changes an optional private reviewer API, Incremento disables only the affected direct-review feature and leaves card scheduling unchanged.
+
 ### Install from AnkiWeb (recommended)
 
 Incremento is available from [AnkiWeb Add-ons](https://ankiweb.net/shared/info/1013949798).
@@ -577,6 +579,8 @@ It searches across:
 
 Search results include a preview panel. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
 
+PDF text extraction never scans the whole library on Anki's UI thread. Search-while-typing waits briefly for you to pause, bounds card candidates, and discovers PDF documents through Anki's background query queue. If searchable text is missing, Search ALL starts a profile-scoped background index, shows progress, and lets you cancel after the current PDF. File modification time, size, and index status are remembered so unchanged PDFs are skipped and repeatedly failing files are not retried on every keypress. The first search after upgrading may refresh an older unsigned PDF index once so it cannot silently reuse text from a replaced file. EPUB and OCR text use the same bounded SQLite/FTS search layer; systems without SQLite FTS5 fall back to bounded ordinary-table search.
+
 ### Quick Open Content
 
 Choose **Incremento → Quick Open Content** to fuzzy-search document and writing cards by title.
@@ -737,12 +741,12 @@ Diagnostic logs are stored under the active profile's `user_files/<ProfileName>/
 
 ### Full backup and restore
 
-Use **Export Full Backup** to create a single ZIP for migration to a new computer.
+Use **Export Full Backup** to create a single ZIP for migrating the currently open Anki profile to a new computer.
 
 The backup includes:
 
 - `anki/all_decks.apkg` for the currently open Anki profile
-- the full `user_files/` tree, including all per-profile runtime folders
+- `user_files/<ProfileName>/`, containing the Incremento runtime data for the currently open profile
 - `config.json`
 - `manifest.json`
 - JSON copies of priorities, PDF progress, highlights, and stats
@@ -751,6 +755,10 @@ The backup includes:
 For full restore guidance, see `EXPORTING.md`.
 
 The full backup is private and intentionally contains your cards, media, database, paths, and raw configuration. Do not attach a full backup to a public issue; use **Export Support Bundle…** instead.
+
+The APKG and `user_files/<ProfileName>/` snapshot always refer to the same active profile. Restoring this archive does not require deleting other existing Incremento profile folders.
+
+Incremento runs SQLite's integrity check and copies the database through SQLite's backup API. It writes and validates a temporary ZIP before atomically replacing the selected destination. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
 
 ---
 
@@ -785,10 +793,11 @@ On first run, Incremento can show a dependency setup dialog.
 
 Optional tools:
 
-- **PyMuPDF** for stronger PDF rendering and text extraction
+- **PyMuPDF `>=1.24,<2`** for stronger PDF rendering and text extraction
 - **Tesseract OCR** for scanned/image-only PDFs
+- **yt-dlp** for optional local YouTube/Vimeo downloads; ffmpeg is optional for compression and required for local re-encoding
 
-PyMuPDF can be installed automatically from inside Anki. Tesseract must be installed at the system level.
+The PyMuPDF button performs an explicit, version-bounded installation after you choose it. Incremento never silently installs yt-dlp into Anki's Python environment; install yt-dlp yourself when you want local video downloads. Tesseract and ffmpeg must be installed at the system level.
 
 ### Reindex PDF text
 
@@ -797,6 +806,8 @@ Use this if:
 - Search ALL does not find text in older PDFs
 - you rebuilt or replaced PDF files
 - you added cards before page-level indexing existed
+
+Reindexing runs in the background, records progress per PDF, and can be cancelled. The manual command forces a fresh index even when the stored file signature has not changed.
 
 ### Cleanup tools
 

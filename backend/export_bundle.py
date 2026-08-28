@@ -66,9 +66,13 @@ def snapshot_tree(
 
         kept_dirs: list[str] = []
         for dirname in dirnames:
+            source_dir = root_path / dirname
             rel_path = _normalize_relpath(
                 f"{rel_dir}/{dirname}" if rel_dir else dirname
             )
+            if source_dir.is_symlink():
+                stats["files_skipped"] += 1
+                continue
             if should_skip_user_file(rel_path):
                 continue
             kept_dirs.append(dirname)
@@ -89,6 +93,9 @@ def snapshot_tree(
 
             src_path = root_path / filename
             dest_path = dest_root / filename
+            if src_path.is_symlink():
+                stats["files_skipped"] += 1
+                continue
             shutil.copy2(src_path, dest_path)
             stats["files_copied"] += 1
             try:

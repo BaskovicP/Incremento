@@ -148,6 +148,18 @@ class TestRecord:
         assert sm.lifetime["tags"] == {"health": 1}
         assert sm.lifetime["mode"] == {"random": 1}
 
+    def test_two_managers_do_not_overwrite_each_others_updates(self, tmp_path):
+        first = StatsManager(str(tmp_path), "TestProfile")
+        second = StatsManager(str(tmp_path), "TestProfile")
+        result = make_result(card_type="topics", tag="health", mode="random")
+
+        first.record(result, "session")
+        second.record(result, "session")
+
+        persisted = load_stats(str(tmp_path), "TestProfile")
+        assert persisted["lifetime"]["type"]["topics"] == 2
+        assert persisted["lifetime"]["tags"]["health"] == 2
+
     def test_does_not_touch_tags_when_tag_is_none(self, tmp_path):
         sm = StatsManager(str(tmp_path), "TestProfile")
         result = make_result(card_type="items", tag=None, mode="priority")
@@ -320,6 +332,28 @@ class TestLoadStats:
         stats_file.write_text(json.dumps(data), encoding="utf-8")
         result = load_stats(str(tmp_path), "TestProfile")
         assert "lifetime" in result
+
+    def test_delete_daily_preserves_lifetime_and_lifetime_time(self, tmp_path):
+        save_stats(
+            str(tmp_path),
+            "TestProfile",
+            {
+                "daily": {"date": _effective_date(), "counts": _empty()},
+                "lifetime": {"type": {"topics": 4}, "tags": {}, "mode": {}},
+                "time": {
+                    "daily": {"date": _effective_date(), "seconds": {"type": {"topics": 2.0}, "tags": {}}},
+                    "lifetime": {"type": {"topics": 9.0}, "tags": {}},
+                },
+            },
+        )
+
+        delete_daily_stats(str(tmp_path), "TestProfile")
+
+        result = load_stats(str(tmp_path), "TestProfile")
+        assert "daily" not in result
+        assert result["lifetime"]["type"] == {"topics": 4}
+        assert "daily" not in result["time"]
+        assert result["time"]["lifetime"]["type"] == {"topics": 9.0}
 
     def test_returns_empty_on_corrupt_json(self, tmp_path):
         stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
