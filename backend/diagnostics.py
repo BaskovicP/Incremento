@@ -173,12 +173,23 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
         "card_type": "card_state",
         "queue": "card_state",
         "interval_days": "interval",
+        "content_kind": "content_kind",
+    },
+    "review_ui_probe": {
+        "main_window_enabled": "bool",
+        "reviewer_web_enabled": "bool",
+        "active_modal": "bool",
+        "active_popup": "bool",
+        "progress_levels": "count",
+        "progress_window_visible": "bool",
+        "background_operations": "count",
     },
     "review_answered": {
         "rating": "rating",
         "card_type": "card_state",
         "queue": "card_state",
         "interval_days": "interval",
+        "content_kind": "content_kind",
     },
     "incremento_session_requested": {
         "branch_scoped": "bool",
@@ -1265,8 +1276,29 @@ def sanitize_runtime_state(values: Mapping[str, object] | None = None) -> dict:
     source = values if isinstance(values, Mapping) else {}
     session = source.get("incremento_session")
     session_source = session if isinstance(session, Mapping) else {}
+    interaction = source.get("ui_interaction")
+    interaction_source = interaction if isinstance(interaction, Mapping) else {}
     return {
         "ui_state": _sanitize_event_field("state", source.get("ui_state")),
+        "ui_interaction": {
+            "main_window_enabled": bool(
+                interaction_source.get("main_window_enabled", False)
+            ),
+            "reviewer_web_enabled": bool(
+                interaction_source.get("reviewer_web_enabled", False)
+            ),
+            "active_modal": bool(interaction_source.get("active_modal", False)),
+            "active_popup": bool(interaction_source.get("active_popup", False)),
+            "progress_levels": _bounded_int(
+                interaction_source.get("progress_levels"), 0, 1_000
+            ) or 0,
+            "progress_window_visible": bool(
+                interaction_source.get("progress_window_visible", False)
+            ),
+            "background_operations": _bounded_int(
+                interaction_source.get("background_operations"), 0, 1_000
+            ) or 0,
+        },
         "incremento_session": {
             "active": bool(session_source.get("active", False)),
             "selected_count": _bounded_int(session_source.get("selected_count"), 0, 1_000_000_000) or 0,

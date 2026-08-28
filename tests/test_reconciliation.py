@@ -81,7 +81,63 @@ def test_collection_adapter_reads_live_ids(tmp_path):
     assert result["stale_rows"] == 0
 
 
-def test_collection_adapter_recovers_pending_import_by_content_id(tmp_path):
+def test_profile_open_recovery_does_not_read_anki_when_nothing_is_pending(tmp_path):
+    class _Collection:
+        def __getattribute__(self, name):
+            if name.startswith("__"):
+                return object.__getattribute__(self, name)
+            raise AssertionError(f"unexpected collection access: {name}")
+
+    result = reconciliation.reconcile_pending_imports(
+        str(tmp_path),
+        "TestProfile",
+        _Collection(),
+    )
+
+    assert result == {
+        "stale_rows": 0,
+        "repaired_links": 0,
+        "touched_tables": 0,
+        "pending_recovered": 0,
+        "pending_rolled_back": 0,
+        "pending_cleanup_failed": 0,
+        "journal_pruned": 0,
+    }
+
+
+def test_profile_open_recovery_checks_only_bound_pending_card(tmp_path):
+    addon_dir = str(tmp_path)
+    profile = "TestProfile"
+    from operation_journal import ImportOperation
+
+    operation = ImportOperation(addon_dir, profile, "writing")
+    operation.bind_anki(card_id=99, note_id=98)
+
+    class _Card:
+        id = 99
+        nid = 98
+
+    class _Collection:
+        def get_card(self, card_id):
+            assert card_id == 99
+            return _Card()
+
+        def find_notes(self, _query):
+            raise AssertionError("bound live cards must not trigger a note search")
+
+    result = reconciliation.reconcile_pending_imports(
+        addon_dir,
+        profile,
+        _Collection(),
+    )
+
+    assert result["pending_recovered"] == 1
+    assert db.get_connection(addon_dir, profile).execute(
+        "SELECT state, card_id, note_id FROM import_journal"
+    ).fetchone() == ("committed", 99, 98)
+
+
+def test_profile_open_recovery_finds_unbound_import_by_content_id(tmp_path):
     addon_dir = str(tmp_path)
     profile = "TestProfile"
     from operation_journal import ImportOperation
@@ -90,7 +146,11 @@ def test_collection_adapter_recovers_pending_import_by_content_id(tmp_path):
 
     class _DB:
         def list(self, query):
-            return [7] if "cards" in query else [8]
+            raise AssertionError(f"profile-open recovery enumerated Anki rows: {query}")
+
+    class _Card:
+        id = 7
+        nid = 8
 
     class _Note:
         def __getitem__(self, field):
@@ -111,7 +171,15 @@ def test_collection_adapter_recovers_pending_import_by_content_id(tmp_path):
             assert query == "nid:8"
             return [7]
 
-    result = reconciliation.reconcile_collection(addon_dir, profile, _Collection())
+        def get_card(self, card_id):
+            assert card_id == 7
+            return _Card()
+
+    result = reconciliation.reconcile_pending_imports(
+        addon_dir,
+        profile,
+        _Collection(),
+    )
 
     assert result["pending_recovered"] == 1
     assert db.get_connection(addon_dir, profile).execute(

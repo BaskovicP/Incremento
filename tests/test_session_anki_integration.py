@@ -16,6 +16,7 @@ def test_anki_manages_completed_and_learning_cards_without_exit_rebuild():
         import tempfile
 
         from anki.collection import Collection
+        from backend import session as incremento_session
 
 
         def make_card(col, deck_id, label):
@@ -27,19 +28,17 @@ def test_anki_manages_completed_and_learning_cards_without_exit_rebuild():
 
 
         def build_one_card_filtered_deck(col, card_id):
-            deck_id = int(col.decks.new_filtered("Incremento Session"))
-            filtered = col.sched.get_or_create_filtered_deck(deck_id)
-            filtered.config.reschedule = True
-            del filtered.config.search_terms[:]
-            filtered.config.search_terms.add(
-                search=f"cid:{card_id}",
-                limit=1,
-                order=6,
+            result = incremento_session._prepare_filtered_review_deck(
+                [card_id],
+                deck_name="Incremento Session",
+                preserve_order=True,
+                select_deck=True,
+                col=col,
+                return_result=True,
             )
-            operation = col.sched.add_or_update_filtered_deck(filtered)
-            assert col.sched.rebuild_filtered_deck(operation.id).count == 1
-            col.decks.select(deck_id)
-            return deck_id
+            assert result.deck_id is not None
+            assert len(col.find_cards('deck:"Incremento Session"')) == 1
+            return int(result.deck_id)
 
 
         def answer_only_queued_card(col, ease):

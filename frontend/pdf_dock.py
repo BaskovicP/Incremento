@@ -2875,7 +2875,20 @@ def on_pdf_question_shown(card) -> None:
         page = get_page(_ADDON_DIR, _active_profile(), card.id)
         zoom = get_zoom(_ADDON_DIR, _active_profile(), card.id)
         read_page = get_read_page(_ADDON_DIR, _active_profile(), card.id)
-        show_pdf_in_dock(card.id, filename, page, zoom, read_page=read_page)
+        # Never launch an automatic modal dialog from inside Anki's
+        # reviewer-question transition.  On macOS that dialog can be placed
+        # behind the newly raised dock while its application-modal state keeps
+        # the reviewer and deck browser from accepting clicks.  The dock's
+        # explicit Review Due / Review All controls remain available, and
+        # automatic prompts still apply when a PDF is opened outside reviewer.
+        show_pdf_in_dock(
+            card.id,
+            filename,
+            page,
+            zoom,
+            read_page=read_page,
+            offer_due_review_prompt=False,
+        )
     except Exception as e:
         print(f"[Incremento] on_pdf_question_shown error: {e}")
 

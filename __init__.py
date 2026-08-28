@@ -65,7 +65,7 @@ from .backend.writing_manager import (
     add_writing_card,
     build_writing_relpath,
 )
-from .backend.local_file_manager import add_local_file_card
+from .backend.local_file_manager import LOCAL_FILE_NOTE_TYPE, add_local_file_card
 from .backend.note_metadata import (
     INCREMENTO_HIDDEN_FIELDS,
     build_incremento_metadata,
@@ -2479,7 +2479,25 @@ def _record_diagnostic_operation(changes, handler=None) -> None:
     )
 
 
-def _diagnostic_card_fields(card) -> dict[str, int]:
+def _diagnostic_content_kind(card) -> str:
+    """Classify only shipped Incremento note types; never export a model name."""
+    try:
+        note = mw.col.get_note(card.nid)
+        model = mw.col.models.get(note.mid)
+        model_name = str((model or {}).get("name") or "")
+    except Exception:
+        return "other"
+    return {
+        PDF_NOTE_TYPE: "pdf",
+        EPUB_NOTE_TYPE: "epub",
+        VIDEO_NOTE_TYPE: "video",
+        WEB_NOTE_TYPE: "web",
+        WRITING_NOTE_TYPE: "writing",
+        LOCAL_FILE_NOTE_TYPE: "local_file",
+    }.get(model_name, "other")
+
+
+def _diagnostic_card_fields(card) -> dict[str, object]:
     def _number(name: str, default: int = 0) -> int:
         try:
             return int(getattr(card, name, default) or 0)
@@ -2490,6 +2508,61 @@ def _diagnostic_card_fields(card) -> dict[str, int]:
         "card_type": _number("type"),
         "queue": _number("queue"),
         "interval_days": max(0, _number("ivl")),
+        "content_kind": _diagnostic_content_kind(card),
+    }
+
+
+def _diagnostic_ui_health_fields() -> dict[str, object]:
+    """Return identifiers-free Qt state useful for diagnosing input locks."""
+    app = QApplication.instance()
+    try:
+        active_modal = app.activeModalWidget() if app is not None else None
+    except Exception:
+        active_modal = None
+    try:
+        active_popup = app.activePopupWidget() if app is not None else None
+    except Exception:
+        active_popup = None
+
+    progress = getattr(mw, "progress", None)
+    try:
+        progress_levels = int(progress.busy() or 0) if progress is not None else 0
+    except Exception:
+        progress_levels = 0
+    progress_window = getattr(progress, "_win", None) if progress is not None else None
+    try:
+        progress_window_visible = bool(
+            progress_window is not None and progress_window.isVisible()
+        )
+    except Exception:
+        progress_window_visible = False
+
+    reviewer_web = getattr(mw, "web", None)
+    try:
+        main_window_enabled = bool(mw.isEnabled())
+    except Exception:
+        main_window_enabled = False
+    try:
+        reviewer_web_enabled = bool(
+            reviewer_web is not None and reviewer_web.isEnabled()
+        )
+    except Exception:
+        reviewer_web_enabled = False
+    try:
+        background_operations = max(
+            0, int(getattr(mw, "_background_op_count", 0) or 0)
+        )
+    except Exception:
+        background_operations = 0
+
+    return {
+        "main_window_enabled": main_window_enabled,
+        "reviewer_web_enabled": reviewer_web_enabled,
+        "active_modal": active_modal is not None,
+        "active_popup": active_popup is not None,
+        "progress_levels": progress_levels,
+        "progress_window_visible": progress_window_visible,
+        "background_operations": background_operations,
     }
 
 
@@ -2499,6 +2572,19 @@ def _record_diagnostic_question(card) -> None:
     # previous answer. This is runtime state only; no card identifier is kept.
     _diagnostic_pending_final_interval = None
     _record_diagnostic_event("review_question_shown", **_diagnostic_card_fields(card))
+    expected_profile = _active_profile()
+
+    def _probe_if_current_profile() -> None:
+        if expected_profile != _active_profile():
+            return
+        _record_diagnostic_event(
+            "review_ui_probe", **_diagnostic_ui_health_fields()
+        )
+
+    # Run after question-shown hooks and zero-delay reader callbacks.  If a
+    # hidden dialog or stale Anki progress window steals input, this probe runs
+    # inside that event loop and captures only safe booleans/counters.
+    QTimer.singleShot(250, _probe_if_current_profile)
 
 
 def _record_diagnostic_answer(_reviewer, card, ease: int) -> None:
@@ -2573,13 +2659,31 @@ gui_hooks.profile_will_close.append(_close_diagnostic_profile)
 
 
 def _start_profile_reconciliation() -> None:
-    """Repair unambiguous stale external rows without blocking profile open."""
+    """Recover interrupted imports without scanning the full collection."""
     from aqt.operations import QueryOp
 
     profile = _active_profile()
+    if not _reconciliation_mod.pending_import_recovery_needed(
+        _ADDON_DIR,
+        profile,
+    ):
+        _record_diagnostic_event(
+            "profile_reconciled",
+            stale_rows=0,
+            repaired_links=0,
+            pending_recovered=0,
+            pending_rolled_back=0,
+        )
+        return
 
     def reconcile(col):
-        return _reconciliation_mod.reconcile_collection(_ADDON_DIR, profile, col)
+        if profile != _active_profile():
+            return {}
+        return _reconciliation_mod.reconcile_pending_imports(
+            _ADDON_DIR,
+            profile,
+            col,
+        )
 
     def succeeded(result) -> None:
         if profile != _active_profile():
@@ -3746,6 +3850,7 @@ def exportSupportBundleFunction() -> None:
     environment = _diagnostic_environment_values()
     runtime_state = {
         "ui_state": str(getattr(mw, "state", "unknown") or "unknown"),
+        "ui_interaction": _diagnostic_ui_health_fields(),
         "incremento_session": diagnostic_session_snapshot(),
     }
 

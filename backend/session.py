@@ -64,6 +64,8 @@ _session_times: dict = _empty_time()
 _active_incremento_session_state = None
 _diagnostic_event_callback = None
 _session_debug_callback = None
+_session_launch_generation = 0
+_COLLECTION_UI_SETTLE_MS = 100
 
 
 class _DuplicateLiveQueueEntriesError(RuntimeError):
@@ -93,6 +95,15 @@ class _ActiveIncrementoSessionState:
 class _FilteredDeckBuildResult:
     deck_id: int | None
     changes: object
+
+
+@dataclass
+class _SessionSelectionOperationResult:
+    picker: SessionPicker
+    stats: StatsManager
+    selected_ids: list[int]
+    picked_meta: dict[int, dict]
+    session_time_snapshot: dict
 
 
 @dataclass
@@ -161,14 +172,102 @@ def _run_collection_operation(
     operation.run_in_background(initiator=initiator)
 
 
+def _run_collection_query(
+    *,
+    parent,
+    op,
+    success,
+    failure=None,
+) -> None:
+    """Run a read-only collection query without application-modal progress.
+
+    Session selection can be expensive on large collections, but it does not
+    mutate Anki. A no-progress ``QueryOp`` keeps that work serialized with
+    collection access without disabling every deck-browser click while it
+    runs or waits behind another collection task.
+    """
+    from aqt.operations import QueryOp
+
+    operation = QueryOp(parent=parent, op=op, success=success)
+    if failure is not None:
+        operation = operation.failure(failure)
+    operation.run_in_background()
+
+
+def _run_collection_mutation_without_progress(
+    *,
+    parent,
+    op,
+    success,
+    failure=None,
+    initiator=None,
+) -> None:
+    """Run a short collection mutation without an application-modal dialog.
+
+    ``CollectionOp`` always creates an application-modal progress dialog, even
+    when a filtered-deck rebuild completes in a few milliseconds.  Entering the
+    reviewer while macOS is tearing down that native modal can leave the main
+    window unable to accept clicks.  ``QueryOp`` uses the same serialized
+    collection executor and background-operation hooks without creating that
+    dialog.  Dispatching ``on_op_finished`` preserves the normal undo/UI change
+    notifications expected from the returned ``OpChanges``.
+
+    This helper is intentionally reserved for bounded, fast mutations such as
+    the already-selected Incremento session deck build.
+    """
+    from aqt.operations import QueryOp, on_op_finished
+
+    def _success_with_changes(result) -> None:
+        try:
+            success(result)
+        finally:
+            on_op_finished(mw, result, initiator)
+
+    operation = QueryOp(parent=parent, op=op, success=_success_with_changes)
+    if failure is not None:
+        operation = operation.failure(failure)
+    operation.run_in_background()
+
+
+def _begin_session_launch() -> int:
+    """Return a monotonically increasing token for the newest session request."""
+    global _session_launch_generation
+    _session_launch_generation += 1
+    return _session_launch_generation
+
+
+def _is_current_session_launch(token: int, profile: str) -> bool:
+    """Reject results from a superseded request or a previous profile."""
+    return (
+        int(token) == int(_session_launch_generation)
+        and str(profile or "") == str(_active_profile() or "")
+    )
+
+
 def _defer_collection_ui_action(callback) -> None:
-    """Run UI work after CollectionOp hooks and its modal progress UI settle."""
-    progress = getattr(mw, "progress", None)
-    single_shot = getattr(progress, "single_shot", None)
-    if callable(single_shot):
-        single_shot(0, callback, True)
-        return
-    QTimer.singleShot(0, callback)
+    """Run UI work after the current CollectionOp and native modal UI settle.
+
+    ``CollectionOp`` invokes its success callback immediately before it
+    dispatches collection-change hooks.  Its application-modal progress dialog
+    is closed before the callback, but on macOS the native modal state can take
+    another event-loop turn to disappear.  A short, progress-independent delay
+    avoids entering the reviewer underneath that stale native modal state.
+
+    Do not use ``ProgressManager.single_shot()`` here: that helper retries
+    forever while *any* Anki progress level is active, so an unrelated or stale
+    nested progress level can prevent session activation indefinitely.
+    """
+    QTimer.singleShot(_COLLECTION_UI_SETTLE_MS, callback)
+
+
+def _defer_profile_ui_action(profile: str, callback) -> None:
+    """Defer UI work, dropping a stale callback after a profile switch."""
+    def _run_if_current() -> None:
+        if str(profile or "") != str(_active_profile() or ""):
+            return
+        callback()
+
+    _defer_collection_ui_action(_run_if_current)
 
 
 def _optional_col_kwargs(col) -> dict:
@@ -1112,6 +1211,8 @@ def start_explicit_review_from_selector(
         showInfo(f"{error_message}: no card selector was provided.")
         return False
 
+    profile = _active_profile()
+
     request_fields = {
         "source": diagnostic_source,
         "content_kind": diagnostic_content_kind,
@@ -1240,7 +1341,7 @@ def start_explicit_review_from_selector(
         )
 
     def _success(result: _ExplicitReviewOperationResult) -> None:
-        _defer_collection_ui_action(lambda: _finish_success(result))
+        _defer_profile_ui_action(profile, lambda: _finish_success(result))
 
     def _failure(exc: Exception) -> None:
         _emit_diagnostic_event(
@@ -1250,7 +1351,8 @@ def start_explicit_review_from_selector(
             stage=str(failure_stage.get("value") or "other"),
             error_type=type(exc).__name__,
         )
-        _defer_collection_ui_action(
+        _defer_profile_ui_action(
+            profile,
             lambda: showInfo(f"{error_message}:\n{exc}")
         )
 
@@ -1567,12 +1669,13 @@ def learnFunction(
     branch_scope_copy = copy.deepcopy(branch_scope)
     preview_copy = copy.deepcopy(preview_override)
     profile = _active_profile()
+    launch_token = _begin_session_launch()
     topic_classifier = resolve_topic_card_classifier(
         copy.deepcopy(addon_config),
         scheduler_config=cfg,
     )
 
-    def _build_session(col) -> _SessionBuildOperationResult:
+    def _select_session(col) -> _SessionSelectionOperationResult:
         _emit_diagnostic_event(
             "incremento_session_phase",
             phase="selection_started",
@@ -1609,17 +1712,19 @@ def learnFunction(
         session_time_snapshot = copy.deepcopy(
             (preview_copy or {}).get("session_time", picker.stats.session_time)
         )
-        if not selected_ids:
-            return _SessionBuildOperationResult(
-                changes=_empty_op_changes(),
-                picker=picker,
-                stats=picker.stats,
-                selected_ids=[],
-                picked_meta=picked_meta,
-                session_time_snapshot=session_time_snapshot,
-                deck_id=None,
-            )
+        return _SessionSelectionOperationResult(
+            picker=picker,
+            stats=picker.stats,
+            selected_ids=selected_ids,
+            picked_meta=picked_meta,
+            session_time_snapshot=session_time_snapshot,
+        )
 
+    def _build_session_deck(
+        col,
+        selection: _SessionSelectionOperationResult,
+    ) -> _SessionBuildOperationResult:
+        selected_ids = list(selection.selected_ids)
         _emit_diagnostic_event(
             "incremento_session_phase",
             phase="deck_build_started",
@@ -1640,15 +1745,27 @@ def learnFunction(
         )
         return _SessionBuildOperationResult(
             changes=deck_result.changes,
-            picker=picker,
-            stats=picker.stats,
+            picker=selection.picker,
+            stats=selection.stats,
             selected_ids=selected_ids,
-            picked_meta=picked_meta,
-            session_time_snapshot=session_time_snapshot,
+            picked_meta=copy.deepcopy(selection.picked_meta),
+            session_time_snapshot=copy.deepcopy(selection.session_time_snapshot),
             deck_id=deck_result.deck_id,
         )
 
-    def _success(result: _SessionBuildOperationResult) -> None:
+    def _activate_if_current(result: _SessionBuildOperationResult) -> None:
+        if not _is_current_session_launch(launch_token, profile):
+            return
+        _activate_incremento_session(
+            result,
+            cfg=cfg,
+            branch_scope=branch_scope_copy,
+            session_deck_name=session_deck_name,
+        )
+
+    def _build_success(result: _SessionBuildOperationResult) -> None:
+        if not _is_current_session_launch(launch_token, profile):
+            return
         _emit_diagnostic_event(
             "incremento_session_build_succeeded",
             selected_count=len(result.selected_ids),
@@ -1659,32 +1776,68 @@ def learnFunction(
             phase="activation_scheduled",
             selected_count=len(result.selected_ids),
         )
-        # CollectionOp invokes success before dispatching its change hooks, and
-        # its application-modal progress window may remain alive briefly. Wait
-        # for both before entering review so Anki's main window cannot remain
-        # blocked behind a hidden progress dialog.
-        _defer_collection_ui_action(
-            lambda: _activate_incremento_session(
-                result,
-                cfg=cfg,
-                branch_scope=branch_scope_copy,
-                session_deck_name=session_deck_name,
-            ),
+        # The no-progress mutation helper dispatches normal collection-change
+        # hooks immediately after this success callback. Enter review after
+        # those hooks and native UI teardown have had time to settle.
+        _defer_profile_ui_action(
+            profile,
+            lambda: _activate_if_current(result),
         )
+
+    def _show_failure_if_current(exc: Exception) -> None:
+        if not _is_current_session_launch(launch_token, profile):
+            return
+        showInfo(f"Could not start the Incremento session:\n\n{exc}")
 
     def _failure(exc: Exception) -> None:
         _emit_diagnostic_event(
             "incremento_session_build_failed",
             error_type=type(exc).__name__,
         )
-        _defer_collection_ui_action(
-            lambda: showInfo(f"Could not start the Incremento session:\n\n{exc}")
+        _defer_profile_ui_action(
+            profile,
+            lambda: _show_failure_if_current(exc),
         )
 
-    _run_collection_operation(
-        parent=mw,
-        op=_build_session,
-        success=_success,
-        failure=_failure,
-        initiator=_build_session,
-    )
+    def _selection_success(selection: _SessionSelectionOperationResult) -> None:
+        if not _is_current_session_launch(launch_token, profile):
+            return
+        if not selection.selected_ids:
+            _build_success(
+                _SessionBuildOperationResult(
+                    changes=_empty_op_changes(),
+                    picker=selection.picker,
+                    stats=selection.stats,
+                    selected_ids=[],
+                    picked_meta=copy.deepcopy(selection.picked_meta),
+                    session_time_snapshot=copy.deepcopy(
+                        selection.session_time_snapshot
+                    ),
+                    deck_id=None,
+                )
+            )
+            return
+
+        def _build(col) -> _SessionBuildOperationResult:
+            return _build_session_deck(col, selection)
+
+        try:
+            _run_collection_mutation_without_progress(
+                parent=mw,
+                op=_build,
+                success=_build_success,
+                failure=_failure,
+                initiator=_build,
+            )
+        except Exception as exc:
+            _failure(exc)
+
+    try:
+        _run_collection_query(
+            parent=mw,
+            op=_select_session,
+            success=_selection_success,
+            failure=_failure,
+        )
+    except Exception as exc:
+        _failure(exc)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sqlite3
 import time
 import uuid
 from collections.abc import Mapping
@@ -11,10 +12,10 @@ from pathlib import Path, PurePosixPath
 
 try:
     from .db import get_connection
-    from .paths import get_user_files_dir
+    from .paths import get_db_path, get_user_files_dir
 except ImportError:
     from db import get_connection  # type: ignore
-    from paths import get_user_files_dir  # type: ignore
+    from paths import get_db_path, get_user_files_dir  # type: ignore
 
 
 _FINAL_STATES = {"committed", "rolled_back", "failed_cleanup"}
@@ -296,14 +297,49 @@ def pending_import_content_ids(addon_dir: str, profile: str) -> set[str]:
     }
 
 
+def pending_import_recovery_needed(addon_dir: str, profile: str) -> bool:
+    """Check for pending journal work without creating or migrating the DB.
+
+    Profile-open hooks use this bounded read-only preflight before scheduling
+    any Anki collection operation. A missing/legacy database has no import
+    journal to recover, and a temporarily unreadable database is left for the
+    next profile open instead of delaying the deck screen.
+    """
+    db_path = get_db_path(addon_dir, profile)
+    if not db_path.is_file():
+        return False
+    connection = None
+    try:
+        connection = sqlite3.connect(
+            f"{db_path.resolve().as_uri()}?mode=ro",
+            uri=True,
+            timeout=0.05,
+        )
+        connection.execute("PRAGMA query_only=ON")
+        journal_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='import_journal' LIMIT 1"
+        ).fetchone()
+        if journal_exists is None:
+            return False
+        return connection.execute(
+            "SELECT 1 FROM import_journal WHERE state='pending' LIMIT 1"
+        ).fetchone() is not None
+    except (OSError, ValueError, sqlite3.Error):
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def pending_import_descriptors(addon_dir: str, profile: str) -> tuple[dict, ...]:
     """Return the minimum non-content data needed to recover pending imports."""
     rows = get_connection(addon_dir, profile).execute(
-        "SELECT content_id, operation_kind, created_relpaths "
+        "SELECT content_id, operation_kind, card_id, note_id, created_relpaths "
         "FROM import_journal WHERE state='pending'"
     ).fetchall()
     descriptors: list[dict] = []
-    for content_id, operation_kind, relpaths_json in rows:
+    for content_id, operation_kind, card_id, note_id, relpaths_json in rows:
         normalized_content_id = str(content_id or "").strip()
         if not normalized_content_id:
             continue
@@ -311,6 +347,8 @@ def pending_import_descriptors(addon_dir: str, profile: str) -> tuple[dict, ...]
             {
                 "content_id": normalized_content_id,
                 "kind": str(operation_kind or "unknown").strip().lower() or "unknown",
+                "card_id": int(card_id) if card_id not in (None, 0) else None,
+                "note_id": int(note_id) if note_id not in (None, 0) else None,
                 "relpaths": tuple(_decode_relpaths(relpaths_json)),
             }
         )

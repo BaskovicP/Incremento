@@ -52,7 +52,7 @@ The active Anki profile is captured at the start of every background operation a
 Anki collection reads and mutations follow Anki's operation model:
 
 - `QueryOp` for serialized collection reads that may be expensive
-- `CollectionOp` for collection mutations and filtered-deck construction
+- `CollectionOp` for normal collection mutations and larger filtered-deck construction; the bounded initial Incremento session build uses a serialized no-progress mutation plus `on_op_finished` to avoid a macOS native-modal activation race
 - the operation-provided `col`, never a late lookup of `mw.col`, inside the worker
 - Qt and reviewer transitions only in the success callback after Anki finishes the operation
 

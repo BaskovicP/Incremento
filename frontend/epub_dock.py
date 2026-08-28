@@ -3378,6 +3378,11 @@ def on_epub_question_shown(card) -> None:
             filename,
             section_index=section_index,
             scroll_ratio=scroll_ratio,
+            # A modal prompt opened from the question-shown hook can be hidden
+            # behind the raised reader dock on macOS and leave Anki apparently
+            # frozen.  Keep reviewer entry non-modal; Review Due / Review All
+            # remain available in the EPUB dock.
+            offer_due_review_prompt=False,
         )
     except Exception as exc:
         print(f"[Incremento] on_epub_question_shown error: {exc}")

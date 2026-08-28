@@ -1,5 +1,6 @@
 """Tests for backend/cards.py"""
 import sys
+import types
 from unittest.mock import MagicMock, patch
 
 import cards
@@ -253,6 +254,118 @@ class TestGetAllItemCards:
         assert mock_mw.col.find_cards.call_count == 1
         assert classify.call_count == 3
         assert resolve_classifier.call_count == 2
+
+
+class TestBulkTopicItemClassification:
+    @staticmethod
+    def _classifier():
+        return types.SimpleNamespace(
+            enabled_note_type_names=frozenset({"Incremento PDF"}),
+            topic_tags=frozenset({"topic"}),
+            item_tags=frozenset({"item"}),
+            topics_deck_name="Topics",
+            cache_key=("bulk-rules",),
+        )
+
+    def test_batch_partition_matches_item_override_and_topic_rules(self):
+        rows = {
+            # cid: (did, odid, mid, tags)
+            1: (10, 0, 100, ""),                 # enabled note type
+            2: (20, 0, 200, " topic "),          # configured topic tag
+            3: (30, 0, 200, ""),                 # Topics child deck
+            4: (10, 0, 100, " item topic "),     # item tag overrides all
+            5: (20, 30, 200, ""),                # original Topics deck
+            6: (20, 0, 200, ""),                 # ordinary item
+        }
+
+        class _Db:
+            def all(self, sql, *params):
+                assert "JOIN notes" in sql
+                return [
+                    (cid, *rows[cid])
+                    for cid in params
+                    if cid in rows
+                ]
+
+        collection = types.SimpleNamespace(
+            db=_Db(),
+            models=types.SimpleNamespace(
+                get=lambda mid: {
+                    "name": "Incremento PDF" if mid == 100 else "Basic"
+                }
+            ),
+            decks=types.SimpleNamespace(
+                get=lambda did: {
+                    "name": {
+                        10: "Other",
+                        20: "General",
+                        30: "Topics::Child",
+                    }.get(did, "")
+                }
+            ),
+        )
+
+        result = cards._bulk_classify_candidate_ids(
+            [6, 5, 4, 3, 2, 1, 999],
+            collection=collection,
+            classifier=self._classifier(),
+        )
+
+        assert result == ([5, 3, 2, 1], [6, 4])
+
+    def test_runtime_path_avoids_per_card_loading(self):
+        collection = MagicMock()
+        collection.find_cards.return_value = [3, 1, 2]
+        collection.db.all.return_value = [(1, 10), (2, 20), (3, 30)]
+        classifier = self._classifier()
+
+        with patch.object(
+            cards, "_supports_bulk_topic_classification", return_value=True
+        ), patch.object(
+            cards,
+            "_bulk_classify_candidate_ids",
+            return_value=([1, 3], [2]),
+        ) as classify:
+            cards.clear_topic_item_cache()
+            topics = cards.get_all_topic_cards(
+                col=collection,
+                topic_classifier=classifier,
+            )
+            items = cards.get_all_item_cards(
+                col=collection,
+                topic_classifier=classifier,
+            )
+
+        assert topics == [1, 3]
+        assert items == [2]
+        classify.assert_called_once()
+        collection.get_card.assert_not_called()
+
+    def test_batch_failure_falls_back_to_card_api(self):
+        card_map = {1: object(), 2: object()}
+        collection = MagicMock()
+        collection.find_cards.return_value = [1, 2]
+        collection.db.all.return_value = [(1, 1), (2, 2)]
+        collection.get_card.side_effect = lambda cid: card_map[cid]
+        classifier = self._classifier()
+
+        with patch.object(
+            cards, "_supports_bulk_topic_classification", return_value=True
+        ), patch.object(
+            cards, "_bulk_classify_candidate_ids", return_value=None
+        ), patch.object(
+            cards,
+            "is_topic_card",
+            side_effect=lambda card, **_kwargs: card is card_map[1],
+        ):
+            cards.clear_topic_item_cache()
+            topics = cards.get_all_topic_cards(
+                col=collection,
+                topic_classifier=classifier,
+            )
+
+        assert topics == [1]
+        assert collection.get_card.call_count == 2
 
 
 # ---------------------------------------------------------------------------

@@ -963,6 +963,39 @@ def test_on_pdf_question_shown_clears_context_for_non_pdf_card(monkeypatch):
     assert stopped == [55]
 
 
+def test_on_pdf_question_shown_never_opens_automatic_due_prompt(monkeypatch):
+    shown = []
+
+    class _FakePdfNote(dict):
+        mid = 1
+
+    fake_note = _FakePdfNote(PDF_Filename="source.pdf")
+    fake_col = types.SimpleNamespace(
+        get_note=lambda _note_id: fake_note,
+        models=types.SimpleNamespace(
+            get=lambda _mid: {"name": pdf_dock.PDF_NOTE_TYPE}
+        ),
+    )
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=fake_col))
+    monkeypatch.setattr(pdf_dock, "get_page", lambda *_args: 7)
+    monkeypatch.setattr(pdf_dock, "get_zoom", lambda *_args: 1.25)
+    monkeypatch.setattr(pdf_dock, "get_read_page", lambda *_args: 6)
+    monkeypatch.setattr(
+        pdf_dock,
+        "show_pdf_in_dock",
+        lambda *args, **kwargs: shown.append((args, kwargs)),
+    )
+
+    pdf_dock.on_pdf_question_shown(types.SimpleNamespace(id=88, nid=123))
+
+    assert shown == [
+        (
+            (88, "source.pdf", 7, 1.25),
+            {"read_page": 6, "offer_due_review_prompt": False},
+        )
+    ]
+
+
 def test_non_pdf_transition_prevents_stale_pdf_restore_on_later_add(monkeypatch):
     class _FakeDock:
         def __init__(self):

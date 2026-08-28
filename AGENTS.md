@@ -15,7 +15,7 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 Important newer hotspots:
 
 - `backend/db_connection.py`, `backend/db_schema.py`, `backend/db.py`: per-thread/profile SQLite lifecycle, atomic schema ledger, legacy repository surface, and ordered migrations.
-- `backend/operation_journal.py`, `backend/reconciliation.py`, `backend/migration.py`, `backend/note_metadata.py`: stable content identity, crash-safe cross-store imports, profile-open repair, and resumable legacy storage migration.
+- `backend/operation_journal.py`, `backend/reconciliation.py`, `backend/migration.py`, `backend/note_metadata.py`: stable content identity, crash-safe cross-store imports, bounded profile-open recovery, explicit full reconciliation, and resumable legacy storage migration.
 - `backend/config_service.py`, `config.json`: versioned config normalization and the canonical config read/write boundary.
 - `backend/search_indexer.py`, `backend/search_repository.py`, `frontend/search_all.py`: cancellable off-main PDF indexing, optional FTS-backed bounded search, and the Search ALL read model.
 - `backend/anki_compat.py`, `frontend/session_launcher.py`, `backend/session.py`: private Anki reviewer compatibility boundary and frontend-owned session launch UI.
@@ -93,6 +93,7 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - All shipped Python config reads/writes go through `backend/config_service.py`; preserve unknown forward-compatible keys and the legacy scheduler-preset alias.
 - New SQLite schema changes require a monotonic `backend/db_schema.py` migration and rollback regression. Do not add startup-time unversioned DDL.
 - External-content creation must use `ImportOperation` and journal profile-relative paths before creating them. Stable content identity is canonical in Incremento SQLite; `Incremento_Content_ID` is optional legacy metadata and must never be auto-added to an Anki note type. Recovery may use the existing provenance source link. Never delete untracked files during automatic reconciliation.
+- Profile-open recovery must inspect only pending import-journal rows and their exact card/provenance identities. Never enumerate the full Anki collection or scan large Incremento index/history tables from a profile-open hook; full stale-row reconciliation is an explicit maintenance operation because it serializes with session CollectionOps.
 - Existing Anki note types must never be changed automatically at startup or from a background import. Detect changes through `backend/note_type_updates.py`, explain the full-sync consequence in `frontend/note_type_update_dialog.py`, and require explicit user consent before applying them.
 - Background work captures the profile at launch, passes it through storage helpers, and drops UI callbacks after a profile switch.
 - Private reviewer/V3 APIs belong in `backend/anki_compat.py`. An unavailable capability must fail closed without modifying the selected cards.
@@ -104,6 +105,7 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - The Document Bookshelf opens both PDF and EPUB cards. Keep its `Option+Shift+P` / `Alt+Shift+P` default and legacy shortcut migration, menu/settings labels, All/PDF/EPUB filter, PDF first-page and EPUB cover metadata, suspended-card visibility, PDF-only background fallback rendering, direct type-correct reader path, and reading-position restoration aligned.
 - PDF highlight workflows now include single-highlight actions, bulk card creation, and Kindle citation import. Preserve highlight metadata, selection context, and per-profile document references across those paths.
 - Session refill must preserve the distinction between the original selected id pool and Anki's live filtered-deck queue. Refill only the missing pending amount and do not duplicate cards already present.
+- Keep session selection read-only and non-modal through `QueryOp`. The bounded initial session-deck mutation also uses the serialized no-progress `QueryOp` path plus `on_op_finished`, because even a millisecond `CollectionOp` creates an application-modal progress window that can strand macOS input during reviewer activation. Larger refill and explicit-review mutations remain `CollectionOp` operations.
 - Session auto-refill uses `session_card_count` as a live pending-window size after the deck starts. Keep the frontend label, scheduler config, backend refill behavior, and docs aligned when changing this flow.
 - When changing config-backed settings, keep `config.json`, `frontend/settings_dialog.py`, `__init__.py`, `tests/test_settings_dialog.py`, and `MANUAL.md` aligned.
 - Knowledge-tree nodes are card-backed. One tree node maps to one `card_id`, with at most one parent and any number of children.

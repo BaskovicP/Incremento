@@ -53,7 +53,7 @@ def test_committed_import_registers_stable_content_item(tmp_path):
     assert conn.execute("SELECT state FROM import_journal").fetchone() == ("committed",)
 
 
-def test_pending_descriptors_expose_only_identity_kind_and_safe_paths(tmp_path):
+def test_pending_descriptors_expose_only_recovery_identity_and_safe_paths(tmp_path):
     operation = operation_journal.ImportOperation(str(tmp_path), "Profile", "pdf")
     operation.track_created_relpath("pdfs/book.pdf")
 
@@ -63,9 +63,30 @@ def test_pending_descriptors_expose_only_identity_kind_and_safe_paths(tmp_path):
         {
             "content_id": operation.content_id,
             "kind": "pdf",
+            "card_id": None,
+            "note_id": None,
             "relpaths": ("pdfs/book.pdf",),
         },
     )
+
+
+def test_pending_recovery_preflight_does_not_create_a_database(tmp_path):
+    assert not operation_journal.pending_import_recovery_needed(
+        str(tmp_path),
+        "Profile",
+    )
+    assert not (tmp_path / "user_files" / "Profile" / "incremento.db").exists()
+
+
+def test_pending_recovery_preflight_detects_only_pending_rows(tmp_path):
+    addon_dir = str(tmp_path)
+    profile = "Profile"
+    operation = operation_journal.ImportOperation(addon_dir, profile, "pdf")
+
+    assert operation_journal.pending_import_recovery_needed(addon_dir, profile)
+
+    operation.rollback()
+    assert not operation_journal.pending_import_recovery_needed(addon_dir, profile)
 
 
 def test_recovery_preserves_pending_import_when_card_exists(tmp_path):

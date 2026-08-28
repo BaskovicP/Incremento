@@ -1512,13 +1512,105 @@ class TestIncrementoSessionAutoRefill:
 
 
 class TestBackgroundSessionStartup:
-    def test_ui_action_waits_for_anki_progress_manager(self, monkeypatch):
+    def test_read_only_session_query_never_requests_modal_progress(self, monkeypatch):
+        events = []
+
+        class _QueryOp:
+            def __init__(self, *, parent, op, success):
+                events.append(("init", parent, op, success))
+
+            def failure(self, callback):
+                events.append(("failure", callback))
+                return self
+
+            def with_progress(self, *_args, **_kwargs):
+                raise AssertionError("session selection must remain non-modal")
+
+            def run_in_background(self):
+                events.append(("run",))
+
+        operations_module = types.ModuleType("aqt.operations")
+        operations_module.QueryOp = _QueryOp
+        monkeypatch.setitem(sys.modules, "aqt.operations", operations_module)
+        parent = object()
+        op = lambda _col: None
+        success = lambda _result: None
+        failure = lambda _exc: None
+
+        _SESSION_MOD._run_collection_query(
+            parent=parent,
+            op=op,
+            success=success,
+            failure=failure,
+        )
+
+        assert events == [
+            ("init", parent, op, success),
+            ("failure", failure),
+            ("run",),
+        ]
+
+    def test_short_session_deck_mutation_never_creates_modal_progress(
+        self, monkeypatch
+    ):
+        events = []
+
+        class _QueryOp:
+            def __init__(self, *, parent, op, success):
+                self._op = op
+                self._success = success
+                events.append(("init", parent))
+
+            def failure(self, callback):
+                events.append(("failure", callback))
+                return self
+
+            def with_progress(self, *_args, **_kwargs):
+                raise AssertionError("session deck build must remain non-modal")
+
+            def run_in_background(self):
+                events.append(("run",))
+                self._success(self._op("collection"))
+
+        def _on_op_finished(mw, result, initiator):
+            events.append(("finished", mw, result, initiator))
+
+        operations_module = types.ModuleType("aqt.operations")
+        operations_module.QueryOp = _QueryOp
+        operations_module.on_op_finished = _on_op_finished
+        monkeypatch.setitem(sys.modules, "aqt.operations", operations_module)
+        fake_mw = object()
+        parent = object()
+        initiator = object()
+        failure = lambda _exc: None
+        success_results = []
+        monkeypatch.setattr(_SESSION_MOD, "mw", fake_mw)
+
+        _SESSION_MOD._run_collection_mutation_without_progress(
+            parent=parent,
+            op=lambda col: ("result", col),
+            success=success_results.append,
+            failure=failure,
+            initiator=initiator,
+        )
+
+        assert success_results == [("result", "collection")]
+        assert events == [
+            ("init", parent),
+            ("failure", failure),
+            ("run",),
+            ("finished", fake_mw, ("result", "collection"), initiator),
+        ]
+
+    def test_ui_action_waits_for_native_modal_teardown_without_progress_manager(
+        self, monkeypatch
+    ):
         deferred = []
         called = []
         fake_progress = types.SimpleNamespace(
-            single_shot=lambda ms, callback, requires_collection: deferred.append(
-                (ms, callback, requires_collection)
-            )
+            single_shot=lambda *_args: (_ for _ in ()).throw(
+                AssertionError("activation must not depend on global progress state")
+            ),
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -1529,9 +1621,7 @@ class TestBackgroundSessionStartup:
             _SESSION_MOD,
             "QTimer",
             types.SimpleNamespace(
-                singleShot=lambda *_args: (_ for _ in ()).throw(
-                    AssertionError("Anki's progress-aware timer should be used")
-                )
+                singleShot=lambda ms, callback: deferred.append((ms, callback))
             ),
         )
 
@@ -1539,15 +1629,38 @@ class TestBackgroundSessionStartup:
 
         assert called == []
         assert len(deferred) == 1
-        assert deferred[0][0] == 0
-        assert deferred[0][2] is True
+        assert deferred[0][0] == _SESSION_MOD._COLLECTION_UI_SETTLE_MS
+        assert deferred[0][0] >= 100
         deferred[0][1]()
         assert called == [True]
 
-    def test_selection_and_filtered_deck_build_start_in_collection_operation(
+    def test_deferred_ui_action_is_dropped_after_profile_switch(self, monkeypatch):
+        called = []
+        active_profile = {"name": "Old Profile"}
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_active_profile",
+            lambda: active_profile["name"],
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_defer_collection_ui_action",
+            lambda callback: callback(),
+        )
+
+        active_profile["name"] = "New Profile"
+        _SESSION_MOD._defer_profile_ui_action(
+            "Old Profile",
+            lambda: called.append(True),
+        )
+
+        assert called == []
+
+    def test_selection_and_deck_build_are_non_modal_serialized_operations(
         self, monkeypatch
     ):
-        operations = []
+        queries = []
+        mutations = []
         picker_events = []
         activation = []
         diagnostic_events = []
@@ -1608,8 +1721,13 @@ class TestBackgroundSessionStartup:
         )
         monkeypatch.setattr(
             _SESSION_MOD,
-            "_run_collection_operation",
-            lambda **kwargs: operations.append(kwargs),
+            "_run_collection_query",
+            lambda **kwargs: queries.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_mutation_without_progress",
+            lambda **kwargs: mutations.append(kwargs),
         )
         monkeypatch.setattr(
             _SESSION_MOD,
@@ -1632,20 +1750,26 @@ class TestBackgroundSessionStartup:
 
         _SESSION_MOD.learnFunction()
 
-        assert len(operations) == 1
-        assert operations[0]["initiator"] is operations[0]["op"]
+        assert len(queries) == 1
+        assert mutations == []
         assert picker_events == []
         fake_col = object()
-        result = operations[0]["op"](fake_col)
+        selection = queries[0]["op"](fake_col)
         assert picker_events[0][0] == "init"
         assert picker_events[0][1]["col"] is fake_col
         assert picker_events[0][1]["topic_classifier"] is classifier
         assert picker_events[1] == ("pick", 500)
+        assert selection.selected_ids == [101, 102]
+
+        queries[0]["success"](selection)
+        assert len(mutations) == 1
+        assert mutations[0]["initiator"] is mutations[0]["op"]
+        result = mutations[0]["op"](fake_col)
         assert result.selected_ids == [101, 102]
         assert result.changes[1]["col"] is fake_col
         assert result.changes[1]["return_result"] is True
 
-        operations[0]["success"](result)
+        mutations[0]["success"](result)
         assert activation[0][0] is result
         assert [
             fields.get("phase")
@@ -1658,6 +1782,87 @@ class TestBackgroundSessionStartup:
             "deck_build_finished",
             "activation_scheduled",
         ]
+
+    def test_superseded_selection_does_not_build_or_activate(self, monkeypatch):
+        queries = []
+        mutations = []
+        activation = []
+        cfg = types.SimpleNamespace(session_card_count=1, preserve_order=True)
+
+        class _Dialog:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def exec(self):
+                return True
+
+            def save_config(self):
+                pass
+
+            def to_config(self):
+                return cfg
+
+            def get_preview_override(self):
+                return None
+
+            def selected_dialog_profile_name(self):
+                return None
+
+        class _Picker:
+            def __init__(self, *_args, **_kwargs):
+                self.selected_ids = []
+                self.picked_meta = {}
+                self.stats = types.SimpleNamespace(
+                    session_time={"type": {}, "tags": {}}
+                )
+
+            def pick_until(self, _target):
+                self.selected_ids = [101]
+
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "mw",
+            types.SimpleNamespace(
+                addonManager=types.SimpleNamespace(getConfig=lambda _pkg: {}),
+            ),
+        )
+        monkeypatch.setattr(_SESSION_MOD, "SchedulerConfigDialog", _Dialog)
+        monkeypatch.setattr(_SESSION_MOD, "SessionPicker", _Picker)
+        monkeypatch.setattr(
+            _SESSION_MOD, "release_expired_timed_postpones", lambda: None
+        )
+        monkeypatch.setattr(_SESSION_MOD, "_active_profile", lambda: "Profile")
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "resolve_topic_card_classifier",
+            lambda *_args, **_kwargs: object(),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_query",
+            lambda **kwargs: queries.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_run_collection_operation",
+            lambda **kwargs: mutations.append(kwargs),
+        )
+        monkeypatch.setattr(
+            _SESSION_MOD,
+            "_activate_incremento_session",
+            lambda *_args, **_kwargs: activation.append(True),
+        )
+
+        _SESSION_MOD.learnFunction()
+        first_selection = queries[0]["op"](object())
+
+        # A newer accepted session invalidates callbacks from the older one.
+        _SESSION_MOD.learnFunction()
+        queries[0]["success"](first_selection)
+
+        assert len(queries) == 2
+        assert mutations == []
+        assert activation == []
 
 
 class TestIncrementoSessionExit:

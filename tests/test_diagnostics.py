@@ -173,6 +173,32 @@ def test_media_review_diagnostics_keep_only_fixed_options_and_counts() -> None:
     assert PRIVATE_VALUES[4] not in repr(data)
 
 
+def test_reviewer_ui_probe_keeps_only_lock_state_booleans_and_counts() -> None:
+    data = diagnostics._sanitize_event_data(
+        "review_ui_probe",
+        {
+            "main_window_enabled": False,
+            "reviewer_web_enabled": True,
+            "active_modal": True,
+            "active_popup": False,
+            "progress_levels": 2,
+            "progress_window_visible": True,
+            "background_operations": 1,
+            "window_title": PRIVATE_VALUES[0],
+            "card_id": 1771491223100,
+        },
+    )
+    assert data == {
+        "main_window_enabled": False,
+        "reviewer_web_enabled": True,
+        "active_modal": True,
+        "active_popup": False,
+        "progress_levels": 2,
+        "progress_window_visible": True,
+        "background_operations": 1,
+    }
+
+
 def test_recorders_keep_profile_logs_isolated(tmp_path: Path) -> None:
     first = diagnostics.DiagnosticRecorder(
         str(tmp_path), "First", clock=lambda: 1.0, run_id="111111111111"
@@ -494,6 +520,16 @@ def test_support_bundle_contains_only_safe_summaries(tmp_path: Path) -> None:
         },
         runtime_state={
             "ui_state": "review",
+            "ui_interaction": {
+                "main_window_enabled": False,
+                "reviewer_web_enabled": True,
+                "active_modal": True,
+                "active_popup": False,
+                "progress_levels": 2,
+                "progress_window_visible": True,
+                "background_operations": 1,
+                "window_title": PRIVATE_VALUES[0],
+            },
             "incremento_session": {
                 "active": True,
                 "selected_count": 500,
@@ -529,6 +565,7 @@ def test_support_bundle_contains_only_safe_summaries(tmp_path: Path) -> None:
         manifest = json.loads(archive.read("manifest.json"))
         database = json.loads(archive.read("diagnostics/database_summary.json"))
         recorder_status = json.loads(archive.read("diagnostics/recorder_status.json"))
+        current_state = json.loads(archive.read("diagnostics/current_state.json"))
         events = archive.read("diagnostics/events.jsonl").decode("utf-8")
         assert all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist())
 
@@ -540,6 +577,15 @@ def test_support_bundle_contains_only_safe_summaries(tmp_path: Path) -> None:
     assert len(database["schema_fingerprint_sha256"]) == 64
     assert recorder_status["dropped_events"] == 0
     assert recorder_status["last_flush_complete"] is True
+    assert current_state["ui_interaction"] == {
+        "main_window_enabled": False,
+        "reviewer_web_enabled": True,
+        "active_modal": True,
+        "active_popup": False,
+        "progress_levels": 2,
+        "progress_window_visible": True,
+        "background_operations": 1,
+    }
     assert '"rating":3' in events
     assert "private_text" not in combined
     assert recorder.close()

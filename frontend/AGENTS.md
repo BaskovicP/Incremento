@@ -106,6 +106,7 @@ npm --prefix frontend run build
 - Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority for all cards and topic A-factor, saved browser time, and custom schedule when available. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
 - Custom schedule text must only render when a real schedule exists for the current card; stale default text is a regression.
 - Reader docks can steal keyboard focus while their question-shown hooks open or raise. Keep the final deferred `reviewer_did_show_question` focus recovery in `frontend/reviewer_focus.py` so Anki's Space, `1`–`4`, and editor shortcuts continue on every card. Never reclaim focus from a modal, popup, or separate active Anki window.
+- PDF/EPUB question-shown hooks must open their reader with `offer_due_review_prompt=False`. Never start a modal due-card prompt during reviewer activation; on macOS it can hide behind the raised dock and leave the main window unable to accept clicks. The explicit Review Due / Review All controls remain the reviewer-safe entry points.
 
 ## Session Builder UI
 

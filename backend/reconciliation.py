@@ -13,6 +13,7 @@ try:
     )
     from .operation_journal import (
         pending_import_descriptors,
+        pending_import_recovery_needed,
         prune_finished_journal,
         recover_interrupted_imports,
     )
@@ -24,6 +25,7 @@ except ImportError:
     )
     from operation_journal import (  # type: ignore
         pending_import_descriptors,
+        pending_import_recovery_needed,
         prune_finished_journal,
         recover_interrupted_imports,
     )
@@ -32,6 +34,122 @@ except ImportError:
 def _escape_anki_search_value(value: str) -> str:
     """Escape a literal embedded in an Anki quoted search value."""
     return str(value or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _live_card_identity(
+    collection,
+    card_id: int,
+    *,
+    fallback_note_id: int | None = None,
+) -> tuple[int, int | None] | None:
+    """Return one exact live card/note pair without enumerating the collection."""
+    normalized_card_id = int(card_id or 0)
+    if normalized_card_id <= 0:
+        return None
+    try:
+        card = collection.get_card(normalized_card_id)
+    except Exception:
+        return None
+    if card is None:
+        return None
+    try:
+        actual_card_id = int(getattr(card, "id", normalized_card_id) or 0)
+    except (TypeError, ValueError):
+        return None
+    if actual_card_id != normalized_card_id:
+        return None
+    try:
+        note_id = int(getattr(card, "nid", 0) or 0) or None
+    except (TypeError, ValueError):
+        note_id = None
+    if note_id is None and fallback_note_id not in (None, 0):
+        note_id = int(fallback_note_id)
+    return normalized_card_id, note_id
+
+
+def _find_pending_content_match(
+    collection,
+    descriptor: dict,
+    *,
+    known_live_card_ids: set[int] | None = None,
+) -> tuple[int, int | None] | None:
+    """Find one pending import by exact internal identity or provenance link."""
+    content_id = str(descriptor.get("content_id") or "").strip()
+    if not content_id:
+        return None
+
+    # Existing installations may have the optional Content_ID field. New
+    # installations recover by the already-established source-link field,
+    # avoiding a note-type schema change solely for an internal UUID.
+    note_ids: list[int] = []
+    for query in (
+        f'{INCREMENTO_CONTENT_ID_FIELD}:{content_id}',
+        f'"{INCREMENTO_CONTENT_ID_FIELD}:{content_id}"',
+    ):
+        try:
+            note_ids = [int(value) for value in collection.find_notes(query)]
+        except Exception:
+            note_ids = []
+        if note_ids:
+            break
+
+    expected_source_links: set[str] = set()
+    if not note_ids:
+        expected_source_links = {
+            str(value or "").strip()
+            for value in descriptor.get("relpaths", ())
+            if str(value or "").strip()
+        }
+        for source_link in sorted(expected_source_links):
+            escaped_source_link = _escape_anki_search_value(source_link)
+            for query in (
+                f'{INCREMENTO_SOURCE_LINK_FIELD}:"{escaped_source_link}"',
+                f'"{INCREMENTO_SOURCE_LINK_FIELD}:{escaped_source_link}"',
+            ):
+                try:
+                    note_ids = [int(value) for value in collection.find_notes(query)]
+                except Exception:
+                    note_ids = []
+                if note_ids:
+                    break
+            if note_ids:
+                break
+
+    for note_id in note_ids:
+        try:
+            note = collection.get_note(note_id)
+            try:
+                note_content_id = str(note[INCREMENTO_CONTENT_ID_FIELD] or "").strip()
+            except Exception:
+                note_content_id = ""
+            try:
+                note_source_link = str(note[INCREMENTO_SOURCE_LINK_FIELD] or "").strip()
+            except Exception:
+                note_source_link = ""
+            if note_content_id != content_id and (
+                not expected_source_links
+                or note_source_link not in expected_source_links
+            ):
+                continue
+            card_ids = [
+                int(value)
+                for value in collection.find_cards(f"nid:{note_id}")
+            ]
+        except Exception:
+            continue
+        for card_id in card_ids:
+            if known_live_card_ids is not None:
+                if card_id in known_live_card_ids:
+                    return card_id, note_id
+                continue
+            identity = _live_card_identity(
+                collection,
+                card_id,
+                fallback_note_id=note_id,
+            )
+            if identity is not None:
+                return identity
+    return None
 
 
 _CARD_TABLES = (
@@ -216,7 +334,12 @@ def reconcile_profile_state(
 
 
 def reconcile_collection(addon_dir: str, profile: str, collection) -> dict[str, int]:
-    """Read live Anki identities and reconcile the matching profile DB."""
+    """Run an explicit full reconciliation against every live Anki identity.
+
+    This intentionally expensive maintenance operation must not run
+    automatically at profile open because it serializes with session-building
+    CollectionOps.
+    """
     live_card_ids = {
         int(card_id)
         for card_id in collection.db.list("SELECT id FROM cards")
@@ -230,71 +353,13 @@ def reconcile_collection(addon_dir: str, profile: str, collection) -> dict[str, 
         content_id = str(descriptor.get("content_id") or "").strip()
         if not content_id:
             continue
-        # Existing installations may have the optional Content_ID field. New
-        # installations recover by the already-established source-link field,
-        # avoiding a note-type schema change solely for an internal UUID.
-        note_ids: list[int] = []
-        for query in (
-            f'{INCREMENTO_CONTENT_ID_FIELD}:{content_id}',
-            f'"{INCREMENTO_CONTENT_ID_FIELD}:{content_id}"',
-        ):
-            try:
-                note_ids = [int(value) for value in collection.find_notes(query)]
-            except Exception:
-                note_ids = []
-            if note_ids:
-                break
-        expected_source_links: set[str] = set()
-        if not note_ids:
-            expected_source_links = {
-                str(value or "").strip()
-                for value in descriptor.get("relpaths", ())
-                if str(value or "").strip()
-            }
-            for source_link in sorted(expected_source_links):
-                escaped_source_link = _escape_anki_search_value(source_link)
-                for query in (
-                    f'{INCREMENTO_SOURCE_LINK_FIELD}:"{escaped_source_link}"',
-                    f'"{INCREMENTO_SOURCE_LINK_FIELD}:{escaped_source_link}"',
-                ):
-                    try:
-                        note_ids = [int(value) for value in collection.find_notes(query)]
-                    except Exception:
-                        note_ids = []
-                    if note_ids:
-                        break
-                if note_ids:
-                    break
-        for note_id in note_ids:
-            try:
-                note = collection.get_note(note_id)
-                try:
-                    note_content_id = str(
-                        note[INCREMENTO_CONTENT_ID_FIELD] or ""
-                    ).strip()
-                except Exception:
-                    note_content_id = ""
-                try:
-                    note_source_link = str(
-                        note[INCREMENTO_SOURCE_LINK_FIELD] or ""
-                    ).strip()
-                except Exception:
-                    note_source_link = ""
-                if note_content_id != content_id and (
-                    not expected_source_links
-                    or note_source_link not in expected_source_links
-                ):
-                    continue
-                card_ids = [
-                    int(value)
-                    for value in collection.find_cards(f"nid:{note_id}")
-                ]
-            except Exception:
-                continue
-            live_matches = [card_id for card_id in card_ids if card_id in live_card_ids]
-            if live_matches:
-                content_matches[content_id] = (live_matches[0], note_id)
-                break
+        match = _find_pending_content_match(
+            collection,
+            descriptor,
+            known_live_card_ids=live_card_ids,
+        )
+        if match is not None:
+            content_matches[content_id] = match
     return reconcile_profile_state(
         addon_dir,
         profile,
@@ -302,3 +367,68 @@ def reconcile_collection(addon_dir: str, profile: str, collection) -> dict[str, 
         live_note_ids=live_note_ids,
         content_matches=content_matches,
     )
+
+
+def reconcile_pending_imports(
+    addon_dir: str,
+    profile: str,
+    collection,
+) -> dict[str, int]:
+    """Recover only interrupted imports using targeted Anki lookups.
+
+    Profile open uses this bounded path. In the common case there are no
+    pending journal rows, so it performs no Anki collection query at all. When
+    recovery is needed, only journal-bound card IDs and exact provenance
+    matches are checked; the whole cards/notes tables and Incremento indexes
+    are never scanned.
+    """
+    descriptors = pending_import_descriptors(addon_dir, profile)
+    if not descriptors:
+        return {
+            "stale_rows": 0,
+            "repaired_links": 0,
+            "touched_tables": 0,
+            "pending_recovered": 0,
+            "pending_rolled_back": 0,
+            "pending_cleanup_failed": 0,
+            "journal_pruned": 0,
+        }
+
+    live_card_ids: set[int] = set()
+    content_matches: dict[str, tuple[int, int | None]] = {}
+    for descriptor in descriptors:
+        content_id = str(descriptor.get("content_id") or "").strip()
+        bound_card_id = int(descriptor.get("card_id") or 0)
+        identity = _live_card_identity(
+            collection,
+            bound_card_id,
+            fallback_note_id=descriptor.get("note_id"),
+        )
+        if identity is None:
+            identity = _find_pending_content_match(collection, descriptor)
+        if identity is None:
+            continue
+        live_card_ids.add(identity[0])
+        if content_id:
+            content_matches[content_id] = identity
+
+    recovery = recover_interrupted_imports(
+        addon_dir,
+        profile,
+        live_card_ids=live_card_ids,
+        content_matches=content_matches,
+    )
+    pruned_journal = prune_finished_journal(
+        addon_dir,
+        profile,
+        older_than=int(time.time()) - 90 * 24 * 60 * 60,
+    )
+    return {
+        "stale_rows": 0,
+        "repaired_links": 0,
+        "touched_tables": 0,
+        "pending_recovered": int(recovery.get("recovered", 0)),
+        "pending_rolled_back": int(recovery.get("rolled_back", 0)),
+        "pending_cleanup_failed": int(recovery.get("failed_cleanup", 0)),
+        "journal_pruned": pruned_journal,
+    }

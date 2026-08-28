@@ -194,6 +194,47 @@ def test_current_card_epub_search_hits_use_section_title_fallback(monkeypatch):
     assert hits[0]["focusOffset"] >= 0
 
 
+def test_on_epub_question_shown_never_opens_automatic_due_prompt(monkeypatch):
+    shown = []
+
+    class _FakeEpubNote(dict):
+        mid = 1
+
+    fake_note = _FakeEpubNote(
+        **{epub_dock.EPUB_FILE_FIELD: "book.epub"}
+    )
+    fake_col = types.SimpleNamespace(
+        get_note=lambda _note_id: fake_note,
+        models=types.SimpleNamespace(
+            get=lambda _mid: {"name": epub_dock.EPUB_NOTE_TYPE}
+        ),
+    )
+    monkeypatch.setattr(epub_dock, "mw", types.SimpleNamespace(col=fake_col))
+    monkeypatch.setattr(
+        epub_dock,
+        "get_epub_progress",
+        lambda *_args: (4, 0.35, False),
+    )
+    monkeypatch.setattr(
+        epub_dock,
+        "show_epub_in_dock",
+        lambda *args, **kwargs: shown.append((args, kwargs)),
+    )
+
+    epub_dock.on_epub_question_shown(types.SimpleNamespace(id=66, nid=123))
+
+    assert shown == [
+        (
+            (66, "book.epub"),
+            {
+                "section_index": 4,
+                "scroll_ratio": 0.35,
+                "offer_due_review_prompt": False,
+            },
+        )
+    ]
+
+
 def test_current_epub_search_context_uses_current_title(monkeypatch):
     class _VisibleDock:
         def isVisible(self):

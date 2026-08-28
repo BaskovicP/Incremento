@@ -100,6 +100,135 @@ def _normalized_query(*parts: str) -> str:
     return " ".join(str(part or "").strip() for part in parts if str(part or "").strip()).strip()
 
 
+def _supports_bulk_topic_classification(collection, classifier) -> bool:
+    """Return whether the real Anki collection can use the batch classifier.
+
+    Lightweight mocks and third-party wrappers keep the historical card API
+    path.  The shipped Anki ``Collection`` has a stable cards/notes schema and
+    is safe to classify with one bounded SQL scan instead of loading every
+    card and note through the backend separately.
+    """
+    collection_type = type(collection)
+    if (
+        collection_type.__module__ != "anki.collection"
+        or collection_type.__name__ != "Collection"
+    ):
+        return False
+    return (
+        isinstance(getattr(classifier, "enabled_note_type_names", None), frozenset)
+        and isinstance(getattr(classifier, "topic_tags", None), frozenset)
+        and isinstance(getattr(classifier, "item_tags", None), frozenset)
+        and isinstance(getattr(classifier, "topics_deck_name", None), str)
+    )
+
+
+def _bulk_classify_candidate_ids(
+    candidate_ids,
+    *,
+    collection,
+    classifier,
+) -> tuple[list[int], list[int]] | None:
+    """Partition due-ordered candidates without per-card backend round trips.
+
+    Return ``None`` only when the optimized path itself is unavailable, which
+    lets callers fall back to ``is_topic_card()``.  Missing/corrupt card rows
+    are omitted just as they are when ``Collection.get_card()`` fails.
+    """
+    ordered_ids = [int(card_id) for card_id in candidate_ids]
+    if not ordered_ids:
+        return [], []
+
+    metadata: dict[int, tuple[int, int, int, str]] = {}
+    try:
+        for start in range(0, len(ordered_ids), _SQL_VARIABLE_CHUNK_SIZE):
+            chunk = ordered_ids[start : start + _SQL_VARIABLE_CHUNK_SIZE]
+            placeholders = ",".join("?" * len(chunk))
+            rows = collection.db.all(
+                "SELECT c.id, c.did, c.odid, n.mid, n.tags "
+                "FROM cards c JOIN notes n ON n.id = c.nid "
+                f"WHERE c.id IN ({placeholders})",
+                *chunk,
+            )
+            for row in rows:
+                if len(row) != 5:
+                    return None
+                card_id, deck_id, original_deck_id, note_type_id, raw_tags = row
+                metadata[int(card_id)] = (
+                    int(deck_id or 0),
+                    int(original_deck_id or 0),
+                    int(note_type_id or 0),
+                    str(raw_tags or ""),
+                )
+    except Exception:
+        return None
+
+    model_names: dict[int, str] = {}
+    deck_names: dict[int, str] = {}
+
+    def _model_name(note_type_id: int) -> str:
+        if note_type_id not in model_names:
+            try:
+                model = collection.models.get(note_type_id)
+                model_names[note_type_id] = (
+                    str(model.get("name") or "").strip()
+                    if isinstance(model, dict)
+                    else ""
+                )
+            except Exception:
+                model_names[note_type_id] = ""
+        return model_names[note_type_id]
+
+    def _deck_name(deck_id: int) -> str:
+        if deck_id not in deck_names:
+            try:
+                deck = collection.decks.get(deck_id)
+                deck_names[deck_id] = (
+                    str(deck.get("name") or "").strip()
+                    if isinstance(deck, dict)
+                    else ""
+                )
+            except Exception:
+                deck_names[deck_id] = ""
+        return deck_names[deck_id]
+
+    enabled_note_types = classifier.enabled_note_type_names
+    topic_tags = classifier.topic_tags
+    item_tags = classifier.item_tags
+    topics_deck_name = str(classifier.topics_deck_name or "").strip() or "Topics"
+
+    topic_ids: list[int] = []
+    item_ids: list[int] = []
+    for card_id in ordered_ids:
+        row = metadata.get(card_id)
+        if row is None:
+            continue
+        deck_id, original_deck_id, note_type_id, raw_tags = row
+        tags = {
+            tag.casefold()
+            for tag in raw_tags.split()
+            if tag
+        }
+        if tags & item_tags:
+            item_ids.append(card_id)
+            continue
+
+        effective_deck_name = _deck_name(original_deck_id or deck_id)
+        in_topics_deck = bool(
+            effective_deck_name == topics_deck_name
+            or effective_deck_name.startswith(topics_deck_name + "::")
+        )
+        if (
+            _model_name(note_type_id) in enabled_note_types
+            or bool(tags & topic_tags)
+            or in_topics_deck
+        ):
+            topic_ids.append(card_id)
+        else:
+            item_ids.append(card_id)
+
+    return topic_ids, item_ids
+
+
 def _classified_ready_cards(
     kind: str,
     *,
@@ -126,30 +255,41 @@ def _classified_ready_cards(
         return list(cached)
 
     candidate_ids = _sort_by_due(collection.find_cards(query), col=collection)
-    topic_ids: list[int] = []
-    item_ids: list[int] = []
-    for card_id in candidate_ids:
-        try:
-            card = collection.get_card(card_id)
-        except Exception:
-            continue
-        if card is None:
-            continue
-        try:
+    classified = None
+    if _supports_bulk_topic_classification(collection, classifier):
+        classified = _bulk_classify_candidate_ids(
+            candidate_ids,
+            collection=collection,
+            classifier=classifier,
+        )
+
+    if classified is not None:
+        topic_ids, item_ids = classified
+    else:
+        topic_ids = []
+        item_ids = []
+        for card_id in candidate_ids:
             try:
-                is_topic = bool(
-                    is_topic_card(card, classifier=classifier, col=collection)
-                )
-            except TypeError:
-                # Keep compatibility with test/third-party wrappers that
-                # still expose the historical one-argument callable.
-                is_topic = bool(is_topic_card(card))
-        except Exception:
-            is_topic = False
-        if is_topic:
-            topic_ids.append(int(card_id))
-        else:
-            item_ids.append(int(card_id))
+                card = collection.get_card(card_id)
+            except Exception:
+                continue
+            if card is None:
+                continue
+            try:
+                try:
+                    is_topic = bool(
+                        is_topic_card(card, classifier=classifier, col=collection)
+                    )
+                except TypeError:
+                    # Keep compatibility with test/third-party wrappers that
+                    # still expose the historical one-argument callable.
+                    is_topic = bool(is_topic_card(card))
+            except Exception:
+                is_topic = False
+            if is_topic:
+                topic_ids.append(int(card_id))
+            else:
+                item_ids.append(int(card_id))
 
     _TOPIC_ITEM_CACHE[cache_base + ("topics",)] = tuple(topic_ids)
     _TOPIC_ITEM_CACHE[cache_base + ("items",)] = tuple(item_ids)
