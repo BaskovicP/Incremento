@@ -252,11 +252,6 @@ from .backend.reviewer_extract import (
 
 _ADDON_DIR = os.path.dirname(__file__)
 
-try:
-    _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
-except Exception:
-    pass
-
 _shortcut_actions: dict[str, list[object]] = {}
 _topic_postpone_timer: QTimer | None = None
 _item_skip_timer: QTimer | None = None
@@ -2841,7 +2836,7 @@ def _initialize_item_skip_runtime() -> None:
 
 gui_hooks.main_window_did_init.append(_initialize_topic_postpone_runtime)
 gui_hooks.main_window_did_init.append(_initialize_item_skip_runtime)
-gui_hooks.main_window_did_init.append(
+gui_hooks.profile_did_open.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )
 gui_hooks.profile_will_close.append(_browser_bridge_mod.stop_browser_bridge)
@@ -4395,11 +4390,12 @@ def addWebpageFunction() -> None:
     dlg = WebpageToPdfDialog(mw)
     if not dlg.exec():
         return
+    pdf_path = str(dlg.pdf_path or "")
     try:
         add_pdf_card(
             _ADDON_DIR,
             mw.col,
-            dlg.pdf_path,
+            pdf_path,
             dlg.title_text,
             tags=dlg.tags_to_apply,
             metadata=build_incremento_metadata(
@@ -4411,6 +4407,12 @@ def addWebpageFunction() -> None:
         showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
     except Exception as e:
         showInfo(f"Failed to import webpage as PDF:\n{e}")
+    finally:
+        if pdf_path:
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                pass
 
 
 def reindexPdfTextFunction() -> None:

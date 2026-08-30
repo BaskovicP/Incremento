@@ -57,6 +57,14 @@ def test_bridge_binds_one_exact_extension_origin(monkeypatch):
     assert _bare_bridge_handler(origin=second)._request_origin_allowed() is False
 
 
+def test_bridge_never_authorizes_an_originless_handshake(monkeypatch):
+    monkeypatch.setattr(browser_bridge, "_allowed_extension_origin", "")
+    handler = _bare_bridge_handler()
+
+    assert handler._request_origin_allowed(allow_unbound=True) is False
+    assert handler._bind_handshake_origin() is False
+
+
 def test_bridge_requires_matching_protocol_and_token(monkeypatch):
     monkeypatch.setattr(browser_bridge, "_bridge_token", "secret")
 
@@ -69,6 +77,46 @@ def test_bridge_requires_matching_protocol_and_token(monkeypatch):
     assert _bare_bridge_handler(
         {"X-Incremento-Token": "secret", "X-Incremento-Protocol": "1"}
     )._request_authenticated() is False
+
+
+def test_bridge_unbound_valid_origin_requests_fresh_handshake(monkeypatch):
+    monkeypatch.setattr(browser_bridge, "_allowed_extension_origin", "")
+    origin = "chrome-extension://" + "a" * 32
+    post_handler = _bare_bridge_handler(origin=origin)
+    post_handler.path = browser_bridge.BRIDGE_PATH
+    post_handler.rfile = type(
+        "_Body",
+        (),
+        {"read": lambda *_args: (_ for _ in ()).throw(AssertionError("read"))},
+    )()
+    responses = []
+    post_handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    post_handler._do_POST()
+
+    get_handler = _bare_bridge_handler(origin=origin)
+    get_handler.path = browser_bridge.BROWSER_CAPTURE_META_PATH
+    get_handler._send_json = lambda status, payload: responses.append((status, payload))
+    get_handler._do_GET()
+
+    expected = (401, {"ok": False, "error": "Bridge authorization required."})
+    assert responses == [expected, expected]
+
+
+def test_bridge_rejects_a_different_bound_extension_origin(monkeypatch):
+    monkeypatch.setattr(
+        browser_bridge,
+        "_allowed_extension_origin",
+        "chrome-extension://" + "a" * 32,
+    )
+    handler = _bare_bridge_handler(origin="chrome-extension://" + "b" * 32)
+    handler.path = browser_bridge.BRIDGE_PATH
+    responses = []
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    handler._do_POST()
+
+    assert responses == [(403, {"ok": False, "error": "Origin not allowed."})]
 
 
 def test_bridge_rejects_oversized_body_before_reading(monkeypatch):
@@ -85,6 +133,29 @@ def test_bridge_rejects_oversized_body_before_reading(monkeypatch):
     handler._do_POST()
 
     assert responses[0][0] == 413
+    assert handler.close_connection is True
+
+
+def test_bridge_rejects_transfer_encoded_bodies_before_reading():
+    handler = _bare_bridge_handler(
+        {"Content-Length": "4", "Transfer-Encoding": "chunked"}
+    )
+    handler.path = browser_bridge.BRIDGE_PATH
+    handler.rfile = type(
+        "_Body",
+        (),
+        {"read": lambda *_args: (_ for _ in ()).throw(AssertionError("read"))},
+    )()
+    responses = []
+    handler._request_origin_allowed = lambda: True
+    handler._request_authenticated = lambda: True
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    handler._do_POST()
+
+    assert responses == [
+        (400, {"ok": False, "error": "Transfer-Encoding is not supported."})
+    ]
     assert handler.close_connection is True
 from webpage_markdown import convert_webpage_html_to_markdown
 from writing_manager import build_writing_relpath, add_writing_card, _stored_writing_title
@@ -110,6 +181,20 @@ def test_build_writing_markdown_includes_page_markdown_body():
     assert md.startswith("# Article Title\n")
     assert "## Body" in md
     assert "Main content" in md
+
+
+def test_build_writing_markdown_treats_page_selection_as_literal_text():
+    md = build_writing_markdown(
+        "<img src=x> ![title](https://tracker.test/title.png)",
+        "https://example.com/article",
+        "![selection](file:///private.png) <script>alert(1)</script>",
+    )
+
+    assert "<img" not in md
+    assert "<script" not in md
+    assert "![title](" not in md
+    assert "![selection](" not in md
+    assert "&lt;script&gt;" in md
 
 
 def test_normalize_add_content_payload_defaults_and_aliases():
@@ -491,9 +576,30 @@ def test_convert_webpage_html_to_markdown_prefers_main_content():
     assert result["title"] == "Example Article"
     assert "Article heading" in result["markdown"]
     assert "Paragraph one." in result["markdown"]
-    assert "[a link](https://example.com/more)" in result["markdown"]
+    assert "[a link](<https://example.com/more>)" in result["markdown"]
     assert "Navigation links" not in result["markdown"]
     assert "Footer text" not in result["markdown"]
+
+
+def test_convert_webpage_html_to_markdown_blocks_active_and_auto_loaded_targets():
+    result = convert_webpage_html_to_markdown(
+        "https://example.com/article",
+        """
+        <main>
+          <p>Literal ![tracking](file:///private.png)</p>
+          <a href="javascript:alert(1)">Unsafe link</a>
+          <img src="file:///private.png" alt="private">
+          <img src="https://cdn.example.com/image.png" alt="remote">
+        </main>
+        """,
+    )
+
+    markdown = result["markdown"]
+    assert "![tracking](" not in markdown
+    assert "javascript:" not in markdown
+    assert "[Image: private]" not in markdown
+    assert "![remote]" not in markdown
+    assert "[Image: remote](<https://cdn.example.com/image.png>)" in markdown
 
 
 def test_build_writing_relpath_uses_uuid_suffix_for_repeated_titles():
@@ -687,7 +793,13 @@ def test_download_pdf_from_url_writes_pdf(monkeypatch, tmp_path):
     class _Resp:
         headers = {"Content-Type": "application/pdf"}
 
-        def read(self):
+        def __init__(self):
+            self.done = False
+
+        def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
             return b"%PDF-1.4\nfake\n"
 
         def __enter__(self):
@@ -696,7 +808,7 @@ def test_download_pdf_from_url_writes_pdf(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    monkeypatch.setattr("browser_bridge.urlopen", lambda *_args, **_kwargs: _Resp())
+    monkeypatch.setattr("browser_bridge.open_public_http", lambda *_args, **_kwargs: _Resp())
 
     dest = tmp_path / "downloaded.pdf"
     download_pdf_from_url("https://example.com/file.pdf", str(dest))
@@ -707,7 +819,13 @@ def test_download_pdf_from_url_rejects_non_pdf(monkeypatch, tmp_path):
     class _Resp:
         headers = {"Content-Type": "text/html"}
 
-        def read(self):
+        def __init__(self):
+            self.done = False
+
+        def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
             return b"<html>nope</html>"
 
         def __enter__(self):
@@ -716,7 +834,7 @@ def test_download_pdf_from_url_rejects_non_pdf(monkeypatch, tmp_path):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    monkeypatch.setattr("browser_bridge.urlopen", lambda *_args, **_kwargs: _Resp())
+    monkeypatch.setattr("browser_bridge.open_public_http", lambda *_args, **_kwargs: _Resp())
 
     dest = tmp_path / "downloaded.pdf"
     try:
@@ -731,7 +849,13 @@ def test_download_pdf_from_url_accepts_pdf_url_with_generic_content_type(monkeyp
     class _Resp:
         headers = {"Content-Type": "application/octet-stream"}
 
-        def read(self):
+        def __init__(self):
+            self.done = False
+
+        def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
             return b"\n\n%PDF-1.7\nfake\n"
 
         def __enter__(self):
@@ -740,7 +864,7 @@ def test_download_pdf_from_url_accepts_pdf_url_with_generic_content_type(monkeyp
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    monkeypatch.setattr("browser_bridge.urlopen", lambda *_args, **_kwargs: _Resp())
+    monkeypatch.setattr("browser_bridge.open_public_http", lambda *_args, **_kwargs: _Resp())
 
     dest = tmp_path / "downloaded.pdf"
     download_pdf_from_url("https://example.com/file.pdf", str(dest))

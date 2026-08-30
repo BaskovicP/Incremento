@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "absolute-path-rejection",
+  "mode": "guard",
+  "operation": "sensitive_rejection",
+  "input": "Synthetic trace at /private/tmp/incremento-example.log",
+  "expected": {
+    "error_contains": "local absolute path"
+  }
+}

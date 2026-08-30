@@ -26,6 +26,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "MANUAL.md",
         "EXPORTING.md",
         "ARCHITECTURE.md",
+        "SECURITY.md",
         "LICENSE",
     ):
         write_file(repo, relpath)
@@ -45,6 +46,9 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "backend/operation_journal.py",
         "backend/reconciliation.py",
         "backend/config_service.py",
+        "backend/content_safety.py",
+        "backend/network_safety.py",
+        "backend/webpage_snapshot.py",
         "backend/anki_compat.py",
         "backend/note_type_updates.py",
         "backend/search_indexer.py",
@@ -62,6 +66,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "frontend/note_type_update_dialog.py",
         "frontend/session_launcher.py",
         "frontend/web_dock.py",
+        "frontend/webpage_dialog.py",
         "frontend/stats_dialog.py",
         "frontend/src/App.jsx",
         "frontend/tests/ui.test.js",
@@ -171,6 +176,7 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
     }
     assert "__init__.py" in names
     assert "ARCHITECTURE.md" in names
+    assert "SECURITY.md" in names
     assert "incremento/__init__.py" not in names
     assert "build_manifest.json" not in names
 
@@ -181,6 +187,9 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
         "backend/operation_journal.py",
         "backend/reconciliation.py",
         "backend/config_service.py",
+        "backend/content_safety.py",
+        "backend/network_safety.py",
+        "backend/webpage_snapshot.py",
         "backend/anki_compat.py",
         "backend/note_type_updates.py",
         "backend/search_indexer.py",
@@ -192,6 +201,7 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
         "frontend/note_type_update_dialog.py",
         "frontend/session_launcher.py",
         "frontend/web_dock.py",
+        "frontend/webpage_dialog.py",
         "frontend/stats_dialog.py",
         "web/pdf_dock.html",
         "web/video_player.html",

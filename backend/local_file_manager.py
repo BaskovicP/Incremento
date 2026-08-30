@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 try:
     from . import paths as _paths
+    from .content_safety import external_plain_text, external_plain_text_to_anki_html
     from .operation_journal import ImportOperation
     from .note_metadata import (
         apply_incremento_metadata,
@@ -16,6 +17,7 @@ try:
     from .note_type_updates import NoteTypeSpec, ensure_note_type
 except ImportError:
     import paths as _paths
+    from content_safety import external_plain_text, external_plain_text_to_anki_html  # type: ignore
     from operation_journal import ImportOperation  # type: ignore
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
@@ -41,11 +43,11 @@ LOCAL_FILE_MODES = {
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:36px 20px; font-family:sans-serif; color:#888;">
-  <div style="font-size:1.3em; margin-bottom:8px; color:#ccc;">{{Title}}</div>
-  <div style="font-size:0.95em; margin-bottom:10px;">{{Local_File_Name}}</div>
-  <div style="font-size:0.8em; margin-bottom:12px;">{{Local_File_Path}}</div>
-  <div style="font-size:0.85em; margin-bottom:12px;">{{Local_File_Mode}}</div>
-  <div style="font-size:0.9em; color:#aaa;">{{Local_File_Note}}</div>
+  <div style="font-size:1.3em; margin-bottom:8px; color:#ccc;">{{text:Title}}</div>
+  <div style="font-size:0.95em; margin-bottom:10px;">{{text:Local_File_Name}}</div>
+  <div style="font-size:0.8em; margin-bottom:12px;">{{text:Local_File_Path}}</div>
+  <div style="font-size:0.85em; margin-bottom:12px;">{{text:Local_File_Mode}}</div>
+  <div style="font-size:0.9em; color:#aaa;">{{text:Local_File_Note}}</div>
 </div>
 """.strip()
 
@@ -145,6 +147,13 @@ def prepare_local_file_storage(
     src = os.path.abspath(str(source_path or "").strip())
     if not os.path.isfile(src):
         raise FileNotFoundError("Selected file does not exist.")
+    if normalized_mode == LOCAL_FILE_MODE_REFERENCE and any(
+        marker in src for marker in ("<", ">")
+    ):
+        raise ValueError(
+            "Reference paths cannot contain HTML delimiter characters; "
+            "use a managed copy instead."
+        )
     if normalized_mode == LOCAL_FILE_MODE_MANAGED_COPY:
         stored_path = import_local_file_copy(
             addon_dir,
@@ -171,15 +180,14 @@ def relink_local_file(
     mode = normalize_local_file_mode(raw_mode)
     stored_path, filename = prepare_local_file_storage(addon_dir, profile, new_source_path, mode)
     note[LOCAL_FILE_PATH_FIELD] = stored_path
-    note[LOCAL_FILE_NAME_FIELD] = filename
+    note[LOCAL_FILE_NAME_FIELD] = external_plain_text_to_anki_html(filename, max_chars=255)
     return stored_path, filename
 
 
 def _stored_local_file_title(title: str, attempt: int) -> str:
-    base_title = str(title or "").strip() or "Untitled"
-    if attempt <= 0:
-        return base_title
-    return f"{base_title} [{attempt + 1}]"
+    base_title = external_plain_text(title, max_chars=2_000).strip() or "Untitled"
+    visible_title = base_title if attempt <= 0 else f"{base_title} [{attempt + 1}]"
+    return external_plain_text_to_anki_html(visible_title, max_chars=2_050)
 
 
 def local_file_note_type_spec() -> NoteTypeSpec:
@@ -280,10 +288,13 @@ def _create_new_local_file_card(
     def _build_note(stored_title: str):
         note = col.new_note(model)
         note["Title"] = stored_title
-        note[LOCAL_FILE_NAME_FIELD] = filename
+        note[LOCAL_FILE_NAME_FIELD] = external_plain_text_to_anki_html(filename, max_chars=255)
         note[LOCAL_FILE_PATH_FIELD] = stored_path
         note[LOCAL_FILE_MODE_FIELD] = normalized_mode
-        note[LOCAL_FILE_NOTE_FIELD] = str(note_text or "").strip()
+        note[LOCAL_FILE_NOTE_FIELD] = external_plain_text_to_anki_html(
+            external_plain_text(note_text, max_chars=20_000).strip(),
+            max_chars=20_000,
+        )
         apply_incremento_metadata(note, resolved_metadata)
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:

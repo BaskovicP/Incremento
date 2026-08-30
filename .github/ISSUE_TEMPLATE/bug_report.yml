@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible Incremento problem without sharing private study data.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, update Incremento and reproduce once with other add-ons disabled if practical. Export a privacy-safe bundle from **Incremento → Export Support Bundle…**. Never paste card/note text, profile/deck/tag names, local paths, URLs, database files, or API keys.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the visible behavior without private study content.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Minimal reproduction
+      description: Numbered steps using placeholder titles and files where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Anki, Incremento, and operating-system versions
+      placeholder: "Anki …; Incremento …; macOS/Windows/Linux …"
+    validations:
+      required: true
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Did this work before?
+      options:
+        - "Unknown"
+        - "No, it has never worked"
+        - "Yes, it is a regression"
+    validations:
+      required: true
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Privacy-safe support bundle
+      description: Attach the exported ZIP by dragging it here. Do not attach databases or user_files.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I checked this report and its attachments for private study content, credentials, URLs, filenames, and local paths.
+          required: true

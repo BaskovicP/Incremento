@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import db
 import pytest
+from bs4 import BeautifulSoup
 
 sys.modules.setdefault("db", db)
 
@@ -75,6 +76,7 @@ class TestEnsureEpubExtracted:
             meta = epub_manager.ensure_epub_extracted(str(src), stored_filename="sample.epub")
 
         assert meta["title"] == "Sample EPUB"
+        assert meta["sanitizer_version"] == epub_manager._EPUB_SANITIZER_VERSION
         assert meta["cover_href"] == "OEBPS/images/cover.jpg"
         assert [section["title"] for section in meta["sections"]] == ["Chapter 1", "Chapter 2"]
         assert "Hello from the first chapter." in meta["sections"][0]["text"]
@@ -115,6 +117,161 @@ class TestEnsureEpubExtracted:
             meta = epub_manager.load_epub_metadata(str(tmp_path), "stored.epub")
 
         assert meta["sections"][1]["href"] == "OEBPS/chapter2.xhtml"
+
+    def test_rejects_windows_drive_qualified_archive_member(self, tmp_path):
+        src = tmp_path / "drive-path.epub"
+        with zipfile.ZipFile(src, "w") as zf:
+            zf.writestr("C:/outside.txt", "nope")
+
+        extract_root = tmp_path / "extracted"
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)):
+            with pytest.raises(RuntimeError, match="unsafe archive member path"):
+                epub_manager.ensure_epub_extracted(
+                    str(src), stored_filename="drive-path.epub"
+                )
+
+        assert not (tmp_path / "outside.txt").exists()
+
+    def test_rejects_excessive_member_count_before_extraction(self, tmp_path):
+        src = tmp_path / "too-many.epub"
+        with zipfile.ZipFile(src, "w") as zf:
+            zf.writestr("one", "1")
+            zf.writestr("two", "2")
+            zf.writestr("three", "3")
+
+        extract_root = tmp_path / "extracted"
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)), patch(
+            "epub_manager._MAX_EPUB_MEMBERS", 2
+        ):
+            with pytest.raises(RuntimeError, match="too many members"):
+                epub_manager.ensure_epub_extracted(
+                    str(src), stored_filename="too-many.epub"
+                )
+
+        assert list(extract_root.glob(".*-extract-*")) == []
+
+    def test_failed_reextract_keeps_previous_directory(self, tmp_path):
+        src = tmp_path / "invalid.epub"
+        with zipfile.ZipFile(src, "w") as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+
+        extract_root = tmp_path / "extracted"
+        previous = extract_root / "invalid.epub"
+        previous.mkdir(parents=True)
+        marker = previous / "keep.txt"
+        marker.write_text("previous", encoding="utf-8")
+
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)):
+            with pytest.raises(RuntimeError, match="missing META-INF/container.xml"):
+                epub_manager.ensure_epub_extracted(
+                    str(src), stored_filename="invalid.epub"
+                )
+
+        assert marker.read_text(encoding="utf-8") == "previous"
+
+
+class TestEpubSanitization:
+    def test_extraction_sanitizes_non_spine_html_documents(self, tmp_path):
+        src = tmp_path / "linked-page.epub"
+        _write_test_epub(src)
+        with zipfile.ZipFile(src, "a") as zf:
+            zf.writestr(
+                "OEBPS/appendix.html",
+                "<html><body onload='alert(1)'><script>alert(1)</script>Appendix</body></html>",
+            )
+        extract_root = tmp_path / "extracted"
+
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)):
+            epub_manager.ensure_epub_extracted(str(src), stored_filename="linked-page.epub")
+
+        appendix = extract_root / "linked-page.epub" / "OEBPS" / "appendix.html"
+        soup = BeautifulSoup(appendix.read_text(encoding="utf-8"), "html.parser")
+        assert soup.find("script") is None
+        assert soup.body.get("onload") is None
+        assert soup.find("meta", attrs={"http-equiv": "Content-Security-Policy"})
+
+    def test_old_cached_extraction_is_replaced_with_current_sanitizer(self, tmp_path):
+        src = tmp_path / "sample.epub"
+        _write_test_epub(src)
+        extract_root = tmp_path / "extracted"
+        stale_dir = extract_root / "sample.epub"
+        stale_dir.mkdir(parents=True)
+        (stale_dir / "metadata.json").write_text(
+            '{"title":"stale","sections":[]}',
+            encoding="utf-8",
+        )
+
+        with patch("epub_manager.get_epub_extract_root", return_value=str(extract_root)):
+            metadata = epub_manager.ensure_epub_extracted(
+                str(src), stored_filename="sample.epub"
+            )
+
+        assert metadata["sanitizer_version"] == epub_manager._EPUB_SANITIZER_VERSION
+        assert metadata["title"] == "Sample EPUB"
+
+    def test_html_sanitizer_removes_active_content_and_adds_csp(self, tmp_path):
+        html_path = tmp_path / "chapter.xhtml"
+        html_path.write_text(
+            """
+            <html><head>
+              <meta http-equiv="refresh" content="0;url=https://tracker.example/">
+              <style>@import 'https://tracker.example/a.css'; p { background: url(https://tracker.example/x); }</style>
+            </head><body onload="console.log('owned')">
+              <script>alert(1)</script>
+              <iframe src="https://tracker.example/frame"></iframe>
+              <a href="javascript:alert(1)" target="_blank">Unsafe</a>
+              <a href="next.xhtml#part">Safe link</a>
+              <img src="https://tracker.example/pixel" onerror="alert(1)">
+              <p style="background:url(https://tracker.example/y)">Readable text</p>
+            </body></html>
+            """,
+            encoding="utf-8",
+        )
+
+        epub_manager._clean_html_file(str(html_path))
+
+        soup = BeautifulSoup(html_path.read_text(encoding="utf-8"), "html.parser")
+        assert soup.find("script") is None
+        assert soup.find("iframe") is None
+        assert soup.body.get("onload") is None
+        assert soup.find("a", string="Unsafe").get("href") is None
+        assert soup.find("a", string="Safe link")["href"] == "next.xhtml#part"
+        assert soup.find("img").get("src") is None
+        assert "tracker.example" not in soup.get_text(" ")
+        assert "Readable text" in soup.get_text(" ")
+        csp = soup.find("meta", attrs={"http-equiv": "Content-Security-Policy"})
+        assert csp is not None
+        assert "default-src 'none'" in csp["content"]
+        assert "connect-src 'none'" in csp["content"]
+
+    def test_css_sanitizer_keeps_local_assets_and_drops_remote_access(self):
+        css = (
+            "@import url('https://tracker.example/theme.css');"
+            ".local{background:url('../images/bg.png')}"
+            ".remote{background:url(https://tracker.example/pixel)}"
+            ".active{x:expression(alert(1))}"
+        )
+
+        cleaned = epub_manager._sanitize_css_text(css)
+
+        assert "@import" not in cleaned.casefold()
+        assert "tracker.example" not in cleaned
+        assert "../images/bg.png" in cleaned
+        assert "expression(" not in cleaned.casefold()
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "../outside",
+            "/absolute/path",
+            r"C:\\outside.txt",
+            "C:/outside.txt",
+            "folder/file.txt:stream",
+            "folder/CON.txt",
+        ],
+    )
+    def test_member_name_rejects_cross_platform_unsafe_paths(self, name):
+        assert epub_manager._safe_epub_member_name(name) is None
 
 
 class TestCopyToEpubDir:

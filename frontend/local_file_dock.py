@@ -1,4 +1,5 @@
 import os
+from html import escape, unescape
 
 from aqt import mw
 from aqt.qt import (
@@ -121,10 +122,15 @@ def _refresh_dock_labels(filename: str, stored_path: str, mode: str, note_text: 
     else:
         _local_file_dock._status_lbl.setText("Linked file is missing. Use Relink to choose a replacement.")
         _local_file_dock._status_lbl.setStyleSheet("color: #d17b49;")
-    _local_file_dock._name_lbl.setText(f"<b>File:</b> {filename or '(none)'}")
-    _local_file_dock._path_lbl.setText(f"<b>Path:</b> {stored_path or '(none)'}")
-    _local_file_dock._mode_lbl.setText(f"<b>Mode:</b> {_mode_label(mode)}")
-    _local_file_dock._note_lbl.setText(f"<b>Note:</b> {note_text or '(none)'}")
+    safe_filename = escape(unescape(filename or "(none)"), quote=True)
+    safe_path = escape(stored_path or "(none)", quote=True)
+    safe_mode = escape(_mode_label(mode), quote=True)
+    plain_note = (note_text or "(none)").replace("<br>", "\n")
+    safe_note = escape(unescape(plain_note), quote=True).replace("\n", "<br>")
+    _local_file_dock._name_lbl.setText(f"<b>File:</b> {safe_filename}")
+    _local_file_dock._path_lbl.setText(f"<b>Path:</b> {safe_path}")
+    _local_file_dock._mode_lbl.setText(f"<b>Mode:</b> {safe_mode}")
+    _local_file_dock._note_lbl.setText(f"<b>Note:</b> {safe_note}")
     _local_file_dock._reveal_btn.setEnabled(exists)
     _local_file_dock._open_btn.setEnabled(exists)
     _local_file_dock._relink_btn.setEnabled(_current_note_id is not None)

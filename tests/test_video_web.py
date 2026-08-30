@@ -207,23 +207,35 @@ class TestVimeoVideoParsing:
         _vm._VIMEO_EMBED_CACHE.clear()
 
         class _Resp:
+            headers = {}
+
+            def __init__(self):
+                self.done = False
+
             def __enter__(self):
                 return self
 
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-            def read(self):
+            def read(self, _size=-1):
+                if self.done:
+                    return b""
+                self.done = True
                 return b'<iframe src="https://player.vimeo.com/video/1177424090?h=abc123"></iframe>'
 
-        monkeypatch.setattr(_vm, "urlopen", lambda *_args, **_kwargs: _Resp())
+        monkeypatch.setattr(_vm, "open_public_http", lambda *_args, **_kwargs: _Resp())
         url = "https://player.vimeo.com/video/1177424090?title=0"
         got = resolve_video_url_for_embed(url, timeout_sec=0.1)
         assert got == "https://player.vimeo.com/video/1177424090?title=0&h=abc123"
 
     def test_resolve_video_url_for_embed_fallback_on_network_error(self, monkeypatch):
         _vm._VIMEO_EMBED_CACHE.clear()
-        monkeypatch.setattr(_vm, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(Exception("boom")))
+        monkeypatch.setattr(
+            _vm,
+            "open_public_http",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(Exception("boom")),
+        )
         url = "https://player.vimeo.com/video/1177424090?title=0"
         got = resolve_video_url_for_embed(url, timeout_sec=0.1)
         assert got == "https://player.vimeo.com/video/1177424090?title=0"
@@ -1096,6 +1108,33 @@ class TestAddWebCard:
         setitem_calls = col.new_note.return_value.__setitem__.call_args_list
         assert any(c.args == (SOURCE_TYPE_FIELD, "Web") for c in setitem_calls)
         assert any(c.args == (SOURCE_LINK_FIELD, "https://example.com") for c in setitem_calls)
+
+    def test_escapes_external_title_and_does_not_render_raw_url_field(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+
+        add_web_card(
+            col,
+            "https://example.com/path?q=1",
+            '<img src=x onerror="alert(1)">',
+        )
+
+        setitem_calls = col.new_note.return_value.__setitem__.call_args_list
+        assert any(
+            call.args
+            == (
+                "Title",
+                "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;",
+            )
+            for call in setitem_calls
+        )
+        assert "{{text:Title}}" in _wm.CARD_TEMPLATE_FRONT
+        assert "{{URL}}" not in _wm.CARD_TEMPLATE_FRONT
+
+    def test_rejects_url_credentials(self):
+        col = _make_mock_col_for_add(deck_exists=True)
+
+        with pytest.raises(ValueError, match="credentials"):
+            add_web_card(col, "https://user:secret@example.com/", "Page")
 
 
 # ── Tag handling edge cases ───────────────────────────────────────────────────

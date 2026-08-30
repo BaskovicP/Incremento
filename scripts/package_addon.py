@@ -31,6 +31,7 @@ ROOT_FILES = (
     "MANUAL.md",
     "EXPORTING.md",
     "ARCHITECTURE.md",
+    "SECURITY.md",
     "LICENSE",
 )
 WEB_RUNTIME_FILES = (
@@ -54,6 +55,9 @@ REQUIRED_RUNTIME_PATHS = (
     "backend/operation_journal.py",
     "backend/reconciliation.py",
     "backend/config_service.py",
+    "backend/content_safety.py",
+    "backend/network_safety.py",
+    "backend/webpage_snapshot.py",
     "backend/anki_compat.py",
     "backend/note_type_updates.py",
     "backend/search_indexer.py",
@@ -63,6 +67,7 @@ REQUIRED_RUNTIME_PATHS = (
     "frontend/note_type_update_dialog.py",
     "frontend/session_launcher.py",
     "frontend/web_dock.py",
+    "frontend/webpage_dialog.py",
     "web/pdf_dock.html",
     "web/video_player.html",
     "web/web_dock_bridge.js",
@@ -482,6 +487,10 @@ def validate_archive(artifact_path: Path) -> None:
         name
         for name in names
         if name.startswith("user_files/")
+        or name.split("/", 1)[0]
+        in {".agents", ".codex", ".git", ".github", "scripts", "tests"}
+        or any(part in {"AGENT.md", "AGENTS.md"} for part in name.split("/"))
+        or any(part == ".env" or part.startswith(".env.") for part in name.split("/"))
         or "../" in name
         or name.startswith("/")
         or "/__pycache__/" in f"/{name}"

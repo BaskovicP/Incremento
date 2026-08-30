@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 
 import db_schema
+from db_schema import DatabaseSchemaTooNewError, initialize_schema
 
 
 def _bootstrap(conn: sqlite3.Connection) -> None:
@@ -65,3 +66,35 @@ def test_successful_migration_is_recorded_once():
         ).fetchall() == [(1, "legacy_schema_baseline"), (2, "add_table")]
     finally:
         conn.close()
+
+
+def test_future_database_version_fails_before_any_schema_write():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA user_version=99")
+
+    with pytest.raises(DatabaseSchemaTooNewError, match="newer Incremento version"):
+        initialize_schema(
+            conn,
+            bootstrap=lambda _conn: (_ for _ in ()).throw(AssertionError("bootstrap")),
+            migrations=[(2, "second", lambda _conn: None)],
+        )
+
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "schema_migrations" not in tables
+
+
+@pytest.mark.parametrize(
+    "migrations",
+    [
+        [(2, "one", lambda _conn: None), (2, "duplicate", lambda _conn: None)],
+        [(3, "gap", lambda _conn: None)],
+        [(1, "reserved-baseline", lambda _conn: None)],
+    ],
+)
+def test_invalid_migration_ledger_definitions_fail_closed(migrations):
+    conn = sqlite3.connect(":memory:")
+    with pytest.raises(ValueError):
+        initialize_schema(conn, bootstrap=lambda _conn: None, migrations=migrations)

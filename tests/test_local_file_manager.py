@@ -2,6 +2,8 @@ import importlib.util
 import os
 import sys
 
+import pytest
+
 
 def _load(name, relpath):
     spec = importlib.util.spec_from_file_location(
@@ -144,6 +146,33 @@ def test_prepare_local_file_storage_reference_mode_uses_absolute_path(tmp_path):
     ) == os.path.abspath(str(source))
 
 
+def test_reference_mode_rejects_html_delimiters_but_managed_copy_sanitizes_them(
+    tmp_path,
+):
+    source = tmp_path / "notes" / "unsafe<img>.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("hello", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="managed copy"):
+        lfm.prepare_local_file_storage(
+            str(tmp_path),
+            "TestProfile",
+            str(source),
+            lfm.LOCAL_FILE_MODE_REFERENCE,
+        )
+
+    stored_path, filename = lfm.prepare_local_file_storage(
+        str(tmp_path),
+        "TestProfile",
+        str(source),
+        lfm.LOCAL_FILE_MODE_MANAGED_COPY,
+    )
+
+    assert "<" not in stored_path
+    assert ">" not in stored_path
+    assert filename == "unsafe<img>.txt"
+
+
 def test_prepare_local_file_storage_managed_copy_copies_into_profile_files_dir(tmp_path):
     source = tmp_path / "source" / "project.plan"
     source.parent.mkdir(parents=True)
@@ -225,6 +254,9 @@ def test_ensure_local_file_note_type_creates_expected_fields():
     ]
     assert nm.INCREMENTO_SOURCE_LINK_FIELD in field_names
     assert model["tmpls"][0]["qfmt"] == lfm.CARD_TEMPLATE_FRONT
+    assert "{{text:Title}}" in lfm.CARD_TEMPLATE_FRONT
+    assert "{{text:Local_File_Path}}" in lfm.CARD_TEMPLATE_FRONT
+    assert "{{Local_File_Path}}" not in lfm.CARD_TEMPLATE_FRONT
 
 
 def test_add_local_file_card_populates_note_fields_and_metadata(tmp_path):
@@ -254,3 +286,28 @@ def test_add_local_file_card_populates_note_fields_and_metadata(tmp_path):
     assert col.last_note[nm.INCREMENTO_SOURCE_LINK_FIELD] == os.path.abspath(str(source))
     assert "Incremento" in col.last_note.tags
     assert "project" in col.last_note.tags
+
+
+def test_add_local_file_card_escapes_untrusted_display_fields(tmp_path):
+    source = tmp_path / "refs" / "<unsafe>.txt"
+    source.parent.mkdir(parents=True)
+    source.write_text("content", encoding="utf-8")
+    col = _FakeCol()
+
+    lfm.add_local_file_card(
+        str(tmp_path),
+        "TestProfile",
+        col,
+        source_path=str(source),
+        title="<img src=x onerror=alert(1)>",
+        mode=lfm.LOCAL_FILE_MODE_MANAGED_COPY,
+        note_text="first\n<script>alert(1)</script>",
+    )
+
+    assert col.last_note["Title"] == "&lt;img src=x onerror=alert(1)&gt;"
+    assert col.last_note[lfm.LOCAL_FILE_NAME_FIELD] == "&lt;unsafe&gt;.txt"
+    assert col.last_note[lfm.LOCAL_FILE_NOTE_FIELD] == (
+        "first<br>&lt;script&gt;alert(1)&lt;/script&gt;"
+    )
+    assert col.last_note[lfm.LOCAL_FILE_PATH_FIELD].startswith("files/")
+    assert "<" not in col.last_note[lfm.LOCAL_FILE_PATH_FIELD]

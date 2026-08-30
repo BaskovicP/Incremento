@@ -5,16 +5,21 @@ import os
 import posixpath
 import re
 import shutil
+import stat
 import tempfile
+import time
+import unicodedata
 import uuid
 import zipfile
 from collections.abc import Callable
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 
 from bs4 import BeautifulSoup
 
 try:
+    from .content_safety import external_plain_text, external_plain_text_to_anki_html
     from .db import (
         get_connection,
         get_epub_card_sources_up_to_section,
@@ -37,6 +42,10 @@ try:
     from .scheduler_config import build_ready_filter, load_scheduler_config
     from .statistics import _effective_date
 except ImportError:
+    from content_safety import (  # type: ignore
+        external_plain_text,
+        external_plain_text_to_anki_html,
+    )
     from db import (  # type: ignore
         get_connection,
         get_epub_card_sources_up_to_section,
@@ -73,6 +82,106 @@ _HTML_MEDIA_TYPES = {
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_FILENAME_STEM = 80
 _EPUB_COVER_EXTS = {".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
+_MAX_EPUB_ARCHIVE_BYTES = 256 * 1024 * 1024
+_MAX_EPUB_MEMBERS = 5_000
+_MAX_EPUB_MEMBER_BYTES = 64 * 1024 * 1024
+_MAX_EPUB_TOTAL_BYTES = 512 * 1024 * 1024
+_MAX_EPUB_COMPRESSION_RATIO = 500.0
+_MAX_EPUB_MEMBER_NAME_CHARS = 512
+_MAX_EPUB_EXTRACTION_SECONDS = 30.0
+_EPUB_COPY_CHUNK_BYTES = 1024 * 1024
+_EPUB_SANITIZER_VERSION = 2
+_EPUB_HTML_SUFFIXES = {".htm", ".html", ".xht", ".xhtml"}
+_EPUB_ALLOWED_COMPRESSION = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
+_WINDOWS_RESERVED_NAMES = {
+    "aux",
+    "clock$",
+    "com1",
+    "com2",
+    "com3",
+    "com4",
+    "com5",
+    "com6",
+    "com7",
+    "com8",
+    "com9",
+    "con",
+    "lpt1",
+    "lpt2",
+    "lpt3",
+    "lpt4",
+    "lpt5",
+    "lpt6",
+    "lpt7",
+    "lpt8",
+    "lpt9",
+    "nul",
+    "prn",
+}
+_EPUB_BLOCKED_TAGS = {
+    "applet",
+    "base",
+    "button",
+    "canvas",
+    "embed",
+    "fencedframe",
+    "form",
+    "frame",
+    "frameset",
+    "iframe",
+    "input",
+    "meta",
+    "object",
+    "option",
+    "portal",
+    "script",
+    "select",
+    "svg",
+    "textarea",
+    "webview",
+}
+_EPUB_URL_ATTRIBUTES = {
+    "action",
+    "background",
+    "cite",
+    "data",
+    "formaction",
+    "href",
+    "longdesc",
+    "poster",
+    "profile",
+    "src",
+    "xlink:href",
+}
+_EPUB_ALWAYS_DROP_ATTRIBUTES = {
+    "autofocus",
+    "formaction",
+    "integrity",
+    "nonce",
+    "ping",
+    "srcdoc",
+    "srcset",
+    "target",
+}
+_EPUB_CSP = (
+    "default-src 'none'; "
+    "img-src 'self' data:; "
+    "media-src 'self' data:; "
+    "font-src 'self' data:; "
+    "style-src 'self' 'unsafe-inline'; "
+    "script-src 'none'; "
+    "connect-src 'none'; "
+    "frame-src 'none'; "
+    "object-src 'none'; "
+    "base-uri 'none'; "
+    "form-action 'none'"
+)
+_CSS_IMPORT_RE = re.compile(r"@import\b[^;]*(?:;|$)", re.IGNORECASE)
+_CSS_URL_RE = re.compile(r"url\(\s*([^)]+?)\s*\)", re.IGNORECASE)
+_CSS_ACTIVE_RE = re.compile(
+    r"(?:expression\s*\(|behavior\s*:|-moz-binding\s*:)",
+    re.IGNORECASE,
+)
 _EPUB_LIMIT_MODE_LABELS = {
     "warning": "Warning",
     "soft_lock": "Soft Lock",
@@ -85,18 +194,18 @@ CARD_TEMPLATE_FRONT = """
     <div style="margin:0 auto 22px; max-width:340px;">
       <img
         src="{{EPUB_Cover_Image}}"
-        alt="{{Title}} cover"
+        alt="EPUB cover"
         style="display:block; width:100%; height:auto; border-radius:14px; box-shadow:0 16px 42px rgba(0,0,0,0.28);"
       >
     </div>
   {{/EPUB_Cover_Image}}
-  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
+  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{text:Title}}</div>
   <div style="font-size:0.85em;">EPUB open in sidebar &nbsp;·&nbsp; select text → ⌘C → ⌘1–4 to fill fields</div>
 </div>
 <div style="display:none;">{{EPUB_Filename}}</div>
 """.strip()
 
-CARD_TEMPLATE_BACK = "{{Title}}"
+CARD_TEMPLATE_BACK = "{{text:Title}}"
 
 
 def get_epub_dir(profile: str | None = None) -> str:
@@ -173,23 +282,88 @@ def _safe_epub_stem(value: str, *, fallback: str = "book") -> str:
 
 def _safe_epub_member_name(raw_name: str) -> str | None:
     name = str(raw_name or "").replace("\\", "/").strip()
-    if not name:
+    if not name or "\x00" in name or len(name) > _MAX_EPUB_MEMBER_NAME_CHARS:
         return None
     path = PurePosixPath(name)
-    if path.is_absolute():
+    windows_path = PureWindowsPath(name)
+    if path.is_absolute() or windows_path.drive or windows_path.root:
         return None
     parts = [part for part in path.parts if part not in ("", ".")]
-    if any(part == ".." for part in parts):
+    if not parts or any(part == ".." for part in parts):
         return None
+    for part in parts:
+        if ":" in part or part.endswith((" ", ".")):
+            return None
+        basename = part.split(".", 1)[0].casefold()
+        if basename in _WINDOWS_RESERVED_NAMES:
+            return None
     return "/".join(parts)
 
 
+def _epub_member_collision_key(safe_name: str) -> str:
+    return unicodedata.normalize("NFC", safe_name).casefold()
+
+
+def _zip_entry_is_unsafe_special_file(info: zipfile.ZipInfo) -> bool:
+    unix_mode = int(info.external_attr >> 16)
+    file_type = stat.S_IFMT(unix_mode)
+    return bool(file_type and not stat.S_ISREG(unix_mode) and not stat.S_ISDIR(unix_mode))
+
+
+def _validate_zip_member_size(info: zipfile.ZipInfo, total_bytes: int) -> int:
+    file_size = int(info.file_size or 0)
+    compressed_size = int(info.compress_size or 0)
+    if file_size < 0 or compressed_size < 0:
+        raise RuntimeError("Invalid EPUB: archive contains a negative member size")
+    if file_size > _MAX_EPUB_MEMBER_BYTES:
+        raise RuntimeError("Invalid EPUB: an archive member is too large")
+    new_total = total_bytes + file_size
+    if new_total > _MAX_EPUB_TOTAL_BYTES:
+        raise RuntimeError("Invalid EPUB: uncompressed archive is too large")
+    if file_size and (file_size / max(1, compressed_size)) > _MAX_EPUB_COMPRESSION_RATIO:
+        raise RuntimeError("Invalid EPUB: suspicious archive compression ratio")
+    return new_total
+
+
+def _safe_path_under(root: str | Path, relpath: str) -> Path | None:
+    safe_rel = _safe_epub_member_name(relpath)
+    if not safe_rel:
+        return None
+    root_path = Path(root).resolve()
+    candidate = (root_path / Path(safe_rel)).resolve()
+    try:
+        candidate.relative_to(root_path)
+    except ValueError:
+        return None
+    return candidate
+
+
 def _safe_zip_members(zf: zipfile.ZipFile) -> list[tuple[zipfile.ZipInfo, str]]:
+    infos = zf.infolist()
+    if len(infos) > _MAX_EPUB_MEMBERS:
+        raise RuntimeError("Invalid EPUB: archive contains too many members")
+
     out: list[tuple[zipfile.ZipInfo, str]] = []
-    for info in zf.infolist():
+    seen: set[str] = set()
+    total_bytes = 0
+    for info in infos:
+        raw_name = str(info.filename or "")
         safe_name = _safe_epub_member_name(str(info.filename or ""))
         if not safe_name:
-            continue
+            if raw_name.strip() in {"", ".", "./"}:
+                continue
+            raise RuntimeError("Invalid EPUB: unsafe archive member path")
+        collision_key = _epub_member_collision_key(safe_name)
+        if collision_key in seen:
+            raise RuntimeError("Invalid EPUB: duplicate archive member path")
+        seen.add(collision_key)
+        if info.flag_bits & 0x1:
+            raise RuntimeError("Invalid EPUB: encrypted archive members are not supported")
+        if info.compress_type not in _EPUB_ALLOWED_COMPRESSION:
+            raise RuntimeError("Invalid EPUB: unsupported archive compression method")
+        if _zip_entry_is_unsafe_special_file(info):
+            raise RuntimeError("Invalid EPUB: archive contains a special file")
+        total_bytes = _validate_zip_member_size(info, total_bytes)
         out.append((info, safe_name))
     return out
 
@@ -200,16 +374,9 @@ def _extract_epub_path(
     *,
     profile: str | None = None,
 ) -> str:
-    safe_rel = _safe_epub_member_name(relpath)
-    if not safe_rel:
-        return ""
     root = Path(get_epub_extract_dir(stored_filename, profile=profile)).resolve()
-    candidate = (root / Path(safe_rel)).resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError:
-        return ""
-    return str(candidate)
+    candidate = _safe_path_under(root, relpath)
+    return str(candidate) if candidate is not None else ""
 
 
 def _decode_xml(path: str) -> ET.Element:
@@ -272,24 +439,148 @@ def _safe_read_text(path: str) -> str:
         return fh.read().decode("utf-8", errors="ignore")
 
 
+def _safe_epub_resource_url(value: object) -> bool:
+    raw = "".join(ch for ch in str(value or "").strip() if ord(ch) >= 0x20)
+    if not raw:
+        return False
+    if raw.startswith("#"):
+        return True
+    parsed = urlsplit(raw)
+    if parsed.scheme or parsed.netloc or raw.startswith(("/", "\\")):
+        if parsed.scheme == "data":
+            media_type = raw[5:].split(",", 1)[0].split(";", 1)[0].casefold()
+            return media_type in {
+                "image/gif",
+                "image/jpeg",
+                "image/png",
+                "image/webp",
+            }
+        return False
+    return True
+
+
+def _sanitize_css_text(css_text: str) -> str:
+    cleaned = _CSS_IMPORT_RE.sub("", str(css_text or ""))
+    cleaned = _CSS_ACTIVE_RE.sub("blocked(", cleaned)
+
+    def _replace_url(match: re.Match) -> str:
+        raw = str(match.group(1) or "").strip().strip("\"'")
+        return match.group(0) if _safe_epub_resource_url(raw) else "url('')"
+
+    return _CSS_URL_RE.sub(_replace_url, cleaned)
+
+
+def _atomic_write_text(path: str, text: str) -> None:
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, temp_path = tempfile.mkstemp(prefix=".incremento-sanitize-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temp_path, path)
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _clean_css_file(path: str) -> None:
+    _atomic_write_text(path, _sanitize_css_text(_safe_read_text(path)))
+
+
 def _clean_html_file(path: str) -> None:
     try:
         soup = BeautifulSoup(_safe_read_text(path), "lxml")
     except Exception:
         try:
             soup = BeautifulSoup(_safe_read_text(path), "html.parser")
-        except Exception:
-            return
-    changed = False
-    for tag in soup.find_all(["script"]):
+        except Exception as exc:
+            raise RuntimeError("Invalid EPUB: could not parse an HTML section") from exc
+
+    for tag in list(soup.find_all(_EPUB_BLOCKED_TAGS)):
         tag.decompose()
-        changed = True
-    if changed:
-        try:
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(str(soup))
-        except Exception:
-            pass
+
+    for tag in soup.find_all(True):
+        tag_name = str(tag.name or "").casefold()
+        if tag_name == "link":
+            rel_values = {str(value).casefold() for value in (tag.get("rel") or [])}
+            if "stylesheet" not in rel_values:
+                tag.decompose()
+                continue
+        for attr_name in list(tag.attrs):
+            normalized = str(attr_name or "").casefold()
+            value = tag.attrs.get(attr_name)
+            if normalized.startswith("on") or normalized in _EPUB_ALWAYS_DROP_ATTRIBUTES:
+                del tag.attrs[attr_name]
+                continue
+            if normalized in _EPUB_URL_ATTRIBUTES and not _safe_epub_resource_url(value):
+                del tag.attrs[attr_name]
+                continue
+            if normalized == "style":
+                tag.attrs[attr_name] = _sanitize_css_text(str(value or ""))
+
+    for style_tag in soup.find_all("style"):
+        style_tag.string = _sanitize_css_text(style_tag.get_text("", strip=False))
+
+    head = soup.head
+    if head is None:
+        head = soup.new_tag("head")
+        if soup.html is not None:
+            soup.html.insert(0, head)
+        else:
+            soup.insert(0, head)
+    csp = soup.new_tag("meta")
+    csp.attrs["http-equiv"] = "Content-Security-Policy"
+    csp.attrs["content"] = _EPUB_CSP
+    head.insert(0, csp)
+    _atomic_write_text(path, str(soup))
+
+
+def _sanitize_epub_html_documents(
+    extract_dir: Path,
+    opf_dir: str,
+    manifest: dict[str, dict],
+) -> None:
+    """Sanitize every document that could become a top-level local page."""
+    candidates = {
+        path.resolve()
+        for path in extract_dir.rglob("*")
+        if path.is_file() and path.suffix.casefold() in _EPUB_HTML_SUFFIXES
+    }
+    for item in manifest.values():
+        if str(item.get("media_type") or "").casefold() not in _HTML_MEDIA_TYPES:
+            continue
+        relpath = _resolve_posix(opf_dir, str(item.get("href") or ""))
+        candidate = _safe_path_under(extract_dir, relpath)
+        if candidate is not None and candidate.is_file():
+            candidates.add(candidate.resolve())
+    for candidate in sorted(candidates, key=lambda path: path.as_posix()):
+        _clean_html_file(str(candidate))
+
+
+def _copy_epub_member(
+    src,
+    dst,
+    *,
+    expected_size: int,
+    started_at: float,
+) -> None:
+    copied = 0
+    while True:
+        if time.monotonic() - started_at > _MAX_EPUB_EXTRACTION_SECONDS:
+            raise RuntimeError("Invalid EPUB: extraction timed out")
+        chunk = src.read(_EPUB_COPY_CHUNK_BYTES)
+        if not chunk:
+            break
+        copied += len(chunk)
+        if copied > expected_size or copied > _MAX_EPUB_MEMBER_BYTES:
+            raise RuntimeError("Invalid EPUB: archive member exceeded its declared size")
+        dst.write(chunk)
+    if copied != expected_size:
+        raise RuntimeError("Invalid EPUB: archive member size mismatch")
 
 
 def _load_nav_labels(extract_dir: str, opf_dir: str, manifest: dict[str, dict]) -> dict[str, str]:
@@ -393,17 +684,22 @@ def load_epub_metadata(
 ) -> dict:
     del addon_dir
     meta_path = _metadata_path(stored_filename, profile=profile)
-    if not os.path.isfile(meta_path):
-        epub_path = epub_storage_abspath(stored_filename, profile=profile)
-        if not epub_path or not os.path.isfile(epub_path):
-            raise FileNotFoundError("Stored EPUB file was not found.")
-        ensure_epub_extracted(
-            epub_path,
-            stored_filename=stored_filename,
-            profile=profile,
-        )
-    with open(meta_path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    if os.path.isfile(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as fh:
+                cached = json.load(fh)
+            if int(cached.get("sanitizer_version") or 0) == _EPUB_SANITIZER_VERSION:
+                return cached
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
+    epub_path = epub_storage_abspath(stored_filename, profile=profile)
+    if not epub_path or not os.path.isfile(epub_path):
+        raise FileNotFoundError("Stored EPUB file was not found or needs secure re-extraction.")
+    return ensure_epub_extracted(
+        epub_path,
+        stored_filename=stored_filename,
+        profile=profile,
+    )
 
 
 def ensure_epub_extracted(
@@ -416,97 +712,158 @@ def ensure_epub_extracted(
     extract_dir = get_epub_extract_dir(stored_name, profile=profile)
     meta_path = os.path.join(extract_dir, "metadata.json")
     if os.path.isfile(meta_path):
-        with open(meta_path, "r", encoding="utf-8") as fh:
-            return json.load(fh)
+        try:
+            with open(meta_path, "r", encoding="utf-8") as fh:
+                cached = json.load(fh)
+            if int(cached.get("sanitizer_version") or 0) == _EPUB_SANITIZER_VERSION:
+                return cached
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            pass
 
-    if os.path.isdir(extract_dir):
-        shutil.rmtree(extract_dir, ignore_errors=True)
-    os.makedirs(extract_dir, exist_ok=True)
+    archive_size = os.path.getsize(epub_path)
+    if archive_size <= 0 or archive_size > _MAX_EPUB_ARCHIVE_BYTES:
+        raise RuntimeError("Invalid EPUB: archive file size is not allowed")
 
-    with zipfile.ZipFile(epub_path, "r") as zf:
-        for info, safe_name in _safe_zip_members(zf):
-            target = os.path.join(extract_dir, safe_name)
-            if info.is_dir():
-                os.makedirs(target, exist_ok=True)
-                continue
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            with zf.open(info, "r") as src, open(target, "wb") as dst:
-                shutil.copyfileobj(src, dst)
+    extract_root = Path(get_epub_extract_root(profile)).resolve()
+    extract_root.mkdir(parents=True, exist_ok=True)
+    stage_dir = Path(
+        tempfile.mkdtemp(
+            prefix=f".{_safe_epub_stem(Path(stored_name).stem)}-extract-",
+            dir=str(extract_root),
+        )
+    )
+    started_at = time.monotonic()
+    try:
+        with zipfile.ZipFile(epub_path, "r") as zf:
+            for info, safe_name in _safe_zip_members(zf):
+                target = _safe_path_under(stage_dir, safe_name)
+                if target is None:
+                    raise RuntimeError("Invalid EPUB: archive member escapes extraction root")
+                if info.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info, "r") as src, open(target, "wb") as dst:
+                    _copy_epub_member(
+                        src,
+                        dst,
+                        expected_size=int(info.file_size or 0),
+                        started_at=started_at,
+                    )
 
-    container_path = os.path.join(extract_dir, "META-INF", "container.xml")
-    if not os.path.isfile(container_path):
-        raise RuntimeError("Invalid EPUB: missing META-INF/container.xml")
-    container_root = _decode_xml(container_path)
-    rootfile_el = container_root.find(".//{*}rootfile")
-    if rootfile_el is None:
-        raise RuntimeError("Invalid EPUB: missing package rootfile")
-    opf_relpath = str(rootfile_el.get("full-path") or "").strip()
-    if not opf_relpath:
-        raise RuntimeError("Invalid EPUB: empty package rootfile")
+        for css_path in stage_dir.rglob("*"):
+            if css_path.is_file() and css_path.suffix.casefold() == ".css":
+                _clean_css_file(str(css_path))
 
-    opf_path = _extract_epub_path(stored_name, opf_relpath, profile=profile)
-    if not opf_path:
-        raise RuntimeError("Invalid EPUB: package rootfile escapes extraction root")
-    opf_dir = posixpath.dirname(opf_relpath)
-    opf_root = _decode_xml(opf_path)
-    ns = {
-        "opf": opf_root.tag.partition("}")[0].strip("{") or "http://www.idpf.org/2007/opf",
-        "dc": "http://purl.org/dc/elements/1.1/",
-    }
+        container_path = stage_dir / "META-INF" / "container.xml"
+        if not container_path.is_file():
+            raise RuntimeError("Invalid EPUB: missing META-INF/container.xml")
+        container_root = _decode_xml(str(container_path))
+        rootfile_el = container_root.find(".//{*}rootfile")
+        if rootfile_el is None:
+            raise RuntimeError("Invalid EPUB: missing package rootfile")
+        opf_relpath = str(rootfile_el.get("full-path") or "").strip()
+        if not opf_relpath:
+            raise RuntimeError("Invalid EPUB: empty package rootfile")
 
-    title = ""
-    title_el = opf_root.find(".//dc:title", ns)
-    if title_el is not None:
-        title = str(title_el.text or "").strip()
-
-    manifest: dict[str, dict] = {}
-    for item in opf_root.findall(".//opf:manifest/opf:item", ns):
-        item_id = str(item.get("id") or "").strip()
-        href = str(item.get("href") or "").strip()
-        if not item_id or not href:
-            continue
-        manifest[item_id] = {
-            "href": href,
-            "media_type": str(item.get("media-type") or "").strip(),
-            "properties": [p for p in str(item.get("properties") or "").split() if p],
+        opf_path = _safe_path_under(stage_dir, opf_relpath)
+        if opf_path is None or not opf_path.is_file():
+            raise RuntimeError("Invalid EPUB: package rootfile escapes extraction root")
+        opf_dir = posixpath.dirname(opf_relpath)
+        opf_root = _decode_xml(str(opf_path))
+        ns = {
+            "opf": opf_root.tag.partition("}")[0].strip("{") or "http://www.idpf.org/2007/opf",
+            "dc": "http://purl.org/dc/elements/1.1/",
         }
 
-    cover_href = _find_epub_cover_href(opf_root, ns, opf_dir, manifest)
-    nav_labels = _load_nav_labels(extract_dir, opf_dir, manifest)
-    sections: list[dict] = []
-    for idx, itemref in enumerate(opf_root.findall(".//opf:spine/opf:itemref", ns)):
-        item_id = str(itemref.get("idref") or "").strip()
-        item = manifest.get(item_id)
-        if not item or item.get("media_type") not in _HTML_MEDIA_TYPES:
-            continue
-        rel_href = _resolve_posix(opf_dir, item["href"])
-        section_path = os.path.join(extract_dir, rel_href)
-        if not os.path.isfile(section_path):
-            continue
-        _clean_html_file(section_path)
-        fallback_title = nav_labels.get(rel_href) or Path(rel_href).stem.replace("-", " ").replace("_", " ").strip() or f"Section {idx + 1}"
-        text, section_title = _html_text_and_title(section_path, fallback_title)
-        sections.append(
-            {
-                "index": len(sections),
-                "href": rel_href,
-                "title": section_title,
-                "text": text,
+        title = ""
+        title_el = opf_root.find(".//dc:title", ns)
+        if title_el is not None:
+            title = str(title_el.text or "").strip()
+
+        manifest: dict[str, dict] = {}
+        for item in opf_root.findall(".//opf:manifest/opf:item", ns):
+            item_id = str(item.get("id") or "").strip()
+            href = str(item.get("href") or "").strip()
+            if not item_id or not href:
+                continue
+            manifest[item_id] = {
+                "href": href,
+                "media_type": str(item.get("media-type") or "").strip(),
+                "properties": [
+                    value
+                    for value in str(item.get("properties") or "").split()
+                    if value
+                ],
             }
+
+        _sanitize_epub_html_documents(stage_dir, opf_dir, manifest)
+        cover_href = _find_epub_cover_href(opf_root, ns, opf_dir, manifest)
+        nav_labels = _load_nav_labels(str(stage_dir), opf_dir, manifest)
+        sections: list[dict] = []
+        for idx, itemref in enumerate(
+            opf_root.findall(".//opf:spine/opf:itemref", ns)
+        ):
+            item_id = str(itemref.get("idref") or "").strip()
+            item = manifest.get(item_id)
+            if not item or item.get("media_type") not in _HTML_MEDIA_TYPES:
+                continue
+            rel_href = _resolve_posix(opf_dir, item["href"])
+            section_path = _safe_path_under(stage_dir, rel_href)
+            if section_path is None or not section_path.is_file():
+                continue
+            fallback_title = (
+                nav_labels.get(rel_href)
+                or Path(rel_href).stem.replace("-", " ").replace("_", " ").strip()
+                or f"Section {idx + 1}"
+            )
+            text, section_title = _html_text_and_title(
+                str(section_path), fallback_title
+            )
+            sections.append(
+                {
+                    "index": len(sections),
+                    "href": rel_href,
+                    "title": section_title,
+                    "text": text,
+                }
+            )
+
+        if not sections:
+            raise RuntimeError("Invalid EPUB: no readable HTML spine sections found.")
+
+        metadata = {
+            "sanitizer_version": _EPUB_SANITIZER_VERSION,
+            "title": title or sections[0]["title"] or Path(stored_name).stem,
+            "opf_relpath": opf_relpath,
+            "cover_href": cover_href,
+            "sections": sections,
+        }
+        _atomic_write_text(
+            str(stage_dir / "metadata.json"),
+            json.dumps(metadata, ensure_ascii=False, indent=2),
         )
 
-    if not sections:
-        raise RuntimeError("Invalid EPUB: no readable HTML spine sections found.")
-
-    metadata = {
-        "title": title or sections[0]["title"] or Path(stored_name).stem,
-        "opf_relpath": opf_relpath,
-        "cover_href": cover_href,
-        "sections": sections,
-    }
-    with open(meta_path, "w", encoding="utf-8") as fh:
-        json.dump(metadata, fh, ensure_ascii=False, indent=2)
-    return metadata
+        final_dir = Path(extract_dir)
+        old_dir = extract_root / f".{final_dir.name}-old-{uuid.uuid4().hex}"
+        moved_old = False
+        try:
+            if final_dir.exists():
+                os.replace(final_dir, old_dir)
+                moved_old = True
+            os.replace(stage_dir, final_dir)
+        except Exception:
+            if moved_old and old_dir.exists() and not final_dir.exists():
+                os.replace(old_dir, final_dir)
+            raise
+        finally:
+            if old_dir.exists():
+                shutil.rmtree(old_dir, ignore_errors=True)
+        return metadata
+    except Exception:
+        if stage_dir.exists():
+            shutil.rmtree(stage_dir, ignore_errors=True)
+        raise
 
 
 def get_epub_section_path(addon_dir: str, stored_filename: str, section_index: int) -> str:
@@ -1241,7 +1598,12 @@ def _create_new_epub_card(
         deck_id = deck["id"]
 
     model = col.models.by_name(EPUB_NOTE_TYPE)
-    base_title = str(title or "").strip() or str(metadata.get("title") or "").strip() or Path(epub_path).stem
+    base_title = external_plain_text(
+        str(title or "").strip()
+        or str(metadata.get("title") or "").strip()
+        or Path(epub_path).stem,
+        max_chars=2_000,
+    ).strip() or "Untitled"
 
     def _build_note(stored_title: str):
         note = col.new_note(model)
@@ -1250,7 +1612,7 @@ def _create_new_epub_card(
         note[EPUB_COVER_FIELD] = render_epub_cover_media(
             col,
             stored_path,
-            title=stored_title,
+            title=base_title,
             source_filename=stored_filename,
             profile=profile,
         )
@@ -1275,7 +1637,15 @@ def _create_new_epub_card(
 
     cid = 0
     for attempt in range(6):
-        stored_title = base_title if attempt == 0 else f"{base_title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+        visible_title = (
+            base_title
+            if attempt == 0
+            else f"{base_title}{_INVISIBLE_DUPLICATE_MARK * attempt}"
+        )
+        stored_title = external_plain_text_to_anki_html(
+            visible_title,
+            max_chars=2_050,
+        )
         note = _build_note(stored_title)
         added = col.add_note(note, deck_id)
         if not added:

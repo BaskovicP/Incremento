@@ -121,6 +121,7 @@ def find_live_pdf_card_by_filename(col, filename: str) -> int | None:
     return None
 
 try:
+    from .content_safety import external_plain_text, external_plain_text_to_anki_html
     from .db import (
         get_connection,
         get_pdf_card_sources_up_to_page,
@@ -149,6 +150,10 @@ try:
     from .scheduler_config import build_ready_filter, load_scheduler_config
     from .statistics import _effective_date
 except ImportError:
+    from content_safety import (  # type: ignore
+        external_plain_text,
+        external_plain_text_to_anki_html,
+    )
     from db import (  # test environment
         get_connection,
         get_pdf_card_sources_up_to_page,
@@ -276,25 +281,24 @@ CARD_TEMPLATE_FRONT = """
     <div style="margin:0 auto 22px; max-width:340px;">
       <img
         src="{{PDF_Cover_Image}}"
-        alt="{{Title}} cover"
+        alt="PDF cover"
         style="display:block; width:100%; height:auto; border-radius:14px; box-shadow:0 16px 42px rgba(0,0,0,0.28);"
       >
     </div>
   {{/PDF_Cover_Image}}
-  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
+  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{text:Title}}</div>
   <div style="font-size:0.85em;">PDF open in sidebar &nbsp;·&nbsp; select text → ⌘C → ⌘1–4 to fill fields</div>
 </div>
 <div style="display:none;">{{PDF_Filename}}</div>
 """.strip()
 
-CARD_TEMPLATE_BACK = "{{Title}}"
+CARD_TEMPLATE_BACK = "{{text:Title}}"
 
 
 def _stored_pdf_title(title: str, attempt: int) -> str:
-    base_title = str(title or "").strip() or "Untitled"
-    if attempt <= 0:
-        return base_title
-    return f"{base_title} [{attempt + 1}]"
+    base_title = external_plain_text(title, max_chars=2_000).strip() or "Untitled"
+    visible_title = base_title if attempt <= 0 else f"{base_title} [{attempt + 1}]"
+    return external_plain_text_to_anki_html(visible_title, max_chars=2_050)
 
 
 # ---------------------------------------------------------------------------

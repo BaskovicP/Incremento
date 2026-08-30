@@ -1,8 +1,23 @@
 import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit
-from urllib.request import Request, urlopen
+from urllib.parse import urljoin
+from urllib.request import Request
+
+try:
+    from .content_safety import (
+        external_plain_text,
+        external_plain_text_to_markdown,
+        normalize_external_http_url,
+    )
+    from .network_safety import open_public_http, read_response_limited
+except ImportError:
+    from content_safety import (  # type: ignore
+        external_plain_text,
+        external_plain_text_to_markdown,
+        normalize_external_http_url,
+    )
+    from network_safety import open_public_http, read_response_limited  # type: ignore
 
 
 _BLOCK_TAGS = {
@@ -39,16 +54,33 @@ _NOISE_RE = re.compile(
     re.IGNORECASE,
 )
 _WS_RE = re.compile(r"\s+")
+_MAX_REMOTE_WEBPAGE_BYTES = 8 * 1024 * 1024
 
 
 def _normalize_http_url(raw_url: str) -> str:
-    raw = str(raw_url or "").strip()
+    return normalize_external_http_url(raw_url)
+
+
+def _markdown_link_target(base_url: str, raw_target: str) -> str:
+    candidate = urljoin(base_url, _collapse_ws(raw_target))
+    try:
+        normalized = normalize_external_http_url(candidate)
+    except ValueError:
+        return ""
+    return (
+        normalized.replace("\\", "%5C")
+        .replace("<", "%3C")
+        .replace(">", "%3E")
+    )
+
+
+def _inline_code(value: str) -> str:
+    raw = external_plain_text(value).replace("\n", " ").strip()
     if not raw:
-        raise ValueError("Missing URL.")
-    parsed = urlsplit(raw)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("URL must start with http:// or https://")
-    return raw
+        return ""
+    longest = max((len(match.group(0)) for match in re.finditer(r"`+", raw)), default=0)
+    fence = "`" * max(1, longest + 1)
+    return f"{fence} {raw} {fence}"
 
 
 @dataclass
@@ -207,7 +239,7 @@ def _pick_content_root(root: _Node, content_scope: str) -> _Node:
 
 def _render_inline(node, base_url: str) -> str:
     if isinstance(node, str):
-        return _collapse_ws(node)
+        return external_plain_text_to_markdown(_collapse_ws(node))
 
     if node.tag in _ALWAYS_SKIP_TAGS:
         return ""
@@ -215,8 +247,7 @@ def _render_inline(node, base_url: str) -> str:
     if node.tag == "br":
         return "\n"
     if node.tag == "code":
-        inner = _collapse_ws(" ".join(_render_inline(child, base_url) for child in node.children))
-        return f"`{inner}`" if inner else ""
+        return _inline_code(_node_text(node))
     if node.tag in {"strong", "b"}:
         inner = _collapse_ws(" ".join(_render_inline(child, base_url) for child in node.children))
         return f"**{inner}**" if inner else ""
@@ -226,16 +257,21 @@ def _render_inline(node, base_url: str) -> str:
     if node.tag == "a":
         href = _collapse_ws(node.attrs.get("href", ""))
         inner = _collapse_ws(" ".join(_render_inline(child, base_url) for child in node.children))
-        target = urljoin(base_url, href) if href else ""
+        target = _markdown_link_target(base_url, href) if href else ""
         if inner and target:
-            return f"[{inner}]({target})"
+            return f"[{inner}](<{target}>)"
         return inner or target
     if node.tag == "img":
         src = _collapse_ws(node.attrs.get("src", ""))
         if not src:
             return ""
-        alt = _collapse_ws(node.attrs.get("alt", ""))
-        return f"![{alt}]({urljoin(base_url, src)})"
+        target = _markdown_link_target(base_url, src)
+        if not target:
+            return ""
+        alt = external_plain_text_to_markdown(
+            _collapse_ws(node.attrs.get("alt", "")) or "image"
+        )
+        return f"[Image: {alt}](<{target}>)"
 
     parts = []
     for child in node.children:
@@ -312,8 +348,12 @@ def _render_block(node: _Node, base_url: str, content_scope: str, level: int = 0
         return f"{prefixed}\n\n"
 
     if node.tag == "pre":
-        raw = "".join(_node_text(child) if isinstance(child, _Node) else str(child) for child in node.children).strip("\n")
-        return f"```\n{raw}\n```\n\n" if raw.strip() else ""
+        raw = external_plain_text(
+            "".join(_node_text(child) if isinstance(child, _Node) else str(child) for child in node.children)
+        ).strip("\n")
+        longest = max((len(match.group(0)) for match in re.finditer(r"`+", raw)), default=0)
+        fence = "`" * max(3, longest + 1)
+        return f"{fence}\n{raw}\n{fence}\n\n" if raw.strip() else ""
 
     if node.tag == "hr":
         return "---\n\n"
@@ -389,7 +429,7 @@ def _extract_document_title(root: _Node, fallback: str = "") -> str:
 
 
 def build_webpage_markdown_document(title: str, url: str, markdown: str) -> str:
-    clean_title = _collapse_ws(title) or "Untitled"
+    clean_title = external_plain_text_to_markdown(_collapse_ws(title) or "Untitled")
     clean_url = _normalize_http_url(url)
     clean_markdown = _clean_markdown(markdown)
     lines = [
@@ -424,7 +464,9 @@ def convert_webpage_html_to_markdown(
     content_root = _pick_content_root(parser.root, scope)
     markdown = _clean_markdown(_render_block(content_root, clean_url, scope))
     if not markdown:
-        markdown = _clean_markdown(_node_text(content_root))
+        markdown = _clean_markdown(
+            external_plain_text_to_markdown(_node_text(content_root))
+        )
     if not markdown:
         raise ValueError("Could not extract readable content from the webpage.")
     return {
@@ -452,9 +494,13 @@ def fetch_webpage_markdown(
             "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
         },
     )
-    with urlopen(req, timeout=max(1.0, float(timeout_sec))) as resp:
+    with open_public_http(req, timeout=max(1.0, float(timeout_sec))) as resp:
         content_type = str(resp.headers.get("Content-Type") or "").lower()
-        raw_bytes = resp.read()
+        raw_bytes = read_response_limited(
+            resp,
+            max_bytes=_MAX_REMOTE_WEBPAGE_BYTES,
+        )
+        final_url = str(getattr(resp, "geturl", lambda: clean_url)() or clean_url)
         charset = ""
         if "charset=" in content_type:
             charset = content_type.split("charset=", 1)[1].split(";", 1)[0].strip()
@@ -466,9 +512,9 @@ def fetch_webpage_markdown(
     except LookupError:
         html = raw_bytes.decode("utf-8", errors="replace")
     result = convert_webpage_html_to_markdown(
-        clean_url,
+        final_url,
         html,
         content_scope=content_scope,
     )
-    result["url"] = clean_url
+    result["url"] = final_url
     return result

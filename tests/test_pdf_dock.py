@@ -1,6 +1,7 @@
 import types
 import sys
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock
 
 sys.modules.setdefault("session", MagicMock())
@@ -17,6 +18,113 @@ from pdf_highlight_bulk_dialog import (
     normalize_pdf_highlight_bulk_row,
     remap_pdf_highlight_bulk_row_fields,
 )
+
+
+def test_due_review_details_escape_card_content():
+    rendered = pdf_dock._pdf_due_review_details_html(
+        [
+            {
+                "card_id": 7,
+                "page": 3,
+                "title": "<img src=x onerror=alert(1)>",
+                "excerpt": "<script>alert(1)</script>",
+                "due_state": "<b>due</b>",
+            }
+        ]
+    )
+
+    assert "<img" not in rendered
+    assert "<script" not in rendered
+    assert "&lt;img" in rendered
+    assert "&lt;script&gt;" in rendered
+
+
+def test_pdf_bridge_rejects_static_prefix_and_stale_card(monkeypatch):
+    messages = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(
+        pdf_dock,
+        "_handle_pdf_js_message",
+        lambda message: messages.append(message),
+    )
+    page = types.SimpleNamespace(
+        _bridge_nonce="private-token",
+        _bridge_card_id=42,
+    )
+
+    pdf_dock._dispatch_pdf_bridge_message(
+        page,
+        pdf_dock._PYCMD_BRIDGE + pdf_dock._MSG_OPEN_ADD_CARD,
+    )
+    page._bridge_card_id = 99
+    pdf_dock._dispatch_pdf_bridge_message(
+        page,
+        pdf_dock._PYCMD_BRIDGE + "private-token:" + pdf_dock._MSG_OPEN_ADD_CARD,
+    )
+    assert messages == []
+
+    page._bridge_card_id = 42
+    pdf_dock._dispatch_pdf_bridge_message(
+        page,
+        pdf_dock._PYCMD_BRIDGE + "private-token:" + pdf_dock._MSG_OPEN_ADD_CARD,
+    )
+    assert messages == [pdf_dock._MSG_OPEN_ADD_CARD]
+
+
+def test_pdf_request_boundary_allows_only_viewer_assets_and_active_pdf(tmp_path):
+    viewer_root = tmp_path / "web"
+    viewer_root.mkdir()
+    active_pdf = tmp_path / "profile" / "active.pdf"
+    active_pdf.parent.mkdir()
+    active_pdf.touch()
+    def _url(path):
+        return types.SimpleNamespace(scheme=lambda: "file", toLocalFile=lambda: str(path))
+
+    assert pdf_dock._pdf_request_url_is_allowed(
+        viewer_root, active_pdf, _url(viewer_root / "pdfjs" / "pdf.min.js")
+    )
+    assert pdf_dock._pdf_request_url_is_allowed(viewer_root, active_pdf, _url(active_pdf))
+    assert not pdf_dock._pdf_request_url_is_allowed(
+        viewer_root, active_pdf, _url(tmp_path / "profile" / "other.pdf")
+    )
+    assert not pdf_dock._pdf_request_url_is_allowed(
+        viewer_root,
+        active_pdf,
+        types.SimpleNamespace(
+            scheme=lambda: "https",
+            toLocalFile=lambda: "",
+        ),
+    )
+
+
+def test_pdf_main_frame_boundary_rejects_data_and_other_documents(tmp_path):
+    viewer = tmp_path / "web" / "pdf_dock.html"
+    viewer.parent.mkdir()
+    viewer.touch()
+
+    def _url(scheme, path=""):
+        return types.SimpleNamespace(scheme=lambda: scheme, toLocalFile=lambda: str(path))
+
+    assert pdf_dock._pdf_main_frame_url_is_allowed(
+        str(viewer), _url("file", viewer)
+    )
+    assert pdf_dock._pdf_main_frame_url_is_allowed(str(viewer), _url("about"))
+    assert not pdf_dock._pdf_main_frame_url_is_allowed(str(viewer), _url("data"))
+    assert not pdf_dock._pdf_main_frame_url_is_allowed(
+        str(viewer), _url("file", tmp_path / "other.html")
+    )
+
+
+def test_pdf_viewer_disables_eval_and_declares_csp():
+    addon_root = Path(pdf_dock.__file__).resolve().parent.parent
+    hook_source = (addon_root / "frontend" / "src" / "usePdfRender.js").read_text(
+        encoding="utf-8"
+    )
+    html = (addon_root / "web" / "pdf_dock.html").read_text(encoding="utf-8")
+
+    assert "isEvalSupported: false" in hook_source
+    assert "Content-Security-Policy" in html
+    assert "object-src 'none'" in html
 
 
 class _FakeNote:

@@ -255,6 +255,26 @@ class TestGetAllItemCards:
         assert classify.call_count == 3
         assert resolve_classifier.call_count == 2
 
+    def test_cache_rejects_recycled_collection_identity(self):
+        classifier = MagicMock()
+        classifier.cache_key = ("stable-rules",)
+
+        def _collection(card_id):
+            collection = MagicMock()
+            collection.find_cards.return_value = [card_id]
+            collection.db.all.return_value = [(card_id, card_id)]
+            collection.get_card.return_value = object()
+            return collection
+
+        first = _collection(101)
+        second = _collection(202)
+        cards.clear_topic_item_cache()
+        with patch("cards.id", return_value=777, create=True), patch(
+            "cards.resolve_topic_card_classifier", return_value=classifier
+        ), patch("cards.is_topic_card", return_value=False):
+            assert cards.get_all_item_cards(col=first) == [101]
+            assert cards.get_all_item_cards(col=second) == [202]
+
 
 class TestBulkTopicItemClassification:
     @staticmethod

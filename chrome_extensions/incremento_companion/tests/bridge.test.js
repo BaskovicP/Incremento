@@ -79,6 +79,52 @@ test("importIntoIncremento throws bridge errors from the response body", async (
   }
 });
 
+test("bridge refreshes authorization once after the backend restarts", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  let handshakeCount = 0;
+  let dataRequestCount = 0;
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/incremento/handshake")) {
+      handshakeCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, protocol: 2, token: `token-${handshakeCount}` }),
+      };
+    }
+    dataRequestCount += 1;
+    if (dataRequestCount === 2) {
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ ok: false, error: "Bridge authorization required." }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, kind: "webpage", title: "Example" }),
+    };
+  };
+
+  try {
+    await importIntoIncremento({ kind: "webpage" });
+    await importIntoIncremento({ kind: "webpage" });
+
+    assert.equal(handshakeCount, 2);
+    assert.equal(dataRequestCount, 3);
+    const dataCalls = calls.filter(({ url }) => !url.endsWith("/incremento/handshake"));
+    assert.equal(dataCalls[0].options.headers.get("X-Incremento-Token"), "token-1");
+    assert.equal(dataCalls[1].options.headers.get("X-Incremento-Token"), "token-1");
+    assert.equal(dataCalls[2].options.headers.get("X-Incremento-Token"), "token-2");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("formatBridgeError maps TypeError to the user-facing bridge message", () => {
   const message = formatBridgeError(new TypeError("network"), "Fallback");
   assert.equal(message, "Failed to reach Incremento in Anki. Keep Anki open and reload the addon.");

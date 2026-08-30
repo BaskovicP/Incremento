@@ -12,9 +12,11 @@ from html import unescape as _html_unescape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 try:
+    from .content_safety import external_plain_text, external_plain_text_to_anki_html
+    from .network_safety import open_public_http, read_response_limited
     from .db import get_connection
     from . import paths as _paths
     from .note_metadata import (
@@ -36,6 +38,11 @@ try:
         provider_display_name,
     )
 except ImportError:
+    from content_safety import (  # type: ignore
+        external_plain_text,
+        external_plain_text_to_anki_html,
+    )
+    from network_safety import open_public_http, read_response_limited  # type: ignore
     from db import get_connection
     import paths as _paths
     from note_metadata import (  # type: ignore
@@ -73,20 +80,18 @@ _MAX_VIDEO_STEM = 80
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
-  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
+  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{text:Title}}</div>
   <div style="font-size:0.85em;">Video open in sidebar &nbsp;&middot;&nbsp; use &ldquo;Add Card&rdquo; button to bookmark moments</div>
 </div>
-{{YouTube_URL}}
 """.strip()
 
-CARD_TEMPLATE_BACK = "{{Title}}"
+CARD_TEMPLATE_BACK = "{{text:Title}}"
 
 
 def _stored_video_title(title: str, attempt: int) -> str:
-    base_title = str(title or "").strip() or "Untitled"
-    if attempt <= 0:
-        return base_title
-    return f"{base_title} [{attempt + 1}]"
+    base_title = external_plain_text(title, max_chars=2_000).strip() or "Untitled"
+    visible_title = base_title if attempt <= 0 else f"{base_title} [{attempt + 1}]"
+    return external_plain_text_to_anki_html(visible_title, max_chars=2_050)
 
 _VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".mov", ".m4v"}
 _SUBTITLE_EXTS = {".srt", ".vtt"}
@@ -178,8 +183,11 @@ def resolve_video_url_for_embed(url: str, timeout_sec: float = 4.0) -> str:
         },
     )
     try:
-        with urlopen(req, timeout=max(1.0, float(timeout_sec))) as resp:
-            html_text = resp.read().decode("utf-8", errors="replace")
+        with open_public_http(req, timeout=max(1.0, float(timeout_sec))) as resp:
+            html_text = read_response_limited(
+                resp,
+                max_bytes=4 * 1024 * 1024,
+            ).decode("utf-8", errors="replace")
     except (URLError, HTTPError, TimeoutError, ValueError):
         return canonical
     except Exception:

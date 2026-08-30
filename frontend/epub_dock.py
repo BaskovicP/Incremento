@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 from html import escape
+from pathlib import Path
 
 from aqt import mw
 from aqt.qt import (
@@ -43,15 +45,23 @@ from aqt.qt import (
 )
 from aqt.utils import showInfo, tooltip
 from PyQt6.QtCore import QObject
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEngineProfile,
+    QWebEngineScript,
+    QWebEngineSettings,
+    QWebEngineUrlRequestInterceptor,
+)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import load_addon_config, save_addon_config
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile
+    from content_safety import external_plain_text_to_anki_html  # type: ignore
     from config_service import load_addon_config, save_addon_config  # type: ignore
     from anki_compat import show_reviewer_question  # type: ignore
 
@@ -66,6 +76,7 @@ try:
         get_epub_daily_limit_status,
         get_epub_limit_mode_label,
         get_epub_progress,
+        get_epub_extract_dir,
         get_read_anchor,
         get_read_section_index,
         get_epub_section_path,
@@ -90,6 +101,7 @@ except ImportError:
         get_epub_daily_limit_status,
         get_epub_limit_mode_label,
         get_epub_progress,
+        get_epub_extract_dir,
         get_read_anchor,
         get_read_section_index,
         get_epub_section_path,
@@ -183,11 +195,42 @@ _MSG_MARK_READ = "incremento_epub_mark_read:"
 _MSG_SECTION_NAV = "incremento_epub_section_nav:"
 _MSG_SNAPSHOT = "incremento_epub_snapshot:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
+_MAX_EPUB_BRIDGE_MESSAGE_CHARS = 1_000_000
+_MAX_EPUB_SELECTION_CHARS = 200_000
 
 _current_epub_page_index = 0
 _current_epub_total_pages = 0
 _current_epub_section_page = 1
 _current_epub_section_pages = 1
+
+
+def _path_is_within_root(root: str | Path | None, candidate: str | Path) -> bool:
+    if not root:
+        return False
+    try:
+        root_path = Path(root).resolve()
+        candidate_path = Path(candidate).resolve()
+        candidate_path.relative_to(root_path)
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _run_epub_javascript(page, script: str, callback=None) -> None:
+    """Run Incremento code outside the untrusted EPUB's JavaScript world."""
+    world_id = int(QWebEngineScript.ScriptWorldId.ApplicationWorld.value)
+    try:
+        if callback is None:
+            page.runJavaScript(script, world_id)
+        else:
+            page.runJavaScript(script, world_id, callback)
+    except TypeError:
+        # Test doubles and older compatibility shims may expose only the legacy
+        # overload. Supported Anki/Qt versions use ApplicationWorld above.
+        if callback is None:
+            page.runJavaScript(script)
+        else:
+            page.runJavaScript(script, callback)
 
 
 def _config(config: dict | None = None) -> dict:
@@ -576,6 +619,27 @@ def _summarize_due_review_sections(due_cards: list[dict]) -> str:
     return f"{preview}, +{len(sections) - 6} more"
 
 
+def _epub_due_review_details_html(due_cards: list[dict]) -> str:
+    lines = []
+    for row in due_cards[:20]:
+        title = escape(str(row.get("title") or f"Card {row.get('card_id')}"), quote=True)
+        excerpt = escape(str(row.get("excerpt") or "").strip(), quote=True)
+        state = escape(str(row.get("due_state") or "due").capitalize(), quote=True)
+        detail = (
+            f"section {int(row.get('section_index', 0) or 0) + 1} — {title} "
+            f"<span style='color:#8892a0;'>({state})</span>"
+        )
+        if excerpt:
+            detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
+        lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
+    if len(due_cards) > 20:
+        lines.append(
+            f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
+            f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
+        )
+    return "".join(lines)
+
+
 class _EpubDueReviewPromptDialog(QDialog):
     def __init__(self, parent, *, due_cards: list[dict], settings: dict, current_section_index: int):
         super().__init__(parent)
@@ -624,24 +688,7 @@ class _EpubDueReviewPromptDialog(QDialog):
 
     @staticmethod
     def _details_html(due_cards: list[dict]) -> str:
-        lines = []
-        for row in due_cards[:20]:
-            title = str(row.get("title") or f"Card {row.get('card_id')}")
-            excerpt = str(row.get("excerpt") or "").strip()
-            state = str(row.get("due_state") or "due").capitalize()
-            detail = (
-                f"section {int(row.get('section_index', 0) or 0) + 1} — {title} "
-                f"<span style='color:#8892a0;'>({state})</span>"
-            )
-            if excerpt:
-                detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
-            lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
-        if len(due_cards) > 20:
-            lines.append(
-                f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
-                f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
-            )
-        return "".join(lines)
+        return _epub_due_review_details_html(due_cards)
 
     def _accept_review(self) -> None:
         self._review_now = True
@@ -950,19 +997,89 @@ def _check_epub_limit_before_navigation(target_page_index: int) -> bool:
     return False
 
 
+class _EpubRequestInterceptor(QWebEngineUrlRequestInterceptor):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._allowed_root: Path | None = None
+
+    def set_allowed_root(self, root: str | Path | None) -> None:
+        try:
+            self._allowed_root = Path(root).resolve() if root else None
+        except (OSError, RuntimeError, ValueError):
+            self._allowed_root = None
+
+    def url_is_allowed(self, url: QUrl) -> bool:
+        scheme = str(url.scheme() or "").casefold()
+        if scheme == "file":
+            return _path_is_within_root(self._allowed_root, url.toLocalFile())
+        return scheme in {"about", "blob", "data"}
+
+    def interceptRequest(self, info) -> None:
+        if not self.url_is_allowed(info.requestUrl()):
+            info.block(True)
+
+
 class _EpubDockPage(QWebEnginePage):
+    def __init__(self, profile, parent, interceptor: _EpubRequestInterceptor):
+        super().__init__(profile, parent)
+        self._interceptor = interceptor
+        self._bridge_nonce = ""
+        self._main_document: Path | None = None
+
+    def prepare_document_load(
+        self,
+        content_root: str | Path,
+        document_path: str | Path,
+    ) -> None:
+        self._interceptor.set_allowed_root(content_root)
+        try:
+            candidate = Path(document_path).resolve()
+            self._main_document = (
+                candidate
+                if _path_is_within_root(content_root, candidate)
+                else None
+            )
+        except (OSError, RuntimeError, ValueError):
+            self._main_document = None
+        if self._main_document is None:
+            raise ValueError("EPUB document is outside its extraction root.")
+        self._bridge_nonce = secrets.token_urlsafe(24)
+
+    def bridge_nonce(self) -> str:
+        return self._bridge_nonce
+
+    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if is_main_frame:
+            if str(url.scheme() or "").casefold() != "file":
+                return False
+            try:
+                if Path(url.toLocalFile()).resolve() != self._main_document:
+                    return False
+            except (OSError, RuntimeError, ValueError):
+                return False
+        return super().acceptNavigationRequest(url, navigation_type, is_main_frame)
+
     def javaScriptConsoleMessage(self, level, message, line, source):
         del level, line, source
-        if not message.startswith(_PYCMD_BRIDGE):
+        expected_prefix = (
+            f"{_PYCMD_BRIDGE}{self._bridge_nonce}:"
+            if self._bridge_nonce
+            else ""
+        )
+        if (
+            not expected_prefix
+            or len(message) > _MAX_EPUB_BRIDGE_MESSAGE_CHARS
+            or not message.startswith(expected_prefix)
+        ):
             return
-        msg = message[len(_PYCMD_BRIDGE) :]
+        msg = message[len(expected_prefix) :]
         if msg.startswith(_MSG_SELECTION_STATE):
             try:
                 data = json.loads(msg[len(_MSG_SELECTION_STATE) :])
                 from . import add_card_dock as _add_card_dock_mod
 
                 _add_card_dock_mod.update_selection_state(
-                    str(data.get("source") or "epub"),
+                    "epub",
                     has_text=bool(data.get("hasText")),
                 )
             except Exception:
@@ -971,6 +1088,8 @@ class _EpubDockPage(QWebEnginePage):
         if msg.startswith(_MSG_FILL_FIELD):
             try:
                 data = json.loads(msg[len(_MSG_FILL_FIELD) :])
+                if not _epub_bridge_card_matches(data):
+                    return
                 _on_epub_selection(
                     int(data.get("idx", 0)),
                     str(data.get("text") or ""),
@@ -983,6 +1102,8 @@ class _EpubDockPage(QWebEnginePage):
         if msg.startswith(_MSG_HL_ADD):
             try:
                 data = json.loads(msg[len(_MSG_HL_ADD) :])
+                if not _epub_bridge_card_matches(data):
+                    return
                 add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
                 _update_sources_panel()
             except Exception as exc:
@@ -991,6 +1112,8 @@ class _EpubDockPage(QWebEnginePage):
         if msg.startswith(_MSG_HL_DEL):
             try:
                 data = json.loads(msg[len(_MSG_HL_DEL) :])
+                if not _epub_bridge_card_matches(data):
+                    return
                 remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), str(data["id"]))
                 _update_sources_panel()
             except Exception as exc:
@@ -1006,6 +1129,8 @@ class _EpubDockPage(QWebEnginePage):
         if msg.startswith(_MSG_PROGRESS):
             try:
                 data = json.loads(msg[len(_MSG_PROGRESS) :])
+                if not _epub_bridge_card_matches(data):
+                    return
                 _record_progress(
                     int(data.get("sectionIndex", _current_epub_section_index) or 0),
                     float(data.get("scrollRatio", 0.0) or 0.0),
@@ -1036,7 +1161,22 @@ class _EpubDockPage(QWebEnginePage):
                 pass
             return
         if msg.startswith(_MSG_SNAPSHOT):
+            try:
+                data = json.loads(msg[len(_MSG_SNAPSHOT) :])
+                if not _epub_bridge_card_matches(data):
+                    return
+            except Exception:
+                return
             QTimer.singleShot(0, lambda m=msg: _handle_epub_snapshot(m))
+
+
+def _epub_bridge_card_matches(data: object) -> bool:
+    if not isinstance(data, dict) or _current_epub_card_id is None:
+        return False
+    try:
+        return int(data.get("cardId") or 0) == int(_current_epub_card_id)
+    except (TypeError, ValueError):
+        return False
 
 
 def _build_page_script(
@@ -1049,6 +1189,7 @@ def _build_page_script(
     focus_offset: int,
     search_query: str,
     highlights: list[dict],
+    bridge_nonce: str,
 ) -> str:
     sections = _current_sections()
     section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
@@ -1067,7 +1208,7 @@ def _build_page_script(
     return f"""
     (function() {{
       const STATE = {json.dumps(state)};
-      const BRIDGE = {json.dumps(_PYCMD_BRIDGE)};
+      const BRIDGE = {json.dumps(_PYCMD_BRIDGE)} + {json.dumps(str(bridge_nonce))} + ':';
       function send(msg) {{
         console.log(BRIDGE + msg);
       }}
@@ -1653,6 +1794,21 @@ def _build_page_script(
         }}));
         return true;
       }};
+      window.incrementoFillEpubField = function(idx) {{
+        const meta = selectionMeta() || window._lastEpubSelectionMeta || null;
+        if (!meta || !meta.text) return false;
+        if (STATE.autoHighlightOnExtract) {{
+          window.incrementoAddEpubHighlight();
+        }}
+        send('incremento_epub_fill_field:' + JSON.stringify({{
+          cardId: STATE.cardId,
+          idx: Math.max(0, Math.min(3, Number(idx) || 0)),
+          text: String(meta.text || '').slice(0, {_MAX_EPUB_SELECTION_CHARS}),
+          startOffset: Number(meta.startOffset || -1),
+          endOffset: Number(meta.endOffset || -1),
+        }}));
+        return true;
+      }};
       window.incrementoEpubPageNav = function(delta) {{
         const dir = Number(delta) < 0 ? -1 : 1;
         const step = pageStep();
@@ -1695,20 +1851,12 @@ def _build_page_script(
 
       document.removeEventListener('keydown', window._incrementoEpubKeyListener, true);
       window._incrementoEpubKeyListener = function(event) {{
+        if (!event.isTrusted) return;
         const key = String(event.key || '');
         if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && /^[1-4]$/.test(key)) {{
-          const meta = selectionMeta();
-          if (!meta) return;
-          event.preventDefault();
-          if (STATE.autoHighlightOnExtract) {{
-            window.incrementoAddEpubHighlight();
+          if (window.incrementoFillEpubField(Number(key) - 1)) {{
+            event.preventDefault();
           }}
-          send('incremento_epub_fill_field:' + JSON.stringify({{
-            idx: Number(key) - 1,
-            text: meta.text,
-            startOffset: meta.startOffset,
-            endOffset: meta.endOffset,
-          }}));
           return;
         }}
         if (event.altKey && !event.metaKey && !event.ctrlKey && /^h$/i.test(key)) {{
@@ -1727,6 +1875,7 @@ def _build_page_script(
 
       document.removeEventListener('click', window._incrementoEpubClickListener, true);
       window._incrementoEpubClickListener = function(event) {{
+        if (!event.isTrusted) return;
         const actionMenu = document.getElementById('incremento-epub-highlight-actions');
         if (actionMenu && actionMenu.contains(event.target)) {{
           return;
@@ -2156,15 +2305,31 @@ def _build_epub_dock() -> None:
     layout.addWidget(find_bar)
     QShortcut(QKeySequence("Escape"), find_bar).activated.connect(_close_epub_find_bar)
 
-    page = _EpubDockPage(dock)
+    profile = QWebEngineProfile(dock)
+    interceptor = _EpubRequestInterceptor(profile)
+    profile.setUrlRequestInterceptor(interceptor)
+    page = _EpubDockPage(profile, dock, interceptor)
     s = page.settings()
     s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
-    s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+    s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False)
+    for attribute_name in (
+        "DnsPrefetchEnabled",
+        "JavascriptCanAccessClipboard",
+        "JavascriptCanOpenWindows",
+        "LocalStorageEnabled",
+        "PluginsEnabled",
+        "ScreenCaptureEnabled",
+    ):
+        attribute = getattr(QWebEngineSettings.WebAttribute, attribute_name, None)
+        if attribute is not None:
+            s.setAttribute(attribute, False)
 
     view = QWebEngineView(dock)
     view.setPage(page)
     view.installEventFilter(_epub_key_filter)
     page.installEventFilter(_epub_key_filter)
+    dock._epub_profile = profile
+    dock._epub_request_interceptor = interceptor
     dock._view = view
     layout.addWidget(view, stretch=1)
 
@@ -2524,7 +2689,8 @@ def _read_marker_on_current_section() -> bool:
 def _push_epub_read_anchor() -> None:
     if _epub_dock is None:
         return
-    _epub_dock._view.page().runJavaScript(
+    _run_epub_javascript(
+        _epub_dock._view.page(),
         f"window.incrementoSetEpubReadAnchor && window.incrementoSetEpubReadAnchor({json.dumps(_current_epub_read_anchor)});"
     )
 
@@ -2558,7 +2724,8 @@ def _request_read_marker() -> None:
     if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:
         _set_epub_read_marker(int(_current_epub_card_id), int(_current_epub_section_index), None)
         return
-    _epub_dock._view.page().runJavaScript(
+    _run_epub_javascript(
+        _epub_dock._view.page(),
         "window.incrementoToggleEpubReadMarker && window.incrementoToggleEpubReadMarker();"
     )
 
@@ -2716,7 +2883,8 @@ def _edit_current_epub_highlight_note(hl_id: str) -> None:
     escaped_note = json.dumps(str(updated.get("note") or ""))
     try:
         if _epub_dock is not None:
-            _epub_dock._view.page().runJavaScript(
+            _run_epub_javascript(
+                _epub_dock._view.page(),
                 "window.incrementoUpdateEpubHighlightNote && "
                 f"window.incrementoUpdateEpubHighlightNote({escaped_id}, {escaped_note});"
             )
@@ -2756,21 +2924,10 @@ def _trigger_epub_extract_shortcut(idx: int) -> None:
     if _epub_dock is None or not _epub_dock.isVisible():
         return
     try:
-        _epub_dock._view.page().runJavaScript(
-            """
-            (function(idx) {
-              var meta = window._lastEpubSelectionMeta || null;
-              if (!meta || !meta.text) { return false; }
-              console.log('__incremento_epub__:' + 'incremento_epub_fill_field:' + JSON.stringify({
-                idx: idx,
-                text: meta.text,
-                startOffset: Number(meta.startOffset || -1),
-                endOffset: Number(meta.endOffset || -1)
-              }));
-              return true;
-            })(%d);
-            """
-            % int(idx)
+        _run_epub_javascript(
+            _epub_dock._view.page(),
+            "window.incrementoFillEpubField && "
+            f"window.incrementoFillEpubField({max(0, min(3, int(idx)))});",
         )
     except Exception:
         pass
@@ -2823,6 +2980,8 @@ def _handle_epub_snapshot(msg: str) -> None:
         return
     try:
         data = json.loads(msg[len(_MSG_SNAPSHOT) :])
+        if not _epub_bridge_card_matches(data):
+            return
         rect = data.get("rect") or {}
         x = max(0, int(rect.get("x", 0) or 0))
         y = max(0, int(rect.get("y", 0) or 0))
@@ -2918,7 +3077,7 @@ def _handle_epub_snapshot(msg: str) -> None:
         if _cb_fill_dock_field:
             _cb_fill_dock_field(
                 chosen_idx[0],
-                f'<img src="{media_filename}">',
+                f'<img src="{escape(media_filename, quote=True)}">',
                 include_pdf_citation=False,
                 source_link_kind="epub",
             )
@@ -3133,8 +3292,9 @@ def _on_load_finished(ok: bool) -> None:
         focus_offset=_pending_focus_offset,
         search_query=_pending_search_query,
         highlights=highlights,
+        bridge_nonce=_epub_dock._view.page().bridge_nonce(),
     )
-    _epub_dock._view.page().runJavaScript(js)
+    _run_epub_javascript(_epub_dock._view.page(), js)
     _pending_focus_offset = -1
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = ""
@@ -3149,6 +3309,15 @@ def _load_current_section() -> None:
         path = get_epub_section_path(_ADDON_DIR, _current_epub_filename, _current_epub_section_index)
     except Exception as exc:
         showInfo(f"Could not open EPUB section:\n{exc}")
+        return
+    try:
+        content_root = get_epub_extract_dir(
+            _current_epub_filename,
+            profile=_active_profile(),
+        )
+        _epub_dock._view.page().prepare_document_load(content_root, path)
+    except Exception as exc:
+        showInfo(f"Could not secure EPUB section:\n{exc}")
         return
     _epub_dock._view.load(QUrl.fromLocalFile(path))
 
@@ -3238,7 +3407,14 @@ def open_epub_location(
 def _on_epub_selection(idx: int, text: str, start_offset: int, end_offset: int) -> None:
     global _last_selection_meta
     cleaned = str(text or "").strip()
-    if not cleaned or _cb_fill_dock_field is None:
+    field_index = int(idx)
+    if (
+        not cleaned
+        or len(cleaned) > _MAX_EPUB_SELECTION_CHARS
+        or field_index < 0
+        or field_index > 3
+        or _cb_fill_dock_field is None
+    ):
         return
     _last_selection_meta = {
         "text": cleaned,
@@ -3248,8 +3424,8 @@ def _on_epub_selection(idx: int, text: str, start_offset: int, end_offset: int) 
     if _cb_open_add_card_dock:
         _cb_open_add_card_dock()
     _cb_fill_dock_field(
-        idx,
-        cleaned,
+        field_index,
+        external_plain_text_to_anki_html(cleaned),
         include_pdf_citation=False,
         citation_html=epub_citation(),
         source_link_kind="epub",
@@ -3262,7 +3438,8 @@ def _jump_relative(delta: int) -> None:
     if int(delta) > 0 and not _check_epub_limit_before_navigation(_current_epub_page_index + 1):
         return
     _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
-    _epub_dock._view.page().runJavaScript(
+    _run_epub_javascript(
+        _epub_dock._view.page(),
         f"window.incrementoEpubPageNav && window.incrementoEpubPageNav({1 if int(delta) > 0 else -1});"
     )
 
@@ -3299,7 +3476,8 @@ def _jump_section_boundary(delta: int) -> None:
 def _request_highlight() -> None:
     if _epub_dock is None:
         return
-    _epub_dock._view.page().runJavaScript(
+    _run_epub_javascript(
+        _epub_dock._view.page(),
         "window.incrementoAddEpubHighlight && window.incrementoAddEpubHighlight();"
     )
 
@@ -3307,7 +3485,8 @@ def _request_highlight() -> None:
 def _request_snapshot() -> None:
     if _epub_dock is None:
         return
-    _epub_dock._view.page().runJavaScript(
+    _run_epub_javascript(
+        _epub_dock._view.page(),
         "window.incrementoSnapshotEpubSelection && window.incrementoSnapshotEpubSelection();"
     )
 
@@ -3316,7 +3495,8 @@ def _on_extract_highlight_toggle_changed(checked: bool) -> None:
     _set_highlight_when_extracting(bool(checked))
     if _epub_dock is None:
         return
-    _epub_dock._view.page().runJavaScript(
+    _run_epub_javascript(
+        _epub_dock._view.page(),
         f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(bool(checked))});"
     )
 
@@ -3445,7 +3625,8 @@ def get_selected_text(callback) -> None:
         callback("")
         return
     try:
-        _epub_dock._view.page().runJavaScript(
+        _run_epub_javascript(
+            _epub_dock._view.page(),
             "(function(){ return (window._lastEpubSelection || '').trim(); })();",
             lambda text: callback(str(text or "").strip()),
         )

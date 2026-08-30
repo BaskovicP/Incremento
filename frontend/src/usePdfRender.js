@@ -151,7 +151,12 @@ export function usePdfRender() {
     window._pdfWorkerSrc = null;
     const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
     window._pdfFileUrl = null;
-    lib.getDocument(pdfUrl).promise
+    lib.getDocument({
+      url: pdfUrl,
+      // Imported PDFs are untrusted input. Incremento does not need the PDF.js
+      // dynamic-code path, so keep it disabled even if a document requests it.
+      isEvalSupported: false,
+    }).promise
       .then(doc => {
         pdfDocRef.current = doc;
         const total     = doc.numPages;

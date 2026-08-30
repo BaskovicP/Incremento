@@ -19,9 +19,20 @@ get_active_profile() internally so their public signatures stay stable.
 """
 
 import re
+import hashlib
+import unicodedata
 from pathlib import Path
 
 _UNSAFE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+_MAX_PROFILE_COMPONENT_CHARS = 120
 
 _current_profile: str = "Default"
 
@@ -36,8 +47,16 @@ def sanitize_profile_name(name: str) -> str:
     Anki itself prevents spaces in profile names on most platforms, so
     this is not a practical concern in normal usage.
     """
-    safe = _UNSAFE_RE.sub("_", (name or "").strip())
-    return safe or "Default"
+    raw = unicodedata.normalize("NFC", str(name or "")).strip()
+    safe = _UNSAFE_RE.sub("_", raw).rstrip(" .")
+    if not safe or safe in {".", ".."}:
+        return "Default"
+    if safe.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES:
+        safe = f"_{safe}"
+    if len(safe) > _MAX_PROFILE_COMPONENT_CHARS:
+        suffix = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+        safe = f"{safe[: _MAX_PROFILE_COMPONENT_CHARS - len(suffix) - 1]}-{suffix}"
+    return safe
 
 
 def set_active_profile(profile: str) -> None:
@@ -56,7 +75,10 @@ def get_active_profile() -> str:
 
 def get_user_files_dir(addon_dir: str, profile: str) -> Path:
     """Root of per-profile user data: <addon_dir>/user_files/<profile>/"""
-    return Path(addon_dir) / "user_files" / sanitize_profile_name(profile)
+    safe_profile = sanitize_profile_name(profile)
+    if safe_profile in {"", ".", ".."} or Path(safe_profile).name != safe_profile:
+        raise ValueError("Invalid profile storage name.")
+    return Path(addon_dir) / "user_files" / safe_profile
 
 
 def get_db_path(addon_dir: str, profile: str) -> Path:

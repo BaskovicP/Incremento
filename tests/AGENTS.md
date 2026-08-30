@@ -1,6 +1,76 @@
 # Tests Agent Notes
 
-Use this file for work in `tests/`.
+Use this file whenever behavior changes, a bug is fixed, or tests are created,
+changed, or reviewed. The root `AGENTS.md` requires agents to read it before
+editing implementation code so the test can drive the change.
+
+## 20 Test-Authoring Rules
+
+1. **Define the contract first.** Write down the observable behavior, invariant,
+   and principal risk before choosing assertions or changing production code.
+2. **Start red.** For every bug fix or behavior change, add the smallest meaningful
+   test first and run it to confirm that it fails for the expected reason. If it
+   passes before the change, strengthen it or record which existing test already
+   proves the regression.
+3. **Make the smallest change to reach green.** Implement only enough production
+   behavior to satisfy the failing contract; do not hide unrelated refactors in
+   the green step.
+4. **Refactor only while green.** Improve names, structure, fixtures, and duplication
+   after the test passes, rerunning the focused test after each material refactor.
+5. **Test stable behavior, not implementation trivia.** Prefer public APIs,
+   persisted state, emitted results, and user-visible transitions. Assert internal
+   calls only when that interaction is itself a required contract.
+6. **Protect existing regressions.** Never delete, skip, loosen, or rewrite a failing
+   test merely to make a change pass. Update an expectation only when the intended
+   behavior changed, and make that reason explicit in the test or change summary.
+7. **Use the lowest sufficient test layer.** Keep most cases fast and unit-level;
+   add integration coverage at database, filesystem, Anki, Qt, browser-bridge, and
+   generated-asset boundaries, with end-to-end tests reserved for critical flows.
+8. **Keep tests deterministic.** Control time, randomness, locale, environment,
+   network responses, ordering, and generated identifiers. Never depend on the
+   developer's machine, live services, test order, or an unseeded random source.
+9. **Isolate every test.** Each test must pass alone and in any order, own and clean
+   up its mutable state, use temporary/profile-scoped storage, and never read or
+   write real runtime data under `user_files/`.
+10. **Mock only true boundaries.** Prefer realistic values and small fakes; mock
+    external, slow, privileged, or nondeterministic collaborators rather than the
+    behavior under test. Do not over-mock internal call chains until the test only
+    verifies the mock setup.
+11. **Keep one behavioral reason to fail.** Structure tests as Arrange, Act, Assert;
+    multiple assertions are welcome when they jointly prove one outcome, but split
+    unrelated scenarios into separate tests.
+12. **Name tests as specifications.** A test name should identify the initial
+    condition, action, and expected result so failures are understandable without
+    opening the implementation.
+13. **Cover input partitions and boundaries.** Include normal, empty, missing,
+    malformed, duplicate, zero/one, limit, off-by-one, maximum-size, and
+    unsupported/future-version cases wherever they are relevant.
+14. **Test hostile and unauthorized input.** For every trust boundary, exercise
+    injection, traversal, XSS, SSRF, origin/authentication failures, oversized
+    input, unsafe redirects, and sensitive-data leakage as applicable; prove the
+    system fails closed.
+15. **Prove failure safety.** Exercise exceptions, partial writes, retries,
+    cancellation, rollback, recovery, and idempotency. Assert both the returned
+    error and the absence of corrupt or orphaned side effects.
+16. **Exercise lifecycle and concurrency risks.** When code crosses threads,
+    profiles, callbacks, processes, or async boundaries, test races, duplicate or
+    stale callbacks, profile switches, bounded waits, and teardown without using
+    arbitrary sleeps.
+17. **Use parameterization and properties deliberately.** Parameterize the same
+    contract across meaningful cases with readable IDs; use property/invariant
+    tests for broad input spaces, but keep a named regression example for every
+    bug that reached a user.
+18. **Make assertions precise and mutation-resistant.** Assert exact outputs and
+    important side effects, including what must not change. Treat line coverage as
+    a diagnostic signal, not success; a good test should fail under a plausible
+    broken implementation.
+19. **Make failures fast and actionable.** Use focused fixtures, explicit expected
+    values, bounded polling instead of sleeps, and messages or assertion diffs that
+    reveal the violated contract. Eliminate flaky tests rather than retrying them.
+20. **Verify in widening circles.** Run the new test red, then green, then the
+    affected focused suite, and finally the full required checks for the scope,
+    including builds for generated assets. Report commands, failures, skips, and
+    warnings honestly; do not claim completion from an unrun check.
 
 ## Test Environment
 

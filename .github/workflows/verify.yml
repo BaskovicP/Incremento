@@ -4,9 +4,17 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
@@ -16,11 +24,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install pytest pytest-cov beautifulsoup4
+      - run: python -m pip check
       - run: python -m compileall -q __init__.py backend frontend scripts
+      - run: python scripts/llm_repair_eval.py tests/repair_cases --deterministic-only --json
       - run: python -m pytest tests/ -q
 
   web-assets:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,6 +41,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - run: npm audit --audit-level=high
+        working-directory: frontend
       - run: npm test
         working-directory: chrome_extensions/incremento_companion
       - run: npm run build
@@ -37,3 +50,11 @@ jobs:
       - run: npm run build:extension
         working-directory: frontend
       - run: git diff --exit-code -- web/dist/pdf_viewer.js chrome_extensions/incremento_companion/dist
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4

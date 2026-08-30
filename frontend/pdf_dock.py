@@ -12,8 +12,10 @@ time so there is no practical issue.
 import json
 import os
 import re
+import secrets
 import time
 from html import escape, unescape
+from pathlib import Path
 
 from aqt import mw
 from aqt.qt import (
@@ -42,15 +44,22 @@ from aqt.qt import (
 )
 from aqt.utils import showInfo, tooltip
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEngineProfile,
+    QWebEngineSettings,
+    QWebEngineUrlRequestInterceptor,
+)
 from PyQt6.QtCore import QEvent, QObject, QUrl
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import load_addon_config
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile
+    from content_safety import external_plain_text_to_anki_html  # type: ignore
     from config_service import load_addon_config  # type: ignore
     from anki_compat import show_reviewer_question  # type: ignore
 
@@ -168,9 +177,8 @@ _ADDON_DIR = os.path.normpath(
 )
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 
-_DOCK_HTML = QUrl.fromLocalFile(
-    os.path.join(_ADDON_DIR, "web", "pdf_dock.html")
-).toString()
+_DOCK_HTML_PATH = os.path.join(_ADDON_DIR, "web", "pdf_dock.html")
+_DOCK_HTML = QUrl.fromLocalFile(_DOCK_HTML_PATH).toString()
 
 _WORKER_URL = bytes(
     QUrl.fromLocalFile(
@@ -194,6 +202,20 @@ _suppress_due_review_prompt_card_id: int | None = None
 _suppress_due_review_prompt_until = 0.0
 _PDF_ADD_PROMPT_SUPPRESSION_SECONDS = 5.0
 _PDF_REF_EXCERPT_MAX_CHARS = 320
+_MAX_PDF_BRIDGE_MESSAGE_CHARS = 12_000_000
+_MAX_PDF_SNAPSHOT_BYTES = 8 * 1024 * 1024
+
+
+def _path_is_within_root(root: str | Path | None, candidate: str | Path) -> bool:
+    if not root:
+        return False
+    try:
+        root_path = Path(root).resolve()
+        candidate_path = Path(candidate).resolve()
+        candidate_path.relative_to(root_path)
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _config(config: dict | None = None) -> dict:
@@ -725,6 +747,24 @@ def _summarize_due_review_pages(due_cards: list[dict]) -> str:
     return f"{preview}, +{len(pages) - 6} more"
 
 
+def _pdf_due_review_details_html(due_cards: list[dict]) -> str:
+    lines = []
+    for row in due_cards[:20]:
+        title = escape(str(row.get("title") or f"Card {row.get('card_id')}"), quote=True)
+        excerpt = escape(str(row.get("excerpt") or "").strip(), quote=True)
+        state = escape(str(row.get("due_state") or "due").capitalize(), quote=True)
+        detail = f"p.{int(row.get('page', 0) or 0)} — {title} <span style='color:#8892a0;'>({state})</span>"
+        if excerpt:
+            detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
+        lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
+    if len(due_cards) > 20:
+        lines.append(
+            f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
+            f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
+        )
+    return "".join(lines)
+
+
 class _PdfDueReviewPromptDialog(QDialog):
     def __init__(self, parent, *, due_cards: list[dict], settings: dict, current_page: int):
         super().__init__(parent)
@@ -773,21 +813,7 @@ class _PdfDueReviewPromptDialog(QDialog):
 
     @staticmethod
     def _details_html(due_cards: list[dict]) -> str:
-        lines = []
-        for row in due_cards[:20]:
-            title = str(row.get("title") or f"Card {row.get('card_id')}")
-            excerpt = str(row.get("excerpt") or "").strip()
-            state = str(row.get("due_state") or "due").capitalize()
-            detail = f"p.{int(row.get('page', 0) or 0)} — {title} <span style='color:#8892a0;'>({state})</span>"
-            if excerpt:
-                detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
-            lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
-        if len(due_cards) > 20:
-            lines.append(
-                f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
-                f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
-            )
-        return "".join(lines)
+        return _pdf_due_review_details_html(due_cards)
 
     def _accept_review(self) -> None:
         self._review_now = True
@@ -1107,6 +1133,22 @@ _MSG_FIND_NAV = "incremento_pdf_find_nav:"
 _MSG_OPEN_FIND_DIALOG = "incremento_pdf_open_find_dialog"
 
 
+def _refresh_pdf_bridge(page) -> None:
+    """Install the current one-load command capability in the trusted viewer."""
+    try:
+        nonce = str(page.bridge_nonce() or "")
+    except (AttributeError, RuntimeError, TypeError):
+        return
+    if not nonce:
+        return
+    bridge_prefix = f"{_PYCMD_BRIDGE}{nonce}:"
+    page.runJavaScript(
+        "window.pycmd = function(msg) {"
+        f"console.log({json.dumps(bridge_prefix)} + String(msg));"
+        "};"
+    )
+
+
 def _current_pdf_limit_status(card_id: int, *, current_page: int | None = None) -> dict:
     try:
         return get_pdf_daily_limit_status(
@@ -1406,7 +1448,7 @@ def _open_or_create_pdf_highlight_card(hl_id: str) -> None:
     if _cb_fill_dock_field:
         _cb_fill_dock_field(
             target_field_idx,
-            excerpt,
+            external_plain_text_to_anki_html(excerpt),
             citation_html=citation_html,
             source_link_kind="pdf",
         )
@@ -2146,7 +2188,10 @@ def _handle_pdf_js_message(msg: str) -> None:
         try:
             data = json.loads(msg[len(_MSG_FILL_FIELD) :])
             if _cb_fill_dock_field:
-                _cb_fill_dock_field(int(data["idx"]), data["text"])
+                _cb_fill_dock_field(
+                    int(data["idx"]),
+                    external_plain_text_to_anki_html(data["text"]),
+                )
         except Exception:
             pass
     elif msg.startswith(_MSG_SELECTION_STATE):
@@ -2348,13 +2393,110 @@ def _handle_pdf_js_message(msg: str) -> None:
             pass
 
 
+def _pdf_request_url_is_allowed(
+    viewer_root: str | Path,
+    pdf_path: str | Path | None,
+    url: QUrl,
+) -> bool:
+    try:
+        scheme = str(url.scheme() or "").casefold()
+        if scheme == "file":
+            candidate = Path(url.toLocalFile()).resolve()
+            active_pdf = Path(pdf_path).resolve() if pdf_path else None
+            return _path_is_within_root(viewer_root, candidate) or (
+                active_pdf is not None and candidate == active_pdf
+            )
+        return scheme in {"about", "blob", "data"}
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def _pdf_main_frame_url_is_allowed(viewer_path: str | Path, url: QUrl) -> bool:
+    """Keep top-level navigation on the shipped viewer document only."""
+    try:
+        scheme = str(url.scheme() or "").casefold()
+        if scheme == "about":
+            return True
+        if scheme != "file":
+            return False
+        return Path(url.toLocalFile()).resolve() == Path(viewer_path).resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def _dispatch_pdf_bridge_message(page, message: str) -> None:
+    expected_prefix = (
+        f"{_PYCMD_BRIDGE}{page._bridge_nonce}:"
+        if page._bridge_nonce
+        else ""
+    )
+    try:
+        active_card_id = int(_current_pdf_card_id or 0)
+    except (TypeError, ValueError):
+        active_card_id = 0
+    if (
+        not expected_prefix
+        or len(message) > _MAX_PDF_BRIDGE_MESSAGE_CHARS
+        or not message.startswith(expected_prefix)
+        or page._bridge_card_id != active_card_id
+    ):
+        return
+    _handle_pdf_js_message(message[len(expected_prefix) :])
+
+
+class _PdfRequestInterceptor(QWebEngineUrlRequestInterceptor):
+    """Allow only shipped viewer assets and the one PDF currently being read."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._viewer_root = Path(_ADDON_DIR, "web").resolve()
+        self._pdf_path: Path | None = None
+
+    def set_pdf_path(self, path: str | Path | None) -> None:
+        try:
+            self._pdf_path = Path(path).resolve() if path else None
+        except (OSError, RuntimeError, ValueError):
+            self._pdf_path = None
+
+    def url_is_allowed(self, url: QUrl) -> bool:
+        return _pdf_request_url_is_allowed(self._viewer_root, self._pdf_path, url)
+
+    def main_frame_url_is_allowed(self, url: QUrl) -> bool:
+        return _pdf_main_frame_url_is_allowed(_DOCK_HTML_PATH, url)
+
+    def interceptRequest(self, info) -> None:
+        if not self.url_is_allowed(info.requestUrl()):
+            info.block(True)
+
+
 class _PdfDockPage(QWebEnginePage):
-    """Intercepts console.log to get pycmd messages from the PDF viewer JS."""
+    """Authenticated command boundary for the local PDF viewer application."""
+
+    def __init__(self, profile, parent, interceptor: _PdfRequestInterceptor):
+        super().__init__(profile, parent)
+        self._interceptor = interceptor
+        self._bridge_nonce = ""
+        self._bridge_card_id = 0
+
+    def prepare_document_load(self, pdf_path: str | Path | None, card_id: int) -> None:
+        self._interceptor.set_pdf_path(pdf_path)
+        self._bridge_nonce = secrets.token_urlsafe(24)
+        try:
+            self._bridge_card_id = max(0, int(card_id))
+        except (TypeError, ValueError):
+            self._bridge_card_id = 0
+
+    def bridge_nonce(self) -> str:
+        return self._bridge_nonce
+
+    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if is_main_frame and not self._interceptor.main_frame_url_is_allowed(url):
+            return False
+        return super().acceptNavigationRequest(url, navigation_type, is_main_frame)
 
     def javaScriptConsoleMessage(self, level, message, line, source):
-        if not message.startswith(_PYCMD_BRIDGE):
-            return
-        _handle_pdf_js_message(message[len(_PYCMD_BRIDGE) :])
+        del level, line, source
+        _dispatch_pdf_bridge_message(self, message)
 
 
 class _PdfShortcutFilter(QObject):
@@ -2433,10 +2575,14 @@ def _handle_pdf_snapshot(msg: str) -> None:
 
     try:
         data = json.loads(msg[len("incremento_pdf_snapshot:") :])
-        img_b64 = data["image"]
+        img_b64 = str(data["image"] or "")
         if "," in img_b64:
             img_b64 = img_b64.split(",", 1)[1]
-        img_bytes = _b64.b64decode(img_b64)
+        if not img_b64 or len(img_b64) > ((_MAX_PDF_SNAPSHOT_BYTES * 4) // 3) + 8:
+            raise ValueError("Snapshot is too large")
+        img_bytes = _b64.b64decode(img_b64, validate=True)
+        if not img_bytes or len(img_bytes) > _MAX_PDF_SNAPSHOT_BYTES:
+            raise ValueError("Snapshot is empty or too large")
 
         with _tmp.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(img_bytes)
@@ -2511,7 +2657,10 @@ def _handle_pdf_snapshot(msg: str) -> None:
             return
 
         if _cb_fill_dock_field:
-            _cb_fill_dock_field(chosen_idx[0], f'<img src="{media_filename}">')
+            _cb_fill_dock_field(
+                chosen_idx[0],
+                f'<img src="{escape(media_filename, quote=True)}">',
+            )
     except Exception as e:
         showInfo(f"Snapshot failed:\n{e}")
 
@@ -2526,17 +2675,33 @@ def _build_pdf_dock():
     dock.setObjectName("incremento_pdf_dock")
     dock.setMinimumWidth(550)
 
-    page = _PdfDockPage(dock)
+    profile = QWebEngineProfile(dock)
+    interceptor = _PdfRequestInterceptor(profile)
+    profile.setUrlRequestInterceptor(interceptor)
+    page = _PdfDockPage(profile, dock, interceptor)
     # Allow file:// page to load other file:// resources (worker, PDF)
     s = page.settings()
     s.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
     s.setAttribute(
-        QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False
     )
+    for attribute_name in (
+        "DnsPrefetchEnabled",
+        "JavascriptCanAccessClipboard",
+        "JavascriptCanOpenWindows",
+        "LocalStorageEnabled",
+        "PluginsEnabled",
+        "ScreenCaptureEnabled",
+    ):
+        attribute = getattr(QWebEngineSettings.WebAttribute, attribute_name, None)
+        if attribute is not None:
+            s.setAttribute(attribute, False)
 
     view = QWebEngineView(dock)
     view.setPage(page)
     dock.setWidget(view)
+    dock._pdf_profile = profile
+    dock._pdf_request_interceptor = interceptor
     dock._view = view
 
     if _pdf_key_filter is None:
@@ -2558,13 +2723,11 @@ def _build_pdf_dock():
 
     dock.visibilityChanged.connect(_on_visibility_changed)
 
-    # Inject fake pycmd bridge + Cmd+1 keydown listener after every page load
+    # Inject the nonce-bound bridge after every local viewer load.
     def _on_load_finished(ok):
         if ok:
+            _refresh_pdf_bridge(view.page())
             view.page().runJavaScript(
-                f"window.pycmd = function(msg) {{"
-                f"  console.log('{_PYCMD_BRIDGE}' + msg);"
-                f"}};"
                 # Cache selection on change so the keydown handler can read it.
                 "document.addEventListener('selectionchange', function() {"
                 "  var s = window.getSelection();"
@@ -2616,10 +2779,11 @@ def _build_pdf_dock():
 def _on_pdf_selection(idx: int, text: str) -> None:
     text = (text or "").strip()
     if text:
+        safe_html = external_plain_text_to_anki_html(text)
         if _cb_open_add_card_dock:
             _cb_open_add_card_dock()
         if _cb_fill_dock_field:
-            QTimer.singleShot(150, lambda: _cb_fill_dock_field(idx, text))
+            QTimer.singleShot(150, lambda: _cb_fill_dock_field(idx, safe_html))
 
 
 def trigger_viewer_action(action: str) -> None:
@@ -2773,6 +2937,19 @@ def show_pdf_in_dock(
             _pdf_dock = None
             _build_pdf_dock()
 
+    secured_pdf_path = _pdf_storage_path(resolved_filename)
+    try:
+        secured_page = _pdf_dock._view.page()
+        prepare_document_load = getattr(secured_page, "prepare_document_load", None)
+        if callable(prepare_document_load):
+            prepare_document_load(
+                secured_pdf_path if os.path.exists(secured_pdf_path) else None,
+                _current_pdf_card_id,
+            )
+    except Exception as exc:
+        showInfo(f"Could not secure PDF viewer:\n{exc}")
+        return
+
     _pdf_dock.show()
     _pdf_dock.raise_()
 
@@ -2782,12 +2959,12 @@ def show_pdf_in_dock(
         except Exception:
             pass
 
-    if not os.path.exists(_pdf_storage_path(resolved_filename)):
+    if not os.path.exists(secured_pdf_path):
         _show_missing_pdf_screen(resolved_filename)
         tooltip("Stored PDF file is missing. Choose a replacement PDF to repair this card.")
         return
 
-    pdf_file_url = QUrl.fromLocalFile(_pdf_storage_path(resolved_filename)).toString()
+    pdf_file_url = QUrl.fromLocalFile(secured_pdf_path).toString()
 
     resolved_read_page = int(read_page or 0)
     if normalized_card_id > 0 and resolved_read_page <= 0:
@@ -2839,6 +3016,7 @@ def show_pdf_in_dock(
         _pdf_dock._view.loadFinished.connect(_on_first_load)
         _pdf_dock._view.load(QUrl(_DOCK_HTML))
     else:
+        _refresh_pdf_bridge(_pdf_dock._view.page())
         _pdf_dock._view.page().runJavaScript(js)
 
     if offer_due_review_prompt and not _consume_due_review_prompt_suppression(int(card_id)):

@@ -13,9 +13,16 @@ from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 try:
+    from .content_safety import (
+        external_plain_text,
+        external_plain_text_to_anki_html,
+        external_plain_text_to_markdown,
+        normalize_external_http_url,
+    )
+    from .network_safety import copy_response_limited, open_public_http
     from .webpage_markdown import convert_webpage_html_to_markdown
     from .note_metadata import (
         apply_incremento_metadata,
@@ -24,6 +31,13 @@ try:
         visible_field_names,
     )
 except ImportError:
+    from content_safety import (  # type: ignore
+        external_plain_text,
+        external_plain_text_to_anki_html,
+        external_plain_text_to_markdown,
+        normalize_external_http_url,
+    )
+    from network_safety import copy_response_limited, open_public_http  # type: ignore
     from webpage_markdown import convert_webpage_html_to_markdown
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
@@ -46,19 +60,60 @@ _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
 _EXTENSION_ORIGIN_RE = re.compile(r"^chrome-extension://[a-p]{32}$")
 _MAX_REQUEST_BYTES = 64 * 1024 * 1024
 _MAX_ACTIVE_REQUESTS = 8
+_REQUEST_SOCKET_TIMEOUT_SECONDS = 15.0
 _MAX_HTML_CHARS = 2_000_000
 _MAX_MARKDOWN_CHARS = 2_000_000
+_MAX_SELECTED_TEXT_CHARS = 200_000
+_MAX_TITLE_CHARS = 1_000
+_MAX_NAME_CHARS = 200
+_MAX_TAGS = 100
+_MAX_TAG_CHARS = 200
+_MAX_BATCH_ITEMS = 100
+_MAX_PDF_UPLOAD_BYTES = 48 * 1024 * 1024
+_MAX_REMOTE_PDF_BYTES = 256 * 1024 * 1024
 _MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
 _MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000
 _MAX_MEDIA_FILENAME_STEM = 80
 _PREPARED_PDF_PATH_KEY = "_prepared_pdf_path"
 _PREPARED_PDF_PAGE_TEXTS_KEY = "_prepared_pdf_page_texts"
+_PREPARED_WRITING_MARKDOWN_KEY = "_prepared_writing_markdown"
 
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
 _server_lock = threading.Lock()
 _bridge_identity_lock = threading.Lock()
 _request_slots = threading.BoundedSemaphore(_MAX_ACTIVE_REQUESTS)
+
+
+class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """Bound connection threads before request headers or bodies are parsed."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = _MAX_ACTIVE_REQUESTS
+
+    def __init__(self, *args, **kwargs):
+        self._connection_slots = threading.BoundedSemaphore(_MAX_ACTIVE_REQUESTS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address) -> None:
+        if not self._connection_slots.acquire(blocking=False):
+            try:
+                request.close()
+            except OSError:
+                pass
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._connection_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._connection_slots.release()
 _addon_dir: str = ""
 _bridge_token: str = ""
 _allowed_extension_origin: str = ""
@@ -68,14 +123,12 @@ def _collapse_ws(value) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
+def _bounded_collapsed(value, *, max_chars: int) -> str:
+    return _collapse_ws(external_plain_text(value, max_chars=max_chars))[:max_chars]
+
+
 def normalize_http_url(raw_url) -> str:
-    raw = str(raw_url or "").strip()
-    if not raw:
-        raise ValueError("Missing URL.")
-    parsed = urlsplit(raw)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("URL must start with http:// or https://")
-    return raw
+    return normalize_external_http_url(raw_url)
 
 
 def url_looks_like_pdf(raw_url: str) -> bool:
@@ -99,33 +152,46 @@ def download_pdf_from_url(url: str, dest_path: str, timeout_sec: float = 20.0) -
             "Accept": "application/pdf,application/octet-stream;q=0.9,*/*;q=0.8",
         },
     )
+    part_path = f"{dest_path}.{uuid.uuid4().hex}.part"
     try:
-        with urlopen(req, timeout=max(1.0, float(timeout_sec))) as resp:
+        with open_public_http(req, timeout=max(1.0, float(timeout_sec))) as resp:
             content_type = str(resp.headers.get("Content-Type") or "").lower()
-            payload = resp.read()
-    except (URLError, HTTPError, TimeoutError, ValueError) as exc:
+            with open(part_path, "xb") as handle:
+                size, sniff_raw = copy_response_limited(
+                    resp,
+                    handle,
+                    max_bytes=_MAX_REMOTE_PDF_BYTES,
+                )
+
+        if size <= 0:
+            raise RuntimeError("Failed to download PDF: empty response.")
+        sniff = sniff_raw.lstrip()
+        looks_like_html = (
+            sniff[:256].lower().startswith(b"<!doctype html")
+            or sniff[:256].lower().startswith(b"<html")
+        )
+        looks_like_pdf = (
+            "pdf" in content_type
+            or b"%PDF-" in sniff
+            or (url_looks_like_pdf(url) and size > 1024 and not looks_like_html)
+        )
+        if not looks_like_pdf:
+            raise RuntimeError("URL did not return a PDF file.")
+        os.replace(part_path, dest_path)
+    except (URLError, HTTPError, TimeoutError, ValueError, RuntimeError) as exc:
+        try:
+            os.remove(part_path)
+        except OSError:
+            pass
+        if isinstance(exc, RuntimeError):
+            raise
         raise RuntimeError(f"Failed to download PDF: {exc}") from exc
     except Exception as exc:
-        raise RuntimeError(f"Failed to download PDF: {exc}") from exc
-
-    if not payload:
-        raise RuntimeError("Failed to download PDF: empty response.")
-
-    sniff = payload[:4096].lstrip()
-    looks_like_html = (
-        sniff[:256].lower().startswith(b"<!doctype html")
-        or sniff[:256].lower().startswith(b"<html")
-    )
-    looks_like_pdf = (
-        "pdf" in content_type
-        or b"%PDF-" in sniff
-        or (url_looks_like_pdf(url) and len(payload) > 1024 and not looks_like_html)
-    )
-    if not looks_like_pdf:
-        raise RuntimeError("URL did not return a PDF file.")
-
-    with open(dest_path, "wb") as handle:
-        handle.write(payload)
+        try:
+            os.remove(part_path)
+        except OSError:
+            pass
+        raise RuntimeError("Failed to download PDF.") from exc
 
 
 def build_writing_markdown(
@@ -134,9 +200,15 @@ def build_writing_markdown(
     selected_text: str = "",
     page_markdown: str = "",
 ) -> str:
-    clean_title = _collapse_ws(title) or "Untitled"
+    clean_title = external_plain_text_to_markdown(
+        _collapse_ws(title) or "Untitled",
+        max_chars=_MAX_TITLE_CHARS,
+    )
     normalize_http_url(url)
-    clean_selection = str(selected_text or "").strip()
+    clean_selection = external_plain_text_to_markdown(
+        selected_text,
+        max_chars=_MAX_SELECTED_TEXT_CHARS,
+    ).strip()
     clean_page_markdown = str(page_markdown or "").strip()
 
     lines = [
@@ -169,9 +241,11 @@ def _normalize_tags(raw_tags) -> list[str]:
     else:
         raise ValueError("Tags must be a list or string.")
     for tag in candidates:
-        clean = _collapse_ws(tag)
+        clean = _bounded_collapsed(tag, max_chars=_MAX_TAG_CHARS)
         if clean and clean not in tags:
             tags.append(clean)
+        if len(tags) > _MAX_TAGS:
+            raise ValueError(f"Too many tags. Maximum is {_MAX_TAGS}.")
     return tags
 
 
@@ -200,7 +274,7 @@ def _normalize_parent_card_id(raw_parent_card_id) -> int | None:
 
 
 def _normalize_browser_capture_field_name(raw_name) -> str:
-    return _collapse_ws(raw_name)
+    return _bounded_collapsed(raw_name, max_chars=_MAX_NAME_CHARS)
 
 
 def _normalize_browser_capture_field_mappings(raw_mappings) -> dict[str, str]:
@@ -231,10 +305,14 @@ def _normalize_browser_capture_snapshots(raw_snapshots) -> list[dict]:
         mime_type = _collapse_ws(raw_snapshot.get("mimeType", "")).lower() or "image/png"
         if mime_type != "image/png":
             raise ValueError("Only PNG snapshots are supported.")
-        filename = _collapse_ws(raw_snapshot.get("filename", "")) or f"browser-capture-{idx + 1}.png"
+        filename = _bounded_collapsed(
+            raw_snapshot.get("filename", ""), max_chars=255
+        ) or f"browser-capture-{idx + 1}.png"
         base64_data = str(raw_snapshot.get("base64", "") or "").strip()
         if not base64_data:
             raise ValueError("Each snapshot must include base64 image data.")
+        if len(base64_data) > ((_MAX_BROWSER_CAPTURE_IMAGE_BYTES * 4) // 3) + 8:
+            raise ValueError("Snapshot image is too large.")
         try:
             raw_bytes = b64decode(base64_data, validate=True)
         except Exception as exc:
@@ -258,20 +336,30 @@ def normalize_browser_capture_payload(payload) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Request body must be a JSON object.")
 
-    note_type_name = _collapse_ws(payload.get("noteTypeName", ""))
+    note_type_name = _bounded_collapsed(
+        payload.get("noteTypeName", ""), max_chars=_MAX_NAME_CHARS
+    )
     if not note_type_name:
         raise ValueError("noteTypeName is required.")
 
     return {
         "type": "browser_capture",
         "url": normalize_http_url(payload.get("url", "")),
-        "title": _collapse_ws(payload.get("title", "")) or "Untitled",
-        "deck_name": _collapse_ws(payload.get("deckName", "")) or "Default",
+        "title": _bounded_collapsed(
+            payload.get("title", ""), max_chars=_MAX_TITLE_CHARS
+        )
+        or "Untitled",
+        "deck_name": _bounded_collapsed(
+            payload.get("deckName", ""), max_chars=_MAX_NAME_CHARS
+        )
+        or "Default",
         "note_type_name": note_type_name,
         "tags": _normalize_tags(payload.get("tags")),
         "priority": _normalize_priority(payload.get("priority")),
         "parent_card_id": _normalize_parent_card_id(payload.get("parentCardId")),
-        "selected_text": str(payload.get("selectedText", "") or "").strip(),
+        "selected_text": external_plain_text(
+            payload.get("selectedText", ""), max_chars=_MAX_SELECTED_TEXT_CHARS
+        ).strip(),
         "field_mappings": _normalize_browser_capture_field_mappings(payload.get("fieldMappings")),
         "snapshots": _normalize_browser_capture_snapshots(payload.get("snapshots")),
     }
@@ -295,16 +383,24 @@ def normalize_add_content_payload(payload) -> dict:
         raise ValueError("Kind must be one of: pdf, video, webpage, writing.")
 
     url = normalize_http_url(payload.get("url", ""))
-    title = _collapse_ws(payload.get("title", "")) or url
-    deck_name = _collapse_ws(payload.get("deckName", "")) or "Topics"
-    selected_text = str(payload.get("selectedText", "") or "").strip()
+    title = _bounded_collapsed(
+        payload.get("title", ""), max_chars=_MAX_TITLE_CHARS
+    ) or url
+    deck_name = _bounded_collapsed(
+        payload.get("deckName", ""), max_chars=_MAX_NAME_CHARS
+    ) or "Topics"
+    selected_text = external_plain_text(
+        payload.get("selectedText", ""), max_chars=_MAX_SELECTED_TEXT_CHARS
+    ).strip()
     html = str(payload.get("html", "") or "")
     if len(html) > _MAX_HTML_CHARS:
-        html = ""
+        raise ValueError("HTML payload is too large.")
     markdown = str(payload.get("markdown", "") or "")
     if len(markdown) > _MAX_MARKDOWN_CHARS:
         raise ValueError("Markdown payload is too large.")
-    preferred_filename = _collapse_ws(payload.get("preferredFilename", ""))
+    preferred_filename = _bounded_collapsed(
+        payload.get("preferredFilename", ""), max_chars=255
+    )
     raw_writing_mode = _collapse_ws(payload.get("writingMode", "")).lower()
     if raw_writing_mode not in {"", "selection", "webpage_markdown"}:
         raise ValueError("writingMode must be 'selection' or 'webpage_markdown'.")
@@ -312,7 +408,9 @@ def normalize_add_content_payload(payload) -> dict:
     if raw_page_content_scope not in {"", "main", "full"}:
         raise ValueError("pageContentScope must be 'main' or 'full'.")
     pdf_base64 = str(payload.get("pdfBase64", "") or "").strip()
-    pdf_filename = _collapse_ws(payload.get("pdfFilename", ""))
+    if len(pdf_base64) > ((_MAX_PDF_UPLOAD_BYTES * 4) // 3) + 8:
+        raise ValueError("PDF payload is too large.")
+    pdf_filename = _bounded_collapsed(payload.get("pdfFilename", ""), max_chars=255)
     raw_media_url = str(payload.get("mediaUrl", "") or "").strip()
     media_url = ""
     if raw_media_url:
@@ -320,7 +418,9 @@ def normalize_add_content_payload(payload) -> dict:
             media_url = normalize_http_url(raw_media_url)
         except ValueError:
             media_url = ""
-    media_title = _collapse_ws(payload.get("mediaTitle", ""))
+    media_title = _bounded_collapsed(
+        payload.get("mediaTitle", ""), max_chars=_MAX_TITLE_CHARS
+    )
     raw_media_seconds = payload.get("mediaSeconds", None)
     if raw_media_seconds in (None, ""):
         media_seconds = 0.0
@@ -360,6 +460,8 @@ def normalize_add_content_batch_payload(payload) -> list[dict]:
     raw_items = payload.get("items")
     if not isinstance(raw_items, list) or not raw_items:
         raise ValueError("Items must be a non-empty array.")
+    if len(raw_items) > _MAX_BATCH_ITEMS:
+        raise ValueError(f"Too many items. Maximum is {_MAX_BATCH_ITEMS}.")
 
     normalized = []
     for raw_item in raw_items:
@@ -583,6 +685,8 @@ def _prepare_pdf_item_off_main(normalized: dict) -> None:
                 raise ValueError(f"Invalid PDF payload: {exc}") from exc
             if not pdf_bytes:
                 raise ValueError("Invalid PDF payload: empty file.")
+            if len(pdf_bytes) > _MAX_PDF_UPLOAD_BYTES:
+                raise ValueError("PDF payload is too large.")
             with open(temp_pdf_path, "wb") as handle:
                 handle.write(pdf_bytes)
         else:
@@ -621,6 +725,7 @@ def _prepare_writing_item_off_main(normalized: dict) -> None:
         str(normalized.get("url") or ""),
         page_markdown=page_result.get("markdown", ""),
     )
+    normalized[_PREPARED_WRITING_MARKDOWN_KEY] = True
 
 
 def prepare_add_content_request_off_main(payload_or_request) -> dict:
@@ -713,8 +818,7 @@ def _append_browser_capture_html(existing: str, chunk: str) -> str:
 
 
 def _plain_text_to_html(text: str) -> str:
-    safe = escape(str(text or ""))
-    return safe.replace("\n", "<br>")
+    return external_plain_text_to_anki_html(text)
 
 
 def _browser_capture_source_html(url: str) -> str:
@@ -1038,6 +1142,11 @@ def _add_content_item_on_main(normalized: dict) -> dict:
             )
     elif kind == "writing":
         initial_markdown = str(markdown or "").strip()
+        if initial_markdown and not normalized.get(_PREPARED_WRITING_MARKDOWN_KEY):
+            initial_markdown = external_plain_text_to_markdown(
+                initial_markdown,
+                max_chars=_MAX_MARKDOWN_CHARS,
+            )
         if not initial_markdown and writing_mode == "webpage_markdown":
             page_result = convert_webpage_html_to_markdown(
                 url,
@@ -1442,13 +1551,17 @@ def _load_browser_media_ref_on_main(card_id: int) -> dict:
 class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
     server_version = "IncrementoBrowserBridge/2.0"
 
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(_REQUEST_SOCKET_TIMEOUT_SECONDS)
+
     def log_message(self, format, *args):
         return
 
     def _request_origin_allowed(self, *, allow_unbound: bool = False) -> bool:
         origin = str(self.headers.get("Origin") or "")
         if not origin:
-            return str(self.client_address[0] or "") in {"127.0.0.1", "::1"}
+            return False
         if not _EXTENSION_ORIGIN_RE.fullmatch(origin):
             return False
         with _bridge_identity_lock:
@@ -1460,7 +1573,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         global _allowed_extension_origin
         origin = str(self.headers.get("Origin") or "")
         if not origin:
-            return str(self.client_address[0] or "") in {"127.0.0.1", "::1"}
+            return False
         if not _EXTENSION_ORIGIN_RE.fullmatch(origin):
             return False
         with _bridge_identity_lock:
@@ -1553,7 +1666,10 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"ok": False, "error": "Unknown path."})
             return
         if not self._request_origin_allowed():
-            self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+            if self._request_origin_allowed(allow_unbound=True):
+                self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+            else:
+                self._send_json(403, {"ok": False, "error": "Origin not allowed."})
             return
         if not self._request_authenticated():
             self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
@@ -1567,8 +1683,11 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 result = _run_on_main_and_wait(
                     lambda: _load_browser_media_ref_on_main(int(query["card_id"]))
                 )
-        except Exception as exc:
-            self._send_json(500, {"ok": False, "error": str(exc)})
+        except ValueError as exc:
+            self._send_json(400, {"ok": False, "error": str(exc)})
+            return
+        except Exception:
+            self._send_json(500, {"ok": False, "error": "Bridge operation failed."})
             return
 
         self._send_json(200, result)
@@ -1588,10 +1707,18 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"ok": False, "error": "Unknown path."})
             return
         if not self._request_origin_allowed():
-            self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+            if self._request_origin_allowed(allow_unbound=True):
+                self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+            else:
+                self._send_json(403, {"ok": False, "error": "Origin not allowed."})
             return
         if not self._request_authenticated():
             self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+            return
+
+        if str(self.headers.get("Transfer-Encoding") or "").strip():
+            self.close_connection = True
+            self._send_json(400, {"ok": False, "error": "Transfer-Encoding is not supported."})
             return
 
         try:
@@ -1603,7 +1730,16 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             self._send_json(413, {"ok": False, "error": "Request is too large."})
             return
-        raw = self.rfile.read(length)
+        try:
+            raw = self.rfile.read(length)
+        except (OSError, TimeoutError):
+            self.close_connection = True
+            self._send_json(408, {"ok": False, "error": "Request body timed out."})
+            return
+        if len(raw) != length:
+            self.close_connection = True
+            self._send_json(400, {"ok": False, "error": "Incomplete request body."})
+            return
 
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
@@ -1626,8 +1762,11 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 result = _run_on_main_and_wait(lambda: _update_web_card_on_main(payload))
             else:
                 result = _run_on_main_and_wait(lambda: _save_browser_media_ref_on_main(payload))
-        except Exception as exc:
-            self._send_json(500, {"ok": False, "error": str(exc)})
+        except ValueError as exc:
+            self._send_json(400, {"ok": False, "error": str(exc)})
+            return
+        except Exception:
+            self._send_json(500, {"ok": False, "error": "Bridge operation failed."})
             return
 
         self._send_json(200, result)
@@ -1644,8 +1783,14 @@ def start_browser_bridge(addon_dir: str) -> None:
             _bridge_token = secrets.token_urlsafe(32)
             _allowed_extension_origin = ""
         try:
-            server = ThreadingHTTPServer((BRIDGE_HOST, BRIDGE_PORT), _IncrementoBridgeHandler)
+            server = _BoundedThreadingHTTPServer(
+                (BRIDGE_HOST, BRIDGE_PORT),
+                _IncrementoBridgeHandler,
+            )
         except OSError as exc:
+            with _bridge_identity_lock:
+                _bridge_token = ""
+                _allowed_extension_origin = ""
             print(f"[Incremento] Browser bridge failed to start on {BRIDGE_HOST}:{BRIDGE_PORT}: {exc}")
             return
         server.daemon_threads = True

@@ -17,8 +17,10 @@ Public API:
 import json
 import os
 import re
+import secrets
 import tempfile
 from dataclasses import dataclass, field
+from html import escape
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from aqt import mw
@@ -50,15 +52,17 @@ from aqt.qt import (
 )
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices, QPixmap
-from PyQt6.QtWebEngineCore import QWebEnginePage
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
     from ..backend import paths as _paths
+    from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.paths import get_active_profile as _active_profile
     from ..backend.video_manager import fmt_time as _fmt_media_time
 except ImportError:
     from backend import paths as _paths  # type: ignore
+    from content_safety import external_plain_text_to_anki_html  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
     from video_manager import fmt_time as _fmt_media_time  # type: ignore
 
@@ -113,6 +117,7 @@ _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MSG_FILL_FIELD = "incremento_web_fill_field:"
 _MSG_SNAPSHOT = "incremento_web_snapshot:"
 _MSG_PROGRESS = "incremento_web_progress:"
+_MAX_WEB_BRIDGE_MESSAGE_CHARS = 64_000
 
 
 @dataclass
@@ -136,6 +141,21 @@ class _WebDockRuntime:
 
 
 _runtime = _WebDockRuntime()
+
+
+def _run_web_javascript(page, script: str, callback=None) -> None:
+    """Run Incremento helpers outside the remote page's JavaScript world."""
+    world_id = int(QWebEngineScript.ScriptWorldId.ApplicationWorld.value)
+    try:
+        if callback is None:
+            page.runJavaScript(script, world_id)
+        else:
+            page.runJavaScript(script, world_id, callback)
+    except TypeError:
+        if callback is None:
+            page.runJavaScript(script)
+        else:
+            page.runJavaScript(script, callback)
 
 
 def current_web_card_id() -> int | None:
@@ -404,7 +424,8 @@ class _WebDockController:
         if not _remember_browser_card_scroll():
             return
         try:
-            self.runtime.dock._view.page().runJavaScript(
+            _run_web_javascript(
+                self.runtime.dock._view.page(),
                 "(function(){"
                 "  if (window.incrementoGetProgressPayload) {"
                 "    return window.incrementoGetProgressPayload();"
@@ -526,9 +547,7 @@ class _WebDockController:
             "</div>",
             (
                 "<div style='color:#888;margin-bottom:8px;word-break:break-all'>"
-                + current_url.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
+                + escape(current_url, quote=True)
                 + "</div>"
             ),
         ]
@@ -599,11 +618,11 @@ class _WebDockController:
         ]
         if rows:
             for row in rows:
-                bookmark_id = str(row.get("id") or "")
+                bookmark_id = escape(str(row.get("id") or ""), quote=True)
                 label = str(row.get("label") or "Bookmark")
                 url = str((row.get("location") or {}).get("url") or "")
-                safe_label = label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                safe_url = url.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                safe_label = escape(label, quote=True)
+                safe_url = escape(url, quote=True)
                 html.append(
                     "<div style='margin-bottom:6px;padding:6px 8px;"
                     "background:rgba(234,179,8,0.08);border-left:3px solid rgba(234,179,8,0.55)'>"
@@ -675,7 +694,8 @@ class _WebDockController:
             tooltip("Incremento: bookmark saved.")
 
         try:
-            self.runtime.dock._view.page().runJavaScript(
+            _run_web_javascript(
+                self.runtime.dock._view.page(),
                 "window.incrementoCaptureBookmark && window.incrementoCaptureBookmark();",
                 _handle,
             )
@@ -692,7 +712,7 @@ class _WebDockController:
 
                 _add_card_dock_mod.fill_dock_field(
                     idx,
-                    text,
+                    external_plain_text_to_anki_html(text),
                     include_pdf_citation=False,
                     citation_html=self.citation(),
                     source_link_kind="web",
@@ -867,9 +887,22 @@ class _WebDockController:
             self.runtime.profile.settings().setAttribute(
                 _WES.WebAttribute.PlaybackRequiresUserGesture, False
             )
+            for attribute_name in (
+                "DnsPrefetchEnabled",
+                "HyperlinkAuditingEnabled",
+                "JavascriptCanAccessClipboard",
+                "JavascriptCanOpenWindows",
+                "LocalContentCanAccessFileUrls",
+                "LocalContentCanAccessRemoteUrls",
+                "ScreenCaptureEnabled",
+            ):
+                attribute = getattr(_WES.WebAttribute, attribute_name, None)
+                if attribute is not None:
+                    self.runtime.profile.settings().setAttribute(attribute, False)
 
         page = _WebDockPage(self.runtime)
         view.setPage(page)
+        view.loadStarted.connect(page.rotate_bridge_nonce)
         vbox.addWidget(view, 1)
 
         ctrl = QWidget(container)
@@ -1049,7 +1082,13 @@ class _WebDockController:
             _persist_web_url(self.runtime.current_card_id, url_str)
             _set_web_snapshot_mode(False)
             try:
-                view.page().runJavaScript(_build_web_bridge_js())
+                _run_web_javascript(
+                    view.page(),
+                    _build_web_bridge_js(
+                        bridge_nonce=view.page().bridge_nonce(),
+                        card_id=int(self.runtime.current_card_id),
+                    ),
+                )
             except Exception:
                 pass
             restore_cfg = self.runtime.pending_restore or {}
@@ -1071,8 +1110,9 @@ class _WebDockController:
                 payload = json.dumps(explicit_restore.get("payload") or {})
                 QTimer.singleShot(
                     0,
-                    lambda p=payload: view.page().runJavaScript(
-                        f"window.incrementoApplyRestoreState && window.incrementoApplyRestoreState({p});"
+                    lambda p=payload: _run_web_javascript(
+                        view.page(),
+                        f"window.incrementoApplyRestoreState && window.incrementoApplyRestoreState({p});",
                     ),
                 )
             self.runtime.pending_bookmark_restore = None
@@ -1531,51 +1571,50 @@ class _WebDockPage(QWebEnginePage):
     def __init__(self, runtime: _WebDockRuntime):
         super().__init__(runtime.profile)
         self._runtime = runtime
+        self._bridge_nonce = secrets.token_urlsafe(24)
+
+    def rotate_bridge_nonce(self) -> None:
+        self._bridge_nonce = secrets.token_urlsafe(24)
+
+    def bridge_nonce(self) -> str:
+        return self._bridge_nonce
+
+    def acceptNavigationRequest(self, url, navigation_type, is_main_frame):
+        if is_main_frame and str(url.scheme() or "").casefold() not in {
+            "about",
+            "http",
+            "https",
+        }:
+            return False
+        return super().acceptNavigationRequest(url, navigation_type, is_main_frame)
 
     def javaScriptConsoleMessage(self, level, message, line, source):
-        if not message.startswith(_PYCMD_BRIDGE):
+        del level, line, source
+        expected_prefix = f"{_PYCMD_BRIDGE}{self._bridge_nonce}:"
+        if (
+            len(message) > _MAX_WEB_BRIDGE_MESSAGE_CHARS
+            or not message.startswith(expected_prefix)
+        ):
             return
-        msg = message[len(_PYCMD_BRIDGE) :]
-        if msg.startswith(_MSG_SELECTION_STATE):
-            try:
-                data = json.loads(msg[len(_MSG_SELECTION_STATE) :])
-                from . import add_card_dock as _add_card_dock_mod
-
-                _add_card_dock_mod.update_selection_state(
-                    "web",
-                    has_text=bool(data.get("hasText")),
-                )
-            except Exception:
-                pass
-            return
-        if msg.startswith(_MSG_FILL_FIELD):
-            try:
-                data = json.loads(msg[len(_MSG_FILL_FIELD) :])
-                from . import add_card_dock as _add_card_dock_mod
-
-                _add_card_dock_mod.fill_dock_field(
-                    int(data["idx"]),
-                    str(data.get("text") or ""),
-                    include_pdf_citation=False,
-                    citation_html=web_citation(data.get("url")),
-                    source_link_kind="web",
-                )
-            except Exception:
-                pass
-            return
-        if msg.startswith(_MSG_SNAPSHOT):
-            try:
-                data = json.loads(msg[len(_MSG_SNAPSHOT) :])
-                _handle_web_snapshot(data)
-            except Exception as exc:
-                showInfo(f"Web snapshot failed:\n{exc}")
-            return
+        msg = message[len(expected_prefix) :]
         if msg.startswith(_MSG_PROGRESS):
             try:
                 data = json.loads(msg[len(_MSG_PROGRESS) :])
+                if not _web_bridge_card_matches(self._runtime, data):
+                    return
+                data["url"] = _controller.current_display_url()
                 _persist_web_scroll(self._runtime.current_card_id, data)
             except Exception:
                 pass
+
+
+def _web_bridge_card_matches(runtime: _WebDockRuntime, data: object) -> bool:
+    if not isinstance(data, dict) or runtime.current_card_id is None:
+        return False
+    try:
+        return int(data.get("cardId") or 0) == int(runtime.current_card_id)
+    except (TypeError, ValueError):
+        return False
 
 
 class _WebInteractionFilter(QObject):
@@ -1694,13 +1733,14 @@ class _WebInteractionFilter(QObject):
         return False
 
 
-def _build_web_bridge_js() -> str:
+def _build_web_bridge_js(*, bridge_nonce: str, card_id: int) -> str:
     script = _load_web_bridge_js_template()
     return (
-        script.replace("__PYCMD_PREFIX__", json.dumps(_PYCMD_BRIDGE))
-        .replace("__MSG_SELECTION__", json.dumps(_MSG_SELECTION_STATE))
-        .replace("__MSG_FILL__", json.dumps(_MSG_FILL_FIELD))
-        .replace("__MSG_SNAPSHOT__", json.dumps(_MSG_SNAPSHOT))
+        script.replace(
+            "__PYCMD_PREFIX__",
+            json.dumps(f"{_PYCMD_BRIDGE}{str(bridge_nonce)}:"),
+        )
+        .replace("__CARD_ID__", str(max(0, int(card_id))))
         .replace("__MSG_PROGRESS__", json.dumps(_MSG_PROGRESS))
     )
 
@@ -1764,7 +1804,8 @@ def _apply_web_restore_state(
         allow_scroll=allow_scroll,
     )
     try:
-        _runtime.dock._view.page().runJavaScript(
+        _run_web_javascript(
+            _runtime.dock._view.page(),
             "window.incrementoApplyRestoreState && "
             f"window.incrementoApplyRestoreState({json.dumps(payload)});"
         )
@@ -1785,7 +1826,8 @@ def _resolve_web_selection(callback) -> None:
         callback("")
         return
     try:
-        _runtime.dock._view.page().runJavaScript(
+        _run_web_javascript(
+            _runtime.dock._view.page(),
             "(function(){ return (window._incrementoLastSelection || "
             "(window.getSelection && window.getSelection().toString()) || '').trim(); })();",
             lambda text: callback(str(text or "").strip()),
@@ -2022,7 +2064,8 @@ def _open_result_link(qurl) -> None:
         }
         current_url = _runtime.dock._view.url().toString()
         if current_url == target_url:
-            _runtime.dock._view.page().runJavaScript(
+            _run_web_javascript(
+                _runtime.dock._view.page(),
                 "window.incrementoApplyRestoreState && "
                 f"window.incrementoApplyRestoreState({json.dumps(payload)});"
             )

@@ -12,10 +12,12 @@ Public API:
 """
 
 import html
+import json
 import math
 import mimetypes
 import os
 import re
+import secrets
 import time
 from pathlib import Path
 
@@ -436,14 +438,16 @@ def _local_video_html(
 ) -> str:
     src = html.escape(video_src, quote=True)
     mime = html.escape(mime_type or "video/mp4", quote=True)
-    target_payload = json.dumps(target_cues or [])
-    reference_payload = json.dumps(reference_cues or [])
+    target_payload = _json_for_inline_script(target_cues or [])
+    reference_payload = _json_for_inline_script(reference_cues or [])
     target_visible = "true" if target_enabled else "false"
     reference_visible = "true" if reference_enabled else "false"
+    script_nonce = secrets.token_urlsafe(24)
     return f"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; media-src file: data:; style-src 'unsafe-inline'; script-src 'nonce-{script_nonce}'">
 <style>
 html, body {{ margin:0; padding:0; background:#000; width:100%; height:100%; overflow:hidden; }}
 #player {{ width:100vw; height:100vh; background:#000; }}
@@ -492,7 +496,7 @@ html, body {{ margin:0; padding:0; background:#000; width:100%; height:100%; ove
   <div id="target-caption" class="caption-line" style="display:none;"></div>
   <div id="reference-caption" class="caption-line" style="display:none;"></div>
 </div>
-<script>
+<script nonce="{script_nonce}">
 const startSec = {max(0, int(start_sec))};
 const v = document.getElementById("player");
 const targetCues = {target_payload};
@@ -557,6 +561,16 @@ setInterval(updateCaptions, 150);
 </script>
 </body>
 </html>"""
+
+
+def _json_for_inline_script(value: object) -> str:
+    """Serialize data without permitting an HTML script-element breakout."""
+    return (
+        json.dumps(value, ensure_ascii=True, separators=(",", ":"))
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
 
 
 def _set_local_controls_visible(visible: bool) -> None:

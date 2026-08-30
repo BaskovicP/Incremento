@@ -8,6 +8,22 @@ sys.modules.setdefault("session", MagicMock())
 import video_dock
 
 
+def test_local_video_html_frames_subtitles_as_inert_data():
+    attack = "</script><script>window.pycmd('stolen')</script>"
+    rendered = video_dock._local_video_html(
+        "file:///tmp/video.mp4",
+        "video/mp4",
+        0,
+        target_cues=[{"start": 0, "end": 2, "text": attack}],
+    )
+
+    assert attack not in rendered
+    assert "\\u003c/script\\u003e" in rendered
+    assert "Content-Security-Policy" in rendered
+    assert "script-src 'nonce-" in rendered
+    assert rendered.count("<script nonce=") == 1
+
+
 class _FakeNote:
     def __init__(self):
         self.fields = ["Source Video Title"]

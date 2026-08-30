@@ -10,6 +10,7 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 - `chrome_extensions/incremento_companion/`: Chrome extension for imports, browser capture, bookmark import, and playback sync.
 - `web/`: shipped web assets exported by Anki.
 - `tests/`: Python regression suite.
+- `scripts/repair_pipeline.py`, `scripts/llm_repair_loop.py`, `scripts/llm_repair_eval.py`, `scripts/disposable_anki_smoke.py`: offline, detached-worktree repair candidate generation, deterministic evals, and opt-in disposable real-Anki verification.
 - `user_files/`: runtime data only. All user data is per-profile.
 
 Important newer hotspots:
@@ -42,7 +43,7 @@ Important newer hotspots:
 - If you work in `backend/`, read `backend/AGENTS.md`.
 - If you work in `frontend/`, read `frontend/AGENTS.md`.
 - If you work in `chrome_extensions/incremento_companion/`, read `chrome_extensions/incremento_companion/AGENTS.md`.
-- If you work in `tests/`, read `tests/AGENTS.md`.
+- Before changing behavior, fixing a bug, or creating, changing, or reviewing tests, read `tests/AGENTS.md` and apply its 20 Test-Authoring Rules. Do this before editing implementation code so the TDD loop can start with a meaningful failing test.
 
 ## Per-Profile Data Isolation
 
@@ -86,6 +87,7 @@ Frontend modules that already import `_paths` should use `_paths.get_active_prof
 - Any helper that returns a path under `user_files/` must go through `backend/paths.py`.
 - When adding functions that read or write under `user_files/`, thread `profile` from the call site instead of reaching for global state deep inside helper stacks.
 - Treat Anki's collection as canonical for cards, notes, decks, scheduling, revlog, and Undo/Redo. SQLite stores only Incremento-owned supplemental state.
+- Repair automation produces review artifacts outside the repository. It must never apply, commit, push, publish, deploy, or merge a candidate automatically.
 
 ## Cross-Cutting Rules
 

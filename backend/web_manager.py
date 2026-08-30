@@ -1,4 +1,9 @@
 try:
+    from .content_safety import (
+        external_plain_text,
+        external_plain_text_to_anki_html,
+        normalize_external_http_url,
+    )
     from .config_service import load_addon_config
     from .db import get_connection
     from .note_metadata import (
@@ -8,6 +13,11 @@ try:
     )
     from .note_type_updates import NoteTypeSpec, ensure_note_type
 except ImportError:
+    from content_safety import (  # type: ignore
+        external_plain_text,
+        external_plain_text_to_anki_html,
+        normalize_external_http_url,
+    )
     from config_service import load_addon_config  # type: ignore
     from db import get_connection
     from note_metadata import (  # type: ignore
@@ -30,20 +40,18 @@ _DEFAULT_TRACK_WEB_WINDOW_WITH_EXTENSION = True
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
-  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{Title}}</div>
+  <div style="font-size:1.3em; margin-bottom:10px; color:#ccc;">{{text:Title}}</div>
   <div style="font-size:0.85em;">Web page open in sidebar</div>
 </div>
-{{URL}}
 """.strip()
 
-CARD_TEMPLATE_BACK = "{{Title}}"
+CARD_TEMPLATE_BACK = "{{text:Title}}"
 
 
 def _stored_web_title(title: str, attempt: int) -> str:
-    base_title = str(title or "").strip() or "Untitled"
-    if attempt <= 0:
-        return base_title
-    return f"{base_title} [{attempt + 1}]"
+    base_title = external_plain_text(title, max_chars=2_000).strip() or "Untitled"
+    visible_title = base_title if attempt <= 0 else f"{base_title} [{attempt + 1}]"
+    return external_plain_text_to_anki_html(visible_title, max_chars=2_050)
 
 
 def is_web_note_type_name(name: str) -> bool:
@@ -682,6 +690,8 @@ def add_web_card(
     metadata: dict[str, str] | None = None,
 ) -> int:
     """Create an Incremento Web note, return the card id."""
+    url = normalize_external_http_url(url)
+    title = external_plain_text(title, max_chars=2_000).strip() or url
     ensure_web_note_type(col)
     deck = col.decks.by_name(deck_name)
     if deck is None:

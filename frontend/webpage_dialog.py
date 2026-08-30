@@ -14,13 +14,64 @@ from aqt.qt import (
     Qt,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import (
+    QWebEnginePage,
+    QWebEngineProfile,
+    QWebEngineSettings,
+    QWebEngineUrlRequestInterceptor,
+)
 from PyQt6.QtCore import QUrl, QEventLoop, QMarginsF
 from PyQt6.QtGui import QPageLayout, QPageSize
 
 try:
+    from ..backend.webpage_snapshot import (
+        fetch_webpage_html as _fetch_webpage_html,
+        offline_snapshot_resource_allowed as _offline_snapshot_resource_allowed,
+    )
+    from ..backend.network_safety import validate_public_http_url
     from .tag_edit import QuickTagEdit
 except ImportError:
+    from webpage_snapshot import (  # type: ignore
+        fetch_webpage_html as _fetch_webpage_html,
+        offline_snapshot_resource_allowed as _offline_snapshot_resource_allowed,
+    )
+    from network_safety import validate_public_http_url  # type: ignore
     from incremento.frontend.tag_edit import QuickTagEdit
+
+
+class _SnapshotRequestInterceptor(QWebEngineUrlRequestInterceptor):
+    """Keep captured HTML fully offline after its guarded server-side fetch."""
+
+    def __init__(self, source_url: str, parent=None):
+        super().__init__(parent)
+        self._source_url = str(source_url or "")
+
+    def interceptRequest(self, info) -> None:  # noqa: N802 - Qt API name
+        try:
+            candidate = info.requestUrl().toString()
+        except Exception:
+            info.block(True)
+            return
+        if not _offline_snapshot_resource_allowed(candidate):
+            info.block(True)
+
+def _disable_unneeded_web_capabilities(settings, *, allow_javascript: bool) -> None:
+    values = {
+        "JavascriptEnabled": bool(allow_javascript),
+        "JavascriptCanOpenWindows": False,
+        "JavascriptCanAccessClipboard": False,
+        "JavascriptCanPaste": False,
+        "LocalContentCanAccessFileUrls": False,
+        "LocalContentCanAccessRemoteUrls": False,
+        "PluginsEnabled": False,
+        "FullScreenSupportEnabled": False,
+        "ScreenCaptureEnabled": False,
+        "HyperlinkAuditingEnabled": False,
+    }
+    for name, enabled in values.items():
+        attribute = getattr(QWebEngineSettings.WebAttribute, name, None)
+        if attribute is not None:
+            settings.setAttribute(attribute, enabled)
 
 
 def render_webpage_to_pdf(
@@ -35,10 +86,33 @@ def render_webpage_to_pdf(
     html_text = str(html or "")
     if not source_url and not html_text:
         raise ValueError("Missing webpage source.")
+    if source_url:
+        source_url = validate_public_http_url(source_url)
+    if not html_text:
+        source_url, html_text = _fetch_webpage_html(
+            source_url,
+            timeout_sec=max(1.0, float(timeout_ms) / 1000.0),
+        )
 
     view = QWebEngineView()
     view.setFixedSize(1280, 960)
     view.hide()
+    profile = QWebEngineProfile(view)
+    profile.setPersistentCookiesPolicy(
+        QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies
+    )
+    profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
+    page = QWebEnginePage(profile, view)
+    view.setPage(page)
+    _disable_unneeded_web_capabilities(
+        page.settings(),
+        allow_javascript=False,
+    )
+    interceptor = _SnapshotRequestInterceptor(source_url, profile)
+    profile.setUrlRequestInterceptor(interceptor)
+    # Keep the isolated profile and interceptor alive until asynchronous printing ends.
+    view._incremento_profile = profile
+    view._incremento_interceptor = interceptor
 
     loop = QEventLoop()
     state: dict[str, object] = {"ok": False, "error": "", "done": False}
@@ -88,10 +162,7 @@ def render_webpage_to_pdf(
 
     view.loadFinished.connect(_on_load_finished)
     QTimer.singleShot(max(1000, int(timeout_ms)), _on_timeout)
-    if html_text:
-        view.setHtml(html_text, QUrl(source_url or "about:blank"))
-    else:
-        view.load(QUrl(source_url))
+    view.setHtml(html_text, QUrl(source_url or "about:blank"))
     loop.exec()
     view.deleteLater()
 
@@ -170,10 +241,19 @@ class WebpageToPdfDialog(QDialog):
         self._status_lbl.setText("Generating PDF…")
         QApplication.processEvents()
 
-        pdf_path = os.path.join(tempfile.gettempdir(), "incremento_webpage.pdf")
+        with tempfile.NamedTemporaryFile(
+            prefix="incremento-webpage-",
+            suffix=".pdf",
+            delete=False,
+        ) as temporary:
+            pdf_path = temporary.name
         try:
             render_webpage_to_pdf(pdf_path, url=url)
         except Exception as exc:
+            try:
+                os.remove(pdf_path)
+            except OSError:
+                pass
             self._status_lbl.setText(str(exc))
             self._import_btn.setEnabled(True)
             self._progress.setVisible(False)

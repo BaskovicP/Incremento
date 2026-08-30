@@ -9,6 +9,7 @@ editor state such as cursor, scroll, zoom, wrap mode, and bookmark line.
 import datetime
 import os
 import re
+from html import escape
 
 from aqt import mw
 from aqt.qt import (
@@ -695,9 +696,9 @@ def _refresh_writing_bookmarks_panel() -> None:
     if bookmarks:
         html.append("<ul>")
         for bookmark in bookmarks:
-            bookmark_id = str(bookmark.get("id") or "")
+            bookmark_id = escape(str(bookmark.get("id") or ""), quote=True)
             label = str(bookmark.get("label") or "Bookmark")
-            safe_label = label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            safe_label = escape(label, quote=True)
             html.append(
                 "<li>"
                 f"{safe_label} "

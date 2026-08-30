@@ -90,6 +90,7 @@ Extension details and install steps:
 - User manual: [MANUAL.md](MANUAL.md)
 - Export and restore guide: [EXPORTING.md](EXPORTING.md)
 - Persistence and software architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Vulnerability reporting, trust boundaries, and guarded repair automation: [SECURITY.md](SECURITY.md)
 - Internal agent/developer notes: [AGENTS.md](AGENTS.md) with nested area-specific guides under `backend/`, `frontend/`, `chrome_extensions/incremento_companion/`, and `tests/`
 
 ## Development
@@ -124,6 +125,61 @@ Chrome extension tests:
 cd frontend
 npm run test:extension
 ```
+
+### Guarded LLM repair candidates
+
+Maintainers can turn a sanitized incident into an evidence-backed patch candidate. The preferred input is structured JSON; plain text is supported for compatibility.
+
+```json
+{
+  "title": "Session refill stops early",
+  "component": "session",
+  "category": "bug",
+  "severity": "medium",
+  "expected": "The pending window refills to its configured size.",
+  "actual": "The synthetic session stops after one refill.",
+  "steps": ["Create a synthetic bounded session", "Trigger one refill"],
+  "invariant": "Never duplicate a card already in the live queue.",
+  "relevant_paths": ["backend/session.py"],
+  "environment": {
+    "addon_version": "1.4.0",
+    "anki_version": "25.09.2",
+    "os_family": "macos",
+    "python_version": "3.12"
+  }
+}
+```
+
+Store the report outside the repository. Do not include support bundles, card/note text, profile/deck/tag names, local paths, URLs, credentials, cookies, tokens, or raw logs. `environment` accepts only the four version/OS fields shown above.
+
+Run the loop against a committed revision and write artifacts to a new or empty directory outside the repository:
+
+```bash
+.venv/bin/python scripts/llm_repair_loop.py /tmp/incremento-incident.json \
+  --base-ref HEAD \
+  --max-iterations 2 \
+  --output-dir /tmp/incremento-repair-result
+```
+
+The source checkout may contain uncommitted work: the loop uses only the selected committed base in a detached temporary worktree and leaves the source untouched. It first proves a single immutable regression is meaningfully red, then runs a separate repair role, risk-selected focused/fault-injection checks, the full fixed verification matrix, and an independent read-only critic. Repeated failures, stalled scores, timeouts, oversized diffs, protected-file edits, test edits, and ambiguous behavior stop the loop.
+
+The output is review material, never an applied change:
+
+- `candidate.patch`: the highest-scoring bounded candidate, including its new regression
+- `reproducer.patch`: the isolated failing regression before production changes
+- `run.json`: privacy-sanitized gates, hashes, risk tags, stage usage, score, and stop reason
+- `smoke/`: structured results when the optional real-Anki gate is enabled
+
+Preview the safely framed incident without invoking a model with `--dry-run`. To opt into a real Anki startup check, add `--anki-smoke --anki-executable /path/to/anki`; the harness creates a new disposable base, copies no `user_files` or local metadata, disables network access, and runs only that process group.
+
+The deterministic repair-harness eval corpus runs offline and is also enforced in CI:
+
+```bash
+.venv/bin/python scripts/llm_repair_eval.py tests/repair_cases \
+  --deterministic-only --json
+```
+
+The loop never applies, commits, pushes, opens a pull request, publishes, deploys, or merges. A maintainer must inspect `candidate.patch` and `run.json`, reproduce the result in an appropriate environment, and make the final decision. See [SECURITY.md](SECURITY.md) for the complete trust and approval boundaries.
 
 ## Release Packaging
 

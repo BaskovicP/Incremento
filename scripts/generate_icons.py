@@ -1,9 +1,11 @@
+"""Generate Chrome companion icons without creating Python caches in its load root."""
+
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
 
-OUT_DIR = Path(__file__).resolve().parent / "icons"
+OUT_DIR = Path(__file__).resolve().parents[1] / "chrome_extensions" / "incremento_companion" / "icons"
 MASTER_SIZE = 512
 SIZES = (16, 32, 48, 128)
 

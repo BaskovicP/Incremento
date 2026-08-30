@@ -8,6 +8,25 @@ import aqt
 import epub_dock
 
 
+def test_due_review_details_escape_card_content():
+    rendered = epub_dock._epub_due_review_details_html(
+        [
+            {
+                "card_id": 7,
+                "section_index": 2,
+                "title": "<img src=x onerror=alert(1)>",
+                "excerpt": "<script>alert(1)</script>",
+                "due_state": "<b>due</b>",
+            }
+        ]
+    )
+
+    assert "<img" not in rendered
+    assert "<script" not in rendered
+    assert "&lt;img" in rendered
+    assert "&lt;script&gt;" in rendered
+
+
 def test_browse_note_ids_in_browser_builds_deduplicated_query(monkeypatch):
     searches = []
 
@@ -109,11 +128,113 @@ def test_build_page_script_includes_highlight_note_action_menu(monkeypatch):
         focus_offset=-1,
         search_query="",
         highlights=[{"id": "hl-1", "startOffset": 0, "endOffset": 7, "text": "Example"}],
+        bridge_nonce="private-token",
     )
 
     assert "incremento_epub_hl_note:" in script
     assert "incremento-epub-highlight-actions" in script
     assert "incrementoUpdateEpubHighlightNote" in script
+    assert "private-token" in script
+    assert "if (!event.isTrusted) return" in script
+
+
+def test_epub_javascript_runs_in_application_world():
+    calls = []
+
+    class _FakePage:
+        def runJavaScript(self, *args):
+            calls.append(args)
+
+    epub_dock._run_epub_javascript(_FakePage(), "window.test = true;")
+
+    assert calls == [
+        (
+            "window.test = true;",
+            int(epub_dock.QWebEngineScript.ScriptWorldId.ApplicationWorld.value),
+        )
+    ]
+
+
+def test_epub_bridge_rejects_static_prefix_and_wrong_card(monkeypatch):
+    fills = []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 42)
+    monkeypatch.setattr(
+        epub_dock,
+        "_on_epub_selection",
+        lambda idx, text, start, end: fills.append((idx, text, start, end)),
+    )
+    page = types.SimpleNamespace(_bridge_nonce="private-token")
+    payload = '{"cardId":42,"idx":1,"text":"selected","startOffset":2,"endOffset":10}'
+
+    epub_dock._EpubDockPage.javaScriptConsoleMessage(
+        page,
+        0,
+        epub_dock._PYCMD_BRIDGE + epub_dock._MSG_FILL_FIELD + payload,
+        0,
+        "book.xhtml",
+    )
+    epub_dock._EpubDockPage.javaScriptConsoleMessage(
+        page,
+        0,
+        epub_dock._PYCMD_BRIDGE
+        + "private-token:"
+        + epub_dock._MSG_FILL_FIELD
+        + payload.replace('"cardId":42', '"cardId":99'),
+        0,
+        "book.xhtml",
+    )
+
+    assert fills == []
+
+    epub_dock._EpubDockPage.javaScriptConsoleMessage(
+        page,
+        0,
+        epub_dock._PYCMD_BRIDGE
+        + "private-token:"
+        + epub_dock._MSG_FILL_FIELD
+        + payload,
+        0,
+        "book.xhtml",
+    )
+
+    assert fills == [(1, "selected", 2, 10)]
+
+
+def test_epub_file_request_path_must_stay_under_book_root(tmp_path):
+    root = tmp_path / "book"
+    root.mkdir()
+    assert epub_dock._path_is_within_root(root, root / "chapter.xhtml") is True
+    assert epub_dock._path_is_within_root(root, tmp_path / "outside.txt") is False
+
+
+def test_epub_page_allows_only_the_prepared_main_document(tmp_path):
+    root = tmp_path / "book"
+    root.mkdir()
+    chapter = root / "chapter.xhtml"
+    appendix = root / "appendix.html"
+    chapter.write_text("chapter", encoding="utf-8")
+    appendix.write_text("appendix", encoding="utf-8")
+
+    page = types.SimpleNamespace(
+        _interceptor=types.SimpleNamespace(set_allowed_root=lambda _root: None),
+        _bridge_nonce="",
+        _main_document=None,
+    )
+    epub_dock._EpubDockPage.prepare_document_load(page, root, chapter)
+
+    assert page._main_document == chapter.resolve()
+    assert epub_dock._EpubDockPage.acceptNavigationRequest(
+        page,
+        epub_dock.QUrl.fromLocalFile(str(appendix)),
+        None,
+        True,
+    ) is False
+    assert epub_dock._EpubDockPage.acceptNavigationRequest(
+        page,
+        epub_dock.QUrl("https://example.test/remote"),
+        None,
+        True,
+    ) is False
 
 
 def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):

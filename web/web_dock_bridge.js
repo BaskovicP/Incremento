@@ -1,7 +1,9 @@
-window.pycmd = function(msg) {
-  console.log(__PYCMD_PREFIX__ + msg);
-};
 (function() {
+  const INCREMENTO_CARD_ID = __CARD_ID__;
+  const PYCMD_PREFIX = __PYCMD_PREFIX__;
+  function emit(msg) {
+    console.log(PYCMD_PREFIX + msg);
+  }
   if (window._incrementoWebBridgeInstalled) {
     return;
   }
@@ -33,13 +35,14 @@ window.pycmd = function(msg) {
 
   function progressPayload() {
     return {
+      cardId: INCREMENTO_CARD_ID,
       url: window.location.href || '',
       scrollRatio: currentScrollRatio()
     };
   }
 
   function emitProgress() {
-    window.pycmd(__MSG_PROGRESS__ + JSON.stringify(progressPayload()));
+    emit(__MSG_PROGRESS__ + JSON.stringify(progressPayload()));
   }
 
   function scheduleProgress() {
@@ -478,89 +481,7 @@ window.pycmd = function(msg) {
       return;
     }
     window._incrementoLastSelection = text;
-    window.pycmd(__MSG_SELECTION__ + JSON.stringify({source: 'web', hasText: true}));
   });
-
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && window._incrementoWebSnapshotActive) {
-      e.preventDefault();
-      e.stopPropagation();
-      setSnapshotActive(false);
-      return;
-    }
-    if (!(e.metaKey || e.ctrlKey)) {
-      return;
-    }
-    var map = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 };
-    var idx = Object.prototype.hasOwnProperty.call(map, e.code) ? map[e.code] : null;
-    if (idx === null) {
-      var n = parseInt(e.key, 10);
-      if (!Number.isNaN(n) && n >= 1 && n <= 4) {
-        idx = n - 1;
-      }
-    }
-    if (idx === null) {
-      return;
-    }
-    var sel = window.getSelection ? window.getSelection() : null;
-    var text = sel ? sel.toString().trim() : '';
-    if (!text) {
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    window._incrementoLastSelection = text;
-    window.pycmd(__MSG_FILL__ + JSON.stringify({
-      idx: idx,
-      text: text,
-      url: window.location.href || ''
-    }));
-  }, true);
-
-  document.addEventListener('mousedown', function(e) {
-    if (!window._incrementoWebSnapshotActive || e.button !== 0) {
-      return;
-    }
-    window._incrementoWebSnapshotStart = { x: e.clientX, y: e.clientY };
-    drawBox(window._incrementoWebSnapshotStart, window._incrementoWebSnapshotStart);
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
-
-  document.addEventListener('mousemove', function(e) {
-    if (!window._incrementoWebSnapshotActive || !window._incrementoWebSnapshotStart) {
-      return;
-    }
-    drawBox(window._incrementoWebSnapshotStart, { x: e.clientX, y: e.clientY });
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
-
-  document.addEventListener('mouseup', function(e) {
-    if (!window._incrementoWebSnapshotActive || !window._incrementoWebSnapshotStart || e.button !== 0) {
-      return;
-    }
-    var start = window._incrementoWebSnapshotStart;
-    var end = { x: e.clientX, y: e.clientY };
-    var left = Math.min(start.x, end.x);
-    var top = Math.min(start.y, end.y);
-    var width = Math.abs(start.x - end.x);
-    var height = Math.abs(start.y - end.y);
-    window._incrementoWebSnapshotStart = null;
-    setSnapshotActive(false);
-    if (width < 6 || height < 6) {
-      return;
-    }
-    window.pycmd(__MSG_SNAPSHOT__ + JSON.stringify({
-      x: left,
-      y: top,
-      width: width,
-      height: height,
-      url: window.location.href || ''
-    }));
-    e.preventDefault();
-    e.stopPropagation();
-  }, true);
 
   window.addEventListener('scroll', scheduleProgress, { passive: true });
   window.addEventListener('resize', scheduleProgress);

@@ -3,6 +3,23 @@ import os
 import writing_manager
 
 
+def test_writing_card_template_and_imported_title_are_html_safe():
+    assert "{{text:Title}}" in writing_manager.CARD_TEMPLATE_FRONT
+    assert "{{text:Markdown_File}}" in writing_manager.CARD_TEMPLATE_FRONT
+    assert "{{Title}}" not in writing_manager.CARD_TEMPLATE_FRONT
+    assert writing_manager._stored_writing_title("<img src=x onerror=alert(1)>", 0) == (
+        "&lt;img src=x onerror=alert(1)&gt;"
+    )
+    assert "<img" not in writing_manager._markdown_heading_text(
+        "<img src=x> ![remote](https://example.test/x.png)"
+    )
+    assert r"\!\[remote\]\(https://example.test/x.png\)" in (
+        writing_manager._markdown_heading_text(
+            "<img src=x> ![remote](https://example.test/x.png)"
+        )
+    )
+
+
 def test_write_writing_text_creates_all_backup_slots_on_first_overwrite(tmp_path):
     addon_dir = str(tmp_path)
     relpath = writing_manager.build_writing_relpath("My note", "my-note.md")

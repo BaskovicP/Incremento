@@ -1,3 +1,5 @@
+import weakref
+
 from aqt import mw
 
 try:
@@ -13,7 +15,7 @@ except ImportError:
 
 all_ready_cards_filter = "(is:new OR (is:learn is:due) OR (is:review is:due)) -is:suspended"
 PDF_NOTE_TYPE = "Incremento PDF"
-_TOPIC_ITEM_CACHE: dict[tuple, tuple[int, ...]] = {}
+_TOPIC_ITEM_CACHE: dict[tuple, tuple[object, tuple[int, ...]]] = {}
 _SQL_VARIABLE_CHUNK_SIZE = 900
 
 
@@ -52,6 +54,16 @@ def _sort_by_due(card_ids, *, col=None):
 
 def clear_topic_item_cache() -> None:
     _TOPIC_ITEM_CACHE.clear()
+
+
+def _collection_identity_ref(collection):
+    """Return an identity reference without retaining normal collections."""
+    try:
+        return weakref.ref(collection)
+    except TypeError:
+        # Some lightweight wrappers cannot be weak-referenced. Retaining those
+        # until this bounded cache is cleared is safer than trusting a reused id().
+        return lambda: collection
 
 
 def sort_cards_for_priority_mode(
@@ -252,7 +264,10 @@ def _classified_ready_cards(
     cache_key = cache_base + (kind,)
     cached = _TOPIC_ITEM_CACHE.get(cache_key)
     if cached is not None:
-        return list(cached)
+        cached_collection_ref, cached_ids = cached
+        if cached_collection_ref() is collection:
+            return list(cached_ids)
+        _TOPIC_ITEM_CACHE.pop(cache_key, None)
 
     candidate_ids = _sort_by_due(collection.find_cards(query), col=collection)
     classified = None
@@ -291,8 +306,15 @@ def _classified_ready_cards(
             else:
                 item_ids.append(int(card_id))
 
-    _TOPIC_ITEM_CACHE[cache_base + ("topics",)] = tuple(topic_ids)
-    _TOPIC_ITEM_CACHE[cache_base + ("items",)] = tuple(item_ids)
+    collection_ref = _collection_identity_ref(collection)
+    _TOPIC_ITEM_CACHE[cache_base + ("topics",)] = (
+        collection_ref,
+        tuple(topic_ids),
+    )
+    _TOPIC_ITEM_CACHE[cache_base + ("items",)] = (
+        collection_ref,
+        tuple(item_ids),
+    )
     return list(topic_ids if kind == "topics" else item_ids)
 
 

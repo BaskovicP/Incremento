@@ -30,6 +30,23 @@ class TestSanitizeProfileName:
     def test_unicode_safe(self):
         assert p.sanitize_profile_name("Paulo") == "Paulo"
 
+    @pytest.mark.parametrize("name", [".", "..", "...", "   ..   "])
+    def test_dot_only_names_cannot_escape_user_files(self, name):
+        assert p.sanitize_profile_name(name) == "Default"
+
+    @pytest.mark.parametrize("name", ["CON", "nul.txt", "LPT9"])
+    def test_windows_device_names_are_not_used_verbatim(self, name):
+        assert p.sanitize_profile_name(name).startswith("_")
+
+    def test_trailing_dots_and_spaces_are_removed(self):
+        assert p.sanitize_profile_name("Profile...   ") == "Profile"
+
+    def test_very_long_names_are_bounded_deterministically(self):
+        name = "p" * 500
+        first = p.sanitize_profile_name(name)
+        assert first == p.sanitize_profile_name(name)
+        assert len(first) <= 120
+
 
 class TestActiveProfileRegistry:
     def test_set_and_get(self):
@@ -74,3 +91,8 @@ class TestDirectoryHelpers:
         a = p.get_user_files_dir(str(tmp_path), "Alice")
         b = p.get_user_files_dir(str(tmp_path), "Bob")
         assert a != b
+
+    @pytest.mark.parametrize("profile", [".", "..", ".../"])
+    def test_profile_directory_stays_one_level_under_user_files(self, tmp_path, profile):
+        result = p.get_user_files_dir(str(tmp_path), profile)
+        assert result.parent == tmp_path / "user_files"

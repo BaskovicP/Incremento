@@ -10,6 +10,10 @@ from collections.abc import Callable, Iterable
 Migration = tuple[int, str, Callable[[sqlite3.Connection], None]]
 
 
+class DatabaseSchemaTooNewError(RuntimeError):
+    """The database was created by a newer, incompatible Incremento release."""
+
+
 def _current_version(conn: sqlite3.Connection) -> int:
     row = conn.execute("PRAGMA user_version").fetchone()
     return max(0, int(row[0] or 0)) if row else 0
@@ -37,9 +41,24 @@ def initialize_schema(
     migration ledger.  ``bootstrap`` contains the old idempotent schema setup,
     so it upgrades every historical shape once before the ledger takes over.
     """
-    _ensure_ledger(conn)
-    version = _current_version(conn)
     ordered = sorted(migrations, key=lambda item: item[0])
+    targets = [int(item[0]) for item in ordered]
+    if any(target < 2 for target in targets) or len(targets) != len(set(targets)):
+        raise ValueError("Schema migration versions must be unique integers starting at 2.")
+    if targets and targets != list(range(2, targets[-1] + 1)):
+        raise ValueError("Schema migration versions must be contiguous.")
+
+    latest_supported = targets[-1] if targets else 1
+    version = _current_version(conn)
+    if version > latest_supported:
+        raise DatabaseSchemaTooNewError(
+            "This profile database was created by a newer Incremento version "
+            f"(database {version}, supported through {latest_supported}). "
+            "Update Incremento before opening this profile."
+        )
+
+    # Do not write even the ledger until the compatibility check above passes.
+    _ensure_ledger(conn)
 
     if version == 0:
         bootstrap(conn)

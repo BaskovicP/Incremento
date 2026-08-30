@@ -30,6 +30,7 @@ __pycache__/
 
 # ── Frontend ────────────────────────────────────────────────────────────────
 frontend/node_modules/
+chrome_extensions/incremento_companion/node_modules/
 
 # ── Build outputs ───────────────────────────────────────────────────────────
 dist/
