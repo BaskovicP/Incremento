@@ -36,6 +36,8 @@ _timer_daily_pdf_pages: set = set()    # {(card_id, page)} unique PDF pages seen
 _timer_daily_epub_pages: set = set()   # {(card_id, page)} unique EPUB pages seen today
 _timer_toolbar               = None   # QToolBar instance, set by build_timer_toolbar
 _timer_widget                = None   # _TimerWidget instance, set by build_timer_toolbar
+_reading_page_callback       = None   # profile-aware persistence boundary registered by addon root
+_reading_history_loader      = None   # bounded current-day read model registered by addon root
 
 _DEFAULT_AUTO_TIMER_CARD_TYPES = {
     "pdf": True,
@@ -112,6 +114,56 @@ def reset_activity_counters() -> None:
     _timer_epub_pages = set()
 
 
+def register_reading_page_callback(callback) -> None:
+    """Register the profile-aware persistence boundary used by reader docks."""
+    global _reading_page_callback
+    _reading_page_callback = callback if callable(callback) else None
+
+
+def register_reading_history_loader(callback) -> None:
+    """Register the profile-aware loader used by the cumulative timer line."""
+    global _reading_history_loader
+    _reading_history_loader = callback if callable(callback) else None
+
+
+def _persist_reading_page(kind: str, card_id: int, page: int) -> None:
+    callback = _reading_page_callback
+    if callback is None:
+        return
+    try:
+        callback(kind, card_id, page, _current_day_end_time())
+    except Exception:
+        # Reader navigation and focus-timer behavior must survive a best-effort
+        # supplemental statistics failure.
+        return
+
+
+def _persisted_daily_reading() -> dict:
+    loader = _reading_history_loader
+    if loader is None:
+        return {"pdf_pages": 0, "epub_pages": 0, "pages": 0}
+    try:
+        raw = loader(_current_day_end_time())
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    def clean(key: str) -> int:
+        try:
+            return max(0, int(raw.get(key, 0) or 0))
+        except Exception:
+            return 0
+
+    pdf_pages = clean("pdf_pages")
+    epub_pages = clean("epub_pages")
+    return {
+        "pdf_pages": pdf_pages,
+        "epub_pages": epub_pages,
+        "pages": pdf_pages + epub_pages,
+    }
+
+
 def record_card_answered() -> None:
     """Count an answered card only while a focus timer is actively running."""
     if not _timer_running:
@@ -123,7 +175,7 @@ def record_card_answered() -> None:
 
 
 def record_pdf_page_read(card_id: int, page: int) -> None:
-    """Count a PDF page view only while a focus timer is actively running."""
+    """Persist a PDF page view; add it to timer counters while active."""
     try:
         cid = int(card_id)
         pg = int(page)
@@ -131,6 +183,7 @@ def record_pdf_page_read(card_id: int, page: int) -> None:
         return
     if cid <= 0 or pg <= 0:
         return
+    _persist_reading_page("pdf", cid, pg)
     if not _timer_running:
         return
     _ensure_daily_activity_date()
@@ -139,7 +192,7 @@ def record_pdf_page_read(card_id: int, page: int) -> None:
 
 
 def record_epub_page_read(card_id: int, page_index: int) -> None:
-    """Count an EPUB page view only while a focus timer is actively running."""
+    """Persist an EPUB page view; add it to timer counters while active."""
     try:
         cid = int(card_id)
         pg = int(page_index) + 1
@@ -147,6 +200,7 @@ def record_epub_page_read(card_id: int, page_index: int) -> None:
         return
     if cid <= 0 or pg <= 0:
         return
+    _persist_reading_page("epub", cid, pg)
     if not _timer_running:
         return
     _ensure_daily_activity_date()
@@ -167,12 +221,15 @@ def daily_activity_summary() -> dict:
     _ensure_daily_activity_date()
     pdf_pages = set(_timer_daily_pdf_pages)
     epub_pages = set(_timer_daily_epub_pages)
+    persisted = _persisted_daily_reading()
+    pdf_count = max(len(pdf_pages), int(persisted["pdf_pages"]))
+    epub_count = max(len(epub_pages), int(persisted["epub_pages"]))
     return {
         "logical_date": _timer_daily_logical_date,
         "cards": int(_timer_daily_cards_answered),
-        "pdf_pages": len(pdf_pages),
-        "epub_pages": len(epub_pages),
-        "pages": len(pdf_pages) + len(epub_pages),
+        "pdf_pages": pdf_count,
+        "epub_pages": epub_count,
+        "pages": pdf_count + epub_count,
     }
 
 
@@ -209,9 +266,12 @@ def _daily_activity_summary_for_report(cards: int, pdf_pages: set, epub_pages: s
     return {
         "logical_date": daily.get("logical_date", _timer_daily_logical_date),
         "cards": daily_cards,
-        "pdf_pages": len(daily_pdf_pages),
-        "epub_pages": len(daily_epub_pages),
-        "pages": len(daily_pdf_pages) + len(daily_epub_pages),
+        "pdf_pages": max(len(daily_pdf_pages), int(daily.get("pdf_pages", 0))),
+        "epub_pages": max(len(daily_epub_pages), int(daily.get("epub_pages", 0))),
+        "pages": (
+            max(len(daily_pdf_pages), int(daily.get("pdf_pages", 0)))
+            + max(len(daily_epub_pages), int(daily.get("epub_pages", 0)))
+        ),
     }
 
 

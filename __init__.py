@@ -32,6 +32,10 @@ from aqt.qt import (
 
 from .frontend.stats_dialog import StatsDialog
 from .backend.scheduler_config import load_scheduler_config
+from .backend.statistics import (
+    load_daily_history as _load_daily_stat_history,
+    record_reading_page as _record_reading_page_stat,
+)
 from .backend.pdf_manager import (
     PDF_NOTE_TYPE,
     PDF_COVER_FIELD,
@@ -2606,9 +2610,47 @@ def _close_diagnostic_profile() -> None:
     _diagnostic_pending_final_interval = None
 
 
+def _persist_reader_page_stat(
+    document_type: str,
+    card_id: int,
+    page_number: int,
+    day_end_time: str,
+) -> None:
+    """Profile-aware boundary for best-effort reader page statistics."""
+    try:
+        _record_reading_page_stat(
+            _ADDON_DIR,
+            _active_profile(),
+            document_type,
+            card_id,
+            page_number,
+            day_end_time=day_end_time,
+        )
+    except Exception:
+        # Supplemental statistics must never interrupt reader navigation.
+        return
+
+
+def _load_reader_daily_stat(day_end_time: str) -> dict:
+    try:
+        history = _load_daily_stat_history(
+            _ADDON_DIR,
+            _active_profile(),
+            days=1,
+            day_end_time=day_end_time,
+        )
+        if history and isinstance(history[0].get("reading"), dict):
+            return dict(history[0]["reading"])
+    except Exception:
+        pass
+    return {"pdf_pages": 0, "epub_pages": 0, "pages": 0}
+
+
 register_diagnostic_event_callback(_record_diagnostic_event)
 _register_topic_diagnostic_event_callback(_record_diagnostic_event)
 _register_custom_schedule_diagnostic_event_callback(_record_diagnostic_event)
+_timer_mod.register_reading_page_callback(_persist_reader_page_stat)
+_timer_mod.register_reading_history_loader(_load_reader_daily_stat)
 
 
 def _on_profile_did_open() -> None:

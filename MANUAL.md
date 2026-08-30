@@ -264,7 +264,7 @@ Open **Advanced** in the session dialog for a few session-behavior controls:
 
 ### Statistics history buttons
 
-The dialog also has buttons to delete session, daily, and lifetime statistics or export them as JSON.
+The dialog also has buttons to delete session, daily, and lifetime statistics or export them as JSON. Export includes the recorded daily reading/study timeline as well as the existing aggregates.
 
 ---
 
@@ -625,6 +625,8 @@ Scopes:
 
 - **This Session**
 - **Today**
+- **7 Days**
+- **30 Days**
 - **All Time**
 
 Current statistics include both count-based and time-based views:
@@ -634,6 +636,14 @@ Current statistics include both count-based and time-based views:
 - tags
 - review time by card type
 - review time by tag
+
+The 7- and 30-day views add daily stacked graphs for:
+
+- Topics, Items, and other reviewed card types
+- unique PDF and EPUB pages read
+- study/review time
+
+They also show total cards, total pages, study time, active days, the current activity streak, and active-day averages. A page is counted once per document and logical day even if you revisit it or restart Anki. The same profile-specific `day_end_time` used by scheduling determines when a new statistics day begins.
 
 EPUB stays separate from PDF in these views.
 
@@ -656,6 +666,8 @@ The summary shows:
 - unique PDF pages read
 - unique EPUB pages read
 - number of PDFs touched during that timer session
+
+The cumulative **Today so far** line also uses the persisted unique-page history, so reading performed before starting the focus timer remains visible.
 
 ---
 
@@ -715,6 +727,8 @@ It is used by:
 - timestamp-based video note creation
 
 When text is selected in a supported source, transfer buttons appear next to Add Card fields so you can insert the selection directly.
+
+If you close an unfinished extract and confirm **Discard**, the Add Card dock closes with it and clears that draft's source context. The next extraction opens a fresh Add Card dock.
 
 Each `Cmd/Ctrl+1..4` transfer refreshes Incremento-managed tags against the current source. When you move from one PDF or other source to another, source/topic tags that Incremento added and that no longer apply are removed, shared tags remain, and unrelated pre-existing tags are preserved. This cleanup also follows Anki's tags into the next blank Add note, because Anki normally carries tags forward after a note is added.
 

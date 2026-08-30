@@ -1562,6 +1562,77 @@ def test_embedded_add_dialog_arms_queue_suppression_before_background_add(monkey
     assert audio_stop_calls == [True]
 
 
+def test_embedded_add_dialog_discard_retires_dock_and_extract_draft(monkeypatch):
+    editor = _FakeEditor(_FakeNote(note_id=0), add_mode=True)
+    dlg = _FakeAddCardsDialog(editor)
+    close_calls = []
+    removed_docks = []
+
+    dlg._add_current_note = lambda: None
+    dlg._close = lambda: close_calls.append("native-close") or "closed"
+
+    class _DiscardedDock:
+        def __init__(self):
+            self._addcards_dialog = dlg
+            self.hide_calls = 0
+            self.delete_later_calls = 0
+
+        def hide(self):
+            self.hide_calls += 1
+
+        def deleteLater(self):
+            self.delete_later_calls += 1
+
+    embedded_dock = _DiscardedDock()
+    monkeypatch.setattr(dock, "_add_card_dock", embedded_dock)
+    monkeypatch.setattr(dock, "_last_add_mode_editor", editor)
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_options",
+        {"source": "reviewer", "source_card_id": 42},
+    )
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_context",
+        {"parent_card_id": 42, "metadata": {"source_type": "Extract"}},
+    )
+    monkeypatch.setattr(dock, "_current_extract_priority", 30.0)
+    monkeypatch.setattr(dock, "_current_extract_mark_topic", True)
+    monkeypatch.setattr(dock, "_current_extract_link_to_knowledge_tree", True)
+    monkeypatch.setattr(dock, "_last_selection_source", "reviewer")
+    monkeypatch.setattr(dock, "_last_selection_text", "discarded text")
+    monkeypatch.setattr(dock, "_last_selection_seen", 123.0)
+    monkeypatch.setattr(dock, "_last_fill_source", "reviewer")
+    monkeypatch.setattr(dock, "_last_fill_seen", 123.0)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            removeDockWidget=lambda current: removed_docks.append(current)
+        ),
+    )
+
+    dock._install_embedded_add_dialog_hooks(dlg)
+
+    assert dlg._close() == "closed"
+    assert close_calls == ["native-close"]
+    assert dock.get_add_card_dock() is None
+    assert embedded_dock.hide_calls == 1
+    assert embedded_dock.delete_later_calls == 1
+    assert removed_docks == [embedded_dock]
+    assert dock.pending_extract_options() is None
+    assert dock.pending_extract_context() is None
+    assert dock._current_extract_priority is None
+    assert dock._current_extract_mark_topic is None
+    assert dock._current_extract_link_to_knowledge_tree is None
+    assert dock._last_add_mode_editor is None
+    assert dock._last_selection_source == ""
+    assert dock._last_selection_text == ""
+    assert dock._last_selection_seen == 0.0
+    assert dock._last_fill_source == ""
+    assert dock._last_fill_seen == 0.0
+
+
 def test_set_editor_note_type_saves_metadata_fields_before_switch(monkeypatch):
     note = _FakeNote(note_id=22)
     editor = _FakeEditor(note, add_mode=True)

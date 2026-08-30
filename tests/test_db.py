@@ -1795,7 +1795,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -1805,6 +1805,7 @@ class TestConnectionSwitching:
             (3, "search_fts"),
             (4, "content_identity"),
             (5, "document_index_state"),
+            (6, "statistics_history"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):
@@ -2018,6 +2019,32 @@ class TestExportHelpers:
 
         assert result["time"]["daily"]["seconds"]["type"]["pdf"] == 5
         assert result["time"]["lifetime"]["type"]["epub"] == 9
+
+    def test_export_stats_json_includes_daily_reading_history(self):
+        import json
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "INSERT INTO reading_page_history "
+            "(logical_date, document_type, card_id, page_number, recorded_at) "
+            "VALUES ('2026-04-23', 'pdf', 10, 4, 1)"
+        )
+        conn.execute(
+            "INSERT INTO reading_page_history "
+            "(logical_date, document_type, card_id, page_number, recorded_at) "
+            "VALUES ('2026-04-23', 'epub', 20, 2, 1)"
+        )
+        conn.commit()
+
+        result = json.loads(db.export_stats_json(self.addon_dir, "TestProfile"))
+
+        assert result["history"]["daily"] == [
+            {
+                "date": "2026-04-23",
+                "counts": {"type": {}, "tags": {}, "mode": {}},
+                "seconds": {"type": {}, "tags": {}},
+                "reading": {"pdf_pages": 1, "epub_pages": 1, "pages": 2},
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,10 @@
 import json
 import math
 import os
+import tempfile
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 try:
     from .db import get_connection
@@ -15,6 +16,11 @@ except ImportError:
 
 _STATS_LOCKS_GUARD = threading.Lock()
 _STATS_LOCKS: dict[str, threading.RLock] = {}
+_MAX_STAT_KEY_LENGTH = 128
+_MAX_STAT_KEYS_PER_GROUP = 512
+_MAX_STAT_VALUE = 1_000_000_000_000.0
+_MAX_HISTORY_DAYS = 3660
+_DOCUMENT_TYPES = frozenset({"pdf", "epub"})
 
 
 def _stats_lock(addon_dir: str, profile: str) -> threading.RLock:
@@ -40,7 +46,12 @@ def _clean_stat_key(key) -> str | None:
         text = str(key).strip()
     except Exception:
         return None
-    if not text or text.startswith("__"):
+    if (
+        not text
+        or text.startswith("__")
+        or len(text) > _MAX_STAT_KEY_LENGTH
+        or any(ord(character) < 32 or ord(character) == 127 for character in text)
+    ):
         return None
     return text
 
@@ -52,7 +63,7 @@ def _coerce_nonnegative_number(value, *, integer: bool):
         number = float(value)
     except Exception:
         return None
-    if not math.isfinite(number) or number < 0:
+    if not math.isfinite(number) or number < 0 or number > _MAX_STAT_VALUE:
         return None
     if integer:
         return int(number)
@@ -64,14 +75,32 @@ def _normalize_number_map(raw, *, integer: bool) -> dict:
         return {}
     clean: dict = {}
     for key, value in raw.items():
+        if len(clean) >= _MAX_STAT_KEYS_PER_GROUP:
+            break
         clean_key = _clean_stat_key(key)
         if clean_key is None:
             continue
         clean_value = _coerce_nonnegative_number(value, integer=integer)
         if clean_value is None:
             continue
-        clean[clean_key] = clean.get(clean_key, 0) + clean_value
+        combined = clean.get(clean_key, 0) + clean_value
+        if combined <= _MAX_STAT_VALUE:
+            clean[clean_key] = combined
     return clean
+
+
+def _normalize_logical_date(value) -> str | None:
+    try:
+        text = str(value or "").strip()
+    except Exception:
+        return None
+    if len(text) != 10:
+        return None
+    try:
+        parsed = date.fromisoformat(text)
+    except (TypeError, ValueError):
+        return None
+    return text if parsed.isoformat() == text else None
 
 
 def _normalize_counts_block(raw) -> dict:
@@ -103,7 +132,7 @@ def _normalize_stats(raw) -> dict:
         daily_raw = raw.get("daily")
         if isinstance(daily_raw, dict):
             result["daily"] = {
-                "date": str(daily_raw.get("date") or ""),
+                "date": _normalize_logical_date(daily_raw.get("date")) or "",
                 "counts": _normalize_counts_block(daily_raw.get("counts")),
             }
         else:
@@ -120,7 +149,7 @@ def _normalize_stats(raw) -> dict:
                 daily_time_raw = time_raw.get("daily")
                 if isinstance(daily_time_raw, dict):
                     time_result["daily"] = {
-                        "date": str(daily_time_raw.get("date") or ""),
+                        "date": _normalize_logical_date(daily_time_raw.get("date")) or "",
                         "seconds": _normalize_time_block(
                             daily_time_raw.get("seconds")
                         ),
@@ -184,11 +213,20 @@ def _load_stats_unlocked(addon_dir: str, profile: str) -> dict:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return _normalize_stats(data)
+            if isinstance(data, dict):
+                return _normalize_stats(data)
         except Exception:
-            return {}
+            # The file is canonical when healthy. A malformed/truncated file
+            # falls through to the last committed SQLite mirror so one failed
+            # filesystem write does not erase every visible statistic.
+            pass
 
-    # Backward-compatible fallback for users that only have DB-backed stats.
+    return _load_stats_from_db(addon_dir, profile)
+
+
+def _load_stats_from_db(addon_dir: str, profile: str) -> dict:
+    """Load the backward-compatible aggregate mirror from SQLite."""
+
     try:
         rows = (
             get_connection(addon_dir, profile)
@@ -220,43 +258,130 @@ def save_stats(addon_dir: str, profile: str, stats: dict) -> None:
 
 def _save_stats_unlocked(addon_dir: str, profile: str, stats: dict) -> None:
     stats = _normalize_stats(stats)
-    path = str(_get_stats_path(addon_dir, profile))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(stats, f, ensure_ascii=False)
-    os.replace(tmp, path)
+    _write_stats_file_atomic(addon_dir, profile, stats)
+    _mirror_stats_to_db(addon_dir, profile, stats)
 
-    # Keep DB export path functional (best effort).
+
+def _write_stats_file_atomic(addon_dir: str, profile: str, stats: dict) -> None:
+    path = _get_stats_path(addon_dir, profile)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(
+                stats,
+                handle,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            if os.path.exists(tmp_name):
+                os.remove(tmp_name)
+        except OSError:
+            pass
+
+
+def _json_payload(value: dict) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _mirror_stats_to_db(addon_dir: str, profile: str, stats: dict) -> bool:
+    """Transactionally mirror aggregates and the current daily trend row."""
     try:
         conn = get_connection(addon_dir, profile)
-        if "daily" in stats:
-            d = stats["daily"]
-            conn.execute(
-                "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
-                ("daily", d.get("date"), json.dumps(d.get("counts", {}))),
-            )
-        else:
-            conn.execute("DELETE FROM stats WHERE scope = 'daily'")
+        with conn:
+            if "daily" in stats:
+                daily = stats["daily"]
+                conn.execute(
+                    "INSERT INTO stats (scope, date, data) VALUES (?, ?, ?) "
+                    "ON CONFLICT(scope) DO UPDATE SET "
+                    "date = excluded.date, data = excluded.data",
+                    (
+                        "daily",
+                        daily.get("date"),
+                        _json_payload(daily.get("counts", _empty())),
+                    ),
+                )
+            else:
+                conn.execute("DELETE FROM stats WHERE scope = 'daily'")
 
-        if "lifetime" in stats:
-            conn.execute(
-                "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
-                ("lifetime", None, json.dumps(stats["lifetime"])),
-            )
-        else:
-            conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
+            if "lifetime" in stats:
+                conn.execute(
+                    "INSERT INTO stats (scope, date, data) VALUES (?, ?, ?) "
+                    "ON CONFLICT(scope) DO UPDATE SET "
+                    "date = excluded.date, data = excluded.data",
+                    ("lifetime", None, _json_payload(stats["lifetime"])),
+                )
+            else:
+                conn.execute("DELETE FROM stats WHERE scope = 'lifetime'")
 
-        if "time" in stats:
-            conn.execute(
-                "INSERT OR REPLACE INTO stats (scope, date, data) VALUES (?, ?, ?)",
-                ("time", None, json.dumps(stats["time"])),
+            if "time" in stats:
+                conn.execute(
+                    "INSERT INTO stats (scope, date, data) VALUES (?, ?, ?) "
+                    "ON CONFLICT(scope) DO UPDATE SET "
+                    "date = excluded.date, data = excluded.data",
+                    ("time", None, _json_payload(stats["time"])),
+                )
+            else:
+                conn.execute("DELETE FROM stats WHERE scope = 'time'")
+
+            daily = stats.get("daily")
+            daily_date = (
+                _normalize_logical_date(daily.get("date"))
+                if isinstance(daily, dict)
+                else None
             )
-        else:
-            conn.execute("DELETE FROM stats WHERE scope = 'time'")
-        conn.commit()
+            if daily_date:
+                time_stats = stats.get("time")
+                daily_time = (
+                    time_stats.get("daily")
+                    if isinstance(time_stats, dict)
+                    and isinstance(time_stats.get("daily"), dict)
+                    else {}
+                )
+                seconds = (
+                    _normalize_time_block(daily_time.get("seconds"))
+                    if _normalize_logical_date(daily_time.get("date")) == daily_date
+                    else _empty_time()
+                )
+                conn.execute(
+                    "INSERT INTO stats_daily_history "
+                    "(logical_date, counts_json, seconds_json, updated_at) "
+                    "VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(logical_date) DO UPDATE SET "
+                    "counts_json = excluded.counts_json, "
+                    "seconds_json = excluded.seconds_json, "
+                    "updated_at = excluded.updated_at",
+                    (
+                        daily_date,
+                        _json_payload(_normalize_counts_block(daily.get("counts"))),
+                        _json_payload(seconds),
+                        int(time.time()),
+                    ),
+                )
+        return True
     except Exception:
-        pass
+        # JSON remains canonical. Explicit rollback also repairs connections
+        # left in a transaction by driver- or trigger-level failures.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
 
 
 def mutate_stats(addon_dir: str, profile: str, mutator) -> dict:
@@ -267,6 +392,227 @@ def mutate_stats(addon_dir: str, profile: str, mutator) -> dict:
         normalized = _normalize_stats(updated)
         _save_stats_unlocked(addon_dir, profile, normalized)
         return normalized
+
+
+def _bounded_history_days(value) -> int:
+    if isinstance(value, bool):
+        raise ValueError("history days must be an integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("history days must be an integer") from exc
+    if parsed < 1 or parsed > _MAX_HISTORY_DAYS:
+        raise ValueError(
+            f"history days must be between 1 and {_MAX_HISTORY_DAYS}"
+        )
+    return parsed
+
+
+def _positive_identifier(value, label: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a positive integer")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a positive integer") from exc
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(f"{label} must be a positive integer")
+    if parsed <= 0:
+        raise ValueError(f"{label} must be a positive integer")
+    return parsed
+
+
+def record_reading_page(
+    addon_dir: str,
+    profile: str,
+    document_type: str,
+    card_id,
+    page_number,
+    *,
+    day_end_time: str = "04:00",
+) -> bool:
+    """Persist one unique PDF/EPUB page for the current logical day.
+
+    The primary key makes this idempotent across repeated progress messages,
+    add-on reloads, and Anki restarts. ``True`` means a new daily page was
+    inserted; ``False`` means that exact page was already recorded.
+    """
+    kind = str(document_type or "").strip().casefold()
+    if kind not in _DOCUMENT_TYPES:
+        raise ValueError("document_type must be 'pdf' or 'epub'")
+    cid = _positive_identifier(card_id, "card_id")
+    page = _positive_identifier(page_number, "page_number")
+    logical_date = _normalize_logical_date(_effective_date(day_end_time))
+    if logical_date is None:
+        raise ValueError("logical date is invalid")
+
+    with _stats_lock(addon_dir, profile):
+        conn = get_connection(addon_dir, profile)
+        try:
+            with conn:
+                cursor = conn.execute(
+                    "INSERT OR IGNORE INTO reading_page_history "
+                    "(logical_date, document_type, card_id, page_number, recorded_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (logical_date, kind, cid, page, int(time.time())),
+                )
+            return int(getattr(cursor, "rowcount", 0) or 0) == 1
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+
+
+def _history_json(value, *, counts: bool) -> dict:
+    try:
+        parsed = json.loads(str(value or "{}"))
+    except Exception:
+        parsed = {}
+    if counts:
+        return _normalize_counts_block(parsed)
+    return _normalize_time_block(parsed)
+
+
+def _empty_history_row(logical_date: str) -> dict:
+    return {
+        "date": logical_date,
+        "counts": _empty(),
+        "seconds": _empty_time(),
+        "reading": {"pdf_pages": 0, "epub_pages": 0, "pages": 0},
+    }
+
+
+def load_daily_history(
+    addon_dir: str,
+    profile: str,
+    *,
+    days: int = 30,
+    end_date: str | None = None,
+    day_end_time: str = "04:00",
+) -> list[dict]:
+    """Return a chronological, zero-filled and bounded daily trend model."""
+    day_count = _bounded_history_days(days)
+    resolved_end = _normalize_logical_date(
+        end_date if end_date is not None else _effective_date(day_end_time)
+    )
+    if resolved_end is None:
+        raise ValueError("end_date must be an ISO calendar date")
+    end = date.fromisoformat(resolved_end)
+    start = end - timedelta(days=day_count - 1)
+    start_text = start.isoformat()
+
+    rows_by_date: dict[str, dict] = {}
+    with _stats_lock(addon_dir, profile):
+        try:
+            conn = get_connection(addon_dir, profile)
+            rows = conn.execute(
+                "SELECT logical_date, counts_json, seconds_json "
+                "FROM stats_daily_history "
+                "WHERE logical_date BETWEEN ? AND ? ORDER BY logical_date",
+                (start_text, resolved_end),
+            ).fetchall()
+            for logical_date, counts_json, seconds_json in rows:
+                clean_date = _normalize_logical_date(logical_date)
+                if clean_date is None:
+                    continue
+                item = _empty_history_row(clean_date)
+                item["counts"] = _history_json(counts_json, counts=True)
+                item["seconds"] = _history_json(seconds_json, counts=False)
+                rows_by_date[clean_date] = item
+
+            page_rows = conn.execute(
+                "SELECT logical_date, document_type, COUNT(*) "
+                "FROM reading_page_history "
+                "WHERE logical_date BETWEEN ? AND ? "
+                "GROUP BY logical_date, document_type "
+                "ORDER BY logical_date, document_type",
+                (start_text, resolved_end),
+            ).fetchall()
+            for logical_date, kind, raw_count in page_rows:
+                clean_date = _normalize_logical_date(logical_date)
+                if clean_date is None or kind not in _DOCUMENT_TYPES:
+                    continue
+                item = rows_by_date.setdefault(
+                    clean_date, _empty_history_row(clean_date)
+                )
+                count = max(0, int(raw_count or 0))
+                item["reading"][f"{kind}_pages"] = count
+        except Exception:
+            # A healthy canonical aggregate can still provide today's row if
+            # a history query is unavailable during recovery.
+            rows_by_date = {}
+
+        current = _load_stats_unlocked(addon_dir, profile)
+        daily = current.get("daily")
+        if isinstance(daily, dict):
+            logical_date = _normalize_logical_date(daily.get("date"))
+            if logical_date and start_text <= logical_date <= resolved_end:
+                item = rows_by_date.setdefault(
+                    logical_date, _empty_history_row(logical_date)
+                )
+                item["counts"] = _normalize_counts_block(daily.get("counts"))
+
+        time_stats = current.get("time")
+        daily_time = (
+            time_stats.get("daily")
+            if isinstance(time_stats, dict)
+            and isinstance(time_stats.get("daily"), dict)
+            else None
+        )
+        if isinstance(daily_time, dict):
+            logical_date = _normalize_logical_date(daily_time.get("date"))
+            if logical_date and start_text <= logical_date <= resolved_end:
+                item = rows_by_date.setdefault(
+                    logical_date, _empty_history_row(logical_date)
+                )
+                item["seconds"] = _normalize_time_block(
+                    daily_time.get("seconds")
+                )
+
+    result: list[dict] = []
+    for offset in range(day_count):
+        logical_date = (start + timedelta(days=offset)).isoformat()
+        item = rows_by_date.get(logical_date, _empty_history_row(logical_date))
+        reading = item["reading"]
+        reading["pages"] = int(reading.get("pdf_pages", 0)) + int(
+            reading.get("epub_pages", 0)
+        )
+        result.append(item)
+    return result
+
+
+def _history_row_has_activity(row: dict) -> bool:
+    counts = _normalize_counts_block(row.get("counts"))
+    seconds = _normalize_time_block(row.get("seconds"))
+    reading = row.get("reading") if isinstance(row.get("reading"), dict) else {}
+    return bool(
+        any(sum(group.values()) > 0 for group in counts.values())
+        or any(sum(group.values()) > 0 for group in seconds.values())
+        or int(reading.get("pages", 0) or 0) > 0
+    )
+
+
+def export_stats_data(
+    addon_dir: str,
+    profile: str,
+    *,
+    history_days: int = _MAX_HISTORY_DAYS,
+    day_end_time: str = "04:00",
+) -> dict:
+    """Return normalized aggregates plus recorded (non-empty) daily history."""
+    result = load_stats(addon_dir, profile)
+    history = load_daily_history(
+        addon_dir,
+        profile,
+        days=history_days,
+        day_end_time=day_end_time,
+    )
+    recorded = [row for row in history if _history_row_has_activity(row)]
+    if recorded:
+        result["history"] = {"daily": recorded}
+    return result
 
 
 def _increment_map(block: dict, group: str, key: str | None, amount) -> None:
@@ -325,8 +671,39 @@ def _record_persistent_delta(
     return mutate_stats(addon_dir, profile, apply_delta)
 
 
-def delete_daily_stats(addon_dir: str, profile: str) -> None:
-    """Remove today's statistics."""
+def _delete_history_dates(addon_dir: str, profile: str, dates: set[str]) -> None:
+    clean_dates = sorted(
+        date_value
+        for date_value in (_normalize_logical_date(value) for value in dates)
+        if date_value is not None
+    )
+    if not clean_dates:
+        return
+    placeholders = ",".join("?" for _ in clean_dates)
+    try:
+        conn = get_connection(addon_dir, profile)
+        with conn:
+            conn.execute(
+                f"DELETE FROM stats_daily_history WHERE logical_date IN ({placeholders})",
+                clean_dates,
+            )
+            conn.execute(
+                f"DELETE FROM reading_page_history WHERE logical_date IN ({placeholders})",
+                clean_dates,
+            )
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def delete_daily_stats(
+    addon_dir: str,
+    profile: str,
+    day_end_time: str = "04:00",
+) -> None:
+    """Remove the current logical day's aggregates, trend row, and pages."""
     def remove_daily(stats: dict) -> dict:
         stats.pop("daily", None)
         if isinstance(stats.get("time"), dict):
@@ -335,7 +712,18 @@ def delete_daily_stats(addon_dir: str, profile: str) -> None:
                 stats.pop("time", None)
         return stats
 
-    mutate_stats(addon_dir, profile, remove_daily)
+    with _stats_lock(addon_dir, profile):
+        current = _load_stats_unlocked(addon_dir, profile)
+        dates = {_effective_date(day_end_time)}
+        daily = current.get("daily")
+        if isinstance(daily, dict):
+            dates.add(str(daily.get("date") or ""))
+        time_stats = current.get("time")
+        if isinstance(time_stats, dict) and isinstance(time_stats.get("daily"), dict):
+            dates.add(str(time_stats["daily"].get("date") or ""))
+        updated = _normalize_stats(remove_daily(current))
+        _save_stats_unlocked(addon_dir, profile, updated)
+        _delete_history_dates(addon_dir, profile, dates)
 
 
 def delete_lifetime_stats(addon_dir: str, profile: str) -> None:
@@ -360,10 +748,15 @@ def delete_all_stats(addon_dir: str, profile: str) -> None:
 
         try:
             conn = get_connection(addon_dir, profile)
-            conn.execute("DELETE FROM stats")
-            conn.commit()
+            with conn:
+                conn.execute("DELETE FROM stats")
+                conn.execute("DELETE FROM stats_daily_history")
+                conn.execute("DELETE FROM reading_page_history")
         except Exception:
-            pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
 
 class StatsManager:

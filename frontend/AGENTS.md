@@ -29,6 +29,7 @@ npm --prefix frontend run build
 
 - Main file: `frontend/add_card_dock.py`.
 - The dock embeds Anki's Add dialog persistently and injects transfer buttons for recent selections.
+- When Anki closes the embedded Add dialog after a confirmed discard, retire the parent dock too and clear the abandoned extract options, provenance context, selection snapshot, and editor reference. A later extract must build a fresh dialog instead of leaving or reusing an empty shell.
 - Register `T` and `I` toolbar buttons in both Add Card and edit-note editors.
 - `T` toggles config-driven topic tags.
 - `I` toggles config-driven item tags.
@@ -64,6 +65,7 @@ npm --prefix frontend run build
 - Card-type display order and colors should keep EPUB distinct from PDF. Current labels include `PDFs` for `pdf` and `EPUBs` for `epub`.
 - Tags beginning with `__` are synthetic/internal and must stay hidden from stats UI tag charts and summary choices.
 - Review-time charts use `time.*.seconds` data and duration formatting. Keep counts and time separate so time-only reader tracking does not imply an answered card.
+- The `7 Days` and `30 Days` scopes consume only `load_daily_history()` and display separate stacked daily series for Topics/Items/Other, PDF/EPUB pages, and study minutes. Keep summary totals, active days, streak, zero days, and active-day averages aligned with those series.
 - The focus timer tracks answered cards plus unique PDF and EPUB pages even when the timer is not currently running. Starting a timer must not clear already collected activity.
 - Timer completion resets only the per-report counters. The “Today so far” line comes from cumulative daily activity and resets on the scheduler logical date from `day_end_time`.
 

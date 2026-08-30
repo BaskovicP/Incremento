@@ -73,6 +73,74 @@ _rename_named_scheduler_profile = _MOD._rename_named_scheduler_profile
 SchedulerConfigDialog = _MOD.SchedulerConfigDialog
 
 
+def test_statistics_export_uses_history_aware_snapshot(tmp_path, monkeypatch):
+    output_path = tmp_path / "stats.json"
+    calls = []
+    snapshot = {
+        "history": {
+            "daily": [
+                {
+                    "date": "2026-04-23",
+                    "counts": {"type": {"topics": 1}, "tags": {}, "mode": {}},
+                    "seconds": {"type": {}, "tags": {}},
+                    "reading": {"pdf_pages": 2, "epub_pages": 0, "pages": 2},
+                }
+            ]
+        }
+    }
+    monkeypatch.setattr(
+        _MOD,
+        "export_stats_data",
+        lambda addon_dir, profile, day_end_time: calls.append(
+            (addon_dir, profile, day_end_time)
+        ) or snapshot,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _MOD,
+        "load_stats",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("history-aware export must be used")
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(_MOD, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        _MOD.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *_args, **_kwargs: (str(output_path), "JSON")),
+        raising=False,
+    )
+    monkeypatch.setattr(_MOD, "showInfo", lambda *_args, **_kwargs: None)
+    dialog = SimpleNamespace(_get_day_end_time=lambda: "03:00")
+
+    SchedulerConfigDialog._export_json(dialog)
+
+    assert calls == [(_MOD._ADDON_DIR, "TestProfile", "03:00")]
+    assert __import__("json").loads(output_path.read_text(encoding="utf-8")) == snapshot
+
+
+def test_delete_today_uses_the_dialog_logical_day_boundary(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        _MOD,
+        "delete_daily_stats",
+        lambda addon_dir, profile, day_end_time: calls.append(
+            (addon_dir, profile, day_end_time)
+        ),
+    )
+    monkeypatch.setattr(_MOD, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(_MOD, "showInfo", lambda *_args, **_kwargs: None)
+    dialog = SimpleNamespace(
+        _confirm=lambda *_args: True,
+        _get_day_end_time=lambda: "05:30",
+    )
+
+    SchedulerConfigDialog._delete_daily(dialog)
+
+    assert calls == [(_MOD._ADDON_DIR, "TestProfile", "05:30")]
+
+
 class _FakeButton:
     def __init__(self):
         self.enabled = None

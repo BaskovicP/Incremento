@@ -12,7 +12,7 @@ Incremento supports Anki 24.11 and newer. Optional features that depend on Anki'
 - Reviews cards attached to the current PDF, EPUB, or video with Topic/Item, direct/nested, media-range, due-state, ordering, and count controls, then restores the source position
 - Creates cards from selections and highlights while preserving source metadata and links
 - Provides topic A-factor scheduling, per-card custom schedules, postpone tools, and Anki-compatible Undo/Redo behavior
-- Includes document search, colored Browser quick tags, a card-backed knowledge tree, statistics, and a focus timer
+- Includes document search, colored Browser quick tags, a card-backed knowledge tree, 7/30-day reading and study graphs, and a focus timer
 - Exports a privacy-safe support bundle with redacted settings, recent typed events, version data, and code fingerprints for easier bug reports
 - Keeps runtime content and databases isolated per Anki profile
 - Includes a browser bridge and companion Chrome/Brave extension for capture, import, and playback synchronization

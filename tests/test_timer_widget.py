@@ -24,6 +24,8 @@ def setup_function():
     timer_widget._timer_running = False
     timer_widget._timer_duration_min = 30
     timer_widget._timer_widget = None
+    timer_widget.register_reading_page_callback(None)
+    timer_widget.register_reading_history_loader(None)
     timer_widget.reset_activity_counters()
     timer_widget.reset_daily_activity_counters()
 
@@ -73,6 +75,25 @@ def test_epub_pages_only_count_while_timer_is_running():
     timer_widget.record_epub_page_read(10, 2)
 
     assert timer_widget._timer_epub_pages == {(10, 1), (10, 3)}
+
+
+def test_reader_pages_persist_even_when_focus_timer_is_not_running():
+    calls = []
+    timer_widget.register_reading_page_callback(
+        lambda kind, card_id, page, day_end: calls.append(
+            (kind, card_id, page, day_end)
+        )
+    )
+
+    timer_widget.record_pdf_page_read(10, 4)
+    timer_widget.record_epub_page_read(20, 1)
+
+    assert calls == [
+        ("pdf", 10, 4, timer_widget._current_day_end_time()),
+        ("epub", 20, 2, timer_widget._current_day_end_time()),
+    ]
+    assert timer_widget._timer_pdf_pages == set()
+    assert timer_widget._timer_epub_pages == set()
 
 
 def test_timer_run_starts_without_pre_timer_activity():
@@ -225,6 +246,20 @@ def test_report_display_daily_summary_uses_persisted_daily_card_total(monkeypatc
     daily = timer_widget._daily_activity_summary_for_report(1, set(), set())
 
     assert daily["cards"] == 6
+
+
+def test_report_display_daily_summary_uses_persisted_reading_totals(monkeypatch):
+    monkeypatch.setattr(timer_widget, "_load_persisted_daily_reviewed_card_count", lambda: 0)
+    timer_widget.register_reading_history_loader(
+        lambda _day_end: {"pdf_pages": 4, "epub_pages": 3, "pages": 7}
+    )
+    timer_widget.reset_daily_activity_counters("2026-04-23")
+
+    daily = timer_widget._daily_activity_summary_for_report(0, set(), set())
+
+    assert daily["pdf_pages"] == 4
+    assert daily["epub_pages"] == 3
+    assert daily["pages"] == 7
 
 
 def test_auto_timer_config_defaults_to_disabled_with_pdf_and_epub_selected():

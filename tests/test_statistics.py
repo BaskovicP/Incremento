@@ -6,6 +6,7 @@ No Anki mocking needed — statistics.py has no Anki imports.
 import importlib.util
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -670,3 +671,250 @@ class TestStatsExport:
         exported = json.loads(_db.export_stats_json(str(tmp_path), "TestProfile"))
         assert exported["time"]["daily"]["seconds"]["type"] == {"pdf": 12.0}
         assert exported["time"]["lifetime"]["type"] == {"epub": 30.0}
+
+
+class TestDailyHistory:
+    def test_records_unique_pdf_and_epub_pages_per_logical_day(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-04-23")
+
+        assert _mod.record_reading_page(
+            str(tmp_path), "TestProfile", "pdf", 10, 4
+        ) is True
+        assert _mod.record_reading_page(
+            str(tmp_path), "TestProfile", "pdf", 10, 4
+        ) is False
+        assert _mod.record_reading_page(
+            str(tmp_path), "TestProfile", "pdf", 10, 5
+        ) is True
+        assert _mod.record_reading_page(
+            str(tmp_path), "TestProfile", "epub", 20, 1
+        ) is True
+
+        history = _mod.load_daily_history(
+            str(tmp_path), "TestProfile", days=1, end_date="2026-04-23"
+        )
+
+        assert history == [
+            {
+                "date": "2026-04-23",
+                "counts": _empty(),
+                "seconds": {"type": {}, "tags": {}},
+                "reading": {"pdf_pages": 2, "epub_pages": 1, "pages": 3},
+            }
+        ]
+
+    def test_history_preserves_daily_topic_item_counts_and_time_across_rollover(
+        self, tmp_path, monkeypatch
+    ):
+        current_day = {"value": "2026-04-21"}
+        monkeypatch.setattr(
+            _mod, "_effective_date", lambda _day_end: current_day["value"]
+        )
+        manager = StatsManager(str(tmp_path), "TestProfile")
+
+        topic = make_result(card_type="topics", tag="reading", mode="priority")
+        topic.review_seconds = 30.0
+        manager.record(topic, "daily")
+
+        current_day["value"] = "2026-04-23"
+        item = make_result(card_type="items", tag="reading", mode="random")
+        item.review_seconds = 60.0
+        manager.record(item, "daily")
+
+        history = _mod.load_daily_history(
+            str(tmp_path), "TestProfile", days=3, end_date="2026-04-23"
+        )
+
+        assert [row["date"] for row in history] == [
+            "2026-04-21",
+            "2026-04-22",
+            "2026-04-23",
+        ]
+        assert history[0]["counts"]["type"] == {"topics": 1}
+        assert history[0]["seconds"]["type"] == {"topics": 30.0}
+        assert history[1]["counts"] == _empty()
+        assert history[2]["counts"]["type"] == {"items": 1}
+        assert history[2]["seconds"]["type"] == {"items": 60.0}
+
+    @pytest.mark.parametrize(
+        "document_type,card_id,page_number",
+        [
+            ("web", 1, 1),
+            ("pdf", 0, 1),
+            ("epub", 1, 0),
+            ("pdf", True, 1),
+        ],
+    )
+    def test_page_history_rejects_invalid_or_unsupported_input(
+        self, tmp_path, document_type, card_id, page_number
+    ):
+        with pytest.raises(ValueError):
+            _mod.record_reading_page(
+                str(tmp_path),
+                "TestProfile",
+                document_type,
+                card_id,
+                page_number,
+            )
+
+    @pytest.mark.parametrize("days", [0, -1, 3661, True])
+    def test_history_query_is_strictly_bounded(self, tmp_path, days):
+        with pytest.raises(ValueError):
+            _mod.load_daily_history(
+                str(tmp_path), "TestProfile", days=days, end_date="2026-04-23"
+            )
+
+    def test_delete_today_removes_daily_history_and_page_rows(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-04-23")
+        manager = StatsManager(str(tmp_path), "TestProfile")
+        result = make_result(card_type="topics")
+        result.review_seconds = 10.0
+        manager.record(result, "daily")
+        _mod.record_reading_page(str(tmp_path), "TestProfile", "pdf", 10, 2)
+
+        delete_daily_stats(str(tmp_path), "TestProfile")
+
+        row = _mod.load_daily_history(
+            str(tmp_path), "TestProfile", days=1, end_date="2026-04-23"
+        )[0]
+        assert row["counts"] == _empty()
+        assert row["seconds"] == {"type": {}, "tags": {}}
+        assert row["reading"] == {"pdf_pages": 0, "epub_pages": 0, "pages": 0}
+
+    def test_export_includes_only_recorded_history_days(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-04-23")
+        _mod.record_reading_page(str(tmp_path), "TestProfile", "epub", 10, 7)
+
+        exported = _mod.export_stats_data(
+            str(tmp_path), "TestProfile", history_days=30, day_end_time="04:00"
+        )
+
+        assert exported["history"]["daily"] == [
+            {
+                "date": "2026-04-23",
+                "counts": _empty(),
+                "seconds": {"type": {}, "tags": {}},
+                "reading": {"pdf_pages": 0, "epub_pages": 1, "pages": 1},
+            }
+        ]
+
+    def test_page_history_is_strictly_profile_scoped(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-04-23")
+        _mod.record_reading_page(str(tmp_path), "ProfileA", "pdf", 10, 1)
+
+        first = _mod.load_daily_history(
+            str(tmp_path), "ProfileA", days=1, end_date="2026-04-23"
+        )[0]
+        second = _mod.load_daily_history(
+            str(tmp_path), "ProfileB", days=1, end_date="2026-04-23"
+        )[0]
+
+        assert first["reading"]["pdf_pages"] == 1
+        assert second["reading"]["pdf_pages"] == 0
+
+    def test_concurrent_duplicate_page_events_insert_once(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-04-23")
+
+        def record(_index):
+            return _mod.record_reading_page(
+                str(tmp_path), "TestProfile", "epub", 20, 3
+            )
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            inserted = list(executor.map(record, range(12)))
+
+        assert inserted.count(True) == 1
+        assert inserted.count(False) == 11
+        assert _mod.load_daily_history(
+            str(tmp_path), "TestProfile", days=1, end_date="2026-04-23"
+        )[0]["reading"]["epub_pages"] == 1
+
+    def test_malformed_history_payload_fails_closed_but_keeps_page_counts(self, tmp_path):
+        conn = _mod.get_connection(str(tmp_path), "TestProfile")
+        conn.execute(
+            "INSERT INTO stats_daily_history "
+            "(logical_date, counts_json, seconds_json, updated_at) "
+            "VALUES ('2026-04-23', '{broken', '[1, 2]', 1)"
+        )
+        conn.execute(
+            "INSERT INTO reading_page_history "
+            "(logical_date, document_type, card_id, page_number, recorded_at) "
+            "VALUES ('2026-04-23', 'pdf', 10, 2, 1)"
+        )
+        conn.commit()
+
+        row = _mod.load_daily_history(
+            str(tmp_path), "TestProfile", days=1, end_date="2026-04-23"
+        )[0]
+
+        assert row["counts"] == _empty()
+        assert row["seconds"] == {"type": {}, "tags": {}}
+        assert row["reading"] == {"pdf_pages": 1, "epub_pages": 0, "pages": 1}
+
+
+class TestStatisticsPersistenceHardening:
+    def test_normalization_rejects_oversized_control_keys_and_bounds_maps(self):
+        tags = {f"tag-{index:03d}": 1 for index in range(600)}
+        tags["x" * 129] = 1
+        tags["line\nbreak"] = 1
+
+        normalized = _mod._normalize_counts_block(
+            {"type": {}, "tags": tags, "mode": {}}
+        )
+
+        assert len(normalized["tags"]) == 512
+        assert "x" * 129 not in normalized["tags"]
+        assert "line\nbreak" not in normalized["tags"]
+
+    def test_corrupt_canonical_file_recovers_from_database_mirror(self, tmp_path):
+        expected = {
+            "daily": {
+                "date": "2026-04-23",
+                "counts": {"type": {"topics": 2}, "tags": {}, "mode": {}},
+            },
+            "lifetime": {"type": {"topics": 2}, "tags": {}, "mode": {}},
+        }
+        save_stats(str(tmp_path), "TestProfile", expected)
+        stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
+        stats_file.write_text("{broken", encoding="utf-8")
+
+        assert load_stats(str(tmp_path), "TestProfile") == expected
+
+    def test_failed_database_mirror_rolls_back_and_leaves_connection_usable(self, tmp_path):
+        original = {
+            "daily": {
+                "date": "2026-04-23",
+                "counts": {"type": {"topics": 1}, "tags": {}, "mode": {}},
+            },
+            "lifetime": {"type": {"topics": 1}, "tags": {}, "mode": {}},
+        }
+        save_stats(str(tmp_path), "TestProfile", original)
+        conn = _mod.get_connection(str(tmp_path), "TestProfile")
+        conn.execute(
+            "CREATE TRIGGER reject_stats_update BEFORE UPDATE ON stats "
+            "BEGIN SELECT RAISE(ABORT, 'simulated mirror failure'); END"
+        )
+        conn.commit()
+
+        updated = {
+            "daily": {
+                "date": "2026-04-23",
+                "counts": {"type": {"topics": 9}, "tags": {}, "mode": {}},
+            },
+            "lifetime": {"type": {"topics": 9}, "tags": {}, "mode": {}},
+        }
+        save_stats(str(tmp_path), "TestProfile", updated)
+
+        assert conn.in_transaction is False
+        mirrored = json.loads(
+            conn.execute("SELECT data FROM stats WHERE scope = 'daily'").fetchone()[0]
+        )
+        assert mirrored["type"]["topics"] == 1
+
+        conn.execute("DROP TRIGGER reject_stats_update")
+        conn.commit()
+        save_stats(str(tmp_path), "TestProfile", updated)
+        mirrored = json.loads(
+            conn.execute("SELECT data FROM stats WHERE scope = 'daily'").fetchone()[0]
+        )
+        assert mirrored["type"]["topics"] == 9

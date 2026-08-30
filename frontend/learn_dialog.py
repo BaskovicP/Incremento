@@ -41,7 +41,12 @@ try:
         pdf_storage_abspath,
         save_pdf_daily_limit_settings,
     )
-    from ..backend.statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
+    from ..backend.statistics import (
+        delete_all_stats,
+        delete_daily_stats,
+        delete_lifetime_stats,
+        export_stats_data,
+    )
 except ImportError:
     import cards as _card_utils
     from config_service import load_addon_config, save_addon_config  # type: ignore
@@ -62,7 +67,12 @@ except ImportError:
         pdf_storage_abspath,
         save_pdf_daily_limit_settings,
     )
-    from statistics import load_stats, delete_daily_stats, delete_lifetime_stats, delete_all_stats
+    from statistics import (  # type: ignore
+        delete_all_stats,
+        delete_daily_stats,
+        delete_lifetime_stats,
+        export_stats_data,
+    )
 
 # Addon root: one level above this file (frontend/)
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -3412,7 +3422,11 @@ class SchedulerConfigDialog(QDialog):
         if not self._confirm("Delete Today's Data",
                              "Delete all statistics for today?\nThis cannot be undone."):
             return
-        delete_daily_stats(_ADDON_DIR, _active_profile())
+        delete_daily_stats(
+            _ADDON_DIR,
+            _active_profile(),
+            self._get_day_end_time(),
+        )
         showInfo("Today's statistics have been deleted.")
 
     def _delete_session(self) -> None:
@@ -3441,7 +3455,11 @@ class SchedulerConfigDialog(QDialog):
         showInfo("All statistics history has been deleted.")
 
     def _export_json(self) -> None:
-        raw = load_stats(_ADDON_DIR, _active_profile())
+        raw = export_stats_data(
+            _ADDON_DIR,
+            _active_profile(),
+            day_end_time=self._get_day_end_time(),
+        )
         if not raw:
             showInfo("No statistics data to export.")
             return

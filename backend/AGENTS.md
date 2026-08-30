@@ -148,7 +148,9 @@ Use this file for work in `backend/`.
 - `StatsManager` owns transient `session` counts plus persisted `daily` and `lifetime` counts. Count blocks are always `{"type": {}, "tags": {}, "mode": {}}`.
 - Review time is tracked separately as seconds. Time blocks are always `{"type": {}, "tags": {}}`; persisted scopes are `time.daily.seconds` and `time.lifetime`.
 - `custom_learn_stats.json` is the canonical file-backed store. `load_stats()`, `save_stats()`, and `export_stats_json()` normalize bad values and internal keys before returning data.
-- The DB `stats` table remains a backward-compatible fallback/export path. If the stats file exists, `export_stats_json()` should prefer the file and return the normalized shape.
+- The DB `stats` table remains a backward-compatible transactional mirror/fallback. A healthy stats file wins; a malformed file may recover from the last committed mirror. Keep failed mirror writes rolled back so the thread-local connection remains usable.
+- `stats_daily_history` owns normalized per-logical-day count/time snapshots, while `reading_page_history` owns idempotent unique `(date, document type, card, page)` observations. These are SQLite-owned trend data, not a competing current/lifetime aggregate. Reads must stay bounded and zero-filled through `load_daily_history()`.
+- Reader page observations are profile-aware, accept only PDF/EPUB plus positive identifiers, and use the configured scheduler `day_end_time`. Repeated page/progress messages must not inflate totals.
 - Use `StatsManager.record_time_only()` for reader or dock time that must not increment card counts. Runtime review-time mirrors should keep the same concrete type/tag attribution.
 - `get_document_card_type()` returns concrete document types: `pdf` for `Incremento PDF`, `epub` for `Incremento EPUB`, and `None` otherwise. Do not collapse EPUB cards into PDF stats or scheduling results.
 

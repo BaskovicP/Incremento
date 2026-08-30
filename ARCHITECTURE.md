@@ -14,7 +14,7 @@ Incremento adds four stores around that canonical collection:
 
 | Store | Scope | Owns |
 |---|---|---|
-| `user_files/<Profile>/incremento.db` | Per Anki profile | Reader position, priorities, topic/custom schedule state, knowledge tree, search indexes, import journal, and other add-on metadata |
+| `user_files/<Profile>/incremento.db` | Per Anki profile | Reader position, priorities, topic/custom schedule state, knowledge tree, search indexes, import journal, daily trend snapshots, unique page-reading history, and other add-on metadata |
 | `user_files/<Profile>/custom_learn_stats.json` | Per Anki profile | Canonical normalized daily/lifetime count and time aggregates |
 | `user_files/<Profile>/...` content folders | Per Anki profile | Managed PDFs, EPUBs/extracted EPUBs, videos, writing files, browser profiles, and diagnostics |
 | Anki add-on config | Add-on installation | Validated settings and scheduler presets; older keys are migrated by `backend/config_service.py` |
@@ -114,7 +114,9 @@ Manual **Reindex PDF Text** is also background, cancellable, profile-captured, a
 
 All shipped Python reads/writes add-on configuration through `backend/config_service.py`. The service versions the shape, normalizes risky values, preserves unknown forward-compatible keys, and keeps the legacy `profiles` scheduler-preset alias synchronized with `scheduler_presets`.
 
-`custom_learn_stats.json` is the statistics source of truth. `backend/statistics.py` performs profile-locked atomic read/modify/write operations and mirrors the normalized shape to SQLite only as compatibility/fallback. Do not create a second competing aggregate shape.
+`custom_learn_stats.json` remains the source of truth for current-day and lifetime count/time aggregates. `backend/statistics.py` performs profile-locked, fsync-and-replace read/modify/write operations and transactionally mirrors the normalized aggregate shape to SQLite for recovery and compatibility. A corrupt canonical file falls back to the last committed mirror.
+
+SQLite additionally owns the append-across-days trend data that the aggregate file never represented: `stats_daily_history` stores one normalized count/time snapshot per logical scheduler day, and `reading_page_history` stores one constraint-checked row per unique PDF/EPUB card page and logical day. Its composite primary key makes repeated reader progress messages and restarts idempotent. Trend reads are bounded, zero-filled, normalized in the backend, and never issued as raw SQL by the Qt dialog.
 
 ## Browser bridge security
 

@@ -2266,53 +2266,130 @@ def on_add_cards_did_add_note(note) -> None:
     _carry_auto_extract_tag_keys_after_add(note)
 
 
+def _clear_discarded_extract_draft() -> None:
+    """Drop all transient state owned by an abandoned Add Card draft."""
+    global _current_extract_priority, _current_extract_mark_topic
+    global _current_extract_link_to_knowledge_tree
+    global _last_selection_source, _last_selection_text, _last_selection_seen
+    global _last_fill_source, _last_fill_seen
+
+    clear_pending_extract_options()
+    clear_pending_extract_context()
+    _current_extract_priority = None
+    _current_extract_mark_topic = None
+    _current_extract_link_to_knowledge_tree = None
+    _last_selection_source = ""
+    _last_selection_text = ""
+    _last_selection_seen = 0.0
+    _last_fill_source = ""
+    _last_fill_seen = 0.0
+
+
+def _forget_tracked_editor(editor) -> None:
+    if editor is None:
+        return
+    retained: list[weakref.ReferenceType] = []
+    for ref in _tracked_tag_button_editors:
+        try:
+            candidate = ref()
+        except Exception:
+            candidate = None
+        if candidate is not None and candidate is not editor:
+            retained.append(ref)
+    _tracked_tag_button_editors[:] = retained
+
+
+def _retire_embedded_add_dialog(dlg) -> None:
+    """Remove the dock shell after Anki closes its embedded AddCards child."""
+    global _add_card_dock, _last_add_mode_editor
+
+    current_dock = _add_card_dock
+    if (
+        current_dock is None
+        or getattr(current_dock, "_addcards_dialog", None) is not dlg
+    ):
+        return
+
+    editor = getattr(dlg, "editor", None)
+    _add_card_dock = None
+    if _last_add_mode_editor is editor:
+        _last_add_mode_editor = None
+    _forget_tracked_editor(editor)
+    _clear_discarded_extract_draft()
+
+    # Anki has already scheduled the embedded AddCards instance for deletion.
+    # Retire its QDockWidget parent as well so a blank dock cannot remain.
+    try:
+        current_dock.hide()
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        mw.removeDockWidget(current_dock)
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        current_dock.deleteLater()
+    except (AttributeError, RuntimeError):
+        pass
+
+
 def _install_embedded_add_dialog_hooks(dlg) -> None:
     if dlg is None or getattr(dlg, "_incremento_embedded_add_hooks_installed", False):
         return
 
     original_add_current_note = getattr(dlg, "_add_current_note", None)
-    if not callable(original_add_current_note):
-        return
+    original_close = getattr(dlg, "_close", None)
 
-    def _wrapped_add_current_note():
-        note = getattr(getattr(dlg, "editor", None), "note", None)
-        if note is None:
-            return original_add_current_note()
-        if getattr(note, "id", None) != 0:
-            return
+    if callable(original_add_current_note):
+        def _wrapped_add_current_note():
+            note = getattr(getattr(dlg, "editor", None), "note", None)
+            if note is None:
+                return original_add_current_note()
+            if getattr(note, "id", None) != 0:
+                return
 
-        note_can_be_added = getattr(dlg, "_note_can_be_added", None)
-        if not callable(note_can_be_added):
-            return original_add_current_note()
-        if not note_can_be_added(note):
-            return
+            note_can_be_added = getattr(dlg, "_note_can_be_added", None)
+            if not callable(note_can_be_added):
+                return original_add_current_note()
+            if not note_can_be_added(note):
+                return
 
-        deck_chooser = getattr(dlg, "deck_chooser", None)
-        target_deck_id = getattr(deck_chooser, "selected_deck_id", None)
-        if target_deck_id is None:
-            return original_add_current_note()
+            deck_chooser = getattr(dlg, "deck_chooser", None)
+            target_deck_id = getattr(deck_chooser, "selected_deck_id", None)
+            if target_deck_id is None:
+                return original_add_current_note()
 
-        try:
-            from aqt.operations.note import add_note
-            from aqt.sound import av_player
-            from aqt.utils import tr
-        except Exception:
-            return original_add_current_note()
+            try:
+                from aqt.operations.note import add_note
+                from aqt.sound import av_player
+                from aqt.utils import tr
+            except Exception:
+                return original_add_current_note()
 
-        def on_success(changes) -> None:
-            dlg._last_added_note = note
-            dlg.addHistory(note)
-            tooltip(tr.importing_cards_added(count=changes.count), period=500)
-            av_player.stop_and_clear_queue()
-            dlg._load_new_note(sticky_fields_from=note)
-            gui_hooks.add_cards_did_add_note(note)
+            def on_success(changes) -> None:
+                dlg._last_added_note = note
+                dlg.addHistory(note)
+                tooltip(tr.importing_cards_added(count=changes.count), period=500)
+                av_player.stop_and_clear_queue()
+                dlg._load_new_note(sticky_fields_from=note)
+                gui_hooks.add_cards_did_add_note(note)
 
-        mark_reviewer_extract_note_added(pending_extract_options())
-        add_note(parent=dlg, note=note, target_deck_id=target_deck_id).success(
-            on_success
-        ).run_in_background()
+            mark_reviewer_extract_note_added(pending_extract_options())
+            add_note(parent=dlg, note=note, target_deck_id=target_deck_id).success(
+                on_success
+            ).run_in_background()
 
-    dlg._add_current_note = _wrapped_add_current_note
+        dlg._add_current_note = _wrapped_add_current_note
+
+    if callable(original_close):
+        def _wrapped_close():
+            try:
+                return original_close()
+            finally:
+                _retire_embedded_add_dialog(dlg)
+
+        dlg._close = _wrapped_close
+
     dlg._incremento_embedded_add_hooks_installed = True
 
 

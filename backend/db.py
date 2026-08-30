@@ -20,6 +20,8 @@ epub_highlights — highlighted passages per EPUB section
 writing_progress — per-card editor state for markdown writing notes
 writing_word_stats — per-card writing word-count baselines and totals
 stats           — daily and lifetime review statistics (JSON blobs per scope)
+stats_daily_history — normalized per-logical-day count/time snapshots for trends
+reading_page_history — unique PDF/EPUB pages viewed per logical day
 priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 epub_card_sources — notes created while reading an EPUB section
@@ -501,11 +503,52 @@ def _migration_5_document_index_state(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_6_statistics_history(conn: sqlite3.Connection) -> None:
+    """Add bounded, constraint-backed daily statistics and page history."""
+    _begin_migration_script(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS stats_daily_history (
+            logical_date TEXT PRIMARY KEY
+                CHECK (
+                    length(logical_date) = 10
+                    AND logical_date GLOB
+                        '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                ),
+            counts_json TEXT NOT NULL DEFAULT '{"type":{},"tags":{},"mode":{}}'
+                CHECK (length(counts_json) <= 262144),
+            seconds_json TEXT NOT NULL DEFAULT '{"type":{},"tags":{}}'
+                CHECK (length(seconds_json) <= 262144),
+            updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS reading_page_history (
+            logical_date TEXT NOT NULL
+                CHECK (
+                    length(logical_date) = 10
+                    AND logical_date GLOB
+                        '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                ),
+            document_type TEXT NOT NULL
+                CHECK (document_type IN ('pdf', 'epub')),
+            card_id INTEGER NOT NULL CHECK (card_id > 0),
+            page_number INTEGER NOT NULL CHECK (page_number > 0),
+            recorded_at INTEGER NOT NULL DEFAULT 0 CHECK (recorded_at >= 0),
+            PRIMARY KEY (logical_date, document_type, card_id, page_number)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_reading_page_history_date_type
+            ON reading_page_history (logical_date, document_type);
+        """,
+    )
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
     (4, "content_identity", _migration_4_content_identity),
     (5, "document_index_state", _migration_5_document_index_state),
+    (6, "statistics_history", _migration_6_statistics_history),
 )
 
 
@@ -2905,6 +2948,25 @@ def get_web_card_sources(addon_dir: str, profile: str, web_card_id: int, url: st
 
 
 def export_stats_json(addon_dir: str, profile: str) -> str:
+    try:
+        from .statistics import export_stats_data
+    except Exception:
+        try:
+            from statistics import export_stats_data  # type: ignore
+        except Exception:
+            export_stats_data = None
+    if callable(export_stats_data):
+        try:
+            return json.dumps(
+                export_stats_data(addon_dir, profile),
+                indent=2,
+                ensure_ascii=False,
+            )
+        except Exception:
+            # Preserve the legacy aggregate-only fallback for damaged or
+            # partially migrated profiles.
+            pass
+
     try:
         from .statistics import _normalize_stats
     except Exception:
