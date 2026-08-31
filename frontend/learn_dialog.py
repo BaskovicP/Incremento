@@ -3400,7 +3400,7 @@ class SchedulerConfigDialog(QDialog):
                 "then start the session again.",
             )
             return
-        self.save_config()
+        self.save_config(save_selected_profile=True)
         self._close_live_preview()
         super().accept()
 
@@ -3596,10 +3596,28 @@ class SchedulerConfigDialog(QDialog):
             data["selected_profile"] = self.selected_dialog_profile_name()
         return data
 
-    def save_config(self) -> None:
+    def save_config(self, *, save_selected_profile: bool = False) -> None:
+        """Persist dialog state and optionally overwrite its selected named preset."""
         config = load_addon_config(mw.addonManager, _ADDON_PKG)
-        config["dialog"] = self._build_current_dict(include_selected_profile=True)
-        save_addon_config(mw.addonManager, _ADDON_PKG, config)
+        dialog_data = self._build_current_dict(include_selected_profile=True)
+        config["dialog"] = dialog_data
+
+        selected_name = (
+            self.selected_dialog_profile_name()
+            if save_selected_profile
+            else None
+        )
+        if save_selected_profile and selected_name:
+            profile_data = dict(dialog_data)
+            profile_data.pop("selected_profile", None)
+            updated_profiles = dict(self._profiles)
+            updated_profiles[selected_name] = profile_data
+            config["scheduler_presets"] = updated_profiles
+            config["profiles"] = copy.deepcopy(updated_profiles)
+
+        saved_config = save_addon_config(mw.addonManager, _ADDON_PKG, config)
+        if save_selected_profile and selected_name:
+            self._profiles = copy.deepcopy(saved_config.get("scheduler_presets") or {})
 
     # ------------------------------------------------------------------
     # Profile management

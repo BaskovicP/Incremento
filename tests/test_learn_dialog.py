@@ -725,11 +725,128 @@ class TestSchedulerConfigDialogPersistence:
 
 
 class TestSchedulerConfigDialogState:
+    def test_accept_persists_current_values_into_selected_preset(self, monkeypatch):
+        stored_config = {
+            "dialog": {"session_card_count": 20, "selected_profile": "Focus"},
+            "scheduler_presets": {
+                "Focus": {"session_card_count": 20, "topics_slider": 80},
+                "Spare": {"session_card_count": 99, "topics_slider": 1},
+            },
+            "future_setting": {"keep": True},
+        }
+        write_calls = []
+        addon_manager = SimpleNamespace(
+            getConfig=lambda _name: stored_config,
+            writeConfig=lambda _name, config: write_calls.append(config),
+        )
+        dialog = _build_dialog_for_profile_tests(
+            stored_config["scheduler_presets"],
+            selected_name="Focus",
+            current_data={"session_card_count": 42, "topics_slider": 100},
+        )
+        dialog._use_live_preview_enabled = False
+        dialog._live_preview_cache_is_current = lambda: False
+        dialog._close_live_preview = lambda: None
+        accepted = []
+        monkeypatch.setattr(_MOD, "mw", SimpleNamespace(addonManager=addon_manager))
+        monkeypatch.setattr(
+            _MOD.QDialog,
+            "accept",
+            lambda _self: accepted.append(True),
+            raising=False,
+        )
+
+        dialog.accept()
+
+        assert stored_config["scheduler_presets"] == {
+            "Focus": {"session_card_count": 42, "topics_slider": 100},
+            "Spare": {"session_card_count": 99, "topics_slider": 1},
+        }
+        assert stored_config["profiles"] == stored_config["scheduler_presets"]
+        assert stored_config["dialog"] == {
+            "session_card_count": 42,
+            "topics_slider": 100,
+            "selected_profile": "Focus",
+        }
+        assert stored_config["future_setting"] == {"keep": True}
+        assert dialog._profiles == stored_config["scheduler_presets"]
+        assert len(write_calls) == 1
+        assert accepted == [True]
+
+    def test_accept_with_current_settings_does_not_modify_named_presets(self, monkeypatch):
+        stored_config = {
+            "dialog": {"session_card_count": 20},
+            "scheduler_presets": {
+                "Focus": {"session_card_count": 20, "topics_slider": 80},
+            },
+        }
+        write_calls = []
+        addon_manager = SimpleNamespace(
+            getConfig=lambda _name: stored_config,
+            writeConfig=lambda _name, config: write_calls.append(config),
+        )
+        dialog = _build_dialog_for_profile_tests(
+            stored_config["scheduler_presets"],
+            selected_name=None,
+            current_data={"session_card_count": 42, "topics_slider": 100},
+        )
+        dialog._use_live_preview_enabled = False
+        dialog._live_preview_cache_is_current = lambda: False
+        dialog._close_live_preview = lambda: None
+        monkeypatch.setattr(_MOD, "mw", SimpleNamespace(addonManager=addon_manager))
+        monkeypatch.setattr(_MOD.QDialog, "accept", lambda _self: None, raising=False)
+
+        dialog.accept()
+
+        assert stored_config["scheduler_presets"] == {
+            "Focus": {"session_card_count": 20, "topics_slider": 80},
+        }
+        assert stored_config["dialog"] == {
+            "session_card_count": 42,
+            "topics_slider": 100,
+            "selected_profile": None,
+        }
+        assert len(write_calls) == 1
+
+    def test_stale_required_preview_blocks_preset_save_and_accept(self, monkeypatch):
+        dialog = _build_dialog_for_profile_tests(
+            {"Focus": {"session_card_count": 20}},
+            selected_name="Focus",
+            current_data={"session_card_count": 42},
+        )
+        dialog._use_live_preview_enabled = True
+        dialog._live_preview_cache_is_current = lambda: False
+        saves = []
+        closes = []
+        accepted = []
+        warnings = []
+        dialog.save_config = lambda **kwargs: saves.append(kwargs)
+        dialog._close_live_preview = lambda: closes.append(True)
+        monkeypatch.setattr(
+            _MOD.QMessageBox,
+            "warning",
+            lambda _parent, title, message: warnings.append((title, message)),
+        )
+        monkeypatch.setattr(
+            _MOD.QDialog,
+            "accept",
+            lambda _self: accepted.append(True),
+            raising=False,
+        )
+
+        dialog.accept()
+
+        assert saves == []
+        assert closes == []
+        assert accepted == []
+        assert warnings and warnings[0][0] == "Live Preview Required"
+
     def test_accept_does_not_scan_cards_on_the_qt_thread(self, monkeypatch):
         dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
         dialog._use_live_preview_enabled = False
         dialog._live_preview_cache_is_current = lambda: False
-        dialog.save_config = lambda: None
+        save_calls = []
+        dialog.save_config = lambda **kwargs: save_calls.append(kwargs)
         dialog._close_live_preview = lambda: None
         accepted = []
         monkeypatch.setattr(
@@ -751,6 +868,7 @@ class TestSchedulerConfigDialogState:
 
         dialog.accept()
 
+        assert save_calls == [{"save_selected_profile": True}]
         assert accepted == [True]
 
     def test_build_current_dict_includes_auto_refill_session(self):

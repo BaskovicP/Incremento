@@ -114,7 +114,7 @@ npm --prefix frontend run build
 ## Session Builder UI
 
 - Main file: `frontend/learn_dialog.py`.
-- The dialog supports named presets, optional live preview, and branch-scoped study launches from the knowledge tree.
+- The dialog supports named presets, optional live preview, and branch-scoped study launches from the knowledge tree. A successful **OK** must atomically persist the current dialog state and overwrite the selected named preset; `Current Settings` must not alter named presets. A stale required live preview still blocks both saving and launch.
 - The **Card types** checkboxes control whether `New`, `Learning`, and `Due / Review` cards are eligible for session selection at all.
 - **Cards per session** and backend normalization share the inclusive 1–9,999 range. The Docs/Other slider stores 100 at its fully-right 0%-Docs endpoint; keep its UI direction and backend conversion aligned.
 - The **Advanced** checkbox `Auto-refill session deck to keep this many pending cards` uses **Cards per session** as a live pending-window target after the session starts.

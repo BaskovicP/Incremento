@@ -149,6 +149,8 @@ The session dialog also supports:
 - optional live preview before starting
 - branch-scoped study when launched from the knowledge tree
 
+When a named preset is selected, clicking **OK** saves the current scheduler setup back into that preset before starting the session. You do not need to click **Save** separately. **Current Settings** continues to save only the shared dialog state.
+
 Good first-run defaults:
 
 - 50 cards
