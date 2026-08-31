@@ -8,6 +8,18 @@ Use this file for work in `backend/`.
 - Knowledge-tree persistence, branch postpone logic, note provenance helpers, and video media/subtitle management also live here.
 - Active Incremento session lifecycle also lives here, especially `backend/session.py` and `backend/scheduler_config.py`.
 
+## Backend Module Map
+
+- Foundations and trust boundaries: `paths.py`, `config_service.py`, `deps.py`, `content_safety.py`, and `network_safety.py`.
+- SQLite and recovery: `db_connection.py`, `db_schema.py`, `db.py`, `operation_journal.py`, `reconciliation.py`, `migration.py`, `diagnostics.py`, and `export_bundle.py`.
+- Anki model adapters: `cards.py`, `decks.py`, `note_metadata.py`, `note_type_updates.py`, `anki_compat.py`, `priority_manager.py`, `reviewer_buttons.py`, `reviewer_extract.py`, and `reviewer_tags.py`.
+- Session and review scheduling: `scheduler.py`, `scheduler_config.py`, `scheduler_preview.py`, `session.py`, `session_selection.py`, `answer_schedule.py`, `custom_schedule.py`, `topic_scheduler.py`, `topic_a_factor_bulk.py`, `topic_postpone.py`, `item_skip.py`, and `review_time_tracker.py`.
+- Imported-content managers: `pdf_manager.py`, `epub_manager.py`, `local_file_manager.py`, `video_manager.py`, `video_providers.py`, `web_manager.py`, `webpage_markdown.py`, `webpage_snapshot.py`, `writing_manager.py`, and `image_ocr.py`.
+- Reader-owned supplemental data: `pdf_highlights.py`, `epub_highlights.py`, `reader_bookmarks.py`, `notebook_citations.py`, and `media_review.py`.
+- Knowledge, search, and reporting: `knowledge_tree.py`, `knowledge_tree_postpone.py`, `search_indexer.py`, `search_repository.py`, and `statistics.py`.
+
+The map is an ownership index, not permission to couple every module in a group. Keep pure normalization and path helpers importable without Anki. Some legacy backend adapters still touch `aqt.mw`; new UI work belongs in the root/frontend adapter layer, and backend modules must never import frontend dialogs.
+
 ## Config-Backed Behavior
 
 - `backend/config_service.py` is the only shipped Python boundary for `getConfig()`/`writeConfig()`. It versions and normalizes config while preserving unknown keys.
@@ -39,6 +51,15 @@ Use this file for work in `backend/`.
 - Keep `backend/migration.py` idempotent. It owns migration from legacy flat `user_files/` into per-profile layout.
 - Capture the active profile before starting background work. Do not call `_active_profile()` later to decide where that worker writes.
 
+## External Content and Network Safety
+
+- `backend/content_safety.py` is the shared boundary for bounded external plain text, safe Anki-HTML/Markdown rendering, and uncredentialed HTTP(S) URL normalization. Reuse it instead of adding permissive one-off parsing in an importer; content managers remain responsible for their stricter title/filename rules.
+- `backend/network_safety.py` owns outbound HTTP(S) fetch policy. It rejects credentials, non-HTTP schemes, loopback/private/link-local/multicast/reserved targets, and unsafe DNS results; it connects to the validated address, ignores ambient proxy variables, checks redirects and the final peer, and enforces bounded response reads. Preserve all-address DNS validation so a hostname cannot pass with one public answer and then select a private one.
+- Redirects are new trust decisions. Revalidate every hop and the final URL; never pass an already-open redirect response to a generic downloader that follows the rest implicitly.
+- Browser-provided titles, selections, URLs, HTML, Markdown, media bytes, and filenames remain untrusted even after bridge authentication. Validate shape and size before collection, SQLite, or filesystem side effects.
+- `backend/webpage_snapshot.py` accepts only bounded HTML snapshots (currently 16 MiB) and rewrites resources into an inert exact-origin representation. Do not turn snapshots into a remote-capable mini-browser.
+- `backend/image_ocr.py` operates only on selected local Anki media, skips Incremento document/media note types, writes its hidden OCR field/index deliberately, and invokes Tesseract only when explicitly available. Do not fetch images or silently install OCR tools.
+
 ## Persistence and Recovery
 
 - Anki is authoritative for notes/cards/decks/tags/scheduling/revlog. `incremento.db` contains only Incremento supplemental state.
@@ -49,6 +70,32 @@ Use this file for work in `backend/`.
 - `backend/note_type_updates.py` owns non-mutating inspection and consent-gated changes for Incremento-owned note types. Existing types must not be updated from startup hooks or ordinary ensure calls; only the explicit UI coordinator may pass `allow_existing_update=True`.
 - `backend/migration.py` is resumable and non-overwriting. Conflicts remain in the legacy location and are reported by the profile migration marker.
 - `custom_learn_stats.json` remains canonical. Stats mutations, including deletes, must use the profile lock/read-modify-write path; SQLite is only mirror/fallback.
+
+## Import and File Lifecycle
+
+- Every external-content creation path must validate first, allocate profile-relative outputs through `paths.py`, and use `ImportOperation` before writing a managed file or creating an Anki note. Journal each output before its side effect.
+- `pdf_manager.py` and `epub_manager.py` own document import/storage and note-type helpers. EPUB extraction must remain inside its per-profile extraction root; cached sanitized output is versioned, so behavior changes require a sanitizer-version bump and cache regressions.
+- `local_file_manager.py` distinguishes an absolute reference to a user-owned file from a managed profile copy. Never delete or silently convert the reference target, and never treat an arbitrary path as a managed file merely because its basename matches.
+- `writing_manager.py` owns Markdown files, safe unique names, atomic temporary-file replacement, per-card state, and tiered backups under the active profile. A failed save must leave the previous document readable.
+- `video_manager.py` owns managed video/subtitle paths and note fields; `video_providers.py` parses supported provider URLs and metadata. Deferred download must reuse the existing bounded pipeline and may not install `yt-dlp` or another downloader on demand.
+- `web_manager.py`, `webpage_markdown.py`, and `webpage_snapshot.py` own tracked-web state and browser-originated Markdown/snapshot normalization. Keep captured provenance in dedicated `Incremento_*` fields.
+- `backend/deps.py` is explicit optional-dependency discovery. PyMuPDF work must remain bounded, Tesseract remains opt-in/discovered, and missing optional tools must produce a controlled unavailable path rather than a runtime installer.
+- `backend/export_bundle.py` copies the selected profile tree without following symlinks and skips known lock/cache transients. Its export caller explicitly excludes the live Incremento DB/WAL/SHM while copying the checkpointed database separately. Preserve that split, keep all sources inside the selected profile root, and align backup/restore behavior with `EXPORTING.md`.
+
+## Reader State, Highlights, and Bookmarks
+
+- `pdf_highlights.py` and `epub_highlights.py` store profile/card-scoped highlights with source positions. Preserve document identity and selection context across single, bulk, and citation-import workflows.
+- `reader_bookmarks.py` supports `pdf`, `epub`, `web`, `writing`, and `video` locations. Normalize locations per type, make duplicate saves idempotent, keep comments bounded (currently 240 characters), and keep bookmark records separate from automatic reading progress.
+- `notebook_citations.py` parses Kindle notebook exports into candidate highlights; parsing must not write cards or files until the explicit import flow accepts validated rows.
+- `media_review.py` resolves linked Anki cards but never makes Incremento SQLite authoritative for scheduling. Its preview is read-only; filtered-deck mutation belongs to the explicit review operation.
+
+## Postpone, Skip, Priority, and Preview Helpers
+
+- `topic_postpone.py` and `item_skip.py` use temporary Anki burying plus profile-scoped expiry rows that lifecycle polling later releases. Session-mode topic postponement is runtime-only. Reset/release the correct state on profile/session boundaries and never unbury unrelated cards.
+- `knowledge_tree_postpone.py` is a separate branch-planning engine: it normalizes saved presets, selects an explicit scope, computes item/topic delay adjustments, and applies approved priority/topic-state changes. It does not own the reviewer bury/expiry mechanism; keep preview and apply results aligned.
+- `topic_a_factor_bulk.py` applies explicit bulk topic-state edits. Those edits must remain compatible with answer Undo/Redo reconciliation, which must not overwrite a newer manual value.
+- `priority_manager.py` centralizes priority persistence and configured ordering semantics. Some configurations intentionally treat lower numbers as more important; consumers must use its comparison/order helpers instead of assuming numeric direction.
+- `scheduler_preview.py` is explanatory math for labels and UI previews. The authoritative scheduled list is still produced by the real session scheduler; never claim a preview formula proves the eventual card order.
 
 ## Search and Indexing
 
@@ -202,4 +249,8 @@ Use this file for work in `backend/`.
 .venv/bin/python -m pytest -o addopts= tests/test_settings_dialog.py tests/test_custom_schedule.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_note_metadata.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_custom_schedule.py tests/test_db.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_content_safety.py tests/test_network_safety.py tests/test_browser_bridge.py tests/test_diagnostics.py tests/test_export_bundle.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_pdf_manager.py tests/test_epub_manager.py tests/test_local_file_manager.py tests/test_writing_manager.py tests/test_operation_journal.py tests/test_reconciliation.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_reader_bookmarks.py tests/test_highlights.py tests/test_epub_highlights.py tests/test_notebook_citations.py tests/test_media_review.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_priority_manager.py tests/test_topic_a_factor_bulk.py tests/test_topic_postpone.py tests/test_item_skip.py tests/test_scheduler_preview.py -q
 ```

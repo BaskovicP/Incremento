@@ -75,9 +75,37 @@ editing implementation code so the test can drive the change.
 ## Test Environment
 
 - Use `.venv/bin/python`.
-- `tests/conftest.py` sets the active profile to `TestProfile`, so test DB and path helpers use `user_files/TestProfile/`.
+- `tests/conftest.py` installs broad `anki`/`aqt` stand-ins before project imports, adds `backend/` and `frontend/` to `sys.path`, and sets the active profile to `TestProfile`. A focused test that temporarily replaces `aqt`, `aqt.qt`, `PyQt6`, or project modules must restore the exact previous `sys.modules` entries immediately after importing its isolated target.
+- Do not let the shared `TestProfile` name turn into shared disk state. Use a temporary addon root/profile directory or monkeypatch path boundaries; no automated test may inspect or mutate the developer's real `user_files/`.
 - Prefer focused regression tests for the subsystem you change, then run the full suite when the change is broad enough to justify it.
 - Many focused runs need `-o addopts=` because local `pytest.ini` may expect plugins not present in the environment.
+
+## Test Layers and File Map
+
+- Pure/unit tests cover normalizers and deterministic models: cards/decks/config/content/network safety, paths, scheduler/config/preview math, priority/tag helpers, bookmark/link models, and frontend `.mjs` link/history modules.
+- SQLite/filesystem integration tests cover `test_db*.py`, operation journal/reconciliation/migration, statistics, highlights/bookmarks, content managers, writing/local files, export, diagnostics, and search indexing/repository. Use temporary profile roots and assert rollback plus containment.
+- Mocked Anki/Qt adapter tests cover dialogs, docks, reviewer/editor hooks, session orchestration, browser tools, and collection-operation dispatch without needing a live application.
+- `test_cards_anki_integration.py`, `test_session_anki_integration.py`, and `test_topic_scheduler_anki_integration.py` launch clean subprocesses to exercise real Anki collection/scheduler behavior that the global mocks cannot prove.
+- `test_browser_bridge.py` covers the local protocol/server boundary; extension-side protocol and model tests live under `chrome_extensions/incremento_companion/tests/` and run with Node.
+- `frontend/tests/*.test.mjs` cover pure PDF viewer anchor/link/back-history behavior; a React source change also requires the Vite build because the shipped bundle is committed.
+- `test_llm_repair_loop.py`, `test_llm_repair_pipeline.py`, and `repair_cases/` verify repair-harness safety. `test_package_addon.py` verifies release allowlists, manifest/archive shape, and user-data exclusions.
+- `visual_test.py` is a manual live-Anki diagnostic helper, not a normal pytest or CI test. It can restart/kill Anki with `--restart`, requires AnkiConnect/CDP and a real PDF card, and may expose live profile content on screen. Run it only with explicit authorization and a safe test profile.
+
+## Choosing Coverage
+
+| Changed boundary | Minimum focused coverage |
+|---|---|
+| Config/default/UI wiring | `test_config_service.py`, `test_settings_dialog.py`, subsystem test |
+| SQLite schema/repository | `test_db_schema.py`, `test_db.py`, migration rollback plus consumer test |
+| Import/file manager | content-manager test, operation journal/reconciliation, traversal/rollback case |
+| Session/scheduler | pure scheduler/selection, session orchestration, relevant real-Anki integration |
+| Reviewer answer override | answer/custom/topic tests plus real-Anki revlog and Undo/Redo lifecycle |
+| PDF/EPUB reader | dock/dialog/helper tests, reader-link/search/highlight tests, frontend Node tests/build when React changes |
+| Browser bridge/extension | Python bridge test, extension model/protocol tests, rebuilt extension bundles |
+| UI focus/profile background work | stale callback/profile-switch/close case and user-visible state transition |
+| Packaging/repair automation | dedicated script tests, deterministic repair corpus, archive/artifact safety assertions |
+
+“Minimum” does not replace the regression named by the bug. Add the smallest test that actually fails under the observed defect, even when a neighboring suite already exists.
 
 ## Useful Suites
 
@@ -106,6 +134,25 @@ Focused suites for common hotspots:
 .venv/bin/python -m pytest -o addopts= tests/test_topic_scheduler.py tests/test_topic_scheduler_anki_integration.py tests/test_custom_schedule.py tests/test_db.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_db.py tests/test_writing_dock.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_statistics.py tests/test_stats_dialog.py tests/test_timer_widget.py tests/test_session.py tests/test_scheduler.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_content_safety.py tests/test_network_safety.py tests/test_export_bundle.py tests/test_diagnostics.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_pdf_bookshelf.py tests/test_reader_links.py tests/test_pdf_dock.py tests/test_epub_dock.py -q
+```
+
+Non-pytest checks are separate and must not be reported as part of the Python count:
+
+```bash
+npm --prefix frontend test
+npm --prefix chrome_extensions/incremento_companion test
+npm --prefix frontend run build
+npm --prefix frontend run build:extension
+.venv/bin/python scripts/llm_repair_eval.py tests/repair_cases --deterministic-only --json
+.venv/bin/python -m compileall -q __init__.py backend frontend scripts
+```
+
+Use the release packager for the final archive gate; it compiles, tests, rebuilds, stages, and validates the archive:
+
+```bash
+.venv/bin/python scripts/package_addon.py --release --clean-staging
 ```
 
 ## Expectations
@@ -142,8 +189,13 @@ Focused suites for common hotspots:
 - If you change stats dialog helpers, cover summary metrics, 7/30-day Topics/Items/Other and PDF/EPUB/time series, streak/active-day calculations, EPUB labels/colors, review-time formatting, and hidden synthetic tags such as `__no_tags__`.
 - If you change timer activity behavior, cover PDF and EPUB page counters separately, per-report reset after summaries, cumulative daily totals, and reset on scheduler logical-day changes.
 - If you change support diagnostics, inject representative secrets into config, event extras, database rows, paths, URLs, IDs, exception messages, and tampered persisted logs, then assert none survive the exported ZIP. Also cover event-schema rejection, non-blocking writes, bounded queue drops/rotation, per-profile paths, fixed ZIP metadata, recorder health, safe row/column counts and schema/code hashes, non-collection export execution, operation attribution (including partials), scheduling/session/explicit-review lifecycle events, and menu/callback wiring.
+- Security regressions need both rejection and side-effect assertions. Prove unsafe URLs/paths/origins/payloads do not create notes, files, DB rows, bridge retries, or leaked diagnostic/export content.
+- Generated-asset checks must start from source. Do not write a test that blesses a hand-edited bundle; run source tests, rebuild, then require the generated diff to be clean and reproducible.
+- Time-sensitive tests should inject clocks/logical dates or use bounded event polling. `time.sleep()` is not synchronization and is not an acceptable fix for a race.
+- Tests may assert logging/diagnostic categories only when part of the contract; never print or fixture real card content, profile names, paths, URLs, tokens, support bundles, or user databases.
 
 ## Current Baseline
 
 - The full suite must collect and pass in one pytest process. UI tests that temporarily replace `aqt`, `aqt.qt`, or `PyQt6` modules must restore the original dependency modules immediately after importing their isolated module; do not leave collection-order contamination as accepted baseline noise.
 - Release verification also compiles all shipped Python, runs extension tests, rebuilds both generated web targets, and validates the `.ankiaddon` contents.
+- CI runs supported Python versions 3.12 and 3.13, the deterministic repair guards, the full pytest suite, `npm audit --audit-level=high`, frontend/extension tests and builds, and a generated-output drift check. A local result on only one layer does not supersede a failing CI layer.

@@ -9,6 +9,30 @@ Use this file for work in `frontend/`.
 - The Start Incremental Learning dialog in `frontend/learn_dialog.py` also lives here, including session-size, card-state, and active-session auto-refill controls.
 - The main settings surface lives in `frontend/settings_dialog.py`, but persistence wiring still goes through `__init__.py`.
 
+## Frontend Module Map
+
+- Document readers: `pdf_dock.py`, `pdf_dialog.py`, `pdf_quick_jump.py`, `pdf_bookshelf.py`, `epub_dock.py`, `epub_dialog.py`, `current_document_search_dialog.py`, `reader_links.py`, `bookmark_comment_dialog.py`, and `highlight_note_dialog.py`.
+- Highlight/citation flows: `pdf_highlight_bulk_dialog.py` and `notebook_citation_import_dialog.py`.
+- Other content docks and import dialogs: `local_file_dock.py`, `video_dock.py`, `web_dock.py`, `writing_dock.py`, `add_local_file_dialog.py`, `add_video_dialog.py`, `add_web_dialog.py`, `add_writing_dialog.py`, and `webpage_dialog.py`.
+- Add/edit/reviewer integrations: `add_card_dock.py`, `extract_card_dialog.py`, `extract_batch_dialog.py`, `reviewer_extract_button.py`, `reviewer_focus.py`, `reviewer_shortcuts.py`, `reviewer_source_cover.py`, `reviewer_priority_badge.py`, and `reviewer_tag_dialog.py`.
+- Browser/editor tools: `browser_priority_toolbar.py`, `browser_quick_tags.py`, `priority_dialog.py`, `quick_tag_shortcuts.py`, `tag_colors.py`, `tag_edit.py`, and `image_rotation.py`.
+- Learning and scheduling dialogs: `learn_dialog.py`, `session_launcher.py`, `custom_schedule_dialog.py`, `media_review_dialog.py`, and the four `knowledge_tree*_dialog.py` modules.
+- Search, statistics, and maintenance: `search_all.py`, `stats_dialog.py`, `timer_widget.py`, `database_entries_dialog.py`, `sqlite_editor_dialog.py`, `settings_dialog.py`, and `note_type_update_dialog.py`.
+- Platform/browser helpers: `file_shell.py`; keep command construction centralized here rather than scattering platform-specific shell calls.
+- PDF viewer source: `src/main.jsx`, `src/PdfViewer.jsx`, `src/HighlightLayer.jsx`, `src/usePdfRender.js`, `src/pdfLinks.mjs`, `src/pdfLinkHistory.mjs`, and `src/pdfAnchorLocation.mjs`. Their focused Node tests live under `frontend/tests/`.
+- PDF viewer pure tests: `tests/pdfLinks.test.mjs`, `tests/pdfLinkHistory.test.mjs`, and `tests/pdfAnchorLocation.test.mjs`; keep each beside the source contract it protects.
+- Web toolchain: `package.json` declares React/Vite scripts and dependencies, `package-lock.json` pins them, `vite.config.js` builds the PDF viewer, and `vite.extension.config.js` builds the companion extension. Dependency or lockfile changes require `npm audit --audit-level=high` and both relevant tests/builds.
+
+## Qt, Operations, and Lifecycle
+
+- Never do document extraction, library scans, downloads, large collection queries, or filtered-deck builds on Qt's main thread. Use Anki's operation/task APIs appropriate to collection ownership.
+- A worker captures the profile and immutable request values at launch, uses the operation-provided collection where applicable, and returns plain data. Create and mutate Qt objects only in the UI callback.
+- Reject a result if the profile, current card, dialog generation, or request token no longer matches. Closing a dock/dialog or switching profile must make pending callbacks harmless.
+- Use `QueryOp` for read-only collection work and the specifically documented no-progress initial session mutation. Use `CollectionOp` for ordinary collection mutations so Anki serializes changes and emits its normal operation hooks.
+- Parent transient dialogs to the owning Anki window, make teardown idempotent, and avoid modal prompts from reviewer question/answer hooks. On macOS, a hidden native modal can strand input behind a raised dock.
+- Signals, hooks, shortcuts, and monkey patches may be installed more than once during reloads; registration must be idempotent and disconnection must not remove another component's handler.
+- `frontend/file_shell.py` opens/reveals validated local targets using argument lists. Never interpolate a user path into a shell command string.
+
 ## PDF Viewer
 
 - Main Python loader: `frontend/pdf_dock.py`.
@@ -19,12 +43,35 @@ Use this file for work in `frontend/`.
 - The PDF Review group exposes both due-nearby review and Review All. Review All opens the shared Topic/Item, scope, state, limit, and order picker, reviews linked cards in a dedicated filtered deck, then restores the PDF page/zoom/read state.
 - Clickable links in both readers default off to preserve text selection. PDF link annotations render as opt-in hit targets; internal destinations use limit-aware page navigation and external targets cross the nonce/current-card bridge. The PDF link toggle has an adjacent Jump Back control: record a bounded stack of internal-link source pages and scroll ratios, restore both when going back, and clear the stack whenever a PDF starts. EPUB anchors cross the same kind of trusted bridge, resolve only to known sections within the active extraction root, and use Qt only for validated HTTP(S) external links. Both readers preserve WebEngine's standard context menu and append **Copy Link to This Place** only for a validated current-card document point. Clipboard anchors carry card-ready HTML, a plain-text fallback, and a validated private MIME marker; the editor hook must rebuild only that allow-listed anchor shape and paste it as trusted internal rich HTML because Anki's external sanitizer removes `onclick`. PDF anchors restore page/scroll without replacing saved reading progress, while EPUB anchors restore section/text offset with a bounded scroll fallback. Keep legacy link commands readable and never let either web view navigate remotely.
 - `frontend/vite.config.js` controls where the shipped PDF viewer bundle is written. Keep it aligned with `web/pdf_dock.html`.
+- `frontend/src/main.jsx` is the React entry point, `frontend/src/PdfViewer.jsx` owns the reader bridge/state, `frontend/src/HighlightLayer.jsx` owns highlight rendering/interactions, and `frontend/src/usePdfRender.js` owns the PDF.js render lifecycle. Keep pure anchor/link/history rules in the `.mjs` modules so Node tests can exercise them without a browser.
 
 If you change PDF viewer React source:
 
 ```bash
 npm --prefix frontend run build
 ```
+
+Also run the source-level tests before accepting the generated bundle:
+
+```bash
+npm --prefix frontend test
+```
+
+## Import Dialogs and Content Docks
+
+- `add_local_file_dialog.py`, `add_video_dialog.py`, `add_web_dialog.py`, and `add_writing_dialog.py` collect and validate user choices; backend managers own file/network side effects. Dialog acceptance must not leave a half-created note when a later step fails.
+- `webpage_dialog.py` owns webpage-to-card choices, including snapshot/Markdown behavior. Treat the live page and extension payload as untrusted and pass raw provenance to backend metadata helpers rather than constructing inline source blocks.
+- `local_file_dock.py` must preserve whether the card references an intentional original absolute path or a managed profile copy. Resolve managed copies through backend containment helpers, allow reference-mode paths to remain external by design, disable open/reveal for missing files, and route both actions through `file_shell.py`.
+- `video_dock.py`, `web_dock.py`, and document docks own profile-scoped WebEngine state. Never share cookies/cache/profile instances across Anki profiles, and reset singleton references before a profile migration/open completes.
+- `add_writing_dialog.py` and `writing_dock.py` operate on backend-owned atomic Markdown storage. UI autosave/error handling must never report success until the durable replace completes.
+
+## Reader Links, Search, and Annotations
+
+- `reader_links.py` is a security boundary, not just clipboard formatting. It validates the private Incremento marker and canonical document location, emits a narrowly allow-listed rich anchor plus plain fallback, and forces trusted rich paste only for that verified shape. Reject arbitrary clipboard HTML, scripts, stale-card markers, and non-document commands.
+- `pdf_quick_jump.py` owns page-jump parsing/history UI; `current_document_search_dialog.py` owns bounded results for the open document. Keep page/section positions type-correct and never interpret user search text as bridge code.
+- `bookmark_comment_dialog.py` enforces the backend comment limit and returns plain text. `highlight_note_dialog.py` edits supplemental highlight notes without changing the selected document range.
+- `pdf_highlight_bulk_dialog.py` and `notebook_citation_import_dialog.py` preview before creating cards. Preserve per-row selection, source positions, active profile/document identity, rollback-safe import behavior, and dedicated provenance fields.
+- WebEngine request interceptors and navigation handlers must fail closed. Reader content may use validated internal/local targets and normalized uncredentialed HTTP(S) external links only through the opt-in system-browser path; it must never navigate the reader view to remote content.
 
 ## Add Card and Note Editors
 
@@ -41,6 +88,16 @@ npm --prefix frontend run build
 - Edit-note toggles must refresh the visible tag widget immediately and may need a scheduled `editor.loadNote()` so the tag row visibly updates.
 - Relevant config keys: `add_card_topic_tags`, `add_card_item_tags`, `extract_notetype`, `extract_source_links`.
 - Generic note editors and field pickers should hide dedicated Incremento provenance fields. Reuse backend `visible_field_names()` behavior rather than duplicating a separate blocklist.
+- `extract_card_dialog.py` owns single-card extraction choices; `extract_batch_dialog.py` owns multi-row Q/A creation. Keep duplicate handling, tag ownership, source metadata, field visibility, and note-type changes consistent with the persistent dock and reviewer extraction path.
+- `reviewer_extract_button.py` and `reviewer_shortcuts.py` are thin UI adapters. Shared extraction behavior belongs in backend/frontend extraction helpers so toolbar and keyboard entry points cannot drift.
+
+## Browser and Editor Utilities
+
+- `browser_priority_toolbar.py` and `priority_dialog.py` route priority changes through `backend/priority_manager.py`; refresh the Browser after a successful collection operation and fail closed for stale selections.
+- `tag_edit.py` centralizes safe note-tag mutations used by UI actions. Preserve Anki tag normalization and update each distinct selected note once.
+- `reviewer_tag_dialog.py` is the reviewer-side tag chooser; it is separate from Browser quick-tag sets and must not write Browser history tables accidentally.
+- `reviewer_source_cover.py` renders source media/cover context without making stored filenames or HTML trusted. Keep missing-media fallbacks and current-card checks.
+- `image_rotation.py` rotates only selected local Anki media, writes a new media artifact, updates the originating editor, and leaves unsupported/remote references unchanged. Treat orientation and format errors as recoverable UI failures.
 
 ## Browser Quick Tags
 
@@ -147,6 +204,12 @@ npm --prefix frontend run build
   - `MANUAL.md`
 - The advanced settings tab opens a guarded database editor. Keep its copy accurate about checkpoint creation and read-only startup.
 
+## Database and Maintenance Dialogs
+
+- `database_entries_dialog.py` is a read-only text/search view of Incremento rows linked to an explicit Browser card selection; it must not become a generic raw-SQL path. The current lookup/format path is synchronous and has no explicit selection/result cap, so do not invoke it automatically or broaden its scope. A hardening change should add card/result budgets and move the DB scan off Qt's main thread with cancellation/stale-profile tests.
+- `sqlite_editor_dialog.py` starts read-only, explicitly checkpoints before enabling writes, validates/quotes identifiers, and restricts mutations to the chosen Incremento database. Never accept an arbitrary filesystem database path or concatenate table/column input into SQL.
+- Maintenance UI that touches Anki or profile storage must show the exact scope before mutation, run the work off the UI thread when non-trivial, and refresh only after the operation succeeds.
+
 ## Card-format updates
 
 - `frontend/note_type_update_dialog.py` explains pending Anki note-type changes before they happen. It must state that the collection is still untouched, offer Later and Sync Before Updating, require an explicit confirmation before Apply, and explain Upload/Download direction after the approved change.
@@ -162,4 +225,12 @@ npm --prefix frontend run build
 .venv/bin/python -m pytest -o addopts= tests/test_knowledge_tree.py tests/test_reviewer_priority_badge.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_video_web.py -q
 .venv/bin/python -m pytest -o addopts= tests/test_writing_dock.py tests/test_reviewer_priority_badge.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_pdf_bookshelf.py tests/test_reader_links.py tests/test_pdf_dock.py tests/test_epub_dock.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_browser_priority_toolbar.py tests/test_reviewer_extract_button.py tests/test_reviewer_shortcuts.py tests/test_reviewer_source_cover.py tests/test_reviewer_tags.py tests/test_tag_colors.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_database_entries_dialog.py tests/test_file_shell.py tests/test_image_rotation.py tests/test_note_type_update_dialog.py tests/test_db.py -q
+.venv/bin/python -m pytest -o addopts= tests/test_current_document_search_dialog.py tests/test_pdf_quick_jump.py tests/test_media_review_dialog.py tests/test_webpage_dialog.py -q
+npm --prefix frontend test
+npm --prefix frontend run build
 ```
+
+Run `npm --prefix frontend run build:extension` instead when changing `vite.extension.config.js` or extension-owned source. Both generated outputs are committed; inspect their diffs and keep them in the same change as their source.
