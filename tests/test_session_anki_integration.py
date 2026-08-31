@@ -100,3 +100,79 @@ def test_anki_manages_completed_and_learning_cards_without_exit_rebuild():
         text=True,
     )
     assert "session exit integration: ok" in result.stdout
+
+
+def test_anki_reclaims_selected_cards_by_emptying_their_foreign_filtered_deck():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    script = dedent(
+        r"""
+        import os
+        import tempfile
+
+        from anki.collection import Collection
+        from backend import session as incremento_session
+
+
+        def make_card(col, deck_id, label):
+            note = col.new_note(col.models.by_name("Basic"))
+            note["Front"] = label
+            note["Back"] = "answer"
+            col.add_note(note, deck_id)
+            return int(note.card_ids()[0])
+
+
+        with tempfile.TemporaryDirectory(prefix="incremento-filtered-reclaim-") as root:
+            col = Collection(os.path.join(root, "review.anki2"))
+            try:
+                home_deck_id = int(col.decks.id("Home"))
+                selected_foreign_id = make_card(col, home_deck_id, "selected foreign")
+                unselected_foreign_id = make_card(col, home_deck_id, "unselected foreign")
+                normal_id = make_card(col, home_deck_id, "normal")
+
+                foreign = incremento_session._prepare_filtered_review_deck(
+                    [selected_foreign_id, unselected_foreign_id],
+                    deck_name="Foreign Filtered Review",
+                    preserve_order=True,
+                    select_deck=False,
+                    col=col,
+                    return_result=True,
+                )
+                foreign_deck_id = int(foreign.deck_id)
+                assert int(col.get_card(selected_foreign_id).did) == foreign_deck_id
+                assert int(col.get_card(unselected_foreign_id).did) == foreign_deck_id
+
+                target = incremento_session._prepare_filtered_review_deck(
+                    [selected_foreign_id, normal_id],
+                    deck_name="Incremento PDF Review",
+                    preserve_order=True,
+                    select_deck=False,
+                    col=col,
+                    return_result=True,
+                    release_from_other_filtered_decks=True,
+                )
+                target_deck_id = int(target.deck_id)
+
+                selected = col.get_card(selected_foreign_id)
+                normal = col.get_card(normal_id)
+                unselected = col.get_card(unselected_foreign_id)
+                assert int(selected.did) == target_deck_id
+                assert int(selected.odid) == home_deck_id
+                assert int(normal.did) == target_deck_id
+                assert int(normal.odid) == home_deck_id
+                assert int(unselected.did) == home_deck_id
+                assert int(unselected.odid) == 0
+                assert col.decks.by_name("Foreign Filtered Review")["dyn"] == 1
+            finally:
+                col.close()
+
+        print("real Anki filtered reclaim integration: ok")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "filtered reclaim integration: ok" in result.stdout

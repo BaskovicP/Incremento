@@ -127,6 +127,39 @@ def test_pdf_viewer_disables_eval_and_declares_csp():
     assert "object-src 'none'" in html
 
 
+def test_pdf_viewer_exposes_opt_in_annotation_links():
+    addon_root = Path(pdf_dock.__file__).resolve().parent.parent
+    hook_source = (addon_root / "frontend" / "src" / "usePdfRender.js").read_text(
+        encoding="utf-8"
+    )
+    viewer_source = (addon_root / "frontend" / "src" / "PdfViewer.jsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "getAnnotations({ intent: 'display' })" in hook_source
+    assert "resolvePdfAnnotationLink" in hook_source
+    assert "Enable clickable links" in viewer_source
+    assert "incremento_pdf_open_link:" in viewer_source
+
+
+def test_pdf_external_link_bridge_requires_current_card(monkeypatch):
+    opened = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(
+        pdf_dock,
+        "open_external_reader_link",
+        lambda url: opened.append(url) or True,
+    )
+
+    for card_id in (99, 42):
+        pdf_dock._handle_pdf_js_message(
+            pdf_dock._MSG_OPEN_LINK
+            + '{"cardId":%d,"url":"https://example.test/docs"}' % card_id
+        )
+
+    assert opened == ["https://example.test/docs"]
+
+
 class _FakeNote:
     def __init__(self):
         self.tags = ["alpha", "beta"]

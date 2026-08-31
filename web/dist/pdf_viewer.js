@@ -7017,6 +7017,81 @@
   }
   var clientExports = requireClient();
   var reactExports = requireReact();
+  const MAX_EXTERNAL_URL_CHARS = 4096;
+  const PDFJS_LINK_ANNOTATION_TYPE = 2;
+  function normalizeExternalHttpUrl(rawUrl) {
+    const candidate = String(rawUrl || "").trim();
+    if (!candidate || candidate.length > MAX_EXTERNAL_URL_CHARS) return null;
+    if (/\s/.test(candidate) || candidate.includes("\\")) return null;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+      if (!parsed.hostname || parsed.username || parsed.password) return null;
+    } catch (_err) {
+      return null;
+    }
+    return candidate;
+  }
+  function viewportRect(annotation, viewport) {
+    if (!Array.isArray(annotation == null ? void 0 : annotation.rect) || annotation.rect.length < 4) return null;
+    if (!viewport || typeof viewport.convertToViewportRectangle !== "function") return null;
+    let converted;
+    try {
+      converted = viewport.convertToViewportRectangle(annotation.rect);
+    } catch (_err) {
+      return null;
+    }
+    if (!Array.isArray(converted) || converted.length < 4) return null;
+    const numbers = converted.slice(0, 4).map(Number);
+    if (!numbers.every(Number.isFinite)) return null;
+    const [x1, y1, x2, y2] = numbers;
+    const left = Math.min(x1, x2);
+    const top = Math.min(y1, y2);
+    const width = Math.abs(x2 - x1);
+    const height = Math.abs(y2 - y1);
+    if (width <= 0 || height <= 0) return null;
+    return { left, top, width, height };
+  }
+  async function destinationPage(pdfDocument, rawDestination) {
+    if (!pdfDocument || rawDestination == null) return null;
+    try {
+      const destination = typeof rawDestination === "string" ? await pdfDocument.getDestination(rawDestination) : rawDestination;
+      if (!Array.isArray(destination) || destination.length === 0) return null;
+      const pageReference = destination[0];
+      const pageIndex = Number.isInteger(pageReference) ? pageReference : await pdfDocument.getPageIndex(pageReference);
+      const targetPage = Number(pageIndex) + 1;
+      const totalPages = Number(pdfDocument.numPages || 0);
+      if (!Number.isInteger(targetPage) || targetPage < 1) return null;
+      if (totalPages > 0 && targetPage > totalPages) return null;
+      return targetPage;
+    } catch (_err) {
+      return null;
+    }
+  }
+  async function resolvePdfAnnotationLink(annotation, pdfDocument, viewport) {
+    const subtype = String((annotation == null ? void 0 : annotation.subtype) || "");
+    const isLinkAnnotation = subtype ? subtype.toLowerCase() === "link" : Number(annotation == null ? void 0 : annotation.annotationType) === PDFJS_LINK_ANNOTATION_TYPE;
+    if (!isLinkAnnotation) return null;
+    const rect = viewportRect(annotation, viewport);
+    if (!rect) return null;
+    const externalUrl = normalizeExternalHttpUrl(annotation == null ? void 0 : annotation.url);
+    if (externalUrl) {
+      return {
+        kind: "external",
+        url: externalUrl,
+        label: String((annotation == null ? void 0 : annotation.title) || (annotation == null ? void 0 : annotation.contents) || externalUrl).slice(0, 240),
+        ...rect
+      };
+    }
+    const targetPage = await destinationPage(pdfDocument, annotation == null ? void 0 : annotation.dest);
+    if (targetPage == null) return null;
+    return {
+      kind: "internal",
+      targetPage,
+      label: String((annotation == null ? void 0 : annotation.title) || (annotation == null ? void 0 : annotation.contents) || `Go to page ${targetPage}`).slice(0, 240),
+      ...rect
+    };
+  }
   const DEFAULT_WORKER_SRC = "/_addons/incremento/web/pdfjs/pdf.worker.min.js";
   const ZOOM_STEP = 0.1;
   const ZOOM_MIN = 0.25;
@@ -7042,6 +7117,7 @@
     const [error, setError] = reactExports.useState("");
     const [renderInfo, setRenderInfo] = reactExports.useState({ scale: 1, tlLeft: 0 });
     const [readPage, setReadPage] = reactExports.useState(0);
+    const [linkAnnotations, setLinkAnnotations] = reactExports.useState([]);
     const pdfDocRef = reactExports.useRef(null);
     const busyRef = reactExports.useRef(false);
     const activeCvsRef = reactExports.useRef("a");
@@ -7056,6 +7132,7 @@
     const canvasBRef = reactExports.useRef(null);
     const containerRef = reactExports.useRef(null);
     const textLayerRef = reactExports.useRef(null);
+    const renderSequenceRef = reactExports.useRef(0);
     reactExports.useEffect(() => {
       pageRef.current = page;
     }, [page]);
@@ -7115,11 +7192,28 @@
       } catch (_) {
       }
     }, []);
+    const renderLinkAnnotations = reactExports.useCallback(async (pg, viewport, sequence, pageNumber) => {
+      try {
+        const annotations = await pg.getAnnotations({ intent: "display" });
+        const resolved = await Promise.all(
+          (Array.isArray(annotations) ? annotations : []).map(
+            (annotation) => resolvePdfAnnotationLink(annotation, pdfDocRef.current, viewport)
+          )
+        );
+        if (sequence === renderSequenceRef.current && Number(pageRef.current) === Number(pageNumber)) {
+          setLinkAnnotations(resolved.filter(Boolean));
+        }
+      } catch (_err) {
+        if (sequence === renderSequenceRef.current) setLinkAnnotations([]);
+      }
+    }, []);
     const renderPage = reactExports.useCallback((num) => {
       var _a;
       const doc = pdfDocRef.current;
       if (busyRef.current || !doc) return;
       busyRef.current = true;
+      const renderSequence = ++renderSequenceRef.current;
+      setLinkAnnotations([]);
       if ((_a = textLayerRef.current) == null ? void 0 : _a._cancelTextLayer) {
         textLayerRef.current._cancelTextLayer();
         textLayerRef.current._cancelTextLayer = null;
@@ -7155,6 +7249,7 @@
           busyRef.current = false;
           if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
           renderTextLayer(pg, viewport);
+          renderLinkAnnotations(pg, viewport, renderSequence, num);
         }).catch((e) => {
           setError("Render error: " + e);
           busyRef.current = false;
@@ -7163,7 +7258,7 @@
         setError("Page error: " + e);
         busyRef.current = false;
       });
-    }, [renderTextLayer]);
+    }, [renderLinkAnnotations, renderTextLayer]);
     const doStart = reactExports.useCallback(() => {
       const lib = window.pdfjsLib;
       lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
@@ -7285,6 +7380,7 @@
       error,
       renderInfo,
       readPage,
+      linkAnnotations,
       // Refs attached to DOM elements in JSX
       canvasARef,
       canvasBRef,
@@ -7905,6 +8001,7 @@
       error,
       renderInfo,
       readPage,
+      linkAnnotations,
       canvasARef,
       canvasBRef,
       containerRef,
@@ -7970,6 +8067,7 @@
     const [controlsCollapsed, setControlsCollapsed] = reactExports.useState(false);
     const [showControlChooser, setShowControlChooser] = reactExports.useState(false);
     const [controlVisibility, setControlVisibility] = reactExports.useState(DEFAULT_CONTROL_VISIBILITY);
+    const [clickableLinks, setClickableLinks] = reactExports.useState(false);
     const controlsInitialisedRef = reactExports.useRef(false);
     reactExports.useEffect(() => {
       if (!controlsInitialisedRef.current) {
@@ -8539,6 +8637,25 @@
       suppressScrollPersistence(600);
       rawNav(delta);
     }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
+    const activatePdfLink = reactExports.useCallback((event, link) => {
+      var _a;
+      if (!clickableLinks || !((_a = event == null ? void 0 : event.nativeEvent) == null ? void 0 : _a.isTrusted) || !link) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (link.kind === "internal") {
+        const targetPage = Number(link.targetPage || 0);
+        if (Number.isInteger(targetPage) && targetPage > 0) {
+          limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
+        }
+        return;
+      }
+      if (link.kind === "external" && link.url && cardIdRef.current) {
+        window.pycmd("incremento_pdf_open_link:" + JSON.stringify({
+          cardId: cardIdRef.current,
+          url: String(link.url)
+        }));
+      }
+    }, [cardIdRef, clickableLinks, limitAwareNav, pageRef]);
     const jumpToHighlight = reactExports.useCallback((highlight, { closePanel = false } = {}) => {
       if (!(highlight == null ? void 0 : highlight.id)) return;
       const targetPage = Math.max(1, parseInt(highlight.page || 1, 10));
@@ -8883,6 +9000,25 @@
                       Math.round(zoom * 100),
                       "%"
                     ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        "aria-pressed": clickableLinks,
+                        title: clickableLinks ? "Disable PDF links and restore uninterrupted text selection" : "Enable clickable links in this PDF",
+                        onClick: () => setClickableLinks((value) => !value),
+                        style: {
+                          border: clickableLinks ? "1px solid rgba(96,165,250,0.78)" : "1px solid rgba(180,180,180,0.35)",
+                          background: clickableLinks ? "rgba(59,130,246,0.20)" : "rgba(255,255,255,0.04)",
+                          color: clickableLinks ? "rgb(147,197,253)" : "inherit",
+                          fontWeight: clickableLinks ? 700 : 400
+                        },
+                        children: [
+                          "Links ",
+                          clickableLinks ? "On" : "Off"
+                        ]
+                      }
+                    ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
@@ -9060,6 +9196,29 @@
                             },
                             onClick: limitAwareMarkReadAnchor,
                             children: "↦"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            type: "button",
+                            "aria-pressed": clickableLinks,
+                            title: clickableLinks ? "Disable PDF links and restore uninterrupted text selection" : "Enable clickable links in this PDF",
+                            onClick: () => setClickableLinks((value) => !value),
+                            style: {
+                              background: clickableLinks ? "rgba(59,130,246,0.22)" : "rgba(255,255,255,0.03)",
+                              border: clickableLinks ? "1px solid rgba(96,165,250,0.78)" : "1px solid rgba(180,180,180,0.32)",
+                              borderRadius: 8,
+                              color: clickableLinks ? "rgb(147,197,253)" : "inherit",
+                              cursor: "pointer",
+                              padding: "4px 10px",
+                              fontSize: 12,
+                              fontWeight: clickableLinks ? 700 : 400
+                            },
+                            children: [
+                              "Links ",
+                              clickableLinks ? "On" : "Off"
+                            ]
                           }
                         ),
                         readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
@@ -9998,6 +10157,47 @@
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Read Up Until Here" })
                     ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "div",
+                  {
+                    id: "pdf-link-layer",
+                    "aria-hidden": !clickableLinks,
+                    style: {
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 3,
+                      pointerEvents: "none"
+                    },
+                    children: linkAnnotations.map((link, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        tabIndex: clickableLinks ? 0 : -1,
+                        "aria-label": link.label || (link.kind === "external" ? "Open external link" : `Go to page ${link.targetPage}`),
+                        title: link.label || (link.kind === "external" ? link.url : `Go to page ${link.targetPage}`),
+                        onClick: (event) => activatePdfLink(event, link),
+                        style: {
+                          position: "absolute",
+                          left: renderInfo.tlLeft + link.left,
+                          top: link.top,
+                          width: link.width,
+                          height: link.height,
+                          minWidth: 0,
+                          minHeight: 0,
+                          margin: 0,
+                          padding: 0,
+                          borderRadius: 2,
+                          border: clickableLinks ? "1px solid rgba(59,130,246,0.42)" : "none",
+                          background: clickableLinks ? "rgba(59,130,246,0.07)" : "transparent",
+                          color: "transparent",
+                          cursor: clickableLinks ? "pointer" : "text",
+                          pointerEvents: clickableLinks && !snapshotMode ? "auto" : "none"
+                        }
+                      },
+                      `${link.kind}-${link.url || link.targetPage || ""}-${index}`
+                    ))
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(

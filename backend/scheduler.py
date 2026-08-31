@@ -83,19 +83,43 @@ def get_card_from_scheduler(
         counts = {"type": {}, "tags": {}, "mode": {}}
     exclude = exclude_ids if isinstance(exclude_ids, set) else set(exclude_ids or ())
 
+    # Treat endpoint ratios as hard exclusions, including during availability
+    # fallback.  The UI/config boundary already normalizes these values, but
+    # clamping here keeps direct callers from creating negative bucket weights.
+    document_share = max(0.0, min(1.0, float(pdf_rate)))
+    topic_share = max(0.0, min(1.0, float(topics_rate)))
+    standard_share = 1.0 - document_share
+    type_weights = {
+        "pdf": document_share,
+        "topics": topic_share * standard_share,
+        "items": (1.0 - topic_share) * standard_share,
+    }
+
+    def enabled_standard_fallback(card_type: str) -> str | None:
+        """Return an enabled Topics/Items fallback without crossing 0% endpoints."""
+        if card_type == "topics":
+            candidates = ("items",)
+        elif card_type == "items":
+            candidates = ("topics",)
+        elif topic_share >= 0.5:
+            candidates = ("topics", "items")
+        else:
+            candidates = ("items", "topics")
+        return next((key for key in candidates if type_weights[key] > 0), None)
+
     # 1. Decisions
     if force_card_type is not None:
         card_type = force_card_type
-    elif pdf_rate > 0:
+    elif document_share > 0:
         # Three-way pick: pdf vs topics vs items
-        card_type = soft_pick({
-            "pdf":    pdf_rate,
-            "topics": topics_rate * (1 - pdf_rate),
-            "items":  (1 - topics_rate) * (1 - pdf_rate),
-        }, counts["type"], alpha, epsilon)
+        card_type = soft_pick(type_weights, counts["type"], alpha, epsilon)
     else:
         card_type = soft_pick(
-            {"topics": topics_rate, "items": 1 - topics_rate}, counts["type"], alpha, epsilon)
+            {"topics": topic_share, "items": 1.0 - topic_share},
+            counts["type"],
+            alpha,
+            epsilon,
+        )
 
     mode = force_mode if force_mode is not None else soft_pick(
         {"random": random_rate, "priority": 1 - random_rate}, counts["mode"], alpha, epsilon)
@@ -187,7 +211,7 @@ def get_card_from_scheduler(
         return random_available(raw)
 
     # When PDF cards are scheduled separately, exclude them from topics/items pools
-    pdf_exclusion = f" -({pdf_filter})" if pdf_rate > 0 else ""
+    pdf_exclusion = f" -({pdf_filter})" if document_share > 0 else ""
     effective_topics_filter = topics_filter + pdf_exclusion
     effective_items_filter  = items_filter  + pdf_exclusion
 
@@ -303,7 +327,10 @@ def get_card_from_scheduler(
             return SchedulerResult(card=card, card_type=doc_type, tag=pdf_tag, mode=mode)
         if not allow_type_fallback:
             return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
-        actual_type = "topics" if topics_rate >= 0.5 else "items"
+        fallback_type = enabled_standard_fallback(card_type)
+        if fallback_type is None:
+            return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
+        actual_type = fallback_type
         card_type = actual_type
 
     # 2b. YouTube pick path — no ready_filter, always eligible
@@ -319,7 +346,10 @@ def get_card_from_scheduler(
             return SchedulerResult(card=card, card_type="youtube", tag=yt_tag, mode=mode)
         if not allow_type_fallback:
             return SchedulerResult(card=None, card_type="youtube", tag=yt_tag, mode=mode)
-        actual_type = "topics" if topics_rate >= 0.5 else "items"
+        fallback_type = enabled_standard_fallback(card_type)
+        if fallback_type is None:
+            return SchedulerResult(card=None, card_type="youtube", tag=yt_tag, mode=mode)
+        actual_type = fallback_type
         card_type = actual_type
 
     # 2c. Webpage pick path — no ready_filter, always eligible
@@ -335,7 +365,10 @@ def get_card_from_scheduler(
             return SchedulerResult(card=card, card_type="webpage", tag=wp_tag, mode=mode)
         if not allow_type_fallback:
             return SchedulerResult(card=None, card_type="webpage", tag=wp_tag, mode=mode)
-        actual_type = "topics" if topics_rate >= 0.5 else "items"
+        fallback_type = enabled_standard_fallback(card_type)
+        if fallback_type is None:
+            return SchedulerResult(card=None, card_type="webpage", tag=wp_tag, mode=mode)
+        actual_type = fallback_type
         card_type = actual_type
 
     if use_tags:
@@ -356,10 +389,12 @@ def get_card_from_scheduler(
             else:
                 cards = available(all_items())
             if not cards and allow_type_fallback:
-                actual_type = "items" if card_type == "topics" else "topics"
-                if card_type == "topics":
+                fallback_type = enabled_standard_fallback(card_type)
+                if fallback_type == "items":
+                    actual_type = fallback_type
                     cards = available(all_items())
-                else:
+                elif fallback_type == "topics":
+                    actual_type = fallback_type
                     cards = available(all_topics())
             if not cards:
                 return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
@@ -373,10 +408,12 @@ def get_card_from_scheduler(
 
             # Type fallback: try the other type, but STAY within the tag
             if not cards and allow_type_fallback:
-                actual_type = "items" if card_type == "topics" else "topics"
-                if card_type == "topics":
+                fallback_type = enabled_standard_fallback(card_type)
+                if fallback_type == "items":
+                    actual_type = fallback_type
                     cards = available(tagged_items(tag))
-                else:
+                elif fallback_type == "topics":
+                    actual_type = fallback_type
                     cards = available(tagged_topics(tag))
 
             # No cards at all for this tag → caller handles it (next tag or Phase 2)
@@ -392,10 +429,12 @@ def get_card_from_scheduler(
 
         # Type fallback across all cards
         if not cards and allow_type_fallback:
-            actual_type = "items" if card_type == "topics" else "topics"
-            if card_type == "topics":
+            fallback_type = enabled_standard_fallback(card_type)
+            if fallback_type == "items":
+                actual_type = fallback_type
                 cards = available(all_items())
-            else:
+            elif fallback_type == "topics":
+                actual_type = fallback_type
                 cards = available(all_topics())
 
         if not cards:

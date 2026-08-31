@@ -6,6 +6,7 @@ import re
 import secrets
 from html import escape
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from aqt import mw
 from aqt.qt import (
@@ -53,6 +54,11 @@ from PyQt6.QtWebEngineCore import (
     QWebEngineUrlRequestInterceptor,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+
+try:
+    from .reader_links import normalize_external_reader_url, open_external_reader_link
+except ImportError:
+    from reader_links import normalize_external_reader_url, open_external_reader_link  # type: ignore
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
@@ -170,6 +176,7 @@ _last_selection_meta: dict[str, object] = {}
 _pending_focus_offset = -1
 _pending_restore_ratio = 0.0
 _pending_search_query = ""
+_pending_epub_link_fragment = ""
 _current_epub_search_query = ""
 _current_epub_search_hits: list[dict] = []
 _current_epub_search_hit_index = -1
@@ -194,6 +201,7 @@ _MSG_PROGRESS = "incremento_epub_progress:"
 _MSG_MARK_READ = "incremento_epub_mark_read:"
 _MSG_SECTION_NAV = "incremento_epub_section_nav:"
 _MSG_SNAPSHOT = "incremento_epub_snapshot:"
+_MSG_OPEN_LINK = "incremento_epub_open_link:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MAX_EPUB_BRIDGE_MESSAGE_CHARS = 1_000_000
 _MAX_EPUB_SELECTION_CHARS = 200_000
@@ -214,6 +222,78 @@ def _path_is_within_root(root: str | Path | None, candidate: str | Path) -> bool
         return True
     except (OSError, RuntimeError, ValueError):
         return False
+
+
+def _resolve_epub_reader_link(
+    href: object,
+    *,
+    content_root: str | Path,
+    current_section_path: str | Path,
+    section_paths: list[str | Path],
+) -> dict | None:
+    """Resolve a sanitized EPUB link without allowing web-view navigation."""
+    raw = str(href or "")
+    candidate = raw.strip()
+    if (
+        not candidate
+        or candidate != raw
+        or len(candidate) > 4096
+        or "\\" in candidate
+        or any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in candidate)
+    ):
+        return None
+
+    external_url = normalize_external_reader_url(candidate)
+    if external_url is not None:
+        return {"kind": "external", "url": external_url}
+
+    try:
+        parsed = urlsplit(candidate)
+    except (TypeError, ValueError):
+        return None
+    if parsed.scheme or parsed.netloc or parsed.query:
+        return None
+
+    path_text = unquote(parsed.path or "")
+    fragment = unquote(parsed.fragment or "")
+    if (
+        len(path_text) > 2048
+        or len(fragment) > 1024
+        or "\\" in path_text
+        or "\\" in fragment
+        or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in path_text + fragment)
+    ):
+        return None
+
+    try:
+        root = Path(content_root).resolve()
+        current = Path(current_section_path).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not _path_is_within_root(root, current):
+        return None
+    relative_path = Path(path_text)
+    if relative_path.is_absolute():
+        return None
+    try:
+        target = current if not path_text else (current.parent / relative_path).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not _path_is_within_root(root, target):
+        return None
+
+    for section_index, section_path in enumerate(section_paths):
+        try:
+            resolved_section = Path(section_path).resolve()
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if resolved_section == target and _path_is_within_root(root, resolved_section):
+            return {
+                "kind": "internal",
+                "section_index": int(section_index),
+                "fragment": fragment,
+            }
+    return None
 
 
 def _run_epub_javascript(page, script: str, callback=None) -> None:
@@ -1160,6 +1240,15 @@ class _EpubDockPage(QWebEnginePage):
             except Exception:
                 pass
             return
+        if msg.startswith(_MSG_OPEN_LINK):
+            try:
+                data = json.loads(msg[len(_MSG_OPEN_LINK) :])
+                if not _epub_bridge_card_matches(data):
+                    return
+                _open_epub_reader_link(str(data.get("href") or ""))
+            except Exception:
+                pass
+            return
         if msg.startswith(_MSG_SNAPSHOT):
             try:
                 data = json.loads(msg[len(_MSG_SNAPSHOT) :])
@@ -1190,6 +1279,8 @@ def _build_page_script(
     search_query: str,
     highlights: list[dict],
     bridge_nonce: str,
+    clickable_links: bool = False,
+    link_fragment: str = "",
 ) -> str:
     sections = _current_sections()
     section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
@@ -1204,6 +1295,8 @@ def _build_page_script(
         "searchQuery": str(search_query or ""),
         "highlights": highlights,
         "sectionLengths": section_lengths,
+        "clickableLinks": bool(clickable_links),
+        "linkFragment": str(link_fragment or "")[:1024],
     }
     return f"""
     (function() {{
@@ -1262,6 +1355,16 @@ def _build_page_script(
           }}
           html.incremento-epub-scaled pre {{
             white-space: pre-wrap !important;
+          }}
+          html:not(.incremento-epub-links-enabled) a[href] {{
+            pointer-events: none !important;
+            cursor: text !important;
+          }}
+          html.incremento-epub-links-enabled a[href] {{
+            cursor: pointer !important;
+            text-decoration: underline !important;
+            text-decoration-color: rgba(96, 165, 250, 0.82) !important;
+            text-decoration-thickness: 1px !important;
           }}
           span.incremento-epub-highlight {{
             background: rgba(255, 225, 120, 0.75);
@@ -1347,6 +1450,31 @@ def _build_page_script(
         );
         window._incrementoEpubTextScale = clamped;
       }}
+      function applyClickableLinks(value) {{
+        STATE.clickableLinks = !!value;
+        document.documentElement.classList.toggle(
+          'incremento-epub-links-enabled',
+          STATE.clickableLinks
+        );
+      }}
+      window.incrementoSetEpubClickableLinks = function(value) {{
+        applyClickableLinks(value);
+      }};
+      window.incrementoOpenEpubAnchor = function(fragment) {{
+        const value = String(fragment || '');
+        if (!value) {{
+          window.scrollTo(0, 0);
+          setTimeout(reportProgress, 40);
+          return true;
+        }}
+        const byId = document.getElementById(value);
+        const named = document.getElementsByName ? document.getElementsByName(value) : [];
+        const target = byId || (named && named.length ? named[0] : null);
+        if (!target || !target.scrollIntoView) return false;
+        target.scrollIntoView({{ block: 'start' }});
+        setTimeout(reportProgress, 40);
+        return true;
+      }};
       function textNodes() {{
         const root = document.body || document.documentElement;
         if (!root) return [];
@@ -1832,6 +1960,7 @@ def _build_page_script(
       }};
       ensureStyle();
       applyTextScale(STATE.textScale);
+      applyClickableLinks(STATE.clickableLinks);
       document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);
       const highlights = Array.isArray(STATE.highlights) ? STATE.highlights.slice() : [];
       highlights.sort(function(a, b) {{ return Number(a.startOffset || 0) - Number(b.startOffset || 0); }});
@@ -1880,6 +2009,20 @@ def _build_page_script(
         if (actionMenu && actionMenu.contains(event.target)) {{
           return;
         }}
+        const linkTarget = event.target && event.target.closest
+          ? event.target.closest('a[href]')
+          : null;
+        if (linkTarget) {{
+          event.preventDefault();
+          event.stopPropagation();
+          if (STATE.clickableLinks) {{
+            send('incremento_epub_open_link:' + JSON.stringify({{
+              cardId: STATE.cardId,
+              href: String(linkTarget.getAttribute('href') || ''),
+            }}));
+          }}
+          return;
+        }}
         const target = event.target && event.target.closest
           ? event.target.closest('span.incremento-epub-highlight')
           : null;
@@ -1911,7 +2054,9 @@ def _build_page_script(
       document.addEventListener('scroll', window._incrementoEpubScrollListener, true);
 
       setTimeout(function() {{
-        if (Number(STATE.focusOffset) >= 0) {{
+        if (STATE.linkFragment) {{
+          window.incrementoOpenEpubAnchor(STATE.linkFragment);
+        }} else if (Number(STATE.focusOffset) >= 0) {{
           const point = pointFromOffset(STATE.focusOffset);
           if (point && point.node && point.node.parentElement && point.node.parentElement.scrollIntoView) {{
             point.node.parentElement.scrollIntoView({{ block: 'center' }});
@@ -2206,6 +2351,12 @@ def _build_epub_dock() -> None:
         "Find in current document",
         icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
     )
+    dock._links_btn = _make_epub_button(
+        dock,
+        "Links Off",
+        "Enable clickable links in this EPUB",
+        checkable=True,
+    )
 
     header = QWidget(dock)
     header_layout = QVBoxLayout(header)
@@ -2239,6 +2390,7 @@ def _build_epub_dock() -> None:
             dock._text_smaller_btn,
             dock._text_larger_btn,
             dock._find_btn,
+            dock._links_btn,
             dock._highlight_extract_cb,
         )
     )
@@ -2382,6 +2534,7 @@ def _build_epub_dock() -> None:
     qconnect(dock._text_smaller_btn.clicked, lambda: _adjust_epub_text_scale(-0.1))
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
     qconnect(dock._find_btn.clicked, open_current_document_find)
+    qconnect(dock._links_btn.toggled, _toggle_epub_clickable_links)
     qconnect(dock._highlight_btn.clicked, _request_highlight)
     qconnect(dock._snapshot_btn.clicked, _request_snapshot)
     qconnect(dock._cover_btn.clicked, _regenerate_epub_cover)
@@ -3126,6 +3279,7 @@ def _update_title_and_buttons() -> None:
     _epub_dock._limit_btn.setEnabled(has_card)
     _epub_dock._text_smaller_btn.setEnabled(has_card)
     _epub_dock._text_larger_btn.setEnabled(has_card)
+    _epub_dock._links_btn.setEnabled(has_card)
     _epub_dock._highlight_btn.setEnabled(has_card)
     _epub_dock._add_card_btn.setEnabled(has_card)
     _epub_dock._all_cards_btn.setEnabled(has_card)
@@ -3260,6 +3414,79 @@ def _section_index_from_path(local_path: str) -> int | None:
     return None
 
 
+def _open_epub_reader_link(href: str) -> bool:
+    if (
+        _epub_dock is None
+        or _current_epub_card_id is None
+        or not _current_epub_filename
+    ):
+        return False
+    try:
+        sections = _current_sections()
+        section_paths = [
+            get_epub_section_path(_ADDON_DIR, _current_epub_filename, index)
+            for index in range(len(sections))
+        ]
+        if not section_paths:
+            return False
+        current_index = max(0, min(_current_epub_section_index, len(section_paths) - 1))
+        resolved = _resolve_epub_reader_link(
+            href,
+            content_root=get_epub_extract_dir(
+                _current_epub_filename,
+                profile=_active_profile(),
+            ),
+            current_section_path=section_paths[current_index],
+            section_paths=section_paths,
+        )
+    except Exception:
+        resolved = None
+
+    if resolved is None:
+        tooltip("Blocked an unsafe or unsupported EPUB link.")
+        return False
+    if resolved["kind"] == "external":
+        if open_external_reader_link(resolved["url"]):
+            return True
+        tooltip("Could not open the EPUB link in your browser.")
+        return False
+
+    target_index = int(resolved["section_index"])
+    fragment = str(resolved.get("fragment") or "")
+    if target_index == current_index:
+        _run_epub_javascript(
+            _epub_dock._view.page(),
+            "window.incrementoOpenEpubAnchor && "
+            f"window.incrementoOpenEpubAnchor({json.dumps(fragment)});",
+        )
+        return True
+
+    if target_index > current_index and not _check_epub_limit_before_navigation(
+        _current_epub_page_index + 1
+    ):
+        return False
+    _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
+    if target_index > current_index:
+        try:
+            set_read_section_index(
+                _ADDON_DIR,
+                _active_profile(),
+                int(_current_epub_card_id),
+                target_index,
+            )
+        except Exception:
+            pass
+    show_epub_in_dock(
+        int(_current_epub_card_id),
+        _current_epub_filename,
+        section_index=target_index,
+        scroll_ratio=0.0,
+        link_fragment=fragment,
+        offer_due_review_prompt=False,
+    )
+    return True
+
+
 def _on_view_url_changed(url: QUrl) -> None:
     global _current_epub_section_index, _pending_focus_offset, _pending_restore_ratio, _pending_search_query, _pending_explicit_navigation
     idx = _section_index_from_path(url.toLocalFile())
@@ -3276,6 +3503,7 @@ def _on_view_url_changed(url: QUrl) -> None:
 
 def _on_load_finished(ok: bool) -> None:
     global _pending_focus_offset, _pending_restore_ratio, _pending_search_query
+    global _pending_epub_link_fragment
     if not ok or _epub_dock is None or _current_epub_card_id is None:
         return
     highlights = [
@@ -3293,11 +3521,14 @@ def _on_load_finished(ok: bool) -> None:
         search_query=_pending_search_query,
         highlights=highlights,
         bridge_nonce=_epub_dock._view.page().bridge_nonce(),
+        clickable_links=bool(_epub_dock._links_btn.isChecked()),
+        link_fragment=_pending_epub_link_fragment,
     )
     _run_epub_javascript(_epub_dock._view.page(), js)
     _pending_focus_offset = -1
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = ""
+    _pending_epub_link_fragment = ""
     _update_title_and_buttons()
     _update_sources_panel()
 
@@ -3330,12 +3561,13 @@ def show_epub_in_dock(
     scroll_ratio: float = 0.0,
     focus_offset: int = -1,
     search_query: str = "",
+    link_fragment: str = "",
     offer_due_review_prompt: bool = True,
 ) -> None:
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _current_epub_section_index
     global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _current_epub_read_anchor, _pending_focus_offset, _pending_restore_ratio
     global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
-    global _pending_search_query, _pending_explicit_navigation, _last_selection_meta
+    global _pending_search_query, _pending_epub_link_fragment, _pending_explicit_navigation, _last_selection_meta
     global _current_epub_search_query
 
     if _epub_dock is None:
@@ -3353,6 +3585,12 @@ def show_epub_in_dock(
     _pending_focus_offset = int(focus_offset)
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = str(search_query or "")
+    raw_link_fragment = str(link_fragment or "")[:1024]
+    _pending_epub_link_fragment = (
+        ""
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in raw_link_fragment)
+        else raw_link_fragment
+    )
     if str(search_query or "").strip():
         _current_epub_search_query = str(search_query or "").strip()
     _pending_explicit_navigation = True
@@ -3488,6 +3726,23 @@ def _request_snapshot() -> None:
     _run_epub_javascript(
         _epub_dock._view.page(),
         "window.incrementoSnapshotEpubSelection && window.incrementoSnapshotEpubSelection();"
+    )
+
+
+def _toggle_epub_clickable_links(checked: bool) -> None:
+    if _epub_dock is None:
+        return
+    enabled = bool(checked)
+    _epub_dock._links_btn.setText(f"Links {'On' if enabled else 'Off'}")
+    _epub_dock._links_btn.setToolTip(
+        "Disable EPUB links and restore uninterrupted text selection"
+        if enabled
+        else "Enable clickable links in this EPUB"
+    )
+    _run_epub_javascript(
+        _epub_dock._view.page(),
+        "window.incrementoSetEpubClickableLinks && "
+        f"window.incrementoSetEpubClickableLinks({json.dumps(enabled)});",
     )
 
 

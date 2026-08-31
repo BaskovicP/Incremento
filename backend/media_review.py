@@ -301,16 +301,23 @@ def _knowledge_tree_descendant_links(
     addon_dir: str,
     profile: str,
     source_card_id: int,
+    *,
+    directly_linked_card_ids: Iterable[int] | None = None,
 ) -> list[dict]:
-    """Return descendants breadth-first with their parent, depth, and saved kind."""
+    """Return tree links reachable from the media card or its direct attachments."""
     try:
         rows = list(get_knowledge_tree_nodes(addon_dir, profile) or [])
     except Exception:
         return []
 
+    row_by_card_id: dict[int, dict] = {}
     grouped: dict[int, list[dict]] = defaultdict(list)
     for row in rows:
         try:
+            card_id = int(row.get("card_id", 0) or 0)
+            if card_id <= 0:
+                continue
+            row_by_card_id[card_id] = row
             parent_card_id = row.get("parent_card_id")
             if parent_card_id is None:
                 continue
@@ -326,12 +333,33 @@ def _knowledge_tree_descendant_links(
             )
         )
 
-    descendants: list[dict] = []
-    seen = {int(source_card_id)}
+    source_card_id = int(source_card_id)
+    direct_card_ids = [
+        card_id
+        for card_id in _positive_unique(directly_linked_card_ids)
+        if card_id != source_card_id
+    ]
+
+    # The PDF/EPUB/video card is one level above direct attachments. A direct
+    # attachment can also be a standalone knowledge-tree root, so use both as
+    # traversal anchors. Queue every depth-zero anchor before walking children
+    # so a directly linked nested node keeps its shortest media-relative depth.
     pending = deque(
-        (row, int(source_card_id), 1)
-        for row in grouped.get(int(source_card_id), [])
+        (row, source_card_id, 1)
+        for row in grouped.get(source_card_id, [])
     )
+    for card_id in direct_card_ids:
+        row = row_by_card_id.get(card_id)
+        if row is not None:
+            pending.append((row, row.get("parent_card_id"), 1))
+        else:
+            pending.extend(
+                (child, card_id, 2)
+                for child in grouped.get(card_id, [])
+            )
+
+    descendants: list[dict] = []
+    seen = {source_card_id}
     while pending:
         row, parent_card_id, edge_depth = pending.popleft()
         try:
@@ -344,9 +372,9 @@ def _knowledge_tree_descendant_links(
         descendants.append(
             {
                 "card_id": card_id,
-                "parent_card_id": int(parent_card_id),
-                # Children of the media card are direct attachments. Their
-                # children are the first nested level.
+                "parent_card_id": (
+                    None if parent_card_id is None else int(parent_card_id)
+                ),
                 "source_depth": max(0, int(edge_depth) - 1),
                 "node_kind": str(row.get("node_kind") or "").strip().lower(),
             }
@@ -589,7 +617,12 @@ def inspect_linked_media_review_rows(
         )
 
     tree_links = (
-        _knowledge_tree_descendant_links(addon_dir, profile, source_card_id)
+        _knowledge_tree_descendant_links(
+            addon_dir,
+            profile,
+            source_card_id,
+            directly_linked_card_ids=tuple(candidate_info),
+        )
         if include_tree_descendants
         else []
     )
@@ -740,10 +773,14 @@ def resolve_linked_media_review_rows(
     linked_card_ids: Iterable[int] | None = None,
     linked_card_positions: Mapping[int, float] | None = None,
     include_tree_descendants: bool = True,
+    include_filtered: bool = False,
     target_deck_name: str = "",
     topic_classifier=None,
 ) -> list[dict]:
     """Return linked cards that Anki can put into this filtered review."""
+    allowed_availability = {MEDIA_REVIEW_AVAILABILITY_AVAILABLE}
+    if include_filtered:
+        allowed_availability.add(MEDIA_REVIEW_AVAILABILITY_FILTERED)
     return [
         row
         for row in inspect_linked_media_review_rows(
@@ -760,8 +797,7 @@ def resolve_linked_media_review_rows(
             target_deck_name=target_deck_name,
             topic_classifier=topic_classifier,
         )
-        if str(row.get("availability") or "")
-        == MEDIA_REVIEW_AVAILABILITY_AVAILABLE
+        if str(row.get("availability") or "") in allowed_availability
     ]
 
 
@@ -865,6 +901,7 @@ def select_linked_media_review_rows(
     state: str | None = None,
     limit=0,
     random_seed: int | None = None,
+    include_filtered: bool = False,
 ) -> dict:
     """Apply Review All choices and return selected rows plus exclusive counts."""
     normalized_kind = normalize_media_review_card_kind(card_kind)
@@ -894,7 +931,10 @@ def select_linked_media_review_rows(
         availability = str(
             row.get("availability") or MEDIA_REVIEW_AVAILABILITY_AVAILABLE
         ).strip().lower()
-        if availability != MEDIA_REVIEW_AVAILABILITY_AVAILABLE:
+        if availability != MEDIA_REVIEW_AVAILABILITY_AVAILABLE and not (
+            bool(include_filtered)
+            and availability == MEDIA_REVIEW_AVAILABILITY_FILTERED
+        ):
             key = (
                 availability
                 if availability in exclusions
@@ -941,6 +981,12 @@ def select_linked_media_review_rows(
         ordered = ordered[:normalized_limit]
 
     selected_topic_count = sum(1 for row in ordered if bool(row.get("is_topic")))
+    selected_filtered_count = sum(
+        1
+        for row in ordered
+        if str(row.get("availability") or "").strip().lower()
+        == MEDIA_REVIEW_AVAILABILITY_FILTERED
+    )
     return {
         "rows": ordered,
         "card_ids": [int(row.get("card_id", 0) or 0) for row in ordered],
@@ -948,6 +994,7 @@ def select_linked_media_review_rows(
         "selected_count": len(ordered),
         "topic_count": selected_topic_count,
         "item_count": len(ordered) - selected_topic_count,
+        "selected_filtered_count": selected_filtered_count,
         "exclusions": exclusions,
         "order": normalize_media_review_order(order),
         "card_kind": normalized_kind,
@@ -955,6 +1002,7 @@ def select_linked_media_review_rows(
         "media_range": normalized_range,
         "state": normalized_state,
         "limit": normalized_limit,
+        "include_filtered": bool(include_filtered),
     }
 
 
@@ -978,6 +1026,7 @@ def linked_media_review_card_ids(
     linked_card_ids: Iterable[int] | None = None,
     linked_card_positions: Mapping[int, float] | None = None,
     include_tree_descendants: bool = True,
+    include_filtered: bool = False,
     target_deck_name: str = "",
     topic_classifier=None,
 ) -> list[int]:
@@ -992,6 +1041,7 @@ def linked_media_review_card_ids(
         linked_card_ids=linked_card_ids,
         linked_card_positions=linked_card_positions,
         include_tree_descendants=include_tree_descendants,
+        include_filtered=include_filtered,
         target_deck_name=target_deck_name,
         topic_classifier=topic_classifier,
     )
@@ -1006,5 +1056,6 @@ def linked_media_review_card_ids(
             state=state,
             limit=limit,
             random_seed=random_seed,
+            include_filtered=include_filtered,
         )["card_ids"]
     )

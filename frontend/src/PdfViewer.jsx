@@ -459,7 +459,7 @@ function getPdfViewportMetrics(wrapper) {
 export default function PdfViewer() {
   // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
   const {
-    page, totalPages, zoom, error, renderInfo, readPage,
+    page, totalPages, zoom, error, renderInfo, readPage, linkAnnotations,
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
@@ -521,6 +521,7 @@ export default function PdfViewer() {
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
   const [showControlChooser, setShowControlChooser] = useState(false);
   const [controlVisibility, setControlVisibility] = useState(DEFAULT_CONTROL_VISIBILITY);
+  const [clickableLinks, setClickableLinks] = useState(false);
 
   // On short windows the reader should start in a focused mode. Keep this as
   // an initial preference only, so manually expanding the toolbar is stable
@@ -1182,6 +1183,25 @@ export default function PdfViewer() {
     rawNav(delta);
   }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
 
+  const activatePdfLink = useCallback((event, link) => {
+    if (!clickableLinks || !event?.nativeEvent?.isTrusted || !link) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (link.kind === 'internal') {
+      const targetPage = Number(link.targetPage || 0);
+      if (Number.isInteger(targetPage) && targetPage > 0) {
+        limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
+      }
+      return;
+    }
+    if (link.kind === 'external' && link.url && cardIdRef.current) {
+      window.pycmd('incremento_pdf_open_link:' + JSON.stringify({
+        cardId: cardIdRef.current,
+        url: String(link.url),
+      }));
+    }
+  }, [cardIdRef, clickableLinks, limitAwareNav, pageRef]);
+
   const jumpToHighlight = useCallback((highlight, { closePanel = false } = {}) => {
     if (!highlight?.id) return;
     const targetPage = Math.max(1, parseInt(highlight.page || 1, 10));
@@ -1568,6 +1588,20 @@ export default function PdfViewer() {
             </span>
             <button
               type="button"
+              aria-pressed={clickableLinks}
+              title={clickableLinks ? 'Disable PDF links and restore uninterrupted text selection' : 'Enable clickable links in this PDF'}
+              onClick={() => setClickableLinks(value => !value)}
+              style={{
+                border: clickableLinks ? '1px solid rgba(96,165,250,0.78)' : '1px solid rgba(180,180,180,0.35)',
+                background: clickableLinks ? 'rgba(59,130,246,0.20)' : 'rgba(255,255,255,0.04)',
+                color: clickableLinks ? 'rgb(147,197,253)' : 'inherit',
+                fontWeight: clickableLinks ? 700 : 400,
+              }}
+            >
+              Links {clickableLinks ? 'On' : 'Off'}
+            </button>
+            <button
+              type="button"
               onClick={() => setControlsCollapsed(false)}
               aria-expanded="false"
               style={{
@@ -1731,6 +1765,24 @@ export default function PdfViewer() {
                   onClick={limitAwareMarkReadAnchor}
                 >
                   ↦
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={clickableLinks}
+                  title={clickableLinks ? 'Disable PDF links and restore uninterrupted text selection' : 'Enable clickable links in this PDF'}
+                  onClick={() => setClickableLinks(value => !value)}
+                  style={{
+                    background: clickableLinks ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.03)',
+                    border: clickableLinks ? '1px solid rgba(96,165,250,0.78)' : '1px solid rgba(180,180,180,0.32)',
+                    borderRadius: 8,
+                    color: clickableLinks ? 'rgb(147,197,253)' : 'inherit',
+                    cursor: 'pointer',
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    fontWeight: clickableLinks ? 700 : 400,
+                  }}
+                >
+                  Links {clickableLinks ? 'On' : 'Off'}
                 </button>
                 {readPage > 0 && (
                   <span style={{
@@ -2636,6 +2688,45 @@ export default function PdfViewer() {
             <span>Read Up Until Here</span>
           </div>
         )}
+
+        <div
+          id="pdf-link-layer"
+          aria-hidden={!clickableLinks}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 3,
+            pointerEvents: 'none',
+          }}
+        >
+          {linkAnnotations.map((link, index) => (
+            <button
+              key={`${link.kind}-${link.url || link.targetPage || ''}-${index}`}
+              type="button"
+              tabIndex={clickableLinks ? 0 : -1}
+              aria-label={link.label || (link.kind === 'external' ? 'Open external link' : `Go to page ${link.targetPage}`)}
+              title={link.label || (link.kind === 'external' ? link.url : `Go to page ${link.targetPage}`)}
+              onClick={(event) => activatePdfLink(event, link)}
+              style={{
+                position: 'absolute',
+                left: renderInfo.tlLeft + link.left,
+                top: link.top,
+                width: link.width,
+                height: link.height,
+                minWidth: 0,
+                minHeight: 0,
+                margin: 0,
+                padding: 0,
+                borderRadius: 2,
+                border: clickableLinks ? '1px solid rgba(59,130,246,0.42)' : 'none',
+                background: clickableLinks ? 'rgba(59,130,246,0.07)' : 'transparent',
+                color: 'transparent',
+                cursor: clickableLinks ? 'pointer' : 'text',
+                pointerEvents: clickableLinks && !snapshotMode ? 'auto' : 'none',
+              }}
+            />
+          ))}
+        </div>
 
         <HighlightLayer
           pageHighlights={pageHighlights}

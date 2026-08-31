@@ -138,6 +138,36 @@ def test_content_tag_fallback_flag_is_forwarded_to_scheduler():
     assert captured["include_rest"] is False
 
 
+def test_live_preview_style_tag_phase_respects_items_only_endpoint():
+    cfg = SchedulerConfig(
+        session_card_count=1,
+        enforce_priority=True,
+        phase_order=["tags"],
+        phases_enabled={"tags": True},
+        scheduler_scope="session",
+        use_tags=True,
+        tag_weights={"work": 1.0},
+        include_rest=False,
+        topics_rate=0.0,
+        pdf_rate=0.0,
+    )
+
+    with patch("session_selection.StatsManager", _FakeStats), patch.multiple(
+        "session_selection.card_utils",
+        get_item_cards_by_tag=lambda _tag, **_kwargs: [],
+        get_topic_cards_by_tag=lambda _tag, **_kwargs: [101],
+        get_all_item_cards=lambda **_kwargs: [],
+        get_all_topic_cards=lambda **_kwargs: [101],
+    ):
+        result = session_selection.select_session_cards(
+            cfg,
+            addon_dir="/tmp/unused",
+        )
+
+    assert result.selected_ids == []
+    assert result.stats.session["type"] == {}
+
+
 def test_lifetime_scope_uses_working_copy_but_keeps_session_snapshot():
     cfg = SchedulerConfig(
         session_card_count=2,
@@ -850,7 +880,7 @@ def test_large_priority_overdue_catchup_reuses_pools_and_stops_at_exhaustion():
     assert set(result.selected_ids[len(pdf_ids) :]) == set(topic_ids)
     pdf_pool.assert_called_once()
     topic_pool.assert_called_once()
-    item_pool.assert_called_once()
+    item_pool.assert_not_called()
     # The second transaction models auto-refill. It must reuse the first
     # transaction's sorted pools instead of sorting thousands of cards again.
     assert sort_pool.call_count <= 3

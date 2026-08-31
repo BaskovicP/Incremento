@@ -233,7 +233,10 @@ from .frontend.pdf_bookshelf import (
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
-from .frontend.reviewer_focus import schedule_reviewer_focus_restore
+from .frontend.reviewer_focus import (
+    register_reviewer_focus_restore_hooks,
+    schedule_reviewer_focus_restore,
+)
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
 from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
@@ -3090,8 +3093,9 @@ def _restore_reviewer_focus_after_incremento_hooks(_card) -> None:
     )
 
 
-gui_hooks.reviewer_did_show_question.append(
-    _restore_reviewer_focus_after_incremento_hooks
+register_reviewer_focus_restore_hooks(
+    gui_hooks,
+    _restore_reviewer_focus_after_incremento_hooks,
 )
 
 

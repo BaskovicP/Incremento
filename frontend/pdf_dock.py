@@ -53,6 +53,11 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtCore import QEvent, QObject, QUrl
 
 try:
+    from .reader_links import open_external_reader_link
+except ImportError:
+    from reader_links import open_external_reader_link  # type: ignore
+
+try:
     from ..backend.paths import get_active_profile as _active_profile
     from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import load_addon_config
@@ -1131,6 +1136,7 @@ _MSG_BOOKMARK_LIST = "incremento_pdf_bookmark_list:"
 _MSG_FIND = "incremento_pdf_find:"
 _MSG_FIND_NAV = "incremento_pdf_find_nav:"
 _MSG_OPEN_FIND_DIALOG = "incremento_pdf_open_find_dialog"
+_MSG_OPEN_LINK = "incremento_pdf_open_link:"
 
 
 def _refresh_pdf_bridge(page) -> None:
@@ -2203,6 +2209,16 @@ def _handle_pdf_js_message(msg: str) -> None:
                 "pdf",
                 has_text=bool(data.get("hasText")),
             )
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_OPEN_LINK):
+        try:
+            data = json.loads(msg[len(_MSG_OPEN_LINK) :])
+            card_id = int(data.get("cardId", 0) or 0)
+            if card_id <= 0 or card_id != int(_current_pdf_card_id or 0):
+                return
+            if not open_external_reader_link(data.get("url")):
+                tooltip("Blocked an unsafe or unsupported PDF link.")
         except Exception:
             pass
     elif msg.startswith(_MSG_LIMIT_SETTINGS):

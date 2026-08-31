@@ -5,6 +5,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
+    "test": "node --test tests/*.test.mjs",
     "build:extension": "vite build --config vite.extension.config.js",
     "dev:extension": "vite build --watch --config vite.extension.config.js",
     "test:extension": "npm --prefix ../chrome_extensions/incremento_companion test"

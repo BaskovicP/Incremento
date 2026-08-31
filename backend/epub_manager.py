@@ -90,7 +90,7 @@ _MAX_EPUB_COMPRESSION_RATIO = 500.0
 _MAX_EPUB_MEMBER_NAME_CHARS = 512
 _MAX_EPUB_EXTRACTION_SECONDS = 30.0
 _EPUB_COPY_CHUNK_BYTES = 1024 * 1024
-_EPUB_SANITIZER_VERSION = 2
+_EPUB_SANITIZER_VERSION = 3
 _EPUB_HTML_SUFFIXES = {".htm", ".html", ".xht", ".xhtml"}
 _EPUB_ALLOWED_COMPRESSION = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
 _WINDOWS_RESERVED_NAMES = {
@@ -459,6 +459,32 @@ def _safe_epub_resource_url(value: object) -> bool:
     return True
 
 
+def _safe_epub_anchor_url(value: object) -> bool:
+    """Allow local book anchors plus explicit HTTP(S) links for opt-in opening."""
+    raw = str(value or "").strip()
+    if (
+        not raw
+        or len(raw) > 4096
+        or "\\" in raw
+        or any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in raw)
+    ):
+        return False
+    try:
+        parsed = urlsplit(raw)
+        if parsed.scheme or parsed.netloc:
+            if parsed.scheme.casefold() not in {"http", "https"}:
+                return False
+            if not parsed.netloc or not parsed.hostname:
+                return False
+            if parsed.username is not None or parsed.password is not None:
+                return False
+            parsed.port
+            return True
+    except (TypeError, ValueError):
+        return False
+    return _safe_epub_resource_url(raw)
+
+
 def _sanitize_css_text(css_text: str) -> str:
     cleaned = _CSS_IMPORT_RE.sub("", str(css_text or ""))
     cleaned = _CSS_ACTIVE_RE.sub("blocked(", cleaned)
@@ -516,9 +542,15 @@ def _clean_html_file(path: str) -> None:
             if normalized.startswith("on") or normalized in _EPUB_ALWAYS_DROP_ATTRIBUTES:
                 del tag.attrs[attr_name]
                 continue
-            if normalized in _EPUB_URL_ATTRIBUTES and not _safe_epub_resource_url(value):
-                del tag.attrs[attr_name]
-                continue
+            if normalized in _EPUB_URL_ATTRIBUTES:
+                url_is_safe = (
+                    _safe_epub_anchor_url(value)
+                    if tag_name == "a" and normalized == "href"
+                    else _safe_epub_resource_url(value)
+                )
+                if not url_is_safe:
+                    del tag.attrs[attr_name]
+                    continue
             if normalized == "style":
                 tag.attrs[attr_name] = _sanitize_css_text(str(value or ""))
 

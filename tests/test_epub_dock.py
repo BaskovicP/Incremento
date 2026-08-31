@@ -138,6 +138,99 @@ def test_build_page_script_includes_highlight_note_action_menu(monkeypatch):
     assert "if (!event.isTrusted) return" in script
 
 
+def test_build_page_script_installs_opt_in_trusted_link_bridge(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[],
+        bridge_nonce="private-token",
+        clickable_links=True,
+        link_fragment="chapter-part",
+    )
+
+    assert '"clickableLinks": true' in script
+    assert '"linkFragment": "chapter-part"' in script
+    assert "incremento_epub_open_link:" in script
+    assert "incrementoSetEpubClickableLinks" in script
+    assert "incrementoOpenEpubAnchor" in script
+    assert "if (!event.isTrusted) return" in script
+    assert "window.open(" not in script
+
+
+def test_epub_link_target_resolver_allows_book_sections_and_https_only(tmp_path):
+    root = tmp_path / "book"
+    chapter_one = root / "Text" / "one.xhtml"
+    chapter_two = root / "Text" / "two.xhtml"
+    chapter_one.parent.mkdir(parents=True)
+    chapter_one.write_text("one", encoding="utf-8")
+    chapter_two.write_text("two", encoding="utf-8")
+
+    kwargs = {
+        "content_root": root,
+        "current_section_path": chapter_one,
+        "section_paths": [chapter_one, chapter_two],
+    }
+    assert epub_dock._resolve_epub_reader_link("two.xhtml#part", **kwargs) == {
+        "kind": "internal",
+        "section_index": 1,
+        "fragment": "part",
+    }
+    assert epub_dock._resolve_epub_reader_link("#local", **kwargs) == {
+        "kind": "internal",
+        "section_index": 0,
+        "fragment": "local",
+    }
+    assert epub_dock._resolve_epub_reader_link(
+        "https://docs.example.test/reference", **kwargs
+    ) == {
+        "kind": "external",
+        "url": "https://docs.example.test/reference",
+    }
+    for unsafe in (
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "mailto:user@example.test",
+        "../../../outside.xhtml",
+        r"..\\outside.xhtml",
+        "missing.xhtml",
+    ):
+        assert epub_dock._resolve_epub_reader_link(unsafe, **kwargs) is None
+
+
+def test_epub_link_bridge_requires_current_card(monkeypatch):
+    opened = []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 42)
+    monkeypatch.setattr(
+        epub_dock,
+        "_open_epub_reader_link",
+        lambda href: opened.append(href),
+    )
+    page = types.SimpleNamespace(_bridge_nonce="private-token")
+
+    for card_id in (99, 42):
+        payload = '{"cardId":%d,"href":"https://example.test/docs"}' % card_id
+        epub_dock._EpubDockPage.javaScriptConsoleMessage(
+            page,
+            0,
+            epub_dock._PYCMD_BRIDGE
+            + "private-token:"
+            + epub_dock._MSG_OPEN_LINK
+            + payload,
+            0,
+            "book.xhtml",
+        )
+
+    assert opened == ["https://example.test/docs"]
+
+
 def test_epub_javascript_runs_in_application_world():
     calls = []
 

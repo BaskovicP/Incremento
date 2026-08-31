@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resolvePdfAnnotationLink } from './pdfLinks.mjs';
 
 const DEFAULT_WORKER_SRC = '/_addons/incremento/web/pdfjs/pdf.worker.min.js';
 const ZOOM_STEP = 0.1;
@@ -37,6 +38,7 @@ export function usePdfRender() {
   const [error,      setError]      = useState('');
   const [renderInfo, setRenderInfo] = useState({ scale: 1, tlLeft: 0 });
   const [readPage,   setReadPage]   = useState(0);
+  const [linkAnnotations, setLinkAnnotations] = useState([]);
 
   const pdfDocRef          = useRef(null);
   const busyRef            = useRef(false);
@@ -52,6 +54,7 @@ export function usePdfRender() {
   const canvasBRef         = useRef(null);
   const containerRef       = useRef(null);
   const textLayerRef       = useRef(null);
+  const renderSequenceRef  = useRef(0);
 
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
@@ -95,11 +98,32 @@ export function usePdfRender() {
     } catch (_) {}
   }, []);
 
+  const renderLinkAnnotations = useCallback(async (pg, viewport, sequence, pageNumber) => {
+    try {
+      const annotations = await pg.getAnnotations({ intent: 'display' });
+      const resolved = await Promise.all(
+        (Array.isArray(annotations) ? annotations : []).map(
+          annotation => resolvePdfAnnotationLink(annotation, pdfDocRef.current, viewport),
+        ),
+      );
+      if (
+        sequence === renderSequenceRef.current
+        && Number(pageRef.current) === Number(pageNumber)
+      ) {
+        setLinkAnnotations(resolved.filter(Boolean));
+      }
+    } catch (_err) {
+      if (sequence === renderSequenceRef.current) setLinkAnnotations([]);
+    }
+  }, []);
+
   /* ── Render page ──────────────────────────────────────────────────────────── */
   const renderPage = useCallback((num) => {
     const doc = pdfDocRef.current;
     if (busyRef.current || !doc) return;
     busyRef.current = true;
+    const renderSequence = ++renderSequenceRef.current;
+    setLinkAnnotations([]);
 
     if (textLayerRef.current?._cancelTextLayer) {
       textLayerRef.current._cancelTextLayer();
@@ -139,10 +163,11 @@ export function usePdfRender() {
           busyRef.current = false;
           if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
           renderTextLayer(pg, viewport);
+          renderLinkAnnotations(pg, viewport, renderSequence, num);
         })
         .catch(e => { setError('Render error: ' + e); busyRef.current = false; });
     }).catch(e => { setError('Page error: ' + e); busyRef.current = false; });
-  }, [renderTextLayer]);
+  }, [renderLinkAnnotations, renderTextLayer]);
 
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
@@ -267,7 +292,7 @@ export function usePdfRender() {
 
   return {
     // State (read-only)
-    page, totalPages, zoom, error, renderInfo, readPage,
+    page, totalPages, zoom, error, renderInfo, readPage, linkAnnotations,
     // Refs attached to DOM elements in JSX
     canvasARef, canvasBRef, containerRef, textLayerRef,
     // Refs read by PdfViewer for keyboard/snapshot/highlight logic

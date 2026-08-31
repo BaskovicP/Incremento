@@ -222,6 +222,30 @@ class TestTagFallback:
         assert result.card in [201, 202]
         assert result.card_type == "items"
 
+    def test_items_only_endpoint_never_falls_back_to_topics(self):
+        with _patch_soft_pick(card_type="items", tag="work", mode="priority"):
+            with _mock_card_utils(tag_item=[], tag_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    topics_rate=0.0,
+                    use_tags=True,
+                    tag_weights={"work": 1.0},
+                )
+
+        assert result.card is None
+        assert result.card_type == "items"
+
+    def test_topics_only_endpoint_never_falls_back_to_items(self):
+        with _patch_soft_pick(card_type="topics", tag="work", mode="priority"):
+            with _mock_card_utils(tag_topic=[], tag_item=[201]):
+                result = scheduler.get_card_from_scheduler(
+                    topics_rate=1.0,
+                    use_tags=True,
+                    tag_weights={"work": 1.0},
+                )
+
+        assert result.card is None
+        assert result.card_type == "topics"
+
     def test_returns_none_card_when_all_sources_empty(self):
         with _patch_soft_pick(card_type="items", tag="health", mode="priority"):
             with _mock_card_utils(tag_item=[], all_item=[], all_topic=[]):
@@ -266,6 +290,17 @@ class TestUseTagsFalse:
         assert result.card in [201, 202]
         assert result.tag is None
         assert tag_fetch_calls == [], "tag-based fetch should not be called"
+
+    def test_items_only_endpoint_does_not_fall_back_without_tags(self):
+        with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
+            with _mock_card_utils(all_item=[], all_topic=[101]):
+                result = scheduler.get_card_from_scheduler(
+                    topics_rate=0.0,
+                    use_tags=False,
+                )
+
+        assert result.card is None
+        assert result.card_type == "items"
 
     def test_tag_is_none_in_result(self):
         with _patch_soft_pick(card_type="items", mode="priority", use_tags=False):
@@ -721,6 +756,22 @@ class TestPdfRatePaths:
         assert result.card == 101
         assert result.card_type == "topics"
 
+    def test_pdf_only_endpoint_does_not_fall_back_when_document_pool_is_empty(self):
+        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+            with _mock_card_utils_with_pdf(
+                pdf_cards=[],
+                all_topic=[101],
+                all_item=[201],
+            ):
+                result = scheduler.get_card_from_scheduler(
+                    pdf_rate=1.0,
+                    topics_rate=0.7,
+                    use_tags=False,
+                )
+
+        assert result.card is None
+        assert result.card_type == "pdf"
+
     def test_forced_pdf_does_not_consume_a_topic_when_pdf_pool_is_empty(self):
         with patch("scheduler.soft_pick", return_value="priority"):
             with _mock_card_utils_with_pdf(pdf_cards=[], all_topic=[101]):
@@ -834,6 +885,18 @@ class TestNoTagsKeyEmptyFallback:
                 )
         assert result.card in [501, 502]
         assert result.card_type == "items"
+
+    def test_no_tags_key_respects_topics_only_endpoint(self):
+        with patch("scheduler.soft_pick", side_effect=["topics", "priority", NO_TAGS_KEY]):
+            with _mock_card_utils(all_topic=[], all_item=[501]):
+                result = scheduler.get_card_from_scheduler(
+                    topics_rate=1.0,
+                    use_tags=True,
+                    tag_weights={"health": 0.2},
+                )
+
+        assert result.card is None
+        assert result.card_type == "topics"
 
     def test_no_tags_key_returns_none_when_both_pools_empty(self):
         """When NO_TAGS_KEY selected and both topic and item pools are empty."""

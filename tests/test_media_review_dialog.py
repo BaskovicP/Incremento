@@ -66,6 +66,7 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
             assert kwargs["media_kind"] == "pdf"
             assert kwargs["current_position"] == 7
             assert kwargs["initial_options"]["order"] == media_review.MEDIA_REVIEW_ORDER_ATTACHED
+            assert kwargs["initial_options"]["include_filtered"] is False
             assert kwargs["preview_rows"] == [{"card_id": 30}]
 
         def exec(self):
@@ -79,6 +80,7 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
                 "media_range": media_review.MEDIA_REVIEW_RANGE_TO_CURRENT,
                 "state": media_review.MEDIA_REVIEW_STATE_DUE,
                 "limit": 12,
+                "include_filtered": True,
             }
 
     monkeypatch.setattr(module, "MediaAttachedReviewDialog", _AcceptedDialog)
@@ -115,6 +117,10 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
         "_run_media_review_query",
         lambda **kwargs: query_calls.append(kwargs),
     )
+    module._last_options_by_media_kind["Profile\0pdf"] = {
+        **module._default_options(),
+        "include_filtered": True,
+    }
 
     assert module.start_attached_media_review(
         addon_dir="/addon",
@@ -148,6 +154,7 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
     assert resolver_kwargs["media_range"] == media_review.MEDIA_REVIEW_RANGE_TO_CURRENT
     assert resolver_kwargs["state"] == media_review.MEDIA_REVIEW_STATE_DUE
     assert resolver_kwargs["limit"] == 12
+    assert resolver_kwargs["include_filtered"] is True
     assert resolver_kwargs["current_position"] == 7
     assert resolver_kwargs["linked_note_ids"] == (101, 102)
     assert resolver_kwargs["linked_card_ids"] == (201,)
@@ -155,6 +162,7 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
     assert resolver_kwargs["topic_classifier"] is classifier
     assert review_kwargs["deck_name"] == "Incremento PDF Review"
     assert review_kwargs["preserve_order"] is True
+    assert review_kwargs["release_from_other_filtered_decks"] is True
     assert "Topic/Item" in review_kwargs["empty_message"]
     assert review_kwargs["diagnostic_source"] == "media_review"
     assert review_kwargs["diagnostic_content_kind"] == "pdf"
@@ -164,6 +172,95 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
     assert review_kwargs["diagnostic_media_range"] == "to_current"
     assert review_kwargs["diagnostic_media_state"] == "due"
     assert review_kwargs["diagnostic_limit"] == 12
+    assert module._last_options_by_media_kind["Profile\0pdf"]["include_filtered"] is False
+
+
+def test_filtered_deck_option_defaults_off_and_normalizes_boolean(monkeypatch):
+    module = _load_dialog_module(monkeypatch)
+
+    assert module._default_options()["include_filtered"] is False
+    assert module._normalized_options({"include_filtered": 1})["include_filtered"] is True
+
+
+def test_reclaiming_filtered_cards_leaves_active_reviewer_before_deck_mutation(
+    monkeypatch,
+):
+    module = _load_dialog_module(monkeypatch)
+    query_calls = []
+    review_calls = []
+    deferred = []
+    moved = []
+
+    class _AcceptedDialog:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def exec(self):
+            return True
+
+        def selected_options(self):
+            return {
+                "order": "attached",
+                "card_kind": "both",
+                "tree_scope": "nested",
+                "media_range": "all",
+                "state": "all",
+                "limit": 0,
+                "include_filtered": True,
+            }
+
+    monkeypatch.setattr(module, "MediaAttachedReviewDialog", _AcceptedDialog)
+    monkeypatch.setattr(module, "resolve_topic_card_classifier", lambda: object())
+    monkeypatch.setattr(
+        module,
+        "inspect_linked_media_review_rows",
+        lambda *_args, **_kwargs: [{"card_id": 30, "availability": "filtered"}],
+    )
+    monkeypatch.setattr(
+        module,
+        "start_explicit_review_from_selector",
+        lambda *_args, **_kwargs: review_calls.append(_kwargs) or True,
+    )
+    monkeypatch.setattr(
+        module,
+        "_run_media_review_query",
+        lambda **kwargs: query_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        module,
+        "mw",
+        types.SimpleNamespace(
+            state="review",
+            moveToState=lambda state: moved.append(state),
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "QTimer",
+        types.SimpleNamespace(
+            singleShot=lambda delay, callback: deferred.append((delay, callback))
+        ),
+        raising=False,
+    )
+
+    assert module.start_attached_media_review(
+        addon_dir="/addon",
+        profile="Profile",
+        source_card_id=55,
+        media_label="PDF",
+        media_kind="pdf",
+        deck_name="Incremento PDF Review",
+        parent=object(),
+    )
+    preview_rows = query_calls[0]["op"](object())
+    query_calls[0]["success"](preview_rows)
+
+    assert moved == ["overview"]
+    assert review_calls == []
+    assert deferred[0][0] == 0
+
+    deferred[0][1]()
+    assert review_calls[0]["release_from_other_filtered_decks"] is True
 
 
 def test_preview_text_reports_selected_topic_item_counts_and_exclusions(monkeypatch):
@@ -186,6 +283,23 @@ def test_preview_text_reports_selected_topic_item_counts_and_exclusions(monkeypa
     assert "1 suspended" in text
     assert "2 already in another filtered deck" in text
     assert "4 not due now" in text
+
+
+def test_preview_warns_when_filtered_cards_will_be_moved(monkeypatch):
+    module = _load_dialog_module(monkeypatch)
+
+    text = module.format_media_review_preview(
+        {
+            "selected_count": 2,
+            "topic_count": 0,
+            "item_count": 2,
+            "selected_filtered_count": 2,
+            "exclusions": {},
+        }
+    )
+
+    assert "2 cards currently in other filtered decks" in text
+    assert "all cards in those decks" in text
 
 
 def test_inspection_failure_is_forwarded_to_privacy_safe_diagnostics(monkeypatch):

@@ -690,6 +690,94 @@ class TestExplicitReviewSelector:
 
 
 class TestPrepareFilteredReviewDeck:
+    def test_prepare_can_reclaim_selected_cards_from_foreign_filtered_deck(
+        self, monkeypatch
+    ):
+        class _Terms(list):
+            def add(self, **kwargs):
+                self.append(kwargs)
+
+        home_deck_id = 9
+        target_deck_id = 55
+        foreign_filtered_deck_id = 66
+        terms = _Terms()
+        fdu = types.SimpleNamespace(
+            config=types.SimpleNamespace(reschedule=False, search_terms=terms)
+        )
+        cards = {
+            101: types.SimpleNamespace(
+                id=101,
+                did=foreign_filtered_deck_id,
+                odid=home_deck_id,
+                due=0,
+            ),
+            # This card is not selected, but Anki can only empty the whole
+            # conflicting filtered deck through its supported API.
+            102: types.SimpleNamespace(
+                id=102,
+                did=foreign_filtered_deck_id,
+                odid=home_deck_id,
+                due=1,
+            ),
+            103: types.SimpleNamespace(id=103, did=home_deck_id, odid=0, due=2),
+        }
+        empty_calls = []
+        rebuild_calls = []
+
+        def _empty_filtered_deck(deck_id):
+            empty_calls.append(int(deck_id))
+            for card in cards.values():
+                if int(card.did) != int(deck_id):
+                    continue
+                card.did = int(card.odid)
+                card.odid = 0
+
+        def _rebuild_filtered_deck(deck_id):
+            rebuild_calls.append(int(deck_id))
+            for card_id in (101, 103):
+                card = cards[card_id]
+                card.odid = int(card.did)
+                card.did = int(deck_id)
+
+        fake_col = types.SimpleNamespace(
+            decks=types.SimpleNamespace(
+                by_name=lambda _name: None,
+                get=lambda deck_id: (
+                    {"id": int(deck_id), "dyn": 1}
+                    if int(deck_id) == foreign_filtered_deck_id
+                    else None
+                ),
+                new_filtered=lambda _name: target_deck_id,
+                select=lambda _did: None,
+            ),
+            sched=types.SimpleNamespace(
+                empty_filtered_deck=_empty_filtered_deck,
+                get_or_create_filtered_deck=lambda _did: fdu,
+                add_or_update_filtered_deck=lambda _fdu: types.SimpleNamespace(
+                    id=target_deck_id
+                ),
+                rebuild_filtered_deck=_rebuild_filtered_deck,
+            ),
+            get_card=lambda card_id: cards[int(card_id)],
+            update_cards=lambda _cards, skip_undo_entry=False: None,
+        )
+        monkeypatch.setattr(_SESSION_MOD, "mw", types.SimpleNamespace(col=fake_col))
+
+        deck_id = _SESSION_MOD._prepare_filtered_review_deck(
+            [101, 103],
+            deck_name="Incremento PDF Review",
+            preserve_order=True,
+            release_from_other_filtered_decks=True,
+        )
+
+        assert deck_id == target_deck_id
+        assert empty_calls == [foreign_filtered_deck_id]
+        assert rebuild_calls == [target_deck_id]
+        assert cards[101].did == target_deck_id
+        assert cards[103].did == target_deck_id
+        assert cards[102].did == home_deck_id
+        assert cards[102].odid == 0
+
     def test_preserve_order_assigns_due_after_rebuild(self, monkeypatch):
         updated_cards = []
         rebuild_calls = []

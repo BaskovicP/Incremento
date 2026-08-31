@@ -7,12 +7,14 @@ from collections.abc import Iterable, Mapping
 
 from aqt import mw
 from aqt.qt import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QLabel,
     QSpinBox,
+    QTimer,
     QVBoxLayout,
     qconnect,
 )
@@ -97,6 +99,7 @@ def _default_options() -> dict:
         "media_range": MEDIA_REVIEW_RANGE_ALL,
         "state": MEDIA_REVIEW_STATE_ALL,
         "limit": 0,
+        "include_filtered": False,
     }
 
 
@@ -109,6 +112,7 @@ def _normalized_options(options: dict | None) -> dict:
         "media_range": normalize_media_review_range(raw.get("media_range")),
         "state": normalize_media_review_state(raw.get("state")),
         "limit": normalize_media_review_limit(raw.get("limit")),
+        "include_filtered": bool(raw.get("include_filtered", False)),
     }
 
 
@@ -140,6 +144,14 @@ def format_media_review_preview(summary: dict) -> str:
         f"({topics} topic{'s' if topics != 1 else ''}, "
         f"{items} item{'s' if items != 1 else ''})."
     )
+    filtered_count = int(summary.get("selected_filtered_count", 0) or 0)
+    if filtered_count > 0:
+        first_line += (
+            f"\nWarning: {filtered_count} card{'s' if filtered_count != 1 else ''} "
+            "currently in other filtered decks will be moved. Anki must empty "
+            "those decks first, so all cards in those decks return to their "
+            "original decks; the filtered-deck definitions remain available to rebuild."
+        )
 
     exclusions = dict(summary.get("exclusions") or {})
     labels = (
@@ -204,7 +216,9 @@ class MediaAttachedReviewDialog(QDialog):
 
         self.setWindowTitle(f"Review Cards from This {label}")
         self.setModal(True)
-        self.resize(560, 360)
+        # Leave enough room for the opt-in filtered-deck warning without
+        # forcing the preview or action buttons below the initial viewport.
+        self.resize(640, 440)
 
         layout = QVBoxLayout(self)
         summary = QLabel(
@@ -279,6 +293,18 @@ class MediaAttachedReviewDialog(QDialog):
             "Limit the number of cards after filtering and ordering. All means no limit."
         )
         form.addRow("Maximum cards:", self._limit_spin)
+
+        self._include_filtered_checkbox = QCheckBox(
+            "Include cards already in another filtered deck",
+            self,
+        )
+        self._include_filtered_checkbox.setChecked(options["include_filtered"])
+        self._include_filtered_checkbox.setToolTip(
+            "Anki cannot move individual cards between filtered decks. Enabling this "
+            "empties each conflicting filtered deck, returns all of its cards to their "
+            "original decks, and then moves the matching cards into this review."
+        )
+        form.addRow("Other filtered decks:", self._include_filtered_checkbox)
         layout.addLayout(form)
 
         self._preview_label = QLabel("")
@@ -307,6 +333,7 @@ class MediaAttachedReviewDialog(QDialog):
         ):
             qconnect(combo.currentIndexChanged, self._refresh_preview)
         qconnect(self._limit_spin.valueChanged, self._refresh_preview)
+        qconnect(self._include_filtered_checkbox.toggled, self._refresh_preview)
         self._refresh_preview()
 
     def selected_options(self) -> dict:
@@ -318,6 +345,7 @@ class MediaAttachedReviewDialog(QDialog):
                 "media_range": self._range_combo.currentData(),
                 "state": self._state_combo.currentData(),
                 "limit": self._limit_spin.value(),
+                "include_filtered": self._include_filtered_checkbox.isChecked(),
             }
         )
 
@@ -375,6 +403,10 @@ def start_attached_media_review(
     initial_options = _normalized_options(
         _last_options_by_media_kind.get(options_key, _default_options())
     )
+    # Moving cards out of another filtered deck is intentionally one-shot.
+    # Require explicit opt-in on every launch instead of remembering a choice
+    # that can empty an unrelated study deck later.
+    initial_options["include_filtered"] = False
     source_rows = tuple(dict(row) for row in list(linked_source_rows or []))
     note_ids = tuple(linked_note_ids or ())
     card_ids = tuple(linked_card_ids or ())
@@ -421,7 +453,9 @@ def start_attached_media_review(
             return
 
         selected_options = dialog.selected_options()
-        _last_options_by_media_kind[options_key] = dict(selected_options)
+        remembered_options = dict(selected_options)
+        remembered_options["include_filtered"] = False
+        _last_options_by_media_kind[options_key] = remembered_options
 
         def _select_ids(col) -> list[int]:
             return linked_media_review_card_ids(
@@ -442,27 +476,47 @@ def start_attached_media_review(
                 **selected_options,
             )
 
-        start_explicit_review_from_selector(
-            _select_ids,
-            deck_name=deck_name,
-            preserve_order=True,
-            empty_message=(
-                f"No cards attached to this {normalized_label} match the selected "
-                "Topic/Item, link, media-range, and card-state filters."
-            ),
-            error_message=(
-                f"Could not start the attached {normalized_label} card review"
-            ),
-            on_finished=on_finished,
-            diagnostic_source="media_review",
-            diagnostic_content_kind=normalized_media_kind,
-            diagnostic_media_order=selected_options["order"],
-            diagnostic_media_card_kind=selected_options["card_kind"],
-            diagnostic_media_tree_scope=selected_options["tree_scope"],
-            diagnostic_media_range=selected_options["media_range"],
-            diagnostic_media_state=selected_options["state"],
-            diagnostic_limit=selected_options["limit"],
-        )
+        def _start_selected_review() -> None:
+            start_explicit_review_from_selector(
+                _select_ids,
+                deck_name=deck_name,
+                preserve_order=True,
+                empty_message=(
+                    f"No cards attached to this {normalized_label} match the selected "
+                    "Topic/Item, link, media-range, and card-state filters."
+                ),
+                error_message=(
+                    f"Could not start the attached {normalized_label} card review"
+                ),
+                on_finished=on_finished,
+                diagnostic_source="media_review",
+                diagnostic_content_kind=normalized_media_kind,
+                diagnostic_media_order=selected_options["order"],
+                diagnostic_media_card_kind=selected_options["card_kind"],
+                diagnostic_media_tree_scope=selected_options["tree_scope"],
+                diagnostic_media_range=selected_options["media_range"],
+                diagnostic_media_state=selected_options["state"],
+                diagnostic_limit=selected_options["limit"],
+                release_from_other_filtered_decks=bool(
+                    selected_options["include_filtered"]
+                ),
+            )
+
+        if (
+            selected_options["include_filtered"]
+            and str(getattr(mw, "state", "") or "") == "review"
+        ):
+            try:
+                mw.moveToState("overview")
+            except Exception as exc:
+                showInfo(
+                    "Could not safely leave the current review before moving cards "
+                    f"between filtered decks:\n\n{exc}"
+                )
+                return
+            QTimer.singleShot(0, _start_selected_review)
+        else:
+            _start_selected_review()
 
     def _preview_failed(exc: Exception) -> None:
         record_media_review_inspection_failed(normalized_media_kind, exc)

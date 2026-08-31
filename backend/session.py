@@ -399,6 +399,7 @@ def _prepare_filtered_review_deck(
     select_deck: bool = True,
     col=None,
     return_result: bool = False,
+    release_from_other_filtered_decks: bool = False,
 ) -> int | _FilteredDeckBuildResult:
     collection = col if col is not None else mw.col
     changes = _empty_op_changes() if return_result else None
@@ -426,6 +427,44 @@ def _prepare_filtered_review_deck(
         if not existing.get("dyn"):
             raise RuntimeError(f"'{deck_name}' is a normal deck. Delete or rename it first.")
         did = existing["id"]
+    else:
+        did = None
+
+    if release_from_other_filtered_decks:
+        # Anki exposes only whole-deck emptying for cards already in a filtered
+        # deck. Use that supported operation once per conflicting deck; it
+        # returns every card in that deck to its original deck before the
+        # selected cards are moved into this rescheduling review deck.
+        conflicting_deck_ids: set[int] = set()
+        target_deck_id = int(did or 0)
+        for card_id in normalized_ids:
+            try:
+                card = collection.get_card(int(card_id))
+                original_deck_id = int(getattr(card, "odid", 0) or 0)
+                current_deck_id = int(getattr(card, "did", 0) or 0)
+            except Exception:
+                continue
+            if (
+                original_deck_id <= 0
+                or current_deck_id <= 0
+                or current_deck_id == target_deck_id
+            ):
+                continue
+            try:
+                current_deck = collection.decks.get(current_deck_id)
+            except Exception:
+                current_deck = None
+            if current_deck and current_deck.get("dyn"):
+                conflicting_deck_ids.add(current_deck_id)
+
+        for conflicting_deck_id in sorted(conflicting_deck_ids):
+            empty_result = collection.sched.empty_filtered_deck(
+                conflicting_deck_id
+            )
+            if changes is not None:
+                _merge_op_changes(changes, empty_result)
+
+    if did is not None:
         empty_result = collection.sched.empty_filtered_deck(did)
         if changes is not None:
             _merge_op_changes(changes, empty_result)
@@ -1198,6 +1237,7 @@ def start_explicit_review_from_selector(
     diagnostic_media_range: str | None = None,
     diagnostic_media_state: str | None = None,
     diagnostic_limit: int | None = None,
+    release_from_other_filtered_decks: bool = False,
 ) -> bool:
     """Resolve and build an explicit review in a background collection operation."""
     if not callable(select_ids):
@@ -1257,14 +1297,16 @@ def start_explicit_review_from_selector(
                 deck_id=None,
             )
         failure_stage["value"] = "deck_build"
-        deck_result = _prepare_filtered_review_deck(
-            normalized_ids,
-            deck_name=deck_name,
-            preserve_order=preserve_order,
-            select_deck=False,
-            col=col,
-            return_result=True,
-        )
+        prepare_kwargs = {
+            "deck_name": deck_name,
+            "preserve_order": preserve_order,
+            "select_deck": False,
+            "col": col,
+            "return_result": True,
+        }
+        if release_from_other_filtered_decks:
+            prepare_kwargs["release_from_other_filtered_decks"] = True
+        deck_result = _prepare_filtered_review_deck(normalized_ids, **prepare_kwargs)
         included_ids: list[int] = []
         for card_id in normalized_ids:
             try:

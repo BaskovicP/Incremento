@@ -190,7 +190,7 @@ Controls what share of the session goes to topics versus normal review cards.
 
 Incremento also shows the current number of ready topic and item cards.
 
-The 0% and 100% endpoints are exact: a bucket set to 0% is disabled and is not reintroduced by scheduler smoothing.
+The 0% and 100% endpoints are exact: a bucket set to 0% is disabled and is not reintroduced by scheduler smoothing or empty-pool fallback. For example, an Items-only preview with no matching Items reports fewer scheduled cards instead of substituting Topics.
 
 ### Docs <-> Other balance
 
@@ -379,8 +379,11 @@ Main controls include:
 - **Add Card**
 - **Review Due** for due extracted cards near the current reading point
 - **Review All** for every available card linked to this PDF
+- **Links Off / On** to make PDF links clickable while you want them
 - **Highlight when extracting**
 - **Mark this PDF as finished reading**
+
+Reader links are off by default so ordinary text selection is not interrupted. Turn **Links On** when you want to follow them. Links to another page stay inside the current PDF; `http` and `https` links open in your system browser. Unsupported link types are blocked and PDFs never navigate the embedded reader to a remote site.
 
 Incremento remembers:
 
@@ -401,12 +404,13 @@ PDF highlights can also be turned into cards from the **Highlights** panel. Incr
 
 ### Reviewing all cards attached to media
 
-While a PDF, EPUB, or video card is open, press **Review All** to open the attached-card review picker. Incremento recognizes older PDF/EPUB extraction records, current parent-card metadata, saved reader links, recent video extracts, and nested descendants in the source card's knowledge-tree branch.
+While a PDF, EPUB, or video card is open, press **Review All** to open the attached-card review picker. Incremento recognizes older PDF/EPUB extraction records, current parent-card metadata, saved reader links, recent video extracts, and nested descendants below either the media card or any directly attached knowledge-tree root.
 
 The picker lets you choose:
 
 - **Topics and items**, **Topics only**, or **Items only**. This uses the same Topic/Item classifier as the normal Incremento reviewer, including configured topic note types/tags, item-tag overrides, and Topics-deck behavior.
 - **Direct and nested cards** or **Direct attachments only**.
+- **Include cards already in another filtered deck** when you explicitly want to transfer matching cards out of an existing filtered review.
 - The **entire media** or only cards **up to the current position**. Media position means PDF page, EPUB section, or video timestamp. A nested card inherits the nearest known ancestor position; a card with no known position is excluded from the up-to-current range and reported in the preview.
 - **All available cards** or only due review and ready learning/relearning cards. The due-only choice does not include new or future cards.
 - A maximum number of cards, applied after filtering and ordering. Leave it at **All** for no limit.
@@ -422,7 +426,9 @@ Available review orders are:
 
 Incremento first scans the links in the background, then shows a live preview with the number of Topics and Items that will be reviewed. It also reports exclusion counts such as suspended, buried, already filtered, nested, beyond the current position, unknown position, not due, or past the chosen limit. The source card itself is never included.
 
-After you confirm, Incremento resolves the links again and builds the temporary filtered deck in a background collection operation. Rechecking prevents stale preview data from scheduling a card that changed while the dialog was open. The selected order is preserved. Cards already in another filtered deck remain there and are not silently moved.
+After you confirm, Incremento resolves the links again and builds the temporary filtered deck in a background collection operation. Rechecking prevents stale preview data from scheduling a card that changed while the dialog was open. The selected order is preserved. Cards already in another filtered deck remain there unless you explicitly enable **Include cards already in another filtered deck**.
+
+Anki cannot remove only selected cards from a filtered deck through its supported filtered-deck operation. When that option is enabled, Incremento first leaves any active reviewer, empties every conflicting filtered deck, and returns all cards from those decks to their original decks. It then moves only the matching selected cards into the PDF, EPUB, or video Review All deck. This does not delete cards, review history, scheduling data, or the old filtered-deck definitions, but it ends those decks' current review queues; rebuild the old filtered decks if you want to use them again. The picker shows a warning and requires this one-time opt-in every time it opens.
 
 These are real Anki reviews, including cards that were not yet due, so each answer updates that card's schedule normally. When the linked-card review ends, Incremento reopens the PDF, EPUB, or video at its saved reading or playback position.
 
@@ -456,11 +462,14 @@ Current EPUB features include:
 
 - saved reading position and reopen-at-last-section behavior
 - bookmarks within the book
+- an opt-in **Links Off / On** control for section, footnote, and web links
 - highlights and highlight notes
 - per-book daily reading limits
 - optional prompts to review due extracted cards near the current reading point
 - **Review All** with the shared Topic/Item, scope, state, limit, and order picker
 - searchable extracted section text used by **Search ALL**
+
+EPUB links are also off by default. With **Links On**, links to a section or anchor navigate inside the same book and validated `http`/`https` links open in your system browser. Remote resources still cannot load inside the EPUB reader, and unsupported or escaping local paths are blocked.
 
 EPUBs are treated as a distinct document type throughout Incremento. They appear separately from PDFs in quick open, statistics, and focus-timer summaries.
 

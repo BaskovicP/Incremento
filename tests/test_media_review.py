@@ -131,6 +131,53 @@ def test_resolver_combines_legacy_metadata_and_nested_tree_links(monkeypatch):
     assert col.note_queries == ["Incremento_Parent_Card_ID:500"]
 
 
+def test_pdf_review_all_includes_descendants_of_attached_tree_root(monkeypatch):
+    source_card_id = 500
+    cards = {
+        1000: _card(1000, 10, topic=True),
+        2000: _card(2000, 20),
+        3000: _card(3000, 30),
+    }
+    col = _FakeCollection(
+        notes={
+            10: _FakeNote(source_card_id),
+            20: _FakeNote(""),
+            30: _FakeNote(""),
+        },
+        cards=cards,
+    )
+    monkeypatch.setattr(
+        media_review,
+        "get_knowledge_tree_nodes",
+        lambda *_args: [
+            # The PDF card is not itself in the tree. Its directly attached
+            # card is the root shown in the Knowledge Tree workspace.
+            {"card_id": 1000, "parent_card_id": None, "node_kind": "topic", "sort_order": 0},
+            {"card_id": 2000, "parent_card_id": 1000, "node_kind": "item", "sort_order": 0},
+            {"card_id": 3000, "parent_card_id": 2000, "node_kind": "item", "sort_order": 0},
+        ],
+    )
+    monkeypatch.setattr(
+        media_review,
+        "is_topic_card",
+        lambda card, **_kwargs: bool(card.topic),
+    )
+
+    rows = media_review.inspect_linked_media_review_rows(
+        "/addon",
+        "Profile",
+        source_card_id,
+        col=col,
+        media_kind="pdf",
+        linked_source_rows=[{"note_id": 10, "position": 7}],
+        topic_classifier=object(),
+    )
+
+    assert [row["card_id"] for row in rows] == [1000, 2000, 3000]
+    assert [row["source_depth"] for row in rows] == [0, 1, 2]
+    assert [row["media_position"] for row in rows] == [7, 7, 7]
+
+
 def test_note_search_is_chunked_for_large_link_sets(monkeypatch):
     note_ids = list(range(1, 452))
     cards = {note_id + 10_000: _card(note_id + 10_000, note_id) for note_id in note_ids}
@@ -327,6 +374,36 @@ def test_topic_item_or_both_choice_uses_the_same_classified_rows():
         rows,
         card_kind="both",
     )["card_ids"] == [1, 2, 3]
+
+
+def test_include_filtered_option_admits_filtered_cards_and_reports_the_move():
+    rows = [
+        {
+            "card_id": 1,
+            "availability": "filtered",
+            "is_topic": False,
+            "attached_rank": 0,
+        },
+        {
+            "card_id": 2,
+            "availability": "available",
+            "is_topic": False,
+            "attached_rank": 1,
+        },
+    ]
+
+    excluded = media_review.select_linked_media_review_rows(rows)
+    included = media_review.select_linked_media_review_rows(
+        rows,
+        include_filtered=True,
+    )
+
+    assert excluded["card_ids"] == [2]
+    assert excluded["exclusions"]["filtered"] == 1
+    assert included["card_ids"] == [1, 2]
+    assert included["selected_filtered_count"] == 1
+    assert included["exclusions"]["filtered"] == 0
+    assert included["include_filtered"] is True
 
 
 def test_seeded_random_order_is_stable_between_preview_and_final_resolution():

@@ -221,6 +221,8 @@ class TestEpubSanitization:
               <iframe src="https://tracker.example/frame"></iframe>
               <a href="javascript:alert(1)" target="_blank">Unsafe</a>
               <a href="next.xhtml#part">Safe link</a>
+              <a href="https://docs.example.test/reference" target="_blank">External link</a>
+              <a href="mailto:user@example.test">Mail link</a>
               <img src="https://tracker.example/pixel" onerror="alert(1)">
               <p style="background:url(https://tracker.example/y)">Readable text</p>
             </body></html>
@@ -236,6 +238,9 @@ class TestEpubSanitization:
         assert soup.body.get("onload") is None
         assert soup.find("a", string="Unsafe").get("href") is None
         assert soup.find("a", string="Safe link")["href"] == "next.xhtml#part"
+        assert soup.find("a", string="External link")["href"] == "https://docs.example.test/reference"
+        assert soup.find("a", string="External link").get("target") is None
+        assert soup.find("a", string="Mail link").get("href") is None
         assert soup.find("img").get("src") is None
         assert "tracker.example" not in soup.get_text(" ")
         assert "Readable text" in soup.get_text(" ")

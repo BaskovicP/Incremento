@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 
+_FOCUS_RESTORE_DELAYS_MS = (0, 50, 150)
+
+
 def _is_owned_by_main_window(window, main_window) -> bool:
     current = window
     seen: set[int] = set()
@@ -84,11 +87,18 @@ def schedule_reviewer_focus_restore(
     timer,
     application=None,
 ) -> None:
-    """Defer recovery until all question-shown hooks and Qt focus events settle."""
-    timer.singleShot(
-        0,
-        lambda: restore_reviewer_focus(
-            main_window,
-            application=application,
-        ),
-    )
+    """Retry briefly while reviewer-transition and Qt focus events settle."""
+    for delay_ms in _FOCUS_RESTORE_DELAYS_MS:
+        timer.singleShot(
+            delay_ms,
+            lambda: restore_reviewer_focus(
+                main_window,
+                application=application,
+            ),
+        )
+
+
+def register_reviewer_focus_restore_hooks(gui_hooks, callback) -> None:
+    """Recover shortcuts after both sides of the reviewer are rendered."""
+    gui_hooks.reviewer_did_show_question.append(callback)
+    gui_hooks.reviewer_did_show_answer.append(callback)
