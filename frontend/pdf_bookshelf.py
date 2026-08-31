@@ -14,6 +14,7 @@ from aqt.qt import (
     QCheckBox,
     QColor,
     QComboBox,
+    QCompleter,
     QDialog,
     QEvent,
     QHBoxLayout,
@@ -69,6 +70,7 @@ _TAG_MODE_OR = "OR"
 _TAG_MODE_AND = "AND"
 _MAX_TAG_FILTER_CHARS = 4_096
 _MAX_TAG_FILTER_TERMS = 64
+_MAX_TAG_SUGGESTIONS = 10_000
 
 
 @dataclass(frozen=True)
@@ -132,6 +134,122 @@ def _parse_bookshelf_tag_query(raw_query: object) -> tuple[str, ...]:
         if len(terms) >= _MAX_TAG_FILTER_TERMS:
             break
     return tuple(terms)
+
+
+def _is_bookshelf_tag_delimiter(character: str) -> bool:
+    return character in ",;" or character.isspace()
+
+
+def _bookshelf_tag_token_bounds(query: str, cursor_position: int) -> tuple[int, int]:
+    raw_query = str(query or "")
+    try:
+        cursor = max(0, min(len(raw_query), int(cursor_position)))
+    except (TypeError, ValueError):
+        cursor = len(raw_query)
+
+    start = cursor
+    while start > 0 and not _is_bookshelf_tag_delimiter(raw_query[start - 1]):
+        start -= 1
+
+    end = cursor
+    while end < len(raw_query) and not _is_bookshelf_tag_delimiter(raw_query[end]):
+        end += 1
+    return start, end
+
+
+def _complete_bookshelf_tag_query(
+    query: object,
+    completion: object,
+    cursor_position: int,
+) -> tuple[str, int]:
+    """Replace only the tag token at the cursor with a selected suggestion."""
+    raw_query = str(query or "")
+    try:
+        cursor = max(0, min(len(raw_query), int(cursor_position)))
+    except (TypeError, ValueError):
+        cursor = len(raw_query)
+    tag = str(completion or "").strip()
+    if (
+        not tag
+        or len(tag) > 512
+        or any(_is_bookshelf_tag_delimiter(character) for character in tag)
+    ):
+        return raw_query, cursor
+
+    start, end = _bookshelf_tag_token_bounds(raw_query, cursor)
+    completed_query = f"{raw_query[:start]}{tag}{raw_query[end:]}"
+    return completed_query, start + len(tag)
+
+
+def _bookshelf_tag_suggestions(
+    entries: list[_BookshelfEntry],
+) -> tuple[str, ...]:
+    """Return relevant tags ranked by document frequency, then by name."""
+    labels: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for entry in entries:
+        seen_on_entry: set[str] = set()
+        for raw_tag in entry.tags:
+            tag = str(raw_tag or "").strip()
+            key = tag.casefold()
+            if (
+                not tag
+                or len(tag) > 512
+                or key in seen_on_entry
+                or any(_is_bookshelf_tag_delimiter(character) for character in tag)
+            ):
+                continue
+            seen_on_entry.add(key)
+            if key not in labels:
+                if len(labels) >= _MAX_TAG_SUGGESTIONS:
+                    continue
+                labels[key] = tag
+                counts[key] = 0
+            counts[key] += 1
+
+    ranked_keys = sorted(
+        labels,
+        key=lambda key: (-counts[key], labels[key].casefold(), labels[key]),
+    )
+    return tuple(labels[key] for key in ranked_keys)
+
+
+class _BookshelfTagCompleter(QCompleter):
+    """Complete the active tag token without replacing the whole query."""
+
+    def splitPath(self, path: str) -> list[str]:
+        query = str(path or "")
+        widget = self.widget()
+        try:
+            cursor = int(widget.cursorPosition())
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            cursor = len(query)
+        start, _end = _bookshelf_tag_token_bounds(query, cursor)
+        return [query[start:cursor]]
+
+    def pathFromIndex(self, index) -> str:
+        completion = str(super().pathFromIndex(index) or "")
+        widget = self.widget()
+        try:
+            query = str(widget.text() or "")
+            cursor = int(widget.cursorPosition())
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            return completion
+        completed_query, completed_cursor = _complete_bookshelf_tag_query(
+            query,
+            completion,
+            cursor,
+        )
+
+        def restore_cursor() -> None:
+            try:
+                if widget.text() == completed_query:
+                    widget.setCursorPosition(completed_cursor)
+            except (AttributeError, RuntimeError):
+                return
+
+        QTimer.singleShot(0, restore_cursor)
+        return completed_query
 
 
 def _load_bookshelf_entries(
@@ -360,14 +478,40 @@ class _DocumentBookshelfDialog(QDialog):
         tag_row.addWidget(QLabel("Tags:"))
         self._tag_search = QLineEdit()
         self._tag_search.setPlaceholderText(
-            "Filter by tags (separate with spaces, commas, or semicolons)…"
+            "Filter by tags — type a name or browse available tags…"
         )
         self._tag_search.setClearButtonEnabled(True)
         self._tag_search.setMaxLength(_MAX_TAG_FILTER_CHARS)
         self._tag_search.setToolTip(
-            "Enter exact Anki tag names. Matching ignores uppercase/lowercase."
+            "Start typing any part of a tag name, or browse tags used by these "
+            "documents. Matching ignores uppercase/lowercase."
         )
+        self._tag_search.setAccessibleName("Bookshelf tag filter")
         tag_row.addWidget(self._tag_search, 1)
+
+        tag_suggestions = _bookshelf_tag_suggestions(self._entries)
+        self._tag_completer = _BookshelfTagCompleter(
+            list(tag_suggestions),
+            self._tag_search,
+        )
+        self._tag_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._tag_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self._tag_completer.setCompletionMode(
+            QCompleter.CompletionMode.PopupCompletion
+        )
+        self._tag_completer.setMaxVisibleItems(12)
+        self._tag_search.setCompleter(self._tag_completer)
+
+        self._browse_tags_button = QPushButton("Browse tags")
+        self._browse_tags_button.setAccessibleName("Browse bookshelf tags")
+        self._browse_tags_button.setEnabled(bool(tag_suggestions))
+        self._browse_tags_button.setToolTip(
+            "Show tags used by documents in this bookshelf, with the most common "
+            "tags first."
+            if tag_suggestions
+            else "No document tags are available."
+        )
+        tag_row.addWidget(self._browse_tags_button)
 
         self._tag_mode_combo = QComboBox()
         self._tag_mode_combo.addItem("Any tag (OR)", _TAG_MODE_OR)
@@ -435,6 +579,7 @@ class _DocumentBookshelfDialog(QDialog):
         qconnect(self._kind_combo.currentIndexChanged, self._refresh)
         qconnect(self._tag_search.textChanged, self._refresh)
         qconnect(self._tag_mode_combo.currentIndexChanged, self._refresh)
+        qconnect(self._browse_tags_button.clicked, self._show_tag_suggestions)
         qconnect(self._search.returnPressed, self._accept_current)
         qconnect(self._tag_search.returnPressed, self._accept_current)
         qconnect(self._list.itemClicked, self._accept_item)
@@ -467,6 +612,19 @@ class _DocumentBookshelfDialog(QDialog):
             if str(mode or "").strip().upper() == _TAG_MODE_AND
             else _TAG_MODE_OR
         )
+
+    def _show_tag_suggestions(self) -> None:
+        self._tag_search.setFocus()
+        query = self._tag_search.text()
+        cursor = self._tag_search.cursorPosition()
+        start, _end = _bookshelf_tag_token_bounds(query, cursor)
+        self._tag_completer.setCompletionPrefix(query[start:cursor])
+        completion_model = self._tag_completer.completionModel()
+        if completion_model.rowCount() <= 0:
+            return
+        popup = self._tag_completer.popup()
+        popup.setCurrentIndex(completion_model.index(0, 0))
+        self._tag_completer.complete()
 
     def _refresh(self, *_args) -> None:
         kind = self._current_kind()

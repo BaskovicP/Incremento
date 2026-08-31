@@ -13,6 +13,7 @@ if _qt_module is not None and not hasattr(_qt_module, "QAbstractItemView"):
         "QCheckBox",
         "QColor",
         "QComboBox",
+        "QCompleter",
         "QDialog",
         "QEvent",
         "QHBoxLayout",
@@ -243,12 +244,75 @@ def test_bookshelf_tag_filter_supports_or_and_combines_with_title_and_kind():
     ) == entries
 
 
+def test_bookshelf_tag_suggestions_rank_frequency_and_dedupe_case():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "Alpha",
+            1,
+            "PDF",
+            tags=("Work", "reading"),
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Beta",
+            2,
+            "EPUB",
+            tags=("reading", "work", "machine_learning"),
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Gamma",
+            3,
+            "PDF",
+            tags=("Reading", "project::Deep"),
+        ),
+    ]
+
+    assert pdf_bookshelf._bookshelf_tag_suggestions(entries) == (
+        "reading",
+        "Work",
+        "machine_learning",
+        "project::Deep",
+    )
+
+
+def test_bookshelf_tag_completion_replaces_only_the_active_token():
+    completed, cursor = pdf_bookshelf._complete_bookshelf_tag_query(
+        "work, mach",
+        "machine_learning",
+        len("work, mach"),
+    )
+    assert completed == "work, machine_learning"
+    assert cursor == len(completed)
+
+    source = "work; mach reading"
+    completed, cursor = pdf_bookshelf._complete_bookshelf_tag_query(
+        source,
+        "machine_learning",
+        len("work; mach"),
+    )
+    assert completed == "work; machine_learning reading"
+    assert cursor == len("work; machine_learning")
+
+    assert pdf_bookshelf._complete_bookshelf_tag_query(
+        "",
+        "project::Deep",
+        0,
+    ) == ("project::Deep", len("project::Deep"))
+    assert pdf_bookshelf._complete_bookshelf_tag_query(
+        "work",
+        "invalid tag",
+        4,
+    ) == ("work", 4)
+
+
 def test_bookshelf_dialog_exposes_tag_filter_and_explicit_or_and_modes():
     source = Path(pdf_bookshelf.__file__).read_text(encoding="utf-8")
 
     assert "Filter by tags" in source
     assert "Any tag (OR)" in source
     assert "All tags (AND)" in source
+    assert "Browse tags" in source
+    assert "QCompleter" in source
+    assert "Qt.MatchFlag.MatchContains" in source
     assert "self._tag_search.textChanged" in source
     assert "self._tag_mode_combo.currentIndexChanged" in source
 
