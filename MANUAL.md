@@ -239,6 +239,8 @@ You can allocate part of each session to specific tags:
 3. Lock any tag whose share should stay fixed.
 4. Use **After exhausting tag groups, fill with rest of cards** if you want leftover slots topped up automatically.
 
+The always-present **Other** row represents cards outside the specific tag rows. When no specific tags have been added, Other is necessarily 100% and its slider is disabled. Adding a tag restores the normal editable balance.
+
 By default, document and media picks also respect active tag rows. For example, if your session only has `data` and `statistics` tag quotas, PDF, EPUB, video, and webpage picks must match those tags instead of falling back to unrelated content.
 
 ### Filters
@@ -371,7 +373,7 @@ Each PDF note includes:
 
 When a PDF card is reviewed, the PDF dock opens on the right.
 
-Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. PDF tiles use their stored first-page cover; EPUB tiles use their stored book cover. Every tile has a bold, theme-aware title underneath and opens the appropriate reader with one click. Suspended document cards remain visible because the shelf is a document opener rather than a study queue. For older PDFs without a stored cover, Incremento renders a temporary first-page preview in the background. A document whose cover or source is unavailable keeps a placeholder instead of blocking the dialog.
+Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. The separate tag field accepts exact Anki tag names separated by spaces, commas, or semicolons. Choose **Any tag (OR)** to include documents carrying at least one requested tag, or **All tags (AND)** to require every requested tag; tag matching ignores uppercase/lowercase and combines with the title and document-type filters. PDF tiles use their stored first-page cover; EPUB tiles use their stored book cover. Every tile has a bold, theme-aware title underneath and opens the appropriate reader with one click. Suspended document cards remain visible because the shelf is a document opener rather than a study queue. For older PDFs without a stored cover, Incremento renders a temporary first-page preview in the background. A document whose cover or source is unavailable keeps a placeholder instead of blocking the dialog.
 
 Main controls include:
 
@@ -382,10 +384,13 @@ Main controls include:
 - **Review Due** for due extracted cards near the current reading point
 - **Review All** for every available card linked to this PDF
 - **Links Off / On** to make PDF links clickable while you want them
+- **Jump Back** beside the link toggle to return to the page and reading position from before an internal PDF-link jump
 - **Highlight when extracting**
 - **Mark this PDF as finished reading**
 
-Reader links are off by default so ordinary text selection is not interrupted. Turn **Links On** when you want to follow them. Links to another page stay inside the current PDF; `http` and `https` links open in your system browser. Unsupported link types are blocked and PDFs never navigate the embedded reader to a remote site.
+Reader links are off by default so ordinary text selection is not interrupted. Turn **Links On** when you want to follow them. Links to another page stay inside the current PDF; after following one, **Jump Back** restores the earlier page and scroll position. Repeated internal jumps build a short back history, which is cleared when another PDF opens. `http` and `https` links open in your system browser. Unsupported link types are blocked and PDFs never navigate the embedded reader to a remote site.
+
+To create a reusable return point, right-click the PDF page and choose **Copy Link to This Place**. Paste normally into an Anki card field: it appears as a clickable citation that reopens the same PDF page at the clicked vertical position. Incremento preserves this rich link even when Anki's **Paste strips formatting** preference is enabled. The ordinary Copy and other standard right-click actions remain available. Visiting this anchor does not replace the PDF's saved reading position. A plain-text title is also placed on the clipboard for apps that do not accept rich HTML.
 
 Incremento remembers:
 
@@ -472,6 +477,8 @@ Current EPUB features include:
 - searchable extracted section text used by **Search ALL**
 
 EPUB links are also off by default. With **Links On**, links to a section or anchor navigate inside the same book and validated `http`/`https` links open in your system browser. Remote resources still cannot load inside the EPUB reader, and unsupported or escaping local paths are blocked.
+
+Right-click the EPUB text and choose **Copy Link to This Place** to copy a card-ready anchor for the current section and nearest text position. Pasting it into an Anki field creates a link that reopens that exact reading area; a bounded scroll position is retained as a fallback if the text point cannot be resolved. The action is available independently of **Links On**, and the standard context-menu actions remain intact.
 
 EPUBs are treated as a distinct document type throughout Incremento. They appear separately from PDFs in quick open, statistics, and focus-timer summaries.
 
@@ -686,7 +693,9 @@ The cumulative **Today so far** line also uses the persisted unique-page history
 
 ### Per-card priority
 
-Press `Alt+P` to open the priority dialog for the current review card.
+Press `Alt+P` to open the priority dialog for the current review card. The same
+action is available as a visible `P` toolbar button in Anki's **Edit Current**
+window. The Browser editor also shows `P` for the selected card.
 
 Priority scale:
 

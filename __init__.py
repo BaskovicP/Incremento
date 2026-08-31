@@ -171,6 +171,7 @@ from .frontend.timer_widget import (
 )
 from .frontend import pdf_dock as _pdf_dock_mod
 from .frontend import epub_dock as _epub_dock_mod
+from .frontend import reader_links as _reader_links_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
@@ -2074,6 +2075,7 @@ def _open_pdf_reference(
     filename: str = "",
     excerpt: str = "",
     highlight_id: str = "",
+    scroll_ratio: float | None = None,
 ) -> None:
     clean_filename = str(filename or "").strip()
     clean_excerpt = str(excerpt or "").strip()
@@ -2126,6 +2128,7 @@ def _open_pdf_reference(
             via_link=True,
             jump_excerpt=clean_excerpt,
             jump_highlight_id=clean_highlight_id,
+            scroll_ratio_override=scroll_ratio,
         )
     else:
         _pdf_dock_mod.show_pdf_in_dock(
@@ -2137,6 +2140,7 @@ def _open_pdf_reference(
             jump_excerpt=clean_excerpt,
             jump_highlight_id=clean_highlight_id,
             offer_due_review_prompt=False,
+            scroll_ratio_override=scroll_ratio,
         )
 
 
@@ -2261,6 +2265,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 str(data.get("filename") or ""),
                 str(data.get("excerpt") or ""),
                 str(data.get("highlight_id") or ""),
+                data.get("scroll_ratio"),
             )
         except Exception:
             pass
@@ -2287,19 +2292,17 @@ def _on_js_message(handled, message, context) -> tuple:
         return (True, None)
 
     if message.startswith("incremento_open_epub:"):
-        parts = message.split(":")
-        if len(parts) >= 4:
-            try:
-                card_id = int(parts[1])
-                section_index = int(parts[2])
-                focus_offset = int(parts[3])
+        try:
+            anchor = _epub_dock_mod.parse_epub_anchor_command(message)
+            if anchor is not None:
                 _epub_dock_mod.open_epub_location(
-                    card_id,
-                    section_index,
-                    focus_offset=focus_offset,
+                    int(anchor["card_id"]),
+                    int(anchor["section_index"]),
+                    focus_offset=int(anchor["focus_offset"]),
+                    scroll_ratio_override=anchor.get("scroll_ratio"),
                 )
-            except Exception:
-                pass
+        except Exception:
+            pass
         return (True, None)
 
     if message.startswith("incremento_open_video:"):
@@ -6351,6 +6354,9 @@ gui_hooks.undo_state_did_change.append(
 )
 gui_hooks.browser_will_show.append(_prune_incremento_hidden_browser_active_columns)
 gui_hooks.editor_did_load_note.append(_hide_incremento_hidden_fields_in_editor)
+gui_hooks.editor_will_process_mime.append(
+    _reader_links_mod.force_reader_anchor_rich_paste
+)
 gui_hooks.browser_did_fetch_columns.append(_filter_incremento_hidden_browser_columns)
 gui_hooks.browser_will_show_context_menu.append(_on_browser_context_menu)
 gui_hooks.browser_menus_did_init.append(

@@ -453,3 +453,13 @@ def test_video_position_is_recovered_from_persisted_reader_link(monkeypatch):
     )
 
     assert rows[0]["media_position"] == 73.5
+
+
+def test_epub_position_is_recovered_from_exact_anchor_link():
+    note = _FakeNote(
+        fields=[
+            '<a onclick="pycmd(&quot;incremento_open_epub:321:3:88:0.375&quot;)">Chapter</a>'
+        ],
+    )
+
+    assert media_review._media_position_from_note(note, "epub", 321) == 3

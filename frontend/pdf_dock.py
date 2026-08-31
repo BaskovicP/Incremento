@@ -53,9 +53,19 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtCore import QEvent, QObject, QUrl
 
 try:
-    from .reader_links import open_external_reader_link
+    from .reader_links import (
+        normalize_reader_anchor_scroll_ratio,
+        open_external_reader_link,
+        set_reader_anchor_clipboard,
+        show_reader_anchor_context_menu,
+    )
 except ImportError:
-    from reader_links import open_external_reader_link  # type: ignore
+    from reader_links import (  # type: ignore
+        normalize_reader_anchor_scroll_ratio,
+        open_external_reader_link,
+        set_reader_anchor_clipboard,
+        show_reader_anchor_context_menu,
+    )
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
@@ -1015,6 +1025,7 @@ def pdf_citation(
     *,
     highlight_id: str = "",
     page: int | None = None,
+    scroll_ratio: float | None = None,
 ) -> str:
     """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
     card_id = current_pdf_card_id()
@@ -1033,12 +1044,75 @@ def pdf_citation(
     normalized_highlight_id = str(highlight_id or "").strip()
     if normalized_highlight_id:
         payload["highlight_id"] = normalized_highlight_id
+    normalized_scroll_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio)
+    if normalized_scroll_ratio is not None:
+        payload["scroll_ratio"] = normalized_scroll_ratio
     cmd = "incremento_open_pdf_ref:" + json.dumps(payload, ensure_ascii=False)
     onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
     return (
         f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
         f"Page {resolved_page}. of {escape(name)}</a>"
+    )
+
+
+def _normalize_pdf_context_anchor(data: object) -> dict[str, int | float] | None:
+    if not isinstance(data, dict):
+        return None
+    try:
+        current_card_id = int(_current_pdf_card_id or 0)
+        card_id = int(data.get("cardId") or 0)
+        page = int(data.get("page") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    scroll_ratio = normalize_reader_anchor_scroll_ratio(data.get("scrollRatio"))
+    if (
+        current_card_id <= 0
+        or card_id != current_card_id
+        or page <= 0
+        or page > 1_000_000
+        or scroll_ratio is None
+    ):
+        return None
+    return {
+        "card_id": card_id,
+        "page": page,
+        "scroll_ratio": scroll_ratio,
+    }
+
+
+def _copy_pdf_context_anchor(data: object) -> bool:
+    anchor = _normalize_pdf_context_anchor(data)
+    if anchor is None or not _current_pdf_filename:
+        return False
+    page = int(anchor["page"])
+    html = pdf_citation(
+        page=page,
+        scroll_ratio=float(anchor["scroll_ratio"]),
+    )
+    label = pdf_display_label_from_filename(str(_current_pdf_filename), fallback="PDF")
+    if not html or not set_reader_anchor_clipboard(html, f"{label} — page {page}"):
+        return False
+    tooltip("PDF link copied. Paste it into an Anki card.")
+    return True
+
+
+def _show_pdf_reader_context_menu(view, position) -> bool:
+    try:
+        x = int(position.x())
+        y = int(position.y())
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return False
+    resolver_script = (
+        "window.incrementoPdfAnchorAtPoint "
+        f"? window.incrementoPdfAnchorAtPoint({x}, {y}) : null;"
+    )
+    return show_reader_anchor_context_menu(
+        view,
+        position,
+        resolver_script=resolver_script,
+        on_copy=_copy_pdf_context_anchor,
+        action_label="Copy Link to This Place",
     )
 
 
@@ -2115,7 +2189,7 @@ def _handle_pdf_js_message(msg: str) -> None:
         try:
             payload = json.loads(msg[len(_MSG_SCROLL) :])
             cid = int(payload.get("cardId", 0) or 0)
-            if cid > 0 and not _pdf_preserve_history:
+            if cid > 0 and not _pdf_preserve_history and not _pdf_via_link:
                 set_scroll_ratio(
                     _ADDON_DIR,
                     _active_profile(),
@@ -2715,6 +2789,14 @@ def _build_pdf_dock():
 
     view = QWebEngineView(dock)
     view.setPage(page)
+    view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    qconnect(
+        view.customContextMenuRequested,
+        lambda position, current_view=view: _show_pdf_reader_context_menu(
+            current_view,
+            position,
+        ),
+    )
     dock.setWidget(view)
     dock._pdf_profile = profile
     dock._pdf_request_interceptor = interceptor
@@ -2908,6 +2990,7 @@ def show_pdf_in_dock(
     active_search_hit_index: int = -1,
     preserve_history=False,
     offer_due_review_prompt=True,
+    scroll_ratio_override: float | None = None,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     global _pdf_showing_missing_screen
@@ -2995,7 +3078,13 @@ def show_pdf_in_dock(
     bookmarks = _pdf_bookmarks_payload(card_id)
     limit_status = _current_pdf_limit_status(card_id, current_page=page)
     read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), card_id)
-    scroll_ratio = get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id)
+    saved_scroll_ratio = get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id)
+    requested_scroll_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio_override)
+    scroll_ratio = (
+        requested_scroll_ratio
+        if requested_scroll_ratio is not None
+        else saved_scroll_ratio
+    )
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
 
     if search_hits is None:
@@ -3013,10 +3102,10 @@ def show_pdf_in_dock(
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
     )
 
     current = _pdf_dock._view.url().toString()

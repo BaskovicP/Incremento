@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 
 
 # Some older dialog tests replace the shared aqt.qt test double during
@@ -38,9 +39,10 @@ import pdf_bookshelf
 
 
 class _FakeNote:
-    def __init__(self, fields=None, named_fields=None):
+    def __init__(self, fields=None, named_fields=None, tags=None):
         self.fields = list(fields or [])
         self._named_fields = dict(named_fields or {})
+        self.tags = list(tags or [])
 
     def __getitem__(self, key):
         return self._named_fields[key]
@@ -81,6 +83,7 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
         notes={
             1: _FakeNote(
                 fields=["Alpha fallback"],
+                tags=["reading", "Work"],
                 named_fields={
                     "Title": "Alpha PDF",
                     "PDF_Filename": "alpha.pdf",
@@ -89,6 +92,7 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
             ),
             2: _FakeNote(
                 fields=["Beta fallback"],
+                tags=["reading", "machine_learning"],
                 named_fields={
                     "Title": "Beta EPUB",
                     pdf_bookshelf.EPUB_FILE_FIELD: "beta.epub",
@@ -114,6 +118,7 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
             cover_filename="alpha-cover.png",
             source_filename="alpha.pdf",
             priority=25,
+            tags=("reading", "Work"),
         ),
         pdf_bookshelf._BookshelfEntry(
             title="Beta EPUB",
@@ -122,6 +127,7 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
             cover_filename="beta-cover.jpg",
             source_filename="beta.epub",
             priority=75,
+            tags=("reading", "machine_learning"),
         ),
     ]
 
@@ -169,6 +175,82 @@ def test_bookshelf_filter_is_case_insensitive_and_preserves_order():
     assert pdf_bookshelf._filter_bookshelf_entries(entries, "", "EPUB") == [
         entries[1]
     ]
+
+
+def test_bookshelf_tag_query_normalizes_separators_case_and_duplicates():
+    assert pdf_bookshelf._parse_bookshelf_tag_query(
+        " Work, reading;WORK\nproject::Deep "
+    ) == ("work", "reading", "project::deep")
+    assert pdf_bookshelf._parse_bookshelf_tag_query("  , ; ") == ()
+
+
+def test_bookshelf_tag_filter_supports_or_and_combines_with_title_and_kind():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "Alpha Work",
+            1,
+            "PDF",
+            tags=("reading", "Work"),
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Deep Learning",
+            2,
+            "EPUB",
+            tags=("reading", "machine_learning"),
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Unsorted",
+            3,
+            "PDF",
+            tags=(),
+        ),
+    ]
+
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "",
+        "ALL",
+        tag_query="WORK, machine_learning",
+        tag_mode="OR",
+    ) == entries[:2]
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "",
+        "ALL",
+        tag_query="READING work",
+        tag_mode="AND",
+    ) == [entries[0]]
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "deep",
+        "EPUB",
+        tag_query="reading machine_learning",
+        tag_mode="AND",
+    ) == [entries[1]]
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "",
+        "ALL",
+        tag_query="missing",
+        tag_mode="OR",
+    ) == []
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "",
+        "ALL",
+        tag_query="",
+        tag_mode="AND",
+    ) == entries
+
+
+def test_bookshelf_dialog_exposes_tag_filter_and_explicit_or_and_modes():
+    source = Path(pdf_bookshelf.__file__).read_text(encoding="utf-8")
+
+    assert "Filter by tags" in source
+    assert "Any tag (OR)" in source
+    assert "All tags (AND)" in source
+    assert "self._tag_search.textChanged" in source
+    assert "self._tag_mode_combo.currentIndexChanged" in source
 
 
 def test_bookshelf_count_describes_current_document_filter():

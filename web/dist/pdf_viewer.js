@@ -7614,6 +7614,56 @@
       )
     ] });
   }
+  const DEFAULT_MAX_LINK_HISTORY = 50;
+  function normalizePdfLinkLocation(location) {
+    const page = Number(location == null ? void 0 : location.page);
+    if (!Number.isInteger(page) || page < 1) return null;
+    const rawScrollRatio = Number(location == null ? void 0 : location.scrollRatio);
+    const scrollRatio = Number.isFinite(rawScrollRatio) ? Math.max(0, Math.min(rawScrollRatio, 1)) : 0;
+    return { page, scrollRatio };
+  }
+  function pushPdfLinkHistory(history, location, maxEntries = DEFAULT_MAX_LINK_HISTORY) {
+    const normalized = normalizePdfLinkLocation(location);
+    if (!normalized) return history;
+    const existing = Array.isArray(history) ? history : [];
+    const boundedMax = Math.max(1, Math.floor(Number(maxEntries) || DEFAULT_MAX_LINK_HISTORY));
+    return [...existing, normalized].slice(-boundedMax);
+  }
+  function takePdfLinkHistory(history) {
+    if (!Array.isArray(history) || history.length === 0) {
+      return { location: null, history: [] };
+    }
+    return {
+      location: normalizePdfLinkLocation(history.at(-1)),
+      history: history.slice(0, -1)
+    };
+  }
+  function finiteNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  }
+  function pdfAnchorScrollRatio({
+    clientY,
+    wrapperTop,
+    pageHeight,
+    visibleHeight,
+    preferredViewportRatio = 0.25
+  } = {}) {
+    const y = finiteNumber(clientY);
+    const top = finiteNumber(wrapperTop);
+    const height = finiteNumber(pageHeight);
+    const viewport = finiteNumber(visibleHeight);
+    const preferred = finiteNumber(preferredViewportRatio);
+    if (y === null || top === null || height === null || viewport === null || preferred === null || height <= 0 || viewport <= 0) {
+      return null;
+    }
+    const maxOffset = Math.max(0, height - viewport);
+    if (maxOffset <= 0) return 0;
+    const pointOffset = Math.max(0, Math.min(y - top, height));
+    const preferredOffset = viewport * Math.max(0, Math.min(preferred, 1));
+    const targetOffset = Math.max(0, Math.min(pointOffset - preferredOffset, maxOffset));
+    return targetOffset / maxOffset;
+  }
   const HL_COLORS = {
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
@@ -8068,6 +8118,8 @@
     const [showControlChooser, setShowControlChooser] = reactExports.useState(false);
     const [controlVisibility, setControlVisibility] = reactExports.useState(DEFAULT_CONTROL_VISIBILITY);
     const [clickableLinks, setClickableLinks] = reactExports.useState(false);
+    const [linkBackHistory, setLinkBackHistory] = reactExports.useState([]);
+    const [linkBackScrollNonce, setLinkBackScrollNonce] = reactExports.useState(0);
     const controlsInitialisedRef = reactExports.useRef(false);
     reactExports.useEffect(() => {
       if (!controlsInitialisedRef.current) {
@@ -8392,7 +8444,8 @@
       readMarkerRect,
       textLayerRef,
       clearPendingResumeScroll,
-      suppressScrollPersistence
+      suppressScrollPersistence,
+      linkBackScrollNonce
     ]);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
@@ -8629,14 +8682,65 @@
       if (delta > 0) {
         const nextPage = pageRef.current + delta;
         if (!canMoveToPage(nextPage)) {
-          return;
+          return false;
         }
       }
       clearPendingResumeScroll();
       pendingPageTopScrollRef.current = !!(scrollToTop && scrollToTopOnPageChangeRef.current);
       suppressScrollPersistence(600);
       rawNav(delta);
+      return true;
     }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
+    const capturePdfLinkLocation = reactExports.useCallback(() => {
+      const currentPage = Number(pageRef.current || 0);
+      if (!Number.isInteger(currentPage) || currentPage < 1) return null;
+      const metrics = getPdfViewportMetrics(containerRef.current);
+      const scrollRatio = !metrics || metrics.maxOffset <= 0 ? 0 : clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.maxOffset);
+      return { page: currentPage, scrollRatio };
+    }, [containerRef, pageRef]);
+    reactExports.useEffect(() => {
+      window.incrementoPdfAnchorAtPoint = (clientX, clientY) => {
+        const wrapper = containerRef.current;
+        const cardId = Number(cardIdRef.current || 0);
+        const currentPage = Number(pageRef.current || 0);
+        if (!wrapper || !Number.isInteger(cardId) || cardId <= 0) return null;
+        if (!Number.isInteger(currentPage) || currentPage <= 0) return null;
+        const x = Number(clientX);
+        const y = Number(clientY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        const target = document.elementFromPoint(x, y);
+        if (!target || !wrapper.contains(target)) return null;
+        const rect = wrapper.getBoundingClientRect();
+        const metrics = getPdfViewportMetrics(wrapper);
+        const scrollRatio = pdfAnchorScrollRatio({
+          clientY: y,
+          wrapperTop: rect.top,
+          pageHeight: metrics == null ? void 0 : metrics.pageHeight,
+          visibleHeight: metrics == null ? void 0 : metrics.visibleHeight
+        });
+        if (scrollRatio === null) return null;
+        return { cardId, page: currentPage, scrollRatio };
+      };
+      return () => {
+        delete window.incrementoPdfAnchorAtPoint;
+      };
+    }, [cardIdRef, containerRef, pageRef]);
+    const jumpBackFromPdfLink = reactExports.useCallback(() => {
+      const taken = takePdfLinkHistory(linkBackHistory);
+      const target = taken.location;
+      if (!target) return;
+      const delta = target.page - pageRef.current;
+      if (delta !== 0 && !limitAwareNav(delta, { scrollToTop: false })) return;
+      pendingHighlightScrollRef.current = null;
+      pendingExcerptJumpRef.current = "";
+      pendingReadAnchorScrollRef.current = false;
+      pendingPageTopScrollRef.current = false;
+      pendingResumePageRef.current = target.page;
+      pendingResumeScrollRef.current = target.scrollRatio;
+      suppressScrollPersistence(700);
+      setLinkBackHistory(taken.history);
+      if (delta === 0) setLinkBackScrollNonce((value) => value + 1);
+    }, [limitAwareNav, linkBackHistory, pageRef, suppressScrollPersistence]);
     const activatePdfLink = reactExports.useCallback((event, link) => {
       var _a;
       if (!clickableLinks || !((_a = event == null ? void 0 : event.nativeEvent) == null ? void 0 : _a.isTrusted) || !link) return;
@@ -8644,8 +8748,12 @@
       event.stopPropagation();
       if (link.kind === "internal") {
         const targetPage = Number(link.targetPage || 0);
-        if (Number.isInteger(targetPage) && targetPage > 0) {
-          limitAwareNav(targetPage - pageRef.current, { scrollToTop: false });
+        const delta = targetPage - pageRef.current;
+        if (Number.isInteger(targetPage) && targetPage > 0 && delta !== 0) {
+          const sourceLocation = capturePdfLinkLocation();
+          if (limitAwareNav(delta, { scrollToTop: false }) && sourceLocation) {
+            setLinkBackHistory((history) => pushPdfLinkHistory(history, sourceLocation));
+          }
         }
         return;
       }
@@ -8655,7 +8763,7 @@
           url: String(link.url)
         }));
       }
-    }, [cardIdRef, clickableLinks, limitAwareNav, pageRef]);
+    }, [cardIdRef, capturePdfLinkLocation, clickableLinks, limitAwareNav, pageRef]);
     const jumpToHighlight = reactExports.useCallback((highlight, { closePanel = false } = {}) => {
       if (!(highlight == null ? void 0 : highlight.id)) return;
       const targetPage = Math.max(1, parseInt(highlight.page || 1, 10));
@@ -8749,6 +8857,7 @@
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
       const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null) => {
+        setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
@@ -9023,6 +9132,20 @@
                       "button",
                       {
                         type: "button",
+                        disabled: linkBackHistory.length === 0,
+                        onClick: jumpBackFromPdfLink,
+                        title: linkBackHistory.length > 0 ? `Jump back to page ${linkBackHistory.at(-1).page}` : "Follow an internal PDF link to enable Jump Back",
+                        style: {
+                          opacity: linkBackHistory.length > 0 ? 1 : 0.48,
+                          cursor: linkBackHistory.length > 0 ? "pointer" : "default"
+                        },
+                        children: "↩ Jump Back"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
                         onClick: () => setControlsCollapsed(false),
                         "aria-expanded": "false",
                         style: {
@@ -9219,6 +9342,26 @@
                               "Links ",
                               clickableLinks ? "On" : "Off"
                             ]
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: linkBackHistory.length === 0,
+                            onClick: jumpBackFromPdfLink,
+                            title: linkBackHistory.length > 0 ? `Jump back to page ${linkBackHistory.at(-1).page}` : "Follow an internal PDF link to enable Jump Back",
+                            style: {
+                              background: "rgba(255,255,255,0.03)",
+                              border: "1px solid rgba(180,180,180,0.32)",
+                              borderRadius: 8,
+                              color: "inherit",
+                              cursor: linkBackHistory.length > 0 ? "pointer" : "default",
+                              opacity: linkBackHistory.length > 0 ? 1 : 0.48,
+                              padding: "4px 10px",
+                              fontSize: 12
+                            },
+                            children: "↩ Jump Back"
                           }
                         ),
                         readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {

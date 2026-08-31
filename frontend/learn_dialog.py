@@ -1762,7 +1762,7 @@ class SchedulerConfigDialog(QDialog):
             "Each slider is the probability that a given pick targets this tag. "
             "In strict mode it becomes a hard quota. "
             "Tag sliders in the same group share a constrained 100% pool. "
-            "The 'Other' row is always present."
+            "The 'Other' row is always present and is fixed at 100% when no specific tag rows exist."
         )
         _tag_desc.setWordWrap(True)
         _tag_desc.setStyleSheet("color: gray;")
@@ -2447,6 +2447,11 @@ class SchedulerConfigDialog(QDialog):
         if other_row is None:
             cb = getattr(self, "_no_tags_cb", None)
             return bool(cb.isChecked()) if cb is not None else True
+        if not any(
+            row.get("tag") != NO_TAGS_KEY
+            for row in self._linked_rows
+        ):
+            return True
         return int(other_row["slider"].value()) > 0
 
     def _sync_no_tags_checkbox_from_other_slider(self) -> None:
@@ -2641,6 +2646,11 @@ class SchedulerConfigDialog(QDialog):
     def _rebalance_tag_groups(self, changed_row: dict | None) -> None:
         if self._updating:
             return
+        other_row = self._find_other_tag_row()
+        lone_other = other_row is not None and not any(
+            row.get("tag") != NO_TAGS_KEY
+            for row in self._linked_rows
+        )
         groups: dict[str, list[dict]] = {}
         for row in self._linked_rows:
             g = self._get_tag_group_name(row)
@@ -2648,11 +2658,13 @@ class SchedulerConfigDialog(QDialog):
                 continue
             groups.setdefault(g, []).append(row)
 
-        if not groups:
+        if not groups and not lone_other:
             return
 
         current = {r["tag"]: int(r["slider"].value()) for r in self._linked_rows}
         locks = {r["tag"]: bool(r["lock_cb"].isChecked()) for r in self._linked_rows}
+        if lone_other:
+            current[NO_TAGS_KEY] = 100
         changed_key = changed_row["tag"] if changed_row else None
         changed_group = self._get_tag_group_name(changed_row) if changed_row else None
 
@@ -2672,7 +2684,10 @@ class SchedulerConfigDialog(QDialog):
         try:
             for row in self._linked_rows:
                 row["slider"].setValue(max(0, min(100, int(current.get(row["tag"], row["slider"].value())))))
-                row["slider"].setEnabled(not row["lock_cb"].isChecked())
+                row["slider"].setEnabled(
+                    not row["lock_cb"].isChecked()
+                    and not (lone_other and row.get("tag") == NO_TAGS_KEY)
+                )
         finally:
             self._updating = False
 

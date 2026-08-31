@@ -142,6 +142,39 @@ def test_pdf_viewer_exposes_opt_in_annotation_links():
     assert "incremento_pdf_open_link:" in viewer_source
 
 
+def test_pdf_link_toggle_has_adjacent_jump_back_control():
+    addon_root = Path(pdf_dock.__file__).resolve().parent.parent
+    viewer_source = (addon_root / "frontend" / "src" / "PdfViewer.jsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert viewer_source.count("Jump Back") >= 2
+    assert "jumpBackFromPdfLink" in viewer_source
+    assert "setLinkBackHistory([])" in viewer_source
+
+
+def test_pdf_reader_exposes_right_click_anchor_and_native_context_menu():
+    addon_root = Path(pdf_dock.__file__).resolve().parent.parent
+    viewer_source = (addon_root / "frontend" / "src" / "PdfViewer.jsx").read_text(
+        encoding="utf-8"
+    )
+    dock_source = (addon_root / "frontend" / "pdf_dock.py").read_text(encoding="utf-8")
+
+    assert "incrementoPdfAnchorAtPoint" in viewer_source
+    assert "customContextMenuRequested" in dock_source
+    assert "Copy Link to This Place" in dock_source
+
+
+def test_pdf_pending_start_keeps_read_anchor_arguments_aligned():
+    addon_root = Path(pdf_dock.__file__).resolve().parent.parent
+    viewer_source = (addon_root / "frontend" / "src" / "PdfViewer.jsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pending.readPage || 0,\n        pending.readAnchor || null," in viewer_source
+    assert "pending.readPage || 0,\n        pending.readPage || 0," not in viewer_source
+
+
 def test_pdf_external_link_bridge_requires_current_card(monkeypatch):
     opened = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
@@ -386,6 +419,31 @@ def test_pdf_citation_escapes_onclick_payload_and_label(monkeypatch):
     assert 'Quoted' in html
     assert 'line' in html
     assert '=""' not in html
+
+
+def test_pdf_citation_can_embed_an_exact_scroll_anchor(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: "Writer Guide")
+
+    html = pdf_dock.pdf_citation(page=42, scroll_ratio=0.625)
+
+    assert "Page 42. of Writer Guide" in html
+    assert "scroll_ratio\\&quot;: 0.625" in html
+
+
+def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+
+    assert pdf_dock._normalize_pdf_context_anchor(
+        {"cardId": 55, "page": "42", "scrollRatio": 1.4}
+    ) == {"card_id": 55, "page": 42, "scroll_ratio": 1.0}
+    assert pdf_dock._normalize_pdf_context_anchor(
+        {"cardId": 99, "page": 42, "scrollRatio": 0.5}
+    ) is None
+    assert pdf_dock._normalize_pdf_context_anchor(
+        {"cardId": 55, "page": 0, "scrollRatio": 0.5}
+    ) is None
 
 
 def test_missing_pdf_html_uses_plain_repair_message_for_pycmd():
@@ -908,7 +966,14 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch):
     )
     monkeypatch.setattr(pdf_dock.os.path, "exists", lambda path: path == "/tmp/new-file.pdf")
 
-    pdf_dock.show_pdf_in_dock(77, "old-file.pdf", 3, offer_due_review_prompt=False)
+    pdf_dock.show_pdf_in_dock(
+        77,
+        "old-file.pdf",
+        3,
+        via_link=True,
+        offer_due_review_prompt=False,
+        scroll_ratio_override=0.73,
+    )
 
     assert pdf_dock._current_pdf_filename == "new-file.pdf"
     assert pdf_dock._pdf_showing_missing_screen is False
@@ -916,7 +981,8 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch):
     assert len(load_calls) == 1
     assert js_calls
     assert '"new-file.pdf"' in js_calls[0]
-    assert "scrollRatio: 0.42" in js_calls[0]
+    assert "scrollRatio: 0.73" in js_calls[0]
+    assert "scrollToReadAnchor: false" in js_calls[0]
     assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert '"old-file.pdf"' not in js_calls[0]
 
@@ -970,6 +1036,7 @@ def test_pdf_scroll_bridge_persists_updates(monkeypatch):
     monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
     monkeypatch.setattr(pdf_dock, "_pdf_preserve_history", False)
+    monkeypatch.setattr(pdf_dock, "_pdf_via_link", False)
     monkeypatch.setattr(
         pdf_dock,
         "set_scroll_ratio",
@@ -981,6 +1048,23 @@ def test_pdf_scroll_bridge_persists_updates(monkeypatch):
     pdf_dock._handle_pdf_js_message('incremento_pdf_scroll:{"cardId":55,"scrollRatio":0.63}')
 
     assert calls == [("/tmp/addon", "TestProfile", 55, 0.63)]
+
+
+def test_pdf_anchor_visit_does_not_replace_saved_reading_scroll(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_pdf_preserve_history", False)
+    monkeypatch.setattr(pdf_dock, "_pdf_via_link", True)
+    monkeypatch.setattr(
+        pdf_dock,
+        "set_scroll_ratio",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    pdf_dock._handle_pdf_js_message(
+        'incremento_pdf_scroll:{"cardId":55,"scrollRatio":0.63}'
+    )
+
+    assert calls == []
 
 
 def test_pdf_nav_resets_saved_scroll_ratio_for_new_page(monkeypatch):

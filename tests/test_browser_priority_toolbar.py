@@ -47,6 +47,9 @@ class _FakeBrowser:
         self.search_calls += 1
 
 
+EditCurrent = type("EditCurrent", (), {"__module__": "aqt.editcurrent"})
+
+
 class _FakeEditor:
     def __init__(self, *, note=None, card=None, add_mode=False, browser=None):
         self.note = note
@@ -147,6 +150,17 @@ def test_toolbar_button_registers_only_for_browser_editors():
     assert edit_buttons[0]["label"] == "P"
 
 
+def test_toolbar_button_registers_for_edit_current_editor():
+    buttons = []
+    editor = _FakeEditor(add_mode=False, browser=EditCurrent())
+
+    toolbar._add_browser_priority_toolbar_button(buttons, editor)
+
+    assert len(buttons) == 1
+    assert buttons[0]["id"] == toolbar.EDIT_CURRENT_PRIORITY_BUTTON_ID
+    assert buttons[0]["label"] == "P"
+
+
 def test_browser_priority_button_opens_dialog_and_refreshes_browser(monkeypatch):
     card = _FakeCard(10)
     browser = _FakeBrowser(selected=[10], cards=[card])
@@ -161,6 +175,70 @@ def test_browser_priority_button_opens_dialog_and_refreshes_browser(monkeypatch)
 
     assert opened == [card]
     assert browser.search_calls == 1
+
+
+def test_edit_current_priority_button_opens_dialog_for_current_reviewer_card(monkeypatch):
+    note = _FakeNote(note_id=5)
+    card = _FakeCard(10, note=note)
+    editor = _FakeEditor(note=note, browser=EditCurrent())
+    opened = []
+    monkeypatch.setattr(
+        toolbar,
+        "mw",
+        types.SimpleNamespace(reviewer=types.SimpleNamespace(card=card)),
+    )
+    toolbar.register_open_priority_dialog_callback(
+        lambda resolved: opened.append(resolved) or True
+    )
+
+    toolbar._on_browser_priority_button(editor)
+
+    assert opened == [card]
+
+
+def test_edit_current_priority_button_ignores_stale_explicit_editor_card(monkeypatch):
+    note = _FakeNote(note_id=5)
+    current_card = _FakeCard(10, note=note)
+    stale_card = _FakeCard(20, note=_FakeNote(note_id=6))
+    editor = _FakeEditor(
+        note=note,
+        card=stale_card,
+        browser=EditCurrent(),
+    )
+    opened = []
+    monkeypatch.setattr(
+        toolbar,
+        "mw",
+        types.SimpleNamespace(reviewer=types.SimpleNamespace(card=current_card)),
+    )
+    toolbar.register_open_priority_dialog_callback(
+        lambda resolved: opened.append(resolved) or True
+    )
+
+    toolbar._on_browser_priority_button(editor)
+
+    assert opened == [current_card]
+
+
+def test_edit_current_priority_button_fails_closed_for_mismatched_note(monkeypatch):
+    card = _FakeCard(10, note=_FakeNote(note_id=5))
+    editor = _FakeEditor(note=_FakeNote(note_id=6), browser=EditCurrent())
+    opened = []
+    messages = []
+    monkeypatch.setattr(
+        toolbar,
+        "mw",
+        types.SimpleNamespace(reviewer=types.SimpleNamespace(card=card)),
+    )
+    monkeypatch.setattr(toolbar, "showInfo", lambda message: messages.append(message))
+    toolbar.register_open_priority_dialog_callback(
+        lambda resolved: opened.append(resolved) or True
+    )
+
+    toolbar._on_browser_priority_button(editor)
+
+    assert opened == []
+    assert messages == [toolbar.EDIT_CURRENT_PRIORITY_UNAVAILABLE_MESSAGE]
 
 
 def test_browser_priority_button_shows_ambiguity_message(monkeypatch):

@@ -1,4 +1,4 @@
-"""Browser editor toolbar button for per-card priority."""
+"""Existing-card editor toolbar buttons for per-card priority."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ except Exception:  # pragma: no cover - only used outside Anki/test stubs.
 
 
 BROWSER_PRIORITY_BUTTON_ID = "incremento-browser-priority"
+EDIT_CURRENT_PRIORITY_BUTTON_ID = "incremento-edit-current-priority"
 BROWSER_PRIORITY_AMBIGUOUS_MESSAGE = "Select exactly one Browser card row first."
+EDIT_CURRENT_PRIORITY_UNAVAILABLE_MESSAGE = "Could not determine the card being edited."
 
 _open_priority_dialog_for_card: Callable[[object], object] | None = None
 
@@ -64,6 +66,43 @@ def _browser_for_editor(editor):
             break
         seen.add(id(current))
         if _looks_like_browser(current):
+            return current
+        parent = getattr(current, "parent", None)
+        if callable(parent):
+            try:
+                current = parent()
+            except Exception:
+                break
+        else:
+            current = parent
+    return None
+
+
+def _looks_like_edit_current(candidate) -> bool:
+    if candidate is None:
+        return False
+
+    cls = candidate.__class__
+    class_name = str(getattr(cls, "__name__", "") or "")
+    module_name = str(getattr(cls, "__module__", "") or "")
+    return class_name in {"EditCurrent", "EditCurrentDialog"} or (
+        module_name == "aqt.editcurrent" and hasattr(candidate, "editor")
+    )
+
+
+def _edit_current_for_editor(editor):
+    for attr_name in ("parentWindow", "parent_window"):
+        candidate = getattr(editor, attr_name, None)
+        if _looks_like_edit_current(candidate):
+            return candidate
+
+    current = getattr(editor, "widget", None)
+    seen: set[int] = set()
+    for _ in range(8):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if _looks_like_edit_current(current):
             return current
         parent = getattr(current, "parent", None)
         if callable(parent):
@@ -189,10 +228,44 @@ def resolve_browser_priority_card(editor, browser=None):
     return None
 
 
+def _notes_match(first, second) -> bool:
+    if first is None or second is None:
+        return False
+    if first is second:
+        return True
+    try:
+        first_id = int(getattr(first, "id"))
+        second_id = int(getattr(second, "id"))
+    except Exception:
+        return False
+    return first_id > 0 and first_id == second_id
+
+
+def resolve_edit_current_priority_card(editor):
+    if _edit_current_for_editor(editor) is None:
+        return None
+
+    reviewer = getattr(mw, "reviewer", None)
+    card = getattr(reviewer, "card", None) if reviewer is not None else None
+    if not _is_card_like(card):
+        return None
+    try:
+        card_note = card.note()
+    except Exception:
+        return None
+    return card if _notes_match(getattr(editor, "note", None), card_note) else None
+
+
 def _is_browser_editor(editor) -> bool:
     if getattr(editor, "addMode", False):
         return False
     return _browser_for_editor(editor) is not None
+
+
+def _is_edit_current_editor(editor) -> bool:
+    if getattr(editor, "addMode", False):
+        return False
+    return _edit_current_for_editor(editor) is not None
 
 
 def _refresh_browser(browser) -> None:
@@ -222,11 +295,20 @@ def _on_browser_priority_button(editor) -> None:
     if getattr(editor, "addMode", False):
         return
     browser = _browser_for_editor(editor)
-    if browser is None:
+    is_edit_current = browser is None and _is_edit_current_editor(editor)
+    if browser is None and not is_edit_current:
         return
-    card = resolve_browser_priority_card(editor, browser)
+    card = (
+        resolve_browser_priority_card(editor, browser)
+        if browser is not None
+        else resolve_edit_current_priority_card(editor)
+    )
     if card is None:
-        showInfo(BROWSER_PRIORITY_AMBIGUOUS_MESSAGE)
+        showInfo(
+            BROWSER_PRIORITY_AMBIGUOUS_MESSAGE
+            if browser is not None
+            else EDIT_CURRENT_PRIORITY_UNAVAILABLE_MESSAGE
+        )
         return
 
     if _open_priority_dialog_for_card is None:
@@ -234,22 +316,36 @@ def _on_browser_priority_button(editor) -> None:
         return
 
     saved = _open_priority_dialog_for_card(card)
-    if saved is not False:
+    if saved is not False and browser is not None:
         _refresh_browser(browser)
 
 
 def _add_browser_priority_toolbar_button(buttons, editor) -> None:
-    if not _is_browser_editor(editor):
+    is_browser = _is_browser_editor(editor)
+    is_edit_current = not is_browser and _is_edit_current_editor(editor)
+    if not is_browser and not is_edit_current:
         return
 
     buttons.append(
         editor.addButton(
             None,
-            "incrementoBrowserPriority",
+            (
+                "incrementoBrowserPriority"
+                if is_browser
+                else "incrementoEditCurrentPriority"
+            ),
             _on_browser_priority_button,
-            tip="Set priority for selected Browser card",
+            tip=(
+                "Set priority for selected Browser card"
+                if is_browser
+                else "Set priority for the current card"
+            ),
             label="P",
-            id=BROWSER_PRIORITY_BUTTON_ID,
+            id=(
+                BROWSER_PRIORITY_BUTTON_ID
+                if is_browser
+                else EDIT_CURRENT_PRIORITY_BUTTON_ID
+            ),
             disables=False,
         )
     )

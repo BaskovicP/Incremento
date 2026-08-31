@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,6 +65,10 @@ _TILE_HEIGHT = 350
 _KIND_ALL = "ALL"
 _KIND_PDF = "PDF"
 _KIND_EPUB = "EPUB"
+_TAG_MODE_OR = "OR"
+_TAG_MODE_AND = "AND"
+_MAX_TAG_FILTER_CHARS = 4_096
+_MAX_TAG_FILTER_TERMS = 64
 
 
 @dataclass(frozen=True)
@@ -74,6 +79,7 @@ class _BookshelfEntry:
     cover_filename: str = ""
     source_filename: str = ""
     priority: float | None = None
+    tags: tuple[str, ...] = ()
 
 
 def _bookshelf_theme_colors(background_lightness: int) -> tuple[str, str]:
@@ -88,6 +94,44 @@ def _note_text(note, field_name: str) -> str:
         return str(note[field_name] or "").strip()
     except Exception:
         return ""
+
+
+def _note_tags(note) -> tuple[str, ...]:
+    """Return bounded, display-ready note tags without case-folding their labels."""
+    try:
+        raw_tags = getattr(note, "tags", ()) or ()
+    except Exception:
+        return ()
+    if isinstance(raw_tags, str):
+        raw_tags = raw_tags.split()
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw_tag in raw_tags:
+        tag = str(raw_tag or "").strip()
+        key = tag.casefold()
+        if not tag or len(tag) > 512 or key in seen:
+            continue
+        cleaned.append(tag)
+        seen.add(key)
+        if len(cleaned) >= 512:
+            break
+    return tuple(cleaned)
+
+
+def _parse_bookshelf_tag_query(raw_query: object) -> tuple[str, ...]:
+    """Parse a bounded, case-insensitive list of exact Anki tag names."""
+    candidate = str(raw_query or "")[:_MAX_TAG_FILTER_CHARS]
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw_term in re.split(r"[\s,;]+", candidate):
+        term = raw_term.strip().casefold()
+        if not term or len(term) > 512 or term in seen:
+            continue
+        terms.append(term)
+        seen.add(term)
+        if len(terms) >= _MAX_TAG_FILTER_TERMS:
+            break
+    return tuple(terms)
 
 
 def _load_bookshelf_entries(
@@ -139,6 +183,7 @@ def _load_bookshelf_entries(
                     cover_filename=_note_text(note, cover_field),
                     source_filename=_note_text(note, source_field),
                     priority=all_priorities.get(card_id),
+                    tags=_note_tags(note),
                 )
             )
 
@@ -149,14 +194,37 @@ def _filter_bookshelf_entries(
     entries: list[_BookshelfEntry],
     query: str,
     kind: str = _KIND_ALL,
+    *,
+    tag_query: str = "",
+    tag_mode: str = _TAG_MODE_OR,
 ) -> list[_BookshelfEntry]:
     needle = str(query or "").strip().casefold()
     normalized_kind = str(kind or _KIND_ALL).strip().upper()
+    requested_tags = _parse_bookshelf_tag_query(tag_query)
+    normalized_tag_mode = (
+        _TAG_MODE_AND
+        if str(tag_mode or "").strip().upper() == _TAG_MODE_AND
+        else _TAG_MODE_OR
+    )
+
+    def matches_tags(entry: _BookshelfEntry) -> bool:
+        if not requested_tags:
+            return True
+        entry_tags = {
+            str(tag or "").strip().casefold()
+            for tag in entry.tags
+            if str(tag or "").strip()
+        }
+        if normalized_tag_mode == _TAG_MODE_AND:
+            return all(tag in entry_tags for tag in requested_tags)
+        return any(tag in entry_tags for tag in requested_tags)
+
     return [
         entry
         for entry in entries
         if (normalized_kind == _KIND_ALL or entry.kind == normalized_kind)
         and (not needle or needle in entry.title.casefold())
+        and matches_tags(entry)
     ]
 
 
@@ -288,6 +356,28 @@ class _DocumentBookshelfDialog(QDialog):
         self._search.setClearButtonEnabled(True)
         layout.addWidget(self._search)
 
+        tag_row = QHBoxLayout()
+        tag_row.addWidget(QLabel("Tags:"))
+        self._tag_search = QLineEdit()
+        self._tag_search.setPlaceholderText(
+            "Filter by tags (separate with spaces, commas, or semicolons)…"
+        )
+        self._tag_search.setClearButtonEnabled(True)
+        self._tag_search.setMaxLength(_MAX_TAG_FILTER_CHARS)
+        self._tag_search.setToolTip(
+            "Enter exact Anki tag names. Matching ignores uppercase/lowercase."
+        )
+        tag_row.addWidget(self._tag_search, 1)
+
+        self._tag_mode_combo = QComboBox()
+        self._tag_mode_combo.addItem("Any tag (OR)", _TAG_MODE_OR)
+        self._tag_mode_combo.addItem("All tags (AND)", _TAG_MODE_AND)
+        self._tag_mode_combo.setToolTip(
+            "OR matches at least one entered tag; AND requires every entered tag."
+        )
+        tag_row.addWidget(self._tag_mode_combo)
+        layout.addLayout(tag_row)
+
         self._count_label = QLabel("")
         try:
             background_lightness = self.palette().color(
@@ -343,17 +433,24 @@ class _DocumentBookshelfDialog(QDialog):
 
         qconnect(self._search.textChanged, self._refresh)
         qconnect(self._kind_combo.currentIndexChanged, self._refresh)
+        qconnect(self._tag_search.textChanged, self._refresh)
+        qconnect(self._tag_mode_combo.currentIndexChanged, self._refresh)
         qconnect(self._search.returnPressed, self._accept_current)
+        qconnect(self._tag_search.returnPressed, self._accept_current)
         qconnect(self._list.itemClicked, self._accept_item)
         qconnect(self._list.itemActivated, self._accept_item)
         qconnect(self._list.currentItemChanged, self._update_option_availability)
         self._search.installEventFilter(self)
+        self._tag_search.installEventFilter(self)
 
         self._refresh()
         self._search.setFocus()
 
     def eventFilter(self, watched, event):
-        if watched is self._search and event.type() == QEvent.Type.KeyPress:
+        if (
+            watched in (self._search, self._tag_search)
+            and event.type() == QEvent.Type.KeyPress
+        ):
             if event.key() in (Qt.Key.Key_Down, Qt.Key.Key_Up) and self._list.count():
                 self._list.setFocus()
                 return True
@@ -363,12 +460,22 @@ class _DocumentBookshelfDialog(QDialog):
         kind = self._kind_combo.currentData()
         return str(kind or _KIND_ALL).strip().upper()
 
+    def _current_tag_mode(self) -> str:
+        mode = self._tag_mode_combo.currentData()
+        return (
+            _TAG_MODE_AND
+            if str(mode or "").strip().upper() == _TAG_MODE_AND
+            else _TAG_MODE_OR
+        )
+
     def _refresh(self, *_args) -> None:
         kind = self._current_kind()
         visible_entries = _filter_bookshelf_entries(
             self._entries,
             self._search.text(),
             kind,
+            tag_query=self._tag_search.text(),
+            tag_mode=self._current_tag_mode(),
         )
         self._thumbnail_generation += 1
         generation = self._thumbnail_generation
@@ -396,8 +503,13 @@ class _DocumentBookshelfDialog(QDialog):
                 if entry.priority is not None
                 else "Priority: not set"
             )
+            visible_tags = entry.tags[:20]
+            tags_text = ", ".join(visible_tags) if visible_tags else "none"
+            if len(entry.tags) > len(visible_tags):
+                tags_text += f" (+{len(entry.tags) - len(visible_tags)} more)"
             item.setToolTip(
-                f"{entry.title}\nType: {entry.kind}\n{priority_text}\nClick to open"
+                f"{entry.title}\nType: {entry.kind}\nTags: {tags_text}\n"
+                f"{priority_text}\nClick to open"
             )
             cache_key = (entry.kind, entry.card_id)
             cached = self._thumbnail_cache.get(cache_key)

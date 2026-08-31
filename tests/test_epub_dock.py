@@ -1,5 +1,6 @@
 import sys
 import types
+from pathlib import Path
 from unittest.mock import MagicMock
 
 sys.modules.setdefault("session", MagicMock())
@@ -163,6 +164,101 @@ def test_build_page_script_installs_opt_in_trusted_link_bridge(monkeypatch):
     assert "incrementoOpenEpubAnchor" in script
     assert "if (!event.isTrusted) return" in script
     assert "window.open(" not in script
+
+
+def test_epub_page_script_exposes_exact_right_click_anchor(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[],
+        bridge_nonce="private-token",
+    )
+
+    assert "incrementoEpubAnchorAtPoint" in script
+    assert "caretRangeFromPoint" in script
+    dock_source = Path(epub_dock.__file__).read_text(encoding="utf-8")
+    assert "customContextMenuRequested" in dock_source
+    assert "Copy Link to This Place" in dock_source
+
+
+def test_epub_context_anchor_builds_clickable_card_link_and_rejects_stale_card(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 77)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "my-book.epub")
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 3)
+    monkeypatch.setattr(
+        epub_dock,
+        "_current_sections",
+        lambda: [
+            {"title": "One", "text": "a"},
+            {"title": "Two", "text": "b"},
+            {"title": "Three", "text": "c"},
+            {"title": "Chapter <Four>", "text": "abcdefghij"},
+        ],
+    )
+
+    anchor = epub_dock._normalize_epub_context_anchor(
+        {
+            "cardId": 77,
+            "sectionIndex": 3,
+            "focusOffset": 8,
+            "scrollRatio": 0.375,
+        }
+    )
+    html = epub_dock.epub_anchor_link_html(**anchor, label="Chapter <Four>")
+
+    assert anchor == {
+        "card_id": 77,
+        "section_index": 3,
+        "focus_offset": 8,
+        "scroll_ratio": 0.375,
+    }
+    assert "incremento_open_epub:77:3:8:0.375" in html
+    assert "Chapter &lt;Four&gt;" in html
+    assert epub_dock._normalize_epub_context_anchor(
+        {"cardId": 88, "sectionIndex": 3, "focusOffset": 8, "scrollRatio": 0.2}
+    ) is None
+    assert epub_dock.epub_anchor_link_html(
+        card_id="invalid",
+        section_index=3,
+        focus_offset=8,
+        scroll_ratio=0.2,
+        label="Chapter",
+    ) == ""
+
+
+def test_epub_anchor_command_parser_supports_exact_and_legacy_links():
+    assert epub_dock.parse_epub_anchor_command(
+        "incremento_open_epub:77:3:8:0.375"
+    ) == {
+        "card_id": 77,
+        "section_index": 3,
+        "focus_offset": 8,
+        "scroll_ratio": 0.375,
+    }
+    assert epub_dock.parse_epub_anchor_command(
+        "incremento_open_epub:77:3:8"
+    ) == {
+        "card_id": 77,
+        "section_index": 3,
+        "focus_offset": 8,
+        "scroll_ratio": None,
+    }
+    for unsafe in (
+        "incremento_open_epub:0:3:8:0.5",
+        "incremento_open_epub:77:-1:8:0.5",
+        "incremento_open_epub:77:3:-2:0.5",
+        "incremento_open_epub:77:3:8:nan",
+        "incremento_open_epub:77:3:8:0.5:extra",
+    ):
+        assert epub_dock.parse_epub_anchor_command(unsafe) is None
 
 
 def test_epub_link_target_resolver_allows_book_sections_and_https_only(tmp_path):
@@ -471,6 +567,47 @@ def test_current_epub_search_context_uses_current_title(monkeypatch):
     assert context["cardId"] == 15
     assert context["query"] == "topic"
     assert context["hits"][0]["sectionIndex"] == 2
+
+
+def test_open_epub_location_prefers_explicit_anchor_scroll_fallback(monkeypatch):
+    shown = []
+    monkeypatch.setattr(
+        epub_dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                get_card=lambda card_id: types.SimpleNamespace(nid=9),
+                get_note=lambda note_id: {epub_dock.EPUB_FILE_FIELD: "book.epub"},
+            )
+        ),
+    )
+    monkeypatch.setattr(epub_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(epub_dock, "get_epub_progress", lambda *_args: (1, 0.2, False))
+    monkeypatch.setattr(
+        epub_dock,
+        "show_epub_in_dock",
+        lambda *args, **kwargs: shown.append((args, kwargs)),
+    )
+
+    epub_dock.open_epub_location(
+        77,
+        3,
+        focus_offset=8,
+        scroll_ratio_override=0.625,
+    )
+
+    assert shown == [
+        (
+            (77, "book.epub"),
+            {
+                "section_index": 3,
+                "scroll_ratio": 0.625,
+                "focus_offset": 8,
+                "search_query": "",
+            },
+        )
+    ]
 
 
 def test_start_all_epub_review_passes_reader_context_and_restores_reader(monkeypatch):

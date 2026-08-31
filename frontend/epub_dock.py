@@ -56,9 +56,21 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
-    from .reader_links import normalize_external_reader_url, open_external_reader_link
+    from .reader_links import (
+        normalize_external_reader_url,
+        normalize_reader_anchor_scroll_ratio,
+        open_external_reader_link,
+        set_reader_anchor_clipboard,
+        show_reader_anchor_context_menu,
+    )
 except ImportError:
-    from reader_links import normalize_external_reader_url, open_external_reader_link  # type: ignore
+    from reader_links import (  # type: ignore
+        normalize_external_reader_url,
+        normalize_reader_anchor_scroll_ratio,
+        open_external_reader_link,
+        set_reader_anchor_clipboard,
+        show_reader_anchor_context_menu,
+    )
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
@@ -575,6 +587,151 @@ def _add_card_source_for_new_note() -> str:
         return ""
 
 
+def epub_anchor_link_html(
+    *,
+    card_id: int,
+    section_index: int,
+    focus_offset: int,
+    scroll_ratio: float,
+    label: str,
+) -> str:
+    normalized_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio)
+    try:
+        normalized_card_id = int(card_id)
+        normalized_section_index = int(section_index)
+        normalized_offset = max(-1, int(focus_offset))
+    except (TypeError, ValueError, OverflowError):
+        return ""
+    if (
+        normalized_card_id <= 0
+        or normalized_section_index < 0
+        or normalized_section_index > 1_000_000
+        or normalized_offset > 50_000_000
+        or normalized_ratio is None
+    ):
+        return ""
+    ratio_text = f"{normalized_ratio:.6f}".rstrip("0").rstrip(".") or "0"
+    cmd = (
+        f"incremento_open_epub:{normalized_card_id}:{normalized_section_index}:"
+        f"{normalized_offset}:{ratio_text}"
+    )
+    onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
+    return (
+        f'<a onclick="{onclick}" '
+        f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
+        f"{escape(str(label or f'Section {normalized_section_index + 1}'))}</a>"
+    )
+
+
+def parse_epub_anchor_command(message: object) -> dict[str, int | float | None] | None:
+    prefix = "incremento_open_epub:"
+    raw = str(message or "")
+    if not raw.startswith(prefix) or len(raw) > 256:
+        return None
+    parts = raw.split(":")
+    if len(parts) not in {4, 5}:
+        return None
+    try:
+        card_id = int(parts[1])
+        section_index = int(parts[2])
+        focus_offset = int(parts[3])
+    except (TypeError, ValueError, OverflowError):
+        return None
+    scroll_ratio = (
+        normalize_reader_anchor_scroll_ratio(parts[4])
+        if len(parts) == 5
+        else None
+    )
+    if (
+        card_id <= 0
+        or section_index < 0
+        or section_index > 1_000_000
+        or focus_offset < -1
+        or focus_offset > 50_000_000
+        or (len(parts) == 5 and scroll_ratio is None)
+    ):
+        return None
+    return {
+        "card_id": card_id,
+        "section_index": section_index,
+        "focus_offset": focus_offset,
+        "scroll_ratio": scroll_ratio,
+    }
+
+
+def _normalize_epub_context_anchor(data: object) -> dict[str, int | float] | None:
+    if not isinstance(data, dict):
+        return None
+    try:
+        current_card_id = int(_current_epub_card_id or 0)
+        card_id = int(data.get("cardId") or 0)
+        section_index = int(data.get("sectionIndex", -1))
+        focus_offset = int(data.get("focusOffset", -1))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    scroll_ratio = normalize_reader_anchor_scroll_ratio(data.get("scrollRatio"))
+    try:
+        sections = _current_sections()
+        current_section_index = int(_current_epub_section_index)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if (
+        current_card_id <= 0
+        or card_id != current_card_id
+        or section_index != current_section_index
+        or section_index < 0
+        or section_index >= len(sections)
+        or focus_offset < -1
+        or focus_offset > 50_000_000
+        or scroll_ratio is None
+    ):
+        return None
+    return {
+        "card_id": card_id,
+        "section_index": section_index,
+        "focus_offset": focus_offset,
+        "scroll_ratio": scroll_ratio,
+    }
+
+
+def _copy_epub_context_anchor(data: object) -> bool:
+    anchor = _normalize_epub_context_anchor(data)
+    if anchor is None:
+        return False
+    section_title = _current_epub_section_title()
+    html = epub_anchor_link_html(**anchor, label=section_title)
+    book_title = Path(str(_current_epub_filename or "EPUB")).stem.strip() or "EPUB"
+    plain_text = f"{book_title} — {section_title}"
+    if not html or not set_reader_anchor_clipboard(html, plain_text):
+        return False
+    tooltip("EPUB link copied. Paste it into an Anki card.")
+    return True
+
+
+def _show_epub_reader_context_menu(view, position) -> bool:
+    try:
+        x = int(position.x())
+        y = int(position.y())
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return False
+    resolver_script = (
+        "window.incrementoEpubAnchorAtPoint "
+        f"? window.incrementoEpubAnchorAtPoint({x}, {y}) : null;"
+    )
+    return show_reader_anchor_context_menu(
+        view,
+        position,
+        resolver_script=resolver_script,
+        on_copy=_copy_epub_context_anchor,
+        run_javascript=lambda script, callback: _run_epub_javascript(
+            view.page(),
+            script,
+            callback,
+        ),
+        action_label="Copy Link to This Place",
+    )
+
+
 def epub_citation() -> str:
     if not _current_epub_card_id or not _current_epub_filename:
         return ""
@@ -586,11 +743,12 @@ def epub_citation() -> str:
     except Exception:
         title = f"Section {_current_epub_section_index + 1}"
     start_offset = int(_last_selection_meta.get("startOffset", -1) or -1)
-    cmd = f"incremento_open_epub:{int(_current_epub_card_id)}:{int(_current_epub_section_index)}:{start_offset}"
-    return (
-        f"<a onclick=\"pycmd('{cmd}'); return false;\" "
-        f"style=\"cursor:pointer; color:#4a90d9; text-decoration:none;\">"
-        f"{title}</a>"
+    return epub_anchor_link_html(
+        card_id=int(_current_epub_card_id),
+        section_index=int(_current_epub_section_index),
+        focus_offset=start_offset,
+        scroll_ratio=float(_current_epub_scroll_ratio),
+        label=title,
     )
 
 
@@ -1700,9 +1858,7 @@ def _build_page_script(
         }}
         return rect;
       }}
-      function currentCaretRange() {{
-        const x = Math.max(24, Math.floor(window.innerWidth * 0.5));
-        const y = Math.max(24, Math.floor(window.innerHeight * 0.48));
+      function caretRangeAtPoint(x, y) {{
         if (document.caretRangeFromPoint) {{
           return document.caretRangeFromPoint(x, y);
         }}
@@ -1716,6 +1872,11 @@ def _build_page_script(
           }}
         }}
         return null;
+      }}
+      function currentCaretRange() {{
+        const x = Math.max(24, Math.floor(window.innerWidth * 0.5));
+        const y = Math.max(24, Math.floor(window.innerHeight * 0.48));
+        return caretRangeAtPoint(x, y);
       }}
       function bestVisibleTextAnchor() {{
         const nodes = textNodes();
@@ -1769,6 +1930,36 @@ def _build_page_script(
         }}
         return bestVisibleTextAnchor();
       }}
+      window.incrementoEpubAnchorAtPoint = function(clientX, clientY) {{
+        const x = Number(clientX);
+        const y = Number(clientY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        const target = document.elementFromPoint(x, y);
+        if (!target || !document.documentElement.contains(target)) return null;
+
+        let focusOffset = -1;
+        const caret = caretRangeAtPoint(x, y);
+        if (caret && caret.startContainer) {{
+          const offset = offsetFromPoint(caret.startContainer, caret.startOffset);
+          if (Number.isFinite(offset) && offset >= 0) focusOffset = offset;
+        }}
+        if (focusOffset < 0) {{
+          const fallback = bestVisibleTextAnchor();
+          if (fallback && Number.isFinite(Number(fallback.offset))) {{
+            focusOffset = Math.max(0, Number(fallback.offset));
+          }}
+        }}
+        const scrollMaximum = maxScroll();
+        const scrollRatio = scrollMaximum > 0
+          ? Math.max(0, Math.min(Number(window.scrollY || 0) / scrollMaximum, 1))
+          : 0;
+        return {{
+          cardId: STATE.cardId,
+          sectionIndex: STATE.sectionIndex,
+          focusOffset,
+          scrollRatio,
+        }};
+      }};
       function removeReadMarker() {{
         const old = document.getElementById('incremento-epub-read-marker');
         if (old) old.remove();
@@ -2478,6 +2669,14 @@ def _build_epub_dock() -> None:
 
     view = QWebEngineView(dock)
     view.setPage(page)
+    view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+    qconnect(
+        view.customContextMenuRequested,
+        lambda position, current_view=view: _show_epub_reader_context_menu(
+            current_view,
+            position,
+        ),
+    )
     view.installEventFilter(_epub_key_filter)
     page.installEventFilter(_epub_key_filter)
     dock._epub_profile = profile
@@ -3627,16 +3826,18 @@ def open_epub_location(
     *,
     focus_offset: int = -1,
     search_query: str = "",
+    scroll_ratio_override: float | None = None,
 ) -> None:
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
     filename = note[EPUB_FILE_FIELD]
     current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, _active_profile(), card_id)
+    requested_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio_override)
     show_epub_in_dock(
         card_id,
         filename,
         section_index=current_section if section_index is None else int(section_index),
-        scroll_ratio=current_ratio,
+        scroll_ratio=requested_ratio if requested_ratio is not None else current_ratio,
         focus_offset=focus_offset,
         search_query=search_query,
     )

@@ -725,6 +725,49 @@ class TestSchedulerConfigDialogPersistence:
 
 
 class TestSchedulerConfigDialogState:
+    def test_lone_other_slider_is_forced_to_100_percent_and_disabled(self):
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        other_slider = _FakeValueWidget(35)
+        dialog._linked_rows = [
+            {
+                "tag": _MOD.NO_TAGS_KEY,
+                "slider": other_slider,
+                "lock_cb": _FakeCheckBox(False),
+                "group_edit": _FakeLineEdit("tags"),
+            }
+        ]
+        dialog._updating = False
+
+        dialog._rebalance_tag_groups(changed_row=None)
+
+        assert other_slider.value() == 100
+        assert other_slider.enabled is False
+        assert dialog._current_include_rest_from_other_slider() is True
+
+    def test_other_slider_remains_editable_when_a_real_tag_exists(self):
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        other_slider = _FakeValueWidget(35)
+        dialog._linked_rows = [
+            {
+                "tag": "work",
+                "slider": _FakeValueWidget(65),
+                "lock_cb": _FakeCheckBox(False),
+                "group_edit": _FakeLineEdit("tags"),
+            },
+            {
+                "tag": _MOD.NO_TAGS_KEY,
+                "slider": other_slider,
+                "lock_cb": _FakeCheckBox(False),
+                "group_edit": _FakeLineEdit("tags"),
+            },
+        ]
+        dialog._updating = False
+
+        dialog._rebalance_tag_groups(changed_row=None)
+
+        assert other_slider.value() == 35
+        assert other_slider.enabled is True
+
     def test_accept_persists_current_values_into_selected_preset(self, monkeypatch):
         stored_config = {
             "dialog": {"session_card_count": 20, "selected_profile": "Focus"},
