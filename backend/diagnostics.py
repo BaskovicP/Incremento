@@ -367,6 +367,7 @@ _KNOWN_CONFIG_KEYS = {
     "highlight_when_extracting",
     "item_skip_enabled",
     "item_skip_minutes",
+    "onboarding_completed_version",
     "pdf_highlight_extract_field",
     "pin_hash",
     "prefer_web_card_resume_in_original_page",

@@ -1610,10 +1610,31 @@ export default function PdfViewer() {
         paddingBottom: `${visibleControlsHeight}px`,
       }}
     >
+      <style>{`
+        #pdf-controls button:focus-visible,
+        #pdf-controls input:focus-visible,
+        #pdf-controls select:focus-visible,
+        #pdf-controls [tabindex]:focus-visible {
+          outline: 3px solid #60a5fa !important;
+          outline-offset: 2px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          #pdf-controls *,
+          #pdf-controls *::before,
+          #pdf-controls *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
 
       {/* Controls */}
       <div
         id="pdf-controls"
+        role="toolbar"
+        aria-label="PDF reader controls"
         style={{
           position: 'fixed',
           bottom: 0,
@@ -1643,7 +1664,13 @@ export default function PdfViewer() {
               flexWrap: 'wrap',
             }}
           >
-            <button onClick={() => limitAwareNav(-1)} title="Previous page">&#8592; Prev</button>
+            <button
+              aria-label="Previous PDF page"
+              onClick={() => limitAwareNav(-1)}
+              title="Previous page"
+            >
+              &#8592; Prev
+            </button>
             <button
               type="button"
               onClick={openPageJump}
@@ -1652,7 +1679,13 @@ export default function PdfViewer() {
             >
               Page {page} / {totalPages || '\u2014'}
             </button>
-            <button onClick={() => limitAwareNav(1)} title="Next page">Next &#8594;</button>
+            <button
+              aria-label="Next PDF page"
+              onClick={() => limitAwareNav(1)}
+              title="Next page"
+            >
+              Next &#8594;
+            </button>
             <span style={{ color: '#d4d4d8', fontWeight: 700, minWidth: 48, textAlign: 'center' }}>
               {Math.round(zoom * 100)}%
             </span>
@@ -1733,12 +1766,18 @@ export default function PdfViewer() {
             <div style={TOOLBAR_STACK_STYLE}>
               <span style={TOOLBAR_LABEL_STYLE}>Navigate</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => limitAwareNav(-1)}>&#8592; Prev</button>
+                <button
+                  aria-label="Previous PDF page"
+                  onClick={() => limitAwareNav(-1)}
+                >
+                  &#8592; Prev
+                </button>
                 {pageJumpEditing ? (
                   <span style={{ minWidth: 170, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 15, fontWeight: 700 }}>
                     <span>Page</span>
                     <input
                       ref={pageJumpInputRef}
+                      aria-label="PDF page number"
                       type="number"
                       min="1"
                       max={totalPages || undefined}
@@ -1792,18 +1831,27 @@ export default function PdfViewer() {
                     {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
                   </button>
                 )}
-                <button onClick={() => limitAwareNav(1)}>Next &#8594;</button>
+                <button
+                  aria-label="Next PDF page"
+                  onClick={() => limitAwareNav(1)}
+                >
+                  Next &#8594;
+                </button>
               </span>
             </div>
             <span style={TOOLBAR_SEPARATOR_STYLE} />
             <div style={TOOLBAR_STACK_STYLE}>
               <span style={TOOLBAR_LABEL_STYLE}>Zoom</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => adjustZoom(-1)}>&#8722;</button>
+                <button aria-label="Zoom out" onClick={() => adjustZoom(-1)}>
+                  &#8722;
+                </button>
                 <span style={{ minWidth: 54, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
                   {Math.round(zoom * 100)}%
                 </span>
-                <button onClick={() => adjustZoom(1)}>&#43;</button>
+                <button aria-label="Zoom in" onClick={() => adjustZoom(1)}>
+                  &#43;
+                </button>
               </span>
             </div>
           </div>}
@@ -1953,7 +2001,11 @@ export default function PdfViewer() {
                 color: '#f5f5f5',
               }}
             />
-            <span style={{ minWidth: 64, textAlign: 'center', color: '#a1a1aa', fontSize: 12 }}>
+            <span
+              role="status"
+              aria-live="polite"
+              style={{ minWidth: 64, textAlign: 'center', color: '#a1a1aa', fontSize: 12 }}
+            >
               {searchQuery ? (searchHits.length ? `${Math.max(0, activeSearchHitIndex + 1)} / ${searchHits.length}` : '0 results') : ''}
             </span>
             <button
@@ -2027,6 +2079,8 @@ export default function PdfViewer() {
 
         {controlVisibility.reading && limitNotice && (
           <div
+            role="status"
+            aria-live="polite"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -2075,6 +2129,8 @@ export default function PdfViewer() {
                     {Object.keys(HL_COLORS).map(c => (
                       <button
                         key={c}
+                        aria-label={'Use ' + c + ' highlight color'}
+                        aria-pressed={hlColor === c}
                         title={`Highlight ${c}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
@@ -2692,7 +2748,13 @@ export default function PdfViewer() {
       )}
 
       {error && (
-        <div style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}>{error}</div>
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}
+        >
+          {error}
+        </div>
       )}
 
       {hoveredHighlightNote && (

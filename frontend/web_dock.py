@@ -34,6 +34,7 @@ from aqt.qt import (
     QFrame,
     QHBoxLayout,
     QGridLayout,
+    QInputDialog,
     QLabel,
     QObject,
     QPoint,
@@ -106,6 +107,11 @@ except ImportError:
         set_web_url,
     )
     from reader_bookmarks import add_reader_bookmark, delete_reader_bookmark, list_reader_bookmarks  # type: ignore
+
+try:
+    from .reader_shell import configure_reader_shell_buttons
+except ImportError:
+    from reader_shell import configure_reader_shell_buttons  # type: ignore
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -914,7 +920,21 @@ class _WebDockController:
         url_lbl = QLabel("")
         url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
         url_lbl.setWordWrap(False)
+        url_lbl.setAccessibleName("Web reader status and current address")
         ctrl_layout.addWidget(url_lbl, 0, 0, 1, 2)
+
+        back_btn = _make_web_button(
+            ctrl,
+            "Back",
+            "Go back one page in the Web reader.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowBack),
+        )
+        search_btn = _make_web_button(
+            ctrl,
+            "Search",
+            "Find text in the current web page.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+        )
 
         add_card_btn = _make_web_button(
             ctrl,
@@ -978,6 +998,23 @@ class _WebDockController:
             icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
         )
         resume_btn.setVisible(False)
+        review_all_btn = _make_web_button(
+            ctrl,
+            "Review All",
+            "Review All is not available in the Web reader yet.",
+            icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
+        )
+
+        configure_reader_shell_buttons(
+            "web",
+            {
+                "back": back_btn,
+                "search": search_btn,
+                "extract": extract_btn,
+                "bookmark": bookmark_btn,
+                "review_all": review_all_btn,
+            },
+        )
 
         track_cb = QCheckBox("Track via Chrome extension")
         track_cb.setChecked(bool(self.runtime.track_window_with_extension))
@@ -1001,7 +1038,8 @@ class _WebDockController:
             bookmarks_btn,
             cards_btn,
         )
-        nav_group = _make_web_group(ctrl, "Navigate", home_btn)
+        nav_group = _make_web_group(ctrl, "Navigate", back_btn, search_btn, home_btn)
+        review_group = _make_web_group(ctrl, "Review", review_all_btn)
         external_group = _make_web_group(
             ctrl,
             "External",
@@ -1013,7 +1051,8 @@ class _WebDockController:
         ctrl_layout.addWidget(capture_group, 1, 0, 1, 2)
         ctrl_layout.addWidget(saved_group, 1, 2, alignment=Qt.AlignmentFlag.AlignRight)
         ctrl_layout.addWidget(nav_group, 2, 0)
-        ctrl_layout.addWidget(external_group, 2, 1, 1, 2, alignment=Qt.AlignmentFlag.AlignRight)
+        ctrl_layout.addWidget(review_group, 2, 1, alignment=Qt.AlignmentFlag.AlignLeft)
+        ctrl_layout.addWidget(external_group, 3, 0, 1, 3, alignment=Qt.AlignmentFlag.AlignRight)
 
         ctrl_layout.setColumnStretch(0, 1)
         ctrl_layout.setColumnStretch(1, 1)
@@ -1056,6 +1095,9 @@ class _WebDockController:
         dock._cards_panel = cards_panel
         dock._bookmarks_panel = bookmarks_panel
         dock._resume_btn = resume_btn
+        dock._reader_back_btn = back_btn
+        dock._reader_search_btn = search_btn
+        dock._review_all_btn = review_all_btn
 
         if self.runtime.interaction_filter is None:
             self.runtime.interaction_filter = _WebInteractionFilter(self.runtime, mw)
@@ -1127,6 +1169,23 @@ class _WebDockController:
         view.loadFinished.connect(_on_load_finished)
         view.page().selectionChanged.connect(_on_selection_changed)
         qconnect(home_btn.clicked, self.go_home)
+        qconnect(back_btn.clicked, view.back)
+
+        def _find_in_page() -> None:
+            previous = str(getattr(self.runtime, "last_find_query", "") or "")
+            query, accepted = QInputDialog.getText(
+                dock,
+                "Search Current Web Page",
+                "Text:",
+                text=previous,
+            )
+            normalized = str(query or "").strip()
+            if not accepted or not normalized:
+                return
+            self.runtime.last_find_query = normalized
+            view.findText(normalized)
+
+        qconnect(search_btn.clicked, _find_in_page)
         qconnect(homepage_window_btn.clicked, self.open_homepage_in_window)
         qconnect(extract_btn.clicked, self.extract_selection_with_picker)
         qconnect(snapshot_btn.clicked, _toggle_snapshot_mode)

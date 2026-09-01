@@ -121,6 +121,57 @@ _LEGACY_PDF_POSITION_RE = re.compile(
 )
 
 
+def _card_display_label(note, card_id: int, *, limit: int = 140) -> str:
+    """Return bounded plain text suitable for an in-app Review All preview."""
+    fields = getattr(note, "fields", None)
+    if isinstance(fields, (list, tuple)):
+        for raw_value in fields:
+            plain = unescape(re.sub(r"<[^>]*>", " ", str(raw_value or "")))
+            plain = " ".join(plain.split())
+            if plain:
+                if len(plain) > limit:
+                    plain = plain[: max(1, limit - 1)].rstrip() + "…"
+                return plain
+    return f"Card {int(card_id)}"
+
+
+def _deck_display_name(col, deck_id: int) -> str:
+    if int(deck_id or 0) <= 0:
+        return ""
+    try:
+        deck = col.decks.get(int(deck_id))
+    except Exception:
+        deck = None
+    if isinstance(deck, Mapping):
+        name = str(deck.get("name") or "").strip()
+        if name:
+            return name
+    return f"Filtered deck {int(deck_id)}"
+
+
+def _filtered_deck_summaries(rows: Iterable[dict]) -> list[dict]:
+    grouped: dict[tuple[int, str], int] = {}
+    for row in rows:
+        if str(row.get("availability") or "").strip().casefold() != MEDIA_REVIEW_AVAILABILITY_FILTERED:
+            continue
+        try:
+            deck_id = max(0, int(row.get("filtered_deck_id", 0) or 0))
+        except Exception:
+            deck_id = 0
+        deck_name = str(row.get("filtered_deck_name") or "").strip()
+        if not deck_name:
+            deck_name = f"Filtered deck {deck_id}" if deck_id else "Unknown filtered deck"
+        key = (deck_id, deck_name)
+        grouped[key] = grouped.get(key, 0) + 1
+    return [
+        {"deck_id": deck_id, "deck_name": deck_name, "selected_count": count}
+        for (deck_id, deck_name), count in sorted(
+            grouped.items(),
+            key=lambda item: (item[0][1].casefold(), item[0][0]),
+        )
+    ]
+
+
 def _normalize_choice(value, valid: set[str], default: str) -> str:
     normalized = str(value or "").strip().lower()
     return normalized if normalized in valid else default
@@ -705,6 +756,9 @@ def inspect_linked_media_review_rows(
                     "source_depth": int(info.get("source_depth", 0) or 0),
                     "is_topic": str(info.get("tree_kind") or "") == "topic",
                     "is_due": False,
+                    "card_label": f"Missing card {int(card_id)}",
+                    "filtered_deck_id": 0,
+                    "filtered_deck_name": "",
                     "availability": MEDIA_REVIEW_AVAILABILITY_MISSING,
                 }
             )
@@ -737,6 +791,19 @@ def inspect_linked_media_review_rows(
             )
         except Exception:
             topic = str(info.get("tree_kind") or "") == "topic"
+        availability = _card_availability(
+            card,
+            target_deck_id=target_deck_id,
+        )
+        try:
+            current_deck_id = int(getattr(card, "did", 0) or 0)
+        except Exception:
+            current_deck_id = 0
+        filtered_deck_id = (
+            current_deck_id
+            if availability == MEDIA_REVIEW_AVAILABILITY_FILTERED
+            else 0
+        )
         rows.append(
             {
                 "card_id": int(card_id),
@@ -752,10 +819,10 @@ def inspect_linked_media_review_rows(
                 "source_depth": int(info.get("source_depth", 0) or 0),
                 "is_topic": topic,
                 "is_due": int(card_id) in due_ids,
-                "availability": _card_availability(
-                    card,
-                    target_deck_id=target_deck_id,
-                ),
+                "card_label": _card_display_label(notes.get(note_id), int(card_id)),
+                "filtered_deck_id": filtered_deck_id,
+                "filtered_deck_name": _deck_display_name(col, filtered_deck_id),
+                "availability": availability,
             }
         )
     return rows
@@ -903,7 +970,7 @@ def select_linked_media_review_rows(
     random_seed: int | None = None,
     include_filtered: bool = False,
 ) -> dict:
-    """Apply Review All choices and return selected rows plus exclusive counts."""
+    """Apply Review All choices and return inspectable, exclusively classified rows."""
     normalized_kind = normalize_media_review_card_kind(card_kind)
     normalized_tree_scope = normalize_media_review_tree_scope(tree_scope)
     normalized_range = normalize_media_review_range(media_range)
@@ -926,7 +993,15 @@ def select_linked_media_review_rows(
         "limit": 0,
     }
     eligible: list[dict] = []
+    excluded_rows: list[dict] = []
     all_rows = [dict(row) for row in list(rows or [])]
+
+    def _exclude(row: dict, reason: str) -> None:
+        exclusions[reason] += 1
+        excluded = dict(row)
+        excluded["exclusion_reason"] = reason
+        excluded_rows.append(excluded)
+
     for row in all_rows:
         availability = str(
             row.get("availability") or MEDIA_REVIEW_AVAILABILITY_AVAILABLE
@@ -940,21 +1015,21 @@ def select_linked_media_review_rows(
                 if availability in exclusions
                 else MEDIA_REVIEW_AVAILABILITY_MISSING
             )
-            exclusions[key] += 1
+            _exclude(row, key)
             continue
         if (
             normalized_tree_scope == MEDIA_REVIEW_TREE_DIRECT
             and int(row.get("source_depth", 0) or 0) > 0
         ):
-            exclusions["nested"] += 1
+            _exclude(row, "nested")
             continue
         if normalized_range == MEDIA_REVIEW_RANGE_TO_CURRENT:
             position = _normalized_position(row.get("media_position"))
             if position is None:
-                exclusions["unknown_position"] += 1
+                _exclude(row, "unknown_position")
                 continue
             if position > float(normalized_current_position):
-                exclusions["beyond_current"] += 1
+                _exclude(row, "beyond_current")
                 continue
         is_topic = bool(row.get("is_topic"))
         if (
@@ -964,10 +1039,10 @@ def select_linked_media_review_rows(
             normalized_kind == MEDIA_REVIEW_CARD_KIND_ITEMS
             and is_topic
         ):
-            exclusions["other_kind"] += 1
+            _exclude(row, "other_kind")
             continue
         if normalized_state == MEDIA_REVIEW_STATE_DUE and not bool(row.get("is_due")):
-            exclusions["not_due"] += 1
+            _exclude(row, "not_due")
             continue
         eligible.append(row)
 
@@ -977,7 +1052,8 @@ def select_linked_media_review_rows(
         random_seed=random_seed,
     )
     if normalized_limit > 0 and len(ordered) > normalized_limit:
-        exclusions["limit"] = len(ordered) - normalized_limit
+        for row in ordered[normalized_limit:]:
+            _exclude(row, "limit")
         ordered = ordered[:normalized_limit]
 
     selected_topic_count = sum(1 for row in ordered if bool(row.get("is_topic")))
@@ -989,12 +1065,15 @@ def select_linked_media_review_rows(
     )
     return {
         "rows": ordered,
+        "excluded_rows": excluded_rows,
         "card_ids": [int(row.get("card_id", 0) or 0) for row in ordered],
         "total_count": len(all_rows),
         "selected_count": len(ordered),
         "topic_count": selected_topic_count,
         "item_count": len(ordered) - selected_topic_count,
         "selected_filtered_count": selected_filtered_count,
+        "filtered_decks": _filtered_deck_summaries(ordered),
+        "candidate_filtered_decks": _filtered_deck_summaries(all_rows),
         "exclusions": exclusions,
         "order": normalize_media_review_order(order),
         "card_kind": normalized_kind,

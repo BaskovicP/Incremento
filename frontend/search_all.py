@@ -30,6 +30,23 @@ except ImportError:
     from paths import get_active_profile as _active_profile
 
 try:
+    from ..backend.activity_log import (
+        cancel_activity,
+        fail_activity,
+        finish_activity,
+        start_activity,
+        update_activity,
+    )
+except ImportError:
+    from activity_log import (  # type: ignore
+        cancel_activity,
+        fail_activity,
+        finish_activity,
+        start_activity,
+        update_activity,
+    )
+
+try:
     from ..backend.db import (
         search_note_ocr_index,
         search_epub_text_index,
@@ -165,6 +182,7 @@ class _SearchAllDialog(QDialog):
         self._pdf_index_running = False
         self._pdf_index_attempted = False
         self._pdf_index_generation = 0
+        self._pdf_index_activity_id = ""
         self._closed = False
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
@@ -458,10 +476,25 @@ class _SearchAllDialog(QDialog):
                 continue
         return documents
 
-    def _cancel_pdf_index(self) -> None:
+    def _request_pdf_index_cancel(self) -> None:
         self._pdf_index_cancel.set()
         self._pdf_index_status.setText("Stopping PDF indexing after the current file…")
         self._pdf_index_cancel_btn.setEnabled(False)
+
+    def _cancel_pdf_index(self) -> None:
+        if self._pdf_index_activity_id and cancel_activity(
+            self._pdf_index_activity_id
+        ):
+            return
+        self._request_pdf_index_cancel()
+
+    def _retry_pdf_index(self, activity_id: str) -> None:
+        if self._closed:
+            raise RuntimeError("Search ALL is closed.")
+        self._pdf_index_running = False
+        self._pdf_index_attempted = False
+        self._pdf_index_activity_id = str(activity_id or "")
+        self._start_pdf_index()
 
     def _update_pdf_index_progress(
         self,
@@ -471,6 +504,12 @@ class _SearchAllDialog(QDialog):
     ) -> None:
         if self._closed or generation != self._pdf_index_generation:
             return
+        if self._pdf_index_activity_id:
+            update_activity(
+                self._pdf_index_activity_id,
+                progress=(completed / total) if total > 0 else None,
+                detail=f"Indexed {completed} of {total} PDFs",
+            )
         self._pdf_index_status.setText(
             f"Indexing PDF text in the background… {completed}/{total}"
         )
@@ -488,22 +527,46 @@ class _SearchAllDialog(QDialog):
         self._pdf_index_status.setVisible(True)
         self._pdf_index_cancel_btn.setEnabled(True)
         self._pdf_index_cancel_btn.setVisible(True)
+        if self._pdf_index_activity_id:
+            update_activity(
+                self._pdf_index_activity_id,
+                progress=0,
+                detail="Preparing the PDF index",
+            )
+        else:
+            activity_ref: dict[str, str] = {}
+            activity_id = start_activity(
+                "Index PDF text",
+                category="Search",
+                detail="Preparing the PDF index",
+                progress=0,
+                cancel=self._request_pdf_index_cancel,
+                retry=lambda: self._retry_pdf_index(activity_ref["activity_id"]),
+            )
+            activity_ref["activity_id"] = activity_id
+            self._pdf_index_activity_id = activity_id
 
         def collected(documents: list[tuple[int, str]]) -> None:
             if generation != self._pdf_index_generation:
                 return
             if self._closed or _active_profile() != profile:
                 self._pdf_index_running = False
+                cancel_activity(self._pdf_index_activity_id)
                 return
             if self._pdf_index_cancel.is_set():
                 self._pdf_index_running = False
                 self._pdf_index_cancel_btn.setVisible(False)
                 self._pdf_index_status.setText("PDF indexing cancelled.")
+                cancel_activity(self._pdf_index_activity_id)
                 return
             if not documents:
                 self._pdf_index_running = False
                 self._pdf_index_cancel_btn.setVisible(False)
                 self._pdf_index_status.setText("No readable PDFs need indexing.")
+                finish_activity(
+                    self._pdf_index_activity_id,
+                    detail="No readable PDFs needed indexing.",
+                )
                 return
 
             self._pdf_index_status.setText(
@@ -524,6 +587,10 @@ class _SearchAllDialog(QDialog):
                 self._pdf_index_status.setText(
                     "Could not prepare the PDF index; existing indexed search remains available."
                 )
+            fail_activity(
+                self._pdf_index_activity_id,
+                "Could not prepare the PDF index. Existing indexed search is still available.",
+            )
 
         from aqt.operations import QueryOp
 
@@ -573,12 +640,24 @@ class _SearchAllDialog(QDialog):
                 result = future.result()
             except Exception:
                 self._pdf_index_status.setText("PDF indexing failed; indexed search remains available.")
+                fail_activity(
+                    self._pdf_index_activity_id,
+                    "PDF indexing failed. Existing indexed search is still available.",
+                )
                 return
             if result.cancelled:
                 self._pdf_index_status.setText("PDF indexing cancelled.")
+                cancel_activity(self._pdf_index_activity_id)
             else:
                 self._pdf_index_status.setText(
                     f"PDF index ready ({result.indexed} updated, {result.failed} failed)."
+                )
+                finish_activity(
+                    self._pdf_index_activity_id,
+                    detail=(
+                        f"PDF index ready: {result.indexed} updated, "
+                        f"{result.failed} failed."
+                    ),
                 )
                 if self._query_ready() and self._cb_content.isChecked():
                     self._refresh(self._query_text())
@@ -604,7 +683,8 @@ class _SearchAllDialog(QDialog):
     def closeEvent(self, event) -> None:
         self._closed = True
         self._search_debounce.stop()
-        self._pdf_index_cancel.set()
+        if self._pdf_index_running:
+            self._cancel_pdf_index()
         super().closeEvent(event)
 
     def _search_epub_file_hits(

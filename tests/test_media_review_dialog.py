@@ -302,6 +302,52 @@ def test_preview_warns_when_filtered_cards_will_be_moved(monkeypatch):
     assert "all cards in those decks" in text
 
 
+def test_filtered_deck_warning_names_every_deck_that_will_be_emptied(monkeypatch):
+    module = _load_dialog_module(monkeypatch)
+
+    text = module.format_filtered_deck_impact(
+        [
+            {"deck_id": 91, "deck_name": "Filtered Work", "selected_count": 2},
+            {"deck_id": 92, "deck_name": "Language Queue", "selected_count": 1},
+        ]
+    )
+
+    assert "Filtered Work (2 selected)" in text
+    assert "Language Queue (1 selected)" in text
+    assert "Every card in these filtered decks" in text
+
+
+def test_result_row_explains_type_position_and_exclusion(monkeypatch):
+    module = _load_dialog_module(monkeypatch)
+
+    result = module.media_review_result_cells(
+        {
+            "card_label": "Why does this work?",
+            "is_topic": False,
+            "media_position": 73,
+            "exclusion_reason": "not_due",
+        },
+        media_kind="video",
+    )
+
+    assert result == (
+        "Why does this work?",
+        "Item",
+        "1:13",
+        "Not due now",
+    )
+
+
+def test_review_all_dialog_source_contains_ready_and_excluded_result_groups(monkeypatch):
+    module = _load_dialog_module(monkeypatch)
+    source = open(module.__file__, encoding="utf-8").read()
+
+    assert "self._ready_tree" in source
+    assert "self._excluded_tree" in source
+    assert "_populate_result_trees" in source
+    assert "_accept_review" in source
+
+
 def test_inspection_failure_is_forwarded_to_privacy_safe_diagnostics(monkeypatch):
     module = _load_dialog_module(monkeypatch)
     query_calls = []

@@ -224,7 +224,18 @@ from .backend.session import (
 from .frontend.session_launcher import learnFunction
 from .frontend.settings_dialog import (
     IncrementoSettingsDialog,
+    SHORTCUT_ACTION_SPECS,
     resolved_runtime_shortcuts,
+)
+from .frontend.command_palette import (
+    build_palette_commands,
+    create_command_palette_dialog,
+)
+from .frontend.activity_center import create_activity_center_dialog
+from .frontend.onboarding_dialog import (
+    create_onboarding_dialog,
+    mark_onboarding_complete,
+    should_show_onboarding,
 )
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.pdf_bookshelf import (
@@ -272,6 +283,9 @@ _configured_shortcut_filter = None
 _ocr_sync_editors: "weakref.WeakSet[object]" = weakref.WeakSet()
 _diagnostic_recorder: _diagnostics_mod.DiagnosticRecorder | None = None
 _diagnostic_pending_final_interval: int | None = None
+_command_palette_dialog = None
+_onboarding_dialog = None
+_activity_center_dialog = None
 
 
 def configured_show_incremento_fields(cfg: dict | None = None) -> bool:
@@ -442,6 +456,81 @@ def _invoke_shortcut_action(action_id: str) -> bool:
         except Exception:
             continue
     return False
+
+
+def _open_command_palette() -> None:
+    """Open a searchable snapshot of currently registered Incremento actions."""
+    global _command_palette_dialog
+    existing = _command_palette_dialog
+    if existing is not None:
+        try:
+            if existing.isVisible():
+                existing.raise_()
+                existing.activateWindow()
+                return
+        except Exception:
+            _command_palette_dialog = None
+
+    cfg = _load_addon_config(mw.addonManager, __name__)
+    runtime_shortcuts = resolved_runtime_shortcuts(cfg.get("shortcuts") or {})
+    commands = build_palette_commands(
+        [spec for spec in SHORTCUT_ACTION_SPECS if spec.get("id") != "command_palette"],
+        _shortcut_actions,
+        runtime_shortcuts,
+        invoke=_invoke_shortcut_action,
+        unavailable_reasons={
+            "search_current_document": "Open a PDF or EPUB before searching the current document.",
+            "pdf_prev_page": "Open a PDF before changing pages.",
+            "pdf_next_page": "Open a PDF before changing pages.",
+            "pdf_zoom_out": "Open a PDF before changing zoom.",
+            "pdf_zoom_in": "Open a PDF before changing zoom.",
+            "pdf_mark_read": "Open a PDF before marking a page read.",
+            "extract_card": "Open a reader or reviewer card before extracting.",
+        },
+    )
+    dialog = create_command_palette_dialog(mw, commands)
+    _command_palette_dialog = dialog
+
+    def _clear_palette(*_args) -> None:
+        global _command_palette_dialog
+        if _command_palette_dialog is dialog:
+            _command_palette_dialog = None
+
+    try:
+        dialog.finished.connect(_clear_palette)
+    except Exception:
+        pass
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+
+
+def _open_activity_center() -> None:
+    global _activity_center_dialog
+    existing = _activity_center_dialog
+    if existing is not None:
+        try:
+            if existing.isVisible():
+                existing.raise_()
+                existing.activateWindow()
+                return
+        except Exception:
+            _activity_center_dialog = None
+    dialog = create_activity_center_dialog(mw)
+    _activity_center_dialog = dialog
+
+    def _clear(*_args) -> None:
+        global _activity_center_dialog
+        if _activity_center_dialog is dialog:
+            _activity_center_dialog = None
+
+    try:
+        dialog.finished.connect(_clear)
+    except Exception:
+        pass
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
 
 
 class _ConfiguredShortcutFilter(QObject):
@@ -2196,6 +2285,7 @@ def _on_js_message(handled, message, context) -> tuple:
                     _add_card_dock_mod.apply_extract_topic_mark_to_editor(editor, mark_topic)
                 finally:
                     _add_card_dock_mod._pop_extract_mark_topic_sync_suspension()
+                _add_card_dock_mod.schedule_extract_draft_autosave(editor)
         except Exception:
             pass
         return (True, None)
@@ -3102,6 +3192,67 @@ register_reviewer_focus_restore_hooks(
 )
 
 
+def _complete_incremento_onboarding() -> None:
+    config = _load_addon_config(mw.addonManager, __name__)
+    updated = mark_onboarding_complete(config)
+    _save_addon_config(mw.addonManager, __name__, updated)
+
+
+def _show_incremento_onboarding(*, force: bool = False) -> None:
+    global _onboarding_dialog
+    config = _load_addon_config(mw.addonManager, __name__)
+    if not force and not should_show_onboarding(config):
+        return
+    existing = _onboarding_dialog
+    if existing is not None:
+        try:
+            if existing.isVisible():
+                existing.raise_()
+                existing.activateWindow()
+                return
+        except Exception:
+            _onboarding_dialog = None
+
+    dialog = create_onboarding_dialog(
+        mw,
+        on_complete=_complete_incremento_onboarding,
+        actions={
+            "add_pdf": addPdfFunction,
+            "start_learning": learnFunction,
+            "export_user_data": exportFunction,
+        },
+    )
+    _onboarding_dialog = dialog
+
+    def _clear_onboarding(*_args) -> None:
+        global _onboarding_dialog
+        if _onboarding_dialog is dialog:
+            _onboarding_dialog = None
+
+    try:
+        dialog.finished.connect(_clear_onboarding)
+    except Exception:
+        pass
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+
+
+def _schedule_incremento_onboarding() -> None:
+    def _show_when_ready(attempt: int = 0) -> None:
+        try:
+            modal = QApplication.activeModalWidget()
+        except Exception:
+            modal = None
+        if modal is not None:
+            if attempt < 8:
+                QTimer.singleShot(500, lambda: _show_when_ready(attempt + 1))
+            return
+        _show_incremento_onboarding()
+
+    QTimer.singleShot(2400, _show_when_ready)
+
+
 def _check_deps_first_run() -> None:
     """On first run after install, show the dependency setup dialog if anything is missing."""
     from .backend.deps import status
@@ -3128,6 +3279,7 @@ def _check_deps_first_run() -> None:
 
 
 gui_hooks.main_window_did_init.append(_check_deps_first_run)
+gui_hooks.main_window_did_init.append(_schedule_incremento_onboarding)
 
 
 def _build_timer_toolbar() -> None:
@@ -6135,6 +6287,18 @@ def _build_incremento_menu() -> None:
     _menu = QMenu("Incremento", menubar)
     menubar.addMenu(_menu)
 
+    _commandPaletteAction = QAction("Command Palette…", mw)
+    qconnect(_commandPaletteAction.triggered, _open_command_palette)
+    _menu.addAction(_commandPaletteAction)
+    _register_shortcut_action("command_palette", _commandPaletteAction)
+
+    _activityCenterAction = QAction("Activity Center…", mw)
+    qconnect(_activityCenterAction.triggered, _open_activity_center)
+    _menu.addAction(_activityCenterAction)
+    _register_shortcut_action("activity_center", _activityCenterAction)
+
+    _menu.addSeparator()
+
     _startAction = QAction("Start Incremental Learning", mw)
     qconnect(_startAction.triggered, learnFunction)
     _menu.addAction(_startAction)
@@ -6150,6 +6314,14 @@ def _build_incremento_menu() -> None:
     _aboutAction.setMenuRole(QAction.MenuRole.NoRole)
     qconnect(_aboutAction.triggered, openAboutFunction)
     _menu.addAction(_aboutAction)
+
+    _gettingStartedAction = QAction("Getting Started…", mw)
+    _gettingStartedAction.setMenuRole(QAction.MenuRole.NoRole)
+    qconnect(
+        _gettingStartedAction.triggered,
+        lambda _checked=False: _show_incremento_onboarding(force=True),
+    )
+    _menu.addAction(_gettingStartedAction)
 
     _menu.addSeparator()
 

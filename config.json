@@ -1,5 +1,6 @@
 {
     "config_schema_version": 2,
+    "onboarding_completed_version": 0,
     "scheduler_presets": {},
     "extract_source_links": {
         "parent": true,

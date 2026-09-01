@@ -33,6 +33,7 @@ _NUMBER_LIMITS: dict[
     str,
     tuple[int | float, int | float, int | float, type[int] | type[float]],
 ] = {
+    "onboarding_completed_version": (0, 0, 1_000, int),
     "item_skip_minutes": (30, 1, 525_600, int),
     "topic_more_adjustment_percent": (10.0, 0.0, 100.0, float),
     "topic_less_adjustment_percent": (10.0, 0.0, 100.0, float),
@@ -89,6 +90,9 @@ def _normalize_dialog(raw: Any) -> dict:
     if "scheduler_scope" in dialog:
         scope = str(dialog.get("scheduler_scope") or "session").strip().casefold()
         dialog["scheduler_scope"] = scope if scope in {"session", "daily", "lifetime"} else "session"
+    if "setup_mode" in dialog:
+        setup_mode = str(dialog.get("setup_mode") or "basic").strip().casefold()
+        dialog["setup_mode"] = setup_mode if setup_mode in {"basic", "advanced"} else "basic"
     return dialog
 
 

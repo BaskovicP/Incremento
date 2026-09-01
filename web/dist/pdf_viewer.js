@@ -9056,10 +9056,31 @@
           paddingBottom: `${visibleControlsHeight}px`
         },
         children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+        #pdf-controls button:focus-visible,
+        #pdf-controls input:focus-visible,
+        #pdf-controls select:focus-visible,
+        #pdf-controls [tabindex]:focus-visible {
+          outline: 3px solid #60a5fa !important;
+          outline-offset: 2px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          #pdf-controls *,
+          #pdf-controls *::before,
+          #pdf-controls *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      ` }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {
               id: "pdf-controls",
+              role: "toolbar",
+              "aria-label": "PDF reader controls",
               style: {
                 position: "fixed",
                 bottom: 0,
@@ -9088,7 +9109,15 @@
                     flexWrap: "wrap"
                   },
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(-1), title: "Previous page", children: "← Prev" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        "aria-label": "Previous PDF page",
+                        onClick: () => limitAwareNav(-1),
+                        title: "Previous page",
+                        children: "← Prev"
+                      }
+                    ),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "button",
                       {
@@ -9104,7 +9133,15 @@
                         ]
                       }
                     ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(1), title: "Next page", children: "Next →" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        "aria-label": "Next PDF page",
+                        onClick: () => limitAwareNav(1),
+                        title: "Next page",
+                        children: "Next →"
+                      }
+                    ),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "#d4d4d8", fontWeight: 700, minWidth: 48, textAlign: "center" }, children: [
                       Math.round(zoom * 100),
                       "%"
@@ -9195,13 +9232,21 @@
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Navigate" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(-1), children: "← Prev" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            "aria-label": "Previous PDF page",
+                            onClick: () => limitAwareNav(-1),
+                            children: "← Prev"
+                          }
+                        ),
                         pageJumpEditing ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 170, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 15, fontWeight: 700 }, children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Page" }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "input",
                             {
                               ref: pageJumpInputRef,
+                              "aria-label": "PDF page number",
                               type: "number",
                               min: "1",
                               max: totalPages || void 0,
@@ -9258,19 +9303,26 @@
                             children: totalPages > 0 ? `Page ${page} / ${totalPages}` : "Page — / —"
                           }
                         ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => limitAwareNav(1), children: "Next →" })
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            "aria-label": "Next PDF page",
+                            onClick: () => limitAwareNav(1),
+                            children: "Next →"
+                          }
+                        )
                       ] })
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Zoom" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => adjustZoom(-1), children: "−" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": "Zoom out", onClick: () => adjustZoom(-1), children: "−" }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 54, textAlign: "center", fontSize: 15, fontWeight: 700 }, children: [
                           Math.round(zoom * 100),
                           "%"
                         ] }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => adjustZoom(1), children: "+" })
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": "Zoom in", onClick: () => adjustZoom(1), children: "+" })
                       ] })
                     ] })
                   ] }),
@@ -9437,7 +9489,15 @@
                       }
                     }
                   ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { minWidth: 64, textAlign: "center", color: "#a1a1aa", fontSize: 12 }, children: searchQuery ? searchHits.length ? `${Math.max(0, activeSearchHitIndex + 1)} / ${searchHits.length}` : "0 results" : "" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      role: "status",
+                      "aria-live": "polite",
+                      style: { minWidth: 64, textAlign: "center", color: "#a1a1aa", fontSize: 12 },
+                      children: searchQuery ? searchHits.length ? `${Math.max(0, activeSearchHitIndex + 1)} / ${searchHits.length}` : "0 results" : ""
+                    }
+                  ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "button",
                     {
@@ -9513,6 +9573,8 @@
                 controlVisibility.reading && limitNotice && /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   "div",
                   {
+                    role: "status",
+                    "aria-live": "polite",
                     style: {
                       display: "flex",
                       alignItems: "center",
@@ -9542,6 +9604,8 @@
                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, padding: "2px 4px" }, children: Object.keys(HL_COLORS).map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
+                            "aria-label": "Use " + c + " highlight color",
+                            "aria-pressed": hlColor === c,
                             title: `Highlight ${c}`,
                             onMouseDown: (e) => {
                               e.preventDefault();
@@ -10188,7 +10252,15 @@
               ]
             }
           ),
-          error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { color: "red", padding: "4px 8px", textAlign: "center" }, children: error }),
+          error && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              role: "alert",
+              "aria-live": "assertive",
+              style: { color: "red", padding: "4px 8px", textAlign: "center" },
+              children: error
+            }
+          ),
           hoveredHighlightNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {

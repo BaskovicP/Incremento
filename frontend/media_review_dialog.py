@@ -13,8 +13,12 @@ from aqt.qt import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
+    QMessageBox,
     QSpinBox,
+    QTabWidget,
     QTimer,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     qconnect,
 )
@@ -135,6 +139,60 @@ def _media_position_label(media_kind: str, value) -> str:
     return ""
 
 
+_EXCLUSION_REASON_LABELS = {
+    "suspended": "Suspended",
+    "buried": "Buried",
+    "filtered": "In another filtered deck",
+    "missing": "Card is missing",
+    "nested": "Nested card excluded",
+    "beyond_current": "After current position",
+    "unknown_position": "Position is unknown",
+    "other_kind": "Outside selected Topic/Item type",
+    "not_due": "Not due now",
+    "limit": "Past review limit",
+}
+
+
+def format_filtered_deck_impact(decks: Iterable[dict] | None) -> str:
+    """Explain the exact scope of Anki's required filtered-deck release."""
+    parts = []
+    for deck in list(decks or []):
+        name = str(deck.get("deck_name") or "Unknown filtered deck").strip()
+        count = max(0, int(deck.get("selected_count", 0) or 0))
+        parts.append(f"{name} ({count} selected)")
+    if not parts:
+        return ""
+    return (
+        "Conflicting filtered decks: "
+        + ", ".join(parts)
+        + ". Every card in these filtered decks will first return to its original "
+        "deck; only the selected cards will then enter this review. The filtered-deck "
+        "definitions remain available to rebuild."
+    )
+
+
+def media_review_result_cells(row: Mapping, *, media_kind: str) -> tuple[str, str, str, str]:
+    """Return plain, stable table cells for one Review All preview row."""
+    try:
+        card_id = int(row.get("card_id", 0) or 0)
+    except Exception:
+        card_id = 0
+    label = str(row.get("card_label") or "").strip() or (
+        f"Card {card_id}" if card_id > 0 else "Unknown card"
+    )
+    card_type = "Topic" if bool(row.get("is_topic")) else "Item"
+    position = _media_position_label(media_kind, row.get("media_position")) or "—"
+    reason = str(row.get("exclusion_reason") or "").strip().lower()
+    if reason:
+        status = _EXCLUSION_REASON_LABELS.get(reason, reason.replace("_", " ").title())
+    elif str(row.get("availability") or "").strip().lower() == "filtered":
+        deck_name = str(row.get("filtered_deck_name") or "another filtered deck").strip()
+        status = f"Will move from {deck_name}"
+    else:
+        status = "Ready"
+    return label, card_type, position, status
+
+
 def format_media_review_preview(summary: dict) -> str:
     selected = int(summary.get("selected_count", 0) or 0)
     topics = int(summary.get("topic_count", 0) or 0)
@@ -146,11 +204,13 @@ def format_media_review_preview(summary: dict) -> str:
     )
     filtered_count = int(summary.get("selected_filtered_count", 0) or 0)
     if filtered_count > 0:
-        first_line += (
-            f"\nWarning: {filtered_count} card{'s' if filtered_count != 1 else ''} "
-            "currently in other filtered decks will be moved. Anki must empty "
-            "those decks first, so all cards in those decks return to their "
-            "original decks; the filtered-deck definitions remain available to rebuild."
+        exact_impact = format_filtered_deck_impact(summary.get("filtered_decks"))
+        first_line += f"\nWarning: {filtered_count} card{'s' if filtered_count != 1 else ''} "
+        first_line += "currently in other filtered decks will be moved. "
+        first_line += exact_impact or (
+            "Anki must empty those decks first, so all cards in those decks return "
+            "to their original decks; the filtered-deck definitions remain available "
+            "to rebuild."
         )
 
     exclusions = dict(summary.get("exclusions") or {})
@@ -218,7 +278,7 @@ class MediaAttachedReviewDialog(QDialog):
         self.setModal(True)
         # Leave enough room for the opt-in filtered-deck warning without
         # forcing the preview or action buttons below the initial viewport.
-        self.resize(640, 440)
+        self.resize(900, 650)
 
         layout = QVBoxLayout(self)
         summary = QLabel(
@@ -299,6 +359,9 @@ class MediaAttachedReviewDialog(QDialog):
             self,
         )
         self._include_filtered_checkbox.setChecked(options["include_filtered"])
+        self._include_filtered_checkbox.setAccessibleName(
+            "Include cards from other filtered decks"
+        )
         self._include_filtered_checkbox.setToolTip(
             "Anki cannot move individual cards between filtered decks. Enabling this "
             "empties each conflicting filtered deck, returns all of its cards to their "
@@ -309,18 +372,37 @@ class MediaAttachedReviewDialog(QDialog):
 
         self._preview_label = QLabel("")
         self._preview_label.setWordWrap(True)
+        self._preview_label.setAccessibleName("Review selection summary")
         layout.addWidget(self._preview_label)
+
+        self._filtered_deck_impact_label = QLabel("")
+        self._filtered_deck_impact_label.setWordWrap(True)
+        self._filtered_deck_impact_label.setAccessibleName(
+            "Filtered deck change warning"
+        )
+        layout.addWidget(self._filtered_deck_impact_label)
+
+        self._result_tabs = QTabWidget(self)
+        self._ready_tree = self._create_result_tree("Cards ready to review")
+        self._excluded_tree = self._create_result_tree("Cards excluded from review")
+        self._ready_tab_index = self._result_tabs.addTab(self._ready_tree, "Ready")
+        self._excluded_tab_index = self._result_tabs.addTab(
+            self._excluded_tree,
+            "Excluded",
+        )
+        layout.addWidget(self._result_tabs, 1)
 
         buttons = QDialogButtonBox(self)
         self._review_button = buttons.addButton(
             "Start Review",
             QDialogButtonBox.ButtonRole.AcceptRole,
         )
+        self._review_button.setAccessibleName("Start attached-card review")
         cancel_button = buttons.addButton(
             "Cancel",
             QDialogButtonBox.ButtonRole.RejectRole,
         )
-        qconnect(self._review_button.clicked, self.accept)
+        qconnect(self._review_button.clicked, self._accept_review)
         qconnect(cancel_button.clicked, self.reject)
         layout.addWidget(buttons)
 
@@ -335,6 +417,15 @@ class MediaAttachedReviewDialog(QDialog):
         qconnect(self._limit_spin.valueChanged, self._refresh_preview)
         qconnect(self._include_filtered_checkbox.toggled, self._refresh_preview)
         self._refresh_preview()
+
+    def _create_result_tree(self, accessible_name: str) -> QTreeWidget:
+        tree = QTreeWidget(self)
+        tree.setColumnCount(4)
+        tree.setHeaderLabels(("Card", "Type", "Position", "Status"))
+        tree.setRootIsDecorated(False)
+        tree.setAlternatingRowColors(True)
+        tree.setAccessibleName(accessible_name)
+        return tree
 
     def selected_options(self) -> dict:
         return _normalized_options(
@@ -361,10 +452,65 @@ class MediaAttachedReviewDialog(QDialog):
         selection = self.selection_summary()
         count = int(selection.get("selected_count", 0) or 0)
         self._preview_label.setText(format_media_review_preview(selection))
+        self._populate_result_trees(selection)
+        filtered_decks = list(selection.get("filtered_decks") or [])
+        if filtered_decks:
+            self._filtered_deck_impact_label.setText(
+                format_filtered_deck_impact(filtered_decks)
+            )
+            self._filtered_deck_impact_label.show()
+        else:
+            self._filtered_deck_impact_label.clear()
+            self._filtered_deck_impact_label.hide()
         self._review_button.setEnabled(count > 0)
         self._review_button.setText(
             f"Review {count} Card{'s' if count != 1 else ''}" if count else "No Cards"
         )
+
+    def _populate_result_trees(self, selection: Mapping) -> None:
+        ready_rows = list(selection.get("rows") or [])
+        excluded_rows = list(selection.get("excluded_rows") or [])
+        self._ready_tree.clear()
+        self._excluded_tree.clear()
+        for tree, rows in (
+            (self._ready_tree, ready_rows),
+            (self._excluded_tree, excluded_rows),
+        ):
+            for row in rows:
+                item = QTreeWidgetItem(
+                    list(media_review_result_cells(row, media_kind=self._media_kind))
+                )
+                label = str(row.get("card_label") or "").strip()
+                if label:
+                    item.setToolTip(0, label)
+                tree.addTopLevelItem(item)
+            tree.resizeColumnToContents(1)
+            tree.resizeColumnToContents(2)
+            tree.resizeColumnToContents(3)
+        self._result_tabs.setTabText(
+            self._ready_tab_index,
+            f"Ready ({len(ready_rows)})",
+        )
+        self._result_tabs.setTabText(
+            self._excluded_tab_index,
+            f"Excluded ({len(excluded_rows)})",
+        )
+
+    def _accept_review(self) -> None:
+        selection = self.selection_summary()
+        filtered_decks = list(selection.get("filtered_decks") or [])
+        if self._include_filtered_checkbox.isChecked() and filtered_decks:
+            impact = format_filtered_deck_impact(filtered_decks)
+            answer = QMessageBox.question(
+                self,
+                "Move Cards from Filtered Decks?",
+                impact + "\n\nContinue and start this review?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.accept()
 
 
 def start_attached_media_review(

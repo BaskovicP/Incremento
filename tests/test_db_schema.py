@@ -140,7 +140,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "
@@ -157,3 +157,29 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     finally:
         conn.rollback()
         db.close_connection()
+
+
+def test_statistics_goals_migration_rolls_back_table_and_ledger_on_failure():
+    import db
+
+    conn = sqlite3.connect(":memory:")
+
+    def bootstrap(connection: sqlite3.Connection) -> None:
+        connection.execute("CREATE TABLE baseline(id INTEGER PRIMARY KEY)")
+
+    def failing_goal_migration(connection: sqlite3.Connection) -> None:
+        db._migration_7_statistics_goals(connection)
+        raise RuntimeError("simulated goal migration interruption")
+
+    migrations = [
+        (version, f"noop_{version}", lambda _conn: None)
+        for version in range(2, 7)
+    ] + [(7, "statistics_goals", failing_goal_migration)]
+
+    with pytest.raises(RuntimeError, match="interruption"):
+        initialize_schema(conn, bootstrap=bootstrap, migrations=migrations)
+
+    assert conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='statistics_goals'"
+    ).fetchone() is None
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 6

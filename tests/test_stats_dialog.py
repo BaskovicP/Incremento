@@ -140,3 +140,71 @@ def test_history_insight_reports_streak_and_active_day_averages():
     assert _mod._history_insight(_history_fixture()) == (
         "Current streak: 1 day · Active-day average: 4 cards and 3.5 pages"
     )
+
+
+def test_period_comparison_reports_current_previous_and_percent_change():
+    history = []
+    for index in range(14):
+        cards = 1 if index < 7 else 2
+        history.append(
+            {
+                "date": f"2026-04-{index + 1:02d}",
+                "counts": {"type": {"items": cards}, "tags": {}, "mode": {}},
+                "seconds": {"type": {"items": cards * 60}, "tags": {}},
+                "reading": {"pdf_pages": cards, "epub_pages": 0},
+            }
+        )
+
+    comparison = _mod._history_period_comparison(history, 7)
+
+    assert comparison["cards"] == {"current": 14.0, "previous": 7.0, "percent": 100.0}
+    assert comparison["pages"] == {"current": 14.0, "previous": 7.0, "percent": 100.0}
+    assert comparison["seconds"] == {"current": 840.0, "previous": 420.0, "percent": 100.0}
+
+
+def test_goal_progress_and_day_drilldown_keep_metrics_separate():
+    row = _history_fixture()[0]
+
+    assert _mod._daily_goal_progress(
+        row,
+        {"cards": 8, "pages": 6, "minutes": 3},
+    ) == {
+        "cards": {"value": 4.0, "target": 8.0, "ratio": 0.5},
+        "pages": {"value": 3.0, "target": 6.0, "ratio": 0.5},
+        "minutes": {"value": 1.5, "target": 3.0, "ratio": 0.5},
+    }
+    assert _mod._history_day_detail(row) == {
+        "date": "2026-04-21",
+        "topics": 2.0,
+        "items": 1.0,
+        "other_cards": 1.0,
+        "cards": 4.0,
+        "pdf_pages": 2.0,
+        "epub_pages": 1.0,
+        "pages": 3.0,
+        "seconds": 90.0,
+    }
+
+
+def test_heatmap_model_uses_zero_to_four_intensity_and_keeps_empty_days_clickable():
+    model = _mod._activity_heatmap_model(_history_fixture(), metric="cards")
+
+    assert [cell["date"] for cell in model] == [
+        "2026-04-21",
+        "2026-04-22",
+        "2026-04-23",
+    ]
+    assert all(0 <= cell["intensity"] <= 4 for cell in model)
+    assert model[1]["value"] == 0.0
+    assert model[1]["intensity"] == 0
+    assert model[2]["detail"]["items"] == 3.0
+
+
+def test_statistics_dialog_source_wires_goals_heatmap_comparison_drilldown_and_csv():
+    source = open(_mod.__file__, encoding="utf-8").read()
+
+    assert "self._goal_cards" in source
+    assert "_ActivityHeatmap" in source
+    assert "_history_period_comparison" in source
+    assert "_show_day_drilldown" in source
+    assert "_export_csv" in source

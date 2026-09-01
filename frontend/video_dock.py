@@ -47,6 +47,21 @@ except ImportError:
     from paths import get_active_profile as _active_profile  # type: ignore
 
 try:
+    from ..backend.activity_log import (
+        fail_activity,
+        finish_activity,
+        start_activity,
+        update_activity,
+    )
+except ImportError:
+    from activity_log import (  # type: ignore
+        fail_activity,
+        finish_activity,
+        start_activity,
+        update_activity,
+    )
+
+try:
     from ..backend.video_manager import (
         VIDEO_NOTE_TYPE,
         build_remote_video_watch_url,
@@ -80,6 +95,7 @@ try:
         update_reader_bookmark_comment,
     )
     from .bookmark_comment_dialog import BookmarkCommentDialog
+    from .reader_shell import configure_reader_shell_buttons
 except ImportError:
     from video_manager import (
         VIDEO_NOTE_TYPE,
@@ -114,6 +130,7 @@ except ImportError:
         update_reader_bookmark_comment,
     )
     from bookmark_comment_dialog import BookmarkCommentDialog  # type: ignore
+    from reader_shell import configure_reader_shell_buttons  # type: ignore
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -270,6 +287,12 @@ def _build_video_dock():
     seek_slider.setMinimumWidth(200)
     ctrl_layout.addWidget(seek_slider, 1)
 
+    reader_back_btn = QPushButton("Back")
+    reader_back_btn.setToolTip("Jump back 10 seconds")
+    ctrl_layout.addWidget(reader_back_btn)
+    reader_search_btn = QPushButton("Search")
+    ctrl_layout.addWidget(reader_search_btn)
+
     add_btn = QPushButton("+ Add Card at this point")
     ctrl_layout.addWidget(add_btn)
     bookmark_btn = QPushButton("Bookmark")
@@ -335,6 +358,18 @@ def _build_video_dock():
     local_ctrl.setVisible(False)
     vbox.addWidget(local_ctrl)
 
+    configure_reader_shell_buttons(
+        "video",
+        {
+            "back": reader_back_btn,
+            "search": reader_search_btn,
+            "extract": add_btn,
+            "bookmark": bookmark_btn,
+            "review_all": review_all_btn,
+        },
+    )
+    ts_lbl.setAccessibleName("Video reader status")
+
     caption_ctrl = QWidget(container)
     caption_layout = QHBoxLayout(caption_ctrl)
     caption_layout.setContentsMargins(8, 0, 8, 8)
@@ -389,11 +424,17 @@ def _build_video_dock():
     dock._resume_input = resume_input
     dock._resume_btn = resume_btn
     dock._review_all_btn = review_all_btn
+    dock._reader_back_btn = reader_back_btn
+    dock._reader_search_btn = reader_search_btn
     dock._caption_ctrl = caption_ctrl
     dock._target_cc_btn = target_cc_btn
     dock._reference_cc_btn = reference_cc_btn
     dock._caption_status = caption_status
     qconnect(add_btn.clicked, _video_add_card_at_point)
+    qconnect(
+        reader_back_btn.clicked,
+        lambda: _seek_to_seconds(max(0.0, float(_last_known_position or 0.0) - 10.0)),
+    )
     qconnect(bookmark_btn.clicked, _add_current_video_bookmark)
     qconnect(bookmarks_btn.clicked, _toggle_video_bookmarks_panel)
     qconnect(browser_btn.clicked, _open_video_in_browser)
@@ -2499,6 +2540,12 @@ def download_current_video_locally() -> None:
     current_media = get_video_note_media(note)
     has_existing_local = bool(current_media.get("local_video_file"))
     _set_download_button_enabled(False, has_local_copy=has_existing_local)
+    activity_id = start_activity(
+        "Download video locally",
+        category="Video",
+        detail=("Replacing the existing local copy" if has_existing_local else "Starting download"),
+        progress=0,
+    )
 
     try:
         mw.progress.start(
@@ -2528,6 +2575,11 @@ def download_current_video_locally() -> None:
             mw.progress.update(label=label)
 
     def _progress_cb(percent: int, label: str) -> None:
+        update_activity(
+            activity_id,
+            progress=max(0, min(100, int(percent))) / 100,
+            detail=str(label or "Downloading video"),
+        )
         mw.taskman.run_on_main(
             lambda p=percent, label_text=label: _progress_main(p, label_text)
         )
@@ -2546,11 +2598,17 @@ def download_current_video_locally() -> None:
         try:
             local_relpath = fut.result()
         except Exception as exc:
+            fail_activity(activity_id, f"Video download failed: {exc}")
             tooltip(f"Incremento: local download failed ({exc}).")
             return
         if not _persist_current_video_note_media(local_video_file=local_relpath):
+            fail_activity(
+                activity_id,
+                "The video downloaded, but the card could not be updated.",
+            )
             tooltip("Incremento: video downloaded, but the card could not be updated.")
             return
+        finish_activity(activity_id, detail="Local video copy is ready.")
         tooltip("Incremento: local video copy is ready.")
         _reload_current_video_card()
 

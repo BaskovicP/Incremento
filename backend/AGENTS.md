@@ -16,7 +16,8 @@ Use this file for work in `backend/`.
 - Session and review scheduling: `scheduler.py`, `scheduler_config.py`, `scheduler_preview.py`, `session.py`, `session_selection.py`, `answer_schedule.py`, `custom_schedule.py`, `topic_scheduler.py`, `topic_a_factor_bulk.py`, `topic_postpone.py`, `item_skip.py`, and `review_time_tracker.py`.
 - Imported-content managers: `pdf_manager.py`, `epub_manager.py`, `local_file_manager.py`, `video_manager.py`, `video_providers.py`, `web_manager.py`, `webpage_markdown.py`, `webpage_snapshot.py`, `writing_manager.py`, and `image_ocr.py`.
 - Reader-owned supplemental data: `pdf_highlights.py`, `epub_highlights.py`, `reader_bookmarks.py`, `notebook_citations.py`, and `media_review.py`.
-- Knowledge, search, and reporting: `knowledge_tree.py`, `knowledge_tree_postpone.py`, `search_indexer.py`, `search_repository.py`, and `statistics.py`.
+- Knowledge, search, and reporting: `knowledge_tree.py`, `knowledge_tree_postpone.py`, `search_indexer.py`, `search_repository.py`, `statistics.py`, and the bounded in-memory `activity_log.py`.
+- Draft recovery: `extraction_drafts.py` owns the normalized, bounded, atomic per-profile extraction draft; `paths.py` owns its location.
 
 The map is an ownership index, not permission to couple every module in a group. Keep pure normalization and path helpers importable without Anki. Some legacy backend adapters still touch `aqt.mw`; new UI work belongs in the root/frontend adapter layer, and backend modules must never import frontend dialogs.
 
@@ -197,9 +198,18 @@ The map is an ownership index, not permission to couple every module in a group.
 - `custom_learn_stats.json` is the canonical file-backed store. `load_stats()`, `save_stats()`, and `export_stats_json()` normalize bad values and internal keys before returning data.
 - The DB `stats` table remains a backward-compatible transactional mirror/fallback. A healthy stats file wins; a malformed file may recover from the last committed mirror. Keep failed mirror writes rolled back so the thread-local connection remains usable.
 - `stats_daily_history` owns normalized per-logical-day count/time snapshots, while `reading_page_history` owns idempotent unique `(date, document type, card, page)` observations. These are SQLite-owned trend data, not a competing current/lifetime aggregate. Reads must stay bounded and zero-filled through `load_daily_history()`.
+- `statistics_goals` owns the three optional daily targets (`cards`, `pages`, and `minutes`). Normalize unknown/invalid metrics away, enforce DB constraints, update all requested metrics in one transaction, and derive progress from the current logical-day history row.
+- CSV export is a deterministic projection of normalized daily history. Keep a stable header, zero-fill missing metrics, distinguish PDF and EPUB pages, and never expose internal profile paths or raw database rows.
 - Reader page observations are profile-aware, accept only PDF/EPUB plus positive identifiers, and use the configured scheduler `day_end_time`. Repeated page/progress messages must not inflate totals.
 - Use `StatsManager.record_time_only()` for reader or dock time that must not increment card counts. Runtime review-time mirrors should keep the same concrete type/tag attribution.
 - `get_document_card_type()` returns concrete document types: `pdf` for `Incremento PDF`, `epub` for `Incremento EPUB`, and `None` otherwise. Do not collapse EPUB cards into PDF stats or scheduling results.
+
+## Extraction Drafts and Activity
+
+- `backend/extraction_drafts.py` stores at most one `extraction_draft.json` per profile through `backend/paths.py`. Reject unsupported versions and non-mappings, bound nested metadata/content/tags and total bytes, refuse symlink reads, and use fsync plus same-directory `os.replace()` for durable autosave.
+- Draft load failures are recoverable UI states and must not prevent Add Cards from opening. Never clear the draft merely because the dock reopened; clear it after successful note creation or an explicit user discard.
+- `backend/activity_log.py` is thread-safe, bounded, and process-local. Snapshots contain presentation state only. Final states cannot accept progress updates; retry returns a failed/cancelled entry to running, and a retried cancellable task must remain cancellable.
+- Do not use the Activity Center as a substitute for privacy-safe support diagnostics. It may show current-user task detail in the local UI, but it is not persisted or exported.
 
 ## Card and Media Rules
 

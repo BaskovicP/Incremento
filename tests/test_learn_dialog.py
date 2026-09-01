@@ -725,6 +725,43 @@ class TestSchedulerConfigDialogPersistence:
 
 
 class TestSchedulerConfigDialogState:
+    def test_basic_summary_reads_the_live_primary_controls(self):
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        dialog._count_spin = _FakeValueWidget(40)
+        dialog._topics_slider = _FakeValueWidget(30)
+        dialog._pdf_slider = _FakeValueWidget(85)
+        dialog.selected_dialog_profile_name = lambda: "Morning"
+
+        assert dialog._basic_summary_text() == (
+            "40 cards · Topics 70% / Items 30% · "
+            "Documents 15% / Other 85% · Preset: Morning"
+        )
+
+    def test_setup_mode_switches_between_basic_and_advanced_panels(self):
+        class Panel:
+            def __init__(self):
+                self.visible = None
+
+            def setVisible(self, visible):
+                self.visible = bool(visible)
+
+        class Button(_FakeCheckBox):
+            def blockSignals(self, _blocked):
+                return None
+
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        dialog._basic_panel = Panel()
+        dialog._advanced_panel = Panel()
+        dialog._basic_mode_button = Button()
+        dialog._advanced_mode_button = Button()
+
+        dialog._set_setup_mode("advanced")
+
+        assert dialog._basic_panel.visible is False
+        assert dialog._advanced_panel.visible is True
+        assert dialog._basic_mode_button.isChecked() is False
+        assert dialog._advanced_mode_button.isChecked() is True
+
     def test_lone_other_slider_is_forced_to_100_percent_and_disabled(self):
         dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
         other_slider = _FakeValueWidget(35)

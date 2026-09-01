@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import math
 import os
@@ -21,6 +23,8 @@ _MAX_STAT_KEYS_PER_GROUP = 512
 _MAX_STAT_VALUE = 1_000_000_000_000.0
 _MAX_HISTORY_DAYS = 3660
 _DOCUMENT_TYPES = frozenset({"pdf", "epub"})
+_STATISTICS_GOAL_KEYS = ("cards", "pages", "minutes")
+_MAX_DAILY_GOAL = 1_000_000.0
 
 
 def _stats_lock(addon_dir: str, profile: str) -> threading.RLock:
@@ -39,6 +43,72 @@ def _empty() -> dict:
 
 def _empty_time() -> dict:
     return {"type": {}, "tags": {}}
+
+
+def normalize_statistics_goals(raw) -> dict[str, float]:
+    values = dict(raw or {}) if isinstance(raw, dict) else {}
+    result: dict[str, float] = {}
+    for key in _STATISTICS_GOAL_KEYS:
+        value = values.get(key, 0)
+        if isinstance(value, bool):
+            number = 0.0
+        else:
+            try:
+                number = float(value)
+            except Exception:
+                number = 0.0
+        if not math.isfinite(number):
+            number = 0.0
+        result[key] = max(0.0, min(_MAX_DAILY_GOAL, number))
+    return result
+
+
+def get_statistics_goals(addon_dir: str, profile: str) -> dict[str, float]:
+    result = normalize_statistics_goals({})
+    try:
+        conn = get_connection(addon_dir, profile)
+        rows = conn.execute(
+            "SELECT metric, daily_target FROM statistics_goals "
+            "ORDER BY metric"
+        ).fetchall()
+    except Exception:
+        return result
+    return normalize_statistics_goals(
+        {str(metric): target for metric, target in rows}
+    )
+
+
+def set_statistics_goals(
+    addon_dir: str,
+    profile: str,
+    goals,
+    *,
+    now: float | None = None,
+) -> dict[str, float]:
+    normalized = normalize_statistics_goals(goals)
+    try:
+        timestamp = int(time.time() if now is None else float(now))
+    except Exception:
+        timestamp = int(time.time())
+    timestamp = max(0, timestamp)
+    conn = get_connection(addon_dir, profile)
+    try:
+        with conn:
+            for metric in _STATISTICS_GOAL_KEYS:
+                conn.execute(
+                    "INSERT INTO statistics_goals(metric, daily_target, updated_at) "
+                    "VALUES (?, ?, ?) ON CONFLICT(metric) DO UPDATE SET "
+                    "daily_target = excluded.daily_target, "
+                    "updated_at = excluded.updated_at",
+                    (metric, normalized[metric], timestamp),
+                )
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    return normalized
 
 
 def _clean_stat_key(key) -> str | None:
@@ -592,6 +662,68 @@ def _history_row_has_activity(row: dict) -> bool:
         or any(sum(group.values()) > 0 for group in seconds.values())
         or int(reading.get("pages", 0) or 0) > 0
     )
+
+
+def _csv_number(value: float) -> int | float:
+    number = float(value)
+    return int(number) if number.is_integer() else number
+
+
+def daily_history_csv(history: list[dict] | tuple[dict, ...]) -> str:
+    """Return a spreadsheet-safe, stable numeric export of daily history."""
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(
+        (
+            "date",
+            "total_cards",
+            "topics",
+            "items",
+            "other_cards",
+            "pdf_pages",
+            "epub_pages",
+            "total_pages",
+            "study_seconds",
+            "priority_cards",
+            "random_cards",
+        )
+    )
+    for raw_row in list(history or []):
+        row = raw_row if isinstance(raw_row, dict) else {}
+        logical_date = _normalize_logical_date(row.get("date")) or ""
+        counts = _normalize_counts_block(row.get("counts"))
+        seconds = _normalize_time_block(row.get("seconds"))
+        reading = row.get("reading") if isinstance(row.get("reading"), dict) else {}
+        type_counts = counts["type"]
+        total_cards = float(sum(type_counts.values()))
+        topics = float(type_counts.get("topics", 0) or 0)
+        items = float(type_counts.get("items", 0) or 0)
+        other_cards = max(0.0, total_cards - topics - items)
+        pdf_pages = _coerce_nonnegative_number(
+            reading.get("pdf_pages", 0), integer=True
+        ) or 0
+        epub_pages = _coerce_nonnegative_number(
+            reading.get("epub_pages", 0), integer=True
+        ) or 0
+        type_seconds = float(sum(seconds["type"].values()))
+        tag_seconds = float(sum(seconds["tags"].values()))
+        total_seconds = type_seconds if type_seconds > 0 else tag_seconds
+        writer.writerow(
+            (
+                logical_date,
+                _csv_number(total_cards),
+                _csv_number(topics),
+                _csv_number(items),
+                _csv_number(other_cards),
+                int(pdf_pages),
+                int(epub_pages),
+                int(pdf_pages) + int(epub_pages),
+                _csv_number(total_seconds),
+                int(counts["mode"].get("priority", 0) or 0),
+                int(counts["mode"].get("random", 0) or 0),
+            )
+        )
+    return output.getvalue()
 
 
 def export_stats_data(

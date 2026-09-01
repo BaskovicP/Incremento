@@ -17,6 +17,21 @@ from aqt.qt import (
 from aqt.utils import showInfo, tooltip
 
 try:
+    from .session_setup_model import (
+        ADVANCED_MODE,
+        BASIC_MODE,
+        format_basic_session_summary,
+        normalize_setup_mode,
+    )
+except ImportError:
+    from session_setup_model import (  # type: ignore
+        ADVANCED_MODE,
+        BASIC_MODE,
+        format_basic_session_summary,
+        normalize_setup_mode,
+    )
+
+try:
     from ..backend.paths import get_active_profile as _active_profile
 except ImportError:
     from paths import get_active_profile as _active_profile
@@ -1197,8 +1212,36 @@ class SchedulerConfigDialog(QDialog):
 
         _scroll_content = QWidget()
         scroll.setWidget(_scroll_content)
-        layout = QVBoxLayout(_scroll_content)
-        layout.setContentsMargins(12, 12, 12, 12)
+        _scroll_layout = QVBoxLayout(_scroll_content)
+        _scroll_layout.setContentsMargins(12, 12, 12, 12)
+        _scroll_layout.setSpacing(8)
+
+        setup_mode_row = QHBoxLayout()
+        setup_mode_label = QLabel("Setup view:")
+        setup_mode_label.setAccessibleName("Session setup view")
+        setup_mode_row.addWidget(setup_mode_label)
+        self._basic_mode_button = QPushButton("Basic")
+        self._basic_mode_button.setCheckable(True)
+        self._basic_mode_button.setAccessibleName("Use basic session setup")
+        setup_mode_row.addWidget(self._basic_mode_button)
+        self._advanced_mode_button = QPushButton("Advanced")
+        self._advanced_mode_button.setCheckable(True)
+        self._advanced_mode_button.setAccessibleName("Use advanced session setup")
+        setup_mode_row.addWidget(self._advanced_mode_button)
+        setup_mode_row.addStretch(1)
+        _scroll_layout.addLayout(setup_mode_row)
+
+        self._basic_panel = QWidget()
+        self._basic_layout = QVBoxLayout(self._basic_panel)
+        self._basic_layout.setContentsMargins(0, 4, 0, 8)
+        self._basic_layout.setSpacing(10)
+        _scroll_layout.addWidget(self._basic_panel)
+
+        self._advanced_panel = QWidget()
+        layout = QVBoxLayout(self._advanced_panel)
+        layout.setContentsMargins(0, 4, 0, 8)
+        layout.setSpacing(8)
+        _scroll_layout.addWidget(self._advanced_panel)
 
         intro = QLabel(
             "Configure how Incremento selects cards for each study session."
@@ -2241,6 +2284,17 @@ class SchedulerConfigDialog(QDialog):
             _stats_body.setVisible(checked)
         qconnect(_stats_toggle.toggled, _toggle_stats)
 
+        self._populate_basic_panel()
+        qconnect(
+            self._basic_mode_button.clicked,
+            lambda checked=False: checked and self._set_setup_mode(BASIC_MODE),
+        )
+        qconnect(
+            self._advanced_mode_button.clicked,
+            lambda checked=False: checked and self._set_setup_mode(ADVANCED_MODE),
+        )
+        self._set_setup_mode(self._saved.get("setup_mode", BASIC_MODE))
+
         # -- OK / Cancel (pinned outside scroll area) --
         _btn_sep = QFrame()
         _btn_sep.setFrameShape(QFrame.Shape.HLine)
@@ -2254,6 +2308,184 @@ class SchedulerConfigDialog(QDialog):
         qconnect(btn_box.accepted, self.accept)
         qconnect(btn_box.rejected, self.reject)
         main_layout.addWidget(btn_box)
+
+    def _basic_summary_text(self) -> str:
+        return format_basic_session_summary(
+            session_card_count=self._count_spin.value(),
+            topics_slider=self._topics_slider.value(),
+            pdf_slider=self._pdf_slider.value(),
+            preset_name=self.selected_dialog_profile_name(),
+        )
+
+    def _set_setup_mode(self, mode: str) -> None:
+        resolved = normalize_setup_mode(mode)
+        self._setup_mode = resolved
+        is_basic = resolved == BASIC_MODE
+        self._basic_panel.setVisible(is_basic)
+        self._advanced_panel.setVisible(not is_basic)
+        for button, checked in (
+            (self._basic_mode_button, is_basic),
+            (self._advanced_mode_button, not is_basic),
+        ):
+            button.blockSignals(True)
+            button.setChecked(checked)
+            button.blockSignals(False)
+        if is_basic:
+            self._sync_basic_controls_from_advanced()
+
+    def _populate_basic_panel(self) -> None:
+        intro = QLabel(
+            "Choose the session size and the two main mixes. Open Advanced for "
+            "tag quotas, scheduling phases, card states, ordering, and diagnostics."
+        )
+        intro.setWordWrap(True)
+        intro.setAccessibleName("Basic session setup help")
+        self._basic_layout.addWidget(intro)
+
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(QLabel("Preset:"))
+        self._basic_profile_combo = QComboBox()
+        self._basic_profile_combo.setAccessibleName("Session preset")
+        self._basic_profile_combo.setMinimumWidth(220)
+        profile_row.addWidget(self._basic_profile_combo, 1)
+        profile_row.addStretch(1)
+        self._basic_layout.addLayout(profile_row)
+
+        count_row = QHBoxLayout()
+        count_row.addWidget(QLabel("Cards per session:"))
+        self._basic_count_spin = QSpinBox()
+        self._basic_count_spin.setRange(1, MAX_SESSION_CARD_COUNT)
+        self._basic_count_spin.setAccessibleName("Cards per session")
+        count_row.addWidget(self._basic_count_spin)
+        count_row.addStretch(1)
+        self._basic_layout.addLayout(count_row)
+
+        topics_row = QHBoxLayout()
+        topics_row.addWidget(QLabel("Topics"))
+        self._basic_topics_left_label = QLabel("")
+        self._basic_topics_left_label.setFixedWidth(42)
+        topics_row.addWidget(self._basic_topics_left_label)
+        self._basic_topics_slider = QSlider(Qt.Orientation.Horizontal)
+        self._basic_topics_slider.setRange(0, 100)
+        self._basic_topics_slider.setAccessibleName("Topic and Item mix")
+        topics_row.addWidget(self._basic_topics_slider, 1)
+        self._basic_topics_right_label = QLabel("")
+        self._basic_topics_right_label.setFixedWidth(42)
+        topics_row.addWidget(self._basic_topics_right_label)
+        topics_row.addWidget(QLabel("Items"))
+        self._basic_layout.addLayout(topics_row)
+
+        docs_row = QHBoxLayout()
+        docs_row.addWidget(QLabel("Documents"))
+        self._basic_docs_left_label = QLabel("")
+        self._basic_docs_left_label.setFixedWidth(42)
+        docs_row.addWidget(self._basic_docs_left_label)
+        self._basic_docs_slider = QSlider(Qt.Orientation.Horizontal)
+        self._basic_docs_slider.setRange(0, 100)
+        self._basic_docs_slider.setAccessibleName("Document and Other mix")
+        docs_row.addWidget(self._basic_docs_slider, 1)
+        self._basic_docs_right_label = QLabel("")
+        self._basic_docs_right_label.setFixedWidth(42)
+        docs_row.addWidget(self._basic_docs_right_label)
+        docs_row.addWidget(QLabel("Other"))
+        self._basic_layout.addLayout(docs_row)
+
+        self._basic_summary_label = QLabel("")
+        self._basic_summary_label.setWordWrap(True)
+        self._basic_summary_label.setAccessibleName("Current session summary")
+        self._basic_summary_label.setStyleSheet(
+            "font-weight: bold; padding: 10px; "
+            "background: rgba(74,122,181,0.10); "
+            "border: 1px solid rgba(74,122,181,0.30); border-radius: 7px;"
+        )
+        self._basic_layout.addWidget(self._basic_summary_label)
+
+        preview_row = QHBoxLayout()
+        preview_row.addStretch(1)
+        preview_button = QPushButton("Preview selected cards…")
+        preview_button.setAccessibleName("Preview selected session cards")
+        qconnect(preview_button.clicked, self._open_live_preview)
+        preview_row.addWidget(preview_button)
+        self._basic_layout.addLayout(preview_row)
+        self._basic_layout.addStretch(1)
+
+        qconnect(self._basic_profile_combo.currentIndexChanged, self._on_basic_profile_changed)
+        qconnect(
+            self._basic_count_spin.valueChanged,
+            lambda value: self._count_spin.setValue(value),
+        )
+        qconnect(
+            self._basic_topics_slider.valueChanged,
+            lambda value: self._topics_slider.setValue(value),
+        )
+        qconnect(
+            self._basic_docs_slider.valueChanged,
+            lambda value: self._pdf_slider.setValue(value),
+        )
+        for widget in (self._count_spin, self._topics_slider, self._pdf_slider):
+            qconnect(widget.valueChanged, lambda _value: self._sync_basic_controls_from_advanced())
+
+        self._refresh_basic_profile_combo()
+        self._sync_basic_controls_from_advanced()
+
+    def _refresh_basic_profile_combo(self) -> None:
+        combo = getattr(self, "_basic_profile_combo", None)
+        if combo is None:
+            return
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(self._CURRENT_SETTINGS_LABEL, None)
+        for name in sorted(self._profiles.keys()):
+            combo.addItem(name, name)
+        selected_name = self.selected_dialog_profile_name()
+        if selected_name:
+            index = combo.findText(selected_name)
+            combo.setCurrentIndex(max(0, index))
+        else:
+            combo.setCurrentIndex(0)
+        combo.blockSignals(False)
+
+    def _on_basic_profile_changed(self, _index: int) -> None:
+        name = _normalize_selected_scheduler_profile(
+            self._basic_profile_combo.currentData()
+            or self._basic_profile_combo.currentText(),
+            self._profiles,
+        )
+        self._selected_profile_name = name
+        advanced_index = self._profile_combo.findText(
+            name or self._CURRENT_SETTINGS_LABEL
+        )
+        self._profile_combo.blockSignals(True)
+        self._profile_combo.setCurrentIndex(max(0, advanced_index))
+        self._profile_combo.blockSignals(False)
+        self._sync_profile_button_state()
+        if name:
+            self._load_profile_dict(self._profiles[name])
+            self.save_config()
+        self._sync_basic_controls_from_advanced()
+
+    @staticmethod
+    def _set_widget_value_without_signal(widget, value) -> None:
+        widget.blockSignals(True)
+        widget.setValue(value)
+        widget.blockSignals(False)
+
+    def _sync_basic_controls_from_advanced(self) -> None:
+        if not hasattr(self, "_basic_count_spin"):
+            return
+        self._set_widget_value_without_signal(
+            self._basic_count_spin,
+            self._count_spin.value(),
+        )
+        topics_value = self._topics_slider.value()
+        self._set_widget_value_without_signal(self._basic_topics_slider, topics_value)
+        self._basic_topics_left_label.setText(f"{100 - topics_value}%")
+        self._basic_topics_right_label.setText(f"{topics_value}%")
+        docs_value = self._pdf_slider.value()
+        self._set_widget_value_without_signal(self._basic_docs_slider, docs_value)
+        self._basic_docs_left_label.setText(f"{100 - docs_value}%")
+        self._basic_docs_right_label.setText(f"{docs_value}%")
+        self._basic_summary_label.setText(self._basic_summary_text())
 
     def _update_day_end_visibility(self) -> None:
         is_daily = self._scope_combo.currentData() == "daily"
@@ -3549,6 +3781,7 @@ class SchedulerConfigDialog(QDialog):
     def _build_current_dict(self, *, include_selected_profile: bool = True) -> dict:
         """Serialize dialog state for config persistence or named-profile storage."""
         data = {
+            "setup_mode": getattr(self, "_setup_mode", BASIC_MODE),
             "session_card_count": self._count_spin.value(),
             "auto_refill_session": self._auto_refill_session_cb.isChecked(),
             "allow_content_tag_fallback": self._allow_content_tag_fallback_cb.isChecked(),
@@ -3656,6 +3889,7 @@ class SchedulerConfigDialog(QDialog):
             self._profile_combo.setCurrentIndex(0)
         self._profile_combo.blockSignals(False)
         self._sync_profile_button_state()
+        self._refresh_basic_profile_combo()
 
     def _sync_profile_button_state(self) -> None:
         has_selected_profile = self.selected_dialog_profile_name() is not None
@@ -3670,6 +3904,8 @@ class SchedulerConfigDialog(QDialog):
             self._profiles,
         )
         self._sync_profile_button_state()
+        self._refresh_basic_profile_combo()
+        self._sync_basic_controls_from_advanced()
 
     def _load_profile(self) -> None:
         name = self.selected_dialog_profile_name()
@@ -3887,3 +4123,4 @@ class SchedulerConfigDialog(QDialog):
         self._refresh_expected_mix_preview()
         self._refresh_counts()
         self._schedule_live_preview_refresh()
+        self._sync_basic_controls_from_advanced()

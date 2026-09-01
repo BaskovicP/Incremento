@@ -406,6 +406,89 @@ def test_include_filtered_option_admits_filtered_cards_and_reports_the_move():
     assert included["include_filtered"] is True
 
 
+def test_selection_returns_inspectable_excluded_rows_and_exact_filtered_decks():
+    rows = [
+        {
+            "card_id": 1,
+            "card_label": "Filtered question one",
+            "availability": "filtered",
+            "filtered_deck_id": 91,
+            "filtered_deck_name": "Filtered Work",
+            "attached_rank": 0,
+        },
+        {
+            "card_id": 2,
+            "card_label": "Filtered question two",
+            "availability": "filtered",
+            "filtered_deck_id": 91,
+            "filtered_deck_name": "Filtered Work",
+            "attached_rank": 1,
+        },
+        {
+            "card_id": 3,
+            "card_label": "Suspended question",
+            "availability": "suspended",
+            "attached_rank": 2,
+        },
+    ]
+
+    excluded = media_review.select_linked_media_review_rows(rows)
+    included = media_review.select_linked_media_review_rows(
+        rows,
+        include_filtered=True,
+    )
+
+    assert [row["exclusion_reason"] for row in excluded["excluded_rows"]] == [
+        "filtered",
+        "filtered",
+        "suspended",
+    ]
+    assert included["filtered_decks"] == [
+        {
+            "deck_id": 91,
+            "deck_name": "Filtered Work",
+            "selected_count": 2,
+        }
+    ]
+    assert [row["card_label"] for row in included["rows"]] == [
+        "Filtered question one",
+        "Filtered question two",
+    ]
+
+
+def test_inspection_adds_safe_card_label_and_filtered_deck_name(monkeypatch):
+    source_card_id = 500
+    note = _FakeNote(
+        source_card_id,
+        fields=["<b>Question &amp; answer</b><script>hidden()</script>"],
+    )
+    card = _card(1000, 10, did=88, odid=1)
+    col = _FakeCollection(
+        notes={10: note},
+        cards={1000: card},
+        metadata_note_ids=[10],
+    )
+    col.decks = types.SimpleNamespace(
+        by_name=lambda _name: {"id": 77, "dyn": 1},
+        get=lambda deck_id: {"id": deck_id, "name": "Filtered Work"},
+    )
+    monkeypatch.setattr(media_review, "get_knowledge_tree_nodes", lambda *_args: [])
+
+    rows = media_review.inspect_linked_media_review_rows(
+        "/addon",
+        "Profile",
+        source_card_id,
+        col=col,
+        media_kind="pdf",
+        target_deck_name="Incremento PDF Review",
+        topic_classifier=object(),
+    )
+
+    assert rows[0]["card_label"] == "Question & answer hidden()"
+    assert rows[0]["filtered_deck_id"] == 88
+    assert rows[0]["filtered_deck_name"] == "Filtered Work"
+
+
 def test_seeded_random_order_is_stable_between_preview_and_final_resolution():
     rows = [
         {"card_id": card_id, "availability": "available", "attached_rank": card_id}

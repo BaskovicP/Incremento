@@ -1795,7 +1795,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -1806,6 +1806,7 @@ class TestConnectionSwitching:
             (4, "content_identity"),
             (5, "document_index_state"),
             (6, "statistics_history"),
+            (7, "statistics_goals"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):

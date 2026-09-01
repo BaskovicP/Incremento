@@ -20,8 +20,13 @@ from aqt import mw
 from aqt import gui_hooks
 from aqt.qt import (
     QDockWidget,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
     QTimer,
     Qt,
+    QVBoxLayout,
+    QWidget,
 )
 from aqt.utils import tooltip
 
@@ -29,6 +34,21 @@ try:
     from ..backend.config_service import load_addon_config
 except ImportError:
     from config_service import load_addon_config  # type: ignore
+
+try:
+    from ..backend.extraction_drafts import (
+        clear_extraction_draft,
+        load_extraction_draft,
+        save_extraction_draft,
+    )
+    from ..backend.paths import get_active_profile as _active_profile
+except ImportError:
+    from extraction_drafts import (  # type: ignore
+        clear_extraction_draft,
+        load_extraction_draft,
+        save_extraction_draft,
+    )
+    from paths import get_active_profile as _active_profile  # type: ignore
 
 try:
     from ..backend.reviewer_tags import append_missing_tags
@@ -63,6 +83,9 @@ _last_fill_source = ""
 _last_fill_seen = 0.0
 _tracked_tag_button_editors: list[weakref.ReferenceType] = []
 _scratch_priority_token_counter = 0
+_draft_autosave_generation = 0
+_restoring_extract_draft = False
+_DRAFT_OWNER_ATTR = "_incremento_add_card_draft_owner"
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
 _DEFAULT_SCRATCH_PRIORITY = 50.0
@@ -177,6 +200,17 @@ def _is_live_add_mode_editor(editor) -> bool:
         )
     except Exception:
         return False
+
+
+def _same_note(left, right) -> bool:
+    if left is right and left is not None:
+        return True
+    try:
+        left_id = int(getattr(left, "id", 0) or 0)
+        right_id = int(getattr(right, "id", 0) or 0)
+    except Exception:
+        return False
+    return left_id > 0 and left_id == right_id
 
 
 def _current_add_mode_editor(context=None):
@@ -453,6 +487,9 @@ def _inject_transfer_buttons(editor) -> None:
         else:
             tree_link_checked = bool(tree_context.get("link_to_knowledge_tree"))
         tree_link_tooltip = str(tree_context.get("knowledge_tree_tooltip") or "")
+        extract_source_label = str(
+            pending_options.get("source") or _last_fill_source or _last_selection_source
+        ).strip().upper()
         editor.web.eval(
             f"""
             (function() {{
@@ -465,6 +502,7 @@ def _inject_transfer_buttons(editor) -> None:
               var defaultExtractTreeLink = {json.dumps(tree_link_checked)};
               var extractTreeLinkEnabled = {json.dumps(tree_link_enabled)};
               var extractTreeLinkTooltip = {json.dumps(tree_link_tooltip)};
+              var extractSourceLabel = {json.dumps(extract_source_label)};
               if (!window.incrementoTransferButtons) {{
                 var styleId = 'incremento-transfer-style';
                 if (!document.getElementById(styleId)) {{
@@ -495,6 +533,7 @@ def _inject_transfer_buttons(editor) -> None:
                     .incremento-extract-options {{
                       display: none;
                       align-items: center;
+                      flex-wrap: wrap;
                       gap: 8px;
                       margin: 7px 0 9px;
                       padding: 7px 9px;
@@ -503,6 +542,19 @@ def _inject_transfer_buttons(editor) -> None:
                       background: rgba(72, 128, 255, 0.08);
                       color: inherit;
                       font-size: 12px;
+                    }}
+                    .incremento-extract-heading {{
+                      font-size: 13px;
+                    }}
+                    .incremento-extract-source {{
+                      padding: 2px 7px;
+                      border-radius: 999px;
+                      background: rgba(72, 128, 255, 0.16);
+                      font-weight: 700;
+                    }}
+                    .incremento-extract-save-state {{
+                      color: #98a2b3;
+                      white-space: nowrap;
                     }}
                     .incremento-extract-options input[type="number"] {{
                       width: 62px;
@@ -652,8 +704,11 @@ def _inject_transfer_buttons(editor) -> None:
                       panel = document.createElement('div');
                       panel.id = 'incremento-extract-options';
                       panel.className = 'incremento-extract-options';
+                      panel.setAttribute('aria-label', 'Extract composer');
                       panel.innerHTML = [
-                        '<strong>Extract</strong>',
+                        '<strong class="incremento-extract-heading">Extract composer</strong>',
+                        '<span id="incremento-extract-source" class="incremento-extract-source"></span>',
+                        '<span class="incremento-extract-save-state" aria-live="polite">Draft autosaves</span>',
                         '<label>Priority <input id="incremento-extract-priority" type="number" min="0" max="100" step="0.1"></label>',
                         '<label><input id="incremento-extract-topic" type="checkbox"> Topic</label>',
                         '<label id="incremento-extract-tree-link-wrap"><input id="incremento-extract-tree-link" type="checkbox"> Tree child</label>',
@@ -665,6 +720,8 @@ def _inject_transfer_buttons(editor) -> None:
                       var treeLink = panel.querySelector('#incremento-extract-tree-link');
                       var treeLinkWrap = panel.querySelector('#incremento-extract-tree-link-wrap');
                       var batchBtn = panel.querySelector('#incremento-extract-batch');
+                      var sourceBadge = panel.querySelector('#incremento-extract-source');
+                      sourceBadge.textContent = extractSourceLabel || 'SELECTION';
                       prio.value = String(this.extractPriority);
                       topic.checked = !!this.extractTopic;
                       treeLink.checked = !!this.extractTreeLink;
@@ -828,6 +885,7 @@ def _inject_transfer_buttons(editor) -> None:
                   var existingTopic = existingPanel.querySelector('#incremento-extract-topic');
                   var existingTreeLink = existingPanel.querySelector('#incremento-extract-tree-link');
                   var existingTreeLinkWrap = existingPanel.querySelector('#incremento-extract-tree-link-wrap');
+                  var existingSourceBadge = existingPanel.querySelector('#incremento-extract-source');
                   if (existingPrio) {{
                     existingPrio.value = String(defaultExtractPriority);
                   }}
@@ -841,6 +899,9 @@ def _inject_transfer_buttons(editor) -> None:
                   if (existingTreeLinkWrap) {{
                     existingTreeLinkWrap.style.display = extractTreeLinkEnabled ? 'inline-flex' : 'none';
                     existingTreeLinkWrap.title = extractTreeLinkTooltip;
+                  }}
+                  if (existingSourceBadge) {{
+                    existingSourceBadge.textContent = extractSourceLabel || 'SELECTION';
                   }}
                   window.incrementoTransferButtons.syncExtractOptions();
                 }}
@@ -2257,6 +2318,7 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
 
 
 def on_add_cards_did_add_note(note) -> None:
+    owns_dock_draft = bool(getattr(note, _DRAFT_OWNER_ATTR, False))
     options = consume_pending_extract_options_for_note(note)
     if not options:
         apply_priority_to_note_cards(note, scratch_priority_for_note(note))
@@ -2265,6 +2327,189 @@ def on_add_cards_did_add_note(note) -> None:
     consume_pending_extract_context_for_note(note, options)
     _notify_video_extract_note_added(note, options)
     _carry_auto_extract_tag_keys_after_add(note)
+    if owns_dock_draft:
+        _clear_saved_extract_draft()
+
+
+def _capture_extract_draft(editor=None) -> dict | None:
+    dock_editor = _dock_editor()
+    if dock_editor is None or (editor is not None and editor is not dock_editor):
+        return None
+    editor = dock_editor
+    note = getattr(editor, "note", None)
+    if note is None or not getattr(editor, "addMode", False):
+        return None
+    try:
+        if int(getattr(note, "id", 0) or 0) != 0:
+            return None
+    except Exception:
+        return None
+    fields = [str(value or "") for value in list(getattr(note, "fields", []) or [])]
+    if not fields or not any(value.strip() for value in fields):
+        return None
+    try:
+        setattr(note, _DRAFT_OWNER_ATTR, True)
+    except Exception:
+        pass
+
+    try:
+        note_type_name = str((note.note_type() or {}).get("name") or "").strip()
+    except Exception:
+        note_type_name = ""
+    deck_name = ""
+    dock = get_add_card_dock()
+    dialog = getattr(dock, "_addcards_dialog", None) if dock is not None else None
+    try:
+        deck_id = getattr(getattr(dialog, "deck_chooser", None), "selected_deck_id")
+        deck_name = str((mw.col.decks.get(int(deck_id)) or {}).get("name") or "").strip()
+    except Exception:
+        deck_name = ""
+    options = pending_extract_options() or {}
+    source = str(
+        options.get("source") or _last_fill_source or _last_selection_source or ""
+    ).strip()
+    return {
+        "source": source,
+        "note_type": note_type_name,
+        "deck": deck_name,
+        "fields": fields,
+        "tags": _note_tags(note),
+        "extract_options": options,
+        "extract_context": pending_extract_context() or {},
+    }
+
+
+def _save_extract_draft_now(editor=None) -> bool:
+    if _restoring_extract_draft:
+        return False
+    draft = _capture_extract_draft(editor)
+    if draft is None:
+        return False
+    try:
+        save_extraction_draft(_ADDON_DIR, _active_profile(), draft)
+        return True
+    except Exception:
+        # Autosave must never interrupt typing or extraction.
+        return False
+
+
+def _schedule_extract_draft_autosave(editor=None, *, delay_ms: int = 700) -> None:
+    global _draft_autosave_generation
+    _draft_autosave_generation += 1
+    generation = _draft_autosave_generation
+
+    def _save_if_latest() -> None:
+        if generation != _draft_autosave_generation:
+            return
+        _save_extract_draft_now(editor)
+
+    QTimer.singleShot(max(0, int(delay_ms)), _save_if_latest)
+
+
+def schedule_extract_draft_autosave(editor=None) -> None:
+    """Public bridge used when composer controls change outside Python hooks."""
+    _schedule_extract_draft_autosave(editor)
+
+
+def _clear_saved_extract_draft() -> None:
+    try:
+        clear_extraction_draft(_ADDON_DIR, _active_profile())
+    except Exception:
+        pass
+
+
+def _load_saved_extract_draft() -> dict | None:
+    try:
+        return load_extraction_draft(_ADDON_DIR, _active_profile())
+    except Exception:
+        return None
+
+
+def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
+    global _pending_extract_options, _pending_extract_context
+    global _current_extract_priority, _current_extract_mark_topic
+    global _current_extract_link_to_knowledge_tree, _restoring_extract_draft
+
+    if editor is None or not isinstance(draft, dict):
+        return False
+    _restoring_extract_draft = True
+    try:
+        _set_editor_note_type_and_deck(
+            editor,
+            str(draft.get("note_type") or ""),
+            str(draft.get("deck") or ""),
+        )
+        live_editor = getattr(dialog, "editor", None) or _dock_editor() or editor
+        note = getattr(live_editor, "note", None)
+        if note is None:
+            return False
+        fields = list(draft.get("fields") or [])
+        for index in range(min(len(fields), len(list(getattr(note, "fields", []) or [])))):
+            note.fields[index] = str(fields[index] or "")
+        _set_note_tags(note, list(draft.get("tags") or []))
+
+        options = dict(draft.get("extract_options") or {})
+        context = dict(draft.get("extract_context") or {})
+        _pending_extract_options = options or None
+        _pending_extract_context = context or None
+        if options.get("priority") is not None:
+            _current_extract_priority = _clamp_priority(options.get("priority"))
+        if "mark_topic" in options:
+            _current_extract_mark_topic = bool(options.get("mark_topic"))
+        if "link_to_knowledge_tree" in options:
+            _current_extract_link_to_knowledge_tree = bool(
+                options.get("link_to_knowledge_tree")
+            )
+
+        try:
+            live_editor.loadNote()
+        except Exception:
+            pass
+        _set_editor_tags(live_editor, _note_tags(note))
+        _schedule_editor_tag_widget_sync(live_editor)
+        _schedule_add_card_tag_button_refresh(live_editor)
+        _inject_transfer_buttons(live_editor)
+        return True
+    finally:
+        _restoring_extract_draft = False
+
+
+def _create_extract_draft_banner(dock, dialog, draft: dict):
+    banner = QWidget(dock)
+    banner.setObjectName("incremento_extract_draft_banner")
+    banner.setStyleSheet(
+        "QWidget#incremento_extract_draft_banner {"
+        "background: rgba(245, 158, 11, 0.14);"
+        "border: 1px solid rgba(245, 158, 11, 0.42);"
+        "border-radius: 8px; padding: 5px; }"
+    )
+    row = QHBoxLayout(banner)
+    row.setContentsMargins(8, 5, 8, 5)
+    source = str(draft.get("source") or "extract").strip().upper()
+    label = QLabel(f"Unsaved extract draft found ({source}).", banner)
+    label.setWordWrap(True)
+    label.setAccessibleName("Unsaved extract draft")
+    row.addWidget(label, 1)
+    restore_button = QPushButton("Restore", banner)
+    restore_button.setAccessibleName("Restore unsaved extract draft")
+    discard_button = QPushButton("Discard", banner)
+    discard_button.setAccessibleName("Discard unsaved extract draft")
+    row.addWidget(restore_button)
+    row.addWidget(discard_button)
+
+    def _restore() -> None:
+        if _restore_extract_draft(dialog.editor, draft, dialog=dialog):
+            banner.hide()
+            tooltip("Unsaved extract draft restored.")
+
+    def _discard() -> None:
+        _clear_saved_extract_draft()
+        banner.hide()
+        tooltip("Unsaved extract draft discarded.")
+
+    restore_button.clicked.connect(_restore)
+    discard_button.clicked.connect(_discard)
+    return banner
 
 
 def _clear_discarded_extract_draft() -> None:
@@ -2274,6 +2519,7 @@ def _clear_discarded_extract_draft() -> None:
     global _last_selection_source, _last_selection_text, _last_selection_seen
     global _last_fill_source, _last_fill_seen
 
+    _clear_saved_extract_draft()
     clear_pending_extract_options()
     clear_pending_extract_context()
     _current_extract_priority = None
@@ -2366,6 +2612,11 @@ def _install_embedded_add_dialog_hooks(dlg) -> None:
                 from aqt.utils import tr
             except Exception:
                 return original_add_current_note()
+
+            try:
+                setattr(note, _DRAFT_OWNER_ATTR, True)
+            except Exception:
+                pass
 
             def on_success(changes) -> None:
                 dlg._last_added_note = note
@@ -2472,6 +2723,7 @@ def _prime_editor_note_for_extract(
     _set_editor_tags(editor, _note_tags(note))
     _schedule_editor_tag_widget_sync(editor)
     _schedule_add_card_tag_button_refresh(editor)
+    _schedule_extract_draft_autosave(editor)
 
 
 def _apply_pending_extract_tags_to_editor(
@@ -2747,15 +2999,30 @@ def _on_editor_did_update_tags(note) -> None:
         current_note = getattr(editor, "note", None)
         if current_note is None:
             continue
-        if current_note is note or getattr(current_note, "id", None) == getattr(note, "id", None):
+        if _same_note(current_note, note):
             if getattr(editor, "addMode", False) and not _extract_mark_topic_sync_suspended():
                 _sync_extract_mark_topic_from_note(current_note)
             _refresh_add_card_tag_buttons_for_editor(editor)
+            if getattr(editor, "addMode", False):
+                _schedule_extract_draft_autosave(editor)
+
+
+def _on_editor_did_fire_typing_timer(note) -> None:
+    for editor in _iter_tracked_tag_button_editors():
+        if not getattr(editor, "addMode", False):
+            continue
+        current_note = getattr(editor, "note", None)
+        if _same_note(current_note, note):
+            _schedule_extract_draft_autosave(editor)
+            return
 
 
 gui_hooks.editor_did_load_note.append(_on_editor_did_load_note)
 gui_hooks.editor_did_init_buttons.append(_add_add_card_tag_toolbar_buttons)
 gui_hooks.editor_did_update_tags.append(_on_editor_did_update_tags)
+_typing_timer_hook = getattr(gui_hooks, "editor_did_fire_typing_timer", None)
+if _typing_timer_hook is not None:
+    _typing_timer_hook.append(_on_editor_did_fire_typing_timer)
 
 
 def build_add_card_dock():
@@ -2769,12 +3036,22 @@ def build_add_card_dock():
 
     # Open the native dialog; hide it before the event loop renders it as a
     # floating window, then reparent it into the dock as a plain widget.
+    saved_draft = _load_saved_extract_draft()
     dlg = AddCards(mw)
     dlg.hide()
     _detach_embedded_window_menu_bar(dlg)
-    dlg.setParent(dock)
+    container = QWidget(dock)
+    container_layout = QVBoxLayout(container)
+    container_layout.setContentsMargins(0, 0, 0, 0)
+    container_layout.setSpacing(6)
+    dlg.setParent(container)
     dlg.setWindowFlags(Qt.WindowType.Widget)
-    dock.setWidget(dlg)
+    if saved_draft:
+        draft_banner = _create_extract_draft_banner(dock, dlg, saved_draft)
+        container_layout.addWidget(draft_banner)
+        dock._extract_draft_banner = draft_banner
+    container_layout.addWidget(dlg, 1)
+    dock.setWidget(container)
     dock._addcards_dialog = dlg
     _install_embedded_add_dialog_hooks(dlg)
 
@@ -2804,6 +3081,7 @@ def build_add_card_dock():
                 _schedule_add_card_tag_button_refresh(dlg.editor)
                 if mark_topic:
                     _set_add_card_tag_button_state(dlg.editor, _TOPIC_TAG_BUTTON_ID, True)
+            _schedule_extract_draft_autosave(dlg.editor)
 
     dock._set_field = _set_field
     return dock

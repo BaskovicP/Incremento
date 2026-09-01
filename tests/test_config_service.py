@@ -33,6 +33,27 @@ def test_normalize_config_clamps_high_risk_values_and_preserves_unknown():
     assert result["future_setting"] == {"keep": True}
 
 
+def test_normalize_config_bounds_onboarding_and_session_setup_mode():
+    result = config_service.normalize_config(
+        {
+            "onboarding_completed_version": "-4",
+            "dialog": {"setup_mode": "expert"},
+        }
+    )
+
+    assert result["onboarding_completed_version"] == 0
+    assert result["dialog"]["setup_mode"] == "basic"
+
+    advanced = config_service.normalize_config(
+        {
+            "onboarding_completed_version": "2",
+            "dialog": {"setup_mode": " ADVANCED "},
+        }
+    )
+    assert advanced["onboarding_completed_version"] == 2
+    assert advanced["dialog"]["setup_mode"] == "advanced"
+
+
 def test_migrate_persisted_config_writes_only_when_changed():
     class _Manager:
         def __init__(self):

@@ -781,6 +781,45 @@ class TestDailyHistory:
         assert row["seconds"] == {"type": {}, "tags": {}}
         assert row["reading"] == {"pdf_pages": 0, "epub_pages": 0, "pages": 0}
 
+
+class TestStatisticsGoalsAndCsv:
+    def test_daily_goals_are_normalized_and_profile_scoped(self, tmp_path):
+        saved = _mod.set_statistics_goals(
+            str(tmp_path),
+            "ProfileA",
+            {"cards": "25", "pages": -3, "minutes": 45.5, "unknown": 99},
+            now=123,
+        )
+
+        assert saved == {"cards": 25.0, "pages": 0.0, "minutes": 45.5}
+        assert _mod.get_statistics_goals(str(tmp_path), "ProfileA") == saved
+        assert _mod.get_statistics_goals(str(tmp_path), "ProfileB") == {
+            "cards": 0.0,
+            "pages": 0.0,
+            "minutes": 0.0,
+        }
+
+    def test_daily_history_csv_is_stable_numeric_and_zero_filled(self):
+        text = _mod.daily_history_csv(
+            [
+                {
+                    "date": "2026-04-23",
+                    "counts": {
+                        "type": {"topics": 2, "items": 3, "pdf": 1},
+                        "tags": {},
+                        "mode": {"priority": 4, "random": 2},
+                    },
+                    "seconds": {"type": {"topics": 75}, "tags": {}},
+                    "reading": {"pdf_pages": 4, "epub_pages": 2},
+                }
+            ]
+        )
+
+        assert text.splitlines() == [
+            "date,total_cards,topics,items,other_cards,pdf_pages,epub_pages,total_pages,study_seconds,priority_cards,random_cards",
+            "2026-04-23,6,2,3,1,4,2,6,75,4,2",
+        ]
+
     def test_export_includes_only_recorded_history_days(self, tmp_path, monkeypatch):
         monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-04-23")
         _mod.record_reading_page(str(tmp_path), "TestProfile", "epub", 10, 7)

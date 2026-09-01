@@ -39,12 +39,32 @@ except ImportError:
         normalize_custom_schedule_preset,
     )
 
+try:
+    from .shortcut_conflicts import find_shortcut_conflicts
+except ImportError:
+    from shortcut_conflicts import find_shortcut_conflicts  # type: ignore
+
 
 SHORTCUT_ACTION_SPECS = [
+    {
+        "id": "command_palette",
+        "label": "Command Palette",
+        "default": "Ctrl+K",
+        "group": "Navigation",
+        "keywords": ("actions", "commands", "open"),
+    },
+    {
+        "id": "activity_center",
+        "label": "Activity Center",
+        "default": "",
+        "group": "Navigation",
+        "keywords": ("tasks", "background", "progress", "errors", "downloads"),
+    },
     {
         "id": "start_learning",
         "label": "Start Incremental Learning",
         "default": "",
+        "group": "Study",
     },
     {
         "id": "add_pdf",
@@ -1415,6 +1435,15 @@ class IncrementoSettingsDialog(QDialog):
         hint.setWordWrap(True)
         shortcuts_layout.addWidget(hint)
 
+        self._shortcut_conflict_label = QLabel("")
+        self._shortcut_conflict_label.setWordWrap(True)
+        self._shortcut_conflict_label.setStyleSheet(
+            "color: #d9534f; font-weight: bold; padding: 6px;"
+        )
+        self._shortcut_conflict_label.setAccessibleName("Keyboard shortcut conflicts")
+        self._shortcut_conflict_label.setVisible(False)
+        shortcuts_layout.addWidget(self._shortcut_conflict_label)
+
         form = QFormLayout()
         form.setHorizontalSpacing(16)
         form.setVerticalSpacing(8)
@@ -1426,7 +1455,11 @@ class IncrementoSettingsDialog(QDialog):
                 action_id, self._defaults[action_id]
             )
             editor.setKeySequence(QKeySequence(configured))
+            editor.setAccessibleName(f"Shortcut for {spec['label']}")
             self._editors[action_id] = editor
+            key_sequence_changed = getattr(editor, "keySequenceChanged", None)
+            if hasattr(key_sequence_changed, "connect"):
+                key_sequence_changed.connect(self._refresh_shortcut_conflicts)
 
             row_wrap = QWidget()
             row_layout = QHBoxLayout(row_wrap)
@@ -1456,13 +1489,14 @@ class IncrementoSettingsDialog(QDialog):
 
         shortcuts_layout.addLayout(action_row)
         shortcuts_layout.addStretch(1)
+        self._refresh_shortcut_conflicts()
 
         tabs.addTab(_scrollable_tab(shortcuts_tab), "Shortcuts")
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._accept_if_shortcuts_valid)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
 
@@ -1473,6 +1507,35 @@ class IncrementoSettingsDialog(QDialog):
     def _clear_all(self) -> None:
         for editor in self._editors.values():
             editor.clear()
+        self._refresh_shortcut_conflicts()
+
+    def _shortcut_conflicts(self):
+        return find_shortcut_conflicts(self.shortcuts_map)
+
+    def _refresh_shortcut_conflicts(self, *_args) -> bool:
+        conflicts = self._shortcut_conflicts()
+        if not conflicts:
+            self._shortcut_conflict_label.setText("")
+            self._shortcut_conflict_label.setVisible(False)
+            return False
+        labels = {str(spec["id"]): str(spec["label"]) for spec in SHORTCUT_ACTION_SPECS}
+        lines = []
+        for conflict in conflicts:
+            action_labels = ", ".join(
+                labels.get(action_id, action_id) for action_id in conflict.action_ids
+            )
+            lines.append(f"{conflict.shortcut}: {action_labels}")
+        self._shortcut_conflict_label.setText(
+            "Resolve duplicate shortcuts before saving:\n" + "\n".join(lines)
+        )
+        self._shortcut_conflict_label.setVisible(True)
+        return True
+
+    def _accept_if_shortcuts_valid(self) -> bool:
+        if self._refresh_shortcut_conflicts():
+            return False
+        self.accept()
+        return True
 
     def _open_database_editor(self) -> None:
         callback = self._open_database_editor_callback

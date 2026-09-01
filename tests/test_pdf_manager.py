@@ -78,7 +78,9 @@ class TestCopyToPdfDir:
         try:
             dest_name = pdf_manager._copy_to_pdf_dir(src)
             assert dest_name.endswith(".pdf")
-            assert os.path.basename(src).replace(".pdf", "") in dest_name
+            raw_stem = os.path.splitext(os.path.basename(src))[0]
+            safe_stem = pdf_manager._safe_pdf_stem(raw_stem)
+            assert dest_name.startswith(f"{safe_stem}-")
         finally:
             os.unlink(src)
 

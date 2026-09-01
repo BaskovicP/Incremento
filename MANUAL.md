@@ -96,6 +96,9 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 | Menu item | What it does |
 |---|---|
 | **Start Incremental Learning** | Build a new Incremento session |
+| **Command Palette…** | Search and launch Incremento actions; unavailable actions explain why they cannot run |
+| **Activity Center…** | Inspect active/recent background indexing and download work, with Cancel or Retry where supported |
+| **Getting Started…** | Reopen the first-run reading/extraction/session/backup guide |
 | **Settings** | Configure extraction, review, topic, writing, shortcut, and advanced options |
 | **About** | Show a summary of addon capabilities |
 | **Add Content → Add PDF** | Import a PDF as a topic card |
@@ -145,11 +148,15 @@ If you leave before finishing, Anki keeps the unfinished cards in **Incremento S
 
 The session dialog also supports:
 
+- a **Basic** view for the preset, card count, Topic/Item mix, Document/Other mix, summary, and preview
+- an **Advanced** view for every scheduler quota, filter, card-state, ordering, and diagnostic control
 - named presets that you can save, load, rename, and delete
 - optional live preview before starting
 - branch-scoped study when launched from the knowledge tree
 
 When a named preset is selected, clicking **OK** saves the current scheduler setup back into that preset before starting the session. You do not need to click **Save** separately. **Current Settings** continues to save only the shared dialog state.
+
+Basic and Advanced edit the same setup. Switching views does not reset anything, and Incremento remembers the last view you used. New users also receive a short versioned first-run guide; use **Incremento → Getting Started…** to reopen it at any time.
 
 Good first-run defaults:
 
@@ -431,7 +438,7 @@ Available review orders are:
 - shortest or longest current interval first
 - random
 
-Incremento first scans the links in the background, then shows a live preview with the number of Topics and Items that will be reviewed. It also reports exclusion counts such as suspended, buried, already filtered, nested, beyond the current position, unknown position, not due, or past the chosen limit. The source card itself is never included.
+Incremento first scans the links in the background, then shows a live **Ready** list and a separate **Excluded** list. Every excluded card has one primary reason, such as suspended, buried, already filtered, nested, beyond the current position, unknown position, not due, wrong Topic/Item type, or past the chosen limit. The preview names conflicting filtered decks and shows how many whole decks/cards would be affected before you opt in. The source card itself is never included.
 
 After you confirm, Incremento resolves the links again and builds the temporary filtered deck in a background collection operation. Rechecking prevents stale preview data from scheduling a card that changed while the dialog was open. The selected order is preserved. Cards already in another filtered deck remain there unless you explicitly enable **Include cards already in another filtered deck**.
 
@@ -463,20 +470,21 @@ If old cards are missing page-level search results, run **Incremento → Utils �
 
 ### EPUB cards and reader
 
-EPUB cards use a dedicated reader dock instead of the PDF viewer.
+EPUB cards use a dedicated reader dock that clones the PDF reader toolbar. The same four customizable groups stay below the document: **Navigation** (Navigate + Zoom), **Reading** (read-to-here, exact marker, Links, Jump Back, range, and progress), **Annotation & capture** (the same eight highlight colors, extraction highlighting, Snapshot, Highlights, Bookmark, and Bookmarks), and **Review & cards** (Review Due, Review All, Reading Limit, Regenerate Cover, browser/card actions, and Finished Reading). EPUB maps PDF zoom to reflowable text scale and stable read progress to EPUB sections. The page-location button supports direct page jumps, current-section cards appear as **Page cards**, and an enabled daily reading limit appears in the toolbar. **Minimize controls** produces the same compact action order as PDF; use **Customize controls** to hide groups and **Show controls** to restore the full toolbar.
 
 Current EPUB features include:
 
 - saved reading position and reopen-at-last-section behavior
 - bookmarks within the book
 - an opt-in **Links Off / On** control for section, footnote, and web links
+- **Jump Back** immediately beside the link toggle, with bounded internal-link history and exact source-section/scroll restoration
 - highlights and highlight notes
 - per-book daily reading limits
 - optional prompts to review due extracted cards near the current reading point
 - **Review All** with the shared Topic/Item, scope, state, limit, and order picker
 - searchable extracted section text used by **Search ALL**
 
-EPUB links are also off by default. With **Links On**, links to a section or anchor navigate inside the same book and validated `http`/`https` links open in your system browser. Remote resources still cannot load inside the EPUB reader, and unsupported or escaping local paths are blocked.
+EPUB links are also off by default. With **Links On**, links to a section or anchor navigate inside the same book and validated `http`/`https` links open in your system browser. After an internal jump, **Jump Back** returns to the exact source section and reading position; repeated jumps create a bounded back stack that is cleared when another EPUB opens. Remote resources still cannot load inside the EPUB reader, and unsupported or escaping local paths are blocked.
 
 Right-click the EPUB text and choose **Copy Link to This Place** to copy a card-ready anchor for the current section and nearest text position. Pasting it into an Anki field creates a link that reopens that exact reading area; a bounded scroll position is retained as a fallback if the text point cannot be resolved. The action is available independently of **Links On**, and the standard context-menu actions remain intact.
 
@@ -645,6 +653,7 @@ Scopes:
 - **Today**
 - **7 Days**
 - **30 Days**
+- **Year**
 - **All Time**
 
 Current statistics include both count-based and time-based views:
@@ -662,6 +671,8 @@ The 7- and 30-day views add daily stacked graphs for:
 - study/review time
 
 They also show total cards, total pages, study time, active days, the current activity streak, and active-day averages. A page is counted once per document and logical day even if you revisit it or restart Anki. The same profile-specific `day_end_time` used by scheduling determines when a new statistics day begins.
+
+Set optional daily goals for cards, pages, and minutes at the top of the dialog. Goal progress is based on the same logical day as scheduling. The 7-day, 30-day, and Year scopes compare their totals with the preceding equivalent period and include an activity heatmap. Change the heatmap metric between all activity, cards, pages, and minutes; selecting a day shows its Topics, Items, other cards, PDF pages, EPUB pages, and study time. **Export History CSV…** exports up to the latest year of this normalized daily history.
 
 EPUB stays separate from PDF in these views.
 
@@ -747,6 +758,8 @@ It is used by:
 - timestamp-based video note creation
 
 When text is selected in a supported source, transfer buttons appear next to Add Card fields so you can insert the selection directly.
+
+An **Extract composer** strip keeps the current source, priority, Topic/Item choice, tree-link choice, and batch action together. Non-empty extraction drafts autosave after edits under the active Anki profile. If Anki or the dock closes before the note is added, the next Add Card dock offers **Restore** or **Discard**. A successful add or explicit discard clears that saved draft.
 
 If you close an unfinished extract and confirm **Discard**, the Add Card dock closes with it and clears that draft's source context. The next extraction opens a fresh Add Card dock.
 
@@ -884,6 +897,7 @@ Incremento's configurable shortcuts can be changed in **Incremento → Settings 
 | `Alt+P` | Set priority for current card |
 | `Alt+X` | Open Extract Card dialog |
 | `Cmd+T` / `Ctrl+T` | In the Browser, open nine quick tag sets for the selected notes |
+| `Ctrl+K` | Open the Incremento Command Palette |
 | `Cmd+F` / `Ctrl+F` | Open current-document search results for the active PDF or EPUB |
 | `Ctrl+Alt+S` | Open Search ALL |
 | `Ctrl+Alt+P` | Quick Open Content |
@@ -895,6 +909,12 @@ Incremento's configurable shortcuts can be changed in **Incremento → Settings 
 | `Ctrl+Alt+M` | Mark current PDF as finished reading |
 
 Many menu actions have no default shortcut but can still be assigned here, including Start Incremental Learning, Add PDF, Add EPUB, Add Video, Add to Markdown, Web Page, Add Local File, Statistics, Settings, Export, and knowledge-tree actions.
+
+The shortcut editor rejects duplicate non-empty Incremento shortcuts and identifies both conflicting actions. **Activity Center** has no default shortcut but can be assigned here.
+
+### Command Palette
+
+Press `Ctrl+K` or choose **Incremento → Command Palette…**, type part of an action name, and press Return. Matching also considers categories, keywords, and configured shortcuts. Commands that are unavailable in the current Anki view remain visible and explain why instead of silently doing nothing.
 
 ### Browser quick tags
 

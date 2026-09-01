@@ -719,6 +719,68 @@ def test_on_add_cards_did_add_note_keeps_extract_priority_when_pending_options_e
     assert priority_calls == []
 
 
+def test_extract_draft_capture_ignores_a_separate_native_add_editor(monkeypatch):
+    dock_note = _FakeNote(note_id=0)
+    dock_note.fields[0] = "Dock draft"
+    dock_editor = _FakeEditor(dock_note, add_mode=True)
+    native_note = _FakeNote(note_id=0)
+    native_note.fields[0] = "Unrelated native Add note"
+    native_editor = _FakeEditor(native_note, add_mode=True)
+    monkeypatch.setattr(dock, "_dock_editor", lambda: dock_editor)
+
+    assert dock._capture_extract_draft(native_editor) is None
+
+
+def test_unrelated_note_add_does_not_clear_the_dock_owned_draft(monkeypatch):
+    unrelated_note = _FakeNote(note_id=45)
+    clear_calls = []
+    monkeypatch.setattr(
+        dock,
+        "consume_pending_extract_options_for_note",
+        lambda _note: None,
+    )
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda *_args: 0)
+    monkeypatch.setattr(dock, "_notify_video_extract_note_added", lambda *_args: None)
+    monkeypatch.setattr(dock, "mark_reviewer_extract_note_added", lambda *_args: None)
+    monkeypatch.setattr(
+        dock,
+        "consume_pending_extract_context_for_note",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(dock, "_carry_auto_extract_tag_keys_after_add", lambda *_args: None)
+    monkeypatch.setattr(
+        dock,
+        "_clear_saved_extract_draft",
+        lambda: clear_calls.append("clear"),
+    )
+
+    dock.on_add_cards_did_add_note(unrelated_note)
+
+    assert clear_calls == []
+
+
+def test_typing_timer_does_not_confuse_two_unsaved_note_ids(monkeypatch):
+    native_note = _FakeNote(note_id=0)
+    dock_note = _FakeNote(note_id=0)
+    native_editor = _FakeEditor(native_note, add_mode=True)
+    dock_editor = _FakeEditor(dock_note, add_mode=True)
+    scheduled = []
+    monkeypatch.setattr(
+        dock,
+        "_iter_tracked_tag_button_editors",
+        lambda: [native_editor, dock_editor],
+    )
+    monkeypatch.setattr(
+        dock,
+        "_schedule_extract_draft_autosave",
+        lambda editor: scheduled.append(editor),
+    )
+
+    dock._on_editor_did_fire_typing_timer(dock_note)
+
+    assert scheduled == [dock_editor]
+
+
 def test_sync_pending_extract_options_from_current_carries_tree_link(monkeypatch):
     monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 77 if source == "reviewer" else None)
     dock._last_selection_source = "reviewer"

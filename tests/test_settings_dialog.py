@@ -542,6 +542,14 @@ class TestIncrementoSettingsDialogTopicsDeckCreation:
 
 
 class TestIncrementoSettingsDialogShortcuts:
+    def test_command_palette_uses_the_cross_platform_ctrl_k_default(self):
+        palette_spec = next(
+            spec for spec in SHORTCUT_ACTION_SPECS if spec["id"] == "command_palette"
+        )
+
+        assert palette_spec["label"] == "Command Palette"
+        assert default_shortcuts()["command_palette"] == "Ctrl+K"
+
     def test_extract_card_shortcut_is_exposed_in_settings(self):
         extract_spec = next(
             spec for spec in SHORTCUT_ACTION_SPECS if spec["id"] == "extract_card"

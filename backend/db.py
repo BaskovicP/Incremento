@@ -543,12 +543,29 @@ def _migration_6_statistics_history(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_7_statistics_goals(conn: sqlite3.Connection) -> None:
+    """Add profile-scoped, constraint-backed daily goal preferences."""
+    _begin_migration_script(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS statistics_goals (
+            metric TEXT PRIMARY KEY
+                CHECK (metric IN ('cards', 'pages', 'minutes')),
+            daily_target REAL NOT NULL DEFAULT 0
+                CHECK (daily_target >= 0 AND daily_target <= 1000000),
+            updated_at INTEGER NOT NULL DEFAULT 0 CHECK (updated_at >= 0)
+        );
+        """,
+    )
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
     (4, "content_identity", _migration_4_content_identity),
     (5, "document_index_state", _migration_5_document_index_state),
     (6, "statistics_history", _migration_6_statistics_history),
+    (7, "statistics_goals", _migration_7_statistics_goals),
 )
 
 

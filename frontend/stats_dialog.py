@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+from datetime import date
+from pathlib import Path
 
 from aqt import mw
 from aqt.qt import (
@@ -14,8 +16,15 @@ from aqt.qt import (
     QWidget,
     Qt,
     QButtonGroup,
+    QComboBox,
+    QFileDialog,
+    QHeaderView,
+    QProgressBar,
     QRadioButton,
     QScrollArea,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QPainter,
     QColor,
     QFrame,
@@ -27,6 +36,9 @@ try:
     from ..backend.statistics import (
         load_stats,
         load_daily_history,
+        daily_history_csv,
+        get_statistics_goals,
+        set_statistics_goals,
         _effective_date,
         _empty,
         _empty_time,
@@ -40,6 +52,9 @@ except ImportError:
     from statistics import (
         load_stats,
         load_daily_history,
+        daily_history_csv,
+        get_statistics_goals,
+        set_statistics_goals,
         _effective_date,
         _empty,
         _empty_time,
@@ -81,6 +96,27 @@ _TREND_PAGE_COLORS = ["#e0a020", "#8e6ad8"]
 _TREND_TIME_COLORS = ["#1abc9c"]
 
 
+def _accessible_chart_summary(
+    title: str,
+    items: list[tuple[str, float]],
+    *,
+    value_formatter=None,
+    maximum_items: int = 8,
+) -> str:
+    """Return a concise text equivalent for a custom-painted chart."""
+    formatter = value_formatter or _format_count
+    normalized = [(str(label), max(0.0, float(value))) for label, value in items]
+    if not normalized:
+        return f"{title}. No data."
+    visible = normalized[: max(1, int(maximum_items))]
+    details = ", ".join(
+        f"{label}: {formatter(value)}" for label, value in visible
+    )
+    remainder = len(normalized) - len(visible)
+    suffix = f", and {remainder} more values" if remainder > 0 else ""
+    return f"{title}. {details}{suffix}."
+
+
 # ── bar chart widget ───────────────────────────────────────────────────────────
 
 
@@ -106,6 +142,14 @@ class _BarChart(QWidget):
         self._fmt = value_formatter or (lambda v: str(int(round(v))))
         self.setFixedHeight(self._ROW_H * max(1, len(items)) + 4)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setAccessibleName("Statistics bar chart")
+        self.setAccessibleDescription(
+            _accessible_chart_summary(
+                "Statistics bar chart",
+                self._items,
+                value_formatter=self._fmt,
+            )
+        )
 
     def paintEvent(self, _event) -> None:
         if not self._items:
@@ -190,6 +234,20 @@ class _DailyStackedChart(QWidget):
         self._fmt = value_formatter or _format_count
         self.setMinimumHeight(205)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setAccessibleName("Daily statistics trend chart")
+        totals = [(name, sum(values)) for name, values in self._series]
+        date_range = (
+            f" from {self._labels[0]} through {self._labels[-1]}"
+            if self._labels
+            else ""
+        )
+        self.setAccessibleDescription(
+            _accessible_chart_summary(
+                f"Daily statistics trend{date_range}",
+                totals,
+                value_formatter=self._fmt,
+            )
+        )
 
     def paintEvent(self, _event) -> None:
         if not self._labels:
@@ -258,6 +316,92 @@ class _DailyStackedChart(QWidget):
                 label,
             )
         painter.end()
+
+
+class _ActivityHeatmap(QTableWidget):
+    """Accessible calendar heatmap whose cells open a one-day drill-down."""
+
+    _COLORS = ("#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39")
+
+    def __init__(
+        self,
+        history: list[dict],
+        *,
+        metric: str = "activity",
+        on_day_selected=None,
+        parent=None,
+    ) -> None:
+        self._cells = _activity_heatmap_model(history, metric=metric)
+        first_weekday = 0
+        if self._cells:
+            try:
+                first_weekday = date.fromisoformat(self._cells[0]["date"]).weekday()
+            except Exception:
+                first_weekday = 0
+        weeks = max(1, int(math.ceil((first_weekday + len(self._cells)) / 7)))
+        super().__init__(7, weeks, parent)
+        self._on_day_selected = on_day_selected
+        self.setAccessibleName("Daily reading and study activity heatmap")
+        active_days = sum(
+            1 for cell in self._cells if int(cell.get("intensity", 0) or 0) > 0
+        )
+        self.setAccessibleDescription(
+            _accessible_chart_summary(
+                "Daily reading and study activity heatmap",
+                [
+                    ("active days", float(active_days)),
+                    ("shown days", float(len(self._cells))),
+                ],
+            )
+        )
+        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
+        self.setShowGrid(False)
+        self.verticalHeader().setVisible(True)
+        self.verticalHeader().setDefaultSectionSize(20)
+        self.setVerticalHeaderLabels(
+            ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        )
+        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.horizontalHeader().setDefaultSectionSize(20)
+        self.setFixedHeight(7 * 20 + 48)
+
+        month_labels = ["" for _ in range(weeks)]
+        for index, cell in enumerate(self._cells):
+            slot = first_weekday + index
+            weekday = slot % 7
+            week = slot // 7
+            item = QTableWidgetItem("")
+            intensity = int(cell.get("intensity", 0) or 0)
+            item.setBackground(QColor(self._COLORS[max(0, min(4, intensity))]))
+            detail = dict(cell.get("detail") or {})
+            tooltip_text = (
+                f"{cell.get('date')}: {_format_count(float(detail.get('cards', 0)))} cards, "
+                f"{_format_count(float(detail.get('pages', 0)))} pages, "
+                f"{_fmt_duration(float(detail.get('seconds', 0)))}"
+            )
+            item.setToolTip(tooltip_text)
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            self.setItem(weekday, week, item)
+            try:
+                parsed = date.fromisoformat(str(cell.get("date") or ""))
+                if parsed.day <= 7 or index == 0:
+                    month_labels[week] = parsed.strftime("%b")
+            except Exception:
+                pass
+        self.setHorizontalHeaderLabels(month_labels)
+        self.itemClicked.connect(self._open_cell)
+
+    def _open_cell(self, item) -> None:
+        try:
+            index = int(item.data(Qt.ItemDataRole.UserRole))
+            cell = self._cells[index]
+        except Exception:
+            return
+        if callable(self._on_day_selected):
+            self._on_day_selected(dict(cell.get("detail") or {}))
 
 
 # ── section helper ─────────────────────────────────────────────────────────────
@@ -540,6 +684,132 @@ def _history_insight(history: list[dict]) -> str:
     )
 
 
+def _history_day_detail(row: dict) -> dict[str, float | str]:
+    counts, seconds, reading = _history_day_values(row)
+    topic_count = float(counts["type"].get("topics", 0) or 0)
+    item_count = float(counts["type"].get("items", 0) or 0)
+    cards = float(sum(counts["type"].values()))
+    pdf_pages = _reading_value(reading, "pdf_pages")
+    epub_pages = _reading_value(reading, "epub_pages")
+    return {
+        "date": str(row.get("date") or "") if isinstance(row, dict) else "",
+        "topics": topic_count,
+        "items": item_count,
+        "other_cards": max(0.0, cards - topic_count - item_count),
+        "cards": cards,
+        "pdf_pages": pdf_pages,
+        "epub_pages": epub_pages,
+        "pages": pdf_pages + epub_pages,
+        "seconds": _history_total_seconds(seconds),
+    }
+
+
+def _daily_goal_progress(row: dict, goals: dict) -> dict[str, dict[str, float]]:
+    detail = _history_day_detail(row)
+    raw_values = {
+        "cards": float(detail["cards"]),
+        "pages": float(detail["pages"]),
+        "minutes": float(detail["seconds"]) / 60.0,
+    }
+    result: dict[str, dict[str, float]] = {}
+    for metric, value in raw_values.items():
+        try:
+            target = max(0.0, float((goals or {}).get(metric, 0) or 0))
+        except Exception:
+            target = 0.0
+        ratio = min(1.0, value / target) if target > 0 else 0.0
+        result[metric] = {"value": value, "target": target, "ratio": ratio}
+    return result
+
+
+def _period_totals(history: list[dict]) -> dict[str, float]:
+    totals = [_history_row_totals(row) for row in list(history or [])]
+    return {
+        "cards": sum(row[0] for row in totals),
+        "pages": sum(row[1] for row in totals),
+        "seconds": sum(row[2] for row in totals),
+    }
+
+
+def _history_period_comparison(history: list[dict], days: int) -> dict:
+    period = max(1, int(days or 1))
+    rows = list(history or [])
+    current = _period_totals(rows[-period:])
+    previous = _period_totals(rows[-period * 2 : -period])
+    result = {}
+    for metric in ("cards", "pages", "seconds"):
+        current_value = float(current[metric])
+        previous_value = float(previous[metric])
+        percent = (
+            (current_value - previous_value) * 100.0 / previous_value
+            if previous_value > 0
+            else None
+        )
+        result[metric] = {
+            "current": current_value,
+            "previous": previous_value,
+            "percent": percent,
+        }
+    return result
+
+
+def _activity_heatmap_model(history: list[dict], *, metric: str = "activity") -> list[dict]:
+    normalized_metric = str(metric or "activity").strip().lower()
+    if normalized_metric not in {"activity", "cards", "pages", "minutes"}:
+        normalized_metric = "activity"
+    cells = []
+    for row in list(history or []):
+        detail = _history_day_detail(row)
+        values = {
+            "cards": float(detail["cards"]),
+            "pages": float(detail["pages"]),
+            "minutes": float(detail["seconds"]) / 60.0,
+        }
+        value = (
+            sum(values.values())
+            if normalized_metric == "activity"
+            else values[normalized_metric]
+        )
+        cells.append(
+            {
+                "date": str(detail["date"]),
+                "value": value,
+                "intensity": 0,
+                "detail": detail,
+            }
+        )
+    maximum = max((float(cell["value"]) for cell in cells), default=0.0)
+    if maximum > 0:
+        for cell in cells:
+            value = float(cell["value"])
+            cell["intensity"] = (
+                max(1, min(4, int(math.ceil(value * 4.0 / maximum))))
+                if value > 0
+                else 0
+            )
+    return cells
+
+
+def _comparison_label(history: list[dict], days: int) -> str:
+    comparison = _history_period_comparison(history, days)
+
+    def change(metric: str, formatter) -> str:
+        values = comparison[metric]
+        percent = values["percent"]
+        if percent is None:
+            delta = "no previous activity"
+        else:
+            delta = f"{percent:+.0f}%"
+        return f"{formatter(values['current'])} ({delta})"
+
+    return (
+        f"Compared with the previous {days} days: "
+        f"{change('cards', _format_count)} cards · "
+        f"{change('pages', _format_count)} pages · "
+        f"{change('seconds', _fmt_duration)} study time"
+    )
+
+
 def _ordered_type_items(type_counts: dict) -> list[tuple[str, float]]:
     if not isinstance(type_counts, dict):
         return []
@@ -608,21 +878,25 @@ class StatsDialog(QDialog):
         self._day_end_time = day_end_time
         self._session_counts = _normalize_counts_block(session_counts or _empty())
         self._session_time = _normalize_time_block(session_time or _empty_time())
-        profile = _active_profile()
-        self._raw = load_stats(addon_dir, profile)
+        self._profile = _active_profile()
+        self._raw = load_stats(addon_dir, self._profile)
+        try:
+            self._goals = get_statistics_goals(addon_dir, self._profile)
+        except Exception:
+            self._goals = {"cards": 0.0, "pages": 0.0, "minutes": 0.0}
         try:
             self._history = load_daily_history(
                 addon_dir,
-                profile,
-                days=30,
+                self._profile,
+                days=730,
                 day_end_time=day_end_time,
             )
         except Exception:
             self._history = []
 
         self.setWindowTitle("Incremento — Statistics")
-        self.setMinimumWidth(650)
-        self.setMinimumHeight(440)
+        self.setMinimumWidth(850)
+        self.setMinimumHeight(620)
         self._setup_ui()
 
     # ── data ──────────────────────────────────────────────────────────────────
@@ -681,6 +955,7 @@ class StatsDialog(QDialog):
                 ("daily", "Today"),
                 ("7d", "7 Days"),
                 ("30d", "30 Days"),
+                ("365d", "Year"),
                 ("lifetime", "All Time"),
             ]
         ):
@@ -692,6 +967,55 @@ class StatsDialog(QDialog):
             scope_row.addWidget(rb)
         scope_row.addStretch()
         outer.addLayout(scope_row)
+
+        goals = QFrame(self)
+        goals.setFrameShape(QFrame.Shape.StyledPanel)
+        goals_layout = QVBoxLayout(goals)
+        goals_layout.setContentsMargins(8, 7, 8, 7)
+        goals_layout.setSpacing(5)
+        goal_controls = QHBoxLayout()
+        goal_heading = QLabel("Daily goals")
+        goal_heading.setStyleSheet("font-weight: bold;")
+        goal_controls.addWidget(goal_heading)
+        self._goal_cards = self._goal_spin("Cards", self._goals.get("cards", 0))
+        self._goal_pages = self._goal_spin("Pages", self._goals.get("pages", 0))
+        self._goal_minutes = self._goal_spin(
+            "Minutes",
+            self._goals.get("minutes", 0),
+        )
+        for label, spin in (
+            ("Cards/day:", self._goal_cards),
+            ("Pages/day:", self._goal_pages),
+            ("Minutes/day:", self._goal_minutes),
+        ):
+            goal_controls.addWidget(QLabel(label))
+            goal_controls.addWidget(spin)
+        save_goals = QPushButton("Save Goals")
+        save_goals.setAccessibleName("Save daily statistics goals")
+        qconnect(save_goals.clicked, self._save_goals)
+        goal_controls.addWidget(save_goals)
+        goal_controls.addStretch(1)
+        goals_layout.addLayout(goal_controls)
+
+        progress_row = QHBoxLayout()
+        self._goal_progress_bars = {}
+        for metric, label in (
+            ("cards", "Cards"),
+            ("pages", "Pages"),
+            ("minutes", "Minutes"),
+        ):
+            bar = QProgressBar(self)
+            bar.setRange(0, 100)
+            bar.setAccessibleName(f"Today's {label.lower()} goal progress")
+            self._goal_progress_bars[metric] = bar
+            progress_row.addWidget(bar, 1)
+        goals_layout.addLayout(progress_row)
+        self._goal_status = QLabel("")
+        self._goal_status.setWordWrap(True)
+        self._goal_status.setAccessibleName("Statistics goal and export status")
+        goals_layout.addWidget(self._goal_status)
+        outer.addWidget(goals)
+        self._refresh_goal_progress()
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -712,6 +1036,10 @@ class StatsDialog(QDialog):
         # Close button
         btn_row = QHBoxLayout()
         btn_row.addStretch()
+        export_btn = QPushButton("Export History CSV…")
+        export_btn.setAccessibleName("Export Incremento statistics history as CSV")
+        qconnect(export_btn.clicked, self._export_csv)
+        btn_row.addWidget(export_btn)
         close_btn = QPushButton("Close")
         qconnect(close_btn.clicked, self.accept)
         btn_row.addWidget(close_btn)
@@ -719,6 +1047,151 @@ class StatsDialog(QDialog):
 
         qconnect(self._scope_group.buttonClicked, lambda _: self._refresh())
         self._refresh()
+
+    def _goal_spin(self, label: str, value) -> QSpinBox:
+        spin = QSpinBox(self)
+        spin.setRange(0, 1_000_000)
+        spin.setSpecialValueText("Off")
+        try:
+            spin.setValue(max(0, min(1_000_000, int(round(float(value or 0))))))
+        except Exception:
+            spin.setValue(0)
+        spin.setAccessibleName(f"Daily {label.lower()} goal")
+        return spin
+
+    def _save_goals(self) -> None:
+        requested = {
+            "cards": self._goal_cards.value(),
+            "pages": self._goal_pages.value(),
+            "minutes": self._goal_minutes.value(),
+        }
+        try:
+            self._goals = set_statistics_goals(
+                self._addon_dir,
+                self._profile,
+                requested,
+            )
+        except Exception:
+            self._goal_status.setText("Could not save daily goals.")
+            return
+        self._goal_status.setText("Daily goals saved for this Anki profile.")
+        self._refresh_goal_progress()
+
+    def _today_history_row(self) -> dict:
+        logical_date = _effective_date(self._day_end_time)
+        for row in reversed(self._history):
+            if str(row.get("date") or "") == logical_date:
+                return row
+        return {
+            "date": logical_date,
+            "counts": _empty(),
+            "seconds": _empty_time(),
+            "reading": {},
+        }
+
+    def _refresh_goal_progress(self) -> None:
+        progress = _daily_goal_progress(self._today_history_row(), self._goals)
+        labels = {"cards": "Cards", "pages": "Pages", "minutes": "Minutes"}
+        for metric, values in progress.items():
+            bar = self._goal_progress_bars[metric]
+            target = float(values["target"])
+            value = float(values["value"])
+            if target <= 0:
+                bar.setValue(0)
+                bar.setFormat(f"{labels[metric]} goal off · {_format_count(value)} today")
+            else:
+                bar.setValue(int(round(float(values["ratio"]) * 100)))
+                bar.setFormat(
+                    f"{labels[metric]} {_format_count(value)} / {_format_count(target)}"
+                )
+
+    def _export_csv(self) -> None:
+        default_name = f"incremento-statistics-{_effective_date(self._day_end_time)}.csv"
+        path, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Statistics History",
+            default_name,
+            "CSV files (*.csv);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            Path(path).write_text(
+                daily_history_csv(self._history[-365:]),
+                encoding="utf-8",
+            )
+        except Exception:
+            self._goal_status.setText("Could not export statistics CSV.")
+            return
+        self._goal_status.setText("Statistics history exported as CSV.")
+
+    def _show_day_drilldown(self, detail: dict) -> None:
+        text = (
+            f"{detail.get('date') or 'Selected day'} · "
+            f"{_format_count(float(detail.get('cards', 0)))} cards "
+            f"({_format_count(float(detail.get('topics', 0)))} topics, "
+            f"{_format_count(float(detail.get('items', 0)))} items, "
+            f"{_format_count(float(detail.get('other_cards', 0)))} other) · "
+            f"{_format_count(float(detail.get('pdf_pages', 0)))} PDF + "
+            f"{_format_count(float(detail.get('epub_pages', 0)))} EPUB pages · "
+            f"{_fmt_duration(float(detail.get('seconds', 0)))} study time"
+        )
+        try:
+            self._day_drilldown_label.setText(text)
+        except (AttributeError, RuntimeError):
+            pass
+
+    def _add_history_heatmap(self, history: list[dict]) -> None:
+        container = QWidget(self._content)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 8, 0, 2)
+        heading_row = QHBoxLayout()
+        heading = QLabel("Activity Heatmap")
+        heading.setStyleSheet("font-weight: bold; font-size: 10pt;")
+        heading_row.addWidget(heading)
+        heading_row.addStretch(1)
+        heading_row.addWidget(QLabel("Color by:"))
+        metric_combo = QComboBox(container)
+        for label, metric in (
+            ("All activity", "activity"),
+            ("Cards", "cards"),
+            ("Pages", "pages"),
+            ("Minutes", "minutes"),
+        ):
+            metric_combo.addItem(label, metric)
+        metric_combo.setAccessibleName("Activity heatmap metric")
+        heading_row.addWidget(metric_combo)
+        layout.addLayout(heading_row)
+
+        heatmap_holder = QWidget(container)
+        heatmap_layout = QVBoxLayout(heatmap_holder)
+        heatmap_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(heatmap_holder)
+        self._day_drilldown_label = QLabel(
+            "Select a heatmap day to inspect cards, pages, and study time.",
+            container,
+        )
+        self._day_drilldown_label.setWordWrap(True)
+        self._day_drilldown_label.setAccessibleName("Selected statistics day details")
+        layout.addWidget(self._day_drilldown_label)
+
+        def rebuild(*_args) -> None:
+            while heatmap_layout.count():
+                item = heatmap_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            heatmap_layout.addWidget(
+                _ActivityHeatmap(
+                    history,
+                    metric=str(metric_combo.currentData() or "activity"),
+                    on_day_selected=self._show_day_drilldown,
+                    parent=heatmap_holder,
+                )
+            )
+
+        qconnect(metric_combo.currentIndexChanged, rebuild)
+        rebuild()
+        self._clayout.addWidget(container)
 
     def _refresh_history(self, days: int) -> None:
         history = list(self._history[-days:])
@@ -737,6 +1210,19 @@ class StatsDialog(QDialog):
         )
         self._clayout.addWidget(insight)
 
+        comparison = QLabel(
+            _comparison_label(list(self._history[-days * 2 :]), days)
+        )
+        comparison.setWordWrap(True)
+        comparison.setAccessibleName("Comparison with previous statistics period")
+        comparison.setStyleSheet(
+            "padding: 6px 8px; border-radius: 6px; "
+            "background: rgba(74, 144, 217, 0.10);"
+        )
+        self._clayout.addWidget(comparison)
+
+        self._add_history_heatmap(history)
+
         chart_data = _history_chart_series(history)
 
         def has_values(series) -> bool:
@@ -745,7 +1231,8 @@ class StatsDialog(QDialog):
                 for _name, values in series
             )
 
-        if has_values(chart_data["cards"]):
+        show_daily_charts = days <= 30
+        if show_daily_charts and has_values(chart_data["cards"]):
             self._clayout.addWidget(
                 _trend_section(
                     "Cards Studied by Day",
@@ -755,7 +1242,7 @@ class StatsDialog(QDialog):
                     self._content,
                 )
             )
-        if has_values(chart_data["pages"]):
+        if show_daily_charts and has_values(chart_data["pages"]):
             self._clayout.addWidget(
                 _trend_section(
                     "Pages Read by Day",
@@ -765,7 +1252,7 @@ class StatsDialog(QDialog):
                     self._content,
                 )
             )
-        if has_values(chart_data["minutes"]):
+        if show_daily_charts and has_values(chart_data["minutes"]):
             self._clayout.addWidget(
                 _trend_section(
                     "Study Time by Day",
@@ -796,8 +1283,9 @@ class StatsDialog(QDialog):
 
         checked = self._scope_group.checkedButton()
         scope = checked.property("scope_key") if checked else "session"
-        if scope in {"7d", "30d"}:
-            self._refresh_history(7 if scope == "7d" else 30)
+        if scope in {"7d", "30d", "365d"}:
+            history_days = {"7d": 7, "30d": 30, "365d": 365}[scope]
+            self._refresh_history(history_days)
             return
         counts = self._get_counts(scope)
         time_stats = self._get_time(scope)

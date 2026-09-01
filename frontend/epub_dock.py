@@ -6,6 +6,7 @@ import re
 import secrets
 from html import escape
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from aqt import mw
@@ -32,7 +33,6 @@ from aqt.qt import (
     QSize,
     QSizePolicy,
     QSpinBox,
-    QStyle,
     QTextBrowser,
     QTextEdit,
     QTimer,
@@ -70,6 +70,21 @@ except ImportError:
         open_external_reader_link,
         set_reader_anchor_clipboard,
         show_reader_anchor_context_menu,
+    )
+
+try:
+    from .reader_shell import (
+        configure_reader_shell_buttons,
+        reader_toolbar_action_text,
+        reader_toolbar_clone_spec,
+        reader_toolbar_expanded_group_rows,
+    )
+except ImportError:
+    from reader_shell import (  # type: ignore
+        configure_reader_shell_buttons,
+        reader_toolbar_action_text,
+        reader_toolbar_clone_spec,
+        reader_toolbar_expanded_group_rows,
     )
 
 try:
@@ -189,6 +204,7 @@ _pending_focus_offset = -1
 _pending_restore_ratio = 0.0
 _pending_search_query = ""
 _pending_epub_link_fragment = ""
+_epub_link_back_history: list[dict[str, object]] = []
 _current_epub_search_query = ""
 _current_epub_search_hits: list[dict] = []
 _current_epub_search_hit_index = -1
@@ -212,16 +228,91 @@ _MSG_HL_NOTE = "incremento_epub_hl_note:"
 _MSG_PROGRESS = "incremento_epub_progress:"
 _MSG_MARK_READ = "incremento_epub_mark_read:"
 _MSG_SECTION_NAV = "incremento_epub_section_nav:"
+_MSG_PAGE_JUMP = "incremento_epub_page_jump:"
 _MSG_SNAPSHOT = "incremento_epub_snapshot:"
 _MSG_OPEN_LINK = "incremento_epub_open_link:"
 _MSG_SELECTION_STATE = "incremento_selection_state:"
 _MAX_EPUB_BRIDGE_MESSAGE_CHARS = 1_000_000
 _MAX_EPUB_SELECTION_CHARS = 200_000
+_MAX_EPUB_LINK_BACK_HISTORY = 32
+
+_EPUB_CONTROL_GROUPS = tuple(
+    (group_id, label)
+    for group_id, label, _sections in reader_toolbar_clone_spec("epub")
+)
+
+_EPUB_TOOLBAR_TEXT = reader_toolbar_action_text("epub")
+
+_EPUB_HIGHLIGHT_COLORS = {
+    "yellow": "#FFE000",
+    "green": "#00C850",
+    "blue": "#1E90FF",
+    "pink": "#FF508C",
+    "aqua": "#2DD4BF",
+    "orange": "#FB923C",
+    "red": "#F87171",
+    "purple": "#A855F7",
+}
 
 _current_epub_page_index = 0
 _current_epub_total_pages = 0
 _current_epub_section_page = 1
 _current_epub_section_pages = 1
+_current_epub_read_section_index = 0
+_current_epub_highlight_color = "yellow"
+_current_epub_limit_state: dict[str, object] = {}
+
+
+def _normalize_epub_link_back_location(location: object) -> dict[str, object] | None:
+    if not isinstance(location, dict):
+        return None
+    try:
+        card_id = int(location.get("card_id") or 0)
+        filename = str(location.get("filename") or "").strip()
+        section_index = int(location.get("section_index", -1))
+    except (TypeError, ValueError, OverflowError):
+        return None
+    scroll_ratio = normalize_reader_anchor_scroll_ratio(location.get("scroll_ratio"))
+    if (
+        card_id <= 0
+        or not filename
+        or len(filename) > 4096
+        or section_index < 0
+        or section_index > 1_000_000
+        or scroll_ratio is None
+    ):
+        return None
+    return {
+        "card_id": card_id,
+        "filename": filename,
+        "section_index": section_index,
+        "scroll_ratio": scroll_ratio,
+    }
+
+
+def _push_epub_link_back_history(
+    history: object,
+    location: object,
+) -> list[dict[str, object]]:
+    normalized_history = []
+    if isinstance(history, list):
+        for item in history:
+            normalized = _normalize_epub_link_back_location(item)
+            if normalized is not None:
+                normalized_history.append(normalized)
+    normalized_location = _normalize_epub_link_back_location(location)
+    if normalized_location is not None:
+        normalized_history.append(normalized_location)
+    return normalized_history[-_MAX_EPUB_LINK_BACK_HISTORY:]
+
+
+def _take_epub_link_back_history(
+    history: object,
+) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+    normalized_history = _push_epub_link_back_history(history, None)
+    if not normalized_history:
+        return None, []
+    return normalized_history[-1], normalized_history[:-1]
 
 
 def _path_is_within_root(root: str | Path | None, candidate: str | Path) -> bool:
@@ -480,11 +571,20 @@ class _ElidedLabel(QLabel):
 
 
 class _FlowLayout(QLayout):
-    def __init__(self, parent=None, margin: int = 0, h_spacing: int = 6, v_spacing: int = 6):
+    def __init__(
+        self,
+        parent=None,
+        margin: int = 0,
+        h_spacing: int = 6,
+        v_spacing: int = 6,
+        *,
+        center_lines: bool = False,
+    ):
         super().__init__(parent)
-        self._items = []
+        self._items: list[Any] = []
         self._h_spacing = h_spacing
         self._v_spacing = v_spacing
+        self._center_lines = bool(center_lines)
         self.setContentsMargins(margin, margin, margin, margin)
 
     def addItem(self, item) -> None:
@@ -526,24 +626,42 @@ class _FlowLayout(QLayout):
     def _do_layout(self, rect: QRect, test_only: bool) -> int:
         margins = self.contentsMargins()
         area = rect.adjusted(margins.left(), margins.top(), -margins.right(), -margins.bottom())
-        x = area.x()
-        y = area.y()
+        lines: list[tuple[list[tuple[Any, QSize]], int, int]] = []
+        line: list[tuple[Any, QSize]] = []
+        line_width = 0
         line_height = 0
-
         for item in self._items:
             hint = item.sizeHint()
-            next_x = x + hint.width()
-            if line_height > 0 and next_x > area.right() + 1:
-                x = area.x()
-                y += line_height + self._v_spacing
-                next_x = x + hint.width()
+            proposed_width = line_width + (self._h_spacing if line else 0) + hint.width()
+            if line and proposed_width > area.width():
+                lines.append((line, line_width, line_height))
+                line = []
+                line_width = 0
                 line_height = 0
-            if not test_only:
-                item.setGeometry(QRect(QPoint(x, y), hint))
-            x = next_x + self._h_spacing
+            if line:
+                line_width += self._h_spacing
+            line.append((item, hint))
+            line_width += hint.width()
             line_height = max(line_height, hint.height())
+        if line:
+            lines.append((line, line_width, line_height))
 
-        return (y - rect.y()) + line_height + margins.bottom()
+        y = area.y()
+        for line_index, (line_items, resolved_width, resolved_height) in enumerate(lines):
+            x = area.x()
+            if self._center_lines and resolved_width < area.width():
+                x += (area.width() - resolved_width) // 2
+            for item_index, (item, hint) in enumerate(line_items):
+                if not test_only:
+                    item.setGeometry(QRect(QPoint(x, y), hint))
+                x += hint.width()
+                if item_index + 1 < len(line_items):
+                    x += self._h_spacing
+            y += resolved_height
+            if line_index + 1 < len(lines):
+                y += self._v_spacing
+
+        return (y - rect.y()) + margins.bottom()
 
 
 def current_epub_card_id() -> int | None:
@@ -999,6 +1117,7 @@ def _current_epub_limit_status(
 
 
 def _open_epub_limit_dialog(card_id: int) -> None:
+    global _current_epub_limit_state
     settings = get_epub_daily_limit_settings(_ADDON_DIR, _active_profile(), int(card_id))
     status = _current_epub_limit_status(
         int(card_id),
@@ -1017,6 +1136,12 @@ def _open_epub_limit_dialog(card_id: int) -> None:
         daily_section_limit=int(new_settings.get("daily_section_limit", 0) or 0),
         enforcement_mode=str(new_settings.get("enforcement_mode") or "warning"),
     )
+    _current_epub_limit_state = _current_epub_limit_status(
+        int(card_id),
+        current_section_index=_current_epub_section_index,
+        current_page_index=_current_epub_page_index,
+    )
+    _update_epub_limit_status_control()
     if refreshed.get("enabled"):
         tooltip(
             f"EPUB limit saved: {refreshed['daily_page_limit']} pages/day "
@@ -1198,6 +1323,7 @@ def _offer_due_review_for_epub(
 
 
 def _check_epub_limit_before_navigation(target_page_index: int) -> bool:
+    global _current_epub_limit_state
     if _current_epub_card_id is None:
         return True
     status = _current_epub_limit_status(
@@ -1222,7 +1348,7 @@ def _check_epub_limit_before_navigation(target_page_index: int) -> bool:
             target_page_index=int(target_page_index),
         )
         if dlg.exec() and dlg.override_requested():
-            set_epub_daily_limit_override(
+            _current_epub_limit_state = set_epub_daily_limit_override(
                 _ADDON_DIR,
                 _active_profile(),
                 int(_current_epub_card_id),
@@ -1230,6 +1356,7 @@ def _check_epub_limit_before_navigation(target_page_index: int) -> bool:
                 current_section_index=_current_epub_section_index,
                 current_page_index=_current_epub_page_index,
             )
+            _update_epub_limit_status_control()
             tooltip("EPUB reading limit overridden for today.")
             return True
     return False
@@ -1398,12 +1525,33 @@ class _EpubDockPage(QWebEnginePage):
             except Exception:
                 pass
             return
+        if msg.startswith(_MSG_PAGE_JUMP):
+            try:
+                data = json.loads(msg[len(_MSG_PAGE_JUMP) :])
+                if not _epub_bridge_card_matches(data):
+                    return
+                _jump_to_epub_page_location(
+                    int(data.get("sectionIndex", 0) or 0),
+                    int(data.get("sectionPage", 1) or 1),
+                    int(data.get("sectionPages", 1) or 1),
+                    int(data.get("pageIndex", 0) or 0),
+                )
+            except Exception:
+                pass
+            return
         if msg.startswith(_MSG_OPEN_LINK):
             try:
                 data = json.loads(msg[len(_MSG_OPEN_LINK) :])
                 if not _epub_bridge_card_matches(data):
                     return
-                _open_epub_reader_link(str(data.get("href") or ""))
+                href = str(data.get("href") or "")
+                if "sourceScrollRatio" in data:
+                    _open_epub_reader_link(
+                        href,
+                        source_scroll_ratio=data.get("sourceScrollRatio"),
+                    )
+                else:
+                    _open_epub_reader_link(href)
             except Exception:
                 pass
             return
@@ -1439,9 +1587,15 @@ def _build_page_script(
     bridge_nonce: str,
     clickable_links: bool = False,
     link_fragment: str = "",
+    highlight_color: str = "yellow",
 ) -> str:
     sections = _current_sections()
     section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
+    resolved_highlight_color = (
+        str(highlight_color)
+        if str(highlight_color) in _EPUB_HIGHLIGHT_COLORS
+        else "yellow"
+    )
     state = {
         "cardId": int(card_id),
         "sectionIndex": int(section_index),
@@ -1455,11 +1609,13 @@ def _build_page_script(
         "sectionLengths": section_lengths,
         "clickableLinks": bool(clickable_links),
         "linkFragment": str(link_fragment or "")[:1024],
+        "highlightColor": resolved_highlight_color,
     }
     return f"""
     (function() {{
       const STATE = {json.dumps(state)};
       const BRIDGE = {json.dumps(_PYCMD_BRIDGE)} + {json.dumps(str(bridge_nonce))} + ':';
+      const HIGHLIGHT_COLORS = {json.dumps(tuple(_EPUB_HIGHLIGHT_COLORS))};
       function send(msg) {{
         console.log(BRIDGE + msg);
       }}
@@ -1529,6 +1685,14 @@ def _build_page_script(
             border-radius: 2px;
             cursor: pointer;
           }}
+          span.incremento-epub-highlight[data-color="yellow"] {{ background: rgba(255,220,0,0.45); }}
+          span.incremento-epub-highlight[data-color="green"] {{ background: rgba(0,200,80,0.4); }}
+          span.incremento-epub-highlight[data-color="blue"] {{ background: rgba(30,144,255,0.4); }}
+          span.incremento-epub-highlight[data-color="pink"] {{ background: rgba(255,80,140,0.4); }}
+          span.incremento-epub-highlight[data-color="aqua"] {{ background: rgba(45,212,191,0.42); }}
+          span.incremento-epub-highlight[data-color="orange"] {{ background: rgba(251,146,60,0.42); }}
+          span.incremento-epub-highlight[data-color="red"] {{ background: rgba(248,113,113,0.42); }}
+          span.incremento-epub-highlight[data-color="purple"] {{ background: rgba(168,85,247,0.4); }}
           span.incremento-epub-highlight[data-note-present="1"] {{
             box-shadow: inset 0 -1px 0 rgba(37, 99, 235, 0.55);
           }}
@@ -2068,6 +2232,11 @@ def _build_page_script(
       window.incrementoSetAutoHighlightOnExtract = function(value) {{
         STATE.autoHighlightOnExtract = !!value;
       }};
+      window.incrementoSetEpubHighlightColor = function(value) {{
+        const color = String(value || '').toLowerCase();
+        STATE.highlightColor = HIGHLIGHT_COLORS.indexOf(color) >= 0 ? color : 'yellow';
+        return STATE.highlightColor;
+      }};
       window.incrementoSetEpubReadAnchor = function(anchor) {{
         STATE.readAnchor = anchor || null;
         renderReadMarker();
@@ -2090,7 +2259,9 @@ def _build_page_script(
         const hl = {{
           id: 'hl-' + Date.now().toString(16) + '-' + Math.random().toString(16).slice(2, 8),
           sectionIndex: STATE.sectionIndex,
-          color: 'yellow',
+          color: HIGHLIGHT_COLORS.indexOf(STATE.highlightColor) >= 0
+            ? STATE.highlightColor
+            : 'yellow',
           text: meta.text,
           startOffset: meta.startOffset,
           endOffset: meta.endOffset,
@@ -2148,6 +2319,31 @@ def _build_page_script(
           window.scrollTo(0, Math.max(0, currentY - step));
           setTimeout(reportProgress, 40);
         }}
+      }};
+      window.incrementoGoToEpubPage = function(pageNumber) {{
+        const pages = estimatedSectionPages();
+        const total = Math.max(1, pages.reduce(function(sum, value) {{ return sum + value; }}, 0));
+        const targetPage = Math.max(1, Math.min(total, Math.round(Number(pageNumber) || 1)));
+        let remaining = targetPage;
+        let targetSection = 0;
+        for (let i = 0; i < pages.length; i += 1) {{
+          if (remaining <= pages[i]) {{
+            targetSection = i;
+            break;
+          }}
+          remaining -= pages[i];
+          targetSection = Math.min(i + 1, pages.length - 1);
+        }}
+        const targetSectionPages = Math.max(1, Number(pages[targetSection]) || 1);
+        const targetSectionPage = Math.max(1, Math.min(targetSectionPages, remaining));
+        send('incremento_epub_page_jump:' + JSON.stringify({{
+          cardId: STATE.cardId,
+          sectionIndex: targetSection,
+          sectionPage: targetSectionPage,
+          sectionPages: targetSectionPages,
+          pageIndex: targetPage - 1,
+        }}));
+        return true;
       }};
       ensureStyle();
       applyTextScale(STATE.textScale);
@@ -2207,9 +2403,14 @@ def _build_page_script(
           event.preventDefault();
           event.stopPropagation();
           if (STATE.clickableLinks) {{
+            const scrollMaximum = maxScroll();
+            const sourceScrollRatio = scrollMaximum > 0
+              ? Math.max(0, Math.min(Number(window.scrollY || 0) / scrollMaximum, 1))
+              : 0;
             send('incremento_epub_open_link:' + JSON.stringify({{
               cardId: STATE.cardId,
               href: String(linkTarget.getAttribute('href') || ''),
+              sourceScrollRatio,
             }}));
           }}
           return;
@@ -2267,13 +2468,6 @@ def _build_page_script(
     """
 
 
-def _standard_icon(pixmap: QStyle.StandardPixmap):
-    try:
-        return mw.style().standardIcon(pixmap)
-    except Exception:
-        return None
-
-
 def _make_epub_button(
     dock,
     text: str,
@@ -2291,22 +2485,29 @@ def _make_epub_button(
     btn.setCheckable(checkable)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setToolButtonStyle(
-        Qt.ToolButtonStyle.ToolButtonIconOnly if icon_only else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        Qt.ToolButtonStyle.ToolButtonIconOnly
+        if icon_only
+        else (
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+            if icon is not None
+            else Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
     )
     btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
     if icon is not None:
         btn.setIcon(icon)
     base_style = (
         "QToolButton {"
-        " padding: 4px 8px;"
-        " border-radius: 7px;"
-        " border: 1px solid rgba(255,255,255,0.12);"
-        " background: rgba(255,255,255,0.04);"
-        " color: #d9dee7;"
+        " padding: 3px 12px;"
+        " border-radius: 4px;"
+        " border: 1px solid #555;"
+        " background: #333;"
+        " color: #ddd;"
+        " font-size: 13px;"
         " }"
-        "QToolButton:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.22); }"
-        "QToolButton:pressed { background: rgba(255,255,255,0.12); }"
-        "QToolButton:disabled { color: #717885; background: rgba(255,255,255,0.02); }"
+        "QToolButton:hover { background: #444; }"
+        "QToolButton:pressed { background: #4a4a4a; }"
+        "QToolButton:disabled { color: #777; background: #292929; border-color: #444; }"
     )
     if checkable:
         base_style += (
@@ -2385,6 +2586,223 @@ def _make_epub_group(parent, title: str, *widgets: QWidget) -> QWidget:
     return frame
 
 
+def _make_epub_toolbar_stack(parent, title: str, *widgets: QWidget) -> QWidget:
+    """Create one labelled action stack matching the PDF toolbar."""
+    stack = QWidget(parent)
+    stack.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    column = QVBoxLayout(stack)
+    column.setContentsMargins(0, 0, 0, 0)
+    column.setSpacing(4)
+    label = QLabel(title, stack)
+    label.setStyleSheet(
+        "color: rgba(200,200,200,0.72); font-size: 10px; font-weight: 700;"
+        " letter-spacing: 0.08em; text-transform: uppercase;"
+    )
+    column.addWidget(label)
+    actions = QWidget(stack)
+    actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    actions_row = QHBoxLayout(actions)
+    actions_row.setContentsMargins(0, 0, 0, 0)
+    actions_row.setSpacing(6)
+    for widget in widgets:
+        actions_row.addWidget(widget)
+    column.addWidget(actions)
+    return stack
+
+
+def _make_epub_toolbar_separator(parent) -> QFrame:
+    separator = QFrame(parent)
+    separator.setFrameShape(QFrame.Shape.VLine)
+    separator.setFrameShadow(QFrame.Shadow.Plain)
+    separator.setStyleSheet(
+        "QFrame { color: rgba(140,140,140,0.35);"
+        " background: rgba(140,140,140,0.25); max-width: 1px; }"
+    )
+    return separator
+
+
+def _make_epub_progress_meter(
+    parent,
+    percent_label: QLabel,
+    segments_host: QWidget,
+) -> QWidget:
+    """Create PDF's unlabelled, bordered read-progress meter."""
+    meter = QFrame(parent)
+    meter.setObjectName("incremento_epub_progress_meter")
+    meter.setFrameShape(QFrame.Shape.NoFrame)
+    meter.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    meter.setStyleSheet(
+        "QFrame#incremento_epub_progress_meter {"
+        " background: rgba(20,20,20,0.45);"
+        " border: 1px solid rgba(120,120,120,0.35);"
+        " border-radius: 10px;"
+        " }"
+    )
+    row = QHBoxLayout(meter)
+    row.setContentsMargins(8, 6, 8, 6)
+    row.setSpacing(8)
+    row.addWidget(percent_label)
+    row.addWidget(segments_host)
+    return meter
+
+
+def _make_epub_compound_group(parent, *stacks: QWidget) -> QWidget:
+    """Create a PDF-style rounded group with dividers between action stacks."""
+    frame = QFrame(parent)
+    frame.setObjectName("incremento_epub_toolbar_group")
+    frame.setFrameShape(QFrame.Shape.NoFrame)
+    frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    frame.setStyleSheet(
+        "QFrame#incremento_epub_toolbar_group {"
+        " background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+        " stop:0 rgba(44,44,44,0.96), stop:1 rgba(28,28,28,0.96));"
+        " border: 1px solid rgba(138,138,138,0.26);"
+        " border-radius: 14px;"
+        " }"
+    )
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(12, 9, 12, 9)
+    row.setSpacing(10)
+    for index, stack in enumerate(stacks):
+        if index:
+            row.addWidget(_make_epub_toolbar_separator(frame))
+        row.addWidget(stack)
+    return frame
+
+
+def _epub_read_progress_state(
+    *,
+    read_section_index: int,
+    section_count: int,
+) -> dict[str, object]:
+    """Return the EPUB equivalent of PDF's read range and ten-segment meter."""
+    total = max(0, int(section_count or 0))
+    if total <= 0:
+        return {
+            "read_count": 0,
+            "percent": 0,
+            "filled_segments": 0,
+            "range_text": "",
+        }
+    read_count = max(0, min(int(read_section_index) + 1, total))
+    percent = max(0, min(100, (read_count * 100 + (total // 2)) // total))
+    filled = max(0, min(10, round((percent / 100) * 10)))
+    return {
+        "read_count": read_count,
+        "percent": percent,
+        "filled_segments": filled,
+        "range_text": f"s.1–{read_count}" if read_count else "",
+    }
+
+
+def _normalize_epub_control_visibility(value: object) -> dict[str, bool]:
+    source = value if isinstance(value, dict) else {}
+    return {
+        group_id: bool(source.get(group_id, True))
+        for group_id, _label in _EPUB_CONTROL_GROUPS
+    }
+
+
+def _apply_epub_control_visibility(value: object) -> None:
+    if _epub_dock is None:
+        return
+    visibility = _normalize_epub_control_visibility(value)
+    _epub_dock._epub_control_visibility = visibility
+    groups = getattr(_epub_dock, "_control_groups", {})
+    for group_id, visible in visibility.items():
+        group = groups.get(group_id) if isinstance(groups, dict) else None
+        if group is not None:
+            group.setVisible(visible)
+    group_layout = getattr(_epub_dock, "_control_groups_layout", None)
+    invalidate = getattr(group_layout, "invalidate", None)
+    if callable(invalidate):
+        invalidate()
+    for row_layout in getattr(_epub_dock, "_control_group_rows", ()):
+        invalidate_row = getattr(row_layout, "invalidate", None)
+        if callable(invalidate_row):
+            invalidate_row()
+
+
+def _set_epub_controls_collapsed(collapsed: bool) -> None:
+    if _epub_dock is None:
+        return
+    is_collapsed = bool(collapsed)
+    _epub_dock._controls_collapsed = is_collapsed
+    _epub_dock._controls_expanded.setVisible(not is_collapsed)
+    _epub_dock._controls_compact.setVisible(is_collapsed)
+
+
+def _show_epub_control_chooser() -> None:
+    if _epub_dock is None:
+        return
+    dialog = QDialog(mw)
+    dialog.setWindowTitle("Customize EPUB Controls")
+    dialog.setModal(True)
+    dialog.setAccessibleName("Customize EPUB reader controls")
+    layout = QVBoxLayout(dialog)
+    intro = QLabel("Choose which groups stay visible in the EPUB reader toolbar.", dialog)
+    intro.setWordWrap(True)
+    layout.addWidget(intro)
+
+    current = _normalize_epub_control_visibility(
+        getattr(_epub_dock, "_epub_control_visibility", {})
+    )
+    checkboxes: dict[str, QCheckBox] = {}
+    for group_id, label in _EPUB_CONTROL_GROUPS:
+        checkbox = QCheckBox(label, dialog)
+        checkbox.setChecked(current[group_id])
+        checkbox.setAccessibleName(f"Show EPUB {label} controls")
+        checkboxes[group_id] = checkbox
+        layout.addWidget(checkbox)
+
+    actions = QHBoxLayout()
+    show_all = QPushButton("Show all", dialog)
+    actions.addWidget(show_all)
+    actions.addStretch(1)
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+        parent=dialog,
+    )
+    actions.addWidget(buttons)
+    layout.addLayout(actions)
+
+    def _show_all_groups() -> None:
+        for checkbox in checkboxes.values():
+            checkbox.setChecked(True)
+
+    qconnect(show_all.clicked, _show_all_groups)
+    qconnect(buttons.accepted, dialog.accept)
+    qconnect(buttons.rejected, dialog.reject)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+    _apply_epub_control_visibility(
+        {group_id: checkbox.isChecked() for group_id, checkbox in checkboxes.items()}
+    )
+
+
+def _sync_epub_link_back_buttons() -> None:
+    if _epub_dock is None:
+        return
+    location, _remaining = _take_epub_link_back_history(_epub_link_back_history)
+    available = bool(
+        location
+        and int(location["card_id"]) == int(_current_epub_card_id or 0)
+        and str(location["filename"]) == str(_current_epub_filename or "")
+    )
+    tooltip_text = (
+        f"Jump back to section {int(location['section_index']) + 1}"
+        if available and location is not None
+        else "Follow an internal EPUB link to enable Jump Back"
+    )
+    for name in ("_jump_back_btn", "_compact_jump_back_btn"):
+        button = getattr(_epub_dock, name, None)
+        if button is None:
+            continue
+        button.setEnabled(available)
+        button.setToolTip(tooltip_text)
+        button.setAccessibleDescription(tooltip_text)
+
+
 def _build_epub_dock() -> None:
     global _epub_dock, _epub_shortcuts_registered, _epub_key_filter
 
@@ -2404,24 +2822,35 @@ def _build_epub_dock() -> None:
         app.installEventFilter(_epub_key_filter)
     mw.installEventFilter(_epub_key_filter)
 
+    # Retain legacy programmatic controls without letting unlaid Qt children
+    # float at the dock origin over Anki's native Close/Float buttons.
+    legacy_controls_host = QWidget(dock)
+    legacy_controls_host.setVisible(False)
+    dock._legacy_controls_host = legacy_controls_host
+
     dock._prev_btn = _make_epub_button(
         dock,
-        "",
+        _EPUB_TOOLBAR_TEXT["previous_page"],
         "Previous page or previous section",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowBack),
-        icon_only=True,
     )
     dock._next_btn = _make_epub_button(
         dock,
-        "",
+        _EPUB_TOOLBAR_TEXT["next_page"],
         "Next page or next section",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowForward),
-        icon_only=True,
     )
-    dock._title_lbl = _ElidedLabel("EPUB", dock)
-    dock._title_lbl.setStyleSheet("font-weight: 600; color: #edf2f7;")
-    dock._cards_chip = _make_epub_chip(dock, "Cards 0")
-    dock._highlights_chip = _make_epub_chip(dock, "Highlights 0")
+    dock._location_btn = _make_epub_button(
+        dock,
+        _EPUB_TOOLBAR_TEXT["page_location"].format(current="—", total="—"),
+        "Go to EPUB page",
+    )
+    dock._location_btn.setMinimumWidth(170)
+    dock._location_btn.setStyleSheet(
+        dock._location_btn.styleSheet()
+        + "QToolButton { font-size: 15px; font-weight: 700; }"
+    )
+    dock._title_lbl = dock._location_btn
+    dock._cards_chip = _make_epub_chip(legacy_controls_host, "Cards 0")
+    dock._highlights_chip = _make_epub_chip(legacy_controls_host, "Highlights 0")
     dock._highlight_extract_cb = _make_epub_toggle(
         dock,
         "Highlight when extracting",
@@ -2430,79 +2859,94 @@ def _build_epub_dock() -> None:
 
     dock._add_card_btn = _make_epub_button(
         dock,
-        "Add Card",
+        _EPUB_TOOLBAR_TEXT["add_card"],
         "Add a card from the current selection",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogNewFolder),
+    )
+    dock._extract_btn = _make_epub_button(
+        legacy_controls_host,
+        "Extract",
+        "Extract the current selection into the first Add Card field",
     )
     dock._browser_btn = _make_epub_button(
-        dock,
+        legacy_controls_host,
         "Browser",
         "Open this EPUB note in the browser",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
     )
     dock._all_cards_btn = _make_epub_button(
         dock,
-        "Open All",
+        _EPUB_TOOLBAR_TEXT["open_all_in_browser"],
         "Open all cards created from this EPUB",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
     )
     dock._due_review_btn = _make_epub_button(
         dock,
-        "Review Due",
+        _EPUB_TOOLBAR_TEXT["review_due"],
         "Review due cards from this EPUB",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
     )
     dock._all_review_btn = _make_epub_button(
         dock,
-        "Review All",
+        _EPUB_TOOLBAR_TEXT["review_all"],
         "Choose Topics, Items, scope, due state, limit, and order for cards attached to this EPUB",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
     )
     dock._limit_btn = _make_epub_button(
         dock,
-        "Reading Limit",
+        _EPUB_TOOLBAR_TEXT["reading_limit"],
         "Adjust this EPUB's daily reading limit",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_MessageBoxWarning),
     )
     dock._text_smaller_btn = _make_epub_button(
         dock,
-        "A-",
+        _EPUB_TOOLBAR_TEXT["zoom_out"],
         "Decrease text size",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowDown),
     )
+    dock._text_scale_lbl = QLabel("100%", dock)
+    dock._text_scale_lbl.setMinimumWidth(54)
+    dock._text_scale_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    dock._text_scale_lbl.setStyleSheet("font-size: 15px; font-weight: 700; color: #d9dee7;")
     dock._text_larger_btn = _make_epub_button(
         dock,
-        "A+",
+        _EPUB_TOOLBAR_TEXT["zoom_in"],
         "Increase text size",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowUp),
     )
     dock._highlight_btn = _make_epub_button(
-        dock,
+        legacy_controls_host,
         "Highlight",
         "Highlight the current selection (Alt+H)",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
     )
+    dock._highlight_color_buttons = {}
+    for color_name, solid_color in _EPUB_HIGHLIGHT_COLORS.items():
+        color_btn = _make_epub_button(
+            dock,
+            "",
+            f"Highlight {color_name}",
+            checkable=True,
+            icon_only=True,
+            accent=(
+                f"QToolButton {{ background: {solid_color}; border: 2px solid transparent;"
+                " border-radius: 6px; padding: 0; }"
+                f"QToolButton:checked {{ background: {solid_color}; border: 2px solid white; }}"
+            ),
+        )
+        color_btn.setFixedSize(22, 22)
+        color_btn.setAccessibleName(f"Use {color_name} highlight color")
+        color_btn.setChecked(color_name == _current_epub_highlight_color)
+        dock._highlight_color_buttons[color_name] = color_btn
     dock._snapshot_btn = _make_epub_button(
         dock,
-        "Snapshot",
+        _EPUB_TOOLBAR_TEXT["snapshot"],
         "Capture the current selection as an image (Alt+S)",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
     )
     dock._cover_btn = _make_epub_button(
         dock,
-        "Cover",
+        _EPUB_TOOLBAR_TEXT["regenerate_cover"],
         "Regenerate this EPUB card's cover image",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
     )
     dock._bookmark_add_btn = _make_epub_button(
         dock,
-        "Bookmark",
+        _EPUB_TOOLBAR_TEXT["bookmark"],
         "Add a bookmark for this reading position",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogYesButton),
     )
     dock._read_marker_btn = _make_epub_button(
         dock,
-        "↦ Marker",
+        _EPUB_TOOLBAR_TEXT["exact_read_marker"],
         "Place or move the exact READ UP UNTIL HERE marker; hold Shift to clear it",
         checkable=True,
         accent=(
@@ -2510,25 +2954,46 @@ def _build_epub_dock() -> None:
             " border-color: rgba(14,165,233,0.72); color: #ecfeff; }"
         ),
     )
+    dock._read_to_here_btn = _make_epub_button(
+        dock,
+        _EPUB_TOOLBAR_TEXT["read_to_here"],
+        "Mark EPUB sections as read up to here without placing an exact marker",
+        checkable=True,
+        accent=(
+            "QToolButton { border-color: rgba(34,197,94,0.60); }"
+            "QToolButton:checked { background: rgba(34,197,94,0.30);"
+            " border-color: rgba(34,197,94,0.70); color: #86efac; }"
+        ),
+    )
+    dock._read_range_chip = _make_epub_chip(dock, "s.1–1")
     dock._bookmarks_btn = _make_epub_button(
         dock,
-        "Bookmarks",
+        _EPUB_TOOLBAR_TEXT["bookmarks"].format(count=0),
         "Show or hide EPUB bookmarks",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
+        checkable=True,
+    )
+    dock._highlights_btn = _make_epub_button(
+        dock,
+        _EPUB_TOOLBAR_TEXT["highlights"].format(count=0),
+        "Show or hide EPUB highlights",
         checkable=True,
     )
     dock._sources_btn = _make_epub_button(
-        dock,
+        legacy_controls_host,
         "Details",
         "Show or hide cards and highlights for this section",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
         checkable=True,
     )
+    dock._page_cards_btn = _make_epub_button(
+        dock,
+        _EPUB_TOOLBAR_TEXT["page_cards"].format(count=0),
+        "Open cards created from this EPUB page in the Anki Browser",
+    )
+    dock._page_cards_btn.setVisible(False)
     dock._finished_btn = _make_epub_button(
         dock,
-        "Finished Reading",
+        _EPUB_TOOLBAR_TEXT["finished_reading"],
         "Mark this EPUB as finished or unfinished",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_DialogApplyButton),
         checkable=True,
         accent=(
             "QToolButton { border-color: rgba(178,79,79,0.35); background: rgba(140,48,48,0.10); }"
@@ -2536,117 +3001,300 @@ def _build_epub_dock() -> None:
             "QToolButton:checked { background: rgba(77,156,92,0.22); border-color: rgba(77,156,92,0.60); }"
         ),
     )
-    dock._find_btn = _make_epub_button(
-        dock,
-        "Find",
-        "Find in current document",
-        icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
-    )
     dock._links_btn = _make_epub_button(
         dock,
-        "Links Off",
+        _EPUB_TOOLBAR_TEXT["clickable_links"].format(state="Off"),
         "Enable clickable links in this EPUB",
         checkable=True,
     )
-
-    header = QWidget(dock)
-    header_layout = QVBoxLayout(header)
-    header_layout.setContentsMargins(0, 0, 0, 0)
-    header_layout.setSpacing(5)
-
-    nav_row = QHBoxLayout()
-    nav_row.setContentsMargins(0, 0, 0, 0)
-    nav_row.setSpacing(6)
-    nav_row.addWidget(dock._prev_btn)
-    nav_row.addWidget(dock._next_btn)
-    nav_row.addWidget(dock._title_lbl, 1)
-    header_layout.addLayout(nav_row)
-
-    status_row = QHBoxLayout()
-    status_row.setContentsMargins(0, 0, 0, 0)
-    status_row.setSpacing(6)
-    status_row.addWidget(dock._cards_chip)
-    status_row.addWidget(dock._highlights_chip)
-    status_row.addStretch(1)
-    header_layout.addLayout(status_row)
-    layout.addWidget(header)
-
-    groups_host = QWidget(dock)
-    groups_flow = _FlowLayout(groups_host, margin=0, h_spacing=6, v_spacing=6)
-    groups_host.setLayout(groups_flow)
-    groups_flow.addWidget(
-        _make_epub_group(
-            groups_host,
-            "Reader",
-            dock._text_smaller_btn,
-            dock._text_larger_btn,
-            dock._find_btn,
-            dock._links_btn,
-            dock._highlight_extract_cb,
-        )
+    dock._jump_back_btn = _make_epub_button(
+        dock,
+        _EPUB_TOOLBAR_TEXT["jump_back"],
+        "Follow an internal EPUB link to enable Jump Back",
     )
-    groups_flow.addWidget(
-        _make_epub_group(
-            groups_host,
-            "Capture",
-            dock._highlight_btn,
-            dock._snapshot_btn,
-            dock._cover_btn,
-            dock._read_marker_btn,
-            dock._bookmark_add_btn,
-            dock._bookmarks_btn,
-            dock._sources_btn,
-        )
+    dock._customize_controls_btn = _make_epub_button(
+        dock,
+        "Customize controls",
+        "Choose which EPUB control groups are visible",
     )
-    groups_flow.addWidget(
-        _make_epub_group(
-            groups_host,
-            "Review",
-            dock._due_review_btn,
-            dock._all_review_btn,
-            dock._limit_btn,
-        )
+    dock._minimize_controls_btn = _make_epub_button(
+        dock,
+        "Minimize controls",
+        "Minimize reader controls to give the EPUB more room",
     )
-    groups_flow.addWidget(
-        _make_epub_group(
-            groups_host,
-            "Cards",
-            dock._add_card_btn,
-            dock._browser_btn,
-            dock._all_cards_btn,
-        )
+    dock._progress_percent_lbl = QLabel("0%", dock)
+    dock._progress_percent_lbl.setMinimumWidth(36)
+    dock._progress_percent_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    dock._progress_percent_lbl.setStyleSheet("font-size: 12px; font-weight: 700; color: #d9dee7;")
+    dock._progress_segments_host = QWidget(dock)
+    progress_segments_layout = QHBoxLayout(dock._progress_segments_host)
+    progress_segments_layout.setContentsMargins(0, 0, 0, 0)
+    progress_segments_layout.setSpacing(3)
+    dock._progress_segments = []
+    for _index in range(10):
+        segment = QFrame(dock._progress_segments_host)
+        segment.setFixedSize(14, 20)
+        dock._progress_segments.append(segment)
+        progress_segments_layout.addWidget(segment)
+    configure_reader_shell_buttons(
+        "epub",
+        {
+            "back": dock._prev_btn,
+            "extract": dock._extract_btn,
+            "bookmark": dock._bookmark_add_btn,
+            "review_all": dock._all_review_btn,
+            "status": dock._finished_btn,
+        },
+        preserve_text={"back", "bookmark", "review_all", "status"},
     )
-    groups_flow.addWidget(
-        _make_epub_group(
-            groups_host,
-            "Status",
-            dock._finished_btn,
-        )
-    )
-    layout.addWidget(groups_host)
+    dock._finished_btn.setToolTip("Mark this EPUB as finished or unfinished")
+    dock._links_btn.setAccessibleName("EPUB reader: Links")
+    dock._jump_back_btn.setAccessibleName("EPUB reader: Jump Back")
+    dock._customize_controls_btn.setAccessibleName("Customize EPUB reader controls")
+    dock._minimize_controls_btn.setAccessibleName("Minimize EPUB reader controls")
+    dock._location_btn.setAccessibleName("EPUB reader page location")
+    dock._cards_chip.setAccessibleName("EPUB reader card count")
+    dock._highlights_chip.setAccessibleName("EPUB reader highlight count")
 
-    find_bar = QWidget(dock)
+    controls_host = QFrame(dock)
+    controls_host.setObjectName("incremento_epub_controls")
+    controls_host.setStyleSheet(
+        "QFrame#incremento_epub_controls {"
+        " background: rgba(30,30,30,0.96);"
+        " border-top: 1px solid rgba(130,130,130,0.35);"
+        " border-radius: 8px;"
+        " }"
+    )
+    controls_layout = QVBoxLayout(controls_host)
+    controls_layout.setContentsMargins(6, 5, 6, 6)
+    controls_layout.setSpacing(5)
+
+    controls_expanded = QWidget(controls_host)
+    expanded_layout = QVBoxLayout(controls_expanded)
+    expanded_layout.setContentsMargins(0, 0, 0, 0)
+    expanded_layout.setSpacing(4)
+    control_actions = QHBoxLayout()
+    control_actions.setContentsMargins(0, 0, 0, 0)
+    control_actions.addStretch(1)
+    control_actions.addWidget(dock._customize_controls_btn)
+    control_actions.addWidget(dock._minimize_controls_btn)
+    expanded_layout.addLayout(control_actions)
+
+    toolbar_spec = reader_toolbar_clone_spec("epub")
+    toolbar_rows = reader_toolbar_expanded_group_rows("epub")
+    groups_host = QWidget(controls_expanded)
+    groups_layout = QVBoxLayout(groups_host)
+    groups_layout.setContentsMargins(0, 0, 0, 0)
+    groups_layout.setSpacing(6)
+
+    navigate_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Navigate",
+        dock._prev_btn,
+        dock._location_btn,
+        dock._next_btn,
+    )
+    zoom_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Zoom",
+        dock._text_smaller_btn,
+        dock._text_scale_lbl,
+        dock._text_larger_btn,
+    )
+    reading_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Reading",
+        dock._read_to_here_btn,
+        dock._read_marker_btn,
+        dock._links_btn,
+        dock._jump_back_btn,
+        dock._read_range_chip,
+    )
+    progress_meter = _make_epub_progress_meter(
+        groups_host,
+        dock._progress_percent_lbl,
+        dock._progress_segments_host,
+    )
+    annotate_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Annotate",
+        *dock._highlight_color_buttons.values(),
+        dock._highlight_extract_cb,
+    )
+    capture_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Capture",
+        dock._snapshot_btn,
+        dock._highlights_btn,
+        dock._bookmark_add_btn,
+        dock._bookmarks_btn,
+    )
+    review_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Review",
+        dock._due_review_btn,
+        dock._all_review_btn,
+        dock._limit_btn,
+        dock._cover_btn,
+    )
+    cards_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Cards",
+        dock._all_cards_btn,
+        dock._page_cards_btn,
+        dock._add_card_btn,
+    )
+    status_stack = _make_epub_toolbar_stack(
+        groups_host,
+        "Status",
+        dock._finished_btn,
+    )
+    control_groups = {
+        "navigation": _make_epub_compound_group(groups_host, navigate_stack, zoom_stack),
+        "reading": _make_epub_compound_group(groups_host, reading_stack, progress_meter),
+        "annotation": _make_epub_compound_group(groups_host, annotate_stack, capture_stack),
+        "review": _make_epub_compound_group(groups_host, review_stack, cards_stack, status_stack),
+    }
+    if tuple(control_groups) != tuple(group_id for group_id, _label, _sections in toolbar_spec):
+        raise RuntimeError("EPUB toolbar groups no longer match the PDF reference contract.")
+    control_group_rows = []
+    for row_group_ids in toolbar_rows:
+        row_host = QWidget(groups_host)
+        row_flow = _FlowLayout(
+            row_host,
+            margin=0,
+            h_spacing=12,
+            v_spacing=6,
+            center_lines=True,
+        )
+        row_host.setLayout(row_flow)
+        for group_id in row_group_ids:
+            row_flow.addWidget(control_groups[group_id])
+        groups_layout.addWidget(row_host)
+        control_group_rows.append(row_flow)
+    expanded_layout.addWidget(groups_host)
+
+    dock._limit_status_widget = QFrame(controls_expanded)
+    dock._limit_status_widget.setStyleSheet(
+        "QFrame { background: rgba(245,158,11,0.10);"
+        " border: 1px solid rgba(245,158,11,0.35); border-radius: 8px; }"
+    )
+    limit_status_layout = QHBoxLayout(dock._limit_status_widget)
+    limit_status_layout.setContentsMargins(10, 5, 10, 5)
+    dock._limit_status_lbl = QLabel("", dock._limit_status_widget)
+    dock._limit_status_lbl.setWordWrap(True)
+    dock._limit_status_lbl.setStyleSheet("color: #f6c86b; font-size: 12px;")
+    limit_status_layout.addWidget(dock._limit_status_lbl, 1)
+    dock._limit_status_widget.setVisible(False)
+    groups_layout.insertWidget(1, dock._limit_status_widget)
+
+    controls_compact = QWidget(controls_host)
+    compact_layout = _FlowLayout(controls_compact, margin=0, h_spacing=6, v_spacing=4)
+    controls_compact.setLayout(compact_layout)
+    dock._compact_prev_btn = _make_epub_button(
+        controls_compact,
+        _EPUB_TOOLBAR_TEXT["previous_page"],
+        "Previous page or previous section",
+    )
+    dock._compact_location_btn = _make_epub_button(
+        controls_compact,
+        _EPUB_TOOLBAR_TEXT["page_location"].format(current="—", total="—"),
+        "Go to EPUB page",
+    )
+    dock._compact_location_btn.setMinimumWidth(132)
+    dock._compact_title_lbl = dock._compact_location_btn
+    dock._compact_next_btn = _make_epub_button(
+        controls_compact,
+        _EPUB_TOOLBAR_TEXT["next_page"],
+        "Next page or next section",
+    )
+    dock._compact_scale_lbl = QLabel("100%", controls_compact)
+    dock._compact_scale_lbl.setMinimumWidth(48)
+    dock._compact_scale_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    dock._compact_scale_lbl.setStyleSheet("font-weight: 700; color: #d4d4d8;")
+    dock._compact_links_btn = _make_epub_button(
+        controls_compact,
+        _EPUB_TOOLBAR_TEXT["clickable_links"].format(state="Off"),
+        "Enable clickable links in this EPUB",
+        checkable=True,
+    )
+    dock._compact_jump_back_btn = _make_epub_button(
+        controls_compact,
+        _EPUB_TOOLBAR_TEXT["jump_back"],
+        "Follow an internal EPUB link to enable Jump Back",
+    )
+    dock._show_controls_btn = _make_epub_button(
+        controls_compact,
+        "Show controls",
+        "Show the full EPUB reader controls",
+    )
+    dock._compact_customize_controls_btn = _make_epub_button(
+        controls_compact,
+        "Customize",
+        "Choose which EPUB control groups are visible",
+    )
+    configure_reader_shell_buttons(
+        "epub",
+        {"back": dock._compact_prev_btn},
+        preserve_text={"back"},
+    )
+    dock._compact_location_btn.setAccessibleName("EPUB reader compact location")
+    dock._compact_links_btn.setAccessibleName("EPUB reader: Links")
+    dock._compact_jump_back_btn.setAccessibleName("EPUB reader: Jump Back")
+    controls_host.setAccessibleName("EPUB reader controls")
+    for widget in (
+        dock._compact_prev_btn,
+        dock._compact_location_btn,
+        dock._compact_next_btn,
+        dock._compact_scale_lbl,
+        dock._compact_links_btn,
+        dock._compact_jump_back_btn,
+        dock._show_controls_btn,
+        dock._compact_customize_controls_btn,
+    ):
+        compact_layout.addWidget(widget)
+
+    controls_layout.addWidget(controls_expanded)
+    controls_layout.addWidget(controls_compact)
+    controls_compact.setVisible(False)
+    dock._controls_host = controls_host
+    dock._controls_expanded = controls_expanded
+    dock._controls_compact = controls_compact
+    dock._controls_collapsed = False
+    dock._control_groups = control_groups
+    dock._control_groups_layout = groups_layout
+    dock._control_group_rows = tuple(control_group_rows)
+    dock._epub_control_visibility = _normalize_epub_control_visibility({})
+
+    find_bar = QWidget(groups_host)
     find_layout = QHBoxLayout(find_bar)
     find_layout.setContentsMargins(0, 0, 0, 0)
     find_layout.setSpacing(6)
+    dock._find_label = QLabel("Find", find_bar)
+    dock._find_label.setStyleSheet("color: #d4d4d8; font-weight: 600;")
     dock._find_input = QLineEdit(find_bar)
-    dock._find_input.setPlaceholderText("Find in current document")
+    dock._find_input.setPlaceholderText("Search this EPUB")
+    dock._find_input.setFixedWidth(260)
     dock._find_count_lbl = QLabel("", find_bar)
     dock._find_count_lbl.setStyleSheet("color: #a0aec0; font-size: 12px;")
     dock._find_prev_btn = QPushButton("Prev", find_bar)
     dock._find_next_btn = QPushButton("Next", find_bar)
     dock._find_close_btn = QPushButton("Close", find_bar)
     dock._find_all_btn = QPushButton("All", find_bar)
-    find_layout.addWidget(dock._find_input, 1)
+    find_layout.addStretch(1)
+    find_layout.addWidget(dock._find_label)
+    find_layout.addWidget(dock._find_input)
     find_layout.addWidget(dock._find_count_lbl)
     find_layout.addWidget(dock._find_prev_btn)
     find_layout.addWidget(dock._find_next_btn)
     find_layout.addWidget(dock._find_close_btn)
     find_layout.addWidget(dock._find_all_btn)
+    find_layout.addStretch(1)
     find_bar.setVisible(False)
     dock._find_bar = find_bar
-    layout.addWidget(find_bar)
+    dock._find_input.setAccessibleName("EPUB reader: Search")
     QShortcut(QKeySequence("Escape"), find_bar).activated.connect(_close_epub_find_bar)
+    groups_layout.insertWidget(1, find_bar)
 
     profile = QWebEngineProfile(dock)
     interceptor = _EpubRequestInterceptor(profile)
@@ -2690,6 +3338,7 @@ def _build_epub_dock() -> None:
     dock._sources.setOpenExternalLinks(False)
     dock._sources.anchorClicked.connect(_open_source_link)
     dock._sources.setVisible(False)
+    dock._sources_scope = "all"
     layout.addWidget(dock._sources)
 
     dock._bookmarks_panel = QTextBrowser()
@@ -2699,6 +3348,7 @@ def _build_epub_dock() -> None:
     dock._bookmarks_panel.anchorClicked.connect(_open_epub_bookmark_link)
     dock._bookmarks_panel.setVisible(False)
     layout.addWidget(dock._bookmarks_panel)
+    layout.addWidget(dock._controls_host)
 
     dock.setWidget(container)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
@@ -2716,9 +3366,12 @@ def _build_epub_dock() -> None:
 
     qconnect(dock._prev_btn.clicked, lambda: _jump_relative(-1))
     qconnect(dock._next_btn.clicked, lambda: _jump_relative(1))
+    qconnect(dock._location_btn.clicked, _open_epub_page_jump_dialog)
+    qconnect(dock._extract_btn.clicked, lambda: _trigger_epub_extract_shortcut(0))
     qconnect(dock._add_card_btn.clicked, lambda: _cb_open_add_card_dock and _cb_open_add_card_dock())
     qconnect(dock._browser_btn.clicked, _browse_current_epub_note)
     qconnect(dock._all_cards_btn.clicked, _open_all_epub_cards_in_browser)
+    qconnect(dock._page_cards_btn.clicked, _open_current_epub_page_cards_in_browser)
     qconnect(
         dock._due_review_btn.clicked,
         lambda: _current_epub_card_id
@@ -2732,15 +3385,35 @@ def _build_epub_dock() -> None:
     qconnect(dock._limit_btn.clicked, lambda: _current_epub_card_id and _open_epub_limit_dialog(int(_current_epub_card_id)))
     qconnect(dock._text_smaller_btn.clicked, lambda: _adjust_epub_text_scale(-0.1))
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
-    qconnect(dock._find_btn.clicked, open_current_document_find)
     qconnect(dock._links_btn.toggled, _toggle_epub_clickable_links)
+    qconnect(dock._jump_back_btn.clicked, _jump_back_from_epub_link)
+    qconnect(dock._compact_prev_btn.clicked, lambda: _jump_relative(-1))
+    qconnect(dock._compact_next_btn.clicked, lambda: _jump_relative(1))
+    qconnect(dock._compact_location_btn.clicked, _open_epub_page_jump_dialog)
+    qconnect(dock._compact_links_btn.toggled, _toggle_epub_clickable_links)
+    qconnect(dock._compact_jump_back_btn.clicked, _jump_back_from_epub_link)
+    qconnect(dock._customize_controls_btn.clicked, _show_epub_control_chooser)
+    qconnect(dock._compact_customize_controls_btn.clicked, _show_epub_control_chooser)
+    qconnect(
+        dock._minimize_controls_btn.clicked,
+        lambda: _set_epub_controls_collapsed(True),
+    )
+    qconnect(
+        dock._show_controls_btn.clicked,
+        lambda: _set_epub_controls_collapsed(False),
+    )
     qconnect(dock._highlight_btn.clicked, _request_highlight)
     qconnect(dock._snapshot_btn.clicked, _request_snapshot)
     qconnect(dock._cover_btn.clicked, _regenerate_epub_cover)
+    qconnect(dock._read_to_here_btn.clicked, _mark_epub_read_to_here)
     qconnect(dock._read_marker_btn.clicked, _request_read_marker)
     qconnect(dock._bookmark_add_btn.clicked, _add_current_epub_bookmark)
     qconnect(dock._bookmarks_btn.clicked, _toggle_epub_bookmarks_panel)
-    qconnect(dock._sources_btn.clicked, _toggle_epub_sources_panel)
+    qconnect(dock._sources_btn.clicked, lambda: _toggle_epub_sources_panel("all"))
+    qconnect(
+        dock._highlights_btn.clicked,
+        lambda: _toggle_epub_sources_panel("highlights"),
+    )
     qconnect(dock._finished_btn.clicked, _toggle_finished)
     qconnect(dock._highlight_extract_cb.toggled, _on_extract_highlight_toggle_changed)
     qconnect(dock._find_input.textChanged, _apply_epub_find_query)
@@ -2748,6 +3421,14 @@ def _build_epub_dock() -> None:
     qconnect(dock._find_next_btn.clicked, lambda: _step_epub_search(1))
     qconnect(dock._find_close_btn.clicked, _close_epub_find_bar)
     qconnect(dock._find_all_btn.clicked, open_current_document_search_results)
+    for color_name, color_btn in dock._highlight_color_buttons.items():
+        qconnect(
+            color_btn.clicked,
+            lambda _checked=False, selected=color_name: _select_epub_highlight_color(
+                selected,
+                create_highlight=True,
+            ),
+        )
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
 
@@ -2774,6 +3455,8 @@ def _build_epub_dock() -> None:
         _epub_shortcuts_registered = True
 
     _epub_dock = dock
+    _apply_epub_control_visibility(dock._epub_control_visibility)
+    _sync_epub_link_back_buttons()
     _sync_epub_find_bar()
 
 
@@ -2873,6 +3556,7 @@ def _open_epub_search_hit(index: int, *, offer_due_review_prompt: bool = False) 
         focus_offset=int(hit.get("focusOffset", -1) or -1),
         search_query=_current_epub_search_query,
         offer_due_review_prompt=offer_due_review_prompt,
+        preserve_link_history=True,
     )
 
 
@@ -2914,6 +3598,7 @@ def open_current_epub_search_hit(hit: dict, index: int, query: str) -> bool:
         focus_offset=int(selected_hit.get("focusOffset", -1) or -1),
         search_query=str(query or ""),
         offer_due_review_prompt=False,
+        preserve_link_history=True,
     )
     return True
 
@@ -2936,6 +3621,9 @@ def _refresh_epub_bookmarks_panel() -> None:
     if _epub_dock is None:
         return
     bookmarks = _epub_bookmarks()
+    _epub_dock._bookmarks_btn.setText(
+        _EPUB_TOOLBAR_TEXT["bookmarks"].format(count=len(bookmarks))
+    )
     _epub_dock._bookmarks_btn.setToolTip(
         f"Show or hide EPUB bookmarks ({len(bookmarks)} saved)"
     )
@@ -3048,7 +3736,7 @@ def _push_epub_read_anchor() -> None:
 
 
 def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
-    global _current_epub_read_anchor
+    global _current_epub_read_anchor, _current_epub_read_section_index
     if int(card_id or 0) <= 0 or _current_epub_card_id is None or int(card_id) != int(_current_epub_card_id):
         return
     if anchor is not None and not isinstance(anchor, dict):
@@ -3061,6 +3749,7 @@ def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
             int(section_index),
             anchor,
         )
+        _current_epub_read_section_index = max(0, int(section_index))
         _current_epub_read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), int(card_id))
     except Exception as exc:
         showInfo(f"Could not save EPUB read marker:\n{exc}")
@@ -3068,6 +3757,39 @@ def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
     _push_epub_read_anchor()
     _update_title_and_buttons()
     tooltip("EPUB read marker updated." if _current_epub_read_anchor else "EPUB read marker cleared.")
+
+
+def _mark_epub_read_to_here() -> None:
+    """Mirror PDF's progress-only marker and remove any exact text anchor."""
+    global _current_epub_read_anchor, _current_epub_read_section_index
+    if _current_epub_card_id is None:
+        return
+    try:
+        saved_index = get_read_section_index(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_epub_card_id),
+        )
+        next_index = (
+            0
+            if int(_current_epub_section_index) <= int(saved_index)
+            else int(_current_epub_section_index)
+        )
+        set_read_section_index(
+            _ADDON_DIR,
+            _active_profile(),
+            int(_current_epub_card_id),
+            next_index,
+            None,
+        )
+        _current_epub_read_section_index = next_index
+        _current_epub_read_anchor = None
+    except Exception as exc:
+        showInfo(f"Could not save EPUB read progress:\n{exc}")
+        return
+    _push_epub_read_anchor()
+    _update_title_and_buttons()
+    tooltip("EPUB read progress updated.")
 
 
 def _request_read_marker() -> None:
@@ -3093,14 +3815,24 @@ def _toggle_epub_bookmarks_panel() -> None:
     _epub_dock._bookmarks_btn.blockSignals(False)
 
 
-def _toggle_epub_sources_panel() -> None:
+def _toggle_epub_sources_panel(scope: str = "all") -> None:
     if _epub_dock is None:
         return
-    visible = not _epub_dock._sources.isVisible()
+    resolved_scope = "highlights" if str(scope) == "highlights" else "all"
+    previous_scope = str(getattr(_epub_dock, "_sources_scope", "all"))
+    visible = not (
+        _epub_dock._sources.isVisible()
+        and previous_scope == resolved_scope
+    )
+    _epub_dock._sources_scope = resolved_scope
+    _update_sources_panel()
     _epub_dock._sources.setVisible(visible)
     _epub_dock._sources_btn.blockSignals(True)
-    _epub_dock._sources_btn.setChecked(visible)
+    _epub_dock._sources_btn.setChecked(visible and resolved_scope == "all")
     _epub_dock._sources_btn.blockSignals(False)
+    _epub_dock._highlights_btn.blockSignals(True)
+    _epub_dock._highlights_btn.setChecked(visible and resolved_scope == "highlights")
+    _epub_dock._highlights_btn.blockSignals(False)
 
 
 def _open_epub_bookmark_link(url: QUrl) -> None:
@@ -3133,6 +3865,7 @@ def _open_epub_bookmark_link(url: QUrl) -> None:
         section_index=int(location.get("section_index", 0) or 0),
         scroll_ratio=float(location.get("scroll_ratio", 0.0) or 0.0),
         offer_due_review_prompt=False,
+        preserve_link_history=True,
     )
 
 
@@ -3187,6 +3920,22 @@ def _open_all_epub_cards_in_browser() -> None:
         int(_current_epub_card_id),
     )
     _browse_note_ids_in_browser(note_ids, empty_message="No cards created from this EPUB yet.")
+
+
+def _open_current_epub_page_cards_in_browser() -> bool:
+    if _current_epub_card_id is None:
+        return False
+    rows = get_epub_card_sources(
+        _ADDON_DIR,
+        _active_profile(),
+        int(_current_epub_card_id),
+        int(_current_epub_section_index),
+    )
+    note_ids = [int(row.get("note_id") or 0) for row in rows]
+    return _browse_note_ids_in_browser(
+        note_ids,
+        empty_message="No cards created from this EPUB page yet.",
+    )
 
 
 def _current_section_highlights() -> list[dict]:
@@ -3447,31 +4196,113 @@ def _current_sections() -> list[dict]:
     return list((_current_metadata().get("sections") or []))
 
 
+def _update_epub_progress_controls(section_count: int) -> None:
+    if _epub_dock is None:
+        return
+    state = _epub_read_progress_state(
+        read_section_index=_current_epub_read_section_index,
+        section_count=section_count,
+    )
+    percent = int(state["percent"])
+    filled = int(state["filled_segments"])
+    range_text = str(state["range_text"])
+    _epub_dock._progress_percent_lbl.setText(
+        _EPUB_TOOLBAR_TEXT["zoom_percent"].format(percent=percent)
+    )
+    _epub_dock._progress_segments_host.setToolTip(
+        f"Read progress: {int(state['read_count'])}/{max(0, int(section_count))} EPUB sections"
+    )
+    for index, segment in enumerate(_epub_dock._progress_segments):
+        segment.setStyleSheet(
+            "QFrame {"
+            + (
+                "background: rgba(14,165,233,0.85); border: 1px solid rgba(14,165,233,0.95);"
+                if index < filled
+                else "background: rgba(80,80,80,0.28); border: 1px solid rgba(130,130,130,0.55);"
+            )
+            + " border-radius: 4px; }"
+        )
+    _epub_dock._read_range_chip.setText(range_text)
+    _epub_dock._read_range_chip.setVisible(bool(range_text))
+    _epub_dock._read_to_here_btn.blockSignals(True)
+    _epub_dock._read_to_here_btn.setChecked(
+        bool(section_count > 0 and _current_epub_section_index <= _current_epub_read_section_index)
+    )
+    _epub_dock._read_to_here_btn.blockSignals(False)
+    scale_text = _EPUB_TOOLBAR_TEXT["zoom_percent"].format(
+        percent=f"{round(float(_current_epub_font_scale) * 100):.0f}"
+    )
+    _epub_dock._text_scale_lbl.setText(scale_text)
+    _epub_dock._compact_scale_lbl.setText(scale_text)
+
+
+def _update_epub_limit_status_control() -> None:
+    if _epub_dock is None:
+        return
+    status = _current_epub_limit_state if isinstance(_current_epub_limit_state, dict) else {}
+    enabled = bool(status.get("enabled"))
+    _epub_dock._limit_status_widget.setVisible(enabled)
+    if not enabled:
+        _epub_dock._limit_status_lbl.setText("")
+        return
+    used = max(0, int(status.get("pages_used", status.get("sections_used", 0)) or 0))
+    limit = max(0, int(status.get("daily_page_limit", status.get("daily_section_limit", 0)) or 0))
+    remaining = max(0, int(status.get("pages_remaining", status.get("sections_remaining", 0)) or 0))
+    mode = str(status.get("enforcement_label") or "Warning")
+    suffix = " · override active" if bool(status.get("override_enabled")) else ""
+    _epub_dock._limit_status_lbl.setText(
+        f"Today: {used} / {limit} pages · {remaining} remaining · {mode}{suffix}"
+    )
+
+
 def _update_title_and_buttons() -> None:
     if _epub_dock is None:
         return
     sections = _current_sections()
     count = len(sections)
-    title_text = "EPUB"
+    title_text = _EPUB_TOOLBAR_TEXT["page_location"].format(
+        current="—",
+        total="—",
+    )
+    location_tooltip = "EPUB page location"
     if count:
         idx = max(0, min(_current_epub_section_index, count - 1))
         section = sections[idx]
         if _current_epub_total_pages > 0:
-            title_text = (
-                f"Page {_current_epub_page_index + 1} / {_current_epub_total_pages} — "
-                f"{section.get('title') or f'Section {idx + 1}'}"
+            title_text = _EPUB_TOOLBAR_TEXT["page_location"].format(
+                current=_current_epub_page_index + 1,
+                total=_current_epub_total_pages,
             )
         else:
-            title_text = (
-                f"{section.get('title') or f'Section {idx + 1}'} ({idx + 1}/{count})"
+            title_text = _EPUB_TOOLBAR_TEXT["page_location"].format(
+                current=idx + 1,
+                total=count,
             )
+        location_tooltip = str(section.get("title") or f"Section {idx + 1}")
         _epub_dock._prev_btn.setEnabled(idx > 0 or _current_epub_scroll_ratio > 0.001)
         _epub_dock._next_btn.setEnabled(idx + 1 < count or _current_epub_scroll_ratio < 0.999)
     else:
         _epub_dock._prev_btn.setEnabled(False)
         _epub_dock._next_btn.setEnabled(False)
-    _epub_dock._title_lbl.set_full_text(title_text)
+    _epub_dock._location_btn.setText(title_text)
+    _epub_dock._location_btn.setToolTip(
+        f"Go to EPUB page · {location_tooltip}"
+    )
+    compact_location = getattr(_epub_dock, "_compact_location_btn", None)
+    if compact_location is not None:
+        compact_location.setText(title_text)
+        compact_location.setToolTip(f"Go to EPUB page · {location_tooltip}")
+    compact_prev = getattr(_epub_dock, "_compact_prev_btn", None)
+    if compact_prev is not None:
+        compact_prev.setEnabled(_epub_dock._prev_btn.isEnabled())
+    compact_next = getattr(_epub_dock, "_compact_next_btn", None)
+    if compact_next is not None:
+        compact_next.setEnabled(_epub_dock._next_btn.isEnabled())
     has_card = _current_epub_card_id is not None
+    can_jump_to_page = bool(has_card and _current_epub_total_pages > 0)
+    _epub_dock._location_btn.setEnabled(can_jump_to_page)
+    if compact_location is not None:
+        compact_location.setEnabled(can_jump_to_page)
     _epub_dock._browser_btn.setEnabled(has_card)
     _epub_dock._due_review_btn.setEnabled(has_card)
     _epub_dock._all_review_btn.setEnabled(has_card)
@@ -3479,15 +4310,21 @@ def _update_title_and_buttons() -> None:
     _epub_dock._text_smaller_btn.setEnabled(has_card)
     _epub_dock._text_larger_btn.setEnabled(has_card)
     _epub_dock._links_btn.setEnabled(has_card)
+    compact_links = getattr(_epub_dock, "_compact_links_btn", None)
+    if compact_links is not None:
+        compact_links.setEnabled(has_card)
     _epub_dock._highlight_btn.setEnabled(has_card)
     _epub_dock._add_card_btn.setEnabled(has_card)
     _epub_dock._all_cards_btn.setEnabled(has_card)
     _epub_dock._snapshot_btn.setEnabled(has_card)
     _epub_dock._cover_btn.setEnabled(has_card)
     _epub_dock._read_marker_btn.setEnabled(has_card)
+    _epub_dock._read_to_here_btn.setEnabled(has_card)
     _epub_dock._bookmark_add_btn.setEnabled(has_card)
     _epub_dock._bookmarks_btn.setEnabled(has_card)
     _epub_dock._sources_btn.setEnabled(has_card)
+    _epub_dock._highlights_btn.setEnabled(has_card)
+    _epub_dock._page_cards_btn.setEnabled(has_card)
     _epub_dock._finished_btn.blockSignals(True)
     _epub_dock._finished_btn.setChecked(bool(_current_epub_finished))
     _epub_dock._finished_btn.blockSignals(False)
@@ -3500,7 +4337,18 @@ def _update_title_and_buttons() -> None:
     _epub_dock._sources_btn.blockSignals(True)
     _epub_dock._sources_btn.setChecked(bool(_epub_dock._sources.isVisible()))
     _epub_dock._sources_btn.blockSignals(False)
+    _epub_dock._highlights_btn.blockSignals(True)
+    _epub_dock._highlights_btn.setChecked(
+        bool(
+            _epub_dock._sources.isVisible()
+            and getattr(_epub_dock, "_sources_scope", "all") == "highlights"
+        )
+    )
+    _epub_dock._highlights_btn.blockSignals(False)
+    _update_epub_progress_controls(count)
+    _update_epub_limit_status_control()
     _refresh_epub_bookmarks_panel()
+    _sync_epub_link_back_buttons()
 
 
 def _update_sources_panel() -> None:
@@ -3517,8 +4365,22 @@ def _update_sources_panel() -> None:
     _epub_dock._sources_btn.setToolTip(
         f"Show or hide cards and highlights for this section ({count} cards, {len(highlights)} highlights)"
     )
+    _epub_dock._highlights_btn.setText(
+        _EPUB_TOOLBAR_TEXT["highlights"].format(count=len(highlights))
+    )
+    _epub_dock._highlights_btn.setToolTip(
+        f"Show or hide EPUB highlights ({len(highlights)} in this section)"
+    )
+    _epub_dock._page_cards_btn.setText(
+        _EPUB_TOOLBAR_TEXT["page_cards"].format(count=count)
+    )
+    _epub_dock._page_cards_btn.setVisible(count > 0)
+    _epub_dock._page_cards_btn.setToolTip(
+        f"Open the {count} card{'s' if count != 1 else ''} created on this EPUB page in the Anki Browser"
+    )
+    scope = str(getattr(_epub_dock, "_sources_scope", "all"))
     html = ["<div style='font-family:sans-serif;font-size:12px'>"]
-    if cards:
+    if scope != "highlights" and cards:
         html.append("<b>Cards from this section</b><ul>")
         for item in cards:
             note_id = int(item.get("note_id") or 0)
@@ -3528,7 +4390,7 @@ def _update_sources_panel() -> None:
                 f" <span style='color:#888'>{excerpt}</span></li>"
             )
         html.append("</ul>")
-    else:
+    elif scope != "highlights":
         html.append("<div style='color:#888;padding:2px 0 10px'>No cards created from this section yet.</div>")
 
     if highlights:
@@ -3567,6 +4429,7 @@ def _record_progress(
 ) -> None:
     global _current_epub_section_index, _current_epub_scroll_ratio
     global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
+    global _current_epub_limit_state
     if _current_epub_card_id is None:
         return
     _current_epub_section_index = max(0, int(section_index))
@@ -3589,7 +4452,7 @@ def _record_progress(
             scroll_ratio=_current_epub_scroll_ratio,
             is_finished=_current_epub_finished,
         )
-        get_epub_daily_limit_status(
+        _current_epub_limit_state = get_epub_daily_limit_status(
             _ADDON_DIR,
             _active_profile(),
             _current_epub_card_id,
@@ -3613,7 +4476,12 @@ def _section_index_from_path(local_path: str) -> int | None:
     return None
 
 
-def _open_epub_reader_link(href: str) -> bool:
+def _open_epub_reader_link(
+    href: str,
+    *,
+    source_scroll_ratio: object = None,
+) -> bool:
+    global _epub_link_back_history
     if (
         _epub_dock is None
         or _current_epub_card_id is None
@@ -3652,6 +4520,24 @@ def _open_epub_reader_link(href: str) -> bool:
 
     target_index = int(resolved["section_index"])
     fragment = str(resolved.get("fragment") or "")
+    if target_index > current_index and not _check_epub_limit_before_navigation(
+        _current_epub_page_index + 1
+    ):
+        return False
+
+    source_ratio = normalize_reader_anchor_scroll_ratio(source_scroll_ratio)
+    if source_ratio is None:
+        source_ratio = max(0.0, min(float(_current_epub_scroll_ratio), 1.0))
+    _epub_link_back_history = _push_epub_link_back_history(
+        _epub_link_back_history,
+        {
+            "card_id": int(_current_epub_card_id),
+            "filename": str(_current_epub_filename),
+            "section_index": int(current_index),
+            "scroll_ratio": source_ratio,
+        },
+    )
+    _sync_epub_link_back_buttons()
     if target_index == current_index:
         _run_epub_javascript(
             _epub_dock._view.page(),
@@ -3660,10 +4546,6 @@ def _open_epub_reader_link(href: str) -> bool:
         )
         return True
 
-    if target_index > current_index and not _check_epub_limit_before_navigation(
-        _current_epub_page_index + 1
-    ):
-        return False
     _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
     if target_index > current_index:
         try:
@@ -3682,7 +4564,35 @@ def _open_epub_reader_link(href: str) -> bool:
         scroll_ratio=0.0,
         link_fragment=fragment,
         offer_due_review_prompt=False,
+        preserve_link_history=True,
     )
+    return True
+
+
+def _jump_back_from_epub_link() -> bool:
+    global _epub_link_back_history
+    location, remaining = _take_epub_link_back_history(_epub_link_back_history)
+    if location is None:
+        _epub_link_back_history = []
+        _sync_epub_link_back_buttons()
+        return False
+    if (
+        int(location["card_id"]) != int(_current_epub_card_id or 0)
+        or str(location["filename"]) != str(_current_epub_filename or "")
+    ):
+        _epub_link_back_history = []
+        _sync_epub_link_back_buttons()
+        return False
+    _epub_link_back_history = remaining
+    show_epub_in_dock(
+        int(location["card_id"]),
+        str(location["filename"]),
+        section_index=int(location["section_index"]),
+        scroll_ratio=float(location["scroll_ratio"]),
+        offer_due_review_prompt=False,
+        preserve_link_history=True,
+    )
+    _sync_epub_link_back_buttons()
     return True
 
 
@@ -3722,6 +4632,7 @@ def _on_load_finished(ok: bool) -> None:
         bridge_nonce=_epub_dock._view.page().bridge_nonce(),
         clickable_links=bool(_epub_dock._links_btn.isChecked()),
         link_fragment=_pending_epub_link_fragment,
+        highlight_color=_current_epub_highlight_color,
     )
     _run_epub_javascript(_epub_dock._view.page(), js)
     _pending_focus_offset = -1
@@ -3762,15 +4673,25 @@ def show_epub_in_dock(
     search_query: str = "",
     link_fragment: str = "",
     offer_due_review_prompt: bool = True,
+    preserve_link_history: bool = False,
 ) -> None:
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _current_epub_section_index
     global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _current_epub_read_anchor, _pending_focus_offset, _pending_restore_ratio
     global _current_epub_page_index, _current_epub_total_pages, _current_epub_section_page, _current_epub_section_pages
+    global _current_epub_read_section_index, _current_epub_limit_state
     global _pending_search_query, _pending_epub_link_fragment, _pending_explicit_navigation, _last_selection_meta
     global _current_epub_search_query
+    global _epub_link_back_history
 
     if _epub_dock is None:
         _build_epub_dock()
+
+    same_document = (
+        int(_current_epub_card_id or 0) == int(card_id)
+        and str(_current_epub_filename or "") == str(filename or "").strip()
+    )
+    if not preserve_link_history or not same_document:
+        _epub_link_back_history = []
 
     _current_epub_card_id = int(card_id)
     _current_epub_filename = str(filename or "").strip()
@@ -3796,11 +4717,26 @@ def show_epub_in_dock(
     _last_selection_meta = {}
     _, _, _current_epub_finished = get_epub_progress(_ADDON_DIR, _active_profile(), _current_epub_card_id)
     _current_epub_font_scale = get_epub_font_scale(_ADDON_DIR, _active_profile(), _current_epub_card_id)
+    _current_epub_read_section_index = get_read_section_index(
+        _ADDON_DIR,
+        _active_profile(),
+        _current_epub_card_id,
+    )
     _current_epub_read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), _current_epub_card_id)
+    _current_epub_limit_state = get_epub_daily_limit_status(
+        _ADDON_DIR,
+        _active_profile(),
+        _current_epub_card_id,
+        current_section_index=_current_epub_section_index,
+        current_page_index=_current_epub_page_index,
+        count_current_page=False,
+        persist_usage=False,
+    )
 
     _update_title_and_buttons()
     _update_sources_panel()
     _sync_epub_find_bar()
+    _sync_epub_link_back_buttons()
     _epub_dock.show()
     _epub_dock.raise_()
     if _cb_epub_view_started:
@@ -3883,6 +4819,66 @@ def _jump_relative(delta: int) -> None:
     )
 
 
+def _open_epub_page_jump_dialog() -> None:
+    if _epub_dock is None or _current_epub_card_id is None or _current_epub_total_pages <= 0:
+        return
+    dialog = QDialog(mw)
+    dialog.setWindowTitle("Go to EPUB page")
+    dialog.setModal(True)
+    form = QFormLayout(dialog)
+    page_input = QSpinBox(dialog)
+    page_input.setRange(1, int(_current_epub_total_pages))
+    page_input.setValue(max(1, int(_current_epub_page_index) + 1))
+    page_input.selectAll()
+    form.addRow("Page:", page_input)
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+        parent=dialog,
+    )
+    form.addRow(buttons)
+    qconnect(buttons.accepted, dialog.accept)
+    qconnect(buttons.rejected, dialog.reject)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+    target_page = max(1, min(int(page_input.value()), int(_current_epub_total_pages)))
+    _run_epub_javascript(
+        _epub_dock._view.page(),
+        "window.incrementoGoToEpubPage && "
+        f"window.incrementoGoToEpubPage({target_page});",
+    )
+
+
+def _jump_to_epub_page_location(
+    section_index: int,
+    section_page: int,
+    section_pages: int,
+    page_index: int,
+) -> None:
+    if _current_epub_card_id is None or not _current_epub_filename:
+        return
+    target_page_index = max(0, int(page_index))
+    if target_page_index > _current_epub_page_index and not _check_epub_limit_before_navigation(
+        target_page_index
+    ):
+        return
+    total_in_section = max(1, int(section_pages))
+    target_in_section = max(1, min(int(section_page), total_in_section))
+    ratio = (
+        0.0
+        if total_in_section <= 1
+        else (target_in_section - 1) / (total_in_section - 1)
+    )
+    _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
+    show_epub_in_dock(
+        int(_current_epub_card_id),
+        str(_current_epub_filename),
+        section_index=max(0, int(section_index)),
+        scroll_ratio=max(0.0, min(float(ratio), 1.0)),
+        offer_due_review_prompt=False,
+        preserve_link_history=True,
+    )
+
+
 def _jump_section_boundary(delta: int) -> None:
     sections = _current_sections()
     if not sections or _current_epub_filename is None or _current_epub_card_id is None:
@@ -3909,15 +4905,37 @@ def _jump_section_boundary(delta: int) -> None:
         section_index=next_idx,
         scroll_ratio=0.0 if int(delta) > 0 else 1.0,
         offer_due_review_prompt=False,
+        preserve_link_history=True,
     )
+
+
+def _select_epub_highlight_color(color: str, *, create_highlight: bool = False) -> None:
+    global _current_epub_highlight_color
+    resolved = str(color or "").strip().casefold()
+    if resolved not in _EPUB_HIGHLIGHT_COLORS:
+        resolved = "yellow"
+    _current_epub_highlight_color = resolved
+    if _epub_dock is None:
+        return
+    for name, button in getattr(_epub_dock, "_highlight_color_buttons", {}).items():
+        button.blockSignals(True)
+        button.setChecked(name == resolved)
+        button.blockSignals(False)
+    script = (
+        "window.incrementoSetEpubHighlightColor && "
+        f"window.incrementoSetEpubHighlightColor({json.dumps(resolved)});"
+    )
+    if create_highlight:
+        script += "window.incrementoAddEpubHighlight && window.incrementoAddEpubHighlight();"
+    _run_epub_javascript(_epub_dock._view.page(), script)
 
 
 def _request_highlight() -> None:
     if _epub_dock is None:
         return
-    _run_epub_javascript(
-        _epub_dock._view.page(),
-        "window.incrementoAddEpubHighlight && window.incrementoAddEpubHighlight();"
+    _select_epub_highlight_color(
+        _current_epub_highlight_color,
+        create_highlight=True,
     )
 
 
@@ -3934,12 +4952,25 @@ def _toggle_epub_clickable_links(checked: bool) -> None:
     if _epub_dock is None:
         return
     enabled = bool(checked)
-    _epub_dock._links_btn.setText(f"Links {'On' if enabled else 'Off'}")
-    _epub_dock._links_btn.setToolTip(
+    tooltip_text = (
         "Disable EPUB links and restore uninterrupted text selection"
         if enabled
         else "Enable clickable links in this EPUB"
     )
+    for name in ("_links_btn", "_compact_links_btn"):
+        button = getattr(_epub_dock, name, None)
+        if button is None:
+            continue
+        button.blockSignals(True)
+        button.setChecked(enabled)
+        button.setText(
+            _EPUB_TOOLBAR_TEXT["clickable_links"].format(
+                state="On" if enabled else "Off"
+            )
+        )
+        button.setToolTip(tooltip_text)
+        button.setAccessibleDescription(tooltip_text)
+        button.blockSignals(False)
     _run_epub_javascript(
         _epub_dock._view.page(),
         "window.incrementoSetEpubClickableLinks && "

@@ -9,6 +9,319 @@ import aqt
 import epub_dock
 
 
+def test_epub_link_back_history_is_bounded_and_returns_newest_location():
+    history = []
+    for section_index in range(40):
+        history = epub_dock._push_epub_link_back_history(
+            history,
+            {
+                "card_id": 7,
+                "filename": "book.epub",
+                "section_index": section_index,
+                "scroll_ratio": 0.25,
+            },
+        )
+
+    assert len(history) == epub_dock._MAX_EPUB_LINK_BACK_HISTORY
+    assert history[0]["section_index"] == 8
+
+    location, remaining = epub_dock._take_epub_link_back_history(history)
+
+    assert location["section_index"] == 39
+    assert len(remaining) == epub_dock._MAX_EPUB_LINK_BACK_HISTORY - 1
+    assert len(history) == epub_dock._MAX_EPUB_LINK_BACK_HISTORY
+
+
+def test_epub_controls_collapse_to_pdf_style_compact_bar(monkeypatch):
+    class _Widget:
+        def __init__(self):
+            self.visible = None
+
+        def setVisible(self, value):
+            self.visible = bool(value)
+
+    expanded = _Widget()
+    compact = _Widget()
+    dock = types.SimpleNamespace(
+        _controls_expanded=expanded,
+        _controls_compact=compact,
+        _controls_collapsed=False,
+    )
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+
+    epub_dock._set_epub_controls_collapsed(True)
+
+    assert dock._controls_collapsed is True
+    assert expanded.visible is False
+    assert compact.visible is True
+
+
+def test_epub_read_progress_state_uses_saved_section_and_ten_segments():
+    state = epub_dock._epub_read_progress_state(read_section_index=4, section_count=8)
+
+    assert state == {
+        "read_count": 5,
+        "percent": 63,
+        "filled_segments": 6,
+        "range_text": "s.1–5",
+    }
+
+
+def test_epub_read_to_here_toggles_progress_and_clears_exact_anchor(monkeypatch):
+    saved = []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 3)
+    monkeypatch.setattr(epub_dock, "_current_epub_read_anchor", {"sectionIndex": 2})
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "Profile")
+    monkeypatch.setattr(epub_dock, "get_read_section_index", lambda *_args: 1)
+    monkeypatch.setattr(
+        epub_dock,
+        "set_read_section_index",
+        lambda *args: saved.append(args),
+    )
+    monkeypatch.setattr(epub_dock, "_push_epub_read_anchor", lambda: None)
+    monkeypatch.setattr(epub_dock, "_update_title_and_buttons", lambda: None)
+    monkeypatch.setattr(epub_dock, "tooltip", lambda _message: None)
+
+    epub_dock._mark_epub_read_to_here()
+
+    assert saved == [(epub_dock._ADDON_DIR, "Profile", 7, 3, None)]
+    assert epub_dock._current_epub_read_anchor is None
+
+
+def test_epub_highlight_color_selection_updates_page_before_highlighting(monkeypatch):
+    scripts = []
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: object()))
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+    monkeypatch.setattr(
+        epub_dock,
+        "_run_epub_javascript",
+        lambda _page, script, *args: scripts.append(script),
+    )
+
+    epub_dock._select_epub_highlight_color("purple", create_highlight=True)
+
+    assert epub_dock._current_epub_highlight_color == "purple"
+    assert "incrementoSetEpubHighlightColor" in scripts[0]
+    assert "incrementoAddEpubHighlight" in scripts[0]
+    assert scripts[0].index("incrementoSetEpubHighlightColor") < scripts[0].index(
+        "incrementoAddEpubHighlight"
+    )
+
+
+def test_open_current_epub_page_cards_uses_only_current_section(monkeypatch):
+    browsed = []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 2)
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "Profile")
+    monkeypatch.setattr(
+        epub_dock,
+        "get_epub_card_sources",
+        lambda *_args: [{"note_id": 11}, {"note_id": 12}, {"note_id": 11}],
+    )
+    monkeypatch.setattr(
+        epub_dock,
+        "_browse_note_ids_in_browser",
+        lambda note_ids, **kwargs: browsed.append((note_ids, kwargs)) or True,
+    )
+
+    assert epub_dock._open_current_epub_page_cards_in_browser() is True
+    assert browsed == [([11, 12, 11], {"empty_message": "No cards created from this EPUB page yet."})]
+
+
+def test_epub_page_script_supports_absolute_page_jump_and_all_pdf_highlight_colors(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "One"}, {"text": "Two"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[],
+        bridge_nonce="private-token",
+        highlight_color="aqua",
+    )
+
+    assert '"highlightColor": "aqua"' in script
+    assert "incrementoSetEpubHighlightColor" in script
+    assert "incrementoGoToEpubPage" in script
+    for color in ("yellow", "green", "blue", "pink", "aqua", "orange", "red", "purple"):
+        assert color in script
+        assert f'span.incremento-epub-highlight[data-color="{color}"]' in script
+    assert "if (targetSection === STATE.sectionIndex)" not in script
+
+
+def test_epub_control_customization_hides_only_selected_groups(monkeypatch):
+    class _Widget:
+        def __init__(self):
+            self.visible = None
+
+        def setVisible(self, value):
+            self.visible = bool(value)
+
+    class _Layout:
+        def __init__(self):
+            self.invalidated = False
+
+        def invalidate(self):
+            self.invalidated = True
+
+    groups = {
+        group_id: _Widget()
+        for group_id, _label in epub_dock._EPUB_CONTROL_GROUPS
+    }
+    group_layout = _Layout()
+    dock = types.SimpleNamespace(
+        _control_groups=groups,
+        _control_groups_layout=group_layout,
+    )
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+
+    epub_dock._apply_epub_control_visibility({"annotation": False})
+
+    assert groups["annotation"].visible is False
+    assert all(
+        widget.visible is True
+        for group_id, widget in groups.items()
+        if group_id != "annotation"
+    )
+    assert dock._epub_control_visibility["annotation"] is False
+    assert group_layout.invalidated is True
+
+
+def test_epub_links_toggle_stays_synchronized_in_full_and_compact_controls(monkeypatch):
+    class _Button:
+        def __init__(self):
+            self.checked = False
+            self.text = ""
+            self.tooltip = ""
+            self.description = ""
+
+        def blockSignals(self, _value):
+            return None
+
+        def setChecked(self, value):
+            self.checked = bool(value)
+
+        def setText(self, value):
+            self.text = value
+
+        def setToolTip(self, value):
+            self.tooltip = value
+
+        def setAccessibleDescription(self, value):
+            self.description = value
+
+    full = _Button()
+    compact = _Button()
+    dock = types.SimpleNamespace(
+        _links_btn=full,
+        _compact_links_btn=compact,
+        _view=types.SimpleNamespace(page=lambda: object()),
+    )
+    scripts = []
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+    monkeypatch.setattr(
+        epub_dock,
+        "_run_epub_javascript",
+        lambda page, script, *args: scripts.append(script),
+    )
+
+    epub_dock._toggle_epub_clickable_links(True)
+
+    assert full.checked is True
+    assert compact.checked is True
+    assert full.text == compact.text == "Links On"
+    assert "true" in scripts[0]
+
+
+def test_internal_epub_link_records_exact_source_location_for_jump_back(monkeypatch):
+    scripts = []
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: object()))
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "book.epub")
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 0)
+    monkeypatch.setattr(epub_dock, "_current_epub_scroll_ratio", 0.1)
+    monkeypatch.setattr(epub_dock, "_epub_link_back_history", [])
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"title": "One"}])
+    monkeypatch.setattr(
+        epub_dock,
+        "get_epub_section_path",
+        lambda addon_dir, filename, index: "/safe/book/one.xhtml",
+    )
+    monkeypatch.setattr(
+        epub_dock,
+        "get_epub_extract_dir",
+        lambda filename, profile: "/safe/book",
+    )
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "Profile")
+    monkeypatch.setattr(
+        epub_dock,
+        "_run_epub_javascript",
+        lambda page, script, *args: scripts.append(script),
+    )
+    monkeypatch.setattr(epub_dock, "_sync_epub_link_back_buttons", lambda: None)
+
+    assert epub_dock._open_epub_reader_link(
+        "#destination",
+        source_scroll_ratio=0.625,
+    ) is True
+
+    assert epub_dock._epub_link_back_history == [
+        {
+            "card_id": 7,
+            "filename": "book.epub",
+            "section_index": 0,
+            "scroll_ratio": 0.625,
+        }
+    ]
+    assert "incrementoOpenEpubAnchor" in scripts[0]
+
+
+def test_epub_jump_back_restores_latest_internal_link_source(monkeypatch):
+    calls = []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "book.epub")
+    monkeypatch.setattr(
+        epub_dock,
+        "_epub_link_back_history",
+        [
+            {
+                "card_id": 7,
+                "filename": "book.epub",
+                "section_index": 3,
+                "scroll_ratio": 0.375,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        epub_dock,
+        "show_epub_in_dock",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(epub_dock, "_sync_epub_link_back_buttons", lambda: None)
+
+    assert epub_dock._jump_back_from_epub_link() is True
+
+    assert calls == [
+        (
+            (7, "book.epub"),
+            {
+                "section_index": 3,
+                "scroll_ratio": 0.375,
+                "offer_due_review_prompt": False,
+                "preserve_link_history": True,
+            },
+        )
+    ]
+    assert epub_dock._epub_link_back_history == []
+
+
 def test_due_review_details_escape_card_content():
     rendered = epub_dock._epub_due_review_details_html(
         [
@@ -160,6 +473,7 @@ def test_build_page_script_installs_opt_in_trusted_link_bridge(monkeypatch):
     assert '"clickableLinks": true' in script
     assert '"linkFragment": "chapter-part"' in script
     assert "incremento_epub_open_link:" in script
+    assert "sourceScrollRatio" in script
     assert "incrementoSetEpubClickableLinks" in script
     assert "incrementoOpenEpubAnchor" in script
     assert "if (!event.isTrusted) return" in script
