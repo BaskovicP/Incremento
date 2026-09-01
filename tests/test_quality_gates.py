@@ -49,6 +49,17 @@ def test_dev_requirements_include_the_real_anki_qt_runtime_used_by_the_suite() -
     assert "aqt[qt]" in requirements
 
 
+def test_ci_installs_the_linux_egl_runtime_before_loading_qt() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "verify.yml").read_text(
+        encoding="utf-8"
+    )
+    egl_install = "sudo apt-get install --yes --no-install-recommends libegl1"
+    python_install = "python -m pip install -r requirements-dev.txt"
+
+    assert egl_install in workflow
+    assert workflow.index(egl_install) < workflow.index(python_install)
+
+
 def test_dependabot_does_not_open_routine_version_update_pull_requests() -> None:
     config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
 
