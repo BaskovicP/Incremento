@@ -142,6 +142,27 @@ class TestConfigFromDialogDict:
         assert cfg.use_tags is False
         assert cfg.tag_weights == {}
 
+    def test_subnormal_weights_that_underflow_when_scaled_are_inactive(self):
+        smallest_positive_float = float.fromhex("0x0.0000000000001p-1022")
+        cfg = _config_from_dialog_dict(
+            {
+                "tag_rows": [
+                    {"tag": "unused", "weight": smallest_positive_float}
+                ],
+                "content_type_rows": [
+                    {
+                        "type": "pdf",
+                        "enabled": True,
+                        "weight": smallest_positive_float,
+                    }
+                ],
+            }
+        )
+
+        assert cfg.use_tags is False
+        assert cfg.tag_weights == {}
+        assert cfg.content_type_weights == {}
+
     def test_malformed_values_fall_back_or_are_bounded(self):
         cfg = _config_from_dialog_dict(
             {

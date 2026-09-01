@@ -186,9 +186,9 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     # Each slider value is an absolute % of the session (0–100).
     # Do NOT normalise across tags — the remainder goes to "other cards".
     tag_weights = {
-        str(row.get("tag") or "").strip(): weight / 100.0
+        str(row.get("tag") or "").strip(): weight
         for row in real_rows
-        if (weight := _bounded_number(row.get("weight", 0), 0, 0, 100)) > 0
+        if (weight := _bounded_number(row.get("weight", 0), 0, 0, 100) / 100.0) > 0.0
     }
     include_rest = no_tags_checked
     if other_rows:
@@ -234,12 +234,12 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
         else []
     )
     content_type_weights = {
-        str(r.get("type") or "").strip().lower(): weight / 100.0
+        str(r.get("type") or "").strip().lower(): weight
         for r in content_type_rows
         if _config_bool(r.get("enabled", False), False)
         and str(r.get("type") or "").strip().lower()
         in {"pdf", "youtube", "webpage"}
-        and (weight := _bounded_number(r.get("weight", 0), 0, 0, 100)) > 0
+        and (weight := _bounded_number(r.get("weight", 0), 0, 0, 100) / 100.0) > 0.0
     }
     allow_content_tag_fallback = _config_bool(
         d.get("allow_content_tag_fallback", False), False

@@ -40,6 +40,32 @@ def test_ci_and_release_run_static_quality_gates() -> None:
     assert "mypy" in requirements
 
 
+def test_dev_requirements_include_the_real_anki_qt_runtime_used_by_the_suite() -> None:
+    requirements = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8").lower()
+
+    # The full suite imports Qt/WebEngine directly and launches subprocesses
+    # against real Anki modules, so lightweight in-process test doubles are not
+    # sufficient for a fresh CI environment.
+    assert "aqt[qt]" in requirements
+
+
+def test_dependabot_does_not_open_routine_version_update_pull_requests() -> None:
+    config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+
+    sections: dict[str, list[str]] = {}
+    current_ecosystem: str | None = None
+    for raw_line in config.splitlines():
+        line = raw_line.strip()
+        if line.startswith("- package-ecosystem:"):
+            current_ecosystem = line.partition(":")[2].strip()
+            sections[current_ecosystem] = []
+        elif current_ecosystem is not None:
+            sections[current_ecosystem].append(line)
+
+    for ecosystem in ("npm", "github-actions"):
+        assert "open-pull-requests-limit: 0" in sections[ecosystem]
+
+
 def test_javascript_lint_gate_covers_frontend_and_extension_source() -> None:
     package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
 
