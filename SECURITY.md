@@ -12,6 +12,7 @@ Do not include Anki databases, `user_files`, card or note content, profile/deck/
 - Incremento runtime data is isolated below `user_files/<profile>/` and is never included in release packages.
 - Imported EPUB/PDF/web content is untrusted. Readers block remote/local cross-boundary requests and bridge only bounded, authenticated messages.
 - The companion bridge listens on `127.0.0.1`, accepts one exact Chrome-extension origin per run, rotates its token on restart, and bounds request size and concurrency. This protects against ordinary webpages; it is not a defense against malicious local software or a separately installed extension with permission to forge local requests.
+- The companion extension uses temporary `activeTab` access for user-triggered actions on ordinary HTTP(S) pages; required hosts are limited to supported media providers and loopback. Persistent HTTP(S) access is a separate, explained popup opt-in and its dynamic content script is removed when permission is revoked. Browser-side PDF fallback is HTTP(S)-only, streamed under a 48 MiB cap, validates redirects and file signatures, and capture payloads have local text/image/count limits before the bridge validates them again.
 - Server-side URL fetches reject credentials, private/loopback/link-local/special addresses, unsafe redirects, and oversized responses.
 
 ## Automated repair policy

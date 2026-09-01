@@ -2054,7 +2054,8 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
         try:
             from note_metadata import visible_field_names  # type: ignore
         except Exception:
-            visible_field_names = lambda names: list(names)  # type: ignore
+            def visible_field_names(names):  # type: ignore
+                return list(names)
     visible_fields = visible_field_names(field_names)
     min_fields = max(1, int(min_visible_fields or 1))
     if len(visible_fields) < min_fields:

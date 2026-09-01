@@ -22,6 +22,9 @@ except ImportError:
     from content_safety import normalize_external_http_url  # type: ignore
 
 
+_SOCKET_DEFAULT_TIMEOUT = getattr(socket, "_GLOBAL_DEFAULT_TIMEOUT")
+
+
 class UnsafeNetworkTargetError(ValueError):
     """The requested URL resolves outside the public Internet."""
 
@@ -48,7 +51,7 @@ def _public_socket_addresses(
 
 def _create_public_connection(
     address,
-    timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+    timeout=_SOCKET_DEFAULT_TIMEOUT,
     source_address=None,
     *,
     resolver: Callable = socket.getaddrinfo,
@@ -62,7 +65,7 @@ def _create_public_connection(
         sock = None
         try:
             sock = socket_factory(family, socktype, proto)
-            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+            if timeout is not _SOCKET_DEFAULT_TIMEOUT:
                 sock.settimeout(timeout)
             if source_address:
                 sock.bind(source_address)
@@ -101,8 +104,8 @@ class _PublicHTTPSHandler(HTTPSHandler):
         return self.do_open(
             _PublicHTTPSConnection,
             req,
-            context=self._context,
-            check_hostname=self._check_hostname,
+            context=getattr(self, "_context", None),
+            check_hostname=getattr(self, "_check_hostname", None),
         )
 
 

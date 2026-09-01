@@ -12,7 +12,7 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 - `tests/`: Python unit, integration, real-Anki subprocess, packaging, repair-harness, and selected UI regression coverage.
 - `scripts/`: release packaging, guarded repair/eval/smoke tooling, and extension icon generation.
 - `.github/workflows/verify.yml`: supported-Python CI, deterministic repair evals, dependency audit, frontend/extension tests, and generated-asset drift checks.
-- `pyproject.toml`, `pytest.ini`: Python/tooling metadata and the default pytest coverage policy; focused commands may override `addopts`, but committed CI expectations remain authoritative.
+- `pyproject.toml`, `pytest.ini`, `requirements-dev.txt`: incremental Ruff/mypy policy, pytest coverage defaults, and the reproducible development dependency set; focused commands may override `addopts`, but committed CI expectations remain authoritative.
 - `.gitignore`: local/runtime/build exclusions. A path being ignored does not make it safe to package or inspect; packaging has its own explicit allowlist.
 - `config.json`: shipped defaults only; runtime normalization and persistence belong to `backend/config_service.py`.
 - `README.md`, `MANUAL.md`, `ARCHITECTURE.md`, `SECURITY.md`, `EXPORTING.md`: developer overview, user behavior, system boundaries, security policy, and backup/restore contract.
@@ -82,7 +82,7 @@ Important newer hotspots:
 
 ## Known Hardening Work
 
-- The companion manifest has broad host/API permissions, browser-side PDF fetch currently buffers without a local limit and trusts a `.pdf` suffix too much, and full-page/screenshot capture can allocate data before the backend body limit rejects it. See the extension guide; do not describe these as already fixed.
+- The companion now keeps arbitrary-page access user-gesture scoped through `activeTab`/`scripting`, with an explicit popup opt-in that grants optional HTTP(S) access and registers the persistent content loader for cross-navigation link saving/Web tracking. Required hosts stay provider/loopback-only. Browser-fetched PDFs stream under a 48 MiB cap with signature/final-URL checks, and HTML/selection/snapshot budgets apply before transport. Preserve these controls and regressions; backend validation remains the final authority.
 - Browser **Incremento Database Entries** inspection is read-only but currently performs a synchronous, uncapped selected-card/table scan. Keep it an explicit maintenance action until it gains budgets, background execution, cancellation, and stale-profile handling.
 - A few older backend adapters still access `aqt.mw` directly. Treat them as staged compatibility seams; new work should pass profile/collection explicitly and keep Qt interaction in root/frontend adapters.
 
@@ -206,10 +206,14 @@ Non-Python and release checks:
 
 ```bash
 .venv/bin/python -m compileall -q __init__.py backend frontend scripts
+.venv/bin/ruff check .
+.venv/bin/mypy
 npm --prefix frontend test
+npm --prefix frontend run lint
 npm --prefix chrome_extensions/incremento_companion test
 npm --prefix frontend run build
 npm --prefix frontend run build:extension
+.venv/bin/python scripts/mutation_smoke.py
 .venv/bin/python scripts/llm_repair_eval.py tests/repair_cases --deterministic-only --json
 .venv/bin/python scripts/package_addon.py --release --clean-staging
 ```

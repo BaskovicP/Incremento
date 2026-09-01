@@ -1,3 +1,8 @@
+import {
+  MAX_BROWSER_CAPTURE_HTML_CHARS,
+  MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+} from "./browserCaptureModel.js";
+
 export async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs && tabs[0] ? tabs[0] : null;
@@ -61,39 +66,64 @@ export async function captureSnapshot(tabId) {
   } catch (_err) {
     // Ignore injection failures here; the direct page read below may still succeed.
   }
+  let fromContentScript = null;
   try {
-    const fromContentScript = await sendMessageToMainFrameWithRetry(
+    fromContentScript = await sendMessageToMainFrameWithRetry(
       tabId,
       { type: "GET_PAGE_CONTEXT" },
       4
-    ).catch(() => null);
-    if (fromContentScript) {
-      return fromContentScript;
+    );
+  } catch (error) {
+    if (!isReceivingEndError(error)) {
+      throw error;
     }
-  } catch (_err) {
-    // fall through to direct executeScript snapshot
   }
+  if (fromContentScript?.error) {
+    throw new Error(String(fromContentScript.error));
+  }
+  if (fromContentScript) {
+    return fromContentScript;
+  }
+  let results;
   try {
-    const results = await chrome.scripting.executeScript({
+    results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => {
+      func: (maxHtmlChars, maxSelectedTextChars) => {
         const html = document.documentElement?.outerHTML || "";
         const selectionText = (
           (window.getSelection?.().toString() || "").trim()
           || String(globalThis.__incrementoLastSelectedText || "").trim()
         );
+        if (html.length > maxHtmlChars) {
+          return {
+            ok: false,
+            error: `Page HTML is too large. Maximum is ${maxHtmlChars} characters.`,
+          };
+        }
+        if (selectionText.length > maxSelectedTextChars) {
+          return {
+            ok: false,
+            error: `Selected text is too large. Maximum is ${maxSelectedTextChars} characters.`,
+          };
+        }
         return {
+          ok: true,
           html,
           selectionText,
           title: document.title || "",
           url: window.location.href || "",
         };
       },
+      args: [MAX_BROWSER_CAPTURE_HTML_CHARS, MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS],
     });
-    return results && results[0] ? results[0].result : null;
   } catch (_err) {
     return null;
   }
+  const result = results && results[0] ? results[0].result : null;
+  if (result?.error) {
+    throw new Error(String(result.error));
+  }
+  return result;
 }
 
 export function copyLatestVideoTime() {

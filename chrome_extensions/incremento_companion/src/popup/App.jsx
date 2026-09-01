@@ -42,6 +42,11 @@ import {
   priorityToSliderValue,
   sliderValueToPriority,
 } from "../bookmarks/bookmarkModel.js";
+import {
+  hasPersistentSiteAccess,
+  removePersistentSiteAccess,
+  requestPersistentSiteAccess,
+} from "../shared/siteAccess.js";
 
 function initialStatus() {
   return { text: "", kind: "" };
@@ -110,6 +115,7 @@ export function PopupApp() {
   const [mediaContext, setMediaContext] = useState(null);
   const [manualTime, setManualTime] = useState("");
   const [linkSaveSettings, setLinkSaveSettings] = useState(DEFAULT_LINK_SAVE_SETTINGS);
+  const [persistentSiteAccess, setPersistentSiteAccess] = useState(false);
   const [deckNames, setDeckNames] = useState(["Topics"]);
   const [deckName, setDeckName] = useState("Topics");
   const [deckLoadError, setDeckLoadError] = useState("");
@@ -145,6 +151,17 @@ export function PopupApp() {
           return;
         }
         setActiveTab(tab);
+
+        try {
+          const enabled = await hasPersistentSiteAccess();
+          if (!cancelled) {
+            setPersistentSiteAccess(enabled);
+          }
+        } catch (_error) {
+          if (!cancelled) {
+            setPersistentSiteAccess(false);
+          }
+        }
 
         let nextSnapshot = null;
         if (tab?.id && isHttpUrl(getTabUrl(tab))) {
@@ -693,6 +710,47 @@ export function PopupApp() {
     }
   }
 
+  async function handlePersistentSiteAccess() {
+    setBusy(true);
+    setStatus({
+      text: persistentSiteAccess
+        ? "Disabling automatic site access..."
+        : "Requesting automatic site access...",
+      kind: "",
+    });
+    try {
+      if (persistentSiteAccess) {
+        await removePersistentSiteAccess();
+        const stillEnabled = await hasPersistentSiteAccess();
+        setPersistentSiteAccess(stillEnabled);
+        setStatus({
+          text: stillEnabled
+            ? "Chrome/Brave kept site access enabled. Change it in extension settings."
+            : "Automatic site access disabled. User-triggered actions still work on the current tab.",
+          kind: stillEnabled ? "error" : "success",
+        });
+        return;
+      }
+
+      const granted = await requestPersistentSiteAccess();
+      setPersistentSiteAccess(granted);
+      setStatus({
+        text: granted
+          ? "Automatic site access enabled for link saving and Web-card tracking across navigation."
+          : "Site access was not granted. User-triggered actions still work on the current tab.",
+        kind: granted ? "success" : "error",
+      });
+    } catch (error) {
+      setPersistentSiteAccess(await hasPersistentSiteAccess().catch(() => false));
+      setStatus({
+        text: error?.message || "Could not change automatic site access.",
+        kind: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const selectionShortcut = commandShortcuts.find((command) => command.name === "browser-capture-selection")?.shortcut || "";
   const snapshotShortcut = commandShortcuts.find((command) => command.name === "browser-capture-snapshot")?.shortcut || "";
 
@@ -832,6 +890,25 @@ export function PopupApp() {
         <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
           {status.text}
         </p>
+      </section>
+
+      <section className="panel panel-secondary">
+        <div className="eyebrow">Automatic site access</div>
+        <p className="note">
+          On-demand actions use temporary access to the current tab. Enable persistent HTTP(S)
+          access only if modifier-click saving and Web-card media tracking should continue after
+          navigation.
+        </p>
+        <button
+          className="ghost-btn"
+          type="button"
+          disabled={busy}
+          onClick={() => void handlePersistentSiteAccess()}
+        >
+          {persistentSiteAccess
+            ? "Disable automatic site access"
+            : "Enable automatic site access..."}
+        </button>
       </section>
 
       <section className="panel panel-secondary">

@@ -95,11 +95,29 @@ Extension details and install steps:
 
 ## Development
 
+Install the version-ranged development toolchain once:
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt
+npm --prefix frontend ci
+```
+
 Python tests:
 
 ```bash
 .venv/bin/python -m pytest tests/ -v
 ```
+
+Static and advanced quality gates:
+
+```bash
+.venv/bin/ruff check .
+.venv/bin/mypy
+npm --prefix frontend run lint
+.venv/bin/python scripts/mutation_smoke.py
+```
+
+The Python suite includes Hypothesis property and state-machine coverage. The mutation smoke runs four bounded mutants against a temporary config module and fails if any plausible broken implementation survives.
 
 Frontend build:
 

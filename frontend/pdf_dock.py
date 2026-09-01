@@ -2660,7 +2660,8 @@ class _PdfShortcutFilter(QObject):
 
 def _handle_pdf_snapshot(msg: str) -> None:
     """Save snapshot image to media and fill a chosen field in the Add Card dock."""
-    import base64 as _b64, tempfile as _tmp
+    import base64 as _b64
+    import tempfile as _tmp
     from PyQt6.QtGui import QImage
 
     try:

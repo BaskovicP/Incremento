@@ -19,11 +19,11 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - `src/shared/bridgeAuth.js`: authenticated port `8766` fetch boundary; all Incremento bridge calls pass through it.
 - `src/shared/bridge.js`: typed Incremento endpoints and payload transport.
 - `src/shared/chromeApi.js`: promise wrappers, tab capture, injection, storage, and Chrome capability fallbacks.
-- `src/shared/browserCaptureModel.js`, `linkSaveModel.js`, `pdfFetch.js`, `url.js`, and `writingTitle.js`: deterministic input normalization used by popup/background/content flows and covered by Node tests.
-- `content-loader.js`: hand-maintained bootstrap that dynamically imports `dist/content.js`; the manifest keeps it in every HTTP(S) frame.
+- `src/shared/browserCaptureModel.js`, `linkSaveModel.js`, `pdfFetch.js`, `siteAccess.js`, `url.js`, and `writingTitle.js`: deterministic input normalization and capability boundaries used by popup/background/content flows and covered by Node tests.
+- `content-loader.js`: hand-maintained bootstrap that dynamically imports `dist/content.js`; supported YouTube/Vimeo frames receive it automatically, while ordinary HTTP(S) pages receive it only after a user gesture through `activeTab`/`scripting`.
 - `popup.html`, `popup.css`, `bookmarks.html`, `bookmarks.css`, `offscreen.html`, `manifest.json`, `icons/`, `package.json`, and `README.md`: hand-maintained static/configuration files. The package file intentionally uses Node's built-in test runner and does not own the Vite dependency tree.
 - `dist/`: committed generated runtime output. `frontend/vite.extension.config.js` maps the five source entry points to `background.js`, `content.js`, `offscreen.js`, `popup.js`, and `bookmarks.js`, plus shared chunks under `dist/assets/`.
-- Node coverage is split by pure boundary: `tests/bookmarkModel.test.js`, `tests/bridge.test.js`, `tests/browserCaptureModel.test.js`, `tests/linkSaveModel.test.js`, `tests/pdfFetch.test.js`, `tests/url.test.js`, and `tests/writingTitle.test.js`.
+- Node coverage is split by pure boundary: `tests/bookmarkModel.test.js`, `tests/bridge.test.js`, `tests/browserCaptureModel.test.js`, `tests/chromeApi.test.js`, `tests/linkSaveModel.test.js`, `tests/manifestPermissions.test.js`, `tests/pdfFetch.test.js`, `tests/siteAccess.test.js`, `tests/url.test.js`, and `tests/writingTitle.test.js`.
 
 ## Trust Boundaries and Bridge Protocols
 
@@ -32,15 +32,16 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - The addon binds one exact `chrome-extension://<id>` origin and enforces request-size/concurrency limits. Preserve the extension `Origin`; do not add proxy/server relays or a direct unauthenticated `fetch()` to port `8766`.
 - Port `8765` is the optional AnkiConnect API and is intentionally separate from the Incremento bridge. Its direct JSON request in the background worker must not be copied to Incremento endpoints or treated as bridge authentication.
 - The current-tab URL, title, selection, HTML snapshot, bookmark row, provider metadata, media progress, filenames, and fetched bytes are all untrusted. Shared models should normalize early, but backend validation remains mandatory.
-- `src/shared/pdfFetch.js` is the browser-side fallback for document URLs that Python cannot retrieve. Preserve response-status, captcha, content-type/signature, and filename handling, while treating backend validation as final authority.
-- Snapshot/capture code must not execute captured page HTML or format provenance into content fields. Send raw data through the bounded backend endpoint for inert snapshot handling; add the local pre-transport budgets described below rather than relying only on server rejection.
+- `src/shared/pdfFetch.js` is the browser-side fallback for document URLs that Python cannot retrieve. Preserve HTTP(S)-only source/final URLs without credentials, status/captcha checks, streamed `Content-Length` and actual-byte enforcement under the 48 MiB ceiling, unconditional PDF-signature validation, bounded filename sanitization, and backend validation as final authority.
+- Snapshot/capture code must not execute captured page HTML or format provenance into content fields. Send raw data through the bounded backend endpoint for inert snapshot handling, and preserve local HTML/selection/screenshot/per-image/count/aggregate budgets before transport.
 
-## Known Hardening Gaps
+## Enforced Hardening Invariants
 
-- `manifest.json` currently carries broad and partly redundant host access (`<all_urls>` plus HTTP(S) patterns) alongside powerful `tabs`, `scripting`, `bookmarks`, clipboard, and navigation capabilities. Treat permission reduction as a release/security task with popup, bookmark, PDF, iframe playback, context-menu, and provider coverage; never add another permission without documenting the exact API call and user-facing need.
-- `src/shared/pdfFetch.js` currently materializes `response.arrayBuffer()` without a local byte cap and can accept non-PDF bytes when a URL merely ends in `.pdf` (apart from its specific captcha check). Do not expand this path as though it were bounded. The intended fix needs scheme validation, redirect/final-URL policy, `Content-Length` plus streamed byte limits, unconditional PDF-signature enforcement, filename tests, and an oversized-response regression before behavior changes.
-- Full-page capture fallbacks currently materialize `document.documentElement.outerHTML`, and screenshot arrays can grow before the bridge rejects an oversized request. Keep backend request limits intact, but also add explicit extension-side text/image/count budgets when changing capture so a hostile page cannot exhaust extension memory first.
-- These are documented limitations, not permission to weaken backend checks or silently drop user data. Surface a clear local error when a future cap is reached and cover it in the relevant shared-model/bridge tests.
+- Required host access is limited to the two loopback ports and supported YouTube/Vimeo providers. Ordinary-page actions rely on temporary `activeTab` plus `scripting`; broad HTTP(S) patterns stay optional. The popup's explicit opt-in requests those patterns during its button gesture, and `siteAccess.js` keeps the dynamic persistent content script registered only while the grant exists. The redundant `tabs` and `<all_urls>` permissions must not return without an explicit security review and manifest regression update.
+- Auto-injection stays provider-only. The web-accessible content bundle may be loaded in HTTP(S) pages because the gesture-scoped loader imports it after injection; it must not be expanded to local files or protected browser schemes.
+- Browser PDF reads use a 48 MiB maximum and bounded streaming. Exact-limit payloads remain valid, overflow cancels the stream, non-PDF bytes fail regardless of suffix/content type, and unsafe source/final URLs or server filenames fail closed or are sanitized.
+- Page context is capped at 2,000,000 HTML characters and 200,000 selected-text characters. Capture allows at most 12 PNG snapshots, 8,000,000 decoded bytes each, 32,000,000 decoded bytes combined, and a 32,000,000-byte visible-tab screenshot before cropping.
+- Reaching any local cap must produce a clear error and must not silently submit a truncated capture. Backend request and content checks remain mandatory defense in depth.
 
 ## Storage and Lifecycle
 
@@ -48,6 +49,7 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - Use `chrome.storage.local` only for user preferences/settings and deliberately persistent convenience state such as the last copied playback time. Do not persist bridge tokens, full snapshots, private browsing contents, or unbounded history.
 - Manifest V3 service workers can stop between events. Reconstruct state from the correct storage scope, make listener registration idempotent, and do not rely on process-global timers or variables as durable state.
 - Content/background reinjection must preserve `allFrames: true` because embedded players can own the tracked media. Injection may occur repeatedly; page listeners, markers, and overlays must deduplicate cleanly.
+- Persistent automatic site access is optional and user-controlled. Permission add/remove events, startup/update registration repair, provider exclusions, open-tab injection, popup state, and documentation must stay aligned. On-demand popup/command/context-menu actions must continue to work through `activeTab` when persistent access is off.
 - Original-page resume uses an Incremento URL fragment marker rather than a server-visible query parameter. Sanitize temporary tracking/resume markers out of the visible URL after the content script consumes them.
 - Tab IDs and frame IDs are ephemeral. Revalidate them before executing scripts or associating a progress update, and remove stale session mappings when tabs/navigation invalidate them.
 
@@ -81,6 +83,7 @@ Run source tests first, then rebuild and syntax-check every entry bundle:
 
 ```bash
 npm --prefix chrome_extensions/incremento_companion test
+npm --prefix frontend run lint
 npm --prefix frontend run build:extension
 node --check chrome_extensions/incremento_companion/dist/background.js
 node --check chrome_extensions/incremento_companion/dist/content.js

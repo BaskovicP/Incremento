@@ -7,7 +7,6 @@
     "storage",
     "offscreen",
     "clipboardWrite",
-    "tabs",
     "webNavigation",
     "scripting",
     "activeTab",
@@ -15,14 +14,15 @@
     "contextMenus"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "http://*/*",
-    "https://*/*",
     "*://*.youtube.com/*",
-    "*://youtu.be/*",
+    "*://*.youtu.be/*",
     "*://*.vimeo.com/*",
     "http://127.0.0.1:8765/*",
     "http://127.0.0.1:8766/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -73,8 +73,9 @@
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "*://*.youtube.com/*",
+        "*://*.youtu.be/*",
+        "*://*.vimeo.com/*"
       ],
       "all_frames": true,
       "js": [

@@ -6,3 +6,43 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [
+    ".venv",
+    "dist",
+    "frontend/node_modules",
+    "chrome_extensions/incremento_companion/dist",
+    "user_files",
+    "web/dist",
+    "web/pdfjs",
+]
+
+[tool.ruff.lint]
+# Start with correctness rules that have a very low false-positive rate. Expand
+# this ratchet only after the existing code has been cleaned deliberately.
+select = ["E4", "E7", "E9", "F63", "F7", "F82"]
+
+[tool.ruff.lint.per-file-ignores]
+# Many tests must install lightweight Qt/Anki stubs before importing the module
+# under test. Tiny local lambdas are also useful identity-bearing callbacks.
+"tests/**" = ["E402", "E731"]
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "backend/config_service.py",
+    "backend/content_safety.py",
+    "backend/network_safety.py",
+    "backend/scheduler_config.py",
+    "backend/search_indexer.py",
+    "frontend/quick_tag_shortcuts.py",
+    "frontend/tag_colors.py",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
+check_untyped_defs = true
+warn_unused_configs = true
+show_error_codes = true

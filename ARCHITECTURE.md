@@ -19,7 +19,7 @@ Incremento adds four stores around that canonical collection:
 | `user_files/<Profile>/...` content folders | Per Anki profile | Managed PDFs, EPUBs/extracted EPUBs, videos, writing files, browser profiles, and diagnostics |
 | Anki add-on config | Add-on installation | Validated settings and scheduler presets; older keys are migrated by `backend/config_service.py` |
 
-The companion extension also keeps browser-only preferences and linked-tab state in extension storage. It does not replace an Incremento or Anki store.
+The companion extension also keeps browser-only preferences and linked-tab state in extension storage. It does not replace an Incremento or Anki store. Ordinary-page access is gesture-scoped with `activeTab`; persistent required hosts are provider/loopback only. Users may separately opt into optional HTTP(S) access for cross-navigation link saving and Web tracking; the service worker dynamically registers or removes the content loader with that permission. Its bounded PDF stream and capture budgets reduce browser-process exposure before the authenticated bridge performs independent validation.
 
 ## Dependency direction
 

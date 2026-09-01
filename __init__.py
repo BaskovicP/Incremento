@@ -4267,7 +4267,9 @@ def addVideoFunction() -> None:
                 mw.progress.update(label=label)
 
         def _progress_cb(percent: int, label: str) -> None:
-            mw.taskman.run_on_main(lambda p=percent, l=label: _progress_main(p, l))
+            mw.taskman.run_on_main(
+                lambda p=percent, label_text=label: _progress_main(p, label_text)
+            )
 
         def _task():
             return import_local_video_file(
@@ -4326,7 +4328,9 @@ def addVideoFunction() -> None:
             mw.progress.update(label=label)
 
     def _progress_cb(percent: int, label: str) -> None:
-        mw.taskman.run_on_main(lambda p=percent, l=label: _progress_main(p, l))
+        mw.taskman.run_on_main(
+            lambda p=percent, label_text=label: _progress_main(p, label_text)
+        )
 
     def _task():
         return download_and_compress_video(

@@ -9,6 +9,7 @@ Use this file for work in `scripts/`. These utilities are developer/release tool
 - `llm_repair_loop.py`: compatibility/CLI adapter over `repair_pipeline.py`; keep shared constants and policy in the pipeline instead of forking behavior here.
 - `llm_repair_eval.py`: validates the synthetic eval corpus, runs deterministic guard cases in CI, and optionally scores authorized end-to-end repair artifacts.
 - `disposable_anki_smoke.py`: copies shipped addon code into an empty external Anki base, launches only that copy under a restricted environment/sandbox, and records bounded startup evidence.
+- `mutation_smoke.py`: deterministic targeted mutation gate that copies config normalization and its regressions into a temporary directory and fails if a high-risk mutant survives; it never edits the checkout.
 - `generate_icons.py`: deterministic Pillow-based source for the companion extension PNG icon set.
 
 ## Release Packaging
@@ -19,7 +20,7 @@ Use this file for work in `scripts/`. These utilities are developer/release tool
 - The package-root `manifest.json` is generated in staging and is unrelated to the Chrome extension's `manifest.json`. Do not add a development root manifest to source just to package the addon.
 - `--include-meta` is an explicit local-only escape hatch. Friend/public release artifacts should not inherit local addon state.
 - Archive validation rejects missing required assets, corrupt ZIP entries, traversal/absolute names, runtime-data leaks, caches, and developer-only top-level paths. Staging is an explicit trusted-source allowlist; do not add symlinked inputs or broad copy roots without first adding symlink rejection and package tests. Never weaken validation merely to include an unclassified file.
-- `--release` runs frontend and extension builds, Python compilation/tests, extension tests, staging, and archive validation. Use:
+- `--release` runs frontend and extension builds, Ruff/mypy/ESLint, the targeted mutation smoke, Python compilation/tests, extension tests, staging, and archive validation. Use:
 
 ```bash
 .venv/bin/python scripts/package_addon.py --release --clean-staging

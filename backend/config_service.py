@@ -29,7 +29,10 @@ _BOOLEAN_DEFAULTS = {
     "topic_postpone_enabled": False,
 }
 
-_NUMBER_LIMITS = {
+_NUMBER_LIMITS: dict[
+    str,
+    tuple[int | float, int | float, int | float, type[int] | type[float]],
+] = {
     "item_skip_minutes": (30, 1, 525_600, int),
     "topic_more_adjustment_percent": (10.0, 0.0, 100.0, float),
     "topic_less_adjustment_percent": (10.0, 0.0, 100.0, float),
@@ -64,12 +67,12 @@ def _number(value: Any, default, minimum, maximum, cast):
 
 
 def _normalize_dialog(raw: Any) -> dict:
-    dialog = copy.deepcopy(raw) if isinstance(raw, Mapping) else {}
+    dialog: dict[str, Any] = copy.deepcopy(dict(raw)) if isinstance(raw, Mapping) else {}
     if "session_card_count" in dialog:
         dialog["session_card_count"] = _number(
             dialog.get("session_card_count"), 50, 1, 9999, int
         )
-    for key, default in (
+    for key, boolean_default in (
         ("auto_refill_session", False),
         ("include_new", True),
         ("include_learning", True),
@@ -79,7 +82,7 @@ def _normalize_dialog(raw: Any) -> dict:
         ("use_live_preview", False),
     ):
         if key in dialog:
-            dialog[key] = _bool(dialog.get(key), default)
+            dialog[key] = _bool(dialog.get(key), boolean_default)
     if "day_end_time" in dialog:
         day_end = str(dialog.get("day_end_time") or "04:00").strip()
         dialog["day_end_time"] = day_end if _DAY_END_RE.fullmatch(day_end) else "04:00"
@@ -94,13 +97,13 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config = copy.deepcopy(dict(raw or {}))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
 
-    for key, default in _BOOLEAN_DEFAULTS.items():
+    for key, boolean_default in _BOOLEAN_DEFAULTS.items():
         if key in config:
-            config[key] = _bool(config.get(key), default)
-    for key, (default, minimum, maximum, cast) in _NUMBER_LIMITS.items():
+            config[key] = _bool(config.get(key), boolean_default)
+    for key, (number_default, minimum, maximum, cast) in _NUMBER_LIMITS.items():
         if key in config:
             config[key] = _number(
-                config.get(key), default, minimum, maximum, cast
+                config.get(key), number_default, minimum, maximum, cast
             )
 
     config["dialog"] = _normalize_dialog(config.get("dialog"))

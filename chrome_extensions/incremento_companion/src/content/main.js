@@ -7,12 +7,17 @@ import {
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
 import {
+  MAX_BROWSER_CAPTURE_IMAGE_BYTES,
+  MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
+  MAX_BROWSER_CAPTURE_SNAPSHOTS,
   normalizeBrowserCaptureSelectedText,
+  validateBrowserCaptureContext,
   validateBrowserCapturePayload,
+  validateBrowserCaptureScreenshotDataUrl,
 } from "../shared/browserCaptureModel.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v6";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v7";
   const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
@@ -449,12 +454,20 @@ import {
         return true;
       }
       if (msg.type === "GET_PAGE_CONTEXT") {
-        sendResponse?.({
-          ok: true,
+        const context = {
           html: document.documentElement?.outerHTML || "",
           selectionText: getTrackedSelectionText(),
           title: document.title || "",
           url: window.location.href || "",
+        };
+        const validation = validateBrowserCaptureContext(context);
+        if (!validation.ok) {
+          sendResponse?.(validation);
+          return false;
+        }
+        sendResponse?.({
+          ok: true,
+          ...context,
         });
         return false;
       }
@@ -1363,13 +1376,28 @@ import {
   }
 
   async function captureSnapshotRegion(region, existingSnapshots = []) {
+    if (existingSnapshots.length >= MAX_BROWSER_CAPTURE_SNAPSHOTS) {
+      throw new Error(`Too many snapshots. Maximum is ${MAX_BROWSER_CAPTURE_SNAPSHOTS}.`);
+    }
     const ui = ensureBrowserCaptureUiRoot();
     ui.shell.style.display = "none";
     try {
       await waitForNextPaint(2);
       const dataUrl = await captureVisibleTabPng();
+      const screenshotValidation = validateBrowserCaptureScreenshotDataUrl(dataUrl, {
+        maxBytes: MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
+      });
+      if (!screenshotValidation.ok) {
+        throw new Error(screenshotValidation.error);
+      }
       const normalizedRegion = normalizeSelectionRect(region);
       const croppedDataUrl = await cropScreenshotDataUrl(dataUrl, normalizedRegion);
+      const croppedValidation = validateBrowserCaptureScreenshotDataUrl(croppedDataUrl, {
+        maxBytes: MAX_BROWSER_CAPTURE_IMAGE_BYTES,
+      });
+      if (!croppedValidation.ok) {
+        throw new Error(croppedValidation.error);
+      }
       return {
         id: `${Date.now()}-${existingSnapshots.length}-${Math.random().toString(16).slice(2, 8)}`,
         filename: `browser-capture-${existingSnapshots.length + 1}.png`,
@@ -1519,6 +1547,10 @@ import {
     };
 
     const beginRect = (x, y) => {
+      if (snapshots.length >= MAX_BROWSER_CAPTURE_SNAPSHOTS) {
+        showToast(`Too many snapshots. Maximum is ${MAX_BROWSER_CAPTURE_SNAPSHOTS}.`);
+        return;
+      }
       activeRegion = { x, y, width: 0, height: 0 };
       activeRect = document.createElement("div");
       activeRect.className = "selection-rect";

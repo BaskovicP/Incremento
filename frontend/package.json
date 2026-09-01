@@ -2,9 +2,11 @@
   "name": "incremento-pdf-viewer",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
+    "lint": "eslint src tests && cd ../chrome_extensions/incremento_companion && ../../frontend/node_modules/.bin/eslint src tests",
     "test": "node --test tests/*.test.mjs",
     "build:extension": "vite build --config vite.extension.config.js",
     "dev:extension": "vite build --watch --config vite.extension.config.js",
@@ -16,6 +18,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.9.1",
     "vite": "^6.0.7"
   }
 }

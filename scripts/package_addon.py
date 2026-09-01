@@ -212,6 +212,9 @@ def main() -> int:
 
     if args.run_tests or args.release:
         run_compile_check(repo_root)
+        if args.release:
+            run_static_checks(repo_root)
+            run_mutation_smoke(repo_root)
         run_tests(repo_root)
         tests_run = True
 
@@ -310,6 +313,36 @@ def run_compile_check(repo_root: Path) -> None:
         [executable, "-m", "compileall", "-q", "__init__.py", "backend", "frontend", "scripts"],
         cwd=repo_root,
         label="Python compile check",
+    )
+
+
+def run_static_checks(repo_root: Path) -> None:
+    python = repo_root / ".venv" / "bin" / "python"
+    executable = str(python) if python.exists() else sys.executable
+    run_command(
+        [executable, "-m", "ruff", "check", "."],
+        cwd=repo_root,
+        label="Python Ruff checks",
+    )
+    run_command(
+        [executable, "-m", "mypy"],
+        cwd=repo_root,
+        label="Python type checks",
+    )
+    run_command(
+        ["npm", "run", "lint"],
+        cwd=repo_root / "frontend",
+        label="JavaScript lint checks",
+    )
+
+
+def run_mutation_smoke(repo_root: Path) -> None:
+    python = repo_root / ".venv" / "bin" / "python"
+    executable = str(python) if python.exists() else sys.executable
+    run_command(
+        [executable, "scripts/mutation_smoke.py"],
+        cwd=repo_root,
+        label="targeted mutation smoke",
     )
 
 

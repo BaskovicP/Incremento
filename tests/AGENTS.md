@@ -83,12 +83,14 @@ editing implementation code so the test can drive the change.
 ## Test Layers and File Map
 
 - Pure/unit tests cover normalizers and deterministic models: cards/decks/config/content/network safety, paths, scheduler/config/preview math, priority/tag helpers, bookmark/link models, and frontend `.mjs` link/history modules.
+- `test_config_properties.py` uses Hypothesis to enforce config idempotency, forward-key preservation, non-mutation, and numeric bounds across generated JSON-like values. `test_scheduler_state_machine.py` exercises long dialog-transition sequences and scheduler invariants. Keep examples bounded and deterministic enough for normal CI.
 - SQLite/filesystem integration tests cover `test_db*.py`, operation journal/reconciliation/migration, statistics, highlights/bookmarks, content managers, writing/local files, export, diagnostics, and search indexing/repository. Use temporary profile roots and assert rollback plus containment.
 - Mocked Anki/Qt adapter tests cover dialogs, docks, reviewer/editor hooks, session orchestration, browser tools, and collection-operation dispatch without needing a live application.
 - `test_cards_anki_integration.py`, `test_session_anki_integration.py`, and `test_topic_scheduler_anki_integration.py` launch clean subprocesses to exercise real Anki collection/scheduler behavior that the global mocks cannot prove.
 - `test_browser_bridge.py` covers the local protocol/server boundary; extension-side protocol and model tests live under `chrome_extensions/incremento_companion/tests/` and run with Node.
 - `frontend/tests/*.test.mjs` cover pure PDF viewer anchor/link/back-history behavior; a React source change also requires the Vite build because the shipped bundle is committed.
 - `test_llm_repair_loop.py`, `test_llm_repair_pipeline.py`, and `repair_cases/` verify repair-harness safety. `test_package_addon.py` verifies release allowlists, manifest/archive shape, and user-data exclusions.
+- `test_quality_gates.py` keeps Ruff, mypy, ESLint, Hypothesis, and targeted mutation checks wired into CI/releases. `scripts/mutation_smoke.py` mutates only a temporary copy of `backend/config_service.py`; every listed mutant must be syntactically valid and killed by the copied config regression suite.
 - `visual_test.py` is a manual live-Anki diagnostic helper, not a normal pytest or CI test. It can restart/kill Anki with `--restart`, requires AnkiConnect/CDP and a real PDF card, and may expose live profile content on screen. Run it only with explicit authorization and a safe test profile.
 
 ## Choosing Coverage
@@ -142,9 +144,13 @@ Non-pytest checks are separate and must not be reported as part of the Python co
 
 ```bash
 npm --prefix frontend test
+npm --prefix frontend run lint
 npm --prefix chrome_extensions/incremento_companion test
 npm --prefix frontend run build
 npm --prefix frontend run build:extension
+.venv/bin/ruff check .
+.venv/bin/mypy
+.venv/bin/python scripts/mutation_smoke.py
 .venv/bin/python scripts/llm_repair_eval.py tests/repair_cases --deterministic-only --json
 .venv/bin/python -m compileall -q __init__.py backend frontend scripts
 ```

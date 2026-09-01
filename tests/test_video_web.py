@@ -1,6 +1,7 @@
 """Tests for video_manager and web_manager backend functions."""
 import importlib.util
 import os
+import types
 
 import db
 import pytest

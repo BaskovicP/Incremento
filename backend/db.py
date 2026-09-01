@@ -2973,7 +2973,8 @@ def export_stats_json(addon_dir: str, profile: str) -> str:
         try:
             from statistics import _normalize_stats  # type: ignore
         except Exception:
-            _normalize_stats = lambda data: data if isinstance(data, dict) else {}
+            def _normalize_stats(data):
+                return data if isinstance(data, dict) else {}
 
     stats_path = get_stats_path(addon_dir, profile)
     if stats_path.exists():

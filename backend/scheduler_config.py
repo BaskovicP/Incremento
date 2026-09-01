@@ -244,7 +244,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     allow_content_tag_fallback = _config_bool(
         d.get("allow_content_tag_fallback", False), False
     )
-    prioritized_tags_first = []
+    prioritized_tags_first: list[str] = []
     raw_prioritized_tags = d.get("prioritized_tags_first", [])
     if isinstance(raw_prioritized_tags, str):
         raw_prioritized_tags = raw_prioritized_tags.replace(",", "\n").splitlines()

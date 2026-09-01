@@ -10,6 +10,7 @@ import {
   updateMappingsForNoteType,
   validateBrowserCapturePayload,
 } from "../src/shared/browserCaptureModel.js";
+import * as browserCaptureModel from "../src/shared/browserCaptureModel.js";
 
 test("parseTags splits on whitespace and commas", () => {
   assert.deepEqual(parseTags(" alpha, beta  beta gamma "), ["alpha", "beta", "gamma"]);
@@ -146,6 +147,71 @@ test("validateBrowserCapturePayload accepts snapshot-only quick create", () => {
       },
       snapshots: [{ filename: "snap-1.png", base64: "abcd" }],
     }),
+    { ok: true, error: "" }
+  );
+});
+
+test("validateBrowserCapturePayload rejects too many snapshots before transport", () => {
+  const snapshots = Array.from({ length: 13 }, (_, index) => ({
+    filename: `snap-${index + 1}.png`,
+    base64: "YWJjZA==",
+  }));
+
+  assert.deepEqual(
+    validateBrowserCapturePayload({
+      noteTypeName: "Basic",
+      deckName: "Default",
+      selectedText: "",
+      fieldMappings: { snapshotField: "Back" },
+      snapshots,
+    }),
+    { ok: false, error: "Too many snapshots. Maximum is 12." }
+  );
+});
+
+test("validateBrowserCapturePayload rejects oversized selected text before transport", () => {
+  assert.deepEqual(
+    validateBrowserCapturePayload({
+      noteTypeName: "Basic",
+      deckName: "Default",
+      selectedText: "x".repeat(200_001),
+      fieldMappings: { selectedTextField: "Front" },
+      snapshots: [],
+    }),
+    { ok: false, error: "Selected text is too large. Maximum is 200000 characters." }
+  );
+});
+
+test("validateBrowserCaptureContext rejects oversized page HTML", () => {
+  assert.equal(typeof browserCaptureModel.validateBrowserCaptureContext, "function");
+  assert.deepEqual(
+    browserCaptureModel.validateBrowserCaptureContext({
+      html: "x".repeat(2_000_001),
+      selectionText: "",
+      title: "Example",
+      url: "https://example.com",
+    }),
+    { ok: false, error: "Page HTML is too large. Maximum is 2000000 characters." }
+  );
+});
+
+test("validateBrowserCaptureScreenshotDataUrl rejects oversized PNG data", () => {
+  assert.equal(
+    typeof browserCaptureModel.validateBrowserCaptureScreenshotDataUrl,
+    "function"
+  );
+  assert.deepEqual(
+    browserCaptureModel.validateBrowserCaptureScreenshotDataUrl(
+      "data:image/png;base64,YWJjZGVm",
+      { maxBytes: 4 }
+    ),
+    { ok: false, error: "Screenshot is too large. Maximum is 4 bytes." }
+  );
+  assert.deepEqual(
+    browserCaptureModel.validateBrowserCaptureScreenshotDataUrl(
+      "data:image/png;base64,YWJjZA==",
+      { maxBytes: 4 }
+    ),
     { ok: true, error: "" }
   );
 });

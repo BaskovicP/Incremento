@@ -3,6 +3,55 @@ export const DEFAULT_PRIORITY = 50;
 export const PRIORITY_MIN = 0;
 export const PRIORITY_MAX = 100;
 export const PRIORITY_STEP = 0.1;
+export const MAX_BROWSER_CAPTURE_HTML_CHARS = 2_000_000;
+export const MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS = 200_000;
+export const MAX_BROWSER_CAPTURE_SNAPSHOTS = 12;
+export const MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000;
+export const MAX_BROWSER_CAPTURE_TOTAL_IMAGE_BYTES = 32_000_000;
+export const MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES = 32_000_000;
+
+function estimatedBase64Bytes(rawValue) {
+  const value = String(rawValue || "").replace(/\s+/g, "");
+  if (!value) {
+    return 0;
+  }
+  const padding = value.endsWith("==") ? 2 : (value.endsWith("=") ? 1 : 0);
+  return Math.max(0, Math.floor((value.length * 3) / 4) - padding);
+}
+
+function captureSizeError(label, maximum, unit) {
+  return { ok: false, error: `${label} is too large. Maximum is ${maximum} ${unit}.` };
+}
+
+export function validateBrowserCaptureContext(context) {
+  if (String(context?.html || "").length > MAX_BROWSER_CAPTURE_HTML_CHARS) {
+    return captureSizeError("Page HTML", MAX_BROWSER_CAPTURE_HTML_CHARS, "characters");
+  }
+  if (String(context?.selectionText || "").length > MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS) {
+    return captureSizeError(
+      "Selected text",
+      MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+      "characters"
+    );
+  }
+  return { ok: true, error: "" };
+}
+
+export function validateBrowserCaptureScreenshotDataUrl(dataUrl, options = {}) {
+  const raw = String(dataUrl || "");
+  const marker = "data:image/png;base64,";
+  if (!raw.startsWith(marker)) {
+    return { ok: false, error: "Screenshot must be a PNG data URL." };
+  }
+  const requestedMaximum = Number(options?.maxBytes);
+  const maxBytes = Number.isSafeInteger(requestedMaximum) && requestedMaximum > 0
+    ? Math.min(requestedMaximum, MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES)
+    : MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES;
+  if (estimatedBase64Bytes(raw.slice(marker.length)) > maxBytes) {
+    return captureSizeError("Screenshot", maxBytes, "bytes");
+  }
+  return { ok: true, error: "" };
+}
 
 function clampPriority(value) {
   const numeric = Number(value);
@@ -127,6 +176,39 @@ export function validateBrowserCapturePayload(payload) {
   );
   if (!hasMappedContent) {
     return { ok: false, error: "Map at least one available capture part to a note field." };
+  }
+  if (String(payload?.selectedText || "").length > MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS) {
+    return captureSizeError(
+      "Selected text",
+      MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+      "characters"
+    );
+  }
+  const snapshots = Array.isArray(payload?.snapshots) ? payload.snapshots : [];
+  if (snapshots.length > MAX_BROWSER_CAPTURE_SNAPSHOTS) {
+    return {
+      ok: false,
+      error: `Too many snapshots. Maximum is ${MAX_BROWSER_CAPTURE_SNAPSHOTS}.`,
+    };
+  }
+  let totalImageBytes = 0;
+  for (const snapshot of snapshots) {
+    const imageBytes = estimatedBase64Bytes(snapshot?.base64);
+    if (imageBytes > MAX_BROWSER_CAPTURE_IMAGE_BYTES) {
+      return captureSizeError(
+        "A snapshot",
+        MAX_BROWSER_CAPTURE_IMAGE_BYTES,
+        "bytes"
+      );
+    }
+    totalImageBytes += imageBytes;
+    if (totalImageBytes > MAX_BROWSER_CAPTURE_TOTAL_IMAGE_BYTES) {
+      return captureSizeError(
+        "Combined snapshots",
+        MAX_BROWSER_CAPTURE_TOTAL_IMAGE_BYTES,
+        "bytes"
+      );
+    }
   }
   return { ok: true, error: "" };
 }

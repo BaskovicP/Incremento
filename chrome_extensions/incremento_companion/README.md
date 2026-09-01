@@ -78,7 +78,7 @@ Snapshot mode creates one Anki note containing one or more selected regions of t
 
 Use **Continue** at least once before relying on **Extract now**, so a valid snapshot field and destination note type are saved. In the full form, **Capture more** returns to region selection, and individual preview images can be removed before creating the note.
 
-Snapshots are limited to the current viewport, but you can scroll between captures to collect multiple parts of a long page.
+Snapshots are limited to the current viewport, but you can scroll between captures to collect multiple parts of a long page. One capture note can contain up to 12 snapshots; each image is limited to 8 MB and the combined decoded image data to 32 MB. The extension reports a local error instead of silently truncating an oversized capture.
 
 ## Save links while browsing
 
@@ -87,10 +87,11 @@ The **Quick link save** section of the popup can create Incremento Web cards wit
 ### Modifier-click
 
 1. Enable **Enable modifier-click save on links**.
-2. Choose Alt, Shift, Ctrl, or Meta/Cmd as the modifier.
-3. Choose whether **Continue following the link after saving** should remain enabled.
-4. Click **Save quick link settings**.
-5. Hold only the chosen modifier and left-click an HTTP(S) link.
+2. If it should keep working after you navigate to other pages without reopening the popup, use **Enable automatic site access...** and approve the browser prompt.
+3. Choose Alt, Shift, Ctrl, or Meta/Cmd as the modifier.
+4. Choose whether **Continue following the link after saving** should remain enabled.
+5. Click **Save quick link settings**.
+6. Hold only the chosen modifier and left-click an HTTP(S) link.
 
 Incremento creates a webpage card and displays a small success or error message in the browser. When navigation is disabled, the link is saved without leaving the current page.
 
@@ -124,6 +125,8 @@ A tab becomes linked when either:
 
 - you create it with **Add as Webpage** in the Companion popup, or
 - you open a Web card through Incremento's **Open in Window** action with **Track via Chrome extension** enabled.
+
+For automatic media detection, resume, modifier-click handling, and tracking across arbitrary-site navigation, enable **Automatic site access** in the Companion popup. Without that optional grant, explicit popup, shortcut, and context-menu actions still work on the current tab through temporary access.
 
 The page shows a **Tracking Web Card** badge while tracking is active. Temporary Incremento tracking markers are removed from the visible address bar after the link is established.
 
@@ -169,7 +172,13 @@ Port `8766` uses Incremento bridge protocol 2. The extension first performs a lo
 
 One extension origin is bound per Anki bridge run. If you alternate between separately installed Chrome and Brave copies, restart Anki before connecting the other browser. Ordinary browser tabs do not receive the bridge token; only the extension runtime does.
 
-Broad site access is required because capture, link saving, webpage import, and media tracking must work on pages chosen by the user. The bookmarks permission is used only by the bookmark importer, and clipboard permission is used to copy the latest video time.
+Ordinary webpages are accessed on demand: clicking the extension, using one of its commands, or choosing its context-menu action grants temporary access to that tab through Chrome/Brave's `activeTab` model. Required persistent host access is limited to supported YouTube/Vimeo providers and the two loopback services. HTTP(S) host patterns are declared only as optional permissions; the extension does not require `<all_urls>` or the broad `tabs` permission at installation.
+
+The popup explains and controls the optional **Automatic site access** feature. If enabled, Chrome/Brave prompts once and the extension registers its content loader on ordinary HTTP(S) pages so modifier-click saving and Web-card media tracking continue across navigation. Disabling it removes both the optional grant and the dynamic registration; user-triggered current-tab actions remain available.
+
+Browser-side PDF fallback downloads are streamed with a 48 MiB ceiling, validate the final HTTP(S) URL and actual PDF signature, and sanitize the suggested filename. Page capture also rejects HTML above 2,000,000 characters or selected text above 200,000 characters before it is sent to Anki. These local limits complement the bridge's independent server-side checks.
+
+The bookmarks permission is used only by the bookmark importer, and clipboard permission is used to copy the latest video time.
 
 ## Troubleshooting
 
@@ -226,6 +235,7 @@ Run the extension tests and JavaScript syntax checks:
 
 ```bash
 npm --prefix chrome_extensions/incremento_companion test
+npm --prefix frontend run lint
 node --check chrome_extensions/incremento_companion/dist/background.js
 node --check chrome_extensions/incremento_companion/dist/content.js
 node --check chrome_extensions/incremento_companion/dist/offscreen.js

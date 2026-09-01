@@ -2,6 +2,13 @@ import { importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
 import { bridgeFetch } from "../shared/bridgeAuth.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
+  MAX_BROWSER_CAPTURE_HTML_CHARS,
+  MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
+  MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+  validateBrowserCapturePayload,
+  validateBrowserCaptureScreenshotDataUrl,
+} from "../shared/browserCaptureModel.js";
+import {
   buildLinkSaveTitle,
   isSupportedLinkSaveUrl,
   LINK_SAVE_SETTINGS_KEY,
@@ -12,6 +19,7 @@ import {
   buildAutomaticWritingTitle,
   buildPreferredWritingFilename,
 } from "../shared/writingTitle.js";
+import { syncPersistentSiteContentScript } from "../shared/siteAccess.js";
 
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
@@ -105,6 +113,17 @@ async function injectContentScriptIntoOpenTabs() {
       }
     })
   );
+}
+
+async function refreshPersistentSiteAccess({ injectOpenTabs = false } = {}) {
+  try {
+    await syncPersistentSiteContentScript();
+  } catch (_err) {
+    // Permission state is best-effort; gesture-scoped activeTab actions still work.
+  }
+  if (injectOpenTabs) {
+    await injectContentScriptIntoOpenTabs();
+  }
 }
 
 function formatTime(totalSeconds) {
@@ -862,29 +881,53 @@ async function capturePageContext(tabId) {
     if (response?.ok) {
       return response;
     }
+    if (response?.error) {
+      throw new Error(String(response.error));
+    }
   } catch (_err) {
-    // fall through to direct snapshot
+    if (!/Receiving end does not exist/i.test(String(_err?.message || _err || ""))) {
+      throw _err;
+    }
+    // fall through only when the content script is unavailable
   }
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => {
+      func: (maxHtmlChars, maxSelectedTextChars) => {
         const html = document.documentElement?.outerHTML || "";
         const selectionText = (
           (window.getSelection?.().toString() || "").trim()
           || String(globalThis.__incrementoLastSelectedText || "").trim()
         );
+        if (html.length > maxHtmlChars) {
+          return {
+            ok: false,
+            error: `Page HTML is too large. Maximum is ${maxHtmlChars} characters.`,
+          };
+        }
+        if (selectionText.length > maxSelectedTextChars) {
+          return {
+            ok: false,
+            error: `Selected text is too large. Maximum is ${maxSelectedTextChars} characters.`,
+          };
+        }
         return {
+          ok: true,
           html,
           selectionText,
           title: document.title || "",
           url: window.location.href || "",
         };
       },
+      args: [MAX_BROWSER_CAPTURE_HTML_CHARS, MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS],
     });
-    return results?.[0]?.result || null;
+    const result = results?.[0]?.result || null;
+    if (result?.error) {
+      throw new Error(String(result.error));
+    }
+    return result;
   } catch (_err) {
-    return null;
+    throw _err;
   }
 }
 
@@ -1378,7 +1421,14 @@ async function copyLatestStoredTime(showFeedback) {
 async function captureVisibleTabForSender(sender) {
   const windowId = Number(sender?.tab?.windowId);
   const captureWindowId = Number.isFinite(windowId) && windowId >= 0 ? windowId : undefined;
-  return chrome.tabs.captureVisibleTab(captureWindowId, { format: "png" });
+  const dataUrl = await chrome.tabs.captureVisibleTab(captureWindowId, { format: "png" });
+  const validation = validateBrowserCaptureScreenshotDataUrl(dataUrl, {
+    maxBytes: MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
+  });
+  if (!validation.ok) {
+    throw new Error(validation.error);
+  }
+  return dataUrl;
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -1534,6 +1584,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "SUBMIT_BROWSER_CAPTURE") {
     void (async () => {
       try {
+        const validation = validateBrowserCapturePayload(msg.payload || {});
+        if (!validation.ok) {
+          throw new Error(validation.error);
+        }
         const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
         const payload = await attachLinkedParentCard(
           msg.payload || {},
@@ -1694,19 +1748,32 @@ chrome.commands.onCommand.addListener((command, tab) => {
   void copyLatestStoredTime(true);
 });
 
-void injectContentScriptIntoOpenTabs();
+void refreshPersistentSiteAccess({ injectOpenTabs: true });
 void syncLinkSaveContextMenu();
 
 if (chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(() => {
-    void injectContentScriptIntoOpenTabs();
+    void refreshPersistentSiteAccess({ injectOpenTabs: true });
     void syncLinkSaveContextMenu();
   });
 }
 
 if (chrome.runtime?.onStartup) {
   chrome.runtime.onStartup.addListener(() => {
+    void refreshPersistentSiteAccess({ injectOpenTabs: true });
     void syncLinkSaveContextMenu();
+  });
+}
+
+if (chrome.permissions?.onAdded) {
+  chrome.permissions.onAdded.addListener(() => {
+    void refreshPersistentSiteAccess({ injectOpenTabs: true });
+  });
+}
+
+if (chrome.permissions?.onRemoved) {
+  chrome.permissions.onRemoved.addListener(() => {
+    void refreshPersistentSiteAccess();
   });
 }
 
