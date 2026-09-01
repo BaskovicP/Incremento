@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+from dataclasses import dataclass
 from html import escape
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -113,6 +114,94 @@ _SEARCH_ALL_FILTER_DEFAULTS = {
 }
 
 
+@dataclass(frozen=True)
+class _DocumentPreviewTarget:
+    media: str
+    card_id: int
+    position: int
+    query: str
+    highlight_text: str | None
+
+
+def _document_result_url(
+    media: str,
+    card_id: int,
+    position: int,
+    query: str,
+    *,
+    highlight_key: str = "",
+) -> str:
+    normalized_media = str(media or "").strip().lower()
+    if normalized_media not in {"pdf", "epub"}:
+        raise ValueError("Unsupported document preview type.")
+    suffix = f"&highlight={quote(str(highlight_key))}" if highlight_key else ""
+    return (
+        f"inc://{normalized_media}/{int(card_id)}/{int(position)}"
+        f"?q={quote(str(query or ''))}{suffix}"
+    )
+
+
+def _highlight_result_url(
+    previews: dict[str, str],
+    *,
+    media: str,
+    card_id: int,
+    position: int,
+    query: str,
+    text: str,
+) -> str:
+    preview_index = len(previews)
+    preview_key = f"h{preview_index}"
+    while preview_key in previews:
+        preview_index += 1
+        preview_key = f"h{preview_index}"
+    previews[preview_key] = str(text or "")
+    return _document_result_url(
+        media,
+        card_id,
+        position,
+        query,
+        highlight_key=preview_key,
+    )
+
+
+def _document_preview_target(
+    url: str,
+    highlight_previews: dict[str, str],
+) -> _DocumentPreviewTarget | None:
+    parsed = urlparse(str(url or ""))
+    media = parsed.netloc.lower()
+    if parsed.scheme != "inc" or media not in {"pdf", "epub"}:
+        return None
+    parts = parsed.path.strip("/").split("/")
+    if len(parts) != 2:
+        return None
+    try:
+        card_id = int(parts[0])
+        position = int(parts[1])
+    except (TypeError, ValueError):
+        return None
+    if card_id <= 0 or position < (1 if media == "pdf" else 0):
+        return None
+
+    params = parse_qs(parsed.query)
+    query = (params.get("q") or [""])[0]
+    highlight_keys = params.get("highlight") or []
+    highlight_text: str | None = None
+    if highlight_keys:
+        preview_key = str(highlight_keys[0] or "")
+        if not preview_key or preview_key not in highlight_previews:
+            return None
+        highlight_text = str(highlight_previews[preview_key] or "")
+    return _DocumentPreviewTarget(
+        media=media,
+        card_id=card_id,
+        position=position,
+        query=query,
+        highlight_text=highlight_text,
+    )
+
+
 def _config(config: dict | None = None) -> dict:
     if config is not None:
         return config or {}
@@ -178,6 +267,7 @@ class _SearchAllDialog(QDialog):
         # encountered in results instead of loading every card in the
         # collection when the dialog opens.
         self._live_card_cache: dict[int, bool] = {}
+        self._highlight_previews: dict[str, str] = {}
         self._pdf_index_cancel = threading.Event()
         self._pdf_index_running = False
         self._pdf_index_attempted = False
@@ -318,12 +408,14 @@ class _SearchAllDialog(QDialog):
         self._search_btn.setEnabled(self._query_ready())
 
     def _show_search_hint(self) -> None:
+        self._highlight_previews.clear()
         self._results.setHtml(
             "<div style='color:#888;padding:10px'>"
             f"Type at least {_MIN_SEARCH_CHARS} characters to search.</div>"
         )
 
     def _show_manual_search_hint(self) -> None:
+        self._highlight_previews.clear()
         self._results.setHtml(
             "<div style='color:#888;padding:10px'>Press Search to run the query.</div>"
         )
@@ -699,6 +791,7 @@ class _SearchAllDialog(QDialog):
         ]
 
     def _refresh(self, query: str) -> None:
+        self._highlight_previews.clear()
         q = (query or "").strip()
         if len(q) < _MIN_SEARCH_CHARS:
             self._show_search_hint()
@@ -733,8 +826,19 @@ class _SearchAllDialog(QDialog):
                     html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
                     for page, text in pages:
                         snippet = escape(self._snippet(text or "", q))
+                        result_url = escape(
+                            _highlight_result_url(
+                                self._highlight_previews,
+                                media="pdf",
+                                card_id=cid,
+                                position=page,
+                                query=q,
+                                text=text or "",
+                            ),
+                            quote=True,
+                        )
                         html.append(
-                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f"<li><a href='{result_url}'>Page {int(page)}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -792,8 +896,19 @@ class _SearchAllDialog(QDialog):
                     html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
                     for section_index, text in entries:
                         snippet = escape(self._snippet(text or "", q))
+                        result_url = escape(
+                            _highlight_result_url(
+                                self._highlight_previews,
+                                media="epub",
+                                card_id=cid,
+                                position=section_index,
+                                query=q,
+                                text=text or "",
+                            ),
+                            quote=True,
+                        )
                         html.append(
-                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>Section {int(section_index) + 1}</a>"
+                            f"<li><a href='{result_url}'>Section {int(section_index) + 1}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -947,20 +1062,24 @@ class _SearchAllDialog(QDialog):
         if not url_str:
             return
         try:
-            if url_str.startswith("inc://pdf/"):
-                parsed = urlparse(url_str)
-                parts = parsed.path.strip("/").split("/")
-                if len(parts) >= 2:
-                    cid, page = int(parts[0]), int(parts[1])
-                    q = (parse_qs(parsed.query).get("q") or [""])[0]
-                    self._preview_pdf_page(cid, page, q)
-            elif url_str.startswith("inc://epub/"):
-                parsed = urlparse(url_str)
-                parts = parsed.path.strip("/").split("/")
-                if len(parts) >= 2:
-                    cid, section_index = int(parts[0]), int(parts[1])
-                    q = (parse_qs(parsed.query).get("q") or [""])[0]
-                    self._preview_epub_section(cid, section_index, q)
+            if url_str.startswith(("inc://pdf/", "inc://epub/")):
+                target = _document_preview_target(url_str, self._highlight_previews)
+                if target is None:
+                    return
+                if target.highlight_text is not None:
+                    self._preview_highlight(target)
+                elif target.media == "pdf":
+                    self._preview_pdf_page(
+                        target.card_id,
+                        target.position,
+                        target.query,
+                    )
+                else:
+                    self._preview_epub_section(
+                        target.card_id,
+                        target.position,
+                        target.query,
+                    )
             elif url_str.startswith("inc://card/"):
                 nid = int(url_str.rsplit("/", 1)[1])
                 self._preview_card(nid)
@@ -979,6 +1098,26 @@ class _SearchAllDialog(QDialog):
                 out,
             )
         return out
+
+    def _preview_highlight(self, target: _DocumentPreviewTarget) -> None:
+        if target.media == "pdf":
+            title = self._pdf_title(target.card_id)
+            location = f"Page {target.position}"
+        else:
+            title = self._epub_title(target.card_id)
+            location = f"Section {target.position + 1}"
+        body = (
+            self._highlight_terms(target.highlight_text, target.query)
+            if target.highlight_text
+            else "<i style='color:#aaa'>No saved highlight text.</i>"
+        )
+        self._preview_header.setText(
+            f"{target.media.upper()} Highlight: {title} — {location}"
+        )
+        self._preview.setHtml(
+            f"<html><body style='font-family:sans-serif;font-size:13px;"
+            f"padding:14px;line-height:1.6;white-space:pre-wrap'>{body}</body></html>"
+        )
 
     def _preview_pdf_page(self, cid: int, page: int, q: str) -> None:
         title = self._pdf_title(cid)

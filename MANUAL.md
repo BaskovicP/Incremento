@@ -603,7 +603,7 @@ It searches across:
 - EPUB file content
 - cards
 
-Search results include a preview panel. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
+Search results include a preview panel. Hovering a PDF or EPUB highlight previews only the saved highlighted passage; source and file-content hits preview the indexed page or section for context. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
 
 PDF text extraction never scans the whole library on Anki's UI thread. Search-while-typing waits briefly for you to pause, bounds card candidates, and discovers PDF documents through Anki's background query queue. If searchable text is missing, Search ALL starts a profile-scoped background index, shows progress, and lets you cancel after the current PDF. File modification time, size, and index status are remembered so unchanged PDFs are skipped and repeatedly failing files are not retried on every keypress. The first search after upgrading may refresh an older unsigned PDF index once so it cannot silently reuse text from a replaced file. EPUB and OCR text use the same bounded SQLite/FTS search layer; systems without SQLite FTS5 fall back to bounded ordinary-table search.
 
