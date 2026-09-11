@@ -25,6 +25,7 @@ from aqt.qt import (
 )
 
 try:
+    from ..backend.config_service import DEFAULT_TOPIC_DONE_TAG, configured_topic_done_tag, normalize_topic_done_tag
     from ..backend.custom_schedule import (
         configured_custom_schedule_default_mode,
         configured_custom_schedule_presets,
@@ -32,6 +33,7 @@ try:
         normalize_custom_schedule_preset,
     )
 except ImportError:
+    from backend.config_service import DEFAULT_TOPIC_DONE_TAG, configured_topic_done_tag, normalize_topic_done_tag
     from backend.custom_schedule import (  # type: ignore
         configured_custom_schedule_default_mode,
         configured_custom_schedule_presets,
@@ -334,6 +336,7 @@ class IncrementoSettingsDialog(QDialog):
         current_topic_more_adjustment_percent: float = 10.0,
         current_topic_less_adjustment_percent: float = 10.0,
         current_topic_maximum_interval_days: int = 36500,
+        current_topic_done_tag: str = DEFAULT_TOPIC_DONE_TAG,
         current_add_card_topic_tags: list[str] | str | None = None,
         current_add_card_item_tags: list[str] | str | None = None,
         current_auto_create_topics_deck: bool = True,
@@ -998,6 +1001,24 @@ class IncrementoSettingsDialog(QDialog):
 
         topic_form = _section_form()
 
+        self._topic_done_tag_edit = QLineEdit()
+        self._topic_done_tag_edit.setText(configured_topic_done_tag({"topic_done_tag": current_topic_done_tag}))
+        self._topic_done_tag_edit.setPlaceholderText(DEFAULT_TOPIC_DONE_TAG)
+        self._topic_done_tag_edit.setAccessibleName("Done tag")
+        done_tag_hint = (
+            "Done suspends the current topic card and adds this tag to its note. "
+            "Tags are shared by all cards of that note; only the current card is suspended. "
+            "Undo restores the card and its previous tags together. "
+            "Enter one tag, such as topic/done or reading::finished. Leave empty to use topic/done."
+        )
+        self._topic_done_tag_edit.setToolTip(done_tag_hint)
+        self._topic_done_tag_edit.setAccessibleDescription(done_tag_hint)
+        topic_form.addRow(_label_with_info("Done tag:", done_tag_hint), self._topic_done_tag_edit)
+        self._topic_done_tag_error = QLabel("")
+        self._topic_done_tag_error.setWordWrap(True)
+        self._topic_done_tag_error.setVisible(False)
+        topic_form.addRow("", self._topic_done_tag_error)
+
         self._default_topic_a_factor_spin = QDoubleSpinBox()
         self._default_topic_a_factor_spin.setRange(1.1, 100.0)
         self._default_topic_a_factor_spin.setDecimals(3)
@@ -1532,6 +1553,15 @@ class IncrementoSettingsDialog(QDialog):
         return True
 
     def _accept_if_shortcuts_valid(self) -> bool:
+        try:
+            self.topic_done_tag
+        except ValueError as exc:
+            self._topic_done_tag_error.setText(str(exc))
+            self._topic_done_tag_error.setVisible(True)
+            self._topic_done_tag_edit.setFocus()
+            return False
+        self._topic_done_tag_error.setText("")
+        self._topic_done_tag_error.setVisible(False)
         if self._refresh_shortcut_conflicts():
             return False
         self.accept()
@@ -1682,6 +1712,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def topic_maximum_interval_days(self) -> int:
         return int(self._topic_maximum_interval_days_spin.value())
+
+    @property
+    def topic_done_tag(self) -> str:
+        return normalize_topic_done_tag(self._topic_done_tag_edit.text())
 
     @property
     def add_card_topic_tags(self) -> list[str]:

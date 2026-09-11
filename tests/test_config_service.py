@@ -1,4 +1,35 @@
 import config_service
+import pytest
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ({}, "topic/done"),
+    ({"topic_done_tag": "reading::finished"}, "reading::finished"),
+    ({"topic_done_tag": "  topic/done  "}, "topic/done"),
+    ({"topic_done_tag": ""}, "topic/done"),
+    ({"topic_done_tag": None}, "topic/done"),
+    ({"topic_done_tag": ["one", "two"]}, "topic/done"),
+    ({"topic_done_tag": "two tags"}, "topic/done"),
+    ({"topic_done_tag": "bad\u0000tag"}, "topic/done"),
+    ({"topic_done_tag": "::"}, "topic/done"),
+    ({"topic_done_tag": "x" * 256}, "topic/done"),
+])
+def test_done_tag_normalization_keeps_one_valid_tag_or_default(raw, expected):
+    assert config_service.normalize_config(raw)["topic_done_tag"] == expected
+
+
+def test_done_tag_round_trips_through_config_without_replacing_other_settings():
+    from unittest.mock import Mock
+
+    manager = Mock()
+    config_service.save_addon_config(manager, "incremento", {
+        "topic_done_tag": "  reading::finished  ", "future_setting": {"keep": True},
+    })
+    stored = manager.writeConfig.call_args.args[1]
+    manager.getConfig.return_value = stored
+    loaded = config_service.load_addon_config(manager, "incremento")
+    assert loaded["topic_done_tag"] == "reading::finished"
+    assert loaded["future_setting"] == {"keep": True}
 
 
 def test_normalize_config_migrates_named_scheduler_profiles():

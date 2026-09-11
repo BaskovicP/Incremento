@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import db
 import pytest
+import web_extract_anchors
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +188,11 @@ class TestGetConnection:
             ).fetchall()
         }
         assert "web_card_sources" in tables
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(web_card_sources)").fetchall()
+        }
+        assert "anchors_json" in columns
 
     def test_creates_web_progress_table(self):
         addon_dir = _fresh_dir()
@@ -1653,6 +1659,245 @@ class TestWebCardSources:
         assert [row["note_id"] for row in intro] == [1]
         assert [row["note_id"] for row in advanced] == [2]
 
+    def test_extract_anchors_round_trip_and_repeat_save_is_idempotent(self):
+        first_anchor = {
+            "version": 1,
+            "exact": "first passage",
+            "prefix": "before ",
+            "suffix": " after",
+            "startPath": [0],
+            "startOffset": 1,
+            "endPath": [0],
+            "endOffset": 14,
+        }
+        second_anchor = {
+            "version": 1,
+            "exact": "second passage",
+            "prefix": "earlier ",
+            "suffix": " later",
+            "startPath": [1],
+            "startOffset": 0,
+            "endPath": [1],
+            "endOffset": 14,
+        }
+        db.add_web_card_source(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+            note_id=777,
+            excerpt="first",
+            anchors=[first_anchor, first_anchor],
+        )
+        db.add_web_card_source(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+            note_id=777,
+            excerpt="updated",
+            anchors=[second_anchor],
+        )
+
+        sources = db.get_web_card_sources(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+        anchors = db.get_web_extract_anchors(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+
+        assert len(sources) == 1
+        assert sources[0]["excerpt"] == "updated"
+        assert [anchor["exact"] for anchor in sources[0]["anchors"]] == [
+            "first passage",
+            "second passage",
+        ]
+        assert anchors == sources[0]["anchors"]
+
+    def test_snapshot_region_anchor_round_trips_with_text_markers(self):
+        snapshot_anchor = {
+            "version": 1,
+            "kind": "snapshot",
+            "pageX": 140,
+            "pageY": 580,
+            "width": 200,
+            "height": 100,
+            "documentWidth": 1200,
+            "documentHeight": 4000,
+            "anchorPath": [0, 2],
+            "anchorTag": "article",
+            "anchorXRatio": 350_000,
+            "anchorYRatio": 400_000,
+        }
+        text_anchor = {
+            "version": 1,
+            "exact": "selected passage",
+            "prefix": "before ",
+            "suffix": " after",
+            "startPath": [0],
+            "startOffset": 1,
+            "endPath": [0],
+            "endOffset": 17,
+        }
+        db.add_web_card_source(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+            note_id=777,
+            anchors=[text_anchor, snapshot_anchor],
+        )
+
+        anchors = db.get_web_extract_anchors(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+
+        assert len(anchors) == 2
+        assert anchors[0]["exact"] == "selected passage"
+        assert anchors[1]["kind"] == "snapshot"
+        assert anchors[1]["pageY"] == 580
+
+    def test_saved_anchor_limit_keeps_the_newest_page_extractions(self):
+        total = web_extract_anchors.MAX_STORED_WEB_EXTRACT_ANCHORS + 2
+        for index in range(total):
+            exact = f"passage {index}"
+            db.add_web_card_source(
+                self.addon_dir,
+                "TestProfile",
+                web_card_id=5,
+                url="https://example.com/docs/intro",
+                note_id=700 + index,
+                anchors=[
+                    {
+                        "version": 1,
+                        "exact": exact,
+                        "prefix": "before ",
+                        "suffix": " after",
+                        "startPath": [index],
+                        "startOffset": 0,
+                        "endPath": [index],
+                        "endOffset": len(exact),
+                    }
+                ],
+            )
+
+        anchors = db.get_web_extract_anchors(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+
+        assert len(anchors) == web_extract_anchors.MAX_STORED_WEB_EXTRACT_ANCHORS
+        assert anchors[0]["exact"] == "passage 2"
+        assert anchors[-1]["exact"] == f"passage {total - 1}"
+
+    def test_anchor_json_budget_drops_oldest_instead_of_failing_note_link(self):
+        anchors = []
+        exact = "x" + ("\n" * 3_999)
+        for index in range(web_extract_anchors.MAX_STORED_WEB_EXTRACT_ANCHORS):
+            anchors.append(
+                {
+                    "version": 1,
+                    "exact": exact,
+                    "prefix": f"before {index}",
+                    "suffix": " after",
+                    "startPath": [index + 1],
+                    "startOffset": 0,
+                    "endPath": [index + 1],
+                    "endOffset": len(exact),
+                }
+            )
+
+        db.add_web_card_source(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+            note_id=777,
+            anchors=anchors,
+        )
+
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        stored_chars = conn.execute(
+            "SELECT length(anchors_json) FROM web_card_sources WHERE note_id = ?",
+            (777,),
+        ).fetchone()[0]
+        saved = db.get_web_extract_anchors(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs/intro",
+        )
+        assert stored_chars <= web_extract_anchors.MAX_WEB_EXTRACT_ANCHORS_JSON_CHARS
+        assert len(saved) < len(anchors)
+        assert saved[-1]["prefix"] == "before 47"
+
+    def test_tampered_anchor_json_is_ignored_without_hiding_source_row(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "INSERT INTO web_card_sources "
+            "(web_card_id, url, note_id, excerpt, anchors_json) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (5, "https://example.com/docs", 777, "kept", "not-json"),
+        )
+        conn.commit()
+
+        sources = db.get_web_card_sources(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs",
+        )
+
+        assert sources == [{"note_id": 777, "excerpt": "kept", "anchors": []}]
+
+    def test_failed_web_source_write_rolls_back_connection_for_retry(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute(
+            "CREATE TRIGGER reject_web_source BEFORE INSERT ON web_card_sources "
+            "BEGIN SELECT RAISE(ABORT, 'rejected'); END"
+        )
+        conn.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="rejected"):
+            db.add_web_card_source(
+                self.addon_dir,
+                "TestProfile",
+                web_card_id=5,
+                url="https://example.com/docs",
+                note_id=777,
+                anchors=[],
+            )
+
+        assert conn.in_transaction is False
+        conn.execute("DROP TRIGGER reject_web_source")
+        conn.commit()
+        db.add_web_card_source(
+            self.addon_dir,
+            "TestProfile",
+            web_card_id=5,
+            url="https://example.com/docs",
+            note_id=777,
+        )
+        assert len(
+            db.get_web_card_sources(
+                self.addon_dir,
+                "TestProfile",
+                web_card_id=5,
+                url="https://example.com/docs",
+            )
+        ) == 1
+
 
 class TestWebProgressMigration:
     def setup_method(self):
@@ -1795,7 +2040,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -1807,6 +2052,7 @@ class TestConnectionSwitching:
             (5, "document_index_state"),
             (6, "statistics_history"),
             (7, "statistics_goals"),
+            (8, "web_extract_anchors"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):

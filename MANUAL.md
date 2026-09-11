@@ -90,6 +90,7 @@ Runtime data is stored separately for every Anki profile under `user_files/<Prof
 ## 2. Incremento Menu Overview
 
 Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
+**Command Palette…** and **Activity Center…** appear directly below **Start Incremental Learning** in the first menu section.
 
 ### Main actions
 
@@ -235,7 +236,7 @@ With **Strict enforcement** enabled, Incremento fills quotas in the order you ch
 - **Type**
 - **Mode**
 
-This is useful when you need exact tag coverage or strict topic/item ratios.
+Each phase tries to reach a rounded card-count target using the available slots. For example, 20% of 10 cards gives the Tags phase a target of 2 cards. Earlier phases, overlapping tags, and available cards affect the final mix; this is not an unconditional percentage guarantee.
 
 ### Tag quotas
 
@@ -246,7 +247,9 @@ You can allocate part of each session to specific tags:
 3. Lock any tag whose share should stay fixed.
 4. Use **After exhausting tag groups, fill with rest of cards** if you want leftover slots topped up automatically.
 
-The always-present **Other** row represents cards outside the specific tag rows. When no specific tags have been added, Other is necessarily 100% and its slider is disabled. Adding a tag restores the normal editable balance.
+The always-present **Other** row excludes every active selected tag, including its subtags. For example, with `spiritual` selected, neither `spiritual` nor `spiritual::prayer` can enter through Other. Cards may still have unrelated tags; they do not need to be untagged. This applies to topics, items, documents, media, leftover-slot filling, and auto-refill. When no specific tags have been added, Other is necessarily 100% and its slider is disabled. Adding a tag restores the normal editable balance.
+
+With auto-refill, quota counts continue across the same session; they do not reset for each refill or each ten-card pending window. Strict tag targets use cards selected in that session. Soft mode adjusts selection probabilities using the chosen statistics scope, so **Today** can compensate for earlier reviews that day. Neither mode promises exactly 2 matching cards in every visible window of 10.
 
 By default, document and media picks also respect active tag rows. For example, if your session only has `data` and `statistics` tag quotas, PDF, EPUB, video, and webpage picks must match those tags instead of falling back to unrelated content.
 
@@ -265,6 +268,7 @@ Use the **Test** buttons to see how many cards currently match.
 
 Open **Advanced** in the session dialog for a few session-behavior controls:
 
+- **PDF Daily Reading Limit**: select a PDF and set its daily page cap and enforcement mode. This panel is inside the collapsible Advanced section.
 - **Present cards in scheduler order**: shows cards in the exact order selected by the scheduler instead of randomizing them.
 - **Auto-refill session deck to keep this many unreviewed cards**: keeps the active **Incremento Session** deck topped up to your **Cards per session** count of not-yet-answered cards as you study. Learning repeats stay in the filtered deck, so the visible Anki queue can temporarily exceed this number.
 - **Allow document/media picks outside selected tags**: restores the older fallback behavior where a PDF, EPUB, video, or webpage tag miss can be filled from any card of that content type. Leave this off when tag quotas should be strict.
@@ -299,7 +303,7 @@ Incremento stores the source EPUB under `user_files/<ProfileName>/epubs/` and ex
 
 Use **Incremento → Add Content → Webpage to PDF** when you want a normal PDF-style reading workflow for an online article.
 
-Incremento loads the page in a hidden browser view, renders it to PDF, and imports the result as a PDF card.
+Incremento fetches the public HTTP(S) page, verifies the server certificate and hostname for HTTPS, then renders an offline snapshot in a hidden browser view and imports the result as a PDF card.
 
 This is useful when you want:
 
@@ -444,7 +448,11 @@ After you confirm, Incremento resolves the links again and builds the temporary 
 
 Anki cannot remove only selected cards from a filtered deck through its supported filtered-deck operation. When that option is enabled, Incremento first leaves any active reviewer, empties every conflicting filtered deck, and returns all cards from those decks to their original decks. It then moves only the matching selected cards into the PDF, EPUB, or video Review All deck. This does not delete cards, review history, scheduling data, or the old filtered-deck definitions, but it ends those decks' current review queues; rebuild the old filtered decks if you want to use them again. The picker shows a warning and requires this one-time opt-in every time it opens.
 
-These are real Anki reviews, including cards that were not yet due, so each answer updates that card's schedule normally. When the linked-card review ends, Incremento reopens the PDF, EPUB, or video at its saved reading or playback position.
+By default, these are real Anki reviews, including cards that were not yet due, so each answer updates that card's schedule normally. For topic cards, **Same** preserves the A-factor but still grows the interval and calculates a new due date from the day of the answer, even when the card is reviewed early.
+
+To revisit cards without moving their next scheduled review, enable **Reminder without schedule changes** under **Scheduling**. Use **All available** under **Card state** to include cards that are not yet due, then press **Preview … Cards**. This uses Anki Preview: answers preserve the original due dates, intervals, topic A-factors and precise topic intervals, and custom schedule rules, including unconsumed one-time rules. New and learning cards also retain their original scheduling state. Anki may record the activity as a filtered-deck preview; Incremento does not record a topic/custom scheduling transition. Topic **More / Same / Less** buttons do not change frequency in this mode.
+
+The reminder option starts off and is remembered separately for each profile and media type during the current Anki run. Clear it to resume normal scheduling; reusing the same Review All deck switches it back to rescheduling. In either mode, when the linked-card review ends, Incremento reopens the PDF, EPUB, or video at its saved reading or playback position.
 
 ### Highlights
 
@@ -551,7 +559,9 @@ Web cards open a persistent browser dock with:
 
 This works well for long-form websites, documentation, and pages that you want to revisit in-place inside Anki.
 
-Selected text from the web dock can be transferred into the Add Card dock.
+Selected text and snapshot regions from the web dock can be transferred into the Add Card dock. After a transfer succeeds, Incremento leaves an amber dotted text marker or amber dashed snapshot outline on the page so you can see what is still part of the unsaved Add Card draft. Saving the note changes that marker to green; reopening the same tracked Web card and exact URL restores its saved markers. Restoring an extraction draft restores its pending markers, while discarding the draft removes them. Markers are drawn by a pointer-transparent native reader layer above the website: they do not insert elements or styles into the page, intercept clicks, or alter its text.
+
+Incremento stores both the selected quote and bounded surrounding/DOM context, so markers can usually survive modest page-layout changes without altering the webpage text. Restoration fails closed when repeated text cannot be identified uniquely. Text selected inside a cross-origin embedded frame, selections larger than the marker limit, or content that a site has replaced may still transfer to the Add Card dock without leaving a persistent marker.
 
 When a bookmark is saved, Incremento reopens that web card at the bookmarked point and highlights it. If no bookmark is saved, the web card can restore the last scroll position when the browser-card scroll setting is enabled.
 
@@ -604,6 +614,8 @@ It searches across:
 - cards
 
 Search results include a preview panel. Hovering a PDF or EPUB highlight previews only the saved highlighted passage; source and file-content hits preview the indexed page or section for context. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
+
+Changing a result-type checkbox applies immediately, including when **Search while typing** is off. **Existing Anki Items Only** hides indexed results whose linked document card or source note has been deleted; searches always remain scoped to the active Anki profile.
 
 PDF text extraction never scans the whole library on Anki's UI thread. Search-while-typing waits briefly for you to pause, bounds card candidates, and discovers PDF documents through Anki's background query queue. If searchable text is missing, Search ALL starts a profile-scoped background index, shows progress, and lets you cancel after the current PDF. File modification time, size, and index status are remembered so unchanged PDFs are skipped and repeatedly failing files are not retried on every keypress. The first search after upgrading may refresh an older unsigned PDF index once so it cannot silently reuse text from a replaced file. EPUB and OCR text use the same bounded SQLite/FTS search layer; systems without SQLite FTS5 fall back to bounded ordinary-table search.
 
@@ -817,12 +829,22 @@ Choose **Incremento → Settings** to open six tabs:
 
 - **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, topic/tag defaults, and saved provenance link types
 - **Review**: priority direction, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
-- **Topics**: which card types/tags count as topics, the default topic A-factor, More/Less strength, the maximum topic interval, Add Card topic/item tags, whether Incremento auto-creates the `Topics` deck, which profiles that applies to, and the red Postpone button behavior
+- **Topics**: which card types/tags count as topics, the Done tag, the default topic A-factor, More/Less strength, the maximum topic interval, Add Card topic/item tags, whether Incremento auto-creates the `Topics` deck, which profiles that applies to, and the red Postpone button behavior
 - **Writing**: editor defaults, automatic backup intervals, progress visibility, default progress scope, and word-count mode
 - **Shortcuts**: assign or clear shortcuts for Incremento actions
 - **Advanced**: open the guarded profile database inspector
 
 The advanced database editor creates a timestamped checkpoint first and starts read-only until you explicitly unlock writes.
+
+Topic review also has a secondary **✓ Done** button, available on both the question and answer side and as **Mark Topic as Done** in the reviewer's More menu. Use it when you have finished extracting what you need from a topic. Done suspends only the current Anki card and adds `topic/done` to its note. Choose a different tag under **Incremento → Settings → Topics → Done tag**; enter one tag without spaces, or leave it empty to use `topic/done`. The setting applies to future Done actions. Existing tags are preserved, and an already-present tag is not duplicated.
+
+Anki tags belong to notes, so the Done tag is visible on every card generated from that note. Only the selected card is suspended; sibling cards, extracted cards, and child topics retain their schedules. The original content, source links, and knowledge-tree position remain intact, and no answer grade is recorded. The non-modal **Topic marked as done** notification offers **Undo**, and Anki's **Edit → Undo** also works: one undo restores the suspension and previous tags together, and Redo reapplies both. A tag that was already present before Done survives Undo. Later, the Browser's **Toggle Suspend** reactivates the card and keeps its tags; remove the Done tag separately if desired.
+
+Reviewer controls share consistent height, rounded corners, typography, and flat styling in light and dark themes. **Postpone / Skip** retain a muted red accent, and a short divider separates **Done** from the preceding review control.
+
+For a temporary break, use the reviewer's **More → Revisit in… → 3 months / 6 months / 12 months**, or **Choose date…**. This is a one-time manual change to the next due date, with its own Undo step. It does not answer the card, replace its custom scheduling rule, or change the topic's A-factor. Future answers use the existing topic/custom scheduling rules. The existing **Postpone** action remains the short, timed/session pause.
+
+Revisit also keeps PDF, EPUB, video, and web topics out of automatic reading-session selection until the chosen date. Ordinary media cards remain eligible regardless of their due dates. You can still deliberately open deferred content or include it in an explicit **Review All → All available** review. To bring a deferred card back early, set its due date to today in the Browser; Undo restores both the old date and automatic-selection behavior.
 
 Topic cards use **More / Same / Less** instead of flashcard grading. All three choices submit a neutral **Good** answer to Anki, so selecting a desired topic frequency never records an artificial FSRS Hard or Easy rating. Incremento retains the original choice in its per-profile `topic_review_history` and independently applies the topic schedule. The normal next interval is the previous precise topic interval multiplied by its A-factor. When a card has no Incremento topic history yet, its existing positive Anki interval is used as that starting interval; genuinely new cards start at one day. In the Topics settings, **More adjustment** and **Less adjustment** independently control how strongly those buttons change both the immediate interval and persistent A-factor. With the 10% defaults, **More** schedules 90% and multiplies the A-factor by 0.9, **Same** schedules the normal interval, and **Less** schedules 110% and multiplies the A-factor by 1.1. The duration shown below each button is the interval that will be applied immediately. **Maximum topic interval** provides a hard cap, while Anki's deck-preset maximum interval remains an additional cap; the lower value wins.
 

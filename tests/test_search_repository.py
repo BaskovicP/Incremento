@@ -1,6 +1,8 @@
 import db
 import search_repository
 
+import pytest
+
 
 def test_search_excerpt_rows_is_ranked_and_bounded(tmp_path):
     addon_dir = str(tmp_path)
@@ -38,3 +40,44 @@ def test_document_preview_read_model(tmp_path):
         "Start",
         "body",
     )
+
+
+@pytest.mark.parametrize(
+    ("insert_sql", "values", "kind", "expected"),
+    [
+        (
+            "INSERT INTO pdf_card_sources(pdf_card_id, page, note_id, excerpt) "
+            "VALUES (?, ?, ?, ?)",
+            (7, 9, 101, "faithful PDF source"),
+            "pdf_sources",
+            (7, 9, "faithful PDF source", 101),
+        ),
+        (
+            "INSERT INTO epub_card_sources(epub_card_id, section_index, note_id, excerpt) "
+            "VALUES (?, ?, ?, ?)",
+            (8, 2, 202, "faithful EPUB source"),
+            "epub_sources",
+            (8, 2, "faithful EPUB source", 202),
+        ),
+    ],
+)
+def test_source_search_rows_include_source_note_identity(
+    tmp_path,
+    insert_sql,
+    values,
+    kind,
+    expected,
+):
+    addon_dir = str(tmp_path)
+    conn = db.get_connection(addon_dir, "Profile")
+    conn.execute(insert_sql, values)
+    conn.commit()
+
+    rows = search_repository.search_excerpt_rows(
+        addon_dir,
+        "Profile",
+        kind,
+        "faith",
+    )
+
+    assert rows == [expected]

@@ -41,6 +41,7 @@
     "topic_more_adjustment_percent": 10.0,
     "topic_less_adjustment_percent": 10.0,
     "topic_maximum_interval_days": 36500,
+    "topic_done_tag": "topic/done",
     "auto_create_topics_deck": true,
     "auto_create_topics_deck_profiles": [],
     "topic_postpone_enabled": false,

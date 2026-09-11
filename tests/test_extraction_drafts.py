@@ -71,3 +71,87 @@ def test_normalizer_rejects_empty_content_and_caps_user_controlled_payloads():
     assert len(normalized["fields"][0]) == 500_000
     assert len(normalized["tags"]) == 100
     assert len(normalized["source"]) <= 32
+
+
+def test_draft_round_trip_preserves_web_anchor_dom_paths(tmp_path):
+    draft = {
+        "source": "web",
+        "fields": ["selected passage"],
+        "extract_context": {
+            "web_extract_records": [
+                {
+                    "version": 1,
+                    "webCardId": 17,
+                    "url": "https://example.com/guide",
+                    "anchor": {
+                        "version": 1,
+                        "id": "stable-id",
+                        "exact": "selected passage",
+                        "prefix": "before ",
+                        "suffix": " after",
+                        "startPath": [0, 2, 1],
+                        "startOffset": 4,
+                        "endPath": [0, 2, 1],
+                        "endOffset": 20,
+                    },
+                }
+            ]
+        },
+    }
+
+    saved = extraction_drafts.save_extraction_draft(
+        str(tmp_path),
+        "Profile",
+        draft,
+        now=12,
+    )
+    restored = extraction_drafts.load_extraction_draft(str(tmp_path), "Profile")
+
+    assert restored == saved
+    anchor = restored["extract_context"]["web_extract_records"][0]["anchor"]
+    assert anchor["startPath"] == [0, 2, 1]
+    assert anchor["endPath"] == [0, 2, 1]
+
+
+def test_draft_round_trip_preserves_web_snapshot_region(tmp_path):
+    draft = {
+        "source": "web",
+        "fields": ['<img src="capture.png">'],
+        "extract_context": {
+            "web_extract_records": [
+                {
+                    "version": 1,
+                    "webCardId": 17,
+                    "url": "https://example.com/guide",
+                    "anchor": {
+                        "version": 1,
+                        "kind": "snapshot",
+                        "pageX": 140,
+                        "pageY": 580,
+                        "width": 200,
+                        "height": 100,
+                        "documentWidth": 1200,
+                        "documentHeight": 4000,
+                        "anchorPath": [0, 2],
+                        "anchorTag": "article",
+                        "anchorXRatio": 350_000,
+                        "anchorYRatio": 400_000,
+                    },
+                }
+            ]
+        },
+    }
+
+    saved = extraction_drafts.save_extraction_draft(
+        str(tmp_path),
+        "Profile",
+        draft,
+        now=12,
+    )
+    restored = extraction_drafts.load_extraction_draft(str(tmp_path), "Profile")
+
+    assert restored == saved
+    anchor = restored["extract_context"]["web_extract_records"][0]["anchor"]
+    assert anchor["kind"] == "snapshot"
+    assert anchor["anchorPath"] == [0, 2]
+    assert anchor["width"] == 200

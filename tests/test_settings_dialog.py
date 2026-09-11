@@ -2,6 +2,9 @@ import importlib.util
 import os
 import sys
 import types
+from unittest.mock import Mock
+
+import pytest
 
 
 class _Signal:
@@ -108,6 +111,9 @@ class _Label(_BaseWidget):
     def __init__(self, text="", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.text = text
+
+    def setText(self, text):
+        self.text = str(text)
 
 
 class _ButtonGroup(_BaseWidget):
@@ -412,6 +418,77 @@ class TestIncrementoSettingsDialogTopicAdjustments:
         )
         assert low.topic_more_adjustment_percent == 0.0
         assert high.topic_less_adjustment_percent == 100.0
+
+
+class TestIncrementoSettingsDialogTopicDoneTag:
+    def test_defaults_to_topic_done(self):
+        assert IncrementoSettingsDialog({}).topic_done_tag == "topic/done"
+
+    def test_loads_custom_tag_and_exposes_edited_tag_for_save(self):
+        dialog = IncrementoSettingsDialog({}, current_topic_done_tag="reading::finished")
+        assert dialog._topic_done_tag_edit.text() == "reading::finished"
+        dialog._topic_done_tag_edit.setText("  reference/completed  ")
+        assert dialog.topic_done_tag == "reference/completed"
+        dialog._topic_done_tag_edit.setText("")
+        assert dialog.topic_done_tag == "topic/done"
+
+    @pytest.mark.parametrize("invalid", ["two tags", "bad\u0000tag", "::", "x" * 256])
+    def test_invalid_done_tag_blocks_save_until_corrected(self, invalid):
+        dialog = IncrementoSettingsDialog({})
+        dialog.accept = Mock()
+        dialog._topic_done_tag_edit.setText(invalid)
+        assert dialog._accept_if_shortcuts_valid() is False
+        dialog.accept.assert_not_called()
+        assert "tag" in dialog._topic_done_tag_error.text.lower()
+        dialog._topic_done_tag_edit.setText("reading::finished")
+        assert dialog._accept_if_shortcuts_valid() is True
+        dialog.accept.assert_called_once()
+
+    def test_settings_entrypoint_loads_and_persists_selected_tag(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace
+        import config_service
+
+        # Execute the actual root settings adapter without importing its Anki
+        # startup hooks. Stop at the persistence boundary before UI refreshes.
+        path = Path(__file__).resolve().parents[1] / "__init__.py"
+        function = next(
+            node for node in ast.parse(path.read_text()).body
+            if isinstance(node, ast.FunctionDef) and node.name == "openSettingsFunction"
+        )
+        namespace = {node.id: Mock(name=node.id) for node in ast.walk(function) if isinstance(node, ast.Name)}
+        manager = Mock()
+        manager.getConfig.return_value = {"topic_done_tag": "saved/done", "future_setting": {"keep": True}}
+        col = Mock()
+        col.models.all_names_and_ids.return_value = []
+
+        def open_dialog(shortcuts, **kwargs):
+            assert kwargs["current_topic_done_tag"] == "saved/done"
+            dialog = IncrementoSettingsDialog(shortcuts, current_topic_done_tag=kwargs["current_topic_done_tag"])
+            dialog._topic_done_tag_edit.setText("reading::finished")
+            dialog.exec = Mock(return_value=True)
+            return dialog
+
+        class Saved(Exception):
+            pass
+
+        def save(addon_manager, package, config):
+            config_service.save_addon_config(addon_manager, package, config)
+            raise Saved
+
+        namespace.update({
+            "__name__": "incremento", "mw": SimpleNamespace(addonManager=manager, col=col),
+            "sorted": sorted, "IncrementoSettingsDialog": open_dialog,
+            "_configured_topic_done_tag": config_service.configured_topic_done_tag,
+            "_load_addon_config": config_service.load_addon_config, "_save_addon_config": save,
+        })
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
+        with pytest.raises(Saved):
+            namespace["openSettingsFunction"]()
+        stored = manager.writeConfig.call_args.args[1]
+        assert stored["topic_done_tag"] == "reading::finished"
+        assert stored["future_setting"] == {"keep": True}
 
 
 class TestIncrementoSettingsDialogTopicMaximumInterval:

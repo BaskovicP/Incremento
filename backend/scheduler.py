@@ -1,4 +1,5 @@
 import random
+from collections.abc import Iterable
 from typing import NamedTuple
 
 try:
@@ -9,9 +10,25 @@ except ImportError:
     from epub_manager import DOCUMENT_FILTER  # type: ignore
 
 # Synthetic key used when soft_pick selects the "other cards" bucket (the
-# untagged remainder).  Returned as result.tag so the caller can track its
+# remainder outside selected tags). Returned as result.tag so the caller can track its
 # debt correctly, but must be filtered before writing to persistent stats.
 NO_TAGS_KEY = "__no_tags__"
+
+
+def exclude_tags_from_filter(query: str, tags: Iterable[str]) -> str:
+    """Restrict an Anki pool to cards outside every active tag group."""
+    normalized = sorted({
+        str(tag).strip() for tag in tags
+        if str(tag).strip() and str(tag).strip() != NO_TAGS_KEY
+    })
+    if not normalized:
+        return query
+    terms = []
+    for tag in normalized:
+        escaped = tag.replace("\\", "\\\\").replace('"', '\\"')
+        terms.append(f'tag:"{escaped}"')
+    exclusion = "-(" + " OR ".join(terms) + ")"
+    return f"({query}) {exclusion}" if str(query).strip() else exclusion
 
 
 class SchedulerResult(NamedTuple):
@@ -219,8 +236,9 @@ def get_card_from_scheduler(
         """Tag-aware pick within a content-type pool (pdf / youtube / webpage).
 
         If use_tags is on, does a soft_pick over tag weights first then fetches
-        only cards matching that tag.  Falls back to the full pool if the tag
-        has no cards of this type.  Returns (cards, resolved_tag).
+        only cards matching that tag, or outside all active tags for Other.
+        A missing real tag permits full-pool fallback only when opted in.
+        Returns (cards, resolved_tag).
         """
         loader_kwargs = dict(fn_kwargs)
         if col is not None:
@@ -231,18 +249,31 @@ def get_card_from_scheduler(
             if remainder > 1e-6:
                 extended[NO_TAGS_KEY] = remainder
             tag = soft_pick(extended, counts["tags"], alpha, epsilon)
-            if tag != NO_TAGS_KEY:
-                tagged = available(
+            if tag == NO_TAGS_KEY:
+                other_filters = {
+                    key: exclude_tags_from_filter(value, tag_weights)
+                    for key, value in fn_kwargs.items()
+                }
+                other_kwargs = dict(other_filters)
+                if col is not None:
+                    other_kwargs["col"] = col
+                return available(
                     cached_pool(
-                        (cache_prefix, "tag", tag, tuple(sorted(fn_kwargs.items()))),
-                        lambda: tag_fn(tag, **loader_kwargs),
+                        (cache_prefix, "other", tuple(sorted(other_filters.items()))),
+                        lambda: all_fn(**other_kwargs),
                     )
+                ), NO_TAGS_KEY
+            tagged = available(
+                cached_pool(
+                    (cache_prefix, "tag", tag, tuple(sorted(fn_kwargs.items()))),
+                    lambda: tag_fn(tag, **loader_kwargs),
                 )
-                if tagged:
-                    return tagged, tag
-                if not allow_content_tag_fallback:
-                    return [], tag
-                # Tag has no cards of this content type — fall back to full pool
+            )
+            if tagged:
+                return tagged, tag
+            if not allow_content_tag_fallback:
+                return [], tag
+            # Tag has no cards of this content type — fall back to full pool
             return available(
                 cached_pool(
                     (cache_prefix, "all", tuple(sorted(fn_kwargs.items()))),
@@ -256,9 +287,13 @@ def get_card_from_scheduler(
             )
         ), None
 
-    def all_topics():
+    def all_topics(*, other_only=False):
+        pool_filter = (
+            exclude_tags_from_filter(effective_topics_filter, tag_weights)
+            if other_only else effective_topics_filter
+        )
         kwargs = {
-            "topics_filter": effective_topics_filter,
+            "topics_filter": pool_filter,
             "ready_filter": ready_filter,
         }
         if col is not None:
@@ -266,13 +301,17 @@ def get_card_from_scheduler(
         if topic_classifier is not None:
             kwargs["topic_classifier"] = topic_classifier
         return cached_pool(
-            ("topics", "all", effective_topics_filter, ready_filter),
+            ("topics", "all", pool_filter, ready_filter),
             lambda: card_utils.get_all_topic_cards(**kwargs),
         )
 
-    def all_items():
+    def all_items(*, other_only=False):
+        pool_filter = (
+            exclude_tags_from_filter(effective_items_filter, tag_weights)
+            if other_only else effective_items_filter
+        )
         kwargs = {
-            "items_filter": effective_items_filter,
+            "items_filter": pool_filter,
             "ready_filter": ready_filter,
         }
         if col is not None:
@@ -280,7 +319,7 @@ def get_card_from_scheduler(
         if topic_classifier is not None:
             kwargs["topic_classifier"] = topic_classifier
         return cached_pool(
-            ("items", "all", effective_items_filter, ready_filter),
+            ("items", "all", pool_filter, ready_filter),
             lambda: card_utils.get_all_item_cards(**kwargs),
         )
 
@@ -383,19 +422,19 @@ def get_card_from_scheduler(
         actual_tag = tag
 
         if tag == NO_TAGS_KEY:
-            # "Other" bucket selected — fetch from the general pool (no tag filter).
+            # Other excludes every selected tag, including across type fallback.
             if card_type == "topics":
-                cards = available(all_topics())
+                cards = available(all_topics(other_only=True))
             else:
-                cards = available(all_items())
+                cards = available(all_items(other_only=True))
             if not cards and allow_type_fallback:
                 fallback_type = enabled_standard_fallback(card_type)
                 if fallback_type == "items":
                     actual_type = fallback_type
-                    cards = available(all_items())
+                    cards = available(all_items(other_only=True))
                 elif fallback_type == "topics":
                     actual_type = fallback_type
-                    cards = available(all_topics())
+                    cards = available(all_topics(other_only=True))
             if not cards:
                 return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
         else:

@@ -610,6 +610,200 @@ def test_fill_dock_field_passes_excerpt_text_to_pdf_citation(monkeypatch):
     assert filled == [(0, "Excerpt text<br>Citation", False)]
 
 
+def test_fill_dock_field_reports_success_only_after_field_update(monkeypatch):
+    outcomes = []
+    fake_dock = types.SimpleNamespace(
+        show=lambda: None,
+        raise_=lambda: None,
+        _set_field=lambda idx, text, mark_topic=False: True,
+    )
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_apply_configured_extract_notetype", lambda: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock.QTimer, "singleShot", lambda delay, func: None)
+
+    result = dock.fill_dock_field(
+        0,
+        "Excerpt",
+        include_pdf_citation=False,
+        on_complete=outcomes.append,
+    )
+
+    assert result is True
+    assert outcomes == [True]
+
+
+def test_fill_dock_field_delays_completion_until_new_dock_accepts_field(monkeypatch):
+    outcomes = []
+    timers = []
+    fake_dock = types.SimpleNamespace(
+        _set_field=lambda idx, text, mark_topic=False: True,
+    )
+
+    def build():
+        dock._add_card_dock = fake_dock
+
+    monkeypatch.setattr(dock, "_add_card_dock", None)
+    monkeypatch.setattr(dock, "build_add_card_dock", build)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(
+        dock.QTimer,
+        "singleShot",
+        lambda delay, func: timers.append((delay, func)),
+    )
+
+    result = dock.fill_dock_field(
+        0,
+        "Excerpt",
+        include_pdf_citation=False,
+        on_complete=outcomes.append,
+    )
+
+    assert result is None
+    assert outcomes == []
+    delayed_fill = next(func for delay, func in timers if delay == 600)
+    delayed_fill()
+    assert outcomes == [True]
+
+
+def test_fill_dock_field_reports_rejected_field_without_false_highlight(monkeypatch):
+    outcomes = []
+    fake_dock = types.SimpleNamespace(
+        show=lambda: None,
+        raise_=lambda: None,
+        _set_field=lambda idx, text, mark_topic=False: False,
+    )
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_apply_configured_extract_notetype", lambda: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock.QTimer, "singleShot", lambda delay, func: None)
+
+    result = dock.fill_dock_field(
+        99,
+        "Excerpt",
+        include_pdf_citation=False,
+        on_complete=outcomes.append,
+    )
+
+    assert result is False
+    assert outcomes == [False]
+
+
+def test_fill_dock_field_reports_failed_dock_creation_once(monkeypatch):
+    outcomes = []
+    monkeypatch.setattr(dock, "_add_card_dock", None)
+    monkeypatch.setattr(
+        dock,
+        "build_add_card_dock",
+        lambda: (_ for _ in ()).throw(RuntimeError("could not build")),
+    )
+
+    result = dock.fill_dock_field(
+        0,
+        "Excerpt",
+        include_pdf_citation=False,
+        on_complete=outcomes.append,
+    )
+
+    assert result is False
+    assert outcomes == [False]
+
+
+def test_pending_web_extract_records_survive_appended_source_context_refresh():
+    record = {
+        "webCardId": 17,
+        "url": "https://example.com/guide",
+        "anchor": {
+            "version": 1,
+            "exact": "selected passage",
+            "prefix": "before ",
+            "suffix": " after",
+            "startPath": [0],
+            "startOffset": 0,
+            "endPath": [0],
+            "endOffset": 16,
+        },
+    }
+    dock.clear_pending_extract_context()
+    try:
+        dock.set_pending_extract_context(parent_card_id=17)
+        assert dock.append_pending_web_extract_record(record) is True
+
+        dock.set_pending_extract_context(
+            parent_card_id=17,
+            preserve_web_extract_records=True,
+        )
+
+        records = dock.pending_web_extract_records()
+        assert len(records) == 1
+        assert records[0]["webCardId"] == 17
+        assert records[0]["anchor"]["exact"] == "selected passage"
+    finally:
+        dock.clear_pending_extract_context()
+
+
+def test_pending_web_extract_record_can_be_rolled_back_after_rejected_fill(monkeypatch):
+    record = {
+        "webCardId": 17,
+        "url": "https://example.com/guide",
+        "anchor": {
+            "version": 1,
+            "exact": "selected passage",
+            "prefix": "before ",
+            "suffix": " after",
+            "startPath": [0],
+            "startOffset": 0,
+            "endPath": [0],
+            "endOffset": 16,
+        },
+    }
+    monkeypatch.setattr(dock, "_schedule_extract_draft_autosave", lambda *_args: None)
+    dock.clear_pending_extract_context()
+    try:
+        dock.set_pending_extract_context(parent_card_id=17)
+        assert dock.append_pending_web_extract_record(record) is True
+
+        assert dock.remove_pending_web_extract_record(record) is True
+        assert dock.pending_web_extract_records() == []
+        assert dock.remove_pending_web_extract_record(record) is False
+        assert (dock.pending_extract_context() or {}).get("parent_card_id") == 17
+    finally:
+        dock.clear_pending_extract_context()
+
+
+def test_pending_web_extract_record_limit_drops_oldest_and_keeps_new_transfer(
+    monkeypatch,
+):
+    monkeypatch.setattr(dock, "_schedule_extract_draft_autosave", lambda *_args: None)
+    dock.clear_pending_extract_context()
+    try:
+        for index in range(dock.MAX_PENDING_WEB_EXTRACT_RECORDS + 1):
+            record = {
+                "webCardId": 17,
+                "url": "https://example.com/guide",
+                "anchor": {
+                    "version": 1,
+                    "exact": f"passage {index}",
+                    "prefix": "before ",
+                    "suffix": " after",
+                    "startPath": [index],
+                    "startOffset": 0,
+                    "endPath": [index],
+                    "endOffset": len(f"passage {index}"),
+                },
+            }
+            assert dock.append_pending_web_extract_record(record) is True
+
+        records = dock.pending_web_extract_records()
+        assert len(records) == dock.MAX_PENDING_WEB_EXTRACT_RECORDS
+        assert records[0]["anchor"]["exact"] == "passage 1"
+        assert records[-1]["anchor"]["exact"] == (
+            f"passage {dock.MAX_PENDING_WEB_EXTRACT_RECORDS}"
+        )
+    finally:
+        dock.clear_pending_extract_context()
+
+
 def test_source_card_id_for_transfer_reads_video_source(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
@@ -622,6 +816,7 @@ def test_source_card_id_for_transfer_reads_video_source(monkeypatch):
 
 def test_on_add_cards_did_add_note_notifies_video_extract_source(monkeypatch):
     note = _FakeNote(note_id=11)
+    note._incremento_add_card_draft_owner = True
     notify_calls = []
 
     monkeypatch.setattr(dock, "_card_ids_for_note", lambda current_note: [701])
@@ -695,6 +890,7 @@ def test_on_add_cards_did_add_note_falls_back_to_default_scratch_priority(monkey
 
 def test_on_add_cards_did_add_note_keeps_extract_priority_when_pending_options_exist(monkeypatch):
     note = _FakeNote(note_id=14)
+    note._incremento_add_card_draft_owner = True
     priority_calls = []
 
     note._incremento_scratch_priority_active_token = "1"
@@ -717,6 +913,69 @@ def test_on_add_cards_did_add_note_keeps_extract_priority_when_pending_options_e
     dock.on_add_cards_did_add_note(note)
 
     assert priority_calls == []
+
+
+def test_unrelated_note_add_does_not_consume_pending_extract_state(monkeypatch):
+    unrelated_note = _FakeNote(note_id=45)
+    consume_calls = []
+    context_calls = []
+
+    monkeypatch.setattr(
+        dock,
+        "consume_pending_extract_options_for_note",
+        lambda note: consume_calls.append(note),
+    )
+    monkeypatch.setattr(
+        dock,
+        "consume_pending_extract_context_for_note",
+        lambda note, options=None: context_calls.append((note, options)),
+    )
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda *_args: 0)
+    monkeypatch.setattr(dock, "_notify_video_extract_note_added", lambda *_args: None)
+    monkeypatch.setattr(dock, "mark_reviewer_extract_note_added", lambda *_args: None)
+    monkeypatch.setattr(dock, "_carry_auto_extract_tag_keys_after_add", lambda *_args: None)
+
+    dock.on_add_cards_did_add_note(unrelated_note)
+
+    assert consume_calls == []
+    assert context_calls == []
+
+
+def test_consuming_extract_context_snapshots_web_records_on_owning_note(monkeypatch):
+    note = _FakeNote(note_id=46)
+    note._incremento_add_card_draft_owner = True
+    record = {
+        "webCardId": 17,
+        "url": "https://example.com/guide",
+        "anchor": {
+            "version": 1,
+            "exact": "selected passage",
+            "prefix": "before ",
+            "suffix": " after",
+            "startPath": [0],
+            "startOffset": 0,
+            "endPath": [0],
+            "endOffset": 16,
+        },
+    }
+    monkeypatch.setattr(
+        dock,
+        "apply_extract_context_to_note",
+        lambda current_note, options=None, context=None: dict(context or {}),
+    )
+    dock.clear_pending_extract_context()
+    try:
+        dock.set_pending_extract_context(parent_card_id=17)
+        assert dock.append_pending_web_extract_record(record) is True
+
+        dock.consume_pending_extract_context_for_note(note, {"source": "web"})
+
+        assert dock.pending_extract_context() is None
+        records = dock.web_extract_records_for_note(note)
+        assert len(records) == 1
+        assert records[0]["anchor"]["exact"] == "selected passage"
+    finally:
+        dock.clear_pending_extract_context()
 
 
 def test_extract_draft_capture_ignores_a_separate_native_add_editor(monkeypatch):
@@ -2275,6 +2534,65 @@ def test_transfer_selection_to_field_updates_pending_extract_source_before_fill(
     dock.transfer_selection_to_field(0)
 
     assert pending_sources == ["reviewer", "reviewer"]
+
+
+def test_web_transfer_stages_marker_before_fill_callback_and_rolls_back_failure(
+    monkeypatch,
+):
+    events = []
+    record = {
+        "webCardId": 17,
+        "url": "https://example.com/guide",
+        "anchor": {
+            "version": 1,
+            "exact": "Selection",
+            "prefix": "before ",
+            "suffix": " after",
+            "startPath": [0],
+            "startOffset": 0,
+            "endPath": [0],
+            "endOffset": 9,
+        },
+    }
+    fake_web_dock = types.SimpleNamespace(
+        get_selected_extraction=lambda callback: callback("Selection", record),
+        web_citation=lambda: None,
+        _accept_web_extract_record=lambda current, *, expected_profile: events.append(
+            ("stage", current, expected_profile)
+        )
+        or True,
+        _remove_pending_web_extract_record=lambda current, *, expected_profile: events.append(
+            ("rollback", current, expected_profile)
+        )
+        or True,
+    )
+    fill_calls = []
+
+    monkeypatch.setattr(dock, "__package__", "frontend")
+    monkeypatch.setitem(sys.modules, "frontend.web_dock", fake_web_dock)
+    monkeypatch.setattr(dock, "_has_recent_selection", lambda: True)
+    monkeypatch.setattr(dock, "_last_selection_source", "web")
+    monkeypatch.setattr(dock, "_last_selection_text", "")
+    monkeypatch.setattr(dock, "_current_extract_priority", None)
+    monkeypatch.setattr(dock, "_active_profile", lambda: "Profile A")
+    monkeypatch.setattr(dock, "source_relative_extract_priority_for_source", lambda source: 15.0)
+    monkeypatch.setattr(dock, "_extract_mark_topic_for_transfer", lambda: False)
+    monkeypatch.setattr(dock, "_extract_link_to_knowledge_tree_for_transfer", lambda: True)
+    monkeypatch.setattr(
+        dock,
+        "fill_dock_field",
+        lambda *args, **kwargs: fill_calls.append((args, kwargs)),
+    )
+
+    dock.transfer_selection_to_field(0)
+
+    assert events == [("stage", record, "Profile A")]
+    assert len(fill_calls) == 1
+    fill_calls[0][1]["on_complete"](False)
+    assert events == [
+        ("stage", record, "Profile A"),
+        ("rollback", record, "Profile A"),
+    ]
 
 
 def test_toggle_editor_topic_button_removes_item_tags(monkeypatch):

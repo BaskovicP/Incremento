@@ -7,11 +7,13 @@ try:
     from .epub_manager import DOCUMENT_FILTER, EPUB_NOTE_TYPE
     from .topic_scheduler import is_topic_card, resolve_topic_card_classifier
     from .paths import get_active_profile as _active_profile
+    from .topic_review_actions import reader_revisit_filter
 except ImportError:
     from priority_manager import get_all_priorities  # type: ignore
     from epub_manager import DOCUMENT_FILTER, EPUB_NOTE_TYPE  # type: ignore
     from topic_scheduler import is_topic_card, resolve_topic_card_classifier  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
+    from topic_review_actions import reader_revisit_filter
 
 all_ready_cards_filter = "(is:new OR (is:learn is:due) OR (is:review is:due)) -is:suspended"
 PDF_NOTE_TYPE = "Incremento PDF"
@@ -448,9 +450,9 @@ def count_ready_item_cards_by_tag(
 
 
 def get_all_pdf_cards(pdf_filter: str = DOCUMENT_FILTER, *, col=None):
-    """Return all non-suspended document cards, always eligible regardless of due state."""
+    """Return non-suspended documents except explicitly deferred topics."""
     collection = _collection(col)
-    return _sort_by_due(collection.find_cards(f"{pdf_filter} -is:suspended"), col=collection)
+    return _sort_by_due(collection.find_cards(f"{pdf_filter} -is:suspended {reader_revisit_filter(collection)}"), col=collection)
 
 
 def get_document_card_type(card_id: int, *, col=None) -> str | None:
@@ -471,21 +473,21 @@ def get_document_card_type(card_id: int, *, col=None) -> str | None:
 
 
 def get_all_youtube_cards(youtube_filter: str = 'note:"Incremento Video"', *, col=None):
-    """Return all non-suspended YouTube/video cards, always eligible regardless of due state."""
+    """Return non-suspended videos except explicitly deferred topics."""
     collection = _collection(col)
-    return _sort_by_due(collection.find_cards(f"{youtube_filter} -is:suspended"), col=collection)
+    return _sort_by_due(collection.find_cards(f"{youtube_filter} -is:suspended {reader_revisit_filter(collection)}"), col=collection)
 
 
 def get_all_webpage_cards(webpage_filter: str = 'note:"Incremento Web"', *, col=None):
-    """Return all non-suspended webpage cards, always eligible regardless of due state."""
+    """Return non-suspended webpages except explicitly deferred topics."""
     collection = _collection(col)
-    return _sort_by_due(collection.find_cards(f"{webpage_filter} -is:suspended"), col=collection)
+    return _sort_by_due(collection.find_cards(f"{webpage_filter} -is:suspended {reader_revisit_filter(collection)}"), col=collection)
 
 
 def get_pdf_cards_by_tag(tag: str, pdf_filter: str = DOCUMENT_FILTER, *, col=None):
     collection = _collection(col)
     return _sort_by_due(
-        collection.find_cards(f"{pdf_filter} tag:{tag} -is:suspended"),
+        collection.find_cards(f"{pdf_filter} tag:{tag} -is:suspended {reader_revisit_filter(collection)}"),
         col=collection,
     )
 
@@ -498,7 +500,7 @@ def get_youtube_cards_by_tag(
 ):
     collection = _collection(col)
     return _sort_by_due(
-        collection.find_cards(f"{youtube_filter} tag:{tag} -is:suspended"),
+        collection.find_cards(f"{youtube_filter} tag:{tag} -is:suspended {reader_revisit_filter(collection)}"),
         col=collection,
     )
 
@@ -511,6 +513,6 @@ def get_webpage_cards_by_tag(
 ):
     collection = _collection(col)
     return _sort_by_due(
-        collection.find_cards(f"{webpage_filter} tag:{tag} -is:suspended"),
+        collection.find_cards(f"{webpage_filter} tag:{tag} -is:suspended {reader_revisit_filter(collection)}"),
         col=collection,
     )

@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 
 CONFIG_SCHEMA_VERSION = 2
+DEFAULT_TOPIC_DONE_TAG = "topic/done"
 _DAY_END_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 _BOOLEAN_DEFAULTS = {
@@ -96,10 +97,35 @@ def _normalize_dialog(raw: Any) -> dict:
     return dialog
 
 
+def normalize_topic_done_tag(value: object) -> str:
+    """Validate one note tag; an empty setting uses the shipped default."""
+    if value is None:
+        return DEFAULT_TOPIC_DONE_TAG
+    if not isinstance(value, str):
+        raise ValueError("Done tag must be a single text tag.")
+    tag = value.strip() or DEFAULT_TOPIC_DONE_TAG
+    if (
+        len(tag) > 255
+        or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in tag)
+        or not tag.strip(":")
+        or any(not part for part in tag.split("::"))
+    ):
+        raise ValueError("Enter one valid Done tag, up to 255 characters, without spaces or empty :: levels.")
+    return tag
+
+
+def configured_topic_done_tag(config: Mapping[str, Any] | None = None) -> str:
+    try:
+        return normalize_topic_done_tag((config or {}).get("topic_done_tag"))
+    except ValueError:
+        return DEFAULT_TOPIC_DONE_TAG
+
+
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
+    config["topic_done_tag"] = configured_topic_done_tag(config)
 
     for key, boolean_default in _BOOLEAN_DEFAULTS.items():
         if key in config:

@@ -101,11 +101,12 @@ class _PublicHTTPHandler(HTTPHandler):
 
 class _PublicHTTPSHandler(HTTPSHandler):
     def https_open(self, req):
+        # HTTPSHandler configures verification on its SSLContext. Python 3.12+
+        # no longer accepts a separate check_hostname connection argument.
         return self.do_open(
             _PublicHTTPSConnection,
             req,
             context=getattr(self, "_context", None),
-            check_hostname=getattr(self, "_check_hostname", None),
         )
 
 

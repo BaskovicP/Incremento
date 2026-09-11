@@ -385,6 +385,7 @@ _KNOWN_CONFIG_KEYS = {
     "timer_completion_beep",
     "topic_card_tags",
     "topic_card_types",
+    "topic_done_tag",
     "topic_less_adjustment_percent",
     "topic_maximum_interval_days",
     "topic_more_adjustment_percent",

@@ -364,6 +364,7 @@ def test_config_sanitizer_preserves_behavior_but_removes_private_values() -> Non
     config = {
         "auto_refill_session": True,  # deliberately unknown top-level key
         "topic_card_tags": [PRIVATE_VALUES[2]],
+        "topic_done_tag": PRIVATE_VALUES[2],
         "extract_notetype": "My private note type",
         "pin_hash": PRIVATE_VALUES[7],
         "writing_external_app_custom_path": PRIVATE_VALUES[4],
@@ -418,6 +419,7 @@ def test_config_sanitizer_preserves_behavior_but_removes_private_values() -> Non
     assert "alice_private_key" not in encoded
 
     settings = sanitized["settings"]
+    assert settings["topic_done_tag"]["redacted"] is True
     assert settings["custom_schedule_default_mode"] == "minimum_cadence"
     assert settings["shortcuts"]["start_learning"] == "Ctrl+I"
     assert settings["dialog"]["session_card_count"] == 500

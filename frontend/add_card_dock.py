@@ -42,6 +42,11 @@ try:
         save_extraction_draft,
     )
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.web_extract_anchors import (
+        MAX_PENDING_WEB_EXTRACT_RECORDS,
+        normalize_web_extract_record,
+        normalize_web_extract_records,
+    )
 except ImportError:
     from extraction_drafts import (  # type: ignore
         clear_extraction_draft,
@@ -49,6 +54,11 @@ except ImportError:
         save_extraction_draft,
     )
     from paths import get_active_profile as _active_profile  # type: ignore
+    from web_extract_anchors import (  # type: ignore
+        MAX_PENDING_WEB_EXTRACT_RECORDS,
+        normalize_web_extract_record,
+        normalize_web_extract_records,
+    )
 
 try:
     from ..backend.reviewer_tags import append_missing_tags
@@ -86,6 +96,7 @@ _scratch_priority_token_counter = 0
 _draft_autosave_generation = 0
 _restoring_extract_draft = False
 _DRAFT_OWNER_ATTR = "_incremento_add_card_draft_owner"
+_WEB_EXTRACT_RECORDS_ATTR = "_incremento_web_extract_records"
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
 _DEFAULT_SCRATCH_PRIORITY = 50.0
@@ -189,6 +200,47 @@ def _dock_editor():
         return dock.widget().editor
     except Exception:
         return None
+
+
+def note_owns_add_card_draft(note) -> bool:
+    """Return whether a saved note came from Incremento's embedded Add dock."""
+    return bool(note is not None and getattr(note, _DRAFT_OWNER_ATTR, False))
+
+
+def web_extract_records_for_note(note) -> list[dict]:
+    """Return the bounded transient Web-anchor snapshot attached at note add."""
+    return normalize_web_extract_records(
+        getattr(note, _WEB_EXTRACT_RECORDS_ATTR, []) if note is not None else [],
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+
+
+def _snapshot_web_extract_records_on_note(note, context: dict) -> None:
+    if not note_owns_add_card_draft(note):
+        return
+    records = normalize_web_extract_records(
+        context.get("web_extract_records") or [],
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+    if not records:
+        return
+    try:
+        setattr(note, _WEB_EXTRACT_RECORDS_ATTR, records)
+    except Exception:
+        pass
+
+
+def _mark_add_card_draft_owner(note=None) -> bool:
+    target = note
+    if target is None:
+        target = getattr(_dock_editor(), "note", None)
+    if target is None:
+        return False
+    try:
+        setattr(target, _DRAFT_OWNER_ATTR, True)
+        return True
+    except Exception:
+        return False
 
 
 def _is_live_add_mode_editor(editor) -> bool:
@@ -1847,11 +1899,12 @@ def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = 
             knowledge_tree_tooltip=(
                 "Extract lineage is added to the knowledge tree automatically."
             ),
+            preserve_web_extract_records=True,
         )
     else:
         # A missing/standalone source must never inherit provenance from the
         # previously open PDF, EPUB, web page, writing card, or video.
-        clear_pending_extract_context()
+        _clear_pending_extract_context_except_web_records()
     return options
 
 
@@ -1862,8 +1915,12 @@ def set_pending_extract_context(
     knowledge_tree_link_enabled: bool = False,
     link_to_knowledge_tree: bool = False,
     knowledge_tree_tooltip: str = "",
+    preserve_web_extract_records: bool = False,
 ) -> dict:
     global _pending_extract_context
+    retained_web_records = (
+        pending_web_extract_records() if preserve_web_extract_records else []
+    )
     _pending_extract_context = {
         "metadata": dict(metadata or {}),
         "parent_card_id": int(parent_card_id) if parent_card_id is not None else None,
@@ -1872,6 +1929,8 @@ def set_pending_extract_context(
         "knowledge_tree_tooltip": str(knowledge_tree_tooltip or ""),
         "seen": time.monotonic(),
     }
+    if retained_web_records:
+        _pending_extract_context["web_extract_records"] = retained_web_records
     return dict(_pending_extract_context)
 
 
@@ -1882,6 +1941,96 @@ def clear_pending_extract_context() -> None:
 
 def pending_extract_context() -> dict | None:
     return dict(_pending_extract_context) if _pending_extract_context else None
+
+
+def pending_web_extract_records() -> list[dict]:
+    raw_records = (_pending_extract_context or {}).get("web_extract_records") or []
+    return normalize_web_extract_records(
+        raw_records,
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+
+
+def append_pending_web_extract_record(record: object) -> bool:
+    """Attach one validated Web selection to the active unsaved Add note."""
+    global _pending_extract_context
+    normalized = normalize_web_extract_record(record)
+    if normalized is None:
+        return False
+    records = pending_web_extract_records()
+    normalized_key = (
+        int(normalized["webCardId"]),
+        str(normalized["url"]),
+        str(normalized["anchor"]["id"]),
+    )
+    existing_keys = {
+        (int(item["webCardId"]), str(item["url"]), str(item["anchor"]["id"]))
+        for item in records
+    }
+    if normalized_key not in existing_keys:
+        records.append(normalized)
+        if len(records) > MAX_PENDING_WEB_EXTRACT_RECORDS:
+            records = records[-MAX_PENDING_WEB_EXTRACT_RECORDS:]
+    records = normalize_web_extract_records(
+        records,
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+    context = dict(_pending_extract_context or {})
+    context["web_extract_records"] = records
+    context["seen"] = time.monotonic()
+    _pending_extract_context = context
+    _schedule_extract_draft_autosave(_dock_editor())
+    return any(
+        int(item["webCardId"]) == int(normalized["webCardId"])
+        and item["url"] == normalized["url"]
+        and item["anchor"]["id"] == normalized["anchor"]["id"]
+        for item in records
+    )
+
+
+def remove_pending_web_extract_record(record: object) -> bool:
+    """Remove one staged Web marker after a confirmed field-fill failure."""
+    global _pending_extract_context
+    normalized = normalize_web_extract_record(record)
+    if normalized is None:
+        return False
+    key = (
+        int(normalized["webCardId"]),
+        str(normalized["url"]),
+        str(normalized["anchor"]["id"]),
+    )
+    records = pending_web_extract_records()
+    retained = [
+        item
+        for item in records
+        if (
+            int(item["webCardId"]),
+            str(item["url"]),
+            str(item["anchor"]["id"]),
+        )
+        != key
+    ]
+    if len(retained) == len(records):
+        return False
+    context = dict(_pending_extract_context or {})
+    if retained:
+        context["web_extract_records"] = retained
+    else:
+        context.pop("web_extract_records", None)
+    context["seen"] = time.monotonic()
+    _pending_extract_context = context or None
+    _schedule_extract_draft_autosave(_dock_editor())
+    return True
+
+
+def _clear_pending_extract_context_except_web_records() -> None:
+    global _pending_extract_context
+    retained = pending_web_extract_records()
+    _pending_extract_context = (
+        {"web_extract_records": retained, "seen": time.monotonic()}
+        if retained
+        else None
+    )
 
 
 def sync_pending_extract_options_from_current() -> dict | None:
@@ -2093,6 +2242,7 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
         context = {}
     else:
         clear_pending_extract_context()
+    _snapshot_web_extract_records_on_note(note, context)
     return apply_extract_context_to_note(note, options=options, context=context)
 
 
@@ -2318,14 +2468,15 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
 
 
 def on_add_cards_did_add_note(note) -> None:
-    owns_dock_draft = bool(getattr(note, _DRAFT_OWNER_ATTR, False))
-    options = consume_pending_extract_options_for_note(note)
+    owns_dock_draft = note_owns_add_card_draft(note)
+    options = consume_pending_extract_options_for_note(note) if owns_dock_draft else None
     if not options:
         apply_priority_to_note_cards(note, scratch_priority_for_note(note))
-    _notify_video_extract_note_added(note, options)
-    mark_reviewer_extract_note_added(options)
-    consume_pending_extract_context_for_note(note, options)
-    _notify_video_extract_note_added(note, options)
+    if owns_dock_draft:
+        _notify_video_extract_note_added(note, options)
+        mark_reviewer_extract_note_added(options)
+        consume_pending_extract_context_for_note(note, options)
+        _notify_video_extract_note_added(note, options)
     _carry_auto_extract_tag_keys_after_add(note)
     if owns_dock_draft:
         _clear_saved_extract_draft()
@@ -2443,6 +2594,7 @@ def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
         note = getattr(live_editor, "note", None)
         if note is None:
             return False
+        _mark_add_card_draft_owner(note)
         fields = list(draft.get("fields") or [])
         for index in range(min(len(fields), len(list(getattr(note, "fields", []) or [])))):
             note.fields[index] = str(fields[index] or "")
@@ -2469,6 +2621,7 @@ def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
         _schedule_editor_tag_widget_sync(live_editor)
         _schedule_add_card_tag_button_refresh(live_editor)
         _inject_transfer_buttons(live_editor)
+        _notify_web_extract_highlights_changed()
         return True
     finally:
         _restoring_extract_draft = False
@@ -2503,7 +2656,7 @@ def _create_extract_draft_banner(dock, dialog, draft: dict):
             tooltip("Unsaved extract draft restored.")
 
     def _discard() -> None:
-        _clear_saved_extract_draft()
+        _clear_discarded_extract_draft()
         banner.hide()
         tooltip("Unsaved extract draft discarded.")
 
@@ -2530,6 +2683,22 @@ def _clear_discarded_extract_draft() -> None:
     _last_selection_seen = 0.0
     _last_fill_source = ""
     _last_fill_seen = 0.0
+    try:
+        from . import web_dock
+
+        web_dock.discard_pending_web_extract_records()
+    except Exception:
+        pass
+    _notify_web_extract_highlights_changed()
+
+
+def _notify_web_extract_highlights_changed() -> None:
+    try:
+        from . import web_dock
+
+        web_dock.refresh_web_extraction_highlights()
+    except Exception:
+        pass
 
 
 def _forget_tracked_editor(editor) -> None:
@@ -3063,7 +3232,7 @@ def build_add_card_dock():
 
     def _set_field(idx, text, mark_topic: bool = False):
         note = dlg.editor.note
-        if note and idx < len(note.fields):
+        if note and 0 <= int(idx) < len(note.fields):
             existing = note.fields[idx]
             note.fields[idx] = (existing + '<br><br>' + text) if existing else text
             tags_changed = _apply_pending_extract_tags_to_editor(
@@ -3082,6 +3251,8 @@ def build_add_card_dock():
                 if mark_topic:
                     _set_add_card_tag_button_state(dlg.editor, _TOPIC_TAG_BUTTON_ID, True)
             _schedule_extract_draft_autosave(dlg.editor)
+            return True
+        return False
 
     dock._set_field = _set_field
     return dock
@@ -3110,6 +3281,7 @@ def fill_dock_field(
     citation_html: str | None = None,
     source_link_kind: str | None = None,
     mark_topic: bool = False,
+    on_complete=None,
 ):
     global _add_card_dock, _last_fill_source, _last_fill_seen
     citation = citation_html
@@ -3132,33 +3304,64 @@ def fill_dock_field(
     _last_fill_source = link_kind
     _last_fill_seen = time.monotonic()
     if _add_card_dock is None:
-        build_add_card_dock()
+        try:
+            build_add_card_dock()
+        except Exception:
+            _add_card_dock = None
+            _notify_fill_complete(on_complete, False)
+            return False
 
         def _delayed_fill():
-            do_fill(idx, text, mark_topic=mark_topic)
-            _refresh_transfer_buttons()
-            QTimer.singleShot(80, _refresh_transfer_buttons)
+            success = do_fill(idx, text, mark_topic=mark_topic)
+            try:
+                _refresh_transfer_buttons()
+                QTimer.singleShot(80, _refresh_transfer_buttons)
+            finally:
+                _notify_fill_complete(on_complete, success)
 
-        QTimer.singleShot(600, _delayed_fill)
+        try:
+            QTimer.singleShot(600, _delayed_fill)
+        except Exception:
+            _notify_fill_complete(on_complete, False)
+            return False
         return
     try:
         _add_card_dock.show()
         _add_card_dock.raise_()
         _apply_configured_extract_notetype()
-        do_fill(idx, text, mark_topic=mark_topic)
+        success = do_fill(idx, text, mark_topic=mark_topic)
         _refresh_transfer_buttons()
         QTimer.singleShot(80, _refresh_transfer_buttons)
-    except RuntimeError:
+        _notify_fill_complete(on_complete, success)
+        return success
+    except Exception:
         _add_card_dock = None
+        _notify_fill_complete(on_complete, False)
+        return False
 
 
-def do_fill(idx, text, *, mark_topic: bool = False):
-    if _add_card_dock is None:
+def _notify_fill_complete(callback, success: bool) -> None:
+    if not callable(callback):
         return
     try:
-        _add_card_dock._set_field(idx, text, mark_topic=mark_topic)
-    except (RuntimeError, AttributeError):
+        callback(bool(success))
+    except Exception:
         pass
+
+
+def do_fill(idx, text, *, mark_topic: bool = False) -> bool:
+    if _add_card_dock is None:
+        return False
+    try:
+        result = _add_card_dock._set_field(idx, text, mark_topic=mark_topic)
+        # Older test doubles and reload-surviving dock instances returned None
+        # after a successful update. Only an explicit False is rejection.
+        success = result is not False
+        if success:
+            _mark_add_card_draft_owner()
+        return success
+    except (RuntimeError, AttributeError, TypeError, ValueError):
+        return False
 
 
 def get_add_card_dock():
@@ -3266,7 +3469,13 @@ def transfer_selection_to_field(idx: int) -> None:
     source = _last_selection_source
     fallback_text = _last_selection_text if source == "writing" else ""
 
-    def _apply(resolved_source: str, resolved_text: str) -> None:
+    expected_profile = str(_active_profile() or "")
+
+    def _apply(
+        resolved_source: str,
+        resolved_text: str,
+        web_extract_record: dict | None = None,
+    ) -> None:
         text = resolved_text or fallback_text
         text = _normalize_text(text)
         if not text:
@@ -3284,7 +3493,42 @@ def transfer_selection_to_field(idx: int) -> None:
             link_to_knowledge_tree=_extract_link_to_knowledge_tree_for_transfer(),
             source=resolved_source,
         )
-        fill_dock_field(
+        on_complete = None
+        if resolved_source == "web" and web_extract_record is not None:
+            marker_staged = False
+            try:
+                from .web_dock import _accept_web_extract_record
+
+                marker_staged = bool(
+                    _accept_web_extract_record(
+                        web_extract_record,
+                        expected_profile=expected_profile,
+                    )
+                )
+            except Exception:
+                marker_staged = False
+            fill_completion_seen = False
+
+            def _web_fill_completed(success: bool) -> None:
+                nonlocal fill_completion_seen
+                if fill_completion_seen:
+                    return
+                fill_completion_seen = True
+                if success or not marker_staged:
+                    return
+                try:
+                    from .web_dock import _remove_pending_web_extract_record
+
+                    _remove_pending_web_extract_record(
+                        web_extract_record,
+                        expected_profile=expected_profile,
+                    )
+                except Exception:
+                    pass
+
+            on_complete = _web_fill_completed
+
+        fill_result = fill_dock_field(
             idx,
             text,
             include_pdf_citation=(resolved_source == "pdf"),
@@ -3295,7 +3539,10 @@ def transfer_selection_to_field(idx: int) -> None:
                 else _epub_citation()
             ),
             mark_topic=mark_topic,
+            on_complete=on_complete,
         )
+        if fill_result is False and callable(on_complete):
+            on_complete(False)
 
     def _web_citation() -> str | None:
         try:
@@ -3315,4 +3562,14 @@ def transfer_selection_to_field(idx: int) -> None:
         except Exception:
             return None
 
+    if source == "web":
+        try:
+            from .web_dock import get_selected_extraction
+
+            get_selected_extraction(
+                lambda text, record: _apply("web", text, record)
+            )
+            return
+        except Exception:
+            pass
     _resolve_selection_from_source(source, _apply)

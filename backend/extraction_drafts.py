@@ -24,7 +24,10 @@ _MAX_TAGS = 100
 _MAX_TAG_CHARS = 200
 _MAX_TEXT_CHARS = 10_000
 _MAX_CONTAINER_ITEMS = 100
-_MAX_NESTING = 4
+# Web extraction anchors add one bounded path-list layer below the existing
+# source context. Five preserves those integer path components without opening
+# arbitrary deep draft structures.
+_MAX_NESTING = 5
 
 
 def extraction_draft_path(addon_dir: str, profile: str) -> Path:

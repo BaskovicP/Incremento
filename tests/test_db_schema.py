@@ -140,7 +140,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "
@@ -183,3 +183,35 @@ def test_statistics_goals_migration_rolls_back_table_and_ledger_on_failure():
         "SELECT name FROM sqlite_master WHERE type='table' AND name='statistics_goals'"
     ).fetchone() is None
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
+
+
+def test_web_extract_anchor_migration_rolls_back_column_and_ledger_on_failure():
+    import db
+
+    conn = sqlite3.connect(":memory:")
+
+    def bootstrap(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            "CREATE TABLE web_card_sources ("
+            "id INTEGER PRIMARY KEY, web_card_id INTEGER NOT NULL, "
+            "url TEXT NOT NULL, note_id INTEGER NOT NULL, excerpt TEXT NOT NULL)"
+        )
+
+    def failing_anchor_migration(connection: sqlite3.Connection) -> None:
+        db._migration_8_web_extract_anchors(connection)
+        raise RuntimeError("simulated web-anchor migration interruption")
+
+    migrations = [
+        (version, f"noop_{version}", lambda _conn: None)
+        for version in range(2, 8)
+    ] + [(8, "web_extract_anchors", failing_anchor_migration)]
+
+    with pytest.raises(RuntimeError, match="interruption"):
+        initialize_schema(conn, bootstrap=bootstrap, migrations=migrations)
+
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(web_card_sources)").fetchall()
+    }
+    assert "anchors_json" not in columns
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 7

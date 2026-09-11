@@ -8,12 +8,12 @@ from typing import NamedTuple
 
 try:
     from . import cards as card_utils
-    from .scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, get_card_from_scheduler
+    from .scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, exclude_tags_from_filter, get_card_from_scheduler
     from .statistics import StatsManager
     from .paths import get_active_profile as _active_profile
 except ImportError:
     import cards as card_utils  # type: ignore
-    from scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, get_card_from_scheduler  # type: ignore
+    from scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, exclude_tags_from_filter, get_card_from_scheduler  # type: ignore
     from statistics import StatsManager  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
@@ -851,15 +851,7 @@ class SessionPicker:
 
         if self.cfg.include_rest or not self.cfg.use_tags:
             _attempt_pick_loop(
-                pick_fn=lambda: self._pick(
-                    use_tags=False,
-                    tag_weights={},
-                    topics_filter_override=self.remaining_topics_filter,
-                    items_filter_override=self.remaining_items_filter,
-                    pdf_filter_override=self.remaining_pdf_filter,
-                    youtube_filter_override=self.remaining_youtube_filter,
-                    webpage_filter_override=self.remaining_webpage_filter,
-                ),
+                pick_fn=self._pick_rest,
                 target_reached_fn=lambda: len(self.selected_ids) >= total_target_count,
                 max_attempts=max(total_target_count * 12, 120),
                 max_consecutive_misses=max(total_target_count * 2, 20),
@@ -882,19 +874,23 @@ class SessionPicker:
         )
         if self.remaining_use_tags and self.cfg.include_rest and len(self.selected_ids) < total_target_count:
             _attempt_pick_loop(
-                pick_fn=lambda: self._pick(
-                    use_tags=False,
-                    tag_weights={},
-                    topics_filter_override=self.remaining_topics_filter,
-                    items_filter_override=self.remaining_items_filter,
-                    pdf_filter_override=self.remaining_pdf_filter,
-                    youtube_filter_override=self.remaining_youtube_filter,
-                    webpage_filter_override=self.remaining_webpage_filter,
-                ),
+                pick_fn=self._pick_rest,
                 target_reached_fn=lambda: len(self.selected_ids) >= total_target_count,
                 max_attempts=max(total_target_count * 12, 120),
                 max_consecutive_misses=max(total_target_count * 2, 20),
             )
+
+    def _pick_rest(self) -> bool:
+        tags = self.cfg.tag_weights if self.cfg.use_tags else {}
+        return self._pick(
+            use_tags=bool(tags),
+            tag_weights={NO_TAGS_KEY: 1.0} if tags else {},
+            topics_filter_override=exclude_tags_from_filter(self.remaining_topics_filter, tags),
+            items_filter_override=exclude_tags_from_filter(self.remaining_items_filter, tags),
+            pdf_filter_override=exclude_tags_from_filter(self.remaining_pdf_filter, tags),
+            youtube_filter_override=exclude_tags_from_filter(self.remaining_youtube_filter, tags),
+            webpage_filter_override=exclude_tags_from_filter(self.remaining_webpage_filter, tags),
+        )
 
 
 def select_session_cards(

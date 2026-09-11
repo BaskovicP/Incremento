@@ -89,6 +89,8 @@ _ADDON_PKG = __name__.split(".")[0]
 _MIN_SEARCH_CHARS = 3
 _SEARCH_DEBOUNCE_MS = 250
 _MAX_CARD_SEARCH_CANDIDATES = 1000
+_MAX_CATEGORY_RESULTS = 120
+_LIVE_RESULT_OVERSAMPLE_FACTOR = 10
 _SEARCH_WHILE_TYPING_CONFIG_KEY = "search_all_search_while_typing"
 _SEARCH_ALL_FILTER_CONFIG_KEYS = {
     "pdf_highlights": "search_all_filter_pdf_highlights",
@@ -267,6 +269,7 @@ class _SearchAllDialog(QDialog):
         # encountered in results instead of loading every card in the
         # collection when the dialog opens.
         self._live_card_cache: dict[int, bool] = {}
+        self._live_note_cache: dict[int, bool] = {}
         self._highlight_previews: dict[str, str] = {}
         self._pdf_index_cancel = threading.Event()
         self._pdf_index_running = False
@@ -312,7 +315,16 @@ class _SearchAllDialog(QDialog):
         self._cb_epub_content = QCheckBox("EPUB Content")
         self._cb_ocr = QCheckBox("Image OCR")
         self._cb_cards = QCheckBox("Cards")
-        self._cb_current_profile = QCheckBox("Current Anki Profile Only")
+        # Keep the legacy config/internal name for saved-setting compatibility.
+        # Incremento data is already profile-scoped; this control hides rows
+        # whose linked Anki card or source note has since been deleted.
+        self._cb_current_profile = QCheckBox("Existing Anki Items Only")
+        self._cb_current_profile.setToolTip(
+            "Hide indexed results whose linked Anki card or source note no longer exists."
+        )
+        self._cb_current_profile.setAccessibleDescription(
+            "Hide indexed results linked to deleted Anki cards or notes."
+        )
         self._filter_checkboxes = {
             "pdf_highlights": self._cb_highlights,
             "epub_highlights": self._cb_epub_highlights,
@@ -438,14 +450,16 @@ class _SearchAllDialog(QDialog):
 
     def _on_filter_toggled(self, filter_id: str, enabled: bool) -> None:
         _set_search_all_filter_enabled(filter_id, enabled)
-        self._maybe_refresh_from_controls()
+        # Category changes apply immediately even when query-as-you-type is off;
+        # otherwise results from a newly unchecked category remain on screen.
+        self._maybe_refresh_from_controls(force=True)
 
-    def _maybe_refresh_from_controls(self) -> None:
+    def _maybe_refresh_from_controls(self, *, force: bool = False) -> None:
         self._update_search_button()
         if not self._query_ready():
             self._show_search_hint()
             return
-        if self._cb_search_while_typing.isChecked():
+        if force or self._cb_search_while_typing.isChecked():
             self._refresh(self._search.text())
 
     def _run_search(self) -> None:
@@ -492,14 +506,38 @@ class _SearchAllDialog(QDialog):
         self._live_card_cache[cid] = is_live
         return is_live
 
-    def _filter_current_profile_rows(self, rows: list[tuple]) -> list[tuple]:
+    def _is_current_profile_note(self, note_id: int) -> bool:
+        nid = int(note_id)
+        if nid in self._live_note_cache:
+            return self._live_note_cache[nid]
+        try:
+            is_live = mw.col.get_note(nid) is not None
+        except Exception:
+            is_live = False
+        self._live_note_cache[nid] = is_live
+        return is_live
+
+    def _filter_current_profile_rows(
+        self,
+        rows: list[tuple],
+        *,
+        note_id_index: int | None = None,
+        limit: int | None = None,
+    ) -> list[tuple]:
         if not self._cb_current_profile.isChecked():
-            return rows
+            return rows[:limit] if limit is not None else rows
         out: list[tuple] = []
         for row in rows:
             try:
-                if self._is_current_profile_card(row[0]):
-                    out.append(row)
+                if not self._is_current_profile_card(row[0]):
+                    continue
+                if note_id_index is not None and not self._is_current_profile_note(
+                    row[note_id_index]
+                ):
+                    continue
+                out.append(row)
+                if limit is not None and len(out) >= limit:
+                    break
             except Exception:
                 continue
         return out
@@ -514,6 +552,32 @@ class _SearchAllDialog(QDialog):
             return mw.col.find_notes(f'"{escaped}"')
         except Exception:
             return []
+
+    def _search_excerpt_hits(
+        self,
+        kind: str,
+        query: str,
+        *,
+        source_rows: bool = False,
+        limit: int = _MAX_CATEGORY_RESULTS,
+    ) -> list[tuple]:
+        search_limit = (
+            limit * _LIVE_RESULT_OVERSAMPLE_FACTOR
+            if self._cb_current_profile.isChecked()
+            else limit
+        )
+        rows = search_excerpt_rows(
+            self._addon_dir,
+            _active_profile(),
+            kind,
+            query,
+            limit=search_limit,
+        )
+        return self._filter_current_profile_rows(
+            rows,
+            note_id_index=3 if source_rows else None,
+            limit=limit,
+        )
 
     def _pdf_title(self, card_id: int) -> str:
         try:
@@ -757,12 +821,16 @@ class _SearchAllDialog(QDialog):
         mw.taskman.run_in_background(task, done, uses_collection=False)
 
     def _search_pdf_file_hits(
-        self, q: str, limit: int = 120
+        self, q: str, limit: int = _MAX_CATEGORY_RESULTS
     ) -> list[tuple[int, int, str]]:
         """Search indexed PDF text and start any missing extraction off-thread."""
-        search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
+        search_limit = (
+            limit * _LIVE_RESULT_OVERSAMPLE_FACTOR
+            if self._cb_current_profile.isChecked()
+            else limit
+        )
         hits = search_pdf_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
-        hits = self._filter_current_profile_rows(hits)
+        hits = self._filter_current_profile_rows(hits, limit=limit)
         if hits:
             return [
                 (cid, page, self._snippet(text or "", q, max_len=180))
@@ -780,11 +848,15 @@ class _SearchAllDialog(QDialog):
         super().closeEvent(event)
 
     def _search_epub_file_hits(
-        self, q: str, limit: int = 120
+        self, q: str, limit: int = _MAX_CATEGORY_RESULTS
     ) -> list[tuple[int, int, str, str]]:
-        search_limit = limit * 10 if self._cb_current_profile.isChecked() else limit
+        search_limit = (
+            limit * _LIVE_RESULT_OVERSAMPLE_FACTOR
+            if self._cb_current_profile.isChecked()
+            else limit
+        )
         hits = search_epub_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
-        hits = self._filter_current_profile_rows(hits)
+        hits = self._filter_current_profile_rows(hits, limit=limit)
         return [
             (cid, section_index, title, self._snippet(text or title or "", q, max_len=180))
             for cid, section_index, title, text in hits[:limit]
@@ -806,13 +878,10 @@ class _SearchAllDialog(QDialog):
         # PDF highlights (go directly to page)
         if self._cb_highlights.isChecked():
             try:
-                rows = search_excerpt_rows(
-                    self._addon_dir,
-                    _active_profile(),
+                rows = self._search_excerpt_hits(
                     "pdf_highlights",
                     q,
                 )
-                rows = self._filter_current_profile_rows(rows)
             except Exception:
                 rows = []
 
@@ -847,20 +916,18 @@ class _SearchAllDialog(QDialog):
         # Cards created from PDF pages (go to page)
         if self._cb_sources.isChecked():
             try:
-                rows = search_excerpt_rows(
-                    self._addon_dir,
-                    _active_profile(),
+                rows = self._search_excerpt_hits(
                     "pdf_sources",
                     q,
+                    source_rows=True,
                 )
-                rows = self._filter_current_profile_rows(rows)
             except Exception:
                 rows = []
 
             if rows:
                 html.append("<h3>PDF Sources</h3>")
                 by_file: dict = {}
-                for cid, page, excerpt in rows:
+                for cid, page, excerpt, _note_id in rows:
                     by_file.setdefault(cid, []).append((page, excerpt))
                 for cid, pages in by_file.items():
                     title = escape(self._pdf_title(cid))
@@ -876,13 +943,10 @@ class _SearchAllDialog(QDialog):
 
         if self._cb_epub_highlights.isChecked():
             try:
-                rows = search_excerpt_rows(
-                    self._addon_dir,
-                    _active_profile(),
+                rows = self._search_excerpt_hits(
                     "epub_highlights",
                     q,
                 )
-                rows = self._filter_current_profile_rows(rows)
             except Exception:
                 rows = []
 
@@ -916,20 +980,18 @@ class _SearchAllDialog(QDialog):
 
         if self._cb_epub_sources.isChecked():
             try:
-                rows = search_excerpt_rows(
-                    self._addon_dir,
-                    _active_profile(),
+                rows = self._search_excerpt_hits(
                     "epub_sources",
                     q,
+                    source_rows=True,
                 )
-                rows = self._filter_current_profile_rows(rows)
             except Exception:
                 rows = []
 
             if rows:
                 html.append("<h3>EPUB Sources</h3>")
                 by_file: dict = {}
-                for cid, section_index, excerpt in rows:
+                for cid, section_index, excerpt, _note_id in rows:
                     by_file.setdefault(cid, []).append((section_index, excerpt))
                 for cid, entries in by_file.items():
                     title = escape(self._epub_title(cid))
@@ -945,7 +1007,7 @@ class _SearchAllDialog(QDialog):
 
         # Actual PDF file text (page-level)
         if self._cb_content.isChecked():
-            pdf_page_hits = self._search_pdf_file_hits(q, limit=120)
+            pdf_page_hits = self._search_pdf_file_hits(q, limit=_MAX_CATEGORY_RESULTS)
             if pdf_page_hits:
                 html.append("<h3>PDF File Content</h3>")
                 by_file: dict = {}
@@ -964,7 +1026,10 @@ class _SearchAllDialog(QDialog):
                     html.append("</ul>")
 
         if self._cb_epub_content.isChecked():
-            epub_section_hits = self._search_epub_file_hits(q, limit=120)
+            epub_section_hits = self._search_epub_file_hits(
+                q,
+                limit=_MAX_CATEGORY_RESULTS,
+            )
             if epub_section_hits:
                 html.append("<h3>EPUB File Content</h3>")
                 by_file: dict = {}
@@ -984,7 +1049,11 @@ class _SearchAllDialog(QDialog):
                     html.append("</ul>")
 
         if self._cb_ocr.isChecked():
-            search_limit = 1200 if self._cb_current_profile.isChecked() else 120
+            search_limit = (
+                _MAX_CATEGORY_RESULTS * _LIVE_RESULT_OVERSAMPLE_FACTOR
+                if self._cb_current_profile.isChecked()
+                else _MAX_CATEGORY_RESULTS
+            )
             ocr_hits = search_note_ocr_index(
                 self._addon_dir,
                 _active_profile(),
@@ -997,7 +1066,9 @@ class _SearchAllDialog(QDialog):
                 ]
             if ocr_hits:
                 html.append("<h3>Image OCR</h3><ul>")
-                for note_id, card_id, image_name, text in ocr_hits[:120]:
+                for note_id, card_id, image_name, text in ocr_hits[
+                    :_MAX_CATEGORY_RESULTS
+                ]:
                     try:
                         note = mw.col.get_note(note_id)
                         model = mw.col.models.get(note.mid)

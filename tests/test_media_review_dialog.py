@@ -1,13 +1,78 @@
 import importlib.util
 import os
+import subprocess
 import sys
 import types
+from textwrap import dedent
 
 import aqt
 import media_review
+import pytest
 
 
 _ADDON_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def test_reminder_checkbox_changes_launch_mode_without_changing_selected_cards():
+    script = dedent(
+        r"""
+        import os
+        import sys
+        import types
+
+        from aqt.qt import QApplication, QCheckBox
+
+        package = types.ModuleType("incremento")
+        package.__path__ = [os.getcwd()]
+        sys.modules["incremento"] = package
+        from incremento.frontend.media_review_dialog import MediaAttachedReviewDialog
+
+        app = QApplication([])
+        for media_kind in ("pdf", "epub", "video"):
+            dialog = MediaAttachedReviewDialog(
+                None, media_label=media_kind.upper(), media_kind=media_kind,
+                preview_rows=[{
+                    "card_id": 30, "card_label": "Synthetic future topic",
+                    "is_topic": True, "is_due": False, "media_position": 3,
+                }], current_position=7,
+            )
+            checkbox = next(
+                box for box in dialog.findChildren(QCheckBox)
+                if box.text() == "Reminder without schedule changes"
+            )
+            assert not checkbox.isChecked()
+            assert dialog.selected_options()["reschedule"] is True
+            original_selection = dialog.selection_summary()
+            assert original_selection["selected_count"] == 1
+
+            checkbox.click()
+            assert dialog.selected_options()["reschedule"] is False
+            assert dialog.selection_summary() == original_selection
+            assert dialog._review_button.text() == "Preview 1 Card"
+            assert "unchanged" in dialog._preview_label.text()
+            saved = dialog.selected_options()
+
+            checkbox.click()
+            assert dialog.selected_options()["reschedule"] is True
+            assert dialog._review_button.text() == "Review 1 Card"
+            reopened = MediaAttachedReviewDialog(
+                None, media_label=media_kind.upper(), media_kind=media_kind,
+                preview_rows=[], initial_options=saved,
+            )
+            assert reopened.selected_options()["reschedule"] is False
+            assert not reopened._review_button.isEnabled()
+            reopened.close()
+            dialog.close()
+        print("Reminder checkbox: ok")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=_ADDON_ROOT,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Reminder checkbox: ok" in result.stdout
 
 
 def _load_dialog_module(monkeypatch):
@@ -15,42 +80,44 @@ def _load_dialog_module(monkeypatch):
         def __init__(self, *_args, **_kwargs):
             pass
 
-    qt_module = sys.modules["aqt.qt"]
-    for name in (
-        "QComboBox",
-        "QDialogButtonBox",
-        "QFormLayout",
-        "QLabel",
-        "QSpinBox",
-        "QVBoxLayout",
-    ):
-        monkeypatch.setattr(qt_module, name, type(name, (), {}), raising=False)
-    monkeypatch.setattr(qt_module, "QDialog", _DialogBase, raising=False)
-    monkeypatch.setattr(qt_module, "qconnect", lambda *_args: None, raising=False)
-    monkeypatch.setattr(aqt, "mw", object(), raising=False)
+    with monkeypatch.context() as imports:
+        qt_module = sys.modules["aqt.qt"]
+        for name in (
+            "QComboBox",
+            "QDialogButtonBox",
+            "QFormLayout",
+            "QLabel",
+            "QSpinBox",
+            "QVBoxLayout",
+        ):
+            imports.setattr(qt_module, name, type(name, (), {}), raising=False)
+        imports.setattr(qt_module, "QDialog", _DialogBase, raising=False)
+        imports.setattr(qt_module, "qconnect", lambda *_args: None, raising=False)
+        imports.setattr(aqt, "mw", object(), raising=False)
 
-    session_stub = types.ModuleType("session")
-    session_stub.start_explicit_review_from_selector = lambda *_args, **_kwargs: True
-    session_stub.record_media_review_inspection_started = lambda *_args: None
-    session_stub.record_media_review_inspection_finished = lambda *_args: None
-    session_stub.record_media_review_inspection_failed = lambda *_args: None
-    monkeypatch.setitem(sys.modules, "session", session_stub)
-    monkeypatch.setitem(sys.modules, "media_review", media_review)
+        session_stub = types.ModuleType("session")
+        session_stub.start_explicit_review_from_selector = lambda *_args, **_kwargs: True
+        session_stub.record_media_review_inspection_started = lambda *_args: None
+        session_stub.record_media_review_inspection_finished = lambda *_args: None
+        session_stub.record_media_review_inspection_failed = lambda *_args: None
+        imports.setitem(sys.modules, "session", session_stub)
+        imports.setitem(sys.modules, "media_review", media_review)
 
-    module_name = "media_review_dialog_under_test"
-    sys.modules.pop(module_name, None)
-    spec = importlib.util.spec_from_file_location(
-        module_name,
-        os.path.join(_ADDON_ROOT, "frontend", "media_review_dialog.py"),
-    )
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
+        module_name = "media_review_dialog_under_test"
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            os.path.join(_ADDON_ROOT, "frontend", "media_review_dialog.py"),
+        )
+        module = importlib.util.module_from_spec(spec)
+        imports.setitem(sys.modules, module_name, module)
+        spec.loader.exec_module(module)
     return module
 
 
+@pytest.mark.parametrize("media_kind", ["pdf", "epub", "video"])
+@pytest.mark.parametrize("reschedule", [True, False], ids=["review", "reminder"])
 def test_launcher_previews_then_passes_all_selected_options_to_background_card_selector(
-    monkeypatch,
+    monkeypatch, media_kind, reschedule,
 ):
     module = _load_dialog_module(monkeypatch)
     query_calls = []
@@ -62,8 +129,8 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
 
     class _AcceptedDialog:
         def __init__(self, parent, **kwargs):
-            assert kwargs["media_label"] == "PDF"
-            assert kwargs["media_kind"] == "pdf"
+            assert kwargs["media_label"] == media_kind.upper()
+            assert kwargs["media_kind"] == media_kind
             assert kwargs["current_position"] == 7
             assert kwargs["initial_options"]["order"] == media_review.MEDIA_REVIEW_ORDER_ATTACHED
             assert kwargs["initial_options"]["include_filtered"] is False
@@ -81,6 +148,7 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
                 "state": media_review.MEDIA_REVIEW_STATE_DUE,
                 "limit": 12,
                 "include_filtered": True,
+                "reschedule": reschedule,
             }
 
     monkeypatch.setattr(module, "MediaAttachedReviewDialog", _AcceptedDialog)
@@ -117,7 +185,8 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
         "_run_media_review_query",
         lambda **kwargs: query_calls.append(kwargs),
     )
-    module._last_options_by_media_kind["Profile\0pdf"] = {
+    options_key = f"Profile\0{media_kind}"
+    module._last_options_by_media_kind[options_key] = {
         **module._default_options(),
         "include_filtered": True,
     }
@@ -126,9 +195,9 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
         addon_dir="/addon",
         profile="Profile",
         source_card_id=55,
-        media_label="PDF",
-        media_kind="pdf",
-        deck_name="Incremento PDF Review",
+        media_label=media_kind.upper(),
+        media_kind=media_kind,
+        deck_name=f"Incremento {media_kind.upper()} Review",
         current_position=7,
         linked_note_ids=[101, 102],
         linked_card_ids=[201],
@@ -140,14 +209,15 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
     preview_rows = query_calls[0]["op"](fake_col)
     query_calls[0]["success"](preview_rows)
     assert inspection_calls[0][1]["topic_classifier"] is classifier
-    assert diagnostic_calls == [("started", "pdf"), ("finished", "pdf", 1)]
+    assert diagnostic_calls == [("started", media_kind), ("finished", media_kind, 1)]
 
     selector, review_kwargs = review_calls[0]
     assert selector(fake_col) == [30, 20]
     resolver_kwargs = resolver_calls[0][1]
     assert resolver_calls[0][0] == ("/addon", "Profile", 55)
     assert resolver_kwargs["col"] is fake_col
-    assert resolver_kwargs["media_kind"] == "pdf"
+    assert resolver_kwargs["media_kind"] == media_kind
+    assert "reschedule" not in resolver_kwargs
     assert resolver_kwargs["order"] == media_review.MEDIA_REVIEW_ORDER_CREATED_NEWEST
     assert resolver_kwargs["card_kind"] == media_review.MEDIA_REVIEW_CARD_KIND_TOPICS
     assert resolver_kwargs["tree_scope"] == media_review.MEDIA_REVIEW_TREE_DIRECT
@@ -160,19 +230,21 @@ def test_launcher_previews_then_passes_all_selected_options_to_background_card_s
     assert resolver_kwargs["linked_card_ids"] == (201,)
     assert resolver_kwargs["include_tree_descendants"] is True
     assert resolver_kwargs["topic_classifier"] is classifier
-    assert review_kwargs["deck_name"] == "Incremento PDF Review"
+    assert review_kwargs["deck_name"] == f"Incremento {media_kind.upper()} Review"
+    assert review_kwargs["reschedule"] is reschedule
     assert review_kwargs["preserve_order"] is True
     assert review_kwargs["release_from_other_filtered_decks"] is True
     assert "Topic/Item" in review_kwargs["empty_message"]
     assert review_kwargs["diagnostic_source"] == "media_review"
-    assert review_kwargs["diagnostic_content_kind"] == "pdf"
+    assert review_kwargs["diagnostic_content_kind"] == media_kind
     assert review_kwargs["diagnostic_media_order"] == "created_newest"
     assert review_kwargs["diagnostic_media_card_kind"] == "topics"
     assert review_kwargs["diagnostic_media_tree_scope"] == "direct"
     assert review_kwargs["diagnostic_media_range"] == "to_current"
     assert review_kwargs["diagnostic_media_state"] == "due"
     assert review_kwargs["diagnostic_limit"] == 12
-    assert module._last_options_by_media_kind["Profile\0pdf"]["include_filtered"] is False
+    assert module._last_options_by_media_kind[options_key]["include_filtered"] is False
+    assert module._last_options_by_media_kind[options_key]["reschedule"] is reschedule
 
 
 def test_filtered_deck_option_defaults_off_and_normalizes_boolean(monkeypatch):

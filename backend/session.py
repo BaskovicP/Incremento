@@ -396,6 +396,7 @@ def _prepare_filtered_review_deck(
     *,
     deck_name: str,
     preserve_order: bool,
+    reschedule: bool = True,
     select_deck: bool = True,
     col=None,
     return_result: bool = False,
@@ -434,7 +435,7 @@ def _prepare_filtered_review_deck(
         # Anki exposes only whole-deck emptying for cards already in a filtered
         # deck. Use that supported operation once per conflicting deck; it
         # returns every card in that deck to its original deck before the
-        # selected cards are moved into this rescheduling review deck.
+        # selected cards are moved into the requested review deck.
         conflicting_deck_ids: set[int] = set()
         target_deck_id = int(did or 0)
         for card_id in normalized_ids:
@@ -472,7 +473,7 @@ def _prepare_filtered_review_deck(
         did = collection.decks.new_filtered(deck_name)
 
     fdu = collection.sched.get_or_create_filtered_deck(did)
-    fdu.config.reschedule = True
+    fdu.config.reschedule = bool(reschedule)
     del fdu.config.search_terms[:]
     fdu.config.search_terms.add(
         search=search,
@@ -1226,6 +1227,7 @@ def start_explicit_review_from_selector(
     *,
     deck_name: str = INCREMENTO_DECK,
     preserve_order: bool = True,
+    reschedule: bool = True,
     empty_message: str = "No cards available to review.",
     error_message: str = "Could not start review",
     on_finished=None,
@@ -1300,6 +1302,7 @@ def start_explicit_review_from_selector(
         prepare_kwargs = {
             "deck_name": deck_name,
             "preserve_order": preserve_order,
+            "reschedule": reschedule,
             "select_deck": False,
             "col": col,
             "return_result": True,

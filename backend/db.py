@@ -25,7 +25,7 @@ reading_page_history — unique PDF/EPUB pages viewed per logical day
 priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 epub_card_sources — notes created while reading an EPUB section
-web_card_sources — notes created while viewing a web-card URL (for per-URL card preview)
+web_card_sources — notes and bounded extraction anchors created at a web-card URL
 note_ocr_index  — searchable OCR text extracted from image-based non-document notes
 web_progress    — last URL, scroll position, bookmark state, and media resume state per web card
 reader_bookmarks — permanent interesting-place bookmarks per reader card
@@ -58,10 +58,22 @@ try:
     from .paths import get_db_checkpoint_dir, get_db_path, get_stats_path
     from .db_connection import ProfileConnectionManager
     from .db_schema import initialize_schema
+    from .web_extract_anchors import (
+        MAX_WEB_EXTRACT_ANCHORS_JSON_CHARS,
+        MAX_STORED_WEB_EXTRACT_ANCHORS,
+        merge_latest_web_extract_anchors,
+        normalize_web_extract_anchors,
+    )
 except ImportError:
     from paths import get_db_checkpoint_dir, get_db_path, get_stats_path  # test environment
     from db_connection import ProfileConnectionManager  # type: ignore
     from db_schema import initialize_schema  # type: ignore
+    from web_extract_anchors import (  # type: ignore
+        MAX_WEB_EXTRACT_ANCHORS_JSON_CHARS,
+        MAX_STORED_WEB_EXTRACT_ANCHORS,
+        merge_latest_web_extract_anchors,
+        normalize_web_extract_anchors,
+    )
 
 _connection_manager = ProfileConnectionManager(busy_timeout_ms=5000)
 
@@ -559,6 +571,21 @@ def _migration_7_statistics_goals(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_8_web_extract_anchors(conn: sqlite3.Connection) -> None:
+    """Persist bounded extraction anchors beside their owning source-note row."""
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(web_card_sources)").fetchall()
+    }
+    if "anchors_json" not in columns:
+        _begin_migration_script(
+            conn,
+            "ALTER TABLE web_card_sources "
+            "ADD COLUMN anchors_json TEXT NOT NULL DEFAULT '[]' "
+            "CHECK (length(anchors_json) <= 262144);",
+        )
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -566,6 +593,7 @@ _SCHEMA_MIGRATIONS = (
     (5, "document_index_state", _migration_5_document_index_state),
     (6, "statistics_history", _migration_6_statistics_history),
     (7, "statistics_goals", _migration_7_statistics_goals),
+    (8, "web_extract_anchors", _migration_8_web_extract_anchors),
 )
 
 
@@ -800,7 +828,9 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             web_card_id INTEGER NOT NULL,
             url         TEXT    NOT NULL DEFAULT '',
             note_id     INTEGER NOT NULL,
-            excerpt     TEXT    NOT NULL DEFAULT ''
+            excerpt     TEXT    NOT NULL DEFAULT '',
+            anchors_json TEXT   NOT NULL DEFAULT '[]'
+                CHECK (length(anchors_json) <= 262144)
         );
         CREATE INDEX IF NOT EXISTS idx_wcs_card_url
             ON web_card_sources (web_card_id, url);
@@ -2939,15 +2969,78 @@ def get_epub_document_source_rows(
 
 
 def add_web_card_source(
-    addon_dir: str, profile: str, web_card_id: int, url: str, note_id: int, excerpt: str = ""
+    addon_dir: str,
+    profile: str,
+    web_card_id: int,
+    url: str,
+    note_id: int,
+    excerpt: str = "",
+    *,
+    anchors: list[dict] | tuple[dict, ...] | None = None,
 ) -> None:
     """Record that note_id was created while viewing web_card_id at url."""
     conn = get_connection(addon_dir, profile)
-    conn.execute(
-        "INSERT INTO web_card_sources (web_card_id, url, note_id, excerpt) VALUES (?, ?, ?, ?)",
-        (web_card_id, str(url or "").strip(), note_id, excerpt),
-    )
-    conn.commit()
+    target_card_id = int(web_card_id)
+    target_url = str(url or "").strip()
+    target_note_id = int(note_id)
+    target_excerpt = str(excerpt or "")[:2_000]
+    incoming_anchors = normalize_web_extract_anchors(anchors or [])
+    with conn:
+        existing = conn.execute(
+            "SELECT id, anchors_json FROM web_card_sources "
+            "WHERE web_card_id = ? AND url = ? AND note_id = ? ORDER BY id LIMIT 1",
+            (target_card_id, target_url, target_note_id),
+        ).fetchone()
+        if existing is None:
+            conn.execute(
+                "INSERT INTO web_card_sources "
+                "(web_card_id, url, note_id, excerpt, anchors_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    target_card_id,
+                    target_url,
+                    target_note_id,
+                    target_excerpt,
+                    _encode_web_extract_anchors(incoming_anchors),
+                ),
+            )
+        else:
+            existing_anchors = _decode_web_extract_anchors(existing[1])
+            merged_anchors = merge_latest_web_extract_anchors(
+                existing_anchors,
+                incoming_anchors,
+                limit=MAX_STORED_WEB_EXTRACT_ANCHORS,
+            )
+            conn.execute(
+                "UPDATE web_card_sources SET excerpt = ?, anchors_json = ? WHERE id = ?",
+                (
+                    target_excerpt,
+                    _encode_web_extract_anchors(merged_anchors),
+                    int(existing[0]),
+                ),
+            )
+
+
+def _encode_web_extract_anchors(anchors: object) -> str:
+    """Encode newest anchors within the table's hard JSON character budget."""
+    bounded = normalize_web_extract_anchors(anchors)
+    while True:
+        payload = json.dumps(
+            bounded,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        if len(payload) <= MAX_WEB_EXTRACT_ANCHORS_JSON_CHARS or not bounded:
+            return payload
+        bounded.pop(0)
+
+
+def _decode_web_extract_anchors(value: object) -> list[dict]:
+    try:
+        payload = json.loads(str(value or "[]"))
+    except (TypeError, ValueError):
+        return []
+    return normalize_web_extract_anchors(payload)
 
 
 def get_web_card_sources(addon_dir: str, profile: str, web_card_id: int, url: str) -> list:
@@ -2955,13 +3048,51 @@ def get_web_card_sources(addon_dir: str, profile: str, web_card_id: int, url: st
     rows = (
         get_connection(addon_dir, profile)
         .execute(
-            "SELECT note_id, excerpt FROM web_card_sources "
+            "SELECT note_id, excerpt, anchors_json FROM web_card_sources "
             "WHERE web_card_id = ? AND url = ? ORDER BY id",
             (web_card_id, str(url or "").strip()),
         )
         .fetchall()
     )
-    return [{"note_id": r[0], "excerpt": r[1]} for r in rows]
+    return [
+        {
+            "note_id": r[0],
+            "excerpt": r[1],
+            "anchors": _decode_web_extract_anchors(r[2]),
+        }
+        for r in rows
+    ]
+
+
+def get_web_extract_anchors(
+    addon_dir: str,
+    profile: str,
+    web_card_id: int,
+    url: str,
+    *,
+    limit: int = MAX_STORED_WEB_EXTRACT_ANCHORS,
+) -> list[dict]:
+    """Return unique, validated saved extraction anchors for one exact page."""
+    bounded_limit = max(0, min(int(limit), MAX_STORED_WEB_EXTRACT_ANCHORS))
+    if bounded_limit == 0:
+        return []
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT anchors_json FROM web_card_sources "
+        "WHERE web_card_id = ? AND url = ? ORDER BY id DESC",
+        (int(web_card_id), str(url or "").strip()),
+    )
+    newest_first: list[dict] = []
+    seen: set[str] = set()
+    for row in rows:
+        for anchor in reversed(_decode_web_extract_anchors(row[0])):
+            anchor_id = str(anchor["id"])
+            if anchor_id in seen:
+                continue
+            seen.add(anchor_id)
+            newest_first.append(anchor)
+            if len(newest_first) >= bounded_limit:
+                return list(reversed(newest_first))
+    return list(reversed(newest_first))
 
 
 def export_stats_json(addon_dir: str, profile: str) -> str:

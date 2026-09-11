@@ -209,6 +209,7 @@ from .backend.reviewer_tags import append_missing_tags, normalize_tag_list
 from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
 from .backend.config_service import (
+    configured_topic_done_tag as _configured_topic_done_tag,
     load_addon_config as _load_addon_config,
     migrate_persisted_config as _migrate_persisted_config,
     save_addon_config as _save_addon_config,
@@ -243,6 +244,8 @@ from .frontend.pdf_bookshelf import (
     _load_bookshelf_entries,
 )
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
+from .frontend.reviewer_button_style import build_reviewer_button_style_js
+from .frontend.reviewer_topic_actions import TopicReviewActions
 from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
 from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
 from .frontend.reviewer_focus import (
@@ -619,6 +622,13 @@ _ORIGINAL_REVIEWER_LINK_HANDLER = _anki_compat.original_reviewer_method(
 
 def _reviewer_topic_card(card) -> bool:
     return _reviewer_button_mode_for_card(card) == "topic"
+
+
+_topic_review_actions = TopicReviewActions(
+    _reviewer_topic_card,
+    _paths.get_active_profile,
+    lambda: _configured_topic_done_tag(_load_addon_config(mw.addonManager, __name__)),
+)
 
 
 def _reviewer_items_fail_pass(card) -> bool:
@@ -1254,7 +1264,7 @@ def _incremento_show_answer_button(self) -> None:
 <button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
 </td>
 <td class=stat2 align=center>
-<button id="incremento-item-skip-but" onclick='pycmd("incremento_item_skip");' style="border-color:#a34747;color:#ffb3b3;">Skip<span class=stattxt>{skip_due}</span></button>
+<button id="incremento-item-skip-but" onclick='pycmd("incremento_item_skip");'>Skip<span class=stattxt>{skip_due}</span></button>
 </td>
 </tr></table>
 """.format(
@@ -1287,7 +1297,7 @@ def _incremento_show_answer_button(self) -> None:
 <button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
 </td>
 <td class=stat2 align=center>
-<button title="{postpone_key}" id="incremento-postpone-but" onclick='pycmd("incremento_topic_postpone");' style="border-color:#a34747;color:#ffb3b3;">Postpone<span class=stattxt>{postpone_due}</span></button>
+<button title="{postpone_key}" id="incremento-postpone-but" onclick='pycmd("incremento_topic_postpone");'>Postpone<span class=stattxt>{postpone_due}</span></button>
 </td>
 </tr></table>
 """.format(
@@ -1377,9 +1387,17 @@ def _sync_topic_answer_button_style(reviewer) -> None:
 
 def _sync_reviewer_extract_button(reviewer) -> None:
     try:
+        reviewer.bottom.web.eval(build_reviewer_button_style_js())
+    except Exception:
+        pass
+    try:
         reviewer.bottom.web.eval(
             build_reviewer_extract_button_js(_configured_shortcut_text("extract_card"))
         )
+    except Exception:
+        pass
+    try:
+        _topic_review_actions.sync(reviewer)
     except Exception:
         pass
 
@@ -1391,6 +1409,8 @@ def _incremento_show_ease_buttons(self) -> None:
 
 
 def _incremento_link_handler(self, url: str) -> None:
+    if _topic_review_actions.handle_command(self, url):
+        return
     if url == "incremento_extract_card":
         _extract_card()
         return
@@ -2454,6 +2474,8 @@ gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_apply_custom_schedule_after_answer)
 gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
+gui_hooks.reviewer_will_show_context_menu.append(_topic_review_actions.add_context_menu)
+gui_hooks.profile_will_close.append(_topic_review_actions.reset)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(_clear_direct_review_queue)
 gui_hooks.reviewer_will_end.append(lambda: _release_session_postponed_cards())
@@ -6052,6 +6074,7 @@ def openSettingsFunction() -> None:
         current_topic_more_adjustment_percent=_configured_topic_more_adjustment_percent(cfg),
         current_topic_less_adjustment_percent=_configured_topic_less_adjustment_percent(cfg),
         current_topic_maximum_interval_days=_configured_topic_maximum_interval_days(cfg),
+        current_topic_done_tag=_configured_topic_done_tag(cfg),
         current_add_card_topic_tags=_add_card_dock_mod.configured_add_card_topic_tags(cfg),
         current_add_card_item_tags=_add_card_dock_mod.configured_add_card_item_tags(cfg),
         current_auto_create_topics_deck=configured_auto_create_topics_deck(cfg),
@@ -6108,6 +6131,7 @@ def openSettingsFunction() -> None:
     cfg["topic_more_adjustment_percent"] = dlg.topic_more_adjustment_percent
     cfg["topic_less_adjustment_percent"] = dlg.topic_less_adjustment_percent
     cfg["topic_maximum_interval_days"] = dlg.topic_maximum_interval_days
+    cfg["topic_done_tag"] = dlg.topic_done_tag
     cfg["add_card_topic_tags"] = dlg.add_card_topic_tags
     cfg["add_card_item_tags"] = dlg.add_card_item_tags
     cfg["auto_create_topics_deck"] = dlg.auto_create_topics_deck
@@ -6287,6 +6311,11 @@ def _build_incremento_menu() -> None:
     _menu = QMenu("Incremento", menubar)
     menubar.addMenu(_menu)
 
+    _startAction = QAction("Start Incremental Learning", mw)
+    qconnect(_startAction.triggered, learnFunction)
+    _menu.addAction(_startAction)
+    _register_shortcut_action("start_learning", _startAction)
+
     _commandPaletteAction = QAction("Command Palette…", mw)
     qconnect(_commandPaletteAction.triggered, _open_command_palette)
     _menu.addAction(_commandPaletteAction)
@@ -6296,13 +6325,6 @@ def _build_incremento_menu() -> None:
     qconnect(_activityCenterAction.triggered, _open_activity_center)
     _menu.addAction(_activityCenterAction)
     _register_shortcut_action("activity_center", _activityCenterAction)
-
-    _menu.addSeparator()
-
-    _startAction = QAction("Start Incremental Learning", mw)
-    qconnect(_startAction.triggered, learnFunction)
-    _menu.addAction(_startAction)
-    _register_shortcut_action("start_learning", _startAction)
 
     _settingsAction = QAction("Settings", mw)
     _settingsAction.setMenuRole(QAction.MenuRole.NoRole)

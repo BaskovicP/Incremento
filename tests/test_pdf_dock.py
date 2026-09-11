@@ -4,20 +4,30 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-sys.modules.setdefault("session", MagicMock())
-sys.modules.setdefault("PyQt6", MagicMock())
-sys.modules.setdefault("PyQt6.QtPdf", MagicMock())
-sys.modules.setdefault("PyQt6.QtWebEngineWidgets", MagicMock())
-sys.modules.setdefault("PyQt6.QtWebEngineCore", MagicMock())
-sys.modules.setdefault("PyQt6.QtCore", MagicMock())
-import aqt
-
-import pdf_dock
-from pdf_highlight_bulk_dialog import (
-    can_create_pdf_highlight_bulk_rows,
-    normalize_pdf_highlight_bulk_row,
-    remap_pdf_highlight_bulk_row_fields,
+_dependency_names = (
+    "session", "PyQt6", "PyQt6.QtPdf", "PyQt6.QtWebEngineWidgets",
+    "PyQt6.QtWebEngineCore", "PyQt6.QtCore",
 )
+_original_dependencies = {name: sys.modules.get(name) for name in _dependency_names}
+try:
+    for _name in _dependency_names:
+        sys.modules.setdefault(_name, MagicMock())
+    import aqt
+
+    import pdf_dock
+    from pdf_highlight_bulk_dialog import (
+        can_create_pdf_highlight_bulk_rows,
+        normalize_pdf_highlight_bulk_row,
+        remap_pdf_highlight_bulk_row_fields,
+    )
+finally:
+    # These stubs belong to the PDF import only. In particular, leaving the
+    # WebEngine stub installed turns EPUB's page subclass into a MagicMock.
+    for _name, _original in _original_dependencies.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
 
 
 def test_due_review_details_escape_card_content():

@@ -56,6 +56,7 @@ REQUIRED_RUNTIME_PATHS = (
     "backend/reconciliation.py",
     "backend/config_service.py",
     "backend/content_safety.py",
+    "backend/web_extract_anchors.py",
     "backend/network_safety.py",
     "backend/webpage_snapshot.py",
     "backend/anki_compat.py",

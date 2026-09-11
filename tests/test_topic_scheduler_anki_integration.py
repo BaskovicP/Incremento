@@ -8,6 +8,146 @@ import sys
 from textwrap import dedent
 
 
+def test_review_all_reminder_preserves_schedules_and_rules_across_repeated_answers():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    script = dedent(
+        r"""
+        import os
+        import tempfile
+        import time
+        from types import SimpleNamespace
+
+        from anki.collection import Collection
+        from backend import custom_schedule, db, session, topic_scheduler
+        from backend.reviewer_buttons import remap_item_fail_pass_ease
+
+        schedule_fields = (
+            "did", "odid", "due", "odue", "type", "queue", "ivl",
+            "factor", "reps", "lapses", "left",
+        )
+
+        def snapshot(card):
+            return tuple(getattr(card, field) for field in schedule_fields)
+
+        with tempfile.TemporaryDirectory(prefix="incremento-reminder-test-") as root:
+            for kind in ("topic", "item"):
+                for state in ("new", "learning", "relearning", "due", "future"):
+                    addon_dir = os.path.join(root, kind, state)
+                    os.makedirs(addon_dir)
+                    col = Collection(os.path.join(addon_dir, "synthetic.anki2"))
+                    profile = "SyntheticProfile"
+                    try:
+                        for module in (topic_scheduler, custom_schedule):
+                            module._ADDON_DIR = addon_dir
+                            module._active_profile = lambda: profile
+                            module.mw = SimpleNamespace(col=col)
+                            module.is_topic_card = lambda _card: kind == "topic"
+                        topic_scheduler.reset_topic_answer_runtime_state()
+                        custom_schedule.reset_custom_schedule_answer_runtime_state()
+                        home = col.decks.id("Synthetic Home")
+                        note = col.new_note(col.models.by_name("Basic"))
+                        note["Front"] = "Synthetic reminder"
+                        note["Back"] = "Synthetic answer"
+                        col.add_note(note, home)
+                        cid = note.card_ids()[0]
+                        card = col.get_card(cid)
+                        states = {
+                            "new": (0, 0, 0, 1, 0),
+                            "learning": (1, 1, 0, int(time.time()) + 600, 1001),
+                            "relearning": (3, 1, 7, int(time.time()) + 600, 1001),
+                            "due": (2, 2, 7, col.sched.today, 0),
+                            "future": (2, 2, 7, col.sched.today + 6, 0),
+                        }
+                        card.type, card.queue, card.ivl, card.due, card.left = states[state]
+                        col.update_card(card)
+                        original = snapshot(card)
+                        has_topic_state = kind == "topic" and state != "new"
+                        if has_topic_state:
+                            db.set_topic_schedule(
+                                addon_dir, profile, cid, 3.5, 7, precise_interval=7.25,
+                            )
+                        topic_before = db.get_topic_schedule_state(addon_dir, profile, cid)
+                        rule = db.set_custom_schedule_rule(
+                            addon_dir, profile, cid, mode="one_time",
+                            interval_value=2, interval_unit="days",
+                        )
+
+                        for attempt, button in enumerate((2, 2, 1, 3), start=1):
+                            did = session._prepare_filtered_review_deck(
+                                [cid], deck_name="Incremento PDF Review",
+                                preserve_order=True, reschedule=False, col=col,
+                            )
+                            assert col.decks.get(did)["resched"] is False
+                            queued = col.sched.get_queued_cards(fetch_limit=1)
+                            assert len(queued.cards) == 1, (kind, state)
+                            card = col.get_card(cid)
+                            if kind == "topic":
+                                assert topic_scheduler.topic_due_label(card, button) == ""
+                                ease = topic_scheduler.prepare_topic_answer(card, button)
+                            else:
+                                custom_schedule.prepare_custom_schedule_answer(card)
+                                ease = remap_item_fail_pass_ease(card, 2)
+                            assert ease == 3
+                            card.start_timer()
+                            col.sched.answerCard(card, ease)
+                            if kind == "topic":
+                                topic_scheduler.on_topic_card_answered(None, col.get_card(cid), ease)
+                            else:
+                                custom_schedule.apply_custom_schedule_after_answer(
+                                    None, col.get_card(cid), ease,
+                                )
+                            assert snapshot(col.get_card(cid)) == original, (kind, state, attempt)
+                            assert db.topic_schedule_exists(addon_dir, profile, cid) == has_topic_state
+                            assert db.get_topic_schedule_state(addon_dir, profile, cid) == topic_before
+                            assert db.get_topic_review_history(addon_dir, profile, cid) == []
+                            assert db.get_custom_schedule_rule(addon_dir, profile, cid) == rule
+                            assert db.get_connection(addon_dir, profile).execute(
+                                "SELECT count() FROM custom_schedule_review_history WHERE card_id = ?",
+                                (cid,),
+                            ).fetchone()[0] == 0
+                            assert col.db.scalar(
+                                "SELECT count() FROM revlog WHERE cid = ? AND type = 3", cid,
+                            ) == attempt
+
+                        # Reusing the same deck for normal review must re-enable
+                        # scheduling and consume the still-present one-time rule.
+                        did = session._prepare_filtered_review_deck(
+                            [cid], deck_name="Incremento PDF Review",
+                            preserve_order=True, col=col,
+                        )
+                        assert col.decks.get(did)["resched"] is True
+                        card = col.get_card(cid)
+                        if kind == "topic":
+                            topic_scheduler.prepare_topic_answer(card, 2)
+                        else:
+                            custom_schedule.prepare_custom_schedule_answer(card)
+                        card.start_timer()
+                        col.sched.answerCard(card, 3)
+                        if kind == "topic":
+                            topic_scheduler.on_topic_card_answered(None, col.get_card(cid), 3)
+                        else:
+                            custom_schedule.apply_custom_schedule_after_answer(None, col.get_card(cid), 3)
+                        final = col.get_card(cid)
+                        assert (final.did, final.odid, final.ivl, final.due) == (
+                            home, 0, 2, col.sched.today + 2,
+                        )
+                        assert db.get_custom_schedule_rule(addon_dir, profile, cid) is None
+                    finally:
+                        topic_scheduler.reset_topic_answer_runtime_state()
+                        custom_schedule.reset_custom_schedule_answer_runtime_state()
+                        col.close()
+                        db.close_connection()
+        print("Review All reminder lifecycle: ok")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=repo_root,
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Review All reminder lifecycle: ok" in result.stdout
+
+
 def test_real_anki_topic_override_is_one_undoable_good_answer():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     script = dedent(

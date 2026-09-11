@@ -10,7 +10,11 @@ except ImportError:
 
 _SEARCH_SPECS = {
     "pdf_highlights": ("pdf_highlights", ("card_id", "page", "text"), "text"),
-    "pdf_sources": ("pdf_card_sources", ("pdf_card_id", "page", "excerpt"), "excerpt"),
+    "pdf_sources": (
+        "pdf_card_sources",
+        ("pdf_card_id", "page", "excerpt", "note_id"),
+        "excerpt",
+    ),
     "epub_highlights": (
         "epub_highlights",
         ("card_id", "section_index", "text"),
@@ -18,7 +22,7 @@ _SEARCH_SPECS = {
     ),
     "epub_sources": (
         "epub_card_sources",
-        ("epub_card_id", "section_index", "excerpt"),
+        ("epub_card_id", "section_index", "excerpt", "note_id"),
         "excerpt",
     ),
 }

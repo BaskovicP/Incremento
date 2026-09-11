@@ -10,11 +10,13 @@ Incremento is an Anki add-on, not a second flashcard database. Anki remains auth
 - card queue state, due dates, FSRS state, revlog, and Undo/Redo
 - the currently open profile and collection-operation lifecycle
 
+Topic **Done** uses Anki's native single-card suspension and note tagging without a second completion registry. The `topic_done_tag` setting defaults to `topic/done`; native tag addition preserves existing tags and merges into the suspension's Undo step. One Undo/Redo restores/reapplies both changes, and a failed tag write or merge rolls back the action. Tags are note-scoped and shared by sibling cards, while suspension changes only the selected card. **Revisit in…** uses native Set Due Date and the card's Anki custom-data key `incrv` (the logical scheduler day when automatic reading selection resumes). The metadata update is merged into the same undo step, preserves other custom-data keys, and rolls back through Anki on failure. Reader pools explicitly include cards without this key; only a future marker on a future-due card suppresses their usual due-independent selection. Expiration needs no startup scan or persistence write. This small piece of scheduling metadata lives with the Anki card for sync and Undo/Redo, rather than in Incremento SQLite. The frontend dispatches captured card/profile/tag requests through CollectionOp and rejects stale commands and stale notification Undo requests.
+
 Incremento adds four stores around that canonical collection:
 
 | Store | Scope | Owns |
 |---|---|---|
-| `user_files/<Profile>/incremento.db` | Per Anki profile | Reader position, priorities, topic/custom schedule state, knowledge tree, search indexes, import journal, daily trend snapshots, unique page-reading history, and other add-on metadata |
+| `user_files/<Profile>/incremento.db` | Per Anki profile | Reader position, bounded Web extraction anchors, priorities, topic/custom schedule state, knowledge tree, search indexes, import journal, daily trend snapshots, unique page-reading history, and other add-on metadata |
 | `user_files/<Profile>/custom_learn_stats.json` | Per Anki profile | Canonical normalized daily/lifetime count and time aggregates |
 | `user_files/<Profile>/...` content folders | Per Anki profile | Managed PDFs, EPUBs/extracted EPUBs, videos, writing files, browser profiles, and diagnostics |
 | Anki add-on config | Add-on installation | Validated settings and scheduler presets; older keys are migrated by `backend/config_service.py` |
@@ -69,6 +71,8 @@ Anki collection reads and mutations follow Anki's operation model:
 5. update diagnostics/schema expectations and this document if ownership changes.
 
 `backend/db.py` remains a large compatibility repository. New bounded read models should live in focused modules such as `search_repository.py`; existing call sites can be extracted incrementally without a flag-day rewrite.
+
+Web extraction markers are supplemental state, not card content. An anchor is staged before the Add Card field callback so the amber marker cannot be lost by a delayed adapter; the profile-scoped extraction draft and a bounded Web-dock runtime copy retain the same validated record until the transfer is rejected, discarded, or finalized. Only the Incremento Add Card note that owns that draft may finalize it. After Anki has successfully created the note, `web_card_sources` stores the text quote/DOM anchor or snapshot region/element anchor under the captured Web card and exact normalized HTTP(S) URL, and the runtime copy is released so the marker repaints green. The private bridge is installed once after navigation and resolves anchors to bounded document-space rectangles without inserting extraction elements, styles, or mutation observers into the remote page. A pointer-transparent native Qt layer above `QWebEngineView` paints amber/green markers and follows Qt's scroll, resize, and content-size signals; generation, profile, card, page, URL, anchor-ID, state, kind, coordinate, and count checks reject stale or forged callbacks. The Anki note remains authoritative. Invalid, ambiguous, oversized, stale-profile, or stale-card anchors fail closed without blocking text or snapshot transfer or note creation.
 
 ## Cross-store imports and recovery
 

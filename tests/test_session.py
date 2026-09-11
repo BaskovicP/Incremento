@@ -12,6 +12,7 @@ import sys
 import types
 from unittest.mock import MagicMock, patch
 
+import pytest
 import scheduler as sched
 from scheduler import NO_TAGS_KEY
 
@@ -397,7 +398,8 @@ class TestQuickOpenReview:
 
 
 class TestExplicitReviewSelector:
-    def test_resolves_and_builds_review_inside_collection_operation(self, monkeypatch):
+    @pytest.mark.parametrize("reschedule", [True, False], ids=["review", "reminder"])
+    def test_resolves_and_builds_review_inside_collection_operation(self, monkeypatch, reschedule):
         operations = []
         selection_calls = []
         prepare_calls = []
@@ -452,6 +454,7 @@ class TestExplicitReviewSelector:
         assert _SESSION_MOD.start_explicit_review_from_selector(
             _selector,
             deck_name="Incremento Video Review",
+            reschedule=reschedule,
             diagnostic_source="media_review",
             diagnostic_content_kind="video",
             diagnostic_media_order="created_oldest",
@@ -476,6 +479,7 @@ class TestExplicitReviewSelector:
                     "select_deck": False,
                     "col": fake_col,
                     "return_result": True,
+                    "reschedule": reschedule,
                 },
             )
         ]

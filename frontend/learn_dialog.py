@@ -1481,7 +1481,6 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_limit_main_status_lbl.setWordWrap(True)
         self._pdf_limit_main_status_lbl.setStyleSheet("color: gray; font-size: 11px;")
         pdf_limit_layout.addWidget(self._pdf_limit_main_status_lbl)
-        layout.addWidget(pdf_limit_card)
 
         # ── 5. PDF soft-mix rate ──────────────────────────────────────────────
         pdf_val = self._saved.get("pdf_slider", 100)
@@ -1786,14 +1785,17 @@ class SchedulerConfigDialog(QDialog):
         _tag_header.setStyleSheet("font-weight: bold;")
         _tag_hrow.addWidget(_tag_header)
         _tag_hrow.addWidget(_info_icon(
-            "Each slider sets the probability that any given card pick will target this tag.\n\n"
+            "Each slider sets the target share for this tag.\n\n"
             "• Soft mode (strict enforcement off):\n"
             "  The % is a running target — the scheduler picks from this tag more often\n"
             "  when it's under-represented, less often when it's over-represented.\n"
             "  Example: physics = 20 % → roughly 1 in 5 picks tries to find a physics card.\n\n"
             "• Strict mode (strict enforcement on):\n"
-            "  The % becomes a hard quota filled before the rest of the session.\n"
-            "  Example: physics = 20 % with 50 cards → exactly ~10 physics cards reserved.\n\n"
+            "  The Tags phase tries to fill a rounded number of places.\n"
+            "  Example: physics = 20 % with 50 cards → a target of 10 physics cards.\n"
+            "  Available cards and phase order can change the final mix.\n\n"
+            "Other excludes all active selected tags and their subtags, even during refill.\n"
+            "Cards with unrelated tags can still belong to Other.\n\n"
             "Tag sliders with the same group name are constrained together to 100 %.\n"
             "Leave group empty to keep a tag independent.\n"
             "Total can exceed 100 % (a warning is shown)."
@@ -1802,10 +1804,10 @@ class SchedulerConfigDialog(QDialog):
         layout.addLayout(_tag_hrow)
 
         _tag_desc = QLabel(
-            "Each slider is the probability that a given pick targets this tag. "
-            "In strict mode it becomes a hard quota. "
+            "Each slider sets a target share. Soft mode adjusts pick probabilities; "
+            "strict mode tries to fill a card-count target in phase order. "
             "Tag sliders in the same group share a constrained 100% pool. "
-            "The 'Other' row is always present and is fixed at 100% when no specific tag rows exist."
+            "Other excludes all active selected tags and is fixed at 100% when no specific tag rows exist."
         )
         _tag_desc.setWordWrap(True)
         _tag_desc.setStyleSheet("color: gray;")
@@ -2130,6 +2132,7 @@ class SchedulerConfigDialog(QDialog):
         _adv_body_layout = QVBoxLayout(_adv_body)
         _adv_body_layout.setContentsMargins(12, 0, 0, 8)
         _adv_body_layout.setSpacing(6)
+        _adv_body_layout.addWidget(pdf_limit_card)
 
         topics_filter_row = QHBoxLayout()
         topics_filter_row.addWidget(QLabel("Topics filter:"))
@@ -3552,7 +3555,7 @@ class SchedulerConfigDialog(QDialog):
         tag = row_dict["tag"]
         if tag == NO_TAGS_KEY:
             row_dict["name_label"].setText(
-                'Other <span style="color: gray; font-size: small;">(untagged remainder)</span>'
+                'Other <span style="color: gray; font-size: small;">(outside selected tags)</span>'
             )
             return
         ready = self._ready_filter_from_checks()

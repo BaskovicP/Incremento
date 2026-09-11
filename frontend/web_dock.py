@@ -15,6 +15,7 @@ Public API:
 """
 
 import json
+import math
 import os
 import re
 import secrets
@@ -51,24 +52,47 @@ from aqt.qt import (
     Qt,
     qconnect,
 )
-from PyQt6.QtCore import QUrl
-from PyQt6.QtGui import QDesktopServices, QPixmap
+from PyQt6.QtCore import QRectF, QUrl
+from PyQt6.QtGui import QColor, QDesktopServices, QPainter, QPen, QPixmap
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
     from ..backend import paths as _paths
-    from ..backend.content_safety import external_plain_text_to_anki_html
+    from ..backend.content_safety import (
+        external_plain_text,
+        external_plain_text_to_anki_html,
+    )
     from ..backend.paths import get_active_profile as _active_profile
     from ..backend.video_manager import fmt_time as _fmt_media_time
+    from ..backend.web_extract_anchors import (
+        MAX_PENDING_WEB_EXTRACT_RECORDS,
+        MAX_STORED_WEB_EXTRACT_ANCHORS,
+        normalize_web_extract_anchor,
+        normalize_web_extract_record,
+        normalize_web_extract_records,
+        normalize_web_extract_url,
+    )
 except ImportError:
     from backend import paths as _paths  # type: ignore
-    from content_safety import external_plain_text_to_anki_html  # type: ignore
+    from content_safety import external_plain_text, external_plain_text_to_anki_html  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
     from video_manager import fmt_time as _fmt_media_time  # type: ignore
+    from web_extract_anchors import (  # type: ignore
+        MAX_PENDING_WEB_EXTRACT_RECORDS,
+        MAX_STORED_WEB_EXTRACT_ANCHORS,
+        normalize_web_extract_anchor,
+        normalize_web_extract_record,
+        normalize_web_extract_records,
+        normalize_web_extract_url,
+    )
 
 try:
-    from ..backend.db import add_web_card_source, get_web_card_sources
+    from ..backend.db import (
+        add_web_card_source,
+        get_web_card_sources,
+        get_web_extract_anchors,
+    )
     from ..backend.web_manager import (
         WEB_NOTE_TYPE,
         add_web_card,
@@ -90,7 +114,7 @@ try:
         list_reader_bookmarks,
     )
 except ImportError:
-    from db import add_web_card_source, get_web_card_sources
+    from db import add_web_card_source, get_web_card_sources, get_web_extract_anchors
     from web_manager import (
         WEB_NOTE_TYPE,
         add_web_card,
@@ -124,6 +148,9 @@ _MSG_FILL_FIELD = "incremento_web_fill_field:"
 _MSG_SNAPSHOT = "incremento_web_snapshot:"
 _MSG_PROGRESS = "incremento_web_progress:"
 _MAX_WEB_BRIDGE_MESSAGE_CHARS = 64_000
+_MAX_WEB_HIGHLIGHT_SCRIPT_CHARS = 512_000
+_MAX_NATIVE_WEB_EXTRACTION_RECTS = 512
+_MAX_NATIVE_WEB_RECTS_PER_MARKER = 128
 
 
 @dataclass
@@ -144,9 +171,149 @@ class _WebDockRuntime:
     pending_restore: dict | None = None
     pending_bookmark_restore: dict | None = None
     bridge_js_template: str | None = None
+    pending_extract_profile: str = ""
+    pending_extract_records: list[dict] = field(default_factory=list)
+    extraction_overlay: object | None = None
+    extraction_refresh_generation: int = 0
+    extraction_schedule_generation: int = 0
 
 
 _runtime = _WebDockRuntime()
+
+
+class _WebExtractionOverlay(QWidget):
+    """Pointer-transparent native paint layer above untrusted Web content."""
+
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
+        self._markers: list[dict] = []
+        self._scroll_x = 0.0
+        self._scroll_y = 0.0
+        self._zoom_factor = 1.0
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAutoFillBackground(False)
+        self.hide()
+
+    def set_markers(
+        self,
+        markers: list[dict],
+        *,
+        scroll_x: float,
+        scroll_y: float,
+    ) -> None:
+        self._markers = list(markers)
+        self._scroll_x = float(scroll_x)
+        self._scroll_y = float(scroll_y)
+        if self._markers:
+            self.raise_()
+            self.show()
+        else:
+            self.hide()
+        self.update()
+
+    def set_scroll_position(self, x: float, y: float) -> None:
+        self._scroll_x = float(x)
+        self._scroll_y = float(y)
+        if self._markers:
+            self.update()
+
+    def upsert_marker(
+        self,
+        marker: dict,
+        *,
+        scroll_x: float,
+        scroll_y: float,
+    ) -> None:
+        marker_id = str(marker.get("id") or "")
+        retained = [
+            item for item in self._markers if str(item.get("id") or "") != marker_id
+        ]
+        retained.append(marker)
+        self.set_markers(
+            retained[-MAX_STORED_WEB_EXTRACT_ANCHORS:],
+            scroll_x=scroll_x,
+            scroll_y=scroll_y,
+        )
+
+    def remove_marker(self, marker_id: str) -> None:
+        retained = [
+            item
+            for item in self._markers
+            if str(item.get("id") or "") != str(marker_id or "")
+        ]
+        self.set_markers(
+            retained,
+            scroll_x=self._scroll_x,
+            scroll_y=self._scroll_y,
+        )
+
+    def set_marker_state(self, marker_id: str, state: str) -> None:
+        changed = False
+        markers: list[dict] = []
+        for item in self._markers:
+            marker = dict(item)
+            if str(marker.get("id") or "") == str(marker_id or ""):
+                marker["state"] = state
+                changed = True
+            markers.append(marker)
+        if changed:
+            self.set_markers(
+                markers,
+                scroll_x=self._scroll_x,
+                scroll_y=self._scroll_y,
+            )
+
+    def set_zoom_factor(self, value: float) -> None:
+        try:
+            zoom = float(value)
+        except (TypeError, ValueError):
+            zoom = 1.0
+        self._zoom_factor = max(0.25, min(5.0, zoom))
+        if self._markers:
+            self.update()
+
+    def paintEvent(self, _event) -> None:
+        if not self._markers:
+            return
+        painter = QPainter(self)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            viewport = QRectF(self.rect())
+            for marker in self._markers:
+                pending = marker["state"] == "pending"
+                snapshot = marker["kind"] == "snapshot"
+                fill = QColor(245, 158, 11, 92) if pending else QColor(34, 197, 94, 87)
+                edge = QColor(180, 83, 9, 245) if pending else QColor(21, 128, 61, 235)
+                line_style = (
+                    Qt.PenStyle.DashLine
+                    if pending and snapshot
+                    else Qt.PenStyle.DotLine
+                    if pending
+                    else Qt.PenStyle.SolidLine
+                )
+                pen = QPen(edge, 3.0 if snapshot else 2.0, line_style)
+                painter.setPen(pen)
+                painter.setBrush(fill)
+                for raw_rect in marker["rects"]:
+                    rect = QRectF(
+                        (float(raw_rect["x"]) - self._scroll_x)
+                        * self._zoom_factor,
+                        (float(raw_rect["y"]) - self._scroll_y)
+                        * self._zoom_factor,
+                        float(raw_rect["width"]) * self._zoom_factor,
+                        float(raw_rect["height"]) * self._zoom_factor,
+                    )
+                    if not rect.intersects(viewport):
+                        continue
+                    if snapshot:
+                        painter.drawRoundedRect(rect, 4.0, 4.0)
+                    else:
+                        painter.fillRect(rect, fill)
+                        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+        finally:
+            painter.end()
 
 
 def _run_web_javascript(page, script: str, callback=None) -> None:
@@ -709,24 +876,54 @@ class _WebDockController:
             showInfo(f"Failed to save bookmark:\n{exc}")
 
     def extract_selection_to_field(self, idx: int) -> None:
-        def _apply(text: str) -> None:
+        expected_profile = str(_active_profile() or "")
+
+        def _apply(text: str, extract_record: dict | None) -> None:
             if not text:
                 tooltip("Select some text first.")
                 return
             try:
                 from . import add_card_dock as _add_card_dock_mod
 
-                _add_card_dock_mod.fill_dock_field(
+                marker_staged = bool(
+                    extract_record is not None
+                    and _accept_web_extract_record(
+                        extract_record,
+                        expected_profile=expected_profile,
+                    )
+                )
+                fill_completion_seen = False
+
+                def _fill_completed(success: bool) -> None:
+                    nonlocal fill_completion_seen
+                    if fill_completion_seen:
+                        return
+                    fill_completion_seen = True
+                    if not success and marker_staged and extract_record is not None:
+                        _remove_pending_web_extract_record(
+                            extract_record,
+                            expected_profile=expected_profile,
+                        )
+
+                fill_result = _add_card_dock_mod.fill_dock_field(
                     idx,
                     external_plain_text_to_anki_html(text),
                     include_pdf_citation=False,
                     citation_html=self.citation(),
                     source_link_kind="web",
+                    on_complete=_fill_completed if marker_staged else None,
                 )
+                if fill_result is False and marker_staged:
+                    _fill_completed(False)
             except Exception as exc:
+                if "marker_staged" in locals() and marker_staged and extract_record is not None:
+                    _remove_pending_web_extract_record(
+                        extract_record,
+                        expected_profile=expected_profile,
+                    )
                 showInfo(f"Web extraction failed:\n{exc}")
 
-        _resolve_web_selection(_apply)
+        _resolve_web_extraction(_apply)
 
     def extract_selection_with_picker(self) -> None:
         target_idx = _prompt_extract_target_field()
@@ -734,7 +931,14 @@ class _WebDockController:
             return
         self.extract_selection_to_field(target_idx)
 
-    def insert_snapshot_into_field(self, pixmap: QPixmap, current_url: str) -> None:
+    def insert_snapshot_into_field(
+        self,
+        pixmap: QPixmap,
+        current_url: str,
+        *,
+        extract_record: dict | None = None,
+        expected_profile: str = "",
+    ) -> None:
         from . import add_card_dock as _add_card_dock_mod
 
         fd, tmp_path = tempfile.mkstemp(suffix=".png")
@@ -814,13 +1018,14 @@ class _WebDockController:
         if not picker.exec() or chosen_idx[0] < 0:
             return
 
-        html = f'<img src="{media_filename}">'
-        _add_card_dock_mod.fill_dock_field(
+        _fill_web_snapshot_field(
+            _add_card_dock_mod,
             chosen_idx[0],
-            html,
-            include_pdf_citation=False,
+            media_filename,
+            current_url,
+            extract_record=extract_record,
+            expected_profile=expected_profile,
             citation_html=self.citation(current_url),
-            source_link_kind="web",
         )
 
     def handle_snapshot(self, data: dict) -> None:
@@ -837,7 +1042,9 @@ class _WebDockController:
             return
         current_url = str(data.get("url") or self.current_display_url()).strip()
         try:
-            pixmap = self.runtime.dock._view.grab()
+            pixmap = _grab_web_view_without_extraction_markers(
+                self.runtime.dock._view
+            )
         except Exception as exc:
             raise RuntimeError(f"Could not capture web view: {exc}") from exc
         if pixmap.isNull():
@@ -858,7 +1065,17 @@ class _WebDockController:
             crop.setDevicePixelRatio(dpr)
         except Exception:
             pass
-        self.insert_snapshot_into_field(crop, current_url)
+        rect = QRect(x, y, width, height)
+        expected_profile = str(_active_profile() or "")
+        _resolve_web_snapshot_anchor(
+            rect,
+            lambda record: self.insert_snapshot_into_field(
+                crop,
+                current_url,
+                extract_record=record,
+                expected_profile=expected_profile,
+            ),
+        )
 
     def build_dock(self):
         from PyQt6.QtWebEngineCore import (
@@ -908,7 +1125,12 @@ class _WebDockController:
 
         page = _WebDockPage(self.runtime)
         view.setPage(page)
-        view.loadStarted.connect(page.rotate_bridge_nonce)
+
+        def _on_load_started():
+            page.rotate_bridge_nonce()
+            _clear_native_web_extraction_markers()
+
+        view.loadStarted.connect(_on_load_started)
         vbox.addWidget(view, 1)
 
         ctrl = QWidget(container)
@@ -1116,6 +1338,7 @@ class _WebDockController:
             self.refresh_cards_panel()
             self.refresh_bookmark_button()
             self.refresh_resume_button()
+            _clear_native_web_extraction_markers()
 
         def _on_load_finished(ok):
             if not ok or self.runtime.current_card_id is None:
@@ -1123,13 +1346,28 @@ class _WebDockController:
             url_str = view.url().toString()
             _persist_web_url(self.runtime.current_card_id, url_str)
             _set_web_snapshot_mode(False)
+
+            def _bridge_installed(_result=None):
+                try:
+                    if (
+                        self.runtime.dock is None
+                        or self.runtime.dock._view.page() is not page
+                        or int(self.runtime.current_card_id or 0) <= 0
+                        or self.runtime.dock._view.url().toString() != url_str
+                    ):
+                        return
+                except Exception:
+                    return
+                _refresh_web_extraction_highlights()
+
             try:
                 _run_web_javascript(
-                    view.page(),
+                    page,
                     _build_web_bridge_js(
-                        bridge_nonce=view.page().bridge_nonce(),
+                        bridge_nonce=page.bridge_nonce(),
                         card_id=int(self.runtime.current_card_id),
                     ),
+                    _bridge_installed,
                 )
             except Exception:
                 pass
@@ -1167,7 +1405,16 @@ class _WebDockController:
 
         view.urlChanged.connect(_on_url_changed)
         view.loadFinished.connect(_on_load_finished)
-        view.page().selectionChanged.connect(_on_selection_changed)
+        page.selectionChanged.connect(_on_selection_changed)
+
+        def _on_scroll_position_changed(position) -> None:
+            _sync_native_web_extraction_scroll(position)
+            _schedule_web_extraction_highlight_refresh(delay_ms=140)
+
+        page.scrollPositionChanged.connect(_on_scroll_position_changed)
+        page.contentsSizeChanged.connect(
+            lambda _size: _schedule_web_extraction_highlight_refresh(delay_ms=160)
+        )
         qconnect(home_btn.clicked, self.go_home)
         qconnect(back_btn.clicked, view.back)
 
@@ -1415,6 +1662,9 @@ class _WebDockController:
         prefer_bookmark: bool = True,
         restore_scroll: bool = True,
     ) -> None:
+        previous_card_id = self.runtime.current_card_id
+        if previous_card_id is not None and int(previous_card_id) != int(card_id):
+            _clear_native_web_extraction_markers()
         self.runtime.current_card_id = card_id
         self.runtime.current_home_url = home_url
 
@@ -1441,6 +1691,14 @@ class _WebDockController:
             current_url = ""
         self.runtime.dock.show()
         self.runtime.dock.raise_()
+        try:
+            _run_web_javascript(
+                self.runtime.dock._view.page(),
+                "window.incrementoSetActiveCardId && "
+                f"window.incrementoSetActiveCardId({int(card_id)});",
+            )
+        except Exception:
+            pass
         _set_web_snapshot_mode(False)
         try:
             self.runtime.dock._cards_panel.hide()
@@ -1467,6 +1725,7 @@ class _WebDockController:
             self.runtime.pending_restore = None
         else:
             self.runtime.pending_restore = None
+        _schedule_web_extraction_highlight_refresh()
 
     def open_location(self, card_id: int, target_url: str) -> bool:
         try:
@@ -1581,15 +1840,9 @@ class _WebDockController:
                 pass
 
     def on_add_cards_did_add_note(self, note) -> None:
-        if self.runtime.current_card_id is None or self.runtime.dock is None:
-            return
         try:
-            if not self.runtime.dock.isVisible():
-                return
+            note_id = int(note.id)
         except Exception:
-            return
-        current_url = self.current_display_url()
-        if not current_url:
             return
         parts = []
         for field in (note.fields or [])[:2]:
@@ -1597,23 +1850,107 @@ class _WebDockController:
             if plain:
                 parts.append(plain)
         excerpt = " / ".join(parts)[:200]
-        try:
-            add_web_card_source(
-                _ADDON_DIR,
-                _active_profile(),
-                int(self.runtime.current_card_id),
-                current_url,
-                note.id,
-                excerpt,
-            )
-        except Exception:
+        profile = str(_active_profile() or "")
+        if note_id <= 0 or not profile:
+            return
+
+        records = normalize_web_extract_records(
+            [
+                *_pending_web_extract_records(),
+                *_web_extract_records_for_note(note),
+            ],
+            limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+        )
+        if records and not _note_owns_web_extract_draft(note):
+            # Another Anki Add window may save while Incremento's dock still
+            # owns an unsaved extraction. Never attach that draft to the
+            # unrelated note.
+            return
+        grouped: dict[tuple[int, str], list[dict]] = {}
+        for record in records:
+            key = (int(record["webCardId"]), str(record["url"]))
+            grouped.setdefault(key, []).append(record["anchor"])
+
+        saved_any = False
+        failed_anchor_writes = 0
+        saved_anchor_keys: set[tuple[int, str, str]] = set()
+        if grouped:
+            for (web_card_id, url), anchors in grouped.items():
+                try:
+                    add_web_card_source(
+                        _ADDON_DIR,
+                        profile,
+                        web_card_id,
+                        url,
+                        note_id,
+                        excerpt,
+                        anchors=anchors,
+                    )
+                    saved_any = True
+                    saved_anchor_keys.update(
+                        (web_card_id, url, str(anchor["id"]))
+                        for anchor in anchors
+                    )
+                except Exception:
+                    failed_anchor_writes += 1
+                    continue
+        else:
+            # Preserve the existing Add Card workflow for notes created while
+            # a Web reader is visibly open, even when no text selection was
+            # anchorable (for example, a cross-origin iframe selection).
+            if self.runtime.current_card_id is None or self.runtime.dock is None:
+                return
+            try:
+                if not self.runtime.dock.isVisible():
+                    return
+            except Exception:
+                return
+            current_url = self.current_display_url()
+            if not current_url:
+                return
+            try:
+                add_web_card_source(
+                    _ADDON_DIR,
+                    profile,
+                    int(self.runtime.current_card_id),
+                    current_url,
+                    note_id,
+                    excerpt,
+                )
+                saved_any = True
+            except Exception:
+                return
+
+        if grouped:
+            for record in records:
+                _remove_runtime_pending_web_extract_record(record, profile)
+                if _web_extract_record_key(record) in saved_anchor_keys:
+                    _promote_native_web_extraction_marker(record)
+                else:
+                    _remove_native_web_extraction_marker(record)
+            if failed_anchor_writes:
+                tooltip(
+                    "Incremento: the note was added, but its Web extraction "
+                    "marker could not be saved."
+                )
+            # The Add Card hook clears the pending draft immediately after
+            # this hook. Queue a repaint even when supplemental persistence
+            # failed so an amber marker cannot remain stale on the page.
+            _schedule_web_extraction_highlight_refresh()
+
+        if not saved_any:
             return
         self.refresh_cards_panel()
         try:
-            if self.runtime.dock._cards_panel.isVisible():
+            if (
+                self.runtime.dock is not None
+                and self.runtime.dock._cards_panel.isVisible()
+            ):
                 self.runtime.dock._cards_panel.show()
         except Exception:
             pass
+        if not grouped:
+            _schedule_web_extraction_highlight_refresh()
 
     def get_selected_text(self, callback) -> None:
         _resolve_web_selection(callback)
@@ -1682,16 +2019,27 @@ class _WebInteractionFilter(QObject):
         self._runtime = runtime
 
     def eventFilter(self, watched, event):
-        if self._runtime.dock is None or not self._runtime.snapshot_mode:
+        if self._runtime.dock is None:
             return False
         try:
-            if not self._runtime.dock.isVisible():
-                return False
             view = self._runtime.dock._view
         except Exception:
             return False
 
         etype = event.type()
+        if watched is view and etype == QEvent.Type.Resize:
+            _sync_native_web_extraction_overlay_geometry(view)
+            _schedule_web_extraction_highlight_refresh(delay_ms=120)
+            return False
+
+        if not self._runtime.snapshot_mode:
+            return False
+        try:
+            if not self._runtime.dock.isVisible():
+                return False
+        except Exception:
+            return False
+
         if etype == QEvent.Type.KeyPress:
             try:
                 if event.key() == Qt.Key.Key_Escape:
@@ -1776,17 +2124,27 @@ class _WebInteractionFilter(QObject):
             if rect.width() < 6 or rect.height() < 6:
                 return True
             try:
-                pixmap = view.grab(rect)
+                pixmap = _grab_web_view_without_extraction_markers(view, rect)
             except Exception as exc:
                 showInfo(f"Web snapshot failed:\n{exc}")
                 return True
             if pixmap.isNull():
                 showInfo("Web snapshot failed:\nCould not capture selected region.")
                 return True
-            try:
-                _insert_snapshot_into_field(pixmap, current_url)
-            except Exception as exc:
-                showInfo(f"Web snapshot failed:\n{exc}")
+            expected_profile = str(_active_profile() or "")
+
+            def _insert_snapshot(record) -> None:
+                try:
+                    _insert_snapshot_into_field(
+                        pixmap,
+                        current_url,
+                        extract_record=record,
+                        expected_profile=expected_profile,
+                    )
+                except Exception as exc:
+                    showInfo(f"Web snapshot failed:\n{exc}")
+
+            _resolve_web_snapshot_anchor(rect, _insert_snapshot)
             return True
 
         return False
@@ -1813,12 +2171,660 @@ def _current_selected_text() -> str:
         return ""
     try:
         text = _runtime.dock._view.page().selectedText() or ""
-        text = str(text).replace("\u2029", "\n").strip()
+        text = external_plain_text(str(text).replace("\u2029", "\n")).strip()
         if text:
             return text
     except Exception:
         pass
     return ""
+
+
+def _normalized_web_selection_identity(value: object) -> str:
+    """Compare Qt and Chromium selection text without layout-only whitespace."""
+    normalized = external_plain_text(value).replace("\u2029", "\n")
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _bounded_native_geometry_number(
+    value: object,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(number) or number < minimum or number > maximum:
+        return None
+    return number
+
+
+def _normalize_native_web_extraction_geometry(
+    payload: object,
+    *,
+    allowed_markers: dict[str, tuple[str, str]],
+) -> tuple[list[dict], float, float] | None:
+    """Validate geometry returned from the untrusted page world."""
+    if not isinstance(payload, dict):
+        return None
+    scroll_x = _bounded_native_geometry_number(
+        payload.get("scrollX"),
+        minimum=0.0,
+        maximum=10_000_000.0,
+    )
+    scroll_y = _bounded_native_geometry_number(
+        payload.get("scrollY"),
+        minimum=0.0,
+        maximum=10_000_000.0,
+    )
+    raw_markers = payload.get("markers")
+    if scroll_x is None or scroll_y is None or not isinstance(raw_markers, list):
+        return None
+
+    markers: list[dict] = []
+    seen_ids: set[str] = set()
+    total_rects = 0
+    for raw_marker in raw_markers:
+        if len(markers) >= MAX_STORED_WEB_EXTRACT_ANCHORS:
+            break
+        if not isinstance(raw_marker, dict):
+            continue
+        marker_id = str(raw_marker.get("id") or "")
+        expected = allowed_markers.get(marker_id)
+        if expected is None or marker_id in seen_ids:
+            continue
+        state, kind = expected
+        if raw_marker.get("state") != state or raw_marker.get("kind") != kind:
+            continue
+        raw_rects = raw_marker.get("rects")
+        if not isinstance(raw_rects, list):
+            continue
+
+        rects: list[dict] = []
+        for raw_rect in raw_rects[:_MAX_NATIVE_WEB_RECTS_PER_MARKER]:
+            if total_rects >= _MAX_NATIVE_WEB_EXTRACTION_RECTS:
+                break
+            if not isinstance(raw_rect, dict):
+                continue
+            x = _bounded_native_geometry_number(
+                raw_rect.get("x"),
+                minimum=0.0,
+                maximum=10_000_000.0,
+            )
+            y = _bounded_native_geometry_number(
+                raw_rect.get("y"),
+                minimum=0.0,
+                maximum=10_000_000.0,
+            )
+            width = _bounded_native_geometry_number(
+                raw_rect.get("width"),
+                minimum=0.5,
+                maximum=100_000.0,
+            )
+            height = _bounded_native_geometry_number(
+                raw_rect.get("height"),
+                minimum=0.5,
+                maximum=100_000.0,
+            )
+            if x is None or y is None or width is None or height is None:
+                continue
+            rects.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                }
+            )
+            total_rects += 1
+        if not rects:
+            continue
+        seen_ids.add(marker_id)
+        markers.append(
+            {
+                "id": marker_id,
+                "state": state,
+                "kind": kind,
+                "rects": rects,
+            }
+        )
+        if total_rects >= _MAX_NATIVE_WEB_EXTRACTION_RECTS:
+            break
+    return markers, scroll_x, scroll_y
+
+
+def _ensure_native_web_extraction_overlay(view) -> _WebExtractionOverlay | None:
+    overlay = _runtime.extraction_overlay
+    try:
+        if overlay is not None and overlay.parent() is view:
+            overlay.setGeometry(view.rect())
+            return overlay
+    except (AttributeError, RuntimeError):
+        pass
+    try:
+        overlay = _WebExtractionOverlay(view)
+        overlay.setGeometry(view.rect())
+    except Exception:
+        _runtime.extraction_overlay = None
+        return None
+    _runtime.extraction_overlay = overlay
+    return overlay
+
+
+def _set_native_web_extraction_markers(
+    markers: list[dict],
+    *,
+    scroll_x: float,
+    scroll_y: float,
+) -> None:
+    overlay = _runtime.extraction_overlay
+    if not markers and overlay is None:
+        return
+    if _runtime.dock is None:
+        return
+    try:
+        view = _runtime.dock._view
+        overlay = _ensure_native_web_extraction_overlay(view)
+        if overlay is not None:
+            try:
+                overlay.set_zoom_factor(float(view.zoomFactor()))
+            except (AttributeError, RuntimeError, TypeError, ValueError):
+                overlay.set_zoom_factor(1.0)
+            overlay.set_markers(
+                markers,
+                scroll_x=scroll_x,
+                scroll_y=scroll_y,
+            )
+    except Exception:
+        return
+
+
+def _stage_native_web_extraction_marker(
+    record: dict,
+    geometry: object,
+) -> None:
+    if not isinstance(geometry, dict):
+        return
+    anchor = record["anchor"]
+    marker_id = str(anchor["id"])
+    kind = "snapshot" if anchor.get("kind") == "snapshot" else "text"
+    payload = {
+        "scrollX": geometry.get("scrollX"),
+        "scrollY": geometry.get("scrollY"),
+        "markers": [
+            {
+                "id": marker_id,
+                "state": "pending",
+                "kind": kind,
+                "rects": geometry.get("rects"),
+            }
+        ],
+    }
+    normalized = _normalize_native_web_extraction_geometry(
+        payload,
+        allowed_markers={marker_id: ("pending", kind)},
+    )
+    if normalized is None or not normalized[0] or _runtime.dock is None:
+        return
+    markers, scroll_x, scroll_y = normalized
+    try:
+        view = _runtime.dock._view
+        overlay = _ensure_native_web_extraction_overlay(view)
+        if overlay is None:
+            return
+        try:
+            overlay.set_zoom_factor(float(view.zoomFactor()))
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            overlay.set_zoom_factor(1.0)
+        overlay.upsert_marker(
+            markers[0],
+            scroll_x=scroll_x,
+            scroll_y=scroll_y,
+        )
+    except Exception:
+        return
+
+
+def _remove_native_web_extraction_marker(record: dict) -> None:
+    overlay = _runtime.extraction_overlay
+    if overlay is None:
+        return
+    try:
+        overlay.remove_marker(str(record["anchor"]["id"]))
+    except (KeyError, TypeError, AttributeError, RuntimeError):
+        pass
+
+
+def _promote_native_web_extraction_marker(record: dict) -> None:
+    overlay = _runtime.extraction_overlay
+    if overlay is None:
+        return
+    try:
+        overlay.set_marker_state(str(record["anchor"]["id"]), "saved")
+    except (KeyError, TypeError, AttributeError, RuntimeError):
+        pass
+
+
+def _clear_native_web_extraction_markers() -> None:
+    _runtime.extraction_refresh_generation += 1
+    overlay = _runtime.extraction_overlay
+    if overlay is None:
+        return
+    try:
+        overlay.set_markers([], scroll_x=0.0, scroll_y=0.0)
+    except (AttributeError, RuntimeError):
+        _runtime.extraction_overlay = None
+
+
+def _sync_native_web_extraction_scroll(position) -> None:
+    overlay = _runtime.extraction_overlay
+    if overlay is None:
+        return
+    try:
+        overlay.set_scroll_position(float(position.x()), float(position.y()))
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        pass
+
+
+def _sync_native_web_extraction_overlay_geometry(view) -> None:
+    overlay = _runtime.extraction_overlay
+    if overlay is None:
+        return
+    try:
+        overlay.setGeometry(view.rect())
+    except (AttributeError, RuntimeError):
+        _runtime.extraction_overlay = None
+
+
+def _grab_web_view_without_extraction_markers(view, region=None):
+    """Keep native extraction marks out of captured webpage snapshots."""
+    overlay = _runtime.extraction_overlay
+    overlay_was_visible = False
+    if overlay is not None:
+        try:
+            overlay_was_visible = bool(overlay.isVisible())
+            if overlay_was_visible:
+                overlay.hide()
+        except (AttributeError, RuntimeError):
+            overlay = None
+            _runtime.extraction_overlay = None
+    try:
+        return view.grab() if region is None else view.grab(region)
+    finally:
+        if overlay is not None and overlay_was_visible:
+            try:
+                overlay.raise_()
+                overlay.show()
+            except (AttributeError, RuntimeError):
+                _runtime.extraction_overlay = None
+
+
+def _web_extract_record_key(record: dict) -> tuple[int, str, str]:
+    return (
+        int(record["webCardId"]),
+        str(record["url"]),
+        str(record["anchor"]["id"]),
+    )
+
+
+def _runtime_pending_web_extract_records(profile: str) -> list[dict]:
+    normalized_profile = str(profile or "")
+    if _runtime.pending_extract_profile != normalized_profile:
+        _runtime.pending_extract_profile = normalized_profile
+        _runtime.pending_extract_records = []
+    records = normalize_web_extract_records(
+        _runtime.pending_extract_records,
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+    _runtime.pending_extract_records = records
+    return list(records)
+
+
+def _store_runtime_pending_web_extract_record(record: dict, profile: str) -> bool:
+    records = _runtime_pending_web_extract_records(profile)
+    key = _web_extract_record_key(record)
+    if all(_web_extract_record_key(item) != key for item in records):
+        records.append(record)
+    if len(records) > MAX_PENDING_WEB_EXTRACT_RECORDS:
+        records = records[-MAX_PENDING_WEB_EXTRACT_RECORDS:]
+    _runtime.pending_extract_records = normalize_web_extract_records(
+        records,
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+    return any(
+        _web_extract_record_key(item) == key
+        for item in _runtime.pending_extract_records
+    )
+
+
+def _remove_runtime_pending_web_extract_record(record: dict, profile: str) -> bool:
+    records = _runtime_pending_web_extract_records(profile)
+    key = _web_extract_record_key(record)
+    retained = [item for item in records if _web_extract_record_key(item) != key]
+    removed = len(retained) != len(records)
+    _runtime.pending_extract_records = retained
+    return removed
+
+
+def _pending_web_extract_records() -> list[dict]:
+    profile = str(_active_profile() or "")
+    runtime_records = _runtime_pending_web_extract_records(profile)
+    try:
+        from . import add_card_dock
+
+        add_card_records = add_card_dock.pending_web_extract_records()
+    except Exception:
+        add_card_records = []
+    return normalize_web_extract_records(
+        [*runtime_records, *add_card_records],
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+
+
+def _note_owns_web_extract_draft(note) -> bool:
+    try:
+        from . import add_card_dock
+
+        return bool(add_card_dock.note_owns_add_card_draft(note))
+    except Exception:
+        return bool(
+            note is not None
+            and getattr(note, "_incremento_add_card_draft_owner", False)
+        )
+
+
+def _web_extract_records_for_note(note) -> list[dict]:
+    try:
+        from . import add_card_dock
+
+        records = add_card_dock.web_extract_records_for_note(note)
+    except Exception:
+        records = getattr(note, "_incremento_web_extract_records", [])
+    return normalize_web_extract_records(
+        records,
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    )
+
+
+def _schedule_web_extraction_highlight_refresh(*, delay_ms: int = 0) -> None:
+    _runtime.extraction_schedule_generation += 1
+    schedule_generation = _runtime.extraction_schedule_generation
+
+    def _run_if_current() -> None:
+        if schedule_generation != _runtime.extraction_schedule_generation:
+            return
+        _refresh_web_extraction_highlights()
+
+    try:
+        QTimer.singleShot(max(0, min(int(delay_ms), 2_000)), _run_if_current)
+    except Exception:
+        _run_if_current()
+
+
+def _accept_web_extract_record(
+    record: object,
+    *,
+    expected_profile: str,
+) -> bool:
+    """Stage an amber anchor before its Add-dock field transfer completes."""
+    if str(_active_profile() or "") != str(expected_profile or ""):
+        return False
+    native_geometry = (
+        record.get("_nativeGeometry") if isinstance(record, dict) else None
+    )
+    normalized = normalize_web_extract_record(record)
+    if normalized is None:
+        return False
+    accepted = _store_runtime_pending_web_extract_record(
+        normalized,
+        str(expected_profile or ""),
+    )
+    try:
+        from . import add_card_dock
+
+        add_card_dock.append_pending_web_extract_record(normalized)
+    except Exception:
+        pass
+    if accepted:
+        _stage_native_web_extraction_marker(normalized, native_geometry)
+        _schedule_web_extraction_highlight_refresh()
+    return accepted
+
+
+def _remove_pending_web_extract_record(
+    record: object,
+    *,
+    expected_profile: str,
+) -> bool:
+    """Rollback one amber marker after the target field rejects its content."""
+    if str(_active_profile() or "") != str(expected_profile or ""):
+        return False
+    normalized = normalize_web_extract_record(record)
+    if normalized is None:
+        return False
+    removed = _remove_runtime_pending_web_extract_record(
+        normalized,
+        str(expected_profile or ""),
+    )
+    try:
+        from . import add_card_dock
+
+        removed = bool(add_card_dock.remove_pending_web_extract_record(normalized)) or removed
+    except Exception:
+        pass
+    if removed:
+        _remove_native_web_extraction_marker(normalized)
+        _schedule_web_extraction_highlight_refresh()
+    return removed
+
+
+def discard_pending_web_extract_records() -> None:
+    """Drop Web-dock fallback markers owned by the discarded Add draft."""
+    profile = str(_active_profile() or "")
+    records = _runtime_pending_web_extract_records(profile)
+    for record in records:
+        _remove_native_web_extraction_marker(record)
+    _runtime.pending_extract_records = []
+    _schedule_web_extraction_highlight_refresh()
+
+
+def _fill_web_snapshot_field(
+    add_card_dock_module,
+    field_index: int,
+    media_filename: str,
+    current_url: str,
+    *,
+    extract_record: object = None,
+    expected_profile: str,
+    citation_html: str | None = None,
+):
+    """Stage a snapshot marker, insert the image, and rollback rejection."""
+    if citation_html is None:
+        try:
+            citation_html = _controller.citation(current_url)
+        except Exception:
+            citation_html = None
+    normalized_record = normalize_web_extract_record(extract_record)
+    marker_staged = bool(
+        normalized_record is not None
+        and _accept_web_extract_record(
+            normalized_record,
+            expected_profile=expected_profile,
+        )
+    )
+    on_complete = None
+    if marker_staged and normalized_record is not None:
+        fill_completion_seen = False
+
+        def _on_complete(success: bool) -> None:
+            nonlocal fill_completion_seen
+            if fill_completion_seen:
+                return
+            fill_completion_seen = True
+            if success:
+                return
+            _remove_pending_web_extract_record(
+                normalized_record,
+                expected_profile=expected_profile,
+            )
+
+        on_complete = _on_complete
+    try:
+        result = add_card_dock_module.fill_dock_field(
+            int(field_index),
+            f'<img src="{media_filename}">',
+            include_pdf_citation=False,
+            citation_html=citation_html,
+            source_link_kind="web",
+            on_complete=on_complete,
+        )
+    except Exception:
+        if on_complete is not None:
+            on_complete(False)
+        raise
+    if result is False and on_complete is not None:
+        on_complete(False)
+    return result
+
+
+def _refresh_web_extraction_highlights() -> None:
+    _runtime.extraction_refresh_generation += 1
+    refresh_generation = _runtime.extraction_refresh_generation
+    if _runtime.dock is None or _runtime.current_card_id is None:
+        _clear_native_web_extraction_markers()
+        return
+    try:
+        card_id = int(_runtime.current_card_id)
+        profile = str(_active_profile() or "")
+        current_url = normalize_web_extract_url(
+            _runtime.dock._view.url().toString()
+        )
+        page = _runtime.dock._view.page()
+    except Exception:
+        return
+    if card_id <= 0 or not profile or not current_url:
+        _clear_native_web_extraction_markers()
+        return
+
+    try:
+        saved = [
+            anchor
+            for raw_anchor in get_web_extract_anchors(
+                _ADDON_DIR,
+                profile,
+                card_id,
+                current_url,
+                limit=MAX_STORED_WEB_EXTRACT_ANCHORS,
+            )
+            if (anchor := normalize_web_extract_anchor(raw_anchor)) is not None
+        ]
+    except Exception:
+        saved = []
+
+    saved_ids = {str(anchor["id"]) for anchor in saved}
+    pending: list[dict] = []
+    for record in normalize_web_extract_records(
+        _pending_web_extract_records(),
+        limit=MAX_PENDING_WEB_EXTRACT_RECORDS,
+    ):
+        if int(record["webCardId"]) != card_id or record["url"] != current_url:
+            continue
+        anchor = record["anchor"]
+        if str(anchor["id"]) in saved_ids:
+            continue
+        pending.append(anchor)
+        if len(pending) >= MAX_STORED_WEB_EXTRACT_ANCHORS:
+            break
+
+    payload = {"saved": saved, "pending": pending}
+    payload_json = json.dumps(payload, ensure_ascii=False)
+    while len(payload_json) > _MAX_WEB_HIGHLIGHT_SCRIPT_CHARS and pending:
+        pending.pop()
+        payload_json = json.dumps(payload, ensure_ascii=False)
+    while len(payload_json) > _MAX_WEB_HIGHLIGHT_SCRIPT_CHARS and saved:
+        saved.pop()
+        payload_json = json.dumps(payload, ensure_ascii=False)
+    if len(payload_json) > _MAX_WEB_HIGHLIGHT_SCRIPT_CHARS:
+        payload_json = '{"saved": [], "pending": []}'
+
+    allowed_markers: dict[str, tuple[str, str]] = {}
+    for anchor in saved:
+        allowed_markers[str(anchor["id"])] = (
+            "saved",
+            "snapshot" if anchor.get("kind") == "snapshot" else "text",
+        )
+    for anchor in pending:
+        allowed_markers[str(anchor["id"])] = (
+            "pending",
+            "snapshot" if anchor.get("kind") == "snapshot" else "text",
+        )
+
+    if not allowed_markers:
+        _set_native_web_extraction_markers([], scroll_x=0.0, scroll_y=0.0)
+        return
+
+    def _resolved(raw_geometry) -> None:
+        if refresh_generation != _runtime.extraction_refresh_generation:
+            return
+        try:
+            if (
+                str(_active_profile() or "") != profile
+                or int(_runtime.current_card_id or 0) != card_id
+                or _runtime.dock is None
+                or _runtime.dock._view.page() is not page
+                or normalize_web_extract_url(
+                    _runtime.dock._view.url().toString()
+                )
+                != current_url
+            ):
+                return
+        except Exception:
+            return
+        geometry = raw_geometry if isinstance(raw_geometry, dict) else {}
+        try:
+            returned_card_id = int(geometry.get("cardId") or 0)
+        except (TypeError, ValueError):
+            returned_card_id = 0
+        if (
+            returned_card_id != card_id
+            or normalize_web_extract_url(geometry.get("url")) != current_url
+        ):
+            _set_native_web_extraction_markers([], scroll_x=0.0, scroll_y=0.0)
+            return
+        normalized = _normalize_native_web_extraction_geometry(
+            geometry,
+            allowed_markers=allowed_markers,
+        )
+        if normalized is None:
+            _set_native_web_extraction_markers([], scroll_x=0.0, scroll_y=0.0)
+            return
+        markers, scroll_x, scroll_y = normalized
+        _set_native_web_extraction_markers(
+            markers,
+            scroll_x=scroll_x,
+            scroll_y=scroll_y,
+        )
+
+    try:
+        action_script = (
+            "window.incrementoResolveExtractionRects "
+            f"? window.incrementoResolveExtractionRects({payload_json}) : null;"
+        )
+        _run_web_javascript(
+            page,
+            action_script,
+            _resolved,
+        )
+    except Exception:
+        _set_native_web_extraction_markers([], scroll_x=0.0, scroll_y=0.0)
+
+
+def refresh_web_extraction_highlights() -> None:
+    """Refresh saved and draft extraction markers in the open Web reader."""
+    _schedule_web_extraction_highlight_refresh()
 
 
 def _restore_payload_for_web_url(
@@ -1876,23 +2882,210 @@ def _save_web_bookmark() -> None:
     _controller.save_bookmark()
 
 
-def _resolve_web_selection(callback) -> None:
-    text = _current_selected_text()
-    if text:
-        callback(text)
-        return
-    if _runtime.dock is None:
-        callback("")
+def _resolve_web_snapshot_anchor(rect: QRect, callback) -> None:
+    """Resolve one viewport capture to a bounded, same-card region marker."""
+    finished = [False]
+
+    def _finish(record: dict | None) -> None:
+        if finished[0]:
+            return
+        finished[0] = True
+        callback(record)
+
+    if _runtime.dock is None or _runtime.current_card_id is None:
+        _finish(None)
         return
     try:
+        rect_payload = {
+            "x": int(rect.x()),
+            "y": int(rect.y()),
+            "width": int(rect.width()),
+            "height": int(rect.height()),
+        }
+        expected_card_id = int(_runtime.current_card_id)
+        expected_profile = str(_active_profile() or "")
+        expected_url = normalize_web_extract_url(
+            _runtime.dock._view.url().toString()
+        )
+        page = _runtime.dock._view.page()
+    except Exception:
+        _finish(None)
+        return
+    if (
+        rect_payload["width"] < 6
+        or rect_payload["height"] < 6
+        or expected_card_id <= 0
+        or not expected_profile
+        or not expected_url
+    ):
+        _finish(None)
+        return
+
+    def _resolved(payload) -> None:
+        try:
+            if (
+                str(_active_profile() or "") != expected_profile
+                or int(_runtime.current_card_id or 0) != expected_card_id
+                or _runtime.dock is None
+                or normalize_web_extract_url(
+                    _runtime.dock._view.url().toString()
+                )
+                != expected_url
+            ):
+                _finish(None)
+                return
+        except Exception:
+            _finish(None)
+            return
+
+        data = payload if isinstance(payload, dict) else {}
+        try:
+            captured_card_id = int(data.get("cardId") or 0)
+        except (TypeError, ValueError):
+            captured_card_id = 0
+        captured_url = normalize_web_extract_url(data.get("url"))
+        record = None
+        if captured_card_id == expected_card_id and captured_url == expected_url:
+            record = normalize_web_extract_record(
+                {
+                    "version": 1,
+                    "webCardId": expected_card_id,
+                    "url": expected_url,
+                    "anchor": data.get("anchor"),
+                }
+            )
+            if record is not None and record["anchor"].get("kind") != "snapshot":
+                record = None
+            if record is not None:
+                anchor = record["anchor"]
+                record["_nativeGeometry"] = {
+                    "rects": data.get("rects")
+                    if isinstance(data.get("rects"), list)
+                    else [
+                        {
+                            "x": anchor["pageX"],
+                            "y": anchor["pageY"],
+                            "width": anchor["width"],
+                            "height": anchor["height"],
+                        }
+                    ],
+                    "scrollX": data.get("scrollX", 0),
+                    "scrollY": data.get("scrollY", 0),
+                }
+        _finish(record)
+
+    action_script = (
+        "(function(){"
+        "  return window.incrementoCaptureSnapshotAnchor "
+        "    ? window.incrementoCaptureSnapshotAnchor("
+        f"{json.dumps(rect_payload)}"
+        ") : null;"
+        "})();"
+    )
+    try:
         _run_web_javascript(
-            _runtime.dock._view.page(),
-            "(function(){ return (window._incrementoLastSelection || "
-            "(window.getSelection && window.getSelection().toString()) || '').trim(); })();",
-            lambda text: callback(str(text or "").strip()),
+            page,
+            action_script,
+            _resolved,
+        )
+        # A destroyed or navigating page may drop the JavaScript callback.
+        # Do not strand the already-captured image in that case.
+        QTimer.singleShot(750, lambda: _finish(None))
+    except Exception:
+        _finish(None)
+
+
+def _resolve_web_extraction(callback) -> None:
+    """Resolve bounded selection text and its optional same-page DOM anchor."""
+    native_text = _current_selected_text()
+    if _runtime.dock is None or _runtime.current_card_id is None:
+        callback(native_text, None)
+        return
+    try:
+        expected_card_id = int(_runtime.current_card_id)
+        expected_profile = str(_active_profile() or "")
+        expected_url = normalize_web_extract_url(
+            _runtime.dock._view.url().toString()
+        )
+        page = _runtime.dock._view.page()
+    except Exception:
+        callback(native_text, None)
+        return
+    if expected_card_id <= 0 or not expected_profile or not expected_url:
+        callback(native_text, None)
+        return
+
+    def _resolved(payload) -> None:
+        try:
+            if (
+                str(_active_profile() or "") != expected_profile
+                or int(_runtime.current_card_id or 0) != expected_card_id
+                or normalize_web_extract_url(
+                    _runtime.dock._view.url().toString()
+                )
+                != expected_url
+            ):
+                callback("", None)
+                return
+        except Exception:
+            callback("", None)
+            return
+
+        data = payload if isinstance(payload, dict) else {}
+        captured_text = external_plain_text(data.get("text")).strip()
+        text = native_text or captured_text
+        record = None
+        # A native selection from a cross-origin frame can differ from the
+        # ApplicationWorld selection. Keep its text, but never attach a stale
+        # top-frame anchor to it.
+        selection_matches = not native_text or (
+            _normalized_web_selection_identity(native_text)
+            == _normalized_web_selection_identity(captured_text)
+        )
+        captured_url = normalize_web_extract_url(data.get("url"))
+        try:
+            captured_card_id = int(data.get("cardId") or 0)
+        except (TypeError, ValueError):
+            captured_card_id = 0
+        if (
+            selection_matches
+            and captured_card_id == expected_card_id
+            and captured_url == expected_url
+        ):
+            record = normalize_web_extract_record(
+                {
+                    "version": 1,
+                    "webCardId": expected_card_id,
+                    "url": expected_url,
+                    "anchor": data.get("anchor"),
+                }
+            )
+            if record is not None:
+                record["_nativeGeometry"] = {
+                    "rects": data.get("rects"),
+                    "scrollX": data.get("scrollX"),
+                    "scrollY": data.get("scrollY"),
+                }
+        callback(text, record)
+
+    try:
+        action_script = (
+            "(function(){"
+            "  return window.incrementoCaptureExtraction "
+            "    ? window.incrementoCaptureExtraction() : null;"
+            "})();"
+        )
+        _run_web_javascript(
+            page,
+            action_script,
+            _resolved,
         )
     except Exception:
-        callback("")
+        callback(native_text, None)
+
+
+def _resolve_web_selection(callback) -> None:
+    _resolve_web_extraction(lambda text, _record: callback(text))
 
 
 def _update_native_selection_state() -> None:
@@ -2069,8 +3262,19 @@ def _toggle_web_cards_panel() -> None:
     _controller.toggle_cards_panel()
 
 
-def _insert_snapshot_into_field(pixmap: QPixmap, current_url: str) -> None:
-    _controller.insert_snapshot_into_field(pixmap, current_url)
+def _insert_snapshot_into_field(
+    pixmap: QPixmap,
+    current_url: str,
+    *,
+    extract_record: dict | None = None,
+    expected_profile: str = "",
+) -> None:
+    _controller.insert_snapshot_into_field(
+        pixmap,
+        current_url,
+        extract_record=extract_record,
+        expected_profile=expected_profile,
+    )
 
 
 def _handle_web_snapshot(data: dict) -> None:
@@ -2169,7 +3373,13 @@ def reset_for_profile_switch() -> None:
     Must be called before migrate_to_profile_dir so the new profile is created
     with the correct per-profile storage path on next dock open.
     """
+    _clear_native_web_extraction_markers()
+    _runtime.extraction_schedule_generation += 1
     _runtime.profile = None
+    _runtime.current_card_id = None
+    _runtime.current_home_url = None
+    _runtime.pending_restore = None
+    _runtime.pending_bookmark_restore = None
     if _runtime.dock is not None:
         try:
             _runtime.dock.hide()
@@ -2177,6 +3387,7 @@ def reset_for_profile_switch() -> None:
         except Exception:
             pass
         _runtime.dock = None
+    _runtime.extraction_overlay = None
 
 
 def show_web_in_dock(
@@ -2263,3 +3474,8 @@ def add_web_function() -> None:
 
 def get_selected_text(callback) -> None:
     _controller.get_selected_text(callback)
+
+
+def get_selected_extraction(callback) -> None:
+    """Return ``(text, record)`` for Add Card's Web transfer buttons."""
+    _resolve_web_extraction(callback)

@@ -104,6 +104,7 @@ def _default_options() -> dict:
         "state": MEDIA_REVIEW_STATE_ALL,
         "limit": 0,
         "include_filtered": False,
+        "reschedule": True,
     }
 
 
@@ -117,6 +118,7 @@ def _normalized_options(options: dict | None) -> dict:
         "state": normalize_media_review_state(raw.get("state")),
         "limit": normalize_media_review_limit(raw.get("limit")),
         "include_filtered": bool(raw.get("include_filtered", False)),
+        "reschedule": bool(raw.get("reschedule", True)),
     }
 
 
@@ -284,8 +286,8 @@ class MediaAttachedReviewDialog(QDialog):
         summary = QLabel(
             f"Choose which cards attached to this {label} to review. "
             "Direct links include cards extracted from the media; nested links "
-            "include their knowledge-tree descendants. Reviews use normal Anki "
-            "scheduling."
+            "include their knowledge-tree descendants. Review normally, or enable "
+            "a reminder without schedule changes."
         )
         summary.setWordWrap(True)
         layout.addWidget(summary)
@@ -334,6 +336,19 @@ class MediaAttachedReviewDialog(QDialog):
             "new and future cards stay out."
         )
         form.addRow("Card state:", self._state_combo)
+
+        self._reminder_checkbox = QCheckBox(
+            "Reminder without schedule changes",
+            self,
+        )
+        self._reminder_checkbox.setChecked(not options["reschedule"])
+        self._reminder_checkbox.setAccessibleName("Reminder without schedule changes")
+        self._reminder_checkbox.setToolTip(
+            "Revisit cards without changing their next due date or interval. "
+            "Topic A-factors and custom schedule rules are preserved. "
+            "Clear this option to schedule answers normally."
+        )
+        form.addRow("Scheduling:", self._reminder_checkbox)
 
         self._order_combo = QComboBox(self)
         for value, option_label in MEDIA_REVIEW_ORDER_OPTIONS:
@@ -416,6 +431,7 @@ class MediaAttachedReviewDialog(QDialog):
             qconnect(combo.currentIndexChanged, self._refresh_preview)
         qconnect(self._limit_spin.valueChanged, self._refresh_preview)
         qconnect(self._include_filtered_checkbox.toggled, self._refresh_preview)
+        qconnect(self._reminder_checkbox.toggled, self._refresh_preview)
         self._refresh_preview()
 
     def _create_result_tree(self, accessible_name: str) -> QTreeWidget:
@@ -437,21 +453,31 @@ class MediaAttachedReviewDialog(QDialog):
                 "state": self._state_combo.currentData(),
                 "limit": self._limit_spin.value(),
                 "include_filtered": self._include_filtered_checkbox.isChecked(),
+                "reschedule": not self._reminder_checkbox.isChecked(),
             }
         )
 
     def selection_summary(self) -> dict:
+        selection_options = self.selected_options()
+        selection_options.pop("reschedule")
         return select_linked_media_review_rows(
             self._preview_rows,
             current_position=self._current_position,
             random_seed=self._random_seed,
-            **self.selected_options(),
+            **selection_options,
         )
 
     def _refresh_preview(self, *_args) -> None:
         selection = self.selection_summary()
         count = int(selection.get("selected_count", 0) or 0)
-        self._preview_label.setText(format_media_review_preview(selection))
+        reminder = self._reminder_checkbox.isChecked()
+        scheduling_text = (
+            "Reminder: due dates, intervals, topic A-factors and custom schedules stay unchanged."
+            if reminder else "Review: answers update card schedules."
+        )
+        self._preview_label.setText(
+            f"{format_media_review_preview(selection)}\n{scheduling_text}"
+        )
         self._populate_result_trees(selection)
         filtered_decks = list(selection.get("filtered_decks") or [])
         if filtered_decks:
@@ -463,8 +489,9 @@ class MediaAttachedReviewDialog(QDialog):
             self._filtered_deck_impact_label.clear()
             self._filtered_deck_impact_label.hide()
         self._review_button.setEnabled(count > 0)
+        action = "Preview" if reminder else "Review"
         self._review_button.setText(
-            f"Review {count} Card{'s' if count != 1 else ''}" if count else "No Cards"
+            f"{action} {count} Card{'s' if count != 1 else ''}" if count else "No Cards"
         )
 
     def _populate_result_trees(self, selection: Mapping) -> None:
@@ -598,10 +625,11 @@ def start_attached_media_review(
         if not dialog.exec():
             return
 
-        selected_options = dialog.selected_options()
+        selected_options = _normalized_options(dialog.selected_options())
         remembered_options = dict(selected_options)
         remembered_options["include_filtered"] = False
         _last_options_by_media_kind[options_key] = remembered_options
+        reschedule = selected_options.pop("reschedule")
 
         def _select_ids(col) -> list[int]:
             return linked_media_review_card_ids(
@@ -627,6 +655,7 @@ def start_attached_media_review(
                 _select_ids,
                 deck_name=deck_name,
                 preserve_order=True,
+                reschedule=reschedule,
                 empty_message=(
                     f"No cards attached to this {normalized_label} match the selected "
                     "Topic/Item, link, media-range, and card-state filters."

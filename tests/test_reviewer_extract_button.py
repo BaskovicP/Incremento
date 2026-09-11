@@ -17,15 +17,14 @@ _button = _load("_incremento_reviewer_extract_button", "frontend/reviewer_extrac
 build_reviewer_extract_button_js = _button.build_reviewer_extract_button_js
 
 
-def test_build_reviewer_extract_button_js_includes_accessible_contrast_styles():
+def test_extract_button_uses_the_shared_visual_style_and_keeps_accessible_action():
     js = build_reviewer_extract_button_js("Alt+X")
 
     assert "incremento-reviewer-extract-button" in js
-    assert "incremento-reviewer-extract-button-style" in js
     assert '"Alt+X"' in js
-    assert "linear-gradient(180deg, rgba(44, 50, 62, 0.94), rgba(24, 28, 36, 0.97))" in js
-    assert "#${buttonId}:disabled" in js
-    assert "opacity: 1 !important;" in js
+    assert 'setAttribute("aria-label", "Extract selected content into a new card")' in js
+    assert "linear-gradient" not in js
+    assert "style.textContent" not in js
     assert 'pycmd("incremento_extract_card")' in js
 
 
