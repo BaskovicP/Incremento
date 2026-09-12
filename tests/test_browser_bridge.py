@@ -1093,6 +1093,7 @@ def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):
         }
     ]
     col.decks.all_names_and_ids.return_value = [SimpleNamespace(name="Topics")]
+    col.tags.all.return_value = ["spiritual::prayer", " Spiritual ", "spiritual", ""]
 
     mw = SimpleNamespace(col=col)
     fake_aqt = MagicMock()
@@ -1103,6 +1104,7 @@ def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):
 
     assert result["ok"] is True
     assert result["noteTypes"] == [{"name": "Basic", "fields": ["Front", "Back"]}]
+    assert result["tagNames"] == ["Spiritual", "spiritual::prayer"]
 
 
 def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypatch):

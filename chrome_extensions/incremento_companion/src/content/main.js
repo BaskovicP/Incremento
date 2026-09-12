@@ -15,9 +15,14 @@ import {
   validateBrowserCapturePayload,
   validateBrowserCaptureScreenshotDataUrl,
 } from "../shared/browserCaptureModel.js";
+import {
+  applyTagSuggestion,
+  getTagSuggestions,
+  normalizeAvailableTags,
+} from "../shared/tagAutocomplete.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v7";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v8";
   const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
@@ -646,7 +651,11 @@ import {
     if (!shell || !(target instanceof Node) || !shell.contains(target)) {
       return;
     }
-    if (event.key === "Escape") {
+    if (event.type === "keydown" && browserCaptureUi?.handleTagAutocompleteKeyDown?.(event)) {
+      event.stopPropagation();
+      return;
+    }
+    if (event.type === "keydown" && event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       closeBrowserCaptureUi();
@@ -806,6 +815,40 @@ import {
       .field input[type="range"] {
         padding: 0;
       }
+      .tag-autocomplete {
+        position: relative;
+      }
+      .tag-suggestions {
+        position: absolute;
+        z-index: 10;
+        top: calc(100% + 4px);
+        right: 0;
+        left: 0;
+        max-height: 210px;
+        overflow-y: auto;
+        border: 1px solid rgba(82, 68, 45, 0.18);
+        border-radius: 13px;
+        background: #fffdf8;
+        box-shadow: 0 14px 30px rgba(66, 48, 22, 0.2);
+        padding: 4px;
+      }
+      .tag-suggestions[hidden] { display: none; }
+      .tag-suggestions button {
+        display: block;
+        width: 100%;
+        border: 0;
+        border-radius: 9px;
+        background: transparent;
+        padding: 9px 10px;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tag-suggestions button:hover,
+      .tag-suggestions button.is-active {
+        background: rgba(184, 106, 23, 0.13);
+      }
       .field input:focus,
       .field textarea:focus,
       .field select:focus {
@@ -927,7 +970,159 @@ import {
 
   function clearShell() {
     const ui = ensureBrowserCaptureUiRoot();
+    ui.handleTagAutocompleteKeyDown = null;
     ui.shell.textContent = "";
+  }
+
+  function createTagAutocompleteControl(value, availableTags, onChange) {
+    const wrap = document.createElement("div");
+    wrap.className = "tag-autocomplete";
+
+    const input = document.createElement("input");
+    input.id = "incremento-browser-capture-tags";
+    input.type = "text";
+    input.value = String(value || "");
+    input.placeholder = "tag-one tag-two";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+
+    const list = document.createElement("div");
+    list.id = "incremento-browser-capture-tag-suggestions";
+    list.className = "tag-suggestions";
+    list.setAttribute("role", "listbox");
+    list.hidden = true;
+    input.setAttribute("aria-controls", list.id);
+    input.setAttribute("aria-expanded", "false");
+
+    const tags = normalizeAvailableTags(availableTags);
+    let open = false;
+    let activeIndex = 0;
+    let suggestions = [];
+
+    const syncActiveOption = () => {
+      Array.from(list.children).forEach((option, index) => {
+        option.classList.toggle("is-active", index === activeIndex);
+        option.setAttribute("aria-selected", index === activeIndex ? "true" : "false");
+      });
+      if (!list.hidden && suggestions.length > 0) {
+        input.setAttribute("aria-activedescendant", `${list.id}-${activeIndex}`);
+        list.children[activeIndex]?.scrollIntoView({ block: "nearest" });
+      } else {
+        input.removeAttribute("aria-activedescendant");
+      }
+    };
+
+    const renderSuggestions = () => {
+      const cursor = input.selectionStart ?? input.value.length;
+      suggestions = getTagSuggestions(tags, input.value, cursor);
+      activeIndex = suggestions.length > 0
+        ? Math.min(activeIndex, suggestions.length - 1)
+        : 0;
+      list.textContent = "";
+      list.hidden = !open || suggestions.length === 0;
+      input.setAttribute("aria-expanded", list.hidden ? "false" : "true");
+      if (list.hidden) {
+        syncActiveOption();
+        return;
+      }
+      suggestions.forEach((tag, index) => {
+        const option = document.createElement("button");
+        option.id = `${list.id}-${index}`;
+        option.type = "button";
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", index === activeIndex ? "true" : "false");
+        option.className = index === activeIndex ? "is-active" : "";
+        option.textContent = tag;
+        option.addEventListener("mouseenter", () => {
+          activeIndex = index;
+          syncActiveOption();
+        });
+        option.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          chooseSuggestion(tag);
+        });
+        list.appendChild(option);
+      });
+      syncActiveOption();
+    };
+
+    const chooseSuggestion = (tag) => {
+      const result = applyTagSuggestion(
+        input.value,
+        tag,
+        input.selectionStart ?? input.value.length,
+        input.selectionEnd ?? input.value.length
+      );
+      input.value = result.value;
+      onChange(result.value);
+      open = false;
+      activeIndex = 0;
+      input.focus();
+      input.setSelectionRange(result.cursor, result.cursor);
+      renderSuggestions();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.target !== input) {
+        return false;
+      }
+      if (event.key === "Escape" && open) {
+        event.preventDefault();
+        open = false;
+        renderSuggestions();
+        return true;
+      }
+      if (!suggestions.length) {
+        return false;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        if (!open) {
+          open = true;
+          activeIndex = direction > 0 ? 0 : suggestions.length - 1;
+        } else {
+          activeIndex = (activeIndex + direction + suggestions.length) % suggestions.length;
+          syncActiveOption();
+          return true;
+        }
+        renderSuggestions();
+        return true;
+      }
+      if (open && (event.key === "Enter" || event.key === "Tab")) {
+        event.preventDefault();
+        chooseSuggestion(suggestions[activeIndex]);
+        return true;
+      }
+      return false;
+    };
+
+    input.addEventListener("input", () => {
+      onChange(input.value);
+      activeIndex = 0;
+      open = true;
+      renderSuggestions();
+    });
+    input.addEventListener("focus", () => {
+      open = true;
+      renderSuggestions();
+    });
+    input.addEventListener("click", () => {
+      activeIndex = 0;
+      open = true;
+      renderSuggestions();
+    });
+    input.addEventListener("select", renderSuggestions);
+    input.addEventListener("blur", () => {
+      open = false;
+      renderSuggestions();
+    });
+
+    wrap.appendChild(input);
+    wrap.appendChild(list);
+    return { element: wrap, handleKeyDown };
   }
 
   function renderSnapshotCards(shadow, snapshots) {
@@ -1049,14 +1244,20 @@ import {
     });
     grid.appendChild(createField("Deck", deckSelect));
 
-    const tagsInput = document.createElement("input");
-    tagsInput.type = "text";
-    tagsInput.value = state.form.tagsText;
-    tagsInput.placeholder = "tag-one tag-two";
-    tagsInput.addEventListener("input", () => {
-      state.form.tagsText = tagsInput.value;
-    });
-    grid.appendChild(createField("Tags", tagsInput, true));
+    const tagAutocomplete = createTagAutocompleteControl(
+      state.form.tagsText,
+      state.meta.tagNames,
+      (nextValue) => {
+        state.form.tagsText = nextValue;
+      }
+    );
+    browserCaptureUi.handleTagAutocompleteKeyDown = tagAutocomplete.handleKeyDown;
+    grid.appendChild(createField(
+      "Tags",
+      tagAutocomplete.element,
+      true,
+      "Start typing to choose an existing Anki tag, or enter a new one."
+    ));
 
     const priorityWrap = document.createElement("div");
     priorityWrap.style.display = "grid";

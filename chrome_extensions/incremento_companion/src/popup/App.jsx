@@ -47,6 +47,8 @@ import {
   removePersistentSiteAccess,
   requestPersistentSiteAccess,
 } from "../shared/siteAccess.js";
+import { normalizeAvailableTags } from "../shared/tagAutocomplete.js";
+import { TagAutocompleteInput } from "./TagAutocompleteInput.jsx";
 
 function initialStatus() {
   return { text: "", kind: "" };
@@ -122,6 +124,7 @@ export function PopupApp() {
   const [priority, setPriority] = useState(DEFAULT_PRIORITY);
   const [priorityText, setPriorityText] = useState(formatPriority(DEFAULT_PRIORITY));
   const [tagsText, setTagsText] = useState("");
+  const [tagNames, setTagNames] = useState([]);
 
   const pageUrl = String(snapshot?.url || getTabUrl(activeTab) || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
@@ -227,6 +230,7 @@ export function PopupApp() {
           );
           const availableDecks = nextDeckNames.length > 0 ? nextDeckNames : ["Topics"];
           setDeckNames(availableDecks);
+          setTagNames(normalizeAvailableTags(meta?.tagNames));
           setDeckName((currentDeck) => {
             if (availableDecks.includes(currentDeck)) {
               return currentDeck;
@@ -240,6 +244,7 @@ export function PopupApp() {
         } catch (error) {
           if (!cancelled) {
             setDeckNames(["Topics"]);
+            setTagNames([]);
             setDeckName((currentDeck) => currentDeck || "Topics");
             setDeckLoadError(formatBridgeError(error, "Failed to load decks from Anki. Using Topics."));
           }
@@ -788,18 +793,17 @@ export function PopupApp() {
         {deckLoadError ? (
           <p className="field-hint is-error">{deckLoadError}</p>
         ) : null}
-        <label className="field">
-          <span>Tags</span>
-          <input
+        <div className="field">
+          <label htmlFor="tags-input">Tags</label>
+          <TagAutocompleteInput
             id="tags-input"
-            type="text"
             value={tagsText}
-            placeholder="tag1 tag2"
-            spellCheck="false"
+            availableTags={tagNames}
             disabled={busy}
-            onChange={(event) => setTagsText(event.target.value)}
+            onChange={setTagsText}
           />
-        </label>
+          <p className="field-hint">Start typing to choose an existing Anki tag, or enter a new one.</p>
+        </div>
         <label className="field">
           <span>Priority</span>
           <div className="priority-controls">

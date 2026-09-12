@@ -4,6 +4,7 @@ const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 const BROWSER_MEDIA_REF_URL = "http://127.0.0.1:8766/incremento/browser-media-ref";
 const BRIDGE_UNAVAILABLE_MESSAGE = "Failed to reach Incremento in Anki. Keep Anki open and reload the addon.";
+const ORIGIN_CONFLICT_MESSAGE = "This Companion copy is not authorized. Restart Anki, then reopen the popup. If this returns, disable duplicate Companion copies in other Chrome/Brave profiles.";
 
 async function parseBridgeResponse(response) {
   const data = await response.json().catch(() => ({}));
@@ -61,5 +62,9 @@ export function formatBridgeError(error, fallbackMessage) {
   if (error instanceof TypeError) {
     return BRIDGE_UNAVAILABLE_MESSAGE;
   }
-  return error?.message || fallbackMessage;
+  const message = String(error?.message || "").trim();
+  if (message === "Origin not allowed.") {
+    return ORIGIN_CONFLICT_MESSAGE;
+  }
+  return message || fallbackMessage;
 }

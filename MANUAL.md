@@ -366,6 +366,8 @@ If you install the optional companion extension in Chrome/Brave, it can send the
 
 It can also sync watched YouTube/Vimeo time back into Incremento video cards.
 
+The popup and the full text/snapshot capture form load existing tags from the active Anki profile. Focus the tag field or type any part of a tag to open suggestions, then click one or use the arrow keys with Enter/Tab. Completion replaces only the tag currently being typed, so other space- or comma-separated tags remain intact; new tags are still accepted.
+
 ---
 
 ## 6. PDF and EPUB Cards

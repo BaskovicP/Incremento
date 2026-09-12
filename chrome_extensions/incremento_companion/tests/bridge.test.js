@@ -135,6 +135,13 @@ test("formatBridgeError falls back to error message or fallback text", () => {
   assert.equal(formatBridgeError(null, "Fallback"), "Fallback");
 });
 
+test("formatBridgeError explains how to recover from an extension-origin conflict", () => {
+  assert.equal(
+    formatBridgeError(new Error("Origin not allowed."), "Fallback"),
+    "This Companion copy is not authorized. Restart Anki, then reopen the popup. If this returns, disable duplicate Companion copies in other Chrome/Brave profiles."
+  );
+});
+
 test("loadBrowserCaptureMeta loads browser capture metadata", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;

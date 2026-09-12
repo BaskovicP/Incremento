@@ -38,7 +38,7 @@ If the popup says it cannot reach Incremento or falls back to the Topics deck, s
 
 ## Send the current page to Incremento
 
-Open the Companion popup on a normal webpage. Before importing, you can edit the title and choose the deck, tags, and priority. Tags may be separated by spaces or commas.
+Open the Companion popup on a normal webpage. Before importing, you can edit the title and choose the deck, tags, and priority. Tags may be separated by spaces or commas. Focus the tag field or start typing to see matching tags from the active Anki profile; click a suggestion, or use the arrow keys with Enter/Tab, to complete only the tag currently being typed. You can still enter a new tag normally. The same autocomplete is available in the full text/snapshot capture form.
 
 The popup provides five import actions:
 

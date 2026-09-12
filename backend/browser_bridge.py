@@ -68,6 +68,7 @@ _MAX_TITLE_CHARS = 1_000
 _MAX_NAME_CHARS = 200
 _MAX_TAGS = 100
 _MAX_TAG_CHARS = 200
+_MAX_TAG_AUTOCOMPLETE_NAMES = 10_000
 _MAX_BATCH_ITEMS = 100
 _MAX_PDF_UPLOAD_BYTES = 48 * 1024 * 1024
 _MAX_REMOTE_PDF_BYTES = 256 * 1024 * 1024
@@ -800,10 +801,26 @@ def _browser_capture_meta_on_main() -> dict:
     except Exception:
         deck_names = []
 
+    tag_names = []
+    try:
+        by_key = {}
+        for raw_tag in mw.col.tags.all():
+            tag = _bounded_collapsed(raw_tag, max_chars=_MAX_TAG_CHARS)
+            key = tag.casefold()
+            if tag and key not in by_key:
+                by_key[key] = tag
+        tag_names = sorted(
+            by_key.values(),
+            key=lambda tag: (tag.casefold(), tag),
+        )[:_MAX_TAG_AUTOCOMPLETE_NAMES]
+    except Exception:
+        tag_names = []
+
     return {
         "ok": True,
         "noteTypes": sorted(note_types, key=lambda item: item["name"].casefold()),
         "deckNames": deck_names,
+        "tagNames": tag_names,
     }
 
 
