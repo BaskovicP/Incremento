@@ -16,6 +16,7 @@ from aqt.qt import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTextBrowser,
     QVBoxLayout,
@@ -114,6 +115,17 @@ _SEARCH_ALL_FILTER_DEFAULTS = {
     "cards": True,
     "current_profile": True,
 }
+
+
+def _stabilize_search_splitter(splitter, results, preview_container) -> None:
+    """Keep asynchronously loaded preview HTML from resizing either pane."""
+    horizontal_policy = QSizePolicy.Policy.Ignored
+    vertical_policy = QSizePolicy.Policy.Expanding
+    results.setSizePolicy(horizontal_policy, vertical_policy)
+    preview_container.setSizePolicy(horizontal_policy, vertical_policy)
+    splitter.setChildrenCollapsible(False)
+    splitter.setStretchFactor(0, 1)
+    splitter.setStretchFactor(1, 1)
 
 
 @dataclass(frozen=True)
@@ -385,6 +397,7 @@ class _SearchAllDialog(QDialog):
         pc_layout.addWidget(self._preview, stretch=1)
         splitter.addWidget(preview_container)
 
+        _stabilize_search_splitter(splitter, self._results, preview_container)
         splitter.setSizes([620, 560])
         layout.addWidget(splitter, stretch=1)
 

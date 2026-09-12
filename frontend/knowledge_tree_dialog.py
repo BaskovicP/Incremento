@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import html
+import math
 import os
-from typing import Callable
+import re
+from typing import Callable, cast
 
 from aqt import mw
 from aqt.qt import (
     QAbstractItemView,
     QAction,
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -24,7 +27,10 @@ from aqt.qt import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
+    QStyledItemDelegate,
     QStyle,
+    QStyleOptionViewItem,
+    QTabWidget,
     QToolButton,
     QTextEdit,
     QTreeWidget,
@@ -35,8 +41,8 @@ from aqt.qt import (
     qconnect,
 )
 from aqt.utils import showInfo, tooltip
-from PyQt6.QtCore import QSize
-from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PyQt6.QtCore import QRect, QSize
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap
 
 try:
     from ..backend.priority_manager import configured_priority_lower_is_more_important
@@ -44,9 +50,9 @@ except ImportError:
     from priority_manager import configured_priority_lower_is_more_important  # type: ignore
 
 try:
-    from ..backend.note_metadata import build_incremento_metadata
+    from ..backend.note_metadata import build_incremento_metadata, visible_field_names
 except ImportError:
-    from note_metadata import build_incremento_metadata  # type: ignore
+    from note_metadata import build_incremento_metadata, visible_field_names  # type: ignore
 
 try:
     from .knowledge_tree_priority_dialog import (
@@ -160,13 +166,14 @@ except ImportError:
 _ROLE_CARD_ID = int(Qt.ItemDataRole.UserRole)
 _ROLE_NODE_KIND = _ROLE_CARD_ID + 1
 _ROLE_BASE_TITLE = _ROLE_CARD_ID + 2
+_ROLE_PRIORITY_VALUE = _ROLE_CARD_ID + 3
 _KEEP_FOCUS = object()
 _KEEP_SELECTION = object()
 _ICON_CACHE: dict[str, QIcon] = {}
-_COMPACT_TOOLBAR_WIDTH = 900
+_COMPACT_TOOLBAR_WIDTH = 560
 _VERTICAL_SPLITTER_WIDTH = 760
-_STACKED_INSPECTOR_ACTION_WIDTH = 900
 _DISPLAY_TITLE_LIMIT = 180
+_DEFAULT_PRIORITY_THRESHOLDS = (33.0, 67.0)
 
 
 def _priority_text(value) -> str:
@@ -176,6 +183,127 @@ def _priority_text(value) -> str:
         return f"{float(value):.0f}"
     except Exception:
         return ""
+
+
+def _secondary_text_color(palette: QPalette) -> str:
+    """Keep supporting labels readable against the active panel background."""
+    foreground = palette.color(QPalette.ColorRole.Text)
+    background = palette.color(QPalette.ColorRole.Base)
+    weight = 0.8
+    return QColor(
+        round(foreground.red() * weight + background.red() * (1 - weight)),
+        round(foreground.green() * weight + background.green() * (1 - weight)),
+        round(foreground.blue() * weight + background.blue() * (1 - weight)),
+    ).name()
+
+
+def _readable_icon(icon: QIcon, palette: QPalette) -> QIcon:
+    """Tint monochrome action icons to the current theme's text color."""
+    original = icon.pixmap(20, 20)
+    if original.isNull():
+        return icon
+    pixmap = QPixmap(original.size())
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.drawPixmap(0, 0, original)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), palette.color(QPalette.ColorRole.Text))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _toolbar_glyph_icon(glyph: str, palette: QPalette) -> QIcon:
+    pixmap = QPixmap(20, 20)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    color = palette.color(QPalette.ColorRole.Text)
+    if glyph == "play":
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        path = QPainterPath()
+        path.moveTo(6, 4)
+        path.lineTo(16, 10)
+        path.lineTo(6, 16)
+        path.closeSubpath()
+        painter.drawPath(path)
+    elif glyph == "add":
+        pen = QPen(color, 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(10, 4, 10, 16)
+        painter.drawLine(4, 10, 16, 10)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def _priority_indicator(
+    value,
+    *,
+    lower_is_more_important: bool,
+    thresholds: tuple[float, float] = _DEFAULT_PRIORITY_THRESHOLDS,
+) -> tuple[int, str] | None:
+    low, high = thresholds
+    if not 0 <= low < high <= 100:
+        raise ValueError("Priority thresholds must be ordered within 0–100.")
+    try:
+        priority = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(priority):
+        return None
+    urgency = max(0, min(100, 100 - priority if lower_is_more_important else priority))
+    color = (
+        "#2aa84a" if urgency < low else
+        "#d49a35" if urgency < high else
+        "#d85b55"
+    )
+    return round(urgency), color
+
+
+def _plain_card_field(value: str) -> str:
+    raw = re.sub(r"(?i)<br\s*/?>|</p\s*>|</div\s*>", "\n", str(value or ""))
+    raw = re.sub(r"<[^>]*>", " ", raw)
+    return "\n".join(
+        " ".join(html.unescape(line).split()) for line in raw.splitlines()
+    ).strip()
+
+
+def _card_detail_text_and_source(note, pdf_target: dict | None) -> tuple[str, str]:
+    try:
+        fields = list((note.note_type() or {}).get("flds") or [])
+    except Exception:
+        fields = []
+    names = visible_field_names([
+        str(field.get("name") or "") for field in fields if isinstance(field, dict)
+    ])
+    values = []
+    for name in names:
+        try:
+            value = _plain_card_field(note[name])
+        except Exception:
+            value = ""
+        if value:
+            values.append(value)
+
+    def provenance(name: str) -> str:
+        try:
+            return _plain_card_field(note[name])
+        except Exception:
+            return ""
+
+    source_title = (
+        provenance("Incremento_Source_Title") or provenance("Incremento_Source_Link")
+    )
+    author = provenance("Incremento_Source_Author")
+    source = " — ".join(part for part in (source_title, author) if part)
+    if source and pdf_target and pdf_target.get("has_inline_citation") and pdf_target.get("page"):
+        source += f", p. {pdf_target['page']}"
+    if not source and pdf_target and pdf_target.get("kind") == "pdf":
+        filename = os.path.basename(str(pdf_target.get("filename") or ""))
+        page = pdf_target.get("page")
+        source = f"{filename}, p. {page}" if filename and page else filename
+    return "\n\n".join(values), source or "—"
 
 
 def _kind_label(node_kind: str) -> str:
@@ -289,6 +417,102 @@ class _KnowledgeTreeWidget(QTreeWidget):
     def dropEvent(self, event) -> None:
         super().dropEvent(event)
         self._on_drop_persist()
+
+
+class _PriorityDelegate(QStyledItemDelegate):
+    def __init__(
+        self,
+        *,
+        lower_is_more_important: bool,
+        thresholds: tuple[float, float],
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._lower_is_more_important = lower_is_more_important
+        self._thresholds = thresholds
+
+    def paint(self, painter, option, index) -> None:
+        background_option = QStyleOptionViewItem(option)
+        self.initStyleOption(background_option, index)
+        background_option.text = ""
+        style = (
+            background_option.widget.style()
+            if background_option.widget else QApplication.style()
+        )
+        style.drawControl(
+            QStyle.ControlElement.CE_ItemViewItem,
+            background_option,
+            painter,
+            background_option.widget,
+        )
+        value = index.data(_ROLE_PRIORITY_VALUE)
+        indicator = _priority_indicator(
+            value,
+            lower_is_more_important=self._lower_is_more_important,
+            thresholds=self._thresholds,
+        )
+        if indicator is None:
+            return
+        urgency, color = indicator
+        painter.save()
+        rect = option.rect
+        bar_width = 58
+        bar_rect = QRect(rect.left() + 8, rect.center().y() - 3, bar_width, 6)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#454545"))
+        painter.drawRoundedRect(bar_rect, 3, 3)
+        if urgency > 0:
+            fill = QRect(bar_rect)
+            fill.setWidth(max(2, round(bar_width * urgency / 100)))
+            painter.setBrush(QColor(color))
+            painter.drawRoundedRect(fill, 3, 3)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        text_color = option.palette.highlightedText() if selected else option.palette.text()
+        painter.setPen(text_color.color())
+        number_rect = QRect(
+            bar_rect.right() + 8,
+            rect.top(),
+            max(30, rect.right() - bar_rect.right() - 14),
+            rect.height(),
+        )
+        painter.drawText(
+            number_rect,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            str(index.data(Qt.ItemDataRole.DisplayRole) or ""),
+        )
+        painter.restore()
+
+
+class _ToolbarMenuButton(QToolButton):
+    """Draw a centered menu cue instead of Qt's platform-dependent corner arrow."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._popup_menu: QMenu | None = None
+        qconnect(self.clicked, self._show_popup_menu)
+
+    def setMenu(self, menu: QMenu) -> None:
+        self._popup_menu = menu
+
+    def menu(self) -> QMenu | None:
+        return self._popup_menu
+
+    def _show_popup_menu(self) -> None:
+        if self._popup_menu is not None:
+            self._popup_menu.popup(self.mapToGlobal(self.rect().bottomLeft()))
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(self.palette().color(QPalette.ColorRole.ButtonText), 1.8)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        center_x, center_y = self.width() - 15, self.height() // 2
+        painter.drawLine(center_x - 4, center_y - 2, center_x, center_y + 2)
+        painter.drawLine(center_x, center_y + 2, center_x + 4, center_y - 2)
+        painter.end()
 
 
 class _SearchLineEdit(QLineEdit):
@@ -601,6 +825,7 @@ class KnowledgeTreeDialog(QDialog):
         profile: str | None = None,
         select_card_id: int | None = None,
         focus_card_id: int | None = None,
+        priority_thresholds: tuple[float, float] = _DEFAULT_PRIORITY_THRESHOLDS,
         open_priority_for_card=None,
         open_branch_study=None,
         parent=None,
@@ -610,6 +835,8 @@ class KnowledgeTreeDialog(QDialog):
         self._profile = str(profile or active_profile()).strip() or active_profile()
         self._open_priority_for_card = open_priority_for_card
         self._open_branch_study = open_branch_study
+        _priority_indicator(50, lower_is_more_important=True, thresholds=priority_thresholds)
+        self._priority_thresholds = priority_thresholds
         self._building = False
         self._initial_select_card_id = None if select_card_id is None else int(select_card_id)
         self._focus_card_id = (
@@ -626,11 +853,8 @@ class KnowledgeTreeDialog(QDialog):
         self._toolbar_button_labels: dict[QToolButton, str] = {}
         self._toolbar_button_tooltips: dict[QToolButton, str] = {}
         self._toolbar_compact: bool | None = None
-        self._inspector_actions_stacked: bool | None = None
         self._splitter_vertical: bool | None = None
         self._responsive_ready = False
-        self._workspace_collapsed = False
-        self._search_collapsed = False
 
         self.setWindowTitle("Incremento — Knowledge tree")
         self.resize(1120, 720)
@@ -659,7 +883,10 @@ class KnowledgeTreeDialog(QDialog):
         close_row.addStretch()
         close_btn = QPushButton("Close")
         close_btn.setObjectName("KnowledgeActionButton")
-        close_btn.setIcon(self._standard_icon(QStyle.StandardPixmap.SP_DialogCloseButton))
+        close_btn.setIcon(_readable_icon(
+            self._standard_icon(QStyle.StandardPixmap.SP_DialogCloseButton),
+            self.palette(),
+        ))
         close_row.addWidget(close_btn)
         outer.addLayout(close_row)
 
@@ -676,6 +903,7 @@ class KnowledgeTreeDialog(QDialog):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_responsive_layout()
+        self._update_breadcrumb()
 
     def _update_responsive_layout(self) -> None:
         if not getattr(self, "_responsive_ready", False):
@@ -701,13 +929,6 @@ class KnowledgeTreeDialog(QDialog):
                     button.setMinimumWidth(0)
                     button.setToolTip(tool_tip)
 
-        # Keep inspector actions in one readable vertical list. Two columns
-        # make the buttons look uneven when labels have different lengths and
-        # are especially awkward in a narrow, scrollable inspector.
-        stacked_actions = True
-        if stacked_actions != self._inspector_actions_stacked:
-            self._set_inspector_actions_stacked(stacked_actions)
-
         vertical_splitter = width < _VERTICAL_SPLITTER_WIDTH
         if vertical_splitter != self._splitter_vertical:
             self._splitter_vertical = vertical_splitter
@@ -721,7 +942,7 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.setIndentation(16 if compact_toolbar else 22)
 
     def _apply_style(self) -> None:
-        self.setStyleSheet(
+        style = (
             """
             QFrame#KnowledgePanel, QFrame#KnowledgeInspector, QFrame#KnowledgeSectionCard {
               background: palette(base);
@@ -730,17 +951,6 @@ class KnowledgeTreeDialog(QDialog):
             }
             QFrame#KnowledgeToolbar {
               border: none;
-            }
-            QFrame#KnowledgeSeparator {
-              background: rgba(128,128,128,0.25);
-              min-width: 1px;
-              max-width: 1px;
-            }
-            QSplitter#KnowledgeTreeVerticalSplitter::handle {
-              background: rgba(128,128,128,0.30);
-            }
-            QSplitter#KnowledgeTreeVerticalSplitter::handle:hover {
-              background: rgba(74,122,181,0.70);
             }
             QLabel#KnowledgeTitle {
               font-size: 16px;
@@ -755,11 +965,26 @@ class KnowledgeTreeDialog(QDialog):
               border: none;
             }
             QLabel#KnowledgeMeta {
-              color: palette(mid);
+              color: __SECONDARY_TEXT__;
               font-size: 11px;
             }
+            QLabel#KnowledgeBreadcrumb {
+              color: __SECONDARY_TEXT__;
+              font-size: 12px;
+              padding: 2px 4px;
+            }
+            QFrame#KnowledgeDetailDivider {
+              color: rgba(128,128,128,0.25);
+            }
+            QTabWidget#KnowledgeTabs::pane {
+              border: 1px solid rgba(128,128,128,0.20);
+              border-radius: 8px;
+            }
+            QTabBar::tab {
+              padding: 7px 14px;
+            }
             QLabel#KnowledgeHint {
-              color: palette(mid);
+              color: __SECONDARY_TEXT__;
               font-size: 11px;
               line-height: 1.3em;
             }
@@ -808,21 +1033,8 @@ class KnowledgeTreeDialog(QDialog):
               border-radius: 8px;
               padding: 6px 10px;
             }
-            QToolButton#KnowledgeToolbarButton[popupMode="1"] {
-              padding-right: 34px;
-            }
-            QToolButton#KnowledgeToolbarButton::menu-button {
-              width: 30px;
-              border-left: 1px solid rgba(128,128,128,0.22);
-              border-top-right-radius: 8px;
-              border-bottom-right-radius: 8px;
-            }
-            QToolButton#KnowledgeToolbarButton::menu-button:hover {
-              background: rgba(74,122,181,0.16);
-            }
-            QToolButton#KnowledgeToolbarButton::menu-arrow {
-              width: 12px;
-              height: 12px;
+            QToolButton#KnowledgeToolbarButton[hasPopup="true"] {
+              padding-right: 29px;
             }
             QToolButton#KnowledgeToolbarButton:hover, QPushButton#KnowledgeActionButton:hover {
               background: rgba(74,122,181,0.10);
@@ -836,173 +1048,64 @@ class KnowledgeTreeDialog(QDialog):
             }
             """
         )
+        self.setStyleSheet(style.replace("__SECONDARY_TEXT__", _secondary_text_color(self.palette())))
 
     def _build_toolbar(self, outer: QVBoxLayout) -> None:
         toolbar = QFrame(self)
         toolbar.setObjectName("KnowledgeToolbar")
         toolbar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        toolbar_layout = QVBoxLayout(toolbar)
+        toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(6)
-        primary_row = QHBoxLayout()
-        primary_row.setContentsMargins(0, 0, 0, 0)
-        primary_row.setSpacing(8)
-        secondary_row = QHBoxLayout()
-        secondary_row.setContentsMargins(0, 0, 0, 0)
-        secondary_row.setSpacing(8)
-
-        self._topic_btn = self._build_add_button(
-            label="Topic",
-            node_kind=NODE_KIND_TOPIC,
-            create_label="Create New Topic…",
-            link_label="Link Existing Topic…",
-            create_slot=lambda: self._create_node(NODE_KIND_TOPIC),
-            link_slot=lambda: self._link_node(NODE_KIND_TOPIC),
-        )
-        self._item_btn = self._build_add_button(
-            label="Item",
-            node_kind=NODE_KIND_ITEM,
-            create_label="Create New Item…",
-            link_label="Link Existing Item…",
-            create_slot=lambda: self._create_node(NODE_KIND_ITEM),
-            link_slot=lambda: self._link_node(NODE_KIND_ITEM),
-        )
-        self._rename_btn = self._build_toolbar_button(
-            "Rename",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            self._rename_selected_node,
-            tool_tip="Rename the selected knowledge-tree node.",
-        )
-        self._priority_btn = self._build_toolbar_button(
-            "Priority",
-            self._standard_icon(QStyle.StandardPixmap.SP_ArrowRight),
-            self._change_selected_priority,
-            tool_tip="Open branch-priority tools for the selected node.",
-        )
+        toolbar_layout.setSpacing(8)
         self._study_btn = self._build_toolbar_button(
             "Study",
-            self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
+            _toolbar_glyph_icon("play", self.palette()),
             self._study_selected_branch,
             tool_tip="Open the learning dialog and study only this subtree.",
         )
-        self._subset_btn = self._build_toolbar_button(
-            "Subset",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
-            self._open_subset_review_dialog,
-            tool_tip="Open a detailed subset table for the selected node and its descendants.",
+        self._add_btn = _ToolbarMenuButton(toolbar)
+        self._add_btn.setObjectName("KnowledgeToolbarButton")
+        self._add_btn.setProperty("hasPopup", True)
+        self._add_btn.setText("Add")
+        self._add_btn.setIcon(_toolbar_glyph_icon("add", self.palette()))
+        self._add_btn.setIconSize(QSize(18, 18))
+        self._add_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._add_btn.setToolTip("Add a topic or item under the selected node.")
+        add_menu = QMenu(self._add_btn)
+        self._add_topic_action = QAction(_kind_icon(NODE_KIND_TOPIC), "Add Topic Child", add_menu)
+        self._add_item_action = QAction(_kind_icon(NODE_KIND_ITEM), "Add Item Child", add_menu)
+        qconnect(self._add_topic_action.triggered, lambda _checked=False: self._create_node(NODE_KIND_TOPIC))
+        qconnect(self._add_item_action.triggered, lambda _checked=False: self._create_node(NODE_KIND_ITEM))
+        add_menu.addAction(self._add_topic_action)
+        add_menu.addAction(self._add_item_action)
+        self._add_btn.setMenu(add_menu)
+        self._register_toolbar_button(self._add_btn, "Add")
+
+        self._search_edit = _SearchLineEdit(toolbar)
+        self._search_edit.setObjectName("KnowledgeSearchEdit")
+        self._search_edit.setPlaceholderText("Search this tree…")
+        search_palette = self._search_edit.palette()
+        search_palette.setColor(
+            QPalette.ColorRole.PlaceholderText,
+            QColor(_secondary_text_color(self.palette())),
         )
-        self._postpone_btn = self._build_toolbar_button(
-            "Postpone",
-            self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
-            self._open_postpone_dialog,
-            tool_tip="Open bulk postpone tools for all outstanding cards, this branch, or the current Browser.",
-        )
-        self._browser_btn = self._build_toolbar_button(
-            "Browser",
-            self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
-            self._open_selected_in_browser,
-            tool_tip="Open the selected node in Anki Browser.",
-        )
-        self._open_pdf_btn = self._build_toolbar_button(
-            "Open PDF",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
-            self._open_selected_pdf,
-            tool_tip="Open the linked PDF in the existing PDF dock.",
-        )
-        self._parent_btn = self._build_toolbar_button(
-            "Parent",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogToParent),
-            self._go_to_parent,
-            tool_tip="Select the parent node in the knowledge tree.",
-        )
-        self._remove_btn = self._build_toolbar_button(
-            "Remove",
-            self._standard_icon(QStyle.StandardPixmap.SP_TrashIcon),
-            self._remove_selected_node,
-            tool_tip="Remove the selected node from the tree without deleting the card.",
-            object_name="KnowledgeDangerAction",
-        )
+        self._search_edit.setPalette(search_palette)
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._refresh_btn = self._build_toolbar_button(
             "Refresh",
-            self._standard_icon(QStyle.StandardPixmap.SP_BrowserReload),
+            _readable_icon(
+                self._standard_icon(QStyle.StandardPixmap.SP_BrowserReload),
+                self.palette(),
+            ),
             lambda: self.reload(),
             tool_tip="Reload the tree and keep the current selection when possible.",
         )
-        self._expand_btn = self._build_toolbar_button(
-            "Expand",
-            self._standard_icon(QStyle.StandardPixmap.SP_ArrowDown),
-            self._tree_expand_all,
-            tool_tip="Expand every branch in the knowledge tree.",
-        )
-        self._collapse_btn = self._build_toolbar_button(
-            "Collapse",
-            self._standard_icon(QStyle.StandardPixmap.SP_ArrowUp),
-            self._tree_collapse_all,
-            tool_tip="Collapse every branch in the knowledge tree.",
-        )
-
-        for widget in [
-            self._topic_btn,
-            self._item_btn,
-            self._toolbar_separator(),
-            self._rename_btn,
-            self._browser_btn,
-            self._open_pdf_btn,
-            self._parent_btn,
-            self._remove_btn,
-        ]:
-            primary_row.addWidget(widget)
-
-        for widget in [
-            self._study_btn,
-            self._subset_btn,
-            self._priority_btn,
-            self._postpone_btn,
-            self._toolbar_separator(),
-            self._refresh_btn,
-            self._expand_btn,
-            self._collapse_btn,
-        ]:
-            secondary_row.addWidget(widget)
-
-        primary_row.addStretch(1)
-        secondary_row.addStretch(1)
-        toolbar_layout.addLayout(primary_row)
-        toolbar_layout.addLayout(secondary_row)
+        toolbar_layout.addWidget(self._study_btn)
+        toolbar_layout.addWidget(self._add_btn)
+        toolbar_layout.addWidget(self._search_edit, 1)
+        toolbar_layout.addWidget(self._refresh_btn)
         outer.addWidget(toolbar)
-
-    def _build_section_toggle(self, title: str, slot: Callable[[], None]) -> QToolButton:
-        button = QToolButton(self)
-        button.setText("−")
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        button.setAutoRaise(True)
-        button.setFixedSize(28, 28)
-        button.setToolTip(f"Minimize {title}")
-        qconnect(button.clicked, lambda _checked=False: slot())
-        return button
-
-    def _toggle_tree_section(self, section: str) -> None:
-        if section == "workspace":
-            self._workspace_collapsed = not self._workspace_collapsed
-            collapsed = self._workspace_collapsed
-            self._workspace_content.setVisible(not collapsed)
-            self._workspace_toggle.setText("+" if collapsed else "−")
-            self._workspace_toggle.setToolTip(
-                "Expand Branch Workspace" if collapsed else "Minimize Branch Workspace"
-            )
-        elif section == "search":
-            self._search_collapsed = not self._search_collapsed
-            collapsed = self._search_collapsed
-            self._search_content.setVisible(not collapsed)
-            self._search_toggle.setText("+" if collapsed else "−")
-            self._search_toggle.setToolTip(
-                "Expand Search Tree" if collapsed else "Minimize Search Tree"
-            )
-
-        splitter = getattr(self, "_tree_vertical_splitter", None)
-        if splitter is not None:
-            splitter.updateGeometry()
-            splitter.setSizes(splitter.sizes())
 
     def _build_tree_panel(self) -> QWidget:
         panel = QFrame(self)
@@ -1023,19 +1126,6 @@ class KnowledgeTreeDialog(QDialog):
         intro_layout.setContentsMargins(12, 10, 12, 10)
         intro_layout.setSpacing(4)
 
-        intro_title = QLabel("Branch Workspace")
-        intro_title.setObjectName("KnowledgeTitle")
-        intro_header = QHBoxLayout()
-        intro_header.setContentsMargins(0, 0, 0, 0)
-        intro_header.addWidget(intro_title)
-        intro_header.addStretch(1)
-        self._workspace_toggle = self._build_section_toggle(
-            "Branch Workspace",
-            lambda: self._toggle_tree_section("workspace"),
-        )
-        intro_header.addWidget(self._workspace_toggle)
-        intro_layout.addLayout(intro_header)
-
         intro_content = QWidget(intro)
         intro_content_layout = QVBoxLayout(intro_content)
         intro_content_layout.setContentsMargins(0, 0, 0, 0)
@@ -1052,9 +1142,9 @@ class KnowledgeTreeDialog(QDialog):
 
         self._workspace_summary = QLabel("")
         self._workspace_summary.setObjectName("KnowledgeMeta")
-        self._workspace_summary.setWordWrap(True)
+        self._workspace_summary.setWordWrap(False)
+        self._workspace_summary.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         _allow_label_shrink(self._workspace_summary)
-        intro_content_layout.addWidget(self._workspace_summary)
 
         self._workspace_context = QLabel("")
         self._workspace_context.setObjectName("KnowledgeHint")
@@ -1069,9 +1159,21 @@ class KnowledgeTreeDialog(QDialog):
         intro_content_layout.addWidget(self._workspace_focus)
 
         intro_layout.addWidget(intro_content)
-        self._workspace_content = intro_content
 
         search_panel = self._build_search_panel(panel)
+        self._tabs = QTabWidget(panel)
+        self._tabs.setObjectName("KnowledgeTabs")
+        self._tabs.addTab(intro, "Workspace")
+        self._tabs.addTab(search_panel, "Search")
+        self._tabs.setCornerWidget(self._workspace_summary, Qt.Corner.TopRightCorner)
+        layout.addWidget(self._tabs)
+
+        self._breadcrumb = QLabel("Select a node to see its path", panel)
+        self._breadcrumb.setObjectName("KnowledgeBreadcrumb")
+        self._breadcrumb.setTextFormat(Qt.TextFormat.PlainText)
+        self._breadcrumb.setMinimumWidth(0)
+        self._breadcrumb.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self._breadcrumb)
 
         self._tree = _KnowledgeTreeWidget(self._persist_tree_after_drop, panel)
         self._tree.setObjectName("KnowledgeTreeView")
@@ -1096,21 +1198,18 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.header().setStretchLastSection(False)
         self._tree.header().setMinimumSectionSize(24)
         self._tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._tree.setColumnWidth(1, 74)
-
-        self._tree_vertical_splitter = QSplitter(Qt.Orientation.Vertical, panel)
-        self._tree_vertical_splitter.setObjectName("KnowledgeTreeVerticalSplitter")
-        self._tree_vertical_splitter.setChildrenCollapsible(False)
-        self._tree_vertical_splitter.setHandleWidth(8)
-        self._tree_vertical_splitter.addWidget(intro)
-        self._tree_vertical_splitter.addWidget(search_panel)
-        self._tree_vertical_splitter.addWidget(self._tree)
-        self._tree_vertical_splitter.setStretchFactor(0, 0)
-        self._tree_vertical_splitter.setStretchFactor(1, 0)
-        self._tree_vertical_splitter.setStretchFactor(2, 1)
-        self._tree_vertical_splitter.setSizes([170, 250, 420])
-        layout.addWidget(self._tree_vertical_splitter, 1)
+        self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self._tree.setItemDelegateForColumn(
+            1,
+            _PriorityDelegate(
+                lower_is_more_important=configured_priority_lower_is_more_important(),
+                thresholds=self._priority_thresholds,
+                parent=self._tree,
+            ),
+        )
+        self._tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self._tree.setColumnWidth(1, 122)
+        layout.addWidget(self._tree, 1)
         return panel
 
     def _build_search_panel(self, parent: QWidget) -> QWidget:
@@ -1123,19 +1222,6 @@ class KnowledgeTreeDialog(QDialog):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
-
-        title = QLabel("Search Tree")
-        title.setObjectName("KnowledgeTitle")
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.addWidget(title)
-        header.addStretch(1)
-        self._search_toggle = self._build_section_toggle(
-            "Search Tree",
-            lambda: self._toggle_tree_section("search"),
-        )
-        header.addWidget(self._search_toggle)
-        layout.addLayout(header)
 
         search_content = QWidget(card)
         search_content_layout = QVBoxLayout(search_content)
@@ -1150,18 +1236,9 @@ class KnowledgeTreeDialog(QDialog):
         _allow_label_shrink(hint)
         search_content_layout.addWidget(hint)
 
-        query_row = QHBoxLayout()
-        query_row.setContentsMargins(0, 0, 0, 0)
-        query_row.setSpacing(8)
-        self._search_edit = _SearchLineEdit(card)
-        self._search_edit.setObjectName("KnowledgeSearchEdit")
-        self._search_edit.setPlaceholderText("Search linked titles...")
         self._search_clear_btn = QPushButton("Clear", card)
         self._search_clear_btn.setObjectName("KnowledgeActionButton")
         self._search_clear_btn.setFixedHeight(34)
-        query_row.addWidget(self._search_edit, 1)
-        query_row.addWidget(self._search_clear_btn)
-        search_content_layout.addLayout(query_row)
 
         scope_row = QHBoxLayout()
         scope_row.setContentsMargins(0, 0, 0, 0)
@@ -1174,6 +1251,7 @@ class KnowledgeTreeDialog(QDialog):
         scope_row.addWidget(self._search_metadata_toggle)
         scope_row.addWidget(self._search_note_text_toggle)
         scope_row.addStretch(1)
+        scope_row.addWidget(self._search_clear_btn)
         search_content_layout.addLayout(scope_row)
 
         self._search_results_label = QLabel("Search is limited to cards already linked into this tree.")
@@ -1198,9 +1276,9 @@ class KnowledgeTreeDialog(QDialog):
         )
         search_content_layout.addWidget(self._search_results_list)
         layout.addWidget(search_content)
-        self._search_content = search_content
 
         qconnect(self._search_edit.textChanged, self._refresh_search_results)
+        qconnect(self._search_edit.textEdited, lambda _text: self._tabs.setCurrentIndex(1))
         qconnect(self._search_edit.returnPressed, self._open_first_search_result)
         qconnect(self._search_clear_btn.clicked, self._clear_search)
         qconnect(self._search_titles_toggle.toggled, self._refresh_search_results)
@@ -1222,313 +1300,76 @@ class KnowledgeTreeDialog(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
 
         panel = QFrame()
         panel.setObjectName("KnowledgeInspector")
         panel.setMinimumSize(0, 0)
-        panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         scroll.setWidget(panel)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
-
-        hero = QFrame(panel)
-        hero.setObjectName("KnowledgeSectionCard")
-        hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(12, 12, 12, 12)
-        hero_layout.setSpacing(8)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
 
         badge_row = QHBoxLayout()
-        badge_row.setContentsMargins(0, 0, 0, 0)
         badge_row.setSpacing(6)
         self._kind_badge = QLabel("")
+        self._priority_badge = QLabel("")
         self._focus_badge = QLabel("")
-        self._focus_badge.setVisible(False)
         badge_row.addWidget(self._kind_badge)
+        badge_row.addWidget(self._priority_badge)
         badge_row.addWidget(self._focus_badge)
         badge_row.addStretch(1)
-        hero_layout.addLayout(badge_row)
+        layout.addLayout(badge_row)
 
-        self._selection_title = QLabel("No node selected")
-        self._selection_title.setObjectName("KnowledgeInspectorTitle")
-        self._selection_title.setTextFormat(Qt.TextFormat.PlainText)
-        self._selection_title.setWordWrap(True)
-        _allow_label_shrink(self._selection_title)
-        hero_layout.addWidget(self._selection_title)
+        self._selection_text = QLabel("Select a topic or item to inspect its card text.")
+        self._selection_text.setObjectName("KnowledgeInspectorTitle")
+        self._selection_text.setTextFormat(Qt.TextFormat.PlainText)
+        self._selection_text.setWordWrap(True)
+        _allow_label_shrink(self._selection_text)
+        layout.addWidget(self._selection_text)
+        layout.addStretch(1)
 
-        self._selection_meta = QLabel(
-            "Select a topic or item to inspect its branch, open priority tools, or add children."
-        )
-        self._selection_meta.setObjectName("KnowledgeMeta")
-        self._selection_meta.setWordWrap(True)
-        _allow_label_shrink(self._selection_meta)
-        hero_layout.addWidget(self._selection_meta)
+        divider = QFrame(panel)
+        divider.setObjectName("KnowledgeDetailDivider")
+        divider.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(divider)
 
-        self._selection_note = QLabel(
-            "Use the toolbar to add root topics/items, or select an existing node to append children."
-        )
-        self._selection_note.setObjectName("KnowledgeHint")
-        self._selection_note.setWordWrap(True)
-        _allow_label_shrink(self._selection_note)
-        hero_layout.addWidget(self._selection_note)
+        metadata = QGridLayout()
+        metadata.setContentsMargins(0, 0, 0, 0)
+        metadata.setHorizontalSpacing(12)
+        metadata.setVerticalSpacing(6)
+        card_label = QLabel("Card ID", panel)
+        source_label = QLabel("Source", panel)
+        card_label.setObjectName("KnowledgeMeta")
+        source_label.setObjectName("KnowledgeMeta")
+        self._meta_card_id = QLabel("—", panel)
+        self._meta_source = QLabel("—", panel)
+        self._meta_card_id.setTextFormat(Qt.TextFormat.PlainText)
+        self._meta_source.setTextFormat(Qt.TextFormat.PlainText)
+        self._meta_source.setWordWrap(True)
+        _allow_label_shrink(self._meta_source)
+        metadata.addWidget(card_label, 0, 0)
+        metadata.addWidget(self._meta_card_id, 0, 1)
+        metadata.addWidget(source_label, 1, 0)
+        metadata.addWidget(self._meta_source, 1, 1)
+        metadata.setColumnStretch(1, 1)
+        layout.addLayout(metadata)
 
-        layout.addWidget(hero)
-
-        branch_card = QFrame(panel)
-        branch_card.setObjectName("KnowledgeSectionCard")
-        branch_layout = QVBoxLayout(branch_card)
-        branch_layout.setContentsMargins(12, 12, 12, 12)
-        branch_layout.setSpacing(8)
-
-        branch_title = QLabel("Branch Summary")
-        branch_title.setObjectName("KnowledgeTitle")
-        branch_layout.addWidget(branch_title)
-
-        self._parent_value = QLabel("Parent branch: Select a node first.")
-        self._parent_value.setObjectName("KnowledgeSummaryLine")
-        self._parent_value.setWordWrap(True)
-        _allow_label_shrink(self._parent_value)
-        branch_layout.addWidget(self._parent_value)
-
-        self._lineage_value = QLabel("Lineage: Select a node first.")
-        self._lineage_value.setObjectName("KnowledgeSummaryLine")
-        self._lineage_value.setWordWrap(True)
-        _allow_label_shrink(self._lineage_value)
-        self._lineage_value.setTextFormat(Qt.TextFormat.RichText)
-        self._lineage_value.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
-        self._lineage_value.setOpenExternalLinks(False)
-        qconnect(self._lineage_value.linkActivated, self._on_lineage_link_activated)
-        branch_layout.addWidget(self._lineage_value)
-
-        self._branch_size_value = QLabel("Select a topic or item to inspect this branch.")
-        self._branch_size_value.setObjectName("KnowledgeSummaryLine")
-        self._branch_size_value.setWordWrap(True)
-        _allow_label_shrink(self._branch_size_value)
-        branch_layout.addWidget(self._branch_size_value)
-
-        self._branch_children_value = QLabel("")
-        self._branch_children_value.setObjectName("KnowledgeSummaryLine")
-        self._branch_children_value.setWordWrap(True)
-        _allow_label_shrink(self._branch_children_value)
-        self._branch_children_value.setVisible(False)
-        branch_layout.addWidget(self._branch_children_value)
-
-        self._branch_depth_value = QLabel("")
-        self._branch_depth_value.setObjectName("KnowledgeSummaryLine")
-        self._branch_depth_value.setWordWrap(True)
-        _allow_label_shrink(self._branch_depth_value)
-        self._branch_depth_value.setVisible(False)
-        branch_layout.addWidget(self._branch_depth_value)
-
-        self._branch_priority_value = QLabel("")
-        self._branch_priority_value.setObjectName("KnowledgeSummaryLine")
-        self._branch_priority_value.setWordWrap(True)
-        _allow_label_shrink(self._branch_priority_value)
-        self._branch_priority_value.setVisible(False)
-        branch_layout.addWidget(self._branch_priority_value)
-
-        self._branch_range_value = QLabel("")
-        self._branch_range_value.setObjectName("KnowledgeSummaryLine")
-        self._branch_range_value.setWordWrap(True)
-        _allow_label_shrink(self._branch_range_value)
-        self._branch_range_value.setVisible(False)
-        branch_layout.addWidget(self._branch_range_value)
-
-        self._branch_hint = QLabel("")
-        self._branch_hint.setObjectName("KnowledgeHint")
-        self._branch_hint.setWordWrap(True)
-        _allow_label_shrink(self._branch_hint)
-        branch_layout.addWidget(self._branch_hint)
-        layout.addWidget(branch_card)
-
-        add_card = QFrame(panel)
-        add_card.setObjectName("KnowledgeSectionCard")
-        add_layout = QVBoxLayout(add_card)
-        add_layout.setContentsMargins(12, 12, 12, 12)
-        add_layout.setSpacing(8)
-        add_title = QLabel("Add To Tree")
-        add_title.setObjectName("KnowledgeTitle")
-        add_layout.addWidget(add_title)
-
-        add_row = QVBoxLayout()
-        add_row.setContentsMargins(0, 0, 0, 0)
-        add_row.setSpacing(8)
-        self._inspector_topic_btn = self._build_action_button(
-            "Add Root Topic",
-            _kind_icon(NODE_KIND_TOPIC),
-            lambda: self._create_node(NODE_KIND_TOPIC),
-        )
-        self._inspector_item_btn = self._build_action_button(
-            "Add Root Item",
-            _kind_icon(NODE_KIND_ITEM),
-            lambda: self._create_node(NODE_KIND_ITEM),
-        )
-        add_row.addWidget(self._inspector_topic_btn)
-        add_row.addWidget(self._inspector_item_btn)
-        add_layout.addLayout(add_row)
-
-        self._insert_target_label = QLabel("")
-        self._insert_target_label.setObjectName("KnowledgeHint")
-        self._insert_target_label.setWordWrap(True)
-        _allow_label_shrink(self._insert_target_label)
-        add_layout.addWidget(self._insert_target_label)
-        layout.addWidget(add_card)
-
-        action_card = QFrame(panel)
-        action_card.setObjectName("KnowledgeSectionCard")
-        action_card.setMinimumHeight(300)
-        action_layout = QVBoxLayout(action_card)
-        action_layout.setContentsMargins(12, 12, 12, 12)
-        action_layout.setSpacing(8)
-        action_title = QLabel("Selected Node")
-        action_title.setObjectName("KnowledgeTitle")
-        action_layout.addWidget(action_title)
-
-        self._inspector_study_btn = self._build_action_button(
-            "Study Branch…",
-            self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
-            self._study_selected_branch,
-        )
-        self._inspector_subset_btn = self._build_action_button(
-            "Subset Review…",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
-            self._open_subset_review_dialog,
-        )
-        self._inspector_postpone_btn = self._build_action_button(
-            "Postpone…",
-            self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
-            self._open_postpone_dialog,
-        )
-        self._inspector_priority_btn = self._build_action_button(
-            "Priority…",
-            self._standard_icon(QStyle.StandardPixmap.SP_ArrowRight),
-            self._change_selected_priority,
-        )
-        self._inspector_browser_btn = self._build_action_button(
-            "Browser",
+        footer = QHBoxLayout()
+        footer.setSpacing(8)
+        self._inspect_btn = self._build_action_button(
+            "Inspect",
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
             self._open_selected_in_browser,
         )
-        self._inspector_open_pdf_btn = self._build_action_button(
-            "Open PDF",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
-            self._open_selected_pdf,
-        )
-        self._inspector_parent_btn = self._build_action_button(
-            "Go To Parent",
-            self._standard_icon(QStyle.StandardPixmap.SP_FileDialogToParent),
-            self._go_to_parent,
-        )
-        self._inspector_rename_btn = self._build_action_button(
-            "Rename",
+        self._more_btn = self._build_action_button(
+            "More",
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            self._rename_selected_node,
+            self._show_more_menu,
         )
-        self._inspector_remove_btn = self._build_action_button(
-            "Remove",
-            self._standard_icon(QStyle.StandardPixmap.SP_TrashIcon),
-            self._remove_selected_node,
-            object_name="KnowledgeDangerAction",
-        )
-
-        self._inspector_action_buttons = [
-            self._inspector_rename_btn,
-            self._inspector_browser_btn,
-            self._inspector_open_pdf_btn,
-            self._inspector_parent_btn,
-            self._inspector_remove_btn,
-            self._inspector_study_btn,
-            self._inspector_subset_btn,
-            self._inspector_priority_btn,
-            self._inspector_postpone_btn,
-        ]
-        self._inspector_action_grid = QGridLayout()
-        self._inspector_action_grid.setContentsMargins(0, 0, 0, 0)
-        self._inspector_action_grid.setHorizontalSpacing(10)
-        self._inspector_action_grid.setVerticalSpacing(8)
-        action_layout.addLayout(self._inspector_action_grid)
-
-        self._action_hint = QLabel(
-            "Study Branch opens the normal Incremento learning dialog, but limits scheduling to this subtree. "
-            "Subset Review opens a detailed table for this node and every descendant. "
-            "Postpone opens SuperMemo-style bulk delay tools for this branch, all outstanding cards, or the current Browser. "
-            "Browser opens the linked note for editing, and Open PDF jumps to the linked source document in the existing dock."
-        )
-        self._action_hint.setObjectName("KnowledgeHint")
-        self._action_hint.setWordWrap(True)
-        _allow_label_shrink(self._action_hint)
-        action_layout.addWidget(self._action_hint)
-        layout.addWidget(action_card)
-
-        layout.addStretch(1)
+        footer.addWidget(self._inspect_btn)
+        footer.addWidget(self._more_btn)
+        layout.addLayout(footer)
         return scroll
-
-    def _set_inspector_actions_stacked(self, stacked: bool) -> None:
-        if not hasattr(self, "_inspector_action_grid"):
-            return
-        self._inspector_actions_stacked = stacked
-        for button in self._inspector_action_buttons:
-            self._inspector_action_grid.removeWidget(button)
-
-        if stacked:
-            for row, button in enumerate(self._inspector_action_buttons):
-                self._inspector_action_grid.addWidget(button, row, 0)
-            self._inspector_action_grid.setColumnStretch(0, 1)
-            self._inspector_action_grid.setColumnStretch(1, 0)
-            return
-
-        rows_per_column = max(1, (len(self._inspector_action_buttons) + 1) // 2)
-        for index, button in enumerate(self._inspector_action_buttons):
-            row = index % rows_per_column
-            column = index // rows_per_column
-            self._inspector_action_grid.addWidget(
-                button,
-                row,
-                column,
-                Qt.AlignmentFlag.AlignLeft,
-            )
-        self._inspector_action_grid.setColumnStretch(0, 0)
-        self._inspector_action_grid.setColumnStretch(1, 0)
-
-    def _build_add_button(
-        self,
-        *,
-        label: str,
-        node_kind: str,
-        create_label: str,
-        link_label: str,
-        create_slot: Callable[[], None],
-        link_slot: Callable[[], None],
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName("KnowledgeToolbarButton")
-        button.setText(label)
-        button.setIcon(_kind_icon(node_kind))
-        button.setIconSize(QSize(20, 20))
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        button.setToolTip(f"Create or link a {_kind_label(node_kind).lower()} in the knowledge tree.")
-        button.setMinimumWidth(0)
-        button.setMaximumWidth(240)
-        button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        qconnect(button.clicked, lambda _checked=False: create_slot())
-
-        menu = QMenu(button)
-        create_action = QAction(_kind_icon(node_kind), create_label, menu)
-        link_action = QAction(
-            self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
-            link_label,
-            menu,
-        )
-        qconnect(create_action.triggered, lambda _checked=False: create_slot())
-        qconnect(link_action.triggered, lambda _checked=False: link_slot())
-        menu.addAction(create_action)
-        menu.addAction(link_action)
-        button.setMenu(menu)
-        self._register_toolbar_button(button, label)
-        return button
 
     def _build_toolbar_button(
         self,
@@ -1575,12 +1416,6 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(button.clicked, lambda _checked=False: slot())
         return button
 
-    def _toolbar_separator(self) -> QFrame:
-        line = QFrame(self)
-        line.setObjectName("KnowledgeSeparator")
-        line.setFrameShape(QFrame.Shape.VLine)
-        return line
-
     def _standard_icon(self, pixmap: QStyle.StandardPixmap) -> QIcon:
         return self.style().standardIcon(pixmap)
 
@@ -1588,7 +1423,16 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         qconnect(self._tree.customContextMenuRequested, self._show_context_menu)
 
-    def _show_context_menu(self, pos) -> None:
+    def _show_more_menu(self) -> None:
+        item = self._selected_item()
+        if item is None:
+            return
+        self._show_context_menu(
+            self._tree.visualItemRect(item).center(),
+            global_pos=self._more_btn.mapToGlobal(self._more_btn.rect().bottomLeft()),
+        )
+
+    def _show_context_menu(self, pos, *, global_pos=None) -> None:
         clicked_item = self._tree.itemAt(pos)
         if clicked_item is not None and not clicked_item.isSelected():
             self._tree.clearSelection()
@@ -1723,7 +1567,7 @@ class KnowledgeTreeDialog(QDialog):
         menu.addSeparator()
         menu.addAction(expand_action)
         menu.addAction(collapse_action)
-        menu.exec(self._tree.viewport().mapToGlobal(pos))
+        menu.exec(global_pos or self._tree.viewport().mapToGlobal(pos))
 
     def _selected_items(self) -> list[QTreeWidgetItem]:
         return list(self._tree.selectedItems())
@@ -1801,17 +1645,6 @@ class KnowledgeTreeDialog(QDialog):
             return None
         return target
 
-    def _apply_open_pdf_action_state(
-        self,
-        selected_count: int,
-        pdf_target: dict[str, str | int | bool] | None,
-    ) -> None:
-        enabled, tool_tip = _open_pdf_action_state(selected_count, pdf_target)
-        self._open_pdf_btn.setEnabled(enabled)
-        self._open_pdf_btn.setToolTip(tool_tip)
-        self._inspector_open_pdf_btn.setEnabled(enabled)
-        self._inspector_open_pdf_btn.setToolTip(tool_tip)
-
     def _selected_parent_card_id_for_insert(self) -> int | None:
         return self._selected_card_id()
 
@@ -1873,6 +1706,7 @@ class KnowledgeTreeDialog(QDialog):
         card_id = int(row["card_id"])
         item.setText(0, _row_title(row, card_id))
         item.setText(1, _priority_text(row.get("priority")))
+        item.setData(1, _ROLE_PRIORITY_VALUE, row.get("priority"))
         item.setTextAlignment(1, int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
         item.setIcon(0, _kind_icon(row.get("node_kind") or NODE_KIND_TOPIC))
         item.setData(0, _ROLE_CARD_ID, card_id)
@@ -1915,7 +1749,7 @@ class KnowledgeTreeDialog(QDialog):
     ) -> None:
         if focus_card_id is not _KEEP_FOCUS:
             self._focus_card_id = (
-                None if focus_card_id is None else int(focus_card_id)
+                None if focus_card_id is None else int(cast(int, focus_card_id))
             )
 
         requested_card_id = (
@@ -1928,7 +1762,7 @@ class KnowledgeTreeDialog(QDialog):
         else:
             requested_card_ids = [
                 int(card_id)
-                for card_id in list(select_card_ids or [])
+                for card_id in list(cast(list[int] | tuple[int, ...] | set[int], select_card_ids))
                 if card_id is not None
             ]
         if requested_card_id is not None and requested_card_id not in requested_card_ids:
@@ -2209,18 +2043,6 @@ class KnowledgeTreeDialog(QDialog):
         self._select_card_id(card_id)
         tooltip("Selected ancestor node.")
 
-    def _tree_collapse_all(self) -> None:
-        self._tree.collapseAll()
-        selected = self._selected_item()
-        if selected is not None:
-            parent = selected.parent()
-            while parent is not None:
-                parent.setExpanded(True)
-                parent = parent.parent()
-
-    def _tree_expand_all(self) -> None:
-        self._tree.expandAll()
-
     def _expand_selected_branch(self) -> None:
         items = self._selected_items()
         if not items:
@@ -2252,168 +2074,46 @@ class KnowledgeTreeDialog(QDialog):
         item.setExpanded(False)
 
     def _refresh_selection_ui(self) -> None:
-        selected_card_ids = self._selected_card_ids_in_tree_order()
-        selected_count = len(selected_card_ids)
+        selected_count = len(self._selected_card_ids())
         card_id = self._selected_card_id()
+        single = selected_count == 1 and card_id is not None
+        self._study_btn.setEnabled(single)
+        self._inspect_btn.setEnabled(single)
+        self._more_btn.setEnabled(selected_count > 0)
+        self._add_topic_action.setText("Add Topic Child" if card_id is not None else "Add Root Topic")
+        self._add_item_action.setText("Add Item Child" if card_id is not None else "Add Root Item")
         selected_title = self._title_for_card_id(card_id) if card_id is not None else ""
-        selected_display_title = _compact_display_text(selected_title)
-        parent_card_id = (
-            get_parent_card_id(self._addon_dir, self._profile, int(card_id))
-            if selected_count == 1 and card_id is not None
-            else None
+        self._add_btn.setToolTip(
+            f"Add a topic or item under {selected_title}."
+            if selected_title else "Add a root topic or item."
         )
-        has_selection = card_id is not None
-        has_single_selection = selected_count == 1
-        has_parent = parent_card_id is not None
-        pdf_target = self._selected_pdf_target(quiet=True) if has_single_selection else None
+        self._update_workspace_summary(_compact_display_text(selected_title), card_id)
+        self._update_breadcrumb()
 
-        self._rename_btn.setEnabled(has_single_selection)
-        self._remove_btn.setEnabled(has_selection)
-        self._priority_btn.setEnabled(has_single_selection)
-        self._study_btn.setEnabled(has_single_selection)
-        self._subset_btn.setEnabled(has_single_selection)
-        self._browser_btn.setEnabled(has_single_selection)
-        self._parent_btn.setEnabled(has_parent)
-        self._postpone_btn.setEnabled(True)
-        self._apply_open_pdf_action_state(selected_count, pdf_target)
-
-        self._inspector_study_btn.setEnabled(has_single_selection)
-        self._inspector_subset_btn.setEnabled(has_single_selection)
-        self._inspector_postpone_btn.setEnabled(True)
-        self._inspector_priority_btn.setEnabled(has_single_selection)
-        self._inspector_browser_btn.setEnabled(has_single_selection)
-        self._inspector_parent_btn.setEnabled(has_parent)
-        self._inspector_rename_btn.setEnabled(has_single_selection)
-        self._inspector_remove_btn.setEnabled(has_selection)
-
-        self._update_insert_buttons(selected_display_title, selected_count)
-        self._update_workspace_summary(selected_display_title, card_id)
-
-        if not has_selection:
+        if not single:
+            label = f"{selected_count} nodes selected" if selected_count else "No node selected"
             _set_badge_style(
                 self._kind_badge,
-                "Selection",
-                background="rgba(128,128,128,0.14)",
-                foreground="palette(text)",
-                border="rgba(128,128,128,0.18)",
-            )
-            self._focus_badge.setVisible(False)
-            self._selection_title.setToolTip("")
-            self._selection_title.setText("No node selected")
-            self._selection_meta.setText(
-                "Select a topic or item to inspect its branch, study that subtree, open priority tools, or add children."
-            )
-            self._selection_note.setText(
-                "Use the toolbar or the add buttons here to create root topics/items. "
-                "Once a node is selected, new cards are appended beneath it and you can study or inspect that whole branch."
-            )
-            empty_summary = describe_branch_summary({})
-            self._parent_value.setText("Parent branch: Select a node first.")
-            self._lineage_value.setText("Lineage: Select a node first.")
-            _set_optional_label_text(
-                self._branch_size_value,
-                str(empty_summary.get("size_line") or ""),
-            )
-            _set_optional_label_text(
-                self._branch_children_value,
-                str(empty_summary.get("children_line") or ""),
-            )
-            _set_optional_label_text(
-                self._branch_depth_value,
-                str(empty_summary.get("levels_line") or ""),
-            )
-            _set_optional_label_text(
-                self._branch_priority_value,
-                str(empty_summary.get("selected_priority_line") or ""),
-            )
-            _set_optional_label_text(
-                self._branch_range_value,
-                str(empty_summary.get("range_line") or ""),
-            )
-            self._branch_hint.setText(str(empty_summary.get("impact_line") or ""))
-            return
-
-        if selected_count > 1:
-            topic_count = 0
-            item_count = 0
-            for selected_card_id in selected_card_ids:
-                row = self._row_by_card_id.get(int(selected_card_id), {})
-                if normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC) == NODE_KIND_TOPIC:
-                    topic_count += 1
-                else:
-                    item_count += 1
-
-            _set_badge_style(
-                self._kind_badge,
-                f"{selected_count} Selected",
+                "Selection" if not selected_count else f"{selected_count} Selected",
                 background="rgba(74,122,181,0.18)",
                 foreground="palette(text)",
                 border="rgba(74,122,181,0.30)",
             )
-            if self._focus_card_id is not None and int(self._focus_card_id) in set(selected_card_ids):
-                _set_badge_style(
-                    self._focus_badge,
-                    "Focused Included",
-                    background="rgba(74,122,181,0.18)",
-                    foreground="palette(text)",
-                    border="rgba(74,122,181,0.30)",
-                )
-            else:
-                self._focus_badge.setVisible(False)
-
-            anchor_title = _compact_display_text(self._title_for_card_id(card_id))
-            self._selection_title.setText(f"{selected_count} nodes selected")
-            self._selection_title.setToolTip("")
-            meta_parts = []
-            if topic_count:
-                meta_parts.append(f"{topic_count} topic{'' if topic_count == 1 else 's'}")
-            if item_count:
-                meta_parts.append(f"{item_count} item{'' if item_count == 1 else 's'}")
-            meta_parts.append(f"anchor: {anchor_title}")
-            self._selection_meta.setText("  ·  ".join(meta_parts))
-            self._selection_note.setText(
-                "Multi-selection is enabled. Remove, expand, and collapse apply to every selected node. "
-                "Single-node actions like Rename, Priority, Study Branch, Subset Review, Browser, Open PDF, and Parent require exactly one selection."
-            )
-            self._parent_value.setText("Parent branch: Single-node actions require exactly one selected node.")
-            self._lineage_value.setText(f"Anchor lineage: {self._lineage_text_for_card_id(card_id).replace('Lineage: ', '')}")
-            _set_optional_label_text(
-                self._branch_size_value,
-                f"Selected nodes: {selected_count}"
-            )
-            _set_optional_label_text(
-                self._branch_children_value,
-                f"Topics: {topic_count}  ·  Items: {item_count}"
-            )
-            _set_optional_label_text(
-                self._branch_depth_value,
-                "Branch depth and priority summaries are shown for a single selected branch."
-            )
-            _set_optional_label_text(self._branch_priority_value, "")
-            _set_optional_label_text(self._branch_range_value, "")
-            self._branch_hint.setText(
-                "Use Cmd/Ctrl-click or Shift-click to refine the selection, or keep one node selected to inspect a single branch in detail."
-            )
+            self._priority_badge.setVisible(False)
+            self._focus_badge.setVisible(False)
+            self._selection_text.setText(label)
+            self._meta_card_id.setText("—")
+            self._meta_source.setText("—")
             return
 
-        meta = get_card_metadata(
-            int(card_id),
-            addon_dir=self._addon_dir,
-            profile=self._profile,
-        ) or {}
+        assert card_id is not None
         row = self._row_by_card_id.get(int(card_id), {})
         node_kind = normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC)
-        stats = subtree_priority_stats(
-            self._addon_dir,
-            self._profile,
-            int(card_id),
+        _set_badge_style(
+            self._kind_badge,
+            _kind_label(node_kind),
+            background="#2aa84a" if node_kind == NODE_KIND_TOPIC else "#2d7ff9",
         )
-
-        if node_kind == NODE_KIND_TOPIC:
-            _set_badge_style(self._kind_badge, "Topic", background="#2aa84a")
-        else:
-            _set_badge_style(self._kind_badge, "Item", background="#2d7ff9")
-
         if self._focus_card_id is not None and int(card_id) == int(self._focus_card_id):
             _set_badge_style(
                 self._focus_badge,
@@ -2425,99 +2125,60 @@ class KnowledgeTreeDialog(QDialog):
         else:
             self._focus_badge.setVisible(False)
 
-        full_title = str(meta.get("title") or selected_title or f"Card {card_id}")
-        self._selection_title.setText(full_title)
-        self._selection_title.setToolTip(full_title)
-        meta_parts = [f"card {card_id}"]
-        if meta.get("deck_name"):
-            meta_parts.append(str(meta["deck_name"]))
-        if meta.get("note_type_name"):
-            meta_parts.append(str(meta["note_type_name"]))
-        self._selection_meta.setText("  ·  ".join(meta_parts))
-
-        current_priority = stats.get("selected_priority")
-        if current_priority is None:
-            current_priority = meta.get("priority")
-        priority_summary = _priority_text(current_priority) or "Default"
-        self._selection_note.setText(
-            f"{_kind_label(node_kind)} node with priority {priority_summary}. "
-            "Use Study Branch to review only this subtree, Subset Review to inspect every card in detail, "
-            "Postpone to delay cards in this branch, or branch tools to spread, randomize, or focus its priority."
+        priority = row.get("priority")
+        if priority is None:
+            meta = get_card_metadata(int(card_id), addon_dir=self._addon_dir, profile=self._profile) or {}
+            priority = meta.get("priority")
+        indicator = _priority_indicator(
+            priority,
+            lower_is_more_important=configured_priority_lower_is_more_important(),
+            thresholds=self._priority_thresholds,
+        )
+        _set_badge_style(
+            self._priority_badge,
+            f"Priority {_priority_text(priority) or '—'}",
+            background=indicator[1] if indicator else "rgba(128,128,128,0.28)",
         )
 
-        parent_text = (
-            _compact_display_text(self._title_for_card_id(parent_card_id))
-            if has_parent
-            else "Root level"
-        )
-        summary = describe_branch_summary(stats)
-        self._parent_value.setText(f"Parent branch: {parent_text}")
-        self._lineage_value.setText(self._lineage_text_for_card_id(card_id))
-        _set_optional_label_text(
-            self._branch_size_value,
-            str(summary.get("size_line") or ""),
-        )
-        _set_optional_label_text(
-            self._branch_children_value,
-            str(summary.get("children_line") or ""),
-        )
-        _set_optional_label_text(
-            self._branch_depth_value,
-            str(summary.get("levels_line") or ""),
-        )
-        _set_optional_label_text(
-            self._branch_priority_value,
-            str(summary.get("selected_priority_line") or ""),
-        )
-        _set_optional_label_text(
-            self._branch_range_value,
-            str(summary.get("range_line") or ""),
-        )
-        self._branch_hint.setText(str(summary.get("impact_line") or ""))
+        text, source = "", "—"
+        try:
+            note = mw.col.get_card(int(card_id)).note()
+            text, source = _card_detail_text_and_source(note, self._selected_pdf_target(quiet=True))
+        except Exception:
+            pass
+        self._selection_text.setText(text or selected_title or f"Card {card_id}")
+        self._meta_card_id.setText(str(card_id))
+        self._meta_source.setText(source)
 
-    def _update_insert_buttons(self, selected_title: str, selected_count: int) -> None:
-        if selected_title:
-            self._inspector_topic_btn.setText("Add Topic Child")
-            self._inspector_item_btn.setText("Add Item Child")
-            if selected_count > 1:
-                self._insert_target_label.setText(
-                    f"New cards will be inserted under the anchor node: {selected_title}"
-                )
-            else:
-                self._insert_target_label.setText(
-                    f"New cards will be inserted under: {selected_title}"
-                )
-            self._topic_btn.setToolTip(
-                f"Create or link a topic under {selected_title}. Use the menu arrow to link an existing card."
-            )
-            self._item_btn.setToolTip(
-                f"Create or link an item under {selected_title}. Use the menu arrow to link an existing card."
-            )
-        else:
-            self._inspector_topic_btn.setText("Add Root Topic")
-            self._inspector_item_btn.setText("Add Root Item")
-            self._insert_target_label.setText(
-                "No node selected. New topics/items will be inserted at the root level."
-            )
-            self._topic_btn.setToolTip(
-                "Create or link a root topic in the knowledge tree."
-            )
-            self._item_btn.setToolTip(
-                "Create or link a root item in the knowledge tree."
-            )
+    def _update_breadcrumb(self) -> None:
+        if not hasattr(self, "_breadcrumb"):
+            return
+        item = self._selected_item()
+        if item is None:
+            self._breadcrumb.setText("Select a node to see its path")
+            self._breadcrumb.setToolTip("")
+            return
+        labels = []
+        while item is not None:
+            labels.append(item.text(0))
+            item = item.parent()
+        labels.reverse()
+        full = " › ".join(labels)
+        metrics = self._breadcrumb.fontMetrics()
+        available = max(100, self._breadcrumb.width() - 24)
+        separator_width = metrics.horizontalAdvance(" › ") * max(0, len(labels) - 1)
+        segment_width = max(56, (available - separator_width - 28) // max(1, len(labels)))
+        segments = [metrics.elidedText(label, Qt.TextElideMode.ElideRight, segment_width) for label in labels]
+        self._breadcrumb.setText("📁 " + " › ".join(segments))
+        self._breadcrumb.setToolTip(full)
 
     def _update_workspace_summary(self, selected_title: str, selected_card_id: int | None) -> None:
         total = len(self._rows_cache)
         root_count = sum(1 for row in self._rows_cache if row.get("parent_card_id") is None)
-        if total:
-            self._workspace_summary.setText(
-                f"{total} linked card{'s' if total != 1 else ''} across "
-                f"{root_count} root branch{'' if root_count == 1 else 'es'}."
-            )
-        else:
-            self._workspace_summary.setText(
-                "The tree is empty. Start by adding a root topic or item."
-            )
+        self._workspace_summary.setText(
+            f"{total} card{'s' if total != 1 else ''} · "
+            f"{root_count} branch{'es' if root_count != 1 else ''}"
+        )
 
         if selected_title:
             self._workspace_context.setText(

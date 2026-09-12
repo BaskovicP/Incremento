@@ -9,6 +9,7 @@ temporary copy; the working tree is never modified.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "backend" / "config_service.py"
 TEST_FILE = ROOT / "tests" / "test_config_service.py"
+CONFIG_DEPENDENCIES = (
+    ROOT / "backend" / "backup_schedule.py",
+    ROOT / "backend" / "paths.py",
+)
 OUTPUT_LIMIT = 2_000
 
 
@@ -72,6 +77,8 @@ def run_config_tests(source: str) -> subprocess.CompletedProcess[str]:
         backend_dir.mkdir()
         tests_dir.mkdir()
         (backend_dir / "config_service.py").write_text(source, encoding="utf-8")
+        for dependency in CONFIG_DEPENDENCIES:
+            shutil.copy2(dependency, backend_dir / dependency.name)
         copied_test = tests_dir / TEST_FILE.name
         copied_test.write_text(TEST_FILE.read_text(encoding="utf-8"), encoding="utf-8")
 

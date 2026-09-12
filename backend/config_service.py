@@ -7,6 +7,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+try:
+    from .backup_schedule import normalize_policy
+except ImportError:
+    from backup_schedule import normalize_policy
+
 
 CONFIG_SCHEMA_VERSION = 2
 DEFAULT_TOPIC_DONE_TAG = "topic/done"
@@ -126,10 +131,28 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config = copy.deepcopy(dict(raw or {}))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
     config["topic_done_tag"] = configured_topic_done_tag(config)
+    backup_profiles = config.get("automatic_backups")
+    config["automatic_backups"] = {
+        str(profile): normalize_policy(policy)
+        for profile, policy in (
+            backup_profiles.items() if isinstance(backup_profiles, Mapping) else []
+        )
+        if isinstance(profile, str) and profile and isinstance(policy, Mapping)
+    }
 
     for key, boolean_default in _BOOLEAN_DEFAULTS.items():
         if key in config:
             config[key] = _bool(config.get(key), boolean_default)
+    if "reviewer_priority_badge_card_types" in config:
+        raw_badge_types = config["reviewer_priority_badge_card_types"]
+        badge_types = (
+            copy.deepcopy(dict(raw_badge_types))
+            if isinstance(raw_badge_types, Mapping)
+            else {}
+        )
+        for kind in ("topics", "items"):
+            badge_types[kind] = _bool(badge_types.get(kind), True)
+        config["reviewer_priority_badge_card_types"] = badge_types
     for key, (number_default, minimum, maximum, cast) in _NUMBER_LIMITS.items():
         if key in config:
             config[key] = _number(

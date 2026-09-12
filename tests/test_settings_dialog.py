@@ -583,6 +583,54 @@ class TestIncrementoSettingsDialogReviewerButtons:
         assert dialog.use_fail_pass_on_items is False
 
 
+class TestIncrementoSettingsDialogReviewerPriorityBadge:
+    def test_card_type_visibility_defaults_enabled(self):
+        dialog = IncrementoSettingsDialog({})
+
+        assert dialog.reviewer_priority_badge_card_types == {
+            "topics": True,
+            "items": True,
+        }
+
+    def test_card_type_visibility_reflects_and_returns_checkbox_values(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_reviewer_priority_badge_card_types={
+                "topics": False,
+                "items": True,
+            },
+        )
+
+        assert dialog._reviewer_priority_badge_topics_cb.isChecked() is False
+        assert dialog._reviewer_priority_badge_items_cb.isChecked() is True
+        dialog._reviewer_priority_badge_items_cb.setChecked(False)
+        assert dialog.reviewer_priority_badge_card_types == {
+            "topics": False,
+            "items": False,
+        }
+
+    def test_settings_entrypoint_loads_saves_and_refreshes_badge_visibility(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(
+            node for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef) and node.name == "openSettingsFunction"
+        )
+        source = ast.get_source_segment(source, function)
+
+        assert (
+            "current_reviewer_priority_badge_card_types="
+            "configured_reviewer_priority_badge_card_types(cfg)"
+        ) in source
+        assert (
+            'cfg["reviewer_priority_badge_card_types"] = '
+            "dlg.reviewer_priority_badge_card_types"
+        ) in source
+        assert "_save_addon_config(mw.addonManager, __name__, cfg)\n    _sync_reviewer_priority_badge()" in source
+
+
 class TestIncrementoSettingsDialogPdfPaging:
     def test_scroll_to_top_on_next_page_defaults_enabled(self):
         dialog = IncrementoSettingsDialog({})

@@ -4,6 +4,7 @@ import json
 _BADGE_ID = "incremento-reviewer-priority-badge"
 _STYLE_ID = "incremento-reviewer-priority-badge-style"
 _SPACER_ID = "incremento-reviewer-priority-badge-spacer"
+_DEFAULT_BADGE_CARD_TYPES = {"topics": True, "items": True}
 
 _PRIORITY_COLOR_STOPS = [
     (0.00, "#ff0000"),
@@ -14,6 +15,26 @@ _PRIORITY_COLOR_STOPS = [
     (0.83, "#0000ff"),
     (1.00, "#8800cc"),
 ]
+
+
+def configured_reviewer_priority_badge_card_types(
+    config: dict | None = None,
+) -> dict[str, bool]:
+    """Return visual badge preferences; missing values retain existing visibility."""
+    raw = (config or {}).get("reviewer_priority_badge_card_types")
+    if not isinstance(raw, dict):
+        return dict(_DEFAULT_BADGE_CARD_TYPES)
+    return {
+        kind: raw.get(kind) if isinstance(raw.get(kind), bool) else default
+        for kind, default in _DEFAULT_BADGE_CARD_TYPES.items()
+    }
+
+
+def should_show_reviewer_priority_badge(
+    *, is_topic: bool, config: dict | None = None
+) -> bool:
+    choices = configured_reviewer_priority_badge_card_types(config)
+    return choices["topics" if is_topic else "items"]
 
 
 def _hex_to_rgb(color: str) -> tuple[int, int, int]:

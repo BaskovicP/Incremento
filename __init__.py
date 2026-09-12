@@ -208,6 +208,7 @@ from .backend.db import (
 from .backend.reviewer_tags import append_missing_tags, normalize_tag_list
 from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
+from .backend import backup_schedule as _backup_schedule
 from .backend.config_service import (
     configured_topic_done_tag as _configured_topic_done_tag,
     load_addon_config as _load_addon_config,
@@ -246,7 +247,11 @@ from .frontend.pdf_bookshelf import (
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_button_style import build_reviewer_button_style_js
 from .frontend.reviewer_topic_actions import TopicReviewActions
-from .frontend.reviewer_priority_badge import build_reviewer_priority_badge_js
+from .frontend.reviewer_priority_badge import (
+    build_reviewer_priority_badge_js,
+    configured_reviewer_priority_badge_card_types,
+    should_show_reviewer_priority_badge,
+)
 from .frontend.reviewer_shortcuts import filter_reviewer_shortcuts
 from .frontend.reviewer_focus import (
     register_reviewer_focus_restore_hooks,
@@ -3044,7 +3049,14 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
     browser_time_seconds = None
     custom_schedule_text = ""
     card = getattr(reviewer, "card", None)
-    if card is not None:
+    try:
+        badge_config = _load_addon_config(mw.addonManager, __name__)
+    except Exception:
+        badge_config = {}
+    if card is not None and should_show_reviewer_priority_badge(
+        is_topic=_is_topic_card(card),
+        config=badge_config,
+    ):
         try:
             priority = get_priority(_ADDON_DIR, _active_profile(), int(card.id))
         except Exception:
@@ -3774,12 +3786,212 @@ def importNotebookCitationsFunction() -> None:
 
 def exportFunction() -> None:
     import datetime
+    from aqt.qt import QFileDialog, QMessageBox
+
+    choice = QMessageBox(mw)
+    choice.setWindowTitle("Full Backup")
+    choice.setText(
+        "Export a full backup of the current Anki profile, or configure "
+        "automatic backups to a local or synced folder."
+    )
+    export_button = choice.addButton("Export Now…", QMessageBox.ButtonRole.AcceptRole)
+    automatic_button = choice.addButton(
+        "Automatic Backups…", QMessageBox.ButtonRole.ActionRole
+    )
+    choice.addButton(QMessageBox.StandardButton.Cancel)
+    choice.exec()
+    if choice.clickedButton() is automatic_button:
+        configureAutomaticBackupsFunction()
+        return
+    if choice.clickedButton() is not export_button:
+        return
+
+    today = datetime.date.today().isoformat()
+    profile = _active_profile()
+    default_name = os.path.expanduser(
+        f"~/incremento_{profile}_full_backup_{today}.zip"
+    )
+    path, _ = QFileDialog.getSaveFileName(
+        mw, "Export Current Incremento Profile Backup", default_name, "ZIP files (*.zip)"
+    )
+    if path:
+        _start_full_backup(path if path.lower().endswith(".zip") else path + ".zip")
+
+
+def restoreFullBackupFunction() -> None:
+    """Restore a validated full ZIP into the currently open Anki profile."""
+    from .frontend.full_restore import restore_full_backup
+
+    profile = _active_profile()
+    config = _load_addon_config(mw.addonManager, __name__)
+    restore_full_backup(
+        mw,
+        addon_dir=_ADDON_DIR,
+        profile_key=profile,
+        profile_name=_current_profile_name(),
+        current_config=config,
+        save_config=lambda updated: _save_addon_config(
+            mw.addonManager, __name__, updated
+        ),
+        backup_running=lambda: _full_backup_running,
+        reset_close_gate=_reset_close_backup_gate,
+    )
+
+
+_auto_backup_timer: QTimer | None = None
+_auto_backup_generation = 0
+_full_backup_running = False
+_backup_idle_callbacks: list = []
+_close_backup_gate = None
+
+
+def configureAutomaticBackupsFunction() -> None:
+    from .frontend.automatic_backup_dialog import AutomaticBackupDialog
+
+    profile = _active_profile()
+    cfg = _load_addon_config(mw.addonManager, __name__)
+    policies = cfg.get("automatic_backups", {})
+    dlg = AutomaticBackupDialog(
+        _current_profile_name(), _paths.get_user_files_dir(_ADDON_DIR, profile),
+        policies.get(profile, {}), mw,
+    )
+    if not dlg.exec():
+        return
+    policies[profile] = dlg.policy
+    cfg["automatic_backups"] = policies
+    _save_addon_config(mw.addonManager, __name__, cfg)
+    if dlg.policy["enabled"] and dlg.policy["interval_hours"]:
+        _attempt_automatic_backup("interval", profile, _auto_backup_generation)
+
+
+def _attempt_automatic_backup(trigger: str, profile: str, generation: int) -> None:
+    if generation != _auto_backup_generation or _active_profile() != profile:
+        return
+    cfg = _load_addon_config(mw.addonManager, __name__)
+    policy = _backup_schedule.normalize_policy(cfg.get("automatic_backups", {}).get(profile))
+    if not _backup_schedule.is_due(policy, trigger, time.time()):
+        return
+    try:
+        folder = _backup_schedule.validate_destination(
+            policy["directory"], _paths.get_user_files_dir(_ADDON_DIR, profile)
+        )
+    except (OSError, ValueError) as exc:
+        tooltip(f"Automatic backup folder unavailable: {exc}")
+        return
+    path = folder / _backup_schedule.backup_filename(profile, time.time())
+    _start_full_backup(str(path), automatic_policy=policy)
+
+
+def _start_automatic_backups() -> None:
+    global _auto_backup_timer, _auto_backup_generation
+    _auto_backup_generation += 1
+    generation = _auto_backup_generation
+    profile = _active_profile()
+    try:
+        cfg = _load_addon_config(mw.addonManager, __name__)
+        policy = _backup_schedule.normalize_policy(
+            cfg.get("automatic_backups", {}).get(profile)
+        )
+        if policy["last_close_failed"]:
+            tooltip("The previous close backup failed. Check the backup destination.")
+    except Exception:
+        pass
+    if _auto_backup_timer is not None:
+        _auto_backup_timer.stop()
+    _auto_backup_timer = QTimer(mw)
+    _auto_backup_timer.setInterval(15 * 60 * 1000)
+    _auto_backup_timer.timeout.connect(
+        lambda: _attempt_automatic_backup("interval", profile, generation)
+    )
+    _auto_backup_timer.start()
+    QTimer.singleShot(
+        12000, lambda: _attempt_automatic_backup("open", profile, generation)
+    )
+
+
+def _stop_automatic_backups() -> None:
+    global _auto_backup_generation
+    _auto_backup_generation += 1
+    if _auto_backup_timer is not None:
+        _auto_backup_timer.stop()
+
+
+def _record_close_backup_result(profile: str, *, failed: bool) -> None:
+    """Keep a non-sensitive failure marker visible after Anki restarts."""
+    try:
+        cfg = _load_addon_config(mw.addonManager, __name__)
+        policies = cfg.get("automatic_backups", {})
+        if profile not in policies:
+            return
+        policy = _backup_schedule.normalize_policy(policies[profile])
+        policy["last_close_failed"] = bool(failed)
+        policies[profile] = policy
+        cfg["automatic_backups"] = policies
+        _save_addon_config(mw.addonManager, __name__, cfg)
+    except Exception:
+        pass
+
+
+def _prepare_profile_close(resume_close) -> None:
+    """Keep the collection alive until any active and requested close export ends."""
+    profile = _active_profile()
+    if _full_backup_running:
+        _backup_idle_callbacks.append(lambda: _prepare_profile_close(resume_close))
+        return
+    cfg = _load_addon_config(mw.addonManager, __name__)
+    policy = _backup_schedule.normalize_policy(
+        cfg.get("automatic_backups", {}).get(profile)
+    )
+    if not _backup_schedule.is_due(policy, "close", time.time()):
+        resume_close()
+        return
+    try:
+        folder = _backup_schedule.validate_destination(
+            policy["directory"], _paths.get_user_files_dir(_ADDON_DIR, profile)
+        )
+    except (OSError, ValueError) as exc:
+        tooltip(f"Close backup folder unavailable: {exc}")
+        _record_close_backup_result(profile, failed=True)
+        resume_close()
+        return
+    path = folder / _backup_schedule.backup_filename(profile, time.time())
+    if _start_full_backup(str(path), automatic_policy=policy, close_triggered=True):
+        _backup_idle_callbacks.append(resume_close)
+    else:
+        _record_close_backup_result(profile, failed=True)
+        resume_close()
+
+
+def _install_close_backup_gate() -> None:
+    global _close_backup_gate
+    if _close_backup_gate is not None:
+        return
+    from .frontend.backup_close_gate import ProfileCloseBackupGate
+
+    _close_backup_gate = ProfileCloseBackupGate(mw, _prepare_profile_close)
+    _close_backup_gate.install()
+
+
+def _reset_close_backup_gate() -> None:
+    if _close_backup_gate is not None:
+        _close_backup_gate.reset()
+
+
+gui_hooks.profile_did_open.append(_start_automatic_backups)
+gui_hooks.profile_did_open.append(_reset_close_backup_gate)
+gui_hooks.profile_will_close.append(_stop_automatic_backups)
+gui_hooks.main_window_did_init.append(_install_close_backup_gate)
+
+
+def _start_full_backup(
+    path: str, *, automatic_policy: dict | None = None, close_triggered: bool = False
+) -> bool:
+    import datetime
     import tempfile
     from pathlib import Path
 
     from anki import hooks
-    from anki.exporting import AnkiPackageExporter
-    from aqt.qt import QFileDialog
+    from .backend.backup_media import FullBackupPackageExporter
     from .backend.db import (
         get_connection,
         DB_NAME,
@@ -3789,34 +4001,46 @@ def exportFunction() -> None:
         export_stats_json,
     )
     from .backend.export_bundle import snapshot_tree
+    from .backend.activity_log import (
+        start_activity, update_activity, finish_activity, fail_activity,
+    )
 
+    global _full_backup_running
+    if _full_backup_running:
+        if automatic_policy is None:
+            tooltip("A full backup is already running. See Activity Center.")
+        return False
     today = datetime.date.today().isoformat()
     profile = _active_profile()
     profile_display_name = _current_profile_name()
-    default_name = os.path.expanduser(
-        f"~/incremento_{profile}_full_backup_{today}.zip"
-    )
-
-    path, _ = QFileDialog.getSaveFileName(
-        mw,
-        "Export Current Incremento Profile Backup",
-        default_name,
-        "ZIP files (*.zip)",
-    )
-    if not path:
-        return
-    if not path.lower().endswith(".zip"):
-        path += ".zip"
-
     user_files_dir = str(_paths.get_user_files_dir(_ADDON_DIR, profile))
-    config = _load_addon_config(mw.addonManager, __name__)
-    collection = mw.col
-    archive_fd, archive_tmp_path = tempfile.mkstemp(
-        prefix=".incremento-backup-",
-        suffix=".zip",
-        dir=os.path.dirname(os.path.abspath(path)),
-    )
+    try:
+        destination = _backup_schedule.validate_destination(
+            os.path.dirname(os.path.abspath(path)), Path(user_files_dir)
+        )
+        path = str(destination / os.path.basename(path))
+        if Path(path).is_symlink():
+            raise ValueError("The backup ZIP cannot replace a symbolic link.")
+        archive_fd, archive_tmp_path = tempfile.mkstemp(
+            prefix=".incremento-backup-", suffix=".zip", dir=str(destination),
+        )
+    except (OSError, ValueError) as exc:
+        if automatic_policy is None:
+            showInfo(f"Backup destination unavailable: {exc}")
+        else:
+            tooltip(f"Automatic backup destination unavailable: {exc}")
+        return False
     os.close(archive_fd)
+    try:
+        config = _load_addon_config(mw.addonManager, __name__)
+    except Exception:
+        os.remove(archive_tmp_path)
+        raise
+    collection = mw.col
+    activity_id = start_activity(
+        "Full profile backup", category="Backup", detail="Preparing backup…",
+    )
+    _full_backup_running = True
 
     def _restore_instructions() -> str:
         return "\n".join(
@@ -3825,29 +4049,33 @@ def exportFunction() -> None:
                 "==============================",
                 "",
                 "This archive contains:",
-                "1. anki/all_decks.apkg  -> import this into a fresh Anki profile",
-                f"2. user_files/{profile}/ -> restore this Incremento profile folder",
-                "3. config.json          -> restore Incremento add-on config if needed",
+                "1. anki/all_decks.apkg  -> Anki cards, scheduling, and referenced media",
+                f"2. user_files/{profile}/ -> Incremento profile files and database",
+                "3. config.json          -> Incremento add-on settings",
                 "",
                 "Recommended restore order:",
                 "1. Install Anki.",
                 "2. Install the Incremento add-on.",
-                "3. Import anki/all_decks.apkg in Anki.",
-                "4. Close Anki.",
-                f"5. Copy user_files/{profile}/ into the add-on's user_files/ folder.",
-                "   Do not delete other profile folders that are already there.",
-                "6. If needed, paste config.json into Tools -> Add-ons -> Incremento -> Config.",
-                "7. Start Anki and verify PDFs, videos, writing notes, highlights, and progress.",
+                "3. Open the Anki profile you want to replace.",
+                "4. Choose Incremento -> Restore Full Backup and select this ZIP.",
+                "5. Review the pre-check and confirm replacement.",
+                "6. Verify cards, media, PDFs, writing notes, highlights, and progress.",
+                "7. Re-enable automatic collection/media sync only after checking the restored profile.",
                 "",
                 "Notes:",
                 f"- This backup belongs to the Anki profile: {profile_display_name}",
                 "- Both the APKG and Incremento runtime snapshot cover that profile only.",
                 "- The runtime snapshot includes PDFs, EPUBs, videos, writing files, browser profiles, and the database.",
+                "- A safety backup of the current Anki collection is made before replacement.",
+                "- Automatic-backup folder settings for existing profiles are retained.",
+                "- AnkiWeb is not checked; a later ordinary sync may merge remote changes or deletions.",
+                "- If this restored collection should replace AnkiWeb, force a one-way Upload.",
+                "  Download replaces the restored cards; media sync always merges separately.",
             ]
         )
 
     def _progress(label: str) -> None:
-        mw.taskman.run_on_main(lambda: mw.progress.update(label=label))
+        update_activity(activity_id, detail=label)
 
     try:
         # This touches Qt/WebEngine-owned dock state and must stay on the main
@@ -3855,8 +4083,6 @@ def exportFunction() -> None:
         _video_dock_mod.flush_video_progress()
     except Exception:
         pass
-
-    mw.progress.start(label="Preparing full backup…", immediate=True)
 
     def _task():
         if _active_profile() != profile:
@@ -3884,7 +4110,7 @@ def exportFunction() -> None:
             db_snapshot_path = tmp_root / DB_NAME
 
             _progress("Creating Anki package…")
-            exporter = AnkiPackageExporter(collection)
+            exporter = FullBackupPackageExporter(collection)
             exporter.includeSched = True
             exporter.includeMedia = True
             exporter.did = None
@@ -3993,20 +4219,35 @@ def exportFunction() -> None:
                 raise RuntimeError("The active profile changed while backup was running")
             os.replace(archive_tmp_path, path)
 
+            retention_error = None
+            if automatic_policy is not None:
+                try:
+                    _backup_schedule.prune_backups(
+                        Path(path).parent, profile, automatic_policy["versions"],
+                        protected=Path(path),
+                    )
+                except OSError as exc:
+                    retention_error = str(exc)
+
             return {
                 "anki_cards_exported": int(getattr(exporter, "count", 0) or 0),
                 "priority_count": int(priority_count or 0),
                 "user_files_copied": int(user_files_stats["files_copied"]) + 1,
                 "user_files_skipped": int(user_files_stats["files_skipped"]),
+                "retention_error": retention_error,
             }
 
     def _on_done(fut) -> None:
-        mw.progress.finish()
+        global _full_backup_running
+        _full_backup_running = False
         if profile != _active_profile():
             try:
                 os.remove(archive_tmp_path)
             except OSError:
                 pass
+            fail_activity(activity_id, "Profile changed before the backup completed.")
+            if close_triggered:
+                _record_close_backup_result(profile, failed=True)
             return
         try:
             result = fut.result()
@@ -4015,19 +4256,58 @@ def exportFunction() -> None:
                 os.remove(archive_tmp_path)
             except OSError:
                 pass
-            showInfo(f"Export failed:\n{e}")
+            message = f"{'Automatic backup' if automatic_policy else 'Export'} failed:\n{e}"
+            fail_activity(activity_id, message)
+            if close_triggered:
+                _record_close_backup_result(profile, failed=True)
+            tooltip(message)
             return
 
-        showInfo(
-            f"Full backup complete.\n\n"
-            f"  • {result['anki_cards_exported']} card(s) exported to anki/all_decks.apkg\n"
-            f"  • {result['user_files_copied']} user_files item(s) copied\n"
-            f"  • {result['priority_count']} card priorit{'y' if result['priority_count'] == 1 else 'ies'}\n"
-            f"  • {result['user_files_skipped']} transient runtime file(s) skipped\n\n"
-            f"Saved to:\n{path}"
-        )
+        finish_activity(activity_id, detail=f"Saved to {path}")
 
-    mw.taskman.run_in_background(_task, _on_done)
+        if automatic_policy is not None:
+            try:
+                cfg = _load_addon_config(mw.addonManager, __name__)
+                policies = cfg.get("automatic_backups", {})
+                current = _backup_schedule.normalize_policy(policies.get(profile))
+                if current["enabled"] and current["directory"] == automatic_policy["directory"]:
+                    current["last_success"] = time.time()
+                    if close_triggered:
+                        current["last_close_failed"] = False
+                    policies[profile] = current
+                    cfg["automatic_backups"] = policies
+                    _save_addon_config(mw.addonManager, __name__, cfg)
+            except Exception:
+                tooltip("Backup saved, but its schedule timestamp could not be updated.")
+            if result["retention_error"]:
+                tooltip(f"Backup saved, but old versions could not be removed: {result['retention_error']}")
+            else:
+                tooltip("Automatic full backup saved.")
+            return
+
+        tooltip("Full backup saved. Details are in Activity Center.")
+
+    def _on_done_and_resume(fut) -> None:
+        global _backup_idle_callbacks
+        try:
+            _on_done(fut)
+        finally:
+            callbacks = _backup_idle_callbacks
+            _backup_idle_callbacks = []
+            for callback in callbacks:
+                QTimer.singleShot(0, callback)
+
+    try:
+        mw.taskman.run_in_background(_task, _on_done_and_resume)
+    except Exception as exc:
+        _full_backup_running = False
+        fail_activity(activity_id, f"Could not start backup: {exc}")
+        try:
+            os.remove(archive_tmp_path)
+        except OSError:
+            pass
+        return False
+    return True
 
 
 def exportSupportBundleFunction() -> None:
@@ -6055,6 +6335,7 @@ def openSettingsFunction() -> None:
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
+        current_reviewer_priority_badge_card_types=configured_reviewer_priority_badge_card_types(cfg),
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_pdf_scroll_to_top_on_page_change=_pdf_dock_mod.configured_scroll_to_top_on_page_change(cfg),
@@ -6112,6 +6393,7 @@ def openSettingsFunction() -> None:
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
+    cfg["reviewer_priority_badge_card_types"] = dlg.reviewer_priority_badge_card_types
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["pdf_scroll_to_top_on_page_change"] = dlg.pdf_scroll_to_top_on_page_change
@@ -6152,6 +6434,7 @@ def openSettingsFunction() -> None:
     cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     _save_addon_config(mw.addonManager, __name__, cfg)
+    _sync_reviewer_priority_badge()
     try:
         if _web_dock_mod._runtime.dock is not None:
             checked = bool(dlg.track_web_window_with_extension)
@@ -6528,6 +6811,14 @@ def _build_incremento_menu() -> None:
     qconnect(_exportAction.triggered, exportFunction)
     _menu.addAction(_exportAction)
     _register_shortcut_action("export_user_data", _exportAction)
+
+    _restoreAction = QAction("Restore Full Backup…", mw)
+    qconnect(_restoreAction.triggered, restoreFullBackupFunction)
+    _menu.addAction(_restoreAction)
+
+    _autoBackupAction = QAction("Configure Automatic Full Backups…", mw)
+    qconnect(_autoBackupAction.triggered, configureAutomaticBackupsFunction)
+    _menu.addAction(_autoBackupAction)
 
     _apply_shortcuts_from_config()
     _ensure_settings_menu_action()

@@ -653,6 +653,8 @@ The knowledge tree lets you:
 - launch branch-scoped study sessions
 - postpone, reprioritize, or subset-review a whole subtree
 
+The tree browser has a compact **Study**, **Add**, search, and **Refresh** toolbar. **Workspace** and **Search** share one tabbed area above the tree. A breadcrumb shows the selected node's path, and the Priority column pairs each number with a green, amber, or red urgency bar. The selected-card pane shows its type, priority, full visible note text, card ID, and available source or citation. Use **Inspect** to open it in Anki Browser, or **More** for the same actions available by right-clicking a tree node. The urgency colors follow the configured priority direction.
+
 ---
 
 ## 10. Statistics and Focus Timer
@@ -729,6 +731,13 @@ Priority scale:
 - `100` = lowest importance with the default priority direction
 
 You can reverse that interpretation under **Incremento → Settings → Review → Priority direction**.
+In the same Review tab, **Show reviewer priority badge on** has separate **Topic cards**
+and **Item and other cards** checkboxes. Both are on by default. These control
+the whole floating reviewer badge (priority and any available A-factor, saved
+browser time, or custom schedule), not the priority value or scheduling itself.
+Topic classification follows your Topics settings; every non-topic card uses
+the Item and other option. Turning a type off also hides the badge immediately
+when that type is currently on screen.
 
 ### Priority while creating a card from scratch
 
@@ -802,7 +811,7 @@ Diagnostic logs are stored under the active profile's `user_files/<ProfileName>/
 
 ### Full backup and restore
 
-Use **Export Full Backup** to create a single ZIP for migrating the currently open Anki profile to a new computer.
+Use **Export Full Backup** to create a single ZIP for the currently open Anki profile. Use **Incremento → Restore Full Backup…** to restore one into the open profile. The restore picker starts in that profile’s configured automatic-backup folder if it is available, but accepts a full backup ZIP from any folder.
 
 The backup includes:
 
@@ -813,13 +822,17 @@ The backup includes:
 - JSON copies of priorities, PDF progress, highlights, and stats
 - `restore.txt` with the restore order
 
-For full restore guidance, see `EXPORTING.md`.
+Before replacement, the restore flow validates the outer ZIP and embedded Anki package, checks their contents for corruption and unsafe paths, checks both SQLite databases and key collection relationships, and compares counts and schema metadata with the manifest. It displays the source profile and counts for review, including a warning if PDF/EPUB cover images are missing from an older package. New backups include these cover files explicitly. On confirmation, it creates an Anki safety backup, replaces the current profile’s collection, Anki media, and Incremento runtime files, then reopens the profile. An error during replacement or reopening triggers rollback; if rollback fails, the prior files remain in restore staging folders and their locations are reported. Automatic collection and periodic media sync stay off until you re-enable them after checking the restored profile. The pre-check does not compare with AnkiWeb; an ordinary later sync may merge remote changes or deletions, while one-way **Upload** makes the restored cards authoritative and **Download** replaces them. Media sync always merges separately. See `EXPORTING.md` for the steps and limits of this pre-check.
 
 The full backup is private and intentionally contains your cards, media, database, paths, and raw configuration. Do not attach a full backup to a public issue; use **Export Support Bundle…** instead.
 
 The APKG and `user_files/<ProfileName>/` snapshot always refer to the same active profile. Restoring this archive does not require deleting other existing Incremento profile folders.
 
 Incremento runs SQLite's integrity check and copies the database through SQLite's backup API. It writes and validates a temporary ZIP before atomically replacing the selected destination. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
+
+Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Keep 1–20 automatic versions (5 by default). The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Backups run in the background without a modal progress window; progress and failures appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before older automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
+
+A folder synced by the Google Drive desktop app (or another cloud-sync app) can be selected, but Incremento itself does not sign in to a cloud service or verify that the ZIP finished uploading. These full backups include private cards, media and configuration: protect the sync account and destination accordingly. Keep an additional backup outside the sync service if you need protection against cloud-side deletion or account loss.
 
 ---
 
@@ -830,7 +843,7 @@ Incremento runs SQLite's integrity check and copies the database through SQLite'
 Choose **Incremento → Settings** to open six tabs:
 
 - **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, topic/tag defaults, and saved provenance link types
-- **Review**: priority direction, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
+- **Review**: priority direction, per-type reviewer badge visibility, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
 - **Topics**: which card types/tags count as topics, the Done tag, the default topic A-factor, More/Less strength, the maximum topic interval, Add Card topic/item tags, whether Incremento auto-creates the `Topics` deck, which profiles that applies to, and the red Postpone button behavior
 - **Writing**: editor defaults, automatic backup intervals, progress visibility, default progress scope, and word-count mode
 - **Shortcuts**: assign or clear shortcuts for Incremento actions

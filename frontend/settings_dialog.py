@@ -317,6 +317,7 @@ class IncrementoSettingsDialog(QDialog):
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
+        current_reviewer_priority_badge_card_types: dict[str, bool] | None = None,
         current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
         current_pdf_scroll_to_top_on_page_change: bool = True,
@@ -653,6 +654,30 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_show_priority_dialog_after_answer)
         )
         review_priority_form.addRow("", self._show_priority_dialog_after_answer_cb)
+
+        badge_types = current_reviewer_priority_badge_card_types or {}
+        badge_visibility = QWidget()
+        badge_visibility_layout = QVBoxLayout(badge_visibility)
+        badge_visibility_layout.setContentsMargins(0, 0, 0, 0)
+        badge_visibility_layout.setSpacing(4)
+        self._reviewer_priority_badge_topics_cb = QCheckBox("Topic cards")
+        self._reviewer_priority_badge_topics_cb.setChecked(
+            bool(badge_types.get("topics", True))
+        )
+        badge_visibility_layout.addWidget(self._reviewer_priority_badge_topics_cb)
+        self._reviewer_priority_badge_items_cb = QCheckBox("Item and other cards")
+        self._reviewer_priority_badge_items_cb.setChecked(
+            bool(badge_types.get("items", True))
+        )
+        badge_visibility_layout.addWidget(self._reviewer_priority_badge_items_cb)
+        review_priority_form.addRow(
+            _label_with_info(
+                "Show reviewer priority badge on:",
+                "Controls the floating priority, A-factor, saved-time, and schedule badge. "
+                "Topic classification follows the Topics settings; every other card uses the item option.",
+            ),
+            badge_visibility,
+        )
 
         review_layout.addLayout(review_priority_form)
 
@@ -1624,6 +1649,13 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def show_priority_dialog_after_answer(self) -> bool:
         return bool(self._show_priority_dialog_after_answer_cb.isChecked())
+
+    @property
+    def reviewer_priority_badge_card_types(self) -> dict[str, bool]:
+        return {
+            "topics": bool(self._reviewer_priority_badge_topics_cb.isChecked()),
+            "items": bool(self._reviewer_priority_badge_items_cb.isChecked()),
+        }
 
     @property
     def remember_browser_card_scroll(self) -> bool:

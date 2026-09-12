@@ -85,6 +85,44 @@ def test_normalize_config_bounds_onboarding_and_session_setup_mode():
     assert advanced["dialog"]["setup_mode"] == "advanced"
 
 
+def test_normalize_config_repairs_reviewer_priority_badge_card_types():
+    normalized = config_service.normalize_config(
+        {
+            "reviewer_priority_badge_card_types": {
+                "topics": "false",
+                "items": 0,
+                "future_type": "keep",
+            }
+        }
+    )
+
+    assert normalized["reviewer_priority_badge_card_types"] == {
+        "topics": False,
+        "items": False,
+        "future_type": "keep",
+    }
+    assert config_service.normalize_config(
+        {"reviewer_priority_badge_card_types": "invalid"}
+    )["reviewer_priority_badge_card_types"] == {
+        "topics": True,
+        "items": True,
+    }
+
+
+def test_automatic_backup_config_is_profile_scoped_and_invalid_values_fail_closed():
+    result = config_service.normalize_config({"automatic_backups": {
+        "P": {"enabled": True, "directory": "/backup", "versions": 99,
+              "on_close": True, "last_close_failed": True},
+        "Q": {"enabled": True, "directory": "bad\x00path"},
+    }})
+    assert result["automatic_backups"]["P"]["enabled"] is True
+    assert result["automatic_backups"]["P"]["versions"] == 20
+    assert result["automatic_backups"]["P"]["on_close"] is True
+    assert result["automatic_backups"]["P"]["last_close_failed"] is True
+    assert result["automatic_backups"]["Q"]["enabled"] is False
+    assert result["automatic_backups"]["Q"]["directory"] == ""
+
+
 def test_migrate_persisted_config_writes_only_when_changed():
     class _Manager:
         def __init__(self):

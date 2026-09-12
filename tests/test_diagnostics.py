@@ -448,6 +448,49 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
     assert set(shipped) <= diagnostics._KNOWN_CONFIG_KEYS
 
 
+def test_automatic_backup_destinations_and_profile_names_are_redacted():
+    sanitized = diagnostics.sanitize_config(
+        {"automatic_backups": {
+            "Alice Private Profile": {
+                "directory": "/Users/alice/Google Drive/private", "enabled": True,
+                "last_success": 1771491223100,
+            },
+        }},
+        {"automatic_backups": {}},
+    )
+    encoded = json.dumps(sanitized)
+    assert "Alice Private Profile" not in encoded
+    assert "/Users/alice/Google Drive/private" not in encoded
+    assert "1771491223100" not in encoded
+    assert sanitized["settings"]["automatic_backups"] == {
+        "redacted": True, "kind": "private_value", "count": 1,
+    }
+
+
+def test_reviewer_badge_visibility_is_exported_without_unknown_nested_values() -> None:
+    assert "reviewer_priority_badge_card_types" in diagnostics._KNOWN_CONFIG_KEYS
+    defaults = {
+        "reviewer_priority_badge_card_types": {"topics": True, "items": True}
+    }
+    sanitized = diagnostics.sanitize_config(
+        {
+            "reviewer_priority_badge_card_types": {
+                "topics": False,
+                "items": True,
+                "private_type": PRIVATE_VALUES[0],
+            }
+        },
+        defaults,
+    )
+
+    assert sanitized["settings"]["reviewer_priority_badge_card_types"] == {
+        "topics": False,
+        "items": True,
+        "_redacted_unknown_entries": 1,
+    }
+    assert PRIVATE_VALUES[0] not in json.dumps(sanitized)
+
+
 def test_operation_scope_uses_callable_and_wrapped_function_modules() -> None:
     def incremento_handler():
         pass

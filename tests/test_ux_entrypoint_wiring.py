@@ -39,3 +39,48 @@ def test_non_modal_command_and_activity_dialogs_are_shown_exactly_once():
         assert body.count("dialog.show()") == 1
         assert body.count("dialog.raise_()") == 1
         assert body.count("dialog.activateWindow()") == 1
+
+
+def test_full_backup_menu_configures_profile_schedule_and_hooks_only_while_open():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
+    assert config["automatic_backups"] == {}
+    assert 'QAction("Configure Automatic Full Backups…"' in entrypoint
+    assert 'gui_hooks.profile_did_open.append(_start_automatic_backups)' in entrypoint
+    assert 'gui_hooks.profile_will_close.append(_stop_automatic_backups)' in entrypoint
+    assert '_start_full_backup(str(path), automatic_policy=policy)' in entrypoint
+
+
+def test_export_full_backup_action_offers_automatic_backup_configuration():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    export_body = entrypoint.split("def exportFunction() -> None:", 1)[1].split(
+        "_auto_backup_timer:", 1
+    )[0]
+    assert "Automatic Backups…" in export_body
+    assert "configureAutomaticBackupsFunction()" in export_body
+    assert "Export Now…" in export_body
+
+
+def test_profile_close_waits_for_background_backup_before_unload():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    assert 'gui_hooks.main_window_did_init.append(_install_close_backup_gate)' in entrypoint
+    assert '_prepare_profile_close' in entrypoint
+    assert 'QAction("Configure Automatic Full Backups…"' in entrypoint
+
+
+def test_full_backup_uses_non_modal_activity_status_instead_of_progress_dialog():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    backup_body = entrypoint.split("def _start_full_backup(", 1)[1].split(
+        "def exportSupportBundleFunction()", 1
+    )[0]
+    assert "start_activity(" in backup_body
+    assert "update_activity(" in backup_body
+    assert "mw.progress.start(" not in backup_body
+
+
+def test_automatic_backup_dialog_exposes_close_trigger():
+    source = (ROOT / "frontend" / "automatic_backup_dialog.py").read_text(
+        encoding="utf-8"
+    )
+    assert "Back up when this profile closes" in source
+    assert '"on_close": self._on_close.isChecked()' in source

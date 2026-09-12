@@ -168,7 +168,7 @@ npm --prefix frontend test
 - Topic review button styling is patched after `_showEaseButtons()`.
 - Current topic styling keeps yellow unchanged and uses more muted red and blue tones.
 - If you change reviewer button behavior, verify both scheduling logic and injected web styling.
-- Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority for all cards and topic A-factor, saved browser time, and custom schedule when available. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
+- Reviewer glance metadata lives in `frontend/reviewer_priority_badge.py`. The badge shows priority plus topic A-factor, saved browser time, and custom schedule when available; its visibility is configurable for topics versus items/other cards. If you change priority or topic review flows, keep the reviewer badge refresh path in sync.
 - Custom schedule text must only render when a real schedule exists for the current card; stale default text is a regression.
 - Reader docks can steal keyboard focus while reviewer hooks open or raise them. Keep the final bounded, deferred focus recovery registered for both `reviewer_did_show_question` and `reviewer_did_show_answer` in `frontend/reviewer_focus.py` so Anki's Space, `1`–`4`, and editor shortcuts continue on every card. Never reclaim focus from a modal, popup, or separate active Anki window.
 - PDF/EPUB question-shown hooks must open their reader with `offer_due_review_prompt=False`. Never start a modal due-card prompt during reviewer activation; on macOS it can hide behind the raised dock and leave the main window unable to accept clicks. The explicit Review Due / Review All controls remain the reviewer-safe entry points.

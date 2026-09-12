@@ -2,6 +2,7 @@
     "config_schema_version": 2,
     "onboarding_completed_version": 0,
     "scheduler_presets": {},
+    "automatic_backups": {},
     "extract_source_links": {
         "parent": true,
         "pdf": true,
@@ -14,6 +15,10 @@
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "show_priority_dialog_after_answer": false,
+    "reviewer_priority_badge_card_types": {
+        "topics": true,
+        "items": true
+    },
     "show_incremento_fields": false,
     "auto_timer_enabled": false,
     "auto_timer_tags": [],

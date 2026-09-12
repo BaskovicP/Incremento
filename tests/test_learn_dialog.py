@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 import os
 import sys
 from types import SimpleNamespace
@@ -71,6 +72,32 @@ _initial_scheduler_dialog_state = _MOD._initial_scheduler_dialog_state
 _write_named_scheduler_profile = _MOD._write_named_scheduler_profile
 _rename_named_scheduler_profile = _MOD._rename_named_scheduler_profile
 SchedulerConfigDialog = _MOD.SchedulerConfigDialog
+
+
+class _NaturallySizedButton:
+    def __init__(self, width: int):
+        self._width = width
+        self.minimum_width = None
+
+    def sizeHint(self):
+        return SimpleNamespace(width=lambda: self._width)
+
+    def setMinimumWidth(self, width: int) -> None:
+        self.minimum_width = width
+
+
+def test_preset_action_buttons_use_theme_aware_natural_widths():
+    button = _NaturallySizedButton(84)
+
+    _MOD._keep_button_label_readable(button)
+
+    assert button.minimum_width == 84
+    setup_source = inspect.getsource(SchedulerConfigDialog._setup_ui)
+    assert setup_source.count("_keep_button_label_readable(") == 5
+    profile_source = setup_source.split("# -- Profiles --", 1)[1].split(
+        "# ── 1. Session size", 1
+    )[0]
+    assert "setFixedWidth" not in profile_source
 
 
 def test_statistics_export_uses_history_aware_snapshot(tmp_path, monkeypatch):

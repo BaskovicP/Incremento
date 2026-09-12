@@ -346,6 +346,7 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
 _KNOWN_CONFIG_KEYS = {
     "add_card_item_tags",
     "add_card_topic_tags",
+    "automatic_backups",
     "auto_create_topics_deck",
     "auto_create_topics_deck_profiles",
     "auto_timer_card_types",
@@ -374,6 +375,7 @@ _KNOWN_CONFIG_KEYS = {
     "priority_lower_is_more_important",
     "profiles",
     "remember_browser_card_scroll",
+    "reviewer_priority_badge_card_types",
     "scheduler_scope",
     "scheduler_presets",
     "search_all_filter_pdf_content",
@@ -554,6 +556,8 @@ _ALWAYS_REDACT_CONFIG_KEYS = {
     # Keep credentials private even if a future config migration changes the
     # stored type from text to a number or another JSON value.
     "pin_hash",
+    # Contains profile names, absolute local/cloud-sync paths and wall-clock times.
+    "automatic_backups",
 }
 _SENSITIVE_STRING_FRAGMENTS = {
     "author",

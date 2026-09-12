@@ -1,5 +1,10 @@
+import ast
 import importlib.util
 import os
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 def _load(name, relpath):
@@ -15,10 +20,37 @@ def _load(name, relpath):
 _badge = _load("_incremento_reviewer_priority_badge", "frontend/reviewer_priority_badge.py")
 
 build_reviewer_priority_badge_js = _badge.build_reviewer_priority_badge_js
+configured_reviewer_priority_badge_card_types = _badge.configured_reviewer_priority_badge_card_types
+should_show_reviewer_priority_badge = _badge.should_show_reviewer_priority_badge
 format_reviewer_a_factor_value = _badge.format_reviewer_a_factor_value
 format_reviewer_priority_value = _badge.format_reviewer_priority_value
 format_reviewer_saved_time_value = _badge.format_reviewer_saved_time_value
 get_reviewer_priority_palette = _badge.get_reviewer_priority_palette
+
+
+def test_badge_visibility_defaults_to_topics_and_items():
+    assert configured_reviewer_priority_badge_card_types({}) == {
+        "topics": True,
+        "items": True,
+    }
+    assert configured_reviewer_priority_badge_card_types(
+        {"reviewer_priority_badge_card_types": {"topics": False}}
+    ) == {"topics": False, "items": True}
+
+
+@pytest.mark.parametrize(
+    ("topic_enabled", "item_enabled"),
+    [(False, True), (True, False), (False, False)],
+)
+def test_badge_visibility_uses_existing_topic_classification(topic_enabled, item_enabled):
+    config = {
+        "reviewer_priority_badge_card_types": {
+            "topics": topic_enabled,
+            "items": item_enabled,
+        }
+    }
+    assert should_show_reviewer_priority_badge(is_topic=True, config=config) is topic_enabled
+    assert should_show_reviewer_priority_badge(is_topic=False, config=config) is item_enabled
 
 
 def test_format_reviewer_priority_value_rounds_and_clamps():
@@ -100,3 +132,59 @@ def test_build_reviewer_priority_badge_js_can_disable_existing_badge():
     assert "var enabled = false;" in js
     assert "badge.remove();" in js
     assert "spacer.remove();" in js
+
+
+def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
+    path = Path(__file__).resolve().parents[1] / "__init__.py"
+    function = next(
+        node for node in ast.parse(path.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_sync_reviewer_priority_badge"
+    )
+    scripts: list[str] = []
+    fetched_priorities: list[int] = []
+    card = SimpleNamespace(id=17, nid=21)
+    config = {"reviewer_priority_badge_card_types": {"topics": False, "items": True}}
+    namespace = {
+        "mw": SimpleNamespace(
+            addonManager=None,
+            reviewer=SimpleNamespace(card=card, web=SimpleNamespace(eval=scripts.append)),
+            col=SimpleNamespace(
+                get_note=lambda _nid: SimpleNamespace(mid=1),
+                models=SimpleNamespace(get=lambda _mid: {"name": "Basic"}),
+            ),
+        ),
+        "_is_topic_card": lambda _card: False,
+        "should_show_reviewer_priority_badge": should_show_reviewer_priority_badge,
+        "_load_addon_config": lambda _manager, _package: config,
+        "get_priority": lambda _addon_dir, _profile, card_id: (
+            fetched_priorities.append(card_id) or 50
+        ),
+        "get_card_browser_media_ref": lambda *_args: {},
+        "get_custom_schedule_rule": lambda *_args: None,
+        "_format_custom_schedule_rule": lambda _rule: "",
+        "_active_profile": lambda: "TestProfile",
+        "_ADDON_DIR": "/tmp/incremento-badge-test",
+        "WEB_NOTE_TYPE": "Incremento Web",
+        "configured_priority_lower_is_more_important": lambda: True,
+        "build_reviewer_priority_badge_js": build_reviewer_priority_badge_js,
+    }
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
+
+    namespace["_sync_reviewer_priority_badge"]()
+    assert fetched_priorities == [17]
+    assert "var enabled = true;" in scripts[-1]
+
+    namespace["_is_topic_card"] = lambda _card: True
+    namespace["_sync_reviewer_priority_badge"]()
+    assert fetched_priorities == [17]
+    assert "var enabled = false;" in scripts[-1]
+    assert "badge.remove();" in scripts[-1]
+    assert "spacer.remove();" in scripts[-1]
+
+    namespace["_is_topic_card"] = lambda _card: False
+    namespace["_load_addon_config"] = lambda *_args: (_ for _ in ()).throw(
+        RuntimeError("config unavailable")
+    )
+    namespace["_sync_reviewer_priority_badge"]()
+    assert "var enabled = true;" in scripts[-1]

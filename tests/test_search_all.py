@@ -35,6 +35,11 @@ def _load_dialog_module():
             "QWidget",
         ):
             setattr(qt_module, name, type(name, (), {}))
+        qt_module.QSizePolicy = type(
+            "QSizePolicy",
+            (),
+            {"Policy": SimpleNamespace(Ignored=1, Expanding=2)},
+        )
         qt_module.Qt = SimpleNamespace(
             Orientation=SimpleNamespace(Horizontal=1),
         )
@@ -110,6 +115,26 @@ class _HtmlSink:
         self.html = html
 
 
+class _SplitterPane:
+    def __init__(self):
+        self.size_policy = None
+
+    def setSizePolicy(self, horizontal, vertical) -> None:
+        self.size_policy = (horizontal, vertical)
+
+
+class _StableSplitter:
+    def __init__(self):
+        self.children_collapsible = None
+        self.stretch_factors: dict[int, int] = {}
+
+    def setChildrenCollapsible(self, collapsible: bool) -> None:
+        self.children_collapsible = collapsible
+
+    def setStretchFactor(self, index: int, stretch: int) -> None:
+        self.stretch_factors[index] = stretch
+
+
 def test_search_all_search_while_typing_defaults_enabled():
     assert search_all.configured_search_all_search_while_typing({}) is True
 
@@ -137,6 +162,25 @@ def test_search_all_filter_config_values_override_defaults():
     assert search_all.configured_search_all_filter_enabled("pdf_content", cfg) is True
     assert search_all.configured_search_all_filter_enabled("cards", cfg) is False
     assert search_all.configured_search_all_filter_enabled("current_profile", cfg) is False
+
+
+def test_search_all_splitter_ignores_dynamic_preview_content_size_hints():
+    splitter = _StableSplitter()
+    results = _SplitterPane()
+    preview = _SplitterPane()
+
+    _DIALOG_MODULE._stabilize_search_splitter(splitter, results, preview)
+
+    ignored = _DIALOG_MODULE.QSizePolicy.Policy.Ignored
+    expanding = _DIALOG_MODULE.QSizePolicy.Policy.Expanding
+    assert results.size_policy == (ignored, expanding)
+    assert preview.size_policy == (ignored, expanding)
+    assert splitter.children_collapsible is False
+    assert splitter.stretch_factors == {0: 1, 1: 1}
+    assert (
+        "_stabilize_search_splitter(splitter, self._results, preview_container)"
+        in inspect.getsource(_SearchAllDialog.__init__)
+    )
 
 
 @pytest.mark.parametrize(("media", "position"), [("pdf", 9), ("epub", 0)])

@@ -1142,6 +1142,13 @@ _DEFAULT_MAIN_GROUPS = {
 }
 
 
+def _keep_button_label_readable(button: QPushButton) -> None:
+    """Respect the active Qt style's font and padding instead of a fixed width."""
+    natural_width = int(button.sizeHint().width())
+    if natural_width > 0:
+        button.setMinimumWidth(natural_width)
+
+
 class SchedulerConfigDialog(QDialog):
     _CURRENT_SETTINGS_LABEL = "Current Settings"
 
@@ -1290,31 +1297,31 @@ class SchedulerConfigDialog(QDialog):
         profile_row.addWidget(self._profile_combo)
 
         self._profile_load_btn = QPushButton("Load")
-        self._profile_load_btn.setFixedWidth(52)
+        _keep_button_label_readable(self._profile_load_btn)
         self._profile_load_btn.setToolTip("Apply the selected saved preset to all settings below")
         qconnect(self._profile_load_btn.clicked, self._load_profile)
         profile_row.addWidget(self._profile_load_btn)
 
         self._profile_save_btn = QPushButton("Save")
-        self._profile_save_btn.setFixedWidth(52)
+        _keep_button_label_readable(self._profile_save_btn)
         self._profile_save_btn.setToolTip("Overwrite the selected saved preset with the current settings")
         qconnect(self._profile_save_btn.clicked, self._save_profile)
         profile_row.addWidget(self._profile_save_btn)
 
         add_btn = QPushButton("Add…")
-        add_btn.setFixedWidth(60)
+        _keep_button_label_readable(add_btn)
         add_btn.setToolTip("Create a new saved preset from the current settings")
         qconnect(add_btn.clicked, self._add_profile)
         profile_row.addWidget(add_btn)
 
         self._profile_rename_btn = QPushButton("Rename…")
-        self._profile_rename_btn.setFixedWidth(78)
+        _keep_button_label_readable(self._profile_rename_btn)
         self._profile_rename_btn.setToolTip("Rename the selected saved preset")
         qconnect(self._profile_rename_btn.clicked, self._rename_profile)
         profile_row.addWidget(self._profile_rename_btn)
 
         self._profile_delete_btn = QPushButton("Delete")
-        self._profile_delete_btn.setFixedWidth(58)
+        _keep_button_label_readable(self._profile_delete_btn)
         self._profile_delete_btn.setToolTip("Delete the selected saved preset")
         self._profile_delete_btn.setStyleSheet("color: #e05050;")
         qconnect(self._profile_delete_btn.clicked, self._delete_profile)

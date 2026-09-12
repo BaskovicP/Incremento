@@ -5,6 +5,17 @@ _ROOT_ID = "incremento-reviewer-source-cover"
 _STYLE_ID = "incremento-reviewer-source-cover-style"
 
 
+def _cover_filename(value: str) -> str:
+    name = str(value or "").strip()
+    if (
+        not name or name in {".", ".."} or len(name) > 255
+        or any(character in name for character in '/\\:<>"?#%')
+        or any(ord(character) < 32 or ord(character) == 127 for character in name)
+    ):
+        return ""
+    return name
+
+
 def build_reviewer_source_cover_js(
     title: str | None,
     *,
@@ -12,9 +23,10 @@ def build_reviewer_source_cover_js(
     source_label: str = "Source PDF",
 ) -> str:
     safe_title = json.dumps(str(title or "").strip())
-    safe_cover = json.dumps(str(cover_media or "").strip())
+    cover_filename = _cover_filename(cover_media)
+    safe_cover = json.dumps(cover_filename)
     safe_label = json.dumps(str(source_label or "").strip() or "Source PDF")
-    enabled = bool(str(title or "").strip() or str(cover_media or "").strip())
+    enabled = bool(str(title or "").strip() or cover_filename)
     return f"""
 (function() {{
   var enabled = {"true" if enabled else "false"};
@@ -41,6 +53,8 @@ def build_reviewer_source_cover_js(
         align-items: flex-start;
         gap: 14px;
         width: min(560px, 96vw);
+        max-width: calc(100% - 24px);
+        box-sizing: border-box;
         margin: 0 auto 18px;
         padding: 12px 14px;
         border-radius: 18px;
@@ -48,6 +62,7 @@ def build_reviewer_source_cover_js(
         background: linear-gradient(180deg, rgba(16, 20, 28, 0.96), rgba(12, 16, 24, 0.90));
         box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
         text-align: left;
+        white-space: normal;
       }}
       #${{rootId}}.title-only {{
         gap: 10px;
@@ -56,6 +71,7 @@ def build_reviewer_source_cover_js(
         display: block;
         width: 72px;
         min-width: 72px;
+        max-height: 108px;
         border-radius: 11px;
         border: 1px solid rgba(255, 255, 255, 0.08);
         box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
@@ -66,6 +82,8 @@ def build_reviewer_source_cover_js(
         display: block;
         width: 100%;
         height: auto;
+        max-height: 108px;
+        object-fit: cover;
       }}
       #${{rootId}} .incremento-reviewer-source-cover-body {{
         display: flex;
@@ -86,7 +104,7 @@ def build_reviewer_source_cover_js(
         font-size: 16px;
         font-weight: 700;
         line-height: 1.3;
-        word-break: break-word;
+        overflow-wrap: anywhere;
       }}
       #${{rootId}} .incremento-reviewer-source-cover-hint {{
         color: #9fb0c9;
@@ -121,8 +139,18 @@ def build_reviewer_source_cover_js(
   root.classList.toggle("title-only", !coverMedia);
   thumb.style.display = coverMedia ? "block" : "none";
   if (coverMedia) {{
+    // The title already names the source; a broken image must not display
+    // its long filename as alt text inside the 72px thumbnail.
+    image.alt = "";
+    image.onerror = function() {{
+      if (root.querySelector(".incremento-reviewer-source-cover-thumb img") !== image) {{
+        return;
+      }}
+      thumb.style.display = "none";
+      root.classList.remove("has-cover");
+      root.classList.add("title-only");
+    }};
     image.src = coverMedia;
-    image.alt = (titleText || labelText) + " cover";
   }} else {{
     image.removeAttribute("src");
     image.alt = "";
