@@ -22,6 +22,7 @@ Compact repo guide for coding agents. Keep this file high-signal and current.
 
 Important newer hotspots:
 
+- `backend/i18n.py`, `locales/`, `frontend/src/i18n.mjs`, and the extension's `src/shared/i18n.js`/`_locales/`: UI-only language selection and offline catalogs. See `TRANSLATING.md`; never translate persisted identifiers or user content. Python MO files and browser bundles must be regenerated from their catalogs.
 - `backend/db_connection.py`, `backend/db_schema.py`, `backend/db.py`: per-thread/profile SQLite lifecycle, atomic schema ledger, legacy repository surface, and ordered migrations.
 - `backend/operation_journal.py`, `backend/reconciliation.py`, `backend/migration.py`, `backend/note_metadata.py`: stable content identity, crash-safe cross-store imports, bounded profile-open recovery, explicit full reconciliation, and resumable legacy storage migration.
 - `backend/config_service.py`, `config.json`: versioned config normalization and the canonical config read/write boundary.
@@ -33,6 +34,7 @@ Important newer hotspots:
 - `backend/session_selection.py`, `backend/scheduler.py`, `backend/topic_scheduler.py`: session candidate filtering, tag-aware selection, refill preview behavior, and reader-card scheduler integration.
 - `frontend/command_palette.py`, `frontend/onboarding_dialog.py`, `frontend/activity_center.py`, `backend/activity_log.py`: command discovery, versioned first-run guidance, and bounded user-visible background-task state.
 - `frontend/settings_dialog.py`, `config.json`, `__init__.py`: config-backed settings tabs, persisted defaults, and save/load wiring for extraction, review, topics, writing, shortcuts, and advanced tools.
+- `backend/language_packs.py`, `frontend/language_pack_settings.py`, `locales/translation_catalog.json`, `scripts/build_translation_catalog.py`: bounded per-profile custom UI language packs and the shared translator CSV contract. Keep the companion parser, PDF startup snapshot, generated built-in exports, and `TRANSLATING.md` aligned; imports stage until Settings acceptance.
 - `backend/note_metadata.py`: shared Incremento provenance fields and helpers. New note-creation paths should use this instead of appending source/parent text into content fields.
 - `frontend/add_card_dock.py`, `backend/reviewer_extract.py`, `frontend/extract_batch_dialog.py`: transfer-to-note flows, topic/item tag toggles, batch Q/A extraction, and reviewer-side extract plumbing.
 - `backend/extraction_drafts.py`, `frontend/add_card_dock.py`: bounded atomic per-profile extraction-draft autosave plus explicit restore/discard UI.

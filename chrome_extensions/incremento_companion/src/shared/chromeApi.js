@@ -2,6 +2,8 @@ import {
   MAX_BROWSER_CAPTURE_HTML_CHARS,
   MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
 } from "./browserCaptureModel.js";
+import { t } from "./i18n.js";
+import { readPageContextFromTab } from "./pageContext.js";
 
 export async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -88,38 +90,16 @@ export async function captureSnapshot(tabId) {
   try {
     results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (maxHtmlChars, maxSelectedTextChars) => {
-        const html = document.documentElement?.outerHTML || "";
-        const selectionText = (
-          (window.getSelection?.().toString() || "").trim()
-          || String(globalThis.__incrementoLastSelectedText || "").trim()
-        );
-        if (html.length > maxHtmlChars) {
-          return {
-            ok: false,
-            error: `Page HTML is too large. Maximum is ${maxHtmlChars} characters.`,
-          };
-        }
-        if (selectionText.length > maxSelectedTextChars) {
-          return {
-            ok: false,
-            error: `Selected text is too large. Maximum is ${maxSelectedTextChars} characters.`,
-          };
-        }
-        return {
-          ok: true,
-          html,
-          selectionText,
-          title: document.title || "",
-          url: window.location.href || "",
-        };
-      },
+      func: readPageContextFromTab,
       args: [MAX_BROWSER_CAPTURE_HTML_CHARS, MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS],
     });
   } catch (_err) {
     return null;
   }
   const result = results && results[0] ? results[0].result : null;
+  if (result?.errorCode) {
+    throw new Error(t(result.errorCode, result.errorParams || {}));
+  }
   if (result?.error) {
     throw new Error(String(result.error));
   }

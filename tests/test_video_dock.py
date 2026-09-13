@@ -8,6 +8,16 @@ sys.modules.setdefault("session", MagicMock())
 import video_dock
 
 
+def test_video_reader_count_and_subtitle_status_use_locale_messages(monkeypatch):
+    monkeypatch.setattr(video_dock, "tn", lambda key, count, **values: f"plural:{key}:{count}", raising=False)
+    monkeypatch.setattr(video_dock, "_tr", lambda key, **values: f"text:{key}:{values}", raising=False)
+
+    assert video_dock._video_bookmark_count_label(2) == "plural:reader_video_bookmarks_count:2"
+    assert video_dock._video_subtitle_status(["Hrvatski", "English"]).startswith(
+        "text:reader_video_subtitles_active:"
+    )
+
+
 def test_local_video_html_frames_subtitles_as_inert_data():
     attack = "</script><script>window.pycmd('stolen')</script>"
     rendered = video_dock._local_video_html(

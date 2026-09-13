@@ -19,6 +19,12 @@ from xml.etree import ElementTree as ET
 from bs4 import BeautifulSoup
 
 try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
+
+try:
     from .content_safety import external_plain_text, external_plain_text_to_anki_html
     from .db import (
         get_connection,
@@ -726,7 +732,7 @@ def load_epub_metadata(
             pass
     epub_path = epub_storage_abspath(stored_filename, profile=profile)
     if not epub_path or not os.path.isfile(epub_path):
-        raise FileNotFoundError("Stored EPUB file was not found or needs secure re-extraction.")
+        raise FileNotFoundError(t("backend_epub_stored_unavailable"))
     return ensure_epub_extracted(
         epub_path,
         stored_filename=stored_filename,
@@ -902,7 +908,7 @@ def get_epub_section_path(addon_dir: str, stored_filename: str, section_index: i
     meta = load_epub_metadata(addon_dir, stored_filename)
     sections = meta.get("sections") or []
     if not sections:
-        raise RuntimeError("EPUB has no readable sections.")
+        raise RuntimeError(t("backend_epub_no_sections"))
     idx = max(0, min(int(section_index), len(sections) - 1))
     section_path = _extract_epub_path(stored_filename, str(sections[idx]["href"] or ""))
     if not section_path:
@@ -1476,7 +1482,7 @@ def render_epub_cover_media(
 ) -> str:
     """Copy the EPUB package cover image to Anki media and return its media filename."""
     if not epub_path or not os.path.exists(epub_path):
-        raise FileNotFoundError("EPUB file was not found.")
+        raise FileNotFoundError(t("backend_document_file_missing", kind="EPUB"))
 
     try:
         stored_name = str(source_filename or os.path.basename(epub_path)).strip()
@@ -1541,18 +1547,18 @@ def regenerate_epub_card_cover(addon_dir: str, col, card_id: int) -> str:
     cid = int(card_id)
     card = col.get_card(cid)
     if card is None:
-        raise RuntimeError("EPUB card was not found.")
+        raise RuntimeError(t("backend_document_card_missing", kind="EPUB"))
     note = col.get_note(card.nid)
     if note is None:
-        raise RuntimeError("Linked EPUB note was not found.")
+        raise RuntimeError(t("backend_document_note_missing", kind="EPUB"))
 
     epub_filename = str(note[EPUB_FILE_FIELD] or "").strip()
     if not epub_filename:
-        raise RuntimeError("This EPUB note does not have a stored EPUB filename.")
+        raise RuntimeError(t("backend_document_filename_missing", kind="EPUB"))
 
     epub_path = epub_storage_abspath(epub_filename)
     if not os.path.exists(epub_path):
-        raise FileNotFoundError(f"Stored EPUB file was not found:\n{epub_path}")
+        raise FileNotFoundError(t("backend_document_stored_missing", kind="EPUB", path=epub_path))
 
     return regenerate_epub_note_cover(col, note, epub_path)
 
@@ -1687,7 +1693,7 @@ def _create_new_epub_card(
             cid = cards[0]
             break
     if not cid:
-        raise RuntimeError("Failed to add EPUB card. Anki rejected the note.")
+        raise RuntimeError(t("backend_document_note_rejected", kind="EPUB"))
 
     operation.bind_anki(card_id=cid, note_id=getattr(note, "id", None))
 

@@ -39,6 +39,12 @@ except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 def _resolve_pdf_storage_abspath(
     stored_filename: str,
     *,
@@ -81,7 +87,7 @@ class AddPdfDialog(QDialog):
     ):
         super().__init__(parent)
         self._addon_dir = addon_dir
-        self.setWindowTitle("Add PDFs")
+        self.setWindowTitle(_t("imports_pdf_title"))
         self.setMinimumSize(900, 560)
 
         self._pdf_paths: list[str] = []
@@ -119,18 +125,18 @@ class AddPdfDialog(QDialog):
         left_layout.setSpacing(6)
 
         btn_row = QHBoxLayout()
-        self._add_files_btn = QPushButton("Add files…")
+        self._add_files_btn = QPushButton(_t("imports_add_files"))
         self._add_files_btn.clicked.connect(self._add_files)
-        self._add_folder_btn = QPushButton("Add folder…")
+        self._add_folder_btn = QPushButton(_t("imports_add_folder"))
         self._add_folder_btn.clicked.connect(self._add_folder)
-        self._select_all_btn = QPushButton("Select all")
+        self._select_all_btn = QPushButton(_t("imports_select_all"))
         self._select_all_btn.clicked.connect(lambda: self._set_visible_import_checks(True))
-        self._deselect_all_btn = QPushButton("Deselect all")
+        self._deselect_all_btn = QPushButton(_t("imports_deselect_all"))
         self._deselect_all_btn.clicked.connect(lambda: self._set_visible_import_checks(False))
-        self._remove_selected_btn = QPushButton("Remove selected")
+        self._remove_selected_btn = QPushButton(_t("imports_remove_selected"))
         self._remove_selected_btn.setVisible(False)
         self._remove_selected_btn.clicked.connect(self._remove_selected_rows)
-        self._undo_remove_btn = QPushButton("Undo remove")
+        self._undo_remove_btn = QPushButton(_t("imports_undo_remove"))
         self._undo_remove_btn.setVisible(False)
         self._undo_remove_btn.clicked.connect(self._undo_remove_rows)
         btn_row.addWidget(self._add_files_btn)
@@ -143,7 +149,7 @@ class AddPdfDialog(QDialog):
         left_layout.addLayout(btn_row)
 
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("Filter PDFs by file name…")
+        self._search_edit.setPlaceholderText(_t("imports_filter_pdfs"))
         self._search_edit.textChanged.connect(self._apply_table_filter)
         left_layout.addWidget(self._search_edit)
 
@@ -162,7 +168,7 @@ class AddPdfDialog(QDialog):
 
         # Table: Import | File | Tags | Priority | OCR
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(["Import", "File", "Tags", "Priority", "OCR"])
+        self._table.setHorizontalHeaderLabels([_t("imports_import"), _t("imports_table_file"), _t("imports_table_tags"), _t("imports_table_priority"), _t("imports_table_ocr")])
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -192,15 +198,15 @@ class AddPdfDialog(QDialog):
         form.setContentsMargins(0, 4, 0, 0)
 
         self._global_tag_edit = QuickTagEdit(compact=True)
-        form.addRow("Tags for all:", self._global_tag_edit)
+        form.addRow(_t("imports_tags_for_all"), self._global_tag_edit)
 
-        self._title_from_filename = QCheckBox("Use file name as title")
+        self._title_from_filename = QCheckBox(_t("imports_use_filename_title"))
         self._title_from_filename.setChecked(True)
         self._title_from_filename.toggled.connect(self._on_title_mode_changed)
         form.addRow("", self._title_from_filename)
 
         self._title_edit = QLineEdit()
-        form.addRow("Title:", self._title_edit)
+        form.addRow(_t("imports_title_label"), self._title_edit)
 
         self._deck_combo = QComboBox()
         for name in (deck_names or ["Topics"]):
@@ -208,7 +214,7 @@ class AddPdfDialog(QDialog):
         idx = self._deck_combo.findText(default_deck)
         if idx >= 0:
             self._deck_combo.setCurrentIndex(idx)
-        form.addRow("Deck:", self._deck_combo)
+        form.addRow(_t("imports_deck_label"), self._deck_combo)
 
         left_layout.addWidget(options_widget)
         splitter.addWidget(left)
@@ -219,11 +225,11 @@ class AddPdfDialog(QDialog):
         right_layout.setContentsMargins(4, 0, 0, 0)
         right_layout.setSpacing(4)
 
-        preview_header = QLabel("Preview")
+        preview_header = QLabel(_t("imports_preview"))
         preview_header.setStyleSheet("font-weight: bold;")
         right_layout.addWidget(preview_header)
 
-        self._preview_lbl = QLabel("Select a file to preview")
+        self._preview_lbl = QLabel(_t("imports_preview_select_file"))
         self._preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_lbl.setStyleSheet(
             "background: #1e1e1e; border: 1px solid #444; border-radius: 4px; color: #888;"
@@ -266,8 +272,9 @@ class AddPdfDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self._ok_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
-        self._ok_btn.setText("Add")
+        self._ok_btn.setText(_t("imports_add"))
         self._cancel_btn = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        self._cancel_btn.setText(_t("imports_cancel"))
         self._buttons.accepted.connect(self._start_add)
         self._buttons.rejected.connect(self.reject)
         main_layout.addWidget(self._buttons)
@@ -283,13 +290,13 @@ class AddPdfDialog(QDialog):
 
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Select PDF files", self._last_dir(), "PDF files (*.pdf)"
+            self, _t("imports_select_pdf_files"), self._last_dir(), _t("imports_pdf_file_filter")
         )
         self._add_paths([p for p in paths if p])
 
     def _add_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
-            self, "Select folder with PDFs", self._last_dir()
+            self, _t("imports_select_pdf_folder"), self._last_dir()
         )
         if not folder:
             return
@@ -305,7 +312,7 @@ class AddPdfDialog(QDialog):
         unique_paths = [path for path in paths if path not in self._tag_edits]
         if not unique_paths:
             self._folder_status_lbl.setVisible(True)
-            self._folder_status_lbl.setText("Found 0 new PDFs in folder")
+            self._folder_status_lbl.setText(_t("imports_pdf_folder_none"))
             self._finish_folder_import()
             return
 
@@ -352,7 +359,7 @@ class AddPdfDialog(QDialog):
         if completed_total > 0:
             self._folder_status_lbl.setVisible(True)
             self._folder_status_lbl.setText(
-                f"Found {completed_total} PDFs in folder · loaded into dialog"
+                _t("imports_pdf_folder_loaded", count=completed_total)
             )
         self._add_files_btn.setEnabled(True)
         self._add_folder_btn.setEnabled(True)
@@ -365,9 +372,9 @@ class AddPdfDialog(QDialog):
         self._table.setRowHeight(row_idx, 42)
 
         # Column 0: import checkbox
-        import_check = QCheckBox("Add")
+        import_check = QCheckBox(_t("imports_add"))
         import_check.setChecked(True if state is None else bool(state.get("import_enabled", True)))
-        import_check.setToolTip("Checked PDFs will be imported when you click Add")
+        import_check.setToolTip(_t("imports_pdf_checked_hint"))
         import_check.setStyleSheet("font-size: 11px; font-weight: 600;")
         self._table.setCellWidget(row_idx, 0, self._wrap_cell_widget(import_check))
         self._import_checks[path] = import_check
@@ -449,18 +456,18 @@ class AddPdfDialog(QDialog):
                 except Exception:
                     from backend.deps import has_tesseract, tesseract_instructions
                 if has_tesseract():
-                    cb = QCheckBox("Use OCR")
+                    cb = QCheckBox(_t("imports_use_ocr"))
                     cb.setChecked(True)
-                    cb.setToolTip("Run Tesseract OCR to embed a text layer")
+                    cb.setToolTip(_t("imports_ocr_tooltip"))
                     cb.setStyleSheet("font-size: 10px;")
                     self._table.setCellWidget(row, 4, self._wrap_cell_widget(cb))
                     self._ocr_checks[path] = cb
                 else:
-                    lbl = QLabel("No OCR ⚠")
+                    lbl = QLabel(_t("imports_no_ocr_warning"))
                     lbl.setStyleSheet("font-size: 10px; color: #e0a020;")
                     lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     lbl.setToolTip(
-                        "This PDF has no selectable text and Tesseract is not installed.\n\n"
+                        _t("imports_pdf_ocr_unavailable") + "\n\n"
                         + tesseract_instructions()
                     )
                     self._table.setCellWidget(row, 4, self._wrap_cell_widget(lbl))
@@ -498,7 +505,7 @@ class AddPdfDialog(QDialog):
             self._pdf_paths.remove(path)
         if not self._pdf_paths:
             self._preview_lbl.setPixmap(QPixmap())
-            self._preview_lbl.setText("Select a file to preview")
+            self._preview_lbl.setText(_t("imports_preview_select_file"))
             self._preview_name.clear()
             self._on_selection_changed()
             return
@@ -509,7 +516,7 @@ class AddPdfDialog(QDialog):
                 self._table.setCurrentCell(replacement_row, 1)
             else:
                 self._preview_lbl.setPixmap(QPixmap())
-                self._preview_lbl.setText("No PDFs match the current filter")
+                self._preview_lbl.setText(_t("imports_pdf_no_matches"))
                 self._preview_name.clear()
         self._on_selection_changed()
 
@@ -600,7 +607,7 @@ class AddPdfDialog(QDialog):
         else:
             self._table.clearSelection()
             self._preview_lbl.setPixmap(QPixmap())
-            self._preview_lbl.setText("No PDFs match the current filter")
+            self._preview_lbl.setText(_t("imports_pdf_no_matches"))
             self._preview_name.clear()
         self._on_selection_changed()
 
@@ -745,24 +752,24 @@ class AddPdfDialog(QDialog):
             self._apply_preview_pixmap(self._preview_cache[path])
         else:
             self._preview_lbl.setPixmap(QPixmap())
-            self._preview_lbl.setText("Loading…")
+            self._preview_lbl.setText(_t("imports_loading"))
             self._ensure_preview(path)
 
     # ── Adding files ──────────────────────────────────────────────────────────
 
     def _start_add(self) -> None:
         if not self._pdf_paths:
-            self._show_error("Please add at least one PDF file.")
+            self._show_error(_t("imports_pdf_choose_file"))
             return
         checked_paths = self._checked_paths()
         if not checked_paths:
-            self._show_error("Please check at least one PDF to import.")
+            self._show_error(_t("imports_choose_checked_pdf"))
             return
         if not self._title_from_filename.isChecked() and len(checked_paths) > 1:
-            self._show_error("For multiple PDFs, enable 'Use file name as title'.")
+            self._show_error(_t("imports_multiple_pdf_title"))
             return
         if not self._title_from_filename.isChecked() and not self._title_edit.text().strip():
-            self._show_error("Please enter a title.")
+            self._show_error(_t("imports_enter_title"))
             return
         self._error_lbl.setVisible(False)
 
@@ -813,7 +820,7 @@ class AddPdfDialog(QDialog):
 
         path, title, tags, do_ocr, priority = entries[idx]
         deck = self._deck_combo.currentText()
-        self._update_add_progress(idx, len(entries), path, phase="Starting")
+        self._update_add_progress(idx, len(entries), path, phase=_t("imports_starting"))
 
         try:
             from ..backend import pdf_manager as _pdf_manager
@@ -828,7 +835,7 @@ class AddPdfDialog(QDialog):
             import paths as _paths
             from paths import get_active_profile as _active_profile
 
-        self._set_row_status(path, "OCR…" if do_ocr else "Adding…")
+        self._set_row_status(path, _t("imports_ocr_running") if do_ocr else _t("imports_adding"))
 
         try:
             cid = _pdf_manager.add_pdf_card(
@@ -843,14 +850,14 @@ class AddPdfDialog(QDialog):
         except Exception as e:
             self.failed.append((path, str(e)))
             self._set_row_status(path, "✗", color="red")
-            self._update_add_progress(idx + 1, len(entries), path, phase="Failed")
+            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_failed"))
             self._process_files(entries, idx + 1)
             return
 
         if not do_ocr:
             self.created.append((path, title))
             self._set_row_status(path, "✓", color="#4caf50")
-            self._update_add_progress(idx + 1, len(entries), path, phase="Done")
+            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))
             self._process_files(entries, idx + 1)
             return
 
@@ -865,12 +872,12 @@ class AddPdfDialog(QDialog):
         def _progress(current, total, _path=path):
             mw.taskman.run_on_main(
                 lambda c=current, t=total, p=_path: (
-                    self._set_row_status(p, f"OCR {c}/{t}"),
+                    self._set_row_status(p, _t("imports_ocr_progress", current=c, total=t)),
                     self._update_add_progress(
                         idx,
                         len(entries),
                         p,
-                        phase=f"OCR {c}/{t}",
+                        phase=_t("imports_ocr_progress", current=c, total=t),
                     ),
                 )
             )
@@ -891,10 +898,10 @@ class AddPdfDialog(QDialog):
             except Exception:
                 pass
             self.created.append((path, title))
-            status = "✓" if ocr_ok else "✓ (no text)"
+            status = "✓" if ocr_ok else _t("imports_ocr_no_text")
             color = "#4caf50" if ocr_ok else "#ff9800"
             self._set_row_status(path, status, color=color)
-            self._update_add_progress(idx + 1, len(entries), path, phase="Done")
+            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))
             self._process_files(entries, idx + 1)
 
         mw.taskman.run_in_background(ocr_task, ocr_done)
@@ -904,7 +911,7 @@ class AddPdfDialog(QDialog):
     def _on_title_mode_changed(self, checked: bool) -> None:
         self._title_edit.setEnabled(not checked)
         self._title_edit.setPlaceholderText(
-            "Derived from each file name" if checked else "Card title"
+            _t("imports_derived_filename") if checked else _t("imports_card_title")
         )
 
     def _wrap_cell_widget(self, widget: QWidget, *, fill_width: bool = False) -> QWidget:
@@ -936,7 +943,7 @@ class AddPdfDialog(QDialog):
 
     def _set_ocr_cell_from_state(self, path: str, row: int, state: dict | None) -> None:
         if not state or state.get("has_text") is None:
-            lbl = QLabel("Detecting…")
+            lbl = QLabel(_t("imports_detecting"))
             lbl.setStyleSheet("font-size: 10px; color: gray;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._table.setCellWidget(row, 4, self._wrap_cell_widget(lbl))
@@ -955,18 +962,18 @@ class AddPdfDialog(QDialog):
         except Exception:
             from backend.deps import has_tesseract, tesseract_instructions
         if has_tesseract():
-            cb = QCheckBox("Use OCR")
+            cb = QCheckBox(_t("imports_use_ocr"))
             cb.setChecked(True if state.get("ocr_enabled") is None else bool(state.get("ocr_enabled")))
-            cb.setToolTip("Run Tesseract OCR to embed a text layer")
+            cb.setToolTip(_t("imports_ocr_tooltip"))
             cb.setStyleSheet("font-size: 10px;")
             self._table.setCellWidget(row, 4, self._wrap_cell_widget(cb))
             self._ocr_checks[path] = cb
         else:
-            lbl = QLabel("No OCR ⚠")
+            lbl = QLabel(_t("imports_no_ocr_warning"))
             lbl.setStyleSheet("font-size: 10px; color: #e0a020;")
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setToolTip(
-                "This PDF has no selectable text and Tesseract is not installed.\n\n"
+                _t("imports_pdf_ocr_unavailable") + "\n\n"
                 + tesseract_instructions()
             )
             self._table.setCellWidget(row, 4, self._wrap_cell_widget(lbl))
@@ -980,7 +987,7 @@ class AddPdfDialog(QDialog):
         spin.setFixedWidth(94)
         important_end = "0" if self._lower_priority_more_important else "100"
         spin.setToolTip(
-            f"Priority for this PDF. {important_end} is highest importance, 50 is default."
+            _t("imports_pdf_priority_hint", important_end=important_end)
         )
         spin.valueChanged.connect(lambda _value, s=spin: self._apply_priority_spin_style(s))
         self._apply_priority_spin_style(spin)
@@ -1063,33 +1070,33 @@ class AddPdfDialog(QDialog):
         self._add_progress.setMaximum(max(1, self._add_total_entries))
         self._add_progress.setValue(0)
         self._add_progress.setFormat(
-            f"Adding PDFs… 0 / {self._add_total_entries}"
+            _t("imports_pdf_progress", completed=0, total=self._add_total_entries)
             if self._add_total_entries
-            else "Adding PDFs…"
+            else _t("imports_pdf_adding")
         )
         self._add_progress.setVisible(self._add_total_entries > 0)
         self._add_status_lbl.setVisible(self._add_total_entries > 0)
         if self._add_total_entries > 0:
-            self._add_status_lbl.setText(f"Adding PDFs… 0 / {self._add_total_entries}")
+            self._add_status_lbl.setText(_t("imports_pdf_progress", completed=0, total=self._add_total_entries))
 
     def _update_add_progress(self, completed: int, total: int, path: str, *, phase: str) -> None:
         total = max(0, int(total))
         completed = max(0, min(int(completed), total))
         self._add_progress.setMaximum(max(1, total))
         self._add_progress.setValue(completed)
-        self._add_progress.setFormat(f"Adding PDFs… {completed} / {total}")
+        self._add_progress.setFormat(_t("imports_pdf_progress", completed=completed, total=total))
         self._add_status_lbl.setText(
-            f"Adding PDFs… {completed} / {total} · {phase}: {Path(path).name}"
+            _t("imports_pdf_progress_detail", completed=completed, total=total, phase=phase, filename=Path(path).name)
         )
 
     def _finish_add_progress(self) -> None:
         if self._add_total_entries > 0:
             self._add_progress.setValue(self._add_total_entries)
             self._add_progress.setFormat(
-                f"Adding PDFs… {self._add_total_entries} / {self._add_total_entries}"
+                _t("imports_pdf_progress", completed=self._add_total_entries, total=self._add_total_entries)
             )
             self._add_status_lbl.setText(
-                f"Adding PDFs… {self._add_total_entries} / {self._add_total_entries}"
+                _t("imports_pdf_progress", completed=self._add_total_entries, total=self._add_total_entries)
             )
         self._add_progress.setVisible(False)
         self._add_status_lbl.setVisible(False)
@@ -1097,10 +1104,7 @@ class AddPdfDialog(QDialog):
 
     def _folder_status_text(self, completed: int) -> str:
         remaining = max(0, self._folder_total_paths - completed)
-        return (
-            f"Found {self._folder_total_paths} PDFs in folder · "
-            f"{remaining} remaining · adding… {completed} / {self._folder_total_paths}"
-        )
+        return _t("imports_pdf_folder_progress", found=self._folder_total_paths, remaining=remaining, completed=completed, total=self._folder_total_paths)
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Delete:

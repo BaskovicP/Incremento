@@ -11,6 +11,12 @@ from pathlib import Path
 
 from PyQt6.QtPdf import QPdfDocument
 
+try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
+
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_FILENAME_STEM = 80
 _PDF_DISPLAY_LABEL_MAX_LEN = 48
@@ -857,7 +863,7 @@ def extract_pdf_text(pdf_path: str) -> str:
 def render_pdf_cover_media(col, pdf_path: str, *, title: str = "", source_filename: str = "") -> str:
     """Render the first PDF page to Anki media and return the stored media filename."""
     if not pdf_path or not os.path.exists(pdf_path):
-        raise FileNotFoundError("PDF file was not found.")
+        raise FileNotFoundError(t("backend_document_file_missing", kind="PDF"))
 
     try:
         from PyQt6.QtCore import QSize
@@ -927,18 +933,18 @@ def regenerate_pdf_card_cover(addon_dir: str, col, card_id: int) -> str:
     cid = int(card_id)
     card = col.get_card(cid)
     if card is None:
-        raise RuntimeError("PDF card was not found.")
+        raise RuntimeError(t("backend_document_card_missing", kind="PDF"))
     note = col.get_note(card.nid)
     if note is None:
-        raise RuntimeError("Linked PDF note was not found.")
+        raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
     pdf_filename = str(note["PDF_Filename"] or "").strip()
     if not pdf_filename:
-        raise RuntimeError("This PDF note does not have a stored PDF filename.")
+        raise RuntimeError(t("backend_document_filename_missing", kind="PDF"))
 
     pdf_path = pdf_storage_abspath(pdf_filename)
     if not os.path.exists(pdf_path):
-        raise FileNotFoundError(f"Stored PDF file was not found:\n{pdf_path}")
+        raise FileNotFoundError(t("backend_document_stored_missing", kind="PDF", path=pdf_path))
 
     return regenerate_pdf_note_cover(col, note, pdf_path)
 
@@ -1307,7 +1313,7 @@ def _create_new_pdf_card(
             cid = cards[0]
             break
     if not cid:
-        raise RuntimeError("Failed to add PDF card. Anki rejected the note.")
+        raise RuntimeError(t("backend_document_note_rejected", kind="PDF"))
 
     operation.bind_anki(card_id=cid, note_id=getattr(note, "id", None))
 
@@ -1347,11 +1353,11 @@ def sync_pdf_card_file_references(
     cid = int(card_id)
     card = col.get_card(cid)
     if card is None:
-        raise RuntimeError("PDF card was not found.")
+        raise RuntimeError(t("backend_document_card_missing", kind="PDF"))
 
     note = col.get_note(card.nid)
     if note is None:
-        raise RuntimeError("Linked PDF note was not found.")
+        raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
     raw_filename = str(note["PDF_Filename"] or "").strip()
     clean_filename = os.path.basename(raw_filename)
@@ -1405,14 +1411,14 @@ def replace_pdf_card_file(
     cid = int(card_id)
     profile_name = str(profile or _paths.get_active_profile())
     if not pdf_path or not os.path.exists(pdf_path):
-        raise FileNotFoundError("Replacement PDF was not found.")
+        raise FileNotFoundError(t("backend_pdf_replacement_missing"))
 
     card = col.get_card(cid)
     if card is None:
-        raise RuntimeError("PDF card was not found.")
+        raise RuntimeError(t("backend_document_card_missing", kind="PDF"))
     note = col.get_note(card.nid)
     if note is None:
-        raise RuntimeError("Linked PDF note was not found.")
+        raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
     media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
     dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
@@ -1508,11 +1514,11 @@ def repair_pdf_card_filename(
     cid = int(card_id)
     card = col.get_card(cid)
     if card is None:
-        raise RuntimeError("PDF card was not found.")
+        raise RuntimeError(t("backend_document_card_missing", kind="PDF"))
 
     note = col.get_note(card.nid)
     if note is None:
-        raise RuntimeError("Linked PDF note was not found.")
+        raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
     pdf_dir = Path(_paths.get_pdf_dir(addon_dir, profile))
     try:

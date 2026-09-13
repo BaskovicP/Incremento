@@ -144,3 +144,18 @@ def test_parse_batch_qa_text_marks_empty_question_or_answer_invalid():
             "error": "Answer is empty.",
         },
     ]
+
+
+def test_batch_validation_localizes_messages_but_preserves_qa_syntax():
+    import backend.i18n as i18n
+    import reviewer_extract
+    old = i18n.get_locale()
+    try:
+        i18n.initialize_language('hr')
+        row = reviewer_extract.parse_batch_qa_text('Q: Pitanje')[0]
+        assert row['question'] == 'Pitanje'
+        assert row['error'] == 'Nedostaje redak A:.'
+        assert row['valid'] is False
+        assert reviewer_extract.parse_batch_qa_text('Q: 中文\nA: 答案')[0]['answer'] == '答案'
+    finally:
+        i18n.initialize_language(old)

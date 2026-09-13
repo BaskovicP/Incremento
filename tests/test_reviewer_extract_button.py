@@ -21,7 +21,7 @@ def test_extract_button_uses_the_shared_visual_style_and_keeps_accessible_action
     js = build_reviewer_extract_button_js("Alt+X")
 
     assert "incremento-reviewer-extract-button" in js
-    assert '"Alt+X"' in js
+    assert 'var tooltipText = "Extract selected content into a new card (Alt+X)";' in js
     assert 'setAttribute("aria-label", "Extract selected content into a new card")' in js
     assert "linear-gradient" not in js
     assert "style.textContent" not in js
@@ -31,7 +31,7 @@ def test_extract_button_uses_the_shared_visual_style_and_keeps_accessible_action
 def test_build_reviewer_extract_button_js_handles_missing_shortcut():
     js = build_reviewer_extract_button_js("")
 
-    assert 'var shortcutText = "";' in js
+    assert 'var tooltipText = "Extract selected content into a new card";' in js
     assert '"Extract selected content into a new card"' in js
     assert "incremento-reviewer-extract-cell" in js
 

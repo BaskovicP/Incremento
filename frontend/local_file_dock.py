@@ -15,6 +15,12 @@ from aqt.qt import (
 from aqt.utils import showInfo, tooltip
 
 try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
+try:
     from ..backend.local_file_manager import (
         LOCAL_FILE_MODE_FIELD,
         LOCAL_FILE_MODE_MANAGED_COPY,
@@ -55,8 +61,8 @@ _current_resolved_path: str = ""
 
 def _mode_label(mode: str) -> str:
     if mode == LOCAL_FILE_MODE_MANAGED_COPY:
-        return "Managed copy"
-    return "Referenced original file"
+        return _t("admin_file_managed")
+    return _t("admin_file_reference")
 
 
 def _create_local_file_dock():
@@ -64,7 +70,7 @@ def _create_local_file_dock():
     if _local_file_dock is not None:
         return _local_file_dock
 
-    dock = QDockWidget("Local File", mw)
+    dock = QDockWidget(_t("admin_file_title"), mw)
     dock.setObjectName("incremento_local_file_dock")
     body = QWidget(dock)
     layout = QVBoxLayout(body)
@@ -93,9 +99,9 @@ def _create_local_file_dock():
     layout.addWidget(dock._note_lbl)
 
     actions = QHBoxLayout()
-    dock._reveal_btn = QPushButton("Reveal")
-    dock._open_btn = QPushButton("Open")
-    dock._relink_btn = QPushButton("Relink")
+    dock._reveal_btn = QPushButton(_t("admin_file_reveal"))
+    dock._open_btn = QPushButton(_t("admin_file_open"))
+    dock._relink_btn = QPushButton(_t("admin_file_relink"))
     actions.addWidget(dock._reveal_btn)
     actions.addWidget(dock._open_btn)
     actions.addWidget(dock._relink_btn)
@@ -117,20 +123,20 @@ def _refresh_dock_labels(filename: str, stored_path: str, mode: str, note_text: 
         return
     exists = bool(_current_resolved_path) and os.path.isfile(_current_resolved_path)
     if exists:
-        _local_file_dock._status_lbl.setText("Local file available.")
+        _local_file_dock._status_lbl.setText(_t("admin_file_available"))
         _local_file_dock._status_lbl.setStyleSheet("color: #7fb36b;")
     else:
-        _local_file_dock._status_lbl.setText("Linked file is missing. Use Relink to choose a replacement.")
+        _local_file_dock._status_lbl.setText(_t("admin_file_missing"))
         _local_file_dock._status_lbl.setStyleSheet("color: #d17b49;")
-    safe_filename = escape(unescape(filename or "(none)"), quote=True)
-    safe_path = escape(stored_path or "(none)", quote=True)
+    safe_filename = escape(unescape(filename or _t("admin_file_none")), quote=True)
+    safe_path = escape(stored_path or _t("admin_file_none"), quote=True)
     safe_mode = escape(_mode_label(mode), quote=True)
-    plain_note = (note_text or "(none)").replace("<br>", "\n")
+    plain_note = (note_text or _t("admin_file_none")).replace("<br>", "\n")
     safe_note = escape(unescape(plain_note), quote=True).replace("\n", "<br>")
-    _local_file_dock._name_lbl.setText(f"<b>File:</b> {safe_filename}")
-    _local_file_dock._path_lbl.setText(f"<b>Path:</b> {safe_path}")
-    _local_file_dock._mode_lbl.setText(f"<b>Mode:</b> {safe_mode}")
-    _local_file_dock._note_lbl.setText(f"<b>Note:</b> {safe_note}")
+    _local_file_dock._name_lbl.setText(_t("admin_file_label_file", value=safe_filename))
+    _local_file_dock._path_lbl.setText(_t("admin_file_label_path", value=safe_path))
+    _local_file_dock._mode_lbl.setText(_t("admin_file_label_mode", value=safe_mode))
+    _local_file_dock._note_lbl.setText(_t("admin_file_label_note", value=safe_note))
     _local_file_dock._reveal_btn.setEnabled(exists)
     _local_file_dock._open_btn.setEnabled(exists)
     _local_file_dock._relink_btn.setEnabled(_current_note_id is not None)
@@ -140,21 +146,21 @@ def _reveal_current_file() -> None:
     if not _current_resolved_path:
         return
     if not reveal_local_file(_current_resolved_path):
-        showInfo("Could not reveal the linked file in Finder/Explorer.")
+        showInfo(_t("admin_file_reveal_failed"))
 
 
 def _open_current_file() -> None:
     if not _current_resolved_path:
         return
     if not open_local_file(_current_resolved_path):
-        showInfo("Could not open the linked file in the default native app.")
+        showInfo(_t("admin_file_open_failed"))
 
 
 def _relink_current_file() -> None:
     global _current_stored_path, _current_resolved_path
     if _current_note_id is None:
         return
-    path, _ = QFileDialog.getOpenFileName(mw, "Choose replacement file", "", "All files (*)")
+    path, _ = QFileDialog.getOpenFileName(mw, _t("admin_file_choose"), "", _t("admin_file_filter"))
     if not path:
         return
     try:
@@ -180,9 +186,9 @@ def _relink_current_file() -> None:
             str(note[LOCAL_FILE_MODE_FIELD] or ""),
             str(note[LOCAL_FILE_NOTE_FIELD] or "").strip(),
         )
-        tooltip("Local file relinked.")
+        tooltip(_t("admin_file_relinked"))
     except Exception as exc:
-        showInfo(f"Could not relink this local file:\n{exc}")
+        showInfo(_t("admin_file_relink_error", error=exc))
 
 
 def on_local_file_question_shown(card) -> None:

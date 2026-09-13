@@ -27,6 +27,10 @@ from aqt.qt import (
     Qt,
     qconnect,
 )
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
@@ -167,7 +171,7 @@ class _PdfQuickJumpDialog(QDialog):
         }
         self._visible_entries: list[_QuickOpenEntry] = []
 
-        self.setWindowTitle("Quick Open Content")
+        self.setWindowTitle(t("reader_quick_open_content"))
         self.resize(860, 580)
 
         layout = QVBoxLayout(self)
@@ -176,11 +180,11 @@ class _PdfQuickJumpDialog(QDialog):
 
         mode_row = QHBoxLayout()
         mode_row.setSpacing(10)
-        mode_label = QLabel("<b>Mode</b>")
+        mode_label = QLabel(f"<b>{t('reader_mode')}</b>")
         mode_row.addWidget(mode_label)
         self._mode_group = QButtonGroup(self)
-        self._docs_radio = QRadioButton("Docs")
-        self._writing_radio = QRadioButton("Writing")
+        self._docs_radio = QRadioButton(t("reader_docs"))
+        self._writing_radio = QRadioButton(t("reader_writing"))
         self._mode_group.addButton(self._docs_radio)
         self._mode_group.addButton(self._writing_radio)
         self._docs_radio.setChecked(True)
@@ -199,7 +203,7 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addSpacing(10)
 
         self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["Title", "Type", "Prio", ""])
+        self._table.setHorizontalHeaderLabels([t("reader_title"), t("reader_type"), t("reader_priority_short"), ""])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
@@ -217,9 +221,9 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addSpacing(10)
 
         for key, desc in [
-            ("Ctrl + F", "Open First in Queue"),
-            ("Ctrl + R", "Open Random Note"),
-            ("Ctrl + L", "Open Last Opened Note"),
+            ("Ctrl + F", t("reader_open_first_queue")),
+            ("Ctrl + R", t("reader_open_random_note")),
+            ("Ctrl + L", t("reader_open_last_note")),
         ]:
             lbl = QLabel(f"<b>{key}</b>: {desc}")
             lbl.setStyleSheet("font-size: 13px; padding: 2px 0;")
@@ -227,16 +231,16 @@ class _PdfQuickJumpDialog(QDialog):
         layout.addSpacing(6)
 
         self._preserve_history_cb = QCheckBox(
-            "Don't change cards attached to PDF reading history"
+            t("reader_preserve_pdf_history")
         )
         self._preserve_history_cb.setChecked(False)
         layout.addWidget(self._preserve_history_cb)
-        self._study_card_cb = QCheckBox("Open the card also to study")
+        self._study_card_cb = QCheckBox(t("reader_open_card_to_study"))
         self._study_card_cb.setChecked(False)
         layout.addWidget(self._study_card_cb)
         layout.addSpacing(10)
 
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(t("reader_cancel"))
         cancel_btn.setStyleSheet(
             "QPushButton { background: #2979ff; color: white; border: none;"
             " padding: 10px; font-size: 14px; border-radius: 3px; }"
@@ -293,7 +297,9 @@ class _PdfQuickJumpDialog(QDialog):
             title_item.setData(Qt.ItemDataRole.UserRole, entry)
             self._table.setItem(row, 0, title_item)
 
-            type_item = QTableWidgetItem(entry.kind)
+            type_item = QTableWidgetItem(
+                t("reader_writing") if entry.kind == _TYPE_WRITING else entry.kind
+            )
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self._table.setItem(row, 1, type_item)
 

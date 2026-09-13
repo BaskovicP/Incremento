@@ -840,7 +840,9 @@ A folder synced by the Google Drive desktop app (or another cloud-sync app) can 
 
 ### Settings dialog
 
-Choose **Incremento → Settings** to open six tabs:
+Choose **Incremento → Settings** to open seven tabs:
+
+- **Language**: choose Automatic (follow Anki), English, Hrvatski, or 简体中文
 
 - **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, topic/tag defaults, and saved provenance link types
 - **Review**: priority direction, per-type reviewer badge visibility, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
@@ -848,6 +850,18 @@ Choose **Incremento → Settings** to open six tabs:
 - **Writing**: editor defaults, automatic backup intervals, progress visibility, default progress scope, and word-count mode
 - **Shortcuts**: assign or clear shortcuts for Incremento actions
 - **Advanced**: open the guarded profile database inspector
+
+The **Language** tab saves your choice with **OK**; **Cancel** discards it. Restart Anki yourself to apply a new language. Existing readers, reviews, and unsaved drafts keep their current interface language until then. Reopening Settings shows the saved choice. The setting applies to the add-on in this Anki installation; it does not change Anki's own language.
+
+To create or edit a translation, use **Export template…** or **Export selected language…** in this tab. Open the CSV in Excel, Google Sheets or LibreOffice, edit only the `translation` column (including the language code and native name in the metadata rows), save as CSV UTF-8, then use **Import translations…**. Import previews the language and translated-entry count; **OK** saves it, **Cancel** discards it. Blank entries use English. Re-importing the same locale replaces that custom pack, so export the existing language before making corrections. The same CSV includes the add-on, PDF reader and Chrome extension and can be imported in both apps. See [TRANSLATING.md](TRANSLATING.md) for the complete spreadsheet walkthrough, placeholder/plural rules and troubleshooting.
+
+Imported Anki language packs belong to the active profile, under its `language_packs/` directory. If the saved language choice points to a pack absent from another profile, that profile uses English; import the CSV there separately to use it. Selecting a built-in language restores its shipped translation. Pack import never replaces a built-in catalog or translates user content.
+
+Incremento's **More → Review buttons** submenu, reviewer overlays, preview details, bookmark controls and generated reader labels follow this choice too. Native Anki actions beside them, such as **Replay Own Voice** and **Auto Advance**, follow Anki's own language preference. Settings guidance wraps into a full-width row so longer translations remain readable.
+
+The Chrome companion has its own **Settings → Language** choice. **Save** applies it immediately to the extension, including open bookmark/import views, without clearing their current work. **Cancel** or closing the settings view without saving leaves the old choice. Its choice is stored for the Chrome profile and works offline, even when Anki is closed. Browser-owned extension names and shortcut descriptions follow Chrome's language; the extension's own pages and menus follow its setting.
+
+**Automatic** follows the host language when supported and otherwise uses English. Chinese currently means Simplified Chinese (`zh-Hans`); Traditional Chinese is a separate translation. Language names always remain English, Hrvatski, and 简体中文 so that you can recover from an accidental choice. Missing translations use English. Tags, note-type/field names, saved custom preset names, document titles, and card content are not translated. New built-in schedule presets have translated display labels while their stored values remain stable.
 
 The advanced database editor creates a timestamped checkpoint first and starts read-only until you explicitly unlock writes.
 

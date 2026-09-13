@@ -16,6 +16,20 @@ body {
   padding: 14px;
 }
 
+.popup-navigation {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.popup-navigation .ghost-btn {
+  width: auto;
+}
+
+.popup > [hidden] {
+  display: none;
+}
+
 .panel {
   border: 1px solid rgba(71, 58, 36, 0.14);
   border-radius: 18px;

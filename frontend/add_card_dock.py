@@ -31,6 +31,11 @@ from aqt.qt import (
 from aqt.utils import tooltip
 
 try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t  # type: ignore
+
+try:
     from ..backend.config_service import load_addon_config
 except ImportError:
     from config_service import load_addon_config  # type: ignore
@@ -539,9 +544,27 @@ def _inject_transfer_buttons(editor) -> None:
         else:
             tree_link_checked = bool(tree_context.get("link_to_knowledge_tree"))
         tree_link_tooltip = str(tree_context.get("knowledge_tree_tooltip") or "")
-        extract_source_label = str(
+        extract_source = str(
             pending_options.get("source") or _last_fill_source or _last_selection_source
-        ).strip().upper()
+        ).strip().lower()
+        source_labels = {
+            "pdf": "PDF", "epub": "EPUB",
+            "web": t("reader_web_name"), "video": t("reader_video_name"),
+            "writing": t("reader_writing"), "selection": t("add_card_selection"),
+        }
+        extract_source_label = source_labels.get(extract_source, t("add_card_selection"))
+        extract_labels = {
+            "composer": t("add_card_extract_composer"),
+            "autosaves": t("add_card_draft_autosaves"),
+            "priority": t("add_card_priority"),
+            "topic": t("add_card_topic"),
+            "tree_child": t("add_card_tree_child"),
+            "batch": t("add_card_batch_qa"),
+            "selection": t("add_card_selection"),
+            "card_priority": t("add_card_card_priority"),
+            "field_number": t("reader_field_number", number="{number}"),
+            "insert_into_field": t("editor_insert_selected_text_into_field", field="{field}"),
+        }
         editor.web.eval(
             f"""
             (function() {{
@@ -555,6 +578,7 @@ def _inject_transfer_buttons(editor) -> None:
               var extractTreeLinkEnabled = {json.dumps(tree_link_enabled)};
               var extractTreeLinkTooltip = {json.dumps(tree_link_tooltip)};
               var extractSourceLabel = {json.dumps(extract_source_label)};
+              var extractLabels = {json.dumps(extract_labels)};
               if (!window.incrementoTransferButtons) {{
                 var styleId = 'incremento-transfer-style';
                 if (!document.getElementById(styleId)) {{
@@ -756,15 +780,15 @@ def _inject_transfer_buttons(editor) -> None:
                       panel = document.createElement('div');
                       panel.id = 'incremento-extract-options';
                       panel.className = 'incremento-extract-options';
-                      panel.setAttribute('aria-label', 'Extract composer');
+                      panel.setAttribute('aria-label', extractLabels.composer);
                       panel.innerHTML = [
-                        '<strong class="incremento-extract-heading">Extract composer</strong>',
+                        '<strong class="incremento-extract-heading">' + extractLabels.composer + '</strong>',
                         '<span id="incremento-extract-source" class="incremento-extract-source"></span>',
-                        '<span class="incremento-extract-save-state" aria-live="polite">Draft autosaves</span>',
-                        '<label>Priority <input id="incremento-extract-priority" type="number" min="0" max="100" step="0.1"></label>',
-                        '<label><input id="incremento-extract-topic" type="checkbox"> Topic</label>',
-                        '<label id="incremento-extract-tree-link-wrap"><input id="incremento-extract-tree-link" type="checkbox"> Tree child</label>',
-                        '<button id="incremento-extract-batch" class="incremento-extract-batch-btn" type="button">Batch Q/A…</button>'
+                        '<span class="incremento-extract-save-state" aria-live="polite">' + extractLabels.autosaves + '</span>',
+                        '<label>' + extractLabels.priority + ' <input id="incremento-extract-priority" type="number" min="0" max="100" step="0.1"></label>',
+                        '<label><input id="incremento-extract-topic" type="checkbox"> ' + extractLabels.topic + '</label>',
+                        '<label id="incremento-extract-tree-link-wrap"><input id="incremento-extract-tree-link" type="checkbox"> ' + extractLabels.tree_child + '</label>',
+                        '<button id="incremento-extract-batch" class="incremento-extract-batch-btn" type="button">' + extractLabels.batch + '</button>'
                       ].join('');
                       host.parentElement.insertBefore(panel, host);
                       var prio = panel.querySelector('#incremento-extract-priority');
@@ -773,7 +797,7 @@ def _inject_transfer_buttons(editor) -> None:
                       var treeLinkWrap = panel.querySelector('#incremento-extract-tree-link-wrap');
                       var batchBtn = panel.querySelector('#incremento-extract-batch');
                       var sourceBadge = panel.querySelector('#incremento-extract-source');
-                      sourceBadge.textContent = extractSourceLabel || 'SELECTION';
+                      sourceBadge.textContent = extractSourceLabel || extractLabels.selection;
                       prio.value = String(this.extractPriority);
                       topic.checked = !!this.extractTopic;
                       treeLink.checked = !!this.extractTreeLink;
@@ -822,7 +846,7 @@ def _inject_transfer_buttons(editor) -> None:
                       panel.id = 'incremento-scratch-priority';
                       panel.className = 'incremento-scratch-priority';
                       panel.innerHTML = [
-                        '<label>Card priority <input id="incremento-scratch-priority-input" type="number" min="0" max="100" step="0.1"></label>'
+                        '<label>' + extractLabels.card_priority + ' <input id="incremento-scratch-priority-input" type="number" min="0" max="100" step="0.1"></label>'
                       ].join('');
                       host.parentElement.insertBefore(panel, host);
                       var input = panel.querySelector('#incremento-scratch-priority-input');
@@ -879,8 +903,8 @@ def _inject_transfer_buttons(editor) -> None:
                         btn.type = 'button';
                         btn.className = 'incremento-transfer-btn';
                         btn.dataset.idx = String(idx);
-                        var name = window.incrementoTransferButtons.fieldNames[idx] || ('Field ' + (idx + 1));
-                        btn.title = 'Insert selected text into ' + name;
+                        var name = window.incrementoTransferButtons.fieldNames[idx] || extractLabels.field_number.replace('{{number}}', String(idx + 1));
+                        btn.title = extractLabels.insert_into_field.replace('{{field}}', function() {{ return name; }});
                         btn.innerHTML = '&#x21E2;';
                         btn.addEventListener('mousedown', function(evt) {{
                           evt.preventDefault();
@@ -953,7 +977,7 @@ def _inject_transfer_buttons(editor) -> None:
                     existingTreeLinkWrap.title = extractTreeLinkTooltip;
                   }}
                   if (existingSourceBadge) {{
-                    existingSourceBadge.textContent = extractSourceLabel || 'SELECTION';
+                    existingSourceBadge.textContent = extractSourceLabel || extractLabels.selection;
                   }}
                   window.incrementoTransferButtons.syncExtractOptions();
                 }}
@@ -1578,9 +1602,9 @@ def _set_add_card_tag_button_state(editor, button_id: str, active: bool) -> None
     try:
         label = "T" if button_id == _TOPIC_TAG_BUTTON_ID else "I"
         title = (
-            "Toggle configured topic tags"
+            t("add_card_topic_button_tooltip")
             if button_id == _TOPIC_TAG_BUTTON_ID
-            else "Toggle configured item tags"
+            else t("add_card_item_button_tooltip")
         )
         editor.web.eval(
             f"""
@@ -1896,9 +1920,7 @@ def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = 
             parent_card_id=source_card_id,
             knowledge_tree_link_enabled=False,
             link_to_knowledge_tree=True,
-            knowledge_tree_tooltip=(
-                "Extract lineage is added to the knowledge tree automatically."
-            ),
+            knowledge_tree_tooltip=t("add_card_knowledge_tree_lineage_tooltip"),
             preserve_web_extract_records=True,
         )
     else:
@@ -2249,7 +2271,7 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
 def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
     editor = _dock_editor()
     if editor is None or getattr(editor, "note", None) is None:
-        raise RuntimeError("Add Card dock is not available.")
+        raise RuntimeError(t("add_card_dock_unavailable"))
 
     note = editor.note
     note_type = note.note_type() or {}
@@ -2271,13 +2293,17 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
     min_fields = max(1, int(min_visible_fields or 1))
     if len(visible_fields) < min_fields:
         if min_fields == 2:
-            field_message = "two visible fields"
+            field_message = t("add_card_two_visible_fields")
         elif min_fields == 1:
-            field_message = "one visible field"
+            field_message = t("add_card_one_visible_field")
         else:
-            field_message = f"{min_fields} visible fields"
+            field_message = t("add_card_visible_fields", count=min_fields)
         raise RuntimeError(
-            f"Note type '{note_type_name or 'Unknown'}' needs at least {field_message}."
+            t(
+                "add_card_note_type_needs_fields",
+                name=note_type_name or t("add_card_unknown"),
+                fields=field_message,
+            )
         )
 
     deck_name = ""
@@ -2300,7 +2326,7 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
     if not options:
         source = str(_last_selection_source or "").strip()
         if not source:
-            raise RuntimeError("No active extract context is available.")
+            raise RuntimeError(t("add_card_no_extract_context"))
         source_card_id = _source_card_id_for_transfer(source)
         options = {
             "priority": _extract_priority_for_transfer(),
@@ -2317,9 +2343,7 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
                 "parent_card_id": source_card_id,
                 "knowledge_tree_link_enabled": False,
                 "link_to_knowledge_tree": True,
-                "knowledge_tree_tooltip": (
-                    "Extract lineage is added to the knowledge tree automatically."
-                ),
+                "knowledge_tree_tooltip": t("add_card_knowledge_tree_lineage_tooltip"),
             }
 
     batch_options = dict(options)
@@ -2354,13 +2378,13 @@ def create_extract_batch_notes(
     extract_context: dict | None = None,
 ) -> dict[str, object]:
     if question_field == answer_field:
-        raise ValueError("Question and answer fields must be different.")
+        raise ValueError(t("add_card_question_answer_fields_different"))
     if mw is None or getattr(mw, "col", None) is None:
-        raise RuntimeError("Anki collection is not available.")
+        raise RuntimeError(t("add_card_collection_unavailable"))
 
     model = mw.col.models.by_name(str(note_type_name or "").strip())
     if model is None:
-        raise RuntimeError(f"Note type '{note_type_name}' was not found.")
+        raise RuntimeError(t("add_card_note_type_not_found", name=note_type_name))
     _ensure_incremento_metadata_fields_saved(mw.col.models, model)
 
     deck = mw.col.decks.by_name(str(deck_name or "").strip()) if str(deck_name or "").strip() else None
@@ -2391,7 +2415,7 @@ def create_extract_batch_notes(
             note.note_type()["did"] = deck_id
             added = mw.col.add_note(note, deck_id)
             if not added:
-                raise RuntimeError("Anki rejected the note.")
+                raise RuntimeError(t("add_card_note_rejected"))
             applied_options = apply_extract_options_to_note(note, dict(base_options)) or dict(base_options)
             apply_extract_context_to_note(
                 note,
@@ -2639,26 +2663,26 @@ def _create_extract_draft_banner(dock, dialog, draft: dict):
     row = QHBoxLayout(banner)
     row.setContentsMargins(8, 5, 8, 5)
     source = str(draft.get("source") or "extract").strip().upper()
-    label = QLabel(f"Unsaved extract draft found ({source}).", banner)
+    label = QLabel(t("add_card_draft_found", source=source), banner)
     label.setWordWrap(True)
-    label.setAccessibleName("Unsaved extract draft")
+    label.setAccessibleName(t("add_card_draft_accessible"))
     row.addWidget(label, 1)
-    restore_button = QPushButton("Restore", banner)
-    restore_button.setAccessibleName("Restore unsaved extract draft")
-    discard_button = QPushButton("Discard", banner)
-    discard_button.setAccessibleName("Discard unsaved extract draft")
+    restore_button = QPushButton(t("add_card_draft_restore"), banner)
+    restore_button.setAccessibleName(t("add_card_draft_restore_accessible"))
+    discard_button = QPushButton(t("add_card_draft_discard"), banner)
+    discard_button.setAccessibleName(t("add_card_draft_discard_accessible"))
     row.addWidget(restore_button)
     row.addWidget(discard_button)
 
     def _restore() -> None:
         if _restore_extract_draft(dialog.editor, draft, dialog=dialog):
             banner.hide()
-            tooltip("Unsaved extract draft restored.")
+            tooltip(t("add_card_draft_restored"))
 
     def _discard() -> None:
         _clear_discarded_extract_draft()
         banner.hide()
-        tooltip("Unsaved extract draft discarded.")
+        tooltip(t("add_card_draft_discarded"))
 
     restore_button.clicked.connect(_restore)
     discard_button.clicked.connect(_discard)
@@ -3035,7 +3059,7 @@ def apply_extract_topic_mark_to_editor(editor, mark_topic: bool) -> bool:
         configured_add_card_topic_tags(),
         enabled=bool(mark_topic),
         opposite_tags=configured_add_card_item_tags(),
-        empty_message="No Add Card topic-button tags configured.",
+        empty_message=t("add_card_no_topic_button_tags"),
     )
 
 
@@ -3060,7 +3084,7 @@ def _on_topic_tag_button(editor) -> None:
     _toggle_editor_tag_button(
         editor,
         configured_add_card_topic_tags(),
-        "No Add Card topic-button tags configured.",
+        t("add_card_no_topic_button_tags"),
         opposite_tags=configured_add_card_item_tags(),
     )
     _sync_extract_mark_topic_from_note(getattr(editor, "note", None))
@@ -3075,7 +3099,7 @@ def _on_item_tag_button(editor) -> None:
     _toggle_editor_tag_button(
         editor,
         configured_add_card_item_tags(),
-        "No Add Card item-button tags configured.",
+        t("add_card_no_item_button_tags"),
         opposite_tags=configured_add_card_topic_tags(),
     )
     _sync_extract_mark_topic_from_note(getattr(editor, "note", None))
@@ -3099,7 +3123,7 @@ def _on_add_card_priority_button(editor) -> None:
         )
         dlg = dialog_class(
             current_priority=scratch_priority_for_editor(editor),
-            card_label="Priority for every card generated by this new note.",
+            card_label=t("add_card_priority_dialog_label"),
             lower_is_more_important=lower_is_more_important,
             parent=getattr(editor, "parentWindow", None) or mw,
         )
@@ -3107,9 +3131,9 @@ def _on_add_card_priority_button(editor) -> None:
             return
         value = set_scratch_priority_for_editor(editor, dlg.priority)
         _inject_transfer_buttons(editor)
-        tooltip(f"New-card priority set to {value:g}")
+        tooltip(t("add_card_priority_set", value=f"{value:g}"))
     except Exception:
-        tooltip("Could not open the new-card priority control.")
+        tooltip(t("add_card_priority_open_failed"))
 
 
 def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
@@ -3119,7 +3143,7 @@ def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
                 None,
                 "incrementoSetNewCardPriority",
                 _on_add_card_priority_button,
-                tip="Set priority for every card created from this new note",
+                tip=t("add_card_priority_button_tooltip"),
                 label="P",
                 id=_ADD_CARD_PRIORITY_BUTTON_ID,
                 disables=False,
@@ -3130,7 +3154,7 @@ def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
             None,
             "incrementoToggleTopicTag",
             _on_topic_tag_button,
-            tip="Toggle configured topic tags",
+            tip=t("add_card_topic_button_tooltip"),
             label="T",
             id=_TOPIC_TAG_BUTTON_ID,
             disables=False,
@@ -3141,7 +3165,7 @@ def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
             None,
             "incrementoToggleItemTag",
             _on_item_tag_button,
-            tip="Toggle configured item tags",
+            tip=t("add_card_item_button_tooltip"),
             label="I",
             id=_ITEM_TAG_BUTTON_ID,
             disables=False,
@@ -3199,7 +3223,7 @@ def build_add_card_dock():
     global _add_card_dock
     from aqt.addcards import AddCards
 
-    dock = QDockWidget("Add Card", mw)
+    dock = QDockWidget(t("add_card_title"), mw)
     dock.setObjectName("incremento_add_card_dock")
     dock.setMinimumWidth(400)
 
@@ -3463,7 +3487,7 @@ def _resolve_selection_from_source(source: str, callback) -> None:
 
 def transfer_selection_to_field(idx: int) -> None:
     if not _has_recent_selection():
-        tooltip("Select some text first.")
+        tooltip(t("add_card_select_text_first"))
         return
 
     source = _last_selection_source
@@ -3479,7 +3503,7 @@ def transfer_selection_to_field(idx: int) -> None:
         text = resolved_text or fallback_text
         text = _normalize_text(text)
         if not text:
-            tooltip("Select some text first.")
+            tooltip(t("add_card_select_text_first"))
             return
         priority = (
             _extract_priority_for_transfer()

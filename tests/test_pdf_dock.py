@@ -1,8 +1,11 @@
+import json
 import types
 import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 _dependency_names = (
     "session", "PyQt6", "PyQt6.QtPdf", "PyQt6.QtWebEngineWidgets",
@@ -47,6 +50,35 @@ def test_due_review_details_escape_card_content():
     assert "<script" not in rendered
     assert "&lt;img" in rendered
     assert "&lt;script&gt;" in rendered
+
+
+def test_pdf_limit_summary_uses_translated_mode_code(monkeypatch):
+    messages = {
+        "reader_pdf_limit_summary": "Danas: {used}/{limit} stranica, preostaje {remaining}. Način: {mode}.",
+        "reader_limit_hard_stop": "Strogo zaustavljanje",
+    }
+    monkeypatch.setattr(pdf_dock, "t", lambda key, **values: messages[key].format(**values), raising=False)
+
+    summary = pdf_dock._pdf_limit_summary_text({
+        "enabled": True, "daily_page_limit": 10, "pages_used": 7,
+        "pages_remaining": 3, "enforcement_mode": "hard_stop",
+    })
+
+    assert summary == "Danas: 7/10 stranica, preostaje 3. Način: Strogo zaustavljanje."
+
+
+def test_missing_pdf_screen_uses_selected_language_and_escapes_filename(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "get_locale", lambda: "zh-Hans")
+    monkeypatch.setattr(pdf_dock, "t", lambda key, **_values: {
+        "reader_pdf_missing_title": "PDF 文件丢失",
+    }.get(key, key), raising=False)
+
+    html = pdf_dock._missing_pdf_html("<x>.pdf", "/tmp/<x>.pdf")
+
+    assert '<html lang="zh-Hans">' in html
+    assert "PDF 文件丢失" in html
+    assert "&lt;x&gt;.pdf" in html
+    assert "<x>.pdf" not in html
 
 
 def test_pdf_bridge_rejects_static_prefix_and_stale_card(monkeypatch):
@@ -148,7 +180,7 @@ def test_pdf_viewer_exposes_opt_in_annotation_links():
 
     assert "getAnnotations({ intent: 'display' })" in hook_source
     assert "resolvePdfAnnotationLink" in hook_source
-    assert "Enable clickable links" in viewer_source
+    assert 'tr("reader_links_enable")' in viewer_source
     assert "incremento_pdf_open_link:" in viewer_source
 
 
@@ -158,7 +190,7 @@ def test_pdf_link_toggle_has_adjacent_jump_back_control():
         encoding="utf-8"
     )
 
-    assert viewer_source.count("Jump Back") >= 2
+    assert viewer_source.count("tr('reader_jump_back')") >= 2
     assert "jumpBackFromPdfLink" in viewer_source
     assert "setLinkBackHistory([])" in viewer_source
 
@@ -172,7 +204,7 @@ def test_pdf_reader_exposes_right_click_anchor_and_native_context_menu():
 
     assert "incrementoPdfAnchorAtPoint" in viewer_source
     assert "customContextMenuRequested" in dock_source
-    assert "Copy Link to This Place" in dock_source
+    assert 't("reader_copy_link_to_place")' in dock_source
 
 
 def test_pdf_pending_start_keeps_read_anchor_arguments_aligned():
@@ -440,6 +472,30 @@ def test_pdf_citation_can_embed_an_exact_scroll_anchor(monkeypatch):
 
     assert "Page 42. of Writer Guide" in html
     assert "scroll_ratio\\&quot;: 0.625" in html
+
+
+@pytest.mark.parametrize("locale,citation,plain", [
+    ("en", "Page 7. of Writer &amp; Guide", "Writer & Guide — page 7"),
+    ("hr", "Stranica 7. iz Writer &amp; Guide", "Writer & Guide — stranica 7"),
+    ("zh-Hans", "Writer &amp; Guide，第 7 页", "Writer & Guide — 第 7 页"),
+])
+def test_pdf_copied_citation_translates_generated_labels_and_preserves_title(monkeypatch, locale, citation, plain):
+    from backend.i18n import Translator
+
+    copied = []
+    monkeypatch.setattr(pdf_dock, "t", Translator(locale).t)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Writer & Guide")
+    monkeypatch.setattr(pdf_dock, "set_reader_anchor_clipboard", lambda html, label: copied.append((html, label)) or True)
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda _text: None)
+
+    assert pdf_dock._copy_pdf_context_anchor({"cardId": 55, "page": 7, "scrollRatio": 0.25})
+
+    assert citation in copied[0][0]
+    assert copied[0][1] == plain
+    assert "writer-guide.pdf" in copied[0][0]
+    assert "scroll_ratio\\&quot;: 0.25" in copied[0][0]
 
 
 def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypatch):
@@ -880,7 +936,11 @@ def test_pdf_storage_path_rejects_traversal(monkeypatch):
     assert pdf_dock._pdf_storage_path("../../../etc/passwd") == ""
 
 
-def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch):
+@pytest.mark.parametrize("reader_locale,custom_language", [
+    ("zh-Hans", None),
+    ("de", {"locale": "de", "messages": {"reader_previous_page": 'Vorherige Seite "<title>"'}}),
+])
+def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reader_locale, custom_language):
     events = []
     js_calls = []
     load_calls = []
@@ -949,6 +1009,8 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch):
     monkeypatch.setattr(pdf_dock, "_build_pdf_dock", lambda: (_ for _ in ()).throw(AssertionError("unexpected build")))
     monkeypatch.setattr(pdf_dock, "mw", fake_mw)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "get_locale", lambda: reader_locale, raising=False)
+    monkeypatch.setattr(pdf_dock, "get_custom_reader_payload", lambda: custom_language, raising=False)
     monkeypatch.setattr(pdf_dock, "_pdf_highlights_payload", lambda card_id: [])
     monkeypatch.setattr(pdf_dock, "_pdf_bookmarks_payload", lambda card_id: [])
     monkeypatch.setattr(pdf_dock, "_current_pdf_limit_status", lambda *args, **kwargs: {"enabled": False})
@@ -994,6 +1056,9 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch):
     assert "scrollRatio: 0.73" in js_calls[0]
     assert "scrollToReadAnchor: false" in js_calls[0]
     assert "scrollToTopOnPageChange: false" in js_calls[0]
+    assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
+    assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
+    assert f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}));' in js_calls[0]
     assert '"old-file.pdf"' not in js_calls[0]
 
 

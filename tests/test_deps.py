@@ -278,3 +278,18 @@ class TestInstallPymupdf:
         command = run.call_args.args[0]
         assert deps.PYMUPDF_REQUIREMENT in command
         assert "--no-input" in command
+
+
+def test_dependency_instructions_translate_prose_and_preserve_commands(monkeypatch):
+    import backend.i18n as i18n
+    import deps
+    old = i18n.get_locale()
+    try:
+        i18n.initialize_language('hr')
+        monkeypatch.setattr(deps, '_platform', lambda: 'Darwin')
+        text = deps.tesseract_instructions()
+        assert text.startswith('Instalirajte Tesseract putem Homebrewa:')
+        assert 'brew install tesseract' in text
+        assert 'https://brew.sh' in text
+    finally:
+        i18n.initialize_language(old)

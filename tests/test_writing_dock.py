@@ -1,6 +1,45 @@
 import writing_dock
 
 
+def test_writing_bookmarks_localize_links_but_preserve_user_labels(monkeypatch):
+    from types import SimpleNamespace
+    from backend.i18n import Translator
+    translator = Translator('hr')
+    monkeypatch.setattr(writing_dock, 't', translator.t)
+    html = []
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
+        _bookmarks_btn=SimpleNamespace(setText=lambda value: None),
+        _bookmarks_panel=SimpleNamespace(setHtml=html.append)))
+    monkeypatch.setattr(writing_dock, '_writing_bookmarks', lambda: [
+        {'id': 'bookmark-1', 'label': '<My bookmark>'}])
+    writing_dock._refresh_writing_bookmarks_panel()
+    assert '>Idi</a>' in html[-1] and '>Izbriši</a>' in html[-1]
+    assert '&lt;My bookmark&gt;' in html[-1]
+    assert 'inc://writing-bookmark-open/bookmark-1' in html[-1]
+    monkeypatch.setattr(writing_dock, '_writing_bookmarks', lambda: [])
+    writing_dock._refresh_writing_bookmarks_panel()
+    assert 'No bookmarks yet' not in html[-1]
+    assert 'Još nema' in html[-1]
+
+
+def test_empty_markdown_placeholder_translates_but_selected_text_stays_unchanged(monkeypatch):
+    from types import SimpleNamespace
+    from backend.i18n import Translator
+    monkeypatch.setattr(writing_dock, 't', Translator('zh-Hans').t)
+    selected = ['']
+    inserted = []
+    cursor = SimpleNamespace(selectedText=lambda: selected[0], beginEditBlock=lambda: None,
+                             endEditBlock=lambda: None, insertText=inserted.append)
+    editor = SimpleNamespace(textCursor=lambda: cursor, setTextCursor=lambda value: None,
+                             setFocus=lambda: None)
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(_editor=editor))
+    writing_dock._apply_markdown_transform('number')
+    assert inserted[-1] == '1. 列表项'
+    selected[0] = 'My original English text'
+    writing_dock._apply_markdown_transform('number')
+    assert inserted[-1] == '1. My original English text'
+
+
 def test_configured_writing_defaults():
     assert writing_dock.configured_writing_wrap_enabled({}) is True
     assert writing_dock.configured_writing_focus_mode({}) is False
@@ -89,3 +128,9 @@ def test_scope_label_formats_human_text():
     assert writing_dock._scope_label("today") == "Words today"
     assert writing_dock._scope_label("session") == "Words this session"
     assert writing_dock._scope_label("all_time") == "Words total"
+
+
+def test_backup_timestamp_uses_the_locale_date_formatter(monkeypatch):
+    monkeypatch.setattr(writing_dock, "format_date", lambda _value: "LOCAL-DATE")
+
+    assert writing_dock._format_backup_timestamp(0).startswith("LOCAL-DATE ")

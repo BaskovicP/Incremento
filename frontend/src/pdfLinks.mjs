@@ -85,7 +85,7 @@ export async function resolvePdfAnnotationLink(annotation, pdfDocument, viewport
   return {
     kind: 'internal',
     targetPage,
-    label: String(annotation?.title || annotation?.contents || `Go to page ${targetPage}`).slice(0, 240),
+    label: String(annotation?.title || annotation?.contents || '').slice(0, 240),
     ...rect,
   };
 }

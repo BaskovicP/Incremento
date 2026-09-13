@@ -255,7 +255,7 @@ def test_filter_toggle_refreshes_ready_query_when_search_while_typing_is_disable
 def test_live_anki_filter_label_does_not_claim_cross_profile_search():
     constructor_source = inspect.getsource(_SearchAllDialog.__init__)
 
-    assert 'QCheckBox("Existing Anki Items Only")' in constructor_source
+    assert 'QCheckBox(t("search_all_existing_anki_items"))' in constructor_source
     assert "Current Anki Profile Only" not in constructor_source
 
 

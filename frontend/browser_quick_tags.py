@@ -26,6 +26,10 @@ from aqt.qt import (
     qconnect,
 )
 from aqt.utils import showInfo, tooltip
+try:
+    from ..backend.i18n import t as _t, tn as _tn
+except ImportError:
+    from backend.i18n import t as _t, tn as _tn
 
 try:
     from ..backend.db import (
@@ -177,7 +181,7 @@ class BrowserTagColorSettingsDialog(QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Quick Tag Settings")
+        self.setWindowTitle(_t("imports_quick_tags_settings_title"))
         self.setMinimumWidth(880)
         self._base_tags = normalize_tag_list(tags)
         self._tags = list(self._base_tags)
@@ -198,22 +202,20 @@ class BrowserTagColorSettingsDialog(QDialog):
 
         root = QVBoxLayout(self)
         intro = QLabel(
-            "Choose a unique color for each tag. Topic uses green automatically. "
-            "Automatic restores the assigned default color."
+            _t("imports_quick_tags_settings_intro")
         )
         intro.setWordWrap(True)
         root.addWidget(intro)
 
         self._use_fixed_sets = QCheckBox(
-            "Use my fixed tag sets instead of recent tag sets",
+            _t("imports_quick_tags_fixed_mode"),
             self,
         )
         self._use_fixed_sets.setChecked(bool(use_fixed_sets))
         root.addWidget(self._use_fixed_sets)
 
         fixed_hint = QLabel(
-            "Define the numbered slots yourself. Separate tags with spaces, commas, "
-            "or semicolons. Fill slots from 1 upward without gaps.",
+            _t("imports_quick_tags_fixed_help"),
             self,
         )
         fixed_hint.setWordWrap(True)
@@ -230,7 +232,7 @@ class BrowserTagColorSettingsDialog(QDialog):
             column = (index % 3) * 2
             fixed_grid.addWidget(QLabel(str(index + 1), self), row, column)
             edit = QLineEdit(self)
-            edit.setPlaceholderText("topic psychology")
+            edit.setPlaceholderText(_t("imports_quick_tags_placeholder"))
             edit.setText(" ".join(normalize_tag_list(saved_groups[index])))
             edit.setEnabled(self._use_fixed_sets.isChecked())
             edit.textChanged.connect(self._on_fixed_sets_changed)
@@ -252,6 +254,13 @@ class BrowserTagColorSettingsDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
+        for standard, key in (
+            (QDialogButtonBox.StandardButton.Ok, "imports_ok"),
+            (QDialogButtonBox.StandardButton.Cancel, "imports_cancel"),
+        ):
+            button = buttons.button(standard)
+            if button is not None:
+                button.setText(_t(key))
         qconnect(buttons.accepted, self.accept)
         qconnect(buttons.rejected, self.reject)
         root.addWidget(buttons)
@@ -336,14 +345,14 @@ class BrowserTagColorSettingsDialog(QDialog):
             self._previews[key] = preview
             self._color_grid.addWidget(preview, row, 1)
 
-            choose = QPushButton("Choose…", self._color_host)
+            choose = QPushButton(_t("imports_quick_tags_choose"), self._color_host)
             qconnect(
                 choose.clicked,
                 lambda _checked=False, value=tag: self._choose_color(value),
             )
             self._color_grid.addWidget(choose, row, 2)
 
-            automatic = QPushButton("Automatic", self._color_host)
+            automatic = QPushButton(_t("imports_quick_tags_automatic"), self._color_host)
             qconnect(
                 automatic.clicked,
                 lambda _checked=False, value=tag: self._use_automatic(value),
@@ -376,7 +385,7 @@ class BrowserTagColorSettingsDialog(QDialog):
         owner = self._color_owner(tag, normalized)
         if owner:
             showInfo(
-                f"That color is already used by #{owner}. Choose a different color.",
+                _t("imports_quick_tags_color_conflict", tag=owner),
                 parent=self,
             )
             return
@@ -389,7 +398,7 @@ class BrowserTagColorSettingsDialog(QDialog):
 
     def _choose_color(self, tag: str) -> None:
         current = QColor(self._effective_color(tag))
-        chosen = QColorDialog.getColor(current, self, f"Choose color for #{tag}")
+        chosen = QColorDialog.getColor(current, self, _t("imports_quick_tags_choose_color", tag=tag))
         if not chosen.isValid():
             return
         color = chosen.name(QColor.NameFormat.HexRgb).upper()
@@ -422,17 +431,17 @@ class BrowserTagColorSettingsDialog(QDialog):
             groups = self.fixed_tag_groups
             filled_indexes = [index for index, group in enumerate(groups) if group]
             if not filled_indexes:
-                showInfo("Add at least one fixed tag set, or turn fixed mode off.", parent=self)
+                showInfo(_t("imports_quick_tags_need_fixed"), parent=self)
                 return
             last_filled = max(filled_indexes)
             if any(not groups[index] for index in range(last_filled + 1)):
-                showInfo("Fill fixed tag-set slots from 1 upward without gaps.", parent=self)
+                showInfo(_t("imports_quick_tags_no_gaps"), parent=self)
                 return
             seen: set[tuple[str, ...]] = set()
             for group in groups[: last_filled + 1]:
                 key = tuple(sorted(tag.casefold() for tag in group))
                 if key in seen:
-                    showInfo("Each fixed tag set must be unique.", parent=self)
+                    showInfo(_t("imports_quick_tags_unique"), parent=self)
                     return
                 seen.add(key)
         super().accept()
@@ -449,7 +458,7 @@ class BrowserQuickTagDialog(QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Quick Add Tags")
+        self.setWindowTitle(_t("imports_quick_tags_title"))
         self.setMinimumWidth(960)
         self.selected_tags: list[str] = []
         self._shortcuts: list[QShortcut] = []
@@ -461,18 +470,10 @@ class BrowserQuickTagDialog(QDialog):
         root = QVBoxLayout(self)
         root.setSpacing(10)
 
-        noun = "note" if selected_note_count == 1 else "notes"
         if groups:
-            intro_text = (
-                f"Apply one tag set to {selected_note_count} selected {noun}. "
-                "Press 1–9 or A–I, or click a set. Slots run across each row. "
-                "Each tag always keeps the same color."
-            )
+            intro_text = _tn("imports_quick_tags_intro", selected_note_count)
         else:
-            intro_text = (
-                "No tag sets are available yet. Open Settings… to define your own "
-                "fixed tag sets."
-            )
+            intro_text = _t("imports_quick_tags_empty")
         intro = QLabel(intro_text)
         intro.setWordWrap(True)
         root.addWidget(intro)
@@ -490,10 +491,10 @@ class BrowserQuickTagDialog(QDialog):
             button = QPushButton(self)
             button.setMinimumHeight(42)
             button.setAccessibleName(
-                f"{number_key} or {letter_key}: {', '.join(tags)}"
+                _t("imports_quick_tags_accessible", number=number_key, letter=letter_key, tags=", ".join(tags))
             )
             button.setToolTip(
-                f"{number_key} or {letter_key}: {' + '.join(tags)}"
+                _t("imports_quick_tags_accessible", number=number_key, letter=letter_key, tags=" + ".join(tags))
             )
 
             button_layout = QHBoxLayout(button)
@@ -534,12 +535,15 @@ class BrowserQuickTagDialog(QDialog):
                 self._shortcuts.append(shortcut)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
+        cancel_button = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_button is not None:
+            cancel_button.setText(_t("imports_cancel"))
         if self._color_settings_callback is not None:
             settings_button = buttons.addButton(
-                "Settings…",
+                _t("imports_quick_tags_settings"),
                 QDialogButtonBox.ButtonRole.ActionRole,
             )
-            settings_button.setToolTip("Configure fixed tag sets and colors")
+            settings_button.setToolTip(_t("imports_quick_tags_settings_help"))
             qconnect(settings_button.clicked, self._open_color_settings)
         qconnect(buttons.rejected, self.reject)
         root.addWidget(buttons)
@@ -596,7 +600,7 @@ def _selected_note_ids(browser) -> list[int]:
 def open_browser_quick_tag_dialog(browser, addon_dir: str) -> None:
     note_ids = _selected_note_ids(browser)
     if not note_ids:
-        showInfo("Select one or more Browser rows first.", parent=browser)
+        showInfo(_t("imports_quick_tags_select_rows"), parent=browser)
         return
 
     recent_groups = _browser_recent_tag_groups(addon_dir)
@@ -744,9 +748,8 @@ def open_browser_quick_tag_dialog(browser, addon_dir: str) -> None:
         except Exception:
             pass
         count = int(getattr(result, "count", 0) or 0)
-        noun = "note" if count == 1 else "notes"
         tag_label = " ".join(f"#{tag}" for tag in selected_tags)
-        tooltip(f"Added {tag_label} to {count} {noun}.", parent=browser)
+        tooltip(_tn("imports_quick_tags_applied", count, tags=tag_label), parent=browser)
 
     add_tags_to_notes(
         parent=browser,
@@ -759,7 +762,7 @@ def install_browser_quick_tag_action(browser, addon_dir: str) -> None:
     if getattr(browser, "_incremento_quick_tag_action", None) is not None:
         return
 
-    action = QAction("Quick Add Tags…", browser)
+    action = QAction(_t("imports_quick_tags_action"), browser)
     action.setShortcut(QKeySequence("Ctrl+T"))
     action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
     qconnect(

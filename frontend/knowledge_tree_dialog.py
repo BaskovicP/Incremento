@@ -45,6 +45,11 @@ from PyQt6.QtCore import QRect, QSize
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap
 
 try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn  # type: ignore
+
+try:
     from ..backend.priority_manager import configured_priority_lower_is_more_important
 except ImportError:
     from priority_manager import configured_priority_lower_is_more_important  # type: ignore
@@ -174,6 +179,30 @@ _COMPACT_TOOLBAR_WIDTH = 560
 _VERTICAL_SPLITTER_WIDTH = 760
 _DISPLAY_TITLE_LIMIT = 180
 _DEFAULT_PRIORITY_THRESHOLDS = (33.0, 67.0)
+
+
+def _localized_search_match_reason(result: dict) -> str:
+    """Present structured search metadata while retaining backend identifiers."""
+    source = str(result.get("match_source") or "")
+    fields = list(result.get("matched_fields") or [])
+    if source == "title":
+        return t("knowledge_tree_match_title")
+    if source == "metadata":
+        labels = [t(message_id) for field, message_id in (
+            ("deck_name", "knowledge_tree_match_deck"),
+            ("note_type_name", "knowledge_tree_match_note_type"),
+            ("card_id", "knowledge_tree_match_card_id"),
+        ) if field in fields]
+        return t("knowledge_tree_match_metadata_fields", fields=", ".join(labels)) if labels else t("knowledge_tree_match_metadata")
+    if source == "note_text":
+        note_fields = [str(field).split(":", 1)[1] for field in fields if str(field).startswith("field:")]
+        if not note_fields:
+            return t("knowledge_tree_match_card_text")
+        summary = ", ".join(note_fields[:2])
+        if len(note_fields) > 2:
+            summary += f" +{len(note_fields) - 2}"
+        return t("knowledge_tree_match_card_fields", fields=summary)
+    return str(result.get("match_reason") or "").strip()
 
 
 def _priority_text(value) -> str:
@@ -307,7 +336,11 @@ def _card_detail_text_and_source(note, pdf_target: dict | None) -> tuple[str, st
 
 
 def _kind_label(node_kind: str) -> str:
-    return "Topic" if normalize_node_kind(node_kind) == NODE_KIND_TOPIC else "Item"
+    return (
+        t("knowledge_tree_topic")
+        if normalize_node_kind(node_kind) == NODE_KIND_TOPIC
+        else t("knowledge_tree_item")
+    )
 
 
 def _kind_icon(node_kind: str) -> QIcon:
@@ -383,10 +416,10 @@ def _row_title(row: dict | None, card_id: int | None = None) -> str:
             return title
         row_card_id = row.get("card_id")
         if row_card_id is not None:
-            return f"Card {int(row_card_id)}"
+            return t("knowledge_tree_card_number", card_id=int(row_card_id))
     if card_id is not None:
-        return f"Card {int(card_id)}"
-    return "Unknown card"
+        return t("knowledge_tree_card_number", card_id=int(card_id))
+    return t("knowledge_tree_unknown_card")
 
 
 def _compact_display_text(text: str, *, limit: int = _DISPLAY_TITLE_LIMIT) -> str:
@@ -401,12 +434,12 @@ def _open_pdf_action_state(
     pdf_target: dict[str, str | int | bool] | None,
 ) -> tuple[bool, str]:
     if int(selected_count) <= 0:
-        return False, "Select exactly one knowledge-tree node to open its linked PDF."
+        return False, t("knowledge_tree_open_pdf_select_one")
     if int(selected_count) != 1:
-        return False, "Open PDF is available only when exactly one knowledge-tree node is selected."
+        return False, t("knowledge_tree_open_pdf_one_only")
     if not pdf_target or str(pdf_target.get("kind") or "").strip() != "pdf":
-        return False, "Selected node does not link to a PDF."
-    return True, "Open the linked PDF in the existing PDF dock."
+        return False, t("knowledge_tree_open_pdf_not_linked")
+    return True, t("knowledge_tree_open_pdf_available")
 
 
 class _KnowledgeTreeWidget(QTreeWidget):
@@ -530,27 +563,24 @@ class _CreateNodeDialog(QDialog):
         self._node_kind = normalize_node_kind(node_kind)
         self._note_type_specs = available_note_types()
         self._field_widgets: dict[str, QTextEdit] = {}
-        self.setWindowTitle(f"Create {_kind_label(self._node_kind)}")
+        self.setWindowTitle(t("knowledge_tree_create_title", kind=_kind_label(self._node_kind)))
         self.setMinimumWidth(560)
         self.setMinimumHeight(520)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        summary = QLabel(
-            f"Create a new {_kind_label(self._node_kind).lower()} card and insert it into the knowledge tree. "
-            "The first field becomes the tree label."
-        )
+        summary = QLabel(t("knowledge_tree_create_summary", kind=_kind_label(self._node_kind)))
         summary.setWordWrap(True)
         layout.addWidget(summary)
 
-        layout.addWidget(QLabel("Note type:"))
+        layout.addWidget(QLabel(t("knowledge_tree_note_type")))
         self._note_type_combo = QComboBox()
         for spec in self._note_type_specs:
             self._note_type_combo.addItem(spec["name"])
         layout.addWidget(self._note_type_combo)
 
-        layout.addWidget(QLabel("Deck:"))
+        layout.addWidget(QLabel(t("knowledge_tree_deck")))
         self._deck_combo = QComboBox()
         for name in available_deck_names():
             self._deck_combo.addItem(name)
@@ -566,18 +596,16 @@ class _CreateNodeDialog(QDialog):
         self._fields_scroll.setWidget(self._fields_host)
         layout.addWidget(self._fields_scroll, 1)
 
-        self._hint = QLabel(
-            f"The created note will be tagged as {_kind_label(self._node_kind).lower()} and linked to this tree."
-        )
+        self._hint = QLabel(t("knowledge_tree_create_hint", kind=_kind_label(self._node_kind)))
         self._hint.setWordWrap(True)
         self._hint.setStyleSheet("color:#666;font-size:11px;")
         layout.addWidget(self._hint)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        ok_btn = QPushButton("Create")
+        ok_btn = QPushButton(t("common_create"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(t("common_cancel"))
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)
         layout.addLayout(btn_row)
@@ -602,13 +630,13 @@ class _CreateNodeDialog(QDialog):
 
     def accept(self) -> None:
         if not self.title:
-            showInfo("Knowledge-tree cards need content in the first field.")
+            showInfo(t("knowledge_tree_content_required"))
             return
         if not self.note_type_name:
-            showInfo("Choose a note type for the new knowledge-tree card.")
+            showInfo(t("knowledge_tree_note_type_required"))
             return
         if not self.deck_name:
-            showInfo("Choose a deck for the new knowledge-tree card.")
+            showInfo(t("knowledge_tree_deck_required"))
             return
         super().accept()
 
@@ -631,7 +659,7 @@ class _CreateNodeDialog(QDialog):
         spec = self._current_spec()
         field_names = list((spec or {}).get("fields") or [])
         if not field_names:
-            label = QLabel("This note type does not expose editable fields.")
+            label = QLabel(t("knowledge_tree_no_editable_fields"))
             label.setWordWrap(True)
             self._fields_layout.addWidget(label)
             return
@@ -643,7 +671,7 @@ class _CreateNodeDialog(QDialog):
             editor.setAcceptRichText(False)
             editor.setFixedHeight(90 if index == 0 else 110)
             if index == 0:
-                editor.setPlaceholderText(f"New {_kind_label(self._node_kind)}")
+                editor.setPlaceholderText(t("knowledge_tree_new_kind", kind=_kind_label(self._node_kind)))
             existing_text = str(existing_values.get(field_name) or "")
             if existing_text:
                 editor.setPlainText(existing_text)
@@ -691,33 +719,33 @@ class _LinkExistingDialog(QDialog):
         super().__init__(parent)
         self._exclude_card_ids = {int(card_id) for card_id in exclude_card_ids}
         self._has_selected_node = bool(has_selected_node)
-        self.setWindowTitle("Link Existing Card")
+        self.setWindowTitle(t("knowledge_tree_link_existing_title"))
         self.setMinimumWidth(640)
         self.setMinimumHeight(520)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        summary = QLabel("Search existing cards and link one or more into the knowledge tree.")
+        summary = QLabel(t("knowledge_tree_link_existing_summary"))
         summary.setWordWrap(True)
         layout.addWidget(summary)
 
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("Search by card title...")
+        self._search_edit.setPlaceholderText(t("knowledge_tree_search_card_placeholder"))
         layout.addWidget(self._search_edit)
 
         self._results_label = QLabel("")
         self._results_label.setStyleSheet("color:#666;font-size:11px;")
         layout.addWidget(self._results_label)
 
-        layout.addWidget(QLabel("Placement:"))
+        layout.addWidget(QLabel(t("knowledge_tree_placement")))
         self._placement_combo = QComboBox()
         self._placement_combo.addItem(
-            "As children of selected node",
+            t("knowledge_tree_place_children"),
             LINK_PLACEMENT_CHILDREN,
         )
         self._placement_combo.addItem(
-            "At same level as selected node",
+            t("knowledge_tree_place_siblings"),
             LINK_PLACEMENT_SIBLINGS,
         )
         sibling_index = self._placement_combo.findData(LINK_PLACEMENT_SIBLINGS)
@@ -725,7 +753,7 @@ class _LinkExistingDialog(QDialog):
             sibling_item = self._placement_combo.model().item(sibling_index)
             if sibling_item is not None and not self._has_selected_node:
                 sibling_item.setEnabled(False)
-                sibling_item.setToolTip("Select a node first to link cards beside it.")
+                sibling_item.setToolTip(t("knowledge_tree_place_siblings_tooltip"))
         layout.addWidget(self._placement_combo)
 
         self._placement_hint = QLabel("")
@@ -739,9 +767,9 @@ class _LinkExistingDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        ok_btn = QPushButton("Link")
+        ok_btn = QPushButton(t("common_link"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(t("common_cancel"))
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)
         layout.addLayout(btn_row)
@@ -760,15 +788,15 @@ class _LinkExistingDialog(QDialog):
         placement = self.placement_mode
         if placement == LINK_PLACEMENT_SIBLINGS:
             self._placement_hint.setText(
-                "Selected cards will be linked beside the selected node, under the same parent."
+                t("knowledge_tree_link_siblings_hint")
             )
         elif self._has_selected_node:
             self._placement_hint.setText(
-                "Selected cards will be linked under the selected node as siblings of each other."
+                t("knowledge_tree_link_children_hint")
             )
         else:
             self._placement_hint.setText(
-                "No node is selected, so selected cards will be linked at the root level."
+                t("knowledge_tree_link_root_hint")
             )
 
     def _refresh_results(self) -> None:
@@ -780,22 +808,24 @@ class _LinkExistingDialog(QDialog):
         )
         self._list.clear()
         for result in results:
-            title = str(result.get("title") or "").strip() or f"Card {result['card_id']}"
+            title = str(result.get("title") or "").strip() or t(
+                "knowledge_tree_card_number", card_id=result["card_id"]
+            )
             deck = str(result.get("deck_name") or "").strip()
             note_type = str(result.get("note_type_name") or "").strip()
-            extra_parts = [part for part in [deck, note_type, f"card {result['card_id']}"] if part]
+            extra_parts = [part for part in [deck, note_type, t("knowledge_tree_card_reference", card_id=result['card_id'])] if part]
             item = QListWidgetItem(f"{title}  |  " + "  ·  ".join(extra_parts))
             item.setData(_ROLE_CARD_ID, int(result["card_id"]))
             self._list.addItem(item)
 
         count = self._list.count()
-        self._results_label.setText(f"{count} result{'s' if count != 1 else ''} shown.")
+        self._results_label.setText(tn("knowledge_tree_results_shown", count))
         if count:
             self._list.setCurrentRow(0)
 
     def accept(self) -> None:
         if not self.selected_card_ids:
-            showInfo("Choose one or more existing cards to link into the knowledge tree.")
+            showInfo(t("knowledge_tree_link_selection_required"))
             return
         super().accept()
 
@@ -856,7 +886,7 @@ class KnowledgeTreeDialog(QDialog):
         self._splitter_vertical: bool | None = None
         self._responsive_ready = False
 
-        self.setWindowTitle("Incremento — Knowledge tree")
+        self.setWindowTitle(t("knowledge_tree_title"))
         self.resize(1120, 720)
         self._apply_style()
 
@@ -881,7 +911,7 @@ class KnowledgeTreeDialog(QDialog):
 
         close_row = QHBoxLayout()
         close_row.addStretch()
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(t("common_close"))
         close_btn.setObjectName("KnowledgeActionButton")
         close_btn.setIcon(_readable_icon(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogCloseButton),
@@ -1058,32 +1088,32 @@ class KnowledgeTreeDialog(QDialog):
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
         toolbar_layout.setSpacing(8)
         self._study_btn = self._build_toolbar_button(
-            "Study",
+            t("knowledge_tree_study"),
             _toolbar_glyph_icon("play", self.palette()),
             self._study_selected_branch,
-            tool_tip="Open the learning dialog and study only this subtree.",
+            tool_tip=t("knowledge_tree_study_tooltip"),
         )
         self._add_btn = _ToolbarMenuButton(toolbar)
         self._add_btn.setObjectName("KnowledgeToolbarButton")
         self._add_btn.setProperty("hasPopup", True)
-        self._add_btn.setText("Add")
+        self._add_btn.setText(t("knowledge_tree_add"))
         self._add_btn.setIcon(_toolbar_glyph_icon("add", self.palette()))
         self._add_btn.setIconSize(QSize(18, 18))
         self._add_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self._add_btn.setToolTip("Add a topic or item under the selected node.")
+        self._add_btn.setToolTip(t("knowledge_tree_add_tooltip"))
         add_menu = QMenu(self._add_btn)
-        self._add_topic_action = QAction(_kind_icon(NODE_KIND_TOPIC), "Add Topic Child", add_menu)
-        self._add_item_action = QAction(_kind_icon(NODE_KIND_ITEM), "Add Item Child", add_menu)
+        self._add_topic_action = QAction(_kind_icon(NODE_KIND_TOPIC), t("knowledge_tree_add_topic_child"), add_menu)
+        self._add_item_action = QAction(_kind_icon(NODE_KIND_ITEM), t("knowledge_tree_add_item_child"), add_menu)
         qconnect(self._add_topic_action.triggered, lambda _checked=False: self._create_node(NODE_KIND_TOPIC))
         qconnect(self._add_item_action.triggered, lambda _checked=False: self._create_node(NODE_KIND_ITEM))
         add_menu.addAction(self._add_topic_action)
         add_menu.addAction(self._add_item_action)
         self._add_btn.setMenu(add_menu)
-        self._register_toolbar_button(self._add_btn, "Add")
+        self._register_toolbar_button(self._add_btn, t("knowledge_tree_add"))
 
         self._search_edit = _SearchLineEdit(toolbar)
         self._search_edit.setObjectName("KnowledgeSearchEdit")
-        self._search_edit.setPlaceholderText("Search this tree…")
+        self._search_edit.setPlaceholderText(t("knowledge_tree_search_placeholder"))
         search_palette = self._search_edit.palette()
         search_palette.setColor(
             QPalette.ColorRole.PlaceholderText,
@@ -1093,13 +1123,13 @@ class KnowledgeTreeDialog(QDialog):
         self._search_edit.setClearButtonEnabled(True)
         self._search_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._refresh_btn = self._build_toolbar_button(
-            "Refresh",
+            t("common_refresh"),
             _readable_icon(
                 self._standard_icon(QStyle.StandardPixmap.SP_BrowserReload),
                 self.palette(),
             ),
             lambda: self.reload(),
-            tool_tip="Reload the tree and keep the current selection when possible.",
+            tool_tip=t("knowledge_tree_refresh_tooltip"),
         )
         toolbar_layout.addWidget(self._study_btn)
         toolbar_layout.addWidget(self._add_btn)
@@ -1132,8 +1162,7 @@ class KnowledgeTreeDialog(QDialog):
         intro_content_layout.setSpacing(4)
 
         intro_hint = QLabel(
-            "Drag to reorder. Drop onto another node to reparent. Double-click a title to rename. "
-            "Cmd/Ctrl-click or Shift-click to multi-select. Right-click a node for branch actions."
+            t("knowledge_tree_workspace_hint")
         )
         intro_hint.setObjectName("KnowledgeHint")
         intro_hint.setWordWrap(True)
@@ -1163,12 +1192,12 @@ class KnowledgeTreeDialog(QDialog):
         search_panel = self._build_search_panel(panel)
         self._tabs = QTabWidget(panel)
         self._tabs.setObjectName("KnowledgeTabs")
-        self._tabs.addTab(intro, "Workspace")
-        self._tabs.addTab(search_panel, "Search")
+        self._tabs.addTab(intro, t("knowledge_tree_workspace"))
+        self._tabs.addTab(search_panel, t("common_search"))
         self._tabs.setCornerWidget(self._workspace_summary, Qt.Corner.TopRightCorner)
         layout.addWidget(self._tabs)
 
-        self._breadcrumb = QLabel("Select a node to see its path", panel)
+        self._breadcrumb = QLabel(t("knowledge_tree_select_for_path"), panel)
         self._breadcrumb.setObjectName("KnowledgeBreadcrumb")
         self._breadcrumb.setTextFormat(Qt.TextFormat.PlainText)
         self._breadcrumb.setMinimumWidth(0)
@@ -1180,7 +1209,7 @@ class KnowledgeTreeDialog(QDialog):
         self._tree.setMinimumWidth(0)
         self._tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._tree.setColumnCount(2)
-        self._tree.setHeaderLabels(["Knowledge", "Priority"])
+        self._tree.setHeaderLabels([t("knowledge_tree_knowledge"), t("knowledge_tree_priority")])
         self._tree.setAlternatingRowColors(True)
         self._tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1229,24 +1258,24 @@ class KnowledgeTreeDialog(QDialog):
         search_content_layout.setSpacing(8)
 
         hint = QLabel(
-            "Jump to linked cards by title first, then optionally include metadata or visible card text."
+            t("knowledge_tree_search_hint")
         )
         hint.setObjectName("KnowledgeHint")
         hint.setWordWrap(True)
         _allow_label_shrink(hint)
         search_content_layout.addWidget(hint)
 
-        self._search_clear_btn = QPushButton("Clear", card)
+        self._search_clear_btn = QPushButton(t("common_clear"), card)
         self._search_clear_btn.setObjectName("KnowledgeActionButton")
         self._search_clear_btn.setFixedHeight(34)
 
         scope_row = QHBoxLayout()
         scope_row.setContentsMargins(0, 0, 0, 0)
         scope_row.setSpacing(12)
-        self._search_titles_toggle = QCheckBox("Titles", card)
+        self._search_titles_toggle = QCheckBox(t("knowledge_tree_titles"), card)
         self._search_titles_toggle.setChecked(True)
-        self._search_metadata_toggle = QCheckBox("Metadata", card)
-        self._search_note_text_toggle = QCheckBox("Card text", card)
+        self._search_metadata_toggle = QCheckBox(t("knowledge_tree_metadata"), card)
+        self._search_note_text_toggle = QCheckBox(t("knowledge_tree_card_text"), card)
         scope_row.addWidget(self._search_titles_toggle)
         scope_row.addWidget(self._search_metadata_toggle)
         scope_row.addWidget(self._search_note_text_toggle)
@@ -1254,7 +1283,7 @@ class KnowledgeTreeDialog(QDialog):
         scope_row.addWidget(self._search_clear_btn)
         search_content_layout.addLayout(scope_row)
 
-        self._search_results_label = QLabel("Search is limited to cards already linked into this tree.")
+        self._search_results_label = QLabel(t("knowledge_tree_search_limited"))
         self._search_results_label.setObjectName("KnowledgeMeta")
         self._search_results_label.setWordWrap(True)
         _allow_label_shrink(self._search_results_label)
@@ -1320,7 +1349,7 @@ class KnowledgeTreeDialog(QDialog):
         badge_row.addStretch(1)
         layout.addLayout(badge_row)
 
-        self._selection_text = QLabel("Select a topic or item to inspect its card text.")
+        self._selection_text = QLabel(t("knowledge_tree_select_to_inspect"))
         self._selection_text.setObjectName("KnowledgeInspectorTitle")
         self._selection_text.setTextFormat(Qt.TextFormat.PlainText)
         self._selection_text.setWordWrap(True)
@@ -1337,8 +1366,8 @@ class KnowledgeTreeDialog(QDialog):
         metadata.setContentsMargins(0, 0, 0, 0)
         metadata.setHorizontalSpacing(12)
         metadata.setVerticalSpacing(6)
-        card_label = QLabel("Card ID", panel)
-        source_label = QLabel("Source", panel)
+        card_label = QLabel(t("knowledge_tree_card_id"), panel)
+        source_label = QLabel(t("knowledge_tree_source"), panel)
         card_label.setObjectName("KnowledgeMeta")
         source_label.setObjectName("KnowledgeMeta")
         self._meta_card_id = QLabel("—", panel)
@@ -1357,12 +1386,12 @@ class KnowledgeTreeDialog(QDialog):
         footer = QHBoxLayout()
         footer.setSpacing(8)
         self._inspect_btn = self._build_action_button(
-            "Inspect",
+            t("knowledge_tree_inspect"),
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
             self._open_selected_in_browser,
         )
         self._more_btn = self._build_action_button(
-            "More",
+            t("common_more"),
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
             self._show_more_menu,
         )
@@ -1452,71 +1481,71 @@ class KnowledgeTreeDialog(QDialog):
 
         menu = QMenu(self)
 
-        create_topic = QAction(_kind_icon(NODE_KIND_TOPIC), "Create Topic…", menu)
+        create_topic = QAction(_kind_icon(NODE_KIND_TOPIC), t("knowledge_tree_create_topic"), menu)
         link_topic = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
-            "Link Topic…",
+            t("knowledge_tree_link_topic"),
             menu,
         )
-        create_item = QAction(_kind_icon(NODE_KIND_ITEM), "Create Item…", menu)
+        create_item = QAction(_kind_icon(NODE_KIND_ITEM), t("knowledge_tree_create_item"), menu)
         link_item = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
-            "Link Item…",
+            t("knowledge_tree_link_item"),
             menu,
         )
         rename_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            "Rename",
+            t("common_rename"),
             menu,
         )
         priority_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_ArrowRight),
-            "Priority…",
+            t("knowledge_tree_priority_action"),
             menu,
         )
         postpone_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
-            "Postpone…",
+            t("knowledge_tree_postpone"),
             menu,
         )
         study_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
-            "Study Branch…",
+            t("knowledge_tree_study_branch"),
             menu,
         )
         subset_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogListView),
-            "Subset Review…",
+            t("knowledge_tree_subset_review"),
             menu,
         )
         browser_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
-            "Edit In Browser",
+            t("knowledge_tree_edit_in_browser"),
             menu,
         )
         open_pdf_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
-            "Open PDF",
+            t("knowledge_tree_open_pdf"),
             menu,
         )
         parent_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_FileDialogToParent),
-            "Go To Parent",
+            t("knowledge_tree_go_to_parent"),
             menu,
         )
         expand_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_ArrowDown),
-            "Expand Branch",
+            t("knowledge_tree_expand_branch"),
             menu,
         )
         collapse_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_ArrowUp),
-            "Collapse Branch",
+            t("knowledge_tree_collapse_branch"),
             menu,
         )
         remove_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_TrashIcon),
-            "Remove",
+            t("common_remove"),
             menu,
         )
 
@@ -1639,7 +1668,7 @@ class KnowledgeTreeDialog(QDialog):
             )
         except Exception as exc:
             if not quiet:
-                showInfo(f"Could not resolve the linked PDF for this knowledge-tree node:\n{exc}")
+                showInfo(t("knowledge_tree_resolve_pdf_failed", error=exc))
             return None
         if str((target or {}).get("kind") or "").strip() != "pdf":
             return None
@@ -1698,7 +1727,7 @@ class KnowledgeTreeDialog(QDialog):
                 select_card_ids=self._selected_card_ids(),
             )
         except Exception as exc:
-            showInfo(f"Failed to move knowledge-tree node:\n{exc}")
+            showInfo(t("knowledge_tree_move_failed", error=exc))
             self.reload()
 
     def _item_for_row(self, row: dict) -> QTreeWidgetItem:
@@ -1720,14 +1749,14 @@ class KnowledgeTreeDialog(QDialog):
         )
         tip_parts = [
             _kind_label(row["node_kind"]),
-            f"card {card_id}",
+            t("knowledge_tree_card_number", card_id=card_id),
         ]
         if row.get("deck_name"):
             tip_parts.append(str(row["deck_name"]))
         if row.get("note_type_name"):
             tip_parts.append(str(row["note_type_name"]))
         if self._focus_card_id is not None and card_id == self._focus_card_id:
-            tip_parts.append("focused in current workspace")
+            tip_parts.append(t("knowledge_tree_focused_workspace"))
             highlight = QColor("#4a7ab5")
             highlight.setAlpha(44)
             item.setBackground(0, highlight)
@@ -1772,7 +1801,7 @@ class KnowledgeTreeDialog(QDialog):
         try:
             rows = load_knowledge_tree_nodes(self._addon_dir, self._profile)
         except Exception as exc:
-            showInfo(f"Failed to load the knowledge tree:\n{exc}")
+            showInfo(t("knowledge_tree_load_failed", error=exc))
             return
 
         self._rows_cache = list(rows)
@@ -1843,10 +1872,10 @@ class KnowledgeTreeDialog(QDialog):
 
     def _search_result_secondary_text(self, result: dict) -> str:
         parts = [
-            str(result.get("match_reason") or "").strip(),
+            _localized_search_match_reason(result),
             str(result.get("deck_name") or "").strip(),
             str(result.get("note_type_name") or "").strip(),
-            f"card {int(result['card_id'])}",
+            t("knowledge_tree_card_reference", card_id=int(result['card_id'])),
         ]
         return "  ·  ".join(part for part in parts if part)
 
@@ -1861,7 +1890,7 @@ class KnowledgeTreeDialog(QDialog):
             finally:
                 self._updating_search_results = False
             self._search_results_label.setText(
-                "Search is limited to cards already linked into this tree."
+                t("knowledge_tree_search_limited")
             )
             self._search_clear_btn.setEnabled(False)
             return
@@ -1873,7 +1902,7 @@ class KnowledgeTreeDialog(QDialog):
                 self._search_results_list.clear()
             finally:
                 self._updating_search_results = False
-            self._search_results_label.setText("Enable at least one scope to search the tree.")
+            self._search_results_label.setText(t("knowledge_tree_enable_scope"))
             self._search_clear_btn.setEnabled(True)
             return
 
@@ -1892,7 +1921,7 @@ class KnowledgeTreeDialog(QDialog):
                 self._search_results_list.clear()
             finally:
                 self._updating_search_results = False
-            self._search_results_label.setText(f"Search failed: {exc}")
+            self._search_results_label.setText(t("knowledge_tree_search_failed", error=exc))
             self._search_clear_btn.setEnabled(True)
             return
 
@@ -1901,7 +1930,7 @@ class KnowledgeTreeDialog(QDialog):
         try:
             self._search_results_list.clear()
             for result in results:
-                title = str(result.get("title") or "").strip() or f"Card {int(result['card_id'])}"
+                title = str(result.get("title") or "").strip() or t("knowledge_tree_card_number", card_id=int(result["card_id"]))
                 secondary = self._search_result_secondary_text(result)
                 item = QListWidgetItem(
                     f"{title}  ·  {_kind_label(result.get('node_kind') or NODE_KIND_TOPIC)}\n{secondary}"
@@ -1916,7 +1945,7 @@ class KnowledgeTreeDialog(QDialog):
 
         count = len(results)
         self._search_results_label.setText(
-            f'{count} result{"s" if count != 1 else ""} for "{query}".'
+            tn("knowledge_tree_results_for_query", count, query=query)
         )
         self._search_clear_btn.setEnabled(True)
 
@@ -2007,7 +2036,7 @@ class KnowledgeTreeDialog(QDialog):
 
     def _title_for_card_id(self, card_id: int | None) -> str:
         if card_id is None:
-            return "Root level"
+            return t("knowledge_tree_root_level")
         row = self._row_by_card_id.get(int(card_id))
         if row is not None:
             return _row_title(row, int(card_id))
@@ -2016,21 +2045,21 @@ class KnowledgeTreeDialog(QDialog):
             addon_dir=self._addon_dir,
             profile=self._profile,
         ) or {}
-        return str(meta.get("title") or f"Card {int(card_id)}")
+        return str(meta.get("title") or t("knowledge_tree_card_number", card_id=int(card_id)))
 
     def _lineage_text_for_card_id(self, card_id: int | None) -> str:
         if card_id is None:
-            return "Lineage: Select a node first."
+            return t("knowledge_tree_lineage_select")
         lineage_card_ids = ancestor_card_ids(self._rows_cache, int(card_id))
         if not lineage_card_ids:
-            return "Lineage: Root level"
+            return t("knowledge_tree_lineage_root")
         parts = []
         for ancestor_card_id in lineage_card_ids:
             title = html.escape(
                 _compact_display_text(self._title_for_card_id(int(ancestor_card_id)))
             )
             parts.append(f'<a href="card:{int(ancestor_card_id)}">{title}</a>')
-        return "Lineage: " + " &rarr; ".join(parts)
+        return t("knowledge_tree_lineage", path=" &rarr; ".join(parts))
 
     def _on_lineage_link_activated(self, href: str) -> None:
         value = str(href or "").strip()
@@ -2041,7 +2070,7 @@ class KnowledgeTreeDialog(QDialog):
         except Exception:
             return
         self._select_card_id(card_id)
-        tooltip("Selected ancestor node.")
+        tooltip(t("knowledge_tree_ancestor_selected"))
 
     def _expand_selected_branch(self) -> None:
         items = self._selected_items()
@@ -2080,21 +2109,21 @@ class KnowledgeTreeDialog(QDialog):
         self._study_btn.setEnabled(single)
         self._inspect_btn.setEnabled(single)
         self._more_btn.setEnabled(selected_count > 0)
-        self._add_topic_action.setText("Add Topic Child" if card_id is not None else "Add Root Topic")
-        self._add_item_action.setText("Add Item Child" if card_id is not None else "Add Root Item")
+        self._add_topic_action.setText(t("knowledge_tree_add_topic_child") if card_id is not None else t("knowledge_tree_add_root_topic"))
+        self._add_item_action.setText(t("knowledge_tree_add_item_child") if card_id is not None else t("knowledge_tree_add_root_item"))
         selected_title = self._title_for_card_id(card_id) if card_id is not None else ""
         self._add_btn.setToolTip(
-            f"Add a topic or item under {selected_title}."
-            if selected_title else "Add a root topic or item."
+            t("knowledge_tree_add_under", title=selected_title)
+            if selected_title else t("knowledge_tree_add_root_tooltip")
         )
         self._update_workspace_summary(_compact_display_text(selected_title), card_id)
         self._update_breadcrumb()
 
         if not single:
-            label = f"{selected_count} nodes selected" if selected_count else "No node selected"
+            label = tn("knowledge_tree_nodes_selected", selected_count) if selected_count else t("knowledge_tree_no_node_selected")
             _set_badge_style(
                 self._kind_badge,
-                "Selection" if not selected_count else f"{selected_count} Selected",
+                t("knowledge_tree_selection") if not selected_count else tn("knowledge_tree_selected_badge", selected_count),
                 background="rgba(74,122,181,0.18)",
                 foreground="palette(text)",
                 border="rgba(74,122,181,0.30)",
@@ -2117,7 +2146,7 @@ class KnowledgeTreeDialog(QDialog):
         if self._focus_card_id is not None and int(card_id) == int(self._focus_card_id):
             _set_badge_style(
                 self._focus_badge,
-                "Focused Card",
+                t("knowledge_tree_focused_card"),
                 background="rgba(74,122,181,0.18)",
                 foreground="palette(text)",
                 border="rgba(74,122,181,0.30)",
@@ -2136,7 +2165,7 @@ class KnowledgeTreeDialog(QDialog):
         )
         _set_badge_style(
             self._priority_badge,
-            f"Priority {_priority_text(priority) or '—'}",
+            t("knowledge_tree_priority_value", value=_priority_text(priority) or "—"),
             background=indicator[1] if indicator else "rgba(128,128,128,0.28)",
         )
 
@@ -2146,7 +2175,7 @@ class KnowledgeTreeDialog(QDialog):
             text, source = _card_detail_text_and_source(note, self._selected_pdf_target(quiet=True))
         except Exception:
             pass
-        self._selection_text.setText(text or selected_title or f"Card {card_id}")
+        self._selection_text.setText(text or selected_title or t("knowledge_tree_card_number", card_id=card_id))
         self._meta_card_id.setText(str(card_id))
         self._meta_source.setText(source)
 
@@ -2155,7 +2184,7 @@ class KnowledgeTreeDialog(QDialog):
             return
         item = self._selected_item()
         if item is None:
-            self._breadcrumb.setText("Select a node to see its path")
+            self._breadcrumb.setText(t("knowledge_tree_select_for_path"))
             self._breadcrumb.setToolTip("")
             return
         labels = []
@@ -2176,17 +2205,20 @@ class KnowledgeTreeDialog(QDialog):
         total = len(self._rows_cache)
         root_count = sum(1 for row in self._rows_cache if row.get("parent_card_id") is None)
         self._workspace_summary.setText(
-            f"{total} card{'s' if total != 1 else ''} · "
-            f"{root_count} branch{'es' if root_count != 1 else ''}"
+            t(
+                "knowledge_tree_workspace_summary",
+                cards=tn("knowledge_tree_card_count", total),
+                branches=tn("knowledge_tree_branch_count", root_count),
+            )
         )
 
         if selected_title:
             self._workspace_context.setText(
-                f"Insertion target: {selected_title}. New nodes from the toolbar will become children of the current selection."
+                t("knowledge_tree_insertion_target", title=selected_title)
             )
         else:
             self._workspace_context.setText(
-                "Insertion target: root level. Select an existing node if you want to append children instead."
+                t("knowledge_tree_insertion_root")
             )
 
         if self._focus_card_id is None:
@@ -2195,9 +2227,9 @@ class KnowledgeTreeDialog(QDialog):
 
         focus_title = _compact_display_text(self._title_for_card_id(self._focus_card_id))
         if selected_card_id is not None and int(selected_card_id) == int(self._focus_card_id):
-            self._workspace_focus.setText("Focused card is currently selected.")
+            self._workspace_focus.setText(t("knowledge_tree_focused_current"))
         else:
-            self._workspace_focus.setText(f"Focused card in this workspace: {focus_title}")
+            self._workspace_focus.setText(t("knowledge_tree_focused_other", title=focus_title))
 
     def _start_edit(self, item: QTreeWidgetItem | None) -> None:
         if item is None:
@@ -2206,7 +2238,7 @@ class KnowledgeTreeDialog(QDialog):
 
     def _rename_selected_node(self) -> None:
         if self._single_selected_card_id() is None:
-            tooltip("Select exactly one knowledge-tree node to rename it.")
+            tooltip(t("knowledge_tree_rename_select_one"))
             return
         item = self._selected_item()
         if item is None:
@@ -2228,7 +2260,7 @@ class KnowledgeTreeDialog(QDialog):
                 item.setText(0, previous_title)
             finally:
                 self._building = False
-            tooltip("Knowledge-tree titles cannot be empty.")
+            tooltip(t("knowledge_tree_title_required"))
             return
 
         if new_title == previous_title:
@@ -2242,11 +2274,11 @@ class KnowledgeTreeDialog(QDialog):
                 item.setText(0, previous_title)
             finally:
                 self._building = False
-            showInfo(f"Failed to rename the linked card:\n{exc}")
+            showInfo(t("knowledge_tree_rename_failed", error=exc))
             return
 
         item.setData(0, _ROLE_BASE_TITLE, saved_title)
-        tooltip("Knowledge-tree node renamed.")
+        tooltip(t("knowledge_tree_renamed"))
         self.reload(select_card_id=int(card_id))
 
     def _create_node(self, node_kind: str) -> None:
@@ -2283,11 +2315,11 @@ class KnowledgeTreeDialog(QDialog):
                 parent_card_id=parent_card_id,
             )
         except Exception as exc:
-            showInfo(f"Failed to create the knowledge-tree card:\n{exc}")
+            showInfo(t("knowledge_tree_create_failed", error=exc))
             return
 
         self.reload(select_card_id=card_id)
-        tooltip(f"{_kind_label(kind)} created and linked into the knowledge tree.")
+        tooltip(t("knowledge_tree_created", kind=_kind_label(kind)))
 
     def _link_node(self, node_kind: str) -> None:
         kind = normalize_node_kind(node_kind)
@@ -2317,7 +2349,7 @@ class KnowledgeTreeDialog(QDialog):
         insert_after_card_id = None
         if placement_mode == LINK_PLACEMENT_SIBLINGS:
             if selected_card_id is None:
-                showInfo("Select a node before linking existing cards at the same level.")
+                showInfo(t("knowledge_tree_link_same_level_select"))
                 return
             parent_card_id = get_parent_card_id(
                 self._addon_dir,
@@ -2336,7 +2368,7 @@ class KnowledgeTreeDialog(QDialog):
                 insert_after_card_id=insert_after_card_id,
             )
         except Exception as exc:
-            showInfo(f"Failed to link the selected cards:\n{exc}")
+            showInfo(t("knowledge_tree_link_failed", error=exc))
             return
 
         linked_card_ids = list(result.get("linked_card_ids") or [])
@@ -2347,28 +2379,24 @@ class KnowledgeTreeDialog(QDialog):
 
         linked_count = int(result.get("linked_count") or 0)
         error_count = int(result.get("error_count") or 0)
-        kind_label = _kind_label(kind).lower()
         if linked_count and not error_count:
-            noun = kind_label if linked_count == 1 else f"{kind_label}s"
-            tooltip(f"{linked_count} existing {noun} linked.")
+            tooltip(tn("knowledge_tree_existing_linked", linked_count, kind=_kind_label(kind)))
             return
         if linked_count and error_count:
-            noun = kind_label if linked_count == 1 else f"{kind_label}s"
             showInfo(
-                f"Linked {linked_count} existing {noun}, but {error_count} selection"
-                f"{'' if error_count == 1 else 's'} could not be linked.\n\n"
+                tn("knowledge_tree_link_partial", linked_count, kind=_kind_label(kind), errors=error_count) + "\n\n"
                 + "\n".join(
-                    f"Card {int(error.get('card_id') or 0)}: {error.get('error') or 'Unknown error'}"
+                    t("knowledge_tree_error_card", card_id=int(error.get("card_id") or 0), error=error.get("error") or t("common_unknown"))
                     for error in list(result.get('errors') or [])[:10]
                 )
             )
             return
         errors = list(result.get("errors") or [])
         details = "\n".join(
-            f"Card {int(error.get('card_id') or 0)}: {error.get('error') or 'Unknown error'}"
+            t("knowledge_tree_error_card", card_id=int(error.get("card_id") or 0), error=error.get("error") or t("common_unknown"))
             for error in errors[:10]
         )
-        showInfo("No selected cards could be linked." + (f"\n\n{details}" if details else ""))
+        showInfo(t("knowledge_tree_none_linked") + (f"\n\n{details}" if details else ""))
 
     def _remove_selected_node(self) -> None:
         card_ids = self._selected_card_ids_in_tree_order()
@@ -2381,20 +2409,20 @@ class KnowledgeTreeDialog(QDialog):
                 if delete_knowledge_tree_node(self._addon_dir, self._profile, int(card_id)):
                     removed_count += 1
         except Exception as exc:
-            showInfo(f"Failed to remove the selected node from the knowledge tree:\n{exc}")
+            showInfo(t("knowledge_tree_remove_failed", error=exc))
             return
 
         if not removed_count:
             return
         self.reload()
         tooltip(
-            f"Removed {removed_count} node{'' if removed_count == 1 else 's'} from the knowledge tree."
+            tn("knowledge_tree_removed", removed_count)
         )
 
     def _change_selected_priority(self) -> None:
         card_id = self._single_selected_card_id()
         if card_id is None:
-            tooltip("Select exactly one knowledge-tree node to change its priority.")
+            tooltip(t("knowledge_tree_priority_select_one"))
             return
         meta = get_card_metadata(
             int(card_id),
@@ -2412,7 +2440,7 @@ class KnowledgeTreeDialog(QDialog):
             int(card_id),
         )
         dlg = KnowledgeTreePriorityDialog(
-            card_label=str(meta.get("title") or f"Card {card_id}"),
+            card_label=str(meta.get("title") or t("knowledge_tree_card_number", card_id=card_id)),
             current_priority=float(priority_context.get("priority") or 50.0),
             subtree_stats=stats,
             current_a_factor=priority_context.get("a_factor"),
@@ -2475,20 +2503,19 @@ class KnowledgeTreeDialog(QDialog):
                     lower_is_more_important=configured_priority_lower_is_more_important(),
                 )
         except Exception as exc:
-            showInfo(f"Failed to update knowledge-tree priorities:\n{exc}")
+            showInfo(t("knowledge_tree_priority_failed", error=exc))
             return
 
         self.reload(select_card_id=int(card_id))
         if changed_count:
             tooltip(
-                f"Updated priority on {changed_count} knowledge-tree "
-                f"card{'' if changed_count == 1 else 's'}."
+                tn("knowledge_tree_priority_updated", changed_count)
             )
 
     def _study_selected_branch(self) -> None:
         card_id = self._single_selected_card_id()
         if card_id is None:
-            tooltip("Select exactly one knowledge-tree node to study its branch.")
+            tooltip(t("knowledge_tree_study_select_one"))
             return
 
         handler = self._open_branch_study
@@ -2507,7 +2534,7 @@ class KnowledgeTreeDialog(QDialog):
                     int(target_card_id),
                 )
                 if not branch_scope:
-                    raise RuntimeError("Could not resolve the selected subtree.")
+                    raise RuntimeError(t("knowledge_tree_subtree_unavailable"))
                 learnFunction(branch_scope=branch_scope)
 
             handler = _default_branch_study
@@ -2515,12 +2542,12 @@ class KnowledgeTreeDialog(QDialog):
         try:
             handler(int(card_id))
         except Exception as exc:
-            showInfo(f"Could not open the branch study session:\n{exc}")
+            showInfo(t("knowledge_tree_study_open_failed", error=exc))
 
     def _open_subset_review_dialog(self) -> None:
         card_id = self._single_selected_card_id()
         if card_id is None:
-            tooltip("Select exactly one knowledge-tree node to open subset review.")
+            tooltip(t("knowledge_tree_subset_select_one"))
             return
 
         dlg = KnowledgeTreeSubsetDialog(
@@ -2572,7 +2599,7 @@ class KnowledgeTreeDialog(QDialog):
 
         filename = os.path.basename(str((pdf_target or {}).get("filename") or "").strip())
         if not filename:
-            showInfo("Could not resolve the linked PDF for this knowledge-tree node.")
+            showInfo(t("knowledge_tree_resolve_pdf"))
             return
 
         open_card_id = int((pdf_target or {}).get("card_id") or 0)
@@ -2603,12 +2630,12 @@ class KnowledgeTreeDialog(QDialog):
                 offer_due_review_prompt=open_card_id > 0,
             )
         except Exception as exc:
-            showInfo(f"Could not open the linked PDF:\n{exc}")
+            showInfo(t("knowledge_tree_open_pdf_failed", error=exc))
 
     def _go_to_parent(self) -> None:
         card_id = self._single_selected_card_id()
         if card_id is None:
-            tooltip("Select exactly one knowledge-tree node to jump to its parent.")
+            tooltip(t("knowledge_tree_parent_select_one"))
             return
         parent_card_id = get_parent_card_id(
             self._addon_dir,
@@ -2616,15 +2643,15 @@ class KnowledgeTreeDialog(QDialog):
             int(card_id),
         )
         if parent_card_id is None:
-            tooltip("Selected node is already at the top of the knowledge tree.")
+            tooltip(t("knowledge_tree_already_root"))
             return
         self._select_card_id(int(parent_card_id))
-        tooltip("Selected the parent node.")
+        tooltip(t("knowledge_tree_parent_selected"))
 
     def _open_selected_in_browser(self) -> None:
         card_id = self._single_selected_card_id()
         if card_id is None:
-            tooltip("Select exactly one knowledge-tree node to open it in Browser.")
+            tooltip(t("knowledge_tree_browser_select_one"))
             return
         meta = get_card_metadata(
             int(card_id),
@@ -2633,7 +2660,7 @@ class KnowledgeTreeDialog(QDialog):
         ) or {}
         note_id = int(meta.get("note_id") or 0)
         if not note_id:
-            showInfo("Could not find the linked note for this knowledge-tree node.")
+            showInfo(t("knowledge_tree_note_missing"))
             return
         try:
             from aqt import dialogs
@@ -2641,4 +2668,4 @@ class KnowledgeTreeDialog(QDialog):
             browser = dialogs.open("Browser", mw)
             browser.search_for(f"nid:{note_id}")
         except Exception as exc:
-            showInfo(f"Could not open the Browser for this node:\n{exc}")
+            showInfo(t("knowledge_tree_browser_open_failed", error=exc))

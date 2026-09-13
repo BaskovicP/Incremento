@@ -35,6 +35,10 @@ from aqt.qt import (
     qconnect,
 )
 from PyQt6.QtPdf import QPdfDocument
+try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
@@ -359,23 +363,25 @@ def _bookshelf_count_text(
     ]
     total = len(eligible)
     visible = len(visible_entries)
-    if normalized_kind == _KIND_ALL:
-        plural_label = "documents"
-        count_label = "document" if total == 1 else "documents"
-    else:
-        plural_label = f"{normalized_kind}s"
-        count_label = normalized_kind if total == 1 else plural_label
+    kind_key = {
+        _KIND_ALL: "reader_bookshelf_document_count",
+        _KIND_PDF: "reader_bookshelf_pdf_count",
+        _KIND_EPUB: "reader_bookshelf_epub_count",
+    }.get(normalized_kind, "reader_bookshelf_document_count")
+    count_label = tn(kind_key, total)
     if not total:
-        return f"No Incremento {plural_label} found."
+        return t({
+            _KIND_ALL: "reader_bookshelf_no_documents",
+            _KIND_PDF: "reader_bookshelf_no_pdfs",
+            _KIND_EPUB: "reader_bookshelf_no_epubs",
+        }.get(normalized_kind, "reader_bookshelf_no_documents"))
     if visible != total:
-        return f"Showing {visible} of {total} {count_label}"
+        return t("reader_bookshelf_showing", visible=visible, total=count_label)
     if normalized_kind == _KIND_ALL:
         pdf_count = sum(entry.kind == _KIND_PDF for entry in eligible)
         epub_count = sum(entry.kind == _KIND_EPUB for entry in eligible)
-        pdf_label = f"{pdf_count} PDF{'s' if pdf_count != 1 else ''}"
-        epub_label = f"{epub_count} EPUB{'s' if epub_count != 1 else ''}"
-        return f"{total} {count_label} · {pdf_label} · {epub_label}"
-    return f"{total} {count_label}"
+        return t("reader_bookshelf_all_summary", documents=count_label, pdfs=tn("reader_bookshelf_pdf_count", pdf_count), epubs=tn("reader_bookshelf_epub_count", epub_count))
+    return count_label
 
 
 def _existing_media_preview_path(media_dir: str, cover_filename: str) -> str:
@@ -441,52 +447,48 @@ class _DocumentBookshelfDialog(QDialog):
         except Exception:
             self._media_dir = ""
 
-        self.setWindowTitle("Document Bookshelf")
+        self.setWindowTitle(t("reader_bookshelf_title"))
         self.resize(1080, 760)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        title = QLabel("<b>Document Bookshelf</b>")
+        title = QLabel(f"<b>{t('reader_bookshelf_title')}</b>")
         title.setStyleSheet("font-size: 20px;")
         layout.addWidget(title)
 
-        hint = QLabel(
-            "Click a cover to open that document. PDF first pages and EPUB "
-            "covers load progressively so a large library stays responsive."
-        )
+        hint = QLabel(t("reader_bookshelf_intro"))
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
         kind_row = QHBoxLayout()
-        kind_row.addWidget(QLabel("Show:"))
+        kind_row.addWidget(QLabel(t("reader_show_label")))
         self._kind_combo = QComboBox()
-        self._kind_combo.addItem("All documents", _KIND_ALL)
-        self._kind_combo.addItem("PDFs", _KIND_PDF)
-        self._kind_combo.addItem("EPUBs", _KIND_EPUB)
+        self._kind_combo.addItem(t("reader_bookshelf_all_documents"), _KIND_ALL)
+        self._kind_combo.addItem(t("reader_bookshelf_pdfs"), _KIND_PDF)
+        self._kind_combo.addItem(t("reader_bookshelf_epubs"), _KIND_EPUB)
         kind_row.addWidget(self._kind_combo)
         kind_row.addStretch(1)
         layout.addLayout(kind_row)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search document titles…")
+        self._search.setPlaceholderText(t("reader_bookshelf_search_titles"))
         self._search.setClearButtonEnabled(True)
         layout.addWidget(self._search)
 
         tag_row = QHBoxLayout()
-        tag_row.addWidget(QLabel("Tags:"))
+        tag_row.addWidget(QLabel(t("reader_tags_label")))
         self._tag_search = QLineEdit()
         self._tag_search.setPlaceholderText(
-            "Filter by tags — type a name or browse available tags…"
+            t("reader_bookshelf_filter_tags_placeholder")
         )
         self._tag_search.setClearButtonEnabled(True)
         self._tag_search.setMaxLength(_MAX_TAG_FILTER_CHARS)
         self._tag_search.setToolTip(
-            "Start typing any part of a tag name, or browse tags used by these "
-            "documents. Matching ignores uppercase/lowercase."
+            t("reader_bookshelf_filter_tags_hint")
         )
-        self._tag_search.setAccessibleName("Bookshelf tag filter")
+        self._tag_search.setAccessibleName(t("reader_bookshelf_tag_filter_accessible"))
         tag_row.addWidget(self._tag_search, 1)
 
         tag_suggestions = _bookshelf_tag_suggestions(self._entries)
@@ -502,22 +504,21 @@ class _DocumentBookshelfDialog(QDialog):
         self._tag_completer.setMaxVisibleItems(12)
         self._tag_search.setCompleter(self._tag_completer)
 
-        self._browse_tags_button = QPushButton("Browse tags")
-        self._browse_tags_button.setAccessibleName("Browse bookshelf tags")
+        self._browse_tags_button = QPushButton(t("reader_bookshelf_browse_tags"))
+        self._browse_tags_button.setAccessibleName(t("reader_bookshelf_browse_tags_accessible"))
         self._browse_tags_button.setEnabled(bool(tag_suggestions))
         self._browse_tags_button.setToolTip(
-            "Show tags used by documents in this bookshelf, with the most common "
-            "tags first."
+            t("reader_bookshelf_browse_tags_hint")
             if tag_suggestions
-            else "No document tags are available."
+            else t("reader_bookshelf_no_tags")
         )
         tag_row.addWidget(self._browse_tags_button)
 
         self._tag_mode_combo = QComboBox()
-        self._tag_mode_combo.addItem("Any tag (OR)", _TAG_MODE_OR)
-        self._tag_mode_combo.addItem("All tags (AND)", _TAG_MODE_AND)
+        self._tag_mode_combo.addItem(t("reader_bookshelf_any_tag"), _TAG_MODE_OR)
+        self._tag_mode_combo.addItem(t("reader_bookshelf_all_tags"), _TAG_MODE_AND)
         self._tag_mode_combo.setToolTip(
-            "OR matches at least one entered tag; AND requires every entered tag."
+            t("reader_bookshelf_tag_mode_hint")
         )
         tag_row.addWidget(self._tag_mode_combo)
         layout.addLayout(tag_row)
@@ -559,18 +560,18 @@ class _DocumentBookshelfDialog(QDialog):
         layout.addWidget(self._list, 1)
 
         self._preserve_history_cb = QCheckBox(
-            "Don't change cards attached to PDF reading history (PDFs only)"
+            t("reader_bookshelf_preserve_history")
         )
         self._preserve_history_cb.setChecked(False)
         layout.addWidget(self._preserve_history_cb)
 
-        self._study_card_cb = QCheckBox("Open the card also to study")
+        self._study_card_cb = QCheckBox(t("reader_open_card_to_study"))
         self._study_card_cb.setChecked(False)
         layout.addWidget(self._study_card_cb)
 
         footer = QHBoxLayout()
         footer.addStretch(1)
-        cancel_button = QPushButton("Cancel")
+        cancel_button = QPushButton(t("reader_cancel"))
         qconnect(cancel_button.clicked, self.reject)
         footer.addWidget(cancel_button)
         layout.addLayout(footer)
@@ -657,18 +658,15 @@ class _DocumentBookshelfDialog(QDialog):
             # covers. An explicit size hint reserves a real caption area.
             item.setSizeHint(QSize(_TILE_WIDTH, _TILE_HEIGHT))
             priority_text = (
-                f"Priority: {int(round(entry.priority))}"
+                t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
                 if entry.priority is not None
-                else "Priority: not set"
+                else t("reader_bookshelf_priority_unset")
             )
             visible_tags = entry.tags[:20]
-            tags_text = ", ".join(visible_tags) if visible_tags else "none"
+            tags_text = ", ".join(visible_tags) if visible_tags else t("reader_none")
             if len(entry.tags) > len(visible_tags):
-                tags_text += f" (+{len(entry.tags) - len(visible_tags)} more)"
-            item.setToolTip(
-                f"{entry.title}\nType: {entry.kind}\nTags: {tags_text}\n"
-                f"{priority_text}\nClick to open"
-            )
+                tags_text += " " + t("reader_bookshelf_more_tags", count=len(entry.tags) - len(visible_tags))
+            item.setToolTip(t("reader_bookshelf_item_tooltip", title=entry.title, kind=entry.kind, tags=tags_text, priority=priority_text))
             cache_key = (entry.kind, entry.card_id)
             cached = self._thumbnail_cache.get(cache_key)
             item.setIcon(cached or placeholder)
@@ -796,9 +794,9 @@ class _DocumentBookshelfDialog(QDialog):
         is_pdf = entry is not None and entry.kind == _KIND_PDF
         self._preserve_history_cb.setEnabled(is_pdf)
         self._preserve_history_cb.setToolTip(
-            "Keeps PDF-linked card history unchanged while opening the reader."
+            t("reader_bookshelf_preserve_history_hint")
             if is_pdf
-            else "This option applies only to PDF documents."
+            else t("reader_bookshelf_pdf_only_hint")
         )
 
     @property

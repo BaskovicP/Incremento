@@ -1,0 +1,1208 @@
+{
+  "extension_name": {
+    "message": "Incremento pratilac"
+  },
+  "extension_description": {
+    "message": "Uvozi PDF-ove, videozapise, mrežne stranice, bilješke i oznake u Incremento te prati vrijeme zaustavljanja videozapisa."
+  },
+  "command_copy_video_time": {
+    "message": "Kopiraj posljednje zabilježeno vrijeme videozapisa u međuspremnik"
+  },
+  "command_add_pdf": {
+    "message": "Dodaj trenutačnu stranicu u Incremento kao PDF"
+  },
+  "command_add_video": {
+    "message": "Dodaj trenutačnu stranicu u Incremento kao videozapis"
+  },
+  "command_add_webpage": {
+    "message": "Dodaj trenutačnu stranicu u Incremento kao mrežnu stranicu"
+  },
+  "command_add_selection": {
+    "message": "Dodaj trenutačni odabir u Incremento kao Markdown"
+  },
+  "command_add_page_markdown": {
+    "message": "Dodaj trenutačnu stranicu u Incremento kao Markdown"
+  },
+  "command_capture_selection": {
+    "message": "Spremi odabrani tekst preglednika u Anki"
+  },
+  "command_capture_snapshot": {
+    "message": "Spremi snimke preglednika u Anki"
+  },
+  "popup_title": {
+    "message": "Incremento"
+  },
+  "bookmarks_title": {
+    "message": "Incremento uvoz oznaka"
+  },
+  "offscreen_title": {
+    "message": "Incremento međuspremnik"
+  },
+  "settings": {
+    "message": "Postavke"
+  },
+  "language": {
+    "message": "Jezik"
+  },
+  "language_auto": {
+    "message": "Automatski"
+  },
+  "language_save": {
+    "message": "Spremi"
+  },
+  "language_cancel": {
+    "message": "Odustani"
+  },
+  "language_saved": {
+    "message": "Jezik je spremljen."
+  },
+  "language_save_error": {
+    "message": "Nije moguće spremiti jezik. Pokušajte ponovno."
+  },
+  "language_description": {
+    "message": "Odaberite jezik sučelja dodatka. Promjene se primjenjuju odmah."
+  },
+  "context_save_link": {
+    "message": "Spremi poveznicu u Incremento kao mrežnu stranicu"
+  },
+  "item_one": {
+    "message": "$COUNT$ stavka",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "item_few": {
+    "message": "$COUNT$ stavke",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "item_other": {
+    "message": "$COUNT$ stavki",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "current_page": {
+    "message": "Trenutačna stranica"
+  },
+  "send_to_incremento": {
+    "message": "Pošalji u Incremento"
+  },
+  "no_supported_page": {
+    "message": "Nije odabrana podržana stranica."
+  },
+  "title": {
+    "message": "Naslov"
+  },
+  "deck": {
+    "message": "Špil"
+  },
+  "tags": {
+    "message": "Oznake"
+  },
+  "tag_hint": {
+    "message": "Počnite pisati za odabir postojeće oznake u Ankiju ili unesite novu."
+  },
+  "priority": {
+    "message": "Prioritet"
+  },
+  "markdown_scope": {
+    "message": "Opseg Markdowna mrežne stranice"
+  },
+  "main_content": {
+    "message": "Glavni sadržaj"
+  },
+  "entire_page": {
+    "message": "Cijela stranica"
+  },
+  "add_as_pdf": {
+    "message": "Dodaj kao PDF"
+  },
+  "add_as_video": {
+    "message": "Dodaj kao videozapis"
+  },
+  "add_as_webpage": {
+    "message": "Dodaj kao mrežnu stranicu"
+  },
+  "add_selection_markdown": {
+    "message": "Dodaj odabir u Markdown"
+  },
+  "add_page_markdown": {
+    "message": "Dodaj stranicu u Markdown"
+  },
+  "automatic_site_access": {
+    "message": "Automatski pristup stranicama"
+  },
+  "automatic_site_access_note": {
+    "message": "Radnje na zahtjev privremeno pristupaju trenutačnoj kartici. Trajni HTTP(S) pristup omogućite samo ako spremanje klikom s modifikatorom i praćenje medija web-kartice trebaju trajati nakon navigacije."
+  },
+  "disable_auto_site_access": {
+    "message": "Onemogući automatski pristup stranicama"
+  },
+  "enable_auto_site_access": {
+    "message": "Omogući automatski pristup stranicama..."
+  },
+  "quick_link_save": {
+    "message": "Brzo spremanje poveznice"
+  },
+  "quick_link_save_note": {
+    "message": "Spremite kliknute poveznice izravno u Incremento kao kartice mrežnih stranica i po želji nastavite navigaciju."
+  },
+  "enable_modifier_save": {
+    "message": "Omogući spremanje poveznica klikom s modifikatorom"
+  },
+  "modifier_key": {
+    "message": "Tipka modifikatora"
+  },
+  "continue_following_link": {
+    "message": "Nastavi otvarati poveznicu nakon spremanja"
+  },
+  "enable_context_link": {
+    "message": "Omogući radnju poveznice desnom tipkom"
+  },
+  "save_quick_link_settings": {
+    "message": "Spremi postavke brzog spremanja poveznica"
+  },
+  "download_bookmarks": {
+    "message": "Preuzmi oznake"
+  },
+  "trigger_text_capture": {
+    "message": "Pokreni spremanje teksta"
+  },
+  "trigger_snapshot_capture": {
+    "message": "Pokreni spremanje snimke"
+  },
+  "text_capture": {
+    "message": "Spremanje teksta"
+  },
+  "snapshot_capture": {
+    "message": "Spremanje snimke"
+  },
+  "not_assigned_chrome": {
+    "message": "Nije dodijeljeno u Chromeu"
+  },
+  "open_shortcut_settings": {
+    "message": "Otvori postavke prečaca"
+  },
+  "linked_card": {
+    "message": "Povezana kartica"
+  },
+  "linked_card_status": {
+    "message": "Ova kartica preglednika povezana je s karticom $COUNT$.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "not_linked_card_status": {
+    "message": "Ova kartica preglednika još nije povezana s Incremento karticom. Najprije je otvorite radnjom preglednika na kartici."
+  },
+  "detected_video_time": {
+    "message": "Otkriveno trenutačno vrijeme videozapisa: $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_video_time_page": {
+    "message": "Na ovoj stranici trenutačno nije otkriveno vrijeme videozapisa."
+  },
+  "manual_time": {
+    "message": "Ručno vrijeme"
+  },
+  "manual_time_placeholder": {
+    "message": "12:34, 1:02:03, 90 ili 1m30s"
+  },
+  "save_manual_time": {
+    "message": "Spremi ručno vrijeme"
+  },
+  "copy_last_video_time": {
+    "message": "Kopiraj posljednje vrijeme videozapisa"
+  },
+  "video_cards_note": {
+    "message": "Video kartice koriste trenutačni YouTube ili Vimeo URL."
+  },
+  "selection_writing_note": {
+    "message": "Bilješka iz odabira upotrijebit će trenutačni odabir ($COUNT$ znakova). Bilješka iz stranice uvozi sadržaj kao Markdown.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "page_writing_note": {
+    "message": "Bilješka iz odabira koristi trenutačni odabir ako postoji. Bilješka iz stranice uvozi sadržaj kao Markdown."
+  },
+  "bridge_unavailable": {
+    "message": "Nije moguće dosegnuti Incremento u Ankiju. Ostavite Anki otvorenim i ponovno učitajte dodatak."
+  },
+  "bridge_origin_conflict": {
+    "message": "Ova kopija Pratioca nije ovlaštena. Ponovno pokrenite Anki i otvorite skočni prozor. Ako se problem ponovi, onemogućite druge kopije Pratioca u profilima Chromea ili Bravea."
+  },
+  "bridge_error_authorization_required": {
+    "message": "Potrebna je nova veza s Incrementom. Pokušajte ponovno."
+  },
+  "bridge_error_bridge_busy": {
+    "message": "Incremento je zauzet. Pokušajte ponovno uskoro."
+  },
+  "bridge_error_unknown_path": {
+    "message": "Ova Incremento radnja nije dostupna. Ažurirajte dodatak."
+  },
+  "bridge_error_invalid_request": {
+    "message": "Zahtjev nije prihvaćen. Provjerite odabrani sadržaj."
+  },
+  "bridge_error_operation_failed": {
+    "message": "Incremento nije mogao dovršiti radnju."
+  },
+  "bridge_error_unsupported_transfer_encoding": {
+    "message": "Nepodržano kodiranje zahtjeva."
+  },
+  "bridge_error_invalid_content_length": {
+    "message": "Nevaljana duljina zahtjeva."
+  },
+  "bridge_error_request_too_large": {
+    "message": "Zahtjev je prevelik."
+  },
+  "bridge_error_request_timeout": {
+    "message": "Zahtjev je istekao. Pokušajte ponovno."
+  },
+  "bridge_error_incomplete_body": {
+    "message": "Zahtjev je nepotpun. Pokušajte ponovno."
+  },
+  "bridge_error_invalid_json": {
+    "message": "Nevaljani podaci zahtjeva."
+  },
+  "action_video_time": {
+    "message": "Incremento ($PROVIDER$) $TIME$",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "deck_load_failed": {
+    "message": "Nije moguće učitati špilove iz Ankija. Koristi se Topics."
+  },
+  "page_inspect_failed": {
+    "message": "Nije moguće pregledati trenutačnu stranicu."
+  },
+  "manual_time_invalid": {
+    "message": "Unesite valjano vrijeme, npr. 12:34, 1:02:03, 90 ili 1m30s."
+  },
+  "open_http_page": {
+    "message": "Najprije otvorite običnu HTTP(S) stranicu."
+  },
+  "no_active_tab": {
+    "message": "Nije pronađena aktivna kartica preglednika."
+  },
+  "only_http_pages": {
+    "message": "U Incremento je moguće poslati samo HTTP(S) stranice."
+  },
+  "open_video_page": {
+    "message": "Otvorite YouTube ili Vimeo stranicu za dodavanje video kartice."
+  },
+  "select_page_text": {
+    "message": "Najprije odaberite tekst na stranici."
+  },
+  "web_content_failed": {
+    "message": "Nije moguće pročitati sadržaj stranice iz ove kartice."
+  },
+  "web_time_invalid": {
+    "message": "Nevaljano vrijeme mrežne stranice."
+  },
+  "adding_writing": {
+    "message": "Dodaje se kartica za pisanje iz Markdowna stranice..."
+  },
+  "adding_card": {
+    "message": "Dodaje se kartica vrste $KIND$...",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "added_card": {
+    "message": "Dodana kartica vrste $KIND$: $TITLE$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      },
+      "title": {
+        "content": "$2"
+      }
+    }
+  },
+  "add_content_failed": {
+    "message": "Nije moguće dodati sadržaj."
+  },
+  "copying_video_time": {
+    "message": "Kopira se posljednje vrijeme videozapisa..."
+  },
+  "copied_video_time": {
+    "message": "Kopirano je posljednje vrijeme videozapisa."
+  },
+  "no_stored_video_time": {
+    "message": "Još nema spremljenog vremena videozapisa."
+  },
+  "copy_video_time_failed": {
+    "message": "Nije moguće kopirati vrijeme videozapisa."
+  },
+  "saving_browser_time": {
+    "message": "Spremanje vremena preglednika na povezanu karticu..."
+  },
+  "tab_not_linked": {
+    "message": "Ova kartica preglednika nije povezana s Incremento karticom. Najprije otvorite stranicu iz kartice."
+  },
+  "no_detected_time": {
+    "message": "Nije otkriveno trenutačno vrijeme videozapisa. Unesite ga ručno za spremanje."
+  },
+  "only_http_time": {
+    "message": "Vrijeme preglednika moguće je spremiti samo na običnim HTTP(S) stranicama."
+  },
+  "saved_time_card": {
+    "message": "Vrijeme $TIME$ spremljeno je na karticu $COUNT$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "save_browser_time_failed": {
+    "message": "Nije moguće spremiti vrijeme preglednika."
+  },
+  "open_bookmarks_failed": {
+    "message": "Nije moguće otvoriti uvoz oznaka."
+  },
+  "open_shortcuts_failed": {
+    "message": "Nije moguće otvoriti Chromeove postavke prečaca."
+  },
+  "starting_snapshot": {
+    "message": "Pokreće se spremanje snimke..."
+  },
+  "starting_text_capture": {
+    "message": "Pokreće se spremanje teksta..."
+  },
+  "snapshot_opened": {
+    "message": "Spremanje snimke otvoreno je na stranici."
+  },
+  "text_capture_opened": {
+    "message": "Spremanje teksta otvoreno je na stranici."
+  },
+  "snapshot_not_started": {
+    "message": "Spremanje snimke nije pokrenuto u ovoj kartici."
+  },
+  "text_capture_not_started": {
+    "message": "Spremanje teksta nije pokrenuto. Najprije odaberite tekst na stranici."
+  },
+  "trigger_capture_failed": {
+    "message": "Nije moguće pokrenuti spremanje sadržaja preglednika."
+  },
+  "saving_link_settings": {
+    "message": "Spremaju se postavke brzog spremanja poveznica..."
+  },
+  "saved_link_settings": {
+    "message": "Postavke brzog spremanja poveznica su spremljene."
+  },
+  "save_link_settings_failed": {
+    "message": "Nije moguće spremiti postavke brzog spremanja poveznica."
+  },
+  "disabling_site_access": {
+    "message": "Onemogućuje se automatski pristup stranicama..."
+  },
+  "requesting_site_access": {
+    "message": "Traži se automatski pristup stranicama..."
+  },
+  "site_access_still_enabled": {
+    "message": "Chrome/Brave zadržao je pristup stranicama. Promijenite ga u postavkama ekstenzije."
+  },
+  "site_access_disabled": {
+    "message": "Automatski pristup stranicama je onemogućen. Radnje koje pokreće korisnik i dalje rade na trenutačnoj kartici."
+  },
+  "site_access_enabled": {
+    "message": "Automatski pristup stranicama omogućen je za spremanje poveznica i praćenje web-kartica nakon navigacije."
+  },
+  "site_access_not_granted": {
+    "message": "Pristup stranicama nije odobren. Radnje koje pokreće korisnik i dalje rade na trenutačnoj kartici."
+  },
+  "site_access_change_failed": {
+    "message": "Nije moguće promijeniti automatski pristup stranicama."
+  },
+  "waiting_start": {
+    "message": "Čeka se početak."
+  },
+  "loading_bookmarks": {
+    "message": "Učitavanje oznaka..."
+  },
+  "bookmarks_loaded": {
+    "message": "Oznake su učitane."
+  },
+  "load_bookmarks_failed": {
+    "message": "Nije moguće učitati oznake."
+  },
+  "untitled_bookmark": {
+    "message": "Oznaka bez naslova"
+  },
+  "select_bookmark_first": {
+    "message": "Odaberite barem jednu oznaku prije uvoza."
+  },
+  "importing_bookmarks_one": {
+    "message": "Uvozi se $COUNT$ oznaka...",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "importing_bookmarks_few": {
+    "message": "Uvoze se $COUNT$ oznake...",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "importing_bookmarks_other": {
+    "message": "Uvozi se $COUNT$ oznaka...",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "preparing_import": {
+    "message": "Priprema uvoza..."
+  },
+  "importing_item": {
+    "message": "Uvoz $INDEX$ od $COUNT$: $TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "imported_item": {
+    "message": "Uvezeno $INDEX$ od $COUNT$: $TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "failed_item": {
+    "message": "Neuspjelo $INDEX$ od $COUNT$: $TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "import_bookmark_failed": {
+    "message": "Nije moguće uvesti oznaku."
+  },
+  "imported_failed": {
+    "message": "Uvezeno oznaka: $OK$; neuspješno: $FAILED$.",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "finished_with_errors": {
+    "message": "Završeno: uvezeno $OK$, neuspješno $FAILED$.",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "imported_bookmarks_one": {
+    "message": "Uvezena je $COUNT$ oznaka.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "imported_bookmarks_few": {
+    "message": "Uvezene su $COUNT$ oznake.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "imported_bookmarks_other": {
+    "message": "Uvezeno je $COUNT$ oznaka.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_one": {
+    "message": "Završen uvoz $COUNT$ oznake.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_few": {
+    "message": "Završen uvoz $COUNT$ oznake.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_other": {
+    "message": "Završen uvoz $COUNT$ oznaka.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmark_import": {
+    "message": "Uvoz oznaka"
+  },
+  "send_chrome_bookmarks": {
+    "message": "Pošalji Chrome oznake u Incremento"
+  },
+  "bookmark_import_intro": {
+    "message": "Odaberite mape ili pojedinačne oznake, uredite oznake svakog retka, odaberite vrstu kartice i ciljni špil te postavite prioritet prije zajedničkog uvoza."
+  },
+  "bookmarks": {
+    "message": "Oznake"
+  },
+  "reload": {
+    "message": "Ponovno učitaj"
+  },
+  "folder_includes_nested": {
+    "message": "Odabir mape uključuje sve ugniježđene poveznice oznaka."
+  },
+  "no_bookmarks": {
+    "message": "Nema dostupnih oznaka."
+  },
+  "import_list": {
+    "message": "Popis za uvoz"
+  },
+  "bookmarks_selected_one": {
+    "message": "Odabrana je $COUNT$ oznaka",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmarks_selected_few": {
+    "message": "Odabrane su $COUNT$ oznake",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmarks_selected_other": {
+    "message": "Odabrano je $COUNT$ oznaka",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "import_selected": {
+    "message": "Uvezi odabrano"
+  },
+  "import_deck": {
+    "message": "Špil za uvoz"
+  },
+  "all_selected_deck": {
+    "message": "Sve odabrane oznake uvest će se u ovaj špil."
+  },
+  "select_bookmarks_left": {
+    "message": "Odaberite mape ili pojedinačne oznake slijeva za popis uvoza."
+  },
+  "type": {
+    "message": "Vrsta"
+  },
+  "video_kind": {
+    "message": "YouTube/videozapis"
+  },
+  "webpage_kind": {
+    "message": "Mrežna stranica"
+  },
+  "writing_kind": {
+    "message": "Pisanje"
+  },
+  "folder": {
+    "message": "Mapa"
+  },
+  "selected_count": {
+    "message": "Odabrano $SELECTED$/$TOTAL$",
+    "placeholders": {
+      "selected": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "progress_title": {
+    "message": "Napredak uvoza"
+  },
+  "created_card": {
+    "message": "Stvorena kartica vrste $KIND$$ID$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      },
+      "id": {
+        "content": "$2"
+      }
+    }
+  },
+  "import_failed": {
+    "message": "Uvoz nije uspio."
+  },
+  "untitled": {
+    "message": "Bez naslova"
+  },
+  "tracking": {
+    "message": "Praćenje"
+  },
+  "tracking_web_card": {
+    "message": "Praćenje web-kartice"
+  },
+  "saved_time_badge_dismiss": {
+    "message": "Zatvori oznaku spremljenog vremena preglednika"
+  },
+  "last_saved": {
+    "message": "Posljednje spremljeno"
+  },
+  "last_saved_time": {
+    "message": "Posljednje spremljeno $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "remove": {
+    "message": "Ukloni"
+  },
+  "browser_snapshot": {
+    "message": "Snimka preglednika"
+  },
+  "browser_selection": {
+    "message": "Odabir preglednika"
+  },
+  "send_capture_anki": {
+    "message": "Pošalji snimljeni sadržaj u Anki"
+  },
+  "snapshots_ready_one": {
+    "message": "Spremna je $COUNT$ snimka s $URL$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "url": {
+        "content": "$2"
+      }
+    }
+  },
+  "snapshots_ready_few": {
+    "message": "Spremne su $COUNT$ snimke s $URL$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "url": {
+        "content": "$2"
+      }
+    }
+  },
+  "snapshots_ready_other": {
+    "message": "Spremno je $COUNT$ snimaka s $URL$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "url": {
+        "content": "$2"
+      }
+    }
+  },
+  "selected_text_from": {
+    "message": "Odabrani tekst s $URL$",
+    "placeholders": {
+      "url": {
+        "content": "$1"
+      }
+    }
+  },
+  "note_type": {
+    "message": "Vrsta bilješke"
+  },
+  "do_not_insert": {
+    "message": "Nemoj umetnuti"
+  },
+  "page_title_field": {
+    "message": "Polje naslova stranice"
+  },
+  "page_title_field_note": {
+    "message": "Naslov trenutačne stranice uvijek je dostupan. Preslikavanje na prvo polje dobiva jedinstveni nastavak snimke."
+  },
+  "selected_text_field": {
+    "message": "Polje odabranog teksta"
+  },
+  "chars_ready": {
+    "message": "Spremno je $COUNT$ znakova za umetanje.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_text_added": {
+    "message": "Tekst još nije dodan."
+  },
+  "source_url_field": {
+    "message": "Polje izvornog URL-a"
+  },
+  "source_url_note": {
+    "message": "URL trenutačne stranice uvijek je dostupan."
+  },
+  "snapshot_field": {
+    "message": "Polje snimke"
+  },
+  "snapshots_selected_one": {
+    "message": "Odabrana je $COUNT$ snimka.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshots_selected_few": {
+    "message": "Odabrane su $COUNT$ snimke.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshots_selected_other": {
+    "message": "Odabrano je $COUNT$ snimaka.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_snapshots": {
+    "message": "U ovom spremanju nema snimki."
+  },
+  "add_text_snapshots": {
+    "message": "Dodajte tekst koji će se spremiti sa snimkama..."
+  },
+  "selected_text_edit": {
+    "message": "Odabrani tekst prikazat će se ovdje. Možete ga urediti prije spremanja."
+  },
+  "text_to_add": {
+    "message": "Tekst za dodavanje"
+  },
+  "selected_text": {
+    "message": "Odabrani tekst"
+  },
+  "inserted_text_note": {
+    "message": "Ovaj se sadržaj umeće u polje odabranog teksta ako je odabrano."
+  },
+  "snapshots": {
+    "message": "Snimke"
+  },
+  "capture_more": {
+    "message": "Snimi još"
+  },
+  "saving": {
+    "message": "Spremanje..."
+  },
+  "create_note": {
+    "message": "Stvori bilješku"
+  },
+  "creating_note": {
+    "message": "Stvara se bilješka u Ankiju..."
+  },
+  "created_note": {
+    "message": "Stvorena je bilješka vrste $TYPE$ u špilu $DECK$.",
+    "placeholders": {
+      "type": {
+        "content": "$1"
+      },
+      "deck": {
+        "content": "$2"
+      }
+    }
+  },
+  "create_note_failed": {
+    "message": "Nije moguće stvoriti bilješku."
+  },
+  "snapshot_mode": {
+    "message": "Način snimanja"
+  },
+  "snapshot_mode_intro": {
+    "message": "Nacrtajte jedan ili više pravokutnika na stranici. Snimanje je ograničeno na trenutačni prikaz."
+  },
+  "snapshot_mode_hint": {
+    "message": "Nacrtajte pravokutnik za trenutačno snimanje, a zatim po potrebi pomaknite stranicu i snimite drugo područje."
+  },
+  "capturing": {
+    "message": "Snimanje..."
+  },
+  "snapshot_ready_one": {
+    "message": "Spremna je $COUNT$ snimka",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_ready_few": {
+    "message": "Spremne su $COUNT$ snimke",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_ready_other": {
+    "message": "Spremno je $COUNT$ snimaka",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "undo": {
+    "message": "Poništi"
+  },
+  "clear": {
+    "message": "Očisti"
+  },
+  "extract_now": {
+    "message": "Izdvoji sada"
+  },
+  "continue": {
+    "message": "Nastavi"
+  },
+  "draw_region_first": {
+    "message": "Najprije označite barem jedno područje."
+  },
+  "too_many_snapshots": {
+    "message": "Previše snimki. Najviše je $COUNT$.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "capture_label": {
+    "message": "Snimka $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failed_capture_tab": {
+    "message": "Nije moguće snimiti trenutačnu karticu."
+  },
+  "no_note_types": {
+    "message": "U Ankiju nema dostupnih vrsta bilježaka."
+  },
+  "no_decks": {
+    "message": "U Ankiju nema dostupnih špilova."
+  },
+  "open_capture_failed": {
+    "message": "Nije moguće otvoriti spremanje sadržaja preglednika."
+  },
+  "resumed_to": {
+    "message": "Nastavljeno od $SECONDS$ s",
+    "placeholders": {
+      "seconds": {
+        "content": "$1"
+      }
+    }
+  },
+  "failed_submit_capture": {
+    "message": "Nije moguće poslati snimljeni sadržaj preglednika."
+  },
+  "failed_decode_screenshot": {
+    "message": "Nije moguće dekodirati snimku zaslona."
+  },
+  "only_http_links": {
+    "message": "U Incremento se mogu spremiti samo HTTP(S) poveznice."
+  },
+  "add_webpage_failed": {
+    "message": "Nije moguće dodati karticu mrežne stranice."
+  },
+  "adding_pdf": {
+    "message": "Dodaje se PDF kartica..."
+  },
+  "adding_video": {
+    "message": "Dodaje se video kartica..."
+  },
+  "adding_webpage": {
+    "message": "Dodaje se kartica mrežne stranice..."
+  },
+  "adding_selection_writing": {
+    "message": "Dodaje se kartica za pisanje iz odabira..."
+  },
+  "unsupported_command": {
+    "message": "Nepodržana naredba."
+  },
+  "capture_start_failed": {
+    "message": "Spremanje sadržaja preglednika nije moguće pokrenuti u ovoj kartici."
+  },
+  "copied_time": {
+    "message": "Kopirano vrijeme videozapisa: $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "copy_time_failed": {
+    "message": "Nije moguće kopirati vrijeme videozapisa ($TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "load_media_ref_failed": {
+    "message": "Nije moguće učitati referencu medija preglednika."
+  },
+  "load_capture_meta_failed": {
+    "message": "Nije moguće učitati metapodatke snimanja preglednika."
+  },
+  "copy_offscreen_reason": {
+    "message": "Kopiraj posljednje vrijeme zaustavljanja videozapisa za lijepljenje u Anki."
+  },
+  "page_html_too_large": {
+    "message": "HTML stranice je prevelik. Najviše $COUNT$ znakova.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "selected_text_too_large": {
+    "message": "Odabrani tekst je prevelik. Najviše $COUNT$ znakova.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "extension_runtime_unavailable": {
+    "message": "Runtime ekstenzije Incremento nije dostupan."
+  },
+  "extension_request_failed": {
+    "message": "Zahtjev ekstenzije nije uspio."
+  },
+  "continue_choose_fields": {
+    "message": "$ERROR$ Otvorite Nastavi jednom kako biste odabrali odredišna polja za snimku.",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "bridge_handshake_failed": {
+    "message": "Povezivanje s Incremento mostom nije uspjelo."
+  },
+  "bridge_request_failed": {
+    "message": "Zahtjev nije uspio ($STATUS$)",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "screenshot_not_png": {
+    "message": "Snimka zaslona mora biti PNG podatkovni URL."
+  },
+  "screenshot_too_large": {
+    "message": "Snimka zaslona je prevelika. Najviše $COUNT$ bajtova.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_too_large": {
+    "message": "Snimka je prevelika. Najviše $COUNT$ bajtova.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "combined_snapshots_too_large": {
+    "message": "Ukupna veličina snimki je prevelika. Najviše $COUNT$ bajtova.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "choose_note_type_deck": {
+    "message": "Odaberite vrstu bilješke i špil."
+  },
+  "map_capture_field": {
+    "message": "Preslikajte barem jedan dio snimljenog sadržaja u polje bilješke."
+  },
+  "pdf_kind": {
+    "message": "PDF"
+  },
+  "content_kind": {
+    "message": "Sadržaj"
+  },
+  "language_export_template": {
+    "message": "Izvezi prazan predložak…"
+  },
+  "language_export_selected": {
+    "message": "Izvezi odabrani jezik…"
+  },
+  "language_import_csv": {
+    "message": "Uvezi prijevode…"
+  },
+  "language_sheet_help": {
+    "message": "Otvori CSV u Excelu, Google Sheetsu ili LibreOfficeu. Na vrhu upiši locale i name, a zatim mijenjaj samo stupac translation. Spremi kao CSV UTF-8 i uvezi ga ovdje."
+  },
+  "language_custom_name": {
+    "message": "$NAME$ (uvezeno)",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "language_pack_preview": {
+    "message": "$NAME$: $COUNT$ od $TOTAL$ redaka prijevoda. Prazni retci koriste engleski. Spremi za primjenu; Odustani odbacuje ovaj uvoz.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "total": {
+        "content": "$3"
+      }
+    }
+  },
+  "language_pack_error": {
+    "message": "Redak $ROW$: $REASON$",
+    "placeholders": {
+      "row": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "language_pack_error_header": {
+    "message": "Zadrži pet izvornih naziva stupaca."
+  },
+  "language_pack_error_metadata": {
+    "message": "Zadrži retke version, locale i name na vrhu."
+  },
+  "language_pack_error_version": {
+    "message": "Ova verzija datoteke nije podržana."
+  },
+  "language_pack_error_locale": {
+    "message": "U retku locale upiši oznaku jezika, npr. de ili pt-BR."
+  },
+  "language_pack_error_name": {
+    "message": "U retku name upiši naziv jezika do 80 znakova."
+  },
+  "language_pack_error_duplicate": {
+    "message": "Redak prijevoda ili metapodataka pojavljuje se više puta."
+  },
+  "language_pack_error_unknown": {
+    "message": "Ovaj redak nije u trenutačnom predlošku. Izvezi novi predložak i u njega kopiraj prijevode."
+  },
+  "language_pack_error_source": {
+    "message": "Izvorni tekst je promijenjen. Vrati ga iz novog predloška."
+  },
+  "language_pack_error_tokens": {
+    "message": "Zadrži svaku oznaku za umetanje vrijednosti točno kao u izvornom tekstu."
+  },
+  "language_pack_error_markup": {
+    "message": "Zadrži izvorne oznake oblikovanja i atribute; nemoj dodavati izvršivi sadržaj."
+  },
+  "language_pack_error_size": {
+    "message": "Datoteka prelazi ograničenje od 2 MiB."
+  },
+  "language_pack_error_rows": {
+    "message": "Datoteka prelazi ograničenje od 20.000 redaka."
+  },
+  "language_pack_error_cell": {
+    "message": "Ćelija je preduga ili sadrži nepodržane kontrolne znakove."
+  },
+  "language_pack_error_packs": {
+    "message": "Može se spremiti najviše 20 uvezenih jezika. Ponovno uvezi isti jezik za ažuriranje."
+  },
+  "language_pack_error_csv": {
+    "message": "Spremi tablicu kao CSV UTF-8 s pet stupaca i neoštećenim navodnicima."
+  },
+  "language_pack_error_encoding": {
+    "message": "Spremi datoteku u kodiranju UTF-8."
+  },
+  "language_pack_error_file": {
+    "message": "Datoteku nije moguće pročitati ili izvesti. Pokušaj ponovno."
+  }
+}

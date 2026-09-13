@@ -688,7 +688,7 @@ def test_incremento_menu_wires_the_support_bundle_action() -> None:
     source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text(
         encoding="utf-8"
     )
-    assert 'QAction("Export Support Bundle…", mw)' in source
+    assert 'QAction(_t("root_menu_export_support_bundle"), mw)' in source
     assert "qconnect(_supportBundleAction.triggered, exportSupportBundleFunction)" in source
     support_export = source.split("def exportSupportBundleFunction()", 1)[1].split(
         "def _extract_card()", 1

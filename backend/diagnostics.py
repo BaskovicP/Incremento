@@ -344,6 +344,7 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
 }
 
 _KNOWN_CONFIG_KEYS = {
+    "ui_language",
     "add_card_item_tags",
     "add_card_topic_tags",
     "automatic_backups",

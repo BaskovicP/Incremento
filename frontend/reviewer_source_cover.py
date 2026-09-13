@@ -1,5 +1,10 @@
 import json
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t
+
 
 _ROOT_ID = "incremento-reviewer-source-cover"
 _STYLE_ID = "incremento-reviewer-source-cover-style"
@@ -20,12 +25,12 @@ def build_reviewer_source_cover_js(
     title: str | None,
     *,
     cover_media: str = "",
-    source_label: str = "Source PDF",
+    source_label: str | None = None,
 ) -> str:
     safe_title = json.dumps(str(title or "").strip())
     cover_filename = _cover_filename(cover_media)
     safe_cover = json.dumps(cover_filename)
-    safe_label = json.dumps(str(source_label or "").strip() or "Source PDF")
+    safe_label = json.dumps(str(source_label or "").strip() or t("reviewer_visibility_source_pdf"))
     enabled = bool(str(title or "").strip() or cover_filename)
     return f"""
 (function() {{
@@ -123,11 +128,12 @@ def build_reviewer_source_cover_js(
     '<div class="incremento-reviewer-source-cover-body">',
     '  <div class="incremento-reviewer-source-cover-label"></div>',
     '  <div class="incremento-reviewer-source-cover-title"></div>',
-    '  <div class="incremento-reviewer-source-cover-hint">Source reference on this card opens the document.</div>',
+    '  <div class="incremento-reviewer-source-cover-hint"></div>',
     '</div>',
   ].join("");
   var label = root.querySelector(".incremento-reviewer-source-cover-label");
   var title = root.querySelector(".incremento-reviewer-source-cover-title");
+  var hint = root.querySelector(".incremento-reviewer-source-cover-hint");
   var thumb = root.querySelector(".incremento-reviewer-source-cover-thumb");
   var image = root.querySelector(".incremento-reviewer-source-cover-thumb img");
   var coverMedia = {safe_cover};
@@ -135,6 +141,7 @@ def build_reviewer_source_cover_js(
   var labelText = {safe_label};
   label.textContent = labelText;
   title.textContent = titleText;
+  hint.textContent = {json.dumps(t("reviewer_visibility_source_hint"))};
   root.classList.toggle("has-cover", !!coverMedia);
   root.classList.toggle("title-only", !coverMedia);
   thumb.style.display = coverMedia ? "block" : "none";

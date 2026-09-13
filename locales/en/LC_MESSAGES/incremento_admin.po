@@ -1,0 +1,809 @@
+# Incremento maintenance and shared utility dialogs. Preserve identifiers and confirmation tokens.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: en\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. automatic backup automatic full backups profile
+msgid "admin_automatic_backup_automatic_full_backups_profile"
+msgstr "Automatic Full Backups — {profile}"
+
+#. automatic backup back up when this profile closes
+msgid "admin_automatic_backup_back_up_when_this_profile_closes"
+msgstr "Back up when this profile closes"
+
+#. automatic backup back up when this profile opens
+msgid "admin_automatic_backup_back_up_when_this_profile_opens"
+msgstr "Back up when this profile opens"
+
+#. automatic backup backup folder
+msgid "admin_automatic_backup_backup_folder"
+msgstr "Backup folder"
+
+#. automatic backup backup folder unavailable error
+msgid "admin_automatic_backup_backup_folder_unavailable_error"
+msgstr "Backup folder unavailable: {error}"
+
+#. automatic backup choose
+msgid "admin_automatic_backup_choose"
+msgstr "Choose…"
+
+#. automatic backup choose an on open on close or timed
+msgid "admin_automatic_backup_choose_an_on_open_on_close_or_timed"
+msgstr "Choose an on-open, on-close, or timed trigger, or disable automatic backups."
+
+#. automatic backup choose any local folder including one synced by
+msgid "admin_automatic_backup_choose_any_local_folder_including_one_synced_by"
+msgstr "Choose any local folder, including one synced by Google Drive, Dropbox, or another service. The sync app handles uploading; Incremento creates ZIPs locally."
+
+#. automatic backup choose backup folder
+msgid "admin_automatic_backup_choose_backup_folder"
+msgstr "Choose Backup Folder"
+
+#. automatic backup enable automatic full backups for this anki profile
+msgid "admin_automatic_backup_enable_automatic_full_backups_for_this_anki_profile"
+msgstr "Enable automatic full backups for this Anki profile"
+
+#. automatic backup full backup destination folder
+msgid "admin_automatic_backup_full_backup_destination_folder"
+msgstr "Full backup destination folder"
+
+#. automatic backup full backups contain private cards media and settings
+msgid "admin_automatic_backup_full_backups_contain_private_cards_media_and_settings"
+msgstr "Full backups contain private cards, media, and settings. Old automatic ZIPs for this profile are removed only after a new ZIP is verified. Backups run in the background with a visible progress window. Anki may be temporarily unavailable until the backup finishes. A close-triggered backup finishes before Anki closes the collection, so closing may take longer."
+
+#. automatic backup hours 0 off
+msgid "admin_automatic_backup_hours_0_off"
+msgstr " hours (0 = off)"
+
+#. automatic backup keep latest automatic versions
+msgid "admin_automatic_backup_keep_latest_automatic_versions"
+msgstr "Keep latest automatic versions"
+
+#. automatic backup while anki is open every
+msgid "admin_automatic_backup_while_anki_is_open_every"
+msgstr "While Anki is open, every"
+
+#. backup progress automatic backup in progress
+msgid "admin_backup_progress_automatic_backup_in_progress"
+msgstr "Automatic backup in progress"
+
+#. backup progress automatic backup stage
+msgid "admin_backup_progress_automatic_backup_stage"
+msgstr "Automatic backup stage"
+
+#. backup progress automatic full backup in progress anki is temporarily
+msgid "admin_backup_progress_automatic_full_backup_in_progress_anki_is_temporarily"
+msgstr "Automatic full backup in progress…\nAnki is temporarily unavailable. Please wait for the backup to finish."
+
+#. backup progress incremento automatic backup
+msgid "admin_backup_progress_incremento_automatic_backup"
+msgstr "Incremento Automatic Backup"
+
+#. backup progress preparing backup
+msgid "admin_backup_progress_preparing_backup"
+msgstr "Preparing backup…"
+
+#. entries close
+msgid "admin_entries_close"
+msgstr "Close"
+
+#. entries match count
+msgid "admin_entries_match_count"
+msgstr "{current} of {total}"
+
+#. entries next
+msgid "admin_entries_next"
+msgstr "Next"
+
+#. entries no matches
+msgid "admin_entries_no_matches"
+msgstr "No matches"
+
+#. entries previous
+msgid "admin_entries_previous"
+msgstr "Previous"
+
+#. entries search
+msgid "admin_entries_search"
+msgstr "Search entries"
+
+#. entries title
+msgid "admin_entries_title"
+msgstr "Incremento Database Entries"
+
+#. file available
+msgid "admin_file_available"
+msgstr "Local file available."
+
+#. file choose
+msgid "admin_file_choose"
+msgstr "Choose replacement file"
+
+#. file filter
+msgid "admin_file_filter"
+msgstr "All files (*)"
+
+#. file label file
+msgid "admin_file_label_file"
+msgstr "<b>File:</b> {value}"
+
+#. file label mode
+msgid "admin_file_label_mode"
+msgstr "<b>Mode:</b> {value}"
+
+#. file label note
+msgid "admin_file_label_note"
+msgstr "<b>Note:</b> {value}"
+
+#. file label path
+msgid "admin_file_label_path"
+msgstr "<b>Path:</b> {value}"
+
+#. file managed
+msgid "admin_file_managed"
+msgstr "Managed copy"
+
+#. file missing
+msgid "admin_file_missing"
+msgstr "Linked file is missing. Use Relink to choose a replacement."
+
+#. file none
+msgid "admin_file_none"
+msgstr "(none)"
+
+#. file open
+msgid "admin_file_open"
+msgstr "Open"
+
+#. file open failed
+msgid "admin_file_open_failed"
+msgstr "Could not open the linked file in the default native app."
+
+#. file reference
+msgid "admin_file_reference"
+msgstr "Referenced original file"
+
+#. file relink
+msgid "admin_file_relink"
+msgstr "Relink"
+
+#. file relink error
+msgid "admin_file_relink_error"
+msgstr "Could not relink this local file:\n{error}"
+
+#. file relinked
+msgid "admin_file_relinked"
+msgstr "Local file relinked."
+
+#. file reveal
+msgid "admin_file_reveal"
+msgstr "Reveal"
+
+#. file reveal failed
+msgid "admin_file_reveal_failed"
+msgstr "Could not reveal the linked file in Finder/Explorer."
+
+#. file title
+msgid "admin_file_title"
+msgstr "Local File"
+
+#. full restore a full backup or restore is already running
+msgid "admin_full_restore_a_full_backup_or_restore_is_already_running"
+msgstr "A full backup or restore is already running."
+
+#. full restore anki could not open the restored collection
+msgid "admin_full_restore_anki_could_not_open_the_restored_collection"
+msgstr "Anki could not open the restored collection."
+
+#. full restore automatic sync preference could not be saved save
+msgid "admin_full_restore_automatic_sync_preference_could_not_be_saved_save"
+msgstr ". Automatic-sync preference could not be saved: {save_error}"
+
+#. full restore backup
+msgid "admin_full_restore_backup"
+msgstr "Backup"
+
+#. full restore backup pre check failed error
+msgid "admin_full_restore_backup_pre_check_failed_error"
+msgstr "Backup pre-check failed: {error}"
+
+#. full restore backup profile source profile cards card count anki
+msgid "admin_full_restore_backup_profile_source_profile_cards_card_count_anki"
+msgstr "Backup profile: {source_profile}\nCards: {card_count}  •  Anki media files: {media_count}\nIncremento files: {file_count}{mismatch}{missing_covers}\n\nThe current collection, Anki media, and Incremento profile files will be replaced. Anki will create a safety backup first. Automatic collection and periodic media sync will be turned off until you re-enable them. Backup settings for your other profiles will be kept.\n\nAnkiWeb is not checked. A later normal sync can merge remote changes or deletions. If the restored cards should replace AnkiWeb, force a one-way Upload on your first manual sync; Download replaces the local collection. Anki media sync merges separately."
+
+#. full restore checking backup
+msgid "admin_full_restore_checking_backup"
+msgstr "Checking backup…"
+
+#. full restore closing profile for restore
+msgid "admin_full_restore_closing_profile_for_restore"
+msgstr "Closing profile for restore…"
+
+#. full restore could not close the profile for restore error
+msgid "admin_full_restore_could_not_close_the_profile_for_restore_error"
+msgstr "Could not close the profile for restore: {error}"
+
+#. full restore could not create an anki safety backup error
+msgid "admin_full_restore_could_not_create_an_anki_safety_backup_error"
+msgstr "Could not create an Anki safety backup: {error}"
+
+#. full restore creating safety backup
+msgid "admin_full_restore_creating_safety_backup"
+msgstr "Creating safety backup…"
+
+#. full restore full backup restored review the profile before syncing
+msgid "admin_full_restore_full_backup_restored_review_the_profile_before_syncing"
+msgstr "Full backup restored. Review the profile before syncing."
+
+#. full restore opening restored profile
+msgid "admin_full_restore_opening_restored_profile"
+msgstr "Opening restored profile…"
+
+#. full restore profile restored automatic sync is off
+msgid "admin_full_restore_profile_restored_automatic_sync_is_off"
+msgstr "Profile restored; automatic sync is off."
+
+#. full restore replace the current anki profile profile name with
+msgid "admin_full_restore_replace_the_current_anki_profile_profile_name_with"
+msgstr "Replace the current Anki profile “{profile_name}” with this backup?"
+
+#. full restore replacing profile files
+msgid "admin_full_restore_replacing_profile_files"
+msgstr "Replacing profile files…"
+
+#. full restore restore cancelled after successful pre check
+msgid "admin_full_restore_restore_cancelled_after_successful_pre_check"
+msgstr "Restore cancelled after successful pre-check."
+
+#. full restore restore could not replace profile files error
+msgid "admin_full_restore_restore_could_not_replace_profile_files_error"
+msgstr "Restore could not replace profile files: {error}"
+
+#. full restore restore could not replace profile files error the
+msgid "admin_full_restore_restore_could_not_replace_profile_files_error_the"
+msgstr "Restore could not replace profile files: {error}. The previous profile also could not reopen: {reopen_error}"
+
+#. full restore restore failed and the previous profile was restored
+msgid "admin_full_restore_restore_failed_and_the_previous_profile_was_restored"
+msgstr "Restore failed and the previous profile was restored, but some settings could not be saved: {error}"
+
+#. full restore restore failed and the previous profile was restored 65c4d6
+msgid "admin_full_restore_restore_failed_and_the_previous_profile_was_restored_65c4d6"
+msgstr "Restore failed and the previous profile was restored: {reason}"
+
+#. full restore restore failed reason automatic rollback also failed rollback
+msgid "admin_full_restore_restore_failed_reason_automatic_rollback_also_failed_rollback"
+msgstr "Restore failed: {reason}. Automatic rollback also failed: {rollback_error}. The prior files remain in {profile_path} and {runtime_path}."
+
+#. full restore restore failed reason prior files were put back
+msgid "admin_full_restore_restore_failed_reason_prior_files_were_put_back"
+msgstr "Restore failed: {reason}. Prior files were put back, but the profile could not reopen: {reopen_error}"
+
+#. full restore restore failed reason the restored collection could not
+msgid "admin_full_restore_restore_failed_reason_the_restored_collection_could_not"
+msgstr "Restore failed: {reason}. The restored collection could not close for rollback: {close_error}. Prior files remain in {profile_path} and {runtime_path}."
+
+#. full restore restore full backup
+msgid "admin_full_restore_restore_full_backup"
+msgstr "Restore Full Backup"
+
+#. full restore restore full profile backup
+msgid "admin_full_restore_restore_full_profile_backup"
+msgstr "Restore full profile backup"
+
+#. full restore restore stopped because the active profile changed
+msgid "admin_full_restore_restore_stopped_because_the_active_profile_changed"
+msgstr "Restore stopped because the active profile changed."
+
+#. full restore restore stopped because the profile changed or a
+msgid "admin_full_restore_restore_stopped_because_the_profile_changed_or_a"
+msgstr "Restore stopped because the profile changed or a backup started."
+
+#. full restore restore stopped with an incomplete rollback error the
+msgid "admin_full_restore_restore_stopped_with_an_incomplete_rollback_error_the"
+msgstr "Restore stopped with an incomplete rollback: {error} The prior files remain in {profile_path} and {runtime_path}. Keep Anki closed for this profile until those files are recovered."
+
+#. full restore restore succeeded but old file cleanup failed error
+msgid "admin_full_restore_restore_succeeded_but_old_file_cleanup_failed_error"
+msgstr "Restore succeeded, but old-file cleanup failed: {error}. Check {profile_path} and {runtime_path}."
+
+#. full restore rolling back failed restore
+msgid "admin_full_restore_rolling_back_failed_restore"
+msgstr "Rolling back failed restore…"
+
+#. full restore select full incremento backup
+msgid "admin_full_restore_select_full_incremento_backup"
+msgstr "Select Full Incremento Backup"
+
+#. full restore staging checked backup
+msgid "admin_full_restore_staging_checked_backup"
+msgstr "Staging checked backup…"
+
+#. full restore the backup profile name differs from the current
+msgid "admin_full_restore_the_backup_profile_name_differs_from_the_current"
+msgstr "The backup profile name differs from the current profile. Its Incremento files will be placed under the current profile."
+
+#. full restore the previous collection could not reopen
+msgid "admin_full_restore_the_previous_collection_could_not_reopen"
+msgstr "The previous collection could not reopen."
+
+#. full restore the profile changed or a backup started
+msgid "admin_full_restore_the_profile_changed_or_a_backup_started"
+msgstr "The profile changed or a backup started."
+
+#. full restore warning count pdf epub covers referenced by cards
+msgid "admin_full_restore_warning_count_pdf_epub_covers_referenced_by_cards"
+msgstr "Warning: {count} PDF/EPUB covers referenced by cards are missing from this backup. Their source titles will remain, but those cover images will not be restored."
+
+#. full restore zip files zip
+msgid "admin_full_restore_zip_files_zip"
+msgstr "ZIP files (*.zip)"
+
+#. image failed
+msgid "admin_image_failed"
+msgstr "Could not rotate the selected image:\n{error}"
+
+#. image media unavailable
+msgid "admin_image_media_unavailable"
+msgstr "Anki's media collection is unavailable."
+
+#. image missing
+msgid "admin_image_missing"
+msgstr "Could not find the selected image in Anki media:\n{filename}"
+
+#. image rotate left
+msgid "admin_image_rotate_left"
+msgstr "Rotate selected image 90° left"
+
+#. image rotate right
+msgid "admin_image_rotate_right"
+msgstr "Rotate selected image 90° right"
+
+#. image rotated
+msgid "admin_image_rotated"
+msgstr "Image rotated."
+
+#. image select
+msgid "admin_image_select"
+msgstr "Select a local image in a card field first."
+
+#. image selection lost
+msgid "admin_image_selection_lost"
+msgstr "The selected image is no longer available. Select it and try again."
+
+#. no
+msgid "admin_no"
+msgstr "No"
+
+#. note update add fields
+msgid "admin_note_update_add_fields"
+msgstr "add fields: {fields}"
+
+#. note update apply
+msgid "admin_note_update_apply"
+msgstr "Apply Update"
+
+#. note update confirm
+msgid "admin_note_update_confirm"
+msgstr "I have synced first, and this device has the collection I want to keep."
+
+#. note update empty
+msgid "admin_note_update_empty"
+msgstr "<li>No pending updates.</li>"
+
+#. note update instructions
+msgid "admin_note_update_instructions"
+msgstr "<h2>Incremento card-format update</h2>\n    <p><b>Incremento has not changed your Anki collection yet.</b></p>\n    <p>The following Incremento note types need a field or card-template update:</p>\n    <ul>{update_list}</ul>\n    <p>Anki may require a one-way full sync after a note-type change because it\n    cannot merge every schema change automatically.</p>\n    <h3>Recommended safe order</h3>\n    <ol>\n      <li>Sync this device normally before applying the update, and make sure\n      your other devices have also synced.</li>\n      <li>Return here, confirm that this device contains the collection you want\n      to keep, and apply the update.</li>\n      <li>When Anki asks which version to keep, choose <b>Upload to AnkiWeb</b>\n      from this device. On other devices, choose <b>Download</b>.</li>\n    </ol>\n    <p>You may choose <b>Later</b>; no note-type changes will be made.</p>"
+
+#. note update later
+msgid "admin_note_update_later"
+msgstr "Later"
+
+#. note update repair
+msgid "admin_note_update_repair"
+msgstr "repair field order"
+
+#. note update restore
+msgid "admin_note_update_restore"
+msgstr "restore the card template"
+
+#. note update sync
+msgid "admin_note_update_sync"
+msgstr "Sync Before Updating"
+
+#. note update template
+msgid "admin_note_update_template"
+msgstr "update the card template"
+
+#. note update title
+msgid "admin_note_update_title"
+msgstr "Incremento Card Format Update"
+
+#. schedule apply now
+msgid "admin_schedule_apply_now"
+msgstr "Apply to the current due date now"
+
+#. schedule behavior
+msgid "admin_schedule_behavior"
+msgstr "Behavior:"
+
+#. schedule clear
+msgid "admin_schedule_clear"
+msgstr "Clear Rule"
+
+#. schedule current
+msgid "admin_schedule_current"
+msgstr "Current rule: <b>{rule}</b>"
+
+#. schedule days
+msgid "admin_schedule_days"
+msgstr "Days"
+
+#. schedule hint
+msgid "admin_schedule_hint"
+msgstr "Minimum cadence keeps normal scheduling but prevents the card from drifting later than this rule. Repeat exactly always resets the next due date to this rule. One-time set due applies once and then clears itself."
+
+#. schedule mixed
+msgid "admin_schedule_mixed"
+msgstr "Current rule: <i>Mixed selection</i>"
+
+#. schedule months
+msgid "admin_schedule_months"
+msgstr "Months"
+
+#. schedule none
+msgid "admin_schedule_none"
+msgstr "Current rule: <i>No custom rule</i>"
+
+#. schedule preset
+msgid "admin_schedule_preset"
+msgstr "Preset:"
+
+#. schedule preview
+msgid "admin_schedule_preview"
+msgstr "Preview: <b>{rule}</b>"
+
+#. schedule quick
+msgid "admin_schedule_quick"
+msgstr "Quick preset…"
+
+#. schedule repeat
+msgid "admin_schedule_repeat"
+msgstr "Repeat every:"
+
+#. schedule selection
+msgid "admin_schedule_selection"
+msgid_plural "admin_schedule_selection_plural"
+msgstr[0] "Apply a recurring schedule rule to {count} selected card."
+msgstr[1] "Apply a recurring schedule rule to {count} selected cards."
+
+#. schedule title
+msgid "admin_schedule_title"
+msgstr "Custom Schedule"
+
+#. schedule unit
+msgid "admin_schedule_unit"
+msgstr "Unit:"
+
+#. schedule weeks
+msgid "admin_schedule_weeks"
+msgstr "Weeks"
+
+#. session continue
+msgid "admin_session_continue"
+msgstr "Continue"
+
+#. session debug title
+msgid "admin_session_debug_title"
+msgstr "DEBUG — Scheduled order ({count} cards)"
+
+#. session header
+msgid "admin_session_header"
+msgstr "#    type     mode       tag                  first field"
+
+#. session no tag
+msgid "admin_session_no_tag"
+msgstr "no-tag"
+
+#. sqlite editor b automatic checkpoint b path time size
+msgid "admin_sqlite_editor_b_automatic_checkpoint_b_path_time_size"
+msgstr "<b>Automatic checkpoint:</b> {path} ({time}, {size})"
+
+#. sqlite editor b automatic checkpoint b unavailable
+msgid "admin_sqlite_editor_b_automatic_checkpoint_b_unavailable"
+msgstr "<b>Automatic checkpoint:</b> unavailable"
+
+#. sqlite editor b database b path
+msgid "admin_sqlite_editor_b_database_b_path"
+msgstr "<b>Database:</b> {path}"
+
+#. sqlite editor b mode b mode warning
+msgid "admin_sqlite_editor_b_mode_b_mode_warning"
+msgstr "<b>Mode:</b> {mode} - {warning}"
+
+#. sqlite editor b recent checkpoints b none
+msgid "admin_sqlite_editor_b_recent_checkpoints_b_none"
+msgstr "<b>Recent checkpoints:</b> none"
+
+#. sqlite editor b recent checkpoints b text
+msgid "admin_sqlite_editor_b_recent_checkpoints_b_text"
+msgstr "<b>Recent checkpoints:</b> {text}"
+
+#. sqlite editor cell update failed error
+msgid "admin_sqlite_editor_cell_update_failed_error"
+msgstr "Cell update failed: {error}"
+
+#. sqlite editor close
+msgid "admin_sqlite_editor_close"
+msgstr "Close"
+
+#. sqlite editor could not load rows for table error
+msgid "admin_sqlite_editor_could_not_load_rows_for_table_error"
+msgstr "Could not load rows for {table}: {error}"
+
+#. sqlite editor could not load schema error
+msgid "admin_sqlite_editor_could_not_load_schema_error"
+msgstr "Could not load schema:\n{error}"
+
+#. sqlite editor database connection is not available
+msgid "admin_sqlite_editor_database_connection_is_not_available"
+msgstr "Database connection is not available."
+
+#. sqlite editor direct cell editing is disabled for views
+msgid "admin_sqlite_editor_direct_cell_editing_is_disabled_for_views"
+msgstr "Direct cell editing is disabled for views."
+
+#. sqlite editor direct cell editing is disabled until writes are
+msgid "admin_sqlite_editor_direct_cell_editing_is_disabled_until_writes_are"
+msgstr "Direct cell editing is disabled until writes are unlocked."
+
+#. sqlite editor direct cell editing uses sqlite rowid because this
+msgid "admin_sqlite_editor_direct_cell_editing_uses_sqlite_rowid_because_this"
+msgstr "Direct cell editing uses SQLite rowid because this table has no declared primary key."
+
+#. sqlite editor direct cell editing uses the table primary key
+msgid "admin_sqlite_editor_direct_cell_editing_uses_the_table_primary_key"
+msgstr "Direct cell editing uses the table primary key to update rows."
+
+#. sqlite editor enter a sql statement first
+msgid "admin_sqlite_editor_enter_a_sql_statement_first"
+msgstr "Enter a SQL statement first."
+
+#. sqlite editor incremento database editor
+msgid "admin_sqlite_editor_incremento_database_editor"
+msgstr "Incremento Database Editor"
+
+#. sqlite editor inspect the active profile s incremento sqlite database
+msgid "admin_sqlite_editor_inspect_the_active_profile_s_incremento_sqlite_database"
+msgstr "Inspect the active profile's Incremento SQLite database. This editor starts read-only. Unlock writes only if you know exactly what SQL you intend to run."
+
+#. sqlite editor next
+msgid "admin_sqlite_editor_next"
+msgstr "Next"
+
+#. sqlite editor no tables found
+msgid "admin_sqlite_editor_no_tables_found"
+msgstr "No tables found."
+
+#. sqlite editor previous
+msgid "admin_sqlite_editor_previous"
+msgstr "Previous"
+
+#. sqlite editor query returned count row s more note
+msgid "admin_sqlite_editor_query_returned_count_row_s_more_note"
+msgstr "Query returned {count} row(s){more_note}."
+
+#. sqlite editor read only examples select from priorities limit 20
+msgid "admin_sqlite_editor_read_only_examples_select_from_priorities_limit_20"
+msgstr "Read-only examples:\nSELECT * FROM priorities LIMIT 20;\nPRAGMA table_info(priorities);\n\nMutating SQL requires Unlock Writes."
+
+#. sqlite editor refresh
+msgid "admin_sqlite_editor_refresh"
+msgstr "Refresh"
+
+#. sqlite editor rows
+msgid "admin_sqlite_editor_rows"
+msgstr "Rows"
+
+#. sqlite editor rows table count total
+msgid "admin_sqlite_editor_rows_table_count_total"
+msgstr "Rows - {table} ({count} total)"
+
+#. sqlite editor run sql
+msgid "admin_sqlite_editor_run_sql"
+msgstr "Run SQL"
+
+#. sqlite editor schema
+msgid "admin_sqlite_editor_schema"
+msgstr "Schema"
+
+#. sqlite editor select a table
+msgid "admin_sqlite_editor_select_a_table"
+msgstr "Select a table."
+
+#. sqlite editor showing start end of count
+msgid "admin_sqlite_editor_showing_start_end_of_count"
+msgstr "Showing {start}-{end} of {count}"
+
+#. sqlite editor sql console
+msgid "admin_sqlite_editor_sql_console"
+msgstr "SQL Console"
+
+#. sqlite editor sql error error
+msgid "admin_sqlite_editor_sql_error_error"
+msgstr "SQL error: {error}"
+
+#. sqlite editor sql write executed and committed
+msgid "admin_sqlite_editor_sql_write_executed_and_committed"
+msgstr "SQL write executed and committed."
+
+#. sqlite editor sql writes and cell editing are disabled
+msgid "admin_sqlite_editor_sql_writes_and_cell_editing_are_disabled"
+msgstr "SQL writes and cell editing are disabled."
+
+#. sqlite editor sql writes and cell editing are enabled for
+msgid "admin_sqlite_editor_sql_writes_and_cell_editing_are_enabled_for"
+msgstr "SQL writes and cell editing are enabled for this editor session."
+
+#. sqlite editor sql writes are already unlocked for this session
+msgid "admin_sqlite_editor_sql_writes_are_already_unlocked_for_this_session"
+msgstr "SQL writes are already unlocked for this session."
+
+#. sqlite editor sql writes are locked use unlock writes before
+msgid "admin_sqlite_editor_sql_writes_are_locked_use_unlock_writes_before"
+msgstr "SQL writes are locked. Use Unlock Writes before running mutating SQL."
+
+#. sqlite editor sql writes unlocked for this editor session
+msgid "admin_sqlite_editor_sql_writes_unlocked_for_this_editor_session"
+msgstr "SQL writes unlocked for this editor session."
+
+#. sqlite editor table table
+msgid "admin_sqlite_editor_table_table"
+msgstr "Table: {table}"
+
+#. sqlite editor tables
+msgid "admin_sqlite_editor_tables"
+msgstr "Tables"
+
+#. sqlite editor the selected row could not be matched for
+msgid "admin_sqlite_editor_the_selected_row_could_not_be_matched_for"
+msgstr "The selected row could not be matched for update."
+
+#. sqlite editor this editor writes directly to the live incremento
+msgid "admin_sqlite_editor_this_editor_writes_directly_to_the_live_incremento"
+msgstr "This editor writes directly to the live Incremento profile database.\n\nType {phrase} to enable SQL writes for this session:"
+
+#. sqlite editor this row cannot be edited safely from the
+msgid "admin_sqlite_editor_this_row_cannot_be_edited_safely_from_the"
+msgstr "This row cannot be edited safely from the grid."
+
+#. sqlite editor truncated
+msgid "admin_sqlite_editor_truncated"
+msgstr " (truncated)"
+
+#. sqlite editor unknown
+msgid "admin_sqlite_editor_unknown"
+msgstr "Unknown"
+
+#. sqlite editor unlock cancelled confirmation phrase did not match
+msgid "admin_sqlite_editor_unlock_cancelled_confirmation_phrase_did_not_match"
+msgstr "Unlock cancelled. Confirmation phrase did not match."
+
+#. sqlite editor unlock database writes
+msgid "admin_sqlite_editor_unlock_database_writes"
+msgstr "Unlock Database Writes"
+
+#. sqlite editor unlock writes
+msgid "admin_sqlite_editor_unlock_writes"
+msgstr "Unlock Writes..."
+
+#. sqlite editor unlocked for writes
+msgid "admin_sqlite_editor_unlocked_for_writes"
+msgstr "Unlocked for writes"
+
+#. sqlite editor updated table column at row row
+msgid "admin_sqlite_editor_updated_table_column_at_row_row"
+msgstr "Updated {table}.{column} at row {row}."
+
+#. sqlite read only
+msgid "admin_sqlite_read_only"
+msgstr "Read-only"
+
+#. tag add
+msgid "admin_tag_add"
+msgstr "add tags"
+
+#. tag count
+msgid "admin_tag_count"
+msgid_plural "admin_tag_count_plural"
+msgstr[0] "{count} Tag"
+msgstr[1] "{count} Tags"
+
+#. timer across
+msgid "admin_timer_across"
+msgstr "{pages} across {books}"
+
+#. timer and
+msgid "admin_timer_and"
+msgstr "{first} and {second}"
+
+#. timer books
+msgid "admin_timer_books"
+msgid_plural "admin_timer_books_plural"
+msgstr[0] "{count} book"
+msgstr[1] "{count} books"
+
+#. timer cards reviewed
+msgid "admin_timer_cards_reviewed"
+msgid_plural "admin_timer_cards_reviewed_plural"
+msgstr[0] "<b>{count}</b> card reviewed"
+msgstr[1] "<b>{count}</b> cards reviewed"
+
+#. timer complete
+msgid "admin_timer_complete"
+msgstr "Session Complete"
+
+#. timer done
+msgid "admin_timer_done"
+msgstr "Done"
+
+#. timer duration
+msgid "admin_timer_duration"
+msgstr "{minutes}-minute focus timer complete"
+
+#. timer empty
+msgid "admin_timer_empty"
+msgstr "No cards or pages tracked for this timer run."
+
+#. timer media pages
+msgid "admin_timer_media_pages"
+msgid_plural "admin_timer_media_pages_plural"
+msgstr[0] "<b>{count}</b> {kind} page"
+msgstr[1] "<b>{count}</b> {kind} pages"
+
+#. timer media pages read
+msgid "admin_timer_media_pages_read"
+msgid_plural "admin_timer_media_pages_read_plural"
+msgstr[0] "<b>{count}</b> {kind} page read"
+msgstr[1] "<b>{count}</b> {kind} pages read"
+
+#. timer pages read
+msgid "admin_timer_pages_read"
+msgid_plural "admin_timer_pages_read_plural"
+msgstr[0] "<b>{count}</b> page read"
+msgstr[1] "<b>{count}</b> pages read"
+
+#. timer pause
+msgid "admin_timer_pause"
+msgstr "⏸  Pause"
+
+#. timer reset
+msgid "admin_timer_reset"
+msgstr "Reset timer (double-click display also resets)"
+
+#. timer resume
+msgid "admin_timer_resume"
+msgstr "▶  Resume"
+
+#. timer start
+msgid "admin_timer_start"
+msgstr "▶  Start"
+
+#. timer this
+msgid "admin_timer_this"
+msgstr "This focus timer"
+
+#. timer title
+msgid "admin_timer_title"
+msgstr "Focus Timer"
+
+#. timer today
+msgid "admin_timer_today"
+msgstr "Today"
+
+#. timer today summary
+msgid "admin_timer_today_summary"
+msgstr "{pages} and {cards} so far today."
+
+#. yes
+msgid "admin_yes"
+msgstr "Yes"

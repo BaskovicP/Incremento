@@ -1,0 +1,708 @@
+# Incremento interface strings. Edit translations here; compile with scripts/compile_i18n.py.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: hr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+
+msgid "common_cancel"
+msgstr "Odustani"
+
+msgid "common_ok"
+msgstr "U redu"
+
+msgid "settings_add_card_item_button_tags"
+msgstr "Oznake gumba Stavka u Dodaj karticu:"
+
+msgid "settings_add_card_topic_button_tags"
+msgstr "Oznake gumba Tema u Dodaj karticu:"
+
+msgid "settings_advanced"
+msgstr "Napredno"
+
+msgid "settings_advanced_tools_expose_internal_incremento_runtime_data_for_inspection"
+msgstr "Napredni alati omogućuju pregled unutarnjih podataka Incrementa radi provjere i otklanjanja pogrešaka. Djeluju samo na aktivni profil i namijenjeni su iskusnim korisnicima."
+
+msgid "settings_all_time"
+msgstr "Ukupno"
+
+msgid "settings_anki_still_records_each_topic_answer_as_good_and"
+msgstr "Anki i dalje bilježi svaki odgovor na temu kao Dobro i ažurira FSRS stanje memorije. Koristite zaseban predložak opcija špila za teme želite li ih odvojiti od optimizacije FSRS-a za stavke."
+
+msgid "settings_any_card_with_one_of_these_tags_is_also"
+msgstr "Svaka kartica s jednom od ovih oznaka također se smatra temom, čak i kada bi se inače tretirala kao stavka."
+
+msgid "settings_assign_keyboard_shortcuts_for_incremento_actions_leave_a_field"
+msgstr "Dodijelite tipkovničke prečace radnjama Incrementa. Prazno polje isključuje taj prečac."
+
+msgid "settings_assign_toggle_reviewer_buttons_in_the_shortcuts_tab_to"
+msgstr "Dodijelite prečac za prikaz gumba ponavljanja u kartici Prečaci kako biste ih zajedno sakrili ili prikazali bez promjene odabira iznad."
+
+msgid "settings_auto_start_duration"
+msgstr "Trajanje automatskog pokretanja:"
+
+msgid "settings_automatically_start_focus_timer_on_matching_cards"
+msgstr "Automatski pokreni mjerač fokusa za odgovarajuće kartice"
+
+msgid "settings_automatically_start_the_focus_timer_when_a_matching_card"
+msgstr "Automatski pokreni mjerač fokusa kada se prikaže odgovarajuća kartica. Ako već radi, zadržava trenutačnu sesiju."
+
+msgid "settings_backup_15m"
+msgstr "15 minuta"
+
+msgid "settings_backup_1d"
+msgstr "1 dan"
+
+msgid "settings_backup_1h"
+msgstr "1 sat"
+
+msgid "settings_backup_1m"
+msgstr "1 minuta"
+
+msgid "settings_backup_30m"
+msgstr "30 minuta"
+
+msgid "settings_backup_5m"
+msgstr "5 minuta"
+
+msgid "settings_backup_6h"
+msgstr "6 sati"
+
+msgid "settings_backup_7d"
+msgstr "7 dana"
+
+msgid "settings_backups"
+msgstr "Sigurnosne kopije"
+
+msgid "settings_browser_right_click_can_apply_repeating_schedule_rules_such"
+msgstr "Desnim klikom u pregledniku možete primijeniti ponavljajuća pravila, primjerice svaka dva dana ili mjesečno. Ovdje uredite zadano ponašanje i brze predloške."
+
+msgid "settings_buttons_shown_in_the_review_bar_also_in_more"
+msgstr "Gumbi na traci ponavljanja (također u Više → Gumbi za ponavljanje):"
+
+msgid "settings_card_creation"
+msgstr "Stvaranje kartica"
+
+msgid "settings_card_types"
+msgstr "Vrste kartica:"
+
+msgid "settings_choose_how_extracted_content_opens_by_default_how_its"
+msgstr "Odaberite kako se izdvojeni sadržaj otvara, kako se određuje njegov prioritet, označava li se kao tema i koje se poveznice na izvor spremaju."
+
+msgid "settings_choose_the_default_behavior_for_markdown_writing_cards_after"
+msgstr "Odaberite zadano ponašanje kartica za pisanje u Markdownu. Nakon prvog otvaranja prednost ima spremljeno stanje pojedine kartice. Pokazivač napretka prikazuje riječi napisane danas, u trenutačnoj sesiji ili ukupno."
+
+msgid "settings_clear"
+msgstr "Očisti"
+
+msgid "settings_clear_all"
+msgstr "Očisti sve"
+
+msgid "settings_controls_the_floating_priority_a_factor_saved_time_and"
+msgstr "Upravlja plutajućom značkom prioriteta, A-faktora, spremljenog vremena i rasporeda. Razvrstavanje tema slijedi postavke Tema; sve ostale kartice koriste opciju stavki."
+
+msgid "settings_copy_source_card_tags_to_extracted_cards"
+msgstr "Kopiraj oznake izvorne kartice na izdvojene kartice"
+
+msgid "settings_create_automatic_writing_backups"
+msgstr "Stvaraj automatske sigurnosne kopije pisanja"
+
+msgid "settings_create_the_topics_deck_automatically_when_a_selected_profile"
+msgstr "Automatski stvori špil Topics pri otvaranju odabranog profila"
+
+msgid "settings_custom_schedule_behavior_help"
+msgstr "Najmanja učestalost zadržava uobičajeni raspored, ali sprječava intervale dulje od odabrane granice. Točno ponavljanje postavlja isti interval nakon svakog ponavljanja. Jednokratni rok primjenjuje se jednom bez stvaranja trajnog pravila."
+
+msgid "settings_custom_scheduling"
+msgstr "Prilagođeni raspored"
+
+msgid "settings_days"
+msgstr " dana"
+
+msgid "settings_default_behavior"
+msgstr "Zadano ponašanje:"
+
+msgid "settings_default_extract_card_type"
+msgstr "Zadani tip izdvojene kartice:"
+
+msgid "settings_default_progress_scope"
+msgstr "Zadani opseg napretka:"
+
+msgid "settings_default_topic_a_factor"
+msgstr "Zadani A-faktor tema:"
+
+msgid "settings_done"
+msgstr "Dovršeno"
+
+msgid "settings_done_appears_on_topic_cards_postpone_appears_only_when"
+msgstr "Dovršeno se prikazuje na tematskim karticama; Odgodi samo kada je odgoda tema omogućena."
+
+msgid "settings_done_tag"
+msgstr "Oznaka dovršenosti"
+
+msgid "settings_done_tag_help"
+msgstr "Gotovo obustavlja trenutačnu tematsku karticu i dodaje ovu oznaku njezinoj bilješci. Oznake dijele sve kartice iste bilješke; obustavlja se samo trenutačna kartica. Poništi zajedno vraća karticu i prethodne oznake. Unesite jednu oznaku, npr. topic/done ili reading::finished. Ostavite prazno za topic/done."
+
+msgid "settings_done_tag_invalid"
+msgstr "Unesite jednu valjanu oznaku za Gotovo, do 255 znakova, bez razmaka ili praznih razina ::."
+
+msgid "settings_done_tag_label"
+msgstr "Oznaka dovršenosti:"
+
+msgid "settings_each_selected_interval_keeps_one_rolling_snapshot_per_writing"
+msgstr "Svaki odabrani interval čuva jednu rotirajuću kopiju po kartici za pisanje. Postojeće kopije moguće je vratiti i nakon isključivanja intervala."
+
+msgid "settings_editor_defaults"
+msgstr "Zadane postavke uređivača"
+
+msgid "settings_enable_red_postpone_button_on_topic_cards"
+msgstr "Omogući crveni gumb Odgodi na tematskim karticama"
+
+msgid "settings_enable_timed_skip_button_on_items"
+msgstr "Omogući vremenski ograničeno preskakanje stavki"
+
+msgid "settings_examples_a_pdf_page_reference_the_current_web_page"
+msgstr "Primjeri: referenca na PDF stranicu, URL trenutačne web-stranice ili poveznica na roditeljsku karticu pri izdvajanju."
+
+msgid "settings_extract"
+msgstr "Izdvoji"
+
+msgid "settings_extraction"
+msgstr "Izdvajanje"
+
+msgid "settings_fallback_extract_priority"
+msgstr "Rezervni prioritet izdvajanja:"
+
+msgid "settings_focus_timer"
+msgstr "Mjerač fokusa"
+
+msgid "settings_for_example_10_schedules_110_of_the_normal_next"
+msgstr "Primjerice, 10% postavlja 110% uobičajenog sljedećeg intervala i množi trajni A-faktor s 1,1."
+
+msgid "settings_for_example_10_schedules_90_of_the_normal_next"
+msgstr "Primjerice, 10% postavlja 90% uobičajenog sljedećeg intervala i množi trajni A-faktor s 0,9."
+
+msgid "settings_hard_cap_for_topic_intervals_the_deck_preset_s"
+msgstr "Gornja granica intervala tema. Vrijedi i najveći interval predloška špila; Incremento koristi nižu granicu."
+
+msgid "settings_higher_priority_number_is_more_important"
+msgstr "Viši broj prioriteta znači veću važnost"
+
+msgid "settings_highlight_the_current_writing_line"
+msgstr "Istakni trenutačni redak pisanja"
+
+msgid "settings_highlight_when_extracting"
+msgstr "Istakni pri izdvajanju"
+
+msgid "settings_how_strongly_less_lengthens_the_immediate_interval_and_increases"
+msgstr "Koliko Manje produljuje neposredni interval i povećava trajni A-faktor."
+
+msgid "settings_how_strongly_more_shortens_the_immediate_interval_and_reduces"
+msgstr "Koliko Više skraćuje neposredni interval i smanjuje trajni A-faktor."
+
+msgid "settings_if_you_switch_this_direction_incremento_can_optionally_invert"
+msgstr "Pri promjeni smjera Incremento može po želji obrnuti spremljene prioritete trenutačnog profila pri spremanju."
+
+msgid "settings_incremento_settings"
+msgstr "Postavke Incrementa"
+
+msgid "settings_item_and_other_cards"
+msgstr "Kartice stavki i ostale kartice"
+
+msgid "settings_item_skip"
+msgstr "Preskakanje stavki"
+
+msgid "settings_keyboard_shortcut_conflicts"
+msgstr "Sukobi tipkovničkih prečaca"
+
+msgid "settings_known_profiles"
+msgstr "Poznati profili: {profiles}"
+
+msgid "settings_known_profiles_empty"
+msgstr "Poznati profili prikazat će se ovdje kada budu dostupni."
+
+msgid "settings_language_auto"
+msgstr "Automatski — prati Anki"
+
+msgid "settings_language_label"
+msgstr "Jezik sučelja:"
+
+msgid "settings_language_restart"
+msgstr "Spremite izbor, zatim ponovno pokrenite Anki kako biste primijenili jezik. Trenutačni rad ostaje otvoren do ponovnog pokretanja."
+
+msgid "settings_language_tab"
+msgstr "Jezik / Language"
+
+msgid "settings_leave_blank_for_all_profiles_or_enter_one_profile"
+msgstr "Ostavite prazno za sve profile ili unesite jedan naziv profila po retku"
+
+msgid "settings_leave_this_blank_to_apply_automatic_topics_deck_creation"
+msgstr "Ostavite prazno za automatsko stvaranje špila Topics u svim profilima. Ako unesete nazive, špil se automatski stvara samo u tim profilima."
+
+msgid "settings_less_adjustment"
+msgstr "Prilagodba za Manje:"
+
+msgid "settings_local_file"
+msgstr "Lokalna datoteka"
+
+msgid "settings_lower_priority_number_is_more_important"
+msgstr "Niži broj prioriteta znači veću važnost"
+
+msgid "settings_mark_extracted_cards_as_topics"
+msgstr "Označi izdvojene kartice kao teme"
+
+msgid "settings_maximum_topic_interval"
+msgstr "Najveći interval tema:"
+
+msgid "settings_min"
+msgstr " min"
+
+msgid "settings_minimum_cadence"
+msgstr "Najmanja učestalost"
+
+msgid "settings_more_adjustment"
+msgstr "Prilagodba za Više:"
+
+msgid "settings_multiplier_help"
+msgstr "Koristi se kada izdvojeni tekst potječe iz kartice kojoj je već dodijeljen prioritet. {example}"
+
+msgid "settings_multiplier_higher"
+msgstr "Za izvorni prioritet 60, množitelj 1,02 daje izdvojeni prioritet 61,2."
+
+msgid "settings_multiplier_lower"
+msgstr "Za izvorni prioritet 6, množitelj 0,98 daje izdvojeni prioritet 5,88."
+
+msgid "settings_multiplier_tooltip"
+msgstr "Ako je poznata izvorna kartica, novi izdvojeni sadržaj koristi izvorni prioritet × ovu vrijednost. {example}"
+
+msgid "settings_one_preset_per_line_label_value_unit_example_every"
+msgstr "Jedan predložak po retku: Naziv | Vrijednost | Jedinica\nPrimjer: Svaka 2 dana | 2 | days"
+
+msgid "settings_one_time_set_due"
+msgstr "Jednokratno postavi rok"
+
+msgid "settings_only_create_for_these_profiles"
+msgstr "Stvaraj samo za ove profile:"
+
+msgid "settings_only_used_for_timed_snooze_example_60_minutes_hides"
+msgstr "Koristi se samo za vremensku odgodu. Primjer: 60 minuta skriva temu na sat vremena pa je automatski vraća."
+
+msgid "settings_open_a_guarded_database_inspector_for_the_current_profile"
+msgstr "Otvorite zaštićeni preglednik SQLite baze Incrementa trenutačnog profila. Prije otvaranja uređivača automatski se stvara kontrolna kopija s vremenskom oznakom."
+
+msgid "settings_open_database_editor"
+msgstr "Otvori uređivač baze podataka..."
+
+msgid "settings_optional_extra_filter_if_you_fill_this_in_the"
+msgstr "Dodatni filtar. Ako je popunjen, automatski mjerač pokreće se samo za odabrane tipove kartica koji imaju barem jednu od ovih oznaka."
+
+msgid "settings_parent_cards_in_extract_card"
+msgstr "Roditeljske kartice u Izdvoji karticu"
+
+msgid "settings_pdf_highlight_card_target_field"
+msgstr "Ciljno polje kartice iz PDF isticanja:"
+
+msgid "settings_pdf_pages"
+msgstr "PDF stranice"
+
+msgid "settings_play_a_beep_when_the_focus_timer_finishes"
+msgstr "Oglasi zvuk na kraju mjerača fokusa"
+
+msgid "settings_postpone"
+msgstr "Odgodi"
+
+msgid "settings_postpone_button"
+msgstr "Gumb Odgodi"
+
+msgid "settings_postpone_mode"
+msgstr "Način odgode:"
+
+msgid "settings_prefer_resuming_embedded_web_card_media_in_the_original"
+msgstr "Nastavi ugrađeni medij web-kartice na izvornoj stranici"
+
+msgid "settings_priority_assigned"
+msgstr "Prioritet novih izdvojenih kartica. Vrijednost {important_end} označava najveću važnost."
+
+msgid "settings_priority_direction"
+msgstr "Smjer prioriteta:"
+
+msgid "settings_priority_fallback_help"
+msgstr "Koristi se kada Incremento ne može odrediti prioritet nove izdvojene kartice iz izvorne kartice. Uz trenutačni smjer prioriteta, {important_end} označava najveću važnost."
+
+msgid "settings_profile_sqlite_database"
+msgstr "SQLite baza profila"
+
+msgid "settings_progress"
+msgstr "Napredak"
+
+msgid "settings_quick_presets"
+msgstr "Brzi predlošci:"
+
+msgid "settings_remember_scrolling_position_in_browser_cards"
+msgstr "Zapamti položaj pomicanja u web-karticama"
+
+msgid "settings_repeat_exactly"
+msgstr "Ponavljaj točno"
+
+msgid "settings_restore_defaults"
+msgstr "Vrati zadane vrijednosti"
+
+msgid "settings_restore_saved_bookmark_line_when_reopening_writing_cards"
+msgstr "Vrati spremljenu knjižnu oznaku pri ponovnom otvaranju kartice za pisanje"
+
+msgid "settings_review"
+msgstr "Ponavljanje"
+
+msgid "settings_review_flow"
+msgstr "Tijek ponavljanja"
+
+msgid "settings_review_settings_control_how_priority_numbers_are_interpreted_which"
+msgstr "Postavke ponavljanja određuju značenje prioriteta, dodatne upite nakon odgovora, nastavak web-kartica i ponašanje ponavljajućih pravila rasporeda."
+
+msgid "settings_reviewer_controls"
+msgstr "Kontrole ponavljanja"
+
+msgid "settings_save_failed"
+msgstr "Postavke nije moguće spremiti. Pokušajte ponovno."
+
+msgid "settings_save_links_for"
+msgstr "Spremi poveznice za:"
+
+msgid "settings_saved_provenance"
+msgstr "Spremljeni izvori"
+
+msgid "settings_scroll_to_top_when_going_to_the_next_pdf"
+msgstr "Pomakni na vrh pri prelasku na sljedeću PDF stranicu"
+
+msgid "settings_session"
+msgstr "Sesija"
+
+msgid "settings_session_only"
+msgstr "Samo ova sesija"
+
+msgid "settings_session_resets_when_you_leave_and_reopen_that_writing"
+msgstr "Sesija se ponovno pokreće kada napustite i ponovno otvorite tu karticu za pisanje."
+
+msgid "settings_shortcut_conflicts"
+msgstr "Prije spremanja riješite ponovljene prečace:\n{conflicts}"
+
+msgid "settings_shortcut_for"
+msgstr "Prečac za {action}"
+
+msgid "settings_shortcuts"
+msgstr "Prečaci"
+
+msgid "settings_show_incremento_metadata_ocr_fields_in_browser_and_note"
+msgstr "Prikaži polja metapodataka / OCR-a Incrementa u pregledniku i uređivačima bilježaka"
+
+msgid "settings_show_markdown_preview_in_writing_cards"
+msgstr "Prikaži Markdown pretpregled u karticama za pisanje"
+
+msgid "settings_show_priority_dialog_after_each_card_is_done_before"
+msgstr "Prikaži dijalog prioriteta nakon svake dovršene kartice prije nastavka"
+
+msgid "settings_show_review_button_group"
+msgstr "Prikaži skup gumba za ponavljanje"
+
+msgid "settings_show_reviewer_priority_badge_on"
+msgstr "Prikaži značku prioriteta na:"
+
+msgid "settings_show_the_writing_progress_counter_in_the_dock"
+msgstr "Prikaži brojač napretka pisanja u panelu"
+
+msgid "settings_simple_whitespace"
+msgstr "Jednostavno, prema razmacima"
+
+msgid "settings_simple_whitespace_counts_chunks_separated_by_spaces_word_like"
+msgstr "Jednostavno brojanje koristi dijelove odvojene razmacima. Način Poput Worda bolje obrađuje interpunkciju, skraćene oblike i riječi sa spojnicom."
+
+msgid "settings_skip_duration"
+msgstr "Trajanje preskakanja:"
+
+msgid "settings_source_priority_multiplier"
+msgstr "Množitelj prioriteta izvora:"
+
+msgid "settings_start_writing_cards_in_focus_mode"
+msgstr "Otvori kartice za pisanje u načinu fokusa"
+
+msgid "settings_starting_a_factor_for_topic_cards_before_they_build"
+msgstr "Početni A-faktor tematskih kartica prije stvaranja vlastite povijesti ponavljanja."
+
+msgid "settings_tags"
+msgstr "Oznake:"
+
+msgid "settings_the_editor_starts_read_only_sql_writes_stay_locked"
+msgstr "Uređivač se otvara samo za čitanje. SQL upisi ostaju zaključani dok ih izričito ne otključate."
+
+msgid "settings_these_appear_in_browser_scheduling_menus_for_one_click"
+msgstr "Pojavljuju se u izbornicima rasporeda preglednika za brzu ponovnu upotrebu. Primjeri: 'Svaka 2 dana | 2 | days' ili 'Mjesečno ponavljanje | 1 | months'."
+
+msgid "settings_these_cards_use_topic_review_behavior_such_as_more"
+msgstr "Ove kartice koriste Više / Isto / Manje i A-faktor umjesto standardnog ocjenjivanja stavki."
+
+msgid "settings_these_links_are_stored_in_dedicated_incremento_metadata_fields"
+msgstr "Poveznice se spremaju u zasebna polja metapodataka Incrementa kako bi se izdvojeni sadržaj mogao povezati s izvorom."
+
+msgid "settings_these_tags_are_toggled_when_you_click_the_item"
+msgstr "Ove oznake uključujete ili isključujete gumbom Stavka. Primjer: 'item, flashcard' za kratke bilješke namijenjene prisjećanju."
+
+msgid "settings_these_tags_are_toggled_when_you_click_the_topic"
+msgstr "Ove oznake uključujete ili isključujete gumbom Tema u Dodaj karticu ili uređivaču. Primjer: 'topic, article' označava bilješke s duljim sadržajem kao teme."
+
+msgid "settings_this_decides_whether_smaller_numbers_mean_do_this_sooner"
+msgstr "Određuje znače li manji ili veći brojevi ranije učenje. Pri promjeni Incremento može obrnuti spremljene prioritete trenutačnog profila."
+
+msgid "settings_this_is_used_by_extract_card_when_it_creates"
+msgstr "Koristi se pri stvaranju bilješke iz odabranog teksta. Odaberite trenutačni tip iz Dodaj karticu ako želite koristiti tamo odabrani tip bilješke."
+
+msgid "settings_timed_snooze"
+msgstr "Vremenska odgoda"
+
+msgid "settings_timed_snooze_duration"
+msgstr "Trajanje vremenske odgode:"
+
+msgid "settings_timed_snooze_hides_the_topic_until_the_timer_expires"
+msgstr "Vremenska odgoda skriva temu do isteka vremena. Samo ova sesija skriva je do kraja učenja ili vraćanja odgođenih kartica."
+
+msgid "settings_today"
+msgstr "Danas"
+
+msgid "settings_today_counts_words_written_today_on_this_card_session"
+msgstr "Danas broji riječi napisane danas na kartici. Sesija broji samo trenutačnu otvorenu sesiju. Ukupno koristi cijelu spremljenu povijest pisanja kartice."
+
+msgid "settings_topic_a_factor_and_custom_schedules_cannot_exceed_this"
+msgstr "A-faktor i prilagođeni rasporedi tema ne mogu prekoračiti ovaj broj dana. Najveći interval iz Anki opcija špila ostaje dodatna granica."
+
+msgid "settings_topic_cards"
+msgstr "Tematske kartice"
+
+msgid "settings_topic_cards_use_more_same_less_buttons_and_a"
+msgstr "Teme koriste gumbe Više / Isto / Manje i raspoređivanje A-faktorom. Sva tri izbora šalju Anki odgovor Dobro; samo Incremento koristi Više ili Manje za promjenu učestalosti tema. Možete dodati crveni gumb Odgodi za zahtjevne teme."
+
+msgid "settings_topic_identity"
+msgstr "Prepoznavanje tema"
+
+msgid "settings_topic_settings_control_which_cards_are_treated_as_topics"
+msgstr "Postavke tema određuju koje su kartice teme, koje oznake primjenjuju gumbi za teme i stavke te prikazuje li se crveni gumb Odgodi."
+
+msgid "settings_topic_tags"
+msgstr "Oznake tema:"
+
+msgid "settings_topics"
+msgstr "Teme"
+
+msgid "settings_topics_deck"
+msgstr "Špil Topics"
+
+msgid "settings_track_web_card_external_pages_via_chrome_extension_by"
+msgstr "Prema zadanim postavkama prati vanjske stranice web-kartica Chrome ekstenzijom"
+
+msgid "settings_treat_these_card_types_as_topics"
+msgstr "Ove tipove kartica tretiraj kao teme:"
+
+msgid "settings_units_days_weeks_months_lines_with_invalid_values_are"
+msgstr "Jedinice: days, weeks, months. Retci s nevaljanim vrijednostima zanemaruju se."
+
+msgid "settings_use_current_add_card_type"
+msgstr "Koristi trenutačni tip u Dodaj karticu"
+
+msgid "settings_use_fail_pass_buttons_on_items"
+msgstr "Koristi gumbe Neuspjeh / Uspjeh na stavkama"
+
+msgid "settings_used_only_when_a_topic_card_does_not_yet"
+msgstr "Koristi se samo dok tematska kartica još nema spremljeno stanje rasporeda."
+
+msgid "settings_used_when_a_topic_card_has_no_stored_topic"
+msgstr "Koristi se kada tematska kartica još nema povijest rasporeda. Veće vrijednosti obično povećavaju razmak između ponavljanja."
+
+msgid "settings_video"
+msgstr "Video"
+
+msgid "settings_web"
+msgstr "Web"
+
+msgid "settings_web_pages_urls"
+msgstr "Web-stranice / URL-ovi"
+
+msgid "settings_when_incremento_automatically_starts_the_focus_timer_for_a"
+msgstr "Ovaj broj minuta koristi se kada Incremento automatski pokrene mjerač za odgovarajuću karticu."
+
+msgid "settings_when_you_click_skip_on_an_item_card_incremento"
+msgstr "Klikom na Preskoči Incremento privremeno skriva stavku i vraća je nakon zadanog broja minuta. Primjer: 30 minuta skriva stavku do kraja kratkog učenja, a zatim je ponovno dopušta."
+
+msgid "settings_when_you_create_a_card_from_a_pdf_highlight"
+msgstr "Pri stvaranju kartice iz PDF isticanja Incremento popunjava ovo polje u Dodaj karticu; numeracija počinje od 1."
+
+msgid "settings_word_counting_mode"
+msgstr "Način brojanja riječi:"
+
+msgid "settings_word_like"
+msgstr "Poput Worda"
+
+msgid "settings_word_like_mode_approximates_microsoft_word_better_for_punctuation"
+msgstr "Način Poput Worda bolje približava Microsoft Word za interpunkciju, apostrofe i riječi sa spojnicom."
+
+msgid "settings_wrap_long_lines_in_writing_cards"
+msgstr "Prelomi duge retke u karticama za pisanje"
+
+msgid "settings_writing"
+msgstr "Pisanje"
+
+msgid "shortcut_activity_center"
+msgstr "Centar aktivnosti"
+
+msgid "shortcut_add_epub"
+msgstr "Dodaj EPUB"
+
+msgid "shortcut_add_local_file"
+msgstr "Dodaj lokalnu datoteku"
+
+msgid "shortcut_add_pdf"
+msgstr "Dodaj PDF"
+
+msgid "shortcut_add_web_page"
+msgstr "Web-stranica"
+
+msgid "shortcut_add_writing"
+msgstr "Dodaj u Markdown"
+
+msgid "shortcut_append_tags_reviewer"
+msgstr "Dodaj oznake ponavljanoj kartici"
+
+msgid "shortcut_command_palette"
+msgstr "Paleta naredbi"
+
+msgid "shortcut_document_bookshelf"
+msgstr "Polica dokumenata"
+
+msgid "shortcut_export_user_data"
+msgstr "Izvezi potpunu sigurnosnu kopiju"
+
+msgid "shortcut_extract_card"
+msgstr "Izdvoji karticu"
+
+msgid "shortcut_go_to_parent_knowledge_tree"
+msgstr "Idi na nadređenu karticu u stablu znanja"
+
+msgid "shortcut_group_navigation"
+msgstr "Navigacija"
+
+msgid "shortcut_group_review"
+msgstr "Ponavljanje"
+
+msgid "shortcut_group_study"
+msgstr "Učenje"
+
+msgid "shortcut_open_knowledge_tree"
+msgstr "Otvori stablo znanja"
+
+msgid "shortcut_open_settings"
+msgstr "Postavke"
+
+msgid "shortcut_pdf_mark_read"
+msgstr "PDF čitač: označi pročitano"
+
+msgid "shortcut_pdf_next_page"
+msgstr "PDF čitač: sljedeća stranica"
+
+msgid "shortcut_pdf_prev_page"
+msgstr "PDF čitač: prethodna stranica"
+
+msgid "shortcut_pdf_zoom_in"
+msgstr "PDF čitač: povećaj"
+
+msgid "shortcut_pdf_zoom_out"
+msgstr "PDF čitač: smanji"
+
+msgid "shortcut_quick_open_pdf"
+msgstr "Brzo otvori sadržaj"
+
+msgid "shortcut_reveal_current_knowledge_tree"
+msgstr "Prikaži trenutačnu karticu u stablu znanja"
+
+msgid "shortcut_search_all"
+msgstr "Pretraži sve"
+
+msgid "shortcut_search_current_document"
+msgstr "Traži u trenutačnom dokumentu"
+
+msgid "shortcut_set_priority"
+msgstr "Postavi prioritet"
+
+msgid "shortcut_start_learning"
+msgstr "Pokreni inkrementalno učenje"
+
+msgid "shortcut_statistics"
+msgstr "Statistika"
+
+msgid "shortcut_toggle_focus_timer"
+msgstr "Prikaži mjerač fokusa"
+
+msgid "shortcut_toggle_reviewer_buttons"
+msgstr "Prikaži/sakrij gumbe ponavljanja"
+
+msgid "shortcut_webpage_to_pdf"
+msgstr "Web-stranica u PDF"
+
+msgid "shortcut_youtube_video"
+msgstr "Dodaj video"
+
+#. Editor transfer button tooltip; field is an unchanged user-defined name.
+msgid "editor_insert_selected_text_into_field"
+msgstr "Umetni odabrani tekst u {field}"
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_encode_failed"
+msgstr "Nije moguće kodirati sliku snimke."
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_invalid_bounds"
+msgstr "Neispravne granice snimke: {error}"
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_capture_failed_detail"
+msgstr "Nije moguće snimiti web-prikaz: {error}"
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_capture_failed"
+msgstr "Nije moguće snimiti web-prikaz."
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_outside_viewport"
+msgstr "Odabrano područje nalazi se izvan trenutačnog prikaza."
+
+msgid "settings_language_pack_hint"
+msgstr "Izvezite CSV predložak, uredite stupac translation u tablici i uvezite ga. Prazni prijevodi koriste engleski. Uvoz se sprema u ovaj profil nakon potvrde Postavki; uvoz istog jezika zamjenjuje prethodni paket."
+
+msgid "settings_language_export_template"
+msgstr "Izvezi predložak…"
+
+msgid "settings_language_export_selected"
+msgstr "Izvezi odabrani jezik…"
+
+msgid "settings_language_import"
+msgstr "Uvezi prijevode…"
+
+msgid "settings_language_imported_name"
+msgstr "{name} (Uvezeno)"
+
+msgid "settings_language_missing_pack"
+msgstr "{locale} (Nije instaliran u ovom profilu)"
+
+msgid "settings_language_import_ready"
+msgstr "{name}: {count} prevedenih unosa spremno. Potvrdite Postavke za spremanje, zatim ponovno pokrenite Anki. Odustajanje odbacuje ovaj uvoz."
+
+msgid "settings_language_file_error"
+msgstr "Datoteku nije moguće pročitati ili zapisati."
+
+msgid "settings_language_import_failed"
+msgstr "Uvoz nije uspio: {detail}"
+
+msgid "settings_language_export_failed"
+msgstr "Izvoz nije uspio: {detail}"
+
+msgid "settings_language_export_success"
+msgstr "CSV je izvezen. Uredite samo stupac translation, uključujući oznaku i naziv jezika na vrhu; spremite kao CSV UTF-8."
+
+msgid "settings_language_csv_filter"
+msgstr "CSV tablice (*.csv *.tsv);;Sve datoteke (*)"
+
+msgid "settings_language_profile_changed"
+msgstr "Aktivni profil se promijenio. Ponovno otvorite Postavke za uvoz prijevoda u željeni profil."

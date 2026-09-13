@@ -114,6 +114,65 @@ def _load_dialog_module(monkeypatch):
     return module
 
 
+def test_filtered_deck_confirmation_localizes_buttons_and_defaults_to_no(monkeypatch):
+    from i18n import Translator
+
+    module = _load_dialog_module(monkeypatch)
+    recorded = []
+
+    class _Button:
+        def __init__(self):
+            self.text = ""
+
+        def setText(self, text):
+            self.text = text
+
+    class _Question:
+        class Icon:
+            Question = 1
+
+        class StandardButton:
+            Yes = 1
+            No = 2
+
+        answer = StandardButton.No
+
+        def __init__(self, _parent):
+            self.buttons = {1: _Button(), 2: _Button()}
+            recorded.append(self)
+
+        def setIcon(self, icon):
+            self.icon = icon
+
+        def setWindowTitle(self, title):
+            self.title = title
+
+        def setText(self, text):
+            self.text = text
+
+        def setStandardButtons(self, buttons):
+            self.standard_buttons = buttons
+
+        def button(self, which):
+            return self.buttons[which]
+
+        def setDefaultButton(self, which):
+            self.default_button = which
+
+        def exec(self):
+            return self.answer
+
+    monkeypatch.setattr(module, "QMessageBox", _Question)
+    monkeypatch.setattr(module, "t", Translator("hr").t)
+    assert module._confirm_filtered_deck_release(None, "Deck impact") is False
+    box = recorded[0]
+    assert box.buttons[1].text == "Da"
+    assert box.buttons[2].text == "Ne"
+    assert box.default_button == _Question.StandardButton.No
+    _Question.answer = _Question.StandardButton.Yes
+    assert module._confirm_filtered_deck_release(None, "Deck impact") is True
+
+
 @pytest.mark.parametrize("media_kind", ["pdf", "epub", "video"])
 @pytest.mark.parametrize("reschedule", [True, False], ids=["review", "reminder"])
 def test_launcher_previews_then_passes_all_selected_options_to_background_card_selector(
@@ -355,6 +414,14 @@ def test_preview_text_reports_selected_topic_item_counts_and_exclusions(monkeypa
     assert "1 suspended" in text
     assert "2 already in another filtered deck" in text
     assert "4 not due now" in text
+
+
+def test_preview_uses_translated_plural_summary(monkeypatch):
+    module = _load_dialog_module(monkeypatch)
+    monkeypatch.setattr(module, "tn", lambda key, count, **values: f"{key}:{count}", raising=False)
+    monkeypatch.setattr(module, "t", lambda key, **values: f"{key}:{values}", raising=False)
+    text = module.format_media_review_preview({"selected_count": 2, "topic_count": 1, "item_count": 1})
+    assert "reader_media_preview_ready" in text
 
 
 def test_preview_warns_when_filtered_cards_will_be_moved(monkeypatch):

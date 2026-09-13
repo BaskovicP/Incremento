@@ -21,6 +21,12 @@ from aqt.qt import (
 )
 from PyQt6.QtCore import pyqtSignal
 
+try:
+    from ..backend.i18n import t as _t, tn as _tn
+except ImportError:
+    from backend.i18n import t as _t, tn as _tn
+
+
 
 class _TagFlowLayout(QLayout):
     """Simple wrapping layout so tag chips stay readable instead of shrinking."""
@@ -121,7 +127,7 @@ class QuickTagEdit(QWidget):
 
         self._title_lbl: QLabel | None = None
         if not compact:
-            self._title_lbl = QLabel("0 Tags")
+            self._title_lbl = QLabel(_tn("admin_tag_count", 0))
             self._title_lbl.setStyleSheet("font-size: 20px; font-weight: 600;")
             root.addWidget(self._title_lbl)
 
@@ -163,7 +169,7 @@ class QuickTagEdit(QWidget):
         self._input.setObjectName("incTagInput")
         self._input.setFrame(False)
         self._input.setMinimumWidth(90 if compact else 120)
-        self._input.setPlaceholderText("add tags")
+        self._input.setPlaceholderText(_t("admin_tag_add"))
         self._input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._input.setStyleSheet(
             """
@@ -219,7 +225,7 @@ class QuickTagEdit(QWidget):
         if self._title_lbl is None:
             return
         n = len(self._tags)
-        self._title_lbl.setText(f"{n} Tag" if n == 1 else f"{n} Tags")
+        self._title_lbl.setText(_tn("admin_tag_count", n))
 
     def _reset_cycle(self) -> None:
         self._cycle_matches = []

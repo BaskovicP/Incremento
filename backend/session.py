@@ -18,6 +18,12 @@ Public API:
 """
 
 import copy
+
+
+try:
+    from .i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
 import os
 import time
 import types
@@ -416,7 +422,7 @@ def _prepare_filtered_review_deck(
         seen.add(cid)
         normalized_ids.append(cid)
     if not normalized_ids:
-        raise ValueError("Cannot build a filtered deck without valid card IDs.")
+        raise ValueError(t('backend_session_invalid_ids'))
 
     # Anki supports a comma-separated cid list.  Keeping this as one search
     # node avoids constructing/parsing thousands of OR expressions for large
@@ -426,7 +432,7 @@ def _prepare_filtered_review_deck(
     existing = collection.decks.by_name(deck_name)
     if existing:
         if not existing.get("dyn"):
-            raise RuntimeError(f"'{deck_name}' is a normal deck. Delete or rename it first.")
+            raise RuntimeError(t("backend_session_normal_deck", deck=deck_name))
         did = existing["id"]
     else:
         did = None
@@ -779,7 +785,7 @@ def _rebuild_filtered_deck_with_exact_ids(
 
     if _has_duplicate_ordered_ids(normalized_ids):
         raise _DuplicateLiveQueueEntriesError(
-            "Cannot rebuild a filtered deck from a live queue that contains duplicate card entries."
+            t('backend_session_duplicate_ids')
         )
 
     kwargs = _optional_col_kwargs(col)
@@ -1138,11 +1144,13 @@ def start_explicit_review(
     *,
     deck_name: str = INCREMENTO_DECK,
     preserve_order: bool = True,
-    empty_message: str = "No cards available to review.",
+    empty_message: str | None = None,
     on_finished=None,
     diagnostic_source: str = "selected_cards",
     diagnostic_content_kind: str = "other",
 ) -> bool:
+    if empty_message is None:
+        empty_message = t("backend_session_empty_review")
     normalized_ids = _normalize_explicit_review_ids(selected_ids)
     _emit_diagnostic_event(
         "explicit_review_requested",
@@ -1206,7 +1214,7 @@ def start_explicit_review(
             stage="activation",
             error_type=type(exc).__name__,
         )
-        showInfo(f"Could not enter review:\n{exc}")
+        showInfo(t("backend_session_enter_failed", error=exc))
         return False
     _register_explicit_review_finished_callback(
         on_finished,
@@ -1228,8 +1236,8 @@ def start_explicit_review_from_selector(
     deck_name: str = INCREMENTO_DECK,
     preserve_order: bool = True,
     reschedule: bool = True,
-    empty_message: str = "No cards available to review.",
-    error_message: str = "Could not start review",
+    empty_message: str | None = None,
+    error_message: str | None = None,
     on_finished=None,
     diagnostic_source: str = "selected_cards",
     diagnostic_content_kind: str = "other",
@@ -1242,6 +1250,10 @@ def start_explicit_review_from_selector(
     release_from_other_filtered_decks: bool = False,
 ) -> bool:
     """Resolve and build an explicit review in a background collection operation."""
+    if empty_message is None:
+        empty_message = t("backend_session_empty_review")
+    if error_message is None:
+        error_message = t("backend_session_start_error")
     if not callable(select_ids):
         _emit_diagnostic_event(
             "explicit_review_failed",
@@ -1250,7 +1262,7 @@ def start_explicit_review_from_selector(
             stage="selection",
             error_type="TypeError",
         )
-        showInfo(f"{error_message}: no card selector was provided.")
+        showInfo(t("backend_session_missing_selector", error_message=error_message))
         return False
 
     profile = _active_profile()
@@ -1346,9 +1358,7 @@ def start_explicit_review_from_selector(
             if result.unavailable_ids:
                 count = len(result.unavailable_ids)
                 unavailable = (
-                    f"{count} linked card{' was' if count == 1 else 's were'} "
-                    "unavailable because Anki cannot move suspended, buried, or "
-                    "already-filtered cards into this review deck."
+                    tn("backend_session_unavailable_linked", count)
                 )
                 message = f"{message}\n\n{unavailable}" if message else unavailable
             if message:
@@ -1357,9 +1367,7 @@ def start_explicit_review_from_selector(
         if result.unavailable_ids:
             count = len(result.unavailable_ids)
             showInfo(
-                f"{count} requested card{' was' if count == 1 else 's were'} not added. "
-                "Anki cannot move suspended, buried, or already-filtered cards "
-                "into this review deck. The remaining linked cards will be reviewed."
+                tn("backend_session_unavailable_partial", count)
             )
         try:
             mw.moveToState("review")
@@ -1419,18 +1427,18 @@ def start_quick_open_review(card_id: int) -> bool:
     try:
         normalized_id = int(card_id)
     except Exception:
-        showInfo("No selected card is available to study.")
+        showInfo(t('backend_session_no_selected'))
         return False
 
     if normalized_id <= 0:
-        showInfo("No selected card is available to study.")
+        showInfo(t('backend_session_no_selected'))
         return False
 
     return start_explicit_review(
         [normalized_id],
         deck_name=INCREMENTO_QUICK_OPEN_REVIEW_DECK,
         preserve_order=True,
-        empty_message="No selected card is available to study.",
+        empty_message=t('backend_session_no_selected'),
         diagnostic_source="quick_open",
     )
 
@@ -1504,9 +1512,9 @@ def _activate_incremento_session(
         )
         branch_title = str((branch_scope or {}).get("root_title") or "").strip()
         if branch_title:
-            showInfo(f'No cards available to study in branch "{branch_title}".')
+            showInfo(t("backend_session_branch_empty", title=branch_title))
         else:
-            showInfo("No cards available to study.")
+            showInfo(t('backend_session_no_cards'))
         return
 
     if bool(getattr(cfg, "show_debug", False)):
@@ -1662,7 +1670,7 @@ def _activate_incremento_session(
             "incremento_session_activation_failed",
             error_type=type(exc).__name__,
         )
-        showInfo(f"Could not enter the Incremento review session:\n\n{exc}")
+        showInfo(t("backend_session_enter_incremento_failed", error=exc))
 
 
 def learnFunction(
@@ -1678,7 +1686,7 @@ def learnFunction(
 
     factory = dialog_factory or SchedulerConfigDialog
     if factory is None:
-        showInfo("Incremento's scheduler dialog is unavailable in this Anki build.")
+        showInfo(t('backend_session_dialog_unavailable'))
         return
 
     dlg = factory(
@@ -1832,7 +1840,7 @@ def learnFunction(
     def _show_failure_if_current(exc: Exception) -> None:
         if not _is_current_session_launch(launch_token, profile):
             return
-        showInfo(f"Could not start the Incremento session:\n\n{exc}")
+        showInfo(t("backend_session_start_incremento_failed", error=exc))
 
     def _failure(exc: Exception) -> None:
         _emit_diagnostic_event(

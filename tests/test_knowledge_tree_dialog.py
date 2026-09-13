@@ -1,10 +1,18 @@
 import sys
 from unittest.mock import MagicMock
 
-sys.modules.setdefault("PyQt6", MagicMock())
-sys.modules.setdefault("PyQt6.QtCore", MagicMock())
-sys.modules.setdefault("PyQt6.QtGui", MagicMock())
-sys.modules.setdefault("PyQt6.QtPdf", MagicMock())
+_PYQT_MODULES = (
+    "PyQt6",
+    "PyQt6.QtCore",
+    "PyQt6.QtGui",
+    "PyQt6.QtPdf",
+)
+_ORIGINAL_PYQT_MODULES = {name: sys.modules.get(name) for name in _PYQT_MODULES}
+
+sys.modules["PyQt6"] = MagicMock()
+sys.modules["PyQt6.QtCore"] = MagicMock()
+sys.modules["PyQt6.QtGui"] = MagicMock()
+sys.modules["PyQt6.QtPdf"] = MagicMock()
 sys.modules.setdefault(
     "knowledge_tree_priority_dialog",
     MagicMock(
@@ -15,14 +23,14 @@ sys.modules.setdefault(
         OP_RANDOMIZE="randomize",
         OP_SET_SELECTED="selected",
         OP_SHIFT_SUBTREE="shift",
-    ),
+),
 )
 sys.modules.setdefault(
     "knowledge_tree_postpone_dialog",
     MagicMock(
         KnowledgeTreePostponeDialog=object,
         resolve_current_browser_card_ids=lambda: [],
-    ),
+),
 )
 sys.modules.setdefault(
     "knowledge_tree_subset_dialog",
@@ -31,12 +39,41 @@ sys.modules.setdefault(
 
 import knowledge_tree_dialog
 
+for _name, _original in _ORIGINAL_PYQT_MODULES.items():
+    if _original is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original
+
 
 def test_open_pdf_action_state_enables_only_for_single_pdf_linked_node():
     enabled, tool_tip = knowledge_tree_dialog._open_pdf_action_state(1, {"kind": "pdf"})
 
     assert enabled is True
     assert "existing PDF dock" in tool_tip
+
+
+def test_search_result_translates_match_metadata_but_preserves_user_fields(monkeypatch):
+    from backend.i18n import Translator
+    translator = Translator('hr')
+    monkeypatch.setattr(knowledge_tree_dialog, 't', translator.t)
+    result = {'card_id': 42, 'match_source': 'metadata',
+              'matched_fields': ['deck_name', 'note_type_name'],
+              'match_reason': 'Metadata: deck, note type',
+              'deck_name': 'English deck', 'note_type_name': 'Basic'}
+    # The shared Qt stub cannot instantiate QDialog subclasses; execute the
+    # actual rendering method while keeping its real module helpers.
+    import ast
+    from pathlib import Path
+    tree = ast.parse(Path(knowledge_tree_dialog.__file__).read_text())
+    method = next(node for node in ast.walk(tree)
+                  if isinstance(node, ast.FunctionDef) and node.name == '_search_result_secondary_text')
+    namespace = dict(vars(knowledge_tree_dialog))
+    exec(compile(ast.Module(body=[method], type_ignores=[]), '<search-result-renderer>', 'exec'), namespace)
+    text = namespace['_search_result_secondary_text'](None, result)
+    assert 'Metapodaci:' in text and 'vrsta bilješke' in text
+    assert 'English deck' in text and 'Basic' in text
+    assert 'kartica 42' in text and result['match_reason'] == 'Metadata: deck, note type'
 
 
 def test_open_pdf_action_state_disables_for_non_pdf_and_multiselect():

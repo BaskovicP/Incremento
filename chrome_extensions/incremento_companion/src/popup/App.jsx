@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   captureSnapshot,
   getCurrentMediaContextForTab,
@@ -49,6 +49,26 @@ import {
 } from "../shared/siteAccess.js";
 import { normalizeAvailableTags } from "../shared/tagAutocomplete.js";
 import { TagAutocompleteInput } from "./TagAutocompleteInput.jsx";
+import { LanguageSettingsPanel } from "./LanguageSettingsPanel.jsx";
+import { currentPreference, currentLanguagePacks, resolveLocale, displayMessage, message, saveLanguageSettings, t, formatNumber } from "../shared/i18n.js";
+import { builtinLanguagePack, downloadLanguagePackCsv, readLanguagePackFile, packCoverage, stageLanguagePack, LanguagePackError, MAX_PACKS } from "../shared/languagePacks.js";
+import { useLanguage } from "../shared/i18nReact.js";
+import { cardKindMessage } from "../shared/cardKind.js";
+
+function languagePackErrorText(error) {
+  const reasonKeys = {
+    header: "language_pack_error_header", metadata: "language_pack_error_metadata",
+    version: "language_pack_error_version", locale: "language_pack_error_locale",
+    name: "language_pack_error_name", duplicate: "language_pack_error_duplicate",
+    unknown: "language_pack_error_unknown", component: "language_pack_error_unknown",
+    source: "language_pack_error_source", tokens: "language_pack_error_tokens",
+    markup: "language_pack_error_markup", size: "language_pack_error_size",
+    rows: "language_pack_error_rows", cell: "language_pack_error_cell", packs: "language_pack_error_packs",
+    columns: "language_pack_error_csv", csv: "language_pack_error_csv", encoding: "language_pack_error_encoding",
+  };
+  if (error instanceof LanguagePackError) return t("language_pack_error", {row: formatNumber(error.row), reason: t(reasonKeys[error.code] || "language_pack_error_file")});
+  return t("language_pack_error_file");
+}
 
 function initialStatus() {
   return { text: "", kind: "" };
@@ -106,6 +126,14 @@ function getTabUrl(tab) {
 }
 
 export function PopupApp() {
+  const language = useLanguage();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [languageDraft, setLanguageDraft] = useState(currentPreference);
+  const [languageBusy, setLanguageBusy] = useState(false);
+  const [languageError, setLanguageError] = useState("");
+  const [languagePacksDraft, setLanguagePacksDraft] = useState({});
+  const [languagePackPreview, setLanguagePackPreview] = useState(null);
+  const languageFileInput = useRef(null);
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -133,15 +161,75 @@ export function PopupApp() {
   const onVideoPage = isSupportedVideoUrl(pageUrl);
   const detectedTimeText = mediaContext?.hasDetectedTime ? formatMediaTime(mediaContext.seconds) : "";
 
+  function openSettings() {
+    setLanguageDraft(currentPreference());
+    setLanguagePacksDraft({});
+    setLanguagePackPreview(null);
+    setLanguageError("");
+    setSettingsOpen(true);
+  }
+
+  async function saveSettingsLanguage() {
+    setLanguageBusy(true);
+    setLanguageError("");
+    try {
+      await saveLanguageSettings(languageDraft, languagePacksDraft);
+      setSettingsOpen(false);
+    } catch (error) {
+      setLanguageError(error instanceof LanguagePackError ? languagePackErrorText(error) : t("language_save_error"));
+    } finally {
+      setLanguageBusy(false);
+    }
+  }
+
+  async function importLanguageFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setLanguageBusy(true);
+    setLanguageError("");
+    try {
+      const pack = await readLanguagePackFile(file);
+      const staged = stageLanguagePack(languagePacksDraft, pack);
+      if (Object.keys({...currentLanguagePacks(), ...staged}).length > MAX_PACKS) throw new LanguagePackError("packs");
+      setLanguagePacksDraft(staged);
+      setLanguageDraft(`custom:${pack.locale}`);
+      setLanguagePackPreview({name: pack.name, ...packCoverage(pack)});
+    } catch (error) {
+      setLanguageError(languagePackErrorText(error));
+    } finally {
+      setLanguageBusy(false);
+    }
+  }
+
+  async function exportLanguageFile(blank = false) {
+    setLanguageBusy(true);
+    setLanguageError("");
+    try {
+      let pack = null;
+      if (!blank) {
+        pack = languageDraft.startsWith("custom:")
+          ? {...currentLanguagePacks(), ...languagePacksDraft}[languageDraft.slice(7)]
+          : await builtinLanguagePack(resolveLocale(languageDraft, chrome.i18n.getUILanguage()));
+        if (!pack) throw new LanguagePackError("locale");
+      }
+      downloadLanguagePackCsv(pack);
+    } catch (error) {
+      setLanguageError(languagePackErrorText(error));
+    } finally {
+      setLanguageBusy(false);
+    }
+  }
+
   const writingNote = useMemo(() => {
     if (onVideoPage) {
-      return "Video cards use the current YouTube or Vimeo URL.";
+      return t("video_cards_note");
     }
     if (selectionText) {
-      return `Selection writing will use the current selection (${selectionText.length} chars). Page writing imports webpage content as markdown.`;
+      return t("selection_writing_note", { count: selectionText.length });
     }
-    return "Selection writing uses the current selection when present. Page writing imports webpage content as markdown.";
-  }, [onVideoPage, selectionText]);
+    return t("page_writing_note");
+  }, [onVideoPage, selectionText, language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -246,7 +334,7 @@ export function PopupApp() {
             setDeckNames(["Topics"]);
             setTagNames([]);
             setDeckName((currentDeck) => currentDeck || "Topics");
-            setDeckLoadError(formatBridgeError(error, "Failed to load decks from Anki. Using Topics."));
+            setDeckLoadError(error);
           }
         }
 
@@ -260,7 +348,7 @@ export function PopupApp() {
       } catch (error) {
         if (!cancelled) {
           setStatus({
-            text: error?.message || "Failed to inspect the current page.",
+            text: error?.message || t("page_inspect_failed"),
             kind: "error",
           });
         }
@@ -340,7 +428,7 @@ export function PopupApp() {
     if (rawManualTime && parsedManualTime === null) {
       return {
         ok: false,
-        error: "Enter a valid time like 12:34, 1:02:03, 90, or 1m30s.",
+        error: t("manual_time_invalid"),
       };
     }
 
@@ -373,7 +461,7 @@ export function PopupApp() {
   useEffect(() => {
     if (!busy && !hasSupportedPage) {
       setStatus({
-        text: "Open a normal http(s) page first.",
+        text: message("open_http_page"),
         kind: "error",
       });
     }
@@ -409,15 +497,15 @@ export function PopupApp() {
     const currentSelectionText = context.selectionText;
 
     if (!currentTab) {
-      setStatus({ text: "No active tab found.", kind: "error" });
+      setStatus({ text: message("no_active_tab"), kind: "error" });
       return;
     }
     if (!isHttpUrl(currentPageUrl)) {
-      setStatus({ text: "Only http(s) pages can be sent to Incremento.", kind: "error" });
+      setStatus({ text: message("only_http_pages"), kind: "error" });
       return;
     }
     if (kind === "video" && !isSupportedVideoUrl(currentPageUrl)) {
-      setStatus({ text: "Open a YouTube or Vimeo page to add a video card.", kind: "error" });
+      setStatus({ text: message("open_video_page"), kind: "error" });
       return;
     }
 
@@ -464,7 +552,7 @@ export function PopupApp() {
       );
       if (writingMode === "selection" && !currentSelectionText) {
         setStatus({
-          text: "Select text on the page first.",
+          text: message("select_page_text"),
           kind: "error",
         });
         return;
@@ -473,7 +561,7 @@ export function PopupApp() {
         payload.pageContentScope = String(pageContentScope || "main");
         if (!currentSnapshot?.html) {
           setStatus({
-            text: "Could not read webpage content from this tab.",
+            text: message("web_content_failed"),
             kind: "error",
           });
           return;
@@ -491,7 +579,7 @@ export function PopupApp() {
     if (kind === "webpage") {
       const timing = await resolveWebpageMediaTiming(currentTab, currentPageUrl);
       if (!timing.ok) {
-        setStatus({ text: timing.error || "Invalid web page time.", kind: "error" });
+        setStatus({ text: timing.error || t("web_time_invalid"), kind: "error" });
         return;
       }
       if (Number(timing.seconds) > 0) {
@@ -506,8 +594,8 @@ export function PopupApp() {
     setBusy(true);
     const statusLabel = (
       kind === "writing" && payload.writingMode === "webpage_markdown"
-        ? "Adding writing card from webpage markdown..."
-        : `Adding ${kind} card...`
+        ? message("adding_writing")
+        : message("adding_card", { kind: cardKindMessage(kind) })
     );
     setStatus({ text: statusLabel, kind: "" });
     try {
@@ -532,10 +620,10 @@ export function PopupApp() {
           // Card creation succeeded; tracking can still start when the page is opened from Anki.
         }
       }
-      setStatus({ text: `Added ${result.kind} card: ${result.title}`, kind: "success" });
+      setStatus({ text: message("added_card", { kind: cardKindMessage(result.kind), title: result.title }), kind: "success" });
     } catch (error) {
       setStatus({
-        text: formatBridgeError(error, "Failed to add content."),
+        text: formatBridgeError(error, t("add_content_failed")),
         kind: "error",
       });
     } finally {
@@ -545,16 +633,16 @@ export function PopupApp() {
 
   async function handleCopyVideoTime() {
     setBusy(true);
-    setStatus({ text: "Copying last video time...", kind: "" });
+    setStatus({ text: message("copying_video_time"), kind: "" });
     try {
       const response = await copyLatestVideoTime();
       if (response?.ok) {
-        setStatus({ text: "Copied last video time.", kind: "success" });
+        setStatus({ text: message("copied_video_time"), kind: "success" });
       } else {
-        setStatus({ text: "No stored video time yet.", kind: "error" });
+        setStatus({ text: message("no_stored_video_time"), kind: "error" });
       }
     } catch (error) {
-      setStatus({ text: error?.message || "Failed to copy video time.", kind: "error" });
+      setStatus({ text: error?.message || t("copy_video_time_failed"), kind: "error" });
     } finally {
       setBusy(false);
     }
@@ -562,18 +650,18 @@ export function PopupApp() {
 
   async function handleSaveManualTime() {
     setBusy(true);
-    setStatus({ text: "Saving browser time to the linked card...", kind: "" });
+    setStatus({ text: message("saving_browser_time"), kind: "" });
     try {
       const tab = await getActiveTab();
       if (!tab?.id) {
-        setStatus({ text: "No active tab found.", kind: "error" });
+        setStatus({ text: message("no_active_tab"), kind: "error" });
         return;
       }
 
       const { linked, media } = await refreshManualTimeContext(tab);
       if (!linked?.linked || Number(linked.cardId) <= 0) {
         setStatus({
-          text: "This tab is not linked to an Incremento card. Open the page from a card first.",
+          text: message("tab_not_linked"),
           kind: "error",
         });
         return;
@@ -583,7 +671,7 @@ export function PopupApp() {
       const parsedManualTime = rawManualTime ? parseManualTimeInput(rawManualTime) : null;
       if (rawManualTime && parsedManualTime === null) {
         setStatus({
-          text: "Enter a valid time like 12:34, 1:02:03, 90, or 1m30s.",
+          text: message("manual_time_invalid"),
           kind: "error",
         });
         return;
@@ -593,7 +681,7 @@ export function PopupApp() {
       const seconds = parsedManualTime ?? detectedSeconds;
       if (seconds === null || !Number.isFinite(Number(seconds)) || Number(seconds) < 0) {
         setStatus({
-          text: "No current video time was detected. Enter a time manually to save it.",
+          text: message("no_detected_time"),
           kind: "error",
         });
         return;
@@ -602,7 +690,7 @@ export function PopupApp() {
       const pageUrlForSave = String(media?.pageUrl || getTabUrl(tab) || "").trim();
       if (!isHttpUrl(pageUrlForSave)) {
         setStatus({
-          text: "Only normal http(s) pages can store browser times.",
+          text: message("only_http_time"),
           kind: "error",
         });
         return;
@@ -618,12 +706,12 @@ export function PopupApp() {
       await updateBrowserMediaRefBadgeForTab(tab.id, saved);
       setManualTime("");
       setStatus({
-        text: `Saved ${saved.timeText || formatMediaTime(saved.seconds)} to card ${saved.cardId}.`,
+        text: message("saved_time_card", { time: saved.timeText || formatMediaTime(saved.seconds), count: saved.cardId }),
         kind: "success",
       });
     } catch (error) {
       setStatus({
-        text: formatBridgeError(error, "Failed to save browser time."),
+        text: formatBridgeError(error, t("save_browser_time_failed")),
         kind: "error",
       });
     } finally {
@@ -637,7 +725,7 @@ export function PopupApp() {
       window.close();
     } catch (error) {
       setStatus({
-        text: error?.message || "Failed to open bookmark importer.",
+        text: error?.message || t("open_bookmarks_failed"),
         kind: "error",
       });
     }
@@ -648,7 +736,7 @@ export function PopupApp() {
       await openExtensionShortcutsPage();
     } catch (error) {
       setStatus({
-        text: error?.message || "Failed to open Chrome shortcut settings.",
+        text: error?.message || t("open_shortcuts_failed"),
         kind: "error",
       });
     }
@@ -657,39 +745,35 @@ export function PopupApp() {
   async function handleTriggerBrowserCapture(mode) {
     if (!activeTab?.id) {
       setStatus({
-        text: "No active tab found.",
+        text: message("no_active_tab"),
         kind: "error",
       });
       return;
     }
     setBusy(true);
     setStatus({
-      text: mode === "snapshot" ? "Starting snapshot capture..." : "Starting text capture...",
+      text: mode === "snapshot" ? message("starting_snapshot") : message("starting_text_capture"),
       kind: "",
     });
     try {
       const response = await triggerBrowserCaptureForTab(activeTab.id, mode);
       if (response?.ok) {
         setStatus({
-          text: mode === "snapshot" ? "Snapshot capture opened in the page." : "Text capture opened in the page.",
+          text: mode === "snapshot" ? message("snapshot_opened") : message("text_capture_opened"),
           kind: "success",
         });
         window.close();
         return;
       }
       setStatus({
-        text: String(
-          response?.error || (
-            mode === "snapshot"
-              ? "Snapshot capture did not start on this tab."
-              : "Text capture did not start. Select text on the page first."
-          )
-        ),
+        text: response?.error || (mode === "snapshot"
+          ? message("snapshot_not_started")
+          : message("text_capture_not_started")),
         kind: "error",
       });
     } catch (error) {
       setStatus({
-        text: error?.message || "Failed to trigger browser capture.",
+        text: error?.message || t("trigger_capture_failed"),
         kind: "error",
       });
     } finally {
@@ -699,15 +783,15 @@ export function PopupApp() {
 
   async function handleSaveLinkSettings() {
     setBusy(true);
-    setStatus({ text: "Saving quick link settings...", kind: "" });
+    setStatus({ text: message("saving_link_settings"), kind: "" });
     try {
       const normalized = normalizeLinkSaveSettings(linkSaveSettings);
       await setLocalExtensionSetting(LINK_SAVE_SETTINGS_KEY, normalized);
       setLinkSaveSettings(normalized);
-      setStatus({ text: "Saved quick link settings.", kind: "success" });
+      setStatus({ text: message("saved_link_settings"), kind: "success" });
     } catch (error) {
       setStatus({
-        text: error?.message || "Failed to save quick link settings.",
+        text: error?.message || t("save_link_settings_failed"),
         kind: "error",
       });
     } finally {
@@ -719,8 +803,8 @@ export function PopupApp() {
     setBusy(true);
     setStatus({
       text: persistentSiteAccess
-        ? "Disabling automatic site access..."
-        : "Requesting automatic site access...",
+        ? message("disabling_site_access")
+        : message("requesting_site_access"),
       kind: "",
     });
     try {
@@ -730,8 +814,8 @@ export function PopupApp() {
         setPersistentSiteAccess(stillEnabled);
         setStatus({
           text: stillEnabled
-            ? "Chrome/Brave kept site access enabled. Change it in extension settings."
-            : "Automatic site access disabled. User-triggered actions still work on the current tab.",
+            ? message("site_access_still_enabled")
+            : message("site_access_disabled"),
           kind: stillEnabled ? "error" : "success",
         });
         return;
@@ -741,14 +825,14 @@ export function PopupApp() {
       setPersistentSiteAccess(granted);
       setStatus({
         text: granted
-          ? "Automatic site access enabled for link saving and Web-card tracking across navigation."
-          : "Site access was not granted. User-triggered actions still work on the current tab.",
+          ? message("site_access_enabled")
+          : message("site_access_not_granted"),
         kind: granted ? "success" : "error",
       });
     } catch (error) {
       setPersistentSiteAccess(await hasPersistentSiteAccess().catch(() => false));
       setStatus({
-        text: error?.message || "Could not change automatic site access.",
+        text: error?.message || t("site_access_change_failed"),
         kind: "error",
       });
     } finally {
@@ -761,12 +845,18 @@ export function PopupApp() {
 
   return (
     <main className="popup">
+      <nav className="popup-navigation">
+        <button className="ghost-btn" type="button" disabled={settingsOpen && languageBusy} onClick={settingsOpen ? () => setSettingsOpen(false) : openSettings}>
+          {settingsOpen ? t("language_cancel") : t("settings")}
+        </button>
+      </nav>
+      <div hidden={settingsOpen}>
       <section className="panel">
-        <div className="eyebrow">Current page</div>
-        <h1>Send to Incremento</h1>
-        <p className="muted" id="page-url">{pageUrl || "No supported page selected."}</p>
+        <div className="eyebrow">{t("current_page")}</div>
+        <h1>{t("send_to_incremento")}</h1>
+        <p className="muted" id="page-url">{pageUrl || t("no_supported_page")}</p>
         <label className="field">
-          <span>Title</span>
+          <span>{t("title")}</span>
           <input
             id="title-input"
             type="text"
@@ -776,7 +866,7 @@ export function PopupApp() {
           />
         </label>
         <label className="field">
-          <span>Deck</span>
+          <span>{t("deck")}</span>
           <select
             id="deck-select"
             value={deckName}
@@ -791,10 +881,10 @@ export function PopupApp() {
           </select>
         </label>
         {deckLoadError ? (
-          <p className="field-hint is-error">{deckLoadError}</p>
+          <p className="field-hint is-error">{formatBridgeError(deckLoadError, t("deck_load_failed"))}</p>
         ) : null}
         <div className="field">
-          <label htmlFor="tags-input">Tags</label>
+          <label htmlFor="tags-input">{t("tags")}</label>
           <TagAutocompleteInput
             id="tags-input"
             value={tagsText}
@@ -802,10 +892,10 @@ export function PopupApp() {
             disabled={busy}
             onChange={setTagsText}
           />
-          <p className="field-hint">Start typing to choose an existing Anki tag, or enter a new one.</p>
+          <p className="field-hint">{t("tag_hint")}</p>
         </div>
         <label className="field">
-          <span>Priority</span>
+          <span>{t("priority")}</span>
           <div className="priority-controls">
             <div className="priority-slider-wrap">
               <input
@@ -839,14 +929,14 @@ export function PopupApp() {
         </label>
         <p className="note" id="selection-note">{writingNote}</p>
         <label className="field">
-          <span>Webpage markdown scope</span>
+          <span>{t("markdown_scope")}</span>
           <select
             id="writing-scope"
             value={pageContentScope}
             onChange={(event) => setPageContentScope(event.target.value)}
           >
-            <option value="main">Main content</option>
-            <option value="full">Entire page</option>
+            <option value="main">{t("main_content")}</option>
+            <option value="full">{t("entire_page")}</option>
           </select>
         </label>
         <div className="actions">
@@ -856,7 +946,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleAdd("pdf")}
           >
-            Add as PDF
+            {t("add_as_pdf")}
           </button>
           <button
             className="kind-btn"
@@ -864,7 +954,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage || !onVideoPage}
             onClick={() => void handleAdd("video")}
           >
-            Add as Video
+            {t("add_as_video")}
           </button>
           <button
             className="kind-btn"
@@ -872,7 +962,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleAdd("webpage")}
           >
-            Add as Webpage
+            {t("add_as_webpage")}
           </button>
           <button
             className="kind-btn"
@@ -880,7 +970,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleAdd("writing", { writingMode: "selection" })}
           >
-            Add Selection to Markdown
+            {t("add_selection_markdown")}
           </button>
           <button
             className="kind-btn"
@@ -888,20 +978,18 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleAdd("writing", { writingMode: "webpage_markdown" })}
           >
-            Add Page to Markdown
+            {t("add_page_markdown")}
           </button>
         </div>
         <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
-          {status.text}
+          {displayMessage(status.text)}
         </p>
       </section>
 
       <section className="panel panel-secondary">
-        <div className="eyebrow">Automatic site access</div>
+        <div className="eyebrow">{t("automatic_site_access")}</div>
         <p className="note">
-          On-demand actions use temporary access to the current tab. Enable persistent HTTP(S)
-          access only if modifier-click saving and Web-card media tracking should continue after
-          navigation.
+          {t("automatic_site_access_note")}
         </p>
         <button
           className="ghost-btn"
@@ -910,15 +998,15 @@ export function PopupApp() {
           onClick={() => void handlePersistentSiteAccess()}
         >
           {persistentSiteAccess
-            ? "Disable automatic site access"
-            : "Enable automatic site access..."}
+            ? t("disable_auto_site_access")
+            : t("enable_auto_site_access")}
         </button>
       </section>
 
       <section className="panel panel-secondary">
-        <div className="eyebrow">Quick link save</div>
+        <div className="eyebrow">{t("quick_link_save")}</div>
         <p className="note">
-          Save clicked links directly to Incremento as webpage cards and optionally keep navigating.
+          {t("quick_link_save_note")}
         </p>
         <label className="toggle-row">
           <input
@@ -929,10 +1017,10 @@ export function PopupApp() {
               modifierClickEnabled: event.target.checked,
             }))}
           />
-          <span>Enable modifier-click save on links</span>
+          <span>{t("enable_modifier_save")}</span>
         </label>
         <label className="field">
-          <span>Modifier key</span>
+          <span>{t("modifier_key")}</span>
           <select
             value={linkSaveSettings.modifierKey}
             onChange={(event) => setLinkSaveSettings((current) => ({
@@ -956,7 +1044,7 @@ export function PopupApp() {
               navigateAfterSave: event.target.checked,
             }))}
           />
-          <span>Continue following the link after saving</span>
+          <span>{t("continue_following_link")}</span>
         </label>
         <label className="toggle-row">
           <input
@@ -967,7 +1055,7 @@ export function PopupApp() {
               contextMenuEnabled: event.target.checked,
             }))}
           />
-          <span>Enable right-click link action</span>
+          <span>{t("enable_context_link")}</span>
         </label>
         <button
           className="ghost-btn"
@@ -975,7 +1063,7 @@ export function PopupApp() {
           disabled={busy}
           onClick={() => void handleSaveLinkSettings()}
         >
-          Save quick link settings
+          {t("save_quick_link_settings")}
         </button>
       </section>
 
@@ -986,7 +1074,7 @@ export function PopupApp() {
           disabled={busy}
           onClick={() => void handleOpenBookmarks()}
         >
-          Download bookmarks
+          {t("download_bookmarks")}
         </button>
       </section>
 
@@ -998,7 +1086,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleTriggerBrowserCapture("selection")}
           >
-            Trigger text capture
+            {t("trigger_text_capture")}
           </button>
           <button
             className="kind-btn"
@@ -1006,7 +1094,7 @@ export function PopupApp() {
             disabled={busy || !hasSupportedPage}
             onClick={() => void handleTriggerBrowserCapture("snapshot")}
           >
-            Trigger snapshot capture
+            {t("trigger_snapshot_capture")}
           </button>
         </div>
       </section>
@@ -1014,12 +1102,12 @@ export function PopupApp() {
       <section className="panel panel-secondary">
         <div className="shortcut-status">
           <div>
-            <strong>Text capture</strong>
-            <span>{selectionShortcut || "Not assigned in Chrome"}</span>
+            <strong>{t("text_capture")}</strong>
+            <span>{selectionShortcut || t("not_assigned_chrome")}</span>
           </div>
           <div>
-            <strong>Snapshot capture</strong>
-            <span>{snapshotShortcut || "Not assigned in Chrome"}</span>
+            <strong>{t("snapshot_capture")}</strong>
+            <span>{snapshotShortcut || t("not_assigned_chrome")}</span>
           </div>
         </div>
         <button
@@ -1027,29 +1115,29 @@ export function PopupApp() {
           type="button"
           onClick={() => void handleOpenShortcutsPage()}
         >
-          Open shortcut settings
+          {t("open_shortcut_settings")}
         </button>
       </section>
 
       <section className="panel panel-secondary">
-        <div className="eyebrow">Linked card</div>
+        <div className="eyebrow">{t("linked_card")}</div>
         <p className="note">
           {linkedCard.linked && linkedCard.cardId > 0
-            ? `This tab is linked to card ${linkedCard.cardId}.`
-            : "This tab is not linked to an Incremento card yet. Open it from a card's browser action first."}
+            ? t("linked_card_status", { count: linkedCard.cardId })
+            : t("not_linked_card_status")}
         </p>
         <p className="note">
           {detectedTimeText
-            ? `Detected current video time: ${detectedTimeText}`
-            : "No current video time detected on this page right now."}
+            ? t("detected_video_time", { time: detectedTimeText })
+            : t("no_video_time_page")}
         </p>
         <label className="field">
-          <span>Manual time</span>
+          <span>{t("manual_time")}</span>
           <input
             id="manual-time-input"
             type="text"
             spellCheck="false"
-            placeholder="12:34, 1:02:03, 90, or 1m30s"
+            placeholder={t("manual_time_placeholder")}
             value={manualTime}
             onChange={(event) => setManualTime(event.target.value)}
           />
@@ -1060,7 +1148,7 @@ export function PopupApp() {
           disabled={busy || !activeTab || !hasSupportedPage}
           onClick={() => void handleSaveManualTime()}
         >
-          Save manual time
+          {t("save_manual_time")}
         </button>
       </section>
 
@@ -1071,9 +1159,22 @@ export function PopupApp() {
           disabled={busy}
           onClick={() => void handleCopyVideoTime()}
         >
-          Copy last video time
+          {t("copy_last_video_time")}
         </button>
       </section>
+      </div>
+      {settingsOpen ? (
+        <LanguageSettingsPanel
+          languageDraft={languageDraft} pendingPacks={languagePacksDraft}
+          busy={languageBusy} error={languageError} preview={languagePackPreview}
+          fileInputRef={languageFileInput} onSelect={setLanguageDraft}
+          onExportTemplate={() => void exportLanguageFile(true)}
+          onExportSelected={() => void exportLanguageFile()}
+          onImport={event => void importLanguageFile(event)}
+          onSave={() => void saveSettingsLanguage()}
+          onCancel={() => setSettingsOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }

@@ -1,4 +1,9 @@
 from __future__ import annotations
+try:
+    from .i18n import t
+except ImportError:
+    from backend.i18n import t
+
 
 try:
     from .note_metadata import visible_field_names
@@ -51,8 +56,7 @@ def knowledge_tree_link_state(parent_in_tree: bool) -> dict[str, object]:
         "enabled": False,
         "checked": True,
         "tooltip": (
-            "Extract lineage is added to the knowledge tree automatically. "
-            "New extract cards are placed beneath their source parent when available."
+            t('backend_extract_tree_help')
         ),
     }
 
@@ -80,11 +84,11 @@ def _parse_batch_qa_block(lines: list[str]) -> dict[str, object]:
     started_answer = False
 
     if not lines:
-        return _invalid_batch_qa_row("", "", "Missing Q: line.")
+        return _invalid_batch_qa_row("", "", t('backend_extract_missing_question'))
 
     first_line = str(lines[0] or "")
     if not first_line.lstrip().startswith("Q:"):
-        return _invalid_batch_qa_row("", "", "Block must start with Q:.")
+        return _invalid_batch_qa_row("", "", t('backend_extract_question_first'))
 
     for index, raw_line in enumerate(lines):
         line = str(raw_line or "")
@@ -103,11 +107,11 @@ def _parse_batch_qa_block(lines: list[str]) -> dict[str, object]:
     question = "\n".join(question_lines).strip()
     answer = "\n".join(answer_lines).strip()
     if not started_answer:
-        return _invalid_batch_qa_row(question, "", "Missing A: line.")
+        return _invalid_batch_qa_row(question, "", t('backend_extract_missing_answer'))
     if not question:
-        return _invalid_batch_qa_row("", answer, "Question is empty.")
+        return _invalid_batch_qa_row("", answer, t('backend_extract_question_empty'))
     if not answer:
-        return _invalid_batch_qa_row(question, "", "Answer is empty.")
+        return _invalid_batch_qa_row(question, "", t('backend_extract_answer_empty'))
     return {
         "question": question,
         "answer": answer,
@@ -121,5 +125,5 @@ def _invalid_batch_qa_row(question: str, answer: str, error: str) -> dict[str, o
         "question": str(question or "").strip(),
         "answer": str(answer or "").strip(),
         "valid": False,
-        "error": str(error or "").strip() or "Invalid Q/A block.",
+        "error": str(error or "").strip() or t('backend_extract_invalid_block'),
     }

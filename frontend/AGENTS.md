@@ -198,7 +198,8 @@ npm --prefix frontend test
 ## Settings UI
 
 - Main file: `frontend/settings_dialog.py`.
-- Tabs are `Extraction`, `Review`, `Topics`, `Writing`, `Shortcuts`, and `Advanced`.
+- Tabs are `Language`, `Extraction`, `Review`, `Topics`, `Writing`, `Shortcuts`, and `Advanced`.
+- `ui_language` saves on OK through the config service; the active addon language changes only at the next Anki startup. Use `backend/i18n.py` and the catalogs described in `TRANSLATING.md` for UI text, and preserve IDs/item data/user content. Language-specific text must be evaluated after startup, not in module-level constants.
 - `frontend/settings_dialog.py` owns widget layout and value normalization; `__init__.py` `openSettingsFunction()` owns loading current config into the dialog and writing accepted values back.
 - When adding or renaming a setting, keep these in sync:
   - `config.json` default

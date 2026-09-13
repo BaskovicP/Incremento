@@ -93,7 +93,13 @@ Extension details and install steps:
 - Vulnerability reporting, trust boundaries, and guarded repair automation: [SECURITY.md](SECURITY.md)
 - Internal agent/developer notes: [AGENTS.md](AGENTS.md) with nested area-specific guides under `backend/`, `frontend/`, `chrome_extensions/incremento_companion/`, and `tests/`
 
+## Interface languages
+
+Choose **Incremento → Settings → Language** for English, Croatian, or Simplified Chinese, or automatically follow Anki. Save with **OK**, then restart Anki to apply it. The Chrome companion has an independent **Settings → Language** control that applies on **Save**, without a browser restart. All catalogs are bundled locally.
+
 ## Development
+
+Users can add a language without coding: in **Settings → Language**, export a CSV template (or the selected language), edit only its `translation` column in Excel/Google Sheets/LibreOffice, then import it and save. The same CSV covers the add-on, PDF reader and companion. Anki stores imported packs per profile and applies them after restart; Chrome stores them locally and applies them on Save. Blank translations fall back to English. The complete walkthrough, format and developer instructions are in [TRANSLATING.md](TRANSLATING.md). GNU gettext (`msgfmt`) is needed only for development: `brew install gettext` on macOS or `sudo apt install gettext` on Debian/Ubuntu.
 
 Install the version-ranged development toolchain once:
 
@@ -106,6 +112,14 @@ Python tests:
 
 ```bash
 .venv/bin/python -m pytest tests/ -v
+```
+
+Compile and validate translation catalogs after editing `.po` files:
+
+```bash
+.venv/bin/python scripts/compile_i18n.py
+.venv/bin/python scripts/build_translation_catalog.py
+.venv/bin/python scripts/compile_i18n.py --check
 ```
 
 Static and advanced quality gates:

@@ -29,6 +29,7 @@ ROOT_FILES = (
     "config.json",
     "README.md",
     "MANUAL.md",
+    "TRANSLATING.md",
     "EXPORTING.md",
     "ARCHITECTURE.md",
     "SECURITY.md",
@@ -46,7 +47,28 @@ CHROME_EXTENSION_ROOT_FILES = (
     "content-loader.js",
     "offscreen.html",
 )
+PYTHON_CATALOG_PATHS = tuple(
+    f"locales/{locale}/LC_MESSAGES/incremento_{domain}.mo"
+    for locale in ("en", "hr", "zh-Hans")
+    for domain in ("core", "qt", "readers", "root", "backend", "admin", "imports")
+)
+EXTENSION_CATALOG_PATHS = tuple(
+    f"{CHROME_EXTENSION_ROOT}/_locales/{locale}/messages.json"
+    for locale in ("en", "hr", "zh_CN")
+)
+CUSTOM_LANGUAGE_PATHS = (
+    "locales/translation_catalog.json",
+    "locales/builtin_translation_packs.json",
+    "locales/cardinal_rules.json",
+    "locales/UNICODE_LICENSE.txt",
+)
 REQUIRED_RUNTIME_PATHS = (
+    *CUSTOM_LANGUAGE_PATHS,
+    "backend/language_packs.py",
+    "frontend/language_pack_settings.py",
+    *PYTHON_CATALOG_PATHS,
+    *EXTENSION_CATALOG_PATHS,
+    "backend/i18n.py",
     "__init__.py",
     "ARCHITECTURE.md",
     "backend/db.py",
@@ -197,6 +219,8 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     validate_repo_root(repo_root)
+    if args.release:
+        run_i18n_check(repo_root)
     ensure_required_runtime_paths(repo_root)
 
     rebuilt_frontend = False
@@ -271,6 +295,26 @@ def ensure_required_runtime_paths(repo_root: Path) -> None:
         )
 
 
+def run_i18n_check(repo_root: Path) -> None:
+    python = repo_root / ".venv" / "bin" / "python"
+    executable = str(python) if python.exists() else sys.executable
+    run_command(
+        [executable, "scripts/compile_i18n.py", "--check"],
+        cwd=repo_root,
+        label="translation catalogs and compiled-asset drift",
+    )
+    run_command(
+        [executable, "scripts/i18n_inventory.py", "--check"],
+        cwd=repo_root,
+        label="direct UI translation coverage",
+    )
+    run_command(
+        [executable, "scripts/build_translation_catalog.py", "--check"],
+        cwd=repo_root,
+        label="custom-language spreadsheet catalog and builtin snapshot drift",
+    )
+
+
 def run_frontend_build(repo_root: Path) -> None:
     frontend_dir = repo_root / "frontend"
     package_lock = frontend_dir / "package-lock.json"
@@ -300,6 +344,7 @@ def run_extension_build(repo_root: Path) -> None:
 
 
 def run_extension_tests(repo_root: Path) -> None:
+    run_command(["npm", "test"], cwd=repo_root / "frontend", label="PDF viewer tests")
     run_command(
         ["npm", "test"],
         cwd=repo_root / CHROME_EXTENSION_ROOT,
@@ -405,6 +450,18 @@ def stage_package(
     stage_frontend(repo_root, staged_root)
     stage_web(repo_root, staged_root)
     stage_chrome_extension(repo_root, staged_root)
+    stage_language_catalogs(repo_root, staged_root)
+
+
+def stage_language_catalogs(repo_root: Path, staged_root: Path) -> None:
+    for relative in (*PYTHON_CATALOG_PATHS, *EXTENSION_CATALOG_PATHS, *CUSTOM_LANGUAGE_PATHS):
+        source = repo_root / relative
+        for component in (source, *source.parents):
+            if component == repo_root:
+                break
+            if component.is_symlink():
+                raise SystemExit(f"Symlink language catalog is not allowed: {relative}")
+        copy_file(source, staged_root / relative)
 
 
 def write_anki_manifest(staged_root: Path, human_version: str) -> None:

@@ -4,6 +4,10 @@
  * #pdf-canvas-wrapper.
  */
 
+import { createReaderLanguage } from './i18n.mjs';
+
+const DEFAULT_LANGUAGE = createReaderLanguage('en');
+
 const HL_COLORS = {
   yellow: 'rgba(255,220,0,0.45)',
   green:  'rgba(0,200,80,0.4)',
@@ -21,6 +25,7 @@ function isSnapshotHighlight(highlight) {
 }
 
 export default function HighlightLayer({
+  language = DEFAULT_LANGUAGE,
   pageHighlights,
   renderInfo,
   deleteHighlight,
@@ -137,7 +142,7 @@ export default function HighlightLayer({
             }}
           >
             <button
-              title={hasNote ? 'Edit highlight note' : 'Add highlight note'}
+              title={language.tr(hasNote ? 'reader_edit_highlight_note' : 'reader_add_highlight_note')}
               onClick={() => editHighlightNote(h.id)}
               style={{
                 width: 16,
@@ -157,7 +162,7 @@ export default function HighlightLayer({
               {renderNoteIcon(hasNote)}
             </button>
             <button
-              title={isSnapshotHighlight(h) ? 'Remove snapshot highlight' : 'Remove highlight'}
+              title={language.tr(isSnapshotHighlight(h) ? 'reader_remove_snapshot_highlight' : 'reader_remove_highlight')}
               onClick={() => deleteHighlight(h.id)}
               style={{
                 width: 16,

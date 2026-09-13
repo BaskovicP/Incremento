@@ -3,6 +3,8 @@ import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer  from './HighlightLayer.jsx';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
+import { createReaderLanguage } from './i18n.mjs';
+import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
 
 const HL_COLORS = {
   yellow: 'rgba(255,220,0,0.45)',
@@ -78,10 +80,10 @@ const TOOLBAR_SEPARATOR_STYLE = {
 };
 
 const CONTROL_GROUPS = [
-  ['navigation', 'Navigation'],
-  ['reading', 'Reading'],
-  ['annotation', 'Annotation & capture'],
-  ['review', 'Review & cards'],
+  ['navigation', 'reader_navigation'],
+  ['reading', 'reader_reading'],
+  ['annotation', 'reader_annotation_capture'],
+  ['review', 'reader_review_cards'],
 ];
 
 const DEFAULT_CONTROL_VISIBILITY = {
@@ -219,16 +221,18 @@ function selectionCleaned(sel, textLayer) {
           text = text.slice(0, -1) + piece;
           insertedCount -= 1;
         } else {
-          text += ' ' + piece;
-          insertedCount += 1;
+          const joined = joinPdfTextParts(text, piece);
+          insertedCount += joined.length - text.length - piece.length;
+          text = joined;
         }
         if (offsetTopLast !== 0) {
           lastYDiffs.push(node.offsetTop - offsetTopLast);
         }
         lastFontSize = fontSize;
       } else if (offsetLeftLast + textWidthLast < node.offsetLeft - 2 && !piece.startsWith(' ')) {
-        text += ' ' + piece;
-        insertedCount += 1;
+        const joined = joinPdfTextParts(text, piece);
+        insertedCount += joined.length - text.length - piece.length;
+        text = joined;
       } else if (offsetLeftLast + textWidthLast > node.offsetLeft - 5) {
         text = text.trimEnd() + piece;
       } else {
@@ -413,7 +417,7 @@ function findExcerptSpanMatch(textLayer, excerpt) {
     const matched = [];
     for (let end = start; end < spans.length && end < start + maxWindow; end += 1) {
       const piece = spans[end].text;
-      combined = combined ? `${combined} ${piece}` : piece;
+      combined = joinPdfTextParts(combined, piece);
       matched.push(spans[end].span);
       if (combined.includes(target)) {
         return matched;
@@ -459,6 +463,8 @@ function getPdfViewportMetrics(wrapper) {
 }
 
 export default function PdfViewer() {
+  const [language, setLanguage] = useState(() => createReaderLanguage('en'));
+  const { tr, plural } = language;
   // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
   const {
     page, totalPages, zoom, error, renderInfo, readPage, linkAnnotations,
@@ -668,13 +674,13 @@ export default function PdfViewer() {
 
   const describeLimitReached = useCallback(() => {
     const prefix = limitTotal > 0
-      ? `Daily limit reached: ${Math.max(limitUsed, limitTotal)}/${limitTotal} pages today.`
-      : 'Daily limit reached for this PDF.';
+      ? tr('reader_limit_reached_pages', { used: Math.max(limitUsed, limitTotal), total: limitTotal })
+      : tr('reader_limit_reached_pdf');
     if (limitMode === 'hard_stop') {
-      return `${prefix} Come back after your next Incremento day reset.`;
+      return tr('reader_limit_reached_hard', { prefix });
     }
-    return `${prefix} Use override to keep reading today.`;
-  }, [limitMode, limitTotal, limitUsed]);
+    return tr('reader_limit_reached_soft', { prefix });
+  }, [limitMode, limitTotal, limitUsed, tr]);
 
   const canMoveToPage = useCallback((targetPage) => {
     if (!limitEnabled || targetPage <= pageRef.current) {
@@ -689,7 +695,7 @@ export default function PdfViewer() {
     if (limitMode === 'warning') {
       setLimitNotice({
         kind: 'warning',
-        text: `You are moving past today's ${limitTotal}-page limit for this PDF.`,
+        text: tr('reader_moving_past_limit', { count: limitTotal }),
       });
       return true;
     }
@@ -698,7 +704,7 @@ export default function PdfViewer() {
       text: describeLimitReached(),
     });
     return false;
-  }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, pageRef]);
+  }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, pageRef, tr]);
 
   const canMarkReadAtPage = useCallback((targetPage) => {
     if (!limitEnabled) {
@@ -710,7 +716,7 @@ export default function PdfViewer() {
     if (limitMode === 'warning') {
       setLimitNotice({
         kind: 'warning',
-        text: `Read-through can go past today's ${limitTotal}-page limit for this PDF.`,
+        text: tr('reader_read_past_limit', { count: limitTotal }),
       });
       return true;
     }
@@ -719,7 +725,7 @@ export default function PdfViewer() {
       text: describeLimitReached(),
     });
     return false;
-  }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled]);
+  }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, tr]);
 
   const buildReadAnchor = useCallback(() => {
     const tl = textLayerRef.current;
@@ -737,7 +743,7 @@ export default function PdfViewer() {
         return {
           page: pageRef.current,
           ...coords,
-          text: selectionCleaned(selection, tl).slice(0, 240),
+          text: truncatePdfText(selectionCleaned(selection, tl), 240),
         };
       }
     }
@@ -753,7 +759,7 @@ export default function PdfViewer() {
     return {
       page: pageRef.current,
       ...coords,
-      text: String(span.textContent || '').trim().slice(0, 240),
+      text: truncatePdfText(String(span.textContent || '').trim(), 240),
     };
   }, [lastScaleRef, pageRef, textLayerRef]);
 
@@ -770,14 +776,14 @@ export default function PdfViewer() {
     if (overrideEnabled && limitReached) {
       setLimitNotice({
         kind: 'info',
-        text: 'Daily reading limit override is active for this PDF until the next day reset.',
+        text: tr('reader_override_notice'),
       });
       return;
     }
     if (!limitReached && limitNotice?.kind !== 'warning') {
       setLimitNotice(null);
     }
-  }, [limitEnabled, limitNotice?.kind, limitReached, overrideEnabled]);
+  }, [limitEnabled, limitNotice?.kind, limitReached, overrideEnabled, tr]);
 
   useEffect(() => {
     const pendingId = pendingHighlightScrollRef.current;
@@ -1392,7 +1398,12 @@ export default function PdfViewer() {
       startAutoHighlightOnExtract = undefined,
       startScrollToTopOnPageChange = true,
       startBookmarks = null,
+      startLocale = 'en',
+      startCustomLanguage = null,
     ) => {
+      const nextLanguage = createReaderLanguage(startLocale, startCustomLanguage);
+      setLanguage(nextLanguage);
+      document.documentElement.lang = nextLanguage.locale;
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       window._incPdfHighlights = null;
@@ -1484,6 +1495,8 @@ export default function PdfViewer() {
         pending.autoHighlightOnExtract,
         pending.scrollToTopOnPageChange,
         pending.bookmarks || [],
+        pending.locale || 'en',
+        pending.customLanguage || null,
       );
     }
     return () => {
@@ -1634,7 +1647,7 @@ export default function PdfViewer() {
       <div
         id="pdf-controls"
         role="toolbar"
-        aria-label="PDF reader controls"
+        aria-label={tr("reader_pdf_controls")}
         style={{
           position: 'fixed',
           bottom: 0,
@@ -1665,26 +1678,26 @@ export default function PdfViewer() {
             }}
           >
             <button
-              aria-label="Previous PDF page"
+              aria-label={tr("reader_previous_pdf_page")}
               onClick={() => limitAwareNav(-1)}
-              title="Previous page"
+              title={tr("reader_previous_page")}
             >
-              &#8592; Prev
+              &#8592; {tr('reader_prev_short')}
             </button>
             <button
               type="button"
               onClick={openPageJump}
-              title="Go to page"
+              title={tr("reader_page_jump")}
               style={{ minWidth: 132, fontWeight: 700 }}
             >
-              Page {page} / {totalPages || '\u2014'}
+              {tr('reader_page_location', { current: page, total: totalPages || '\u2014' })}
             </button>
             <button
-              aria-label="Next PDF page"
+              aria-label={tr("reader_next_pdf_page")}
               onClick={() => limitAwareNav(1)}
-              title="Next page"
+              title={tr("reader_next_page")}
             >
-              Next &#8594;
+              {tr('reader_next_short')} &#8594;
             </button>
             <span style={{ color: '#d4d4d8', fontWeight: 700, minWidth: 48, textAlign: 'center' }}>
               {Math.round(zoom * 100)}%
@@ -1692,7 +1705,7 @@ export default function PdfViewer() {
             <button
               type="button"
               aria-pressed={clickableLinks}
-              title={clickableLinks ? 'Disable PDF links and restore uninterrupted text selection' : 'Enable clickable links in this PDF'}
+              title={clickableLinks ? tr("reader_links_disable") : tr("reader_links_enable")}
               onClick={() => setClickableLinks(value => !value)}
               style={{
                 border: clickableLinks ? '1px solid rgba(96,165,250,0.78)' : '1px solid rgba(180,180,180,0.35)',
@@ -1701,19 +1714,19 @@ export default function PdfViewer() {
                 fontWeight: clickableLinks ? 700 : 400,
               }}
             >
-              Links {clickableLinks ? 'On' : 'Off'}
+              {tr('reader_links_state', { state: clickableLinks ? tr('reader_on') : tr('reader_off') })}
             </button>
             <button
               type="button"
               disabled={linkBackHistory.length === 0}
               onClick={jumpBackFromPdfLink}
-              title={linkBackHistory.length > 0 ? `Jump back to page ${linkBackHistory.at(-1).page}` : 'Follow an internal PDF link to enable Jump Back'}
+              title={linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint")}
               style={{
                 opacity: linkBackHistory.length > 0 ? 1 : 0.48,
                 cursor: linkBackHistory.length > 0 ? 'pointer' : 'default',
               }}
             >
-              ↩ Jump Back
+              ↩ {tr('reader_jump_back')}
             </button>
             <button
               type="button"
@@ -1726,10 +1739,10 @@ export default function PdfViewer() {
                 fontWeight: 700,
               }}
             >
-              Show controls
+              {tr('reader_show_controls')}
             </button>
-            <button type="button" onClick={() => setShowControlChooser(true)} title="Choose which control groups are visible">
-              Customize
+            <button type="button" onClick={() => setShowControlChooser(true)} title={tr("reader_choose_controls")}>
+              {tr('reader_customize')}
             </button>
           </div>
         ) : (
@@ -1738,16 +1751,16 @@ export default function PdfViewer() {
               <button
                 type="button"
                 onClick={() => setShowControlChooser(true)}
-                title="Choose which control groups are visible"
+                title={tr("reader_choose_controls")}
                 style={{ padding: '2px 9px', fontSize: 11 }}
               >
-                Customize controls
+                {tr('reader_customize_controls')}
               </button>
               <button
                 type="button"
                 onClick={() => setControlsCollapsed(true)}
                 aria-expanded="true"
-                title="Minimize reader controls to give the PDF more room"
+                title={tr("reader_minimize_controls")}
                 style={{
                   border: '1px solid rgba(180,180,180,0.35)',
                   background: 'rgba(255,255,255,0.04)',
@@ -1756,7 +1769,7 @@ export default function PdfViewer() {
                   fontSize: 11,
                 }}
               >
-                Minimize controls
+                {tr('reader_minimize_controls_label')}
               </button>
             </div>
 
@@ -1764,20 +1777,20 @@ export default function PdfViewer() {
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
           {controlVisibility.navigation && <div style={TOOLBAR_GROUP_STYLE}>
             <div style={TOOLBAR_STACK_STYLE}>
-              <span style={TOOLBAR_LABEL_STYLE}>Navigate</span>
+              <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_navigate')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <button
-                  aria-label="Previous PDF page"
+                  aria-label={tr("reader_previous_pdf_page")}
                   onClick={() => limitAwareNav(-1)}
                 >
-                  &#8592; Prev
+                  &#8592; {tr('reader_prev_short')}
                 </button>
                 {pageJumpEditing ? (
                   <span style={{ minWidth: 170, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 15, fontWeight: 700 }}>
-                    <span>Page</span>
+                    <span>{tr('reader_page')}</span>
                     <input
                       ref={pageJumpInputRef}
-                      aria-label="PDF page number"
+                      aria-label={tr("reader_pdf_page_number")}
                       type="number"
                       min="1"
                       max={totalPages || undefined}
@@ -1813,7 +1826,7 @@ export default function PdfViewer() {
                   <button
                     type="button"
                     onClick={openPageJump}
-                    title={totalPages > 0 ? 'Go to page' : undefined}
+                    title={totalPages > 0 ? tr("reader_page_jump") : undefined}
                     style={{
                       minWidth: 170,
                       height: 32,
@@ -1828,28 +1841,28 @@ export default function PdfViewer() {
                       cursor: totalPages > 0 ? 'pointer' : 'default',
                     }}
                   >
-                    {totalPages > 0 ? `Page ${page} / ${totalPages}` : 'Page \u2014 / \u2014'}
+                    {tr('reader_page_location', { current: totalPages > 0 ? page : '\u2014', total: totalPages || '\u2014' })}
                   </button>
                 )}
                 <button
-                  aria-label="Next PDF page"
+                  aria-label={tr("reader_next_pdf_page")}
                   onClick={() => limitAwareNav(1)}
                 >
-                  Next &#8594;
+                  {tr('reader_next_short')} &#8594;
                 </button>
               </span>
             </div>
             <span style={TOOLBAR_SEPARATOR_STYLE} />
             <div style={TOOLBAR_STACK_STYLE}>
-              <span style={TOOLBAR_LABEL_STYLE}>Zoom</span>
+              <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_zoom')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <button aria-label="Zoom out" onClick={() => adjustZoom(-1)}>
+                <button aria-label={tr("reader_zoom_out")} onClick={() => adjustZoom(-1)}>
                   &#8722;
                 </button>
                 <span style={{ minWidth: 54, textAlign: 'center', fontSize: 15, fontWeight: 700 }}>
                   {Math.round(zoom * 100)}%
                 </span>
-                <button aria-label="Zoom in" onClick={() => adjustZoom(1)}>
+                <button aria-label={tr("reader_zoom_in")} onClick={() => adjustZoom(1)}>
                   &#43;
                 </button>
               </span>
@@ -1858,10 +1871,10 @@ export default function PdfViewer() {
 
           {controlVisibility.reading && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12 }}>
             <div style={TOOLBAR_STACK_STYLE}>
-              <span style={TOOLBAR_LABEL_STYLE}>Reading</span>
+              <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_reading')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <button
-                  title={readPage > 0 ? `Read up to page ${readPage} — click to toggle progress only` : 'Mark pages as read up to here without placing an exact marker'}
+                  title={readPage > 0 ? tr("reader_read_to_page", { page: readPage }) : tr("reader_mark_read_to_here")}
                   style={{
                     background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
                     border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 8,
@@ -1871,11 +1884,11 @@ export default function PdfViewer() {
                   }}
                   onClick={limitAwareMarkRead}
                 >
-                  ✓ Read to here
+                  ✓ {tr('reader_read_to_here')}
                 </button>
                 <button
-                  title={showReadMarker ? 'Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it.' : 'Place the exact READ UP UNTIL HERE marker at the current text row'}
-                  aria-label="Set exact read marker"
+                  title={showReadMarker ? tr("reader_move_exact_marker") : tr("reader_place_exact_marker")}
+                  aria-label={tr("reader_set_exact_marker")}
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -1899,7 +1912,7 @@ export default function PdfViewer() {
                 <button
                   type="button"
                   aria-pressed={clickableLinks}
-                  title={clickableLinks ? 'Disable PDF links and restore uninterrupted text selection' : 'Enable clickable links in this PDF'}
+                  title={clickableLinks ? tr("reader_links_disable") : tr("reader_links_enable")}
                   onClick={() => setClickableLinks(value => !value)}
                   style={{
                     background: clickableLinks ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.03)',
@@ -1912,13 +1925,13 @@ export default function PdfViewer() {
                     fontWeight: clickableLinks ? 700 : 400,
                   }}
                 >
-                  Links {clickableLinks ? 'On' : 'Off'}
+                  {tr('reader_links_state', { state: clickableLinks ? tr('reader_on') : tr('reader_off') })}
                 </button>
                 <button
                   type="button"
                   disabled={linkBackHistory.length === 0}
                   onClick={jumpBackFromPdfLink}
-                  title={linkBackHistory.length > 0 ? `Jump back to page ${linkBackHistory.at(-1).page}` : 'Follow an internal PDF link to enable Jump Back'}
+                  title={linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint")}
                   style={{
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(180,180,180,0.32)',
@@ -1930,7 +1943,7 @@ export default function PdfViewer() {
                     fontSize: 12,
                   }}
                 >
-                  ↩ Jump Back
+                  ↩ {tr('reader_jump_back')}
                 </button>
                 {readPage > 0 && (
                   <span style={{
@@ -1942,14 +1955,14 @@ export default function PdfViewer() {
                     background: 'rgba(22,163,74,0.12)',
                     border: '1px solid rgba(22,163,74,0.24)',
                   }}>
-                    p.1–{readPage}
+                    {tr('reader_read_range', { page: readPage })}
                   </span>
                 )}
               </span>
             </div>
             <span style={TOOLBAR_SEPARATOR_STYLE} />
             <span
-              title={totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : 'Read progress'}
+              title={totalPages > 0 ? tr("reader_read_progress_pages", { read: readPage, total: totalPages }) : tr("reader_read_progress")}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1984,13 +1997,13 @@ export default function PdfViewer() {
 
         {controlVisibility.reading && findOpen && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-            <span style={{ color: '#d4d4d8', fontWeight: 600 }}>Find</span>
+            <span style={{ color: '#d4d4d8', fontWeight: 600 }}>{tr('reader_find')}</span>
             <input
               ref={findInputRef}
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search this PDF"
+              placeholder={tr("reader_search_pdf")}
               style={{
                 width: 260,
                 height: 32,
@@ -2006,21 +2019,21 @@ export default function PdfViewer() {
               aria-live="polite"
               style={{ minWidth: 64, textAlign: 'center', color: '#a1a1aa', fontSize: 12 }}
             >
-              {searchQuery ? (searchHits.length ? `${Math.max(0, activeSearchHitIndex + 1)} / ${searchHits.length}` : '0 results') : ''}
+              {searchQuery ? (searchHits.length ? tr('reader_search_position', { current: Math.max(0, activeSearchHitIndex + 1), total: searchHits.length }) : tr('reader_zero_results')) : ''}
             </span>
             <button
               type="button"
               disabled={!searchHits.length}
               onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: -1 }))}
             >
-              Prev
+              {tr('reader_prev_short')}
             </button>
             <button
               type="button"
               disabled={!searchHits.length}
               onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: 1 }))}
             >
-              Next
+              {tr('reader_next_short')}
             </button>
             <button
               type="button"
@@ -2029,13 +2042,13 @@ export default function PdfViewer() {
                 setSearchQuery('');
               }}
             >
-              Close
+              {tr('reader_close')}
             </button>
             <button
               type="button"
               onClick={() => window.pycmd('incremento_pdf_open_find_dialog')}
             >
-              All
+              {tr('reader_all')}
             </button>
           </div>
         )}
@@ -2055,23 +2068,23 @@ export default function PdfViewer() {
                 fontSize: 12,
                 fontWeight: 600,
               }}
-              title="Daily PDF reading limit for this card"
+              title={tr("reader_daily_limit")}
             >
-              <span>{`Today: ${limitUsed}/${limitTotal} pages`}</span>
+              <span>{tr('reader_today_pages', { used: limitUsed, total: limitTotal })}</span>
               <span style={{ opacity: 0.72 }}>•</span>
-              <span>{`${Math.max(0, limitRemaining)} remaining`}</span>
+              <span>{tr('reader_remaining', { count: Math.max(0, limitRemaining) })}</span>
               <span style={{ opacity: 0.72 }}>•</span>
-              <span>{limitStatus?.enforcement_label || 'Warning'}</span>
+              <span>{tr(`reader_limit_${limitStatus?.enforcement_mode || 'warning'}`)}</span>
               {overrideEnabled && (
                 <>
                   <span style={{ opacity: 0.72 }}>•</span>
-                  <span style={{ color: 'rgb(96,165,250)' }}>Override active</span>
+                  <span style={{ color: 'rgb(96,165,250)' }}>{tr('reader_override_active')}</span>
                 </>
               )}
             </span>
             {allowedMaxPage != null && (
               <span style={{ fontSize: 11, color: '#c8c8c8' }}>
-                Stop point today: page {allowedMaxPage}
+                {tr('reader_stop_point', { page: allowedMaxPage })}
               </span>
             )}
           </div>
@@ -2108,11 +2121,11 @@ export default function PdfViewer() {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {limitNotice.kind === 'soft_lock' && !overrideEnabled && (
                 <button onClick={requestLimitOverride}>
-                  Override today
+                  {tr('reader_override_today')}
                 </button>
               )}
               <button onClick={clearLimitNotice}>
-                Dismiss
+                {tr('reader_dismiss')}
               </button>
             </span>
           </div>
@@ -2123,15 +2136,15 @@ export default function PdfViewer() {
           {hasPdfCard && controlVisibility.annotation && (
             <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
               <div style={TOOLBAR_STACK_STYLE}>
-                <span style={TOOLBAR_LABEL_STYLE}>Annotate</span>
+                <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_annotate')}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
                     {Object.keys(HL_COLORS).map(c => (
                       <button
                         key={c}
-                        aria-label={'Use ' + c + ' highlight color'}
+                        aria-label={tr('reader_use_highlight_color', { color: tr(`reader_color_${c}`) })}
                         aria-pressed={hlColor === c}
-                        title={`Highlight ${c}`}
+                        title={tr('reader_highlight_color', { color: tr(`reader_color_${c}`) })}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           pickHighlightColor(c, true);
@@ -2163,16 +2176,16 @@ export default function PdfViewer() {
                       checked={autoHighlight}
                       onChange={e => applyAutoHighlightSetting(e.target.checked)}
                     />
-                    Highlight when extracting
+                    {tr('reader_highlight_when_extracting')}
                   </label>
                 </span>
               </div>
               <span style={TOOLBAR_SEPARATOR_STYLE} />
               <div style={TOOLBAR_STACK_STYLE}>
-                <span style={TOOLBAR_LABEL_STYLE}>Capture</span>
+                <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_capture')}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <button
-                    title={snapshotMode ? 'Cancel snapshot' : 'Draw a rectangle to capture a region'}
+                    title={snapshotMode ? tr('reader_cancel_snapshot') : tr('reader_draw_snapshot')}
                     style={{
                       background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
                       border:      '1px solid rgba(37,99,235,0.5)',
@@ -2182,10 +2195,10 @@ export default function PdfViewer() {
                     }}
                     onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
                   >
-                    &#x1F4F7; Snapshot
+                    &#x1F4F7; {tr('reader_snapshot')}
                   </button>
                   <button
-                    title="Show highlights list"
+                    title={tr("reader_show_highlights")}
                     style={{
                       background: showHighlightsPanel ? 'rgba(56,189,248,0.2)' : 'transparent',
                       border: '1px solid rgba(56,189,248,0.55)',
@@ -2201,16 +2214,16 @@ export default function PdfViewer() {
                       setShowHighlightsPanel(o => !o);
                     }}
                   >
-                    &#x1F4D1; Highlights ({highlights.length})
+                    &#x1F4D1; {tr('reader_highlights_count', { count: highlights.length })}
                   </button>
                   <button
-                    title="Bookmark the current page as an interesting place"
+                    title={tr("reader_bookmark_current")}
                     onClick={addBookmark}
                   >
-                    &#9733; Bookmark
+                    &#9733; {tr('reader_bookmark')}
                   </button>
                   <button
-                    title="Show saved interesting-place bookmarks"
+                    title={tr("reader_show_bookmarks")}
                     style={{
                       background: showBookmarksPanel ? 'rgba(250,204,21,0.18)' : 'transparent',
                       border: '1px solid rgba(250,204,21,0.55)',
@@ -2226,7 +2239,7 @@ export default function PdfViewer() {
                       setShowBookmarksPanel(o => !o);
                     }}
                   >
-                    Bookmarks ({bookmarks.length})
+                    {tr('reader_bookmarks_count', { count: bookmarks.length })}
                   </button>
                 </span>
               </div>
@@ -2237,38 +2250,38 @@ export default function PdfViewer() {
             {hasPdfCard && (
               <>
                 <div style={TOOLBAR_STACK_STYLE}>
-                  <span style={TOOLBAR_LABEL_STYLE}>Review</span>
+                  <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_review')}</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
-                      &#x1F9E0; Review Due
+                      &#x1F9E0; {tr('reader_review_due')}
                     </button>
                     <button
-                      title="Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF"
+                      title={tr("reader_review_all_tooltip")}
                       onClick={() => window.pycmd(`incremento_pdf_review_all:${cardIdRef.current}:${pageRef.current}`)}
                     >
-                      &#x25B6; Review All
+                      &#x25B6; {tr('reader_review_all')}
                     </button>
                     <button onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>
-                      &#x1F4D6; Reading Limit
+                      &#x1F4D6; {tr('reader_reading_limit')}
                     </button>
                     <button onClick={() => window.pycmd(`incremento_pdf_regenerate_cover:${cardIdRef.current}`)}>
-                      Regenerate Cover
+                      {tr('reader_regenerate_cover')}
                     </button>
                   </span>
                 </div>
                 <span style={TOOLBAR_SEPARATOR_STYLE} />
                 <div style={TOOLBAR_STACK_STYLE}>
-                  <span style={TOOLBAR_LABEL_STYLE}>Cards</span>
+                  <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_cards')}</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <button
-                      title="Open all cards created from this PDF in the Anki Browser"
+                      title={tr("reader_open_all_cards")}
                       onClick={() => window.pycmd('incremento_open_all_pdf_cards:' + cardIdRef.current)}
                     >
-                      Open All in Browser
+                      {tr('reader_open_all_in_browser')}
                     </button>
                     {pageCards.length > 0 && (
                       <button
-                        title={`Open the ${pageCards.length} card${pageCards.length > 1 ? 's' : ''} created on this page in the Anki Browser`}
+                        title={plural('reader_page_cards_tooltip', pageCards.length)}
                         onClick={() => window.pycmd('incremento_open_page_cards:' + JSON.stringify(
                           pageCards
                             .map((card) => Number(card.note_id || 0))
@@ -2281,19 +2294,19 @@ export default function PdfViewer() {
                           padding:     '4px 10px', fontSize: 12, fontWeight: 'bold',
                         }}
                       >
-                        &#x1F4C4; Page cards ({pageCards.length})
+                        &#x1F4C4; {tr('reader_page_cards_count', { count: pageCards.length })}
                       </button>
                     )}
                     <button onClick={() => window.pycmd('incremento_open_add_card')}>
-                      &#43; Add Card
+                      &#43; {tr('reader_add_card')}
                     </button>
                   </span>
                 </div>
                 <span style={TOOLBAR_SEPARATOR_STYLE} />
                 <div style={TOOLBAR_STACK_STYLE}>
-                  <span style={TOOLBAR_LABEL_STYLE}>Status</span>
+                  <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_status')}</span>
                   <button
-                    title="Mark this PDF as finished reading — suspends the card so it won't appear again"
+                    title={tr("reader_finished_tooltip")}
                     style={{
                       background:  'transparent',
                       border:      '1px solid rgba(220,50,50,0.45)', borderRadius: 8,
@@ -2301,21 +2314,21 @@ export default function PdfViewer() {
                       padding:     '4px 10px', fontSize: 12,
                     }}
                     onClick={() => {
-                      if (window.confirm('Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.')) {
+                      if (window.confirm(tr("reader_finished_confirm"))) {
                         window.pycmd('incremento_pdf_finished:' + cardIdRef.current);
                       }
                     }}
                   >
-                    ✓ Finished Reading
+                    ✓ {tr('reader_finished_reading')}
                   </button>
                 </div>
               </>
             )}
             {!hasPdfCard && (
               <div style={TOOLBAR_STACK_STYLE}>
-                <span style={TOOLBAR_LABEL_STYLE}>Cards</span>
+                <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_cards')}</span>
                 <button onClick={() => window.pycmd('incremento_open_add_card')}>
-                  &#43; Add Card
+                  &#43; {tr('reader_add_card')}
                 </button>
               </div>
             )}
@@ -2331,7 +2344,7 @@ export default function PdfViewer() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Customize PDF controls"
+          aria-label={tr("reader_customize_pdf_controls")}
           onClick={() => setShowControlChooser(false)}
           style={{
             position: 'fixed',
@@ -2358,15 +2371,15 @@ export default function PdfViewer() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14 }}>
               <div>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>Customize controls</div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}> {tr("reader_customize_controls")}</div>
                 <div style={{ marginTop: 4, fontSize: 12, color: 'rgba(220,220,220,0.68)' }}>
-                  Choose which groups stay visible in the reader toolbar.
+                  {tr('reader_customize_intro')}
                 </div>
               </div>
-              <button type="button" onClick={() => setShowControlChooser(false)} aria-label="Close">×</button>
+              <button type="button" onClick={() => setShowControlChooser(false)} aria-label={tr("reader_close")}>×</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {CONTROL_GROUPS.map(([key, label]) => (
+              {CONTROL_GROUPS.map(([key, labelId]) => (
                 <label
                   key={key}
                   style={{
@@ -2388,16 +2401,16 @@ export default function PdfViewer() {
                       [key]: event.target.checked,
                     }))}
                   />
-                  <span>{label}</span>
+                  <span>{tr(labelId)}</span>
                 </label>
               ))}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button type="button" onClick={() => setControlVisibility(DEFAULT_CONTROL_VISIBILITY)}>
-                Show all
+                {tr('reader_show_all')}
               </button>
               <button type="button" onClick={() => setShowControlChooser(false)} style={{ fontWeight: 700 }}>
-                Done
+                {tr('reader_done')}
               </button>
             </div>
           </div>
@@ -2423,18 +2436,18 @@ export default function PdfViewer() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <strong style={{ fontSize: 13 }}>PDF Bookmarks</strong>
+            <strong style={{ fontSize: 13 }}> {tr("reader_pdf_bookmarks")}</strong>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <button onClick={addBookmark} style={{ fontSize: 12, padding: '1px 8px' }}>
-                Add current page
+                {tr('reader_add_current_page')}
               </button>
               <button onClick={() => setShowBookmarksPanel(false)} style={{ fontSize: 12, padding: '1px 8px' }}>
-                Close
+                {tr('reader_close')}
               </button>
             </span>
           </div>
           {bookmarks.length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.75 }}>No bookmarks yet.</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}> {tr("reader_no_bookmarks")}</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {bookmarks.map((bookmark) => (
@@ -2450,7 +2463,7 @@ export default function PdfViewer() {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
                     <span style={{ fontSize: 12, fontWeight: 700 }}>
-                      {bookmark.label || `Page ${bookmark?.location?.page || 1}`}
+                      {bookmark.label || tr('reader_page_number', { page: bookmark?.location?.page || 1 })}
                     </span>
                     <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
                       <button
@@ -2460,7 +2473,7 @@ export default function PdfViewer() {
                         }}
                         style={{ fontSize: 11, padding: '1px 7px' }}
                       >
-                        Jump
+                        {tr('reader_jump')}
                       </button>
                       <button
                         onClick={() => deleteBookmark(bookmark.id)}
@@ -2474,7 +2487,7 @@ export default function PdfViewer() {
                           padding: '1px 7px',
                         }}
                       >
-                        Delete
+                        {tr('reader_delete')}
                       </button>
                     </span>
                   </div>
@@ -2504,21 +2517,21 @@ export default function PdfViewer() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <strong style={{ fontSize: 13 }}>PDF Highlights</strong>
+            <strong style={{ fontSize: 13 }}>{tr('reader_pdf_highlights')}</strong>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => moveHighlightCursor(-1)}
                 disabled={sortedHighlights.length === 0}
                 style={{ fontSize: 12, padding: '1px 8px' }}
               >
-                Previous Highlight
+                {tr('reader_previous_highlight')}
               </button>
               <button
                 onClick={() => moveHighlightCursor(1)}
                 disabled={sortedHighlights.length === 0}
                 style={{ fontSize: 12, padding: '1px 8px' }}
               >
-                Next Highlight
+                {tr('reader_next_highlight')}
               </button>
               <button
                 onClick={() => setHighlightsScope('all')}
@@ -2532,7 +2545,7 @@ export default function PdfViewer() {
                   padding: '1px 8px',
                 }}
               >
-                Whole PDF
+                {tr('reader_whole_pdf')}
               </button>
               <button
                 onClick={() => setHighlightsScope('page')}
@@ -2546,7 +2559,7 @@ export default function PdfViewer() {
                   padding: '1px 8px',
                 }}
               >
-                This page
+                {tr('reader_this_page')}
               </button>
               <button
                 onClick={() => window.pycmd('incremento_pdf_hl_bulk_cards')}
@@ -2561,10 +2574,10 @@ export default function PdfViewer() {
                   padding: '1px 8px',
                 }}
                 title={missingCardHighlightCount > 0
-                  ? `Create cards for ${missingCardHighlightCount} unlinked highlight${missingCardHighlightCount === 1 ? '' : 's'} in this PDF`
-                  : 'No unlinked text highlights remain in this PDF'}
+                  ? plural('reader_create_missing_tooltip', missingCardHighlightCount)
+                  : tr('reader_no_unlinked_highlights')}
               >
-                Create Missing Cards{missingCardHighlightCount > 0 ? ` (${missingCardHighlightCount})` : ''}
+                {tr('reader_create_missing_cards', { count: missingCardHighlightCount })}
               </button>
               <button
                 onClick={() => setHighlightsNotesOnly((value) => !value)}
@@ -2578,7 +2591,7 @@ export default function PdfViewer() {
                   padding: '1px 8px',
                 }}
               >
-                Notes only
+                {tr('reader_notes_only')}
               </button>
               <button
                 onClick={() => setShowHighlightsPanel(false)}
@@ -2592,7 +2605,7 @@ export default function PdfViewer() {
                   padding: '1px 8px',
                 }}
               >
-                Close
+                {tr('reader_close')}
               </button>
             </span>
           </div>
@@ -2600,14 +2613,14 @@ export default function PdfViewer() {
           {highlightsForPanel.length === 0 ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
               {highlightsNotesOnly
-                ? (highlightsScope === 'page' ? 'No highlight notes on this page yet.' : 'No highlight notes yet.')
-                : 'No highlights yet.'}
+                ? (highlightsScope === 'page' ? tr('reader_no_highlight_notes_page') : tr('reader_no_highlight_notes'))
+                : tr('reader_no_highlights')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {highlightsForPanel.map((hl) => {
                 const note = String(hl.note || '').trim();
-                const excerpt = String(hl.text || '(no text)').trim();
+                const excerpt = String(hl.text || tr('reader_no_text')).trim();
                 const linkedNoteId = Number(hl.linked_note_id || 0);
                 const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
                 const isActive = String(hl.id || '') === String(activeHighlightId || '');
@@ -2624,7 +2637,7 @@ export default function PdfViewer() {
                       cursor: 'pointer',
                       padding: '8px 10px',
                     }}
-                    title={`Go to page ${hl.page || 1}`}
+                    title={tr('reader_go_to_page', { page: hl.page || 1 })}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 3 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, opacity: 0.9 }}>
@@ -2639,7 +2652,7 @@ export default function PdfViewer() {
                             flexShrink: 0,
                           }}
                         />
-                        <span>Page {hl.page || 1}</span>
+                        <span>{tr('reader_page_number', { page: hl.page || 1 })}</span>
                       </span>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: 11 }}>
                         <span
@@ -2648,13 +2661,13 @@ export default function PdfViewer() {
                             fontWeight: 700,
                           }}
                         >
-                          {hasLinkedCard ? 'Preview Card' : 'Create Card'}
+                          {hasLinkedCard ? tr('reader_preview_card') : tr('reader_create_card')}
                         </span>
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                       <button
-                        title={hasLinkedCard ? 'Preview the card already linked to this highlight' : 'Prefill Add Card from this highlight'}
+                        title={hasLinkedCard ? tr('reader_preview_linked_card') : tr('reader_prefill_card')}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -2675,10 +2688,10 @@ export default function PdfViewer() {
                           flexShrink: 0,
                         }}
                       >
-                        {hasLinkedCard ? 'Preview Card' : 'Create Card'}
+                        {hasLinkedCard ? tr('reader_preview_card') : tr('reader_create_card')}
                       </button>
                       <button
-                        title={note ? 'Edit note for this highlight' : 'Add note to this highlight'}
+                        title={note ? tr('reader_edit_note_tooltip') : tr('reader_add_note_tooltip')}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -2695,10 +2708,10 @@ export default function PdfViewer() {
                           flexShrink: 0,
                         }}
                       >
-                        {note ? 'Edit note' : 'Add note'}
+                        {note ? tr('reader_edit_note') : tr('reader_add_note')}
                       </button>
                       <button
-                        title="Delete this highlight"
+                        title={tr('reader_delete_highlight')}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -2715,7 +2728,7 @@ export default function PdfViewer() {
                           flexShrink: 0,
                         }}
                       >
-                        Delete
+                        {tr('reader_delete')}
                       </button>
                     </div>
                     {note && highlightsNotesOnly ? (
@@ -2724,7 +2737,7 @@ export default function PdfViewer() {
                           {note}
                         </div>
                         <div style={{ fontSize: 11, lineHeight: 1.35, color: 'rgba(229,231,235,0.72)', marginTop: 6 }}>
-                          Highlight: {excerpt}
+                          {tr('reader_highlight_excerpt', { excerpt })}
                         </div>
                       </>
                     ) : (
@@ -2753,7 +2766,7 @@ export default function PdfViewer() {
           aria-live="assertive"
           style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}
         >
-          {error}
+          {tr(error)}
         </div>
       )}
 
@@ -2815,10 +2828,10 @@ export default function PdfViewer() {
               boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
               pointerEvents: 'none',
             }}
-            title={readAnchor?.text ? `You stopped at: ${readAnchor.text}` : `You marked page ${readPage} as your current stopping point`}
+            title={readAnchor?.text ? tr('reader_stopped_at', { text: readAnchor.text }) : tr('reader_stopping_page', { page: readPage })}
           >
             <span style={{ fontSize: 26, lineHeight: 1 }}>↦</span>
-            <span>Read Up Until Here</span>
+            <span>{tr('reader_read_marker')}</span>
           </div>
         )}
 
@@ -2844,10 +2857,10 @@ export default function PdfViewer() {
               boxShadow: '0 10px 24px rgba(0,0,0,0.28)',
               pointerEvents: 'none',
             }}
-            title={`You marked page ${readPage} as your current stopping point`}
+            title={tr('reader_stopping_page', { page: readPage })}
           >
             <span style={{ fontSize: 26, lineHeight: 1 }}>↦</span>
-            <span>Read Up Until Here</span>
+            <span>{tr('reader_read_marker')}</span>
           </div>
         )}
 
@@ -2866,8 +2879,8 @@ export default function PdfViewer() {
               key={`${link.kind}-${link.url || link.targetPage || ''}-${index}`}
               type="button"
               tabIndex={clickableLinks ? 0 : -1}
-              aria-label={link.label || (link.kind === 'external' ? 'Open external link' : `Go to page ${link.targetPage}`)}
-              title={link.label || (link.kind === 'external' ? link.url : `Go to page ${link.targetPage}`)}
+              aria-label={link.label || (link.kind === 'external' ? tr('reader_open_external_link') : tr('reader_go_to_page', { page: link.targetPage }))}
+              title={link.label || (link.kind === 'external' ? link.url : tr('reader_go_to_page', { page: link.targetPage }))}
               onClick={(event) => activatePdfLink(event, link)}
               style={{
                 position: 'absolute',
@@ -2891,6 +2904,7 @@ export default function PdfViewer() {
         </div>
 
         <HighlightLayer
+          language={language}
           pageHighlights={pageHighlights}
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}

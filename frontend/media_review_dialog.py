@@ -23,6 +23,22 @@ from aqt.qt import (
     qconnect,
 )
 from aqt.utils import showInfo
+try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
+
+
+def _confirm_filtered_deck_release(parent, impact: str) -> bool:
+    question = QMessageBox(parent)
+    question.setIcon(QMessageBox.Icon.Question)
+    question.setWindowTitle(t("reader_media_move_filtered_title"))
+    question.setText(impact + "\n\n" + t("reader_media_continue_review"))
+    question.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    question.button(QMessageBox.StandardButton.Yes).setText(t("reader_yes"))
+    question.button(QMessageBox.StandardButton.No).setText(t("reader_no"))
+    question.setDefaultButton(QMessageBox.StandardButton.No)
+    return question.exec() == QMessageBox.StandardButton.Yes
 
 try:
     from ..backend.media_review import (
@@ -94,6 +110,24 @@ except ImportError:
 
 _last_options_by_media_kind: dict[str, dict] = {}
 
+_OPTION_MESSAGE_IDS = {
+    "card_kind": {"both": "reader_media_topics_items", "topics": "reader_media_topics_only", "items": "reader_media_items_only"},
+    "tree_scope": {"nested": "reader_media_direct_nested", "direct": "reader_media_direct_only"},
+    "media_range": {"all": "reader_media_entire", "to_current": "reader_media_to_current"},
+    "state": {"all": "reader_media_all_available", "due": "reader_media_due_only"},
+    "order": {
+        "attached": "reader_media_order_attached", "media_position": "reader_media_order_position",
+        "created_oldest": "reader_media_order_oldest", "created_newest": "reader_media_order_newest",
+        "due_first": "reader_media_order_due", "interval_shortest": "reader_media_order_shortest",
+        "interval_longest": "reader_media_order_longest", "random": "reader_media_order_random",
+    },
+}
+
+
+def _option_label(group: str, value: str, fallback: str) -> str:
+    message_id = _OPTION_MESSAGE_IDS[group].get(value)
+    return t(message_id) if message_id else fallback
+
 
 def _default_options() -> dict:
     return {
@@ -128,9 +162,9 @@ def _media_position_label(media_kind: str, value) -> str:
     except Exception:
         return ""
     if media_kind == MEDIA_KIND_PDF:
-        return f"page {max(1, int(position))}"
+        return t("reader_media_position_page", number=max(1, int(position)))
     if media_kind == MEDIA_KIND_EPUB:
-        return f"section {int(position) + 1}"
+        return t("reader_media_position_section", number=int(position) + 1)
     if media_kind == MEDIA_KIND_VIDEO:
         total_seconds = int(position)
         hours, remainder = divmod(total_seconds, 3600)
@@ -142,16 +176,16 @@ def _media_position_label(media_kind: str, value) -> str:
 
 
 _EXCLUSION_REASON_LABELS = {
-    "suspended": "Suspended",
-    "buried": "Buried",
-    "filtered": "In another filtered deck",
-    "missing": "Card is missing",
-    "nested": "Nested card excluded",
-    "beyond_current": "After current position",
-    "unknown_position": "Position is unknown",
-    "other_kind": "Outside selected Topic/Item type",
-    "not_due": "Not due now",
-    "limit": "Past review limit",
+    "suspended": "reader_media_reason_suspended",
+    "buried": "reader_media_reason_buried",
+    "filtered": "reader_media_reason_filtered",
+    "missing": "reader_media_reason_missing",
+    "nested": "reader_media_reason_nested",
+    "beyond_current": "reader_media_reason_beyond_current",
+    "unknown_position": "reader_media_reason_unknown_position",
+    "other_kind": "reader_media_reason_other_kind",
+    "not_due": "reader_media_reason_not_due",
+    "limit": "reader_media_reason_limit",
 }
 
 
@@ -159,18 +193,12 @@ def format_filtered_deck_impact(decks: Iterable[dict] | None) -> str:
     """Explain the exact scope of Anki's required filtered-deck release."""
     parts = []
     for deck in list(decks or []):
-        name = str(deck.get("deck_name") or "Unknown filtered deck").strip()
+        name = str(deck.get("deck_name") or t("reader_media_unknown_filtered_deck")).strip()
         count = max(0, int(deck.get("selected_count", 0) or 0))
-        parts.append(f"{name} ({count} selected)")
+        parts.append(t("reader_media_filtered_deck_item", name=name, count=count))
     if not parts:
         return ""
-    return (
-        "Conflicting filtered decks: "
-        + ", ".join(parts)
-        + ". Every card in these filtered decks will first return to its original "
-        "deck; only the selected cards will then enter this review. The filtered-deck "
-        "definitions remain available to rebuild."
-    )
+    return t("reader_media_filtered_deck_impact", decks=", ".join(parts))
 
 
 def media_review_result_cells(row: Mapping, *, media_kind: str) -> tuple[str, str, str, str]:
@@ -180,18 +208,19 @@ def media_review_result_cells(row: Mapping, *, media_kind: str) -> tuple[str, st
     except Exception:
         card_id = 0
     label = str(row.get("card_label") or "").strip() or (
-        f"Card {card_id}" if card_id > 0 else "Unknown card"
+        t("reader_card_number", number=card_id) if card_id > 0 else t("reader_media_unknown_card")
     )
-    card_type = "Topic" if bool(row.get("is_topic")) else "Item"
+    card_type = t("reader_topic") if bool(row.get("is_topic")) else t("reader_item")
     position = _media_position_label(media_kind, row.get("media_position")) or "—"
     reason = str(row.get("exclusion_reason") or "").strip().lower()
     if reason:
-        status = _EXCLUSION_REASON_LABELS.get(reason, reason.replace("_", " ").title())
+        message_id = _EXCLUSION_REASON_LABELS.get(reason)
+        status = t(message_id) if message_id else reason.replace("_", " ").title()
     elif str(row.get("availability") or "").strip().lower() == "filtered":
-        deck_name = str(row.get("filtered_deck_name") or "another filtered deck").strip()
-        status = f"Will move from {deck_name}"
+        deck_name = str(row.get("filtered_deck_name") or t("reader_media_another_filtered_deck")).strip()
+        status = t("reader_media_will_move_from", deck=deck_name)
     else:
-        status = "Ready"
+        status = t("reader_ready")
     return label, card_type, position, status
 
 
@@ -199,43 +228,40 @@ def format_media_review_preview(summary: dict) -> str:
     selected = int(summary.get("selected_count", 0) or 0)
     topics = int(summary.get("topic_count", 0) or 0)
     items = int(summary.get("item_count", 0) or 0)
-    first_line = (
-        f"Ready to review: {selected} card{'s' if selected != 1 else ''} "
-        f"({topics} topic{'s' if topics != 1 else ''}, "
-        f"{items} item{'s' if items != 1 else ''})."
+    first_line = tn(
+        "reader_media_preview_ready", selected,
+        topics=tn("reader_media_topic_count", topics),
+        items=tn("reader_media_item_count", items),
     )
     filtered_count = int(summary.get("selected_filtered_count", 0) or 0)
     if filtered_count > 0:
         exact_impact = format_filtered_deck_impact(summary.get("filtered_decks"))
-        first_line += f"\nWarning: {filtered_count} card{'s' if filtered_count != 1 else ''} "
-        first_line += "currently in other filtered decks will be moved. "
+        first_line += "\n" + tn("reader_media_filtered_warning", filtered_count) + " "
         first_line += exact_impact or (
-            "Anki must empty those decks first, so all cards in those decks return "
-            "to their original decks; the filtered-deck definitions remain available "
-            "to rebuild."
+            t("reader_media_filtered_fallback")
         )
 
     exclusions = dict(summary.get("exclusions") or {})
     labels = (
-        ("suspended", "suspended"),
-        ("buried", "buried"),
-        ("filtered", "already in another filtered deck"),
-        ("missing", "missing"),
-        ("nested", "nested"),
-        ("beyond_current", "after the current position"),
-        ("unknown_position", "without a known media position"),
-        ("other_kind", "outside the chosen Topic/Item type"),
-        ("not_due", "not due now"),
-        ("limit", "past the review limit"),
+        ("suspended", "reader_media_excluded_suspended"),
+        ("buried", "reader_media_excluded_buried"),
+        ("filtered", "reader_media_excluded_filtered"),
+        ("missing", "reader_media_excluded_missing"),
+        ("nested", "reader_media_excluded_nested"),
+        ("beyond_current", "reader_media_excluded_beyond_current"),
+        ("unknown_position", "reader_media_excluded_unknown_position"),
+        ("other_kind", "reader_media_excluded_other_kind"),
+        ("not_due", "reader_media_excluded_not_due"),
+        ("limit", "reader_media_excluded_limit"),
     )
     excluded_parts = [
-        f"{int(exclusions.get(key, 0) or 0)} {label}"
+        t(label, count=int(exclusions.get(key, 0) or 0))
         for key, label in labels
         if int(exclusions.get(key, 0) or 0) > 0
     ]
     if not excluded_parts:
         return first_line
-    return first_line + "\nExcluded: " + ", ".join(excluded_parts) + "."
+    return first_line + "\n" + t("reader_media_excluded_summary", items=", ".join(excluded_parts))
 
 
 def _set_combo_value(combo: QComboBox, value: str) -> None:
@@ -251,7 +277,7 @@ def _run_media_review_query(*, parent, op, success, failure) -> None:
     (
         QueryOp(parent=parent, op=op, success=success)
         .failure(failure)
-        .with_progress("Inspecting attached cards…")
+        .with_progress(t("reader_media_inspecting_cards"))
         .run_in_background()
     )
 
@@ -269,26 +295,21 @@ class MediaAttachedReviewDialog(QDialog):
         random_seed: int | None = None,
     ):
         super().__init__(parent)
-        label = str(media_label or "media").strip() or "media"
+        label = str(media_label or t("reader_media_generic")).strip() or t("reader_media_generic")
         self._media_kind = normalize_media_kind(media_kind)
         self._preview_rows = [dict(row) for row in list(preview_rows or [])]
         self._current_position = current_position
         self._random_seed = random_seed
         options = _normalized_options(initial_options or _default_options())
 
-        self.setWindowTitle(f"Review Cards from This {label}")
+        self.setWindowTitle(t("reader_media_review_title", media=label))
         self.setModal(True)
         # Leave enough room for the opt-in filtered-deck warning without
         # forcing the preview or action buttons below the initial viewport.
         self.resize(900, 650)
 
         layout = QVBoxLayout(self)
-        summary = QLabel(
-            f"Choose which cards attached to this {label} to review. "
-            "Direct links include cards extracted from the media; nested links "
-            "include their knowledge-tree descendants. Review normally, or enable "
-            "a reminder without schedule changes."
-        )
+        summary = QLabel(t("reader_media_review_intro", media=label))
         summary.setWordWrap(True)
         layout.addWidget(summary)
 
@@ -296,125 +317,118 @@ class MediaAttachedReviewDialog(QDialog):
 
         self._card_kind_combo = QComboBox(self)
         for value, option_label in MEDIA_REVIEW_CARD_KIND_OPTIONS:
-            self._card_kind_combo.addItem(option_label, value)
+            self._card_kind_combo.addItem(_option_label("card_kind", value, option_label), value)
         _set_combo_value(self._card_kind_combo, options["card_kind"])
         self._card_kind_combo.setToolTip(
-            "Topic and Item classification uses the same Incremento rules as the reviewer."
+            t("reader_media_kind_hint")
         )
-        form.addRow("Review:", self._card_kind_combo)
+        form.addRow(t("reader_media_review_label"), self._card_kind_combo)
 
         self._tree_scope_combo = QComboBox(self)
         for value, option_label in MEDIA_REVIEW_TREE_OPTIONS:
-            self._tree_scope_combo.addItem(option_label, value)
+            self._tree_scope_combo.addItem(_option_label("tree_scope", value, option_label), value)
         _set_combo_value(self._tree_scope_combo, options["tree_scope"])
-        form.addRow("Links:", self._tree_scope_combo)
+        form.addRow(t("reader_media_links_label"), self._tree_scope_combo)
 
         self._range_combo = QComboBox(self)
         for value, option_label in MEDIA_REVIEW_RANGE_OPTIONS:
-            self._range_combo.addItem(option_label, value)
+            self._range_combo.addItem(_option_label("media_range", value, option_label), value)
         _set_combo_value(self._range_combo, options["media_range"])
         current_label = _media_position_label(self._media_kind, current_position)
         if current_label:
             self._range_combo.setToolTip(
-                f"The current {label} position is {current_label}. Cards without a "
-                "known position are excluded when this range is selected."
+                t("reader_media_current_position_hint", media=label, position=current_label)
             )
         else:
             _set_combo_value(self._range_combo, MEDIA_REVIEW_RANGE_ALL)
             self._range_combo.setEnabled(False)
             self._range_combo.setToolTip(
-                "Incremento could not determine a current media position for this reader."
+                t("reader_media_unknown_position_hint")
             )
-        form.addRow("Media range:", self._range_combo)
+        form.addRow(t("reader_media_range_label"), self._range_combo)
 
         self._state_combo = QComboBox(self)
         for value, option_label in MEDIA_REVIEW_STATE_OPTIONS:
-            self._state_combo.addItem(option_label, value)
+            self._state_combo.addItem(_option_label("state", value, option_label), value)
         _set_combo_value(self._state_combo, options["state"])
         self._state_combo.setToolTip(
-            "Due only includes due review cards and learning/relearning cards ready now; "
-            "new and future cards stay out."
+            t("reader_media_due_hint")
         )
-        form.addRow("Card state:", self._state_combo)
+        form.addRow(t("reader_media_state_label"), self._state_combo)
 
         self._reminder_checkbox = QCheckBox(
-            "Reminder without schedule changes",
+            t("reader_media_reminder"),
             self,
         )
         self._reminder_checkbox.setChecked(not options["reschedule"])
-        self._reminder_checkbox.setAccessibleName("Reminder without schedule changes")
+        self._reminder_checkbox.setAccessibleName(t("reader_media_reminder"))
         self._reminder_checkbox.setToolTip(
-            "Revisit cards without changing their next due date or interval. "
-            "Topic A-factors and custom schedule rules are preserved. "
-            "Clear this option to schedule answers normally."
+            t("reader_media_reminder_hint")
         )
-        form.addRow("Scheduling:", self._reminder_checkbox)
+        form.addRow(t("reader_media_scheduling_label"), self._reminder_checkbox)
 
         self._order_combo = QComboBox(self)
         for value, option_label in MEDIA_REVIEW_ORDER_OPTIONS:
-            self._order_combo.addItem(option_label, value)
+            self._order_combo.addItem(_option_label("order", value, option_label), value)
         _set_combo_value(self._order_combo, options["order"])
         self._order_combo.setToolTip(
-            "Media position uses PDF pages, EPUB sections, or video timestamps. "
-            "Nested cards inherit their nearest positioned ancestor."
+            t("reader_media_order_hint")
         )
-        form.addRow("Review order:", self._order_combo)
+        form.addRow(t("reader_media_order_label"), self._order_combo)
 
         self._limit_spin = QSpinBox(self)
         self._limit_spin.setRange(0, 9999)
-        self._limit_spin.setSpecialValueText("All")
+        self._limit_spin.setSpecialValueText(t("reader_all"))
         self._limit_spin.setValue(options["limit"])
         self._limit_spin.setToolTip(
-            "Limit the number of cards after filtering and ordering. All means no limit."
+            t("reader_media_limit_hint")
         )
-        form.addRow("Maximum cards:", self._limit_spin)
+        form.addRow(t("reader_media_max_cards_label"), self._limit_spin)
 
         self._include_filtered_checkbox = QCheckBox(
-            "Include cards already in another filtered deck",
+            t("reader_media_include_filtered"),
             self,
         )
         self._include_filtered_checkbox.setChecked(options["include_filtered"])
         self._include_filtered_checkbox.setAccessibleName(
-            "Include cards from other filtered decks"
+            t("reader_media_include_filtered_accessible")
         )
         self._include_filtered_checkbox.setToolTip(
-            "Anki cannot move individual cards between filtered decks. Enabling this "
-            "empties each conflicting filtered deck, returns all of its cards to their "
-            "original decks, and then moves the matching cards into this review."
+            t("reader_media_include_filtered_hint")
         )
-        form.addRow("Other filtered decks:", self._include_filtered_checkbox)
+        form.addRow(t("reader_media_other_filtered_label"), self._include_filtered_checkbox)
         layout.addLayout(form)
 
         self._preview_label = QLabel("")
         self._preview_label.setWordWrap(True)
-        self._preview_label.setAccessibleName("Review selection summary")
+        self._preview_label.setAccessibleName(t("reader_media_summary_accessible"))
         layout.addWidget(self._preview_label)
 
         self._filtered_deck_impact_label = QLabel("")
         self._filtered_deck_impact_label.setWordWrap(True)
         self._filtered_deck_impact_label.setAccessibleName(
-            "Filtered deck change warning"
+            t("reader_media_filtered_warning_accessible")
         )
         layout.addWidget(self._filtered_deck_impact_label)
 
         self._result_tabs = QTabWidget(self)
-        self._ready_tree = self._create_result_tree("Cards ready to review")
-        self._excluded_tree = self._create_result_tree("Cards excluded from review")
-        self._ready_tab_index = self._result_tabs.addTab(self._ready_tree, "Ready")
+        self._ready_tree = self._create_result_tree(t("reader_media_ready_tree_accessible"))
+        self._excluded_tree = self._create_result_tree(t("reader_media_excluded_tree_accessible"))
+        self._ready_tab_index = self._result_tabs.addTab(self._ready_tree, t("reader_ready"))
         self._excluded_tab_index = self._result_tabs.addTab(
             self._excluded_tree,
-            "Excluded",
+            t("reader_excluded"),
         )
         layout.addWidget(self._result_tabs, 1)
 
         buttons = QDialogButtonBox(self)
         self._review_button = buttons.addButton(
-            "Start Review",
+            t("reader_media_start_review"),
             QDialogButtonBox.ButtonRole.AcceptRole,
         )
-        self._review_button.setAccessibleName("Start attached-card review")
+        self._review_button.setAccessibleName(t("reader_media_start_review_accessible"))
         cancel_button = buttons.addButton(
-            "Cancel",
+            t("reader_cancel"),
             QDialogButtonBox.ButtonRole.RejectRole,
         )
         qconnect(self._review_button.clicked, self._accept_review)
@@ -437,7 +451,7 @@ class MediaAttachedReviewDialog(QDialog):
     def _create_result_tree(self, accessible_name: str) -> QTreeWidget:
         tree = QTreeWidget(self)
         tree.setColumnCount(4)
-        tree.setHeaderLabels(("Card", "Type", "Position", "Status"))
+        tree.setHeaderLabels((t("reader_card"), t("reader_type"), t("reader_position"), t("reader_status")))
         tree.setRootIsDecorated(False)
         tree.setAlternatingRowColors(True)
         tree.setAccessibleName(accessible_name)
@@ -472,8 +486,8 @@ class MediaAttachedReviewDialog(QDialog):
         count = int(selection.get("selected_count", 0) or 0)
         reminder = self._reminder_checkbox.isChecked()
         scheduling_text = (
-            "Reminder: due dates, intervals, topic A-factors and custom schedules stay unchanged."
-            if reminder else "Review: answers update card schedules."
+            t("reader_media_reminder_schedule_status")
+            if reminder else t("reader_media_review_schedule_status")
         )
         self._preview_label.setText(
             f"{format_media_review_preview(selection)}\n{scheduling_text}"
@@ -489,9 +503,9 @@ class MediaAttachedReviewDialog(QDialog):
             self._filtered_deck_impact_label.clear()
             self._filtered_deck_impact_label.hide()
         self._review_button.setEnabled(count > 0)
-        action = "Preview" if reminder else "Review"
+        action = t("reader_preview") if reminder else t("reader_review")
         self._review_button.setText(
-            f"{action} {count} Card{'s' if count != 1 else ''}" if count else "No Cards"
+            t("reader_media_action_count", action=action, cards=tn("reader_media_card_count_title", count)) if count else t("reader_media_no_cards")
         )
 
     def _populate_result_trees(self, selection: Mapping) -> None:
@@ -516,11 +530,11 @@ class MediaAttachedReviewDialog(QDialog):
             tree.resizeColumnToContents(3)
         self._result_tabs.setTabText(
             self._ready_tab_index,
-            f"Ready ({len(ready_rows)})",
+            t("reader_media_ready_tab", count=len(ready_rows)),
         )
         self._result_tabs.setTabText(
             self._excluded_tab_index,
-            f"Excluded ({len(excluded_rows)})",
+            t("reader_media_excluded_tab", count=len(excluded_rows)),
         )
 
     def _accept_review(self) -> None:
@@ -528,14 +542,7 @@ class MediaAttachedReviewDialog(QDialog):
         filtered_decks = list(selection.get("filtered_decks") or [])
         if self._include_filtered_checkbox.isChecked() and filtered_decks:
             impact = format_filtered_deck_impact(filtered_decks)
-            answer = QMessageBox.question(
-                self,
-                "Move Cards from Filtered Decks?",
-                impact + "\n\nContinue and start this review?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
+            if not _confirm_filtered_deck_release(self, impact):
                 return
         self.accept()
 
@@ -562,10 +569,11 @@ def start_attached_media_review(
     except Exception:
         normalized_source_card_id = 0
     if normalized_source_card_id <= 0:
-        showInfo("Could not determine the current media card.")
+        showInfo(t("reader_media_card_unknown"))
         return False
 
     normalized_label = str(media_label or "media").strip() or "media"
+    display_label = str(media_label or "").strip() or t("reader_media_generic")
     normalized_media_kind = normalize_media_kind(media_kind)
     if not normalized_media_kind:
         normalized_media_kind = normalize_media_kind(normalized_label)
@@ -615,7 +623,7 @@ def start_attached_media_review(
         )
         dialog = MediaAttachedReviewDialog(
             dialog_parent,
-            media_label=normalized_label,
+            media_label=display_label,
             media_kind=normalized_media_kind,
             preview_rows=preview_rows,
             current_position=current_position,
@@ -656,13 +664,8 @@ def start_attached_media_review(
                 deck_name=deck_name,
                 preserve_order=True,
                 reschedule=reschedule,
-                empty_message=(
-                    f"No cards attached to this {normalized_label} match the selected "
-                    "Topic/Item, link, media-range, and card-state filters."
-                ),
-                error_message=(
-                    f"Could not start the attached {normalized_label} card review"
-                ),
+                empty_message=t("reader_media_no_matching_cards", media=display_label),
+                error_message=t("reader_media_review_start_failed", media=display_label),
                 on_finished=on_finished,
                 diagnostic_source="media_review",
                 diagnostic_content_kind=normalized_media_kind,
@@ -684,10 +687,7 @@ def start_attached_media_review(
             try:
                 mw.moveToState("overview")
             except Exception as exc:
-                showInfo(
-                    "Could not safely leave the current review before moving cards "
-                    f"between filtered decks:\n\n{exc}"
-                )
+                showInfo(t("reader_media_leave_review_failed", error=exc))
                 return
             QTimer.singleShot(0, _start_selected_review)
         else:
@@ -695,9 +695,7 @@ def start_attached_media_review(
 
     def _preview_failed(exc: Exception) -> None:
         record_media_review_inspection_failed(normalized_media_kind, exc)
-        showInfo(
-            f"Could not inspect cards attached to this {normalized_label}:\n\n{exc}"
-        )
+        showInfo(t("reader_media_inspection_failed", media=display_label, error=exc))
 
     try:
         record_media_review_inspection_started(normalized_media_kind)

@@ -53,6 +53,11 @@ from PyQt6.QtWebEngineCore import (
 from PyQt6.QtCore import QEvent, QObject, QUrl
 
 try:
+    from ..backend.i18n import get_custom_reader_payload, get_locale, t, tn
+except ImportError:
+    from backend.i18n import get_custom_reader_payload, get_locale, t, tn
+
+try:
     from .reader_links import (
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
@@ -86,7 +91,6 @@ try:
         get_pdf_daily_limit_settings,
         get_pdf_due_review_prompt_settings,
         get_pdf_daily_limit_status,
-        get_pdf_limit_mode_label,
         get_zoom,
         get_scroll_ratio,
         get_read_anchor,
@@ -112,7 +116,6 @@ except ImportError:
         get_pdf_daily_limit_settings,
         get_pdf_due_review_prompt_settings,
         get_pdf_daily_limit_status,
-        get_pdf_limit_mode_label,
         get_zoom,
         get_scroll_ratio,
         get_read_anchor,
@@ -377,7 +380,7 @@ def _open_all_pdf_cards_in_browser(card_id: int) -> None:
     note_ids = _live_pdf_document_source_note_ids(int(card_id))
     _browse_note_ids_in_browser(
         note_ids,
-        empty_message="No cards created from this PDF yet.",
+        empty_message=t("reader_pdf_no_cards"),
     )
 
 
@@ -571,7 +574,7 @@ def _load_pdf_page_note_preview(note_id: int) -> dict | None:
     if fields:
         title = fields[0]["value"].splitlines()[0].strip()
     if not title:
-        title = f"Note {nid}"
+        title = t("reader_note_number", number=nid)
 
     tags = []
     try:
@@ -605,15 +608,15 @@ def _render_pdf_page_note_preview_html(payload: dict) -> str:
         f"<div style='font-size:15px; font-weight:600; margin-bottom:4px;'>{title}</div>",
         (
             "<div style='color:#8892a0; font-size:12px; margin-bottom:10px;'>"
-            f"Note ID {note_id}"
-            + (f" · {card_count} card{'s' if card_count != 1 else ''}" if card_count > 0 else "")
+            + escape(t("reader_note_id", number=note_id))
+            + (" · " + escape(tn("reader_note_cards", card_count)) if card_count > 0 else "")
             + "</div>"
         ),
     ]
     if tags:
         parts.append(
             "<div style='margin-bottom:10px;'>"
-            "<span style='color:#8892a0; font-size:12px;'>Tags:</span> "
+            f"<span style='color:#8892a0; font-size:12px;'>{escape(t('reader_tags'))}:</span> "
             f"{escape(', '.join(tags))}</div>"
         )
 
@@ -630,7 +633,7 @@ def _render_pdf_page_note_preview_html(payload: dict) -> str:
                 "</div>"
             )
     else:
-        parts.append("<div style='color:#8892a0;'>This note has no visible non-empty fields.</div>")
+        parts.append(f"<div style='color:#8892a0;'>{escape(t('reader_note_no_visible_fields'))}</div>")
     return "".join(parts)
 
 
@@ -640,7 +643,7 @@ def show_pdf_page_card_preview(note_id: int) -> bool:
         return False
 
     dlg = QDialog(mw)
-    dlg.setWindowTitle("PDF Page Card Preview")
+    dlg.setWindowTitle(t("reader_pdf_page_card_preview"))
     dlg.resize(780, 560)
     layout = QVBoxLayout(dlg)
 
@@ -651,8 +654,9 @@ def show_pdf_page_card_preview(note_id: int) -> bool:
     layout.addWidget(browser, 1)
 
     buttons = QDialogButtonBox(parent=dlg)
-    open_btn = buttons.addButton("Open in Browser", QDialogButtonBox.ButtonRole.ActionRole)
+    open_btn = buttons.addButton(t("reader_open_in_browser"), QDialogButtonBox.ButtonRole.ActionRole)
     close_btn = buttons.addButton(QDialogButtonBox.StandardButton.Close)
+    close_btn.setText(t("reader_close"))
     qconnect(
         open_btn.clicked,
         lambda _checked=False, nid=int(payload["note_id"]): _browse_note_in_browser(nid),
@@ -663,10 +667,28 @@ def show_pdf_page_card_preview(note_id: int) -> bool:
     return True
 
 
+def _pdf_limit_summary_text(status: dict) -> str:
+    if not status.get("enabled"):
+        return t("reader_pdf_no_limit")
+    limit = int(status.get("daily_page_limit", 0) or 0)
+    used = int(status.get("pages_used", 0) or 0)
+    remaining = int(status.get("pages_remaining", 0) or 0)
+    mode = str(status.get("enforcement_mode") or "warning")
+    if mode not in {"warning", "soft_lock", "hard_stop"}:
+        mode = "warning"
+    return t(
+        "reader_pdf_limit_summary",
+        used=used,
+        limit=limit,
+        remaining=remaining,
+        mode=t(f"reader_limit_{mode}"),
+    )
+
+
 class _PdfReadingLimitDialog(QDialog):
     def __init__(self, parent, *, settings: dict, status: dict):
         super().__init__(parent)
-        self.setWindowTitle("PDF Reading Limit")
+        self.setWindowTitle(t("reader_pdf_limit_title"))
         self.setModal(True)
         self.resize(430, 220)
 
@@ -686,9 +708,9 @@ class _PdfReadingLimitDialog(QDialog):
         form.setContentsMargins(0, 0, 0, 0)
         form.setSpacing(8)
 
-        self._enabled = QCheckBox("Limit pages read per day for this PDF")
+        self._enabled = QCheckBox(t("reader_pdf_limit_enabled"))
         self._enabled.setChecked(bool(settings.get("enabled")))
-        form.addRow("Enabled:", self._enabled)
+        form.addRow(t("reader_enabled"), self._enabled)
 
         row = QWidget(self)
         row_layout = QHBoxLayout(row)
@@ -701,15 +723,15 @@ class _PdfReadingLimitDialog(QDialog):
         row_layout.addWidget(self._limit_spin)
 
         self._mode = QComboBox(self)
-        self._mode.addItem("Warning only", "warning")
-        self._mode.addItem("Soft lock + override", "soft_lock")
-        self._mode.addItem("Hard stop", "hard_stop")
+        self._mode.addItem(t("reader_warning_only"), "warning")
+        self._mode.addItem(t("reader_soft_lock_override"), "soft_lock")
+        self._mode.addItem(t("reader_hard_stop"), "hard_stop")
         idx = self._mode.findData(str(settings.get("enforcement_mode") or "warning"))
         self._mode.setCurrentIndex(max(0, idx))
         row_layout.addWidget(self._mode, 1)
-        form.addRow("Limit:", row)
+        form.addRow(t("reader_limit"), row)
 
-        hint = QLabel("Uses Incremento's day-end setting for daily reset.")
+        hint = QLabel(t("reader_day_end_hint"))
         hint.setStyleSheet("color: gray; font-size: 11px;")
         hint.setWordWrap(True)
         form.addRow("", hint)
@@ -719,6 +741,8 @@ class _PdfReadingLimitDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
+        self._buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("reader_ok"))
+        self._buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("reader_cancel"))
         qconnect(self._buttons.accepted, self.accept)
         qconnect(self._buttons.rejected, self.reject)
         layout.addWidget(self._buttons)
@@ -728,16 +752,7 @@ class _PdfReadingLimitDialog(QDialog):
 
     @staticmethod
     def _summary_text(status: dict) -> str:
-        if not status.get("enabled"):
-            return "No daily reading limit is set for this PDF."
-        limit = int(status.get("daily_page_limit", 0) or 0)
-        used = int(status.get("pages_used", 0) or 0)
-        remaining = int(status.get("pages_remaining", 0) or 0)
-        mode_label = get_pdf_limit_mode_label(status.get("enforcement_mode"))
-        return (
-            f"Today: {used}/{limit} pages used, {remaining} remaining. "
-            f"Mode: {mode_label}."
-        )
+        return _pdf_limit_summary_text(status)
 
     def _sync_enabled_state(self) -> None:
         enabled = self._enabled.isChecked()
@@ -755,28 +770,26 @@ class _PdfReadingLimitDialog(QDialog):
 def _summarize_due_review_pages(due_cards: list[dict]) -> str:
     pages = sorted({int(row.get("page", 0) or 0) for row in due_cards if int(row.get("page", 0) or 0) > 0})
     if not pages:
-        return "earlier pages"
+        return t("reader_earlier_pages")
     if len(pages) <= 6:
         return ", ".join(str(page) for page in pages)
     preview = ", ".join(str(page) for page in pages[:6])
-    return f"{preview}, +{len(pages) - 6} more"
+    return t("reader_more_pages", preview=preview, count=len(pages) - 6)
 
 
 def _pdf_due_review_details_html(due_cards: list[dict]) -> str:
     lines = []
     for row in due_cards[:20]:
-        title = escape(str(row.get("title") or f"Card {row.get('card_id')}"), quote=True)
+        title = escape(str(row.get("title") or t("reader_card_number", number=row.get("card_id"))), quote=True)
         excerpt = escape(str(row.get("excerpt") or "").strip(), quote=True)
-        state = escape(str(row.get("due_state") or "due").capitalize(), quote=True)
-        detail = f"p.{int(row.get('page', 0) or 0)} — {title} <span style='color:#8892a0;'>({state})</span>"
+        due_state = str(row.get("due_state") or "due").casefold()
+        state = escape(t(f"reader_due_state_{due_state}") if due_state in {"due", "new", "learning", "review"} else t("reader_due_state_due"), quote=True)
+        detail = f"{escape(t('reader_page_number', page=int(row.get('page', 0) or 0)))} — {title} <span style='color:#8892a0;'>({state})</span>"
         if excerpt:
             detail += f"<br><span style='color:#8892a0;'>{excerpt}</span>"
         lines.append(f"<div style='margin-bottom:8px;'>{detail}</div>")
     if len(due_cards) > 20:
-        lines.append(
-            f"<div style='color:#8892a0;'>…and {len(due_cards) - 20} more due card"
-            f"{'s' if len(due_cards) - 20 != 1 else ''}.</div>"
-        )
+        lines.append(f"<div style='color:#8892a0;'>{escape(tn('reader_more_due_cards', len(due_cards) - 20))}</div>")
     return "".join(lines)
 
 
@@ -784,7 +797,7 @@ class _PdfDueReviewPromptDialog(QDialog):
     def __init__(self, parent, *, due_cards: list[dict], settings: dict, current_page: int):
         super().__init__(parent)
         self._review_now = False
-        self.setWindowTitle("Review Due PDF Cards")
+        self.setWindowTitle(t("reader_pdf_review_due_title"))
         self.setModal(True)
         self.resize(520, 360)
 
@@ -794,10 +807,7 @@ class _PdfDueReviewPromptDialog(QDialog):
 
         count = len(due_cards)
         earlier_pages = _summarize_due_review_pages(due_cards)
-        summary = QLabel(
-            f"You have {count} due card{'s' if count != 1 else ''} from this PDF on pages up to {current_page}.\n"
-            f"Pages: {earlier_pages}"
-        )
+        summary = QLabel(tn("reader_pdf_due_summary", count, current_page=current_page, pages=earlier_pages))
         summary.setWordWrap(True)
         summary.setStyleSheet(
             "QLabel { background: rgba(74,144,217,0.10); border: 1px solid rgba(74,144,217,0.35); "
@@ -805,7 +815,7 @@ class _PdfDueReviewPromptDialog(QDialog):
         )
         layout.addWidget(summary)
 
-        detail_label = QLabel("Reviewing them first can refresh earlier context before you continue reading.")
+        detail_label = QLabel(t("reader_review_due_hint"))
         detail_label.setWordWrap(True)
         layout.addWidget(detail_label)
 
@@ -815,13 +825,13 @@ class _PdfDueReviewPromptDialog(QDialog):
         details.setHtml(self._details_html(due_cards))
         layout.addWidget(details, 1)
 
-        self._offer_on_open = QCheckBox("Offer this due-card review automatically when opening this PDF")
+        self._offer_on_open = QCheckBox(t("reader_pdf_offer_due"))
         self._offer_on_open.setChecked(bool(settings.get("enabled", True)))
         layout.addWidget(self._offer_on_open)
 
         buttons = QDialogButtonBox(parent=self)
-        self._review_btn = buttons.addButton("Review Now", QDialogButtonBox.ButtonRole.AcceptRole)
-        self._skip_btn = buttons.addButton("Not Now", QDialogButtonBox.ButtonRole.RejectRole)
+        self._review_btn = buttons.addButton(t("reader_review_now"), QDialogButtonBox.ButtonRole.AcceptRole)
+        self._skip_btn = buttons.addButton(t("reader_not_now"), QDialogButtonBox.ButtonRole.RejectRole)
         qconnect(self._review_btn.clicked, self._accept_review)
         qconnect(self._skip_btn.clicked, self.reject)
         layout.addWidget(buttons)
@@ -1052,7 +1062,7 @@ def pdf_citation(
     return (
         f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
-        f"Page {resolved_page}. of {escape(name)}</a>"
+        f'{escape(t("reader_pdf_citation_label", page=resolved_page, title=name))}</a>'
     )
 
 
@@ -1091,9 +1101,9 @@ def _copy_pdf_context_anchor(data: object) -> bool:
         scroll_ratio=float(anchor["scroll_ratio"]),
     )
     label = pdf_display_label_from_filename(str(_current_pdf_filename), fallback="PDF")
-    if not html or not set_reader_anchor_clipboard(html, f"{label} — page {page}"):
+    if not html or not set_reader_anchor_clipboard(html, t("reader_pdf_copied_label", title=label, page=page)):
         return False
-    tooltip("PDF link copied. Paste it into an Anki card.")
+    tooltip(t("reader_pdf_link_copied"))
     return True
 
 
@@ -1112,7 +1122,7 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
         position,
         resolver_script=resolver_script,
         on_copy=_copy_pdf_context_anchor,
-        action_label="Copy Link to This Place",
+        action_label=t("reader_copy_link_to_place"),
     )
 
 
@@ -1258,12 +1268,13 @@ def _pdf_storage_path(filename: str) -> str:
 
 
 def _missing_pdf_html(filename: str, expected_path: str) -> str:
-    escaped_name = escape(str(filename or "").strip() or "(missing filename)")
+    escaped_name = escape(str(filename or "").strip() or t("reader_missing_filename"))
     escaped_path = escape(str(expected_path or "").strip())
     onclick = escape(f"pycmd({json.dumps(_MSG_REPAIR_MISSING)}); return false;", quote=True)
+    locale = escape(get_locale(), quote=True)
     return f"""
 <!DOCTYPE html>
-<html>
+<html lang="{locale}">
 <head>
 <meta charset="UTF-8">
 <style>
@@ -1321,14 +1332,13 @@ button:hover {{
 <body>
   <div class="wrap">
     <div class="panel">
-      <div class="title">PDF file is missing</div>
+      <div class="title">{escape(t('reader_pdf_missing_title'))}</div>
       <div class="copy">
-        This PDF card still exists, but its stored PDF file could not be found.
-        Choose a replacement PDF to relink this card and reopen the viewer.
+        {escape(t('reader_pdf_missing_explanation'))}
       </div>
-      <div class="copy"><b>Expected file:</b> {escaped_name}</div>
+      <div class="copy"><b>{escape(t('reader_expected_file'))}</b> {escaped_name}</div>
       <div class="path">{escaped_path}</div>
-      <button onclick="{onclick}">Choose Replacement PDF</button>
+      <button onclick="{onclick}">{escape(t('reader_choose_replacement_pdf'))}</button>
     </div>
   </div>
 </body>
@@ -1349,13 +1359,13 @@ def _repair_missing_pdf() -> None:
     card_id = current_pdf_card_id()
     filename = str(_current_pdf_filename or "").strip()
     if card_id is None or not filename:
-        showInfo("Could not determine which PDF card needs repairing.")
+        showInfo(t("reader_pdf_repair_card_missing"))
         return
     selected_path, _ = QFileDialog.getOpenFileName(
         mw,
-        "Choose Replacement PDF",
+        t("reader_choose_replacement_pdf"),
         "",
-        "PDF Files (*.pdf)",
+        t("reader_pdf_file_filter"),
     )
     if not selected_path:
         return
@@ -1370,7 +1380,7 @@ def _repair_missing_pdf() -> None:
         page = get_page(_ADDON_DIR, _active_profile(), int(card_id))
         zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
         read_page = get_read_page(_ADDON_DIR, _active_profile(), int(card_id))
-        tooltip("PDF card relinked to the replacement file.")
+        tooltip(t("reader_pdf_relinked"))
         show_pdf_in_dock(
             int(card_id),
             new_filename,
@@ -1381,21 +1391,21 @@ def _repair_missing_pdf() -> None:
             offer_due_review_prompt=False,
         )
     except Exception as exc:
-        showInfo(f"Could not relink this PDF card.\n\n{exc}")
+        showInfo(t("reader_pdf_relink_failed", error=exc))
 
 
 def _regenerate_pdf_cover() -> None:
     card_id = current_pdf_card_id()
     if card_id is None:
-        showInfo("Could not determine which PDF card needs a cover refresh.")
+        showInfo(t("reader_pdf_cover_card_missing"))
         return
     try:
         cover_filename = regenerate_pdf_card_cover(_ADDON_DIR, mw.col, int(card_id))
     except FileNotFoundError as exc:
-        showInfo(f"Could not regenerate this PDF cover.\n\n{exc}")
+        showInfo(t("reader_pdf_cover_failed", error=exc))
         return
     except Exception as exc:
-        showInfo(f"Could not regenerate this PDF cover.\n\n{exc}")
+        showInfo(t("reader_pdf_cover_failed", error=exc))
         return
 
     mw.col.reset()
@@ -1415,15 +1425,15 @@ def _regenerate_pdf_cover() -> None:
         except Exception:
             pass
     if cover_filename:
-        tooltip("PDF cover regenerated from page 1.")
+        tooltip(t("reader_pdf_cover_regenerated"))
     else:
-        tooltip("PDF cover cleared because page 1 could not be rendered.")
+        tooltip(t("reader_pdf_cover_cleared"))
 
 
 def _edit_pdf_highlight_note(hl_id: str) -> None:
     card_id = current_pdf_card_id()
     if card_id is None:
-        showInfo("Could not determine which PDF card owns this highlight.")
+        showInfo(t("reader_pdf_highlight_card_missing"))
         return
     highlight = next(
         (
@@ -1434,11 +1444,11 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
         None,
     )
     if not highlight:
-        showInfo("That PDF highlight could not be found.")
+        showInfo(t("reader_pdf_highlight_missing"))
         return
     dialog = HighlightNoteDialog(
         mw,
-        title="PDF Highlight Note",
+        title=t("reader_pdf_highlight_note_title"),
         excerpt=str(highlight.get("text") or ""),
         current_note=str(highlight.get("note") or ""),
     )
@@ -1453,10 +1463,10 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
             dialog.note_text(),
         )
     except Exception as exc:
-        showInfo(f"Could not save the PDF highlight note.\n\n{exc}")
+        showInfo(t("reader_pdf_highlight_note_save_failed", error=exc))
         return
     if not updated:
-        showInfo("That PDF highlight could not be updated.")
+        showInfo(t("reader_pdf_highlight_update_failed"))
         return
     escaped_id = json.dumps(str(updated.get("id") or ""))
     escaped_note = json.dumps(str(updated.get("note") or ""))
@@ -1468,7 +1478,7 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
             )
     except Exception:
         pass
-    tooltip("PDF highlight note saved.")
+    tooltip(t("reader_pdf_highlight_note_saved"))
 
 
 def _current_pdf_highlight_by_id(hl_id: str) -> dict | None:
@@ -1488,11 +1498,11 @@ def _current_pdf_highlight_by_id(hl_id: str) -> dict | None:
 def _open_or_create_pdf_highlight_card(hl_id: str) -> None:
     card_id = current_pdf_card_id()
     if card_id is None:
-        showInfo("Could not determine which PDF card owns this highlight.")
+        showInfo(t("reader_pdf_highlight_card_missing"))
         return
     highlight = _current_pdf_highlight_by_id(hl_id)
     if not highlight:
-        showInfo("That PDF highlight could not be found.")
+        showInfo(t("reader_pdf_highlight_missing"))
         return
 
     source_row = get_pdf_card_source_for_highlight(
@@ -1515,7 +1525,7 @@ def _open_or_create_pdf_highlight_card(hl_id: str) -> None:
 
     excerpt = str(highlight.get("text") or "").strip()
     if not excerpt:
-        tooltip("This highlight has no text to prefill.")
+        tooltip(t("reader_pdf_highlight_empty"))
         return
     if _cb_open_add_card_dock:
         _cb_open_add_card_dock()
@@ -1532,7 +1542,7 @@ def _open_or_create_pdf_highlight_card(hl_id: str) -> None:
             citation_html=citation_html,
             source_link_kind="pdf",
         )
-    tooltip(f"PDF highlight sent to Add Card field {target_field_idx + 1}.")
+    tooltip(t("reader_pdf_highlight_sent", number=target_field_idx + 1))
 
 
 def _pdf_highlight_bulk_snapshot() -> dict[str, object]:
@@ -1583,7 +1593,7 @@ def _pdf_highlight_bulk_snapshot() -> dict[str, object]:
         current_target_field = current_visible_fields[target_field_idx]
     if not note_type_options:
         raise RuntimeError(
-            "No compatible note type exposes the configured PDF highlight target field."
+            t("reader_pdf_no_compatible_note_type")
         )
     note_type_options.sort(
         key=lambda spec: (
@@ -1676,13 +1686,13 @@ def create_pdf_highlight_batch_notes(
     rows: list[dict],
 ) -> dict[str, object]:
     if mw is None or getattr(mw, "col", None) is None:
-        raise RuntimeError("Anki collection is not available.")
+        raise RuntimeError(t("reader_anki_collection_unavailable"))
 
     add_card_dock = _add_card_dock_module()
     note_type_name = str(snapshot.get("note_type_name") or "").strip()
     model = mw.col.models.by_name(note_type_name)
     if model is None:
-        raise RuntimeError(f"Note type '{note_type_name}' was not found.")
+        raise RuntimeError(t("reader_note_type_missing", name=note_type_name))
     add_card_dock._ensure_incremento_metadata_fields_saved(mw.col.models, model)
 
     deck_name = str(snapshot.get("deck_name") or "").strip()
@@ -1708,7 +1718,7 @@ def create_pdf_highlight_batch_notes(
     ]
     target_field = str(snapshot.get("target_field") or "").strip()
     if target_field not in visible_fields:
-        raise RuntimeError("The configured PDF highlight target field is not visible.")
+        raise RuntimeError(t("reader_pdf_target_field_hidden"))
 
     summary: dict[str, object] = {
         "created": 0,
@@ -1782,7 +1792,7 @@ def create_pdf_highlight_batch_notes(
         except Exception as exc:
             summary["failed"] = int(summary["failed"]) + 1
             errors = list(summary["errors"])
-            errors.append(f"Row {index} ({highlight_id}): {exc}")
+            errors.append(t("reader_pdf_batch_row_error", index=index, highlight_id=highlight_id, error=exc))
             summary["errors"] = errors
 
     return summary
@@ -1808,17 +1818,17 @@ def _refresh_pdf_highlight_card_links(pdf_card_id: int) -> None:
 def _open_pdf_highlight_bulk_create_dialog() -> None:
     card_id = current_pdf_card_id()
     if card_id is None:
-        showInfo("Could not determine which PDF is currently open.")
+        showInfo(t("reader_pdf_current_missing"))
         return
     try:
         snapshot = _pdf_highlight_bulk_snapshot()
     except Exception as exc:
-        showInfo(f"Could not read the current Add Card target.\n\n{exc}")
+        showInfo(t("reader_pdf_add_target_failed", error=exc))
         return
 
     rows = _missing_pdf_highlight_card_rows(int(card_id), snapshot)
     if not rows:
-        tooltip("No unlinked text highlights remain for this PDF.")
+        tooltip(t("reader_pdf_no_unlinked_highlights"))
         return
 
     try:
@@ -1828,7 +1838,7 @@ def _open_pdf_highlight_bulk_create_dialog() -> None:
             from pdf_highlight_bulk_dialog import PdfHighlightBulkDialog  # type: ignore
         dlg = PdfHighlightBulkDialog(snapshot, rows, parent=mw)
     except Exception as exc:
-        showInfo(f"Could not open the PDF bulk highlight dialog.\n\n{exc}")
+        showInfo(t("reader_pdf_bulk_dialog_failed", error=exc))
         return
 
     if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -1847,15 +1857,9 @@ def _open_pdf_highlight_bulk_create_dialog() -> None:
     failed = int(summary.get("failed", 0) or 0)
     if failed:
         errors = "\n".join(str(error) for error in list(summary.get("errors") or []))
-        showInfo(
-            "Finished creating PDF highlight cards.\n\n"
-            f"Created: {created}\nSkipped: {skipped}\nFailed: {failed}\n\n{errors}"
-        )
+        showInfo(t("reader_pdf_batch_result", created=created, skipped=skipped, failed=failed, errors=errors))
     else:
-        tooltip(
-            f"Created {created} PDF highlight card{'s' if created != 1 else ''}."
-            + (f" Skipped {skipped}." if skipped else "")
-        )
+        tooltip(t("reader_pdf_batch_success", created=created, skipped=skipped))
 
 
 def _pdf_bookmarks_payload(card_id: int) -> list[dict]:
@@ -1940,10 +1944,10 @@ def _add_pdf_bookmark(card_id: int, page: int) -> None:
             {"page": max(1, int(page))},
         )
     except Exception as exc:
-        showInfo(f"Could not save PDF bookmark:\n{exc}")
+        showInfo(t("reader_pdf_bookmark_save_failed", error=exc))
         return
     _push_pdf_bookmarks(int(card_id))
-    tooltip("PDF bookmark saved.")
+    tooltip(t("reader_pdf_bookmark_saved"))
 
 
 def _delete_pdf_bookmark(card_id: int, bookmark_id: str) -> None:
@@ -1956,7 +1960,7 @@ def _delete_pdf_bookmark(card_id: int, bookmark_id: str) -> None:
             str(bookmark_id or ""),
         )
     except Exception as exc:
-        showInfo(f"Could not delete PDF bookmark:\n{exc}")
+        showInfo(t("reader_pdf_bookmark_delete_failed", error=exc))
         return
     _push_pdf_bookmarks(int(card_id))
 
@@ -1986,17 +1990,22 @@ def _open_pdf_limit_dialog(card_id: int) -> None:
     _push_pdf_limit_status(refreshed)
     if refreshed.get("enabled"):
         tooltip(
-            f"PDF limit saved: {refreshed['daily_page_limit']} pages/day "
-            f"({refreshed['enforcement_label']})."
+            t(
+                "reader_pdf_limit_saved",
+                count=refreshed["daily_page_limit"],
+                mode=t(f"reader_limit_{refreshed['enforcement_mode']}")
+                if refreshed.get("enforcement_mode") in {"warning", "soft_lock", "hard_stop"}
+                else t("reader_limit_warning"),
+            )
         )
     else:
-        tooltip("PDF daily reading limit disabled.")
+        tooltip(t("reader_pdf_limit_disabled"))
 
 
 def _start_due_pdf_review(card_id: int, *, current_page: int, due_cards: list[dict]) -> None:
     selected_ids = [int(row["card_id"]) for row in due_cards if int(row.get("card_id", 0) or 0) > 0]
     if not selected_ids:
-        tooltip("No due extracted cards to review for this PDF.")
+        tooltip(t("reader_pdf_no_due_cards"))
         return
 
     try:
@@ -2005,7 +2014,7 @@ def _start_due_pdf_review(card_id: int, *, current_page: int, due_cards: list[di
     except Exception:
         filename = str(_current_pdf_filename or "")
     if not filename:
-        showInfo("Could not reopen this PDF after review.")
+        showInfo(t("reader_pdf_reopen_failed"))
         return
 
     zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
@@ -2041,7 +2050,7 @@ def _start_due_pdf_review(card_id: int, *, current_page: int, due_cards: list[di
         selected_ids,
         deck_name=INCREMENTO_PDF_REVIEW_DECK,
         preserve_order=True,
-        empty_message="No due extracted cards are available to review for this PDF.",
+        empty_message=t("reader_pdf_due_unavailable"),
         on_finished=_restore_pdf,
         diagnostic_source="pdf_due_review",
         diagnostic_content_kind="pdf",
@@ -2057,7 +2066,7 @@ def _start_all_pdf_review(card_id: int, *, current_page: int) -> bool:
     except Exception:
         filename = str(_current_pdf_filename or "").strip()
     if not filename:
-        showInfo("Could not reopen this PDF after review.")
+        showInfo(t("reader_pdf_reopen_failed"))
         return False
 
     zoom = get_zoom(_ADDON_DIR, _active_profile(), int(card_id))
@@ -2124,7 +2133,7 @@ def _offer_due_review_for_pdf(
     )
     if not due_cards:
         if force:
-            tooltip("No due extracted cards from this PDF up to the current page.")
+            tooltip(t("reader_pdf_no_due_to_page"))
         return
 
     dlg = _PdfDueReviewPromptDialog(
@@ -2292,7 +2301,7 @@ def _handle_pdf_js_message(msg: str) -> None:
             if card_id <= 0 or card_id != int(_current_pdf_card_id or 0):
                 return
             if not open_external_reader_link(data.get("url")):
-                tooltip("Blocked an unsafe or unsupported PDF link.")
+                tooltip(t("reader_pdf_link_blocked"))
         except Exception:
             pass
     elif msg.startswith(_MSG_LIMIT_SETTINGS):
@@ -2301,7 +2310,7 @@ def _handle_pdf_js_message(msg: str) -> None:
             if cid > 0:
                 _open_pdf_limit_dialog(cid)
         except Exception as e:
-            showInfo(f"Could not edit PDF reading limit:\n{e}")
+            showInfo(t("reader_pdf_limit_edit_failed", error=e))
     elif msg.startswith(_MSG_LIMIT_OVERRIDE):
         try:
             cid = int(msg[len(_MSG_LIMIT_OVERRIDE) :])
@@ -2314,9 +2323,9 @@ def _handle_pdf_js_message(msg: str) -> None:
                     current_page=get_page(_ADDON_DIR, _active_profile(), cid),
                 )
                 _push_pdf_limit_status(status)
-                tooltip("PDF reading limit overridden for today.")
+                tooltip(t("reader_pdf_limit_overridden"))
         except Exception as e:
-            showInfo(f"Could not override PDF reading limit:\n{e}")
+            showInfo(t("reader_pdf_limit_override_failed", error=e))
     elif msg.startswith(_MSG_DUE_REVIEW):
         try:
             parts = msg.split(":")
@@ -2329,7 +2338,7 @@ def _handle_pdf_js_message(msg: str) -> None:
                         force=True,
                     )
         except Exception as e:
-            showInfo(f"Could not open PDF due-card review:\n{e}")
+            showInfo(t("reader_pdf_due_review_failed", error=e))
     elif msg.startswith(_MSG_REVIEW_ALL):
         try:
             parts = msg.split(":")
@@ -2341,24 +2350,24 @@ def _handle_pdf_js_message(msg: str) -> None:
                         current_page=int(parts[2]),
                     )
         except Exception as e:
-            showInfo(f"Could not open attached PDF card review:\n{e}")
+            showInfo(t("reader_pdf_attached_review_failed", error=e))
     elif msg.startswith(_MSG_HL_NOTE):
         try:
             payload = json.loads(msg[len(_MSG_HL_NOTE) :])
             _edit_pdf_highlight_note(str(payload.get("id") or ""))
         except Exception as e:
-            showInfo(f"Could not edit PDF highlight note.\n\n{e}")
+            showInfo(t("reader_pdf_highlight_note_edit_failed", error=e))
     elif msg.startswith(_MSG_HL_CARD):
         try:
             payload = json.loads(msg[len(_MSG_HL_CARD) :])
             _open_or_create_pdf_highlight_card(str(payload.get("id") or ""))
         except Exception as e:
-            showInfo(f"Could not open the PDF highlight card workflow.\n\n{e}")
+            showInfo(t("reader_pdf_highlight_workflow_failed", error=e))
     elif msg == _MSG_HL_BULK_CARDS:
         try:
             _open_pdf_highlight_bulk_create_dialog()
         except Exception as e:
-            showInfo(f"Could not open the bulk PDF highlight workflow.\n\n{e}")
+            showInfo(t("reader_pdf_bulk_workflow_failed", error=e))
     elif msg.startswith(_MSG_BOOKMARK_ADD):
         try:
             payload = json.loads(msg[len(_MSG_BOOKMARK_ADD) :])
@@ -2367,7 +2376,7 @@ def _handle_pdf_js_message(msg: str) -> None:
             if cid > 0:
                 _add_pdf_bookmark(cid, page)
         except Exception as e:
-            showInfo(f"Could not save PDF bookmark:\n{e}")
+            showInfo(t("reader_pdf_bookmark_save_failed", error=e))
     elif msg.startswith(_MSG_BOOKMARK_DELETE):
         try:
             payload = json.loads(msg[len(_MSG_BOOKMARK_DELETE) :])
@@ -2375,7 +2384,7 @@ def _handle_pdf_js_message(msg: str) -> None:
             if cid > 0:
                 _delete_pdf_bookmark(cid, str(payload.get("id") or ""))
         except Exception as e:
-            showInfo(f"Could not delete PDF bookmark:\n{e}")
+            showInfo(t("reader_pdf_bookmark_delete_failed", error=e))
     elif msg.startswith(_MSG_BOOKMARK_LIST):
         try:
             cid = int(msg[len(_MSG_BOOKMARK_LIST) :])
@@ -2424,11 +2433,11 @@ def _handle_pdf_js_message(msg: str) -> None:
             if card_id > 0:
                 mw.col.sched.suspend_cards([card_id])
                 mw.col.reset()
-                tooltip("PDF card suspended — it won't appear in future sessions.")
+                tooltip(t("reader_pdf_card_suspended"))
                 if _pdf_dock:
                     _pdf_dock.hide()
         except Exception as e:
-            showInfo(f"Could not suspend card:\n{e}")
+            showInfo(t("reader_pdf_suspend_failed", error=e))
     elif msg.startswith(_MSG_OPEN_CARD):
         try:
             note_id = int(msg[len(_MSG_OPEN_CARD) :])
@@ -2450,7 +2459,7 @@ def _handle_pdf_js_message(msg: str) -> None:
                 0,
                 lambda ids=note_ids: _browse_note_ids_in_browser(
                     ids,
-                    empty_message="No cards created on this page yet.",
+                    empty_message=t("reader_pdf_no_page_cards"),
                 ),
             )
         except Exception:
@@ -2670,10 +2679,10 @@ def _handle_pdf_snapshot(msg: str) -> None:
         if "," in img_b64:
             img_b64 = img_b64.split(",", 1)[1]
         if not img_b64 or len(img_b64) > ((_MAX_PDF_SNAPSHOT_BYTES * 4) // 3) + 8:
-            raise ValueError("Snapshot is too large")
+            raise ValueError(t("reader_pdf_snapshot_too_large"))
         img_bytes = _b64.b64decode(img_b64, validate=True)
         if not img_bytes or len(img_bytes) > _MAX_PDF_SNAPSHOT_BYTES:
-            raise ValueError("Snapshot is empty or too large")
+            raise ValueError(t("reader_pdf_snapshot_empty_or_large"))
 
         with _tmp.NamedTemporaryFile(suffix=".png", delete=False) as f:
             f.write(img_bytes)
@@ -2696,7 +2705,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
         except Exception:
             pass
         if not field_names:
-            field_names = [f"Field {i + 1}" for i in range(4)]
+            field_names = [t("reader_field_number", number=i + 1) for i in range(4)]
 
         # Build pixmap preview
         pixmap = QPixmap.fromImage(QImage.fromData(img_bytes))
@@ -2708,7 +2717,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
 
         # Dialog: image preview + one button per field name
         picker = QDialog(mw)
-        picker.setWindowTitle("Insert snapshot into field")
+        picker.setWindowTitle(t("reader_insert_snapshot_title"))
         picker.setFixedWidth(340)
         layout = QVBoxLayout(picker)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -2720,7 +2729,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
         layout.addWidget(preview_lbl)
 
         layout.addSpacing(14)
-        layout.addWidget(QLabel("Insert image into:"))
+        layout.addWidget(QLabel(t("reader_insert_image_into")))
         layout.addSpacing(8)
 
         chosen_idx = [-1]
@@ -2740,7 +2749,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
             layout.addSpacing(4)
 
         layout.addSpacing(8)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(t("reader_cancel"))
         cancel_btn.clicked.connect(picker.reject)
         layout.addWidget(cancel_btn)
 
@@ -2753,7 +2762,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
                 f'<img src="{escape(media_filename, quote=True)}">',
             )
     except Exception as e:
-        showInfo(f"Snapshot failed:\n{e}")
+        showInfo(t("reader_pdf_snapshot_failed", error=e))
 
 
 # ── Dock construction ─────────────────────────────────────────────────────────
@@ -2762,7 +2771,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
 def _build_pdf_dock():
     global _pdf_dock, _shortcuts_registered, _pdf_key_filter
 
-    dock = QDockWidget("PDF Viewer", mw)
+    dock = QDockWidget(t("reader_pdf_viewer_title"), mw)
     dock.setObjectName("incremento_pdf_dock")
     dock.setMinimumWidth(550)
 
@@ -3047,7 +3056,7 @@ def show_pdf_in_dock(
                 _current_pdf_card_id,
             )
     except Exception as exc:
-        showInfo(f"Could not secure PDF viewer:\n{exc}")
+        showInfo(t("reader_pdf_secure_failed", error=exc))
         return
 
     _pdf_dock.show()
@@ -3061,7 +3070,7 @@ def show_pdf_in_dock(
 
     if not os.path.exists(secured_pdf_path):
         _show_missing_pdf_screen(resolved_filename)
-        tooltip("Stored PDF file is missing. Choose a replacement PDF to repair this card.")
+        tooltip(t("reader_pdf_file_missing_tooltip"))
         return
 
     pdf_file_url = QUrl.fromLocalFile(secured_pdf_path).toString()
@@ -3087,6 +3096,8 @@ def show_pdf_in_dock(
         else saved_scroll_ratio
     )
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
+    reader_locale = get_locale()
+    custom_reader_language = get_custom_reader_payload()
 
     if search_hits is None:
         if str(search_query or "").strip():
@@ -3103,10 +3114,10 @@ def show_pdf_in_dock(
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}));"
     )
 
     current = _pdf_dock._view.url().toString()

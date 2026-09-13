@@ -24,6 +24,9 @@ for _name in (
     setattr(_qt_module, _name, _dummy_class(_name))
 
 _qt_module.QMessageBox.StandardButton = SimpleNamespace(Yes=1, No=2)
+_qt_module.QMessageBox.Icon = SimpleNamespace(Question=1)
+_qt_module.QMessageBox.button = lambda _self, _which: SimpleNamespace(setText=lambda _text: None)
+_qt_module.QMessageBox.exec = lambda _self: _qt_module.QMessageBox.StandardButton.No
 _qt_module.QMessageBox.warning = staticmethod(lambda *args, **kwargs: None)
 _qt_module.QMessageBox.question = staticmethod(lambda *args, **kwargs: _qt_module.QMessageBox.StandardButton.No)
 _qt_module.QInputDialog.getText = staticmethod(lambda *args, **kwargs: ("", False))
@@ -74,6 +77,109 @@ _rename_named_scheduler_profile = _MOD._rename_named_scheduler_profile
 SchedulerConfigDialog = _MOD.SchedulerConfigDialog
 
 
+def test_croatian_live_preview_translates_labels_and_preserves_escaped_content(monkeypatch):
+    from backend.i18n import Translator
+    translator = Translator('hr')
+    monkeypatch.setattr(_MOD, 't', translator.t)
+    monkeypatch.setattr(_MOD, 'tn', translator.tn)
+    html = []
+    dialog = object.__new__(_MOD._LiveSchedulerPreviewDialog)
+    dialog._preview = SimpleNamespace(setHtml=html.append)
+    entry = {'title': '<Document>', 'card_id': 42, 'card_type': 'pdf',
+             'mode': 'priority', 'tag': 'EnglishTag', 'tags': 'EnglishTag',
+             'fields': [('User field', '<script>alert(1)</script>')],
+             'selection_stage': 'ordered_priority', 'priority_order': 2,
+             'pdf_filename': 'user.pdf', 'pdf_exists': True, 'pdf_page': 3,
+             'pdf_read_page': 2,
+             'pdf_limit_status': {'pages_used': 1, 'daily_page_limit': 10,
+                                  'pages_remaining': 9, 'enforcement_mode': 'soft_lock',
+                                  'enforcement_label': 'Soft Lock'}}
+
+    dialog._show_entry(entry)
+
+    assert 'ID kartice:' in html[0]
+    assert 'Vrsta:' in html[0] and 'Prioritet' in html[0]
+    assert 'Trenutačna stranica:' in html[0] and 'Soft Lock' not in html[0]
+    assert '&lt;Document&gt;' in html[0] and '&lt;script&gt;' in html[0]
+    assert 'EnglishTag' in html[0] and 'User field' in html[0]
+    assert entry['card_type'] == 'pdf' and entry['mode'] == 'priority'
+
+
+def test_chinese_live_preview_summary_translates_metadata_not_user_tag(monkeypatch):
+    from backend.i18n import Translator
+    translator = Translator('zh-Hans')
+    monkeypatch.setattr(_MOD, 't', translator.t)
+    monkeypatch.setattr(_MOD, 'tn', translator.tn)
+    text = []
+    dialog = object.__new__(_MOD._LiveSchedulerPreviewDialog)
+    dialog._summary_lbl = SimpleNamespace(setText=text.append)
+    dialog._update_summary([42], {42: {'card_type': 'topics', 'mode': 'priority',
+                                      'tag': 'EnglishTag'}}, 2)
+    assert '主题' in text[0] and '优先级' in text[0]
+    assert 'EnglishTag' in text[0] and 'Scheduled' not in text[0]
+
+
+def test_branch_scope_label_uses_croatian_plural_without_changing_user_title(monkeypatch):
+    from backend.i18n import Translator
+    translator = Translator('hr')
+    monkeypatch.setattr(_MOD, 't', translator.t)
+    monkeypatch.setattr(_MOD, 'tn', translator.tn)
+    dialog = object.__new__(SchedulerConfigDialog)
+    dialog._branch_scope = {'root_title': 'English title', 'card_ids': [1, 2, 3]}
+    assert dialog._branch_scope_label() == 'English title · 3 kartice u podstablu'
+
+
+def test_heatmap_localizes_synthetic_other_without_renaming_real_other_tag(monkeypatch):
+    from backend.i18n import Translator
+    monkeypatch.setattr(_MOD, 't', Translator('hr').t)
+    items, notes = {}, []
+    monkeypatch.setattr(_MOD, 'QTableWidgetItem', lambda text: SimpleNamespace(
+        text=text, setTextAlignment=lambda value: None))
+    monkeypatch.setattr(_MOD, 'Qt', SimpleNamespace(AlignmentFlag=SimpleNamespace(AlignRight=1, AlignVCenter=2)))
+    dialog = object.__new__(SchedulerConfigDialog)
+    dialog._tag_content_table = SimpleNamespace(setRowCount=lambda value: None,
+                                                setItem=lambda row, col, item: items.update({(row, col): item.text}))
+    dialog._tag_content_note_lbl = SimpleNamespace(setText=notes.append)
+    dialog._set_heatmap_cell = lambda *args: None
+    dialog._update_tag_content_heatmap(
+        rows=[('Other', 0.5)], tag_shares_for_content={'Other': 0.5, _MOD.NO_TAGS_KEY: 0.5},
+        tags_normalized=True, cc={'pdf': 2, 'topics': 0, 'items': 0})
+    assert items[(0, 0)] == 'Other' and items[(1, 0)] == 'Ostalo'
+    assert items[(0, 4)] == '1' and items[(1, 4)] == '1'
+    assert 'Ćelije' in notes[0] and '100%' in notes[0]
+
+
+def test_session_debug_translates_enums_and_preserves_note_content(monkeypatch):
+    import ast
+    from pathlib import Path
+    from backend.i18n import Translator
+    translator = Translator('hr')
+    monkeypatch.setattr(_MOD, 't', translator.t)
+    path = Path(__file__).resolve().parents[1] / 'frontend/session_launcher.py'
+    tree = ast.parse(path.read_text())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                    and node.name == '_show_scheduled_debug')
+    output = []
+    dialog = SimpleNamespace(setWindowTitle=lambda value: None, resize=lambda *args: None,
+                             accept=lambda: None, exec=lambda: None)
+    layout = SimpleNamespace(addWidget=lambda value: None)
+    edit = SimpleNamespace(setReadOnly=lambda value: None, setFontFamily=lambda value: None,
+                           setPlainText=output.append)
+    button = SimpleNamespace(clicked=SimpleNamespace(connect=lambda value: None))
+    namespace = {'_t': translator.t, 'session_type_label': _MOD.session_type_label,
+                 'session_mode_label': _MOD.session_mode_label,
+                 'QDialog': lambda parent: dialog, 'QVBoxLayout': lambda parent: layout,
+                 'QTextEdit': lambda: edit, 'QPushButton': lambda label: button,
+                 'mw': SimpleNamespace(col=SimpleNamespace(get_card=lambda cid: SimpleNamespace(nid=1),
+                     get_note=lambda nid: SimpleNamespace(fields=['User English content'])))}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
+    meta = {1: {'card_type': 'topics', 'mode': 'priority', 'tag': 'EnglishTag'}}
+    namespace['_show_scheduled_debug']([1], meta, None)
+    assert 'Teme' in output[0] and 'Prioritet' in output[0]
+    assert 'EnglishTag' in output[0] and 'User English content' in output[0]
+    assert meta[1]['card_type'] == 'topics'
+
+
 class _NaturallySizedButton:
     def __init__(self, width: int):
         self._width = width
@@ -98,6 +204,33 @@ def test_preset_action_buttons_use_theme_aware_natural_widths():
         "# ── 1. Session size", 1
     )[0]
     assert "setFixedWidth" not in profile_source
+
+
+def test_session_day_end_labels_are_resolved_lazily_through_i18n(monkeypatch):
+    monkeypatch.setattr(
+        _MOD,
+        "t",
+        lambda message_id, **_values: "Prilagođeno…"
+        if message_id == "common_custom"
+        else message_id,
+    )
+
+    presets = _MOD._day_end_presets()
+
+    assert presets[-1] == (None, "Prilagođeno…")
+    assert presets[0][0] == "00:00"
+
+
+def test_session_dialog_help_and_confirmation_copy_use_shipped_locales():
+    from backend.i18n import Translator
+
+    hr = Translator("hr")
+    zh = Translator("zh-Hans")
+
+    assert hr.t("session_delete_today_title") == "Izbriši današnje podatke"
+    assert "strogo" in hr.t("session_funnel_help").lower()
+    assert zh.t("session_export_statistics_title") == "导出统计数据"
+    assert "PDF" in zh.t("session_content_pdf_help")
 
 
 def test_statistics_export_uses_history_aware_snapshot(tmp_path, monkeypatch):

@@ -1,0 +1,3225 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Incremento\n"
+"PO-Revision-Date: 2026-09-13 00:00+0000\n"
+"Last-Translator: Incremento\n"
+"Language-Team: Hrvatski\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: hr\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+
+#. Reader display label: {action} action in the {reader} reader.
+msgid "reader_accessible_description"
+msgstr "Radnja {action} u čitaču {reader}."
+
+#. Reader display label: {reader} reader: {action}
+msgid "reader_accessible_name"
+msgstr "Čitač {reader}: {action}"
+
+#. Reader display label: + Add Card
+msgid "reader_add_card"
+msgstr "+ Dodaj karticu"
+
+#. Reader display label: Annotate
+msgid "reader_annotate"
+msgstr "Označavanje"
+
+#. Reader display label: Annotation & capture
+msgid "reader_annotation_capture"
+msgstr "Bilješke i snimanje"
+
+#. Reader display label: Back
+msgid "reader_back"
+msgstr "Natrag"
+
+#. Reader display label: Bookmark
+msgid "reader_bookmark"
+msgstr "Označi mjesto"
+
+#. Reader display label: Bookmarks ({count})
+msgid "reader_bookmarks"
+msgstr "Oznake mjesta ({count})"
+
+#. Reader display label: Capture
+msgid "reader_capture"
+msgstr "Snimanje"
+
+#. Reader display label: Cards
+msgid "reader_cards"
+msgstr "Kartice"
+
+#. Reader display label: Links {state}
+msgid "reader_clickable_links"
+msgstr "Poveznice {state}"
+
+#. Reader display label: EPUB
+msgid "reader_epub_name"
+msgstr "EPUB"
+
+#. Reader display label: ↦
+msgid "reader_exact_read_marker"
+msgstr "↦"
+
+#. Reader display label: Extract
+msgid "reader_extract"
+msgstr "Izdvoji"
+
+#. Reader display label: ✓ Finished Reading
+msgid "reader_finished_reading"
+msgstr "✓ Završeno čitanje"
+
+#. Reader display label: Highlight when extracting
+msgid "reader_highlight_when_extracting"
+msgstr "Označi pri izdvajanju"
+
+#. Reader display label: 📑 Highlights ({count})
+msgid "reader_highlights"
+msgstr "📑 Oznake ({count})"
+
+#. Reader display label: ↩ Jump Back
+msgid "reader_jump_back"
+msgstr "↩ Povratak"
+
+#. Reader display label: More
+msgid "reader_more"
+msgstr "Više"
+
+#. Reader display label: Navigate
+msgid "reader_navigate"
+msgstr "Navigacija"
+
+#. Reader display label: Navigation
+msgid "reader_navigation"
+msgstr "Navigacija"
+
+#. Reader display label: Next →
+msgid "reader_next_page"
+msgstr "Sljedeća →"
+
+#. Reader display label: Open All in Browser
+msgid "reader_open_all_in_browser"
+msgstr "Otvori sve u pregledniku"
+
+#. Reader display label: 📄 Page cards ({count})
+msgid "reader_page_cards"
+msgstr "📄 Kartice stranice ({count})"
+
+#. Reader display label: Page {current} / {total}
+msgid "reader_page_location"
+msgstr "Stranica {current} / {total}"
+
+#. Reader display label: PDF
+msgid "reader_pdf_name"
+msgstr "PDF"
+
+#. Reader display label: ← Prev
+msgid "reader_previous_page"
+msgstr "← Prethodna"
+
+#. Reader display label: ✓ Read to here
+msgid "reader_read_to_here"
+msgstr "✓ Pročitano do ovdje"
+
+#. Reader display label: Reading
+msgid "reader_reading"
+msgstr "Čitanje"
+
+#. Reader display label: 📖 Reading Limit
+msgid "reader_reading_limit"
+msgstr "📖 Ograničenje čitanja"
+
+#. Reader display label: Regenerate Cover
+msgid "reader_regenerate_cover"
+msgstr "Obnovi naslovnicu"
+
+#. Reader display label: Review
+msgid "reader_review"
+msgstr "Ponavljanje"
+
+#. Reader display label: Review All
+msgid "reader_review_all"
+msgstr "Ponovi sve"
+
+#. Reader display label: Review & cards
+msgid "reader_review_cards"
+msgstr "Ponavljanje i kartice"
+
+#. Reader display label: 🧠 Review Due
+msgid "reader_review_due"
+msgstr "🧠 Ponovi dospjele"
+
+#. Reader display label: Search
+msgid "reader_search"
+msgstr "Pretraži"
+
+#. Reader display label: 📷 Snapshot
+msgid "reader_snapshot"
+msgstr "📷 Snimka"
+
+#. Reader display label: Status
+msgid "reader_status"
+msgstr "Stanje"
+
+#. Reader display label: ★ Bookmark
+msgid "reader_toolbar_bookmark"
+msgstr "★ Oznaka mjesta"
+
+#. Reader display label: ▶ Review All
+msgid "reader_toolbar_review_all"
+msgstr "▶ Ponovi sve"
+
+#. Reader display label: {action} in the {reader} reader
+msgid "reader_tooltip"
+msgstr "{action} u čitaču {reader}"
+
+#. Reader display label: {action} is not available in the {reader} reader yet.
+msgid "reader_unavailable"
+msgstr "Radnja {action} još nije dostupna u čitaču {reader}."
+
+#. Reader display label: Video
+msgid "reader_video_name"
+msgstr "Video"
+
+#. Reader display label: Web
+msgid "reader_web_name"
+msgstr "Web"
+
+#. Reader display label: Zoom
+msgid "reader_zoom"
+msgstr "Zumiranje"
+
+#. Reader display label: +
+msgid "reader_zoom_in"
+msgstr "+"
+
+#. Reader display label: −
+msgid "reader_zoom_out"
+msgstr "−"
+
+#. Reader display label: {percent}%
+msgid "reader_zoom_percent"
+msgstr "{percent}%"
+
+#. Reader display text: Add current page
+msgid "reader_add_current_page"
+msgstr "Dodaj trenutačnu stranicu"
+
+#. Reader display text: Add highlight note
+msgid "reader_add_highlight_note"
+msgstr "Dodaj bilješku oznaci"
+
+#. Reader display text: Add note
+msgid "reader_add_note"
+msgstr "Dodaj bilješku"
+
+#. Reader display text: Add note to this highlight
+msgid "reader_add_note_tooltip"
+msgstr "Dodaj bilješku ovoj oznaci"
+
+#. Reader display text: All
+msgid "reader_all"
+msgstr "Sve"
+
+#. Reader display text: Bookmark the current page as an interesting place
+msgid "reader_bookmark_current"
+msgstr "Označi trenutačnu stranicu kao zanimljivo mjesto"
+
+#. Reader display text: Bookmarks ({count})
+msgid "reader_bookmarks_count"
+msgstr "Oznake mjesta ({count})"
+
+#. Reader display text: Cancel snapshot
+msgid "reader_cancel_snapshot"
+msgstr "Odustani od snimke"
+
+#. Reader display text: Choose which control groups are visible
+msgid "reader_choose_controls"
+msgstr "Odaberi vidljive skupine kontrola"
+
+#. Reader display text: Close
+msgid "reader_close"
+msgstr "Zatvori"
+
+#. Reader display text: aqua
+msgid "reader_color_aqua"
+msgstr "tirkizna"
+
+#. Reader display text: blue
+msgid "reader_color_blue"
+msgstr "plava"
+
+#. Reader display text: green
+msgid "reader_color_green"
+msgstr "zelena"
+
+#. Reader display text: orange
+msgid "reader_color_orange"
+msgstr "narančasta"
+
+#. Reader display text: pink
+msgid "reader_color_pink"
+msgstr "ružičasta"
+
+#. Reader display text: purple
+msgid "reader_color_purple"
+msgstr "ljubičasta"
+
+#. Reader display text: red
+msgid "reader_color_red"
+msgstr "crvena"
+
+#. Reader display text: yellow
+msgid "reader_color_yellow"
+msgstr "žuta"
+
+#. Reader display text: Create Card
+msgid "reader_create_card"
+msgstr "Stvori karticu"
+
+#. Reader display text: Create Missing Cards ({count})
+msgid "reader_create_missing_cards"
+msgstr "Stvori nedostajuće kartice ({count})"
+
+#. Reader display text: Customize
+msgid "reader_customize"
+msgstr "Prilagodi"
+
+#. Reader display text: Customize controls
+msgid "reader_customize_controls"
+msgstr "Prilagodi kontrole"
+
+#. Reader display text: Choose which groups stay visible in the reader toolbar.
+msgid "reader_customize_intro"
+msgstr "Odaberi skupine koje ostaju vidljive u alatnoj traci čitača."
+
+#. Reader display text: Customize PDF controls
+msgid "reader_customize_pdf_controls"
+msgstr "Prilagodi kontrole PDF-a"
+
+#. Reader display text: Daily PDF reading limit for this card
+msgid "reader_daily_limit"
+msgstr "Dnevno ograničenje čitanja PDF-a za ovu karticu"
+
+#. Reader display text: Delete
+msgid "reader_delete"
+msgstr "Izbriši"
+
+#. Reader display text: Delete this highlight
+msgid "reader_delete_highlight"
+msgstr "Izbriši ovu oznaku"
+
+#. Reader display text: Dismiss
+msgid "reader_dismiss"
+msgstr "Odbaci"
+
+#. Reader display text: Done
+msgid "reader_done"
+msgstr "Gotovo"
+
+#. Reader display text: Draw a rectangle to capture a region
+msgid "reader_draw_snapshot"
+msgstr "Nacrtaj pravokutnik za snimanje područja"
+
+#. Reader display text: Edit highlight note
+msgid "reader_edit_highlight_note"
+msgstr "Uredi bilješku oznake"
+
+#. Reader display text: Edit note
+msgid "reader_edit_note"
+msgstr "Uredi bilješku"
+
+#. Reader display text: Edit note for this highlight
+msgid "reader_edit_note_tooltip"
+msgstr "Uredi bilješku za ovu oznaku"
+
+#. Reader display text: Find
+msgid "reader_find"
+msgstr "Pronađi"
+
+#. Reader display text: Mark this PDF as finished reading? / The card will be suspended and removed from future sessions.
+msgid "reader_finished_confirm"
+msgstr "Označiti ovaj PDF pročitanim?\nKartica će se suspendirati i ukloniti iz budućih sesija."
+
+#. Reader display text: Mark this PDF as finished reading — suspends the card so it won't appear again
+msgid "reader_finished_tooltip"
+msgstr "Označi PDF pročitanim — kartica će se suspendirati"
+
+#. Reader display text: Go to page {page}
+msgid "reader_go_to_page"
+msgstr "Idi na stranicu {page}"
+
+#. Reader display text: Highlight actions
+msgid "reader_highlight_actions"
+msgstr "Radnje oznake"
+
+#. Reader display text: Highlight {color}
+msgid "reader_highlight_color"
+msgstr "Označi bojom {color}"
+
+#. Reader display text: Highlight: {excerpt}
+msgid "reader_highlight_excerpt"
+msgstr "Oznaka: {excerpt}"
+
+#. Reader display text: Highlights ({count})
+msgid "reader_highlights_count"
+msgstr "Oznake ({count})"
+
+#. Reader display text: Jump
+msgid "reader_jump"
+msgstr "Idi"
+
+#. Reader display text: Follow an internal PDF link to enable Jump Back
+msgid "reader_jump_back_hint"
+msgstr "Slijedi unutarnju poveznicu u PDF-u za povratak"
+
+#. Reader display text: Jump back to page {page}
+msgid "reader_jump_back_page"
+msgstr "Vrati se na stranicu {page}"
+
+#. Reader display text: Hard stop
+msgid "reader_limit_hard_stop"
+msgstr "Strogo zaustavljanje"
+
+#. Reader display text: {prefix} Come back after your next Incremento day reset.
+msgid "reader_limit_reached_hard"
+msgstr "{prefix} Vratite se nakon sljedećeg dnevnog resetiranja Incrementa."
+
+#. Reader display text: Daily limit reached: {used}/{total} pages today.
+msgid "reader_limit_reached_pages"
+msgstr "Dosegnuto dnevno ograničenje: {used}/{total} stranica danas."
+
+#. Reader display text: Daily limit reached for this PDF.
+msgid "reader_limit_reached_pdf"
+msgstr "Dosegnuto dnevno ograničenje za ovaj PDF."
+
+#. Reader display text: {prefix} Use override to keep reading today.
+msgid "reader_limit_reached_soft"
+msgstr "{prefix} Koristite iznimku za nastavak čitanja danas."
+
+#. Reader display text: Soft lock
+msgid "reader_limit_soft_lock"
+msgstr "Meko zaključavanje"
+
+#. Reader display text: Warning
+msgid "reader_limit_warning"
+msgstr "Upozorenje"
+
+#. Reader display text: Disable PDF links and restore uninterrupted text selection
+msgid "reader_links_disable"
+msgstr "Isključi poveznice u PDF-u i vrati neprekinut odabir teksta"
+
+#. Reader display text: Enable clickable links in this PDF
+msgid "reader_links_enable"
+msgstr "Uključi poveznice u ovom PDF-u"
+
+#. Reader display text: Links {state}
+msgid "reader_links_state"
+msgstr "Poveznice {state}"
+
+#. Reader display text: Could not load this PDF.
+msgid "reader_load_error"
+msgstr "Nije moguće učitati ovaj PDF."
+
+#. Reader display text: Mark pages as read up to here without placing an exact marker
+msgid "reader_mark_read_to_here"
+msgstr "Označi stranice pročitanima do ovdje bez točne oznake"
+
+#. Reader display text: Minimize reader controls to give the PDF more room
+msgid "reader_minimize_controls"
+msgstr "Smanji kontrole kako bi PDF imao više prostora"
+
+#. Reader display text: Minimize controls
+msgid "reader_minimize_controls_label"
+msgstr "Smanji kontrole"
+
+#. Reader display text: Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it.
+msgid "reader_move_exact_marker"
+msgstr "Pomakni točnu oznaku čitanja na trenutačni redak. Shift-klik uklanja oznaku."
+
+#. Reader display text: You are moving past today's {count}-page limit for this PDF.
+msgid "reader_moving_past_limit"
+msgstr "Prelazite današnje ograničenje od {count} stranica za ovaj PDF."
+
+#. Reader display text: Next Highlight
+msgid "reader_next_highlight"
+msgstr "Sljedeća oznaka"
+
+#. Reader display text: Next PDF page
+msgid "reader_next_pdf_page"
+msgstr "Sljedeća stranica PDF-a"
+
+#. Reader display text: Next
+msgid "reader_next_short"
+msgstr "Sljed."
+
+#. Reader display text: No bookmarks yet.
+msgid "reader_no_bookmarks"
+msgstr "Još nema oznaka mjesta."
+
+#. Reader display text: No highlight notes yet.
+msgid "reader_no_highlight_notes"
+msgstr "Još nema bilješki oznaka."
+
+#. Reader display text: No highlight notes on this page yet.
+msgid "reader_no_highlight_notes_page"
+msgstr "Na ovoj stranici još nema bilješki oznaka."
+
+#. Reader display text: No highlights yet.
+msgid "reader_no_highlights"
+msgstr "Još nema oznaka."
+
+#. Reader display text: (no text)
+msgid "reader_no_text"
+msgstr "(bez teksta)"
+
+#. Reader display text: No unlinked text highlights remain in this PDF
+msgid "reader_no_unlinked_highlights"
+msgstr "U ovom PDF-u nema nepovezanih tekstnih oznaka"
+
+#. Reader display text: Notes only
+msgid "reader_notes_only"
+msgstr "Samo bilješke"
+
+#. Reader display text: Off
+msgid "reader_off"
+msgstr "isklj."
+
+#. Reader display text: On
+msgid "reader_on"
+msgstr "uklj."
+
+#. Reader display text: Open all cards created from this PDF in the Anki Browser
+msgid "reader_open_all_cards"
+msgstr "Otvori sve kartice stvorene iz ovog PDF-a u pregledniku Anki"
+
+#. Reader display text: Open external link
+msgid "reader_open_external_link"
+msgstr "Otvori vanjsku poveznicu"
+
+#. Reader display text: Override active
+msgid "reader_override_active"
+msgstr "Iznimka je aktivna"
+
+#. Reader display text: Daily reading limit override is active for this PDF until the next day reset.
+msgid "reader_override_notice"
+msgstr "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja."
+
+#. Reader display text: Override today
+msgid "reader_override_today"
+msgstr "Dopusti danas"
+
+#. Reader display text: Page
+msgid "reader_page"
+msgstr "Stranica"
+
+#. Reader display text: Page cards ({count})
+msgid "reader_page_cards_count"
+msgstr "Kartice stranice ({count})"
+
+#. Reader display text: Could not open this PDF page.
+msgid "reader_page_error"
+msgstr "Nije moguće otvoriti ovu stranicu PDF-a."
+
+#. Reader display text: Go to page
+msgid "reader_page_jump"
+msgstr "Idi na stranicu"
+
+#. Reader display text: Page {page}
+msgid "reader_page_number"
+msgstr "Stranica {page}"
+
+#. Reader display text: PDF Bookmarks
+msgid "reader_pdf_bookmarks"
+msgstr "Oznake mjesta u PDF-u"
+
+#. Reader display text: PDF reader controls
+msgid "reader_pdf_controls"
+msgstr "Kontrole PDF čitača"
+
+#. Reader display text: PDF Highlights
+msgid "reader_pdf_highlights"
+msgstr "Oznake u PDF-u"
+
+#. Reader display text: PDF page number
+msgid "reader_pdf_page_number"
+msgstr "Broj stranice PDF-a"
+
+#. Reader display text: Place the exact READ UP UNTIL HERE marker at the current text row
+msgid "reader_place_exact_marker"
+msgstr "Postavi točnu oznaku čitanja na trenutačni redak"
+
+#. Reader display text: Prefill Add Card from this highlight
+msgid "reader_prefill_card"
+msgstr "Ispuni novu karticu iz ove oznake"
+
+#. Reader display text: Prev
+msgid "reader_prev_short"
+msgstr "Preth."
+
+#. Reader display text: Preview Card
+msgid "reader_preview_card"
+msgstr "Pregledaj karticu"
+
+#. Reader display text: Preview the card already linked to this highlight
+msgid "reader_preview_linked_card"
+msgstr "Pregledaj karticu već povezanu s ovom oznakom"
+
+#. Reader display text: Previous Highlight
+msgid "reader_previous_highlight"
+msgstr "Prethodna oznaka"
+
+#. Reader display text: Previous PDF page
+msgid "reader_previous_pdf_page"
+msgstr "Prethodna stranica PDF-a"
+
+#. Reader display text: Read Up Until Here
+msgid "reader_read_marker"
+msgstr "Pročitano do ovdje"
+
+#. Reader display text: Read-through can go past today's {count}-page limit for this PDF.
+msgid "reader_read_past_limit"
+msgstr "Označavanje pročitanoga može prijeći današnje ograničenje od {count} stranica za ovaj PDF."
+
+#. Reader display text: Read progress
+msgid "reader_read_progress"
+msgstr "Napredak čitanja"
+
+#. Reader display text: Read progress: {read}/{total} pages
+msgid "reader_read_progress_pages"
+msgstr "Napredak čitanja: {read}/{total} stranica"
+
+#. Reader display text: p.1–{page}
+msgid "reader_read_range"
+msgstr "str. 1–{page}"
+
+#. Reader display text: Read up to page {page} — click to toggle progress only
+msgid "reader_read_to_page"
+msgstr "Pročitano do stranice {page} — klikni za promjenu napretka"
+
+#. Reader display text: {count} remaining
+msgid "reader_remaining"
+msgstr "Preostaje {count}"
+
+#. Reader display text: Remove highlight
+msgid "reader_remove_highlight"
+msgstr "Ukloni oznaku"
+
+#. Reader display text: Remove snapshot highlight
+msgid "reader_remove_snapshot_highlight"
+msgstr "Ukloni oznaku snimke"
+
+#. Reader display text: Could not render this PDF page.
+msgid "reader_render_error"
+msgstr "Nije moguće prikazati ovu stranicu PDF-a."
+
+#. Reader display text: Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF
+msgid "reader_review_all_tooltip"
+msgstr "Odaberi teme, stavke, opseg, dospjelost, ograničenje i redoslijed kartica povezanih s ovim PDF-om"
+
+#. Reader display text: Search this PDF
+msgid "reader_search_pdf"
+msgstr "Pretraži ovaj PDF"
+
+#. Reader display text: {current} / {total}
+msgid "reader_search_position"
+msgstr "{current} / {total}"
+
+#. Reader display text: Set exact read marker
+msgid "reader_set_exact_marker"
+msgstr "Postavi točnu oznaku čitanja"
+
+#. Reader display text: Show all
+msgid "reader_show_all"
+msgstr "Prikaži sve"
+
+#. Reader display text: Show saved interesting-place bookmarks
+msgid "reader_show_bookmarks"
+msgstr "Prikaži spremljena zanimljiva mjesta"
+
+#. Reader display text: Show controls
+msgid "reader_show_controls"
+msgstr "Prikaži kontrole"
+
+#. Reader display text: Show highlights list
+msgid "reader_show_highlights"
+msgstr "Prikaži popis oznaka"
+
+#. Reader display text: Stop point today: page {page}
+msgid "reader_stop_point"
+msgstr "Današnja točka zaustavljanja: stranica {page}"
+
+#. Reader display text: You stopped at: {text}
+msgid "reader_stopped_at"
+msgstr "Zaustavili ste se na: {text}"
+
+#. Reader display text: You marked page {page} as your current stopping point
+msgid "reader_stopping_page"
+msgstr "Označili ste stranicu {page} kao trenutačnu točku zaustavljanja"
+
+#. Reader display text: You marked this as your current stopping point
+msgid "reader_stopping_point"
+msgstr "Ovo ste označili kao trenutačnu točku zaustavljanja"
+
+#. Reader display text: This page
+msgid "reader_this_page"
+msgstr "Ova stranica"
+
+#. Reader display text: Today: {used}/{total} pages
+msgid "reader_today_pages"
+msgstr "Danas: {used}/{total} stranica"
+
+#. Reader display text: Use {color} highlight color
+msgid "reader_use_highlight_color"
+msgstr "Koristi {color} boju označavanja"
+
+#. Reader display text: Warning
+msgid "reader_warning"
+msgstr "Upozorenje"
+
+#. Reader display text: Whole PDF
+msgid "reader_whole_pdf"
+msgstr "Cijeli PDF"
+
+#. Reader display text: 0 results
+msgid "reader_zero_results"
+msgstr "0 rezultata"
+
+#. EPUB reader display: Browser
+msgid "reader_browser"
+msgstr "Preglednik"
+
+#. EPUB reader display: Cancel
+msgid "reader_cancel"
+msgstr "Odustani"
+
+#. EPUB reader display: Customize EPUB reader controls
+msgid "reader_customize_epub_accessible"
+msgstr "Prilagodi kontrole EPUB čitača"
+
+#. EPUB reader display: Customize EPUB Controls
+msgid "reader_customize_epub_controls"
+msgstr "Prilagodi kontrole EPUB-a"
+
+#. EPUB reader display: Choose which groups stay visible in the EPUB reader toolbar.
+msgid "reader_customize_epub_intro"
+msgstr "Odaberite skupine koje ostaju vidljive u alatnoj traci EPUB čitača."
+
+#. EPUB reader display: Uses Incremento's day-end setting for daily reset.
+msgid "reader_day_end_hint"
+msgstr "Za dnevno resetiranje koristi Incrementovu postavku kraja dana."
+
+#. EPUB reader display: Decrease text size
+msgid "reader_decrease_text_size"
+msgstr "Smanji tekst"
+
+#. EPUB reader display: Details
+msgid "reader_details"
+msgstr "Pojedinosti"
+
+#. EPUB reader display: Enabled:
+msgid "reader_enabled"
+msgstr "Uključeno:"
+
+#. EPUB reader display: Add a card from the current selection
+msgid "reader_epub_add_card_tooltip"
+msgstr "Dodaj karticu iz trenutačnog odabira"
+
+#. EPUB reader display: Add a bookmark for this reading position
+msgid "reader_epub_bookmark_tooltip"
+msgstr "Dodaj oznaku za ovo mjesto čitanja"
+
+#. EPUB reader display: Show or hide EPUB bookmarks ({count} saved)
+msgid "reader_epub_bookmarks_saved_tooltip"
+msgstr "Prikaži ili sakrij EPUB oznake mjesta ({count} spremljeno)"
+
+#. EPUB reader display: Show or hide EPUB bookmarks
+msgid "reader_epub_bookmarks_tooltip"
+msgstr "Prikaži ili sakrij EPUB oznake mjesta"
+
+#. EPUB reader display: Open this EPUB note in the browser
+msgid "reader_epub_browser_tooltip"
+msgstr "Otvori ovu EPUB bilješku u pregledniku"
+
+#. EPUB reader display: EPUB reader card count
+msgid "reader_epub_card_count_accessible"
+msgstr "Broj kartica u EPUB čitaču"
+
+#. EPUB reader display: Cards {count}
+msgid "reader_epub_cards_count"
+msgstr "Kartice {count}"
+
+#. EPUB reader display: Cards from this section
+msgid "reader_epub_cards_from_section"
+msgstr "Kartice iz ovog odjeljka"
+
+#. EPUB reader display: Choose which EPUB control groups are visible
+msgid "reader_epub_choose_controls"
+msgstr "Odaberi vidljive skupine EPUB kontrola"
+
+#. EPUB reader display: EPUB reader compact location
+msgid "reader_epub_compact_location_accessible"
+msgstr "Sažeto mjesto u EPUB čitaču"
+
+#. EPUB reader display: EPUB reader controls
+msgid "reader_epub_controls_accessible"
+msgstr "Kontrole EPUB čitača"
+
+#. EPUB reader display: Regenerate this EPUB card's cover image
+msgid "reader_epub_cover_tooltip"
+msgstr "Ponovno izradi naslovnicu ove EPUB kartice"
+
+#. EPUB reader display: Show or hide cards and highlights for this section ({cards} cards, {highlights} highlights)
+msgid "reader_epub_details_counts"
+msgstr "Prikaži ili sakrij kartice i oznake ovog odjeljka ({cards} kartica, {highlights} oznaka)"
+
+#. EPUB reader display: Show or hide cards and highlights for this section
+msgid "reader_epub_details_tooltip"
+msgstr "Prikaži ili sakrij kartice i oznake ovog odjeljka"
+
+#. EPUB reader display: Place or move the exact READ UP UNTIL HERE marker; hold Shift to clear it
+msgid "reader_epub_exact_marker_tooltip"
+msgstr "Postavi ili premjesti točnu oznaku čitanja; drži Shift za uklanjanje"
+
+#. EPUB reader display: Extract the current selection into the first Add Card field
+msgid "reader_epub_extract_tooltip"
+msgstr "Izdvoji trenutačni odabir u prvo polje Dodaj karticu"
+
+#. EPUB reader display: Mark this EPUB as finished or unfinished
+msgid "reader_epub_finished_tooltip"
+msgstr "Označi EPUB pročitanim ili nedovršenim"
+
+#. EPUB reader display: Go to EPUB page
+msgid "reader_epub_go_to_page"
+msgstr "Idi na stranicu EPUB-a"
+
+#. EPUB reader display: Go to EPUB page · {location}
+msgid "reader_epub_go_to_page_detail"
+msgstr "Idi na stranicu EPUB-a · {location}"
+
+#. EPUB reader display: EPUB reader highlight count
+msgid "reader_epub_highlight_count_accessible"
+msgstr "Broj oznaka u EPUB čitaču"
+
+#. EPUB reader display: Highlight the current selection (Alt+H)
+msgid "reader_epub_highlight_tooltip"
+msgstr "Označi trenutačni odabir (Alt+H)"
+
+#. EPUB reader display: Highlights {count}
+msgid "reader_epub_highlights_count"
+msgstr "Oznake {count}"
+
+#. EPUB reader display: Highlights in this section
+msgid "reader_epub_highlights_in_section"
+msgstr "Oznake u ovom odjeljku"
+
+#. EPUB reader display: Show or hide EPUB highlights ({count} in this section)
+msgid "reader_epub_highlights_section_tooltip"
+msgstr "Prikaži ili sakrij EPUB oznake ({count} u ovom odjeljku)"
+
+#. EPUB reader display: Show or hide EPUB highlights
+msgid "reader_epub_highlights_tooltip"
+msgstr "Prikaži ili sakrij EPUB oznake"
+
+#. EPUB reader display: Highlights 0
+msgid "reader_epub_highlights_zero"
+msgstr "Oznake 0"
+
+#. EPUB reader display: EPUB reader: Jump Back
+msgid "reader_epub_jump_back_accessible"
+msgstr "EPUB čitač: Povratak"
+
+#. EPUB reader display: Follow an internal EPUB link to enable Jump Back
+msgid "reader_epub_jump_back_hint"
+msgstr "Slijedi unutarnju EPUB poveznicu za povratak"
+
+#. EPUB reader display: Limit pages read per day for this EPUB
+msgid "reader_epub_limit_enabled"
+msgstr "Ograniči broj stranica ovog EPUB-a pročitanih na dan"
+
+#. EPUB reader display: Today: {used} / {limit} pages · {remaining} remaining · {mode}
+msgid "reader_epub_limit_status"
+msgstr "Danas: {used} / {limit} stranica · preostaje {remaining} · {mode}"
+
+#. EPUB reader display: Today: {used} / {limit} pages · {remaining} remaining · {mode} · override active
+msgid "reader_epub_limit_status_override"
+msgstr "Danas: {used} / {limit} stranica · preostaje {remaining} · {mode} · iznimka aktivna"
+
+#. EPUB reader display: Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}.
+msgid "reader_epub_limit_summary"
+msgstr "Danas: {used}/{limit} stranica, preostaje {remaining}. Način: {mode}."
+
+#. EPUB reader display: EPUB Reading Limit
+msgid "reader_epub_limit_title"
+msgstr "Ograničenje čitanja EPUB-a"
+
+#. EPUB reader display: Adjust this EPUB's daily reading limit
+msgid "reader_epub_limit_tooltip"
+msgstr "Podesi dnevno ograničenje čitanja ovog EPUB-a"
+
+#. EPUB reader display: EPUB reader: Links
+msgid "reader_epub_links_accessible"
+msgstr "EPUB čitač: Poveznice"
+
+#. EPUB reader display: Disable EPUB links and restore uninterrupted text selection
+msgid "reader_epub_links_disable"
+msgstr "Isključi EPUB poveznice i vrati neprekinut odabir teksta"
+
+#. EPUB reader display: Enable clickable links in this EPUB
+msgid "reader_epub_links_enable"
+msgstr "Uključi poveznice u ovom EPUB-u"
+
+#. EPUB reader display: Minimize EPUB reader controls
+msgid "reader_epub_minimize_accessible"
+msgstr "Smanji kontrole EPUB čitača"
+
+#. EPUB reader display: Minimize reader controls to give the EPUB more room
+msgid "reader_epub_minimize_controls"
+msgstr "Smanji kontrole kako bi EPUB imao više prostora"
+
+#. EPUB reader display: Next page or next section
+msgid "reader_epub_next_tooltip"
+msgstr "Sljedeća stranica ili odjeljak"
+
+#. EPUB reader display: No daily reading limit is set for this EPUB.
+msgid "reader_epub_no_limit"
+msgstr "Za ovaj EPUB nije postavljeno dnevno ograničenje čitanja."
+
+#. EPUB reader display: No cards created from this section yet.
+msgid "reader_epub_no_section_cards"
+msgstr "Iz ovog odjeljka još nema kartica."
+
+#. EPUB reader display: No highlights in this section yet.
+msgid "reader_epub_no_section_highlights"
+msgstr "U ovom odjeljku još nema oznaka."
+
+#. EPUB reader display: Offer this due-card review automatically when opening this EPUB
+msgid "reader_epub_offer_due"
+msgstr "Ponudi ponavljanje dospjelih kartica pri otvaranju ovog EPUB-a"
+
+#. EPUB reader display: Open all cards created from this EPUB
+msgid "reader_epub_open_all_cards"
+msgstr "Otvori sve kartice stvorene iz ovog EPUB-a"
+
+#. EPUB reader display: EPUB reader page location
+msgid "reader_epub_page_location_accessible"
+msgstr "Mjesto stranice u EPUB čitaču"
+
+#. EPUB reader display: Previous page or previous section
+msgid "reader_epub_previous_tooltip"
+msgstr "Prethodna stranica ili odjeljak"
+
+#. EPUB reader display: Read progress: {read}/{total} EPUB sections
+msgid "reader_epub_read_progress"
+msgstr "Napredak čitanja: {read}/{total} EPUB odjeljaka"
+
+#. EPUB reader display: Mark EPUB sections as read up to here without placing an exact marker
+msgid "reader_epub_read_to_here_tooltip"
+msgstr "Označi EPUB odjeljke pročitanima do ovdje bez točne oznake"
+
+#. EPUB reader display: Choose Topics, Items, scope, due state, limit, and order for cards attached to this EPUB
+msgid "reader_epub_review_all_tooltip"
+msgstr "Odaberi teme, stavke, opseg, dospjelost, ograničenje i redoslijed kartica povezanih s ovim EPUB-om"
+
+#. EPUB reader display: Review Due EPUB Cards
+msgid "reader_epub_review_due_title"
+msgstr "Ponovi dospjele EPUB kartice"
+
+#. EPUB reader display: Review due cards from this EPUB
+msgid "reader_epub_review_due_tooltip"
+msgstr "Ponovi dospjele kartice iz ovog EPUB-a"
+
+#. EPUB reader display: EPUB reader: Search
+msgid "reader_epub_search_accessible"
+msgstr "EPUB čitač: Pretraži"
+
+#. EPUB reader display: Search this EPUB
+msgid "reader_epub_search_placeholder"
+msgstr "Pretraži ovaj EPUB"
+
+#. EPUB reader display: Show the full EPUB reader controls
+msgid "reader_epub_show_full_controls"
+msgstr "Prikaži sve kontrole EPUB čitača"
+
+#. EPUB reader display: Capture the current selection as an image (Alt+S)
+msgid "reader_epub_snapshot_tooltip"
+msgstr "Snimi trenutačni odabir kao sliku (Alt+S)"
+
+#. EPUB reader display: You reached this EPUB's daily page limit. / Allowed today: up to page {allowed}. Target: page {target}.
+msgid "reader_epub_soft_limit_summary"
+msgstr "Dosegnuli ste dnevno ograničenje stranica ovog EPUB-a.\nDanas je dopušteno do stranice {allowed}. Cilj: stranica {target}."
+
+#. EPUB reader display: Hard stop
+msgid "reader_hard_stop"
+msgstr "Strogo zaustavljanje"
+
+#. EPUB reader display: Highlight
+msgid "reader_highlight"
+msgstr "Označi"
+
+#. EPUB reader display: Increase text size
+msgid "reader_increase_text_size"
+msgstr "Povećaj tekst"
+
+#. EPUB reader display: Jump back to section {number}
+msgid "reader_jump_back_section"
+msgstr "Vrati se na odjeljak {number}"
+
+#. EPUB reader display: Limit:
+msgid "reader_limit"
+msgstr "Ograničenje:"
+
+#. EPUB reader display: Not Now
+msgid "reader_not_now"
+msgstr "Ne sada"
+
+#. EPUB reader display: Note
+msgid "reader_note_label"
+msgstr "Bilješka"
+
+#. EPUB reader display: note {number}
+msgid "reader_note_number"
+msgstr "bilješka {number}"
+
+#. EPUB reader display: OK
+msgid "reader_ok"
+msgstr "U redu"
+
+#. EPUB reader display: Page:
+msgid "reader_page_label"
+msgstr "Stranica:"
+
+#. EPUB reader display: Reviewing them first can refresh earlier context before you continue reading.
+msgid "reader_review_due_hint"
+msgstr "Njihovo ponavljanje može osvježiti prethodni kontekst prije nastavka čitanja."
+
+#. EPUB reader display: Review Now
+msgid "reader_review_now"
+msgstr "Ponovi sada"
+
+#. EPUB reader display: Section {number}
+msgid "reader_section_number"
+msgstr "Odjeljak {number}"
+
+#. EPUB reader display: Show EPUB {group} controls
+msgid "reader_show_epub_controls"
+msgstr "Prikaži EPUB kontrole: {group}"
+
+#. EPUB reader display: You can stop here or override the limit for today.
+msgid "reader_soft_limit_hint"
+msgstr "Možete stati ovdje ili dopustiti iznimku za danas."
+
+#. EPUB reader display: Soft lock + override
+msgid "reader_soft_lock_override"
+msgstr "Meko zaključavanje + iznimka"
+
+#. EPUB reader display: Warning only
+msgid "reader_warning_only"
+msgstr "Samo upozorenje"
+
+#. EPUB reader count: You have {count} due card from this EPUB near this reading point. / Source sections: {sections}
+msgid "reader_epub_due_summary"
+msgid_plural "reader_epub_due_summary_plural"
+msgstr[0] "Imate {count} dospjelu karticu iz ovog EPUB-a blizu trenutačnog mjesta čitanja.\nIzvorni odjeljci: {sections}"
+msgstr[1] "Imate {count} dospjele kartice iz ovog EPUB-a blizu trenutačnog mjesta čitanja.\nIzvorni odjeljci: {sections}"
+msgstr[2] "Imate {count} dospjelih kartica iz ovog EPUB-a blizu trenutačnog mjesta čitanja.\nIzvorni odjeljci: {sections}"
+
+#. EPUB reader count: {count} card created from this section
+msgid "reader_epub_section_cards"
+msgid_plural "reader_epub_section_cards_plural"
+msgstr[0] "Iz ovog odjeljka stvorena je {count} kartica"
+msgstr[1] "Iz ovog odjeljka stvorene su {count} kartice"
+msgstr[2] "Iz ovog odjeljka stvoreno je {count} kartica"
+
+#. EPUB reader count: {count} highlight in this section
+msgid "reader_epub_section_highlights"
+msgid_plural "reader_epub_section_highlights_plural"
+msgstr[0] "{count} oznaka u ovom odjeljku"
+msgstr[1] "{count} oznake u ovom odjeljku"
+msgstr[2] "{count} oznaka u ovom odjeljku"
+
+#. EPUB reader count: Open the {count} card created on this EPUB page in the Anki Browser
+msgid "reader_epub_page_cards_tooltip"
+msgid_plural "reader_epub_page_cards_tooltip_plural"
+msgstr[0] "Otvori {count} karticu stvorenu na ovoj EPUB stranici u pregledniku Anki"
+msgstr[1] "Otvori {count} kartice stvorene na ovoj EPUB stranici u pregledniku Anki"
+msgstr[2] "Otvori {count} kartica stvorenih na ovoj EPUB stranici u pregledniku Anki"
+
+#. EPUB reader display: Card {number}
+msgid "reader_card_number"
+msgstr "Kartica {number}"
+
+#. EPUB reader display: Due
+msgid "reader_due_state_due"
+msgstr "Dospjelo"
+
+#. EPUB reader display: Learning
+msgid "reader_due_state_learning"
+msgstr "Učenje"
+
+#. EPUB reader display: New
+msgid "reader_due_state_new"
+msgstr "Novo"
+
+#. EPUB reader display: Review
+msgid "reader_due_state_review"
+msgstr "Ponavljanje"
+
+#. EPUB reader display: EPUB daily reading limit disabled.
+msgid "reader_epub_limit_disabled"
+msgstr "Dnevno ograničenje čitanja EPUB-a je isključeno."
+
+#. EPUB reader display: EPUB limit saved: {count} pages/day ({mode}).
+msgid "reader_epub_limit_saved"
+msgstr "EPUB ograničenje spremljeno: {count} stranica/dan ({mode})."
+
+#. EPUB reader display: {preview}, +{count} more
+msgid "reader_more_sections"
+msgstr "{preview}, + još {count}"
+
+#. Due card list truncation
+msgid "reader_more_due_cards"
+msgid_plural "reader_more_due_cards_plural"
+msgstr[0] "…i još {count} dospjela kartica."
+msgstr[1] "…i još {count} dospjele kartice."
+msgstr[2] "…i još {count} dospjelih kartica."
+
+#. EPUB reader message: Copy Link to This Place
+msgid "reader_copy_link_to_place"
+msgstr "Kopiraj poveznicu na ovo mjesto"
+
+#. EPUB reader message: earlier sections
+msgid "reader_earlier_sections"
+msgstr "raniji odjeljci"
+
+#. EPUB reader message: Could not delete EPUB bookmark: / {error}
+msgid "reader_epub_bookmark_delete_failed"
+msgstr "Nije moguće izbrisati EPUB oznaku mjesta:\n{error}"
+
+#. EPUB reader message: Could not save EPUB bookmark: / {error}
+msgid "reader_epub_bookmark_save_failed"
+msgstr "Nije moguće spremiti EPUB oznaku mjesta:\n{error}"
+
+#. EPUB reader message: EPUB bookmark saved.
+msgid "reader_epub_bookmark_saved"
+msgstr "EPUB oznaka mjesta je spremljena."
+
+#. EPUB reader message: Could not determine which EPUB card needs a cover refresh.
+msgid "reader_epub_cover_card_missing"
+msgstr "Nije moguće odrediti kojoj EPUB kartici treba obnoviti naslovnicu."
+
+#. EPUB reader message: EPUB cover cleared because the book has no cover image.
+msgid "reader_epub_cover_cleared"
+msgstr "EPUB naslovnica je uklonjena jer knjiga nema sliku naslovnice."
+
+#. EPUB reader message: Could not regenerate this EPUB cover. /  / {error}
+msgid "reader_epub_cover_failed"
+msgstr "Nije moguće ponovno izraditi naslovnicu EPUB-a.\n\n{error}"
+
+#. EPUB reader message: EPUB cover regenerated from book metadata.
+msgid "reader_epub_cover_regenerated"
+msgstr "EPUB naslovnica je ponovno izrađena iz metapodataka knjige."
+
+#. EPUB reader message: No due extracted cards are available to review for this EPUB.
+msgid "reader_epub_due_unavailable"
+msgstr "Nema dospjelih izdvojenih kartica za ponavljanje iz ovog EPUB-a."
+
+#. EPUB reader message: That EPUB highlight could not be found.
+msgid "reader_epub_highlight_missing"
+msgstr "Ta EPUB oznaka nije pronađena."
+
+#. EPUB reader message: Could not save the EPUB highlight note. /  / {error}
+msgid "reader_epub_highlight_note_save_failed"
+msgstr "Nije moguće spremiti bilješku EPUB oznake.\n\n{error}"
+
+#. EPUB reader message: EPUB highlight note saved.
+msgid "reader_epub_highlight_note_saved"
+msgstr "Bilješka EPUB oznake je spremljena."
+
+#. EPUB reader message: EPUB Highlight Note
+msgid "reader_epub_highlight_note_title"
+msgstr "Bilješka EPUB oznake"
+
+#. EPUB reader message: Could not remove that EPUB highlight. /  / {error}
+msgid "reader_epub_highlight_remove_failed"
+msgstr "Nije moguće ukloniti tu EPUB oznaku.\n\n{error}"
+
+#. EPUB reader message: EPUB highlight removed.
+msgid "reader_epub_highlight_removed"
+msgstr "EPUB oznaka je uklonjena."
+
+#. EPUB reader message: That EPUB highlight could not be updated.
+msgid "reader_epub_highlight_update_failed"
+msgstr "Nije moguće ažurirati tu EPUB oznaku."
+
+#. EPUB reader message: EPUB reading limit overridden for today.
+msgid "reader_epub_limit_overridden"
+msgstr "EPUB ograničenje čitanja izuzeto je za danas."
+
+#. EPUB reader message: Blocked an unsafe or unsupported EPUB link.
+msgid "reader_epub_link_blocked"
+msgstr "Nesigurna ili nepodržana EPUB poveznica je blokirana."
+
+#. EPUB reader message: EPUB link copied. Paste it into an Anki card.
+msgid "reader_epub_link_copied"
+msgstr "EPUB poveznica je kopirana. Zalijepite je u Anki karticu."
+
+#. EPUB reader message: Could not open the EPUB link in your browser.
+msgid "reader_epub_link_open_failed"
+msgstr "Nije moguće otvoriti EPUB poveznicu u pregledniku."
+
+#. EPUB reader message: EPUB read marker cleared.
+msgid "reader_epub_marker_cleared"
+msgstr "EPUB oznaka čitanja je uklonjena."
+
+#. EPUB reader message: Could not save EPUB read marker: / {error}
+msgid "reader_epub_marker_save_failed"
+msgstr "Nije moguće spremiti EPUB oznaku čitanja:\n{error}"
+
+#. EPUB reader message: EPUB read marker updated.
+msgid "reader_epub_marker_updated"
+msgstr "EPUB oznaka čitanja je ažurirana."
+
+#. EPUB reader message: No cards created from this EPUB yet.
+msgid "reader_epub_no_cards"
+msgstr "Iz ovog EPUB-a još nema kartica."
+
+#. EPUB reader message: No due extracted cards to review for this EPUB.
+msgid "reader_epub_no_due_cards"
+msgstr "Nema dospjelih izdvojenih kartica za ponavljanje iz ovog EPUB-a."
+
+#. EPUB reader message: No due extracted cards from this EPUB up to the current section.
+msgid "reader_epub_no_due_to_section"
+msgstr "Nema dospjelih izdvojenih kartica iz ovog EPUB-a do trenutačnog odjeljka."
+
+#. EPUB reader message: No cards created from this EPUB page yet.
+msgid "reader_epub_no_page_cards"
+msgstr "S ove EPUB stranice još nema kartica."
+
+#. EPUB reader message: Could not save EPUB read progress: / {error}
+msgid "reader_epub_progress_save_failed"
+msgstr "Nije moguće spremiti napredak čitanja EPUB-a:\n{error}"
+
+#. EPUB reader message: EPUB read progress updated.
+msgid "reader_epub_progress_updated"
+msgstr "Napredak čitanja EPUB-a je ažuriran."
+
+#. EPUB reader message: Could not reopen this EPUB after review.
+msgid "reader_epub_reopen_failed"
+msgstr "Nije moguće ponovno otvoriti ovaj EPUB nakon ponavljanja."
+
+#. EPUB reader message: Could not open EPUB section: / {error}
+msgid "reader_epub_section_open_failed"
+msgstr "Nije moguće otvoriti EPUB odjeljak:\n{error}"
+
+#. EPUB reader message: Could not secure EPUB section: / {error}
+msgid "reader_epub_section_secure_failed"
+msgstr "Nije moguće osigurati EPUB odjeljak:\n{error}"
+
+#. EPUB reader message: Could not capture EPUB snapshot.
+msgid "reader_epub_snapshot_capture_failed"
+msgstr "Nije moguće snimiti EPUB područje."
+
+#. EPUB reader message: Could not crop EPUB snapshot.
+msgid "reader_epub_snapshot_crop_failed"
+msgstr "Nije moguće izrezati EPUB snimku."
+
+#. EPUB reader message: Could not encode EPUB snapshot.
+msgid "reader_epub_snapshot_encode_failed"
+msgstr "Nije moguće kodirati EPUB snimku."
+
+#. EPUB reader message: EPUB snapshot failed: / {error}
+msgid "reader_epub_snapshot_failed"
+msgstr "EPUB snimka nije uspjela:\n{error}"
+
+#. EPUB reader message: Selected text is outside the visible EPUB viewport.
+msgid "reader_epub_snapshot_outside_view"
+msgstr "Odabrani tekst nije unutar vidljivog EPUB prikaza."
+
+#. EPUB reader message: Could not change EPUB text size: / {error}
+msgid "reader_epub_text_size_failed"
+msgstr "Nije moguće promijeniti veličinu EPUB teksta:\n{error}"
+
+#. EPUB reader message: Field {number}
+msgid "reader_field_number"
+msgstr "Polje {number}"
+
+#. EPUB reader message: Insert image into:
+msgid "reader_insert_image_into"
+msgstr "Umetni sliku u:"
+
+#. EPUB reader message: Insert snapshot into field
+msgid "reader_insert_snapshot_title"
+msgstr "Umetni snimku u polje"
+
+#. EPUB reader message: Interesting-place bookmarks
+msgid "reader_interesting_bookmarks"
+msgstr "Oznake zanimljivih mjesta"
+
+#. PDF reader message: Anki collection is not available.
+msgid "reader_anki_collection_unavailable"
+msgstr "Anki zbirka nije dostupna."
+
+#. PDF reader message: Choose Replacement PDF
+msgid "reader_choose_replacement_pdf"
+msgstr "Odaberi zamjenski PDF"
+
+#. PDF reader message: earlier pages
+msgid "reader_earlier_pages"
+msgstr "ranije stranice"
+
+#. PDF reader message: Expected file:
+msgid "reader_expected_file"
+msgstr "Očekivana datoteka:"
+
+#. PDF reader message: (missing filename)
+msgid "reader_missing_filename"
+msgstr "(nedostaje naziv datoteke)"
+
+#. PDF reader message: {preview}, +{count} more
+msgid "reader_more_pages"
+msgstr "{preview}, + još {count}"
+
+#. PDF reader message: Note ID {number}
+msgid "reader_note_id"
+msgstr "ID bilješke {number}"
+
+msgid "reader_note_cards"
+msgid_plural "reader_note_cards_plural"
+msgstr[0] "{count} kartica"
+msgstr[1] "{count} kartice"
+msgstr[2] "{count} kartica"
+
+msgid "reader_tags"
+msgstr "Oznake"
+
+#. PDF reader message: This note has no visible non-empty fields.
+msgid "reader_note_no_visible_fields"
+msgstr "Ova bilješka nema vidljivih nepraznih polja."
+
+#. PDF reader message: Note type '{name}' was not found.
+msgid "reader_note_type_missing"
+msgstr "Vrsta bilješke '{name}' nije pronađena."
+
+#. PDF reader message: Open in Browser
+msgid "reader_open_in_browser"
+msgstr "Otvori u pregledniku"
+
+#. PDF reader message: Could not read the current Add Card target. /  / {error}
+msgid "reader_pdf_add_target_failed"
+msgstr "Nije moguće pročitati trenutačno odredište Dodaj karticu.\n\n{error}"
+
+#. PDF reader message: Could not open attached PDF card review: / {error}
+msgid "reader_pdf_attached_review_failed"
+msgstr "Nije moguće otvoriti ponavljanje kartica povezanih s PDF-om:\n{error}"
+
+#. PDF reader message: Finished creating PDF highlight cards. /  / Created: {created} / Skipped: {skipped} / Failed: {failed} /  / {errors}
+msgid "reader_pdf_batch_result"
+msgstr "Izrada kartica iz PDF oznaka je završena.\n\nStvoreno: {created}\nPreskočeno: {skipped}\nNeuspjelo: {failed}\n\n{errors}"
+
+#. PDF reader message: Row {index} ({highlight_id}): {error}
+msgid "reader_pdf_batch_row_error"
+msgstr "Redak {index} ({highlight_id}): {error}"
+
+#. PDF reader message: Created: {created}. Skipped: {skipped}.
+msgid "reader_pdf_batch_success"
+msgstr "Stvoreno: {created}. Preskočeno: {skipped}."
+
+#. PDF reader message: Could not delete PDF bookmark: / {error}
+msgid "reader_pdf_bookmark_delete_failed"
+msgstr "Nije moguće izbrisati PDF oznaku mjesta:\n{error}"
+
+#. PDF reader message: Could not save PDF bookmark: / {error}
+msgid "reader_pdf_bookmark_save_failed"
+msgstr "Nije moguće spremiti PDF oznaku mjesta:\n{error}"
+
+#. PDF reader message: PDF bookmark saved.
+msgid "reader_pdf_bookmark_saved"
+msgstr "PDF oznaka mjesta je spremljena."
+
+#. PDF reader message: Could not open the PDF bulk highlight dialog. /  / {error}
+msgid "reader_pdf_bulk_dialog_failed"
+msgstr "Nije moguće otvoriti dijalog za skupnu obradu PDF oznaka.\n\n{error}"
+
+#. PDF reader message: Could not open the bulk PDF highlight workflow. /  / {error}
+msgid "reader_pdf_bulk_workflow_failed"
+msgstr "Nije moguće otvoriti skupni postupak za PDF oznake.\n\n{error}"
+
+#. PDF reader message: PDF card suspended — it won't appear in future sessions.
+msgid "reader_pdf_card_suspended"
+msgstr "PDF kartica je suspendirana — neće se pojavljivati u budućim sesijama."
+
+#. PDF reader message: Could not determine which PDF card needs a cover refresh.
+msgid "reader_pdf_cover_card_missing"
+msgstr "Nije moguće odrediti kojoj PDF kartici treba obnoviti naslovnicu."
+
+#. PDF reader message: PDF cover cleared because page 1 could not be rendered.
+msgid "reader_pdf_cover_cleared"
+msgstr "PDF naslovnica je uklonjena jer prvu stranicu nije bilo moguće prikazati."
+
+#. PDF reader message: Could not regenerate this PDF cover. /  / {error}
+msgid "reader_pdf_cover_failed"
+msgstr "Nije moguće ponovno izraditi naslovnicu PDF-a.\n\n{error}"
+
+#. PDF reader message: PDF cover regenerated from page 1.
+msgid "reader_pdf_cover_regenerated"
+msgstr "PDF naslovnica je ponovno izrađena iz prve stranice."
+
+#. PDF reader message: Could not determine which PDF is currently open.
+msgid "reader_pdf_current_missing"
+msgstr "Nije moguće odrediti koji je PDF trenutačno otvoren."
+
+#. PDF reader message: Could not open PDF due-card review: / {error}
+msgid "reader_pdf_due_review_failed"
+msgstr "Nije moguće otvoriti ponavljanje dospjelih PDF kartica:\n{error}"
+
+#. PDF reader message: No due extracted cards are available to review for this PDF.
+msgid "reader_pdf_due_unavailable"
+msgstr "Nema dospjelih izdvojenih kartica za ponavljanje iz ovog PDF-a."
+
+#. PDF reader message: PDF Files (*.pdf)
+msgid "reader_pdf_file_filter"
+msgstr "PDF datoteke (*.pdf)"
+
+#. PDF reader message: Stored PDF file is missing. Choose a replacement PDF to repair this card.
+msgid "reader_pdf_file_missing_tooltip"
+msgstr "Spremljena PDF datoteka nedostaje. Odaberite zamjenski PDF za popravak kartice."
+
+#. PDF reader message: Could not determine which PDF card owns this highlight.
+msgid "reader_pdf_highlight_card_missing"
+msgstr "Nije moguće odrediti kojoj PDF kartici pripada ova oznaka."
+
+#. PDF reader message: This highlight has no text to prefill.
+msgid "reader_pdf_highlight_empty"
+msgstr "Ova oznaka nema teksta za automatsko popunjavanje."
+
+#. PDF reader message: That PDF highlight could not be found.
+msgid "reader_pdf_highlight_missing"
+msgstr "Ta PDF oznaka nije pronađena."
+
+#. PDF reader message: Could not edit PDF highlight note. /  / {error}
+msgid "reader_pdf_highlight_note_edit_failed"
+msgstr "Nije moguće urediti bilješku PDF oznake.\n\n{error}"
+
+#. PDF reader message: Could not save the PDF highlight note. /  / {error}
+msgid "reader_pdf_highlight_note_save_failed"
+msgstr "Nije moguće spremiti bilješku PDF oznake.\n\n{error}"
+
+#. PDF reader message: PDF highlight note saved.
+msgid "reader_pdf_highlight_note_saved"
+msgstr "Bilješka PDF oznake je spremljena."
+
+#. PDF reader message: PDF Highlight Note
+msgid "reader_pdf_highlight_note_title"
+msgstr "Bilješka PDF oznake"
+
+#. PDF reader message: PDF highlight sent to Add Card field {number}.
+msgid "reader_pdf_highlight_sent"
+msgstr "PDF oznaka je poslana u polje {number} prozora Dodaj karticu."
+
+#. PDF reader message: That PDF highlight could not be updated.
+msgid "reader_pdf_highlight_update_failed"
+msgstr "Nije moguće ažurirati tu PDF oznaku."
+
+#. PDF reader message: Could not open the PDF highlight card workflow. /  / {error}
+msgid "reader_pdf_highlight_workflow_failed"
+msgstr "Nije moguće otvoriti postupak za kartice iz PDF oznaka.\n\n{error}"
+
+#. PDF reader message: PDF daily reading limit disabled.
+msgid "reader_pdf_limit_disabled"
+msgstr "Dnevno ograničenje čitanja PDF-a je isključeno."
+
+#. PDF reader message: Could not edit PDF reading limit: / {error}
+msgid "reader_pdf_limit_edit_failed"
+msgstr "Nije moguće urediti ograničenje čitanja PDF-a:\n{error}"
+
+#. PDF reader message: Limit pages read per day for this PDF
+msgid "reader_pdf_limit_enabled"
+msgstr "Ograniči broj stranica ovog PDF-a pročitanih na dan"
+
+#. PDF reader message: PDF reading limit overridden for today.
+msgid "reader_pdf_limit_overridden"
+msgstr "PDF ograničenje čitanja izuzeto je za danas."
+
+#. PDF reader message: Could not override PDF reading limit: / {error}
+msgid "reader_pdf_limit_override_failed"
+msgstr "Nije moguće postaviti iznimku ograničenja čitanja PDF-a:\n{error}"
+
+#. PDF reader message: PDF limit saved: {count} pages/day ({mode}).
+msgid "reader_pdf_limit_saved"
+msgstr "PDF ograničenje spremljeno: {count} stranica/dan ({mode})."
+
+#. PDF reader message: Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}.
+msgid "reader_pdf_limit_summary"
+msgstr "Danas: {used}/{limit} stranica, preostaje {remaining}. Način: {mode}."
+
+#. PDF reader message: PDF Reading Limit
+msgid "reader_pdf_limit_title"
+msgstr "Ograničenje čitanja PDF-a"
+
+#. PDF reader message: Blocked an unsafe or unsupported PDF link.
+msgid "reader_pdf_link_blocked"
+msgstr "Nesigurna ili nepodržana PDF poveznica je blokirana."
+
+#. PDF reader message: PDF link copied. Paste it into an Anki card.
+msgid "reader_pdf_link_copied"
+msgstr "PDF poveznica je kopirana. Zalijepite je u Anki karticu."
+
+#. PDF reader message: This PDF card still exists, but its stored PDF file could not be found. Choose a replacement PDF to relink this card and reopen the viewer.
+msgid "reader_pdf_missing_explanation"
+msgstr "PDF kartica i dalje postoji, ali spremljena PDF datoteka nije pronađena. Odaberite zamjenski PDF da biste ponovno povezali karticu i otvorili čitač."
+
+#. PDF reader message: PDF file is missing
+msgid "reader_pdf_missing_title"
+msgstr "PDF datoteka nedostaje"
+
+#. PDF reader message: No cards created from this PDF yet.
+msgid "reader_pdf_no_cards"
+msgstr "Iz ovog PDF-a još nema kartica."
+
+#. PDF reader message: No compatible note type exposes the configured PDF highlight target field.
+msgid "reader_pdf_no_compatible_note_type"
+msgstr "Nijedna kompatibilna vrsta bilješke ne sadrži postavljeno ciljno polje za PDF oznake."
+
+#. PDF reader message: No due extracted cards to review for this PDF.
+msgid "reader_pdf_no_due_cards"
+msgstr "Nema dospjelih izdvojenih kartica za ponavljanje iz ovog PDF-a."
+
+#. PDF reader message: No due extracted cards from this PDF up to the current page.
+msgid "reader_pdf_no_due_to_page"
+msgstr "Nema dospjelih izdvojenih kartica iz ovog PDF-a do trenutačne stranice."
+
+#. PDF reader message: No daily reading limit is set for this PDF.
+msgid "reader_pdf_no_limit"
+msgstr "Za ovaj PDF nije postavljeno dnevno ograničenje čitanja."
+
+#. PDF reader message: No cards created on this page yet.
+msgid "reader_pdf_no_page_cards"
+msgstr "Na ovoj stranici još nema kartica."
+
+#. PDF reader message: No unlinked text highlights remain for this PDF.
+msgid "reader_pdf_no_unlinked_highlights"
+msgstr "Za ovaj PDF više nema nepovezanih tekstnih oznaka."
+
+#. PDF reader message: Offer this due-card review automatically when opening this PDF
+msgid "reader_pdf_offer_due"
+msgstr "Ponudi ponavljanje dospjelih kartica pri otvaranju ovog PDF-a"
+
+#. PDF reader message: PDF Page Card Preview
+msgid "reader_pdf_page_card_preview"
+msgstr "Pregled kartice PDF stranice"
+
+#. PDF reader message: Could not relink this PDF card. /  / {error}
+msgid "reader_pdf_relink_failed"
+msgstr "Nije moguće ponovno povezati ovu PDF karticu.\n\n{error}"
+
+#. PDF reader message: PDF card relinked to the replacement file.
+msgid "reader_pdf_relinked"
+msgstr "PDF kartica je ponovno povezana sa zamjenskom datotekom."
+
+#. PDF reader message: Could not reopen this PDF after review.
+msgid "reader_pdf_reopen_failed"
+msgstr "Nije moguće ponovno otvoriti ovaj PDF nakon ponavljanja."
+
+#. PDF reader message: Could not determine which PDF card needs repairing.
+msgid "reader_pdf_repair_card_missing"
+msgstr "Nije moguće odrediti koju PDF karticu treba popraviti."
+
+#. PDF reader message: Review Due PDF Cards
+msgid "reader_pdf_review_due_title"
+msgstr "Ponovi dospjele PDF kartice"
+
+#. PDF reader message: Could not secure PDF viewer: / {error}
+msgid "reader_pdf_secure_failed"
+msgstr "Nije moguće osigurati PDF čitač:\n{error}"
+
+#. PDF reader message: Snapshot is empty or too large
+msgid "reader_pdf_snapshot_empty_or_large"
+msgstr "Snimka je prazna ili prevelika"
+
+#. PDF reader message: Snapshot failed: / {error}
+msgid "reader_pdf_snapshot_failed"
+msgstr "Snimanje nije uspjelo:\n{error}"
+
+#. PDF reader message: Snapshot is too large
+msgid "reader_pdf_snapshot_too_large"
+msgstr "Snimka je prevelika"
+
+#. PDF reader message: Could not suspend card: / {error}
+msgid "reader_pdf_suspend_failed"
+msgstr "Nije moguće suspendirati karticu:\n{error}"
+
+#. PDF reader message: The configured PDF highlight target field is not visible.
+msgid "reader_pdf_target_field_hidden"
+msgstr "Postavljeno ciljno polje za PDF oznake nije vidljivo."
+
+#. PDF reader message: PDF Viewer
+msgid "reader_pdf_viewer_title"
+msgstr "PDF čitač"
+
+#. PDF reader due card count
+msgid "reader_pdf_due_summary"
+msgid_plural "reader_pdf_due_summary_plural"
+msgstr[0] "Imate {count} dospjelu karticu iz ovog PDF-a do stranice {current_page}.\nStranice: {pages}"
+msgstr[1] "Imate {count} dospjele kartice iz ovog PDF-a do stranice {current_page}.\nStranice: {pages}"
+msgstr[2] "Imate {count} dospjelih kartica iz ovog PDF-a do stranice {current_page}.\nStranice: {pages}"
+
+msgid "reader_add_comment"
+msgstr "Dodaj komentar"
+
+msgid "reader_all_files"
+msgstr "Sve datoteke (*)"
+
+msgid "reader_apply"
+msgstr "Primijeni"
+
+msgid "reader_edit_comment"
+msgstr "Uredi komentar"
+
+msgid "reader_not_set"
+msgstr "Nije postavljeno"
+
+msgid "reader_open_system_browser_failed"
+msgstr "Incremento: otvaranje sustavskog preglednika nije uspjelo."
+
+msgid "reader_refresh"
+msgstr "Osvježi"
+
+msgid "reader_video_add_card_here"
+msgstr "+ Dodaj karticu na ovom mjestu"
+
+msgid "reader_video_bookmark_comment"
+msgstr "Komentar video oznake"
+
+msgid "reader_video_bookmark_comment_failed"
+msgstr "Nije moguće spremiti komentar video oznake.\n\n{error}"
+
+msgid "reader_video_bookmark_comment_saved"
+msgstr "Komentar video oznake je spremljen."
+
+msgid "reader_video_bookmark_delete_failed"
+msgstr "Incremento: nije moguće izbrisati video oznaku."
+
+msgid "reader_video_bookmark_not_found"
+msgstr "Ta video oznaka nije pronađena."
+
+msgid "reader_video_bookmark_save_failed"
+msgstr "Incremento: nije moguće spremiti video oznaku."
+
+msgid "reader_video_bookmark_saved"
+msgstr "Incremento: video oznaka spremljena na {time}."
+
+msgid "reader_video_bookmark_update_failed"
+msgstr "Tu video oznaku nije moguće ažurirati."
+
+msgid "reader_video_browser_stop_saved"
+msgstr "Incremento: vrijeme zaustavljanja u pregledniku spremljeno na {time}."
+
+msgid "reader_video_captions"
+msgstr "Titlovi…"
+
+msgid "reader_video_captions_intro"
+msgstr "Odaberite ciljne i referentne titlove za ovu video karticu. Udaljene titlove možete preuzeti s yt-dlp; podržane su i lokalne .srt/.vtt datoteke."
+
+msgid "reader_video_captions_title"
+msgstr "Video titlovi"
+
+msgid "reader_video_card_unknown"
+msgstr "Nije moguće odrediti trenutačnu video karticu."
+
+msgid "reader_video_card_update_failed"
+msgstr "Video je preuzet, ali karticu nije moguće ažurirati."
+
+msgid "reader_video_choose_subtitle"
+msgstr "Odaberite {slot} titlove"
+
+msgid "reader_video_clear_reference"
+msgstr "Ukloni referentne"
+
+msgid "reader_video_clear_target"
+msgstr "Ukloni ciljne"
+
+msgid "reader_video_current_reference"
+msgstr "Referentni: {label}"
+
+msgid "reader_video_current_target"
+msgstr "Ciljni: {label}"
+
+msgid "reader_video_decode_fallback"
+msgstr "Incremento: dekodiranje lokalnog videa nije uspjelo; prelazim na prijenos putem URL-a."
+
+msgid "reader_video_decode_recommendation"
+msgstr "Incremento: dekodiranje lokalnog videa u Ankiju nije uspjelo. Ponovno preuzmite uz ffmpeg radi kompatibilnosti s H.264."
+
+msgid "reader_video_download_activity"
+msgstr "Preuzmi video lokalno"
+
+msgid "reader_video_download_failed"
+msgstr "Preuzimanje videa nije uspjelo: {error}"
+
+msgid "reader_video_download_local"
+msgstr "Preuzmi lokalnu kopiju…"
+
+msgid "reader_video_download_reference"
+msgstr "Preuzmi kao referentne"
+
+msgid "reader_video_download_target"
+msgstr "Preuzmi kao ciljne"
+
+msgid "reader_video_downloading"
+msgstr "Preuzimanje videa"
+
+msgid "reader_video_downloading_copy"
+msgstr "Preuzimanje lokalne kopije videa…"
+
+msgid "reader_video_downloading_track"
+msgstr "Preuzimanje {label}…"
+
+msgid "reader_video_import_reference"
+msgstr "Uvezi referentnu datoteku…"
+
+msgid "reader_video_import_target"
+msgstr "Uvezi ciljnu datoteku…"
+
+msgid "reader_video_invalid_time"
+msgstr "Incremento: unesite vrijeme poput mm:ss, 1m30s ili 90s."
+
+msgid "reader_video_invalid_url"
+msgstr "Incremento: ova video kartica nema valjan URL videa."
+
+msgid "reader_video_jump_back_ten"
+msgstr "Vrati se 10 sekundi"
+
+msgid "reader_video_load_subtitles_failed"
+msgstr "Nije moguće učitati titlove: {error}"
+
+msgid "reader_video_loading_tracks"
+msgstr "Učitavanje udaljenih titlova…"
+
+msgid "reader_video_local_copy_ready"
+msgstr "Lokalna kopija videa je spremna."
+
+msgid "reader_video_local_download_failed"
+msgstr "Incremento: lokalno preuzimanje nije uspjelo ({error})."
+
+msgid "reader_video_local_play_failed"
+msgstr "Incremento: reprodukcija lokalnog videa u Ankijevu Qt reproduktoru nije uspjela."
+
+msgid "reader_video_local_requires_qt"
+msgstr "Incremento: lokalna reprodukcija zahtijeva Qt multimedijsku podršku; prelazim na web reprodukciju."
+
+msgid "reader_video_no_active_card"
+msgstr "Incremento: nema aktivne video kartice."
+
+msgid "reader_video_no_remote_fallback"
+msgstr "Incremento: nema udaljenog URL-a za otvaranje u pregledniku."
+
+msgid "reader_video_no_remote_for_captions"
+msgstr "Ova kartica nema podržani udaljeni URL. I dalje možete priložiti lokalne datoteke titlova."
+
+msgid "reader_video_no_remote_url"
+msgstr "Incremento: ova video kartica nema udaljeni URL."
+
+msgid "reader_video_no_supported_remote"
+msgstr "Incremento: ova video kartica nema podržani udaljeni URL."
+
+msgid "reader_video_no_tracks"
+msgstr "Udaljeni titlovi nisu pronađeni. I dalje možete uvesti lokalne datoteke titlova."
+
+msgid "reader_video_pause"
+msgstr "Pauza"
+
+msgid "reader_video_play"
+msgstr "Reproduciraj"
+
+msgid "reader_video_redownload_local"
+msgstr "Ponovno preuzmi lokalnu kopiju…"
+
+msgid "reader_video_redownloading_copy"
+msgstr "Ponovno preuzimanje lokalne kopije videa…"
+
+msgid "reader_video_reference"
+msgstr "referentne"
+
+msgid "reader_video_reference_cc"
+msgstr "Referentni titlovi"
+
+msgid "reader_video_reference_track"
+msgstr "Referentni titlovi:"
+
+msgid "reader_video_remote_tracks"
+msgstr "Dostupni udaljeni titlovi:"
+
+msgid "reader_video_replacing_copy"
+msgstr "Zamjena postojeće lokalne kopije"
+
+msgid "reader_video_resume_at"
+msgstr "Nastavi na"
+
+msgid "reader_video_resume_saved"
+msgstr "Incremento: vrijeme nastavka spremljeno na {time}."
+
+msgid "reader_video_review_all_hint"
+msgstr "Odaberite teme, stavke, opseg, rok dospijeća, ograničenje i redoslijed kartica povezanih s ovim videom"
+
+msgid "reader_video_select_track"
+msgstr "Odaberite titlove…"
+
+msgid "reader_video_select_track_first"
+msgstr "Incremento: prvo odaberite titlove."
+
+msgid "reader_video_set_time"
+msgstr "Postavi vrijeme"
+
+msgid "reader_video_speed"
+msgstr "Brzina"
+
+msgid "reader_video_starting_download"
+msgstr "Pokretanje preuzimanja"
+
+msgid "reader_video_status_accessible"
+msgstr "Status video čitača"
+
+msgid "reader_video_subtitle_download_failed"
+msgstr "Preuzimanje titlova nije uspjelo: {error}"
+
+msgid "reader_video_subtitle_files"
+msgstr "Datoteke titlova ({patterns})"
+
+msgid "reader_video_subtitle_import_failed"
+msgstr "Incremento: nije moguće uvesti datoteku titlova ({error})."
+
+msgid "reader_video_subtitle_imported"
+msgstr "Uvezeno {label} u {slot}."
+
+msgid "reader_video_subtitles_active"
+msgstr "Aktivni lokalni titlovi: {tracks}."
+
+msgid "reader_video_subtitles_cleared"
+msgstr "Uklonjeni {slot} titlovi."
+
+msgid "reader_video_subtitles_need_local"
+msgstr "Titlovi su postavljeni. Preuzmite lokalnu kopiju za prikaz dvaju titlova."
+
+msgid "reader_video_sync_invalid_format"
+msgstr "Nevaljan format. Upotrijebite 12:34, 1:02:03, 1h2m3s ili sekunde."
+
+msgid "reader_video_sync_result"
+msgstr "Rezultat: {time} ({seconds} s)"
+
+msgid "reader_video_sync_stop_time"
+msgstr "Uskladi vrijeme zaustavljanja u pregledniku"
+
+msgid "reader_video_sync_time_placeholder"
+msgstr "12:34 ili 1h2m3s"
+
+msgid "reader_video_target"
+msgstr "ciljne"
+
+msgid "reader_video_target_cc"
+msgstr "Ciljni titlovi"
+
+msgid "reader_video_target_track"
+msgstr "Ciljni titlovi:"
+
+msgid "reader_video_time_placeholder"
+msgstr "mm:ss ili 123s"
+
+msgid "reader_video_track_saved"
+msgstr "Spremljeno {label} u {slot}."
+
+msgid "reader_video_volume_short"
+msgstr "Glasnoća"
+
+msgid "reader_video_where_stopped"
+msgstr "Gdje ste stali u pregledniku?"
+
+msgid "reader_video_bookmarks_count"
+msgid_plural "reader_video_bookmarks_count_plural"
+msgstr[0] "Oznaka {count}"
+msgstr[1] "Oznake {count}"
+msgstr[2] "Oznaka {count}"
+
+msgid "reader_video_tracks_found"
+msgid_plural "reader_video_tracks_found_plural"
+msgstr[0] "Pronađen je {count} udaljeni zapis titlova. Preuzmite ga kao ciljne ili referentne."
+msgstr[1] "Pronađena su {count} udaljena zapisa titlova. Preuzmite jedan kao ciljne ili referentne."
+msgstr[2] "Pronađeno je {count} udaljenih zapisa titlova. Preuzmite jedan kao ciljne ili referentne."
+
+msgid "reader_home"
+msgstr "Početna"
+
+msgid "reader_select_text_first"
+msgstr "Prvo odaberite tekst."
+
+msgid "reader_text_prompt"
+msgstr "Tekst:"
+
+msgid "reader_web_add_card_hint"
+msgstr "Otvori okno za dodavanje kartice."
+
+msgid "reader_web_back_hint"
+msgstr "Vrati se jednu stranicu u web čitaču."
+
+msgid "reader_web_bookmark_delete_failed"
+msgstr "Nije moguće izbrisati web oznaku:\n{error}"
+
+msgid "reader_web_bookmark_hint"
+msgstr "Spremi trenutačno web mjesto kao trajnu oznaku zanimljivog mjesta."
+
+msgid "reader_web_bookmark_save_failed"
+msgstr "Spremanje oznake nije uspjelo:\n{error}"
+
+msgid "reader_web_bookmark_saved"
+msgstr "Incremento: oznaka je spremljena."
+
+msgid "reader_web_bookmark_unavailable"
+msgstr "Incremento: ovdje nije moguće postaviti oznaku."
+
+msgid "reader_web_bookmarks_hint"
+msgstr "Prikaži spremljene web oznake za ovu karticu."
+
+msgid "reader_web_card_add_failed"
+msgstr "Dodavanje web kartice nije uspjelo:\n{error}"
+
+msgid "reader_web_card_added"
+msgstr "Web kartica '{title}' dodana je u špil {deck}."
+
+msgid "reader_web_cards_at_url"
+msgstr "Kartice stvorene na ovom URL-u"
+
+msgid "reader_web_cards_hint"
+msgstr "Prikaži kartice stvorene s trenutačnog URL-a."
+
+msgid "reader_web_drag_to_capture"
+msgstr "Povucite za snimanje"
+
+msgid "reader_web_enter_url"
+msgstr "Unesite URL."
+
+msgid "reader_web_extract_failed"
+msgstr "Izdvajanje s weba nije uspjelo:\n{error}"
+
+msgid "reader_web_extract_hint"
+msgstr "Kopiraj trenutačno odabrani tekst u polje okna za dodavanje kartice."
+
+msgid "reader_web_extract_into_field"
+msgstr "Izdvoji odabir u polje"
+
+msgid "reader_web_group_capture"
+msgstr "Snimi"
+
+msgid "reader_web_group_external"
+msgstr "Vanjski preglednik"
+
+msgid "reader_web_group_navigate"
+msgstr "Navigacija"
+
+msgid "reader_web_group_review"
+msgstr "Ponavljanje"
+
+msgid "reader_web_group_saved"
+msgstr "Spremljeno"
+
+msgid "reader_web_home_hint"
+msgstr "Vrati okno na spremljenu početnu stranicu web kartice."
+
+msgid "reader_web_insert_image_into"
+msgstr "Umetni sliku u:"
+
+msgid "reader_web_insert_snapshot"
+msgstr "Umetni snimku u polje"
+
+msgid "reader_web_insert_text_into"
+msgstr "Umetni odabrani tekst u:"
+
+msgid "reader_web_invalid_url"
+msgstr "Incremento: ova web kartica nema valjan URL."
+
+msgid "reader_web_last_media_time"
+msgstr "Zadnje spremljeno vrijeme medija: {time}."
+
+msgid "reader_web_marker_save_failed"
+msgstr "Incremento: bilješka je dodana, ali nije moguće spremiti oznaku web izdvajanja."
+
+msgid "reader_web_media_time_copied"
+msgstr "Incremento: kopirano je spremljeno vrijeme medija {time}."
+
+msgid "reader_web_no_browser_card"
+msgstr "Incremento: trenutačno nije otvorena kartica preglednika."
+
+msgid "reader_web_no_card"
+msgstr "Incremento: trenutačno nije otvorena web kartica."
+
+msgid "reader_web_no_cards_at_url"
+msgstr "Incremento: za ovaj URL još nema zabilježenih kartica."
+
+msgid "reader_web_no_homepage"
+msgstr "Incremento: ova web kartica nema URL početne stranice."
+
+msgid "reader_web_no_saved_media_time"
+msgstr "Incremento: za ovu web karticu još nema spremljenog vremena medija."
+
+msgid "reader_web_open_home"
+msgstr "Otvori početnu"
+
+msgid "reader_web_open_home_hint"
+msgstr "Otvori izvornu početnu stranicu ove web kartice u sustavskom pregledniku."
+
+msgid "reader_web_open_page"
+msgstr "Otvori stranicu"
+
+msgid "reader_web_open_page_hint"
+msgstr "Otvori trenutačnu stranicu u sustavskom pregledniku."
+
+msgid "reader_web_resume"
+msgstr "Nastavi"
+
+msgid "reader_web_resume_at"
+msgstr "Nastavi na {time}"
+
+msgid "reader_web_resume_copy_hint"
+msgstr "Otvara stranicu i kopira spremljeno vrijeme u međuspremnik."
+
+msgid "reader_web_resume_hint"
+msgstr "Ponovno otvori spremljeni napredak medija u sustavskom pregledniku."
+
+msgid "reader_web_resume_media_hint"
+msgstr "Otvara spremljeni medij na tom vremenu."
+
+msgid "reader_web_resume_original_hint"
+msgstr "Ponovno otvara izvornu stranicu i traži od proširenja preglednika da ondje nastavi."
+
+msgid "reader_web_resuming_original"
+msgstr "Incremento: ponovno otvaranje izvorne stranice i nastavak ugrađenog medija (potrebno je proširenje Incremento Companion)."
+
+msgid "reader_web_review_all_unavailable"
+msgstr "Pregledaj sve još nije dostupno u web čitaču."
+
+msgid "reader_web_search_hint"
+msgstr "Pronađi tekst na trenutačnoj web stranici."
+
+msgid "reader_web_search_page"
+msgstr "Pretraži trenutačnu web stranicu"
+
+msgid "reader_web_snapshot_capture_failed"
+msgstr "Snimka web stranice nije uspjela:\nNije moguće snimiti odabrano područje."
+
+msgid "reader_web_snapshot_failed"
+msgstr "Snimka web stranice nije uspjela:\n{error}"
+
+msgid "reader_web_snapshot_hint"
+msgstr "Snimi sliku trenutačnog prikaza, kao PDF alat za snimke."
+
+msgid "reader_web_status_accessible"
+msgstr "Status web čitača i trenutačna adresa"
+
+msgid "reader_web_track_extension"
+msgstr "Prati putem proširenja Chrome"
+
+msgid "reader_web_track_extension_hint"
+msgstr "Kad je uključeno, otvaranje ove stranice izvana omogućuje proširenju Incremento Companion da usklađuje web karticu s posljednjom posjećenom stranicom na toj kartici preglednika."
+
+msgid "reader_web_tracking_home_enabled"
+msgstr "Incremento: omogućeno je praćenje početne stranice ove web kartice (potrebno je proširenje Incremento Companion)."
+
+msgid "reader_web_tracking_tab_enabled"
+msgstr "Incremento: omogućeno je praćenje ove kartice preglednika (potrebno je proširenje Incremento Companion)."
+
+msgid "reader_web_bookmarks_count"
+msgid_plural "reader_web_bookmarks_count_plural"
+msgstr[0] "Oznaka {count}"
+msgstr[1] "Oznake {count}"
+msgstr[2] "Oznaka {count}"
+
+msgid "reader_web_cards_count"
+msgid_plural "reader_web_cards_count_plural"
+msgstr[0] "Kartica {count}"
+msgstr[1] "Kartice {count}"
+msgstr[2] "Kartica {count}"
+
+msgid "reader_bookmark_comment_placeholder"
+msgstr "Napišite neobaveznu bilješku o tome zašto je ovaj trenutak važan…"
+
+msgid "reader_bookmark_label"
+msgstr "Oznaka:"
+
+msgid "reader_comment_label"
+msgstr "Komentar:"
+
+msgid "reader_highlight_note_placeholder"
+msgstr "Napišite neobaveznu bilješku za ovaj istaknuti odlomak…"
+
+msgid "reader_no_text_parenthesized"
+msgstr "(nema teksta)"
+
+msgid "reader_selected_text_label"
+msgstr "Odabrani tekst:"
+
+msgid "reader_text_note_label"
+msgstr "Tekstna bilješka:"
+
+msgid "reader_click_result_hint"
+msgstr "Kliknite rezultat da biste prešli na taj dio dokumenta {document}."
+
+msgid "reader_current_document"
+msgstr "Trenutačni dokument"
+
+msgid "reader_find_in_document"
+msgstr "Pronađi u: {document}"
+
+msgid "reader_find_in_document_placeholder"
+msgstr "Pronađi u: {document}"
+
+msgid "reader_no_document_matches"
+msgstr "U trenutačnom dokumentu nisu pronađena podudaranja."
+
+msgid "reader_search_all"
+msgstr "Pretraži SVE"
+
+msgid "reader_type_to_search_document"
+msgstr "Upišite tekst za pretraživanje trenutačnog dokumenta."
+
+msgid "reader_search_results_count"
+msgid_plural "reader_search_results_count_plural"
+msgstr[0] "{count} rezultat"
+msgstr[1] "{count} rezultata"
+msgstr[2] "{count} rezultata"
+
+msgid "reader_docs"
+msgstr "Dokumenti"
+
+msgid "reader_mode"
+msgstr "Način"
+
+msgid "reader_open_card_to_study"
+msgstr "Otvori karticu i za učenje"
+
+msgid "reader_open_first_queue"
+msgstr "Otvori prvu u redu"
+
+msgid "reader_open_last_note"
+msgstr "Otvori posljednju otvorenu bilješku"
+
+msgid "reader_open_random_note"
+msgstr "Otvori nasumičnu bilješku"
+
+msgid "reader_preserve_pdf_history"
+msgstr "Ne mijenjaj kartice povezane s poviješću čitanja PDF-a"
+
+msgid "reader_priority_short"
+msgstr "Prioritet"
+
+msgid "reader_quick_open_content"
+msgstr "Brzo otvaranje sadržaja"
+
+msgid "reader_title"
+msgstr "Naslov"
+
+msgid "reader_type"
+msgstr "Vrsta"
+
+msgid "reader_writing"
+msgstr "Pisanje"
+
+msgid "reader_bulk_already_linked"
+msgstr "Kartica je već povezana."
+
+msgid "reader_bulk_check_one"
+msgstr "Označite barem jedan red za stvaranje kartica."
+
+msgid "reader_bulk_create_missing_title"
+msgstr "Stvori nedostajuće kartice iz PDF istaknutog teksta"
+
+msgid "reader_bulk_empty_highlight"
+msgstr "Istaknuti tekst je prazan."
+
+msgid "reader_bulk_fix_invalid_count"
+msgid_plural "reader_bulk_fix_invalid_count_plural"
+msgstr[0] "Ispravite ili odznačite {count} nevaljan označeni red."
+msgstr[1] "Ispravite ili odznačite {count} nevaljana označena reda."
+msgstr[2] "Ispravite ili odznačite {count} nevaljanih označenih redova."
+
+msgid "reader_bulk_hint"
+msgstr "Pregledajte nepovezane istaknute dijelove, uredite vidljiva polja bilješke i stvorite označene redove."
+
+msgid "reader_bulk_none_left"
+msgstr "Nema više nepovezanih istaknutih dijelova."
+
+msgid "reader_bulk_ready_count"
+msgid_plural "reader_bulk_ready_count_plural"
+msgstr[0] "{count} red je spreman."
+msgstr[1] "{count} reda su spremna."
+msgstr[2] "{count} redova je spremno."
+
+msgid "reader_bulk_target_empty"
+msgstr "Polje {field} je prazno."
+
+msgid "reader_bulk_target_summary"
+msgstr "Odredište: <b>{note_type}</b> u špilu <b>{deck}</b> uz polje <b>{field}</b>"
+
+msgid "reader_create"
+msgstr "Stvori"
+
+msgid "reader_create_selected"
+msgstr "Stvori odabrano"
+
+msgid "reader_deck_label"
+msgstr "Špil:"
+
+msgid "reader_delete_selected"
+msgstr "Izbriši odabrano"
+
+msgid "reader_note"
+msgstr "Bilješka"
+
+msgid "reader_note_type_label"
+msgstr "Vrsta bilješke:"
+
+msgid "reader_ready"
+msgstr "Spremno"
+
+msgid "reader_target"
+msgstr "Odredište"
+
+msgid "reader_uncheck_selected"
+msgstr "Odznači odabrano"
+
+msgid "reader_unknown"
+msgstr "Nepoznato"
+
+msgid "reader_unknown_field"
+msgstr "Nepoznato polje"
+
+msgid "reader_choose"
+msgstr "Odaberi…"
+
+msgid "reader_import"
+msgstr "Uvezi"
+
+msgid "reader_none"
+msgstr "nema"
+
+msgid "reader_notebook_choose_first"
+msgstr "Prvo odaberite izvoz bilježnice u HTML-u."
+
+msgid "reader_notebook_choose_html"
+msgstr "Odaberi HTML bilježnice"
+
+msgid "reader_notebook_choose_intro"
+msgstr "Odaberite izvoz Kindle bilježnice u HTML-u za pregled stavki."
+
+msgid "reader_notebook_colors"
+msgstr "Boje: {colors}"
+
+msgid "reader_notebook_created"
+msgstr "Stvoreni istaknuti dijelovi: {count}"
+
+msgid "reader_notebook_file"
+msgstr "Bilježnica: {filename}"
+
+msgid "reader_notebook_filter_pdf_cards"
+msgstr "Filtriraj postojeće Incremento PDF kartice…"
+
+msgid "reader_notebook_highlights_count"
+msgstr "Istaknuto: {count}"
+
+msgid "reader_notebook_html"
+msgstr "HTML bilježnice"
+
+msgid "reader_notebook_html_files"
+msgstr "HTML datoteke (*.html *.htm)"
+
+msgid "reader_notebook_import_failed"
+msgstr "Nije moguće uvesti citate iz bilježnice.\n\n{error}"
+
+msgid "reader_notebook_import_summary"
+msgstr "Sažetak uvoza"
+
+msgid "reader_notebook_import_title"
+msgstr "Uvezi citate iz bilježnice u PDF istaknuti tekst"
+
+msgid "reader_notebook_location"
+msgstr "Lokacija {number}"
+
+msgid "reader_notebook_location_entries_count"
+msgstr "Stavke samo s lokacijom: {count}"
+
+msgid "reader_notebook_no_existing_pdf"
+msgstr "Nisu pronađene postojeće Incremento PDF kartice."
+
+msgid "reader_notebook_no_import_yet"
+msgstr "Uvoz još nije pokrenut."
+
+msgid "reader_notebook_no_matching_pdf"
+msgstr "Nijedna Incremento PDF kartica ne odgovara trenutačnom filtru."
+
+msgid "reader_notebook_no_pdf_text"
+msgstr "Nije pronađen PDF tekst koji se može pretraživati."
+
+msgid "reader_notebook_notes_attached"
+msgstr "Priložene bilješke: {count}"
+
+msgid "reader_notebook_notes_count"
+msgstr "Bilješke: {count}"
+
+msgid "reader_notebook_page_entries_count"
+msgstr "Stavke sa stranicom: {count}"
+
+msgid "reader_notebook_parse_failed"
+msgstr "Nije moguće obraditi odabrani HTML bilježnice.\n\n{error}"
+
+msgid "reader_notebook_pdf_file"
+msgstr "Datoteka: {filename}"
+
+msgid "reader_notebook_pdf_read_error"
+msgstr "Pogreška pri čitanju PDF-a: {error}"
+
+msgid "reader_notebook_pymupdf_required"
+msgstr "Za uvoz citata iz bilježnice potreban je PyMuPDF. Instalirajte ga putem Incremento → Alati → Provjeri ovisnosti…"
+
+msgid "reader_notebook_ready"
+msgstr "Spremno za uvoz."
+
+msgid "reader_notebook_select_pdf_first"
+msgstr "Najprije odaberite jednu ili više postojećih Incremento PDF kartica. Ostale PDF-ove uvezite zasebno kao Incremento PDF kartice, a zatim pokrenite ovaj uvoz."
+
+msgid "reader_notebook_unattached"
+msgstr "Bilješke koje nisu priložene: {count}"
+
+msgid "reader_notebook_unattached_heading"
+msgstr "Nepriložene bilješke:"
+
+msgid "reader_notebook_unmatched"
+msgstr "Istaknuti dijelovi bez podudaranja: {count}"
+
+msgid "reader_notebook_unmatched_heading"
+msgstr "Istaknuti dijelovi bez podudaranja:"
+
+msgid "reader_notebook_updated"
+msgstr "Ažurirani istaknuti dijelovi: {count}"
+
+msgid "reader_pdf_cards"
+msgstr "PDF kartice"
+
+msgid "reader_pdf_number"
+msgstr "PDF {number}"
+
+msgid "reader_bookshelf_all_documents"
+msgstr "Svi dokumenti"
+
+msgid "reader_bookshelf_all_summary"
+msgstr "{documents} · {pdfs} · {epubs}"
+
+msgid "reader_bookshelf_all_tags"
+msgstr "Sve oznake (I)"
+
+msgid "reader_bookshelf_any_tag"
+msgstr "Bilo koja oznaka (ILI)"
+
+msgid "reader_bookshelf_browse_tags"
+msgstr "Pregledaj oznake"
+
+msgid "reader_bookshelf_browse_tags_accessible"
+msgstr "Pregledaj oznake police dokumenata"
+
+msgid "reader_bookshelf_browse_tags_hint"
+msgstr "Prikaži oznake dokumenata na ovoj polici, počevši od najčešćih."
+
+msgid "reader_bookshelf_document_count"
+msgid_plural "reader_bookshelf_document_count_plural"
+msgstr[0] "{count} dokument"
+msgstr[1] "{count} dokumenta"
+msgstr[2] "{count} dokumenata"
+
+msgid "reader_bookshelf_epub_count"
+msgid_plural "reader_bookshelf_epub_count_plural"
+msgstr[0] "{count} EPUB"
+msgstr[1] "{count} EPUB-a"
+msgstr[2] "{count} EPUB-a"
+
+msgid "reader_bookshelf_epubs"
+msgstr "EPUB-ovi"
+
+msgid "reader_bookshelf_filter_tags_hint"
+msgstr "Počnite upisivati dio naziva oznake ili pregledajte oznake ovih dokumenata. Velika i mala slova nisu važna."
+
+msgid "reader_bookshelf_filter_tags_placeholder"
+msgstr "Filtriraj po oznakama — upiši naziv ili pregledaj dostupne oznake…"
+
+msgid "reader_bookshelf_intro"
+msgstr "Kliknite naslovnicu da biste otvorili dokument. Prve stranice PDF-a i EPUB naslovnice učitavaju se postupno kako bi velika zbirka ostala odzivna."
+
+msgid "reader_bookshelf_item_tooltip"
+msgstr "{title}\nVrsta: {kind}\nOznake: {tags}\n{priority}\nKliknite za otvaranje"
+
+msgid "reader_bookshelf_more_tags"
+msgstr "(+još {count})"
+
+msgid "reader_bookshelf_no_documents"
+msgstr "Nisu pronađeni Incremento dokumenti."
+
+msgid "reader_bookshelf_no_epubs"
+msgstr "Nisu pronađeni Incremento EPUB-ovi."
+
+msgid "reader_bookshelf_no_pdfs"
+msgstr "Nisu pronađeni Incremento PDF-ovi."
+
+msgid "reader_bookshelf_no_tags"
+msgstr "Nema dostupnih oznaka dokumenata."
+
+msgid "reader_bookshelf_pdf_count"
+msgid_plural "reader_bookshelf_pdf_count_plural"
+msgstr[0] "{count} PDF"
+msgstr[1] "{count} PDF-a"
+msgstr[2] "{count} PDF-ova"
+
+msgid "reader_bookshelf_pdf_only_hint"
+msgstr "Ova se mogućnost odnosi samo na PDF dokumente."
+
+msgid "reader_bookshelf_pdfs"
+msgstr "PDF-ovi"
+
+msgid "reader_bookshelf_preserve_history"
+msgstr "Ne mijenjaj kartice povezane s poviješću čitanja PDF-a (samo PDF)"
+
+msgid "reader_bookshelf_preserve_history_hint"
+msgstr "Pri otvaranju čitača ne mijenja povijest kartica povezanih s PDF-om."
+
+msgid "reader_bookshelf_priority_unset"
+msgstr "Prioritet: nije postavljen"
+
+msgid "reader_bookshelf_priority_value"
+msgstr "Prioritet: {value}"
+
+msgid "reader_bookshelf_search_titles"
+msgstr "Pretraži naslove dokumenata…"
+
+msgid "reader_bookshelf_showing"
+msgstr "Prikazano {visible} od {total}"
+
+msgid "reader_bookshelf_tag_filter_accessible"
+msgstr "Filtar oznaka police dokumenata"
+
+msgid "reader_bookshelf_tag_mode_hint"
+msgstr "ILI odgovara barem jednoj unesenoj oznaci; I zahtijeva sve unesene oznake."
+
+msgid "reader_bookshelf_title"
+msgstr "Polica dokumenata"
+
+msgid "reader_show_label"
+msgstr "Prikaži:"
+
+msgid "reader_tags_label"
+msgstr "Oznake:"
+
+msgid "reader_card"
+msgstr "Kartica"
+
+msgid "reader_excluded"
+msgstr "Isključeno"
+
+msgid "reader_item"
+msgstr "Stavka"
+
+msgid "reader_media_action_count"
+msgstr "{action}: {cards}"
+
+msgid "reader_media_another_filtered_deck"
+msgstr "drugi filtrirani špil"
+
+msgid "reader_media_card_count_title"
+msgid_plural "reader_media_card_count_title_plural"
+msgstr[0] "{count} kartica"
+msgstr[1] "{count} kartice"
+msgstr[2] "{count} kartica"
+
+msgid "reader_media_card_unknown"
+msgstr "Nije moguće odrediti trenutačnu medijsku karticu."
+
+msgid "reader_media_continue_review"
+msgstr "Nastaviti i započeti ovo ponavljanje?"
+
+msgid "reader_media_current_position_hint"
+msgstr "Trenutačni položaj medija {media} je {position}. Kartice bez poznatog položaja isključene su kad odaberete ovaj raspon."
+
+msgid "reader_media_due_hint"
+msgstr "Samo dospjele uključuje dospjele kartice za ponavljanje i kartice u učenju ili ponovnom učenju spremne sada; nove i buduće kartice nisu uključene."
+
+msgid "reader_media_excluded_summary"
+msgstr "Isključeno: {items}."
+
+msgid "reader_media_excluded_tab"
+msgstr "Isključeno ({count})"
+
+msgid "reader_media_excluded_tree_accessible"
+msgstr "Kartice isključene iz ponavljanja"
+
+msgid "reader_media_filtered_deck_impact"
+msgstr "Sukobljeni filtrirani špilovi: {decks}. Sve kartice iz tih filtriranih špilova prvo će se vratiti u izvorne špilove; samo odabrane kartice zatim će ući u ovo ponavljanje. Definicije filtriranih špilova ostat će dostupne za ponovnu izgradnju."
+
+msgid "reader_media_filtered_deck_item"
+msgstr "{name} ({count} odabrano)"
+
+msgid "reader_media_filtered_fallback"
+msgstr "Anki najprije mora isprazniti te špilove, pa će se sve njihove kartice vratiti u izvorne špilove; definicije filtriranih špilova ostat će dostupne za ponovnu izgradnju."
+
+msgid "reader_media_filtered_warning"
+msgid_plural "reader_media_filtered_warning_plural"
+msgstr[0] "Upozorenje: {count} kartica iz drugih filtriranih špilova bit će premještena."
+msgstr[1] "Upozorenje: {count} kartice iz drugih filtriranih špilova bit će premještene."
+msgstr[2] "Upozorenje: {count} kartica iz drugih filtriranih špilova bit će premješteno."
+
+msgid "reader_media_filtered_warning_accessible"
+msgstr "Upozorenje o promjeni filtriranog špila"
+
+msgid "reader_media_generic"
+msgstr "medij"
+
+msgid "reader_media_include_filtered"
+msgstr "Uključi kartice koje su već u drugom filtriranom špilu"
+
+msgid "reader_media_include_filtered_accessible"
+msgstr "Uključi kartice iz drugih filtriranih špilova"
+
+msgid "reader_media_include_filtered_hint"
+msgstr "Anki ne može premještati pojedinačne kartice između filtriranih špilova. Ako ovo uključite, svaki sukobljeni filtrirani špil bit će ispražnjen, sve će se kartice vratiti u izvorne špilove, a odgovarajuće kartice ući će u ovo ponavljanje."
+
+msgid "reader_media_inspecting_cards"
+msgstr "Pregled povezanih kartica…"
+
+msgid "reader_media_inspection_failed"
+msgstr "Nije moguće pregledati kartice povezane s medijem {media}:\n\n{error}"
+
+msgid "reader_media_item_count"
+msgid_plural "reader_media_item_count_plural"
+msgstr[0] "{count} stavka"
+msgstr[1] "{count} stavke"
+msgstr[2] "{count} stavki"
+
+msgid "reader_media_kind_hint"
+msgstr "Razvrstavanje tema i stavki koristi ista Incremento pravila kao preglednik kartica."
+
+msgid "reader_media_leave_review_failed"
+msgstr "Nije moguće sigurno napustiti trenutačno ponavljanje prije premještanja kartica između filtriranih špilova:\n\n{error}"
+
+msgid "reader_media_limit_hint"
+msgstr "Ograničite broj kartica nakon filtriranja i redoslijeda. Sve znači bez ograničenja."
+
+msgid "reader_media_links_label"
+msgstr "Veze:"
+
+msgid "reader_media_max_cards_label"
+msgstr "Najviše kartica:"
+
+msgid "reader_media_move_filtered_title"
+msgstr "Premjestiti kartice iz filtriranih špilova?"
+
+msgid "reader_media_no_cards"
+msgstr "Nema kartica"
+
+msgid "reader_media_no_matching_cards"
+msgstr "Nijedna kartica povezana s medijem {media} ne odgovara odabranim filtrima teme/stavke, veze, raspona i stanja kartice."
+
+msgid "reader_media_order_hint"
+msgstr "Položaj medija koristi PDF stranice, EPUB odjeljke ili vremenske oznake videa. Ugniježđene kartice nasljeđuju položaj najbližeg pretka."
+
+msgid "reader_media_order_label"
+msgstr "Redoslijed ponavljanja:"
+
+msgid "reader_media_other_filtered_label"
+msgstr "Drugi filtrirani špilovi:"
+
+msgid "reader_media_position_page"
+msgstr "stranica {number}"
+
+msgid "reader_media_position_section"
+msgstr "odjeljak {number}"
+
+msgid "reader_media_range_label"
+msgstr "Raspon medija:"
+
+msgid "reader_media_ready_tab"
+msgstr "Spremno ({count})"
+
+msgid "reader_media_ready_tree_accessible"
+msgstr "Kartice spremne za ponavljanje"
+
+msgid "reader_media_reminder"
+msgstr "Podsjetnik bez promjene rasporeda"
+
+msgid "reader_media_reminder_hint"
+msgstr "Ponovite kartice bez promjene sljedećeg roka ili intervala. A-faktori tema i prilagođena pravila rasporeda ostaju sačuvani. Isključite ovu mogućnost za uobičajeno raspoređivanje odgovora."
+
+msgid "reader_media_reminder_schedule_status"
+msgstr "Podsjetnik: rokovi, intervali, A-faktori tema i prilagođeni rasporedi ostaju nepromijenjeni."
+
+msgid "reader_media_review_intro"
+msgstr "Odaberite kartice povezane s medijem {media} koje želite ponavljati. Izravne veze uključuju kartice izdvojene iz medija; ugniježđene veze uključuju njihove potomke u stablu znanja. Ponavljajte uobičajeno ili uključite podsjetnik bez promjene rasporeda."
+
+msgid "reader_media_review_label"
+msgstr "Ponavljanje:"
+
+msgid "reader_media_review_schedule_status"
+msgstr "Ponavljanje: odgovori ažuriraju raspored kartica."
+
+msgid "reader_media_review_start_failed"
+msgstr "Nije moguće pokrenuti ponavljanje kartica povezanih s medijem {media}"
+
+msgid "reader_media_review_title"
+msgstr "Ponavljaj kartice iz medija {media}"
+
+msgid "reader_media_scheduling_label"
+msgstr "Raspored:"
+
+msgid "reader_media_start_review"
+msgstr "Započni ponavljanje"
+
+msgid "reader_media_start_review_accessible"
+msgstr "Započni ponavljanje povezanih kartica"
+
+msgid "reader_media_state_label"
+msgstr "Stanje kartica:"
+
+msgid "reader_media_summary_accessible"
+msgstr "Sažetak odabira za ponavljanje"
+
+msgid "reader_media_topic_count"
+msgid_plural "reader_media_topic_count_plural"
+msgstr[0] "{count} tema"
+msgstr[1] "{count} teme"
+msgstr[2] "{count} tema"
+
+msgid "reader_media_unknown_card"
+msgstr "Nepoznata kartica"
+
+msgid "reader_media_unknown_filtered_deck"
+msgstr "Nepoznati filtrirani špil"
+
+msgid "reader_media_unknown_position_hint"
+msgstr "Incremento nije mogao odrediti trenutačni položaj medija za ovaj čitač."
+
+msgid "reader_media_will_move_from"
+msgstr "Bit će premješteno iz špila {deck}"
+
+msgid "reader_position"
+msgstr "Položaj"
+
+msgid "reader_preview"
+msgstr "Pregled"
+
+msgid "reader_topic"
+msgstr "Tema"
+
+msgid "reader_media_topics_items"
+msgstr "Teme i stavke"
+
+msgid "reader_media_topics_only"
+msgstr "Samo teme"
+
+msgid "reader_media_items_only"
+msgstr "Samo stavke"
+
+msgid "reader_media_direct_nested"
+msgstr "Izravne i ugniježđene kartice"
+
+msgid "reader_media_direct_only"
+msgstr "Samo izravno povezane kartice"
+
+msgid "reader_media_entire"
+msgstr "Cijeli medij"
+
+msgid "reader_media_to_current"
+msgstr "Do trenutačnog položaja"
+
+msgid "reader_media_all_available"
+msgstr "Sve dostupne kartice"
+
+msgid "reader_media_due_only"
+msgstr "Samo dospjele / u učenju sada"
+
+msgid "reader_media_order_attached"
+msgstr "Redoslijed povezivanja"
+
+msgid "reader_media_order_position"
+msgstr "Položaj u mediju — od početka do kraja"
+
+msgid "reader_media_order_oldest"
+msgstr "Datum stvaranja — najstarije prvo"
+
+msgid "reader_media_order_newest"
+msgstr "Datum stvaranja — najnovije prvo"
+
+msgid "reader_media_order_due"
+msgstr "Dospjele / kartice u učenju prvo"
+
+msgid "reader_media_order_shortest"
+msgstr "Interval — najkraći prvo"
+
+msgid "reader_media_order_longest"
+msgstr "Interval — najduži prvo"
+
+msgid "reader_media_order_random"
+msgstr "Nasumično"
+
+msgid "reader_media_reason_suspended"
+msgstr "Obustavljeno"
+
+msgid "reader_media_reason_buried"
+msgstr "Zakopano"
+
+msgid "reader_media_reason_filtered"
+msgstr "U drugom filtriranom špilu"
+
+msgid "reader_media_reason_missing"
+msgstr "Kartica nedostaje"
+
+msgid "reader_media_reason_nested"
+msgstr "Ugniježđena kartica isključena"
+
+msgid "reader_media_reason_beyond_current"
+msgstr "Nakon trenutačnog položaja"
+
+msgid "reader_media_reason_unknown_position"
+msgstr "Položaj nije poznat"
+
+msgid "reader_media_reason_other_kind"
+msgstr "Izvan odabrane vrste tema/stavka"
+
+msgid "reader_media_reason_not_due"
+msgstr "Sada nije dospjelo"
+
+msgid "reader_media_reason_limit"
+msgstr "Izvan ograničenja ponavljanja"
+
+msgid "reader_media_excluded_suspended"
+msgstr "{count} obustavljeno"
+
+msgid "reader_media_excluded_buried"
+msgstr "{count} zakopano"
+
+msgid "reader_media_excluded_filtered"
+msgstr "{count} već u drugom filtriranom špilu"
+
+msgid "reader_media_excluded_missing"
+msgstr "{count} nedostaje"
+
+msgid "reader_media_excluded_nested"
+msgstr "{count} ugniježđeno"
+
+msgid "reader_media_excluded_beyond_current"
+msgstr "{count} nakon trenutačnog položaja"
+
+msgid "reader_media_excluded_unknown_position"
+msgstr "{count} bez poznatog položaja u mediju"
+
+msgid "reader_media_excluded_other_kind"
+msgstr "{count} izvan odabrane vrste tema/stavka"
+
+msgid "reader_media_excluded_not_due"
+msgstr "{count} sada nije dospjelo"
+
+msgid "reader_media_excluded_limit"
+msgstr "{count} izvan ograničenja ponavljanja"
+
+msgid "reader_media_preview_ready"
+msgid_plural "reader_media_preview_ready_plural"
+msgstr[0] "Spremno za ponavljanje: {count} kartica ({topics}, {items})."
+msgstr[1] "Spremno za ponavljanje: {count} kartice ({topics}, {items})."
+msgstr[2] "Spremno za ponavljanje: {count} kartica ({topics}, {items})."
+
+msgid "reader_copy"
+msgstr "Kopiraj"
+
+msgid "reader_help"
+msgstr "Pomoć"
+
+msgid "reader_items"
+msgstr "Stavke"
+
+msgid "reader_topics"
+msgstr "Teme"
+
+msgid "reader_not_applicable"
+msgstr "Nije primjenjivo"
+
+msgid "reader_save"
+msgstr "Spremi"
+
+msgid "reader_type_label"
+msgstr "Vrsta:"
+
+msgid "reader_postpone_action"
+msgstr "Odgodi"
+
+msgid "reader_postpone_adjust"
+msgstr "Prilagodba"
+
+msgid "reader_postpone_afactor_below_label"
+msgstr "A-faktor ispod:"
+
+msgid "reader_postpone_all_outstanding"
+msgstr "Sva dospjela ponavljanja"
+
+msgid "reader_postpone_applied_count"
+msgid_plural "reader_postpone_applied_count_plural"
+msgstr[0] "Odgođena je {count} kartica."
+msgstr[1] "Odgođene su {count} kartice."
+msgstr[2] "Odgođeno je {count} kartica."
+
+msgid "reader_postpone_apply_failed"
+msgstr "Nije moguće odgoditi odabrane kartice:\n{error}"
+
+msgid "reader_postpone_average_delay"
+msgstr "Prosječna odgoda: {percent}%"
+
+msgid "reader_postpone_average_interval"
+msgstr "Prosječni interval odgode: {days} dana"
+
+msgid "reader_postpone_branch_scope_label"
+msgstr "Opseg grane:"
+
+msgid "reader_postpone_branch_scope_unavailable"
+msgstr "Opseg odabrane grane dostupan je samo kada je odabran čvor stabla znanja."
+
+msgid "reader_postpone_browser_scope"
+msgstr "Trenutačni preglednik ({cards})"
+
+msgid "reader_postpone_card_count"
+msgid_plural "reader_postpone_card_count_plural"
+msgstr[0] "{count} kartica"
+msgstr[1] "{count} kartice"
+msgstr[2] "{count} kartica"
+
+msgid "reader_postpone_choose_default"
+msgstr "Odaberite ili spremite predložak prije postavljanja kao zadanog."
+
+msgid "reader_postpone_conservative_settings"
+msgstr "Uvijek odaberi najopreznije postavke"
+
+msgid "reader_postpone_count_label"
+msgstr "Broj odgoda:"
+
+msgid "reader_postpone_current_browser"
+msgstr "Trenutačni preglednik"
+
+msgid "reader_postpone_default"
+msgstr "Zadano"
+
+msgid "reader_postpone_default_set"
+msgstr "Predložak je postavljen kao zadani."
+
+msgid "reader_postpone_delay_factor_label"
+msgstr "Faktor odgode:"
+
+msgid "reader_postpone_delete_failed"
+msgstr "Nije moguće izbrisati taj predložak odgode."
+
+msgid "reader_postpone_elements"
+msgid_plural "reader_postpone_elements_plural"
+msgstr[0] "Elemenata za odgodu: {count}"
+msgstr[1] "Elemenata za odgodu: {count}"
+msgstr[2] "Elemenata za odgodu: {count}"
+
+msgid "reader_postpone_enter_name"
+msgstr "Unesite naziv predloška prije spremanja."
+
+msgid "reader_postpone_fi_unavailable"
+msgstr "Indeks zaboravljanja stavke još nije dostupan u Incrementu."
+
+msgid "reader_postpone_forgetting_below_label"
+msgstr "Indeks zaboravljanja ispod:"
+
+msgid "reader_postpone_global"
+msgstr "Globalno"
+
+msgid "reader_postpone_help_text"
+msgstr "Odgoda dospjelih elemenata produljuje interval kartica dodatnim danima.\n\nFaktor odgode određuje postotak dodatne odgode.\nOpseg određuje hoće li se radnja primijeniti na sve dospjele kartice, odabranu granu ili trenutačni preglednik.\nSimulacija prikazuje koliko bi kartica bilo odgođeno prije bilo kakve promjene."
+
+msgid "reader_postpone_ignore_settings"
+msgstr "Zanemari postavke"
+
+msgid "reader_postpone_include_not_outstanding"
+msgstr "Uključi elemente koji još nisu dospjeli"
+
+msgid "reader_postpone_information"
+msgstr "Informacije"
+
+msgid "reader_postpone_interval_beyond_label"
+msgstr "Interval veći od:"
+
+msgid "reader_postpone_items_skipped"
+msgid_plural "reader_postpone_items_skipped_plural"
+msgstr[0] "Preskočenih stavki: {count}"
+msgstr[1] "Preskočenih stavki: {count}"
+msgstr[2] "Preskočenih stavki: {count}"
+
+msgid "reader_postpone_liberal_settings"
+msgstr "Uvijek odaberi najblaže postavke"
+
+msgid "reader_postpone_list"
+msgstr "Popis"
+
+msgid "reader_postpone_max_found"
+msgstr "Najveći pronađeni interval: {interval}"
+
+msgid "reader_postpone_max_interval_label"
+msgstr "Najveći interval:"
+
+msgid "reader_postpone_max_qualified"
+msgstr "Najveći odgovarajući interval: {interval}"
+
+msgid "reader_postpone_method"
+msgstr "Način"
+
+msgid "reader_postpone_min_interval_label"
+msgstr "Najmanji interval:"
+
+msgid "reader_postpone_modify_item_fi"
+msgstr "Prilagodi odgodu stavke prema indeksu zaboravljanja"
+
+msgid "reader_postpone_modify_priority"
+msgstr "Prilagodi odgodu prema prioritetu elementa"
+
+msgid "reader_postpone_modify_topic_afactor"
+msgstr "Prilagodi odgodu teme prema A-faktoru"
+
+msgid "reader_postpone_name_label"
+msgstr "Naziv:"
+
+msgid "reader_postpone_named_browser_scope"
+msgstr "{name} ({cards})"
+
+msgid "reader_postpone_no_qualified_cards"
+msgstr "Nijedna kartica ne ispunjava uvjete za odgodu s trenutačnim postavkama."
+
+msgid "reader_postpone_no_subbranch_presets"
+msgstr "Ispod ove grane nema spremljenih predložaka podgrana."
+
+msgid "reader_postpone_parameters"
+msgstr "Parametri"
+
+msgid "reader_postpone_preset_deleted"
+msgstr "Predložak je izbrisan."
+
+msgid "reader_postpone_preset_saved"
+msgstr "Predložak odgode je spremljen."
+
+msgid "reader_postpone_priority_percent_label"
+msgstr "Prioritet (%):"
+
+msgid "reader_postpone_respect_settings"
+msgstr "Poštuj postavke"
+
+msgid "reader_postpone_restore_defaults"
+msgstr "Vrati zadane vrijednosti"
+
+msgid "reader_postpone_scope"
+msgstr "Opseg"
+
+msgid "reader_postpone_scope_needs_card"
+msgstr "Opseg {scope} zahtijeva barem jednu karticu."
+
+msgid "reader_postpone_select_branch_first"
+msgstr "Odaberite granu stabla znanja prije prikaza predložaka podgrana."
+
+msgid "reader_postpone_selected_branch"
+msgstr "Odabrana grana ili kategorija"
+
+msgid "reader_postpone_settings"
+msgstr "Postavke"
+
+msgid "reader_postpone_simulate"
+msgstr "Simuliraj"
+
+msgid "reader_postpone_simulation_copied"
+msgstr "Sažetak simulacije je kopiran."
+
+msgid "reader_postpone_simulation_failed"
+msgstr "Nije moguće simulirati odgodu grane:\n{error}"
+
+msgid "reader_postpone_skip_conditions_label"
+msgstr "Uvjeti preskakanja:"
+
+msgid "reader_postpone_skip_items"
+msgstr "Preskoči stavke"
+
+msgid "reader_postpone_skip_parameters"
+msgstr "Preskoči elemente prema parametrima (sljedeća stranica)"
+
+msgid "reader_postpone_skip_top"
+msgstr "Preskoči sljedeći broj elemenata najvišeg prioriteta"
+
+msgid "reader_postpone_skip_topics"
+msgstr "Preskoči teme"
+
+msgid "reader_postpone_subbranch_hint"
+msgstr "Predlošci podgrana pridružuju se spremljenim predlošcima grana. Pritisnite Spremi na odabranoj grani kako biste pridružili postavke tom podstablu."
+
+msgid "reader_postpone_subbranch_postpones"
+msgstr "Odgode podgrana"
+
+msgid "reader_postpone_subset"
+msgstr "Podskup"
+
+msgid "reader_postpone_title"
+msgstr "Odgodi dospjele elemente"
+
+msgid "reader_postpone_topics_skipped"
+msgid_plural "reader_postpone_topics_skipped_plural"
+msgstr[0] "Preskočenih tema: {count}"
+msgstr[1] "Preskočenih tema: {count}"
+msgstr[2] "Preskočenih tema: {count}"
+
+msgid "reader_tree_priority_afactor_label"
+msgstr "A-faktor:"
+
+msgid "reader_tree_priority_affected_count"
+msgid_plural "reader_tree_priority_affected_count_plural"
+msgstr[0] "To će utjecati na {count} karticu."
+msgstr[1] "To će utjecati na {count} kartice."
+msgstr[2] "To će utjecati na {count} kartica."
+
+msgid "reader_tree_priority_children"
+msgid_plural "reader_tree_priority_children_plural"
+msgstr[0] "{count} izravno dijete"
+msgstr[1] "{count} izravna djeteta"
+msgstr[2] "{count} izravne djece"
+
+msgid "reader_tree_priority_descendants"
+msgid_plural "reader_tree_priority_descendants_plural"
+msgstr[0] "{count} potomak"
+msgstr[1] "{count} potomka"
+msgstr[2] "{count} potomaka"
+
+msgid "reader_tree_priority_delta_label"
+msgstr "Promjena:"
+
+msgid "reader_tree_priority_end_label"
+msgstr "Završni prioritet:"
+
+msgid "reader_tree_priority_fade_children"
+msgstr "Smanji prioritete djece"
+
+msgid "reader_tree_priority_fade_hint"
+msgstr "Zadržava odabrani čvor na mjestu i postupno smanjuje važnost potomaka prema dubini."
+
+msgid "reader_tree_priority_fade_operation_hint"
+msgstr "Smanji hitnost djece bez promjene odabranog čvora."
+
+msgid "reader_tree_priority_focus_branch"
+msgstr "Istakni granu"
+
+msgid "reader_tree_priority_focus_hint"
+msgstr "Pomiče odabrani čvor i njegove potomke prema važnijem kraju, pri čemu se odabrani čvor pomiče najviše."
+
+msgid "reader_tree_priority_focus_operation_hint"
+msgstr "Pomakni cijelu granu prema važnijem kraju kako bi se češće učila."
+
+msgid "reader_tree_priority_include_random_root"
+msgstr "Uključi odabrani čvor u nasumičnu raspodjelu"
+
+msgid "reader_tree_priority_include_spread_root"
+msgstr "Uključi odabrani čvor u raspodjelu"
+
+msgid "reader_tree_priority_last_interval_label"
+msgstr "Zadnji interval:"
+
+msgid "reader_tree_priority_last_interval_value"
+msgid_plural "reader_tree_priority_last_interval_value_plural"
+msgstr[0] "{days} dan"
+msgstr[1] "{days} dana"
+msgstr[2] "{days} dana"
+
+msgid "reader_tree_priority_linear_spread"
+msgstr "Raspodijeli po podstablu"
+
+msgid "reader_tree_priority_maximum_label"
+msgstr "Najviše:"
+
+msgid "reader_tree_priority_minimum_label"
+msgstr "Najmanje:"
+
+msgid "reader_tree_priority_no_fade_children"
+msgstr "Ovaj čvor nema dječjih prioriteta za smanjivanje."
+
+msgid "reader_tree_priority_no_random_children"
+msgstr "Ovaj čvor nema djece za nasumičnu raspodjelu."
+
+msgid "reader_tree_priority_no_spread_children"
+msgstr "Ovaj čvor nema djece među kojom bi se raspodijelili prioriteti."
+
+msgid "reader_tree_priority_operation_label"
+msgstr "Radnja:"
+
+msgid "reader_tree_priority_priority_label"
+msgstr "Prioritet:"
+
+msgid "reader_tree_priority_random_hint"
+msgstr "Dodijeli nasumične prioritete unutar odabranog raspona."
+
+msgid "reader_tree_priority_randomize"
+msgstr "Nasumično raspodijeli podstablo"
+
+msgid "reader_tree_priority_range"
+msgstr "Trenutačni raspon prioriteta podstabla: {minimum} do {maximum}"
+
+msgid "reader_tree_priority_selected_node"
+msgstr "Odabrani čvor stabla znanja"
+
+msgid "reader_tree_priority_set_hint"
+msgstr "Promijeni samo odabrani čvor. Ovdje se za čvorove tema može promijeniti i A-faktor."
+
+msgid "reader_tree_priority_set_selected"
+msgstr "Postavi odabrani čvor"
+
+msgid "reader_tree_priority_shift_hint"
+msgstr "Primijeni istu promjenu s predznakom na odabrani čvor i sve potomke."
+
+msgid "reader_tree_priority_shift_subtree"
+msgstr "Pomakni podstablo"
+
+msgid "reader_tree_priority_spread_hint"
+msgstr "Preraspodijeli prioritete prema dubini stabla od početne do završne vrijednosti."
+
+msgid "reader_tree_priority_start_label"
+msgstr "Početni prioritet:"
+
+msgid "reader_tree_priority_stats"
+msgstr "Podstablo: {total} · {descendants} · {children} · najveća dubina {depth} · važniji kraj {end}"
+
+msgid "reader_tree_priority_title"
+msgstr "Prioritet stabla znanja"
+
+msgid "reader_tree_priority_total_cards"
+msgid_plural "reader_tree_priority_total_cards_plural"
+msgstr[0] "ukupno {count} kartica"
+msgstr[1] "ukupno {count} kartice"
+msgstr[2] "ukupno {count} kartica"
+
+msgid "reader_tree_subset_afactor"
+msgstr "A-faktor"
+
+msgid "reader_tree_subset_browser_failed"
+msgstr "Nije moguće otvoriti preglednik za ovaj podskup:\n{error}"
+
+msgid "reader_tree_subset_browser_unavailable"
+msgstr "Nije moguće otvoriti preglednik Ankija iz prikaza podskupa."
+
+msgid "reader_tree_subset_card_id"
+msgstr "ID kartice"
+
+msgid "reader_tree_subset_current_scope"
+msgstr "Trenutačni podskup"
+
+msgid "reader_tree_subset_deck"
+msgstr "Špil"
+
+msgid "reader_tree_subset_elements"
+msgstr "Elementi podskupa"
+
+msgid "reader_tree_subset_filter_label"
+msgstr "Filtar:"
+
+msgid "reader_tree_subset_filter_placeholder"
+msgstr "Filtriraj prema naslovu, špilu ili vrsti bilješke"
+
+msgid "reader_tree_subset_filter_status"
+msgid_plural "reader_tree_subset_filter_status_plural"
+msgstr[0] "Filtar je aktivan: prikazano {visible} od {total} kartice u ovom podskupu."
+msgstr[1] "Filtar je aktivan: prikazano {visible} od {total} kartice u ovom podskupu."
+msgstr[2] "Filtar je aktivan: prikazano {visible} od {total} kartica u ovom podskupu."
+
+msgid "reader_tree_subset_interval"
+msgstr "Interval"
+
+msgid "reader_tree_subset_kind"
+msgstr "Vrsta"
+
+msgid "reader_tree_subset_lapses"
+msgstr "Zaboravljanja"
+
+msgid "reader_tree_subset_last_review"
+msgstr "Zadnje ponavljanje"
+
+msgid "reader_tree_subset_new"
+msgstr "Novo"
+
+msgid "reader_tree_subset_next_review"
+msgstr "Sljedeće ponavljanje"
+
+msgid "reader_tree_subset_no_cards"
+msgstr "U ovom podskupu nema dostupnih kartica."
+
+msgid "reader_tree_subset_node_only"
+msgstr "Samo odabrani čvor"
+
+msgid "reader_tree_subset_note_type"
+msgstr "Vrsta bilješke"
+
+msgid "reader_tree_subset_number"
+msgstr "Br."
+
+msgid "reader_tree_subset_open_browser"
+msgstr "Otvori u pregledniku"
+
+msgid "reader_tree_subset_postpone"
+msgstr "Odgodi podskup"
+
+msgid "reader_tree_subset_priority"
+msgstr "Prioritet"
+
+msgid "reader_tree_subset_reps"
+msgstr "Ponavljanja"
+
+msgid "reader_tree_subset_reveal_failed"
+msgstr "Nije moguće prikazati ovu karticu u stablu znanja:\n{error}"
+
+msgid "reader_tree_subset_reveal_tree"
+msgstr "Prikaži u stablu"
+
+msgid "reader_tree_subset_revealed"
+msgstr "Odabrana kartica prikazana je u stablu znanja."
+
+msgid "reader_tree_subset_scope_label"
+msgstr "Opseg:"
+
+msgid "reader_tree_subset_scope_title"
+msgstr "Podskup: {title}"
+
+msgid "reader_tree_subset_select_hint"
+msgstr "Odaberite jedan ili više redaka kako biste učili ili odgodili samo odabrane kartice. Ako ništa nije odabrano, radnje se primjenjuju na sve vidljive retke."
+
+msgid "reader_tree_subset_study"
+msgstr "Uči podskup"
+
+msgid "reader_tree_subset_study_failed"
+msgstr "Nije moguće otvoriti sesiju učenja podskupa:\n{error}"
+
+msgid "reader_tree_subset_summary"
+msgid_plural "reader_tree_subset_summary_plural"
+msgstr[0] "{title} · {count} kartica u opsegu {scope}."
+msgstr[1] "{title} · {count} kartice u opsegu {scope}."
+msgstr[2] "{title} · {count} kartica u opsegu {scope}."
+
+msgid "reader_tree_subset_title"
+msgstr "Ponavljanje podskupa — {title}"
+
+msgid "reader_tree_subset_whole_subtree"
+msgstr "Cijelo podstablo"
+
+msgid "reader_yes"
+msgstr "Da"
+
+msgid "reader_no"
+msgstr "Ne"
+
+
+#. Generated citation label; document titles remain unchanged.
+msgid "reader_pdf_citation_label"
+msgstr "Stranica {page}. iz {title}"
+
+#. Generated citation label; document titles remain unchanged.
+msgid "reader_pdf_copied_label"
+msgstr "{title} — stranica {page}"

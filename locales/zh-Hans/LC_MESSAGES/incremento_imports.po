@@ -1,0 +1,1172 @@
+# Import dialog interface. Edit translations here.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
+
+#. Import dialog label: Add Local File
+msgid "imports_add_local_file"
+msgstr "添加本地文件"
+
+#. Import dialog label: File:
+msgid "imports_file_label"
+msgstr "文件："
+
+#. Import dialog label: Choose a local file…
+msgid "imports_choose_local_file"
+msgstr "选择本地文件…"
+
+#. Import dialog label: Browse…
+msgid "imports_browse"
+msgstr "浏览…"
+
+#. Import dialog label: Title:
+msgid "imports_title_label"
+msgstr "标题："
+
+#. Import dialog label: Card title
+msgid "imports_card_title"
+msgstr "卡片标题"
+
+#. Import dialog label: Storage mode:
+msgid "imports_storage_mode"
+msgstr "存储方式："
+
+#. Import dialog label: Reference original file
+msgid "imports_storage_reference"
+msgstr "引用原始文件"
+
+#. Import dialog label: Copy into Incremento
+msgid "imports_storage_managed"
+msgstr "复制到 Incremento"
+
+#. Import dialog label: Deck:
+msgid "imports_deck_label"
+msgstr "牌组："
+
+#. Import dialog label: Note / instructions (optional):
+msgid "imports_note_optional"
+msgstr "备注或说明（可选）："
+
+#. Import dialog label: Describe what to do with this file when the card appears…
+msgid "imports_file_note_placeholder"
+msgstr "描述出现这张卡片时应如何处理此文件…"
+
+#. Import dialog label: Add Local File Card
+msgid "imports_add_local_file_card"
+msgstr "添加本地文件卡片"
+
+#. Import dialog label: Cancel
+msgid "imports_cancel"
+msgstr "取消"
+
+#. Import dialog label: Choose local file
+msgid "imports_choose_local_file_dialog"
+msgstr "选择本地文件"
+
+#. Import dialog label: All files (*)
+msgid "imports_all_files_filter"
+msgstr "所有文件 (*)"
+
+#. Import dialog label: Copies the file into Incremento's per-profile storage so the card keeps working even if the original is moved.
+msgid "imports_managed_hint"
+msgstr "将文件复制到 Incremento 的配置文件存储中，因此即使原文件被移动，卡片仍可使用。"
+
+#. Import dialog label: Stores the current path on your computer. If the file is moved or deleted later, the card will need relinking.
+msgid "imports_reference_hint"
+msgstr "保存此文件在计算机上的当前位置。如果以后移动或删除文件，卡片将需要重新关联。"
+
+#. Import dialog label: Add Web Page
+msgid "imports_add_web_page"
+msgstr "添加网页"
+
+#. Import dialog label: URL:
+msgid "imports_url_label"
+msgstr "网址："
+
+#. Import dialog label: https://…
+msgid "imports_https_placeholder"
+msgstr "https://…"
+
+#. Import dialog label: Add Page
+msgid "imports_add_page"
+msgstr "添加页面"
+
+#. Import dialog label: Add to Markdown
+msgid "imports_add_markdown"
+msgstr "添加到 Markdown"
+
+#. Import dialog label: Markdown note title
+msgid "imports_markdown_title_placeholder"
+msgstr "Markdown 笔记标题"
+
+#. Import dialog label: Filename (optional):
+msgid "imports_filename_optional"
+msgstr "文件名（可选）："
+
+#. Import dialog label: my-note.md  (stored under user_files/writing)
+msgid "imports_markdown_filename_placeholder"
+msgstr "my-note.md（保存在 user_files/writing 中）"
+
+#. Import dialog label: Import mode:
+msgid "imports_import_mode"
+msgstr "导入方式："
+
+#. Import dialog label: Manual markdown
+msgid "imports_manual_markdown"
+msgstr "手动输入 Markdown"
+
+#. Import dialog label: Import webpage markdown
+msgid "imports_webpage_markdown"
+msgstr "导入网页 Markdown"
+
+#. Import dialog label: Source URL:
+msgid "imports_source_url"
+msgstr "来源网址："
+
+#. Import dialog label: Fetch page
+msgid "imports_fetch_page"
+msgstr "获取页面"
+
+#. Import dialog label: Webpage scope:
+msgid "imports_webpage_scope"
+msgstr "网页范围："
+
+#. Import dialog label: Main content
+msgid "imports_main_content"
+msgstr "主要内容"
+
+#. Import dialog label: Entire page
+msgid "imports_entire_page"
+msgstr "整个页面"
+
+#. Import dialog label: Initial markdown:
+msgid "imports_initial_markdown"
+msgstr "初始 Markdown："
+
+#. Import dialog label: The markdown file is autosaved while typing when this card is reviewed.
+msgid "imports_markdown_autosave_hint"
+msgstr "复习这张卡片时，输入的 Markdown 内容会自动保存。"
+
+#. Import dialog label: Add Markdown Card
+msgid "imports_add_markdown_card"
+msgstr "添加 Markdown 卡片"
+
+#. Import dialog label: Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.
+msgid "imports_webpage_fetch_hint"
+msgstr "将网页内容获取为 Markdown。“主要内容”会尽量排除导航和侧栏。"
+
+#. Import dialog label: Write or paste markdown manually, or switch import mode to pull it from a webpage.
+msgid "imports_manual_hint"
+msgstr "手动编写或粘贴 Markdown，或切换导入方式以从网页获取内容。"
+
+#. Import dialog label: Please enter a source URL first.
+msgid "imports_writing_source_required"
+msgstr "请先输入来源网址。"
+
+#. Import dialog label: Fetching webpage markdown…
+msgid "imports_fetching_markdown"
+msgstr "正在获取网页 Markdown…"
+
+#. Import dialog label: Fetch failed.
+msgid "imports_fetch_failed_short"
+msgstr "获取失败。"
+
+#. Import dialog label: No markdown content was extracted.
+msgid "imports_no_markdown_extracted"
+msgstr "未提取到 Markdown 内容。"
+
+#. Import dialog label: Failed to fetch webpage markdown:
+msgid "imports_no_readable_markdown"
+msgstr "获取网页 Markdown 失败：\n未提取到可读内容。"
+
+#. Import dialog label: Webpage markdown loaded into the editor.
+msgid "imports_markdown_loaded"
+msgstr "网页 Markdown 已加载到编辑器。"
+
+#. Writing import dialog UI: # Heading
+msgid "imports_markdown_editor_placeholder"
+msgstr "# 标题\n\n在此编写初始内容…"
+
+#. Writing import dialog UI: Failed to fetch webpage markdown:
+msgid "imports_writing_fetch_failed"
+msgstr "获取网页 Markdown 失败：\n{error}"
+
+#. Import video/webpage UI: Add Video
+msgid "imports_add_video"
+msgstr "添加视频"
+
+#. Import video/webpage UI: Source:
+msgid "imports_source_label"
+msgstr "来源："
+
+#. Import video/webpage UI: YouTube URL
+msgid "imports_youtube_url"
+msgstr "YouTube 网址"
+
+#. Import video/webpage UI: Vimeo URL
+msgid "imports_vimeo_url"
+msgstr "Vimeo 网址"
+
+#. Import video/webpage UI: Local video file
+msgid "imports_local_video_file"
+msgstr "本地视频文件"
+
+#. Import video/webpage UI: Video URL:
+msgid "imports_video_url_label"
+msgstr "视频网址："
+
+#. Import video/webpage UI: Local video file:
+msgid "imports_local_video_label"
+msgstr "本地视频文件："
+
+#. Import video/webpage UI: Choose a local video file…
+msgid "imports_choose_local_video"
+msgstr "选择本地视频文件…"
+
+#. Import video/webpage UI: Encoding:
+msgid "imports_encoding_label"
+msgstr "编码："
+
+#. Import video/webpage UI: Original quality (no re-encoding)
+msgid "imports_original_quality"
+msgstr "原始画质（不重新编码）"
+
+#. Import video/webpage UI: Encode H.264 high quality
+msgid "imports_encode_high"
+msgstr "编码为高画质 H.264"
+
+#. Import video/webpage UI: Encode H.264 smaller size
+msgid "imports_encode_small"
+msgstr "编码为较小体积的 H.264"
+
+#. Import video/webpage UI: Download & compress into user_files/videos
+msgid "imports_download_compress"
+msgstr "下载并压缩到 user_files/videos"
+
+#. Import video/webpage UI: Requires yt-dlp and ffmpeg installed on your system.
+msgid "imports_download_requirements"
+msgstr "需要在系统上安装 yt-dlp 和 ffmpeg。"
+
+#. Import video/webpage UI: Max resolution:
+msgid "imports_max_resolution"
+msgstr "最高分辨率："
+
+#. Import video/webpage UI: Best available
+msgid "imports_best_available"
+msgstr "最佳可用"
+
+#. Import video/webpage UI: Refresh
+msgid "imports_refresh"
+msgstr "刷新"
+
+#. Import video/webpage UI: Will try to auto-install yt-dlp on first use. Compression runs when ffmpeg is available.
+msgid "imports_ytdlp_ffmpeg_hint"
+msgstr "首次使用时将尝试自动安装 yt-dlp。安装 ffmpeg 后即可压缩。"
+
+#. Import video/webpage UI: Will try to auto-install yt-dlp on first use.
+msgid "imports_ytdlp_hint"
+msgstr "首次使用时将尝试自动安装 yt-dlp。"
+
+#. Import video/webpage UI: ffmpeg not found: video will still download, but compression is skipped.
+msgid "imports_ffmpeg_missing_hint"
+msgstr "未找到 ffmpeg：仍会下载视频，但会跳过压缩。"
+
+#. Import video/webpage UI: Optional: creates a local compressed copy for offline playback.
+msgid "imports_offline_copy_hint"
+msgstr "可选：创建压缩后的本地副本，以便离线播放。"
+
+#. Import video/webpage UI: Choose Local Video
+msgid "imports_choose_local_video_dialog"
+msgstr "选择本地视频"
+
+#. Import video/webpage UI: YouTube URL:
+msgid "imports_youtube_url_label"
+msgstr "YouTube 网址："
+
+#. Import video/webpage UI: Vimeo URL:
+msgid "imports_vimeo_url_label"
+msgstr "Vimeo 网址："
+
+#. Import video/webpage UI: Enter a valid YouTube or Vimeo URL to load available resolutions.
+msgid "imports_video_resolutions_enter_url"
+msgstr "请输入有效的 YouTube 或 Vimeo 网址以加载可用分辨率。"
+
+#. Import video/webpage UI: Loading resolutions…
+msgid "imports_video_resolutions_loading"
+msgstr "正在加载分辨率…"
+
+#. Import video/webpage UI: Fetching available resolutions…
+msgid "imports_video_resolutions_fetching"
+msgstr "正在获取可用分辨率…"
+
+#. Import video/webpage UI: Unknown error.
+msgid "imports_unknown_error"
+msgstr "未知错误。"
+
+#. Import video/webpage UI: No explicit resolutions found. Using best available.
+msgid "imports_video_resolutions_none"
+msgstr "未找到明确的分辨率选项。将使用最佳可用画质。"
+
+#. Import video/webpage UI: Webpage to PDF
+msgid "imports_webpage_to_pdf"
+msgstr "网页转 PDF"
+
+#. Import video/webpage UI: https://example.com/article
+msgid "imports_webpage_url_placeholder"
+msgstr "https://example.com/article"
+
+#. Import video/webpage UI: Card title:
+msgid "imports_webpage_card_title_label"
+msgstr "卡片标题："
+
+#. Import video/webpage UI: Article title
+msgid "imports_article_title"
+msgstr "文章标题"
+
+#. Import video/webpage UI: Import
+msgid "imports_import"
+msgstr "导入"
+
+#. Import video/webpage UI: Please enter a URL.
+msgid "imports_webpage_enter_url"
+msgstr "请输入网址。"
+
+#. Import video/webpage UI: Generating PDF…
+msgid "imports_webpage_generating_pdf"
+msgstr "正在生成 PDF…"
+
+#. Import video/webpage UI: Missing webpage source.
+msgid "imports_webpage_missing_source"
+msgstr "缺少网页来源。"
+
+#. Import video/webpage UI: Failed to generate PDF.
+msgid "imports_webpage_pdf_failed"
+msgstr "生成 PDF 失败。"
+
+#. Import video/webpage UI: Failed to load page.
+msgid "imports_webpage_load_failed"
+msgstr "加载页面失败。"
+
+#. Video and webpage import UI: https://www.youtube.com/watch?v=… or https://player.vimeo.com/video/…
+msgid "imports_video_url_example"
+msgstr "https://www.youtube.com/watch?v=… 或 https://player.vimeo.com/video/…"
+
+#. Video and webpage import UI: Local import copies file into user_files/videos. Use original quality for no re-encoding.
+msgid "imports_video_local_hint"
+msgstr "本地导入会将文件复制到 user_files/videos。选择原始画质可避免重新编码。"
+
+#. Video and webpage import UI: Video files ({patterns});;All files (*)
+msgid "imports_video_file_filter"
+msgstr "视频文件（{patterns}）;;所有文件 (*)"
+
+#. Video and webpage import UI: https://www.youtube.com/watch?v=…
+msgid "imports_youtube_url_example"
+msgstr "https://www.youtube.com/watch?v=…"
+
+#. Video and webpage import UI: https://player.vimeo.com/video/…
+msgid "imports_vimeo_url_example"
+msgstr "https://player.vimeo.com/video/…"
+
+#. Video and webpage import UI: Could not load resolutions ({error}). Using best available.
+msgid "imports_video_resolutions_failed"
+msgstr "无法加载分辨率（{error}）。将使用最佳可用画质。"
+
+#. Video and webpage import UI: Available: {heights}
+msgid "imports_video_resolutions_available"
+msgstr "可用分辨率：{heights}"
+
+#. Video and webpage import UI: Timed out generating PDF after {seconds} seconds.
+msgid "imports_webpage_pdf_timeout"
+msgstr "生成 PDF 超时，已等待 {seconds} 秒。"
+
+#. PDF/EPUB import dialog UI: Add PDFs
+msgid "imports_pdf_title"
+msgstr "添加 PDF"
+
+#. PDF/EPUB import dialog UI: Add EPUBs
+msgid "imports_epub_title"
+msgstr "添加 EPUB"
+
+#. PDF/EPUB import dialog UI: Add files…
+msgid "imports_add_files"
+msgstr "添加文件…"
+
+#. PDF/EPUB import dialog UI: Add folder…
+msgid "imports_add_folder"
+msgstr "添加文件夹…"
+
+#. PDF/EPUB import dialog UI: Select all
+msgid "imports_select_all"
+msgstr "全选"
+
+#. PDF/EPUB import dialog UI: Deselect all
+msgid "imports_deselect_all"
+msgstr "取消全选"
+
+#. PDF/EPUB import dialog UI: Remove selected
+msgid "imports_remove_selected"
+msgstr "移除所选项"
+
+#. PDF/EPUB import dialog UI: Undo remove
+msgid "imports_undo_remove"
+msgstr "撤销移除"
+
+#. PDF/EPUB import dialog UI: Filter PDFs by file name…
+msgid "imports_filter_pdfs"
+msgstr "按文件名筛选 PDF…"
+
+#. PDF/EPUB import dialog UI: Filter EPUBs by file name…
+msgid "imports_filter_epubs"
+msgstr "按文件名筛选 EPUB…"
+
+#. PDF/EPUB import dialog UI: File
+msgid "imports_table_file"
+msgstr "文件"
+
+#. PDF/EPUB import dialog UI: Tags
+msgid "imports_table_tags"
+msgstr "标签"
+
+#. PDF/EPUB import dialog UI: Priority
+msgid "imports_table_priority"
+msgstr "优先级"
+
+#. PDF/EPUB import dialog UI: OCR
+msgid "imports_table_ocr"
+msgstr "OCR"
+
+#. PDF/EPUB import dialog UI: Status
+msgid "imports_table_status"
+msgstr "状态"
+
+#. PDF/EPUB import dialog UI: Tags for all:
+msgid "imports_tags_for_all"
+msgstr "应用于全部的标签："
+
+#. PDF/EPUB import dialog UI: Use file name as title
+msgid "imports_use_filename_title"
+msgstr "使用文件名作为标题"
+
+#. PDF/EPUB import dialog UI: Preview
+msgid "imports_preview"
+msgstr "预览"
+
+#. PDF/EPUB import dialog UI: Select a file to preview
+msgid "imports_preview_select_file"
+msgstr "选择文件以预览"
+
+#. PDF/EPUB import dialog UI: Add
+msgid "imports_add"
+msgstr "添加"
+
+#. PDF/EPUB import dialog UI: Select PDF files
+msgid "imports_select_pdf_files"
+msgstr "选择 PDF 文件"
+
+#. PDF/EPUB import dialog UI: PDF files (*.pdf)
+msgid "imports_pdf_file_filter"
+msgstr "PDF 文件 (*.pdf)"
+
+#. PDF/EPUB import dialog UI: Select folder with PDFs
+msgid "imports_select_pdf_folder"
+msgstr "选择包含 PDF 的文件夹"
+
+#. PDF/EPUB import dialog UI: Choose EPUB files
+msgid "imports_select_epub_files"
+msgstr "选择 EPUB 文件"
+
+#. PDF/EPUB import dialog UI: Choose folder
+msgid "imports_select_folder"
+msgstr "选择文件夹"
+
+#. PDF/EPUB import dialog UI: EPUB files (*.epub)
+msgid "imports_epub_file_filter"
+msgstr "EPUB 文件 (*.epub)"
+
+#. PDF/EPUB import dialog UI: Found 0 new PDFs in folder
+msgid "imports_pdf_folder_none"
+msgstr "文件夹中没有新的 PDF"
+
+#. PDF/EPUB import dialog UI: Found 0 new EPUBs in folder
+msgid "imports_epub_folder_none"
+msgstr "文件夹中没有新的 EPUB"
+
+#. PDF/EPUB import dialog UI: Checked PDFs will be imported when you click Add
+msgid "imports_pdf_checked_hint"
+msgstr "点击“添加”后将导入勾选的 PDF"
+
+#. PDF/EPUB import dialog UI: Checked EPUBs will be imported when you click Add
+msgid "imports_epub_checked_hint"
+msgstr "点击“添加”后将导入勾选的 EPUB"
+
+#. PDF/EPUB import dialog UI: Use OCR
+msgid "imports_use_ocr"
+msgstr "使用 OCR"
+
+#. PDF/EPUB import dialog UI: Run Tesseract OCR to embed a text layer
+msgid "imports_ocr_tooltip"
+msgstr "运行 Tesseract OCR 以嵌入文本层"
+
+#. PDF/EPUB import dialog UI: No OCR ⚠
+msgid "imports_no_ocr_warning"
+msgstr "无 OCR ⚠"
+
+#. PDF/EPUB import dialog UI: No PDFs match the current filter
+msgid "imports_pdf_no_matches"
+msgstr "没有符合当前筛选条件的 PDF"
+
+#. PDF/EPUB import dialog UI: Loading…
+msgid "imports_loading"
+msgstr "正在加载…"
+
+#. PDF/EPUB import dialog UI: Detecting…
+msgid "imports_detecting"
+msgstr "正在检测…"
+
+#. PDF/EPUB import dialog UI: Please add at least one PDF file.
+msgid "imports_pdf_choose_file"
+msgstr "请至少添加一个 PDF 文件。"
+
+#. PDF/EPUB import dialog UI: Please check at least one PDF to import.
+msgid "imports_choose_checked_pdf"
+msgstr "请勾选至少一个要导入的 PDF。"
+
+#. PDF/EPUB import dialog UI: Choose at least one EPUB file.
+msgid "imports_epub_choose_file"
+msgstr "请至少选择一个 EPUB 文件。"
+
+#. PDF/EPUB import dialog UI: Please check at least one EPUB to import.
+msgid "imports_choose_checked_epub"
+msgstr "请勾选至少一个要导入的 EPUB。"
+
+#. PDF/EPUB import dialog UI: For multiple PDFs, enable 'Use file name as title'.
+msgid "imports_multiple_pdf_title"
+msgstr "导入多个 PDF 时，请启用“使用文件名作为标题”。"
+
+#. PDF/EPUB import dialog UI: For multiple EPUBs, enable 'Use file name as title'.
+msgid "imports_multiple_epub_title"
+msgstr "导入多个 EPUB 时，请启用“使用文件名作为标题”。"
+
+#. PDF/EPUB import dialog UI: Please enter a title.
+msgid "imports_enter_title"
+msgstr "请输入标题。"
+
+#. PDF/EPUB import dialog UI: Starting
+msgid "imports_starting"
+msgstr "开始"
+
+#. PDF/EPUB import dialog UI: Adding…
+msgid "imports_adding"
+msgstr "正在添加…"
+
+#. PDF/EPUB import dialog UI: Done
+msgid "imports_done"
+msgstr "完成"
+
+#. PDF/EPUB import dialog UI: Failed
+msgid "imports_failed"
+msgstr "失败"
+
+#. PDF/EPUB import dialog UI: Derived from each file name
+msgid "imports_derived_filename"
+msgstr "由各文件名生成"
+
+#. PDF/EPUB import dialog UI: Scanning EPUB folder…
+msgid "imports_epub_folder_scanning"
+msgstr "正在扫描 EPUB 文件夹…"
+
+#. PDF/EPUB import dialog UI: Failed to scan EPUB folder:
+msgid "imports_epub_scanning_failed"
+msgstr "扫描 EPUB 文件夹失败："
+
+#. PDF/EPUB import feedback: Found {count} PDFs in folder · loaded into dialog
+msgid "imports_pdf_folder_loaded"
+msgstr "在文件夹中找到 {count} 个 PDF · 已加载到对话框"
+
+#. PDF/EPUB import feedback: Found {count} EPUBs in folder · loaded into dialog
+msgid "imports_epub_folder_loaded"
+msgstr "在文件夹中找到 {count} 个 EPUB · 已加载到对话框"
+
+#. PDF/EPUB import feedback: This PDF has no selectable text and Tesseract is not installed.
+msgid "imports_pdf_ocr_unavailable"
+msgstr "此 PDF 没有可选中的文本，且未安装 Tesseract。"
+
+#. PDF/EPUB import feedback: OCR…
+msgid "imports_ocr_running"
+msgstr "正在识别文字…"
+
+#. PDF/EPUB import feedback: OCR {current}/{total}
+msgid "imports_ocr_progress"
+msgstr "文字识别 {current}/{total}"
+
+#. PDF/EPUB import feedback: ✓ (no text)
+msgid "imports_ocr_no_text"
+msgstr "✓（无文本）"
+
+#. PDF/EPUB import feedback: Priority for this PDF. {important_end} is highest importance, 50 is default.
+msgid "imports_pdf_priority_hint"
+msgstr "此 PDF 的优先级。{important_end} 表示最高重要性，默认值为 50。"
+
+#. PDF/EPUB import feedback: Priority for this EPUB. {important_end} is highest importance, 50 is default.
+msgid "imports_epub_priority_hint"
+msgstr "此 EPUB 的优先级。{important_end} 表示最高重要性，默认值为 50。"
+
+#. PDF/EPUB import feedback: Adding PDFs…
+msgid "imports_pdf_adding"
+msgstr "正在添加 PDF…"
+
+#. PDF/EPUB import feedback: Adding EPUBs…
+msgid "imports_epub_adding"
+msgstr "正在添加 EPUB…"
+
+#. PDF/EPUB import feedback: Adding PDFs… {completed} / {total}
+msgid "imports_pdf_progress"
+msgstr "正在添加 PDF… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Adding EPUBs… {completed} / {total}
+msgid "imports_epub_progress"
+msgstr "正在添加 EPUB… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Adding PDFs… {completed} / {total} · {phase}: {filename}
+msgid "imports_pdf_progress_detail"
+msgstr "正在添加 PDF… {completed} / {total} · {phase}：{filename}"
+
+#. PDF/EPUB import feedback: Adding EPUBs… {completed} / {total} · {phase}: {filename}
+msgid "imports_epub_progress_detail"
+msgstr "正在添加 EPUB… {completed} / {total} · {phase}：{filename}"
+
+#. PDF/EPUB import feedback: Found {found} PDFs in folder · {remaining} remaining · adding… {completed} / {total}
+msgid "imports_pdf_folder_progress"
+msgstr "文件夹中找到 {found} 个 PDF · 剩余 {remaining} 个 · 正在添加… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Found {found} EPUBs in folder · {remaining} remaining · adding… {completed} / {total}
+msgid "imports_epub_folder_progress"
+msgstr "文件夹中找到 {found} 个 EPUB · 剩余 {remaining} 个 · 正在添加… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Failed to scan EPUB folder: {error}
+msgid "imports_epub_scan_failed"
+msgstr "扫描 EPUB 文件夹失败：{error}"
+
+#. PDF/EPUB import feedback: {total} EPUBs in dialog · {checked} checked to import
+msgid "imports_epub_count_summary"
+msgstr "对话框中有 {total} 个 EPUB · 已勾选导入 {checked} 个"
+
+#. PDF/EPUB import feedback:  · {visible} visible
+msgid "imports_epub_visible_count"
+msgstr " · 可见 {visible} 个"
+
+#. Activity Center UI: Running
+msgid "imports_activity_running"
+msgstr "运行中"
+
+#. Activity Center UI: Completed
+msgid "imports_activity_completed"
+msgstr "已完成"
+
+#. Activity Center UI: Failed
+msgid "imports_activity_failed"
+msgstr "失败"
+
+#. Activity Center UI: Cancelled
+msgid "imports_activity_cancelled"
+msgstr "已取消"
+
+#. Activity Center UI: Unknown
+msgid "imports_activity_unknown"
+msgstr "未知"
+
+#. Activity Center UI: Complete
+msgid "imports_activity_complete"
+msgstr "完成"
+
+#. Activity Center UI: Working…
+msgid "imports_activity_working"
+msgstr "处理中…"
+
+#. Activity Center UI: now
+msgid "imports_activity_now"
+msgstr "刚刚"
+
+#. Activity Center UI: Incremento Activity Center
+msgid "imports_activity_title"
+msgstr "Incremento 活动中心"
+
+#. Activity Center UI: See active and recent background work in one place. Cancel and Retry are enabled only when an operation supports them.
+msgid "imports_activity_intro"
+msgstr "在同一处查看正在进行和近期的后台任务。仅当任务支持时，才可取消或重试。"
+
+#. Activity Center UI: Show completed activity
+msgid "imports_activity_show_finished"
+msgstr "显示已完成的活动"
+
+#. Activity Center UI: Show completed background activity
+msgid "imports_activity_show_finished_accessible"
+msgstr "显示已完成的后台活动"
+
+#. Activity Center UI: Clear Finished
+msgid "imports_activity_clear_finished"
+msgstr "清除已完成项"
+
+#. Activity Center UI: Clear finished Incremento activity
+msgid "imports_activity_clear_finished_accessible"
+msgstr "清除已完成的 Incremento 活动"
+
+#. Activity Center UI: Activity
+msgid "imports_activity_column_activity"
+msgstr "活动"
+
+#. Activity Center UI: Category
+msgid "imports_activity_column_category"
+msgstr "类别"
+
+#. Activity Center UI: Status
+msgid "imports_activity_column_status"
+msgstr "状态"
+
+#. Activity Center UI: Progress
+msgid "imports_activity_column_progress"
+msgstr "进度"
+
+#. Activity Center UI: Updated
+msgid "imports_activity_column_updated"
+msgstr "更新时间"
+
+#. Activity Center UI: Incremento background activity
+msgid "imports_activity_tree_accessible"
+msgstr "Incremento 后台活动"
+
+#. Activity Center UI: Select an activity to see details.
+msgid "imports_activity_select_detail"
+msgstr "选择一项活动以查看详情。"
+
+#. Activity Center UI: Selected activity details
+msgid "imports_activity_detail_accessible"
+msgstr "所选活动的详情"
+
+#. Activity Center UI: Cancel Task
+msgid "imports_activity_cancel_task"
+msgstr "取消任务"
+
+#. Activity Center UI: Retry
+msgid "imports_activity_retry"
+msgstr "重试"
+
+#. Activity Center UI: Close
+msgid "imports_activity_close"
+msgstr "关闭"
+
+#. Activity Center UI: Cancel selected activity
+msgid "imports_activity_cancel_accessible"
+msgstr "取消所选活动"
+
+#. Activity Center UI: Retry selected activity
+msgid "imports_activity_retry_accessible"
+msgstr "重试所选活动"
+
+#. Activity Center UI: Close Incremento Activity Center
+msgid "imports_activity_close_accessible"
+msgstr "关闭 Incremento 活动中心"
+
+#. Activity Center UI: No activity to show.
+msgid "imports_activity_none"
+msgstr "没有可显示的活动。"
+
+#. Activity Center UI: No additional details.
+msgid "imports_activity_no_details"
+msgstr "没有其他详情。"
+
+#. Activity Center elapsed time: {count} minute ago
+msgid "imports_activity_minutes_ago"
+msgid_plural "imports_activity_minutes_ago_plural"
+msgstr[0] "{count} 分钟前"
+
+#. Activity Center elapsed time: {count} hour ago
+msgid "imports_activity_hours_ago"
+msgid_plural "imports_activity_hours_ago_plural"
+msgstr[0] "{count} 小时前"
+
+#. Activity Center elapsed time: {count} day ago
+msgid "imports_activity_days_ago"
+msgid_plural "imports_activity_days_ago_plural"
+msgstr[0] "{count} 天前"
+
+#. Auxiliary UI
+msgid "imports_ok"
+msgstr "确定"
+
+#. Auxiliary UI
+msgid "imports_reviewer_tags_title"
+msgstr "追加标签"
+
+#. Auxiliary UI
+msgid "imports_reviewer_tags_intro"
+msgstr "无需打开编辑器，即可为当前复习卡片追加标签。最近使用的标签显示在前面，所有集合标签列在下方。输入一个或多个新标签即可直接添加。"
+
+#. Auxiliary UI
+msgid "imports_reviewer_current_tags"
+msgstr "当前标签"
+
+#. Auxiliary UI
+msgid "imports_reviewer_no_tags"
+msgstr "此笔记尚无标签。"
+
+#. Auxiliary UI
+msgid "imports_reviewer_latest_used"
+msgstr "最近使用"
+
+#. Auxiliary UI
+msgid "imports_reviewer_no_recent"
+msgstr "暂无最近使用的复习标签。"
+
+#. Auxiliary UI
+msgid "imports_reviewer_search"
+msgstr "搜索"
+
+#. Auxiliary UI
+msgid "imports_reviewer_search_placeholder"
+msgstr "筛选标签或输入新标签"
+
+#. Auxiliary UI
+msgid "imports_reviewer_add_typed"
+msgstr "添加输入的标签"
+
+#. Auxiliary UI
+msgid "imports_reviewer_will_add"
+msgstr "即将添加"
+
+#. Auxiliary UI
+msgid "imports_reviewer_choose_tags"
+msgstr "请选择一个或多个标签。"
+
+#. Auxiliary UI
+msgid "imports_reviewer_apply"
+msgstr "应用"
+
+#. Auxiliary UI
+msgid "imports_reviewer_already_present"
+msgstr "此笔记已有该标签。"
+
+#. Auxiliary UI
+msgid "imports_priority_title"
+msgstr "设置优先级"
+
+#. Auxiliary UI
+msgid "imports_priority_first_half"
+msgstr "滑块前半段（0–30）"
+
+#. Auxiliary UI
+msgid "imports_priority_second_half"
+msgstr "滑块后半段（70–100）"
+
+#. Auxiliary UI
+msgid "imports_priority_scale_hint"
+msgstr "{important} = 最重要 · 50 = 默认值 · {least} = 最不重要"
+
+#. Auxiliary UI
+msgid "imports_priority_finer_hint"
+msgstr "{side} 可更精细地调整重要卡片。"
+
+#. Auxiliary UI
+msgid "imports_priority_label"
+msgstr "优先级："
+
+#. Auxiliary UI
+msgid "imports_priority_a_factor"
+msgstr "A 系数："
+
+#. Auxiliary UI
+msgid "imports_priority_last_interval"
+msgstr "上次间隔：{days} 天"
+
+#. Auxiliary UI
+msgid "imports_priority_a_lower"
+msgstr "较低的 A 系数 → 较短间隔（重要主题）。"
+
+#. Auxiliary UI
+msgid "imports_priority_a_higher"
+msgstr "较高的 A 系数 → 较长间隔（较不紧急）。"
+
+#. Auxiliary UI
+msgid "imports_extract_title"
+msgstr "提取卡片"
+
+#. Auxiliary UI
+msgid "imports_extract_note_type"
+msgstr "笔记类型："
+
+#. Auxiliary UI
+msgid "imports_extract_deck"
+msgstr "牌组："
+
+#. Auxiliary UI
+msgid "imports_extract_priority_help"
+msgstr "提取卡片的优先级。{end} 是最重要的一端。"
+
+#. Auxiliary UI
+msgid "imports_extract_topic"
+msgstr "主题"
+
+#. Auxiliary UI
+msgid "imports_extract_topic_help"
+msgstr "将配置的主题标签添加到此提取卡片。"
+
+#. Auxiliary UI
+msgid "imports_extract_tree"
+msgstr "自动将关联关系添加到知识树"
+
+#. Auxiliary UI
+msgid "imports_extract_create"
+msgstr "创建卡片"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_title"
+msgstr "快速标签设置"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_intro"
+msgstr "为每个标签选择独有的颜色。Topic 标签默认使用绿色。“自动”可恢复分配的默认颜色。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_fixed_mode"
+msgstr "使用我的固定标签组，而非最近使用的标签组"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_fixed_help"
+msgstr "自行定义编号位置。用空格、逗号或分号分隔标签。从 1 开始依次填写，不要留空。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_choose"
+msgstr "选择…"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_automatic"
+msgstr "自动"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_color_conflict"
+msgstr "#{tag} 已使用该颜色。请选择其他颜色。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_choose_color"
+msgstr "为 #{tag} 选择颜色"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_need_fixed"
+msgstr "请至少添加一个固定标签组，或关闭固定模式。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_no_gaps"
+msgstr "请从 1 开始依次填写固定标签组位置，不要留空。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_unique"
+msgstr "每个固定标签组都必须不同。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_title"
+msgstr "快速添加标签"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_empty"
+msgstr "尚无可用的标签组。打开“设置…”以定义自己的固定标签组。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_accessible"
+msgstr "{number} 或 {letter}：{tags}"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings"
+msgstr "设置…"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_help"
+msgstr "配置固定标签组和颜色"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_select_rows"
+msgstr "请先在浏览器中选择一行或多行。"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_action"
+msgstr "快速添加标签…"
+
+#. Auxiliary UI
+msgid "imports_browser_priority_ambiguous"
+msgstr "请先在浏览器中恰好选择一行卡片。"
+
+#. Auxiliary UI
+msgid "imports_edit_priority_unavailable"
+msgstr "无法确定正在编辑的卡片。"
+
+#. Auxiliary UI
+msgid "imports_priority_dialog_unavailable"
+msgstr "优先级对话框不可用。"
+
+#. Auxiliary UI
+msgid "imports_browser_priority_tip"
+msgstr "设置所选浏览器卡片的优先级"
+
+#. Auxiliary UI
+msgid "imports_edit_priority_tip"
+msgstr "设置当前卡片的优先级"
+
+#. Auxiliary UI
+msgid "imports_topic_done_button"
+msgstr "✓ 完成"
+
+#. Auxiliary UI
+msgid "imports_topic_done_description"
+msgstr "保留此主题作为参考，并停止在复习中显示。将“设置 → 主题”中选择的“完成”标签添加到其笔记。提取的卡片仍会继续复习。撤销会恢复卡片及其原有标签。"
+
+#. Auxiliary UI
+msgid "imports_topic_done_accessible"
+msgstr "将主题标记为完成"
+
+#. Auxiliary UI
+msgid "imports_topic_changed"
+msgstr "当前主题已更改。请重试。"
+
+#. Auxiliary UI
+msgid "imports_topic_no_longer"
+msgstr "此卡片已不再是主题。"
+
+#. Auxiliary UI
+msgid "imports_topic_profile_changed"
+msgstr "用户配置已更改。"
+
+#. Auxiliary UI
+msgid "imports_topic_done_action"
+msgstr "将主题标记为完成"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_menu"
+msgstr "在以下时间后重新学习…"
+
+#. Auxiliary UI
+msgid "imports_topic_choose_date"
+msgstr "选择日期…"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_title"
+msgstr "重新安排主题"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_help"
+msgstr "选择此主题下次到期的日期："
+
+#. Auxiliary UI
+msgid "imports_topic_next_date"
+msgstr "下次复习日期"
+
+#. Auxiliary UI
+msgid "imports_topic_undo"
+msgstr "撤销"
+
+#. Auxiliary UI
+msgid "imports_topic_undo_accessible"
+msgstr "撤销主题操作"
+
+#. Auxiliary UI
+msgid "imports_topic_dismiss"
+msgstr "关闭通知"
+
+#. Auxiliary UI
+msgid "imports_topic_done_notice"
+msgstr "主题已标记为完成。"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_notice"
+msgstr "主题已安排在 {date}。"
+
+#. Auxiliary UI plural
+msgid "imports_quick_tags_intro"
+msgid_plural "imports_quick_tags_intro_plural"
+msgstr[0] "将一个标签组应用到选中的 {count} 条笔记。按 1–9 或 A–I，或点击标签组。位置按行排列。每个标签始终保留相同颜色。"
+
+#. Auxiliary UI plural
+msgid "imports_quick_tags_applied"
+msgid_plural "imports_quick_tags_applied_plural"
+msgstr[0] "已将 {tags} 添加到 {count} 条笔记。"
+
+#. Auxiliary UI plural
+msgid "imports_topic_months"
+msgid_plural "imports_topic_months_plural"
+msgstr[0] "{count} 个月"
+#. Quick tag example; topic is a canonical tag name.
+msgid "imports_quick_tags_placeholder"
+msgstr "topic 心理学"
+
+#. Reviewer topic error
+msgid "imports_topic_unavailable"
+msgstr "此主题已不再可供复习。"
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_months"
+msgstr "请选择 3、6 或 12 个月，或选择未来日期。"
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_date"
+msgstr "请选择未来 100 年内的日期。"
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_data"
+msgstr "卡片的自定义排程数据无效。"
+
+#. Reviewer topic error
+msgid "imports_topic_undo_stale"
+msgstr "此操作已不是最新的更改。使用“编辑 → 撤销”查看最近的更改。"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_menu"
+msgstr "复习按钮"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_group"
+msgstr "显示复习按钮组"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_done"
+msgstr "显示完成按钮"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_postpone"
+msgstr "显示推迟按钮"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_extract"
+msgstr "显示提取按钮"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_label"
+msgstr "提取"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_description"
+msgstr "将所选内容提取到新卡片"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_shortcut"
+msgstr "将所选内容提取到新卡片 ({shortcut})"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_priority"
+msgstr "优先级"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_a_factor"
+msgstr "A 因子"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_saved"
+msgstr "已保存"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_schedule"
+msgstr "计划"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_source_pdf"
+msgstr "来源 PDF"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_source_hint"
+msgstr "此卡片上的来源链接可打开文档。"

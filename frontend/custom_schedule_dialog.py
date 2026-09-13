@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 from aqt.qt import (
     QCheckBox,
     QComboBox,
@@ -14,12 +16,19 @@ from aqt.qt import (
 )
 
 try:
+    from ..backend.i18n import t as _t, tn as _tn
+except ImportError:
+    from backend.i18n import t as _t, tn as _tn
+
+
+try:
     from ..backend.custom_schedule import (
         MODE_FIXED_REPEAT,
         MODE_MINIMUM_CADENCE,
         MODE_ONE_TIME,
         configured_custom_schedule_default_mode,
         configured_custom_schedule_presets,
+        display_custom_schedule_preset,
         format_custom_schedule_mode,
         format_custom_schedule_rule,
         normalize_custom_schedule_mode,
@@ -36,6 +45,7 @@ except ImportError:
         MODE_ONE_TIME,
         configured_custom_schedule_default_mode,
         configured_custom_schedule_presets,
+        display_custom_schedule_preset,
         format_custom_schedule_mode,
         format_custom_schedule_rule,
         normalize_custom_schedule_mode,
@@ -61,7 +71,7 @@ class CustomScheduleDialog(QDialog):
         self._card_ids = [int(card_id) for card_id in card_ids]
         self._config = config or {}
         self._clear_requested = False
-        self.setWindowTitle("Custom Schedule")
+        self.setWindowTitle(_t("admin_schedule_title"))
         self.setMinimumWidth(460)
 
         self._existing_rules = get_custom_schedule_rules(
@@ -75,8 +85,7 @@ class CustomScheduleDialog(QDialog):
         root.setSpacing(10)
 
         selection_label = QLabel(
-            f"Apply a recurring schedule rule to {len(self._card_ids)} selected "
-            f"card{'s' if len(self._card_ids) != 1 else ''}."
+            _tn("admin_schedule_selection", len(self._card_ids))
         )
         selection_label.setWordWrap(True)
         root.addWidget(selection_label)
@@ -90,33 +99,33 @@ class CustomScheduleDialog(QDialog):
         form.setVerticalSpacing(8)
 
         self._preset_combo = QComboBox()
-        self._preset_combo.addItem("Quick preset…", None)
+        self._preset_combo.addItem(_t("admin_schedule_quick"), None)
         for index, preset in enumerate(configured_custom_schedule_presets(self._config), start=1):
             normalized = normalize_custom_schedule_preset(preset, index=index)
-            self._preset_combo.addItem(str(normalized["label"]), normalized)
+            self._preset_combo.addItem(display_custom_schedule_preset(normalized), normalized)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_changed)
-        form.addRow("Preset:", self._preset_combo)
+        form.addRow(_t("admin_schedule_preset"), self._preset_combo)
 
         self._interval_spin = QSpinBox()
         self._interval_spin.setRange(1, 999)
         self._interval_spin.valueChanged.connect(self._update_preview)
-        form.addRow("Repeat every:", self._interval_spin)
+        form.addRow(_t("admin_schedule_repeat"), self._interval_spin)
 
         self._unit_combo = QComboBox()
-        self._unit_combo.addItem("Days", "days")
-        self._unit_combo.addItem("Weeks", "weeks")
-        self._unit_combo.addItem("Months", "months")
+        self._unit_combo.addItem(_t("admin_schedule_days"), "days")
+        self._unit_combo.addItem(_t("admin_schedule_weeks"), "weeks")
+        self._unit_combo.addItem(_t("admin_schedule_months"), "months")
         self._unit_combo.currentIndexChanged.connect(self._update_preview)
-        form.addRow("Unit:", self._unit_combo)
+        form.addRow(_t("admin_schedule_unit"), self._unit_combo)
 
         self._mode_combo = QComboBox()
         self._mode_combo.addItem(format_custom_schedule_mode(MODE_MINIMUM_CADENCE), MODE_MINIMUM_CADENCE)
         self._mode_combo.addItem(format_custom_schedule_mode(MODE_FIXED_REPEAT), MODE_FIXED_REPEAT)
         self._mode_combo.addItem(format_custom_schedule_mode(MODE_ONE_TIME), MODE_ONE_TIME)
         self._mode_combo.currentIndexChanged.connect(self._update_preview)
-        form.addRow("Behavior:", self._mode_combo)
+        form.addRow(_t("admin_schedule_behavior"), self._mode_combo)
 
-        self._apply_now_cb = QCheckBox("Apply to the current due date now")
+        self._apply_now_cb = QCheckBox(_t("admin_schedule_apply_now"))
         self._apply_now_cb.setChecked(True)
         form.addRow("", self._apply_now_cb)
 
@@ -127,21 +136,21 @@ class CustomScheduleDialog(QDialog):
         root.addWidget(self._preview)
 
         hint = QLabel(
-            "Minimum cadence keeps normal scheduling but prevents the card from drifting later than this rule. "
-            "Repeat exactly always resets the next due date to this rule. "
-            "One-time set due applies once and then clears itself."
+            _t("admin_schedule_hint")
         )
         hint.setWordWrap(True)
         root.addWidget(hint)
 
         buttons_row = QHBoxLayout()
-        self._clear_btn = QPushButton("Clear Rule")
+        self._clear_btn = QPushButton(_t("admin_schedule_clear"))
         self._clear_btn.clicked.connect(self._on_clear_clicked)
         buttons_row.addWidget(self._clear_btn)
         buttons_row.addStretch()
         self._button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        self._button_box.button(QDialogButtonBox.StandardButton.Ok).setText(_t("common_ok"))
+        self._button_box.button(QDialogButtonBox.StandardButton.Cancel).setText(_t("common_cancel"))
         self._button_box.accepted.connect(self.accept)
         self._button_box.rejected.connect(self.reject)
         buttons_row.addWidget(self._button_box)
@@ -189,13 +198,13 @@ class CustomScheduleDialog(QDialog):
     def _refresh_current_rule_label(self) -> None:
         if self._shared_rule:
             self._current_rule_label.setText(
-                f"Current rule: <b>{format_custom_schedule_rule(self._shared_rule)}</b>"
+                _t("admin_schedule_current", rule=escape(format_custom_schedule_rule(self._shared_rule)))
             )
             return
         if self._existing_rules:
-            self._current_rule_label.setText("Current rule: <i>Mixed selection</i>")
+            self._current_rule_label.setText(_t("admin_schedule_mixed"))
             return
-        self._current_rule_label.setText("Current rule: <i>No custom rule</i>")
+        self._current_rule_label.setText(_t("admin_schedule_none"))
 
     def _set_combo_data(self, combo: QComboBox, value: str) -> None:
         for index in range(combo.count()):
@@ -220,7 +229,7 @@ class CustomScheduleDialog(QDialog):
 
     def _update_preview(self, *_args) -> None:
         rule = self.selected_rule
-        self._preview.setText(f"Preview: <b>{format_custom_schedule_rule(rule)}</b>")
+        self._preview.setText(_t("admin_schedule_preview", rule=escape(format_custom_schedule_rule(rule))))
 
     @property
     def clear_requested(self) -> bool:

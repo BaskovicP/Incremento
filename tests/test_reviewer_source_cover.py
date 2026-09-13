@@ -71,6 +71,7 @@ const selectors = {
   '.incremento-reviewer-source-cover-thumb img': image,
   '.incremento-reviewer-source-cover-label': label,
   '.incremento-reviewer-source-cover-title': title,
+  '.incremento-reviewer-source-cover-hint': {textContent: ''},
 };
 const classes = new Set();
 const root = {

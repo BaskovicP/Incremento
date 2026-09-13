@@ -1,0 +1,1184 @@
+# Import dialog interface. Edit translations here.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: hr\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2;\n"
+
+#. Import dialog label: Add Local File
+msgid "imports_add_local_file"
+msgstr "Dodaj lokalnu datoteku"
+
+#. Import dialog label: File:
+msgid "imports_file_label"
+msgstr "Datoteka:"
+
+#. Import dialog label: Choose a local file…
+msgid "imports_choose_local_file"
+msgstr "Odaberite lokalnu datoteku…"
+
+#. Import dialog label: Browse…
+msgid "imports_browse"
+msgstr "Pregledaj…"
+
+#. Import dialog label: Title:
+msgid "imports_title_label"
+msgstr "Naslov:"
+
+#. Import dialog label: Card title
+msgid "imports_card_title"
+msgstr "Naslov kartice"
+
+#. Import dialog label: Storage mode:
+msgid "imports_storage_mode"
+msgstr "Način pohrane:"
+
+#. Import dialog label: Reference original file
+msgid "imports_storage_reference"
+msgstr "Poveznica na izvornu datoteku"
+
+#. Import dialog label: Copy into Incremento
+msgid "imports_storage_managed"
+msgstr "Kopiraj u Incremento"
+
+#. Import dialog label: Deck:
+msgid "imports_deck_label"
+msgstr "Špil:"
+
+#. Import dialog label: Note / instructions (optional):
+msgid "imports_note_optional"
+msgstr "Bilješka / upute (neobavezno):"
+
+#. Import dialog label: Describe what to do with this file when the card appears…
+msgid "imports_file_note_placeholder"
+msgstr "Opišite što učiniti s ovom datotekom kada se kartica pojavi…"
+
+#. Import dialog label: Add Local File Card
+msgid "imports_add_local_file_card"
+msgstr "Dodaj karticu lokalne datoteke"
+
+#. Import dialog label: Cancel
+msgid "imports_cancel"
+msgstr "Odustani"
+
+#. Import dialog label: Choose local file
+msgid "imports_choose_local_file_dialog"
+msgstr "Odaberite lokalnu datoteku"
+
+#. Import dialog label: All files (*)
+msgid "imports_all_files_filter"
+msgstr "Sve datoteke (*)"
+
+#. Import dialog label: Copies the file into Incremento's per-profile storage so the card keeps working even if the original is moved.
+msgid "imports_managed_hint"
+msgstr "Kopira datoteku u pohranu profila Incremento kako bi kartica nastavila raditi čak i ako se izvorna datoteka premjesti."
+
+#. Import dialog label: Stores the current path on your computer. If the file is moved or deleted later, the card will need relinking.
+msgid "imports_reference_hint"
+msgstr "Sprema trenutačnu putanju na vašem računalu. Ako se datoteka poslije premjesti ili obriše, karticu ćete morati ponovno povezati."
+
+#. Import dialog label: Add Web Page
+msgid "imports_add_web_page"
+msgstr "Dodaj mrežnu stranicu"
+
+#. Import dialog label: URL:
+msgid "imports_url_label"
+msgstr "URL:"
+
+#. Import dialog label: https://…
+msgid "imports_https_placeholder"
+msgstr "https://…"
+
+#. Import dialog label: Add Page
+msgid "imports_add_page"
+msgstr "Dodaj stranicu"
+
+#. Import dialog label: Add to Markdown
+msgid "imports_add_markdown"
+msgstr "Dodaj u Markdown"
+
+#. Import dialog label: Markdown note title
+msgid "imports_markdown_title_placeholder"
+msgstr "Naslov Markdown bilješke"
+
+#. Import dialog label: Filename (optional):
+msgid "imports_filename_optional"
+msgstr "Naziv datoteke (neobavezno):"
+
+#. Import dialog label: my-note.md  (stored under user_files/writing)
+msgid "imports_markdown_filename_placeholder"
+msgstr "moja-biljeska.md  (sprema se u user_files/writing)"
+
+#. Import dialog label: Import mode:
+msgid "imports_import_mode"
+msgstr "Način uvoza:"
+
+#. Import dialog label: Manual markdown
+msgid "imports_manual_markdown"
+msgstr "Ručni Markdown"
+
+#. Import dialog label: Import webpage markdown
+msgid "imports_webpage_markdown"
+msgstr "Uvezi Markdown mrežne stranice"
+
+#. Import dialog label: Source URL:
+msgid "imports_source_url"
+msgstr "URL izvora:"
+
+#. Import dialog label: Fetch page
+msgid "imports_fetch_page"
+msgstr "Dohvati stranicu"
+
+#. Import dialog label: Webpage scope:
+msgid "imports_webpage_scope"
+msgstr "Opseg mrežne stranice:"
+
+#. Import dialog label: Main content
+msgid "imports_main_content"
+msgstr "Glavni sadržaj"
+
+#. Import dialog label: Entire page
+msgid "imports_entire_page"
+msgstr "Cijela stranica"
+
+#. Import dialog label: Initial markdown:
+msgid "imports_initial_markdown"
+msgstr "Početni Markdown:"
+
+#. Import dialog label: The markdown file is autosaved while typing when this card is reviewed.
+msgid "imports_markdown_autosave_hint"
+msgstr "Markdown datoteka automatski se sprema dok tipkate tijekom ponavljanja ove kartice."
+
+#. Import dialog label: Add Markdown Card
+msgid "imports_add_markdown_card"
+msgstr "Dodaj Markdown karticu"
+
+#. Import dialog label: Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.
+msgid "imports_webpage_fetch_hint"
+msgstr "Dohvaća sadržaj mrežne stranice u Markdown. Glavni sadržaj pokušava zanemariti navigaciju i bočne trake."
+
+#. Import dialog label: Write or paste markdown manually, or switch import mode to pull it from a webpage.
+msgid "imports_manual_hint"
+msgstr "Ručno napišite ili zalijepite Markdown ili promijenite način uvoza kako biste ga preuzeli s mrežne stranice."
+
+#. Import dialog label: Please enter a source URL first.
+msgid "imports_writing_source_required"
+msgstr "Najprije unesite URL izvora."
+
+#. Import dialog label: Fetching webpage markdown…
+msgid "imports_fetching_markdown"
+msgstr "Dohvaćanje Markdowna mrežne stranice…"
+
+#. Import dialog label: Fetch failed.
+msgid "imports_fetch_failed_short"
+msgstr "Dohvaćanje nije uspjelo."
+
+#. Import dialog label: No markdown content was extracted.
+msgid "imports_no_markdown_extracted"
+msgstr "Nije izdvojen Markdown sadržaj."
+
+#. Import dialog label: Failed to fetch webpage markdown:
+msgid "imports_no_readable_markdown"
+msgstr "Dohvaćanje Markdowna mrežne stranice nije uspjelo:\nNije izdvojen čitljiv sadržaj."
+
+#. Import dialog label: Webpage markdown loaded into the editor.
+msgid "imports_markdown_loaded"
+msgstr "Markdown mrežne stranice učitan je u uređivač."
+
+#. Writing import dialog UI: # Heading
+msgid "imports_markdown_editor_placeholder"
+msgstr "# Naslov\n\nOvdje napišite početni sadržaj…"
+
+#. Writing import dialog UI: Failed to fetch webpage markdown:
+msgid "imports_writing_fetch_failed"
+msgstr "Dohvaćanje Markdowna mrežne stranice nije uspjelo:\n{error}"
+
+#. Import video/webpage UI: Add Video
+msgid "imports_add_video"
+msgstr "Dodaj videozapis"
+
+#. Import video/webpage UI: Source:
+msgid "imports_source_label"
+msgstr "Izvor:"
+
+#. Import video/webpage UI: YouTube URL
+msgid "imports_youtube_url"
+msgstr "YouTube URL"
+
+#. Import video/webpage UI: Vimeo URL
+msgid "imports_vimeo_url"
+msgstr "Vimeo URL"
+
+#. Import video/webpage UI: Local video file
+msgid "imports_local_video_file"
+msgstr "Lokalna videodatoteka"
+
+#. Import video/webpage UI: Video URL:
+msgid "imports_video_url_label"
+msgstr "URL videozapisa:"
+
+#. Import video/webpage UI: Local video file:
+msgid "imports_local_video_label"
+msgstr "Lokalna videodatoteka:"
+
+#. Import video/webpage UI: Choose a local video file…
+msgid "imports_choose_local_video"
+msgstr "Odaberite lokalnu videodatoteku…"
+
+#. Import video/webpage UI: Encoding:
+msgid "imports_encoding_label"
+msgstr "Kodiranje:"
+
+#. Import video/webpage UI: Original quality (no re-encoding)
+msgid "imports_original_quality"
+msgstr "Izvorna kvaliteta (bez ponovnog kodiranja)"
+
+#. Import video/webpage UI: Encode H.264 high quality
+msgid "imports_encode_high"
+msgstr "Kodiraj H.264 u visokoj kvaliteti"
+
+#. Import video/webpage UI: Encode H.264 smaller size
+msgid "imports_encode_small"
+msgstr "Kodiraj H.264 u manjoj veličini"
+
+#. Import video/webpage UI: Download & compress into user_files/videos
+msgid "imports_download_compress"
+msgstr "Preuzmi i sažmi u user_files/videos"
+
+#. Import video/webpage UI: Requires yt-dlp and ffmpeg installed on your system.
+msgid "imports_download_requirements"
+msgstr "Na sustavu moraju biti instalirani yt-dlp i ffmpeg."
+
+#. Import video/webpage UI: Max resolution:
+msgid "imports_max_resolution"
+msgstr "Najveća razlučivost:"
+
+#. Import video/webpage UI: Best available
+msgid "imports_best_available"
+msgstr "Najbolja dostupna"
+
+#. Import video/webpage UI: Refresh
+msgid "imports_refresh"
+msgstr "Osvježi"
+
+#. Import video/webpage UI: Will try to auto-install yt-dlp on first use. Compression runs when ffmpeg is available.
+msgid "imports_ytdlp_ffmpeg_hint"
+msgstr "Pri prvoj uporabi pokušat će se automatski instalirati yt-dlp. Sažimanje radi kada je ffmpeg dostupan."
+
+#. Import video/webpage UI: Will try to auto-install yt-dlp on first use.
+msgid "imports_ytdlp_hint"
+msgstr "Pri prvoj uporabi pokušat će se automatski instalirati yt-dlp."
+
+#. Import video/webpage UI: ffmpeg not found: video will still download, but compression is skipped.
+msgid "imports_ffmpeg_missing_hint"
+msgstr "ffmpeg nije pronađen: videozapis će se preuzeti, ali neće biti sažet."
+
+#. Import video/webpage UI: Optional: creates a local compressed copy for offline playback.
+msgid "imports_offline_copy_hint"
+msgstr "Neobavezno: izrađuje lokalnu sažetu kopiju za izvanmrežnu reprodukciju."
+
+#. Import video/webpage UI: Choose Local Video
+msgid "imports_choose_local_video_dialog"
+msgstr "Odaberite lokalni videozapis"
+
+#. Import video/webpage UI: YouTube URL:
+msgid "imports_youtube_url_label"
+msgstr "YouTube URL:"
+
+#. Import video/webpage UI: Vimeo URL:
+msgid "imports_vimeo_url_label"
+msgstr "Vimeo URL:"
+
+#. Import video/webpage UI: Enter a valid YouTube or Vimeo URL to load available resolutions.
+msgid "imports_video_resolutions_enter_url"
+msgstr "Unesite valjan YouTube ili Vimeo URL za učitavanje dostupnih razlučivosti."
+
+#. Import video/webpage UI: Loading resolutions…
+msgid "imports_video_resolutions_loading"
+msgstr "Učitavanje razlučivosti…"
+
+#. Import video/webpage UI: Fetching available resolutions…
+msgid "imports_video_resolutions_fetching"
+msgstr "Dohvaćanje dostupnih razlučivosti…"
+
+#. Import video/webpage UI: Unknown error.
+msgid "imports_unknown_error"
+msgstr "Nepoznata pogreška."
+
+#. Import video/webpage UI: No explicit resolutions found. Using best available.
+msgid "imports_video_resolutions_none"
+msgstr "Nisu pronađene određene razlučivosti. Upotrijebit će se najbolja dostupna."
+
+#. Import video/webpage UI: Webpage to PDF
+msgid "imports_webpage_to_pdf"
+msgstr "Mrežna stranica u PDF"
+
+#. Import video/webpage UI: https://example.com/article
+msgid "imports_webpage_url_placeholder"
+msgstr "https://example.com/clanak"
+
+#. Import video/webpage UI: Card title:
+msgid "imports_webpage_card_title_label"
+msgstr "Naslov kartice:"
+
+#. Import video/webpage UI: Article title
+msgid "imports_article_title"
+msgstr "Naslov članka"
+
+#. Import video/webpage UI: Import
+msgid "imports_import"
+msgstr "Uvezi"
+
+#. Import video/webpage UI: Please enter a URL.
+msgid "imports_webpage_enter_url"
+msgstr "Unesite URL."
+
+#. Import video/webpage UI: Generating PDF…
+msgid "imports_webpage_generating_pdf"
+msgstr "Izrada PDF-a…"
+
+#. Import video/webpage UI: Missing webpage source.
+msgid "imports_webpage_missing_source"
+msgstr "Nedostaje izvor mrežne stranice."
+
+#. Import video/webpage UI: Failed to generate PDF.
+msgid "imports_webpage_pdf_failed"
+msgstr "Izrada PDF-a nije uspjela."
+
+#. Import video/webpage UI: Failed to load page.
+msgid "imports_webpage_load_failed"
+msgstr "Učitavanje stranice nije uspjelo."
+
+#. Video and webpage import UI: https://www.youtube.com/watch?v=… or https://player.vimeo.com/video/…
+msgid "imports_video_url_example"
+msgstr "https://www.youtube.com/watch?v=… ili https://player.vimeo.com/video/…"
+
+#. Video and webpage import UI: Local import copies file into user_files/videos. Use original quality for no re-encoding.
+msgid "imports_video_local_hint"
+msgstr "Lokalni uvoz kopira datoteku u user_files/videos. Odaberite izvornu kvalitetu kako biste izbjegli ponovno kodiranje."
+
+#. Video and webpage import UI: Video files ({patterns});;All files (*)
+msgid "imports_video_file_filter"
+msgstr "Videodatoteke ({patterns});;Sve datoteke (*)"
+
+#. Video and webpage import UI: https://www.youtube.com/watch?v=…
+msgid "imports_youtube_url_example"
+msgstr "https://www.youtube.com/watch?v=…"
+
+#. Video and webpage import UI: https://player.vimeo.com/video/…
+msgid "imports_vimeo_url_example"
+msgstr "https://player.vimeo.com/video/…"
+
+#. Video and webpage import UI: Could not load resolutions ({error}). Using best available.
+msgid "imports_video_resolutions_failed"
+msgstr "Nije moguće učitati razlučivosti ({error}). Upotrijebit će se najbolja dostupna."
+
+#. Video and webpage import UI: Available: {heights}
+msgid "imports_video_resolutions_available"
+msgstr "Dostupno: {heights}"
+
+#. Video and webpage import UI: Timed out generating PDF after {seconds} seconds.
+msgid "imports_webpage_pdf_timeout"
+msgstr "Izrada PDF-a istekla je nakon {seconds} sekundi."
+
+#. PDF/EPUB import dialog UI: Add PDFs
+msgid "imports_pdf_title"
+msgstr "Dodaj PDF-ove"
+
+#. PDF/EPUB import dialog UI: Add EPUBs
+msgid "imports_epub_title"
+msgstr "Dodaj EPUB-ove"
+
+#. PDF/EPUB import dialog UI: Add files…
+msgid "imports_add_files"
+msgstr "Dodaj datoteke…"
+
+#. PDF/EPUB import dialog UI: Add folder…
+msgid "imports_add_folder"
+msgstr "Dodaj mapu…"
+
+#. PDF/EPUB import dialog UI: Select all
+msgid "imports_select_all"
+msgstr "Odaberi sve"
+
+#. PDF/EPUB import dialog UI: Deselect all
+msgid "imports_deselect_all"
+msgstr "Poništi odabir"
+
+#. PDF/EPUB import dialog UI: Remove selected
+msgid "imports_remove_selected"
+msgstr "Ukloni odabrano"
+
+#. PDF/EPUB import dialog UI: Undo remove
+msgid "imports_undo_remove"
+msgstr "Poništi uklanjanje"
+
+#. PDF/EPUB import dialog UI: Filter PDFs by file name…
+msgid "imports_filter_pdfs"
+msgstr "Filtriraj PDF-ove po nazivu datoteke…"
+
+#. PDF/EPUB import dialog UI: Filter EPUBs by file name…
+msgid "imports_filter_epubs"
+msgstr "Filtriraj EPUB-ove po nazivu datoteke…"
+
+#. PDF/EPUB import dialog UI: File
+msgid "imports_table_file"
+msgstr "Datoteka"
+
+#. PDF/EPUB import dialog UI: Tags
+msgid "imports_table_tags"
+msgstr "Oznake"
+
+#. PDF/EPUB import dialog UI: Priority
+msgid "imports_table_priority"
+msgstr "Prioritet"
+
+#. PDF/EPUB import dialog UI: OCR
+msgid "imports_table_ocr"
+msgstr "OCR"
+
+#. PDF/EPUB import dialog UI: Status
+msgid "imports_table_status"
+msgstr "Stanje"
+
+#. PDF/EPUB import dialog UI: Tags for all:
+msgid "imports_tags_for_all"
+msgstr "Oznake za sve:"
+
+#. PDF/EPUB import dialog UI: Use file name as title
+msgid "imports_use_filename_title"
+msgstr "Upotrijebi naziv datoteke kao naslov"
+
+#. PDF/EPUB import dialog UI: Preview
+msgid "imports_preview"
+msgstr "Pregled"
+
+#. PDF/EPUB import dialog UI: Select a file to preview
+msgid "imports_preview_select_file"
+msgstr "Odaberite datoteku za pregled"
+
+#. PDF/EPUB import dialog UI: Add
+msgid "imports_add"
+msgstr "Dodaj"
+
+#. PDF/EPUB import dialog UI: Select PDF files
+msgid "imports_select_pdf_files"
+msgstr "Odaberite PDF datoteke"
+
+#. PDF/EPUB import dialog UI: PDF files (*.pdf)
+msgid "imports_pdf_file_filter"
+msgstr "PDF datoteke (*.pdf)"
+
+#. PDF/EPUB import dialog UI: Select folder with PDFs
+msgid "imports_select_pdf_folder"
+msgstr "Odaberite mapu s PDF-ovima"
+
+#. PDF/EPUB import dialog UI: Choose EPUB files
+msgid "imports_select_epub_files"
+msgstr "Odaberite EPUB datoteke"
+
+#. PDF/EPUB import dialog UI: Choose folder
+msgid "imports_select_folder"
+msgstr "Odaberite mapu"
+
+#. PDF/EPUB import dialog UI: EPUB files (*.epub)
+msgid "imports_epub_file_filter"
+msgstr "EPUB datoteke (*.epub)"
+
+#. PDF/EPUB import dialog UI: Found 0 new PDFs in folder
+msgid "imports_pdf_folder_none"
+msgstr "U mapi nisu pronađeni novi PDF-ovi"
+
+#. PDF/EPUB import dialog UI: Found 0 new EPUBs in folder
+msgid "imports_epub_folder_none"
+msgstr "U mapi nisu pronađeni novi EPUB-ovi"
+
+#. PDF/EPUB import dialog UI: Checked PDFs will be imported when you click Add
+msgid "imports_pdf_checked_hint"
+msgstr "Označeni PDF-ovi uvest će se kada kliknete Dodaj"
+
+#. PDF/EPUB import dialog UI: Checked EPUBs will be imported when you click Add
+msgid "imports_epub_checked_hint"
+msgstr "Označeni EPUB-ovi uvest će se kada kliknete Dodaj"
+
+#. PDF/EPUB import dialog UI: Use OCR
+msgid "imports_use_ocr"
+msgstr "Upotrijebi OCR"
+
+#. PDF/EPUB import dialog UI: Run Tesseract OCR to embed a text layer
+msgid "imports_ocr_tooltip"
+msgstr "Pokreni Tesseract OCR radi ugradnje tekstnog sloja"
+
+#. PDF/EPUB import dialog UI: No OCR ⚠
+msgid "imports_no_ocr_warning"
+msgstr "Nema OCR-a ⚠"
+
+#. PDF/EPUB import dialog UI: No PDFs match the current filter
+msgid "imports_pdf_no_matches"
+msgstr "Nijedan PDF ne odgovara trenutačnom filtru"
+
+#. PDF/EPUB import dialog UI: Loading…
+msgid "imports_loading"
+msgstr "Učitavanje…"
+
+#. PDF/EPUB import dialog UI: Detecting…
+msgid "imports_detecting"
+msgstr "Otkrivanje…"
+
+#. PDF/EPUB import dialog UI: Please add at least one PDF file.
+msgid "imports_pdf_choose_file"
+msgstr "Dodajte barem jednu PDF datoteku."
+
+#. PDF/EPUB import dialog UI: Please check at least one PDF to import.
+msgid "imports_choose_checked_pdf"
+msgstr "Označite barem jedan PDF za uvoz."
+
+#. PDF/EPUB import dialog UI: Choose at least one EPUB file.
+msgid "imports_epub_choose_file"
+msgstr "Odaberite barem jednu EPUB datoteku."
+
+#. PDF/EPUB import dialog UI: Please check at least one EPUB to import.
+msgid "imports_choose_checked_epub"
+msgstr "Označite barem jedan EPUB za uvoz."
+
+#. PDF/EPUB import dialog UI: For multiple PDFs, enable 'Use file name as title'.
+msgid "imports_multiple_pdf_title"
+msgstr "Za više PDF-ova uključite „Upotrijebi naziv datoteke kao naslov”."
+
+#. PDF/EPUB import dialog UI: For multiple EPUBs, enable 'Use file name as title'.
+msgid "imports_multiple_epub_title"
+msgstr "Za više EPUB-ova uključite „Upotrijebi naziv datoteke kao naslov”."
+
+#. PDF/EPUB import dialog UI: Please enter a title.
+msgid "imports_enter_title"
+msgstr "Unesite naslov."
+
+#. PDF/EPUB import dialog UI: Starting
+msgid "imports_starting"
+msgstr "Pokretanje"
+
+#. PDF/EPUB import dialog UI: Adding…
+msgid "imports_adding"
+msgstr "Dodavanje…"
+
+#. PDF/EPUB import dialog UI: Done
+msgid "imports_done"
+msgstr "Dovršeno"
+
+#. PDF/EPUB import dialog UI: Failed
+msgid "imports_failed"
+msgstr "Neuspjelo"
+
+#. PDF/EPUB import dialog UI: Derived from each file name
+msgid "imports_derived_filename"
+msgstr "Izvedeno iz naziva svake datoteke"
+
+#. PDF/EPUB import dialog UI: Scanning EPUB folder…
+msgid "imports_epub_folder_scanning"
+msgstr "Pregledavanje mape EPUB-ova…"
+
+#. PDF/EPUB import dialog UI: Failed to scan EPUB folder:
+msgid "imports_epub_scanning_failed"
+msgstr "Pregledavanje mape EPUB-ova nije uspjelo:"
+
+#. PDF/EPUB import feedback: Found {count} PDFs in folder · loaded into dialog
+msgid "imports_pdf_folder_loaded"
+msgstr "U mapi je pronađeno {count} PDF-ova · učitano u dijalog"
+
+#. PDF/EPUB import feedback: Found {count} EPUBs in folder · loaded into dialog
+msgid "imports_epub_folder_loaded"
+msgstr "U mapi je pronađeno {count} EPUB-ova · učitano u dijalog"
+
+#. PDF/EPUB import feedback: This PDF has no selectable text and Tesseract is not installed.
+msgid "imports_pdf_ocr_unavailable"
+msgstr "Ovaj PDF nema tekst koji se može odabrati, a Tesseract nije instaliran."
+
+#. PDF/EPUB import feedback: OCR…
+msgid "imports_ocr_running"
+msgstr "OCR u tijeku…"
+
+#. PDF/EPUB import feedback: OCR {current}/{total}
+msgid "imports_ocr_progress"
+msgstr "OCR {current}/{total}"
+
+#. PDF/EPUB import feedback: ✓ (no text)
+msgid "imports_ocr_no_text"
+msgstr "✓ (bez teksta)"
+
+#. PDF/EPUB import feedback: Priority for this PDF. {important_end} is highest importance, 50 is default.
+msgid "imports_pdf_priority_hint"
+msgstr "Prioritet ovog PDF-a. {important_end} označava najveću važnost, a 50 je zadano."
+
+#. PDF/EPUB import feedback: Priority for this EPUB. {important_end} is highest importance, 50 is default.
+msgid "imports_epub_priority_hint"
+msgstr "Prioritet ovog EPUB-a. {important_end} označava najveću važnost, a 50 je zadano."
+
+#. PDF/EPUB import feedback: Adding PDFs…
+msgid "imports_pdf_adding"
+msgstr "Dodavanje PDF-ova…"
+
+#. PDF/EPUB import feedback: Adding EPUBs…
+msgid "imports_epub_adding"
+msgstr "Dodavanje EPUB-ova…"
+
+#. PDF/EPUB import feedback: Adding PDFs… {completed} / {total}
+msgid "imports_pdf_progress"
+msgstr "Dodavanje PDF-ova… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Adding EPUBs… {completed} / {total}
+msgid "imports_epub_progress"
+msgstr "Dodavanje EPUB-ova… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Adding PDFs… {completed} / {total} · {phase}: {filename}
+msgid "imports_pdf_progress_detail"
+msgstr "Dodavanje PDF-ova… {completed} / {total} · {phase}: {filename}"
+
+#. PDF/EPUB import feedback: Adding EPUBs… {completed} / {total} · {phase}: {filename}
+msgid "imports_epub_progress_detail"
+msgstr "Dodavanje EPUB-ova… {completed} / {total} · {phase}：{filename}"
+
+#. PDF/EPUB import feedback: Found {found} PDFs in folder · {remaining} remaining · adding… {completed} / {total}
+msgid "imports_pdf_folder_progress"
+msgstr "U mapi je pronađeno {found} PDF-ova · preostalo {remaining} · dodavanje… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Found {found} EPUBs in folder · {remaining} remaining · adding… {completed} / {total}
+msgid "imports_epub_folder_progress"
+msgstr "U mapi je pronađeno {found} EPUB-ova · preostalo {remaining} · dodavanje… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Failed to scan EPUB folder: {error}
+msgid "imports_epub_scan_failed"
+msgstr "Pregledavanje mape EPUB-ova nije uspjelo: {error}"
+
+#. PDF/EPUB import feedback: {total} EPUBs in dialog · {checked} checked to import
+msgid "imports_epub_count_summary"
+msgstr "EPUB-ova u dijalogu: {total} · označeno za uvoz: {checked}"
+
+#. PDF/EPUB import feedback:  · {visible} visible
+msgid "imports_epub_visible_count"
+msgstr " · vidljivo: {visible}"
+
+#. Activity Center UI: Running
+msgid "imports_activity_running"
+msgstr "U tijeku"
+
+#. Activity Center UI: Completed
+msgid "imports_activity_completed"
+msgstr "Dovršeno"
+
+#. Activity Center UI: Failed
+msgid "imports_activity_failed"
+msgstr "Neuspjelo"
+
+#. Activity Center UI: Cancelled
+msgid "imports_activity_cancelled"
+msgstr "Otkazano"
+
+#. Activity Center UI: Unknown
+msgid "imports_activity_unknown"
+msgstr "Nepoznato"
+
+#. Activity Center UI: Complete
+msgid "imports_activity_complete"
+msgstr "Dovršeno"
+
+#. Activity Center UI: Working…
+msgid "imports_activity_working"
+msgstr "Rad u tijeku…"
+
+#. Activity Center UI: now
+msgid "imports_activity_now"
+msgstr "upravo sada"
+
+#. Activity Center UI: Incremento Activity Center
+msgid "imports_activity_title"
+msgstr "Centar aktivnosti Incrementa"
+
+#. Activity Center UI: See active and recent background work in one place. Cancel and Retry are enabled only when an operation supports them.
+msgid "imports_activity_intro"
+msgstr "Na jednom mjestu pogledajte aktivne i nedavne pozadinske zadatke. Odustani i Pokušaj ponovno dostupni su samo kada ih zadatak podržava."
+
+#. Activity Center UI: Show completed activity
+msgid "imports_activity_show_finished"
+msgstr "Prikaži dovršene aktivnosti"
+
+#. Activity Center UI: Show completed background activity
+msgid "imports_activity_show_finished_accessible"
+msgstr "Prikaži dovršene pozadinske aktivnosti"
+
+#. Activity Center UI: Clear Finished
+msgid "imports_activity_clear_finished"
+msgstr "Očisti dovršeno"
+
+#. Activity Center UI: Clear finished Incremento activity
+msgid "imports_activity_clear_finished_accessible"
+msgstr "Očisti dovršene aktivnosti Incrementa"
+
+#. Activity Center UI: Activity
+msgid "imports_activity_column_activity"
+msgstr "Aktivnost"
+
+#. Activity Center UI: Category
+msgid "imports_activity_column_category"
+msgstr "Kategorija"
+
+#. Activity Center UI: Status
+msgid "imports_activity_column_status"
+msgstr "Stanje"
+
+#. Activity Center UI: Progress
+msgid "imports_activity_column_progress"
+msgstr "Napredak"
+
+#. Activity Center UI: Updated
+msgid "imports_activity_column_updated"
+msgstr "Ažurirano"
+
+#. Activity Center UI: Incremento background activity
+msgid "imports_activity_tree_accessible"
+msgstr "Pozadinske aktivnosti Incrementa"
+
+#. Activity Center UI: Select an activity to see details.
+msgid "imports_activity_select_detail"
+msgstr "Odaberite aktivnost za prikaz pojedinosti."
+
+#. Activity Center UI: Selected activity details
+msgid "imports_activity_detail_accessible"
+msgstr "Pojedinosti odabrane aktivnosti"
+
+#. Activity Center UI: Cancel Task
+msgid "imports_activity_cancel_task"
+msgstr "Otkaži zadatak"
+
+#. Activity Center UI: Retry
+msgid "imports_activity_retry"
+msgstr "Pokušaj ponovno"
+
+#. Activity Center UI: Close
+msgid "imports_activity_close"
+msgstr "Zatvori"
+
+#. Activity Center UI: Cancel selected activity
+msgid "imports_activity_cancel_accessible"
+msgstr "Otkaži odabranu aktivnost"
+
+#. Activity Center UI: Retry selected activity
+msgid "imports_activity_retry_accessible"
+msgstr "Ponovi odabranu aktivnost"
+
+#. Activity Center UI: Close Incremento Activity Center
+msgid "imports_activity_close_accessible"
+msgstr "Zatvori Centar aktivnosti Incrementa"
+
+#. Activity Center UI: No activity to show.
+msgid "imports_activity_none"
+msgstr "Nema aktivnosti za prikaz."
+
+#. Activity Center UI: No additional details.
+msgid "imports_activity_no_details"
+msgstr "Nema dodatnih pojedinosti."
+
+#. Activity Center elapsed time: {count} minute ago
+msgid "imports_activity_minutes_ago"
+msgid_plural "imports_activity_minutes_ago_plural"
+msgstr[0] "prije {count} minute"
+msgstr[1] "prije {count} minute"
+msgstr[2] "prije {count} minuta"
+
+#. Activity Center elapsed time: {count} hour ago
+msgid "imports_activity_hours_ago"
+msgid_plural "imports_activity_hours_ago_plural"
+msgstr[0] "prije {count} sata"
+msgstr[1] "prije {count} sata"
+msgstr[2] "prije {count} sati"
+
+#. Activity Center elapsed time: {count} day ago
+msgid "imports_activity_days_ago"
+msgid_plural "imports_activity_days_ago_plural"
+msgstr[0] "prije {count} dana"
+msgstr[1] "prije {count} dana"
+msgstr[2] "prije {count} dana"
+
+#. Auxiliary UI
+msgid "imports_ok"
+msgstr "U redu"
+
+#. Auxiliary UI
+msgid "imports_reviewer_tags_title"
+msgstr "Dodaj oznake"
+
+#. Auxiliary UI
+msgid "imports_reviewer_tags_intro"
+msgstr "Dodajte oznake kartici koju trenutačno ponavljate bez otvaranja uređivanja. Nedavno korištene oznake prikazane su prve, a sve oznake zbirke navedene su ispod. Upišite jednu ili više novih oznaka da biste ih izravno dodali."
+
+#. Auxiliary UI
+msgid "imports_reviewer_current_tags"
+msgstr "Trenutačne oznake"
+
+#. Auxiliary UI
+msgid "imports_reviewer_no_tags"
+msgstr "Ova bilješka još nema oznaka."
+
+#. Auxiliary UI
+msgid "imports_reviewer_latest_used"
+msgstr "Nedavno korišteno"
+
+#. Auxiliary UI
+msgid "imports_reviewer_no_recent"
+msgstr "Još nema nedavno korištenih oznaka pri ponavljanju."
+
+#. Auxiliary UI
+msgid "imports_reviewer_search"
+msgstr "Pretraži"
+
+#. Auxiliary UI
+msgid "imports_reviewer_search_placeholder"
+msgstr "Filtrirajte oznake ili upišite nove"
+
+#. Auxiliary UI
+msgid "imports_reviewer_add_typed"
+msgstr "Dodaj upisane"
+
+#. Auxiliary UI
+msgid "imports_reviewer_will_add"
+msgstr "Oznake za dodavanje"
+
+#. Auxiliary UI
+msgid "imports_reviewer_choose_tags"
+msgstr "Odaberite jednu ili više oznaka."
+
+#. Auxiliary UI
+msgid "imports_reviewer_apply"
+msgstr "Primijeni"
+
+#. Auxiliary UI
+msgid "imports_reviewer_already_present"
+msgstr "Već postoji na ovoj bilješci."
+
+#. Auxiliary UI
+msgid "imports_priority_title"
+msgstr "Postavi prioritet"
+
+#. Auxiliary UI
+msgid "imports_priority_first_half"
+msgstr "Prva polovica klizača (0–30)"
+
+#. Auxiliary UI
+msgid "imports_priority_second_half"
+msgstr "Druga polovica klizača (70–100)"
+
+#. Auxiliary UI
+msgid "imports_priority_scale_hint"
+msgstr "{important} = najveća važnost · 50 = zadano · {least} = najmanja važnost"
+
+#. Auxiliary UI
+msgid "imports_priority_finer_hint"
+msgstr "{side} omogućuje preciznije određivanje važnih kartica."
+
+#. Auxiliary UI
+msgid "imports_priority_label"
+msgstr "Prioritet:"
+
+#. Auxiliary UI
+msgid "imports_priority_a_factor"
+msgstr "A-faktor:"
+
+#. Auxiliary UI
+msgid "imports_priority_last_interval"
+msgstr "Posljednji razmak: {days} d"
+
+#. Auxiliary UI
+msgid "imports_priority_a_lower"
+msgstr "Niži A-faktor → kraći razmaci (važna tema)."
+
+#. Auxiliary UI
+msgid "imports_priority_a_higher"
+msgstr "Viši A-faktor → dulji razmaci (manje hitno)."
+
+#. Auxiliary UI
+msgid "imports_extract_title"
+msgstr "Izdvoji karticu"
+
+#. Auxiliary UI
+msgid "imports_extract_note_type"
+msgstr "Vrsta bilješke:"
+
+#. Auxiliary UI
+msgid "imports_extract_deck"
+msgstr "Špil:"
+
+#. Auxiliary UI
+msgid "imports_extract_priority_help"
+msgstr "Prioritet izdvojene kartice. {end} označava najveću važnost."
+
+#. Auxiliary UI
+msgid "imports_extract_topic"
+msgstr "Tema"
+
+#. Auxiliary UI
+msgid "imports_extract_topic_help"
+msgstr "Dodaj postavljene oznake teme ovoj izdvojenoj kartici."
+
+#. Auxiliary UI
+msgid "imports_extract_tree"
+msgstr "Automatski dodaj povezanost u stablo znanja"
+
+#. Auxiliary UI
+msgid "imports_extract_create"
+msgstr "Izradi karticu"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_title"
+msgstr "Postavke brzih oznaka"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_intro"
+msgstr "Odaberite jedinstvenu boju za svaku oznaku. Oznaka Topic automatski je zelena. Automatski vraća dodijeljenu zadanu boju."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_fixed_mode"
+msgstr "Koristi moje stalne skupove oznaka umjesto nedavnih"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_fixed_help"
+msgstr "Sami odredite numerirana mjesta. Oznake odvojite razmacima, zarezima ili točkama sa zarezom. Popunite mjesta od 1 nadalje bez praznina."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_choose"
+msgstr "Odaberi…"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_automatic"
+msgstr "Automatski"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_color_conflict"
+msgstr "Tu boju već upotrebljava #{tag}. Odaberite drugu boju."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_choose_color"
+msgstr "Odaberite boju za #{tag}"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_need_fixed"
+msgstr "Dodajte barem jedan stalni skup oznaka ili isključite stalni način rada."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_no_gaps"
+msgstr "Popunite mjesta stalnih skupova oznaka od 1 nadalje bez praznina."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_unique"
+msgstr "Svaki stalni skup oznaka mora biti jedinstven."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_title"
+msgstr "Brzo dodavanje oznaka"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_empty"
+msgstr "Još nema dostupnih skupova oznaka. Otvorite Postavke… da biste odredili vlastite stalne skupove oznaka."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_accessible"
+msgstr "{number} ili {letter}: {tags}"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings"
+msgstr "Postavke…"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_help"
+msgstr "Postavite stalne skupove oznaka i boje"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_select_rows"
+msgstr "Najprije odaberite jedan ili više redaka u pregledniku."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_action"
+msgstr "Brzo dodaj oznake…"
+
+#. Auxiliary UI
+msgid "imports_browser_priority_ambiguous"
+msgstr "Najprije odaberite točno jedan redak kartice u pregledniku."
+
+#. Auxiliary UI
+msgid "imports_edit_priority_unavailable"
+msgstr "Nije moguće utvrditi karticu koja se uređuje."
+
+#. Auxiliary UI
+msgid "imports_priority_dialog_unavailable"
+msgstr "Dijaloški okvir prioriteta nije dostupan."
+
+#. Auxiliary UI
+msgid "imports_browser_priority_tip"
+msgstr "Postavi prioritet odabrane kartice u pregledniku"
+
+#. Auxiliary UI
+msgid "imports_edit_priority_tip"
+msgstr "Postavi prioritet trenutačne kartice"
+
+#. Auxiliary UI
+msgid "imports_topic_done_button"
+msgstr "✓ Gotovo"
+
+#. Auxiliary UI
+msgid "imports_topic_done_description"
+msgstr "Zadrži ovu temu kao referencu i prestani je prikazivati pri ponavljanju. Dodaj oznaku Gotovo odabranu u Postavke → Teme njezinoj bilješci. Izdvojene kartice nastavljaju se ponavljati. Poništavanje vraća karticu i prethodne oznake."
+
+#. Auxiliary UI
+msgid "imports_topic_done_accessible"
+msgstr "Označi temu kao gotovu"
+
+#. Auxiliary UI
+msgid "imports_topic_changed"
+msgstr "Trenutačna se tema promijenila. Pokušajte ponovno."
+
+#. Auxiliary UI
+msgid "imports_topic_no_longer"
+msgstr "Ova kartica više nije tema."
+
+#. Auxiliary UI
+msgid "imports_topic_profile_changed"
+msgstr "Profil se promijenio."
+
+#. Auxiliary UI
+msgid "imports_topic_done_action"
+msgstr "Označi temu kao gotovu"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_menu"
+msgstr "Ponovno pregledaj za…"
+
+#. Auxiliary UI
+msgid "imports_topic_choose_date"
+msgstr "Odaberi datum…"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_title"
+msgstr "Ponovno pregledaj temu"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_help"
+msgstr "Odaberite kada tema ponovno dolazi na red:"
+
+#. Auxiliary UI
+msgid "imports_topic_next_date"
+msgstr "Datum sljedećeg ponavljanja"
+
+#. Auxiliary UI
+msgid "imports_topic_undo"
+msgstr "Poništi"
+
+#. Auxiliary UI
+msgid "imports_topic_undo_accessible"
+msgstr "Poništi radnju za temu"
+
+#. Auxiliary UI
+msgid "imports_topic_dismiss"
+msgstr "Zatvori obavijest"
+
+#. Auxiliary UI
+msgid "imports_topic_done_notice"
+msgstr "Tema je označena kao gotova."
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_notice"
+msgstr "Tema je zakazana za {date}."
+
+#. Auxiliary UI plural
+msgid "imports_quick_tags_intro"
+msgid_plural "imports_quick_tags_intro_plural"
+msgstr[0] "Primijenite jedan skup oznaka na {count} odabranu bilješku. Pritisnite 1–9 ili A–I ili kliknite skup. Mjesta idu redom po retcima. Svaka oznaka uvijek zadržava istu boju."
+msgstr[1] "Primijenite jedan skup oznaka na {count} odabrane bilješke. Pritisnite 1–9 ili A–I ili kliknite skup. Mjesta idu redom po retcima. Svaka oznaka uvijek zadržava istu boju."
+msgstr[2] "Primijenite jedan skup oznaka na {count} odabranih bilježaka. Pritisnite 1–9 ili A–I ili kliknite skup. Mjesta idu redom po retcima. Svaka oznaka uvijek zadržava istu boju."
+
+#. Auxiliary UI plural
+msgid "imports_quick_tags_applied"
+msgid_plural "imports_quick_tags_applied_plural"
+msgstr[0] "Dodano {tags} na {count} bilješku."
+msgstr[1] "Dodano {tags} na {count} bilješke."
+msgstr[2] "Dodano {tags} na {count} bilježaka."
+
+#. Auxiliary UI plural
+msgid "imports_topic_months"
+msgid_plural "imports_topic_months_plural"
+msgstr[0] "{count} mjesec"
+msgstr[1] "{count} mjeseca"
+msgstr[2] "{count} mjeseci"
+#. Quick tag example; topic is a canonical tag name.
+msgid "imports_quick_tags_placeholder"
+msgstr "topic psihologija"
+
+#. Reviewer topic error
+msgid "imports_topic_unavailable"
+msgstr "Ova tema više nije dostupna za ponavljanje."
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_months"
+msgstr "Odaberite 3, 6 ili 12 mjeseci ili budući datum."
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_date"
+msgstr "Odaberite budući datum unutar sljedećih 100 godina."
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_data"
+msgstr "Prilagođeni podaci o rasporedu kartice nisu valjani."
+
+#. Reviewer topic error
+msgid "imports_topic_undo_stale"
+msgstr "Ova radnja više nije posljednja promjena. Koristite Uredi → Poništi za pregled nedavnih promjena."
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_menu"
+msgstr "Gumbi za ponavljanje"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_group"
+msgstr "Prikaži skup gumba za ponavljanje"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_done"
+msgstr "Prikaži gumb Gotovo"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_postpone"
+msgstr "Prikaži gumb Odgodi"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_extract"
+msgstr "Prikaži gumb Izdvoji"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_label"
+msgstr "Izdvoji"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_description"
+msgstr "Izdvoji odabrani sadržaj u novu karticu"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_shortcut"
+msgstr "Izdvoji odabrani sadržaj u novu karticu ({shortcut})"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_priority"
+msgstr "Prioritet"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_a_factor"
+msgstr "A-faktor"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_saved"
+msgstr "Spremljeno"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_schedule"
+msgstr "Raspored"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_source_pdf"
+msgstr "Izvorni PDF"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_source_hint"
+msgstr "Poveznica na izvor na ovoj kartici otvara dokument."

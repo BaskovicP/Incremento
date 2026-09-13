@@ -249,8 +249,12 @@ class _ToolButton(_PushButton):
 
 
 class _TabWidget(_BaseWidget):
-    def addTab(self, *args):
-        return None
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.tabs = []
+
+    def addTab(self, widget, label):
+        self.tabs.append((widget, label))
 
 
 class _ScrollArea(_BaseWidget):
@@ -267,6 +271,10 @@ class _DialogButtonBox(_BaseWidget):
         super().__init__(*args, **kwargs)
         self.accepted = _Signal()
         self.rejected = _Signal()
+        self._buttons = {self.StandardButton.Ok: _PushButton(), self.StandardButton.Cancel: _PushButton()}
+
+    def button(self, which):
+        return self._buttons[which]
 
 
 class _KeySequence:
@@ -365,6 +373,36 @@ IncrementoSettingsDialog = _MOD.IncrementoSettingsDialog
 default_shortcuts = _MOD.default_shortcuts
 resolved_runtime_shortcuts = _MOD.resolved_runtime_shortcuts
 SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
+
+
+@pytest.mark.parametrize("choice,expected", [("auto", "auto"),("hr", "hr"),("zh_CN", "zh-Hans")])
+def test_language_tab_loads_selection_as_stable_code(choice, expected):
+    dialog = IncrementoSettingsDialog({}, current_ui_language=choice)
+    assert dialog.ui_language == expected
+    assert dialog._language_combo._items == [
+        ("Automatic — follow Anki", "auto"), ("English", "en"),
+        ("Hrvatski", "hr"), ("简体中文", "zh-Hans"),
+    ]
+    assert dialog._tabs.tabs[0][1] == "Language"
+
+
+def test_language_selection_is_only_a_draft_until_settings_are_accepted():
+    from backend import i18n
+    before = i18n.get_locale()
+    dialog = IncrementoSettingsDialog({}, current_ui_language="en")
+    dialog._language_combo.setCurrentIndex(2)
+    assert dialog.ui_language == "hr"
+    dialog.reject()
+    assert i18n.get_locale() == before
+    assert "restart Anki" in dialog._language_restart_hint.text
+
+
+def test_language_tab_can_be_found_and_language_names_read_in_chinese(monkeypatch):
+    from backend import i18n
+    monkeypatch.setattr(i18n, "_translator", i18n.Translator("zh-Hans"))
+    dialog = IncrementoSettingsDialog({}, current_ui_language="zh-Hans")
+    assert dialog._tabs.tabs[0][1] == "语言 / Language"
+    assert dialog._language_combo._items[1:] == [("English", "en"),("Hrvatski", "hr"),("简体中文", "zh-Hans")]
 
 
 class TestIncrementoSettingsDialogDefaultTopicAFactor:
@@ -470,7 +508,7 @@ class TestIncrementoSettingsDialogTopicDoneTag:
             dialog.exec = Mock(return_value=True)
             return dialog
 
-        class Saved(Exception):
+        class Saved(BaseException):
             pass
 
         def save(addon_manager, package, config):
@@ -479,11 +517,14 @@ class TestIncrementoSettingsDialogTopicDoneTag:
 
         namespace.update({
             "__name__": "incremento", "mw": SimpleNamespace(addonManager=manager, col=col),
+            "copy": __import__("copy"), "Exception": Exception,
             "sorted": sorted, "IncrementoSettingsDialog": open_dialog,
             "_configured_topic_done_tag": config_service.configured_topic_done_tag,
             "_load_addon_config": config_service.load_addon_config, "_save_addon_config": save,
         })
-        exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
+        save_helper = next(node for node in ast.parse(path.read_text()).body
+                           if isinstance(node, ast.FunctionDef) and node.name == "_save_settings_with_language_pack")
+        exec(compile(ast.Module(body=[save_helper, function], type_ignores=[]), str(path), "exec"), namespace)
         with pytest.raises(Saved):
             namespace["openSettingsFunction"]()
         stored = manager.writeConfig.call_args.args[1]
@@ -664,7 +705,7 @@ class TestIncrementoSettingsDialogReviewerPriorityBadge:
             'cfg["reviewer_priority_badge_card_types"] = '
             "dlg.reviewer_priority_badge_card_types"
         ) in source
-        assert "_save_addon_config(mw.addonManager, __name__, cfg)\n    _sync_reviewer_priority_badge()" in source
+        assert source.index("_save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile)") < source.index("_sync_reviewer_priority_badge()")
 
 
 class TestIncrementoSettingsDialogPdfPaging:
@@ -769,3 +810,81 @@ class TestIncrementoSettingsDialogShortcuts:
 
         assert resolved["document_bookshelf"] == "Alt+Shift+P"
         assert resolved["quick_open_pdf"] == "Ctrl+Alt+O"
+
+
+def test_settings_preserves_builtin_preset_identity_until_user_edits_label():
+    presets = [{'builtin_id': 'daily', 'label': 'Daily', 'interval_value': 1, 'interval_unit': 'days'}]
+    dialog = IncrementoSettingsDialog({}, current_custom_schedule_presets=presets)
+    assert dialog.custom_schedule_presets[0]['builtin_id'] == 'daily'
+    dialog._custom_schedule_presets_edit.setPlainText('My daily | 1 | days')
+    assert dialog.custom_schedule_presets[0]['label'] == 'My daily'
+    assert 'builtin_id' not in dialog.custom_schedule_presets[0]
+
+
+@pytest.mark.parametrize('accepted,write_fails', [(True, False), (False, False), (True, True)])
+def test_language_settings_adapter_saves_only_on_ok_and_keeps_running_locale(accepted, write_fails):
+    import ast
+    import builtins
+    import copy
+    import json
+    from pathlib import Path
+    from types import SimpleNamespace
+    from backend import i18n
+    import config_service
+
+    path = Path(__file__).resolve().parents[1] / '__init__.py'
+    function = next(n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == 'openSettingsFunction')
+    namespace = {n.id: Mock(name=n.id) for n in ast.walk(function) if isinstance(n, ast.Name)}
+    namespace.update(vars(builtins))
+    # Startup already normalizes the add-on manager's cached config.
+    saved = config_service.normalize_config({'ui_language': 'en', 'future_setting': {'keep': True}})
+    original = copy.deepcopy(saved)
+    manager = Mock()
+    manager.getConfig.side_effect = lambda _name: saved
+    writes = []
+
+    def write(_name, value):
+        if write_fails:
+            raise OSError('synthetic save failure')
+        writes.append(copy.deepcopy(value))
+
+    manager.writeConfig.side_effect = write
+    col = Mock()
+    col.models.all_names_and_ids.return_value = []
+
+    def dialog(shortcuts, **kwargs):
+        assert kwargs['current_ui_language'] == 'en'
+        instance = IncrementoSettingsDialog(shortcuts, current_ui_language=kwargs['current_ui_language'])
+        instance._language_combo.setCurrentIndex(2)
+        instance.exec = lambda: accepted
+        return instance
+
+    namespace.update({
+        '__name__': 'incremento', 'copy': copy, 'json': json,
+        'mw': SimpleNamespace(addonManager=manager, col=col, state='overview'),
+        'IncrementoSettingsDialog': dialog,
+        'configured_priority_lower_is_more_important': lambda _cfg: True,
+        '_load_addon_config': config_service.load_addon_config,
+        '_save_addon_config': config_service.save_addon_config,
+        '_t': i18n.t,
+    })
+    old = i18n.get_locale()
+    try:
+        i18n.initialize_language('en')
+        save_helper = next(node for node in ast.parse(path.read_text()).body
+                           if isinstance(node, ast.FunctionDef) and node.name == '_save_settings_with_language_pack')
+        exec(compile(ast.Module(body=[save_helper, function], type_ignores=[]), str(path), 'exec'), namespace)
+        namespace['openSettingsFunction']()
+        assert i18n.get_locale() == 'en'
+        assert saved == original
+        if accepted and not write_fails:
+            assert len(writes) == 1
+            assert writes[0]['ui_language'] == 'hr'
+            assert writes[0]['future_setting'] == {'keep': True}
+        else:
+            assert writes == []
+        if write_fails:
+            namespace['showInfo'].assert_called_once_with('Could not save settings. Please try again.')
+            namespace['_sync_reviewer_priority_badge'].assert_not_called()
+    finally:
+        i18n.initialize_language(old)

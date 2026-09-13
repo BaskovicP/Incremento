@@ -1,0 +1,2007 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Incremento\n"
+"PO-Revision-Date: 2026-09-13 00:00+0000\n"
+"Last-Translator: Incremento\n"
+"Language-Team: English\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "common_back"
+msgstr "Back"
+
+msgid "common_close"
+msgstr "Close"
+
+msgid "common_finish"
+msgstr "Finish"
+
+msgid "common_next"
+msgstr "Next"
+
+msgid "common_none"
+msgstr "None"
+
+msgid "common_off"
+msgstr "Off"
+
+msgid "session_current_settings"
+msgstr "Current Settings"
+
+msgid "session_basic_summary"
+msgstr "{count:,} cards · Topics {topic_percent}% / Items {item_percent}% · Documents {document_percent}% / Other {other_percent}% · Preset: {preset}"
+
+msgid "onboarding_welcome_title"
+msgstr "Welcome to Incremento"
+
+msgid "onboarding_welcome_body"
+msgstr "Incremento keeps long-form reading, extraction, review, and progress inside Anki. This short guide follows the safest first workflow."
+
+msgid "onboarding_add_document_title"
+msgstr "1. Add your first document"
+
+msgid "onboarding_add_document_body"
+msgstr "Start with a PDF or EPUB. Incremento stores managed documents inside the active Anki profile and restores your reading position."
+
+msgid "onboarding_add_document_action"
+msgstr "Add PDF…"
+
+msgid "onboarding_extract_title"
+msgstr "2. Extract one useful idea"
+
+msgid "onboarding_extract_body"
+msgstr "Select a passage in the reader and choose Extract. Review the source, destination field, tags, priority, and duplicate warning before saving."
+
+msgid "onboarding_start_session_title"
+msgstr "3. Start a small session"
+
+msgid "onboarding_start_session_body"
+msgstr "Use the Basic session view first. Choose a small card count and your Topic/Item and Document/Other mix; Advanced keeps the full scheduler."
+
+msgid "onboarding_start_session_action"
+msgstr "Open session setup…"
+
+msgid "onboarding_extension_privacy_title"
+msgstr "4. Connect the browser only if needed"
+
+msgid "onboarding_extension_privacy_body"
+msgstr "The companion extension uses temporary access by default. Persistent Automatic site access is optional and can be revoked in the popup."
+
+msgid "onboarding_backup_title"
+msgstr "5. Create a backup"
+
+msgid "onboarding_backup_body"
+msgstr "Export a full backup before a large import or workflow change. Runtime content remains isolated under the active Anki profile."
+
+msgid "onboarding_backup_action"
+msgstr "Export backup…"
+
+msgid "onboarding_dialog_title"
+msgstr "Getting Started with Incremento"
+
+msgid "onboarding_progress_accessible"
+msgstr "Onboarding progress"
+
+msgid "onboarding_steps_accessible"
+msgstr "Incremento onboarding steps"
+
+msgid "onboarding_skip"
+msgstr "Skip guide"
+
+msgid "onboarding_skip_accessible"
+msgstr "Skip onboarding guide"
+
+msgid "onboarding_back_accessible"
+msgstr "Go to previous onboarding step"
+
+msgid "onboarding_next_accessible"
+msgstr "Go to next onboarding step"
+
+msgid "onboarding_finish_accessible"
+msgstr "Finish onboarding guide"
+
+msgid "onboarding_progress"
+msgstr "Step {current} of {total}"
+
+msgid "command_palette_unavailable_current_view"
+msgstr "Unavailable in the current Anki view"
+
+msgid "command_palette_title"
+msgstr "Incremento Commands"
+
+msgid "command_palette_intro"
+msgstr "Search every Incremento action. Disabled commands stay visible and explain why they are unavailable."
+
+msgid "command_palette_search_placeholder"
+msgstr "Type an action, e.g. review, PDF, statistics…"
+
+msgid "command_palette_search_accessible"
+msgstr "Search Incremento commands"
+
+msgid "command_palette_results_accessible"
+msgstr "Matching Incremento commands"
+
+msgid "command_palette_close_accessible"
+msgstr "Close command palette"
+
+msgid "command_palette_unavailable"
+msgstr "Unavailable"
+
+msgid "command_palette_no_matches"
+msgstr "No matching Incremento commands."
+
+msgid "command_palette_no_shortcut"
+msgstr "No shortcut assigned"
+
+msgid "command_palette_unavailable_now"
+msgstr "This command is not available right now."
+
+msgid "stats_type_topics"
+msgstr "Topics"
+
+msgid "stats_type_items"
+msgstr "Items"
+
+msgid "stats_type_pdfs"
+msgstr "PDFs"
+
+msgid "stats_type_epubs"
+msgstr "EPUBs"
+
+msgid "stats_type_videos"
+msgstr "Videos"
+
+msgid "stats_type_web_pages"
+msgstr "Web pages"
+
+msgid "stats_type_unknown"
+msgstr "{type_name}"
+
+msgid "stats_type_other"
+msgstr "Other"
+
+msgid "stats_type_pdf"
+msgstr "PDF"
+
+msgid "stats_type_epub"
+msgstr "EPUB"
+
+msgid "stats_mode_priority"
+msgstr "Priority"
+
+msgid "stats_mode_random"
+msgstr "Random"
+
+msgid "stats_mode_unknown"
+msgstr "{mode_name}"
+
+msgid "stats_duration_hours_minutes"
+msgstr "{hours}h {minutes}m"
+
+msgid "stats_duration_minutes_seconds"
+msgstr "{minutes}m {seconds}s"
+
+msgid "stats_duration_seconds"
+msgstr "{seconds}s"
+
+msgid "stats_cards_studied"
+msgstr "Cards studied"
+
+msgid "stats_review_time"
+msgstr "Review time"
+
+msgid "stats_average_per_card"
+msgstr "Avg/card"
+
+msgid "stats_top_type_tag"
+msgstr "Top type/tag"
+
+msgid "stats_pages_read"
+msgstr "Pages read"
+
+msgid "stats_study_time"
+msgstr "Study time"
+
+msgid "stats_active_days"
+msgstr "Active days"
+
+msgid "stats_minutes"
+msgstr "Minutes"
+
+msgid "stats_no_history_activity"
+msgstr "No reading or study activity recorded in this range yet."
+
+msgid "stats_history_insight"
+msgid_plural "stats_history_insight_plural"
+msgstr[0] "Current streak: {count} day · Active-day average: {cards} cards and {pages} pages"
+msgstr[1] "Current streak: {count} days · Active-day average: {cards} cards and {pages} pages"
+
+msgid "stats_no_previous_activity"
+msgstr "no previous activity"
+
+msgid "stats_period_comparison"
+msgstr "Compared with the previous {days} days: {cards} cards · {pages} pages · {study_time} study time"
+
+msgid "stats_dialog_title"
+msgstr "Incremento — Statistics"
+
+msgid "stats_scope_session"
+msgstr "This Session"
+
+msgid "stats_scope_today"
+msgstr "Today"
+
+msgid "stats_scope_7_days"
+msgstr "7 Days"
+
+msgid "stats_scope_30_days"
+msgstr "30 Days"
+
+msgid "stats_scope_year"
+msgstr "Year"
+
+msgid "stats_scope_all_time"
+msgstr "All Time"
+
+msgid "stats_daily_goals"
+msgstr "Daily goals"
+
+msgid "stats_cards"
+msgstr "Cards"
+
+msgid "stats_pages"
+msgstr "Pages"
+
+msgid "stats_cards_per_day"
+msgstr "Cards/day:"
+
+msgid "stats_pages_per_day"
+msgstr "Pages/day:"
+
+msgid "stats_minutes_per_day"
+msgstr "Minutes/day:"
+
+msgid "stats_save_goals"
+msgstr "Save Goals"
+
+msgid "stats_save_goals_accessible"
+msgstr "Save daily statistics goals"
+
+msgid "stats_goal_progress_accessible"
+msgstr "Today's {label} goal progress"
+
+msgid "stats_export_history_csv"
+msgstr "Export History CSV…"
+
+msgid "stats_export_history_csv_accessible"
+msgstr "Export Incremento statistics history as CSV"
+
+msgid "stats_daily_goal_accessible"
+msgstr "Daily {label} goal"
+
+msgid "stats_goal_off"
+msgstr "{label} goal off · {value} today"
+
+msgid "stats_goal_progress"
+msgstr "{label} {value} / {target}"
+
+msgid "stats_save_goals_failed"
+msgstr "Could not save daily goals."
+
+msgid "stats_goals_saved"
+msgstr "Daily goals saved for this Anki profile."
+
+msgid "stats_export_dialog_title"
+msgstr "Export Statistics History"
+
+msgid "stats_export_file_filter"
+msgstr "CSV files (*.csv);;All files (*)"
+
+msgid "stats_export_failed"
+msgstr "Could not export statistics CSV."
+
+msgid "stats_exported"
+msgstr "Statistics history exported as CSV."
+
+msgid "stats_activity_heatmap"
+msgstr "Activity Heatmap"
+
+msgid "stats_color_by"
+msgstr "Color by:"
+
+msgid "stats_all_activity"
+msgstr "All activity"
+
+msgid "stats_heatmap_metric_accessible"
+msgstr "Activity heatmap metric"
+
+msgid "stats_heatmap_select_day"
+msgstr "Select a heatmap day to inspect cards, pages, and study time."
+
+msgid "stats_selected_day_accessible"
+msgstr "Selected statistics day details"
+
+msgid "stats_cards_by_day"
+msgstr "Cards Studied by Day"
+
+msgid "stats_pages_by_day"
+msgstr "Pages Read by Day"
+
+msgid "stats_time_by_day"
+msgstr "Study Time by Day"
+
+msgid "stats_no_session_statistics"
+msgstr "No session statistics recorded yet."
+
+msgid "stats_no_scope_statistics"
+msgstr "No clean statistics data recorded for this scope."
+
+msgid "stats_card_type_distribution"
+msgstr "Card-Type Distribution"
+
+msgid "stats_mode_distribution"
+msgstr "Mode Distribution"
+
+msgid "stats_tags"
+msgstr "Tags"
+
+msgid "stats_review_time_by_type"
+msgstr "Review Time by Card Type"
+
+msgid "stats_review_time_by_tag"
+msgstr "Review Time by Tag"
+
+msgid "stats_bar_chart_accessible"
+msgstr "Statistics bar chart"
+
+msgid "stats_trend_chart_accessible"
+msgstr "Daily statistics trend chart"
+
+msgid "stats_trend_chart_title"
+msgstr "Daily statistics trend{date_range}"
+
+msgid "stats_heatmap_accessible"
+msgstr "Daily reading and study activity heatmap"
+
+msgid "stats_shown_days"
+msgstr "shown days"
+
+msgid "stats_weekday_mon"
+msgstr "Mon"
+
+msgid "stats_weekday_tue"
+msgstr "Tue"
+
+msgid "stats_weekday_wed"
+msgstr "Wed"
+
+msgid "stats_weekday_thu"
+msgstr "Thu"
+
+msgid "stats_weekday_fri"
+msgstr "Fri"
+
+msgid "stats_weekday_sat"
+msgstr "Sat"
+
+msgid "stats_weekday_sun"
+msgstr "Sun"
+
+msgid "stats_heatmap_tooltip"
+msgstr "{date}: {cards} cards, {pages} pages, {duration}"
+
+msgid "stats_selected_day"
+msgstr "Selected day"
+
+msgid "stats_day_detail"
+msgstr "{date} · {cards} cards ({topics} topics, {items} items, {other} other) · {pdf_pages} PDF + {epub_pages} EPUB pages · {duration} study time"
+
+msgid "stats_status_accessible"
+msgstr "Statistics goal and export status"
+
+msgid "stats_comparison_accessible"
+msgstr "Comparison with previous statistics period"
+
+msgid "common_custom"
+msgstr "Custom…"
+
+msgid "common_load"
+msgstr "Load"
+
+msgid "common_save"
+msgstr "Save"
+
+msgid "common_add"
+msgstr "Add…"
+
+msgid "common_rename"
+msgstr "Rename…"
+
+msgid "common_delete"
+msgstr "Delete"
+
+msgid "common_refresh"
+msgstr "Refresh"
+
+msgid "common_enabled"
+msgstr "Enabled:"
+
+msgid "session_day_end_midnight"
+msgstr "12:00 AM (midnight)"
+
+msgid "session_day_end_one_am"
+msgstr "1:00 AM"
+
+msgid "session_day_end_two_am"
+msgstr "2:00 AM"
+
+msgid "session_day_end_three_am"
+msgstr "3:00 AM"
+
+msgid "session_day_end_four_am"
+msgstr "4:00 AM"
+
+msgid "session_day_end_five_am"
+msgstr "5:00 AM"
+
+msgid "session_day_end_six_am"
+msgstr "6:00 AM"
+
+msgid "session_priority_dimension_tags"
+msgstr "Tags"
+
+msgid "session_priority_dimension_type"
+msgstr "Type (topics / items)"
+
+msgid "session_priority_dimension_mode"
+msgstr "Mode (priority / random)"
+
+msgid "session_scheduler_settings_title"
+msgstr "Scheduler Settings"
+
+msgid "session_setup_view"
+msgstr "Setup view:"
+
+msgid "session_setup_view_accessible"
+msgstr "Session setup view"
+
+msgid "session_basic"
+msgstr "Basic"
+
+msgid "session_basic_accessible"
+msgstr "Use basic session setup"
+
+msgid "session_advanced"
+msgstr "Advanced"
+
+msgid "session_advanced_accessible"
+msgstr "Use advanced session setup"
+
+msgid "session_intro"
+msgstr "Configure how Incremento selects cards for each study session."
+
+msgid "session_branch_study"
+msgstr "Branch study: {title}"
+
+msgid "session_branch_study_note"
+msgstr "This session uses the normal Incremento scheduler, but only cards from the selected knowledge-tree subtree are eligible."
+
+msgid "session_preset"
+msgstr "Preset:"
+
+msgid "session_preset_accessible"
+msgstr "Session preset"
+
+msgid "session_preset_tooltip"
+msgstr "Saved scheduler presets. Use Current Settings for the shared Incremento Session deck."
+
+msgid "session_load_preset_tooltip"
+msgstr "Apply the selected saved preset to all settings below"
+
+msgid "session_save_preset_tooltip"
+msgstr "Overwrite the selected saved preset with the current settings"
+
+msgid "session_add_preset_tooltip"
+msgstr "Create a new saved preset from the current settings"
+
+msgid "session_rename_preset_tooltip"
+msgstr "Rename the selected saved preset"
+
+msgid "session_delete_preset_tooltip"
+msgstr "Delete the selected saved preset"
+
+msgid "session_cards_per_session"
+msgstr "Cards per session:"
+
+msgid "session_cards_per_session_accessible"
+msgstr "Cards per session"
+
+msgid "session_cards_per_session_tooltip"
+msgstr "Total cards Incremento schedules for this session.\n\nExample: 50 → exactly 50 cards in the filtered deck.\nAll other settings (quotas, rates, priorities) are percentages of this number."
+
+msgid "session_card_types"
+msgstr "Card types:"
+
+msgid "session_card_type_new"
+msgstr "New"
+
+msgid "session_card_type_new_tooltip"
+msgstr "Include cards that have never been studied (is:new)"
+
+msgid "session_card_type_learning"
+msgstr "Learning"
+
+msgid "session_card_type_learning_tooltip"
+msgstr "Include learning/relearning cards that are due now"
+
+msgid "session_card_type_due"
+msgstr "Due / Review"
+
+msgid "session_card_type_due_tooltip"
+msgstr "Include review cards that are due for study (is:due)"
+
+msgid "session_topics"
+msgstr "Topics"
+
+msgid "session_topics_tooltip"
+msgstr "Concept cards — notes, articles, long-form reading material"
+
+msgid "session_items"
+msgstr "Items"
+
+msgid "session_items_tooltip"
+msgstr "Fact cards — Q&A flashcards, vocabulary, quick-recall items"
+
+msgid "session_group"
+msgstr "Group:"
+
+msgid "session_group_tooltip"
+msgstr "Rows with the same group name are constrained together."
+
+msgid "session_basic_intro"
+msgstr "Choose the session size and the two main mixes. Open Advanced for tag quotas, scheduling phases, card states, ordering, and diagnostics."
+
+msgid "session_basic_help_accessible"
+msgstr "Basic session setup help"
+
+msgid "session_topics_items_mix_accessible"
+msgstr "Topic and Item mix"
+
+msgid "session_documents"
+msgstr "Documents"
+
+msgid "session_documents_other_mix_accessible"
+msgstr "Document and Other mix"
+
+msgid "session_other"
+msgstr "Other"
+
+msgid "session_summary_accessible"
+msgstr "Current session summary"
+
+msgid "session_preview_selected_cards"
+msgstr "Preview selected cards…"
+
+msgid "session_preview_selected_cards_accessible"
+msgstr "Preview selected session cards"
+
+msgid "session_scheduler_scope"
+msgstr "Scheduler scope:"
+
+msgid "session_scope_this_session"
+msgstr "This session"
+
+msgid "session_scope_today"
+msgstr "Today"
+
+msgid "session_scope_all_time"
+msgstr "All time"
+
+msgid "session_day_ends_at"
+msgstr "Day ends at:"
+
+msgid "session_live_preview_title"
+msgstr "Live Scheduler Preview"
+
+msgid "session_live_preview_refresh_hint"
+msgstr "Click Refresh to preview current scheduler output."
+
+msgid "session_live_preview_disclaimer"
+msgstr "Preview disclaimer: this is one sampled scheduler run. If you start normally, scheduling reruns and may differ, especially in soft mode."
+
+msgid "session_use_previewed_list"
+msgstr "Use this previewed card list when starting (skip scheduler rerun)"
+
+msgid "session_use_previewed_list_tooltip"
+msgstr "When enabled, Start Session reuses the latest refreshed preview list exactly."
+
+msgid "session_type"
+msgstr "Type"
+
+msgid "session_mode"
+msgstr "Mode"
+
+msgid "session_tag"
+msgstr "Tag"
+
+msgid "session_card"
+msgstr "Card"
+
+msgid "session_pdf_daily_limit"
+msgstr "PDF Daily Reading Limit"
+
+msgid "session_pdf_limit_select_card"
+msgstr "Select a PDF card to edit its daily page limit."
+
+msgid "session_pdf_limit_enable"
+msgstr "Enable daily page limit for this PDF"
+
+msgid "session_pdf_limit_warning"
+msgstr "Warning only"
+
+msgid "session_pdf_limit_soft_lock"
+msgstr "Soft lock + override"
+
+msgid "session_pdf_limit_hard_stop"
+msgstr "Hard stop"
+
+msgid "session_pdf_limit"
+msgstr "Limit:"
+
+msgid "session_save_pdf_limit"
+msgstr "Save PDF limit"
+
+msgid "session_pdf_limit_status"
+msgstr "Today: {used}/{limit} pages, {remaining} remaining. Current page {current_page}, read-through {read_through}."
+
+msgid "session_pdf_limit_not_set"
+msgstr "No daily limit is set for this PDF yet."
+
+msgid "session_pdf_limit_saved"
+msgstr "PDF daily reading limit saved."
+
+msgid "session_pdf_limit_intro"
+msgstr "Set a per-PDF daily page cap directly from Incremental Learning."
+
+msgid "session_find_pdf"
+msgstr "Find PDF:"
+
+msgid "session_search_pdf_title"
+msgstr "Search by PDF title…"
+
+msgid "session_pdf"
+msgstr "PDF:"
+
+msgid "session_refresh_pdfs"
+msgstr "Refresh PDFs"
+
+msgid "session_enable"
+msgstr "Enable"
+
+msgid "session_pages_per_day"
+msgstr "pages / day"
+
+msgid "session_documents_tooltip"
+msgstr "Incremento PDF and EPUB reading cards — always eligible regardless of scheduling state"
+
+msgid "session_other_tooltip"
+msgstr "All non-document cards (topics and items)"
+
+msgid "session_priority"
+msgstr "Priority"
+
+msgid "session_priority_tooltip"
+msgstr "Pick cards in priority order — most overdue or highest-rated appear first"
+
+msgid "session_random"
+msgstr "Random"
+
+msgid "session_random_tooltip"
+msgstr "Pick cards at random from the eligible pool"
+
+msgid "session_group_axis_hint"
+msgstr "Rows in the same group are constrained to a shared 100% pool (locked rows are pinned)."
+
+msgid "session_tag_content_estimate"
+msgstr "Tag × content estimate:"
+
+msgid "session_total"
+msgstr "Total"
+
+msgid "session_live_card_preview"
+msgstr "Live card preview…"
+
+msgid "session_live_preview_hint"
+msgstr "Live preview is an estimate sample. To force exact reuse, enable the checkbox inside the preview dialog."
+
+msgid "common_search"
+msgstr "Search"
+
+msgid "common_preview"
+msgstr "Preview"
+
+msgid "search_all_title"
+msgstr "Search ALL"
+
+msgid "search_all_while_typing"
+msgstr "Search while typing"
+
+msgid "search_all_pdf_highlights"
+msgstr "PDF Highlights"
+
+msgid "search_all_epub_highlights"
+msgstr "EPUB Highlights"
+
+msgid "search_all_pdf_sources"
+msgstr "PDF Sources"
+
+msgid "search_all_epub_sources"
+msgstr "EPUB Sources"
+
+msgid "search_all_pdf_content"
+msgstr "PDF Content"
+
+msgid "search_all_epub_content"
+msgstr "EPUB Content"
+
+msgid "search_all_image_ocr"
+msgstr "Image OCR"
+
+msgid "search_all_cards"
+msgstr "Cards"
+
+msgid "search_all_existing_anki_items"
+msgstr "Existing Anki Items Only"
+
+msgid "search_all_existing_anki_items_tooltip"
+msgstr "Hide indexed results whose linked Anki card or source note no longer exists."
+
+msgid "search_all_existing_anki_items_accessible"
+msgstr "Hide indexed results linked to deleted Anki cards or notes."
+
+msgid "search_all_cancel_pdf_indexing"
+msgstr "Cancel PDF indexing"
+
+msgid "search_all_placeholder"
+msgstr "Search PDFs, EPUBs, and cards..."
+
+msgid "search_all_minimum_characters"
+msgstr "Type at least {count} characters to search."
+
+msgid "common_create"
+msgstr "Create"
+
+msgid "common_link"
+msgstr "Link"
+
+msgid "knowledge_tree_topic"
+msgstr "Topic"
+
+msgid "knowledge_tree_item"
+msgstr "Item"
+
+msgid "knowledge_tree_card_number"
+msgstr "Card {card_id}"
+
+msgid "knowledge_tree_unknown_card"
+msgstr "Unknown card"
+
+msgid "knowledge_tree_open_pdf_select_one"
+msgstr "Select exactly one knowledge-tree node to open its linked PDF."
+
+msgid "knowledge_tree_open_pdf_one_only"
+msgstr "Open PDF is available only when exactly one knowledge-tree node is selected."
+
+msgid "knowledge_tree_open_pdf_not_linked"
+msgstr "Selected node does not link to a PDF."
+
+msgid "knowledge_tree_open_pdf_available"
+msgstr "Open the linked PDF in the existing PDF dock."
+
+msgid "knowledge_tree_create_title"
+msgstr "Create {kind}"
+
+msgid "knowledge_tree_create_summary"
+msgstr "Create a new {kind} card and insert it into the knowledge tree. The first field becomes the tree label."
+
+msgid "knowledge_tree_note_type"
+msgstr "Note type:"
+
+msgid "knowledge_tree_deck"
+msgstr "Deck:"
+
+msgid "knowledge_tree_create_hint"
+msgstr "The created note will be tagged as {kind} and linked to this tree."
+
+msgid "knowledge_tree_content_required"
+msgstr "Knowledge-tree cards need content in the first field."
+
+msgid "knowledge_tree_note_type_required"
+msgstr "Choose a note type for the new knowledge-tree card."
+
+msgid "knowledge_tree_deck_required"
+msgstr "Choose a deck for the new knowledge-tree card."
+
+msgid "knowledge_tree_no_editable_fields"
+msgstr "This note type does not expose editable fields."
+
+msgid "knowledge_tree_new_kind"
+msgstr "New {kind}"
+
+msgid "knowledge_tree_link_existing_title"
+msgstr "Link Existing Card"
+
+msgid "knowledge_tree_link_existing_summary"
+msgstr "Search existing cards and link one or more into the knowledge tree."
+
+msgid "knowledge_tree_search_card_placeholder"
+msgstr "Search by card title..."
+
+msgid "knowledge_tree_placement"
+msgstr "Placement:"
+
+msgid "knowledge_tree_place_children"
+msgstr "As children of selected node"
+
+msgid "knowledge_tree_place_siblings"
+msgstr "At same level as selected node"
+
+msgid "knowledge_tree_place_siblings_tooltip"
+msgstr "Select a node first to link cards beside it."
+
+msgid "knowledge_tree_link_siblings_hint"
+msgstr "Selected cards will be linked beside the selected node, under the same parent."
+
+msgid "knowledge_tree_link_children_hint"
+msgstr "Selected cards will be linked under the selected node as siblings of each other."
+
+msgid "knowledge_tree_link_root_hint"
+msgstr "No node is selected, so selected cards will be linked at the root level."
+
+msgid "knowledge_tree_results_shown"
+msgid_plural "knowledge_tree_results_shown_plural"
+msgstr[0] "{count} result shown."
+msgstr[1] "{count} results shown."
+
+msgid "knowledge_tree_link_selection_required"
+msgstr "Choose one or more existing cards to link into the knowledge tree."
+
+msgid "common_unknown"
+msgstr "Unknown"
+
+msgid "common_status"
+msgstr "Status"
+
+msgid "common_valid"
+msgstr "Valid"
+
+msgid "common_invalid"
+msgstr "Invalid"
+
+msgid "extract_batch_title"
+msgstr "Batch Q/A Extract"
+
+msgid "extract_batch_target"
+msgstr "Target: <b>{note_type}</b> in deck <b>{deck}</b>"
+
+msgid "extract_batch_hint"
+msgstr "Paste one or more blocks separated by blank lines. Each block must start with <code>Q:</code> and contain a later <code>A:</code> line."
+
+msgid "extract_batch_question_field"
+msgstr "Question field:"
+
+msgid "extract_batch_answer_field"
+msgstr "Answer field:"
+
+msgid "extract_batch_parse_preview"
+msgstr "Parse / Preview"
+
+msgid "extract_batch_question"
+msgstr "Question"
+
+msgid "extract_batch_answer"
+msgstr "Answer"
+
+msgid "extract_batch_delete_selected"
+msgstr "Delete Selected"
+
+msgid "extract_batch_create_all"
+msgstr "Create All"
+
+msgid "extract_batch_invalid_row"
+msgstr "Invalid row."
+
+msgid "extract_batch_fields_different"
+msgstr "Question and answer fields must be different."
+
+msgid "extract_batch_fix_invalid_rows"
+msgid_plural "extract_batch_fix_invalid_rows_plural"
+msgstr[0] "Fix or delete {count} invalid row."
+msgstr[1] "Fix or delete {count} invalid rows."
+
+msgid "extract_batch_parse_one_block"
+msgstr "Parse at least one Q/A block."
+
+msgid "common_clear"
+msgstr "Clear"
+
+msgid "common_more"
+msgstr "More"
+
+msgid "common_remove"
+msgstr "Remove"
+
+msgid "knowledge_tree_title"
+msgstr "Incremento — Knowledge tree"
+
+msgid "knowledge_tree_study"
+msgstr "Study"
+
+msgid "knowledge_tree_study_tooltip"
+msgstr "Open the learning dialog and study only this subtree."
+
+msgid "knowledge_tree_add"
+msgstr "Add"
+
+msgid "knowledge_tree_add_tooltip"
+msgstr "Add a topic or item under the selected node."
+
+msgid "knowledge_tree_add_topic_child"
+msgstr "Add Topic Child"
+
+msgid "knowledge_tree_add_item_child"
+msgstr "Add Item Child"
+
+msgid "knowledge_tree_add_root_topic"
+msgstr "Add Root Topic"
+
+msgid "knowledge_tree_add_root_item"
+msgstr "Add Root Item"
+
+msgid "knowledge_tree_add_root_tooltip"
+msgstr "Add a root topic or item."
+
+msgid "knowledge_tree_add_under"
+msgstr "Add a topic or item under {title}."
+
+msgid "knowledge_tree_search_placeholder"
+msgstr "Search this tree…"
+
+msgid "knowledge_tree_refresh_tooltip"
+msgstr "Reload the tree and keep the current selection when possible."
+
+msgid "knowledge_tree_workspace_hint"
+msgstr "Drag to reorder. Drop onto another node to reparent. Double-click a title to rename. Cmd/Ctrl-click or Shift-click to multi-select. Right-click a node for branch actions."
+
+msgid "knowledge_tree_workspace"
+msgstr "Workspace"
+
+msgid "knowledge_tree_select_for_path"
+msgstr "Select a node to see its path"
+
+msgid "knowledge_tree_knowledge"
+msgstr "Knowledge"
+
+msgid "knowledge_tree_priority"
+msgstr "Priority"
+
+msgid "knowledge_tree_search_hint"
+msgstr "Jump to linked cards by title first, then optionally include metadata or visible card text."
+
+msgid "knowledge_tree_titles"
+msgstr "Titles"
+
+msgid "knowledge_tree_metadata"
+msgstr "Metadata"
+
+msgid "knowledge_tree_card_text"
+msgstr "Card text"
+
+msgid "knowledge_tree_search_limited"
+msgstr "Search is limited to cards already linked into this tree."
+
+msgid "knowledge_tree_select_to_inspect"
+msgstr "Select a topic or item to inspect its card text."
+
+msgid "knowledge_tree_card_id"
+msgstr "Card ID"
+
+msgid "knowledge_tree_source"
+msgstr "Source"
+
+msgid "knowledge_tree_inspect"
+msgstr "Inspect"
+
+msgid "knowledge_tree_create_topic"
+msgstr "Create Topic…"
+
+msgid "knowledge_tree_link_topic"
+msgstr "Link Topic…"
+
+msgid "knowledge_tree_create_item"
+msgstr "Create Item…"
+
+msgid "knowledge_tree_link_item"
+msgstr "Link Item…"
+
+msgid "knowledge_tree_priority_action"
+msgstr "Priority…"
+
+msgid "knowledge_tree_postpone"
+msgstr "Postpone…"
+
+msgid "knowledge_tree_study_branch"
+msgstr "Study Branch…"
+
+msgid "knowledge_tree_subset_review"
+msgstr "Subset Review…"
+
+msgid "knowledge_tree_edit_in_browser"
+msgstr "Edit In Browser"
+
+msgid "knowledge_tree_open_pdf"
+msgstr "Open PDF"
+
+msgid "knowledge_tree_go_to_parent"
+msgstr "Go To Parent"
+
+msgid "knowledge_tree_expand_branch"
+msgstr "Expand Branch"
+
+msgid "knowledge_tree_collapse_branch"
+msgstr "Collapse Branch"
+
+msgid "knowledge_tree_resolve_pdf_failed"
+msgstr "Could not resolve the linked PDF for this knowledge-tree node:\n{error}"
+
+msgid "knowledge_tree_move_failed"
+msgstr "Failed to move knowledge-tree node:\n{error}"
+
+msgid "knowledge_tree_focused_workspace"
+msgstr "focused in current workspace"
+
+msgid "knowledge_tree_load_failed"
+msgstr "Failed to load the knowledge tree:\n{error}"
+
+msgid "knowledge_tree_enable_scope"
+msgstr "Enable at least one scope to search the tree."
+
+msgid "knowledge_tree_search_failed"
+msgstr "Search failed: {error}"
+
+msgid "knowledge_tree_results_for_query"
+msgid_plural "knowledge_tree_results_for_query_plural"
+msgstr[0] "{count} result for “{query}”."
+msgstr[1] "{count} results for “{query}”."
+
+msgid "knowledge_tree_root_level"
+msgstr "Root level"
+
+msgid "knowledge_tree_lineage_select"
+msgstr "Lineage: Select a node first."
+
+msgid "knowledge_tree_lineage_root"
+msgstr "Lineage: Root level"
+
+msgid "knowledge_tree_lineage"
+msgstr "Lineage: {path}"
+
+msgid "knowledge_tree_ancestor_selected"
+msgstr "Selected ancestor node."
+
+msgid "knowledge_tree_nodes_selected"
+msgid_plural "knowledge_tree_nodes_selected_plural"
+msgstr[0] "{count} node selected"
+msgstr[1] "{count} nodes selected"
+
+msgid "knowledge_tree_no_node_selected"
+msgstr "No node selected"
+
+msgid "knowledge_tree_selection"
+msgstr "Selection"
+
+msgid "knowledge_tree_selected_badge"
+msgid_plural "knowledge_tree_selected_badge_plural"
+msgstr[0] "{count} Selected"
+msgstr[1] "{count} Selected"
+
+msgid "knowledge_tree_focused_card"
+msgstr "Focused Card"
+
+msgid "knowledge_tree_priority_value"
+msgstr "Priority {value}"
+
+msgid "knowledge_tree_workspace_summary"
+msgstr "{cards} · {branches}"
+
+msgid "knowledge_tree_card_count"
+msgid_plural "knowledge_tree_card_count_plural"
+msgstr[0] "{count} card"
+msgstr[1] "{count} cards"
+
+msgid "knowledge_tree_branch_count"
+msgid_plural "knowledge_tree_branch_count_plural"
+msgstr[0] "{count} branch"
+msgstr[1] "{count} branches"
+
+msgid "session_lock_topics_tooltip"
+msgstr "Lock Topics target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it."
+msgid "session_lock_pdf_tooltip"
+msgstr "Lock PDF target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it."
+msgid "session_lock_priority_tooltip"
+msgstr "Lock Priority target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it."
+msgid "session_live_preview_button_tooltip"
+msgstr "Preview the actual scheduled card list with current settings.\nOpens a two-column dialog: list on the left, per-card preview on the right."
+msgid "session_day_end_tooltip"
+msgstr "If you study past midnight, set this to after your usual bedtime.\nCards studied before this time will still count as part of yesterday."
+msgid "session_prioritize_order_tooltip"
+msgstr "When enabled, rows with an Order value front-load their configured share first, starting at 1.\nRows with the same number form one tier and are sorted by Incremento priority."
+msgid "session_tag_quotas_summary"
+msgstr "Each slider sets a target share. Soft mode adjusts pick probabilities; strict mode tries to fill a card-count target in phase order. Tag sliders in the same group share a constrained 100% pool. Other excludes all active selected tags and is fixed at 100% when no specific tag rows exist."
+msgid "session_include_other_cards_tooltip"
+msgstr "Read-only compatibility flag.\nUse the always-present ‘Other’ slider to control this."
+msgid "session_tag_rows_skipped"
+msgid_plural "session_tag_rows_skipped_plural"
+msgstr[0] "Skipped {count} tag row missing in this profile."
+msgstr[1] "Skipped {count} tag rows missing in this profile."
+msgid "session_funnel_collapsed"
+msgstr "▶  Scheduling funnel"
+msgid "session_funnel_expanded"
+msgstr "▼  Scheduling funnel"
+msgid "session_strict_enforcement_tooltip"
+msgstr "Strict (checked): each phase is filled in full before the next.\nThe funnel order and phase checkboxes are active.\n\nSoft (unchecked): the funnel is inactive. All dimensions blend simultaneously at every pick toward your configured ratios."
+msgid "session_strict_mode_warning"
+msgstr "⚠  Strict mode active — phase order can bias final distribution when earlier phases consume available cards."
+msgid "session_content_type_priorities_tip"
+msgstr "Tip: Tag weights also apply here — for example, statistics = 80% means 80% of your PDF picks target statistics-tagged PDFs."
+msgid "session_soft_mode_warning"
+msgstr "⚠  Soft mode active — the funnel order and phase checkboxes are ignored.\nAll targets blend simultaneously at every pick."
+msgid "session_items_filter_tooltip"
+msgstr "Optional Anki search query that further narrows Incremento item cards.\nLeave empty to include all cards classified as items."
+msgid "session_present_scheduler_order_tooltip"
+msgstr "When checked, cards appear in the exact order the scheduler selected them.\nStopping early gives a proportional sample matching your tag/type ratios.\n\nWhen unchecked, cards are shown in random order."
+msgid "session_auto_refill_tooltip"
+msgstr "When enabled, the session card count becomes the not-yet-answered card window. Learning repeats stay in the filtered deck, so Anki’s visible queue can be larger."
+msgid "session_allow_media_outside_tags_tooltip"
+msgstr "When unchecked, PDF, EPUB, video, and webpage picks must match your active tag rows. Enable this only if a tag miss may fall back to any card from that document or media type."
+msgid "session_delete_today_tooltip"
+msgstr "Permanently delete today’s statistics"
+msgid "session_delete_session_tooltip"
+msgstr "Clear the last session’s in-memory statistics"
+msgid "session_delete_all_time_tooltip"
+msgstr "Permanently delete all lifetime statistics"
+msgid "session_delete_all_history_tooltip"
+msgstr "Permanently delete all statistics (today, all time, and session)"
+msgid "session_export_json_tooltip"
+msgstr "Export all saved statistics as a JSON file"
+msgid "session_tag_lock_tooltip"
+msgstr "Lock this weight inside its group."
+msgid "session_tag_group_tooltip"
+msgstr "Tag sliders with the same group name are constrained to a shared 100% pool."
+
+msgid "add_card_draft_found"
+msgstr "Unsaved extract draft found ({source})."
+msgid "add_card_draft_accessible"
+msgstr "Unsaved extract draft"
+msgid "add_card_draft_restore"
+msgstr "Restore"
+msgid "add_card_draft_restore_accessible"
+msgstr "Restore unsaved extract draft"
+msgid "add_card_draft_discard"
+msgstr "Discard"
+msgid "add_card_draft_discard_accessible"
+msgstr "Discard unsaved extract draft"
+msgid "add_card_draft_restored"
+msgstr "Unsaved extract draft restored."
+msgid "add_card_draft_discarded"
+msgstr "Unsaved extract draft discarded."
+msgid "add_card_priority_set"
+msgstr "New-card priority set to {value}"
+msgid "add_card_priority_open_failed"
+msgstr "Could not open the new-card priority control."
+msgid "add_card_select_text_first"
+msgstr "Select some text first."
+
+msgid "writing_no_marker"
+msgstr "No marker set for this writing card."
+msgid "writing_marker_unavailable"
+msgstr "Saved marker line is no longer available."
+msgid "writing_bookmarks_count"
+msgstr "Bookmarks {count}"
+msgid "writing_bookmark_save_failed"
+msgstr "Could not save writing bookmark:\n{error}"
+msgid "writing_bookmark_saved"
+msgstr "Writing bookmark saved."
+msgid "writing_bookmark_delete_failed"
+msgstr "Could not delete writing bookmark:\n{error}"
+msgid "writing_backups_title"
+msgstr "Writing Backups"
+msgid "writing_backups_hint"
+msgstr "Choose a backup snapshot for this writing card. Restoring replaces the current markdown file."
+msgid "writing_restore"
+msgstr "Restore"
+msgid "writing_no_card_open"
+msgstr "No writing card is open."
+msgid "writing_no_backups"
+msgstr "No writing backups are available for this card yet."
+msgid "writing_restore_failed"
+msgstr "Could not restore writing backup.\n\n{error}"
+msgid "writing_markdown"
+msgstr "Markdown"
+msgid "writing_placeholder"
+msgstr "# Markdown writing\n\nThis note autosaves while you type."
+msgid "writing_idle"
+msgstr "Idle"
+msgid "writing_line_column"
+msgstr "Ln {line}, Col {column}"
+msgid "writing_progress"
+msgstr "Progress"
+msgid "writing_today"
+msgstr "Today"
+msgid "writing_session"
+msgstr "Session"
+msgid "writing_all_time"
+msgstr "All-time"
+msgid "writing_words"
+msgstr "Words {scope}: {count}"
+
+msgid "session_content_type_priorities_summary"
+msgstr "Checked types are scheduled first — their percentage is filled before the rest of the session."
+msgid "session_topics_filter_tooltip"
+msgstr "Optional Anki search query that further narrows Incremento topic cards.\nLeave empty to include all cards classified as topics."
+
+msgid "writing_words_session"
+msgstr "Words this session"
+msgid "writing_words_total"
+msgstr "Words total"
+msgid "writing_words_today"
+msgstr "Words today"
+msgid "writing_scope_count"
+msgstr "{scope}: {count}"
+msgid "writing_saved"
+msgstr "Saved {time}"
+msgid "writing_marker_line"
+msgstr "Marker {line}"
+msgid "writing_marker_off"
+msgstr "Marker off"
+msgid "writing_wrap_on"
+msgstr "Wrap on"
+msgid "writing_wrap_off"
+msgstr "Wrap off"
+msgid "writing_status_details"
+msgstr "{location}   •   {zoom}%   •   {marker}   •   {wrap}"
+msgid "writing_restore_confirm"
+msgstr "Restore the {label} backup from {timestamp}?\n\nThis replaces the current markdown file for this writing card."
+msgid "writing_add_content_hint"
+msgstr "Use Incremento → Add Content → Add to Markdown."
+
+msgid "session_tag_weight_tooltip"
+msgstr "Probability that a session pick targets this tag. Soft mode uses a running target; strict mode fills a hard quota first."
+msgid "session_other_slider_status"
+msgstr "<span style=\"color: #e0a020; font-size: small;\">Other slider: {configured}% · Effective other: {effective}% (based on non-Other tag totals)</span>"
+msgid "session_other_cards_status"
+msgstr "<span style=\"color: gray; font-size: small;\">Other cards: {effective}%</span>"
+msgid "session_pdf_limit_detailed_status"
+msgstr "Today: {used}/{limit} pages, {remaining} remaining. Current page {current_page}, stop point today page {allowed_page}."
+msgid "session_expected_mix"
+msgstr "Expected mix: PDF {pdf}, Topics {topics}, Items {items} · Random {random}, Priority {priority}"
+msgid "session_expected_counts"
+msgstr "At {count} cards/session: PDF {pdf}, Topics {topics}, Items {items} · Random {random}, Priority {priority} (availability may shift actual results)"
+msgid "session_other_tag_label"
+msgstr "Other <span style=\"color: gray; font-size: small;\">(outside selected tags)</span>"
+msgid "session_tag_counts"
+msgstr "{tag} <span style=\"color: {color}; font-size: small;\">({topics} topics / {items} items)</span>"
+msgid "session_ready"
+msgstr "ready"
+msgid "session_ready_in_branch"
+msgstr "ready in branch"
+msgid "session_topic_item_counts"
+msgstr "<span style=\"color: {topic_color};\">Topics: {topics} {scope}</span>  <span style=\"color: {item_color};\">Items: {items} {scope}</span>"
+msgid "session_available_count"
+msgstr "({count} available)"
+msgid "session_active_branch"
+msgstr " in the active branch"
+msgid "session_no_extra_filter"
+msgstr "(no extra filter)"
+msgid "session_filter_result"
+msgstr "{label} filter “{query}” leaves {count} ready classified card(s){scope}."
+
+msgid "add_card_title"
+msgstr "Add Card"
+msgid "writing_title"
+msgstr "Writing"
+
+msgid "knowledge_tree_insertion_target"
+msgstr "Insertion target: {title}. New nodes from the toolbar will become children of the current selection."
+
+msgid "knowledge_tree_insertion_root"
+msgstr "Insertion target: root level. Select an existing node if you want to append children instead."
+
+msgid "knowledge_tree_focused_current"
+msgstr "Focused card is currently selected."
+
+msgid "knowledge_tree_focused_other"
+msgstr "Focused card in this workspace: {title}"
+
+msgid "knowledge_tree_rename_select_one"
+msgstr "Select exactly one knowledge-tree node to rename it."
+
+msgid "knowledge_tree_title_required"
+msgstr "Knowledge-tree titles cannot be empty."
+
+msgid "knowledge_tree_rename_failed"
+msgstr "Failed to rename the linked card:\n{error}"
+
+msgid "knowledge_tree_renamed"
+msgstr "Knowledge-tree node renamed."
+
+msgid "knowledge_tree_create_failed"
+msgstr "Failed to create the knowledge-tree card:\n{error}"
+
+msgid "knowledge_tree_created"
+msgstr "{kind} created and linked into the knowledge tree."
+
+msgid "knowledge_tree_link_same_level_select"
+msgstr "Select a node before linking existing cards at the same level."
+
+msgid "knowledge_tree_link_failed"
+msgstr "Failed to link the selected cards:\n{error}"
+
+msgid "knowledge_tree_existing_linked"
+msgid_plural "knowledge_tree_existing_linked_plural"
+msgstr[0] "{count} existing {kind} linked."
+msgstr[1] "{count} existing {kind} cards linked."
+
+msgid "knowledge_tree_link_partial"
+msgid_plural "knowledge_tree_link_partial_plural"
+msgstr[0] "Linked {count} existing {kind}, but {errors} selection could not be linked."
+msgstr[1] "Linked {count} existing {kind} cards, but {errors} selections could not be linked."
+
+msgid "knowledge_tree_error_card"
+msgstr "Card {card_id}: {error}"
+
+msgid "knowledge_tree_none_linked"
+msgstr "No selected cards could be linked."
+
+msgid "knowledge_tree_remove_failed"
+msgstr "Failed to remove the selected node from the knowledge tree:\n{error}"
+
+msgid "knowledge_tree_removed"
+msgid_plural "knowledge_tree_removed_plural"
+msgstr[0] "Removed {count} node from the knowledge tree."
+msgstr[1] "Removed {count} nodes from the knowledge tree."
+
+msgid "knowledge_tree_priority_select_one"
+msgstr "Select exactly one knowledge-tree node to change its priority."
+
+msgid "knowledge_tree_priority_failed"
+msgstr "Failed to update knowledge-tree priorities:\n{error}"
+
+msgid "knowledge_tree_priority_updated"
+msgid_plural "knowledge_tree_priority_updated_plural"
+msgstr[0] "Updated priority on {count} knowledge-tree card."
+msgstr[1] "Updated priority on {count} knowledge-tree cards."
+
+msgid "knowledge_tree_study_select_one"
+msgstr "Select exactly one knowledge-tree node to study its branch."
+
+msgid "knowledge_tree_subtree_unavailable"
+msgstr "Could not resolve the selected subtree."
+
+msgid "knowledge_tree_study_open_failed"
+msgstr "Could not open the branch study session:\n{error}"
+
+msgid "knowledge_tree_subset_select_one"
+msgstr "Select exactly one knowledge-tree node to open subset review."
+
+msgid "knowledge_tree_resolve_pdf"
+msgstr "Could not resolve the linked PDF for this knowledge-tree node."
+
+msgid "knowledge_tree_open_pdf_failed"
+msgstr "Could not open the linked PDF:\n{error}"
+
+msgid "knowledge_tree_parent_select_one"
+msgstr "Select exactly one knowledge-tree node to jump to its parent."
+
+msgid "knowledge_tree_already_root"
+msgstr "Selected node is already at the top of the knowledge tree."
+
+msgid "knowledge_tree_parent_selected"
+msgstr "Selected the parent node."
+
+msgid "knowledge_tree_browser_select_one"
+msgstr "Select exactly one knowledge-tree node to open it in Browser."
+
+msgid "knowledge_tree_note_missing"
+msgstr "Could not find the linked note for this knowledge-tree node."
+
+msgid "knowledge_tree_browser_open_failed"
+msgstr "Could not open the Browser for this node:\n{error}"
+
+msgid "search_all_press_search"
+msgstr "Press Search to run the query."
+
+msgid "search_all_pdf_card"
+msgstr "PDF card {card_id}"
+
+msgid "search_all_epub_card"
+msgstr "EPUB card {card_id}"
+
+msgid "search_all_pdf_index_stopping"
+msgstr "Stopping PDF indexing after the current file…"
+
+msgid "search_all_pdf_index_progress_detail"
+msgstr "Indexed {completed} of {total} PDFs"
+
+msgid "search_all_pdf_index_progress"
+msgstr "Indexing PDF text in the background… {completed}/{total}"
+
+msgid "search_all_pdf_index_preparing"
+msgstr "Preparing the PDF index in the background…"
+
+msgid "search_all_pdf_index_preparing_detail"
+msgstr "Preparing the PDF index"
+
+msgid "search_all_pdf_index_activity"
+msgstr "Index PDF text"
+
+msgid "search_all_pdf_index_cancelled"
+msgstr "PDF indexing cancelled."
+
+msgid "search_all_pdf_index_none"
+msgstr "No readable PDFs need indexing."
+
+msgid "search_all_pdf_index_none_detail"
+msgstr "No readable PDFs needed indexing."
+
+msgid "search_all_pdf_index_prepare_failed"
+msgstr "Could not prepare the PDF index; existing indexed search remains available."
+
+msgid "search_all_pdf_index_prepare_failed_detail"
+msgstr "Could not prepare the PDF index. Existing indexed search is still available."
+
+msgid "search_all_pdf_index_previous_profile"
+msgstr "PDF indexing finished for the previously open profile."
+
+msgid "search_all_pdf_index_failed"
+msgstr "PDF indexing failed; indexed search remains available."
+
+msgid "search_all_pdf_index_failed_detail"
+msgstr "PDF indexing failed. Existing indexed search is still available."
+
+msgid "search_all_pdf_index_ready"
+msgstr "PDF index ready ({updated} updated, {failed} failed)."
+
+msgid "search_all_pdf_index_ready_detail"
+msgstr "PDF index ready: {updated} updated, {failed} failed."
+
+msgid "search_all_page"
+msgstr "Page {page}"
+
+msgid "search_all_section"
+msgstr "Section {section}"
+
+msgid "search_all_pdf_file_content"
+msgstr "PDF File Content"
+
+msgid "search_all_epub_file_content"
+msgstr "EPUB File Content"
+
+msgid "search_all_note"
+msgstr "Note"
+
+msgid "search_all_note_number"
+msgstr "note {note_id}"
+
+msgid "search_all_ocr_text"
+msgstr "OCR text"
+
+msgid "search_all_no_matches"
+msgstr "No matches found."
+
+msgid "search_all_preview_hover"
+msgstr "Hover over a result to preview."
+
+msgid "search_all_no_highlight_text"
+msgstr "No saved highlight text."
+
+msgid "search_all_highlight_preview"
+msgstr "{media} Highlight: {title} — {location}"
+
+msgid "search_all_no_pdf_text"
+msgstr "No text index for this page."
+
+msgid "search_all_pdf_preview"
+msgstr "PDF: {title} — Page {page}"
+
+msgid "search_all_field_number"
+msgstr "Field {field}"
+
+msgid "search_all_card_preview"
+msgstr "Card: {model_name} — note {note_id}"
+
+msgid "search_all_no_epub_text"
+msgstr "No text index for this section."
+
+msgid "search_all_epub_preview"
+msgstr "EPUB: {title} — {label}"
+
+msgid "search_all_open_failed"
+msgstr "Could not open result:\n{error}"
+
+msgid "common_test"
+msgstr "Test"
+msgid "session_preview_failed"
+msgstr "Preview failed: {error}"
+msgid "session_phase_content_types"
+msgstr "Content Types"
+msgid "session_phase_content_types_hint"
+msgstr "Fill PDF / YouTube / Webpage quotas"
+msgid "session_phase_tags"
+msgstr "Tag Quotas"
+msgid "session_phase_tags_hint"
+msgstr "Fill per-tag quotas (e.g. statistics, psychology …)"
+msgid "session_phase_card_type"
+msgstr "Card Type"
+msgid "session_phase_card_type_hint"
+msgstr "Topics ↔ Items ratio enforcement"
+msgid "session_phase_selection_mode"
+msgstr "Selection Mode"
+msgid "session_phase_selection_mode_hint"
+msgstr "Priority-first ↔ Random enforcement"
+msgid "session_phase_enabled_tooltip"
+msgstr "Enable this phase in strict mode.\nSoft mode uses all dimensions simultaneously regardless of this toggle."
+msgid "session_fill_remaining"
+msgstr "Fill Remaining"
+msgid "session_fill_remaining_hint"
+msgstr "Any ready cards — always runs last"
+msgid "session_prioritize_order"
+msgstr "Prioritize rows by order"
+msgid "session_tag_quotas"
+msgstr "Tag quotas"
+msgid "session_include_other_cards"
+msgstr "Include other cards (controlled by Other slider)"
+msgid "session_strict_enforcement"
+msgstr "Strict enforcement"
+msgid "session_content_type_priorities"
+msgstr "Content type priorities"
+msgid "session_content_type_weight_tooltip"
+msgstr "Percentage of the session to fill with this content type first"
+msgid "session_percent"
+msgstr "{value}%"
+msgid "session_order"
+msgstr "Order:"
+msgid "session_order_placeholder"
+msgstr "Order"
+msgid "session_order_tooltip"
+msgstr "Positive number for ordered priority. Empty means normal scheduling."
+msgid "session_advanced_collapsed"
+msgstr "▶  Advanced"
+msgid "session_advanced_expanded"
+msgstr "▼  Advanced"
+msgid "session_topics_filter"
+msgstr "Topics filter:"
+msgid "session_items_filter"
+msgstr "Items filter:"
+msgid "session_filter_placeholder"
+msgstr "Optional extra narrowing"
+msgid "session_present_scheduler_order"
+msgstr "Present cards in scheduler order"
+msgid "session_auto_refill"
+msgstr "Auto-refill session deck to keep this many unreviewed cards"
+msgid "session_allow_media_outside_tags"
+msgstr "Allow document/media picks outside selected tags"
+msgid "session_show_debug"
+msgstr "Show debug information on cards when starting"
+msgid "session_statistics_collapsed"
+msgstr "▶  Statistics history"
+msgid "session_statistics_expanded"
+msgstr "▼  Statistics history"
+msgid "session_delete_today"
+msgstr "Delete Today"
+msgid "session_delete_session"
+msgstr "Delete Session"
+msgid "session_delete_all_time"
+msgstr "Delete All Time"
+msgid "session_delete_all_history"
+msgstr "Delete All History"
+msgid "session_export_json"
+msgstr "Export JSON"
+
+msgid "session_no_pdf_cards"
+msgstr "No Incremento PDF cards found"
+msgid "session_no_pdf_match"
+msgstr "No PDFs match this search"
+msgid "session_pdf_limit_choose"
+msgstr "Choose a PDF to edit its daily page limit."
+msgid "session_pdf_no_limit_current_page"
+msgstr "No daily limit set for this PDF. Current page {current_page}."
+msgid "session_statistics_today_deleted"
+msgstr "Today's statistics have been deleted."
+msgid "session_statistics_session_cleared"
+msgstr "Session statistics have been cleared."
+msgid "session_statistics_all_time_deleted"
+msgstr "All-time statistics have been deleted."
+msgid "session_statistics_history_deleted"
+msgstr "All statistics history has been deleted."
+msgid "session_statistics_no_export"
+msgstr "No statistics data to export."
+msgid "session_statistics_exported"
+msgstr "Statistics exported to:\n{path}"
+msgid "session_statistics_export_failed"
+msgstr "Export failed: {error}"
+msgid "session_preset_added"
+msgstr "Preset “{name}” added."
+msgid "session_preset_saved"
+msgstr "Preset “{name}” saved."
+msgid "session_preset_renamed"
+msgstr "Preset “{old_name}” renamed to “{new_name}”."
+msgid "session_preset_deleted"
+msgstr "Preset “{name}” deleted."
+
+msgid "extract_batch_rows_ready"
+msgid_plural "extract_batch_rows_ready_plural"
+msgstr[0] "{count} row ready."
+msgstr[1] "{count} rows ready."
+
+msgid "writing_unknown_time"
+msgstr "Unknown time"
+msgid "writing_autosave_failed"
+msgstr "Autosave failed"
+msgid "writing_backup_restored"
+msgstr "Backup restored"
+msgid "writing_autosave_on_typing"
+msgstr "Autosave on typing"
+msgid "writing_saving"
+msgstr "Saving…"
+msgid "writing_smaller_text"
+msgstr "A−"
+msgid "writing_smaller_text_tooltip"
+msgstr "Smaller text"
+msgid "writing_larger_text"
+msgstr "A+"
+msgid "writing_larger_text_tooltip"
+msgstr "Larger text"
+msgid "writing_wrap"
+msgstr "Wrap"
+msgid "writing_wrap_tooltip"
+msgstr "Toggle line wrap"
+msgid "writing_focus"
+msgstr "Focus"
+msgid "writing_focus_tooltip"
+msgstr "Make preview less prominent"
+msgid "writing_preview_tooltip"
+msgstr "Show or hide the markdown preview"
+msgid "writing_line"
+msgstr "Line"
+msgid "writing_line_tooltip"
+msgstr "Toggle current-line highlight"
+msgid "writing_insert_heading"
+msgstr "Insert heading"
+msgid "writing_bold"
+msgstr "Bold"
+msgid "writing_italic"
+msgstr "Italic"
+msgid "writing_bullet_list"
+msgstr "Bullet list"
+msgid "writing_numbered_list"
+msgstr "Numbered list"
+msgid "writing_quote"
+msgstr "Quote"
+msgid "writing_block_quote"
+msgstr "Block quote"
+msgid "writing_code_block"
+msgstr "Code block"
+msgid "writing_horizontal_rule"
+msgstr "Horizontal rule"
+msgid "writing_set_marker"
+msgstr "Set Marker"
+msgid "writing_set_marker_tooltip"
+msgstr "Save the current line as a marker"
+msgid "writing_jump"
+msgstr "Jump"
+msgid "writing_jump_tooltip"
+msgstr "Jump to the saved marker line"
+msgid "writing_clear"
+msgstr "Clear"
+msgid "writing_clear_tooltip"
+msgstr "Clear the saved marker line"
+msgid "writing_bookmark"
+msgstr "Bookmark"
+msgid "writing_bookmark_tooltip"
+msgstr "Save the current line as an interesting-place bookmark"
+msgid "writing_bookmarks_button"
+msgstr "Bookmarks {count}"
+msgid "writing_bookmarks_tooltip"
+msgstr "Show saved writing bookmarks"
+msgid "writing_backups"
+msgstr "Backups"
+msgid "writing_backups_tooltip"
+msgstr "Restore one of the saved writing backups"
+msgid "writing_reveal_file"
+msgstr "Reveal File"
+msgid "writing_reveal_file_tooltip"
+msgstr "Reveal markdown file in Finder/Explorer"
+
+msgid "add_card_knowledge_tree_lineage_tooltip"
+msgstr "Extract lineage is added to the knowledge tree automatically."
+msgid "add_card_dock_unavailable"
+msgstr "Add Card dock is not available."
+msgid "add_card_two_visible_fields"
+msgstr "two visible fields"
+msgid "add_card_one_visible_field"
+msgstr "one visible field"
+msgid "add_card_visible_fields"
+msgstr "{count} visible fields"
+msgid "add_card_note_type_needs_fields"
+msgstr "Note type '{name}' needs at least {fields}."
+msgid "add_card_unknown"
+msgstr "Unknown"
+msgid "add_card_no_extract_context"
+msgstr "No active extract context is available."
+msgid "add_card_question_answer_fields_different"
+msgstr "Question and answer fields must be different."
+msgid "add_card_collection_unavailable"
+msgstr "Anki collection is not available."
+msgid "add_card_note_type_not_found"
+msgstr "Note type '{name}' was not found."
+msgid "add_card_note_rejected"
+msgstr "Anki rejected the note."
+msgid "add_card_no_topic_button_tags"
+msgstr "No Add Card topic-button tags configured."
+msgid "add_card_no_item_button_tags"
+msgstr "No Add Card item-button tags configured."
+msgid "add_card_priority_dialog_label"
+msgstr "Priority for every card generated by this new note."
+msgid "add_card_priority_button_tooltip"
+msgstr "Set priority for every card created from this new note"
+msgid "add_card_topic_button_tooltip"
+msgstr "Toggle configured topic tags"
+msgid "add_card_item_button_tooltip"
+msgstr "Toggle configured item tags"
+
+msgid "session_card_types_help"
+msgstr "Which Anki scheduling states are included in the session pool.\n\n• New — cards you've never studied before\n• Learning — learning / relearning cards due now\n• Due / Review — mature cards scheduled for today\n\nNote: PDF, YouTube and Webpage cards are always eligible regardless of these checkboxes — they bypass Anki's scheduling state."
+msgid "session_topics_ratio_help"
+msgstr "Ratio of topic cards (concepts, long reads) vs item cards (flashcards, Q&A).\n\nExample: 90 % Topics with 50 cards → ~45 topic cards and ~5 item cards.\n\nTopics filter and Items filter (Advanced section) determine which cards belong to each group."
+msgid "session_document_mix_help"
+msgstr "Soft document mix rate — how often a PDF or EPUB card is picked during normal scheduling.\n\nUnlike Content type priorities (which fill a hard quota first), this is a stochastic target: document cards are woven throughout the session.\n\nExample: Docs = 20 % → roughly 1 in 5 picks targets a PDF/EPUB card. Set to 0 % (slider fully right) to exclude documents from soft mixing.\n\nYou can use both: priority fills a hard quota first, then soft mixing adds more document cards in the remaining slots."
+msgid "session_selection_mode_help"
+msgstr "How cards are selected from the eligible pool at each pick.\n\n• Priority (left) — picks the most overdue card first (sorted by due date). Use this to work through your backlog in order.\n• Random (right) — picks any eligible card at random. Use this for a varied, low-stakes session.\n\nExample: 99 % Random → almost always picks randomly; 1 % Priority → the most overdue card occasionally sneaks in."
+msgid "session_scheduler_scope_help"
+msgstr "How far back the scheduler looks when balancing card types and tags.\n\n• This session — debt resets each time you open this dialog. Best for: fresh start every day.\n• Today — debt accumulates across multiple same-day sessions. Best for: studying in several short bursts during the day.\n• All time — balances over your entire study history. Best for: strict long-term ratio enforcement.\n\nExample (Today scope, 90 % Topics target): if your morning session was all topics, the afternoon session will lean toward items to compensate."
+msgid "session_priority_order_help"
+msgstr "Use Order values to front-load each row's configured share before normal scheduling.\n\nExample: writing at 20% with Order = 1 means about the first 20% of the session will be writing cards. After that, the normal scheduler fills the remaining slots using your full mix. Empty or invalid Order boxes are ignored."
+msgid "session_tag_quotas_help"
+msgstr "Each slider sets the target share for this tag.\n\n• Soft mode (strict enforcement off): the % is a running target. The scheduler picks this tag more when it is under-represented and less when it is over-represented. Example: physics = 20 % → roughly 1 in 5 picks tries to find a physics card.\n\n• Strict mode (strict enforcement on): the Tags phase tries to fill a rounded number of places. Example: physics = 20 % with 50 cards → a target of 10 physics cards. Available cards and phase order can change the final mix.\n\nOther excludes all active selected tags and their subtags, even during refill. Cards with unrelated tags can still belong to Other.\n\nTag sliders with the same group name are constrained together to 100 %. Leave group empty to keep a tag independent. Total can exceed 100 % (a warning is shown)."
+msgid "session_funnel_help"
+msgstr "Only active when Strict enforcement is ON.\n\nStrict mode: each enabled phase fills its quota in full before the next phase starts. Drag phases to change the order; use ✓ to enable or disable individual phases.\n\nExample order: Content Types → Tag Quotas → Card Type → Selection Mode. First fill PDF / YouTube quotas, then tag quotas, then remaining slots using the topics / items ratio, then priority / random, and finally any ready card.\n\nSoft mode: the funnel is inactive. Phase order and the ✓ checkboxes have no effect. Instead, the scheduler blends all configured targets at every pick using a debt tracker, gradually converging on your ratios."
+msgid "session_content_type_priorities_help"
+msgstr "Reserve the first part of every session for a specific media type.\n\nThese cards are scheduled first (Phase 0), before Topics/Items ratios, Tag quotas, or Scheduling priority order take effect.\n\nExample: PDF = 30 % with 50 cards → the first 15 cards are always PDFs. After that, normal scheduling fills the remaining 35 slots.\n\nLeave unchecked for types you don't want to prioritise. If fewer cards are available than the quota, all available cards are used."
+msgid "session_advanced_filters_help"
+msgstr "Incremento classifies topics using the same logic as the T button, topic tags, configured topic note types, and the Topics deck.\n\nThese filters are optional extra narrowing on top of that classification. Leave them empty to use the full Incremento topic/item pools. Use 'Test' to check how many ready cards remain after narrowing."
+msgid "session_live_preview_required_title"
+msgstr "Live Preview Required"
+msgid "session_live_preview_required_message"
+msgstr "You enabled 'Use previewed card list'.\n\nOpen Live card preview and click Refresh after your latest settings change, then start the session again."
+msgid "session_delete_today_title"
+msgstr "Delete Today's Data"
+msgid "session_delete_today_message"
+msgstr "Delete all statistics for today?\nThis cannot be undone."
+msgid "session_delete_session_title"
+msgstr "Delete Session Data"
+msgid "session_delete_session_message"
+msgstr "Clear the last session's statistics?"
+msgid "session_delete_all_time_title"
+msgstr "Delete All-Time Data"
+msgid "session_delete_all_time_message"
+msgstr "Delete all lifetime statistics?\nThis cannot be undone."
+msgid "session_delete_history_title"
+msgstr "Delete All History"
+msgid "session_delete_history_message"
+msgstr "Delete ALL statistics (today, all time, and session)?\nThis cannot be undone."
+msgid "session_add_preset_title"
+msgstr "Add Preset"
+msgid "session_rename_preset_title"
+msgstr "Rename Preset"
+msgid "session_preset_name_prompt"
+msgstr "Preset name:"
+msgid "session_preset_exists"
+msgstr "Preset \"{name}\" already exists."
+msgid "session_delete_preset_title"
+msgstr "Delete Preset"
+msgid "session_delete_preset_message"
+msgstr "Delete preset \"{name}\"?"
+msgid "session_export_statistics_title"
+msgstr "Export Statistics"
+msgid "session_json_file_filter"
+msgstr "JSON files (*.json);;All files (*)"
+msgid "add_card_extract_composer"
+msgstr "Extract composer"
+msgid "add_card_draft_autosaves"
+msgstr "Draft autosaves"
+msgid "add_card_priority"
+msgstr "Priority"
+msgid "add_card_topic"
+msgstr "Topic"
+msgid "add_card_tree_child"
+msgstr "Tree child"
+msgid "add_card_batch_qa"
+msgstr "Batch Q/A…"
+msgid "add_card_selection"
+msgstr "SELECTION"
+msgid "add_card_card_priority"
+msgstr "Card priority"
+msgid "session_content_pdf"
+msgstr "PDF"
+msgid "session_content_video"
+msgstr "YouTube / Video"
+msgid "session_content_webpage"
+msgstr "Webpage"
+msgid "session_content_pdf_help"
+msgstr "Incremento PDF reading cards (note type: Incremento PDF).\nAlways eligible — not limited by New / Learning / Due state.\n\nExample: 20 % of 50 cards = first 10 cards are PDFs."
+msgid "session_content_video_help"
+msgstr "YouTube / video cards (note type: Incremento Video).\nAlways eligible — not limited by New / Learning / Due state.\n\nExample: 10 % of 50 cards = first 5 cards are YouTube videos."
+msgid "session_content_webpage_help"
+msgstr "Webpage cards (note type: Incremento Web).\nAlways eligible — not limited by New / Learning / Due state.\n\nExample: 10 % of 50 cards = first 5 cards are webpages."
+msgid "session_yes"
+msgstr "Yes"
+msgid "session_no"
+msgstr "No"
+
+msgid "ui_type_video"
+msgstr "Video"
+
+msgid "ui_type_webpage"
+msgstr "Web page"
+
+msgid "ui_type_writing"
+msgstr "Writing"
+
+msgid "ui_type_local_file"
+msgstr "Local file"
+
+msgid "session_preview_scheduled"
+msgstr "Scheduled {count} / {target} cards."
+
+msgid "session_preview_limited"
+msgstr "Limited by current availability."
+
+msgid "session_preview_ordered"
+msgstr "Ordered priority: {count}."
+
+msgid "session_preview_counts"
+msgstr "{status}  Types: {types}  |  Modes: {modes}  |  Tags: {tags}"
+
+msgid "session_preview_card_id"
+msgstr "Card ID:"
+
+msgid "session_preview_type"
+msgstr "Type:"
+
+msgid "session_preview_mode"
+msgstr "Mode:"
+
+msgid "session_preview_tag"
+msgstr "Tag:"
+
+msgid "session_preview_selection_stage"
+msgstr "Selection stage:"
+
+msgid "session_preview_tag_first"
+msgstr "prioritized tag-first pass"
+
+msgid "session_preview_priority_pass"
+msgstr "ordered priority pass"
+
+msgid "session_preview_order"
+msgstr " (order {order})"
+
+msgid "session_preview_pdf_file"
+msgstr "PDF file:"
+
+msgid "session_preview_pdf_status"
+msgstr "PDF status:"
+
+msgid "session_preview_file_found"
+msgstr "found"
+
+msgid "session_preview_file_missing"
+msgstr "missing in {path}"
+
+msgid "session_preview_current_page"
+msgstr "Current page:"
+
+msgid "session_preview_read_page"
+msgstr "Read-through page:"
+
+msgid "session_preview_daily_limit"
+msgstr "Daily limit:"
+
+msgid "session_preview_limit_details"
+msgstr "{used}/{limit} pages today ({remaining} remaining, {mode})"
+
+msgid "session_preview_note_tags"
+msgstr "Note tags:"
+
+msgid "session_preview_field_number"
+msgstr "Field {number}"
+
+msgid "session_preview_no_cards"
+msgstr "No cards available for the current settings."
+
+msgid "session_preview_pdf_target"
+msgstr "{title} · p.{page} · card {card_id}"
+
+msgid "session_heatmap_note"
+msgstr "Cells show estimated count and share within each content column."
+
+msgid "session_heatmap_normalized"
+msgstr "Tag shares are normalized because configured totals exceed 100%."
+
+msgid "session_selected_branch"
+msgstr "Selected branch"
+
+msgid "session_subtree_card_count"
+msgid_plural "session_subtree_card_count_plural"
+msgstr[0] "{title} · {count} subtree card"
+msgstr[1] "{title} · {count} subtree cards"
+
+msgid "writing_placeholder_heading"
+msgstr "Heading"
+
+msgid "writing_placeholder_bold"
+msgstr "bold"
+
+msgid "writing_placeholder_italic"
+msgstr "italic"
+
+msgid "writing_placeholder_list_item"
+msgstr "List item"
+
+msgid "writing_placeholder_quote"
+msgstr "Quote"
+
+msgid "writing_placeholder_code"
+msgstr "code"
+
+msgid "stats_accessible_no_data"
+msgstr "{title}. No data."
+
+msgid "stats_accessible_more_values"
+msgid_plural "stats_accessible_more_values_plural"
+msgstr[0] ", and {count} more value"
+msgstr[1] ", and {count} more values"
+
+msgid "stats_accessible_summary"
+msgstr "{title}. {details}{suffix}."
+
+msgid "knowledge_tree_match_title"
+msgstr "Title match"
+
+msgid "knowledge_tree_match_metadata"
+msgstr "Metadata match"
+
+msgid "knowledge_tree_match_metadata_fields"
+msgstr "Metadata: {fields}"
+
+msgid "knowledge_tree_match_deck"
+msgstr "deck"
+
+msgid "knowledge_tree_match_note_type"
+msgstr "note type"
+
+msgid "knowledge_tree_match_card_id"
+msgstr "card id"
+
+msgid "knowledge_tree_match_card_text"
+msgstr "Card text match"
+
+msgid "knowledge_tree_match_card_fields"
+msgstr "Card text: {fields}"
+
+msgid "knowledge_tree_card_reference"
+msgstr "card {card_id}"

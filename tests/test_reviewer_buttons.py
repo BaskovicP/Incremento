@@ -93,3 +93,14 @@ def test_reviewer_button_mode_enables_items_fail_pass_for_non_topics():
         )
     finally:
         buttons.is_topic_card = original
+
+
+def test_translated_buttons_preserve_positional_grading_contract():
+    import backend.i18n as i18n
+    old = i18n.get_locale()
+    try:
+        i18n.initialize_language('hr')
+        assert buttons.item_fail_pass_buttons(4) == ((1, 'Ne znam'), (2, 'Znam'))
+        assert buttons.remap_item_fail_pass_ease(None, 2) == 3
+    finally:
+        i18n.initialize_language(old)

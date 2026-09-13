@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { collectBookmarkIds, countSelected } from "../bookmarkModel.js";
+import { formatNumber, t } from "../../shared/i18n.js";
 
 function FolderCheckbox({ folderId, checked, indeterminate, disabled, onToggle }) {
   const checkboxRef = useRef(null);
@@ -37,7 +38,7 @@ function BookmarkNode({ node, item, disabled, onToggleBookmark }) {
           onChange={(event) => onToggleBookmark(item.id, event.target.checked)}
         />
         <span className="tree-title">{item.title}</span>
-        <span className="tree-meta">{`${item.folderPath || "Bookmarks"} · ${node.url}`}</span>
+        <span className="tree-meta">{`${item.folderPath || t("bookmarks")} · ${node.url}`}</span>
       </label>
     </li>
   );
@@ -66,8 +67,8 @@ function FolderNode({ node, itemsById, disabled, onToggleFolder, onToggleBookmar
               onToggle={onToggleFolder}
             />
             <label className="tree-row tree-label">
-              <span className="tree-title">{String(node.title || "Folder").trim() || "Folder"}</span>
-              <span className="tree-meta">{`${selectedCount}/${bookmarkIds.length} selected`}</span>
+              <span className="tree-title">{String(node.title || t("folder")).trim() || t("folder")}</span>
+              <span className="tree-meta">{t("selected_count", { selected: formatNumber(selectedCount), total: formatNumber(bookmarkIds.length) })}</span>
             </label>
           </div>
         </summary>

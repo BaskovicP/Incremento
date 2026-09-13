@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t  # type: ignore
+
 
 BASIC_MODE = "basic"
 ADVANCED_MODE = "advanced"
@@ -34,8 +39,13 @@ def format_basic_session_summary(
     other_percent = _bounded_int(pdf_slider, 0, 100, 100)
     topic_percent = 100 - item_percent
     document_percent = 100 - other_percent
-    preset = str(preset_name or "").strip() or "Current Settings"
-    return (
-        f"{count:,} cards · Topics {topic_percent}% / Items {item_percent}% · "
-        f"Documents {document_percent}% / Other {other_percent}% · Preset: {preset}"
+    preset = str(preset_name or "").strip() or t("session_current_settings")
+    return t(
+        "session_basic_summary",
+        count=count,
+        topic_percent=topic_percent,
+        item_percent=item_percent,
+        document_percent=document_percent,
+        other_percent=other_percent,
+        preset=preset,
     )

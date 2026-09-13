@@ -243,6 +243,18 @@ node --check chrome_extensions/incremento_companion/dist/popup.js
 node --check chrome_extensions/incremento_companion/dist/bookmarks.js
 ```
 
+## Interface language
+
+Open the Companion popup and choose **Settings → Language** to select **Automatic**, **English**, **Hrvatski**, or **简体中文**. **Save** stores the choice in Chrome's local extension settings and updates open Companion pages and overlays immediately. **Cancel** leaves the saved choice unchanged. Automatic follows Chrome's UI language when supported and otherwise uses English. This setting is independent of Anki's language.
+
+### Translate using a spreadsheet
+
+In **Settings → Language**, choose **Export blank template…** to start a new language, or **Export selected language…** to edit an existing translation. The CSV includes Incremento, its PDF reader, and the Companion together. Open it in Excel, Google Sheets, or LibreOffice; fill the `translation` cell of the `meta/locale` row (for example `de`) and `meta/name` row (for example `Deutsch`). Then edit only the `translation` column. Keep IDs, source text, formatting tags, and placeholders unchanged. Save or download **CSV UTF-8**.
+
+Choose **Import translations…** to validate the file and see its translated-row count. **Save** stores the imported language and activates it immediately; **Cancel** discards pending imports. Importing the same locale updates its imported copy. Bundled languages remain available separately. Empty translations use English. Exporting the imported language later preserves all three components and includes new empty rows from the current version. Import the same file separately in Incremento's Language settings to use it in Anki; the apps do not share their saved preferences automatically.
+
+Imports stay offline in Chrome's local extension storage. A file may contain at most 2 MiB, 20,000 rows, and 16 KiB per cell; up to 20 languages can be saved. Chrome-owned extension names and command descriptions still follow Chrome's UI language. See [`TRANSLATING.md`](../../TRANSLATING.md) for spreadsheet examples, plural forms, troubleshooting, and developer instructions.
+
 ## License
 
 All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.

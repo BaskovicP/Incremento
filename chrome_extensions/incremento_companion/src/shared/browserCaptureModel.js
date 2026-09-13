@@ -20,7 +20,14 @@ function estimatedBase64Bytes(rawValue) {
 }
 
 function captureSizeError(label, maximum, unit) {
-  return { ok: false, error: `${label} is too large. Maximum is ${maximum} ${unit}.` };
+  const code = {
+    "Page HTML": "page_html_too_large",
+    "Selected text": "selected_text_too_large",
+    Screenshot: "screenshot_too_large",
+    "A snapshot": "snapshot_too_large",
+    "Combined snapshots": "combined_snapshots_too_large",
+  }[label];
+  return { ok: false, error: `${label} is too large. Maximum is ${maximum} ${unit}.`, errorCode: code, errorParams: { count: maximum } };
 }
 
 export function validateBrowserCaptureContext(context) {
@@ -41,7 +48,7 @@ export function validateBrowserCaptureScreenshotDataUrl(dataUrl, options = {}) {
   const raw = String(dataUrl || "");
   const marker = "data:image/png;base64,";
   if (!raw.startsWith(marker)) {
-    return { ok: false, error: "Screenshot must be a PNG data URL." };
+    return { ok: false, error: "Screenshot must be a PNG data URL.", errorCode: "screenshot_not_png", errorParams: {} };
   }
   const requestedMaximum = Number(options?.maxBytes);
   const maxBytes = Number.isSafeInteger(requestedMaximum) && requestedMaximum > 0
@@ -166,7 +173,7 @@ export function buildBrowserCapturePayload(context, formState) {
 
 export function validateBrowserCapturePayload(payload) {
   if (!String(payload?.noteTypeName || "").trim() || !String(payload?.deckName || "").trim()) {
-    return { ok: false, error: "Choose a note type and deck." };
+    return { ok: false, error: "Choose a note type and deck.", errorCode: "choose_note_type_deck", errorParams: {} };
   }
   const hasMappedContent = Boolean(
     payload?.fieldMappings?.titleField
@@ -175,7 +182,7 @@ export function validateBrowserCapturePayload(payload) {
     || ((payload?.snapshots?.length || 0) > 0 && payload?.fieldMappings?.snapshotField)
   );
   if (!hasMappedContent) {
-    return { ok: false, error: "Map at least one available capture part to a note field." };
+    return { ok: false, error: "Map at least one available capture part to a note field.", errorCode: "map_capture_field", errorParams: {} };
   }
   if (String(payload?.selectedText || "").length > MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS) {
     return captureSizeError(
@@ -189,6 +196,8 @@ export function validateBrowserCapturePayload(payload) {
     return {
       ok: false,
       error: `Too many snapshots. Maximum is ${MAX_BROWSER_CAPTURE_SNAPSHOTS}.`,
+      errorCode: "too_many_snapshots",
+      errorParams: { count: MAX_BROWSER_CAPTURE_SNAPSHOTS },
     };
   }
   let totalImageBytes = 0;

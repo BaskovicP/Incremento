@@ -15,3 +15,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   })();
   return true;
 });
+import { initializeLanguage, localizeDocument, subscribeLanguage, watchLanguageStorage } from "../shared/i18n.js";
+
+watchLanguageStorage();
+void initializeLanguage().then(() => localizeDocument("offscreen_title"));
+subscribeLanguage(() => localizeDocument("offscreen_title"));

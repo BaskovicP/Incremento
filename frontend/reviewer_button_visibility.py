@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t
+
 
 _BUTTONS = (
-    ("done", "Done", "incremento-topic-done-cell"),
-    ("postpone", "Postpone", "incremento-topic-postpone-cell"),
-    ("extract", "Extract", "incremento-reviewer-extract-cell"),
+    ("done", "reviewer_visibility_show_done", "incremento-topic-done-cell"),
+    ("postpone", "reviewer_visibility_show_postpone", "incremento-topic-postpone-cell"),
+    ("extract", "reviewer_visibility_show_extract", "incremento-reviewer-extract-cell"),
 )
 _STYLE_ID = "incremento-reviewer-button-visibility"
 
@@ -23,15 +28,15 @@ def add_reviewer_button_visibility_menu(
     on_group_toggle: Callable[[bool], None] | None = None,
 ) -> None:
     """Offer independent, live toggles without changing the current card."""
-    submenu = menu.addMenu("Review buttons")
+    submenu = menu.addMenu(t("reviewer_visibility_menu"))
     if on_group_toggle is not None:
-        group_action = submenu.addAction("Show review button group")
+        group_action = submenu.addAction(t("reviewer_visibility_show_group"))
         group_action.setCheckable(True)
         group_action.setChecked(bool(group_visible))
         group_action.triggered.connect(lambda checked=False: on_group_toggle(bool(checked)))
         submenu.addSeparator()
-    for key, label, _cell_id in _BUTTONS:
-        action = submenu.addAction(f"Show {label} button")
+    for key, label_id, _cell_id in _BUTTONS:
+        action = submenu.addAction(t(label_id))
         action.setCheckable(True)
         action.setChecked(bool(visibility.get(key, True)))
         if on_group_toggle is not None:

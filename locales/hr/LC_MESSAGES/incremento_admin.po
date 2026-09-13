@@ -1,0 +1,816 @@
+# Incremento maintenance and shared utility dialogs. Preserve identifiers and confirmation tokens.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: hr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+
+#. automatic backup automatic full backups profile
+msgid "admin_automatic_backup_automatic_full_backups_profile"
+msgstr "Automatske potpune sigurnosne kopije — {profile}"
+
+#. automatic backup back up when this profile closes
+msgid "admin_automatic_backup_back_up_when_this_profile_closes"
+msgstr "Izradi sigurnosnu kopiju pri zatvaranju ovog profila"
+
+#. automatic backup back up when this profile opens
+msgid "admin_automatic_backup_back_up_when_this_profile_opens"
+msgstr "Izradi sigurnosnu kopiju pri otvaranju ovog profila"
+
+#. automatic backup backup folder
+msgid "admin_automatic_backup_backup_folder"
+msgstr "Mapa sigurnosnih kopija"
+
+#. automatic backup backup folder unavailable error
+msgid "admin_automatic_backup_backup_folder_unavailable_error"
+msgstr "Mapa sigurnosnih kopija nije dostupna: {error}"
+
+#. automatic backup choose
+msgid "admin_automatic_backup_choose"
+msgstr "Odaberi…"
+
+#. automatic backup choose an on open on close or timed
+msgid "admin_automatic_backup_choose_an_on_open_on_close_or_timed"
+msgstr "Odaberite kopiranje pri otvaranju, zatvaranju ili u vremenskim razmacima, ili isključite automatske sigurnosne kopije."
+
+#. automatic backup choose any local folder including one synced by
+msgid "admin_automatic_backup_choose_any_local_folder_including_one_synced_by"
+msgstr "Odaberite lokalnu mapu, uključujući mapu koju sinkronizira Google Drive, Dropbox ili druga usluga. Aplikacija za sinkronizaciju prenosi datoteke; Incremento izrađuje ZIP-ove lokalno."
+
+#. automatic backup choose backup folder
+msgid "admin_automatic_backup_choose_backup_folder"
+msgstr "Odaberi mapu sigurnosnih kopija"
+
+#. automatic backup enable automatic full backups for this anki profile
+msgid "admin_automatic_backup_enable_automatic_full_backups_for_this_anki_profile"
+msgstr "Omogući automatske potpune sigurnosne kopije za ovaj Anki profil"
+
+#. automatic backup full backup destination folder
+msgid "admin_automatic_backup_full_backup_destination_folder"
+msgstr "Odredišna mapa potpune sigurnosne kopije"
+
+#. automatic backup full backups contain private cards media and settings
+msgid "admin_automatic_backup_full_backups_contain_private_cards_media_and_settings"
+msgstr "Potpune sigurnosne kopije sadrže privatne kartice, medije i postavke. Stari automatski ZIP-ovi za ovaj profil uklanjaju se tek nakon provjere novog ZIP-a. Kopiranje se izvodi u pozadini uz vidljiv prozor napretka. Anki može privremeno biti nedostupan do završetka kopiranja. Kopiranje pokrenuto zatvaranjem završava prije nego što Anki zatvori kolekciju, pa zatvaranje može trajati dulje."
+
+#. automatic backup hours 0 off
+msgid "admin_automatic_backup_hours_0_off"
+msgstr " sati (0 = isključeno)"
+
+#. automatic backup keep latest automatic versions
+msgid "admin_automatic_backup_keep_latest_automatic_versions"
+msgstr "Zadrži najnovije automatske kopije"
+
+#. automatic backup while anki is open every
+msgid "admin_automatic_backup_while_anki_is_open_every"
+msgstr "Dok je Anki otvoren, svakih"
+
+#. backup progress automatic backup in progress
+msgid "admin_backup_progress_automatic_backup_in_progress"
+msgstr "Automatsko kopiranje u tijeku"
+
+#. backup progress automatic backup stage
+msgid "admin_backup_progress_automatic_backup_stage"
+msgstr "Faza automatskog kopiranja"
+
+#. backup progress automatic full backup in progress anki is temporarily
+msgid "admin_backup_progress_automatic_full_backup_in_progress_anki_is_temporarily"
+msgstr "Izrada automatske potpune sigurnosne kopije…\nAnki je privremeno nedostupan. Pričekajte dovršetak kopiranja."
+
+#. backup progress incremento automatic backup
+msgid "admin_backup_progress_incremento_automatic_backup"
+msgstr "Incrementova automatska sigurnosna kopija"
+
+#. backup progress preparing backup
+msgid "admin_backup_progress_preparing_backup"
+msgstr "Priprema sigurnosne kopije…"
+
+#. entries close
+msgid "admin_entries_close"
+msgstr "Zatvori"
+
+#. entries match count
+msgid "admin_entries_match_count"
+msgstr "{current} od {total}"
+
+#. entries next
+msgid "admin_entries_next"
+msgstr "Sljedeće"
+
+#. entries no matches
+msgid "admin_entries_no_matches"
+msgstr "Nema podudaranja"
+
+#. entries previous
+msgid "admin_entries_previous"
+msgstr "Prethodno"
+
+#. entries search
+msgid "admin_entries_search"
+msgstr "Pretraži zapise"
+
+#. entries title
+msgid "admin_entries_title"
+msgstr "Zapisi baze Incremento"
+
+#. file available
+msgid "admin_file_available"
+msgstr "Lokalna datoteka je dostupna."
+
+#. file choose
+msgid "admin_file_choose"
+msgstr "Odaberite zamjensku datoteku"
+
+#. file filter
+msgid "admin_file_filter"
+msgstr "Sve datoteke (*)"
+
+#. file label file
+msgid "admin_file_label_file"
+msgstr "<b>Datoteka:</b> {value}"
+
+#. file label mode
+msgid "admin_file_label_mode"
+msgstr "<b>Način:</b> {value}"
+
+#. file label note
+msgid "admin_file_label_note"
+msgstr "<b>Bilješka:</b> {value}"
+
+#. file label path
+msgid "admin_file_label_path"
+msgstr "<b>Putanja:</b> {value}"
+
+#. file managed
+msgid "admin_file_managed"
+msgstr "Upravljana kopija"
+
+#. file missing
+msgid "admin_file_missing"
+msgstr "Povezana datoteka nedostaje. Odaberite Ponovno poveži za zamjensku datoteku."
+
+#. file none
+msgid "admin_file_none"
+msgstr "(nema)"
+
+#. file open
+msgid "admin_file_open"
+msgstr "Otvori"
+
+#. file open failed
+msgid "admin_file_open_failed"
+msgstr "Nije moguće otvoriti povezanu datoteku u zadanoj aplikaciji."
+
+#. file reference
+msgid "admin_file_reference"
+msgstr "Povezana izvorna datoteka"
+
+#. file relink
+msgid "admin_file_relink"
+msgstr "Ponovno poveži"
+
+#. file relink error
+msgid "admin_file_relink_error"
+msgstr "Nije moguće ponovno povezati lokalnu datoteku:\n{error}"
+
+#. file relinked
+msgid "admin_file_relinked"
+msgstr "Lokalna datoteka ponovno je povezana."
+
+#. file reveal
+msgid "admin_file_reveal"
+msgstr "Prikaži u mapi"
+
+#. file reveal failed
+msgid "admin_file_reveal_failed"
+msgstr "Nije moguće prikazati povezanu datoteku u Finderu/Exploreru."
+
+#. file title
+msgid "admin_file_title"
+msgstr "Lokalna datoteka"
+
+#. full restore a full backup or restore is already running
+msgid "admin_full_restore_a_full_backup_or_restore_is_already_running"
+msgstr "Potpuno kopiranje ili vraćanje već je u tijeku."
+
+#. full restore anki could not open the restored collection
+msgid "admin_full_restore_anki_could_not_open_the_restored_collection"
+msgstr "Anki ne može otvoriti vraćenu kolekciju."
+
+#. full restore automatic sync preference could not be saved save
+msgid "admin_full_restore_automatic_sync_preference_could_not_be_saved_save"
+msgstr ". Nije moguće spremiti postavku automatske sinkronizacije: {save_error}"
+
+#. full restore backup
+msgid "admin_full_restore_backup"
+msgstr "Sigurnosna kopija"
+
+#. full restore backup pre check failed error
+msgid "admin_full_restore_backup_pre_check_failed_error"
+msgstr "Prethodna provjera sigurnosne kopije nije uspjela: {error}"
+
+#. full restore backup profile source profile cards card count anki
+msgid "admin_full_restore_backup_profile_source_profile_cards_card_count_anki"
+msgstr "Profil sigurnosne kopije: {source_profile}\nKartice: {card_count}  •  Anki medijske datoteke: {media_count}\nIncrementove datoteke: {file_count}{mismatch}{missing_covers}\n\nTrenutačna kolekcija, Anki mediji i Incrementove datoteke profila bit će zamijenjeni. Anki će najprije izraditi zaštitnu sigurnosnu kopiju. Automatska sinkronizacija kolekcije i periodična sinkronizacija medija bit će isključene dok ih ponovno ne omogućite. Postavke sigurnosnih kopija drugih profila bit će sačuvane.\n\nAnkiWeb se ne provjerava. Kasnija obična sinkronizacija može spojiti udaljene promjene ili brisanja. Ako vraćene kartice trebaju zamijeniti AnkiWeb, pri prvoj ručnoj sinkronizaciji odaberite jednosmjerno slanje (Upload); preuzimanje (Download) zamjenjuje lokalnu kolekciju. Anki mediji sinkroniziraju se zasebno."
+
+#. full restore checking backup
+msgid "admin_full_restore_checking_backup"
+msgstr "Provjera sigurnosne kopije…"
+
+#. full restore closing profile for restore
+msgid "admin_full_restore_closing_profile_for_restore"
+msgstr "Zatvaranje profila za vraćanje…"
+
+#. full restore could not close the profile for restore error
+msgid "admin_full_restore_could_not_close_the_profile_for_restore_error"
+msgstr "Nije moguće zatvoriti profil za vraćanje: {error}"
+
+#. full restore could not create an anki safety backup error
+msgid "admin_full_restore_could_not_create_an_anki_safety_backup_error"
+msgstr "Nije moguće izraditi Ankijevu zaštitnu sigurnosnu kopiju: {error}"
+
+#. full restore creating safety backup
+msgid "admin_full_restore_creating_safety_backup"
+msgstr "Izrada zaštitne sigurnosne kopije…"
+
+#. full restore full backup restored review the profile before syncing
+msgid "admin_full_restore_full_backup_restored_review_the_profile_before_syncing"
+msgstr "Potpuna sigurnosna kopija je vraćena. Pregledajte profil prije sinkronizacije."
+
+#. full restore opening restored profile
+msgid "admin_full_restore_opening_restored_profile"
+msgstr "Otvaranje vraćenog profila…"
+
+#. full restore profile restored automatic sync is off
+msgid "admin_full_restore_profile_restored_automatic_sync_is_off"
+msgstr "Profil je vraćen; automatska sinkronizacija je isključena."
+
+#. full restore replace the current anki profile profile name with
+msgid "admin_full_restore_replace_the_current_anki_profile_profile_name_with"
+msgstr "Zamijeniti trenutačni Anki profil „{profile_name}” ovom sigurnosnom kopijom?"
+
+#. full restore replacing profile files
+msgid "admin_full_restore_replacing_profile_files"
+msgstr "Zamjena datoteka profila…"
+
+#. full restore restore cancelled after successful pre check
+msgid "admin_full_restore_restore_cancelled_after_successful_pre_check"
+msgstr "Vraćanje je otkazano nakon uspješne prethodne provjere."
+
+#. full restore restore could not replace profile files error
+msgid "admin_full_restore_restore_could_not_replace_profile_files_error"
+msgstr "Vraćanjem nije moguće zamijeniti datoteke profila: {error}"
+
+#. full restore restore could not replace profile files error the
+msgid "admin_full_restore_restore_could_not_replace_profile_files_error_the"
+msgstr "Vraćanjem nije moguće zamijeniti datoteke profila: {error}. Ni prethodni profil nije moguće ponovno otvoriti: {reopen_error}"
+
+#. full restore restore failed and the previous profile was restored
+msgid "admin_full_restore_restore_failed_and_the_previous_profile_was_restored"
+msgstr "Vraćanje nije uspjelo i prethodni profil je vraćen, ali neke postavke nije moguće spremiti: {error}"
+
+#. full restore restore failed and the previous profile was restored 65c4d6
+msgid "admin_full_restore_restore_failed_and_the_previous_profile_was_restored_65c4d6"
+msgstr "Vraćanje nije uspjelo i prethodni profil je vraćen: {reason}"
+
+#. full restore restore failed reason automatic rollback also failed rollback
+msgid "admin_full_restore_restore_failed_reason_automatic_rollback_also_failed_rollback"
+msgstr "Vraćanje nije uspjelo: {reason}. Ni automatski povrat prethodnog stanja nije uspio: {rollback_error}. Prethodne datoteke ostaju u {profile_path} i {runtime_path}."
+
+#. full restore restore failed reason prior files were put back
+msgid "admin_full_restore_restore_failed_reason_prior_files_were_put_back"
+msgstr "Vraćanje nije uspjelo: {reason}. Prethodne datoteke su vraćene, ali profil nije moguće ponovno otvoriti: {reopen_error}"
+
+#. full restore restore failed reason the restored collection could not
+msgid "admin_full_restore_restore_failed_reason_the_restored_collection_could_not"
+msgstr "Vraćanje nije uspjelo: {reason}. Vraćenu kolekciju nije moguće zatvoriti radi povrata prethodnog stanja: {close_error}. Prethodne datoteke ostaju u {profile_path} i {runtime_path}."
+
+#. full restore restore full backup
+msgid "admin_full_restore_restore_full_backup"
+msgstr "Vrati potpunu sigurnosnu kopiju"
+
+#. full restore restore full profile backup
+msgid "admin_full_restore_restore_full_profile_backup"
+msgstr "Vrati potpunu sigurnosnu kopiju profila"
+
+#. full restore restore stopped because the active profile changed
+msgid "admin_full_restore_restore_stopped_because_the_active_profile_changed"
+msgstr "Vraćanje je zaustavljeno jer se aktivni profil promijenio."
+
+#. full restore restore stopped because the profile changed or a
+msgid "admin_full_restore_restore_stopped_because_the_profile_changed_or_a"
+msgstr "Vraćanje je zaustavljeno jer se profil promijenio ili je pokrenuto kopiranje."
+
+#. full restore restore stopped with an incomplete rollback error the
+msgid "admin_full_restore_restore_stopped_with_an_incomplete_rollback_error_the"
+msgstr "Vraćanje je zaustavljeno uz nedovršen povrat prethodnog stanja: {error} Prethodne datoteke ostaju u {profile_path} i {runtime_path}. Ne otvarajte ovaj profil u Ankiju dok se te datoteke ne oporave."
+
+#. full restore restore succeeded but old file cleanup failed error
+msgid "admin_full_restore_restore_succeeded_but_old_file_cleanup_failed_error"
+msgstr "Vraćanje je uspjelo, ali uklanjanje starih datoteka nije: {error}. Provjerite {profile_path} i {runtime_path}."
+
+#. full restore rolling back failed restore
+msgid "admin_full_restore_rolling_back_failed_restore"
+msgstr "Povrat prethodnog stanja nakon neuspjelog vraćanja…"
+
+#. full restore select full incremento backup
+msgid "admin_full_restore_select_full_incremento_backup"
+msgstr "Odaberi potpunu Incrementovu sigurnosnu kopiju"
+
+#. full restore staging checked backup
+msgid "admin_full_restore_staging_checked_backup"
+msgstr "Priprema provjerene sigurnosne kopije…"
+
+#. full restore the backup profile name differs from the current
+msgid "admin_full_restore_the_backup_profile_name_differs_from_the_current"
+msgstr "Naziv profila sigurnosne kopije razlikuje se od trenutačnog profila. Njegove Incrementove datoteke bit će smještene u trenutačni profil."
+
+#. full restore the previous collection could not reopen
+msgid "admin_full_restore_the_previous_collection_could_not_reopen"
+msgstr "Prethodnu kolekciju nije moguće ponovno otvoriti."
+
+#. full restore the profile changed or a backup started
+msgid "admin_full_restore_the_profile_changed_or_a_backup_started"
+msgstr "Profil se promijenio ili je pokrenuto kopiranje."
+
+#. full restore warning count pdf epub covers referenced by cards
+msgid "admin_full_restore_warning_count_pdf_epub_covers_referenced_by_cards"
+msgstr "Upozorenje: u sigurnosnoj kopiji nedostaju PDF/EPUB naslovnice na koje upućuju kartice. Broj: {count}. Naslovi izvora bit će sačuvani, ali te slike naslovnica neće biti vraćene."
+
+#. full restore zip files zip
+msgid "admin_full_restore_zip_files_zip"
+msgstr "ZIP datoteke (*.zip)"
+
+#. image failed
+msgid "admin_image_failed"
+msgstr "Nije moguće zakrenuti odabranu sliku:\n{error}"
+
+#. image media unavailable
+msgid "admin_image_media_unavailable"
+msgstr "Ankijeva kolekcija medija nije dostupna."
+
+#. image missing
+msgid "admin_image_missing"
+msgstr "Odabrana slika nije pronađena u Ankijevim medijima:\n{filename}"
+
+#. image rotate left
+msgid "admin_image_rotate_left"
+msgstr "Zakreni odabranu sliku 90° ulijevo"
+
+#. image rotate right
+msgid "admin_image_rotate_right"
+msgstr "Zakreni odabranu sliku 90° udesno"
+
+#. image rotated
+msgid "admin_image_rotated"
+msgstr "Slika je zakrenuta."
+
+#. image select
+msgid "admin_image_select"
+msgstr "Najprije odaberite lokalnu sliku u polju kartice."
+
+#. image selection lost
+msgid "admin_image_selection_lost"
+msgstr "Odabrana slika više nije dostupna. Ponovno je odaberite i pokušajte."
+
+#. no
+msgid "admin_no"
+msgstr "Ne"
+
+#. note update add fields
+msgid "admin_note_update_add_fields"
+msgstr "dodaj polja: {fields}"
+
+#. note update apply
+msgid "admin_note_update_apply"
+msgstr "Primijeni ažuriranje"
+
+#. note update confirm
+msgid "admin_note_update_confirm"
+msgstr "Najprije sam sinkronizirao uređaje, a ovaj uređaj sadrži kolekciju koju želim zadržati."
+
+#. note update empty
+msgid "admin_note_update_empty"
+msgstr "<li>Nema ažuriranja na čekanju.</li>"
+
+#. note update instructions
+msgid "admin_note_update_instructions"
+msgstr "<h2>Ažuriranje formata kartica Incremento</h2><p><b>Incremento još nije promijenio vašu Anki kolekciju.</b></p><p>Sljedeće vrste bilješki Incremento trebaju ažuriranje polja ili predloška kartice:</p><ul>{update_list}</ul><p>Nakon promjene vrste bilješke Anki može zahtijevati jednosmjernu punu sinkronizaciju jer ne može automatski spojiti sve promjene strukture.</p><h3>Preporučeni sigurni redoslijed</h3><ol><li>Prije ažuriranja uobičajeno sinkronizirajte ovaj uređaj i provjerite jesu li sinkronizirani i ostali uređaji.</li><li>Vratite se ovdje, potvrdite da ovaj uređaj sadrži kolekciju koju želite zadržati i primijenite ažuriranje.</li><li>Kada Anki zatraži odabir verzije, na ovom uređaju odaberite <b>Prenesi na AnkiWeb (Upload to AnkiWeb)</b>. Na ostalim uređajima odaberite <b>Preuzmi (Download)</b>.</li></ol><p>Možete odabrati <b>Kasnije</b>; vrste bilješki tada se neće promijeniti.</p>"
+
+#. note update later
+msgid "admin_note_update_later"
+msgstr "Kasnije"
+
+#. note update repair
+msgid "admin_note_update_repair"
+msgstr "popravi redoslijed polja"
+
+#. note update restore
+msgid "admin_note_update_restore"
+msgstr "vrati predložak kartice"
+
+#. note update sync
+msgid "admin_note_update_sync"
+msgstr "Sinkroniziraj prije ažuriranja"
+
+#. note update template
+msgid "admin_note_update_template"
+msgstr "ažuriraj predložak kartice"
+
+#. note update title
+msgid "admin_note_update_title"
+msgstr "Ažuriranje formata kartica Incremento"
+
+#. schedule apply now
+msgid "admin_schedule_apply_now"
+msgstr "Odmah primijeni na trenutačni rok"
+
+#. schedule behavior
+msgid "admin_schedule_behavior"
+msgstr "Ponašanje:"
+
+#. schedule clear
+msgid "admin_schedule_clear"
+msgstr "Ukloni pravilo"
+
+#. schedule current
+msgid "admin_schedule_current"
+msgstr "Trenutačno pravilo: <b>{rule}</b>"
+
+#. schedule days
+msgid "admin_schedule_days"
+msgstr "Dani"
+
+#. schedule hint
+msgid "admin_schedule_hint"
+msgstr "Najmanja učestalost zadržava uobičajeni raspored, ali sprječava odgodu kartice nakon roka iz pravila. Točno ponavljanje uvijek postavlja sljedeći rok prema pravilu. Jednokratni rok primjenjuje se jednom, a zatim se pravilo uklanja."
+
+#. schedule mixed
+msgid "admin_schedule_mixed"
+msgstr "Trenutačno pravilo: <i>Različita pravila</i>"
+
+#. schedule months
+msgid "admin_schedule_months"
+msgstr "Mjeseci"
+
+#. schedule none
+msgid "admin_schedule_none"
+msgstr "Trenutačno pravilo: <i>Nema prilagođenog pravila</i>"
+
+#. schedule preset
+msgid "admin_schedule_preset"
+msgstr "Predložak:"
+
+#. schedule preview
+msgid "admin_schedule_preview"
+msgstr "Pregled: <b>{rule}</b>"
+
+#. schedule quick
+msgid "admin_schedule_quick"
+msgstr "Brzi predložak…"
+
+#. schedule repeat
+msgid "admin_schedule_repeat"
+msgstr "Ponavljaj svakih:"
+
+#. schedule selection
+msgid "admin_schedule_selection"
+msgid_plural "admin_schedule_selection_plural"
+msgstr[0] "Primijeni pravilo ponavljanja na {count} odabranu karticu."
+msgstr[1] "Primijeni pravilo ponavljanja na {count} odabrane kartice."
+msgstr[2] "Primijeni pravilo ponavljanja na {count} odabranih kartica."
+
+#. schedule title
+msgid "admin_schedule_title"
+msgstr "Prilagođeni raspored"
+
+#. schedule unit
+msgid "admin_schedule_unit"
+msgstr "Jedinica:"
+
+#. schedule weeks
+msgid "admin_schedule_weeks"
+msgstr "Tjedni"
+
+#. session continue
+msgid "admin_session_continue"
+msgstr "Nastavi"
+
+#. session debug title
+msgid "admin_session_debug_title"
+msgstr "DEBUG — Redoslijed u rasporedu ({count} kartica)"
+
+#. session header
+msgid "admin_session_header"
+msgstr "#    vrsta    način      oznaka               prvo polje"
+
+#. session no tag
+msgid "admin_session_no_tag"
+msgstr "bez oznake"
+
+#. sqlite editor b automatic checkpoint b path time size
+msgid "admin_sqlite_editor_b_automatic_checkpoint_b_path_time_size"
+msgstr "<b>Automatska kontrolna kopija:</b> {path} ({time}, {size})"
+
+#. sqlite editor b automatic checkpoint b unavailable
+msgid "admin_sqlite_editor_b_automatic_checkpoint_b_unavailable"
+msgstr "<b>Automatska kontrolna kopija:</b> nije dostupna"
+
+#. sqlite editor b database b path
+msgid "admin_sqlite_editor_b_database_b_path"
+msgstr "<b>Baza podataka:</b> {path}"
+
+#. sqlite editor b mode b mode warning
+msgid "admin_sqlite_editor_b_mode_b_mode_warning"
+msgstr "<b>Način:</b> {mode} - {warning}"
+
+#. sqlite editor b recent checkpoints b none
+msgid "admin_sqlite_editor_b_recent_checkpoints_b_none"
+msgstr "<b>Nedavne kontrolne kopije:</b> nema"
+
+#. sqlite editor b recent checkpoints b text
+msgid "admin_sqlite_editor_b_recent_checkpoints_b_text"
+msgstr "<b>Nedavne kontrolne kopije:</b> {text}"
+
+#. sqlite editor cell update failed error
+msgid "admin_sqlite_editor_cell_update_failed_error"
+msgstr "Ažuriranje ćelije nije uspjelo: {error}"
+
+#. sqlite editor close
+msgid "admin_sqlite_editor_close"
+msgstr "Zatvori"
+
+#. sqlite editor could not load rows for table error
+msgid "admin_sqlite_editor_could_not_load_rows_for_table_error"
+msgstr "Nije moguće učitati retke tablice {table}: {error}"
+
+#. sqlite editor could not load schema error
+msgid "admin_sqlite_editor_could_not_load_schema_error"
+msgstr "Nije moguće učitati shemu:\n{error}"
+
+#. sqlite editor database connection is not available
+msgid "admin_sqlite_editor_database_connection_is_not_available"
+msgstr "Veza s bazom podataka nije dostupna."
+
+#. sqlite editor direct cell editing is disabled for views
+msgid "admin_sqlite_editor_direct_cell_editing_is_disabled_for_views"
+msgstr "Izravno uređivanje ćelija onemogućeno je za poglede."
+
+#. sqlite editor direct cell editing is disabled until writes are
+msgid "admin_sqlite_editor_direct_cell_editing_is_disabled_until_writes_are"
+msgstr "Izravno uređivanje ćelija onemogućeno je dok se ne omogući upis."
+
+#. sqlite editor direct cell editing uses sqlite rowid because this
+msgid "admin_sqlite_editor_direct_cell_editing_uses_sqlite_rowid_because_this"
+msgstr "Izravno uređivanje ćelija koristi SQLite rowid jer ova tablica nema deklarirani primarni ključ."
+
+#. sqlite editor direct cell editing uses the table primary key
+msgid "admin_sqlite_editor_direct_cell_editing_uses_the_table_primary_key"
+msgstr "Izravno uređivanje ćelija koristi primarni ključ tablice za ažuriranje redaka."
+
+#. sqlite editor enter a sql statement first
+msgid "admin_sqlite_editor_enter_a_sql_statement_first"
+msgstr "Najprije unesite SQL naredbu."
+
+#. sqlite editor incremento database editor
+msgid "admin_sqlite_editor_incremento_database_editor"
+msgstr "Incrementov uređivač baze podataka"
+
+#. sqlite editor inspect the active profile s incremento sqlite database
+msgid "admin_sqlite_editor_inspect_the_active_profile_s_incremento_sqlite_database"
+msgstr "Pregledajte Incrementovu SQLite bazu aktivnog profila. Uređivač se otvara samo za čitanje. Omogućite upis samo ako točno znate koji SQL želite pokrenuti."
+
+#. sqlite editor next
+msgid "admin_sqlite_editor_next"
+msgstr "Sljedeće"
+
+#. sqlite editor no tables found
+msgid "admin_sqlite_editor_no_tables_found"
+msgstr "Nema pronađenih tablica."
+
+#. sqlite editor previous
+msgid "admin_sqlite_editor_previous"
+msgstr "Prethodno"
+
+#. sqlite editor query returned count row s more note
+msgid "admin_sqlite_editor_query_returned_count_row_s_more_note"
+msgstr "Upit je vratio retke: {count}{more_note}."
+
+#. sqlite editor read only examples select from priorities limit 20
+msgid "admin_sqlite_editor_read_only_examples_select_from_priorities_limit_20"
+msgstr "Primjeri samo za čitanje:\nSELECT * FROM priorities LIMIT 20;\nPRAGMA table_info(priorities);\n\nSQL koji mijenja podatke zahtijeva omogućivanje upisa."
+
+#. sqlite editor refresh
+msgid "admin_sqlite_editor_refresh"
+msgstr "Osvježi"
+
+#. sqlite editor rows
+msgid "admin_sqlite_editor_rows"
+msgstr "Retci"
+
+#. sqlite editor rows table count total
+msgid "admin_sqlite_editor_rows_table_count_total"
+msgstr "Retci — {table} (ukupno: {count})"
+
+#. sqlite editor run sql
+msgid "admin_sqlite_editor_run_sql"
+msgstr "Pokreni SQL"
+
+#. sqlite editor schema
+msgid "admin_sqlite_editor_schema"
+msgstr "Shema"
+
+#. sqlite editor select a table
+msgid "admin_sqlite_editor_select_a_table"
+msgstr "Odaberite tablicu."
+
+#. sqlite editor showing start end of count
+msgid "admin_sqlite_editor_showing_start_end_of_count"
+msgstr "Prikaz {start}–{end} od {count}"
+
+#. sqlite editor sql console
+msgid "admin_sqlite_editor_sql_console"
+msgstr "SQL konzola"
+
+#. sqlite editor sql error error
+msgid "admin_sqlite_editor_sql_error_error"
+msgstr "SQL pogreška: {error}"
+
+#. sqlite editor sql write executed and committed
+msgid "admin_sqlite_editor_sql_write_executed_and_committed"
+msgstr "SQL upis izvršen je i potvrđen."
+
+#. sqlite editor sql writes and cell editing are disabled
+msgid "admin_sqlite_editor_sql_writes_and_cell_editing_are_disabled"
+msgstr "SQL upis i uređivanje ćelija su onemogućeni."
+
+#. sqlite editor sql writes and cell editing are enabled for
+msgid "admin_sqlite_editor_sql_writes_and_cell_editing_are_enabled_for"
+msgstr "SQL upis i uređivanje ćelija omogućeni su za ovu sesiju uređivača."
+
+#. sqlite editor sql writes are already unlocked for this session
+msgid "admin_sqlite_editor_sql_writes_are_already_unlocked_for_this_session"
+msgstr "SQL upis već je omogućen za ovu sesiju."
+
+#. sqlite editor sql writes are locked use unlock writes before
+msgid "admin_sqlite_editor_sql_writes_are_locked_use_unlock_writes_before"
+msgstr "SQL upis je zaključan. Omogućite upis prije pokretanja SQL-a koji mijenja podatke."
+
+#. sqlite editor sql writes unlocked for this editor session
+msgid "admin_sqlite_editor_sql_writes_unlocked_for_this_editor_session"
+msgstr "Upis u SQL omogućen je za ovu sesiju uređivača."
+
+#. sqlite editor table table
+msgid "admin_sqlite_editor_table_table"
+msgstr "Tablica: {table}"
+
+#. sqlite editor tables
+msgid "admin_sqlite_editor_tables"
+msgstr "Tablice"
+
+#. sqlite editor the selected row could not be matched for
+msgid "admin_sqlite_editor_the_selected_row_could_not_be_matched_for"
+msgstr "Odabrani redak nije moguće pronaći radi ažuriranja."
+
+#. sqlite editor this editor writes directly to the live incremento
+msgid "admin_sqlite_editor_this_editor_writes_directly_to_the_live_incremento"
+msgstr "Ovaj uređivač izravno upisuje u aktivnu Incrementovu bazu profila.\n\nUnesite {phrase} kako biste omogućili SQL upis za ovu sesiju:"
+
+#. sqlite editor this row cannot be edited safely from the
+msgid "admin_sqlite_editor_this_row_cannot_be_edited_safely_from_the"
+msgstr "Ovaj redak nije moguće sigurno uređivati u tablici."
+
+#. sqlite editor truncated
+msgid "admin_sqlite_editor_truncated"
+msgstr " (skraćeno)"
+
+#. sqlite editor unknown
+msgid "admin_sqlite_editor_unknown"
+msgstr "Nepoznato"
+
+#. sqlite editor unlock cancelled confirmation phrase did not match
+msgid "admin_sqlite_editor_unlock_cancelled_confirmation_phrase_did_not_match"
+msgstr "Omogućivanje upisa je otkazano. Potvrdni izraz ne odgovara."
+
+#. sqlite editor unlock database writes
+msgid "admin_sqlite_editor_unlock_database_writes"
+msgstr "Omogući upis u bazu"
+
+#. sqlite editor unlock writes
+msgid "admin_sqlite_editor_unlock_writes"
+msgstr "Omogući upis…"
+
+#. sqlite editor unlocked for writes
+msgid "admin_sqlite_editor_unlocked_for_writes"
+msgstr "Upis omogućen"
+
+#. sqlite editor updated table column at row row
+msgid "admin_sqlite_editor_updated_table_column_at_row_row"
+msgstr "Ažurirano {table}.{column} u retku {row}."
+
+#. sqlite read only
+msgid "admin_sqlite_read_only"
+msgstr "Samo za čitanje"
+
+#. tag add
+msgid "admin_tag_add"
+msgstr "dodaj oznake"
+
+#. tag count
+msgid "admin_tag_count"
+msgid_plural "admin_tag_count_plural"
+msgstr[0] "{count} oznaka"
+msgstr[1] "{count} oznake"
+msgstr[2] "{count} oznaka"
+
+#. timer across
+msgid "admin_timer_across"
+msgstr "{pages} u {books}"
+
+#. timer and
+msgid "admin_timer_and"
+msgstr "{first} i {second}"
+
+#. timer books
+msgid "admin_timer_books"
+msgid_plural "admin_timer_books_plural"
+msgstr[0] "{count} knjizi"
+msgstr[1] "{count} knjige"
+msgstr[2] "{count} knjiga"
+
+#. timer cards reviewed
+msgid "admin_timer_cards_reviewed"
+msgid_plural "admin_timer_cards_reviewed_plural"
+msgstr[0] "Ponovljena je <b>{count}</b> kartica"
+msgstr[1] "Ponovljene su <b>{count}</b> kartice"
+msgstr[2] "Ponovljeno je <b>{count}</b> kartica"
+
+#. timer complete
+msgid "admin_timer_complete"
+msgstr "Sesija je završena"
+
+#. timer done
+msgid "admin_timer_done"
+msgstr "Gotovo"
+
+#. timer duration
+msgid "admin_timer_duration"
+msgstr "Završeno je mjerenje fokusa od {minutes} minuta"
+
+#. timer empty
+msgid "admin_timer_empty"
+msgstr "Tijekom ovog mjerenja nisu zabilježene kartice ni stranice."
+
+#. timer media pages
+msgid "admin_timer_media_pages"
+msgid_plural "admin_timer_media_pages_plural"
+msgstr[0] "<b>{count}</b> {kind} stranica"
+msgstr[1] "<b>{count}</b> {kind} stranice"
+msgstr[2] "<b>{count}</b> {kind} stranica"
+
+#. timer media pages read
+msgid "admin_timer_media_pages_read"
+msgid_plural "admin_timer_media_pages_read_plural"
+msgstr[0] "Pročitana je <b>{count}</b> {kind} stranica"
+msgstr[1] "Pročitane su <b>{count}</b> {kind} stranice"
+msgstr[2] "Pročitano je <b>{count}</b> {kind} stranica"
+
+#. timer pages read
+msgid "admin_timer_pages_read"
+msgid_plural "admin_timer_pages_read_plural"
+msgstr[0] "Pročitana je <b>{count}</b> stranica"
+msgstr[1] "Pročitane su <b>{count}</b> stranice"
+msgstr[2] "Pročitano je <b>{count}</b> stranica"
+
+#. timer pause
+msgid "admin_timer_pause"
+msgstr "⏸  Pauziraj"
+
+#. timer reset
+msgid "admin_timer_reset"
+msgstr "Poništi mjerač vremena (može i dvostrukim klikom na prikaz)"
+
+#. timer resume
+msgid "admin_timer_resume"
+msgstr "▶  Nastavi"
+
+#. timer start
+msgid "admin_timer_start"
+msgstr "▶  Pokreni"
+
+#. timer this
+msgid "admin_timer_this"
+msgstr "Ovo mjerenje vremena"
+
+#. timer title
+msgid "admin_timer_title"
+msgstr "Mjerač vremena za fokus"
+
+#. timer today
+msgid "admin_timer_today"
+msgstr "Danas"
+
+#. timer today summary
+msgid "admin_timer_today_summary"
+msgstr "Danas do sada: {pages}; {cards}."
+
+#. yes
+msgid "admin_yes"
+msgstr "Da"

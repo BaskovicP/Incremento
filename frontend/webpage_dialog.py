@@ -39,6 +39,12 @@ except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 class _SnapshotRequestInterceptor(QWebEngineUrlRequestInterceptor):
     """Keep captured HTML fully offline after its guarded server-side fetch."""
 
@@ -85,7 +91,7 @@ def render_webpage_to_pdf(
     source_url = str(url or "").strip()
     html_text = str(html or "")
     if not source_url and not html_text:
-        raise ValueError("Missing webpage source.")
+        raise ValueError(_t("imports_webpage_missing_source"))
     if source_url:
         source_url = validate_public_http_url(source_url)
     if not html_text:
@@ -130,7 +136,7 @@ def render_webpage_to_pdf(
 
     def _on_pdf_done(_path: str, ok: bool) -> None:
         if not ok:
-            _finish_error("Failed to generate PDF.")
+            _finish_error(_t("imports_webpage_pdf_failed"))
             return
         _finish(True)
 
@@ -152,13 +158,13 @@ def render_webpage_to_pdf(
         if state.get("done"):
             return
         if not ok:
-            _finish_error("Failed to load page.")
+            _finish_error(_t("imports_webpage_load_failed"))
             return
         QTimer.singleShot(max(0, int(wait_ms)), _start_print)
 
     def _on_timeout() -> None:
         seconds = max(1, int(timeout_ms) // 1000)
-        _finish_error(f"Timed out generating PDF after {seconds} seconds.")
+        _finish_error(_t("imports_webpage_pdf_timeout", seconds=seconds))
 
     view.loadFinished.connect(_on_load_finished)
     QTimer.singleShot(max(1000, int(timeout_ms)), _on_timeout)
@@ -167,7 +173,7 @@ def render_webpage_to_pdf(
     view.deleteLater()
 
     if not state["ok"]:
-        raise RuntimeError(str(state["error"] or "Failed to generate PDF."))
+        raise RuntimeError(str(state["error"] or _t("imports_webpage_pdf_failed")))
 
 
 class WebpageToPdfDialog(QDialog):
@@ -175,7 +181,7 @@ class WebpageToPdfDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Webpage to PDF")
+        self.setWindowTitle(_t("imports_webpage_to_pdf"))
         self.setMinimumWidth(420)
 
         self._pdf_path: str | None = None
@@ -187,15 +193,15 @@ class WebpageToPdfDialog(QDialog):
         layout.setSpacing(8)
 
         # URL
-        layout.addWidget(QLabel("URL:"))
+        layout.addWidget(QLabel(_t("imports_url_label")))
         self._url_edit = QLineEdit()
-        self._url_edit.setPlaceholderText("https://example.com/article")
+        self._url_edit.setPlaceholderText(_t("imports_webpage_url_placeholder"))
         layout.addWidget(self._url_edit)
 
         # Title
-        layout.addWidget(QLabel("Card title:"))
+        layout.addWidget(QLabel(_t("imports_webpage_card_title_label")))
         self._title_edit = QLineEdit()
-        self._title_edit.setPlaceholderText("Article title")
+        self._title_edit.setPlaceholderText(_t("imports_article_title"))
         layout.addWidget(self._title_edit)
 
         self._tag_edit = QuickTagEdit()
@@ -213,9 +219,9 @@ class WebpageToPdfDialog(QDialog):
 
         # Buttons
         btn_row = QHBoxLayout()
-        self._import_btn = QPushButton("Import")
+        self._import_btn = QPushButton(_t("imports_import"))
         self._import_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(self._import_btn)
         btn_row.addWidget(cancel_btn)
@@ -229,7 +235,7 @@ class WebpageToPdfDialog(QDialog):
     def _on_import(self):
         url = self._url_edit.text().strip()
         if not url:
-            self._status_lbl.setText("Please enter a URL.")
+            self._status_lbl.setText(_t("imports_webpage_enter_url"))
             return
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
@@ -238,7 +244,7 @@ class WebpageToPdfDialog(QDialog):
 
         self._import_btn.setEnabled(False)
         self._progress.setVisible(True)
-        self._status_lbl.setText("Generating PDF…")
+        self._status_lbl.setText(_t("imports_webpage_generating_pdf"))
         QApplication.processEvents()
 
         with tempfile.NamedTemporaryFile(

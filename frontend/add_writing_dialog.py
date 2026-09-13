@@ -22,12 +22,18 @@ except ImportError:
     from webpage_markdown import fetch_webpage_markdown
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 class AddWritingDialog(QDialog):
     """Dialog to create an Incremento writing card backed by a markdown file."""
 
     def __init__(self, deck_names: list[str], default_deck: str = "Topics", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add to Markdown")
+        self.setWindowTitle(_t("imports_add_markdown"))
         self.setMinimumWidth(560)
         self.resize(640, 520)
 
@@ -35,43 +41,43 @@ class AddWritingDialog(QDialog):
         layout.setSpacing(8)
         layout.setContentsMargins(14, 14, 14, 14)
 
-        layout.addWidget(QLabel("Title:"))
+        layout.addWidget(QLabel(_t("imports_title_label")))
         self._title_edit = QLineEdit()
-        self._title_edit.setPlaceholderText("Markdown note title")
+        self._title_edit.setPlaceholderText(_t("imports_markdown_title_placeholder"))
         layout.addWidget(self._title_edit)
 
-        layout.addWidget(QLabel("Filename (optional):"))
+        layout.addWidget(QLabel(_t("imports_filename_optional")))
         self._filename_edit = QLineEdit()
-        self._filename_edit.setPlaceholderText("my-note.md  (stored under user_files/writing)")
+        self._filename_edit.setPlaceholderText(_t("imports_markdown_filename_placeholder"))
         layout.addWidget(self._filename_edit)
 
         self._tag_edit = QuickTagEdit()
         layout.addWidget(self._tag_edit)
 
         import_mode_row = QHBoxLayout()
-        import_mode_row.addWidget(QLabel("Import mode:"))
+        import_mode_row.addWidget(QLabel(_t("imports_import_mode")))
         self._import_mode_combo = QComboBox()
-        self._import_mode_combo.addItem("Manual markdown", "manual")
-        self._import_mode_combo.addItem("Import webpage markdown", "webpage_markdown")
+        self._import_mode_combo.addItem(_t("imports_manual_markdown"), "manual")
+        self._import_mode_combo.addItem(_t("imports_webpage_markdown"), "webpage_markdown")
         import_mode_row.addWidget(self._import_mode_combo, 1)
         layout.addLayout(import_mode_row)
 
         source_row = QHBoxLayout()
-        self._source_url_label = QLabel("Source URL:")
+        self._source_url_label = QLabel(_t("imports_source_url"))
         source_row.addWidget(self._source_url_label)
         self._source_url_edit = QLineEdit()
-        self._source_url_edit.setPlaceholderText("https://…")
+        self._source_url_edit.setPlaceholderText(_t("imports_https_placeholder"))
         source_row.addWidget(self._source_url_edit, 1)
-        self._fetch_btn = QPushButton("Fetch page")
+        self._fetch_btn = QPushButton(_t("imports_fetch_page"))
         source_row.addWidget(self._fetch_btn)
         layout.addLayout(source_row)
 
         scope_row = QHBoxLayout()
-        self._scope_label = QLabel("Webpage scope:")
+        self._scope_label = QLabel(_t("imports_webpage_scope"))
         scope_row.addWidget(self._scope_label)
         self._scope_combo = QComboBox()
-        self._scope_combo.addItem("Main content", "main")
-        self._scope_combo.addItem("Entire page", "full")
+        self._scope_combo.addItem(_t("imports_main_content"), "main")
+        self._scope_combo.addItem(_t("imports_entire_page"), "full")
         scope_row.addWidget(self._scope_combo, 1)
         layout.addLayout(scope_row)
 
@@ -81,7 +87,7 @@ class AddWritingDialog(QDialog):
         layout.addWidget(self._fetch_status)
 
         deck_row = QHBoxLayout()
-        deck_row.addWidget(QLabel("Deck:"))
+        deck_row.addWidget(QLabel(_t("imports_deck_label")))
         self._deck_combo = QComboBox()
         for d in deck_names:
             self._deck_combo.addItem(d)
@@ -92,24 +98,24 @@ class AddWritingDialog(QDialog):
         deck_row.addWidget(self._deck_combo, 1)
         layout.addLayout(deck_row)
 
-        layout.addWidget(QLabel("Initial markdown:"))
+        layout.addWidget(QLabel(_t("imports_initial_markdown")))
         self._markdown_edit = QTextEdit()
         self._markdown_edit.setAcceptRichText(False)
         self._markdown_edit.setPlaceholderText(
-            "# Heading\n\nWrite initial content here…"
+            _t("imports_markdown_editor_placeholder")
         )
         layout.addWidget(self._markdown_edit, 1)
 
         hint = QLabel(
-            "The markdown file is autosaved while typing when this card is reviewed."
+            _t("imports_markdown_autosave_hint")
         )
         hint.setStyleSheet("font-size: 11px; color: #9aa0a6;")
         layout.addWidget(hint)
 
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Add Markdown Card")
+        ok_btn = QPushButton(_t("imports_add_markdown_card"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)
@@ -130,11 +136,11 @@ class AddWritingDialog(QDialog):
         self._scope_combo.setVisible(webpage_mode)
         if webpage_mode:
             self._fetch_status.setText(
-                "Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars."
+                _t("imports_webpage_fetch_hint")
             )
         else:
             self._fetch_status.setText(
-                "Write or paste markdown manually, or switch import mode to pull it from a webpage."
+                _t("imports_manual_hint")
             )
 
     def _normalized_source_url(self) -> str:
@@ -153,15 +159,15 @@ class AddWritingDialog(QDialog):
     def _fetch_page_markdown(self) -> None:
         url = self._normalized_source_url()
         if not url:
-            showInfo("Please enter a source URL first.")
+            showInfo(_t("imports_writing_source_required"))
             return
 
         scope = self.page_content_scope
-        self._set_fetch_busy(True, "Fetching webpage markdown…")
+        self._set_fetch_busy(True, _t("imports_fetching_markdown"))
         try:
-            mw.progress.start(label="Fetching webpage markdown…", immediate=True)
+            mw.progress.start(label=_t("imports_fetching_markdown"), immediate=True)
         except TypeError:
-            mw.progress.start(label="Fetching webpage markdown…")
+            mw.progress.start(label=_t("imports_fetching_markdown"))
 
         def _task():
             return fetch_webpage_markdown(url, content_scope=scope)
@@ -175,20 +181,20 @@ class AddWritingDialog(QDialog):
                 result = fut.result()
             except Exception as exc:
                 try:
-                    self._set_fetch_busy(False, "Fetch failed.")
+                    self._set_fetch_busy(False, _t("imports_fetch_failed_short"))
                 except RuntimeError:
                     return
-                showInfo(f"Failed to fetch webpage markdown:\n{exc}")
+                showInfo(_t("imports_writing_fetch_failed", error=exc))
                 return
 
             fetched_title = str(result.get("title") or "").strip()
             fetched_markdown = str(result.get("markdown") or "").strip()
             if not fetched_markdown:
                 try:
-                    self._set_fetch_busy(False, "No markdown content was extracted.")
+                    self._set_fetch_busy(False, _t("imports_no_markdown_extracted"))
                 except RuntimeError:
                     return
-                showInfo("Failed to fetch webpage markdown:\nNo readable content was extracted.")
+                showInfo(_t("imports_no_readable_markdown"))
                 return
 
             try:
@@ -200,7 +206,7 @@ class AddWritingDialog(QDialog):
                         or result.get("markdown_document")
                     )
                 )
-                self._set_fetch_busy(False, "Webpage markdown loaded into the editor.")
+                self._set_fetch_busy(False, _t("imports_markdown_loaded"))
             except RuntimeError:
                 return
 

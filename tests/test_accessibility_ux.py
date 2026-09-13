@@ -19,12 +19,12 @@ def test_pdf_reader_has_visible_keyboard_focus_reduced_motion_and_live_statuses(
     assert ":focus-visible" in source
     assert "prefers-reduced-motion: reduce" in source
     assert 'role="toolbar"' in source
-    assert 'aria-label="PDF reader controls"' in source
+    assert 'aria-label={tr("reader_pdf_controls")}' in source
     assert 'aria-live="polite"' in source
-    assert 'aria-label="Previous PDF page"' in source
-    assert 'aria-label="Next PDF page"' in source
-    assert 'aria-label="Zoom out"' in source
-    assert 'aria-label="Zoom in"' in source
+    assert 'aria-label={tr("reader_previous_pdf_page")}' in source
+    assert 'aria-label={tr("reader_next_pdf_page")}' in source
+    assert 'aria-label={tr("reader_zoom_out")}' in source
+    assert 'aria-label={tr("reader_zoom_in")}' in source
 
 
 def test_new_ux_dialogs_name_primary_navigation_and_destructive_controls():
@@ -38,8 +38,8 @@ def test_new_ux_dialogs_name_primary_navigation_and_destructive_controls():
         encoding="utf-8"
     )
 
-    assert "Go to previous onboarding step" in onboarding
-    assert "Go to next onboarding step" in onboarding
-    assert "Include cards from other filtered decks" in media_review
-    assert "Start attached-card review" in media_review
-    assert "Show completed background activity" in activity
+    assert 'setAccessibleName(t("onboarding_back_accessible"))' in onboarding
+    assert 'setAccessibleName(t("onboarding_next_accessible"))' in onboarding
+    assert 't("reader_media_include_filtered_accessible")' in media_review
+    assert 'setAccessibleName(t("reader_media_start_review_accessible"))' in media_review
+    assert 'setAccessibleName(_t("imports_activity_show_finished_accessible"))' in activity

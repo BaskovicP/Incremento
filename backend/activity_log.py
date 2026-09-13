@@ -10,6 +10,11 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 
+try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
 
 MAX_ACTIVITIES = 100
 _FINAL_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -65,7 +70,7 @@ def _prune_locked() -> None:
 def start_activity(
     title: str,
     *,
-    category: str = "General",
+    category: str | None = None,
     detail: str = "",
     progress=None,
     cancel: Callable[[], object] | None = None,
@@ -76,8 +81,8 @@ def start_activity(
     activity_id = uuid.uuid4().hex
     activity = _Activity(
         activity_id=activity_id,
-        title=_text(title, 240) or "Incremento task",
-        category=_text(category, 80) or "General",
+        title=_text(title, 240) or t("backend_activity_task"),
+        category=_text(category, 80) or t("backend_activity_general"),
         status="running",
         progress=_progress(progress),
         detail=_text(detail, 2000),
@@ -142,7 +147,7 @@ def fail_activity(
         if activity is None or activity.status in _FINAL_STATUSES:
             return False
         activity.status = "failed"
-        activity.detail = _text(error, 2000) or "The operation failed."
+        activity.detail = _text(error, 2000) or t("backend_activity_failed")
         activity.updated_at = _timestamp(now)
         if callable(retry):
             activity.retry_callback = retry

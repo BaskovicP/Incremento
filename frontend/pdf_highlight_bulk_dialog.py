@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import escape
+
 from aqt.qt import (
     QAbstractItemView,
     QComboBox,
@@ -12,6 +14,21 @@ from aqt.qt import (
     QVBoxLayout,
     Qt,
 )
+try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
+
+
+def _bulk_row_status(row: dict[str, object]) -> str:
+    if row.get("valid"):
+        return t("reader_ready")
+    if not str(row.get("text") or "").strip():
+        return t("reader_bulk_empty_highlight")
+    if row.get("linked_note_id"):
+        return t("reader_bulk_already_linked")
+    target = str(row.get("target_field") or "").strip() or t("reader_target")
+    return t("reader_bulk_target_empty", field=target)
 
 
 def normalize_pdf_highlight_bulk_row(
@@ -147,19 +164,19 @@ class PdfHighlightBulkDialog(QDialog):
         self._rows = [dict(row or {}) for row in list(rows or [])]
         self._syncing_table = False
 
-        self.setWindowTitle("Create Missing PDF Highlight Cards")
+        self.setWindowTitle(t("reader_bulk_create_missing_title"))
         self.resize(1180, 760)
 
         root = QVBoxLayout(self)
         root.setSpacing(10)
 
         chooser_row = QHBoxLayout()
-        chooser_row.addWidget(QLabel("Note type:"))
+        chooser_row.addWidget(QLabel(t("reader_note_type_label")))
         self._note_type_combo = QComboBox(self)
         for spec in self._note_type_specs:
             self._note_type_combo.addItem(spec["name"])
         chooser_row.addWidget(self._note_type_combo, 1)
-        chooser_row.addWidget(QLabel("Deck:"))
+        chooser_row.addWidget(QLabel(t("reader_deck_label")))
         self._deck_combo = QComboBox(self)
         for deck_name in self._deck_names:
             self._deck_combo.addItem(deck_name)
@@ -170,14 +187,11 @@ class PdfHighlightBulkDialog(QDialog):
         self._target_label.setWordWrap(True)
         root.addWidget(self._target_label)
 
-        hint = QLabel(
-            "Review the unlinked highlights, edit any visible note fields you want to fill, "
-            "and create the checked rows."
-        )
+        hint = QLabel(t("reader_bulk_hint"))
         hint.setWordWrap(True)
         root.addWidget(hint)
 
-        column_labels = ["Create", "Page", "Highlight", "Note", "Status", *self._visible_fields]
+        column_labels = [t("reader_create"), t("reader_page"), t("reader_highlight"), t("reader_note"), t("reader_status"), *self._visible_fields]
         self._table = QTableWidget(0, len(column_labels), self)
         self._table.setHorizontalHeaderLabels(column_labels)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -186,8 +200,8 @@ class PdfHighlightBulkDialog(QDialog):
         root.addWidget(self._table, 1)
 
         actions = QHBoxLayout()
-        self._delete_btn = QPushButton("Delete Selected", self)
-        self._uncheck_btn = QPushButton("Uncheck Selected", self)
+        self._delete_btn = QPushButton(t("reader_delete_selected"), self)
+        self._uncheck_btn = QPushButton(t("reader_uncheck_selected"), self)
         actions.addWidget(self._delete_btn)
         actions.addWidget(self._uncheck_btn)
         actions.addStretch(1)
@@ -198,8 +212,8 @@ class PdfHighlightBulkDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        self._create_btn = QPushButton("Create Selected", self)
-        self._cancel_btn = QPushButton("Cancel", self)
+        self._create_btn = QPushButton(t("reader_create_selected"), self)
+        self._cancel_btn = QPushButton(t("reader_cancel"), self)
         buttons.addWidget(self._create_btn)
         buttons.addWidget(self._cancel_btn)
         root.addLayout(buttons)
@@ -255,15 +269,16 @@ class PdfHighlightBulkDialog(QDialog):
         self._update_create_state()
 
     def _update_target_summary(self, *_args) -> None:
-        self._target_label.setText(
-            f"Target: <b>{self.note_type_name or 'Unknown'}</b>"
-            f" in deck <b>{self.deck_name or 'Topics'}</b>"
-            f" using <b>{self._target_field or 'Unknown field'}</b>"
-        )
+        self._target_label.setText(t(
+            "reader_bulk_target_summary",
+            note_type=escape(self.note_type_name or t("reader_unknown")),
+            deck=escape(self.deck_name or "Topics"),
+            field=escape(self._target_field or t("reader_unknown_field")),
+        ))
 
     def _rebuild_table(self) -> None:
         self._syncing_table = True
-        column_labels = ["Create", "Page", "Highlight", "Note", "Status", *self._visible_fields]
+        column_labels = [t("reader_create"), t("reader_page"), t("reader_highlight"), t("reader_note"), t("reader_status"), *self._visible_fields]
         self._table.setColumnCount(len(column_labels))
         self._table.setHorizontalHeaderLabels(column_labels)
         self._table.setRowCount(len(self._rows))
@@ -291,9 +306,7 @@ class PdfHighlightBulkDialog(QDialog):
             text_item.setFlags(text_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             note_item = QTableWidgetItem(str(normalized.get("note") or ""))
             note_item.setFlags(note_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            status_item = QTableWidgetItem(
-                "Ready" if normalized["valid"] else str(normalized.get("error") or "Invalid")
-            )
+            status_item = QTableWidgetItem(_bulk_row_status({**normalized, "target_field": self._target_field}))
             status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
             self._table.setItem(row_index, 0, create_item)
@@ -357,9 +370,7 @@ class PdfHighlightBulkDialog(QDialog):
         status_item = self._table.item(row_index, 4)
         if status_item is not None:
             status_item.setText(
-                "Ready"
-                if self._rows[row_index]["valid"]
-                else str(self._rows[row_index].get("error") or "Invalid")
+                _bulk_row_status({**self._rows[row_index], "target_field": self._target_field})
             )
         self._syncing_table = False
         self._update_create_state()
@@ -371,13 +382,13 @@ class PdfHighlightBulkDialog(QDialog):
         )
         invalid_checked = max(0, checked_count - ready_count)
         if not self._rows:
-            status = "No unlinked highlights remain."
+            status = t("reader_bulk_none_left")
         elif checked_count == 0:
-            status = "Check at least one row to create cards."
+            status = t("reader_bulk_check_one")
         elif invalid_checked:
-            status = f"Fix or uncheck {invalid_checked} invalid checked row{'s' if invalid_checked != 1 else ''}."
+            status = tn("reader_bulk_fix_invalid_count", invalid_checked)
         else:
-            status = f"{ready_count} row{'s' if ready_count != 1 else ''} ready."
+            status = tn("reader_bulk_ready_count", ready_count)
         self._status_label.setText(status)
         self._create_btn.setEnabled(can_create_pdf_highlight_bulk_rows(self._rows))
         self._delete_btn.setEnabled(bool(self._rows))

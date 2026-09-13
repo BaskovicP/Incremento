@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+try:
+    from .i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
+
+
 import os
 from datetime import date, datetime, timedelta
 from calendar import monthrange
@@ -84,12 +90,12 @@ VALID_UNITS = {UNIT_DAYS, UNIT_WEEKS, UNIT_MONTHS}
 
 _DEFAULT_MODE = MODE_MINIMUM_CADENCE
 _DEFAULT_PRESETS = [
-    {"label": "Daily", "interval_value": 1, "interval_unit": UNIT_DAYS},
-    {"label": "Every 2 days", "interval_value": 2, "interval_unit": UNIT_DAYS},
-    {"label": "Every 3 days", "interval_value": 3, "interval_unit": UNIT_DAYS},
-    {"label": "Weekly", "interval_value": 1, "interval_unit": UNIT_WEEKS},
-    {"label": "Every 2 weeks", "interval_value": 2, "interval_unit": UNIT_WEEKS},
-    {"label": "Monthly", "interval_value": 1, "interval_unit": UNIT_MONTHS},
+    {"builtin_id": "daily", "label": "Daily", "interval_value": 1, "interval_unit": UNIT_DAYS},
+    {"builtin_id": "every_2_days", "label": "Every 2 days", "interval_value": 2, "interval_unit": UNIT_DAYS},
+    {"builtin_id": "every_3_days", "label": "Every 3 days", "interval_value": 3, "interval_unit": UNIT_DAYS},
+    {"builtin_id": "weekly", "label": "Weekly", "interval_value": 1, "interval_unit": UNIT_WEEKS},
+    {"builtin_id": "every_2_weeks", "label": "Every 2 weeks", "interval_value": 2, "interval_unit": UNIT_WEEKS},
+    {"builtin_id": "monthly", "label": "Monthly", "interval_value": 1, "interval_unit": UNIT_MONTHS},
 ]
 
 
@@ -149,12 +155,21 @@ def normalize_custom_schedule_preset(raw: dict | None, index: int = 0) -> dict:
     label = str(raw.get("label") or "").strip()
     if not label:
         label = format_custom_schedule_value(interval_value, interval_unit)
-    return {
+    normalized = {
         "label": label[:120],
         "interval_value": interval_value,
         "interval_unit": interval_unit,
         "sort_order": max(0, int(raw.get("sort_order", index) or index)),
     }
+    builtin_id = str(raw.get("builtin_id") or "")
+    for builtin in _DEFAULT_PRESETS:
+        if builtin_id == builtin["builtin_id"] and all(
+            normalized[key] == builtin[key]
+            for key in ("label", "interval_value", "interval_unit")
+        ):
+            normalized["builtin_id"] = builtin_id
+            break
+    return normalized
 
 
 def configured_custom_schedule_default_mode(config: dict | None = None) -> str:
@@ -216,13 +231,22 @@ def format_custom_schedule_value(interval_value: int, interval_unit: str) -> str
     return f"Every {interval_value} {noun}"
 
 
+def display_custom_schedule_value(interval_value: int, interval_unit: str) -> str:
+    value = normalize_custom_schedule_interval_value(interval_value)
+    unit = normalize_custom_schedule_unit(interval_unit)
+    return tn("backend_schedule_" + unit, value)
+
+
+def display_custom_schedule_preset(preset: dict) -> str:
+    """Only explicitly marked, unedited builtins get a translated display label."""
+    normalized = normalize_custom_schedule_preset(preset)
+    if normalized.get("builtin_id"):
+        return t("backend_schedule_preset_" + normalized["builtin_id"])
+    return str(normalized["label"])
+
+
 def format_custom_schedule_mode(mode: str) -> str:
-    mode = normalize_custom_schedule_mode(mode)
-    if mode == MODE_FIXED_REPEAT:
-        return "Repeat exactly"
-    if mode == MODE_ONE_TIME:
-        return "One-time set due"
-    return "Minimum cadence"
+    return t("backend_schedule_mode_" + normalize_custom_schedule_mode(mode))
 
 
 def format_custom_schedule_rule(rule: dict | None) -> str:
@@ -233,7 +257,7 @@ def format_custom_schedule_rule(rule: dict | None) -> str:
         return ""
     label = str(normalized.get("preset_label") or "").strip()
     if not label:
-        label = format_custom_schedule_value(
+        label = display_custom_schedule_value(
             int(normalized["interval_value"]),
             str(normalized["interval_unit"]),
         )

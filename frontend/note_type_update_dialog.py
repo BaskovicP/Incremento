@@ -15,6 +15,12 @@ from aqt.qt import (
 )
 
 try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
+try:
     from ..backend.note_type_updates import PendingNoteTypeUpdate
 except ImportError:
     from note_type_updates import PendingNoteTypeUpdate  # type: ignore
@@ -28,38 +34,31 @@ ACTION_APPLY = "apply"
 def format_note_type_update_html(
     updates: tuple[PendingNoteTypeUpdate, ...] | list[PendingNoteTypeUpdate],
 ) -> str:
+    def display_change(change: str) -> str:
+        if change.startswith("add fields: "):
+            return _t("admin_note_update_add_fields", fields=escape(change[len("add fields: "):]))
+        keys = {
+            "repair field order": "admin_note_update_repair",
+            "restore the card template": "admin_note_update_restore",
+            "update the card template": "admin_note_update_template",
+        }
+        return _t(keys[change]) if change in keys else escape(change)
+
     rows = []
     for update in updates:
-        changes = "<br>".join(f"• {escape(change)}" for change in update.changes)
+        changes = "<br>".join(f"• {display_change(change)}" for change in update.changes)
         rows.append(
             f"<li><b>{escape(update.note_type)}</b><br>{changes}</li>"
         )
-    update_list = "".join(rows) or "<li>No pending updates.</li>"
-    return f"""
-    <h2>Incremento card-format update</h2>
-    <p><b>Incremento has not changed your Anki collection yet.</b></p>
-    <p>The following Incremento note types need a field or card-template update:</p>
-    <ul>{update_list}</ul>
-    <p>Anki may require a one-way full sync after a note-type change because it
-    cannot merge every schema change automatically.</p>
-    <h3>Recommended safe order</h3>
-    <ol>
-      <li>Sync this device normally before applying the update, and make sure
-      your other devices have also synced.</li>
-      <li>Return here, confirm that this device contains the collection you want
-      to keep, and apply the update.</li>
-      <li>When Anki asks which version to keep, choose <b>Upload to AnkiWeb</b>
-      from this device. On other devices, choose <b>Download</b>.</li>
-    </ol>
-    <p>You may choose <b>Later</b>; no note-type changes will be made.</p>
-    """.strip()
+    update_list = "".join(rows) or _t("admin_note_update_empty")
+    return _t("admin_note_update_instructions", update_list=update_list).strip()
 
 
 class IncrementoNoteTypeUpdateDialog(QDialog):
     def __init__(self, updates, parent=None) -> None:
         super().__init__(parent)
         self._selected_action = ACTION_LATER
-        self.setWindowTitle("Incremento Card Format Update")
+        self.setWindowTitle(_t("admin_note_update_title"))
         self.resize(680, 600)
 
         layout = QVBoxLayout(self)
@@ -69,15 +68,15 @@ class IncrementoNoteTypeUpdateDialog(QDialog):
         layout.addWidget(details, 1)
 
         self._confirmation = QCheckBox(
-            "I have synced first, and this device has the collection I want to keep.",
+            _t("admin_note_update_confirm"),
             self,
         )
         layout.addWidget(self._confirmation)
 
         buttons = QHBoxLayout()
-        self._sync_button = QPushButton("Sync Before Updating", self)
-        self._apply_button = QPushButton("Apply Update", self)
-        self._later_button = QPushButton("Later", self)
+        self._sync_button = QPushButton(_t("admin_note_update_sync"), self)
+        self._apply_button = QPushButton(_t("admin_note_update_apply"), self)
+        self._later_button = QPushButton(_t("admin_note_update_later"), self)
         self._apply_button.setEnabled(False)
         self._later_button.setDefault(True)
         buttons.addWidget(self._sync_button)

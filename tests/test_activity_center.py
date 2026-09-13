@@ -27,7 +27,7 @@ def test_activity_center_dialog_and_entrypoint_are_wired():
     assert "self._cancel_button" in dialog_source
     assert "self._retry_button" in dialog_source
     assert "self._refresh_timer" in dialog_source
-    assert "Activity Center…" in entrypoint
+    assert '_t("root_menu_activity_center")' in entrypoint
     assert '"id": "activity_center"' in settings
 
 

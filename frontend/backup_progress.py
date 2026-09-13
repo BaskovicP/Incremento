@@ -1,5 +1,10 @@
 """Visible, indeterminate progress for automatic full-profile backups."""
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t
+
 from threading import Lock
 
 
@@ -11,24 +16,23 @@ def _build_dialog():
             # The close gate disables Anki's main window before starting a backup.
             # Keep this window independent so it remains visible and enabled.
             super().__init__(None)
-            self.setWindowTitle("Incremento Automatic Backup")
+            self.setWindowTitle(t('admin_backup_progress_incremento_automatic_backup'))
             self.setWindowModality(Qt.WindowModality.ApplicationModal)
             self.setMinimumWidth(430)
 
             layout = QVBoxLayout(self)
             explanation = QLabel(
-                "Automatic full backup in progress…\n"
-                "Anki is temporarily unavailable. Please wait for the backup to finish."
+                t('admin_backup_progress_automatic_full_backup_in_progress_anki_is_temporarily')
             )
             explanation.setWordWrap(True)
             layout.addWidget(explanation)
-            self._stage = QLabel("Preparing backup…")
-            self._stage.setAccessibleName("Automatic backup stage")
+            self._stage = QLabel(t('admin_backup_progress_preparing_backup'))
+            self._stage.setAccessibleName(t('admin_backup_progress_automatic_backup_stage'))
             layout.addWidget(self._stage)
             bar = QProgressBar()
             bar.setRange(0, 0)
             bar.setTextVisible(False)
-            bar.setAccessibleName("Automatic backup in progress")
+            bar.setAccessibleName(t('admin_backup_progress_automatic_backup_in_progress'))
             layout.addWidget(bar)
 
         def set_stage(self, stage: str) -> None:

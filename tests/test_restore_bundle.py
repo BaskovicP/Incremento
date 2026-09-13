@@ -314,6 +314,9 @@ def test_restore_flow_creates_safety_backup_and_rolls_back_failed_reopen(
         def setDefaultButton(self, _button):
             pass
 
+        def button(self, _button):
+            return types.SimpleNamespace(setText=lambda _text: None)
+
         def exec(self):
             return self.StandardButton.Yes
 

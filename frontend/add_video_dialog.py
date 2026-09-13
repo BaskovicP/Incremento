@@ -61,6 +61,12 @@ except ImportError:
             return (".mp4", ".mkv", ".webm", ".mov", ".m4v")
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 class AddVideoDialog(QDialog):
     """Dialog to add a new URL/local video as an Incremento Video card."""
 
@@ -72,7 +78,7 @@ class AddVideoDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Add Video")
+        self.setWindowTitle(_t("imports_add_video"))
         self.setMinimumWidth(440)
         self._addon_dir = addon_dir or os.path.normpath(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -84,51 +90,50 @@ class AddVideoDialog(QDialog):
         layout.setContentsMargins(14, 14, 14, 14)
 
         src_row = QHBoxLayout()
-        src_row.addWidget(QLabel("Source:"))
+        src_row.addWidget(QLabel(_t("imports_source_label")))
         self._source_combo = QComboBox()
-        self._source_combo.addItem("YouTube URL", "youtube")
-        self._source_combo.addItem("Vimeo URL", "vimeo")
-        self._source_combo.addItem("Local video file", "local")
+        self._source_combo.addItem(_t("imports_youtube_url"), "youtube")
+        self._source_combo.addItem(_t("imports_vimeo_url"), "vimeo")
+        self._source_combo.addItem(_t("imports_local_video_file"), "local")
         src_row.addWidget(self._source_combo, 1)
         layout.addLayout(src_row)
 
-        self._url_label = QLabel("Video URL:")
+        self._url_label = QLabel(_t("imports_video_url_label"))
         layout.addWidget(self._url_label)
         self._url_edit = QLineEdit()
         self._url_edit.setPlaceholderText(
-            "https://www.youtube.com/watch?v=\u2026 or https://player.vimeo.com/video/\u2026"
+            _t("imports_video_url_example")
         )
         layout.addWidget(self._url_edit)
 
-        self._local_label = QLabel("Local video file:")
+        self._local_label = QLabel(_t("imports_local_video_label"))
         layout.addWidget(self._local_label)
         local_row = QHBoxLayout()
         self._local_file_edit = QLineEdit()
         self._local_file_edit.setReadOnly(True)
-        self._local_file_edit.setPlaceholderText("Choose a local video file…")
+        self._local_file_edit.setPlaceholderText(_t("imports_choose_local_video"))
         local_row.addWidget(self._local_file_edit, 1)
-        self._local_browse_btn = QPushButton("Browse…")
+        self._local_browse_btn = QPushButton(_t("imports_browse"))
         local_row.addWidget(self._local_browse_btn)
         layout.addLayout(local_row)
 
-        self._local_encode_label = QLabel("Encoding:")
+        self._local_encode_label = QLabel(_t("imports_encoding_label"))
         layout.addWidget(self._local_encode_label)
         self._local_encode_combo = QComboBox()
-        self._local_encode_combo.addItem("Original quality (no re-encoding)", "original")
-        self._local_encode_combo.addItem("Encode H.264 high quality", "h264_high")
-        self._local_encode_combo.addItem("Encode H.264 smaller size", "h264_small")
+        self._local_encode_combo.addItem(_t("imports_original_quality"), "original")
+        self._local_encode_combo.addItem(_t("imports_encode_high"), "h264_high")
+        self._local_encode_combo.addItem(_t("imports_encode_small"), "h264_small")
         layout.addWidget(self._local_encode_combo)
 
         self._local_hint = QLabel("")
         self._local_hint.setWordWrap(True)
         self._local_hint.setStyleSheet("font-size: 11px; color: #9aa0a6;")
         self._local_hint.setText(
-            "Local import copies file into user_files/videos. "
-            "Use original quality for no re-encoding."
+            _t("imports_video_local_hint")
         )
         layout.addWidget(self._local_hint)
 
-        layout.addWidget(QLabel("Title:"))
+        layout.addWidget(QLabel(_t("imports_title_label")))
         self._title_edit = QLineEdit()
         layout.addWidget(self._title_edit)
 
@@ -136,7 +141,7 @@ class AddVideoDialog(QDialog):
         layout.addWidget(self._tag_edit)
 
         dk_row = QHBoxLayout()
-        dk_row.addWidget(QLabel("Deck:"))
+        dk_row.addWidget(QLabel(_t("imports_deck_label")))
         self._dk_combo = QComboBox()
         for d in deck_names:
             self._dk_combo.addItem(d)
@@ -147,18 +152,18 @@ class AddVideoDialog(QDialog):
         dk_row.addWidget(self._dk_combo, 1)
         layout.addLayout(dk_row)
 
-        self._download_cb = QCheckBox("Download & compress into user_files/videos")
+        self._download_cb = QCheckBox(_t("imports_download_compress"))
         self._download_cb.setChecked(False)
-        self._download_cb.setToolTip("Requires yt-dlp and ffmpeg installed on your system.")
+        self._download_cb.setToolTip(_t("imports_download_requirements"))
         layout.addWidget(self._download_cb)
 
         self._res_row_wrap = QHBoxLayout()
-        self._res_row_wrap.addWidget(QLabel("Max resolution:"))
+        self._res_row_wrap.addWidget(QLabel(_t("imports_max_resolution")))
         self._resolution_combo = QComboBox()
         self._resolution_combo.setEnabled(False)
-        self._resolution_combo.addItem("Best available", None)
+        self._resolution_combo.addItem(_t("imports_best_available"), None)
         self._res_row_wrap.addWidget(self._resolution_combo, 1)
-        self._res_refresh_btn = QPushButton("Refresh")
+        self._res_refresh_btn = QPushButton(_t("imports_refresh"))
         self._res_refresh_btn.setEnabled(False)
         self._res_row_wrap.addWidget(self._res_refresh_btn)
         layout.addLayout(self._res_row_wrap)
@@ -178,23 +183,23 @@ class AddVideoDialog(QDialog):
             has_ffmpeg = any(m.startswith("ffmpeg") for m in self._download_missing)
             if has_yt and has_ffmpeg:
                 self._download_hint.setText(
-                    "Will try to auto-install yt-dlp on first use. Compression runs when ffmpeg is available."
+                    _t("imports_ytdlp_ffmpeg_hint")
                 )
             elif has_yt:
                 self._download_hint.setText(
-                    "Will try to auto-install yt-dlp on first use."
+                    _t("imports_ytdlp_hint")
                 )
             else:
                 self._download_hint.setText(
-                    "ffmpeg not found: video will still download, but compression is skipped."
+                    _t("imports_ffmpeg_missing_hint")
                 )
         else:
-            self._download_hint.setText("Optional: creates a local compressed copy for offline playback.")
+            self._download_hint.setText(_t("imports_offline_copy_hint"))
 
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Add Video")
+        ok_btn = QPushButton(_t("imports_add_video"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)
@@ -217,12 +222,12 @@ class AddVideoDialog(QDialog):
     def _local_file_filter(self) -> str:
         exts = supported_local_video_extensions()
         patterns = " ".join(f"*{e}" for e in exts) if exts else "*.mp4 *.mkv *.webm *.mov *.m4v"
-        return f"Video files ({patterns});;All files (*)"
+        return _t("imports_video_file_filter", patterns=patterns)
 
     def _browse_local_video(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
-            "Choose Local Video",
+            _t("imports_choose_local_video_dialog"),
             "",
             self._local_file_filter(),
         )
@@ -249,13 +254,13 @@ class AddVideoDialog(QDialog):
         self._local_hint.setVisible(not is_url_source)
 
         if self.source_mode == "youtube":
-            self._url_label.setText("YouTube URL:")
-            self._url_edit.setPlaceholderText("https://www.youtube.com/watch?v=\u2026")
+            self._url_label.setText(_t("imports_youtube_url_label"))
+            self._url_edit.setPlaceholderText(_t("imports_youtube_url_example"))
         elif self.source_mode == "vimeo":
-            self._url_label.setText("Vimeo URL:")
-            self._url_edit.setPlaceholderText("https://player.vimeo.com/video/\u2026")
+            self._url_label.setText(_t("imports_vimeo_url_label"))
+            self._url_edit.setPlaceholderText(_t("imports_vimeo_url_example"))
         else:
-            self._url_label.setText("Video URL:")
+            self._url_label.setText(_t("imports_video_url_label"))
             self._url_edit.setPlaceholderText("")
 
         if is_url_source:
@@ -274,8 +279,8 @@ class AddVideoDialog(QDialog):
     def _populate_resolution_combo(self, heights: list[int]) -> None:
         prev_data = self._resolution_combo.currentData()
         self._resolution_combo.clear()
-        self._resolution_combo.addItem("Best available", None)
-        self._resolution_combo.addItem("Original quality (no re-encoding)", "original")
+        self._resolution_combo.addItem(_t("imports_best_available"), None)
+        self._resolution_combo.addItem(_t("imports_original_quality"), "original")
         for h in heights:
             self._resolution_combo.addItem(f"{int(h)}p", int(h))
         if prev_data is not None:
@@ -292,16 +297,16 @@ class AddVideoDialog(QDialog):
         if not is_supported_video_url(url):
             self._populate_resolution_combo([])
             self._resolution_combo.setEnabled(False)
-            self._resolution_hint.setText("Enter a valid YouTube or Vimeo URL to load available resolutions.")
+            self._resolution_hint.setText(_t("imports_video_resolutions_enter_url"))
             return
 
         self._resolution_fetch_token += 1
         token = self._resolution_fetch_token
         self._resolution_combo.clear()
-        self._resolution_combo.addItem("Loading resolutions…", None)
+        self._resolution_combo.addItem(_t("imports_video_resolutions_loading"), None)
         self._resolution_combo.setEnabled(False)
         self._res_refresh_btn.setEnabled(False)
-        self._resolution_hint.setText("Fetching available resolutions…")
+        self._resolution_hint.setText(_t("imports_video_resolutions_fetching"))
 
         def _task():
             return list_available_video_resolutions(self._addon_dir, _active_profile(), url)
@@ -315,18 +320,18 @@ class AddVideoDialog(QDialog):
             except Exception as e:
                 self._populate_resolution_combo([])
                 self._resolution_combo.setEnabled(True)
-                msg = str(e).strip().splitlines()[0] if str(e).strip() else "Unknown error."
+                msg = str(e).strip().splitlines()[0] if str(e).strip() else _t("imports_unknown_error")
                 self._resolution_hint.setText(
-                    f"Could not load resolutions ({msg}). Using best available."
+                    _t("imports_video_resolutions_failed", error=msg)
                 )
                 return
             self._populate_resolution_combo(heights)
             if heights:
                 self._resolution_hint.setText(
-                    f"Available: {', '.join(f'{h}p' for h in heights)}"
+                    _t("imports_video_resolutions_available", heights=', '.join(f'{h}p' for h in heights))
                 )
             else:
-                self._resolution_hint.setText("No explicit resolutions found. Using best available.")
+                self._resolution_hint.setText(_t("imports_video_resolutions_none"))
 
         mw.taskman.run_in_background(_task, _on_done)
 

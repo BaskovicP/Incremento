@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Mapping, Sequence
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t  # type: ignore
+
 
 @dataclass(frozen=True)
 class PaletteCommand:
@@ -135,7 +140,12 @@ def build_palette_commands(
                 ),
                 enabled=enabled,
                 unavailable_reason=(
-                    "" if enabled else reasons.get(action_id, "Unavailable in the current Anki view")
+                    ""
+                    if enabled
+                    else reasons.get(
+                        action_id,
+                        t("command_palette_unavailable_current_view"),
+                    )
                 ),
                 callback=_callback,
             )
@@ -163,7 +173,7 @@ def create_command_palette_dialog(
     class CommandPaletteDialog(QDialog):
         def __init__(self):
             super().__init__(parent)
-            self.setWindowTitle("Incremento Commands")
+            self.setWindowTitle(t("command_palette_title"))
             self.setMinimumSize(620, 420)
             self.setModal(False)
             self._commands = list(commands)
@@ -171,19 +181,18 @@ def create_command_palette_dialog(
 
             root = QVBoxLayout(self)
             intro = QLabel(
-                "Search every Incremento action. Disabled commands stay visible "
-                "and explain why they are unavailable."
+                t("command_palette_intro")
             )
             intro.setWordWrap(True)
             root.addWidget(intro)
 
             self.search_edit = QLineEdit()
-            self.search_edit.setPlaceholderText("Type an action, e.g. review, PDF, statistics…")
-            self.search_edit.setAccessibleName("Search Incremento commands")
+            self.search_edit.setPlaceholderText(t("command_palette_search_placeholder"))
+            self.search_edit.setAccessibleName(t("command_palette_search_accessible"))
             root.addWidget(self.search_edit)
 
             self.command_list = QListWidget()
-            self.command_list.setAccessibleName("Matching Incremento commands")
+            self.command_list.setAccessibleName(t("command_palette_results_accessible"))
             root.addWidget(self.command_list, 1)
 
             self.status_label = QLabel("")
@@ -192,8 +201,8 @@ def create_command_palette_dialog(
 
             actions = QHBoxLayout()
             actions.addStretch(1)
-            close_button = QPushButton("Close")
-            close_button.setAccessibleName("Close command palette")
+            close_button = QPushButton(t("common_close"))
+            close_button.setAccessibleName(t("command_palette_close_accessible"))
             close_button.clicked.connect(self.reject)
             actions.addWidget(close_button)
             root.addLayout(actions)
@@ -215,7 +224,7 @@ def create_command_palette_dialog(
             for command in self._visible_commands:
                 suffix = f"    {command.shortcut}" if command.shortcut else ""
                 if not command.enabled:
-                    suffix += "    Unavailable"
+                    suffix += f"    {t('command_palette_unavailable')}"
                 item = QListWidgetItem(f"{command.label}{suffix}")
                 item.setData(Qt.ItemDataRole.UserRole, command.command_id)
                 if not command.enabled:
@@ -224,7 +233,7 @@ def create_command_palette_dialog(
             if self._visible_commands:
                 self.command_list.setCurrentRow(0)
             else:
-                self.status_label.setText("No matching Incremento commands.")
+                self.status_label.setText(t("command_palette_no_matches"))
 
         def _current_command(self) -> PaletteCommand | None:
             row = self.command_list.currentRow()
@@ -238,11 +247,11 @@ def create_command_palette_dialog(
                 return
             if command.enabled:
                 group = f"{command.group} · " if command.group else ""
-                shortcut = command.shortcut or "No shortcut assigned"
+                shortcut = command.shortcut or t("command_palette_no_shortcut")
                 self.status_label.setText(f"{group}{shortcut}")
             else:
                 self.status_label.setText(
-                    command.unavailable_reason or "This command is not available right now."
+                    command.unavailable_reason or t("command_palette_unavailable_now")
                 )
 
         def _activate_current(self) -> None:

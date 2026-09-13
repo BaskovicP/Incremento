@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 
 try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+try:
     from aqt import gui_hooks, mw
     from aqt.utils import showInfo
 except Exception:  # pragma: no cover - only used outside Anki/test stubs.
@@ -305,14 +310,14 @@ def _on_browser_priority_button(editor) -> None:
     )
     if card is None:
         showInfo(
-            BROWSER_PRIORITY_AMBIGUOUS_MESSAGE
+            _t("imports_browser_priority_ambiguous")
             if browser is not None
-            else EDIT_CURRENT_PRIORITY_UNAVAILABLE_MESSAGE
+            else _t("imports_edit_priority_unavailable")
         )
         return
 
     if _open_priority_dialog_for_card is None:
-        showInfo("Priority dialog is unavailable.")
+        showInfo(_t("imports_priority_dialog_unavailable"))
         return
 
     saved = _open_priority_dialog_for_card(card)
@@ -336,9 +341,9 @@ def _add_browser_priority_toolbar_button(buttons, editor) -> None:
             ),
             _on_browser_priority_button,
             tip=(
-                "Set priority for selected Browser card"
+                _t("imports_browser_priority_tip")
                 if is_browser
-                else "Set priority for the current card"
+                else _t("imports_edit_priority_tip")
             ),
             label="P",
             id=(

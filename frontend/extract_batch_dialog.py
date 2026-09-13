@@ -15,6 +15,11 @@ from aqt.qt import (
 )
 
 try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn  # type: ignore
+
+try:
     from ..backend.reviewer_extract import parse_batch_qa_text
 except ImportError:
     from reviewer_extract import parse_batch_qa_text  # type: ignore
@@ -28,14 +33,14 @@ def validate_batch_preview_row(question: str, answer: str) -> dict[str, object]:
             "question": question_text,
             "answer": answer_text,
             "valid": False,
-            "error": "Question is empty.",
+            "error": t("backend_extract_question_empty"),
         }
     if not answer_text:
         return {
             "question": question_text,
             "answer": answer_text,
             "valid": False,
-            "error": "Answer is empty.",
+            "error": t("backend_extract_answer_empty"),
         }
     return {
         "question": question_text,
@@ -68,22 +73,24 @@ class ExtractBatchDialog(QDialog):
         self._rows: list[dict[str, object]] = []
         self._syncing_table = False
 
-        self.setWindowTitle("Batch Q/A Extract")
+        self.setWindowTitle(t("extract_batch_title"))
         self.resize(920, 700)
 
         root = QVBoxLayout(self)
         root.setSpacing(10)
 
         target = QLabel(
-            f"Target: <b>{self._snapshot.get('note_type_name') or 'Unknown'}</b>"
-            f" in deck <b>{self._snapshot.get('deck_name') or 'Topics'}</b>"
+            t(
+                "extract_batch_target",
+                note_type=self._snapshot.get("note_type_name") or t("common_unknown"),
+                deck=self._snapshot.get("deck_name") or t("session_topics"),
+            )
         )
         target.setWordWrap(True)
         root.addWidget(target)
 
         hint = QLabel(
-            "Paste one or more blocks separated by blank lines. Each block must start with "
-            "<code>Q:</code> and contain a later <code>A:</code> line."
+            t("extract_batch_hint")
         )
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -94,25 +101,27 @@ class ExtractBatchDialog(QDialog):
         root.addWidget(self._raw_edit)
 
         fields_row = QHBoxLayout()
-        fields_row.addWidget(QLabel("Question field:"))
+        fields_row.addWidget(QLabel(t("extract_batch_question_field")))
         self._question_combo = QComboBox(self)
         fields_row.addWidget(self._question_combo, 1)
-        fields_row.addWidget(QLabel("Answer field:"))
+        fields_row.addWidget(QLabel(t("extract_batch_answer_field")))
         self._answer_combo = QComboBox(self)
         fields_row.addWidget(self._answer_combo, 1)
-        self._parse_btn = QPushButton("Parse / Preview", self)
+        self._parse_btn = QPushButton(t("extract_batch_parse_preview"), self)
         fields_row.addWidget(self._parse_btn)
         root.addLayout(fields_row)
 
         self._table = QTableWidget(0, 3, self)
-        self._table.setHorizontalHeaderLabels(["Status", "Question", "Answer"])
+        self._table.setHorizontalHeaderLabels(
+            [t("common_status"), t("extract_batch_question"), t("extract_batch_answer")]
+        )
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.itemChanged.connect(self._on_item_changed)
         root.addWidget(self._table, 1)
 
         actions_row = QHBoxLayout()
-        self._delete_btn = QPushButton("Delete Selected", self)
+        self._delete_btn = QPushButton(t("extract_batch_delete_selected"), self)
         actions_row.addWidget(self._delete_btn)
         actions_row.addStretch(1)
         self._status_label = QLabel("", self)
@@ -122,8 +131,8 @@ class ExtractBatchDialog(QDialog):
 
         buttons_row = QHBoxLayout()
         buttons_row.addStretch(1)
-        self._create_btn = QPushButton("Create All", self)
-        self._cancel_btn = QPushButton("Cancel", self)
+        self._create_btn = QPushButton(t("extract_batch_create_all"), self)
+        self._cancel_btn = QPushButton(t("common_cancel"), self)
         buttons_row.addWidget(self._create_btn)
         buttons_row.addWidget(self._cancel_btn)
         root.addLayout(buttons_row)
@@ -166,14 +175,14 @@ class ExtractBatchDialog(QDialog):
             normalized = validate_batch_preview_row(row.get("question"), row.get("answer"))
             normalized["error"] = str(row.get("error") or normalized["error"])
             if row.get("valid") is False and not normalized["error"]:
-                normalized["error"] = "Invalid row."
+                normalized["error"] = t("extract_batch_invalid_row")
             if normalized["error"] and normalized["valid"]:
                 normalized["error"] = ""
             if str(row.get("error") or "").strip() and not bool(row.get("valid")):
                 normalized["error"] = str(row.get("error") or "").strip()
             self._rows[row_index] = normalized
 
-            status_text = "Valid" if normalized["valid"] else str(normalized["error"] or "Invalid")
+            status_text = t("common_valid") if normalized["valid"] else str(normalized["error"] or t("common_invalid"))
             status_item = QTableWidgetItem(status_text)
             status_item.setFlags(status_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             question_item = QTableWidgetItem(str(normalized["question"] or ""))
@@ -199,7 +208,7 @@ class ExtractBatchDialog(QDialog):
         self._syncing_table = True
         status_item = self._table.item(row_index, 0)
         if status_item is not None:
-            status_item.setText("Valid" if normalized["valid"] else str(normalized["error"]))
+            status_item.setText(t("common_valid") if normalized["valid"] else str(normalized["error"]))
         self._syncing_table = False
         self._update_create_state()
 
@@ -219,13 +228,13 @@ class ExtractBatchDialog(QDialog):
         invalid_rows = max(0, len(self._rows) - valid_rows)
         same_fields = self.question_field == self.answer_field
         if same_fields:
-            status = "Question and answer fields must be different."
+            status = t("extract_batch_fields_different")
         elif invalid_rows:
-            status = f"Fix or delete {invalid_rows} invalid row{'s' if invalid_rows != 1 else ''}."
+            status = tn("extract_batch_fix_invalid_rows", invalid_rows)
         elif not self._rows:
-            status = "Parse at least one Q/A block."
+            status = t("extract_batch_parse_one_block")
         else:
-            status = f"{valid_rows} row{'s' if valid_rows != 1 else ''} ready."
+            status = tn("extract_batch_rows_ready", valid_rows)
         self._status_label.setText(status)
         self._create_btn.setEnabled(
             can_create_batch_preview(self._rows, self.question_field, self.answer_field)

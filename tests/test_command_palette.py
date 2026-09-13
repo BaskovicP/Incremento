@@ -91,3 +91,24 @@ def test_runtime_command_builder_reports_shortcuts_and_current_availability():
     commands[0].callback()
     assert invoked == ["start"]
     assert commands[1].unavailable_reason == "No document is open"
+
+
+def test_runtime_command_builder_localizes_its_default_unavailable_reason(monkeypatch):
+    import frontend.command_palette as palette
+
+    monkeypatch.setattr(
+        palette,
+        "t",
+        lambda message_id, **values: "Nije dostupno u trenutnom Anki prikazu"
+        if message_id == "command_palette_unavailable_current_view"
+        else message_id,
+    )
+
+    commands = build_palette_commands(
+        [{"id": "find", "label": "Find"}],
+        {"find": []},
+        {},
+        invoke=lambda _action_id: None,
+    )
+
+    assert commands[0].unavailable_reason == "Nije dostupno u trenutnom Anki prikazu"

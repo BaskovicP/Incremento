@@ -1,0 +1,1240 @@
+# Incremento composition-root interface. Edit translations here.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
+
+#. Menu or action: About
+msgid "root_menu_about"
+msgstr "关于"
+
+#. Menu or action: Activity Center…
+msgid "root_menu_activity_center"
+msgstr "活动中心…"
+
+#. Menu or action: Add Content
+msgid "root_menu_add_content"
+msgstr "添加内容"
+
+#. Menu or action: Add EPUB
+msgid "root_menu_add_epub"
+msgstr "添加 EPUB"
+
+#. Menu or action: Add Local File
+msgid "root_menu_add_local_file"
+msgstr "添加本地文件"
+
+#. Menu or action: Add to Markdown
+msgid "root_menu_add_markdown"
+msgstr "添加到 Markdown"
+
+#. Menu or action: Add PDF
+msgid "root_menu_add_pdf"
+msgstr "添加 PDF"
+
+#. Menu or action: Add Video
+msgid "root_menu_add_video"
+msgstr "添加视频"
+
+#. Menu or action: Card Format Updates…
+msgid "root_menu_card_format_updates"
+msgstr "卡片格式更新…"
+
+#. Menu or action: Check Dependencies…
+msgid "root_menu_check_deps"
+msgstr "检查依赖项…"
+
+#. Menu or action: Clean Up Orphaned PDF Files…
+msgid "root_menu_cleanup_orphan_pdfs"
+msgstr "清理孤立 PDF 文件…"
+
+#. Menu or action: Clean Up Orphaned Video Files…
+msgid "root_menu_cleanup_orphan_videos"
+msgstr "清理孤立视频文件…"
+
+#. Menu or action: Clean Non-Active Profile Data…
+msgid "root_menu_cleanup_profile_data"
+msgstr "清理非活动配置文件数据…"
+
+#. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
+msgid "root_menu_cleanup_stale_rows"
+msgstr "清理过期进度、搜索索引和 OCR 记录…"
+
+#. Menu or action: Command Palette…
+msgid "root_menu_command_palette"
+msgstr "命令面板…"
+
+#. Menu or action: Configure Automatic Full Backups…
+msgid "root_menu_configure_auto_backups"
+msgstr "配置自动完整备份…"
+
+#. Menu or action: Configure Current Video Captions…
+msgid "root_menu_configure_captions"
+msgstr "配置当前视频字幕…"
+
+#. Menu or action: Document Bookshelf
+msgid "root_menu_document_bookshelf"
+msgstr "文档书架"
+
+#. Menu or action: Download Current Video Locally
+msgid "root_menu_download_video"
+msgstr "在本地下载当前视频"
+
+#. Menu or action: Export Full Backup
+msgid "root_menu_export_full_backup"
+msgstr "导出完整备份"
+
+#. Menu or action: Export Support Bundle…
+msgid "root_menu_export_support_bundle"
+msgstr "导出支持包…"
+
+#. Menu or action: Find In Current Document
+msgid "root_menu_find_current_document"
+msgstr "在当前文档中查找"
+
+#. Menu or action: Show Focus Timer
+msgid "root_menu_focus_timer"
+msgstr "显示专注计时器"
+
+#. Menu or action: Getting Started…
+msgid "root_menu_getting_started"
+msgstr "入门指南…"
+
+#. Menu or action: Go To Parent In Knowledge Tree
+msgid "root_menu_go_parent_tree"
+msgstr "前往知识树中的父节点"
+
+#. Menu or action: Import Notebook Citations to PDF Highlights…
+msgid "root_menu_import_notebook_citations"
+msgstr "将笔记本引文导入 PDF 高亮…"
+
+#. Menu or action: Incremento
+msgid "root_menu_incremento"
+msgstr "Incremento"
+
+#. Menu or action: OCR Image Text (Existing Cards)…
+msgid "root_menu_ocr_image_text"
+msgstr "识别图片文字（现有卡片）…"
+
+#. Menu or action: Open Knowledge tree
+msgid "root_menu_open_knowledge_tree"
+msgstr "打开知识树"
+
+#. Menu or action: Quick Open Content
+msgid "root_menu_quick_open_content"
+msgstr "快速打开内容"
+
+#. Menu or action: Reindex OCR Search Cache (From Hidden Field)
+msgid "root_menu_reindex_ocr_cache"
+msgstr "重建 OCR 搜索缓存（从隐藏字段）"
+
+#. Menu or action: Reindex PDF Text (Existing Cards)
+msgid "root_menu_reindex_pdf_text"
+msgstr "重建 PDF 文本索引（现有卡片）"
+
+#. Menu or action: Restore Full Backup…
+msgid "root_menu_restore_full_backup"
+msgstr "恢复完整备份…"
+
+#. Menu or action: Reveal Current Card In Knowledge Tree
+msgid "root_menu_reveal_current_tree"
+msgstr "在知识树中显示当前卡片"
+
+#. Menu or action: Search ALL
+msgid "root_menu_search_all"
+msgstr "搜索全部"
+
+#. Menu or action: Settings
+msgid "root_menu_settings"
+msgstr "设置"
+
+#. Menu or action: Start Incremental Learning
+msgid "root_menu_start_learning"
+msgstr "开始渐进学习"
+
+#. Menu or action: Statistics
+msgid "root_menu_statistics"
+msgstr "统计"
+
+#. Menu or action: Utils
+msgid "root_menu_utils"
+msgstr "工具"
+
+#. Menu or action: Web Page
+msgid "root_menu_web_page"
+msgstr "网页"
+
+#. Menu or action: Webpage to PDF
+msgid "root_menu_webpage_to_pdf"
+msgstr "网页转 PDF"
+
+#. Incremento composition-root UI: Select one or more Browser rows first.
+msgid "root_browser_select_rows"
+msgstr "请先在浏览器中选择一行或多行。"
+
+#. Incremento composition-root UI: No topic cards found in the selected Browser rows.
+msgid "root_browser_no_topic_cards"
+msgstr "选中的浏览器行中没有主题卡片。"
+
+#. Incremento composition-root UI: No Incremento PDF cards found in the selected Browser rows.
+msgid "root_browser_no_pdf_cards"
+msgstr "选中的浏览器行中没有 Incremento PDF 卡片。"
+
+#. Incremento composition-root UI: No Incremento EPUB cards found in the selected Browser rows.
+msgid "root_browser_no_epub_cards"
+msgstr "选中的浏览器行中没有 Incremento EPUB 卡片。"
+
+#. Incremento composition-root UI: No selected cards are available to study.
+msgid "root_browser_no_selected_cards"
+msgstr "没有可学习的选中卡片。"
+
+#. Incremento composition-root UI: No notes found for the selected Browser rows.
+msgid "root_browser_no_notes"
+msgstr "选中的浏览器行中没有笔记。"
+
+#. Incremento composition-root UI: No card is currently being reviewed.
+msgid "root_reviewer_no_review_card"
+msgstr "当前没有正在复习的卡片。"
+
+#. Incremento composition-root UI: No video review card is currently active.
+msgid "root_reviewer_no_video_card"
+msgstr "当前没有活动的视频复习卡片。"
+
+#. Incremento composition-root UI: No review card is currently active.
+msgid "root_reviewer_no_active_card"
+msgstr "当前没有活动的复习卡片。"
+
+#. Incremento composition-root UI: Current card is not linked in the knowledge tree.
+msgid "root_reviewer_card_not_in_tree"
+msgstr "当前卡片未关联到知识树。"
+
+#. Incremento composition-root UI: Current card is already at the top of the knowledge tree.
+msgid "root_reviewer_card_at_tree_top"
+msgstr "当前卡片已位于知识树顶部。"
+
+#. Incremento composition-root UI: Selected branch does not contain any knowledge-tree cards.
+msgid "root_reviewer_branch_empty"
+msgstr "选中的分支中没有知识树卡片。"
+
+#. Incremento composition-root UI: Could not load the current note.
+msgid "root_reviewer_note_load_failed"
+msgstr "无法加载当前笔记。"
+
+#. Incremento composition-root UI: No tags exist in this collection yet.
+msgid "root_reviewer_no_tags"
+msgstr "此牌组库中尚无标签。"
+
+#. Incremento composition-root UI: All selected tags are already on this note.
+msgid "root_reviewer_tags_present"
+msgstr "所选标签已全部存在于此笔记中。"
+
+#. Incremento composition-root UI: Open a PDF or EPUB before searching the current document.
+msgid "root_palette_open_document"
+msgstr "请先打开 PDF 或 EPUB，再搜索当前文档。"
+
+#. Incremento composition-root UI: Open a PDF before changing pages.
+msgid "root_palette_open_pdf_pages"
+msgstr "请先打开 PDF，再切换页面。"
+
+#. Incremento composition-root UI: Open a PDF before changing zoom.
+msgid "root_palette_open_pdf_zoom"
+msgstr "请先打开 PDF，再调整缩放。"
+
+#. Incremento composition-root UI: Open a PDF before marking a page read.
+msgid "root_palette_open_pdf_read"
+msgstr "请先打开 PDF，再将页面标记为已读。"
+
+#. Incremento composition-root UI: Open a reader or reviewer card before extracting.
+msgid "root_palette_open_reader_extract"
+msgstr "请先打开阅读器或复习卡片，再提取内容。"
+
+#. Incremento composition-root UI: Topic postponed to later in this review.
+msgid "root_topic_postponed_session"
+msgstr "主题已推迟到本次复习的稍后时间。"
+
+#. Incremento composition-root UI: No PDF cards found to reindex.
+msgid "root_browser_no_pdf_reindex"
+msgstr "没有需要重建索引的 PDF 卡片。"
+
+#. Incremento composition-root UI: No readable PDF files were found to reindex.
+msgid "root_browser_no_pdf_files"
+msgstr "未找到可重建索引的可读 PDF 文件。"
+
+#. Incremento composition-root UI: No eligible cards found.
+msgid "root_browser_no_eligible_cards"
+msgstr "未找到符合条件的卡片。"
+
+#. Incremento composition-root UI: Study Selected Cards ({count_label})
+msgid "root_browser_study_selected"
+msgstr "学习所选卡片（{count_label}）"
+
+#. Incremento composition-root UI: Make Topic ({count_label})
+msgid "root_browser_make_topic"
+msgstr "设为主题（{count_label}）"
+
+#. Incremento composition-root UI: Make Item ({count_label})
+msgid "root_browser_make_item"
+msgstr "设为项目（{count_label}）"
+
+#. Incremento composition-root UI: Set A-Factor… ({count_label})
+msgid "root_browser_set_a_factor"
+msgstr "设置 A 因子…（{count_label}）"
+
+#. Incremento composition-root UI: Custom Schedule… ({count_label})
+msgid "root_browser_custom_schedule"
+msgstr "自定义安排…（{count_label}）"
+
+#. Incremento composition-root UI: Regenerate PDF Covers ({count_label})
+msgid "root_browser_regenerate_pdf_covers"
+msgstr "重新生成 PDF 封面（{count_label}）"
+
+#. Incremento composition-root UI: Regenerate EPUB Covers ({count_label})
+msgid "root_browser_regenerate_epub_covers"
+msgstr "重新生成 EPUB 封面（{count_label}）"
+
+#. Incremento composition-root UI: OCR Image Text ({count_label})
+msgid "root_browser_ocr_image_text"
+msgstr "识别图片文字（{count_label}）"
+
+#. Incremento composition-root UI: Show Hidden Fields ({count_label})
+msgid "root_browser_show_hidden_fields"
+msgstr "显示隐藏字段（{count_label}）"
+
+#. Incremento composition-root UI: Show Database Entries ({count_label})
+msgid "root_browser_show_database_entries"
+msgstr "显示数据库记录（{count_label}）"
+
+#. Number of selected Browser cards; count is display-only.
+msgid "root_browser_selected_card"
+msgid_plural "root_browser_selected_card_plural"
+msgstr[0] "{count} 张已选卡片"
+
+#. Browser action feedback: Converted {converted}, but {failed}.
+msgid "root_browser_conversion_partial"
+msgstr "已转换{converted}，但{failed}。"
+
+#. Browser action feedback: Converted {converted}.
+msgid "root_browser_conversion_done"
+msgstr "已转换{converted}。"
+
+#. Browser action feedback: Saved {summary} on {saved}. Applied now to {applied}.
+msgid "root_browser_schedule_saved_applied"
+msgstr "已为{saved}保存{summary}。已立即应用于 {applied} 张卡片。"
+
+#. Browser action feedback: Saved {summary} on {saved}.
+msgid "root_browser_schedule_saved"
+msgstr "已为{saved}保存{summary}。"
+
+#. Browser action feedback: Set A-Factor
+msgid "root_browser_a_factor_title"
+msgstr "设置 A 因子"
+
+#. Browser action feedback: A-Factor:
+msgid "root_browser_a_factor_label"
+msgstr "A 因子："
+
+#. Browser action feedback: No topic cards were updated. {failed} failed to load or save.
+msgid "root_browser_a_factor_no_updates_error"
+msgstr "没有更新主题卡片。{failed}无法加载或保存。"
+
+#. Browser action feedback: Set A-Factor {value} on {updated}.
+msgid "root_browser_a_factor_set"
+msgstr "已将{updated}的 A 因子设为 {value}。"
+
+#. Browser action feedback: Regenerating PDF covers…
+msgid "root_browser_cover_progress_pdf_label"
+msgstr "正在重新生成 PDF 封面…"
+
+#. Browser action feedback: ({index}/{total}) Regenerating PDF covers…
+msgid "root_browser_cover_progress_pdf"
+msgstr "（{index}/{total}）正在重新生成 PDF 封面…"
+
+#. Browser action feedback: Regenerating EPUB covers…
+msgid "root_browser_cover_progress_epub_label"
+msgstr "正在重新生成 EPUB 封面…"
+
+#. Browser action feedback: ({index}/{total}) Regenerating EPUB covers…
+msgid "root_browser_cover_progress_epub"
+msgstr "（{index}/{total}）正在重新生成 EPUB 封面…"
+
+#. Browser action feedback: Card {card_id}: {error}
+msgid "root_browser_cover_failed_card"
+msgstr "卡片 {card_id}：{error}"
+
+#. Browser action feedback: … and {count} more.
+msgid "root_browser_more_failures"
+msgstr "…以及另外 {count} 项。"
+
+#. Browser action feedback: Regenerated {regenerated} and cleared {cleared}.
+msgid "root_browser_cover_summary_pdf"
+msgstr "已重新生成{regenerated}，并清除了 {cleared} 个。"
+
+#. Browser action feedback: Regenerated {regenerated} and cleared {cleared}.
+msgid "root_browser_cover_summary_epub"
+msgstr "已重新生成{regenerated}，并清除了 {cleared} 个。"
+
+#. Browser action feedback: Failures:
+msgid "root_browser_failures_heading"
+msgstr "失败项："
+
+#. Browser count-dependent feedback: Converted {count} selected card to a topic
+msgid "root_browser_cards_to_topics"
+msgid_plural "root_browser_cards_to_topics_plural"
+msgstr[0] "{count} 张已选卡片已转换为主题"
+
+#. Browser count-dependent feedback: Converted {count} selected card to an item
+msgid "root_browser_cards_to_items"
+msgid_plural "root_browser_cards_to_items_plural"
+msgstr[0] "{count} 张已选卡片已转换为项目"
+
+#. Browser count-dependent feedback: {count} selected card failed
+msgid "root_browser_failed_cards"
+msgid_plural "root_browser_failed_cards_plural"
+msgstr[0] "{count} 张已选卡片处理失败"
+
+#. Browser count-dependent feedback: Cleared custom schedule on {count} selected card.
+msgid "root_browser_schedule_cleared"
+msgid_plural "root_browser_schedule_cleared_plural"
+msgstr[0] "已清除 {count} 张已选卡片的自定义安排。"
+
+#. Browser count-dependent feedback: {count} card
+msgid "root_browser_schedule_saved_cards"
+msgid_plural "root_browser_schedule_saved_cards_plural"
+msgstr[0] "{count} 张卡片"
+
+#. Browser count-dependent feedback: {count} topic card
+msgid "root_browser_topic_cards"
+msgid_plural "root_browser_topic_cards_plural"
+msgstr[0] "{count} 张主题卡片"
+
+#. Browser count-dependent feedback: Skipped {count} non-topic card.
+msgid "root_browser_skipped_non_topic"
+msgid_plural "root_browser_skipped_non_topic_plural"
+msgstr[0] "已跳过 {count} 张非主题卡片。"
+
+#. Browser count-dependent feedback: {count} PDF cover
+msgid "root_browser_pdf_covers"
+msgid_plural "root_browser_pdf_covers_plural"
+msgstr[0] "{count} 个 PDF 封面"
+
+#. Browser count-dependent feedback: {count} EPUB cover
+msgid "root_browser_epub_covers"
+msgid_plural "root_browser_epub_covers_plural"
+msgstr[0] "{count} 个 EPUB 封面"
+
+#. Browser count-dependent feedback: Skipped {count} non-PDF selected card.
+msgid "root_browser_skipped_non_pdf"
+msgid_plural "root_browser_skipped_non_pdf_plural"
+msgstr[0] "已跳过 {count} 张非 PDF 已选卡片。"
+
+#. Browser count-dependent feedback: Skipped {count} non-EPUB selected card.
+msgid "root_browser_skipped_non_epub"
+msgid_plural "root_browser_skipped_non_epub_plural"
+msgstr[0] "已跳过 {count} 张非 EPUB 已选卡片。"
+
+#. Browser database and direct review UI: Selected card IDs
+msgid "root_browser_database_selected_ids"
+msgstr "已选卡片 ID"
+
+#. Browser database and direct review UI: Profile: {profile}
+msgid "root_browser_database_profile"
+msgstr "配置文件：{profile}"
+
+#. Browser database and direct review UI: Database: {path}
+msgid "root_browser_database_path"
+msgstr "数据库：{path}"
+
+#. Browser database and direct review UI: Card {card_id}
+msgid "root_browser_database_card"
+msgstr "卡片 {card_id}"
+
+#. Browser database and direct review UI: No Incremento database rows found for card {card_id}.
+msgid "root_browser_database_no_rows"
+msgstr "未找到卡片 {card_id} 的 Incremento 数据库记录。"
+
+#. Browser database and direct review UI: effective values (not yet persisted)
+msgid "root_browser_database_effective_values"
+msgstr "有效值（尚未保存）"
+
+#. Browser database and direct review UI: rowid {rowid}
+msgid "root_browser_database_rowid"
+msgstr "行 ID {rowid}"
+
+#. Browser database and direct review UI: row
+msgid "root_browser_database_row"
+msgstr "行"
+
+#. Browser database and direct review UI: Could not read Incremento database entries:
+msgid "root_browser_database_read_failed"
+msgstr "无法读取 Incremento 数据库记录：\n{error}"
+
+#. Browser database and direct review UI: Review Selected is unavailable with this Anki reviewer version. Incremento left the selected cards unchanged. Please update Anki or use a normal filtered-deck review.
+msgid "root_browser_review_unsupported"
+msgstr "当前 Anki 复习器版本不支持复习所选卡片。Incremento 未更改所选卡片。请更新 Anki 或使用普通的筛选牌组复习。"
+
+#. Browser database and direct review UI: Review Selected could not create a compatible Anki review queue. Incremento left the selected cards unchanged; use a normal filtered-deck review instead.
+msgid "root_browser_review_queue_failed"
+msgstr "复习所选卡片无法创建兼容的 Anki 复习队列。Incremento 未更改所选卡片；请改用普通的筛选牌组复习。"
+
+#. Browser database and direct review UI: {studying} {skipped}
+msgid "root_browser_review_start_skipped"
+msgstr "{studying} {skipped}"
+
+#. Browser database and direct review UI: Could not start studying the selected cards:
+msgid "root_browser_review_start_failed"
+msgstr "无法开始学习所选卡片：\n{error}"
+
+#. Browser direct review count: Studying {count} selected card.
+msgid "root_browser_review_studying"
+msgid_plural "root_browser_review_studying_plural"
+msgstr[0] "正在学习 {count} 张已选卡片。"
+
+#. Browser direct review count: Skipped {count} unavailable card.
+msgid "root_browser_review_skipped"
+msgid_plural "root_browser_review_skipped_plural"
+msgstr[0] "已跳过 {count} 张不可用的卡片。"
+
+#. Composition-root note formats and About UI: Anki sync could not be started automatically:
+msgid "root_sync_start_failed"
+msgstr "无法自动启动 Anki 同步：\n{error}"
+
+#. Composition-root note formats and About UI: Incremento could not inspect card formats:
+msgid "root_note_formats_inspect_failed"
+msgstr "Incremento 无法检查卡片格式：\n{error}"
+
+#. Composition-root note formats and About UI: All existing Incremento card formats are up to date.
+msgid "root_note_formats_current"
+msgstr "所有现有的 Incremento 卡片格式均为最新。"
+
+#. Composition-root note formats and About UI: Incremento has not changed the collection. Anki Sync will open now. After every device is synchronized, return to Incremento > Utils > Card Format Updates and apply the update.
+msgid "root_note_formats_sync_first"
+msgstr "Incremento 尚未更改集合。Anki 同步即将打开。所有设备同步完成后，请返回 Incremento > 工具 > 卡片格式更新并应用更新。"
+
+#. Composition-root note formats and About UI: none confirmed
+msgid "root_note_formats_none_confirmed"
+msgstr "尚无已确认项"
+
+#. Composition-root note formats and About UI: Incremento stopped the card-format update because Anki reported an error while updating {note_type}.
+msgid "root_note_formats_apply_partial"
+msgstr "由于 Anki 在更新笔记类型 {note_type} 时报告错误，Incremento 已停止卡片格式更新。\n\n发生错误前确认已保存的格式：{applied}。\n\n暂时不要选择单向同步。请重启 Anki，然后打开 Incremento > 工具 > 卡片格式更新并重试。如果错误持续，请导出支持包。\n\n技术详情：{error}"
+
+#. Composition-root note formats and About UI: Incremento could not apply the card-format update:
+msgid "root_note_formats_apply_failed"
+msgstr "Incremento 无法应用卡片格式更新：\n{error}"
+
+#. Composition-root note formats and About UI: The Incremento card formats were already up to date.
+msgid "root_note_formats_already_current"
+msgstr "Incremento 卡片格式已经是最新版本。"
+
+#. Composition-root note formats and About UI: Incremento updated the approved card formats. Anki Sync will open next. This device now contains the updated schema: choose Upload to AnkiWeb. Then choose Download on your other devices.
+msgid "root_note_formats_applied"
+msgstr "Incremento 已更新批准的卡片格式。接下来将打开 Anki 同步。此设备现在包含更新后的结构：请选择上传到 AnkiWeb，然后在其他设备上选择下载。"
+
+#. Composition-root note formats and About UI: Author:
+msgid "root_about_author"
+msgstr "作者："
+
+#. Composition-root note formats and About UI: Incremento is an Anki add-on for incremental reading and study workflows. It keeps long-form material and review cards in one place inside Anki.
+msgid "root_about_intro"
+msgstr "Incremento 是用于渐进阅读和学习的 Anki 插件。它将长篇资料和复习卡片集中保存在 Anki 中。"
+
+#. Composition-root note formats and About UI: General information
+msgid "root_about_general_info"
+msgstr "基本信息"
+
+#. Composition-root note formats and About UI: Add and review PDFs, webpages, videos, and writing notes.
+msgid "root_about_add_review"
+msgstr "添加并复习 PDF、网页、视频和写作笔记。"
+
+#. Composition-root note formats and About UI: Open PDF, webpage, video, and writing docks while reviewing cards.
+msgid "root_about_open_docks"
+msgstr "复习卡片时可打开 PDF、网页、视频和写作面板。"
+
+#. Composition-root note formats and About UI: Extract selections into new cards and keep context linked to the source.
+msgid "root_about_extract"
+msgstr "将选中内容提取为新卡片，并保留与来源的关联。"
+
+#. Composition-root note formats and About UI: Track PDF position, highlights, video progress, and study statistics.
+msgid "root_about_track"
+msgstr "跟踪 PDF 阅读位置、重点标记、视频进度和学习统计。"
+
+#. Composition-root note formats and About UI: Use the Chrome extension to send the current webpage as PDF, webpage, or writing.
+msgid "root_about_chrome_extension"
+msgstr "使用 Chrome 扩展程序将当前网页发送为 PDF、网页或写作内容。"
+
+#. Composition-root note formats and About UI: Disclaimer:
+msgid "root_about_disclaimer_label"
+msgstr "免责声明："
+
+#. Composition-root note formats and About UI: By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.
+msgid "root_about_disclaimer"
+msgstr "使用本插件即表示您对其可能造成的损害、数据丢失或其他问题承担全部责任。"
+
+#. Composition-root note formats and About UI: License:
+msgid "root_about_license_label"
+msgstr "许可："
+
+#. Composition-root note formats and About UI: All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+msgid "root_about_license"
+msgstr "保留所有权利。使用、复制、修改或分发此代码须事先获得 Paulo Baskovic 的书面许可。"
+
+#. Incremento composition-root UI: Please enter a video URL.
+msgid "root_video_enter_url"
+msgstr "请输入视频网址。"
+
+#. Incremento composition-root UI: Could not find a valid YouTube or Vimeo URL.
+msgid "root_video_invalid_url"
+msgstr "未找到有效的 YouTube 或 Vimeo 网址。"
+
+#. Incremento composition-root UI: Please choose a local video file.
+msgid "root_video_choose_file"
+msgstr "请选择本地视频文件。"
+
+#. Incremento composition-root UI: Selected local video file does not exist.
+msgid "root_video_file_missing"
+msgstr "所选本地视频文件不存在。"
+
+#. Incremento composition-root UI: Importing local video…
+msgid "root_video_importing_local"
+msgstr "正在导入本地视频…"
+
+#. Incremento composition-root UI: Importing and encoding local video…
+msgid "root_video_importing_encoding"
+msgstr "正在导入并编码本地视频…"
+
+#. Incremento composition-root UI: Downloading original-quality video…
+msgid "root_video_downloading_original"
+msgstr "正在下载原画质视频…"
+
+#. Incremento composition-root UI: Downloading and compressing video…
+msgid "root_video_downloading_compressing"
+msgstr "正在下载并压缩视频…"
+
+#. Incremento composition-root UI: The Anki profile changed, so the video import was cancelled safely.
+msgid "root_video_profile_changed"
+msgstr "Anki 配置文件已更改，因此视频导入已安全取消。"
+
+#. Incremento composition-root UI: Please enter a title.
+msgid "root_writing_enter_title"
+msgstr "请输入标题。"
+
+#. Incremento composition-root UI: Please choose a local file.
+msgid "root_local_file_choose"
+msgstr "请选择本地文件。"
+
+#. Incremento composition-root UI: Selected local file does not exist.
+msgid "root_local_file_missing"
+msgstr "所选本地文件不存在。"
+
+#. Root reviewer/import feedback: Topic postponed for {minutes} minutes.
+msgid "root_topic_postponed_minutes"
+msgstr "主题已推迟 {minutes} 分钟。"
+
+#. Root reviewer/import feedback: Skipped for {minutes} minutes.
+msgid "root_item_skipped_minutes"
+msgstr "已跳过 {minutes} 分钟。"
+
+#. Root reviewer/import feedback: Created: {count}
+msgid "root_batch_created"
+msgstr "已创建：{count}"
+
+#. Root reviewer/import feedback: Skipped: {count}
+msgid "root_batch_skipped"
+msgstr "已跳过：{count}"
+
+#. Root reviewer/import feedback: Failed: {count}
+msgid "root_batch_failed"
+msgstr "失败：{count}"
+
+#. Root reviewer/import feedback: Could not create batch extracts:
+msgid "root_batch_create_failed"
+msgstr "无法批量创建提取卡片：\n{error}"
+
+#. Root reviewer/import feedback: Priority set to {priority}
+msgid "root_reviewer_priority_set"
+msgstr "优先级已设为 {priority}"
+
+#. Root reviewer/import feedback:   ·  A-Factor {value}
+msgid "root_reviewer_a_factor_set"
+msgstr "  ·  A 因子 {value}"
+
+#. Root reviewer/import feedback: Added tags: {tags}
+msgid "root_reviewer_tags_added"
+msgstr "已添加标签：{tags}"
+
+#. Root reviewer/import feedback: Video card '{title}' added to {deck} (local copy ready).
+msgid "root_video_added_local"
+msgstr "视频卡片“{title}”已添加到 {deck}（本地副本已就绪）。"
+
+#. Root reviewer/import feedback: Video card '{title}' added to {deck}.
+msgid "root_video_added"
+msgstr "视频卡片“{title}”已添加到 {deck}。"
+
+#. Root reviewer/import feedback: Failed to add video card:
+msgid "root_video_add_failed"
+msgstr "添加视频卡片失败：\n{error}"
+
+#. Root reviewer/import feedback: Local video import failed:
+msgid "root_video_local_import_failed"
+msgstr "本地视频导入失败：\n{error}"
+
+#. Root reviewer/import feedback: Video download/compression failed:
+msgid "root_video_download_failed"
+msgstr "视频下载或压缩失败：\n{error}"
+
+#. Root reviewer/import feedback: Markdown card '{title}' added to {deck}.
+msgid "root_writing_card_added"
+msgstr "Markdown 卡片“{title}”已添加到 {deck}。"
+
+#. Root reviewer/import feedback: Failed to add markdown card:
+msgid "root_writing_add_failed"
+msgstr "添加 Markdown 卡片失败：\n{error}"
+
+#. Root reviewer/import feedback: Local file card '{title}' added to {deck}.
+msgid "root_local_file_added"
+msgstr "本地文件卡片“{title}”已添加到 {deck}。"
+
+#. Root reviewer/import feedback: Failed to add local file card:
+msgid "root_local_file_add_failed"
+msgstr "添加本地文件卡片失败：\n{error}"
+
+#. Root reviewer/import feedback: PDF card "{title}" added to the Topics deck.
+msgid "root_webpage_pdf_added"
+msgstr "PDF 卡片“{title}”已添加到 Topics 牌组。"
+
+#. Root reviewer/import feedback: Failed to import webpage as PDF:
+msgid "root_webpage_pdf_failed"
+msgstr "将网页导入为 PDF 失败：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Could not open document:
+msgid "root_document_open_failed"
+msgstr "无法打开文档：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Could not load the Document Bookshelf:
+msgid "root_bookshelf_load_failed"
+msgstr "无法加载文档书架：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Could not prepare branch study session:
+msgid "root_branch_study_failed"
+msgstr "无法准备分支学习会话：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: …and {count} more
+msgid "root_more_failures"
+msgstr "…以及另外 {count} 项"
+
+#. Root PDF/EPUB import and OCR status: All imports failed ({count}):
+msgid "root_import_pdf_all_failed"
+msgstr "所有导入均失败（{count}）：\n\n{details}{extra}"
+
+#. Root PDF/EPUB import and OCR status: All EPUB imports failed ({count}):
+msgid "root_import_epub_all_failed"
+msgstr "所有 EPUB 导入均失败（{count}）：\n\n{details}{extra}"
+
+#. Root PDF/EPUB import and OCR status: Could not list PDF cards:
+msgid "root_pdf_list_failed"
+msgstr "无法列出 PDF 卡片：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Reindexing PDF text in the background…
+msgid "root_pdf_reindex_background"
+msgstr "正在后台重建 PDF 文本索引…"
+
+#. Root PDF/EPUB import and OCR status: Reindexing PDF text… {completed}/{total}
+msgid "root_pdf_reindex_progress"
+msgstr "正在重建 PDF 文本索引… {completed}/{total}"
+
+#. Root PDF/EPUB import and OCR status: PDF text reindex failed:
+msgid "root_pdf_reindex_failed"
+msgstr "PDF 文本重建索引失败：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: PDF text reindex cancelled.
+msgid "root_pdf_reindex_cancelled"
+msgstr "PDF 文本重建索引已取消。"
+
+#. Root PDF/EPUB import and OCR status: PDF text reindex complete.
+msgid "root_pdf_reindex_complete"
+msgstr "PDF 文本重建索引已完成。"
+
+#. Root PDF/EPUB import and OCR status: Processed: {count}
+msgid "root_pdf_reindex_processed"
+msgstr "已处理：{count}"
+
+#. Root PDF/EPUB import and OCR status: Unchanged/skipped: {count}
+msgid "root_pdf_reindex_skipped"
+msgstr "未更改或已跳过：{count}"
+
+#. Root PDF/EPUB import and OCR status: Missing before start: {count}
+msgid "root_pdf_reindex_missing"
+msgstr "开始前缺失：{count}"
+
+#. Root PDF/EPUB import and OCR status: Errors: {count}
+msgid "root_pdf_reindex_errors"
+msgstr "错误：{count}"
+
+#. Root PDF/EPUB import and OCR status: Tesseract OCR is required for this utility.
+msgid "root_ocr_tesseract_required"
+msgstr "此工具需要 Tesseract OCR。\n\n{details}"
+
+#. Root PDF/EPUB import and OCR status: Could not access Anki media directory:
+msgid "root_ocr_media_access_failed"
+msgstr "无法访问 Anki 媒体目录：\n{error}"
+
+#. Root PDF/EPUB import and OCR status: ({index}/{total}) {label}
+msgid "root_ocr_progress"
+msgstr "（{index}/{total}）{label}"
+
+#. Root PDF/EPUB import and OCR status: {label} complete.
+msgid "root_ocr_complete"
+msgstr "{label}已完成。"
+
+#. Root PDF/EPUB import and OCR status: Scanned notes: {count}
+msgid "root_ocr_scanned"
+msgstr "已扫描笔记：{count}"
+
+#. Root PDF/EPUB import and OCR status: Updated OCR text: {count}
+msgid "root_ocr_updated"
+msgstr "已更新 OCR 文本：{count}"
+
+#. Root PDF/EPUB import and OCR status: Skipped special note types: {count}
+msgid "root_ocr_skipped_types"
+msgstr "已跳过特殊笔记类型：{count}"
+
+#. Root PDF/EPUB import and OCR status: Notes without images: {count}
+msgid "root_ocr_no_images"
+msgstr "无图片的笔记：{count}"
+
+#. Root PDF/EPUB import and OCR status: Missing image files: {count}
+msgid "root_ocr_missing_images"
+msgstr "缺失的图片文件：{count}"
+
+#. Root PDF/EPUB import and OCR status: Rebuilt notes: {count}
+msgid "root_ocr_rebuilt"
+msgstr "已重建的笔记：{count}"
+
+#. Root PDF/EPUB import and OCR status: Blank OCR fields: {count}
+msgid "root_ocr_blank"
+msgstr "空白 OCR 字段：{count}"
+
+#. Root import card count: Added {count} PDF card → {deck}
+msgid "root_import_pdf_added"
+msgid_plural "root_import_pdf_added_plural"
+msgstr[0] "已将 {count} 张 PDF 卡片添加到 {deck}"
+
+#. Root import card count: Added {count} EPUB card → {deck}
+msgid "root_import_epub_added"
+msgid_plural "root_import_epub_added_plural"
+msgstr[0] "已将 {count} 张 EPUB 卡片添加到 {deck}"
+
+#. Incremento composition-root UI: OCR image text
+msgid "root_ocr_image_text_label"
+msgstr "识别图片文字"
+
+#. Incremento composition-root UI: Reindex OCR search cache
+msgid "root_ocr_reindex_label"
+msgstr "重建 OCR 搜索缓存索引"
+
+#. Incremento composition-root UI: Incremento Hidden Fields
+msgid "root_hidden_fields_title"
+msgstr "Incremento 隐藏字段"
+
+#. Incremento composition-root UI: No Incremento hidden fields exist on this note.
+msgid "root_hidden_fields_none"
+msgstr "此笔记没有 Incremento 隐藏字段。"
+
+#. Incremento composition-root UI: (empty)
+msgid "root_hidden_fields_empty"
+msgstr "（空）"
+
+#. Browser hidden field inspection: Note
+msgid "root_hidden_fields_note"
+msgstr "笔记"
+
+#. Browser hidden field inspection: Note {note_id}
+msgid "root_hidden_fields_load_failed"
+msgstr "笔记 {note_id}\n无法加载笔记：{error}"
+
+#. Browser hidden field inspection: Note {note_id} · {model}
+msgid "root_hidden_fields_header"
+msgstr "笔记 {note_id} · {model}"
+
+#. Browser hidden field inspection: Title: {title}
+msgid "root_hidden_fields_note_title"
+msgstr "标题：{title}"
+
+#. Incremento composition-root UI: Full Backup
+msgid "root_backup_full_title"
+msgstr "完整备份"
+
+#. Incremento composition-root UI: Export a full backup of the current Anki profile, or configure automatic backups to a local or synced folder.
+msgid "root_backup_choice_description"
+msgstr "导出当前 Anki 配置文件的完整备份，或将自动备份设置到本地或同步文件夹。"
+
+#. Incremento composition-root UI: Export Now…
+msgid "root_backup_export_now"
+msgstr "立即导出…"
+
+#. Incremento composition-root UI: Automatic Backups…
+msgid "root_backup_automatic_button"
+msgstr "自动备份…"
+
+#. Incremento composition-root UI: Export Current Incremento Profile Backup
+msgid "root_backup_file_dialog_title"
+msgstr "导出当前 Incremento 配置文件备份"
+
+#. Incremento composition-root UI: ZIP files (*.zip)
+msgid "root_backup_file_filter"
+msgstr "ZIP 文件 (*.zip)"
+
+#. Incremento composition-root UI: The previous close backup failed. Check the backup destination.
+msgid "root_backup_close_failed"
+msgstr "上次关闭时备份失败。请检查备份目标位置。"
+
+#. Incremento composition-root UI: A full backup is already running. See Activity Center.
+msgid "root_backup_already_running"
+msgstr "完整备份已在运行。请查看活动中心。"
+
+#. Incremento composition-root UI: Full profile backup
+msgid "root_backup_activity_title"
+msgstr "完整配置文件备份"
+
+#. Incremento composition-root UI: Backup
+msgid "root_backup_activity_category"
+msgstr "备份"
+
+#. Incremento composition-root UI: Preparing backup…
+msgid "root_backup_activity_preparing"
+msgstr "正在准备备份…"
+
+#. Incremento composition-root UI: Creating Anki package…
+msgid "root_backup_activity_creating_package"
+msgstr "正在创建 Anki 包…"
+
+#. Incremento composition-root UI: Snapshotting Incremento user_files…
+msgid "root_backup_activity_snapshotting"
+msgstr "正在制作 Incremento 用户文件快照…"
+
+#. Incremento composition-root UI: Writing backup ZIP…
+msgid "root_backup_activity_writing_zip"
+msgstr "正在写入备份 ZIP…"
+
+#. Incremento composition-root UI: Backup saved, but its schedule timestamp could not be updated.
+msgid "root_backup_schedule_timestamp_failed"
+msgstr "备份已保存，但无法更新计划时间戳。"
+
+#. Incremento composition-root UI: Automatic full backup saved.
+msgid "root_backup_automatic_saved"
+msgstr "自动完整备份已保存。"
+
+#. Incremento composition-root UI: Full backup saved. Details are in Activity Center.
+msgid "root_backup_saved"
+msgstr "完整备份已保存。详情请查看活动中心。"
+
+#. Incremento composition-root UI: Creating privacy-safe support bundle…
+msgid "root_support_progress"
+msgstr "正在创建保护隐私的支持包…"
+
+#. Backup and support-bundle UI: Automatic backup folder unavailable: {error}
+msgid "root_backup_folder_unavailable"
+msgstr "自动备份文件夹不可用：{error}"
+
+#. Backup and support-bundle UI: Close backup folder unavailable: {error}
+msgid "root_backup_close_folder_unavailable"
+msgstr "关闭时备份文件夹不可用：{error}"
+
+#. Backup and support-bundle UI: Backup destination unavailable: {error}
+msgid "root_backup_destination_unavailable"
+msgstr "备份目标位置不可用：{error}"
+
+#. Backup and support-bundle UI: Automatic backup destination unavailable: {error}
+msgid "root_backup_auto_destination_unavailable"
+msgstr "自动备份目标位置不可用：{error}"
+
+#. Backup and support-bundle UI: Could not show backup progress: {error}
+msgid "root_backup_progress_failed"
+msgstr "无法显示备份进度：{error}"
+
+#. Backup and support-bundle UI: Creating Anki package… exported media {count}
+msgid "root_backup_exported_media"
+msgstr "正在创建 Anki 包…已导出媒体文件 {count} 个"
+
+#. Backup and support-bundle UI: Profile changed before the backup completed.
+msgid "root_backup_profile_changed"
+msgstr "备份完成前配置文件已更改。"
+
+#. Backup and support-bundle UI: Automatic backup failed:
+msgid "root_backup_failed_auto"
+msgstr "自动备份失败：\n{error}"
+
+#. Backup and support-bundle UI: Export failed:
+msgid "root_backup_failed_manual"
+msgstr "导出失败：\n{error}"
+
+#. Backup and support-bundle UI: Saved to {path}
+msgid "root_backup_saved_to"
+msgstr "已保存到 {path}"
+
+#. Backup and support-bundle UI: Backup saved, but old versions could not be removed: {error}
+msgid "root_backup_retention_failed"
+msgstr "备份已保存，但无法删除旧版本：{error}"
+
+#. Backup and support-bundle UI: Could not create the support bundle:
+msgid "root_support_create_failed"
+msgstr "无法创建支持包：\n\n{error}"
+
+#. Backup and support-bundle UI: Privacy-safe support bundle created.
+msgid "root_support_created"
+msgstr "已创建保护隐私的支持包。\n\n包含 {count} 条近期诊断事件。\n其中不包含卡片或笔记文本、原始 ID、牌组或标签或配置文件名称、媒体、用户或媒体文件名、本地路径、网址、数据库行、异常消息或精确的活动时间戳。随附代码的文件名仅与其哈希值一同出现。\n\n保存位置：\n{path}"
+
+#. Root settings and cleanup summary: Incremento settings updated.
+msgid "root_settings_updated"
+msgstr "Incremento 设置已更新。"
+
+#. Root settings and cleanup summary: No stale progress, search-index, or OCR cache rows found.
+msgid "root_cleanup_stale_none"
+msgstr "未找到过期的进度、搜索索引或 OCR 缓存记录。"
+
+#. Root settings and cleanup summary: Stale progress rows removed: {total}
+msgid "root_cleanup_progress_summary"
+msgstr "已删除过期进度记录：{total}\n• PDF：{pdf}\n• 视频：{video}\n• 网页：{web}"
+
+#. Root settings and cleanup summary: Stale search index rows removed: {total}
+msgid "root_cleanup_index_summary"
+msgstr "已删除过期搜索索引记录：{total}\n• PDF 页面：{pdf}\n• EPUB 章节：{epub}"
+
+#. Root settings and cleanup summary: Stale OCR cache rows removed: {total}
+msgid "root_cleanup_ocr_summary"
+msgstr "已删除过期 OCR 缓存记录：{total}\n• 缺失的笔记：{notes}\n• 缺失的卡片：{cards}"
+
+#. Root settings and cleanup summary: lower numbers are more important
+msgid "root_settings_priority_lower"
+msgstr "数字越小，优先级越高"
+
+#. Root settings and cleanup summary: higher numbers are more important
+msgid "root_settings_priority_higher"
+msgstr "数字越大，优先级越高"
+
+#. Root settings and cleanup summary: You changed how Incremento interprets stored priority numbers.
+msgid "root_settings_priority_changed"
+msgstr "您更改了 Incremento 对已保存优先级数值的解释方式。"
+
+#. Root settings and cleanup summary: New direction: {direction}.
+msgid "root_settings_priority_direction"
+msgstr "新方向：{direction}。"
+
+#. Root settings and cleanup summary: Do you also want to invert all existing stored priorities for the current profile?
+msgid "root_settings_priority_invert_question"
+msgstr "是否还要反转当前配置文件中所有已保存的优先级？"
+
+#. Root settings and cleanup summary: This rewrites each saved priority as 100 - priority.
+msgid "root_settings_priority_invert_detail"
+msgstr "这会将每个已保存的优先级改写为 100 减去原优先级。"
+
+#. Root settings and cleanup summary: Example: 20 -> 80, 95 -> 5.
+msgid "root_settings_priority_invert_example"
+msgstr "例如：20 → 80，95 → 5。"
+
+#. Root settings and cleanup summary: Invert Existing Priorities?
+msgid "root_settings_priority_invert_title"
+msgstr "反转现有优先级？"
+
+#. Root settings and cleanup summary: Could not invert stored priorities:
+msgid "root_settings_priority_invert_failed"
+msgstr "无法反转已保存的优先级：\n{error}"
+
+#. Root settings and cleanup summary: Creating database checkpoint…
+msgid "root_database_checkpoint_progress"
+msgstr "正在创建数据库检查点…"
+
+#. Root settings and cleanup summary: Could not prepare the database editor:
+msgid "root_database_editor_failed"
+msgstr "无法准备数据库编辑器：\n{error}"
+
+#. Root settings priority count: Incremento settings updated. Inverted {count} stored priority.
+msgid "root_settings_priority_inverted"
+msgid_plural "root_settings_priority_inverted_plural"
+msgstr[0] "Incremento 设置已更新。已反转 {count} 项保存的优先级。"
+
+#. Cleanup UI: Could not clean stale Incremento rows:
+msgid "root_cleanup_stale_failed"
+msgstr "无法清理过期的 Incremento 记录：\n{error}"
+
+#. Cleanup UI: Could not scan non-active profile artifacts:
+msgid "root_cleanup_profile_scan_failed"
+msgstr "无法扫描非活动配置文件的资料：\n{error}"
+
+#. Cleanup UI: No deletable cross-profile artifacts detected.
+msgid "root_cleanup_profile_none"
+msgstr "未检测到可删除的跨配置文件资料。\n\n没有任何内容可以在不影响某个配置文件的情况下安全删除。"
+
+#. Cleanup UI: Active profile: {profile}
+msgid "root_cleanup_active_profile"
+msgstr "活动配置文件：{profile}"
+
+#. Cleanup UI: The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):
+msgid "root_cleanup_profile_explanation"
+msgstr "以下数据未被此配置文件引用，可能属于其他配置文件，也可能确实已成为孤立数据："
+
+#. Cleanup UI: • PDF files: {count}
+msgid "root_cleanup_pdf_files"
+msgstr "• PDF 文件：{count}"
+
+#. Cleanup UI: • Video files: {count}
+msgid "root_cleanup_video_files"
+msgstr "• 视频文件：{count}"
+
+#. Cleanup UI: • Progress rows: {count} (PDF {pdf}, Video {video}, Web {web})
+msgid "root_cleanup_progress_rows"
+msgstr "• 进度记录：{count}（PDF {pdf}、视频 {video}、网页 {web}）"
+
+#. Cleanup UI: • Search index rows: {count} (PDF {pdf}, EPUB {epub})
+msgid "root_cleanup_index_rows"
+msgstr "• 搜索索引记录：{count}（PDF {pdf}、EPUB {epub}）"
+
+#. Cleanup UI: • OCR cache rows: {count} (missing notes {notes}, missing cards {cards})
+msgid "root_cleanup_cache_rows"
+msgstr "• OCR 缓存记录：{count}（缺失笔记 {notes}、缺失卡片 {cards}）"
+
+#. Cleanup UI: • Skipped PDF files tied to other profiles: {count}
+msgid "root_cleanup_protected_pdfs"
+msgstr "• 已跳过关联其他配置文件的 PDF 文件：{count}"
+
+#. Cleanup UI: • Skipped video files tied to other profiles: {count}
+msgid "root_cleanup_protected_videos"
+msgstr "• 已跳过关联其他配置文件的视频文件：{count}"
+
+#. Cleanup UI: • PDF folder: {path}
+msgid "root_cleanup_pdf_folder"
+msgstr "• PDF 文件夹：{path}"
+
+#. Cleanup UI: • Video folder: {path}
+msgid "root_cleanup_video_folder"
+msgstr "• 视频文件夹：{path}"
+
+#. Cleanup UI: • Recoverable disk space: {size}
+msgid "root_cleanup_recoverable_space"
+msgstr "• 可释放的磁盘空间：{size}"
+
+#. Cleanup UI: Skipped PDFs (kept):
+msgid "root_cleanup_skipped_pdfs_heading"
+msgstr "已跳过的 PDF（保留）："
+
+#. Cleanup UI: Skipped videos (kept):
+msgid "root_cleanup_skipped_videos_heading"
+msgstr "已跳过的视频（保留）："
+
+#. Cleanup UI:   - {filename}  (profiles: {profiles})
+msgid "root_cleanup_file_profiles"
+msgstr "  - {filename}  （配置文件：{profiles}）"
+
+#. Cleanup UI: Delete these now?
+msgid "root_cleanup_delete_now"
+msgstr "现在删除这些内容吗？"
+
+#. Cleanup UI: Rows: {error}
+msgid "root_cleanup_rows_error"
+msgstr "记录：{error}"
+
+#. Cleanup UI: Search index: {error}
+msgid "root_cleanup_index_error"
+msgstr "搜索索引：{error}"
+
+#. Cleanup UI: OCR cache: {error}
+msgid "root_cleanup_cache_error"
+msgstr "OCR 缓存：{error}"
+
+#. Cleanup UI: Deleted PDF files: {deleted}/{total}
+msgid "root_cleanup_deleted_pdfs"
+msgstr "已删除 PDF 文件：{deleted}/{total}"
+
+#. Cleanup UI: Deleted video files: {deleted}/{total}
+msgid "root_cleanup_deleted_videos"
+msgstr "已删除视频文件：{deleted}/{total}"
+
+#. Cleanup UI: Potential recovered space: {size}
+msgid "root_cleanup_recovered_space"
+msgstr "可能释放的空间：{size}"
+
+#. Orphan-file cleanup UI: Could not read PDF directory:
+msgid "root_cleanup_pdf_read_failed"
+msgstr "无法读取 PDF 目录：\n{error}"
+
+#. Orphan-file cleanup UI: No PDF files found in {path}.
+msgid "root_cleanup_pdf_none"
+msgstr "在 {path} 中未找到 PDF 文件。"
+
+#. Orphan-file cleanup UI: Could not query PDF cards:
+msgid "root_cleanup_pdf_query_failed"
+msgstr "无法查询 PDF 卡片：\n{error}"
+
+#. Orphan-file cleanup UI: No deletable orphaned PDFs found.
+msgid "root_cleanup_pdf_no_deletable"
+msgstr "未找到可删除的孤立 PDF。\n\n磁盘上有 {count} 个文件，但都不能安全删除。"
+
+#. Orphan-file cleanup UI: Skipped {count} files because another profile references them.
+msgid "root_cleanup_other_profile_skip"
+msgstr "已跳过 {count} 个文件，因为其他配置文件引用了它们。"
+
+#. Orphan-file cleanup UI: Found {count} deletable orphaned PDFs:
+msgid "root_cleanup_pdf_found"
+msgstr "找到 {count} 个可删除的孤立 PDF："
+
+#. Orphan-file cleanup UI: Skipped {count} files tied to other profiles.
+msgid "root_cleanup_other_profile_tied"
+msgstr "已跳过 {count} 个关联其他配置文件的文件。"
+
+#. Orphan-file cleanup UI: Total: {size}
+msgid "root_cleanup_total"
+msgstr "总计：{size}"
+
+#. Orphan-file cleanup UI: Delete these files?
+msgid "root_cleanup_delete_files"
+msgstr "删除这些文件吗？"
+
+#. Orphan-file cleanup UI: Deleted {count} orphaned PDF files.
+msgid "root_cleanup_pdf_deleted"
+msgstr "已删除 {count} 个孤立 PDF 文件。\n释放了 {size}。"
+
+#. Orphan-file cleanup UI: Deleted {deleted} of {total} files.
+msgid "root_cleanup_partial_deleted"
+msgstr "已删除 {total} 个文件中的 {deleted} 个。\n\n错误：\n{errors}"
+
+#. Orphan-file cleanup UI: No local videos found in {path}.
+msgid "root_cleanup_videos_none"
+msgstr "在 {path} 中未找到本地视频。"
+
+#. Orphan-file cleanup UI: Could not read video directory:
+msgid "root_cleanup_videos_read_failed"
+msgstr "无法读取视频目录：\n{error}"
+
+#. Orphan-file cleanup UI: Could not query video cards:
+msgid "root_cleanup_videos_query_failed"
+msgstr "无法查询视频卡片：\n{error}"
+
+#. Orphan-file cleanup UI: No deletable orphaned local videos found.
+msgid "root_cleanup_videos_no_deletable"
+msgstr "未找到可删除的孤立本地视频。\n\n磁盘上有 {count} 个文件，但都不能安全删除。"
+
+#. Orphan-file cleanup UI: Found {count} deletable orphaned local video files:
+msgid "root_cleanup_videos_found"
+msgstr "找到 {count} 个可删除的孤立本地视频文件："
+
+#. Orphan-file cleanup UI: Deleted {count} orphaned video files.
+msgid "root_cleanup_videos_deleted"
+msgstr "已删除 {count} 个孤立视频文件。\n释放了 {size}。"
+
+#. Root remaining UI: Source PDF
+msgid "root_reviewer_source_pdf"
+msgstr "来源 PDF"
+
+#. Root remaining UI: Loading document bookshelf…
+msgid "root_bookshelf_loading"
+msgstr "正在加载文档书架…"
+
+#. Root remaining UI: Could not start backup: {error}
+msgid "root_backup_start_failed"
+msgstr "无法开始备份：{error}"
+
+#. Root remaining UI: Export Privacy-Safe Incremento Support Bundle
+msgid "root_support_export_title"
+msgstr "导出保护隐私的 Incremento 支持包"
+
+#. Item reviewer action; the command remains incremento_item_skip.
+msgid "root_reviewer_skip"
+msgstr "跳过"

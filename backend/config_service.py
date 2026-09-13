@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 try:
+    from .i18n import normalize_language_choice
+except ImportError:
+    from i18n import normalize_language_choice
+
+try:
     from .backup_schedule import normalize_policy
 except ImportError:
     from backup_schedule import normalize_policy
@@ -152,6 +157,7 @@ def configured_reviewer_button_group_visible(
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
+    config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
     config["topic_done_tag"] = configured_topic_done_tag(config)
     backup_profiles = config.get("automatic_backups")

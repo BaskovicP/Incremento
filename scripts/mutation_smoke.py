@@ -21,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "backend" / "config_service.py"
 TEST_FILE = ROOT / "tests" / "test_config_service.py"
 CONFIG_DEPENDENCIES = (
+    ROOT / "backend" / "i18n.py",
+    ROOT / "backend" / "language_packs.py",
+    ROOT / "backend" / "paths.py",
     ROOT / "backend" / "backup_schedule.py",
     ROOT / "backend" / "paths.py",
 )

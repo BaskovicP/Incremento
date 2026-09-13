@@ -58,6 +58,19 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
+    from ..backend.i18n import get_locale, t, tn
+except ImportError:
+    from backend.i18n import get_locale, t, tn
+
+
+def _web_card_count_label(count: int) -> str:
+    return tn("reader_web_cards_count", count)
+
+
+def _web_bookmark_count_label(count: int) -> str:
+    return tn("reader_web_bookmarks_count", count)
+
+try:
     from ..backend import paths as _paths
     from ..backend.content_safety import (
         external_plain_text,
@@ -632,9 +645,9 @@ class _WebDockController:
         if self.runtime.dock is None:
             return
         try:
-            self.runtime.dock._bookmark_btn.setText("Bookmark")
+            self.runtime.dock._bookmark_btn.setText(t("reader_bookmark"))
             self.runtime.dock._bookmark_btn.setToolTip(
-                "Save the current web location as a permanent interesting-place bookmark."
+                t("reader_web_bookmark_hint")
             )
         except Exception:
             pass
@@ -651,7 +664,7 @@ class _WebDockController:
         if seconds <= 0:
             try:
                 button.setVisible(False)
-                button.setText("Resume")
+                button.setText(t("reader_web_resume"))
                 button.setToolTip("")
             except Exception:
                 pass
@@ -663,17 +676,17 @@ class _WebDockController:
         resume_url = build_web_media_resume_target(current_url, media_url, seconds)
         media_title = str(progress.get("media_title") or "").strip()
         prefer_original_page = _prefer_web_card_resume_in_original_page()
-        tooltip_parts = [f"Last saved media time: {time_text}."]
+        tooltip_parts = [t("reader_web_last_media_time", time=time_text)]
         if media_title:
             tooltip_parts.append(media_title)
         if prefer_original_page:
-            tooltip_parts.append("Reopens the original page and asks the browser extension to resume there.")
+            tooltip_parts.append(t("reader_web_resume_original_hint"))
         elif resume_url:
-            tooltip_parts.append("Opens the saved media at that time.")
+            tooltip_parts.append(t("reader_web_resume_media_hint"))
         else:
-            tooltip_parts.append("Opens the page and copies the saved time to your clipboard.")
+            tooltip_parts.append(t("reader_web_resume_copy_hint"))
         try:
-            button.setText(f"Resume {time_text}")
+            button.setText(t("reader_web_resume_at", time=time_text))
             button.setToolTip(" ".join(tooltip_parts))
             button.setVisible(True)
         except Exception:
@@ -702,7 +715,7 @@ class _WebDockController:
         rows = self.current_source_rows()
         count = len(rows)
         try:
-            self.runtime.dock._cards_btn.setText(f"Cards {count}")
+            self.runtime.dock._cards_btn.setText(_web_card_count_label(count))
             self.runtime.dock._cards_btn.setVisible(count > 0)
         except Exception:
             pass
@@ -716,7 +729,7 @@ class _WebDockController:
         html = [
             "<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>",
             "<div style='font-weight:bold;color:rgb(74,144,217);margin-bottom:6px'>",
-            "Cards created at this URL",
+            escape(t("reader_web_cards_at_url")),
             "</div>",
             (
                 "<div style='color:#888;margin-bottom:8px;word-break:break-all'>"
@@ -730,7 +743,7 @@ class _WebDockController:
                 excerpt.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
-                or "<i style='color:#888'>No text</i>"
+                or f"<i style='color:#888'>{escape(t('reader_no_text'))}</i>"
             )
             html.append(
                 "<div style='margin-bottom:6px;padding:6px 8px;"
@@ -750,7 +763,7 @@ class _WebDockController:
             return
         rows = self.current_source_rows()
         if not rows:
-            tooltip("Incremento: no cards recorded for this URL yet.")
+            tooltip(t("reader_web_no_cards_at_url"))
             return
         self.refresh_cards_panel()
         try:
@@ -777,7 +790,7 @@ class _WebDockController:
             return
         rows = self.bookmark_rows()
         try:
-            self.runtime.dock._bookmarks_btn.setText(f"Bookmarks {len(rows)}")
+            self.runtime.dock._bookmarks_btn.setText(_web_bookmark_count_label(len(rows)))
         except Exception:
             pass
         panel = getattr(self.runtime.dock, "_bookmarks_panel", None)
@@ -786,13 +799,13 @@ class _WebDockController:
         html = [
             "<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>",
             "<div style='font-weight:bold;color:rgb(234,179,8);margin-bottom:6px'>",
-            "Interesting-place bookmarks",
+            escape(t("reader_interesting_bookmarks")),
             "</div>",
         ]
         if rows:
             for row in rows:
                 bookmark_id = escape(str(row.get("id") or ""), quote=True)
-                label = str(row.get("label") or "Bookmark")
+                label = str(row.get("label") or t("reader_bookmark"))
                 url = str((row.get("location") or {}).get("url") or "")
                 safe_label = escape(label, quote=True)
                 safe_url = escape(url, quote=True)
@@ -801,12 +814,12 @@ class _WebDockController:
                     "background:rgba(234,179,8,0.08);border-left:3px solid rgba(234,179,8,0.55)'>"
                     f"<div><b>{safe_label}</b></div>"
                     f"<div style='color:#888;word-break:break-all'>{safe_url}</div>"
-                    f"<a href='inc://web-bookmark-open/{bookmark_id}'>Jump</a> "
-                    f"<a href='inc://web-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                    f"<a href='inc://web-bookmark-open/{bookmark_id}'>{escape(t('reader_jump'))}</a> "
+                    f"<a href='inc://web-bookmark-delete/{bookmark_id}' style='color:#c66'>{escape(t('reader_delete'))}</a>"
                     "</div>"
                 )
         else:
-            html.append("<div style='color:#888'>No bookmarks yet.</div>")
+            html.append(f"<div style='color:#888'>{escape(t('reader_no_bookmarks'))}</div>")
         html.append("</div>")
         try:
             panel.setHtml("".join(html))
@@ -826,22 +839,22 @@ class _WebDockController:
 
     def save_bookmark(self) -> None:
         if self.runtime.dock is None or self.runtime.current_card_id is None:
-            tooltip("Incremento: no browser card is currently open.")
+            tooltip(t("reader_web_no_browser_card"))
             return
         try:
             target_card_id = int(self.runtime.current_card_id)
         except Exception:
-            tooltip("Incremento: no browser card is currently open.")
+            tooltip(t("reader_web_no_browser_card"))
             return
 
         def _handle(payload) -> None:
             if not isinstance(payload, dict):
-                tooltip("Incremento: couldn't place a bookmark here.")
+                tooltip(t("reader_web_bookmark_unavailable"))
                 return
             current_url = str(payload.get("url") or "").strip()
             bookmark = payload.get("bookmark")
             if not current_url or not isinstance(bookmark, dict):
-                tooltip("Incremento: couldn't place a bookmark here.")
+                tooltip(t("reader_web_bookmark_unavailable"))
                 return
             try:
                 add_reader_bookmark(
@@ -857,14 +870,14 @@ class _WebDockController:
                     },
                 )
             except Exception as exc:
-                showInfo(f"Failed to save bookmark:\n{exc}")
+                showInfo(t("reader_web_bookmark_save_failed", error=exc))
                 return
             self.refresh_bookmark_button()
             try:
                 self.runtime.dock._bookmarks_panel.setVisible(True)
             except Exception:
                 pass
-            tooltip("Incremento: bookmark saved.")
+            tooltip(t("reader_web_bookmark_saved"))
 
         try:
             _run_web_javascript(
@@ -873,14 +886,14 @@ class _WebDockController:
                 _handle,
             )
         except Exception as exc:
-            showInfo(f"Failed to save bookmark:\n{exc}")
+            showInfo(t("reader_web_bookmark_save_failed", error=exc))
 
     def extract_selection_to_field(self, idx: int) -> None:
         expected_profile = str(_active_profile() or "")
 
         def _apply(text: str, extract_record: dict | None) -> None:
             if not text:
-                tooltip("Select some text first.")
+                tooltip(t("reader_select_text_first"))
                 return
             try:
                 from . import add_card_dock as _add_card_dock_mod
@@ -921,7 +934,7 @@ class _WebDockController:
                         extract_record,
                         expected_profile=expected_profile,
                     )
-                showInfo(f"Web extraction failed:\n{exc}")
+                showInfo(t("reader_web_extract_failed", error=exc))
 
         _resolve_web_extraction(_apply)
 
@@ -945,7 +958,7 @@ class _WebDockController:
         os.close(fd)
         try:
             if not pixmap.save(tmp_path, "PNG"):
-                raise RuntimeError("Could not encode snapshot image.")
+                raise RuntimeError(t("web_snapshot_encode_failed"))
             media_filename = mw.col.media.add_file(tmp_path)
         finally:
             try:
@@ -964,7 +977,7 @@ class _WebDockController:
         except Exception:
             pass
         if not field_names:
-            field_names = [f"Field {i + 1}" for i in range(4)]
+            field_names = [t("reader_field_number", number=i + 1) for i in range(4)]
 
         scaled = pixmap
         if scaled.width() > 300:
@@ -979,7 +992,7 @@ class _WebDockController:
             )
 
         picker = QDialog(mw)
-        picker.setWindowTitle("Insert snapshot into field")
+        picker.setWindowTitle(t("reader_web_insert_snapshot"))
         picker.setFixedWidth(340)
         layout = QVBoxLayout(picker)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -991,7 +1004,7 @@ class _WebDockController:
         layout.addWidget(preview_lbl)
 
         layout.addSpacing(14)
-        layout.addWidget(QLabel("Insert image into:"))
+        layout.addWidget(QLabel(t("reader_web_insert_image_into")))
         layout.addSpacing(8)
 
         chosen_idx = [-1]
@@ -1011,7 +1024,7 @@ class _WebDockController:
             layout.addSpacing(4)
 
         layout.addSpacing(8)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(t("reader_cancel"))
         cancel_btn.clicked.connect(picker.reject)
         layout.addWidget(cancel_btn)
 
@@ -1037,7 +1050,7 @@ class _WebDockController:
             width = max(0, int(round(float(data.get("width") or 0))))
             height = max(0, int(round(float(data.get("height") or 0))))
         except Exception as exc:
-            raise RuntimeError(f"Invalid snapshot bounds: {exc}") from exc
+            raise RuntimeError(t("web_snapshot_invalid_bounds", error=exc)) from exc
         if width < 6 or height < 6:
             return
         current_url = str(data.get("url") or self.current_display_url()).strip()
@@ -1046,9 +1059,9 @@ class _WebDockController:
                 self.runtime.dock._view
             )
         except Exception as exc:
-            raise RuntimeError(f"Could not capture web view: {exc}") from exc
+            raise RuntimeError(t("web_snapshot_capture_failed_detail", error=exc)) from exc
         if pixmap.isNull():
-            raise RuntimeError("Could not capture web view.")
+            raise RuntimeError(t("web_snapshot_capture_failed"))
         try:
             dpr = float(pixmap.devicePixelRatio())
         except Exception:
@@ -1060,7 +1073,7 @@ class _WebDockController:
             int(round(height * dpr)),
         )
         if crop.isNull():
-            raise RuntimeError("The selected region was outside the current viewport.")
+            raise RuntimeError(t("web_snapshot_outside_viewport"))
         try:
             crop.setDevicePixelRatio(dpr)
         except Exception:
@@ -1084,7 +1097,7 @@ class _WebDockController:
         )
 
         self.runtime.track_window_with_extension = _track_web_window_with_extension_default()
-        dock = QDockWidget("Web", mw)
+        dock = QDockWidget(t("reader_web_name"), mw)
         dock.setObjectName("incremento_web_dock")
         dock.setMinimumWidth(600)
 
@@ -1142,88 +1155,88 @@ class _WebDockController:
         url_lbl = QLabel("")
         url_lbl.setStyleSheet("font-family: monospace; font-size: 11px; color: #888;")
         url_lbl.setWordWrap(False)
-        url_lbl.setAccessibleName("Web reader status and current address")
+        url_lbl.setAccessibleName(t("reader_web_status_accessible"))
         ctrl_layout.addWidget(url_lbl, 0, 0, 1, 2)
 
         back_btn = _make_web_button(
             ctrl,
-            "Back",
-            "Go back one page in the Web reader.",
+            t("reader_back"),
+            t("reader_web_back_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_ArrowBack),
         )
         search_btn = _make_web_button(
             ctrl,
-            "Search",
-            "Find text in the current web page.",
+            t("reader_search"),
+            t("reader_web_search_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
         )
 
         add_card_btn = _make_web_button(
             ctrl,
-            "Add Card",
-            "Open the Add Card dock.",
+            t("reader_add_card"),
+            t("reader_web_add_card_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogNewFolder),
         )
         extract_btn = _make_web_button(
             ctrl,
-            "Extract",
-            "Copy the current text selection into a field in the Add Card dock.",
+            t("reader_extract"),
+            t("reader_web_extract_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_DialogSaveButton),
         )
         snapshot_btn = _make_web_button(
             ctrl,
-            "Snapshot",
-            "Capture an image from the current viewport, like the PDF snapshot tool.",
+            t("reader_snapshot"),
+            t("reader_web_snapshot_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogContentsView),
         )
         bookmark_btn = _make_web_button(
             ctrl,
-            "Bookmark",
-            "Save the current web location as a permanent interesting-place bookmark.",
+            t("reader_bookmark"),
+            t("reader_web_bookmark_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_DialogYesButton),
         )
         bookmarks_btn = _make_web_button(
             ctrl,
-            "Bookmarks 0",
-            "Show saved web bookmarks for this card.",
+            _web_bookmark_count_label(0),
+            t("reader_web_bookmarks_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
         )
         cards_btn = _make_web_button(
             ctrl,
-            "Cards 0",
-            "Show cards created from the current URL.",
+            _web_card_count_label(0),
+            t("reader_web_cards_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
         )
         cards_btn.setVisible(False)
         home_btn = _make_web_button(
             ctrl,
-            "Home",
-            "Return the dock to the web card's stored homepage.",
+            t("reader_home"),
+            t("reader_web_home_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_DirHomeIcon),
         )
         window_btn = _make_web_button(
             ctrl,
-            "Open Page",
-            "Open the current page in your system browser.",
+            t("reader_web_open_page"),
+            t("reader_web_open_page_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
         )
         homepage_window_btn = _make_web_button(
             ctrl,
-            "Open Home",
-            "Open the original homepage for this web card in your system browser.",
+            t("reader_web_open_home"),
+            t("reader_web_open_home_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_DirOpenIcon),
         )
         resume_btn = _make_web_button(
             ctrl,
-            "Resume",
-            "Reopen saved media progress in your system browser.",
+            t("reader_web_resume"),
+            t("reader_web_resume_hint"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
         )
         resume_btn.setVisible(False)
         review_all_btn = _make_web_button(
             ctrl,
-            "Review All",
-            "Review All is not available in the Web reader yet.",
+            t("reader_review_all"),
+            t("reader_web_review_all_unavailable"),
             icon=_standard_icon(QStyle.StandardPixmap.SP_MediaPlay),
         )
 
@@ -1238,33 +1251,32 @@ class _WebDockController:
             },
         )
 
-        track_cb = QCheckBox("Track via Chrome extension")
+        track_cb = QCheckBox(t("reader_web_track_extension"))
         track_cb.setChecked(bool(self.runtime.track_window_with_extension))
         track_cb.setToolTip(
-            "When checked, opening this page externally lets the Incremento Companion "
-            "extension keep the web card synced to the latest page visited in that tab."
+            t("reader_web_track_extension_hint")
         )
         ctrl_layout.addWidget(track_cb, 0, 2, alignment=Qt.AlignmentFlag.AlignRight)
 
         capture_group = _make_web_group(
             ctrl,
-            "Capture",
+            t("reader_web_group_capture"),
             add_card_btn,
             extract_btn,
             snapshot_btn,
         )
         saved_group = _make_web_group(
             ctrl,
-            "Saved",
+            t("reader_web_group_saved"),
             bookmark_btn,
             bookmarks_btn,
             cards_btn,
         )
-        nav_group = _make_web_group(ctrl, "Navigate", back_btn, search_btn, home_btn)
-        review_group = _make_web_group(ctrl, "Review", review_all_btn)
+        nav_group = _make_web_group(ctrl, t("reader_web_group_navigate"), back_btn, search_btn, home_btn)
+        review_group = _make_web_group(ctrl, t("reader_web_group_review"), review_all_btn)
         external_group = _make_web_group(
             ctrl,
-            "External",
+            t("reader_web_group_external"),
             window_btn,
             homepage_window_btn,
             resume_btn,
@@ -1420,12 +1432,14 @@ class _WebDockController:
 
         def _find_in_page() -> None:
             previous = str(getattr(self.runtime, "last_find_query", "") or "")
-            query, accepted = QInputDialog.getText(
-                dock,
-                "Search Current Web Page",
-                "Text:",
-                text=previous,
-            )
+            prompt = QInputDialog(dock)
+            prompt.setWindowTitle(t("reader_web_search_page"))
+            prompt.setLabelText(t("reader_text_prompt"))
+            prompt.setTextValue(previous)
+            prompt.setOkButtonText(t("reader_ok"))
+            prompt.setCancelButtonText(t("reader_cancel"))
+            accepted = prompt.exec()
+            query = prompt.textValue()
             normalized = str(query or "").strip()
             if not accepted or not normalized:
                 return
@@ -1477,12 +1491,12 @@ class _WebDockController:
 
     def open_in_window(self) -> None:
         if self.runtime.current_card_id is None:
-            tooltip("Incremento: no web card is currently open.")
+            tooltip(t("reader_web_no_card"))
             return
 
         current_url = self.current_display_url()
         if not current_url:
-            tooltip("Incremento: this web card has no valid URL.")
+            tooltip(t("reader_web_invalid_url"))
             return
 
         track_enabled = False
@@ -1507,13 +1521,12 @@ class _WebDockController:
         except Exception:
             ok = False
         if not ok:
-            tooltip("Incremento: failed to open system browser.")
+            tooltip(t("reader_open_system_browser_failed"))
             return
 
         if track_enabled:
             tooltip(
-                "Incremento: browser tracking enabled for this web card tab "
-                "(requires the Incremento Companion extension)."
+                t("reader_web_tracking_tab_enabled")
             )
 
     def _copy_text_to_clipboard(self, text: str) -> bool:
@@ -1534,20 +1547,20 @@ class _WebDockController:
 
     def open_media_resume_in_window(self) -> None:
         if self.runtime.current_card_id is None:
-            tooltip("Incremento: no web card is currently open.")
+            tooltip(t("reader_web_no_card"))
             return
 
         progress = self.progress_state()
         seconds = float(progress.get("media_seconds") or 0.0)
         if seconds <= 0:
-            tooltip("Incremento: no saved media time for this web card yet.")
+            tooltip(t("reader_web_no_saved_media_time"))
             return
 
         current_url = self.current_display_url() or str(progress.get("url") or "").strip()
         if not current_url:
             current_url = str(self.runtime.current_home_url or "").strip()
         if not current_url:
-            tooltip("Incremento: this web card has no valid URL.")
+            tooltip(t("reader_web_invalid_url"))
             return
 
         media_url = str(progress.get("media_url") or "").strip()
@@ -1595,27 +1608,26 @@ class _WebDockController:
         except Exception:
             ok = False
         if not ok:
-            tooltip("Incremento: failed to open system browser.")
+            tooltip(t("reader_open_system_browser_failed"))
             return
 
         if prefer_original_page:
             tooltip(
-                "Incremento: reopening the original page and resuming the embedded media there "
-                "(requires the Incremento Companion extension)."
+                t("reader_web_resuming_original")
             )
             return
 
         if copied_time:
-            tooltip(f"Incremento: copied saved media time {time_text}.")
+            tooltip(t("reader_web_media_time_copied", time=time_text))
 
     def open_homepage_in_window(self) -> None:
         if self.runtime.current_card_id is None:
-            tooltip("Incremento: no web card is currently open.")
+            tooltip(t("reader_web_no_card"))
             return
 
         home_url = str(self.runtime.current_home_url or "").strip()
         if not home_url:
-            tooltip("Incremento: this web card has no homepage URL.")
+            tooltip(t("reader_web_no_homepage"))
             return
 
         track_enabled = False
@@ -1636,13 +1648,12 @@ class _WebDockController:
         except Exception:
             ok = False
         if not ok:
-            tooltip("Incremento: failed to open system browser.")
+            tooltip(t("reader_open_system_browser_failed"))
             return
 
         if track_enabled:
             tooltip(
-                "Incremento: browser tracking enabled for this web card homepage "
-                "(requires the Incremento Companion extension)."
+                t("reader_web_tracking_home_enabled")
             )
 
     def go_home(self) -> None:
@@ -1704,7 +1715,7 @@ class _WebDockController:
             self.runtime.dock._cards_panel.hide()
             self.runtime.dock._cards_panel.setHtml("")
             self.runtime.dock._cards_btn.setVisible(False)
-            self.runtime.dock._cards_btn.setText("Cards 0")
+            self.runtime.dock._cards_btn.setText(_web_card_count_label(0))
         except Exception:
             pass
         self.refresh_bookmark_button()
@@ -1930,8 +1941,7 @@ class _WebDockController:
                     _remove_native_web_extraction_marker(record)
             if failed_anchor_writes:
                 tooltip(
-                    "Incremento: the note was added, but its Web extraction "
-                    "marker could not be saved."
+                    t("reader_web_marker_save_failed")
                 )
             # The Add Card hook clears the pending draft immediately after
             # this hook. Queue a repaint even when supplemental persistence
@@ -2126,10 +2136,10 @@ class _WebInteractionFilter(QObject):
             try:
                 pixmap = _grab_web_view_without_extraction_markers(view, rect)
             except Exception as exc:
-                showInfo(f"Web snapshot failed:\n{exc}")
+                showInfo(t("reader_web_snapshot_failed", error=exc))
                 return True
             if pixmap.isNull():
-                showInfo("Web snapshot failed:\nCould not capture selected region.")
+                showInfo(t("reader_web_snapshot_capture_failed"))
                 return True
             expected_profile = str(_active_profile() or "")
 
@@ -2142,7 +2152,7 @@ class _WebInteractionFilter(QObject):
                         expected_profile=expected_profile,
                     )
                 except Exception as exc:
-                    showInfo(f"Web snapshot failed:\n{exc}")
+                    showInfo(t("reader_web_snapshot_failed", error=exc))
 
             _resolve_web_snapshot_anchor(rect, _insert_snapshot)
             return True
@@ -3118,19 +3128,19 @@ def _get_add_card_field_names() -> list[str]:
                     return field_names
     except Exception:
         pass
-    return [f"Field {i + 1}" for i in range(4)]
+    return [t("reader_field_number", number=i + 1) for i in range(4)]
 
 
 def _prompt_extract_target_field() -> int:
     field_names = _get_add_card_field_names()
     picker = QDialog(mw)
-    picker.setWindowTitle("Extract selection into field")
+    picker.setWindowTitle(t("reader_web_extract_into_field"))
     picker.setFixedWidth(340)
     layout = QVBoxLayout(picker)
     layout.setContentsMargins(16, 16, 16, 16)
     layout.setSpacing(0)
 
-    layout.addWidget(QLabel("Insert selected text into:"))
+    layout.addWidget(QLabel(t("reader_web_insert_text_into")))
     layout.addSpacing(12)
 
     chosen_idx = [-1]
@@ -3150,7 +3160,7 @@ def _prompt_extract_target_field() -> int:
         layout.addSpacing(4)
 
     layout.addSpacing(8)
-    cancel_btn = QPushButton("Cancel")
+    cancel_btn = QPushButton(t("reader_cancel"))
     cancel_btn.clicked.connect(picker.reject)
     layout.addWidget(cancel_btn)
 
@@ -3221,7 +3231,7 @@ def _set_web_snapshot_mode(active: bool) -> None:
                 pass
         try:
             _runtime.dock._snapshot_btn.setText(
-                "Drag to Capture" if _runtime.snapshot_mode else "Snapshot"
+                t("reader_web_drag_to_capture") if _runtime.snapshot_mode else t("reader_snapshot")
             )
             _runtime.dock._snapshot_btn.setStyleSheet(
                 (
@@ -3301,7 +3311,7 @@ def _open_result_link(qurl) -> None:
                 bookmark_id,
             )
         except Exception as exc:
-            showInfo(f"Could not delete web bookmark:\n{exc}")
+            showInfo(t("reader_web_bookmark_delete_failed", error=exc))
         _controller.refresh_bookmarks_panel()
         return
     if s.startswith("inc://web-bookmark-open/"):
@@ -3461,15 +3471,15 @@ def add_web_function() -> None:
         return
     url = dlg.url
     if not url:
-        showInfo("Please enter a URL.")
+        showInfo(t("reader_web_enter_url"))
         return
     title = dlg.title or url
     try:
         add_web_card(mw.col, url, title, dlg.deck_name, tags=dlg.tags)
         mw.col.reset()
-        tooltip(f"Web card '{title}' added to {dlg.deck_name}.")
+        tooltip(t("reader_web_card_added", title=title, deck=dlg.deck_name))
     except Exception as e:
-        showInfo(f"Failed to add web card:\n{e}")
+        showInfo(t("reader_web_card_add_failed", error=e))
 
 
 def get_selected_text(callback) -> None:

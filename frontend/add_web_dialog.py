@@ -8,24 +8,30 @@ except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 class AddWebDialog(QDialog):
     """Dialog to add a new web page as an Incremento Web card."""
 
     def __init__(self, deck_names: list, default_deck: str = "Topics", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add Web Page")
+        self.setWindowTitle(_t("imports_add_web_page"))
         self.setMinimumWidth(480)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
         layout.setContentsMargins(14, 14, 14, 14)
 
-        layout.addWidget(QLabel("URL:"))
+        layout.addWidget(QLabel(_t("imports_url_label")))
         self._url_edit = QLineEdit()
-        self._url_edit.setPlaceholderText("https://…")
+        self._url_edit.setPlaceholderText(_t("imports_https_placeholder"))
         layout.addWidget(self._url_edit)
 
-        layout.addWidget(QLabel("Title:"))
+        layout.addWidget(QLabel(_t("imports_title_label")))
         self._title_edit = QLineEdit()
         layout.addWidget(self._title_edit)
 
@@ -33,7 +39,7 @@ class AddWebDialog(QDialog):
         layout.addWidget(self._tag_edit)
 
         dk_row = QHBoxLayout()
-        dk_row.addWidget(QLabel("Deck:"))
+        dk_row.addWidget(QLabel(_t("imports_deck_label")))
         self._dk_combo = QComboBox()
         for d in deck_names:
             self._dk_combo.addItem(d)
@@ -45,9 +51,9 @@ class AddWebDialog(QDialog):
         layout.addLayout(dk_row)
 
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Add Page")
+        ok_btn = QPushButton(_t("imports_add_page"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)

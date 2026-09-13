@@ -1,5 +1,6 @@
 {
     "config_schema_version": 2,
+    "ui_language": "auto",
     "onboarding_completed_version": 0,
     "scheduler_presets": {},
     "automatic_backups": {},
@@ -60,12 +61,42 @@
     "topic_postpone_minutes": 30,
     "custom_schedule_default_mode": "minimum_cadence",
     "custom_schedule_presets": [
-        {"label": "Daily", "interval_value": 1, "interval_unit": "days"},
-        {"label": "Every 2 days", "interval_value": 2, "interval_unit": "days"},
-        {"label": "Every 3 days", "interval_value": 3, "interval_unit": "days"},
-        {"label": "Weekly", "interval_value": 1, "interval_unit": "weeks"},
-        {"label": "Every 2 weeks", "interval_value": 2, "interval_unit": "weeks"},
-        {"label": "Monthly", "interval_value": 1, "interval_unit": "months"}
+        {
+            "label": "Daily",
+            "interval_value": 1,
+            "interval_unit": "days",
+            "builtin_id": "daily"
+        },
+        {
+            "label": "Every 2 days",
+            "interval_value": 2,
+            "interval_unit": "days",
+            "builtin_id": "every_2_days"
+        },
+        {
+            "label": "Every 3 days",
+            "interval_value": 3,
+            "interval_unit": "days",
+            "builtin_id": "every_3_days"
+        },
+        {
+            "label": "Weekly",
+            "interval_value": 1,
+            "interval_unit": "weeks",
+            "builtin_id": "weekly"
+        },
+        {
+            "label": "Every 2 weeks",
+            "interval_value": 2,
+            "interval_unit": "weeks",
+            "builtin_id": "every_2_weeks"
+        },
+        {
+            "label": "Monthly",
+            "interval_value": 1,
+            "interval_unit": "months",
+            "builtin_id": "monthly"
+        }
     ],
     "topic_card_types": {
         "pdf_epub": true,

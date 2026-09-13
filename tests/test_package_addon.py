@@ -24,6 +24,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "config.json",
         "README.md",
         "MANUAL.md",
+        "TRANSLATING.md",
         "EXPORTING.md",
         "ARCHITECTURE.md",
         "SECURITY.md",
@@ -63,6 +64,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
 
     for relpath in (
         "frontend/__init__.py",
+        "frontend/language_pack_settings.py",
         "frontend/pdf_dock.py",
         "frontend/note_type_update_dialog.py",
         "frontend/session_launcher.py",
@@ -123,6 +125,15 @@ def make_fake_repo(tmp_path: Path) -> Path:
     ):
         write_file(repo, relpath)
 
+    write_file(repo, "backend/i18n.py")
+    write_file(repo, "backend/language_packs.py")
+    for name in ('translation_catalog.json', 'builtin_translation_packs.json', 'cardinal_rules.json', 'UNICODE_LICENSE.txt'):
+        write_file(repo, 'locales/' + name)
+    for locale in ("en", "hr", "zh-Hans"):
+        for domain in ("core", "qt", "readers", "root", "backend", "admin", "imports"):
+            write_file(repo, f"locales/{locale}/LC_MESSAGES/incremento_{domain}.mo")
+    for locale in ("en", "hr", "zh_CN"):
+        write_file(repo, f"chrome_extensions/incremento_companion/_locales/{locale}/messages.json", "{}")
     write_file(repo, "tests/test_private.py")
     return repo
 
@@ -308,3 +319,72 @@ def test_package_addon_defaults_to_timestamped_ankiaddon_name(tmp_path: Path) ->
     artifacts = list(output_dir.glob("incremento-addon-*.ankiaddon"))
     assert len(artifacts) == 1
     assert not list(output_dir.glob("*.zip"))
+
+
+def test_package_includes_language_catalogs_only(tmp_path):
+    repo = make_fake_repo(tmp_path)
+    expected = set()
+    for locale in ('en', 'hr', 'zh-Hans'):
+        for domain in ('core', 'qt', 'readers', 'root', 'backend', 'admin', 'imports'):
+            rel = f'locales/{locale}/LC_MESSAGES/incremento_{domain}.mo'
+            write_file(repo, rel, 'compiled catalog')
+            expected.add(rel)
+        write_file(repo, f'locales/{locale}/LC_MESSAGES/private.txt')
+        write_file(repo, f'locales/{locale}/LC_MESSAGES/incremento_core.po')
+    for locale in ('en', 'hr', 'zh_CN'):
+        rel = f'chrome_extensions/incremento_companion/_locales/{locale}/messages.json'
+        write_file(repo, rel, '{}')
+        expected.add(rel)
+        write_file(repo, f'chrome_extensions/incremento_companion/_locales/{locale}/private.txt')
+    names = archive_names(run_package(repo, tmp_path / 'out'))
+    assert expected <= names
+    assert not any(name.endswith(('private.txt', '.po')) for name in names)
+
+
+def test_package_refuses_symlink_language_catalog(tmp_path):
+    import pytest
+    repo = make_fake_repo(tmp_path)
+    secret = tmp_path / 'private.txt'
+    secret.write_text('private sentinel')
+    catalog = repo / 'locales/hr/LC_MESSAGES/incremento_core.mo'
+    catalog.parent.mkdir(parents=True, exist_ok=True)
+    if catalog.exists():
+        catalog.unlink()
+    catalog.symlink_to(secret)
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        run_package(repo, tmp_path / 'out')
+    assert 'symlink' in failure.value.stderr.lower()
+
+
+def test_package_ships_custom_language_schema_offline_plural_rules_and_unicode_license(tmp_path):
+    repo = make_fake_repo(tmp_path)
+    write_file(repo, 'locales/unlisted.json', '{"private":true}')
+    write_file(repo, 'user_files/TestProfile/language_packs/de.json', '{"private":true}')
+    names = archive_names(run_package(repo, tmp_path / 'out'))
+    assert {'backend/language_packs.py', 'locales/translation_catalog.json',
+            'locales/builtin_translation_packs.json', 'locales/cardinal_rules.json',
+            'locales/UNICODE_LICENSE.txt'} <= names
+    assert 'locales/unlisted.json' not in names
+    assert not any(name.startswith('user_files/') for name in names)
+
+
+def test_package_rejects_symlink_custom_language_schema(tmp_path):
+    import pytest
+    repo = make_fake_repo(tmp_path)
+    secret = tmp_path / 'private.json'
+    secret.write_text('{"private":true}')
+    schema = repo / 'locales/translation_catalog.json'
+    schema.unlink()
+    schema.symlink_to(secret)
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_package(repo, tmp_path / 'out')
+    assert 'symlink' in error.value.stderr.lower()
+
+
+def test_package_requires_custom_language_settings_adapter(tmp_path):
+    import pytest
+    repo = make_fake_repo(tmp_path)
+    (repo / 'frontend/language_pack_settings.py').unlink()
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_package(repo, tmp_path / 'out')
+    assert 'frontend/language_pack_settings.py' in error.value.stderr

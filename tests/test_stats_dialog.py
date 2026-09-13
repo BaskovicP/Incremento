@@ -13,6 +13,17 @@ sys.modules["_incremento_stats_dialog"] = _mod
 _spec.loader.exec_module(_mod)
 
 
+def test_chart_accessibility_summary_translates_empty_and_overflow_text(monkeypatch):
+    from backend.i18n import Translator
+    translator = Translator('zh-Hans')
+    monkeypatch.setattr(_mod, 't', translator.t)
+    monkeypatch.setattr(_mod, 'tn', translator.tn)
+    assert _mod._accessible_chart_summary('English user label', []) == 'English user label。暂无数据。'
+    text = _mod._accessible_chart_summary('English user label', [('tag1', 1), ('tag2', 2)], maximum_items=1)
+    assert 'English user label' in text and 'tag1' in text
+    assert '还有 1 个值' in text and 'more values' not in text
+
+
 def test_ordered_type_items_includes_document_and_web_types():
     items = _mod._ordered_type_items(
         {
@@ -123,7 +134,7 @@ def test_history_summary_metrics_reports_cards_pages_time_and_active_days():
 def test_history_chart_series_keeps_topics_items_other_pdf_and_epub_separate():
     series = _mod._history_chart_series(_history_fixture())
 
-    assert series["labels"] == ["4/21", "4/22", "4/23"]
+    assert series["labels"] == ["4/21/2026", "4/22/2026", "4/23/2026"]
     assert series["cards"] == [
         ("Topics", [2.0, 0.0, 1.0]),
         ("Items", [1.0, 0.0, 3.0]),

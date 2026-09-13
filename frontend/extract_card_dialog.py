@@ -6,8 +6,10 @@ from aqt.qt import (
 
 try:
     from ..backend.reviewer_extract import knowledge_tree_link_state
+    from ..backend.i18n import t as _t
 except ImportError:
     from reviewer_extract import knowledge_tree_link_state  # type: ignore
+    from backend.i18n import t as _t
 
 
 class ExtractCardDialog(QDialog):
@@ -32,7 +34,7 @@ class ExtractCardDialog(QDialog):
                  default_link_to_knowledge_tree: bool = False,
                  parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Extract Card")
+        self.setWindowTitle(_t("imports_extract_title"))
         self.setMinimumWidth(500)
         self.setMinimumHeight(460)
 
@@ -50,7 +52,7 @@ class ExtractCardDialog(QDialog):
 
         # ── Note type ─────────────────────────────────────────────────────────
         nt_row = QHBoxLayout()
-        nt_row.addWidget(QLabel("Note type:"))
+        nt_row.addWidget(QLabel(_t("imports_extract_note_type")))
         self._nt_combo = QComboBox()
         for nt in notetypes:
             self._nt_combo.addItem(nt["name"])
@@ -59,7 +61,7 @@ class ExtractCardDialog(QDialog):
 
         # ── Deck ──────────────────────────────────────────────────────────────
         dk_row = QHBoxLayout()
-        dk_row.addWidget(QLabel("Deck:"))
+        dk_row.addWidget(QLabel(_t("imports_extract_deck")))
         self._dk_combo = QComboBox()
         for d in deck_names:
             self._dk_combo.addItem(d)
@@ -68,7 +70,7 @@ class ExtractCardDialog(QDialog):
 
         # ── Extract defaults ─────────────────────────────────────────────────
         options_row = QHBoxLayout()
-        options_row.addWidget(QLabel("Priority:"))
+        options_row.addWidget(QLabel(_t("imports_priority_label")))
         self._priority_spin = QDoubleSpinBox()
         self._priority_spin.setRange(0.0, 100.0)
         self._priority_spin.setDecimals(1)
@@ -80,15 +82,15 @@ class ExtractCardDialog(QDialog):
         self._priority_spin.setValue(max(0.0, min(100.0, priority)))
         important_end = "0" if lower_is_more_important else "100"
         self._priority_spin.setToolTip(
-            f"Priority for the extracted card. {important_end} is the most important end."
+            _t("imports_extract_priority_help", end=important_end)
         )
         options_row.addWidget(self._priority_spin)
-        self._mark_topic_cb = QCheckBox("Topic")
+        self._mark_topic_cb = QCheckBox(_t("imports_extract_topic"))
         self._mark_topic_cb.setChecked(bool(default_mark_topic))
-        self._mark_topic_cb.setToolTip("Add the configured topic tags to this extracted card.")
+        self._mark_topic_cb.setToolTip(_t("imports_extract_topic_help"))
         options_row.addWidget(self._mark_topic_cb)
         tree_link_state = knowledge_tree_link_state(bool(knowledge_tree_link_enabled))
-        self._knowledge_tree_link_cb = QCheckBox("Auto-add lineage to knowledge tree")
+        self._knowledge_tree_link_cb = QCheckBox(_t("imports_extract_tree"))
         self._knowledge_tree_link_cb.setChecked(
             bool(tree_link_state["checked"] and default_link_to_knowledge_tree)
         )
@@ -111,9 +113,9 @@ class ExtractCardDialog(QDialog):
 
         # ── Buttons ───────────────────────────────────────────────────────────
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Create Card")
+        ok_btn = QPushButton(_t("imports_extract_create"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)

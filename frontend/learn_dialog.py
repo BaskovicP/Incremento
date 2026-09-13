@@ -17,6 +17,11 @@ from aqt.qt import (
 from aqt.utils import showInfo, tooltip
 
 try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn  # type: ignore
+
+try:
     from .session_setup_model import (
         ADVANCED_MODE,
         BASIC_MODE,
@@ -250,6 +255,32 @@ def _compose_branch_query(query: str, branch_clause: str) -> str:
     return base
 
 
+def session_type_label(value: object) -> str:
+    """Translate known presentation values without changing scheduler identity."""
+    key = str(value or "?")
+    message_id = {
+        "topics": "session_topics", "topic": "session_topics",
+        "items": "session_items", "item": "session_items",
+        "video": "ui_type_video", "youtube": "ui_type_video",
+        "webpage": "ui_type_webpage", "web": "ui_type_webpage",
+        "writing": "ui_type_writing", "local_file": "ui_type_local_file",
+        "other": "session_other",
+    }.get(key)
+    return t(message_id) if message_id else key.upper() if key in {"pdf", "epub"} else key
+
+
+def session_mode_label(value: object) -> str:
+    key = str(value or "?")
+    message_id = {"priority": "session_priority", "random": "session_random"}.get(key)
+    return t(message_id) if message_id else key
+
+
+def _preview_tag_label(value: object) -> str:
+    if value == NO_TAGS_KEY:
+        return t("session_other")
+    return str(value) if value else t("admin_session_no_tag")
+
+
 class _SortTableWidgetItem(QTableWidgetItem):
     """Table item that sorts by explicit key when provided."""
 
@@ -274,7 +305,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
         self._owner = owner
         self._entries: list[dict] = []
 
-        self.setWindowTitle("Live Scheduler Preview")
+        self.setWindowTitle(t("session_live_preview_title"))
         self.resize(980, 620)
         self._current_entry: dict | None = None
         self._pdf_limit_loading = False
@@ -283,25 +314,20 @@ class _LiveSchedulerPreviewDialog(QDialog):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        self._summary_lbl = QLabel("Click Refresh to preview current scheduler output.")
+        self._summary_lbl = QLabel(t("session_live_preview_refresh_hint"))
         self._summary_lbl.setWordWrap(True)
         self._summary_lbl.setStyleSheet("color: gray;")
         root.addWidget(self._summary_lbl)
 
-        self._disclaimer_lbl = QLabel(
-            "Preview disclaimer: this is one sampled scheduler run. "
-            "If you start normally, scheduling reruns and may differ, especially in soft mode."
-        )
+        self._disclaimer_lbl = QLabel(t("session_live_preview_disclaimer"))
         self._disclaimer_lbl.setWordWrap(True)
         self._disclaimer_lbl.setStyleSheet("color: #8a4b00; font-size: small;")
         root.addWidget(self._disclaimer_lbl)
 
-        self._use_live_preview_cb = QCheckBox(
-            "Use this previewed card list when starting (skip scheduler rerun)"
-        )
+        self._use_live_preview_cb = QCheckBox(t("session_use_previewed_list"))
         self._use_live_preview_cb.setChecked(owner._use_live_preview_enabled)
         self._use_live_preview_cb.setToolTip(
-            "When enabled, Start Session reuses the latest refreshed preview list exactly."
+            t("session_use_previewed_list_tooltip")
         )
         qconnect(
             self._use_live_preview_cb.stateChanged,
@@ -312,7 +338,9 @@ class _LiveSchedulerPreviewDialog(QDialog):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(["#", "Type", "Mode", "Tag", "Card"])
+        self._table.setHorizontalHeaderLabels(
+            ["#", t("session_type"), t("session_mode"), t("session_tag"), t("session_card")]
+        )
         self._table.verticalHeader().setVisible(False)
         self._table.setAlternatingRowColors(True)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -346,11 +374,11 @@ class _LiveSchedulerPreviewDialog(QDialog):
         pdf_limit_layout.setContentsMargins(8, 8, 8, 8)
         pdf_limit_layout.setSpacing(6)
 
-        pdf_limit_title = QLabel("PDF Daily Reading Limit")
+        pdf_limit_title = QLabel(t("session_pdf_daily_limit"))
         pdf_limit_title.setStyleSheet("font-weight: 600;")
         pdf_limit_layout.addWidget(pdf_limit_title)
 
-        self._pdf_limit_summary = QLabel("Select a PDF card to edit its daily page limit.")
+        self._pdf_limit_summary = QLabel(t("session_pdf_limit_select_card"))
         self._pdf_limit_summary.setWordWrap(True)
         self._pdf_limit_summary.setStyleSheet("color: gray;")
         pdf_limit_layout.addWidget(self._pdf_limit_summary)
@@ -359,9 +387,9 @@ class _LiveSchedulerPreviewDialog(QDialog):
         pdf_limit_form.setContentsMargins(0, 0, 0, 0)
         pdf_limit_form.setSpacing(6)
 
-        self._pdf_limit_enabled = QCheckBox("Enable daily page limit for this PDF")
+        self._pdf_limit_enabled = QCheckBox(t("session_pdf_limit_enable"))
         qconnect(self._pdf_limit_enabled.toggled, self._on_pdf_limit_form_changed)
-        pdf_limit_form.addRow("Enabled:", self._pdf_limit_enabled)
+        pdf_limit_form.addRow(t("common_enabled"), self._pdf_limit_enabled)
 
         limit_row = QWidget(self)
         limit_row_layout = QHBoxLayout(limit_row)
@@ -373,18 +401,18 @@ class _LiveSchedulerPreviewDialog(QDialog):
         qconnect(self._pdf_limit_spin.valueChanged, self._on_pdf_limit_form_changed)
         limit_row_layout.addWidget(self._pdf_limit_spin)
         self._pdf_limit_mode = QComboBox(self)
-        self._pdf_limit_mode.addItem("Warning only", "warning")
-        self._pdf_limit_mode.addItem("Soft lock + override", "soft_lock")
-        self._pdf_limit_mode.addItem("Hard stop", "hard_stop")
+        self._pdf_limit_mode.addItem(t("session_pdf_limit_warning"), "warning")
+        self._pdf_limit_mode.addItem(t("session_pdf_limit_soft_lock"), "soft_lock")
+        self._pdf_limit_mode.addItem(t("session_pdf_limit_hard_stop"), "hard_stop")
         qconnect(self._pdf_limit_mode.currentIndexChanged, self._on_pdf_limit_form_changed)
         limit_row_layout.addWidget(self._pdf_limit_mode, 1)
-        pdf_limit_form.addRow("Limit:", limit_row)
+        pdf_limit_form.addRow(t("session_pdf_limit"), limit_row)
         pdf_limit_layout.addLayout(pdf_limit_form)
 
         pdf_limit_actions = QHBoxLayout()
         pdf_limit_actions.setContentsMargins(0, 0, 0, 0)
         pdf_limit_actions.addStretch()
-        self._pdf_limit_save_btn = QPushButton("Save PDF limit")
+        self._pdf_limit_save_btn = QPushButton(t("session_save_pdf_limit"))
         qconnect(self._pdf_limit_save_btn.clicked, self._save_selected_pdf_limit)
         pdf_limit_actions.addWidget(self._pdf_limit_save_btn)
         pdf_limit_layout.addLayout(pdf_limit_actions)
@@ -397,10 +425,10 @@ class _LiveSchedulerPreviewDialog(QDialog):
 
         row = QHBoxLayout()
         row.addStretch()
-        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn = QPushButton(t("common_refresh"))
         qconnect(self._refresh_btn.clicked, self.refresh_now)
         row.addWidget(self._refresh_btn)
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(t("common_close"))
         qconnect(close_btn.clicked, self.close)
         row.addWidget(close_btn)
         root.addLayout(row)
@@ -450,15 +478,16 @@ class _LiveSchedulerPreviewDialog(QDialog):
         self._pdf_limit_loading = False
 
         if status:
-            self._pdf_limit_summary.setText(
-                f"Today: {status['pages_used']}/{status['daily_page_limit']} pages, "
-                f"{status['pages_remaining']} remaining. "
-                f"Current page {entry.get('pdf_page') or 1}, read-through {entry.get('pdf_read_page') or 0}."
-            )
+            self._pdf_limit_summary.setText(t(
+                "session_pdf_limit_status",
+                used=status["pages_used"],
+                limit=status["daily_page_limit"],
+                remaining=status["pages_remaining"],
+                current_page=entry.get("pdf_page") or 1,
+                read_through=entry.get("pdf_read_page") or 0,
+            ))
         else:
-            self._pdf_limit_summary.setText(
-                "No daily limit is set for this PDF yet."
-            )
+            self._pdf_limit_summary.setText(t("session_pdf_limit_not_set"))
         self._set_pdf_limit_form_enabled_state()
 
     def _selected_entry_index(self) -> int | None:
@@ -502,7 +531,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
         entry["pdf_limit_settings"] = settings
         self._show_entry(entry)
         self._load_pdf_limit_editor(entry)
-        tooltip("PDF daily reading limit saved.")
+        tooltip(t("session_pdf_limit_saved"))
 
     def _on_row_changed(self, row: int, _old_row: int, _col: int, _old_col: int) -> None:
         if row < 0:
@@ -530,7 +559,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
     @staticmethod
     def _fmt_counts(counts: dict) -> str:
         if not counts:
-            return "none"
+            return t("common_none")
         return ", ".join(f"{k}: {v}" for k, v in sorted(counts.items(), key=lambda x: x[0]))
 
     def _update_summary(self, selected_ids: list[int], picked_meta: dict[int, dict], target: int) -> None:
@@ -540,66 +569,66 @@ class _LiveSchedulerPreviewDialog(QDialog):
         prioritized_count = 0
         for cid in selected_ids:
             meta = picked_meta.get(cid, {})
-            ct = meta.get("card_type", "?")
-            md = meta.get("mode", "?")
-            tg = meta.get("tag") or "no-tag"
+            ct = session_type_label(meta.get("card_type", "?"))
+            md = session_mode_label(meta.get("mode", "?"))
+            tg = _preview_tag_label(meta.get("tag"))
             if meta.get("selection_stage") in {"prioritized_tags", "ordered_priority"}:
                 prioritized_count += 1
-            if tg == NO_TAGS_KEY:
-                tg = "other"
             type_counts[ct] = type_counts.get(ct, 0) + 1
             mode_counts[md] = mode_counts.get(md, 0) + 1
             tag_counts[tg] = tag_counts.get(tg, 0) + 1
 
-        status = f"Scheduled {len(selected_ids)} / {target} cards."
+        status = t("session_preview_scheduled", count=len(selected_ids), target=target)
         if len(selected_ids) < target:
-            status += " Limited by current availability."
+            status += " " + t("session_preview_limited")
         if prioritized_count:
-            status += f" Ordered priority: {prioritized_count}."
+            status += " " + t("session_preview_ordered", count=prioritized_count)
 
         self._summary_lbl.setText(
-            status
-            + "  Types: "
-            + self._fmt_counts(type_counts)
-            + "  |  Modes: "
-            + self._fmt_counts(mode_counts)
-            + "  |  Tags: "
-            + self._fmt_counts(tag_counts)
+            t("session_preview_counts", status=status,
+              types=self._fmt_counts(type_counts), modes=self._fmt_counts(mode_counts),
+              tags=self._fmt_counts(tag_counts))
         )
 
     def _show_entry(self, entry: dict) -> None:
         parts = [
             "<div style='font-family:sans-serif; padding: 6px 8px;'>",
             f"<h3 style='margin:0 0 8px 0;'>{escape(entry['title'])}</h3>",
-            f"<div><b>Card ID:</b> {entry['card_id']}</div>",
-            f"<div><b>Type:</b> {escape(entry['card_type'])}</div>",
-            f"<div><b>Mode:</b> {escape(entry['mode'])}</div>",
-            f"<div><b>Tag:</b> {escape(entry['tag'])}</div>",
+            f"<div><b>{escape(t('session_preview_card_id'))}</b> {entry['card_id']}</div>",
+            f"<div><b>{escape(t('session_preview_type'))}</b> {escape(session_type_label(entry['card_type']))}</div>",
+            f"<div><b>{escape(t('session_preview_mode'))}</b> {escape(session_mode_label(entry['mode']))}</div>",
+            f"<div><b>{escape(t('session_preview_tag'))}</b> {escape(entry['tag'])}</div>",
         ]
         if entry.get("selection_stage") == "prioritized_tags":
-            parts.append("<div><b>Selection stage:</b> prioritized tag-first pass</div>")
+            parts.append(f"<div><b>{escape(t('session_preview_selection_stage'))}</b> {escape(t('session_preview_tag_first'))}</div>")
         if entry.get("selection_stage") == "ordered_priority":
             order = entry.get("priority_order")
-            suffix = "" if order is None else f" (order {escape(str(order))})"
-            parts.append(f"<div><b>Selection stage:</b> ordered priority pass{suffix}</div>")
+            suffix = "" if order is None else t("session_preview_order", order=str(order))
+            parts.append(f"<div><b>{escape(t('session_preview_selection_stage'))}</b> {escape(t('session_preview_priority_pass') + suffix)}</div>")
         if entry.get("pdf_filename"):
-            parts.append(f"<div><b>PDF file:</b> {escape(entry['pdf_filename'])}</div>")
+            parts.append(f"<div><b>{escape(t('session_preview_pdf_file'))}</b> {escape(entry['pdf_filename'])}</div>")
             if entry.get("pdf_exists") is not None:
+                status_text = t("session_preview_file_found") if entry['pdf_exists'] else t(
+                    "session_preview_file_missing", path='user_files/' + _active_profile() + '/pdfs')
                 parts.append(
-                    f"<div><b>PDF status:</b> {'found' if entry['pdf_exists'] else 'missing in user_files/' + _active_profile() + '/pdfs'}</div>"
+                    f"<div><b>{escape(t('session_preview_pdf_status'))}</b> {escape(status_text)}</div>"
                 )
             if entry.get("pdf_page") is not None:
-                parts.append(f"<div><b>Current page:</b> {entry['pdf_page']}</div>")
+                parts.append(f"<div><b>{escape(t('session_preview_current_page'))}</b> {entry['pdf_page']}</div>")
             if entry.get("pdf_read_page") is not None:
-                parts.append(f"<div><b>Read-through page:</b> {entry['pdf_read_page']}</div>")
+                parts.append(f"<div><b>{escape(t('session_preview_read_page'))}</b> {entry['pdf_read_page']}</div>")
             if entry.get("pdf_limit_status"):
                 limit_status = entry["pdf_limit_status"]
+                mode = str(limit_status.get('enforcement_mode') or 'warning')
+                mode_id = {'warning': 'session_pdf_limit_warning', 'soft_lock': 'session_pdf_limit_soft_lock',
+                           'hard_stop': 'session_pdf_limit_hard_stop'}.get(mode, 'session_pdf_limit_warning')
+                detail = t('session_preview_limit_details', used=limit_status['pages_used'],
+                           limit=limit_status['daily_page_limit'], remaining=limit_status['pages_remaining'], mode=t(mode_id))
                 parts.append(
-                    f"<div><b>Daily limit:</b> {limit_status['pages_used']}/{limit_status['daily_page_limit']} pages today"
-                    f" ({limit_status['pages_remaining']} remaining, {escape(limit_status['enforcement_label'])})</div>"
+                    f"<div><b>{escape(t('session_preview_daily_limit'))}</b> {escape(detail)}</div>"
                 )
         if entry.get("tags"):
-            parts.append(f"<div><b>Note tags:</b> {escape(entry['tags'])}</div>")
+            parts.append(f"<div><b>{escape(t('session_preview_note_tags'))}</b> {escape(entry['tags'])}</div>")
 
         for field_name, field_value in entry["fields"]:
             parts.append(
@@ -644,12 +673,12 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 note_fields = getattr(note, "fields", []) or []
                 try:
                     model = note.note_type()
-                    field_names = [f.get("name", f"Field {ix + 1}") for ix, f in enumerate(model.get("flds", []))]
+                    field_names = [f.get("name", t("session_preview_field_number", number=ix + 1)) for ix, f in enumerate(model.get("flds", []))]
                 except Exception:
-                    field_names = [f"Field {ix + 1}" for ix, _ in enumerate(note_fields)]
+                    field_names = [t("session_preview_field_number", number=ix + 1) for ix, _ in enumerate(note_fields)]
                 if len(field_names) < len(note_fields):
                     for ix in range(len(field_names), len(note_fields)):
-                        field_names.append(f"Field {ix + 1}")
+                        field_names.append(t("session_preview_field_number", number=ix + 1))
 
                 readable_fields = []
                 for idx, raw_val in enumerate(note_fields):
@@ -658,10 +687,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 card_type = str(meta.get("card_type", "?"))
                 mode = str(meta.get("mode", "?"))
                 tag = meta.get("tag")
-                if tag == NO_TAGS_KEY:
-                    tag_text = "other"
-                else:
-                    tag_text = str(tag or "no-tag")
+                tag_text = _preview_tag_label(tag)
                 title = _compact_text(note_fields[0] if note_fields else str(cid), max_len=160)
                 tags = ", ".join(getattr(note, "tags", []) or [])
                 pdf_filename = ""
@@ -714,7 +740,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
                         "tag": tag_text,
                         "selection_stage": meta.get("selection_stage"),
                         "priority_order": meta.get("priority_order"),
-                        "title": title or f"Card {cid}",
+                        "title": title or t("knowledge_tree_card_number", card_id=cid),
                         "tags": tags,
                         "fields": readable_fields,
                         "pdf_filename": pdf_filename,
@@ -734,12 +760,12 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 row_num_item.setData(Qt.ItemDataRole.UserRole + 1, row)
                 self._table.setItem(row, 0, row_num_item)
 
-                ct_item = _SortTableWidgetItem(entry["card_type"])
+                ct_item = _SortTableWidgetItem(session_type_label(entry["card_type"]))
                 ct_item.setData(Qt.ItemDataRole.UserRole, entry["card_type"].lower())
                 ct_item.setData(Qt.ItemDataRole.UserRole + 1, row)
                 self._table.setItem(row, 1, ct_item)
 
-                mode_item = _SortTableWidgetItem(entry["mode"])
+                mode_item = _SortTableWidgetItem(session_mode_label(entry["mode"]))
                 mode_item.setData(Qt.ItemDataRole.UserRole, entry["mode"].lower())
                 mode_item.setData(Qt.ItemDataRole.UserRole + 1, row)
                 self._table.setItem(row, 2, mode_item)
@@ -762,11 +788,11 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 self._on_row_changed(0, -1, 0, -1)
             else:
                 self._preview.setHtml(
-                    "<div style='color:#666; padding:10px;'>No cards available for the current settings.</div>"
+                    f"<div style='color:#666; padding:10px;'>{escape(t('session_preview_no_cards'))}</div>"
                 )
                 self._load_pdf_limit_editor(None)
         except Exception as e:
-            self._summary_lbl.setText(f"Preview failed: {e}")
+            self._summary_lbl.setText(t("session_preview_failed", error=e))
             self._preview.setHtml("")
             self._table.setRowCount(0)
             self._entries = []
@@ -791,28 +817,28 @@ class _LiveSchedulerPreviewDialog(QDialog):
 
 _PHASE_META = {
     "content_types": {
-        "label": "Content Types",
+        "label_id": "session_phase_content_types",
         "icon":  "📄",
         "color": "#e07b39",
-        "desc":  "Fill PDF / YouTube / Webpage quotas",
+        "desc_id":  "session_phase_content_types_hint",
     },
     "tags": {
-        "label": "Tag Quotas",
+        "label_id": "session_phase_tags",
         "icon":  "🏷",
         "color": "#8e44ad",
-        "desc":  "Fill per-tag quotas (e.g. statistics, psychology …)",
+        "desc_id":  "session_phase_tags_hint",
     },
     "type": {
-        "label": "Card Type",
+        "label_id": "session_phase_card_type",
         "icon":  "📊",
         "color": "#2980b9",
-        "desc":  "Topics ↔ Items ratio enforcement",
+        "desc_id":  "session_phase_card_type_hint",
     },
     "mode": {
-        "label": "Selection Mode",
+        "label_id": "session_phase_selection_mode",
         "icon":  "🎲",
         "color": "#27ae60",
-        "desc":  "Priority-first ↔ Random enforcement",
+        "desc_id":  "session_phase_selection_mode_hint",
     },
 }
 
@@ -854,9 +880,9 @@ class _PhaseCard(QFrame):
         text_col = QVBoxLayout(text_w)
         text_col.setContentsMargins(0, 0, 0, 0)
         text_col.setSpacing(2)
-        title = QLabel(_PHASE_META[phase_id]["label"])
+        title = QLabel(t(_PHASE_META[phase_id]["label_id"]))
         title.setStyleSheet("font-weight: bold; font-size: 12px;")
-        desc = QLabel(_PHASE_META[phase_id]["desc"])
+        desc = QLabel(t(_PHASE_META[phase_id]["desc_id"]))
         desc.setStyleSheet("color: palette(mid); font-size: 11px;")
         text_col.addWidget(title)
         text_col.addWidget(desc)
@@ -864,10 +890,7 @@ class _PhaseCard(QFrame):
 
         self._cb = QCheckBox()
         self._cb.setChecked(enabled)
-        self._cb.setToolTip(
-            "Enable this phase in strict mode.\n"
-            "Soft mode uses all dimensions simultaneously regardless of this toggle."
-        )
+        self._cb.setToolTip(t("session_phase_enabled_tooltip"))
         self._cb.setStyleSheet("border: none;")
         row.addWidget(self._cb)
 
@@ -967,9 +990,9 @@ class FunnelWidget(QWidget):
         fc = QVBoxLayout(fw)
         fc.setContentsMargins(0, 0, 0, 0)
         fc.setSpacing(2)
-        ft = QLabel("Fill Remaining")
+        ft = QLabel(t("session_fill_remaining"))
         ft.setStyleSheet("font-weight: bold; font-size: 12px;")
-        fd = QLabel("Any ready cards — always runs last")
+        fd = QLabel(t("session_fill_remaining_hint"))
         fd.setStyleSheet("color: palette(mid); font-size: 11px;")
         fc.addWidget(ft)
         fc.addWidget(fd)
@@ -1118,22 +1141,24 @@ class FunnelWidget(QWidget):
 
 # ─── End funnel ───────────────────────────────────────────────────────────────
 
-_DAY_END_PRESETS = [
-    ("00:00", "12:00 AM (midnight)"),
-    ("01:00", "1:00 AM"),
-    ("02:00", "2:00 AM"),
-    ("03:00", "3:00 AM"),
-    ("04:00", "4:00 AM"),
-    ("05:00", "5:00 AM"),
-    ("06:00", "6:00 AM"),
-    (None,    "Custom…"),
-]
+def _day_end_presets() -> list[tuple[str | None, str]]:
+    return [
+        ("00:00", t("session_day_end_midnight")),
+        ("01:00", t("session_day_end_one_am")),
+        ("02:00", t("session_day_end_two_am")),
+        ("03:00", t("session_day_end_three_am")),
+        ("04:00", t("session_day_end_four_am")),
+        ("05:00", t("session_day_end_five_am")),
+        ("06:00", t("session_day_end_six_am")),
+        (None, t("common_custom")),
+    ]
 
-_PRIORITY_DIMS = [
-    ("tags",  "Tags"),
-    ("type",  "Type (topics / items)"),
-    ("mode",  "Mode (priority / random)"),
-]
+def _priority_dims() -> list[tuple[str, str]]:
+    return [
+        ("tags", t("session_priority_dimension_tags")),
+        ("type", t("session_priority_dimension_type")),
+        ("mode", t("session_priority_dimension_mode")),
+    ]
 
 _DEFAULT_MAIN_GROUPS = {
     "topics": "topics",
@@ -1152,9 +1177,14 @@ def _keep_button_label_readable(button: QPushButton) -> None:
 class SchedulerConfigDialog(QDialog):
     _CURRENT_SETTINGS_LABEL = "Current Settings"
 
+    @staticmethod
+    def _current_settings_display() -> str:
+        """Present the stable no-preset sentinel without using it as identity."""
+        return t("session_current_settings")
+
     def __init__(self, parent=None, on_clear_session=None, branch_scope: dict | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Scheduler Settings")
+        self.setWindowTitle(t("session_scheduler_settings_title"))
         self.setMinimumWidth(520)
         self._linked_rows: list[dict] = []
         self._updating = False
@@ -1224,16 +1254,16 @@ class SchedulerConfigDialog(QDialog):
         _scroll_layout.setSpacing(8)
 
         setup_mode_row = QHBoxLayout()
-        setup_mode_label = QLabel("Setup view:")
-        setup_mode_label.setAccessibleName("Session setup view")
+        setup_mode_label = QLabel(t("session_setup_view"))
+        setup_mode_label.setAccessibleName(t("session_setup_view_accessible"))
         setup_mode_row.addWidget(setup_mode_label)
-        self._basic_mode_button = QPushButton("Basic")
+        self._basic_mode_button = QPushButton(t("session_basic"))
         self._basic_mode_button.setCheckable(True)
-        self._basic_mode_button.setAccessibleName("Use basic session setup")
+        self._basic_mode_button.setAccessibleName(t("session_basic_accessible"))
         setup_mode_row.addWidget(self._basic_mode_button)
-        self._advanced_mode_button = QPushButton("Advanced")
+        self._advanced_mode_button = QPushButton(t("session_advanced"))
         self._advanced_mode_button.setCheckable(True)
-        self._advanced_mode_button.setAccessibleName("Use advanced session setup")
+        self._advanced_mode_button.setAccessibleName(t("session_advanced_accessible"))
         setup_mode_row.addWidget(self._advanced_mode_button)
         setup_mode_row.addStretch(1)
         _scroll_layout.addLayout(setup_mode_row)
@@ -1250,9 +1280,7 @@ class SchedulerConfigDialog(QDialog):
         layout.setSpacing(8)
         _scroll_layout.addWidget(self._advanced_panel)
 
-        intro = QLabel(
-            "Configure how Incremento selects cards for each study session."
-        )
+        intro = QLabel(t("session_intro"))
         intro.setWordWrap(True)
         intro.setStyleSheet("color: gray;")
         layout.addWidget(intro)
@@ -1271,15 +1299,12 @@ class SchedulerConfigDialog(QDialog):
             branch_layout.setSpacing(4)
 
             branch_title = QLabel(
-                f"Branch study: {self._branch_scope_label()}"
+                t("session_branch_study", title=self._branch_scope_label())
             )
             branch_title.setStyleSheet("font-weight: bold; color: #4a7ab5;")
             branch_layout.addWidget(branch_title)
 
-            branch_note = QLabel(
-                "This session uses the normal Incremento scheduler, but only cards "
-                "from the selected knowledge-tree subtree are eligible."
-            )
+            branch_note = QLabel(t("session_branch_study_note"))
             branch_note.setWordWrap(True)
             branch_note.setStyleSheet("color: gray;")
             branch_layout.addWidget(branch_note)
@@ -1287,42 +1312,42 @@ class SchedulerConfigDialog(QDialog):
 
         # -- Profiles --
         profile_row = QHBoxLayout()
-        profile_row.addWidget(QLabel("Preset:"))
+        profile_row.addWidget(QLabel(t("session_preset")))
         self._profile_combo = QComboBox()
         self._profile_combo.setMinimumWidth(160)
         self._profile_combo.setToolTip(
-            "Saved scheduler presets. Use Current Settings for the shared Incremento Session deck."
+            t("session_preset_tooltip")
         )
         qconnect(self._profile_combo.currentIndexChanged, self._on_profile_combo_changed)
         profile_row.addWidget(self._profile_combo)
 
-        self._profile_load_btn = QPushButton("Load")
+        self._profile_load_btn = QPushButton(t("common_load"))
         _keep_button_label_readable(self._profile_load_btn)
-        self._profile_load_btn.setToolTip("Apply the selected saved preset to all settings below")
+        self._profile_load_btn.setToolTip(t("session_load_preset_tooltip"))
         qconnect(self._profile_load_btn.clicked, self._load_profile)
         profile_row.addWidget(self._profile_load_btn)
 
-        self._profile_save_btn = QPushButton("Save")
+        self._profile_save_btn = QPushButton(t("common_save"))
         _keep_button_label_readable(self._profile_save_btn)
-        self._profile_save_btn.setToolTip("Overwrite the selected saved preset with the current settings")
+        self._profile_save_btn.setToolTip(t("session_save_preset_tooltip"))
         qconnect(self._profile_save_btn.clicked, self._save_profile)
         profile_row.addWidget(self._profile_save_btn)
 
-        add_btn = QPushButton("Add…")
+        add_btn = QPushButton(t("common_add"))
         _keep_button_label_readable(add_btn)
-        add_btn.setToolTip("Create a new saved preset from the current settings")
+        add_btn.setToolTip(t("session_add_preset_tooltip"))
         qconnect(add_btn.clicked, self._add_profile)
         profile_row.addWidget(add_btn)
 
-        self._profile_rename_btn = QPushButton("Rename…")
+        self._profile_rename_btn = QPushButton(t("common_rename"))
         _keep_button_label_readable(self._profile_rename_btn)
-        self._profile_rename_btn.setToolTip("Rename the selected saved preset")
+        self._profile_rename_btn.setToolTip(t("session_rename_preset_tooltip"))
         qconnect(self._profile_rename_btn.clicked, self._rename_profile)
         profile_row.addWidget(self._profile_rename_btn)
 
-        self._profile_delete_btn = QPushButton("Delete")
+        self._profile_delete_btn = QPushButton(t("common_delete"))
         _keep_button_label_readable(self._profile_delete_btn)
-        self._profile_delete_btn.setToolTip("Delete the selected saved preset")
+        self._profile_delete_btn.setToolTip(t("session_delete_preset_tooltip"))
         self._profile_delete_btn.setStyleSheet("color: #e05050;")
         qconnect(self._profile_delete_btn.clicked, self._delete_profile)
         profile_row.addWidget(self._profile_delete_btn)
@@ -1338,41 +1363,34 @@ class SchedulerConfigDialog(QDialog):
 
         # ── 1. Session size ───────────────────────────────────────────────────
         count_row = QHBoxLayout()
-        count_row.addWidget(QLabel("Cards per session:"))
+        count_row.addWidget(QLabel(t("session_cards_per_session")))
         self._count_spin = QSpinBox()
         self._count_spin.setRange(1, MAX_SESSION_CARD_COUNT)
         self._count_spin.setValue(self._saved.get("session_card_count", 50))
         count_row.addWidget(self._count_spin)
         count_row.addWidget(_info_icon(
-            "Total cards Incremento schedules for this session.\n\n"
-            "Example: 50 → exactly 50 cards in the filtered deck.\n"
-            "All other settings (quotas, rates, priorities) are percentages of this number."
+            t("session_cards_per_session_tooltip")
         ))
         count_row.addStretch()
         layout.addLayout(count_row)
 
         # ── 2. Card type filter ───────────────────────────────────────────────
         card_types_row = QHBoxLayout()
-        card_types_row.addWidget(QLabel("Card types:"))
-        self._cb_new = QCheckBox("New")
-        self._cb_new.setToolTip("Include cards that have never been studied (is:new)")
+        card_types_row.addWidget(QLabel(t("session_card_types")))
+        self._cb_new = QCheckBox(t("session_card_type_new"))
+        self._cb_new.setToolTip(t("session_card_type_new_tooltip"))
         self._cb_new.setChecked(self._saved.get("include_new", True))
         card_types_row.addWidget(self._cb_new)
-        self._cb_learning = QCheckBox("Learning")
-        self._cb_learning.setToolTip("Include learning/relearning cards that are due now")
+        self._cb_learning = QCheckBox(t("session_card_type_learning"))
+        self._cb_learning.setToolTip(t("session_card_type_learning_tooltip"))
         self._cb_learning.setChecked(self._saved.get("include_learning", True))
         card_types_row.addWidget(self._cb_learning)
-        self._cb_due = QCheckBox("Due / Review")
-        self._cb_due.setToolTip("Include review cards that are due for study (is:due)")
+        self._cb_due = QCheckBox(t("session_card_type_due"))
+        self._cb_due.setToolTip(t("session_card_type_due_tooltip"))
         self._cb_due.setChecked(self._saved.get("include_due", True))
         card_types_row.addWidget(self._cb_due)
         card_types_row.addWidget(_info_icon(
-            "Which Anki scheduling states are included in the session pool.\n\n"
-            "• New — cards you've never studied before\n"
-            "• Learning — learning / relearning cards due now\n"
-            "• Due / Review — mature cards scheduled for today\n\n"
-            "Note: PDF, YouTube and Webpage cards are always eligible regardless\n"
-            "of these checkboxes — they bypass Anki's scheduling state."
+            t("session_card_types_help")
         ))
         card_types_row.addStretch()
         layout.addLayout(card_types_row)
@@ -1389,40 +1407,36 @@ class SchedulerConfigDialog(QDialog):
             main_groups["topics"] = _DEFAULT_MAIN_GROUPS["topics"]
             main_groups["pdf"] = _DEFAULT_MAIN_GROUPS["pdf"]
         topics_row = QHBoxLayout()
-        self._topics_left_lbl = QLabel(f"{100 - topics_val}%")
+        self._topics_left_lbl = QLabel(t("session_percent", value=100 - topics_val))
         self._topics_left_lbl.setFixedWidth(36)
         topics_row.addWidget(self._topics_left_lbl)
-        _lbl_topics = QLabel("Topics")
-        _lbl_topics.setToolTip("Concept cards — notes, articles, long-form reading material")
+        _lbl_topics = QLabel(t("session_topics"))
+        _lbl_topics.setToolTip(t("session_topics_tooltip"))
         topics_row.addWidget(_lbl_topics)
         self._topics_slider = QSlider(Qt.Orientation.Horizontal)
         self._topics_slider.setRange(0, 100)
         self._topics_slider.setValue(topics_val)
         topics_row.addWidget(self._topics_slider)
-        _lbl_items = QLabel("Items")
-        _lbl_items.setToolTip("Fact cards — Q&A flashcards, vocabulary, quick-recall items")
+        _lbl_items = QLabel(t("session_items"))
+        _lbl_items.setToolTip(t("session_items_tooltip"))
         topics_row.addWidget(_lbl_items)
-        self._topics_right_lbl = QLabel(f"{topics_val}%")
+        self._topics_right_lbl = QLabel(t("session_percent", value=topics_val))
         self._topics_right_lbl.setFixedWidth(36)
         topics_row.addWidget(self._topics_right_lbl)
         self._topics_lock_cb = QCheckBox("🔒")
         self._topics_lock_cb.setChecked(bool(main_locks.get("topics", False)))
         self._topics_lock_cb.setToolTip(
-            "Lock Topics target in the pooled main mix.\n"
-            "When locked, other unlocked main targets rebalance around it."
+            t("session_lock_topics_tooltip")
         )
         self._topics_lock_cb.setFixedWidth(48)
         topics_row.addWidget(self._topics_lock_cb)
-        topics_row.addWidget(QLabel("Group:"))
+        topics_row.addWidget(QLabel(t("session_group")))
         self._topics_group_edit = QLineEdit(str(main_groups.get("topics", _DEFAULT_MAIN_GROUPS["topics"])))
         self._topics_group_edit.setFixedWidth(90)
-        self._topics_group_edit.setToolTip("Rows with the same group name are constrained together.")
+        self._topics_group_edit.setToolTip(t("session_group_tooltip"))
         topics_row.addWidget(self._topics_group_edit)
         topics_row.addWidget(_info_icon(
-            "Ratio of topic cards (concepts, long reads) vs item cards (flashcards, Q&A).\n\n"
-            "Example: 90 % Topics with 50 cards → ~45 topic cards and ~5 item cards.\n\n"
-            "Topics filter and Items filter (Advanced section) determine which cards\n"
-            "belong to each group."
+            t("session_topics_ratio_help")
         ))
         layout.addLayout(topics_row)
 
@@ -1441,45 +1455,43 @@ class SchedulerConfigDialog(QDialog):
         pdf_limit_layout.setContentsMargins(10, 8, 10, 8)
         pdf_limit_layout.setSpacing(6)
 
-        pdf_limit_header = QLabel("PDF Daily Reading Limit")
+        pdf_limit_header = QLabel(t("session_pdf_daily_limit"))
         pdf_limit_header.setStyleSheet("font-weight: bold; color: #4a7ab5;")
         pdf_limit_layout.addWidget(pdf_limit_header)
 
-        pdf_limit_intro = QLabel(
-            "Set a per-PDF daily page cap directly from Incremental Learning."
-        )
+        pdf_limit_intro = QLabel(t("session_pdf_limit_intro"))
         pdf_limit_intro.setWordWrap(True)
         pdf_limit_intro.setStyleSheet("color: gray;")
         pdf_limit_layout.addWidget(pdf_limit_intro)
 
         pdf_limit_pick_row = QHBoxLayout()
-        pdf_limit_pick_row.addWidget(QLabel("Find PDF:"))
+        pdf_limit_pick_row.addWidget(QLabel(t("session_find_pdf")))
         self._pdf_limit_search_edit = QLineEdit()
-        self._pdf_limit_search_edit.setPlaceholderText("Search by PDF title…")
+        self._pdf_limit_search_edit.setPlaceholderText(t("session_search_pdf_title"))
         pdf_limit_pick_row.addWidget(self._pdf_limit_search_edit, 1)
-        pdf_limit_pick_row.addWidget(QLabel("PDF:"))
+        pdf_limit_pick_row.addWidget(QLabel(t("session_pdf")))
         self._pdf_limit_combo = QComboBox()
         self._pdf_limit_combo.setMinimumWidth(280)
         pdf_limit_pick_row.addWidget(self._pdf_limit_combo, 2)
-        self._pdf_limit_refresh_btn = QPushButton("Refresh PDFs")
+        self._pdf_limit_refresh_btn = QPushButton(t("session_refresh_pdfs"))
         pdf_limit_pick_row.addWidget(self._pdf_limit_refresh_btn)
         pdf_limit_layout.addLayout(pdf_limit_pick_row)
 
         pdf_limit_form_row = QHBoxLayout()
-        self._pdf_limit_main_enabled = QCheckBox("Enable")
+        self._pdf_limit_main_enabled = QCheckBox(t("session_enable"))
         pdf_limit_form_row.addWidget(self._pdf_limit_main_enabled)
         self._pdf_limit_main_spin = QSpinBox()
         self._pdf_limit_main_spin.setRange(1, 5000)
         self._pdf_limit_main_spin.setValue(10)
         self._pdf_limit_main_spin.setFixedWidth(90)
         pdf_limit_form_row.addWidget(self._pdf_limit_main_spin)
-        pdf_limit_form_row.addWidget(QLabel("pages / day"))
+        pdf_limit_form_row.addWidget(QLabel(t("session_pages_per_day")))
         self._pdf_limit_main_mode = QComboBox()
-        self._pdf_limit_main_mode.addItem("Warning only", "warning")
-        self._pdf_limit_main_mode.addItem("Soft lock + override", "soft_lock")
-        self._pdf_limit_main_mode.addItem("Hard stop", "hard_stop")
+        self._pdf_limit_main_mode.addItem(t("session_pdf_limit_warning"), "warning")
+        self._pdf_limit_main_mode.addItem(t("session_pdf_limit_soft_lock"), "soft_lock")
+        self._pdf_limit_main_mode.addItem(t("session_pdf_limit_hard_stop"), "hard_stop")
         pdf_limit_form_row.addWidget(self._pdf_limit_main_mode)
-        self._pdf_limit_main_save_btn = QPushButton("Save PDF limit")
+        self._pdf_limit_main_save_btn = QPushButton(t("session_save_pdf_limit"))
         pdf_limit_form_row.addWidget(self._pdf_limit_main_save_btn)
         pdf_limit_form_row.addStretch()
         pdf_limit_layout.addLayout(pdf_limit_form_row)
@@ -1492,49 +1504,42 @@ class SchedulerConfigDialog(QDialog):
         # ── 5. PDF soft-mix rate ──────────────────────────────────────────────
         pdf_val = self._saved.get("pdf_slider", 100)
         pdf_row = QHBoxLayout()
-        self._pdf_left_lbl = QLabel(f"{100 - pdf_val}%")
+        self._pdf_left_lbl = QLabel(t("session_percent", value=100 - pdf_val))
         self._pdf_left_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_left_lbl)
-        _lbl_pdf = QLabel("Docs")
-        _lbl_pdf.setToolTip("Incremento PDF and EPUB reading cards — always eligible regardless of scheduling state")
+        _lbl_pdf = QLabel(t("session_documents"))
+        _lbl_pdf.setToolTip(t("session_documents_tooltip"))
         pdf_row.addWidget(_lbl_pdf)
         self._pdf_slider = QSlider(Qt.Orientation.Horizontal)
         self._pdf_slider.setRange(0, 100)
         self._pdf_slider.setValue(pdf_val)
         pdf_row.addWidget(self._pdf_slider)
-        _lbl_other = QLabel("Other")
-        _lbl_other.setToolTip("All non-document cards (topics and items)")
+        _lbl_other = QLabel(t("session_other"))
+        _lbl_other.setToolTip(t("session_other_tooltip"))
         pdf_row.addWidget(_lbl_other)
-        self._pdf_right_lbl = QLabel(f"{pdf_val}%")
+        self._pdf_right_lbl = QLabel(t("session_percent", value=pdf_val))
         self._pdf_right_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_right_lbl)
         self._pdf_lock_cb = QCheckBox("🔒")
         self._pdf_lock_cb.setChecked(bool(main_locks.get("pdf", False)))
         self._pdf_lock_cb.setToolTip(
-            "Lock PDF target in the pooled main mix.\n"
-            "When locked, other unlocked main targets rebalance around it."
+            t("session_lock_pdf_tooltip")
         )
         self._pdf_lock_cb.setFixedWidth(48)
         pdf_row.addWidget(self._pdf_lock_cb)
-        pdf_row.addWidget(QLabel("Group:"))
+        pdf_row.addWidget(QLabel(t("session_group")))
         self._pdf_group_edit = QLineEdit(str(main_groups.get("pdf", _DEFAULT_MAIN_GROUPS["pdf"])))
         self._pdf_group_edit.setFixedWidth(90)
-        self._pdf_group_edit.setToolTip("Rows with the same group name are constrained together.")
+        self._pdf_group_edit.setToolTip(t("session_group_tooltip"))
         pdf_row.addWidget(self._pdf_group_edit)
         pdf_row.addWidget(_info_icon(
-            "Soft document mix rate — how often a PDF or EPUB card is picked during normal scheduling.\n\n"
-            "Unlike Content type priorities (which fill a hard quota first), this is a\n"
-            "stochastic target: document cards are woven throughout the session.\n\n"
-            "Example: Docs = 20 % → roughly 1 in 5 picks targets a PDF/EPUB card.\n"
-            "Set to 0 % (slider fully right) to exclude documents from soft mixing.\n\n"
-            "You can use both: priority fills a hard quota first, then soft mixing\n"
-            "adds more document cards in the remaining slots."
+            t("session_document_mix_help")
         ))
         layout.addLayout(pdf_row)
 
         qconnect(self._pdf_slider.valueChanged,
-                 lambda v: (self._pdf_left_lbl.setText(f"{100 - v}%"),
-                             self._pdf_right_lbl.setText(f"{v}%")))
+                 lambda v: (self._pdf_left_lbl.setText(t("session_percent", value=100 - v)),
+                             self._pdf_right_lbl.setText(t("session_percent", value=v))))
         qconnect(self._pdf_limit_search_edit.textChanged, lambda _: self._refresh_pdf_limit_combo())
         qconnect(self._pdf_limit_combo.currentIndexChanged, lambda _: self._load_main_pdf_limit_editor())
         qconnect(self._pdf_limit_refresh_btn.clicked, self._refresh_pdf_limit_targets)
@@ -1546,51 +1551,40 @@ class SchedulerConfigDialog(QDialog):
         # ── 6. Priority / Random selection mode ───────────────────────────────
         random_val = self._saved.get("random_slider", 99)
         random_row = QHBoxLayout()
-        self._random_left_lbl = QLabel(f"{100 - random_val}%")
+        self._random_left_lbl = QLabel(t("session_percent", value=100 - random_val))
         self._random_left_lbl.setFixedWidth(36)
         random_row.addWidget(self._random_left_lbl)
-        _lbl_priority = QLabel("Priority")
-        _lbl_priority.setToolTip(
-            "Pick cards in priority order — most overdue or highest-rated appear first"
-        )
+        _lbl_priority = QLabel(t("session_priority"))
+        _lbl_priority.setToolTip(t("session_priority_tooltip"))
         random_row.addWidget(_lbl_priority)
         self._random_slider = QSlider(Qt.Orientation.Horizontal)
         self._random_slider.setRange(0, 100)
         self._random_slider.setValue(random_val)
         random_row.addWidget(self._random_slider)
-        _lbl_random = QLabel("Random")
-        _lbl_random.setToolTip("Pick cards at random from the eligible pool")
+        _lbl_random = QLabel(t("session_random"))
+        _lbl_random.setToolTip(t("session_random_tooltip"))
         random_row.addWidget(_lbl_random)
-        self._random_right_lbl = QLabel(f"{random_val}%")
+        self._random_right_lbl = QLabel(t("session_percent", value=random_val))
         self._random_right_lbl.setFixedWidth(36)
         random_row.addWidget(self._random_right_lbl)
         self._priority_lock_cb = QCheckBox("🔒")
         self._priority_lock_cb.setChecked(bool(main_locks.get("priority", False)))
         self._priority_lock_cb.setToolTip(
-            "Lock Priority target in the pooled main mix.\n"
-            "When locked, other unlocked main targets rebalance around it."
+            t("session_lock_priority_tooltip")
         )
         self._priority_lock_cb.setFixedWidth(48)
         random_row.addWidget(self._priority_lock_cb)
-        random_row.addWidget(QLabel("Group:"))
+        random_row.addWidget(QLabel(t("session_group")))
         self._priority_group_edit = QLineEdit(str(main_groups.get("priority", _DEFAULT_MAIN_GROUPS["priority"])))
         self._priority_group_edit.setFixedWidth(90)
-        self._priority_group_edit.setToolTip("Rows with the same group name are constrained together.")
+        self._priority_group_edit.setToolTip(t("session_group_tooltip"))
         random_row.addWidget(self._priority_group_edit)
         random_row.addWidget(_info_icon(
-            "How cards are selected from the eligible pool at each pick.\n\n"
-            "• Priority (left) — picks the most overdue card first (sorted by due date).\n"
-            "  Use this to work through your backlog in order.\n"
-            "• Random (right) — picks any eligible card at random.\n"
-            "  Use this for a varied, low-stakes session.\n\n"
-            "Example: 99 % Random → almost always picks randomly;\n"
-            "1 % Priority → the most overdue card occasionally sneaks in."
+            t("session_selection_mode_help")
         ))
         layout.addLayout(random_row)
 
-        self._axis_hint_lbl = QLabel(
-            "Rows in the same group are constrained to a shared 100% pool (locked rows are pinned)."
-        )
+        self._axis_hint_lbl = QLabel(t("session_group_axis_hint"))
         self._axis_hint_lbl.setWordWrap(True)
         self._axis_hint_lbl.setStyleSheet("color: gray; font-size: small;")
         layout.addWidget(self._axis_hint_lbl)
@@ -1605,11 +1599,13 @@ class SchedulerConfigDialog(QDialog):
         self._expected_counts_lbl.setStyleSheet("color: gray; font-size: small;")
         layout.addWidget(self._expected_counts_lbl)
 
-        self._tag_content_title_lbl = QLabel("Tag × content estimate:")
+        self._tag_content_title_lbl = QLabel(t("session_tag_content_estimate"))
         self._tag_content_title_lbl.setStyleSheet("color: gray; font-size: small;")
         layout.addWidget(self._tag_content_title_lbl)
         self._tag_content_table = QTableWidget(0, 5)
-        self._tag_content_table.setHorizontalHeaderLabels(["Tag", "PDF", "Topics", "Items", "Total"])
+        self._tag_content_table.setHorizontalHeaderLabels(
+            [t("session_tag"), t("session_pdf"), t("session_topics"), t("session_items"), t("session_total")]
+        )
         self._tag_content_table.verticalHeader().setVisible(False)
         self._tag_content_table.setAlternatingRowColors(True)
         self._tag_content_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -1631,19 +1627,16 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._tag_content_note_lbl)
 
         _live_preview_row = QHBoxLayout()
-        self._live_preview_btn = QPushButton("Live card preview…")
+        self._live_preview_btn = QPushButton(t("session_live_card_preview"))
         self._live_preview_btn.setToolTip(
-            "Preview the actual scheduled card list with current settings.\n"
-            "Opens a two-column dialog: list on the left, per-card preview on the right."
+            t("session_live_preview_button_tooltip")
         )
         qconnect(self._live_preview_btn.clicked, self._open_live_preview)
         _live_preview_row.addWidget(self._live_preview_btn)
         _live_preview_row.addStretch()
         layout.addLayout(_live_preview_row)
 
-        self._live_preview_hint_lbl = QLabel(
-            "Live preview is an estimate sample. To force exact reuse, enable the checkbox inside the preview dialog."
-        )
+        self._live_preview_hint_lbl = QLabel(t("session_live_preview_hint"))
         self._live_preview_hint_lbl.setWordWrap(True)
         self._live_preview_hint_lbl.setStyleSheet("color: gray; font-size: small;")
         layout.addWidget(self._live_preview_hint_lbl)
@@ -1691,11 +1684,11 @@ class SchedulerConfigDialog(QDialog):
 
         # ── 7. Scheduler scope ────────────────────────────────────────────────
         scope_row = QHBoxLayout()
-        scope_row.addWidget(QLabel("Scheduler scope:"))
+        scope_row.addWidget(QLabel(t("session_scheduler_scope")))
         self._scope_combo = QComboBox()
-        self._scope_combo.addItem("This session",  "session")
-        self._scope_combo.addItem("Today",          "daily")
-        self._scope_combo.addItem("All time",       "lifetime")
+        self._scope_combo.addItem(t("session_scope_this_session"), "session")
+        self._scope_combo.addItem(t("session_scope_today"), "daily")
+        self._scope_combo.addItem(t("session_scope_all_time"), "lifetime")
         saved_scope = self._saved.get("scheduler_scope", "session")
         for i in range(self._scope_combo.count()):
             if self._scope_combo.itemData(i) == saved_scope:
@@ -1703,30 +1696,20 @@ class SchedulerConfigDialog(QDialog):
                 break
         scope_row.addWidget(self._scope_combo)
         scope_row.addWidget(_info_icon(
-            "How far back the scheduler looks when balancing card types and tags.\n\n"
-            "• This session — debt resets each time you open this dialog.\n"
-            "  Best for: fresh start every day.\n"
-            "• Today — debt accumulates across multiple same-day sessions.\n"
-            "  Best for: studying in several short bursts during the day.\n"
-            "• All time — balances over your entire study history.\n"
-            "  Best for: strict long-term ratio enforcement.\n\n"
-            "Example (Today scope, 90 % Topics target): if your morning session\n"
-            "was all topics, the afternoon session will lean toward items to compensate."
+            t("session_scheduler_scope_help")
         ))
 
-        self._day_end_label = QLabel("  Day ends at:")
+        self._day_end_label = QLabel(t("session_day_ends_at"))
         self._day_end_label.setToolTip(
-            "If you study past midnight, set this to after your usual bedtime.\n"
-            "Cards studied before this time will still count as part of yesterday."
+            t("session_day_end_tooltip")
         )
         scope_row.addWidget(self._day_end_label)
 
         self._day_end_preset = QComboBox()
         self._day_end_preset.setToolTip(
-            "If you study past midnight, set this to after your usual bedtime.\n"
-            "Cards studied before this time will still count as part of yesterday."
+            t("session_day_end_tooltip")
         )
-        for value, label in _DAY_END_PRESETS:
+        for value, label in _day_end_presets():
             self._day_end_preset.addItem(label, value)
         scope_row.addWidget(self._day_end_preset)
 
@@ -1762,7 +1745,7 @@ class SchedulerConfigDialog(QDialog):
 
         # ── 8. Ordered priority pre-pass ─────────────────────────────────────
         priority_order_row = QHBoxLayout()
-        self._priority_order_cb = QCheckBox("Prioritize rows by order")
+        self._priority_order_cb = QCheckBox(t("session_prioritize_order"))
         self._priority_order_cb.setChecked(bool(self._saved.get("priority_order_enabled", False)))
         if (
             "priority_order_enabled" not in self._saved
@@ -1771,15 +1754,11 @@ class SchedulerConfigDialog(QDialog):
         ):
             self._priority_order_cb.setChecked(True)
         self._priority_order_cb.setToolTip(
-            "When enabled, rows with an Order value front-load their configured share first, starting at 1.\n"
-            "Rows with the same number form one tier and are sorted by Incremento priority."
+            t("session_prioritize_order_tooltip")
         )
         priority_order_row.addWidget(self._priority_order_cb)
         priority_order_row.addWidget(_info_icon(
-            "Use Order values to front-load each row's configured share before normal scheduling.\n\n"
-            "Example: writing at 20% with Order = 1 means about the first 20% of the session\n"
-            "will be writing cards. After that, the normal scheduler fills the remaining slots\n"
-            "using your full mix. Empty or invalid Order boxes are ignored."
+            t("session_priority_order_help")
         ))
         priority_order_row.addStretch()
         layout.addLayout(priority_order_row)
@@ -1788,34 +1767,16 @@ class SchedulerConfigDialog(QDialog):
 
         # ── 9. Tag quotas ─────────────────────────────────────────────────────
         _tag_hrow = QHBoxLayout()
-        _tag_header = QLabel("Tag quotas")
+        _tag_header = QLabel(t("session_tag_quotas"))
         _tag_header.setStyleSheet("font-weight: bold;")
         _tag_hrow.addWidget(_tag_header)
         _tag_hrow.addWidget(_info_icon(
-            "Each slider sets the target share for this tag.\n\n"
-            "• Soft mode (strict enforcement off):\n"
-            "  The % is a running target — the scheduler picks from this tag more often\n"
-            "  when it's under-represented, less often when it's over-represented.\n"
-            "  Example: physics = 20 % → roughly 1 in 5 picks tries to find a physics card.\n\n"
-            "• Strict mode (strict enforcement on):\n"
-            "  The Tags phase tries to fill a rounded number of places.\n"
-            "  Example: physics = 20 % with 50 cards → a target of 10 physics cards.\n"
-            "  Available cards and phase order can change the final mix.\n\n"
-            "Other excludes all active selected tags and their subtags, even during refill.\n"
-            "Cards with unrelated tags can still belong to Other.\n\n"
-            "Tag sliders with the same group name are constrained together to 100 %.\n"
-            "Leave group empty to keep a tag independent.\n"
-            "Total can exceed 100 % (a warning is shown)."
+            t("session_tag_quotas_help")
         ))
         _tag_hrow.addStretch()
         layout.addLayout(_tag_hrow)
 
-        _tag_desc = QLabel(
-            "Each slider sets a target share. Soft mode adjusts pick probabilities; "
-            "strict mode tries to fill a card-count target in phase order. "
-            "Tag sliders in the same group share a constrained 100% pool. "
-            "Other excludes all active selected tags and is fixed at 100% when no specific tag rows exist."
-        )
+        _tag_desc = QLabel(t("session_tag_quotas_summary"))
         _tag_desc.setWordWrap(True)
         _tag_desc.setStyleSheet("color: gray;")
         layout.addWidget(_tag_desc)
@@ -1824,16 +1785,15 @@ class SchedulerConfigDialog(QDialog):
         self._tag_combo = QComboBox()
         self._tag_combo.addItems(self._current_profile_tags)
         add_tag_row.addWidget(self._tag_combo)
-        add_btn = QPushButton("Add")
+        add_btn = QPushButton(t("common_add"))
         qconnect(add_btn.clicked, lambda: self._add_tag_row(self._tag_combo.currentText(), group_name="tags"))
         qconnect(add_btn.clicked, lambda: self._schedule_live_preview_refresh())
         add_tag_row.addWidget(add_btn)
         layout.addLayout(add_tag_row)
 
-        self._no_tags_cb = QCheckBox("Include other cards (controlled by Other slider)")
+        self._no_tags_cb = QCheckBox(t("session_include_other_cards"))
         self._no_tags_cb.setToolTip(
-            "Read-only compatibility flag.\n"
-            "Use the always-present 'Other' slider to control this."
+            t("session_include_other_cards_tooltip")
         )
         self._no_tags_cb.setChecked(self._saved.get("no_tags_checked", True))
         self._no_tags_cb.setEnabled(False)
@@ -1862,7 +1822,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._finalize_tag_row_batch_restore()
         if skipped_missing_tags > 0:
-            tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
+            tooltip(tn("session_tag_rows_skipped", skipped_missing_tags))
 
         self._other_lbl = QLabel("")
         layout.addWidget(self._other_lbl)
@@ -1875,7 +1835,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(_funnel_sep)
 
         _funnel_hrow = QHBoxLayout()
-        _funnel_toggle = QPushButton("▶  Scheduling funnel")
+        _funnel_toggle = QPushButton(t("session_funnel_collapsed"))
         _funnel_toggle.setCheckable(True)
         _funnel_toggle.setChecked(False)
         _funnel_toggle.setFlat(True)
@@ -1885,41 +1845,18 @@ class SchedulerConfigDialog(QDialog):
         )
         _funnel_hrow.addWidget(_funnel_toggle)
         _funnel_hrow.addWidget(_info_icon(
-            "Only active when Strict enforcement is ON.\n\n"
-            "─── Strict mode (enforcement checked) ───\n"
-            "Each enabled phase fills its quota in full before the next phase starts.\n"
-            "Drag phases to change the order; use ✓ to enable/disable individual phases.\n\n"
-            "Example order — Content Types → Tag Quotas → Card Type → Selection Mode:\n"
-            "  1. Fill PDF / YouTube quotas\n"
-            "  2. Fill tag quotas (statistics 30 %, psychology 20 %)\n"
-            "  3. Fill remaining slots with the topics / items ratio\n"
-            "  4. Fill any last slots using the priority / random ratio\n"
-            "  5. Fill Remaining — any ready card, always last\n\n"
-            "─── Soft mode (enforcement unchecked) ───\n"
-            "The funnel is INACTIVE. Phase order and the ✓ checkboxes have no effect.\n"
-            "Instead, the scheduler blends all your configured targets simultaneously\n"
-            "at every single pick using a debt tracker — it steers toward whichever\n"
-            "bucket (tag, type, mode) is most under-represented at that moment.\n"
-            "Your ratios are converged to gradually, not enforced up front."
+            t("session_funnel_help")
         ))
-        self._enforce_cb = QCheckBox("Strict enforcement")
+        self._enforce_cb = QCheckBox(t("session_strict_enforcement"))
         self._enforce_cb.setToolTip(
-            "Strict (checked): each phase is filled in full before the next.\n"
-            "The funnel order and phase checkboxes are active.\n\n"
-            "Soft (unchecked): the funnel is INACTIVE.\n"
-            "All dimensions are blended simultaneously at every pick using a debt\n"
-            "tracker — no hard quotas, no fixed order, just gradual convergence\n"
-            "toward your configured ratios."
+            t("session_strict_enforcement_tooltip")
         )
         self._enforce_cb.setChecked(self._saved.get("enforce_priority", True))
         _funnel_hrow.addStretch()
         _funnel_hrow.addWidget(self._enforce_cb)
         layout.addLayout(_funnel_hrow)
 
-        self._strict_mode_lbl = QLabel(
-            "⚠  Strict mode active — phase order can bias final distribution when "
-            "earlier phases consume available cards."
-        )
+        self._strict_mode_lbl = QLabel(t("session_strict_mode_warning"))
         self._strict_mode_lbl.setStyleSheet(
             "color: #8a4b00;"
             "background: rgba(255,180,0,0.12);"
@@ -1939,59 +1876,36 @@ class SchedulerConfigDialog(QDialog):
 
         # ── Content type priorities ────────────────────────────────────────────
         _ct_hrow = QHBoxLayout()
-        _ct_header = QLabel("Content type priorities")
+        _ct_header = QLabel(t("session_content_type_priorities"))
         _ct_header.setStyleSheet("font-weight: bold;")
         _ct_hrow.addWidget(_ct_header)
         _ct_hrow.addWidget(_info_icon(
-            "Reserve the first part of every session for a specific media type.\n\n"
-            "These cards are scheduled first (Phase 0), before Topics/Items ratios,\n"
-            "Tag quotas, or Scheduling priority order take effect.\n\n"
-            "Example: PDF = 30 % with 50 cards → the first 15 cards are always PDFs.\n"
-            "After that, normal scheduling fills the remaining 35 slots.\n\n"
-            "Leave unchecked for types you don't want to prioritise.\n"
-            "If fewer cards are available than the quota, all available cards are used."
+            t("session_content_type_priorities_help")
         ))
         _ct_hrow.addStretch()
         _funnel_body_layout.addLayout(_ct_hrow)
 
-        _ct_desc = QLabel(
-            "Checked types are scheduled first — their percentage is filled before the rest of the session."
-        )
+        _ct_desc = QLabel(t("session_content_type_priorities_summary"))
         _ct_desc.setWordWrap(True)
         _ct_desc.setStyleSheet("color: gray;")
         _funnel_body_layout.addWidget(_ct_desc)
 
-        _ct_tip = QLabel(
-            "Tip: Tag weights (below) also apply here — "
-            "e.g. statistics = 80 % means 80 % of your PDF picks will target statistics-tagged PDFs."
-        )
+        _ct_tip = QLabel(t("session_content_type_priorities_tip"))
         _ct_tip.setWordWrap(True)
         _ct_tip.setStyleSheet("color: #4a7ab5; font-size: small; padding: 2px 0;")
         _funnel_body_layout.addWidget(_ct_tip)
 
         _ct_tips = {
-            "pdf":     (
-                "Incremento PDF reading cards (note type: Incremento PDF).\n"
-                "Always eligible — not limited by New / Learning / Due state.\n\n"
-                "Example: 20 % of 50 cards = first 10 cards are PDFs."
-            ),
-            "youtube": (
-                "YouTube / video cards (note type: Incremento Video).\n"
-                "Always eligible — not limited by New / Learning / Due state.\n\n"
-                "Example: 10 % of 50 cards = first 5 cards are YouTube videos."
-            ),
-            "webpage": (
-                "Webpage cards (note type: Incremento Web).\n"
-                "Always eligible — not limited by New / Learning / Due state.\n\n"
-                "Example: 10 % of 50 cards = first 5 cards are webpages."
-            ),
+            "pdf": t("session_content_pdf_help"),
+            "youtube": t("session_content_video_help"),
+            "webpage": t("session_content_webpage_help"),
         }
         ct_saved = {r["type"]: r for r in self._saved.get("content_type_rows", [])}
         self._ct_rows: list[dict] = []
         for ct_type, ct_label in [
-            ("pdf",     "PDF"),
-            ("youtube", "YouTube / Video"),
-            ("webpage", "Webpage"),
+            ("pdf", t("session_content_pdf")),
+            ("youtube", t("session_content_video")),
+            ("webpage", t("session_content_webpage")),
         ]:
             saved_row = ct_saved.get(ct_type, {})
             ct_enabled = saved_row.get("enabled", False)
@@ -2010,10 +1924,10 @@ class SchedulerConfigDialog(QDialog):
             ct_slider.setRange(0, 100)
             ct_slider.setValue(ct_weight)
             ct_slider.setEnabled(ct_enabled)
-            ct_slider.setToolTip("Percentage of the session to fill with this content type first")
+            ct_slider.setToolTip(t("session_content_type_weight_tooltip"))
             ct_layout.addWidget(ct_slider)
 
-            ct_pct = QLabel(f"{ct_weight}%")
+            ct_pct = QLabel(t("session_percent", value=ct_weight))
             ct_pct.setFixedWidth(36)
             ct_layout.addWidget(ct_pct)
 
@@ -2021,12 +1935,12 @@ class SchedulerConfigDialog(QDialog):
             ct_count.setStyleSheet("color: gray; font-size: small;")
             ct_layout.addWidget(ct_count)
 
-            order_label = QLabel("Order:")
+            order_label = QLabel(t("session_order"))
             ct_layout.addWidget(order_label)
             order_edit = QLineEdit()
             order_edit.setFixedWidth(54)
-            order_edit.setPlaceholderText("Order")
-            order_edit.setToolTip("Positive number for ordered priority. Empty means normal scheduling.")
+            order_edit.setPlaceholderText(t("session_order_placeholder"))
+            order_edit.setToolTip(t("session_order_tooltip"))
             self._set_order_edit_value(order_edit, self._priority_order_for("content_type", ct_type))
             ct_layout.addWidget(order_edit)
 
@@ -2047,7 +1961,7 @@ class SchedulerConfigDialog(QDialog):
             qconnect(ct_cb.stateChanged,
                      lambda _, r=ct_row: r["slider"].setEnabled(r["cb"].isChecked()))
             qconnect(ct_slider.valueChanged,
-                     lambda v, r=ct_row: r["pct_label"].setText(f"{v}%"))
+                     lambda v, r=ct_row: r["pct_label"].setText(t("session_percent", value=v)))
             qconnect(ct_cb.stateChanged, lambda _: self._schedule_live_preview_refresh())
             qconnect(ct_slider.valueChanged, lambda _: self._schedule_live_preview_refresh())
             qconnect(order_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
@@ -2071,10 +1985,7 @@ class SchedulerConfigDialog(QDialog):
         _funnel_body_layout.addWidget(self._funnel)
 
         # Soft-mode banner — shown below the funnel when strict enforcement is off
-        self._soft_mode_lbl = QLabel(
-            "⚠  Soft mode active — the funnel order and phase checkboxes are ignored.\n"
-            "    All targets blend simultaneously at every pick (debt-based)."
-        )
+        self._soft_mode_lbl = QLabel(t("session_soft_mode_warning"))
         self._soft_mode_lbl.setStyleSheet(
             "color: #b07800;"
             "background: rgba(255,200,0,0.12);"
@@ -2089,7 +2000,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(_funnel_body)
 
         def _toggle_funnel(checked):
-            _funnel_toggle.setText("▼  Scheduling funnel" if checked else "▶  Scheduling funnel")
+            _funnel_toggle.setText(t("session_funnel_expanded") if checked else t("session_funnel_collapsed"))
             _funnel_body.setVisible(checked)
         qconnect(_funnel_toggle.toggled, _toggle_funnel)
 
@@ -2112,7 +2023,7 @@ class SchedulerConfigDialog(QDialog):
         _adv_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
         layout.addWidget(_adv_sep)
 
-        _adv_toggle = QPushButton("▶  Advanced")
+        _adv_toggle = QPushButton(t("session_advanced_collapsed"))
         _adv_toggle.setCheckable(True)
         _adv_toggle.setChecked(False)
         _adv_toggle.setFlat(True)
@@ -2121,11 +2032,7 @@ class SchedulerConfigDialog(QDialog):
             "QPushButton:hover { color: palette(highlight); }"
         )
         _adv_toggle_info = _info_icon(
-            "Incremento now classifies topics using the same logic as the T button,\n"
-            "topic tags, configured topic note types, and the Topics deck.\n\n"
-            "These filters are optional extra narrowing on top of that classification.\n"
-            "Leave them empty to use the full Incremento topic/item pools.\n"
-            "Use 'Test' to check how many ready cards remain after narrowing."
+            t("session_advanced_filters_help")
         )
         _adv_hrow = QHBoxLayout()
         _adv_hrow.setContentsMargins(0, 0, 0, 0)
@@ -2142,16 +2049,15 @@ class SchedulerConfigDialog(QDialog):
         _adv_body_layout.addWidget(pdf_limit_card)
 
         topics_filter_row = QHBoxLayout()
-        topics_filter_row.addWidget(QLabel("Topics filter:"))
+        topics_filter_row.addWidget(QLabel(t("session_topics_filter")))
         self._topics_filter_edit = QLineEdit()
-        self._topics_filter_edit.setPlaceholderText("Optional extra narrowing")
+        self._topics_filter_edit.setPlaceholderText(t("session_filter_placeholder"))
         self._topics_filter_edit.setToolTip(
-            "Optional Anki search query that further narrows Incremento topic cards.\n"
-            "Leave empty to include all cards classified as topics."
+            t("session_topics_filter_tooltip")
         )
         self._topics_filter_edit.setText(self._normalized_saved_filter("topics_filter"))
         topics_filter_row.addWidget(self._topics_filter_edit)
-        test_topics_btn = QPushButton("Test")
+        test_topics_btn = QPushButton(t("common_test"))
         test_topics_btn.setFixedWidth(48)
         qconnect(test_topics_btn.clicked,
                  lambda: self._test_filter("topics", self._topics_filter_edit.text().strip()))
@@ -2159,65 +2065,56 @@ class SchedulerConfigDialog(QDialog):
         _adv_body_layout.addLayout(topics_filter_row)
 
         items_filter_row = QHBoxLayout()
-        items_filter_row.addWidget(QLabel("Items filter:"))
+        items_filter_row.addWidget(QLabel(t("session_items_filter")))
         self._items_filter_edit = QLineEdit()
-        self._items_filter_edit.setPlaceholderText("Optional extra narrowing")
+        self._items_filter_edit.setPlaceholderText(t("session_filter_placeholder"))
         self._items_filter_edit.setToolTip(
-            "Optional Anki search query that further narrows Incremento item cards.\n"
-            "Leave empty to include all cards classified as items."
+            t("session_items_filter_tooltip")
         )
         self._items_filter_edit.setText(self._normalized_saved_filter("items_filter"))
         items_filter_row.addWidget(self._items_filter_edit)
-        test_items_btn = QPushButton("Test")
+        test_items_btn = QPushButton(t("common_test"))
         test_items_btn.setFixedWidth(48)
         qconnect(test_items_btn.clicked,
                  lambda: self._test_filter("items", self._items_filter_edit.text().strip()))
         items_filter_row.addWidget(test_items_btn)
         _adv_body_layout.addLayout(items_filter_row)
 
-        self._preserve_order_cb = QCheckBox("Present cards in scheduler order")
+        self._preserve_order_cb = QCheckBox(t("session_present_scheduler_order"))
         self._preserve_order_cb.setToolTip(
-            "When checked, cards appear in the exact order the scheduler selected them.\n"
-            "Stopping early gives a proportional sample matching your tag/type ratios.\n"
-            "Works best with soft scheduling (strict enforcement disabled).\n\n"
-            "When unchecked, cards are shown in random order."
+            t("session_present_scheduler_order_tooltip")
         )
         self._preserve_order_cb.setChecked(self._saved.get("preserve_order", True))
         _adv_body_layout.addWidget(self._preserve_order_cb)
 
         self._auto_refill_session_cb = QCheckBox(
-            "Auto-refill session deck to keep this many unreviewed cards"
+            t("session_auto_refill")
         )
         self._auto_refill_session_cb.setToolTip(
-            "When enabled, the session card count becomes the not-yet-answered card window.\n"
-            "Learning repeats stay in the filtered deck, so Anki's visible queue can be larger."
+            t("session_auto_refill_tooltip")
         )
         self._auto_refill_session_cb.setChecked(self._saved.get("auto_refill_session", False))
         _adv_body_layout.addWidget(self._auto_refill_session_cb)
 
         self._allow_content_tag_fallback_cb = QCheckBox(
-            "Allow document/media picks outside selected tags"
+            t("session_allow_media_outside_tags")
         )
         self._allow_content_tag_fallback_cb.setToolTip(
-            "When unchecked, PDF, EPUB, video, and webpage picks must match your active tag rows.\n"
-            "If a selected tag has no cards in that content type, Incremento skips that content-type pick\n"
-            "instead of filling it from unrelated documents or media.\n\n"
-            "Enable this only if you want the older behavior: a tag miss can fall back to any card\n"
-            "from that document/media type."
+            t("session_allow_media_outside_tags_tooltip")
         )
         self._allow_content_tag_fallback_cb.setChecked(
             bool(self._saved.get("allow_content_tag_fallback", False))
         )
         _adv_body_layout.addWidget(self._allow_content_tag_fallback_cb)
 
-        self._show_debug_cb = QCheckBox("Show debug information on cards when starting")
+        self._show_debug_cb = QCheckBox(t("session_show_debug"))
         self._show_debug_cb.setChecked(self._saved.get("show_debug", False))
         _adv_body_layout.addWidget(self._show_debug_cb)
 
         layout.addWidget(_adv_body)
 
         def _toggle_adv(checked):
-            _adv_toggle.setText("▼  Advanced" if checked else "▶  Advanced")
+            _adv_toggle.setText(t("session_advanced_expanded") if checked else t("session_advanced_collapsed"))
             _adv_body.setVisible(checked)
         qconnect(_adv_toggle.toggled, _toggle_adv)
 
@@ -2237,7 +2134,7 @@ class SchedulerConfigDialog(QDialog):
         _stats_sep.setStyleSheet("QFrame { color: rgba(128,128,128,0.25); }")
         layout.addWidget(_stats_sep)
 
-        _stats_toggle = QPushButton("▶  Statistics history")
+        _stats_toggle = QPushButton(t("session_statistics_collapsed"))
         _stats_toggle.setCheckable(True)
         _stats_toggle.setChecked(False)
         _stats_toggle.setFlat(True)
@@ -2255,34 +2152,34 @@ class SchedulerConfigDialog(QDialog):
 
         stats_row = QHBoxLayout()
 
-        del_today_btn = QPushButton("Delete Today")
-        del_today_btn.setToolTip("Permanently delete today's statistics")
+        del_today_btn = QPushButton(t("session_delete_today"))
+        del_today_btn.setToolTip(t("session_delete_today_tooltip"))
         del_today_btn.setStyleSheet("color: palette(text); opacity: 0.8;")
         qconnect(del_today_btn.clicked, self._delete_daily)
         stats_row.addWidget(del_today_btn)
 
-        del_session_btn = QPushButton("Delete Session")
-        del_session_btn.setToolTip("Clear the last session's in-memory statistics")
+        del_session_btn = QPushButton(t("session_delete_session"))
+        del_session_btn.setToolTip(t("session_delete_session_tooltip"))
         del_session_btn.setStyleSheet("color: palette(text); opacity: 0.8;")
         qconnect(del_session_btn.clicked, self._delete_session)
         stats_row.addWidget(del_session_btn)
 
-        del_lifetime_btn = QPushButton("Delete All Time")
-        del_lifetime_btn.setToolTip("Permanently delete all lifetime statistics")
+        del_lifetime_btn = QPushButton(t("session_delete_all_time"))
+        del_lifetime_btn.setToolTip(t("session_delete_all_time_tooltip"))
         del_lifetime_btn.setStyleSheet("color: palette(text); opacity: 0.8;")
         qconnect(del_lifetime_btn.clicked, self._delete_lifetime)
         stats_row.addWidget(del_lifetime_btn)
 
-        del_all_btn = QPushButton("Delete All History")
-        del_all_btn.setToolTip("Permanently delete all statistics (today + all time + session)")
+        del_all_btn = QPushButton(t("session_delete_all_history"))
+        del_all_btn.setToolTip(t("session_delete_all_history_tooltip"))
         del_all_btn.setStyleSheet("color: #c0392b; font-weight: bold;")
         qconnect(del_all_btn.clicked, self._delete_all)
         stats_row.addWidget(del_all_btn)
 
         stats_row.addStretch()
 
-        export_btn = QPushButton("Export JSON")
-        export_btn.setToolTip("Export all saved statistics as a JSON file")
+        export_btn = QPushButton(t("session_export_json"))
+        export_btn.setToolTip(t("session_export_json_tooltip"))
         qconnect(export_btn.clicked, self._export_json)
         stats_row.addWidget(export_btn)
 
@@ -2290,7 +2187,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(_stats_body)
 
         def _toggle_stats(checked):
-            _stats_toggle.setText("▼  Statistics history" if checked else "▶  Statistics history")
+            _stats_toggle.setText(t("session_statistics_expanded") if checked else t("session_statistics_collapsed"))
             _stats_body.setVisible(checked)
         qconnect(_stats_toggle.toggled, _toggle_stats)
 
@@ -2314,6 +2211,8 @@ class SchedulerConfigDialog(QDialog):
         btn_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
+        btn_box.button(QDialogButtonBox.StandardButton.Ok).setText(t("common_ok"))
+        btn_box.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common_cancel"))
         btn_box.setContentsMargins(12, 4, 12, 4)
         qconnect(btn_box.accepted, self.accept)
         qconnect(btn_box.rejected, self.reject)
@@ -2344,65 +2243,62 @@ class SchedulerConfigDialog(QDialog):
             self._sync_basic_controls_from_advanced()
 
     def _populate_basic_panel(self) -> None:
-        intro = QLabel(
-            "Choose the session size and the two main mixes. Open Advanced for "
-            "tag quotas, scheduling phases, card states, ordering, and diagnostics."
-        )
+        intro = QLabel(t("session_basic_intro"))
         intro.setWordWrap(True)
-        intro.setAccessibleName("Basic session setup help")
+        intro.setAccessibleName(t("session_basic_help_accessible"))
         self._basic_layout.addWidget(intro)
 
         profile_row = QHBoxLayout()
-        profile_row.addWidget(QLabel("Preset:"))
+        profile_row.addWidget(QLabel(t("session_preset")))
         self._basic_profile_combo = QComboBox()
-        self._basic_profile_combo.setAccessibleName("Session preset")
+        self._basic_profile_combo.setAccessibleName(t("session_preset_accessible"))
         self._basic_profile_combo.setMinimumWidth(220)
         profile_row.addWidget(self._basic_profile_combo, 1)
         profile_row.addStretch(1)
         self._basic_layout.addLayout(profile_row)
 
         count_row = QHBoxLayout()
-        count_row.addWidget(QLabel("Cards per session:"))
+        count_row.addWidget(QLabel(t("session_cards_per_session")))
         self._basic_count_spin = QSpinBox()
         self._basic_count_spin.setRange(1, MAX_SESSION_CARD_COUNT)
-        self._basic_count_spin.setAccessibleName("Cards per session")
+        self._basic_count_spin.setAccessibleName(t("session_cards_per_session_accessible"))
         count_row.addWidget(self._basic_count_spin)
         count_row.addStretch(1)
         self._basic_layout.addLayout(count_row)
 
         topics_row = QHBoxLayout()
-        topics_row.addWidget(QLabel("Topics"))
+        topics_row.addWidget(QLabel(t("session_topics")))
         self._basic_topics_left_label = QLabel("")
         self._basic_topics_left_label.setFixedWidth(42)
         topics_row.addWidget(self._basic_topics_left_label)
         self._basic_topics_slider = QSlider(Qt.Orientation.Horizontal)
         self._basic_topics_slider.setRange(0, 100)
-        self._basic_topics_slider.setAccessibleName("Topic and Item mix")
+        self._basic_topics_slider.setAccessibleName(t("session_topics_items_mix_accessible"))
         topics_row.addWidget(self._basic_topics_slider, 1)
         self._basic_topics_right_label = QLabel("")
         self._basic_topics_right_label.setFixedWidth(42)
         topics_row.addWidget(self._basic_topics_right_label)
-        topics_row.addWidget(QLabel("Items"))
+        topics_row.addWidget(QLabel(t("session_items")))
         self._basic_layout.addLayout(topics_row)
 
         docs_row = QHBoxLayout()
-        docs_row.addWidget(QLabel("Documents"))
+        docs_row.addWidget(QLabel(t("session_documents")))
         self._basic_docs_left_label = QLabel("")
         self._basic_docs_left_label.setFixedWidth(42)
         docs_row.addWidget(self._basic_docs_left_label)
         self._basic_docs_slider = QSlider(Qt.Orientation.Horizontal)
         self._basic_docs_slider.setRange(0, 100)
-        self._basic_docs_slider.setAccessibleName("Document and Other mix")
+        self._basic_docs_slider.setAccessibleName(t("session_documents_other_mix_accessible"))
         docs_row.addWidget(self._basic_docs_slider, 1)
         self._basic_docs_right_label = QLabel("")
         self._basic_docs_right_label.setFixedWidth(42)
         docs_row.addWidget(self._basic_docs_right_label)
-        docs_row.addWidget(QLabel("Other"))
+        docs_row.addWidget(QLabel(t("session_other")))
         self._basic_layout.addLayout(docs_row)
 
         self._basic_summary_label = QLabel("")
         self._basic_summary_label.setWordWrap(True)
-        self._basic_summary_label.setAccessibleName("Current session summary")
+        self._basic_summary_label.setAccessibleName(t("session_summary_accessible"))
         self._basic_summary_label.setStyleSheet(
             "font-weight: bold; padding: 10px; "
             "background: rgba(74,122,181,0.10); "
@@ -2412,8 +2308,8 @@ class SchedulerConfigDialog(QDialog):
 
         preview_row = QHBoxLayout()
         preview_row.addStretch(1)
-        preview_button = QPushButton("Preview selected cards…")
-        preview_button.setAccessibleName("Preview selected session cards")
+        preview_button = QPushButton(t("session_preview_selected_cards"))
+        preview_button.setAccessibleName(t("session_preview_selected_cards_accessible"))
         qconnect(preview_button.clicked, self._open_live_preview)
         preview_row.addWidget(preview_button)
         self._basic_layout.addLayout(preview_row)
@@ -2444,7 +2340,7 @@ class SchedulerConfigDialog(QDialog):
             return
         combo.blockSignals(True)
         combo.clear()
-        combo.addItem(self._CURRENT_SETTINGS_LABEL, None)
+        combo.addItem(self._current_settings_display(), None)
         for name in sorted(self._profiles.keys()):
             combo.addItem(name, name)
         selected_name = self.selected_dialog_profile_name()
@@ -2463,7 +2359,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._selected_profile_name = name
         advanced_index = self._profile_combo.findText(
-            name or self._CURRENT_SETTINGS_LABEL
+            name or self._current_settings_display()
         )
         self._profile_combo.blockSignals(True)
         self._profile_combo.setCurrentIndex(max(0, advanced_index))
@@ -2489,12 +2385,12 @@ class SchedulerConfigDialog(QDialog):
         )
         topics_value = self._topics_slider.value()
         self._set_widget_value_without_signal(self._basic_topics_slider, topics_value)
-        self._basic_topics_left_label.setText(f"{100 - topics_value}%")
-        self._basic_topics_right_label.setText(f"{topics_value}%")
+        self._basic_topics_left_label.setText(t("session_percent", value=100 - topics_value))
+        self._basic_topics_right_label.setText(t("session_percent", value=topics_value))
         docs_value = self._pdf_slider.value()
         self._set_widget_value_without_signal(self._basic_docs_slider, docs_value)
-        self._basic_docs_left_label.setText(f"{100 - docs_value}%")
-        self._basic_docs_right_label.setText(f"{docs_value}%")
+        self._basic_docs_left_label.setText(t("session_percent", value=100 - docs_value))
+        self._basic_docs_right_label.setText(t("session_percent", value=docs_value))
         self._basic_summary_label.setText(self._basic_summary_text())
 
     def _update_day_end_visibility(self) -> None:
@@ -2727,7 +2623,7 @@ class SchedulerConfigDialog(QDialog):
         self._rebalance_tag_groups(changed_row=None)
         self._move_other_tag_row_to_bottom()
         for row in self._linked_rows:
-            row["pct_label"].setText(f"{row['slider'].value()}%")
+            row["pct_label"].setText(t("session_percent", value=row["slider"].value()))
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
@@ -2752,26 +2648,24 @@ class SchedulerConfigDialog(QDialog):
         slider.setRange(0, 100)
         slider.setValue(weight)
         slider.setToolTip(
-            "Probability that any given pick in the session targets this tag.\n"
-            "In soft mode: a running target (~20% → roughly 1 in 5 picks aims here).\n"
-            "In strict mode: a hard quota filled before the rest of the session."
+            t("session_tag_weight_tooltip")
         )
         row_layout.addWidget(slider)
 
-        pct_label = QLabel(f"{weight}%")
+        pct_label = QLabel(t("session_percent", value=weight))
         pct_label.setFixedWidth(36)
         row_layout.addWidget(pct_label)
 
         lock_cb = QCheckBox("🔒")
         lock_cb.setChecked(locked)
-        lock_cb.setToolTip("Lock this weight inside its group.")
+        lock_cb.setToolTip(t("session_tag_lock_tooltip"))
         lock_cb.setFixedWidth(48)
         row_layout.addWidget(lock_cb)
 
-        row_layout.addWidget(QLabel("Group:"))
+        row_layout.addWidget(QLabel(t("session_group")))
         group_edit = QLineEdit(group_name or "tags")
         group_edit.setFixedWidth(90)
-        group_edit.setToolTip("Tag sliders with the same group name are constrained to a shared 100% pool.")
+        group_edit.setToolTip(t("session_tag_group_tooltip"))
         row_layout.addWidget(group_edit)
 
         # Disable slider when locked; re-enable on toggle.
@@ -2812,12 +2706,12 @@ class SchedulerConfigDialog(QDialog):
         qconnect(group_edit.textChanged, lambda _: self._schedule_live_preview_refresh())
 
         if tag != NO_TAGS_KEY:
-            order_label = QLabel("Order:")
+            order_label = QLabel(t("session_order"))
             row_layout.addWidget(order_label)
             order_edit = QLineEdit()
             order_edit.setFixedWidth(54)
-            order_edit.setPlaceholderText("Order")
-            order_edit.setToolTip("Positive number for ordered priority. Empty means normal scheduling.")
+            order_edit.setPlaceholderText(t("session_order_placeholder"))
+            order_edit.setToolTip(t("session_order_tooltip"))
             self._set_order_edit_value(order_edit, order)
             row_dict["order_label"] = order_label
             row_dict["order_edit"] = order_edit
@@ -2848,7 +2742,7 @@ class SchedulerConfigDialog(QDialog):
         self._rebalance_tag_groups(changed_row=None)
         self._move_other_tag_row_to_bottom()
         for row in self._linked_rows:
-            row["pct_label"].setText(f"{row['slider'].value()}%")
+            row["pct_label"].setText(t("session_percent", value=row["slider"].value()))
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
@@ -2871,7 +2765,7 @@ class SchedulerConfigDialog(QDialog):
 
         self._rebalance_tag_groups(changed_row=None)
         for row in self._linked_rows:
-            row["pct_label"].setText(f"{row['slider'].value()}%")
+            row["pct_label"].setText(t("session_percent", value=row["slider"].value()))
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
@@ -2937,9 +2831,9 @@ class SchedulerConfigDialog(QDialog):
         if self._updating:
             return
         self._rebalance_tag_groups(changed_row)
-        changed_row["pct_label"].setText(f"{changed_row['slider'].value()}%")
+        changed_row["pct_label"].setText(t("session_percent", value=changed_row["slider"].value()))
         for row in self._linked_rows:
-            row["pct_label"].setText(f"{row['slider'].value()}%")
+            row["pct_label"].setText(t("session_percent", value=row["slider"].value()))
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
@@ -2951,7 +2845,7 @@ class SchedulerConfigDialog(QDialog):
         row_dict["slider"].setEnabled(not row_dict["lock_cb"].isChecked())
         self._rebalance_tag_groups(changed_row=None)
         for row in self._linked_rows:
-            row["pct_label"].setText(f"{row['slider'].value()}%")
+            row["pct_label"].setText(t("session_percent", value=row["slider"].value()))
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
         self._refresh_expected_mix_preview()
@@ -2972,16 +2866,9 @@ class SchedulerConfigDialog(QDialog):
         effective_other = max(0, 100 - real_total) if include_rest else 0
         configured_other = int(other_row["slider"].value()) if other_row is not None else effective_other
         if configured_other != effective_other:
-            self._other_lbl.setText(
-                f'<span style="color: #e0a020; font-size: small;">'
-                f'Other slider: {configured_other}% · Effective other: {effective_other}% '
-                f'(based on non-Other tag totals)</span>'
-            )
+            self._other_lbl.setText(t("session_other_slider_status", configured=configured_other, effective=effective_other))
             return
-        self._other_lbl.setText(
-            f'<span style="color: gray; font-size: small;">'
-            f'Other cards: {effective_other}%</span>'
-        )
+        self._other_lbl.setText(t("session_other_cards_status", effective=effective_other))
 
     def _get_main_lock_state(self) -> dict[str, bool]:
         return {
@@ -3025,9 +2912,9 @@ class SchedulerConfigDialog(QDialog):
             self._pdf_limit_combo.addItem(target["label"], target["card_id"])
 
         if not self._pdf_limit_targets:
-            self._pdf_limit_combo.addItem("No Incremento PDF cards found", None)
+            self._pdf_limit_combo.addItem(t("session_no_pdf_cards"), None)
         elif not matches:
-            self._pdf_limit_combo.addItem("No PDFs match this search", None)
+            self._pdf_limit_combo.addItem(t("session_no_pdf_match"), None)
 
         if selected_card_id is not None:
             idx = self._pdf_limit_combo.findData(selected_card_id)
@@ -3045,7 +2932,7 @@ class SchedulerConfigDialog(QDialog):
                     note = mw.col.get_note(card.nid)
                     title = _compact_text((getattr(note, "fields", []) or [""])[0], max_len=110) or f"PDF {cid}"
                     current_page = int(get_page(_ADDON_DIR, _active_profile(), cid))
-                    label = f"{title} · p.{current_page} · card {cid}"
+                    label = t("session_preview_pdf_target", title=title, page=current_page, card_id=cid)
                     targets.append(
                         {
                             "card_id": int(cid),
@@ -3076,9 +2963,9 @@ class SchedulerConfigDialog(QDialog):
             idx = self._pdf_limit_main_mode.findData("warning")
             self._pdf_limit_main_mode.setCurrentIndex(max(0, idx))
             if self._pdf_limit_targets:
-                self._pdf_limit_main_status_lbl.setText("Choose a PDF to edit its daily page limit.")
+                self._pdf_limit_main_status_lbl.setText(t("session_pdf_limit_choose"))
             else:
-                self._pdf_limit_main_status_lbl.setText("No Incremento PDF cards exist yet.")
+                self._pdf_limit_main_status_lbl.setText(t("session_no_pdf_cards"))
             self._pdf_limit_main_loading = False
             self._set_main_pdf_limit_form_enabled_state()
             return
@@ -3098,14 +2985,10 @@ class SchedulerConfigDialog(QDialog):
         idx = self._pdf_limit_main_mode.findData(str(settings.get("enforcement_mode") or "warning"))
         self._pdf_limit_main_mode.setCurrentIndex(max(0, idx))
         if status.get("enabled"):
-            self._pdf_limit_main_status_lbl.setText(
-                f"Today: {status['pages_used']}/{status['daily_page_limit']} pages, "
-                f"{status['pages_remaining']} remaining. "
-                f"Current page {current_page}, stop point today page {status['allowed_max_page']}."
-            )
+            self._pdf_limit_main_status_lbl.setText(t("session_pdf_limit_detailed_status", used=status["pages_used"], limit=status["daily_page_limit"], remaining=status["pages_remaining"], current_page=current_page, allowed_page=status["allowed_max_page"]))
         else:
             self._pdf_limit_main_status_lbl.setText(
-                f"No daily limit set for this PDF. Current page {current_page}."
+                t("session_pdf_no_limit_current_page", current_page=current_page)
             )
         self._pdf_limit_main_loading = False
         self._set_main_pdf_limit_form_enabled_state()
@@ -3127,7 +3010,7 @@ class SchedulerConfigDialog(QDialog):
         if idx >= 0:
             self._pdf_limit_combo.setCurrentIndex(idx)
         self._load_main_pdf_limit_editor()
-        tooltip("PDF daily reading limit saved.")
+        tooltip(t("session_pdf_limit_saved"))
 
     @staticmethod
     def _normalize_group_name(name: str) -> str:
@@ -3351,10 +3234,10 @@ class SchedulerConfigDialog(QDialog):
 
         if rows:
             tag_labels = [tag for tag, _ in rows]
-            if "Other" in tag_shares_for_content:
-                tag_labels.append("Other")
+            if NO_TAGS_KEY in tag_shares_for_content:
+                tag_labels.append(NO_TAGS_KEY)
         else:
-            tag_labels = ["Other"]
+            tag_labels = [NO_TAGS_KEY]
 
         matrix: dict[str, dict[str, int]] = {tag: {"PDF": 0, "Topics": 0, "Items": 0} for tag in tag_labels}
         for content_name, content_count in content_cols:
@@ -3364,7 +3247,7 @@ class SchedulerConfigDialog(QDialog):
 
         table.setRowCount(len(tag_labels))
         for r, tag in enumerate(tag_labels):
-            tag_item = QTableWidgetItem(tag)
+            tag_item = QTableWidgetItem(_preview_tag_label(tag))
             table.setItem(r, 0, tag_item)
             total = 0
             for c, (content_name, content_total) in enumerate(content_cols, start=1):
@@ -3375,10 +3258,9 @@ class SchedulerConfigDialog(QDialog):
             tot_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             table.setItem(r, 4, tot_item)
 
-        note = (
-            "Cells show estimated count and share within each content column."
-            + (" Tag shares are normalized because configured totals exceed 100%." if tags_normalized else "")
-        )
+        note = t("session_heatmap_note")
+        if tags_normalized:
+            note += " " + t("session_heatmap_normalized")
         self._tag_content_note_lbl.setText(note)
 
     def _refresh_expected_mix_preview(self) -> None:
@@ -3398,21 +3280,9 @@ class SchedulerConfigDialog(QDialog):
         cc = mix["content_counts"]
         mc = mix["mode_counts"]
 
-        self._expected_mix_lbl.setText(
-            "Expected mix: "
-            f"PDF {self._format_pct(cs['pdf'])}, "
-            f"Topics {self._format_pct(cs['topics'])}, "
-            f"Items {self._format_pct(cs['items'])} · "
-            f"Random {self._format_pct(ms['random'])}, "
-            f"Priority {self._format_pct(ms['priority'])}"
-        )
-        self._expected_counts_lbl.setText(
-            f"At {self._count_spin.value()} cards/session: "
-            f"PDF {cc['pdf']}, Topics {cc['topics']}, Items {cc['items']} · "
-            f"Random {mc['random']}, Priority {mc['priority']} "
-            "(availability may shift actual results)"
-        )
-        self._tag_content_title_lbl.setText("Tag × content estimate:")
+        self._expected_mix_lbl.setText(t("session_expected_mix", pdf=self._format_pct(cs["pdf"]), topics=self._format_pct(cs["topics"]), items=self._format_pct(cs["items"]), random=self._format_pct(ms["random"]), priority=self._format_pct(ms["priority"])))
+        self._expected_counts_lbl.setText(t("session_expected_counts", count=self._count_spin.value(), pdf=cc["pdf"], topics=cc["topics"], items=cc["items"], random=mc["random"], priority=mc["priority"]))
+        self._tag_content_title_lbl.setText(t("session_tag_content_estimate"))
         real_rows = [
             (str(r["tag"]), max(0.0, r["slider"].value() / 100.0))
             for r in self._linked_rows
@@ -3424,19 +3294,19 @@ class SchedulerConfigDialog(QDialog):
         tags_total = sum(w for _, w in real_rows)
         tags_normalized = False
         if not real_rows:
-            tag_shares_for_content = {"Other": 1.0 if include_rest else 0.0}
+            tag_shares_for_content = {NO_TAGS_KEY: 1.0 if include_rest else 0.0}
         elif tags_total <= 1.0:
             tag_shares_for_content = {tag: w for tag, w in real_rows}
-            tag_shares_for_content["Other"] = max(0.0, 1.0 - tags_total) if include_rest else 0.0
+            tag_shares_for_content[NO_TAGS_KEY] = max(0.0, 1.0 - tags_total) if include_rest else 0.0
         else:
             tags_normalized = True
             norm = 1.0 / tags_total
             tag_shares_for_content = {tag: (w * norm) for tag, w in real_rows}
             if include_rest:
-                tag_shares_for_content["Other"] = 0.0
+                tag_shares_for_content[NO_TAGS_KEY] = 0.0
 
         self._update_tag_content_heatmap(
-            rows=[("Other" if tag == NO_TAGS_KEY else tag, w) for tag, w in real_rows],
+            rows=real_rows,
             tag_shares_for_content=tag_shares_for_content,
             tags_normalized=tags_normalized,
             cc=cc,
@@ -3445,9 +3315,9 @@ class SchedulerConfigDialog(QDialog):
     def _branch_scope_label(self) -> str:
         if not self._branch_scope:
             return ""
-        title = str(self._branch_scope.get("root_title") or "").strip() or "Selected branch"
+        title = str(self._branch_scope.get("root_title") or "").strip() or t("session_selected_branch")
         card_count = len(list(self._branch_scope.get("card_ids") or []))
-        return f"{title} · {card_count} subtree card{'' if card_count == 1 else 's'}"
+        return tn("session_subtree_card_count", card_count, title=title)
 
     def _apply_branch_scope_query(self, query: str) -> str:
         return _compose_branch_query(query, self._branch_clause)
@@ -3561,9 +3431,7 @@ class SchedulerConfigDialog(QDialog):
         """Update the count annotation on one tag row."""
         tag = row_dict["tag"]
         if tag == NO_TAGS_KEY:
-            row_dict["name_label"].setText(
-                'Other <span style="color: gray; font-size: small;">(outside selected tags)</span>'
-            )
+            row_dict["name_label"].setText(t("session_other_tag_label"))
             return
         ready = self._ready_filter_from_checks()
         tf_widget = getattr(self, "_topics_filter_edit", None)
@@ -3582,10 +3450,7 @@ class SchedulerConfigDialog(QDialog):
             ready_filter=ready,
         )
         color = "#e0a020" if (n_topics == 0 or n_items == 0) else "gray"
-        row_dict["name_label"].setText(
-            f'{tag} <span style="color: {color}; font-size: small;">'
-            f'({n_topics} topics / {n_items} items)</span>'
-        )
+        row_dict["name_label"].setText(t("session_tag_counts", tag=tag, color=color, topics=n_topics, items=n_items))
 
     def _refresh_counts(self) -> None:
         """Refresh the global topics/items count label and all tag-row counts."""
@@ -3603,12 +3468,8 @@ class SchedulerConfigDialog(QDialog):
         )
         t_color = "#e0a020" if n_topics == 0 else "#c8a800"
         i_color = "#e0a020" if n_items  == 0 else "gray"
-        topic_suffix = " ready in branch" if self._branch_scope else " ready"
-        item_suffix = " ready in branch" if self._branch_scope else " ready"
-        self._counts_lbl.setText(
-            f'<span style="color: {t_color};">Topics: {n_topics}{topic_suffix}</span>'
-            f'  <span style="color: {i_color};">Items: {n_items}{item_suffix}</span>'
-        )
+        scope = t("session_ready_in_branch") if self._branch_scope else t("session_ready")
+        self._counts_lbl.setText(t("session_topic_item_counts", topic_color=t_color, item_color=i_color, topics=n_topics, items=n_items, scope=scope))
         for row in self._linked_rows:
             self._refresh_tag_count(row)
 
@@ -3622,7 +3483,7 @@ class SchedulerConfigDialog(QDialog):
         for row in getattr(self, "_ct_rows", []):
             try:
                 n = len(mw.col.find_cards(self._apply_branch_scope_query(_ct_filter_map[row["type"]])))
-                row["count_label"].setText(f"({n} available)")
+                row["count_label"].setText(t("session_available_count", count=n))
             except Exception:
                 row["count_label"].setText("")
 
@@ -3641,20 +3502,18 @@ class SchedulerConfigDialog(QDialog):
                 items_filter=scoped_query,
                 ready_filter=ready,
             )
-        scope_note = " in the active branch" if self._branch_scope else ""
-        label = "topic" if kind == "topics" else "item"
-        query_label = query or "(no extra filter)"
-        showInfo(f'{label.title()} filter "{query_label}" leaves {count} ready classified card(s){scope_note}.')
+        scope_note = t("session_active_branch") if self._branch_scope else ""
+        label = t("knowledge_tree_topic") if kind == "topics" else t("knowledge_tree_item")
+        query_label = query or t("session_no_extra_filter")
+        showInfo(t("session_filter_result", label=label, query=query_label, count=count, scope=scope_note))
 
     def accept(self) -> None:
         """Validate preview state, then let background session construction run."""
         if self._use_live_preview_enabled and not self._live_preview_cache_is_current():
             QMessageBox.warning(
                 self,
-                "Live Preview Required",
-                "You enabled 'Use previewed card list'.\n\n"
-                "Open Live card preview and click Refresh after your latest settings change, "
-                "then start the session again.",
+                t("session_live_preview_required_title"),
+                t("session_live_preview_required_message"),
             )
             return
         self.save_config(save_selected_profile=True)
@@ -3670,46 +3529,50 @@ class SchedulerConfigDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _confirm(self, title: str, message: str) -> bool:
-        return QMessageBox.question(
-            self, title, message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        ) == QMessageBox.StandardButton.Yes
+        return self._ask_question(title, message) == QMessageBox.StandardButton.Yes
+
+    def _ask_question(self, title: str, message: str):
+        """Ask a translated Yes/No question."""
+        box = QMessageBox(QMessageBox.Icon.Question, title, message,
+                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, self)
+        box.button(QMessageBox.StandardButton.Yes).setText(t("session_yes"))
+        box.button(QMessageBox.StandardButton.No).setText(t("session_no"))
+        return box.exec()
 
     def _delete_daily(self) -> None:
-        if not self._confirm("Delete Today's Data",
-                             "Delete all statistics for today?\nThis cannot be undone."):
+        if not self._confirm(t("session_delete_today_title"),
+                             t("session_delete_today_message")):
             return
         delete_daily_stats(
             _ADDON_DIR,
             _active_profile(),
             self._get_day_end_time(),
         )
-        showInfo("Today's statistics have been deleted.")
+        showInfo(t("session_statistics_today_deleted"))
 
     def _delete_session(self) -> None:
-        if not self._confirm("Delete Session Data",
-                             "Clear the last session's statistics?"):
+        if not self._confirm(t("session_delete_session_title"),
+                             t("session_delete_session_message")):
             return
         if self._on_clear_session:
             self._on_clear_session()
-        showInfo("Session statistics have been cleared.")
+        showInfo(t("session_statistics_session_cleared"))
 
     def _delete_lifetime(self) -> None:
-        if not self._confirm("Delete All-Time Data",
-                             "Delete all lifetime statistics?\nThis cannot be undone."):
+        if not self._confirm(t("session_delete_all_time_title"),
+                             t("session_delete_all_time_message")):
             return
         delete_lifetime_stats(_ADDON_DIR, _active_profile())
-        showInfo("All-time statistics have been deleted.")
+        showInfo(t("session_statistics_all_time_deleted"))
 
     def _delete_all(self) -> None:
-        if not self._confirm("Delete All History",
-                             "Delete ALL statistics (today, all time, and session)?\n"
-                             "This cannot be undone."):
+        if not self._confirm(t("session_delete_history_title"),
+                             t("session_delete_history_message")):
             return
         delete_all_stats(_ADDON_DIR, _active_profile())
         if self._on_clear_session:
             self._on_clear_session()
-        showInfo("All statistics history has been deleted.")
+        showInfo(t("session_statistics_history_deleted"))
 
     def _export_json(self) -> None:
         raw = export_stats_data(
@@ -3718,20 +3581,20 @@ class SchedulerConfigDialog(QDialog):
             day_end_time=self._get_day_end_time(),
         )
         if not raw:
-            showInfo("No statistics data to export.")
+            showInfo(t("session_statistics_no_export"))
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Statistics", "incremento_stats.json",
-            "JSON files (*.json);;All files (*)",
+            self, t("session_export_statistics_title"), "incremento_stats.json",
+            t("session_json_file_filter"),
         )
         if not path:
             return
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(raw, f, ensure_ascii=False, indent=2, sort_keys=True)
-            showInfo(f"Statistics exported to:\n{path}")
+            showInfo(t("session_statistics_exported", path=path))
         except Exception as e:
-            showInfo(f"Export failed: {e}")
+            showInfo(t("session_statistics_export_failed", error=e))
 
     # ------------------------------------------------------------------
     # Public accessor — call after exec() returns Accepted
@@ -3884,7 +3747,7 @@ class SchedulerConfigDialog(QDialog):
     def _refresh_profile_combo(self) -> None:
         self._profile_combo.blockSignals(True)
         self._profile_combo.clear()
-        self._profile_combo.addItem(self._CURRENT_SETTINGS_LABEL, None)
+        self._profile_combo.addItem(self._current_settings_display(), None)
         for name in sorted(self._profiles.keys()):
             self._profile_combo.addItem(name)
         selected_name = self.selected_dialog_profile_name()
@@ -3927,7 +3790,7 @@ class SchedulerConfigDialog(QDialog):
     def _add_profile(self) -> None:
         current = self.selected_dialog_profile_name() or ""
         name, ok = QInputDialog.getText(
-            self, "Add Preset", "Preset name:", text=current
+            self, t("session_add_preset_title"), t("session_preset_name_prompt"), text=current
         )
         name = name.strip()
         if not ok or not name:
@@ -3935,8 +3798,8 @@ class SchedulerConfigDialog(QDialog):
         if name in self._profiles:
             QMessageBox.warning(
                 self,
-                "Add Preset",
-                f'Preset "{name}" already exists.',
+                t("session_add_preset_title"),
+                t("session_preset_exists", name=name),
             )
             return
         self._profiles = _write_named_scheduler_profile(
@@ -3947,7 +3810,7 @@ class SchedulerConfigDialog(QDialog):
         self._selected_profile_name = name
         self._refresh_profile_combo()
         self.save_config()
-        tooltip(f'Preset "{name}" added.')
+        tooltip(t("session_preset_added", name=name))
 
     def _save_profile(self) -> None:
         name = self.selected_dialog_profile_name()
@@ -3961,14 +3824,14 @@ class SchedulerConfigDialog(QDialog):
         self._selected_profile_name = name
         self._refresh_profile_combo()
         self.save_config()
-        tooltip(f'Preset "{name}" saved.')
+        tooltip(t("session_preset_saved", name=name))
 
     def _rename_profile(self) -> None:
         old_name = self.selected_dialog_profile_name()
         if not old_name or old_name not in self._profiles:
             return
         new_name, ok = QInputDialog.getText(
-            self, "Rename Preset", "Preset name:", text=old_name
+            self, t("session_rename_preset_title"), t("session_preset_name_prompt"), text=old_name
         )
         new_name = new_name.strip()
         if not ok or not new_name or new_name == old_name:
@@ -3976,8 +3839,8 @@ class SchedulerConfigDialog(QDialog):
         if new_name in self._profiles:
             QMessageBox.warning(
                 self,
-                "Rename Preset",
-                f'Preset "{new_name}" already exists.',
+                t("session_rename_preset_title"),
+                t("session_preset_exists", name=new_name),
             )
             return
         self._profiles = _rename_named_scheduler_profile(
@@ -3988,16 +3851,15 @@ class SchedulerConfigDialog(QDialog):
         self._selected_profile_name = new_name
         self._refresh_profile_combo()
         self.save_config()
-        tooltip(f'Preset "{old_name}" renamed to "{new_name}".')
+        tooltip(t("session_preset_renamed", old_name=old_name, new_name=new_name))
 
     def _delete_profile(self) -> None:
         name = self.selected_dialog_profile_name()
         if not name or name not in self._profiles:
             return
-        r = QMessageBox.question(
-            self, "Delete Preset",
-            f'Delete preset "{name}"?',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        r = self._ask_question(
+            t("session_delete_preset_title"),
+            t("session_delete_preset_message", name=name),
         )
         if r != QMessageBox.StandardButton.Yes:
             return
@@ -4005,7 +3867,7 @@ class SchedulerConfigDialog(QDialog):
         self._selected_profile_name = None
         self._refresh_profile_combo()
         self.save_config()
-        tooltip(f'Preset "{name}" deleted.')
+        tooltip(t("session_preset_deleted", name=name))
 
     def _load_profile_dict(self, d: dict) -> None:
         """Apply a profile dict to all dialog widgets."""
@@ -4013,18 +3875,18 @@ class SchedulerConfigDialog(QDialog):
 
         topics_val = d.get("topics_slider", 10)
         self._topics_slider.setValue(topics_val)
-        self._topics_left_lbl.setText(f"{100 - topics_val}%")
-        self._topics_right_lbl.setText(f"{topics_val}%")
+        self._topics_left_lbl.setText(t("session_percent", value=100 - topics_val))
+        self._topics_right_lbl.setText(t("session_percent", value=topics_val))
 
         pdf_val = d.get("pdf_slider", 100)
         self._pdf_slider.setValue(pdf_val)
-        self._pdf_left_lbl.setText(f"{100 - pdf_val}%")
-        self._pdf_right_lbl.setText(f"{pdf_val}%")
+        self._pdf_left_lbl.setText(t("session_percent", value=100 - pdf_val))
+        self._pdf_right_lbl.setText(t("session_percent", value=pdf_val))
 
         random_val = d.get("random_slider", 99)
         self._random_slider.setValue(random_val)
-        self._random_left_lbl.setText(f"{100 - random_val}%")
-        self._random_right_lbl.setText(f"{random_val}%")
+        self._random_left_lbl.setText(t("session_percent", value=100 - random_val))
+        self._random_right_lbl.setText(t("session_percent", value=random_val))
 
         locks = d.get("main_locks", {}) or {}
         self._topics_lock_cb.setChecked(bool(locks.get("topics", False)))
@@ -4112,7 +3974,7 @@ class SchedulerConfigDialog(QDialog):
         )
         self._finalize_tag_row_batch_restore()
         if skipped_missing_tags > 0:
-            tooltip(f"Skipped {skipped_missing_tags} tag row(s) missing in this profile.")
+            tooltip(tn("session_tag_rows_skipped", skipped_missing_tags))
 
         # Restore content type rows
         ct_saved = {r["type"]: r for r in d.get("content_type_rows", [])}

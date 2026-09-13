@@ -10,6 +10,7 @@ import {
   submitBrowserCapture,
 } from "../src/shared/bridge.js";
 import { resetBridgeAuthorizationForTests } from "../src/shared/bridgeAuth.js";
+import { applyStoredLanguageChange } from "../src/shared/i18n.js";
 
 beforeEach(() => resetBridgeAuthorizationForTests());
 
@@ -140,6 +141,28 @@ test("formatBridgeError explains how to recover from an extension-origin conflic
     formatBridgeError(new Error("Origin not allowed."), "Fallback"),
     "This Companion copy is not authorized. Restart Anki, then reopen the popup. If this returns, disable duplicate Companion copies in other Chrome/Brave profiles."
   );
+});
+
+test("backend error code localizes independently of its English compatibility message", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = withHandshake(async () => ({
+    ok: false,
+    status: 403,
+    json: async () => ({ ok: false, error_code: "origin_not_allowed", error: "Origin not allowed." }),
+  }));
+  applyStoredLanguageChange("hr", { i18n: { getUILanguage: () => "en" } });
+  try {
+    await assert.rejects(async () => {
+      try { await importIntoIncremento({ kind: "webpage" }); }
+      catch (error) {
+        assert.match(formatBridgeError(error, "Fallback"), /ovlašten/);
+        throw error;
+      }
+    }, /Origin not allowed/);
+  } finally {
+    applyStoredLanguageChange("en", { i18n: { getUILanguage: () => "en" } });
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("loadBrowserCaptureMeta loads browser capture metadata", async () => {

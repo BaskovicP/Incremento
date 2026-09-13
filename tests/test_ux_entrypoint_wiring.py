@@ -14,7 +14,7 @@ def test_command_palette_has_a_default_shortcut_and_menu_wiring():
     assert '"id": "command_palette"' in settings_source
     assert '"default": "Ctrl+K"' in settings_source
     assert '_register_shortcut_action("command_palette"' in entrypoint
-    assert 'QAction("Command Palette…"' in entrypoint
+    assert 'QAction(_t("root_menu_command_palette")' in entrypoint
 
 
 def test_versioned_onboarding_is_wired_to_first_run_and_manual_reopen():
@@ -23,7 +23,7 @@ def test_versioned_onboarding_is_wired_to_first_run_and_manual_reopen():
 
     assert config["onboarding_completed_version"] == 0
     assert "_schedule_incremento_onboarding" in entrypoint
-    assert 'QAction("Getting Started…"' in entrypoint
+    assert 'QAction(_t("root_menu_getting_started")' in entrypoint
 
 
 def test_non_modal_command_and_activity_dialogs_are_shown_exactly_once():
@@ -45,7 +45,7 @@ def test_full_backup_menu_configures_profile_schedule_and_hooks_only_while_open(
     entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
     config = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
     assert config["automatic_backups"] == {}
-    assert 'QAction("Configure Automatic Full Backups…"' in entrypoint
+    assert 'QAction(_t("root_menu_configure_auto_backups")' in entrypoint
     assert 'gui_hooks.profile_did_open.append(_start_automatic_backups)' in entrypoint
     assert 'gui_hooks.profile_will_close.append(_stop_automatic_backups)' in entrypoint
     assert '_start_full_backup(str(path), automatic_policy=policy)' in entrypoint
@@ -56,16 +56,16 @@ def test_export_full_backup_action_offers_automatic_backup_configuration():
     export_body = entrypoint.split("def exportFunction() -> None:", 1)[1].split(
         "_auto_backup_timer:", 1
     )[0]
-    assert "Automatic Backups…" in export_body
+    assert '_t("root_backup_automatic_button")' in export_body
     assert "configureAutomaticBackupsFunction()" in export_body
-    assert "Export Now…" in export_body
+    assert '_t("root_backup_export_now")' in export_body
 
 
 def test_profile_close_waits_for_background_backup_before_unload():
     entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
     assert 'gui_hooks.main_window_did_init.append(_install_close_backup_gate)' in entrypoint
     assert '_prepare_profile_close' in entrypoint
-    assert 'QAction("Configure Automatic Full Backups…"' in entrypoint
+    assert 'QAction(_t("root_menu_configure_auto_backups")' in entrypoint
 
 
 def test_full_backup_uses_non_modal_activity_status_instead_of_progress_dialog():
@@ -82,5 +82,5 @@ def test_automatic_backup_dialog_exposes_close_trigger():
     source = (ROOT / "frontend" / "automatic_backup_dialog.py").read_text(
         encoding="utf-8"
     )
-    assert "Back up when this profile closes" in source
+    assert 't("admin_automatic_backup_back_up_when_this_profile_closes")' in source.replace("'", '"')
     assert '"on_close": self._on_close.isChecked()' in source

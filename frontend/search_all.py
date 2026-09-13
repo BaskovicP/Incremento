@@ -27,6 +27,11 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QTimer, QUrl
 
 try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t  # type: ignore
+
+try:
     from ..backend.paths import get_active_profile as _active_profile
 except ImportError:
     from paths import get_active_profile as _active_profile
@@ -297,7 +302,7 @@ class _SearchAllDialog(QDialog):
             if self._query_ready() and self._cb_search_while_typing.isChecked()
             else None
         )
-        self.setWindowTitle("Search ALL")
+        self.setWindowTitle(t("search_all_title"))
         self.resize(1280, 700)
 
         layout = QVBoxLayout(self)
@@ -308,10 +313,10 @@ class _SearchAllDialog(QDialog):
         search_row.setSpacing(8)
         self._search = self.__class__._make_search_box()
         search_row.addWidget(self._search, stretch=1)
-        self._search_btn = QPushButton("Search")
+        self._search_btn = QPushButton(t("common_search"))
         self._search_btn.clicked.connect(self._run_search)
         search_row.addWidget(self._search_btn)
-        self._cb_search_while_typing = QCheckBox("Search while typing")
+        self._cb_search_while_typing = QCheckBox(t("search_all_while_typing"))
         self._cb_search_while_typing.setChecked(configured_search_all_search_while_typing())
         self._cb_search_while_typing.toggled.connect(self._on_search_while_typing_toggled)
         search_row.addWidget(self._cb_search_while_typing)
@@ -319,23 +324,23 @@ class _SearchAllDialog(QDialog):
 
         filter_row = QHBoxLayout()
         filter_row.setSpacing(16)
-        self._cb_highlights = QCheckBox("PDF Highlights")
-        self._cb_epub_highlights = QCheckBox("EPUB Highlights")
-        self._cb_sources = QCheckBox("PDF Sources")
-        self._cb_epub_sources = QCheckBox("EPUB Sources")
-        self._cb_content = QCheckBox("PDF Content")
-        self._cb_epub_content = QCheckBox("EPUB Content")
-        self._cb_ocr = QCheckBox("Image OCR")
-        self._cb_cards = QCheckBox("Cards")
+        self._cb_highlights = QCheckBox(t("search_all_pdf_highlights"))
+        self._cb_epub_highlights = QCheckBox(t("search_all_epub_highlights"))
+        self._cb_sources = QCheckBox(t("search_all_pdf_sources"))
+        self._cb_epub_sources = QCheckBox(t("search_all_epub_sources"))
+        self._cb_content = QCheckBox(t("search_all_pdf_content"))
+        self._cb_epub_content = QCheckBox(t("search_all_epub_content"))
+        self._cb_ocr = QCheckBox(t("search_all_image_ocr"))
+        self._cb_cards = QCheckBox(t("search_all_cards"))
         # Keep the legacy config/internal name for saved-setting compatibility.
         # Incremento data is already profile-scoped; this control hides rows
         # whose linked Anki card or source note has since been deleted.
-        self._cb_current_profile = QCheckBox("Existing Anki Items Only")
+        self._cb_current_profile = QCheckBox(t("search_all_existing_anki_items"))
         self._cb_current_profile.setToolTip(
-            "Hide indexed results whose linked Anki card or source note no longer exists."
+            t("search_all_existing_anki_items_tooltip")
         )
         self._cb_current_profile.setAccessibleDescription(
-            "Hide indexed results linked to deleted Anki cards or notes."
+            t("search_all_existing_anki_items_accessible")
         )
         self._filter_checkboxes = {
             "pdf_highlights": self._cb_highlights,
@@ -367,7 +372,7 @@ class _SearchAllDialog(QDialog):
         self._pdf_index_status = QLabel("")
         self._pdf_index_status.setVisible(False)
         index_row.addWidget(self._pdf_index_status, stretch=1)
-        self._pdf_index_cancel_btn = QPushButton("Cancel PDF indexing")
+        self._pdf_index_cancel_btn = QPushButton(t("search_all_cancel_pdf_indexing"))
         self._pdf_index_cancel_btn.setVisible(False)
         self._pdf_index_cancel_btn.clicked.connect(self._cancel_pdf_index)
         index_row.addWidget(self._pdf_index_cancel_btn)
@@ -387,7 +392,7 @@ class _SearchAllDialog(QDialog):
         pc_layout = QVBoxLayout(preview_container)
         pc_layout.setContentsMargins(0, 0, 0, 0)
         pc_layout.setSpacing(0)
-        self._preview_header = QLabel("Preview")
+        self._preview_header = QLabel(t("common_preview"))
         self._preview_header.setStyleSheet(
             "font-size:11px;color:#888;padding:4px 8px;"
             "background:#f5f5f5;border-bottom:1px solid #ddd;"
@@ -401,7 +406,7 @@ class _SearchAllDialog(QDialog):
         splitter.setSizes([620, 560])
         layout.addWidget(splitter, stretch=1)
 
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(t("common_close"))
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
@@ -420,7 +425,7 @@ class _SearchAllDialog(QDialog):
     def _make_search_box():
         from aqt.qt import QLineEdit
         w = QLineEdit()
-        w.setPlaceholderText("Search PDFs, EPUBs, and cards...")
+        w.setPlaceholderText(t("search_all_placeholder"))
         return w
 
     def _query_text(self) -> str:
@@ -436,13 +441,14 @@ class _SearchAllDialog(QDialog):
         self._highlight_previews.clear()
         self._results.setHtml(
             "<div style='color:#888;padding:10px'>"
-            f"Type at least {_MIN_SEARCH_CHARS} characters to search.</div>"
+            f"{escape(t('search_all_minimum_characters', count=_MIN_SEARCH_CHARS))}</div>"
         )
 
     def _show_manual_search_hint(self) -> None:
         self._highlight_previews.clear()
         self._results.setHtml(
-            "<div style='color:#888;padding:10px'>Press Search to run the query.</div>"
+            "<div style='color:#888;padding:10px'>"
+            f"{escape(t('search_all_press_search'))}</div>"
         )
 
     def _on_search_text_changed(self, _text: str) -> None:
@@ -596,17 +602,17 @@ class _SearchAllDialog(QDialog):
         try:
             card = mw.col.get_card(card_id)
             note = mw.col.get_note(card.nid)
-            return note.fields[0] if note.fields else f"PDF card {card_id}"
+            return note.fields[0] if note.fields else t("search_all_pdf_card", card_id=card_id)
         except Exception:
-            return f"PDF card {card_id}"
+            return t("search_all_pdf_card", card_id=card_id)
 
     def _epub_title(self, card_id: int) -> str:
         try:
             card = mw.col.get_card(card_id)
             note = mw.col.get_note(card.nid)
-            return note.fields[0] if note.fields else f"EPUB card {card_id}"
+            return note.fields[0] if note.fields else t("search_all_epub_card", card_id=card_id)
         except Exception:
-            return f"EPUB card {card_id}"
+            return t("search_all_epub_card", card_id=card_id)
 
     def _candidate_pdf_card_ids(self, collection, profile: str) -> list[int]:
         cids: set[int] = set()
@@ -647,7 +653,7 @@ class _SearchAllDialog(QDialog):
 
     def _request_pdf_index_cancel(self) -> None:
         self._pdf_index_cancel.set()
-        self._pdf_index_status.setText("Stopping PDF indexing after the current file…")
+        self._pdf_index_status.setText(t("search_all_pdf_index_stopping"))
         self._pdf_index_cancel_btn.setEnabled(False)
 
     def _cancel_pdf_index(self) -> None:
@@ -677,10 +683,10 @@ class _SearchAllDialog(QDialog):
             update_activity(
                 self._pdf_index_activity_id,
                 progress=(completed / total) if total > 0 else None,
-                detail=f"Indexed {completed} of {total} PDFs",
+                detail=t("search_all_pdf_index_progress_detail", completed=completed, total=total),
             )
         self._pdf_index_status.setText(
-            f"Indexing PDF text in the background… {completed}/{total}"
+            t("search_all_pdf_index_progress", completed=completed, total=total)
         )
 
     def _start_pdf_index(self) -> None:
@@ -692,7 +698,7 @@ class _SearchAllDialog(QDialog):
         self._pdf_index_generation += 1
         generation = self._pdf_index_generation
         self._pdf_index_cancel = threading.Event()
-        self._pdf_index_status.setText("Preparing the PDF index in the background…")
+        self._pdf_index_status.setText(t("search_all_pdf_index_preparing"))
         self._pdf_index_status.setVisible(True)
         self._pdf_index_cancel_btn.setEnabled(True)
         self._pdf_index_cancel_btn.setVisible(True)
@@ -700,14 +706,14 @@ class _SearchAllDialog(QDialog):
             update_activity(
                 self._pdf_index_activity_id,
                 progress=0,
-                detail="Preparing the PDF index",
+                detail=t("search_all_pdf_index_preparing_detail"),
             )
         else:
             activity_ref: dict[str, str] = {}
             activity_id = start_activity(
-                "Index PDF text",
-                category="Search",
-                detail="Preparing the PDF index",
+                t("search_all_pdf_index_activity"),
+                category=t("common_search"),
+                detail=t("search_all_pdf_index_preparing_detail"),
                 progress=0,
                 cancel=self._request_pdf_index_cancel,
                 retry=lambda: self._retry_pdf_index(activity_ref["activity_id"]),
@@ -725,21 +731,21 @@ class _SearchAllDialog(QDialog):
             if self._pdf_index_cancel.is_set():
                 self._pdf_index_running = False
                 self._pdf_index_cancel_btn.setVisible(False)
-                self._pdf_index_status.setText("PDF indexing cancelled.")
+                self._pdf_index_status.setText(t("search_all_pdf_index_cancelled"))
                 cancel_activity(self._pdf_index_activity_id)
                 return
             if not documents:
                 self._pdf_index_running = False
                 self._pdf_index_cancel_btn.setVisible(False)
-                self._pdf_index_status.setText("No readable PDFs need indexing.")
+                self._pdf_index_status.setText(t("search_all_pdf_index_none"))
                 finish_activity(
                     self._pdf_index_activity_id,
-                    detail="No readable PDFs needed indexing.",
+                    detail=t("search_all_pdf_index_none_detail"),
                 )
                 return
 
             self._pdf_index_status.setText(
-                f"Indexing PDF text in the background… 0/{len(documents)}"
+                t("search_all_pdf_index_progress", completed=0, total=len(documents))
             )
             self._run_pdf_file_index(
                 documents,
@@ -754,11 +760,11 @@ class _SearchAllDialog(QDialog):
             self._pdf_index_cancel_btn.setVisible(False)
             if not self._closed:
                 self._pdf_index_status.setText(
-                    "Could not prepare the PDF index; existing indexed search remains available."
+                    t("search_all_pdf_index_prepare_failed")
                 )
             fail_activity(
                 self._pdf_index_activity_id,
-                "Could not prepare the PDF index. Existing indexed search is still available.",
+                t("search_all_pdf_index_prepare_failed_detail"),
             )
 
         from aqt.operations import QueryOp
@@ -802,30 +808,29 @@ class _SearchAllDialog(QDialog):
                 return
             if _active_profile() != profile:
                 self._pdf_index_status.setText(
-                    "PDF indexing finished for the previously open profile."
+                    t("search_all_pdf_index_previous_profile")
                 )
                 return
             try:
                 result = future.result()
             except Exception:
-                self._pdf_index_status.setText("PDF indexing failed; indexed search remains available.")
+                self._pdf_index_status.setText(t("search_all_pdf_index_failed"))
                 fail_activity(
                     self._pdf_index_activity_id,
-                    "PDF indexing failed. Existing indexed search is still available.",
+                    t("search_all_pdf_index_failed_detail"),
                 )
                 return
             if result.cancelled:
-                self._pdf_index_status.setText("PDF indexing cancelled.")
+                self._pdf_index_status.setText(t("search_all_pdf_index_cancelled"))
                 cancel_activity(self._pdf_index_activity_id)
             else:
                 self._pdf_index_status.setText(
-                    f"PDF index ready ({result.indexed} updated, {result.failed} failed)."
+                    t("search_all_pdf_index_ready", updated=result.indexed, failed=result.failed)
                 )
                 finish_activity(
                     self._pdf_index_activity_id,
                     detail=(
-                        f"PDF index ready: {result.indexed} updated, "
-                        f"{result.failed} failed."
+                        t("search_all_pdf_index_ready_detail", updated=result.indexed, failed=result.failed)
                     ),
                 )
                 if self._query_ready() and self._cb_content.isChecked():
@@ -899,7 +904,7 @@ class _SearchAllDialog(QDialog):
                 rows = []
 
             if rows:
-                html.append("<h3>PDF Highlights</h3>")
+                html.append(f"<h3>{escape(t('search_all_pdf_highlights'))}</h3>")
                 by_file: dict = {}
                 for cid, page, text in rows:
                     by_file.setdefault(cid, []).append((page, text))
@@ -920,7 +925,7 @@ class _SearchAllDialog(QDialog):
                             quote=True,
                         )
                         html.append(
-                            f"<li><a href='{result_url}'>Page {int(page)}</a>"
+                            f"<li><a href='{result_url}'>{escape(t('search_all_page', page=page))}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -938,7 +943,7 @@ class _SearchAllDialog(QDialog):
                 rows = []
 
             if rows:
-                html.append("<h3>PDF Sources</h3>")
+                html.append(f"<h3>{escape(t('search_all_pdf_sources'))}</h3>")
                 by_file: dict = {}
                 for cid, page, excerpt, _note_id in rows:
                     by_file.setdefault(cid, []).append((page, excerpt))
@@ -948,7 +953,7 @@ class _SearchAllDialog(QDialog):
                     for page, excerpt in pages:
                         snippet = escape(self._snippet(excerpt or "", q))
                         html.append(
-                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>{escape(t('search_all_page', page=page))}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -964,7 +969,7 @@ class _SearchAllDialog(QDialog):
                 rows = []
 
             if rows:
-                html.append("<h3>EPUB Highlights</h3>")
+                html.append(f"<h3>{escape(t('search_all_epub_highlights'))}</h3>")
                 by_file: dict = {}
                 for cid, section_index, text in rows:
                     by_file.setdefault(cid, []).append((section_index, text))
@@ -985,7 +990,7 @@ class _SearchAllDialog(QDialog):
                             quote=True,
                         )
                         html.append(
-                            f"<li><a href='{result_url}'>Section {int(section_index) + 1}</a>"
+                            f"<li><a href='{result_url}'>{escape(t('search_all_section', section=section_index + 1))}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -1002,7 +1007,7 @@ class _SearchAllDialog(QDialog):
                 rows = []
 
             if rows:
-                html.append("<h3>EPUB Sources</h3>")
+                html.append(f"<h3>{escape(t('search_all_epub_sources'))}</h3>")
                 by_file: dict = {}
                 for cid, section_index, excerpt, _note_id in rows:
                     by_file.setdefault(cid, []).append((section_index, excerpt))
@@ -1012,7 +1017,7 @@ class _SearchAllDialog(QDialog):
                     for section_index, excerpt in entries:
                         snippet = escape(self._snippet(excerpt or "", q))
                         html.append(
-                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>Section {int(section_index) + 1}</a>"
+                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>{escape(t('search_all_section', section=section_index + 1))}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -1022,7 +1027,7 @@ class _SearchAllDialog(QDialog):
         if self._cb_content.isChecked():
             pdf_page_hits = self._search_pdf_file_hits(q, limit=_MAX_CATEGORY_RESULTS)
             if pdf_page_hits:
-                html.append("<h3>PDF File Content</h3>")
+                html.append(f"<h3>{escape(t('search_all_pdf_file_content'))}</h3>")
                 by_file: dict = {}
                 for cid, page, snippet_text in pdf_page_hits:
                     by_file.setdefault(cid, []).append((page, snippet_text))
@@ -1032,7 +1037,7 @@ class _SearchAllDialog(QDialog):
                     for page, snippet_text in pages:
                         snippet = escape(snippet_text)
                         html.append(
-                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>Page {int(page)}</a>"
+                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>{escape(t('search_all_page', page=page))}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
                         )
                         total += 1
@@ -1044,7 +1049,7 @@ class _SearchAllDialog(QDialog):
                 limit=_MAX_CATEGORY_RESULTS,
             )
             if epub_section_hits:
-                html.append("<h3>EPUB File Content</h3>")
+                html.append(f"<h3>{escape(t('search_all_epub_file_content'))}</h3>")
                 by_file: dict = {}
                 for cid, section_index, title, snippet_text in epub_section_hits:
                     by_file.setdefault(cid, []).append((section_index, title, snippet_text))
@@ -1053,7 +1058,7 @@ class _SearchAllDialog(QDialog):
                     html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
                     for section_index, section_title, snippet_text in entries:
                         snippet = escape(snippet_text)
-                        section_label = escape(section_title or f"Section {int(section_index) + 1}")
+                        section_label = escape(section_title or t("search_all_section", section=section_index + 1))
                         html.append(
                             f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>{section_label}</a>"
                             f" — <span style='color:#888'>{snippet}</span></li>"
@@ -1078,20 +1083,20 @@ class _SearchAllDialog(QDialog):
                     row for row in ocr_hits if self._is_current_profile_card(int(row[1]))
                 ]
             if ocr_hits:
-                html.append("<h3>Image OCR</h3><ul>")
+                html.append(f"<h3>{escape(t('search_all_image_ocr'))}</h3><ul>")
                 for note_id, card_id, image_name, text in ocr_hits[
                     :_MAX_CATEGORY_RESULTS
                 ]:
                     try:
                         note = mw.col.get_note(note_id)
                         model = mw.col.models.get(note.mid)
-                        model_name = escape(model.get("name", "Note") if model else "Note")
+                        model_name = escape(model.get("name", t("search_all_note")) if model else t("search_all_note"))
                     except Exception:
-                        model_name = "Note"
+                        model_name = t("search_all_note")
                     snippet = escape(self._snippet(text or "", q, max_len=180))
-                    image_label = escape(image_name or "OCR text")
+                    image_label = escape(image_name or t("search_all_ocr_text"))
                     html.append(
-                        f"<li><a href='inc://card/{note_id}'>{model_name} — note {int(note_id)}</a>"
+                        f"<li><a href='inc://card/{note_id}'>{model_name} — {escape(t('search_all_note_number', note_id=note_id))}</a>"
                         f"<br><span style='color:#888'>{image_label}: {snippet}</span></li>"
                     )
                     total += 1
@@ -1106,7 +1111,7 @@ class _SearchAllDialog(QDialog):
                     try:
                         note = mw.col.get_note(nid)
                         model = mw.col.models.get(note.mid)
-                        model_name = model.get("name") if model else "Note"
+                        model_name = model.get("name") if model else t("search_all_note")
                         text = " ".join(note.fields or [])
                         score = _score_text(text)
                         if score is None:
@@ -1115,29 +1120,29 @@ class _SearchAllDialog(QDialog):
                     except Exception:
                         continue
                 ranked_notes.sort(key=lambda item: (item[0], item[1]))
-                html.append("<h3>Cards</h3><ul>")
+                html.append(f"<h3>{escape(t('search_all_cards'))}</h3><ul>")
                 for _, nid, note, model_name in ranked_notes[:160]:
                     text = " ".join((note.fields or [])[:2])
                     snippet = escape(self._snippet(text, q))
                     html.append(
-                        f"<li><a href='inc://card/{nid}'>{escape(model_name)} — note {nid}</a>"
+                        f"<li><a href='inc://card/{nid}'>{escape(model_name)} — {escape(t('search_all_note_number', note_id=nid))}</a>"
                         f"<br><span style='color:#888'>{snippet}</span></li>"
                     )
                     total += 1
                 html.append("</ul>")
 
         if total == 0:
-            html.append("<div style='color:#888;padding:8px'>No matches found.</div>")
+            html.append(f"<div style='color:#888;padding:8px'>{escape(t('search_all_no_matches'))}</div>")
         html.append("</div>")
         self._results.setHtml("".join(html))
 
     # ── Preview panel ─────────────────────────────────────────────────────────
 
     def _show_placeholder(self) -> None:
-        self._preview_header.setText("Preview")
+        self._preview_header.setText(t("common_preview"))
         self._preview.setHtml(
             "<html><body style='font-family:sans-serif;color:#aaa;"
-            "padding:24px;font-size:13px'>Hover over a result to preview.</body></html>"
+            f"padding:24px;font-size:13px'>{escape(t('search_all_preview_hover'))}</body></html>"
         )
 
     def _on_hover(self, url) -> None:
@@ -1186,17 +1191,17 @@ class _SearchAllDialog(QDialog):
     def _preview_highlight(self, target: _DocumentPreviewTarget) -> None:
         if target.media == "pdf":
             title = self._pdf_title(target.card_id)
-            location = f"Page {target.position}"
+            location = t("search_all_page", page=target.position)
         else:
             title = self._epub_title(target.card_id)
-            location = f"Section {target.position + 1}"
+            location = t("search_all_section", section=target.position + 1)
         body = (
             self._highlight_terms(target.highlight_text, target.query)
             if target.highlight_text
-            else "<i style='color:#aaa'>No saved highlight text.</i>"
+            else f"<i style='color:#aaa'>{escape(t('search_all_no_highlight_text'))}</i>"
         )
         self._preview_header.setText(
-            f"{target.media.upper()} Highlight: {title} — {location}"
+            t("search_all_highlight_preview", media=target.media.upper(), title=title, location=location)
         )
         self._preview.setHtml(
             f"<html><body style='font-family:sans-serif;font-size:13px;"
@@ -1215,8 +1220,8 @@ class _SearchAllDialog(QDialog):
         except Exception:
             text = ""
 
-        body = self._highlight_terms(text, q) if text else "<i style='color:#aaa'>No text index for this page.</i>"
-        self._preview_header.setText(f"PDF: {title} — Page {page}")
+        body = self._highlight_terms(text, q) if text else f"<i style='color:#aaa'>{escape(t('search_all_no_pdf_text'))}</i>"
+        self._preview_header.setText(t("search_all_pdf_preview", title=title, page=page))
         self._preview.setHtml(
             f"<html><body style='font-family:sans-serif;font-size:13px;"
             f"padding:14px;line-height:1.6;white-space:pre-wrap'>{body}</body></html>"
@@ -1226,17 +1231,17 @@ class _SearchAllDialog(QDialog):
         try:
             note = mw.col.get_note(nid)
             model = mw.col.models.get(note.mid)
-            model_name = escape(model.get("name", "Note") if model else "Note")
+            model_name = escape(model.get("name", t("search_all_note")) if model else t("search_all_note"))
             fld_names = [f.get("name", "") for f in (model.get("flds") or [])] if model else []
             rows = ""
             for i, fval in enumerate(note.fields):
-                fname = escape(fld_names[i]) if i < len(fld_names) else f"Field {i}"
+                fname = escape(fld_names[i]) if i < len(fld_names) else escape(t("search_all_field_number", field=i + 1))
                 rows += (
                     f"<div style='margin-bottom:10px'>"
                     f"<div style='font-size:11px;color:#888;margin-bottom:2px'>{fname}</div>"
                     f"<div>{fval}</div></div>"
                 )
-            self._preview_header.setText(f"Card: {model_name} — note {nid}")
+            self._preview_header.setText(t("search_all_card_preview", model_name=model_name, note_id=nid))
             self._preview.setHtml(
                 f"<html><body style='font-family:sans-serif;font-size:13px;padding:14px'>"
                 f"{rows}</body></html>"
@@ -1257,9 +1262,9 @@ class _SearchAllDialog(QDialog):
             section_title = ""
             text = ""
 
-        body = self._highlight_terms(text or section_title, q) if (text or section_title) else "<i style='color:#aaa'>No text index for this section.</i>"
-        label = section_title or f"Section {section_index + 1}"
-        self._preview_header.setText(f"EPUB: {title} — {label}")
+        body = self._highlight_terms(text or section_title, q) if (text or section_title) else f"<i style='color:#aaa'>{escape(t('search_all_no_epub_text'))}</i>"
+        label = section_title or t("search_all_section", section=section_index + 1)
+        self._preview_header.setText(t("search_all_epub_preview", title=title, label=label))
         self._preview.setHtml(
             f"<html><body style='font-family:sans-serif;font-size:13px;"
             f"padding:14px;line-height:1.6;white-space:pre-wrap'>{body}</body></html>"
@@ -1295,4 +1300,4 @@ class _SearchAllDialog(QDialog):
                 return
         except Exception as e:
             from aqt.utils import showInfo
-            showInfo(f"Could not open result:\n{e}")
+            showInfo(t("search_all_open_failed", error=e))

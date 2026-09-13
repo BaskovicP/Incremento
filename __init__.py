@@ -1,4 +1,5 @@
 import copy
+from html import escape as _html_escape
 import json
 import os
 import sqlite3
@@ -8,6 +9,11 @@ import zipfile
 from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
+from .backend.i18n import initialize_language as _initialize_language, t as _t, tn as _tn
+from .backend import language_packs as _language_packs
+from .backend.config_service import load_addon_config as _load_initial_config
+
+from anki import lang as _anki_language
 from aqt.errors import show_exception
 from aqt.reviewer import Reviewer
 from aqt.utils import showInfo, tooltip, tr
@@ -228,7 +234,7 @@ from .backend.session import (
 from .frontend.session_launcher import learnFunction
 from .frontend.settings_dialog import (
     IncrementoSettingsDialog,
-    SHORTCUT_ACTION_SPECS,
+    localized_shortcut_action_specs,
     resolved_runtime_shortcuts,
 )
 from .frontend.command_palette import (
@@ -282,6 +288,14 @@ from .backend.knowledge_tree import (
 from .backend.reviewer_extract import (
     initial_extract_field_values as _initial_extract_field_values,
     knowledge_tree_link_state as _knowledge_tree_link_state,
+)
+
+# Resolve only at addon startup. Saving Settings deliberately keeps the running
+# reviewer/docks in their current language until the next Anki restart.
+_startup_ui_language_choice = _load_initial_config(mw.addonManager, __name__).get("ui_language", "auto")
+_initialize_language(
+    _startup_ui_language_choice,
+    getattr(_anki_language, "current_lang", "en"),
 )
 
 _ADDON_DIR = os.path.dirname(__file__)
@@ -489,18 +503,18 @@ def _open_command_palette() -> None:
     cfg = _load_addon_config(mw.addonManager, __name__)
     runtime_shortcuts = resolved_runtime_shortcuts(cfg.get("shortcuts") or {})
     commands = build_palette_commands(
-        [spec for spec in SHORTCUT_ACTION_SPECS if spec.get("id") != "command_palette"],
+        [spec for spec in localized_shortcut_action_specs() if spec.get("id") != "command_palette"],
         _shortcut_actions,
         runtime_shortcuts,
         invoke=_invoke_shortcut_action,
         unavailable_reasons={
-            "search_current_document": "Open a PDF or EPUB before searching the current document.",
-            "pdf_prev_page": "Open a PDF before changing pages.",
-            "pdf_next_page": "Open a PDF before changing pages.",
-            "pdf_zoom_out": "Open a PDF before changing zoom.",
-            "pdf_zoom_in": "Open a PDF before changing zoom.",
-            "pdf_mark_read": "Open a PDF before marking a page read.",
-            "extract_card": "Open a reader or reviewer card before extracting.",
+            "search_current_document": _t("root_palette_open_document"),
+            "pdf_prev_page": _t("root_palette_open_pdf_pages"),
+            "pdf_next_page": _t("root_palette_open_pdf_pages"),
+            "pdf_zoom_out": _t("root_palette_open_pdf_zoom"),
+            "pdf_zoom_in": _t("root_palette_open_pdf_zoom"),
+            "pdf_mark_read": _t("root_palette_open_pdf_read"),
+            "extract_card": _t("root_palette_open_reader_extract"),
         },
     )
     dialog = create_command_palette_dialog(mw, commands)
@@ -716,10 +730,10 @@ def _perform_topic_postpone(reviewer, card) -> None:
                 print(f"[Incremento] topic postpone timer error: {e}")
         try:
             if mode == "session":
-                tooltip("Topic postponed to later in this review.")
+                tooltip(_t("root_topic_postponed_session"))
             else:
                 tooltip(
-                    f"Topic postponed for {_configured_topic_postpone_minutes()} minutes."
+                    _t("root_topic_postponed_minutes", minutes=_configured_topic_postpone_minutes())
                 )
         except Exception:
             pass
@@ -786,7 +800,7 @@ def _perform_item_skip(reviewer, card) -> None:
         _failed("timer", e)
         print(f"[Incremento] item skip timer error: {e}")
     try:
-        tooltip(f"Skipped for {_configured_item_skip_minutes()} minutes.")
+        tooltip(_t("root_item_skipped_minutes", minutes=_configured_item_skip_minutes()))
     except Exception:
         pass
     try:
@@ -1276,7 +1290,7 @@ def _incremento_show_answer_button(self) -> None:
 <button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
 </td>
 <td class=stat2 align=center>
-<button id="incremento-item-skip-but" onclick='pycmd("incremento_item_skip");'>Skip<span class=stattxt>{skip_due}</span></button>
+<button id="incremento-item-skip-but" onclick='pycmd("incremento_item_skip");'>{skip_label}<span class=stattxt>{skip_due}</span></button>
 </td>
 </tr></table>
 """.format(
@@ -1284,6 +1298,7 @@ def _incremento_show_answer_button(self) -> None:
             show_answer=tr.studying_show_answer(),
             remaining=self._remaining(),
             skip_due=skip_due,
+            skip_label=_t("root_reviewer_skip"),
         )
         if self.card.should_show_timer():
             maxTime = self.card.time_limit() / 1000
@@ -1309,7 +1324,7 @@ def _incremento_show_answer_button(self) -> None:
 <button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
 </td>
 <td class=stat2 align=center id="incremento-topic-postpone-cell">
-<button title="{postpone_key}" id="incremento-postpone-but" onclick='pycmd("incremento_topic_postpone");'>Postpone<span class=stattxt>{postpone_due}</span></button>
+<button title="{postpone_key}" id="incremento-postpone-but" onclick='pycmd("incremento_topic_postpone");'>{postpone_label}<span class=stattxt>{postpone_due}</span></button>
 </td>
 </tr></table>
 """.format(
@@ -1318,6 +1333,7 @@ def _incremento_show_answer_button(self) -> None:
         remaining=self._remaining(),
         postpone_key=postpone_key,
         postpone_due=postpone_due,
+        postpone_label=_t("settings_postpone"),
     )
     if self.card.should_show_timer():
         maxTime = self.card.time_limit() / 1000
@@ -1600,13 +1616,17 @@ def _browser_selected_incremento_card_ids(browser) -> list[int]:
 def _convert_browser_selection_to_knowledge_kind(browser, node_kind: str) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
-        showInfo("Select one or more Browser rows first.")
+        showInfo(_t("root_browser_select_rows"))
         return
 
     result = _kt_apply_node_kind_to_cards(card_ids, node_kind)
     changed_count = int(result.get("changed_count") or 0)
     error_count = int(result.get("error_count") or 0)
-    label = "topics" if node_kind == _KT_NODE_KIND_TOPIC else "items"
+    kind_key = (
+        "root_browser_cards_to_topics"
+        if node_kind == _KT_NODE_KIND_TOPIC
+        else "root_browser_cards_to_items"
+    )
 
     try:
         mw.col.reset()
@@ -1617,22 +1637,17 @@ def _convert_browser_selection_to_knowledge_kind(browser, node_kind: str) -> Non
     except Exception:
         pass
 
+    converted = _tn(kind_key, changed_count)
     if error_count:
-        showInfo(
-            f"Converted {changed_count} selected card{'s' if changed_count != 1 else ''} "
-            f"to {label}, but {error_count} failed."
-        )
+        showInfo(_t("root_browser_conversion_partial", converted=converted, failed=_tn("root_browser_failed_cards", error_count)))
         return
-    tooltip(
-        f"Converted {changed_count} selected card{'s' if changed_count != 1 else ''} "
-        f"to {label}."
-    )
+    tooltip(_t("root_browser_conversion_done", converted=converted))
 
 
 def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
     normalized_ids = sorted({int(card_id) for card_id in (card_ids or [])})
     if not normalized_ids:
-        showInfo("Select one or more Browser rows first.")
+        showInfo(_t("root_browser_select_rows"))
         return
 
     cfg = _load_addon_config(mw.addonManager, __name__)
@@ -1647,10 +1662,7 @@ def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
 
     if dlg.clear_requested:
         cleared = _clear_custom_schedule_rules(normalized_ids)
-        tooltip(
-            f"Cleared custom schedule on {cleared} selected "
-            f"card{'s' if cleared != 1 else ''}."
-        )
+        tooltip(_tn("root_browser_schedule_cleared", cleared))
         return
 
     rule = dlg.selected_rule
@@ -1671,26 +1683,21 @@ def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
 
     summary = _format_custom_schedule_rule(rule)
     if dlg.apply_now:
-        tooltip(
-            f"Saved {summary} on {updated} card{'s' if updated != 1 else ''}. "
-            f"Applied now to {applied_now}."
-        )
+        tooltip(_t("root_browser_schedule_saved_applied", summary=summary, saved=_tn("root_browser_schedule_saved_cards", updated), applied=applied_now))
     else:
-        tooltip(
-            f"Saved {summary} on {updated} card{'s' if updated != 1 else ''}."
-        )
+        tooltip(_t("root_browser_schedule_saved", summary=summary, saved=_tn("root_browser_schedule_saved_cards", updated)))
 
 
 def _open_browser_a_factor_dialog(browser, card_ids: list[int]) -> None:
     normalized_ids = sorted({int(card_id) for card_id in (card_ids or [])})
     if not normalized_ids:
-        showInfo("Select one or more Browser rows first.")
+        showInfo(_t("root_browser_select_rows"))
         return
 
     value, accepted = QInputDialog.getDouble(
         mw,
-        "Set A-Factor",
-        "A-Factor:",
+        _t("root_browser_a_factor_title"),
+        _t("root_browser_a_factor_label"),
         3.5,
         1.1,
         100.0,
@@ -1717,12 +1724,9 @@ def _open_browser_a_factor_dialog(browser, card_ids: list[int]) -> None:
     errors = int(result.get("errors") or 0)
     if not updated:
         if errors:
-            showInfo(
-                f"No topic cards were updated. {errors} selected "
-                f"card{'s' if errors != 1 else ''} failed to load or save."
-            )
+            showInfo(_t("root_browser_a_factor_no_updates_error", failed=_tn("root_browser_failed_cards", errors)))
         else:
-            showInfo("No topic cards found in the selected Browser rows.")
+            showInfo(_t("root_browser_no_topic_cards"))
         return
 
     try:
@@ -1734,11 +1738,11 @@ def _open_browser_a_factor_dialog(browser, card_ids: list[int]) -> None:
     except Exception:
         pass
 
-    msg = f"Set A-Factor {float(value):.3f} on {updated} topic card{'s' if updated != 1 else ''}."
+    msg = _t("root_browser_a_factor_set", value=f"{float(value):.3f}", updated=_tn("root_browser_topic_cards", updated))
     if skipped:
-        msg += f" Skipped {skipped} non-topic card{'s' if skipped != 1 else ''}."
+        msg += " " + _tn("root_browser_skipped_non_topic", skipped)
     if errors:
-        msg += f" {errors} selected card{'s' if errors != 1 else ''} failed."
+        msg += " " + _tn("root_browser_failed_cards", errors) + "."
     tooltip(msg)
 
 
@@ -1817,19 +1821,19 @@ def _browser_selected_epub_card_ids(browser) -> tuple[list[int], int]:
 def _regenerate_pdf_covers_for_browser_selection(browser) -> None:
     pdf_card_ids, skipped = _browser_selected_pdf_card_ids(browser)
     if not pdf_card_ids:
-        showInfo("No Incremento PDF cards found in the selected Browser rows.")
+        showInfo(_t("root_browser_no_pdf_cards"))
         return
 
     regenerated = 0
     cleared = 0
     failed: list[str] = []
 
-    mw.progress.start(label="Regenerating PDF covers…", immediate=True)
+    mw.progress.start(label=_t("root_browser_cover_progress_pdf_label"), immediate=True)
     try:
         total = len(pdf_card_ids)
         for index, card_id in enumerate(pdf_card_ids, start=1):
             try:
-                mw.progress.update(label=f"({index}/{total}) Regenerating PDF covers…")
+                mw.progress.update(label=_t("root_browser_cover_progress_pdf", index=index, total=total))
             except Exception:
                 pass
             try:
@@ -1839,7 +1843,7 @@ def _regenerate_pdf_covers_for_browser_selection(browser) -> None:
                 else:
                     cleared += 1
             except Exception as exc:
-                failed.append(f"Card {card_id}: {exc}")
+                failed.append(_t("root_browser_cover_failed_card", card_id=card_id, error=exc))
     finally:
         try:
             mw.progress.finish()
@@ -1858,42 +1862,36 @@ def _regenerate_pdf_covers_for_browser_selection(browser) -> None:
     if failed:
         details = "\n".join(failed[:10])
         if len(failed) > 10:
-            details += f"\n… and {len(failed) - 10} more."
-        message = (
-            f"Regenerated {regenerated} PDF cover{'s' if regenerated != 1 else ''} "
-            f"and cleared {cleared}."
-        )
+            details += "\n" + _t("root_browser_more_failures", count=len(failed) - 10)
+        message = _t("root_browser_cover_summary_pdf", regenerated=_tn("root_browser_pdf_covers", regenerated), cleared=cleared)
         if skipped:
-            message += f" Skipped {skipped} non-PDF selected card{'s' if skipped != 1 else ''}."
-        message += f"\n\nFailures:\n{details}"
+            message += " " + _tn("root_browser_skipped_non_pdf", skipped)
+        message += "\n\n" + _t("root_browser_failures_heading") + "\n" + details
         showInfo(message)
         return
 
-    message = (
-        f"Regenerated {regenerated} PDF cover{'s' if regenerated != 1 else ''} "
-        f"and cleared {cleared}."
-    )
+    message = _t("root_browser_cover_summary_pdf", regenerated=_tn("root_browser_pdf_covers", regenerated), cleared=cleared)
     if skipped:
-        message += f" Skipped {skipped} non-PDF selected card{'s' if skipped != 1 else ''}."
+        message += " " + _tn("root_browser_skipped_non_pdf", skipped)
     tooltip(message)
 
 
 def _regenerate_epub_covers_for_browser_selection(browser) -> None:
     epub_card_ids, skipped = _browser_selected_epub_card_ids(browser)
     if not epub_card_ids:
-        showInfo("No Incremento EPUB cards found in the selected Browser rows.")
+        showInfo(_t("root_browser_no_epub_cards"))
         return
 
     regenerated = 0
     cleared = 0
     failed: list[str] = []
 
-    mw.progress.start(label="Regenerating EPUB covers…", immediate=True)
+    mw.progress.start(label=_t("root_browser_cover_progress_epub_label"), immediate=True)
     try:
         total = len(epub_card_ids)
         for index, card_id in enumerate(epub_card_ids, start=1):
             try:
-                mw.progress.update(label=f"({index}/{total}) Regenerating EPUB covers…")
+                mw.progress.update(label=_t("root_browser_cover_progress_epub", index=index, total=total))
             except Exception:
                 pass
             try:
@@ -1903,7 +1901,7 @@ def _regenerate_epub_covers_for_browser_selection(browser) -> None:
                 else:
                     cleared += 1
             except Exception as exc:
-                failed.append(f"Card {card_id}: {exc}")
+                failed.append(_t("root_browser_cover_failed_card", card_id=card_id, error=exc))
     finally:
         try:
             mw.progress.finish()
@@ -1922,23 +1920,17 @@ def _regenerate_epub_covers_for_browser_selection(browser) -> None:
     if failed:
         details = "\n".join(failed[:10])
         if len(failed) > 10:
-            details += f"\n… and {len(failed) - 10} more."
-        message = (
-            f"Regenerated {regenerated} EPUB cover{'s' if regenerated != 1 else ''} "
-            f"and cleared {cleared}."
-        )
+            details += "\n" + _t("root_browser_more_failures", count=len(failed) - 10)
+        message = _t("root_browser_cover_summary_epub", regenerated=_tn("root_browser_epub_covers", regenerated), cleared=cleared)
         if skipped:
-            message += f" Skipped {skipped} non-EPUB selected card{'s' if skipped != 1 else ''}."
-        message += f"\n\nFailures:\n{details}"
+            message += " " + _tn("root_browser_skipped_non_epub", skipped)
+        message += "\n\n" + _t("root_browser_failures_heading") + "\n" + details
         showInfo(message)
         return
 
-    message = (
-        f"Regenerated {regenerated} EPUB cover{'s' if regenerated != 1 else ''} "
-        f"and cleared {cleared}."
-    )
+    message = _t("root_browser_cover_summary_epub", regenerated=_tn("root_browser_epub_covers", regenerated), cleared=cleared)
     if skipped:
-        message += f" Skipped {skipped} non-EPUB selected card{'s' if skipped != 1 else ''}."
+        message += " " + _tn("root_browser_skipped_non_epub", skipped)
     tooltip(message)
 
 
@@ -1954,9 +1946,9 @@ def _format_browser_database_entries(payload: dict[str, object]) -> str:
     card_ids = [int(card_id) for card_id in list(payload.get("card_ids") or [])]
     entries = list(payload.get("entries") or [])
     lines = [
-        "Selected card IDs: " + ", ".join(str(card_id) for card_id in card_ids),
-        f"Profile: {payload.get('profile') or ''}",
-        f"Database: {payload.get('db_path') or ''}",
+        _t("root_browser_database_selected_ids") + ": " + ", ".join(str(card_id) for card_id in card_ids),
+        _t("root_browser_database_profile", profile=payload.get('profile') or ''),
+        _t("root_browser_database_path", path=payload.get('db_path') or ''),
     ]
     separator = "-" * 72
     for card_id in card_ids:
@@ -1965,9 +1957,9 @@ def _format_browser_database_entries(payload: dict[str, object]) -> str:
             for entry in entries
             if int((entry or {}).get("card_id") or 0) == int(card_id)
         ]
-        lines.extend(["", separator, f"Card {card_id}"])
+        lines.extend(["", separator, _t("root_browser_database_card", card_id=card_id)])
         if not card_entries:
-            lines.append(f"No Incremento database rows found for card {card_id}.")
+            lines.append(_t("root_browser_database_no_rows", card_id=card_id))
             continue
 
         current_group = ""
@@ -1984,10 +1976,10 @@ def _format_browser_database_entries(payload: dict[str, object]) -> str:
                 current_group = group
                 lines.extend(["", group])
             if entry.get("virtual"):
-                row_label = "effective values (not yet persisted)"
+                row_label = _t("root_browser_database_effective_values")
             else:
                 rowid = entry.get("rowid")
-                row_label = f"rowid {rowid}" if rowid is not None else "row"
+                row_label = _t("root_browser_database_rowid", rowid=rowid) if rowid is not None else _t("root_browser_database_row")
             lines.append(f"  {row_label}")
             values = dict(entry.get("values") or {})
             columns = list(entry.get("columns") or values.keys())
@@ -2040,13 +2032,13 @@ def _add_effective_topic_schedule_entries(payload: dict[str, object]) -> dict[st
 def _show_browser_database_entries(browser) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
-        showInfo("Select one or more Browser rows first.")
+        showInfo(_t("root_browser_select_rows"))
         return
 
     try:
         payload = find_card_database_entries(_ADDON_DIR, _active_profile(), card_ids)
     except Exception as exc:
-        showInfo(f"Could not read Incremento database entries:\n{exc}")
+        showInfo(_t("root_browser_database_read_failed", error=exc))
         return
 
     payload = _add_effective_topic_schedule_entries(payload)
@@ -2077,11 +2069,7 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
             stage="compatibility",
             error_type="UnsupportedAnkiReviewerAPI",
         )
-        showInfo(
-            "Review Selected is unavailable with this Anki reviewer version. "
-            "Incremento left the selected cards unchanged. Please update Anki "
-            "or use a normal filtered-deck review."
-        )
+        showInfo(_t("root_browser_review_unsupported"))
         return
     normalized_ids: list[int] = []
     seen: set[int] = set()
@@ -2122,7 +2110,7 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
     )
 
     if not normalized_ids:
-        showInfo("No selected cards are available to study.")
+        showInfo(_t("root_browser_no_selected_cards"))
         return
 
     try:
@@ -2130,22 +2118,14 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
     except Exception:
         first_card = None
     if first_card is None or _direct_review_v3_info(first_card) is None:
-        showInfo(
-            "Review Selected could not create a compatible Anki review queue. "
-            "Incremento left the selected cards unchanged; use a normal "
-            "filtered-deck review instead."
-        )
+        showInfo(_t("root_browser_review_queue_failed"))
         return
 
     _direct_review_card_ids[:] = normalized_ids
     _direct_review_active = True
 
     if skipped:
-        tooltip(
-            f"Studying {len(normalized_ids)} selected card"
-            f"{'s' if len(normalized_ids) != 1 else ''}. "
-            f"Skipped {skipped} unavailable card{'s' if skipped != 1 else ''}."
-        )
+        tooltip(_t("root_browser_review_start_skipped", studying=_tn("root_browser_review_studying", len(normalized_ids)), skipped=_tn("root_browser_review_skipped", skipped)))
 
     try:
         if getattr(mw, "state", None) == "review" and getattr(mw, "reviewer", None):
@@ -2167,7 +2147,7 @@ def _start_direct_browser_review(card_ids: list[int]) -> None:
             error_type=type(exc).__name__,
         )
         _clear_direct_review_queue(emit_diagnostic=False)
-        showInfo(f"Could not start studying the selected cards:\n{exc}")
+        showInfo(_t("root_browser_review_start_failed", error=exc))
 
 
 def _on_browser_context_menu(browser, menu: QMenu) -> None:
@@ -2176,18 +2156,18 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
         return
 
     menu.addSeparator()
-    submenu = QMenu("Incremento", menu)
-    count_label = f"{len(card_ids)} selected card{'s' if len(card_ids) != 1 else ''}"
-    study_action = QAction(f"Study Selected Cards ({count_label})", submenu)
-    topic_action = QAction(f"Make Topic ({count_label})", submenu)
-    item_action = QAction(f"Make Item ({count_label})", submenu)
-    a_factor_action = QAction(f"Set A-Factor… ({count_label})", submenu)
-    schedule_action = QAction(f"Custom Schedule… ({count_label})", submenu)
-    pdf_cover_action = QAction(f"Regenerate PDF Covers ({count_label})", submenu)
-    epub_cover_action = QAction(f"Regenerate EPUB Covers ({count_label})", submenu)
-    ocr_action = QAction(f"OCR Image Text ({count_label})", submenu)
-    hidden_fields_action = QAction(f"Show Hidden Fields ({count_label})", submenu)
-    database_entries_action = QAction(f"Show Database Entries ({count_label})", submenu)
+    submenu = QMenu(_t("root_menu_incremento"), menu)
+    count_label = _tn("root_browser_selected_card", len(card_ids))
+    study_action = QAction(_t("root_browser_study_selected", count_label=count_label), submenu)
+    topic_action = QAction(_t("root_browser_make_topic", count_label=count_label), submenu)
+    item_action = QAction(_t("root_browser_make_item", count_label=count_label), submenu)
+    a_factor_action = QAction(_t("root_browser_set_a_factor", count_label=count_label), submenu)
+    schedule_action = QAction(_t("root_browser_custom_schedule", count_label=count_label), submenu)
+    pdf_cover_action = QAction(_t("root_browser_regenerate_pdf_covers", count_label=count_label), submenu)
+    epub_cover_action = QAction(_t("root_browser_regenerate_epub_covers", count_label=count_label), submenu)
+    ocr_action = QAction(_t("root_browser_ocr_image_text", count_label=count_label), submenu)
+    hidden_fields_action = QAction(_t("root_browser_show_hidden_fields", count_label=count_label), submenu)
+    database_entries_action = QAction(_t("root_browser_show_database_entries", count_label=count_label), submenu)
 
     qconnect(
         study_action.triggered,
@@ -2420,7 +2400,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 created = int(summary.get("created") or 0)
                 skipped = int(summary.get("skipped") or 0)
                 failed = int(summary.get("failed") or 0)
-                lines = [f"Created: {created}", f"Skipped: {skipped}", f"Failed: {failed}"]
+                lines = [_t("root_batch_created", count=created), _t("root_batch_skipped", count=skipped), _t("root_batch_failed", count=failed)]
                 errors = list(summary.get("errors") or [])
                 if errors:
                     lines.extend(["", *errors[:10]])
@@ -2431,7 +2411,7 @@ def _on_js_message(handled, message, context) -> tuple:
                     except Exception:
                         pass
         except Exception as exc:
-            showInfo(f"Could not create batch extracts:\n{exc}")
+            showInfo(_t("root_batch_create_failed", error=exc))
         return (True, None)
 
     if message.startswith("incremento_open_card:"):
@@ -2848,6 +2828,18 @@ _timer_mod.register_reading_page_callback(_persist_reader_page_stat)
 _timer_mod.register_reading_history_loader(_load_reader_daily_stat)
 
 
+def _activate_profile_language(profile: str | None) -> None:
+    """Load only this profile's pack, using the preference captured at startup."""
+    pack = None
+    if profile and _startup_ui_language_choice.startswith("custom:"):
+        pack = _language_packs.load_pack(_ADDON_DIR, profile, _startup_ui_language_choice[7:])
+    _initialize_language(
+        _startup_ui_language_choice, getattr(_anki_language, "current_lang", "en"),
+        custom_pack=pack,
+    )
+    _retranslate_incremento_menu()
+
+
 def _on_profile_did_open() -> None:
     """Activate per-profile paths and run one-time migration on first load."""
     global _diagnostic_pending_final_interval, _diagnostic_recorder
@@ -2862,6 +2854,7 @@ def _on_profile_did_open() -> None:
     _video_dock_mod.reset_for_profile_switch()
     _web_dock_mod.reset_for_profile_switch()
     _paths.set_active_profile(profile)
+    _activate_profile_language(profile)
     migrate_to_profile_dir(_ADDON_DIR, profile)
     if _diagnostic_recorder is not None:
         # A defensive profile-open without its matching close must not leave a
@@ -2888,6 +2881,7 @@ def _on_profile_did_open() -> None:
 
 gui_hooks.profile_did_open.append(_on_profile_did_open)
 gui_hooks.profile_will_close.append(_close_diagnostic_profile)
+gui_hooks.profile_will_close.append(lambda: _activate_profile_language(None))
 
 
 def _start_profile_reconciliation() -> None:
@@ -2957,7 +2951,7 @@ def _start_native_anki_sync() -> None:
     try:
         _anki_compat.start_native_sync(mw)
     except Exception as exc:
-        showInfo(f"Anki sync could not be started automatically:\n{exc}")
+        showInfo(_t("root_sync_start_failed", error=exc))
 
 
 def _show_incremento_note_type_updates(*, manual: bool = False) -> None:
@@ -2971,11 +2965,11 @@ def _show_incremento_note_type_updates(*, manual: bool = False) -> None:
         pending = _detect_incremento_note_type_updates(mw.col)
     except Exception as exc:
         if manual:
-            showInfo(f"Incremento could not inspect card formats:\n{exc}")
+            showInfo(_t("root_note_formats_inspect_failed", error=exc))
         return
     if not pending:
         if manual:
-            showInfo("All existing Incremento card formats are up to date.")
+            showInfo(_t("root_note_formats_current"))
         return
 
     _note_type_update_prompted_profiles.add(profile)
@@ -2987,11 +2981,7 @@ def _show_incremento_note_type_updates(*, manual: bool = False) -> None:
         # A successful native sync will trigger sync_did_finish and show the
         # consent dialog again with a freshly inspected collection.
         _note_type_update_prompted_profiles.discard(profile)
-        showInfo(
-            "Incremento has not changed the collection. Anki Sync will open now. "
-            "After every device is synchronized, return to Incremento > Utils > "
-            "Card Format Updates and apply the update."
-        )
+        showInfo(_t("root_note_formats_sync_first"))
         QTimer.singleShot(0, _start_native_anki_sync)
         return
 
@@ -3008,30 +2998,19 @@ def _show_incremento_note_type_updates(*, manual: bool = False) -> None:
         applied = _apply_incremento_note_type_updates(mw.col, approved)
     except _NoteTypeApplyError as exc:
         _note_type_update_prompted_profiles.discard(profile)
-        already_applied = ", ".join(exc.applied) or "none confirmed"
-        showInfo(
-            "Incremento stopped the card-format update because Anki reported "
-            f"an error while updating {exc.note_type}.\n\n"
-            f"Formats confirmed as saved before the error: {already_applied}.\n\n"
-            "Do not choose a one-way sync yet. Restart Anki, then open "
-            "Incremento > Utils > Card Format Updates and retry. If the error "
-            f"continues, export a support bundle.\n\nTechnical detail: {exc.cause}"
-        )
+        already_applied = ", ".join(exc.applied) or _t("root_note_formats_none_confirmed")
+        showInfo(_t("root_note_formats_apply_partial", note_type=exc.note_type, applied=already_applied, error=exc.cause))
         return
     except Exception as exc:
         _note_type_update_prompted_profiles.discard(profile)
-        showInfo(f"Incremento could not apply the card-format update:\n{exc}")
+        showInfo(_t("root_note_formats_apply_failed", error=exc))
         return
 
     if not applied:
-        showInfo("The Incremento card formats were already up to date.")
+        showInfo(_t("root_note_formats_already_current"))
         return
 
-    showInfo(
-        "Incremento updated the approved card formats. Anki Sync will open next. "
-        "This device now contains the updated schema: choose Upload to AnkiWeb. "
-        "Then choose Download on your other devices."
-    )
+    showInfo(_t("root_note_formats_applied"))
     QTimer.singleShot(0, _start_native_anki_sync)
 
 
@@ -3252,7 +3231,7 @@ def _reviewer_pdf_source_cover_payload(card) -> dict[str, str] | None:
     return {
         "title": source_title,
         "cover_media": cover_media,
-        "source_label": "Source PDF",
+        "source_label": _t("root_reviewer_source_pdf"),
     }
 
 
@@ -3269,7 +3248,7 @@ def _sync_reviewer_source_cover(_card=None) -> None:
             build_reviewer_source_cover_js(
                 (payload or {}).get("title", ""),
                 cover_media=str((payload or {}).get("cover_media") or ""),
-                source_label=str((payload or {}).get("source_label") or "Source PDF"),
+                source_label=str((payload or {}).get("source_label") or _t("root_reviewer_source_pdf")),
             )
         )
     except Exception:
@@ -3420,7 +3399,7 @@ def _open_pdf_quick_jump() -> None:
             if dlg.open_card_to_study:
                 start_quick_open_review(cid)
     except Exception as e:
-        showInfo(f"Could not open document:\n{e}")
+        showInfo(_t("root_document_open_failed", error=e))
 
 
 def _open_document_bookshelf() -> None:
@@ -3449,16 +3428,16 @@ def _open_document_bookshelf() -> None:
             if dlg.open_card_to_study:
                 start_quick_open_review(card_id)
         except Exception as exc:
-            showInfo(f"Could not open document:\n{exc}")
+            showInfo(_t("root_document_open_failed", error=exc))
 
     def failed(exc: Exception) -> None:
-        showInfo(f"Could not load the Document Bookshelf:\n{exc}")
+        showInfo(_t("root_bookshelf_load_failed", error=exc))
 
     try:
         (
             QueryOp(parent=mw, op=load_entries, success=show_bookshelf)
             .failure(failed)
-            .with_progress("Loading document bookshelf…")
+            .with_progress(_t("root_bookshelf_loading"))
             .run_in_background()
         )
     except Exception as exc:
@@ -3627,14 +3606,14 @@ def _current_reviewer_video_card():
 
 def _download_current_reviewer_video_locally() -> None:
     if _current_reviewer_video_card() is None:
-        tooltip("No video review card is currently active.")
+        tooltip(_t("root_reviewer_no_video_card"))
         return
     _video_dock_mod.download_current_video_locally()
 
 
 def _configure_current_reviewer_video_captions() -> None:
     if _current_reviewer_video_card() is None:
-        tooltip("No video review card is currently active.")
+        tooltip(_t("root_reviewer_no_video_card"))
         return
     _video_dock_mod.configure_current_video_captions()
 
@@ -3687,7 +3666,7 @@ def _open_knowledge_tree(*, select_card_id: int | None = None) -> None:
 def _reveal_current_card_in_knowledge_tree() -> None:
     card_id = _current_reviewer_card_id()
     if card_id is None:
-        tooltip("No review card is currently active.")
+        tooltip(_t("root_reviewer_no_active_card"))
         return
     _open_knowledge_tree(select_card_id=card_id)
 
@@ -3695,17 +3674,17 @@ def _reveal_current_card_in_knowledge_tree() -> None:
 def _go_to_parent_in_knowledge_tree() -> None:
     card_id = _current_reviewer_card_id()
     if card_id is None:
-        tooltip("No review card is currently active.")
+        tooltip(_t("root_reviewer_no_active_card"))
         return
 
     row = get_knowledge_tree_node(_ADDON_DIR, _active_profile(), int(card_id))
     if row is None:
-        tooltip("Current card is not linked in the knowledge tree.")
+        tooltip(_t("root_reviewer_card_not_in_tree"))
         return
 
     parent_card_id = row.get("parent_card_id")
     if parent_card_id is None:
-        tooltip("Current card is already at the top of the knowledge tree.")
+        tooltip(_t("root_reviewer_card_at_tree_top"))
         return
 
     _open_knowledge_tree(select_card_id=int(parent_card_id))
@@ -3721,11 +3700,11 @@ def _study_knowledge_tree_branch(card_id: int) -> None:
             int(card_id),
         )
     except Exception as exc:
-        showInfo(f"Could not prepare branch study session:\n{exc}")
+        showInfo(_t("root_branch_study_failed", error=exc))
         return
 
     if not branch_scope or not list(branch_scope.get("card_ids") or []):
-        tooltip("Selected branch does not contain any knowledge-tree cards.")
+        tooltip(_t("root_reviewer_branch_empty"))
         return
 
     learnFunction(branch_scope=branch_scope)
@@ -3795,23 +3774,23 @@ def addPdfFunction() -> None:
             return "?"
 
     if created:
-        lines = [f"Added {len(created)} PDF card(s) → {deck}\n"]
+        lines = [_tn("root_import_pdf_added", len(created), deck=deck) + "\n"]
         for path, title in created:
             lines.append(f"• {title}")
             lines.append(f"  {os.path.basename(path)}  ·  {_fmt_size(path)}")
         if failed:
-            lines.append(f"\nFailed: {len(failed)}")
+            lines.append("\n" + _t("root_batch_failed", count=len(failed)))
             for path, msg in failed[:10]:
                 lines.append(f"• {os.path.basename(path)}: {msg}")
             if len(failed) > 10:
-                lines.append(f"  …and {len(failed) - 10} more")
+                lines.append("  " + _t("root_more_failures", count=len(failed) - 10))
         showInfo("\n".join(lines))
     else:
         failed_lines = "\n".join(
             f"• {os.path.basename(p)}: {msg}" for p, msg in failed[:10]
         )
-        extra = f"\n…and {len(failed) - 10} more" if len(failed) > 10 else ""
-        showInfo(f"All imports failed ({len(failed)}):\n\n{failed_lines}{extra}")
+        extra = "\n" + _t("root_more_failures", count=len(failed) - 10) if len(failed) > 10 else ""
+        showInfo(_t("root_import_pdf_all_failed", count=len(failed), details=failed_lines, extra=extra))
 
 
 def addEpubFunction() -> None:
@@ -3830,23 +3809,23 @@ def addEpubFunction() -> None:
         return
 
     if created:
-        lines = [f"Added {len(created)} EPUB card(s) → {deck}\n"]
+        lines = [_tn("root_import_epub_added", len(created), deck=deck) + "\n"]
         for path, title in created:
             lines.append(f"• {title}")
             lines.append(f"  {os.path.basename(path)}")
         if failed:
-            lines.append(f"\nFailed: {len(failed)}")
+            lines.append("\n" + _t("root_batch_failed", count=len(failed)))
             for path, msg in failed[:10]:
                 lines.append(f"• {os.path.basename(path)}: {msg}")
             if len(failed) > 10:
-                lines.append(f"  …and {len(failed) - 10} more")
+                lines.append("  " + _t("root_more_failures", count=len(failed) - 10))
         showInfo("\n".join(lines))
     else:
         failed_lines = "\n".join(
             f"• {os.path.basename(p)}: {msg}" for p, msg in failed[:10]
         )
-        extra = f"\n…and {len(failed) - 10} more" if len(failed) > 10 else ""
-        showInfo(f"All EPUB imports failed ({len(failed)}):\n\n{failed_lines}{extra}")
+        extra = "\n" + _t("root_more_failures", count=len(failed) - 10) if len(failed) > 10 else ""
+        showInfo(_t("root_import_epub_all_failed", count=len(failed), details=failed_lines, extra=extra))
 
 
 def importNotebookCitationsFunction() -> None:
@@ -3861,16 +3840,13 @@ def exportFunction() -> None:
     from aqt.qt import QFileDialog, QMessageBox
 
     choice = QMessageBox(mw)
-    choice.setWindowTitle("Full Backup")
-    choice.setText(
-        "Export a full backup of the current Anki profile, or configure "
-        "automatic backups to a local or synced folder."
-    )
-    export_button = choice.addButton("Export Now…", QMessageBox.ButtonRole.AcceptRole)
+    choice.setWindowTitle(_t("root_backup_full_title"))
+    choice.setText(_t("root_backup_choice_description"))
+    export_button = choice.addButton(_t("root_backup_export_now"), QMessageBox.ButtonRole.AcceptRole)
     automatic_button = choice.addButton(
-        "Automatic Backups…", QMessageBox.ButtonRole.ActionRole
+        _t("root_backup_automatic_button"), QMessageBox.ButtonRole.ActionRole
     )
-    choice.addButton(QMessageBox.StandardButton.Cancel)
+    choice.addButton(QMessageBox.StandardButton.Cancel).setText(_t("common_cancel"))
     choice.exec()
     if choice.clickedButton() is automatic_button:
         configureAutomaticBackupsFunction()
@@ -3884,7 +3860,7 @@ def exportFunction() -> None:
         f"~/incremento_{profile}_full_backup_{today}.zip"
     )
     path, _ = QFileDialog.getSaveFileName(
-        mw, "Export Current Incremento Profile Backup", default_name, "ZIP files (*.zip)"
+        mw, _t("root_backup_file_dialog_title"), default_name, _t("root_backup_file_filter")
     )
     if path:
         _start_full_backup(path if path.lower().endswith(".zip") else path + ".zip")
@@ -3948,7 +3924,7 @@ def _attempt_automatic_backup(trigger: str, profile: str, generation: int) -> No
             policy["directory"], _paths.get_user_files_dir(_ADDON_DIR, profile)
         )
     except (OSError, ValueError) as exc:
-        tooltip(f"Automatic backup folder unavailable: {exc}")
+        tooltip(_t("root_backup_folder_unavailable", error=exc))
         return
     path = folder / _backup_schedule.backup_filename(profile, time.time())
     _start_full_backup(str(path), automatic_policy=policy)
@@ -3965,7 +3941,7 @@ def _start_automatic_backups() -> None:
             cfg.get("automatic_backups", {}).get(profile)
         )
         if policy["last_close_failed"]:
-            tooltip("The previous close backup failed. Check the backup destination.")
+            tooltip(_t("root_backup_close_failed"))
     except Exception:
         pass
     if _auto_backup_timer is not None:
@@ -4022,7 +3998,7 @@ def _prepare_profile_close(resume_close) -> None:
             policy["directory"], _paths.get_user_files_dir(_ADDON_DIR, profile)
         )
     except (OSError, ValueError) as exc:
-        tooltip(f"Close backup folder unavailable: {exc}")
+        tooltip(_t("root_backup_close_folder_unavailable", error=exc))
         _record_close_backup_result(profile, failed=True)
         resume_close()
         return
@@ -4081,7 +4057,7 @@ def _start_full_backup(
     global _full_backup_running
     if _full_backup_running:
         if automatic_policy is None:
-            tooltip("A full backup is already running. See Activity Center.")
+            tooltip(_t("root_backup_already_running"))
         return False
     today = datetime.date.today().isoformat()
     profile = _active_profile()
@@ -4099,9 +4075,9 @@ def _start_full_backup(
         )
     except (OSError, ValueError) as exc:
         if automatic_policy is None:
-            showInfo(f"Backup destination unavailable: {exc}")
+            showInfo(_t("root_backup_destination_unavailable", error=exc))
         else:
-            tooltip(f"Automatic backup destination unavailable: {exc}")
+            tooltip(_t("root_backup_auto_destination_unavailable", error=exc))
         return False
     os.close(archive_fd)
     try:
@@ -4111,14 +4087,14 @@ def _start_full_backup(
         raise
     collection = mw.col
     activity_id = start_activity(
-        "Full profile backup", category="Backup", detail="Preparing backup…",
+        _t("root_backup_activity_title"), category=_t("root_backup_activity_category"), detail=_t("root_backup_activity_preparing"),
     )
     progress = AutomaticBackupProgress(mw) if automatic_policy is not None else None
     if progress is not None:
         try:
             progress.start()
         except Exception as exc:
-            fail_activity(activity_id, f"Could not show backup progress: {exc}")
+            fail_activity(activity_id, _t("root_backup_progress_failed", error=exc))
             os.remove(archive_tmp_path)
             return False
     _full_backup_running = True
@@ -4192,7 +4168,7 @@ def _start_full_backup(
             apkg_path = tmp_root / "all_decks.apkg"
             db_snapshot_path = tmp_root / DB_NAME
 
-            _progress("Creating Anki package…")
+            _progress(_t("root_backup_activity_creating_package"))
             exporter = FullBackupPackageExporter(collection)
             exporter.includeSched = True
             exporter.includeMedia = True
@@ -4200,7 +4176,7 @@ def _start_full_backup(
             exporter.cids = None
 
             def _exported_media_count(cnt: int) -> None:
-                _progress(f"Creating Anki package… exported media {cnt}")
+                _progress(_t("root_backup_exported_media", count=cnt))
 
             hooks.media_files_did_export.append(_exported_media_count)
             try:
@@ -4211,7 +4187,7 @@ def _start_full_backup(
             if _active_profile() != profile:
                 raise RuntimeError("The active profile changed while backup was running")
 
-            _progress("Snapshotting Incremento user_files…")
+            _progress(_t("root_backup_activity_snapshotting"))
             snapshot_conn = sqlite3.connect(str(db_snapshot_path))
             try:
                 conn.backup(snapshot_conn)
@@ -4234,7 +4210,7 @@ def _start_full_backup(
             if _active_profile() != profile:
                 raise RuntimeError("The active profile changed while backup was running")
 
-            _progress("Writing backup ZIP…")
+            _progress(_t("root_backup_activity_writing_zip"))
             with zipfile.ZipFile(archive_tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(apkg_path, "anki/all_decks.apkg")
                 zf.write(db_stage_path, f"user_files/{profile}/{DB_NAME}")
@@ -4328,7 +4304,7 @@ def _start_full_backup(
                 os.remove(archive_tmp_path)
             except OSError:
                 pass
-            fail_activity(activity_id, "Profile changed before the backup completed.")
+            fail_activity(activity_id, _t("root_backup_profile_changed"))
             if close_triggered:
                 _record_close_backup_result(profile, failed=True)
             return
@@ -4339,14 +4315,14 @@ def _start_full_backup(
                 os.remove(archive_tmp_path)
             except OSError:
                 pass
-            message = f"{'Automatic backup' if automatic_policy else 'Export'} failed:\n{e}"
+            message = _t("root_backup_failed_auto" if automatic_policy else "root_backup_failed_manual", error=e)
             fail_activity(activity_id, message)
             if close_triggered:
                 _record_close_backup_result(profile, failed=True)
             tooltip(message)
             return
 
-        finish_activity(activity_id, detail=f"Saved to {path}")
+        finish_activity(activity_id, detail=_t("root_backup_saved_to", path=path))
 
         if automatic_policy is not None:
             try:
@@ -4361,14 +4337,14 @@ def _start_full_backup(
                     cfg["automatic_backups"] = policies
                     _save_addon_config(mw.addonManager, __name__, cfg)
             except Exception:
-                tooltip("Backup saved, but its schedule timestamp could not be updated.")
+                tooltip(_t("root_backup_schedule_timestamp_failed"))
             if result["retention_error"]:
-                tooltip(f"Backup saved, but old versions could not be removed: {result['retention_error']}")
+                tooltip(_t("root_backup_retention_failed", error=result['retention_error']))
             else:
-                tooltip("Automatic full backup saved.")
+                tooltip(_t("root_backup_automatic_saved"))
             return
 
-        tooltip("Full backup saved. Details are in Activity Center.")
+        tooltip(_t("root_backup_saved"))
 
     def _on_done_and_resume(fut) -> None:
         global _backup_idle_callbacks
@@ -4388,7 +4364,7 @@ def _start_full_backup(
         mw.taskman.run_in_background(_task, _on_done_and_resume)
     except Exception as exc:
         _full_backup_running = False
-        fail_activity(activity_id, f"Could not start backup: {exc}")
+        fail_activity(activity_id, _t("root_backup_start_failed", error=exc))
         if progress is not None:
             progress.finish()
         try:
@@ -4410,9 +4386,9 @@ def exportSupportBundleFunction() -> None:
     default_name = os.path.expanduser(f"~/incremento_support_bundle_{today}.zip")
     path, _ = QFileDialog.getSaveFileName(
         mw,
-        "Export Privacy-Safe Incremento Support Bundle",
+        _t("root_support_export_title"),
         default_name,
-        "ZIP files (*.zip)",
+        _t("root_backup_file_filter"),
     )
     if not path:
         return
@@ -4441,7 +4417,7 @@ def exportSupportBundleFunction() -> None:
         "incremento_session": diagnostic_session_snapshot(),
     }
 
-    mw.progress.start(label="Creating privacy-safe support bundle…", immediate=True)
+    mw.progress.start(label=_t("root_support_progress"), immediate=True)
 
     def _task():
         return _diagnostics_mod.build_support_bundle(
@@ -4464,7 +4440,7 @@ def exportSupportBundleFunction() -> None:
                 "support_bundle_failed",
                 error_type=_diagnostics_mod.safe_exception_type(exc),
             )
-            showInfo(f"Could not create the support bundle:\n\n{exc}")
+            showInfo(_t("root_support_create_failed", error=exc))
             return
 
         _record_diagnostic_event(
@@ -4472,15 +4448,7 @@ def exportSupportBundleFunction() -> None:
             event_count=result.get("event_count", 0),
             bundle_bytes=result.get("bundle_bytes", 0),
         )
-        showInfo(
-            "Privacy-safe support bundle created.\n\n"
-            f"Included {result.get('event_count', 0)} recent diagnostic event(s).\n"
-            "It contains no card/note text, raw IDs, deck/tag/profile names, media, "
-            "user/media filenames, local paths, URLs, database rows, exception "
-            "messages, or exact activity timestamps. Fixed shipped-code filenames "
-            "appear only beside their hashes.\n\n"
-            f"Saved to:\n{path}"
-        )
+        showInfo(_t("root_support_created", count=result.get('event_count', 0), path=path))
 
     # The bundle reads its own SQLite connection and fixed shipped files. It
     # must not wait behind a stalled CollectionOp, which is often the problem
@@ -4568,10 +4536,10 @@ def _open_priority_dialog_for_card(card) -> bool:
     )
     if dlg.exec():
         set_priority(_ADDON_DIR, _active_profile(), card.id, dlg.priority)
-        msg = f"Priority set to {dlg.priority:.0f}"
+        msg = _t("root_reviewer_priority_set", priority=f"{dlg.priority:.0f}")
         if dlg.a_factor is not None:
             set_topic_schedule(_ADDON_DIR, _active_profile(), card.id, dlg.a_factor, interval or 1)
-            msg += f"  ·  A-Factor {dlg.a_factor:.3f}"
+            msg += _t("root_reviewer_a_factor_set", value=f"{dlg.a_factor:.3f}")
         reviewer = getattr(mw, "reviewer", None)
         current_card = getattr(reviewer, "card", None) if reviewer else None
         if current_card is not None and getattr(current_card, "id", None) == getattr(card, "id", None):
@@ -4589,7 +4557,7 @@ def _open_priority_dialog() -> None:
     reviewer = getattr(mw, "reviewer", None)
     card = getattr(reviewer, "card", None) if reviewer else None
     if card is None:
-        showInfo("No card is currently being reviewed.")
+        showInfo(_t("root_reviewer_no_review_card"))
         return
     _open_priority_dialog_for_card(card)
 
@@ -4611,14 +4579,14 @@ def _open_reviewer_tag_dialog() -> None:
     reviewer = getattr(mw, "reviewer", None)
     card = getattr(reviewer, "card", None) if reviewer else None
     if card is None:
-        showInfo("No card is currently being reviewed.")
+        showInfo(_t("root_reviewer_no_review_card"))
         return
     try:
         note = card.note()
     except Exception:
         note = None
     if note is None:
-        showInfo("Could not load the current note.")
+        showInfo(_t("root_reviewer_note_load_failed"))
         return
 
     try:
@@ -4628,7 +4596,7 @@ def _open_reviewer_tag_dialog() -> None:
     current_tags = normalize_tag_list(getattr(note, "tags", []) or [])
     recent_tags = get_recent_reviewer_tags(_ADDON_DIR, _active_profile(), limit=10)
     if not all_tags and not recent_tags:
-        showInfo("No tags exist in this collection yet.")
+        showInfo(_t("root_reviewer_no_tags"))
         return
     dlg = ReviewerTagDialog(
         current_tags=current_tags,
@@ -4642,7 +4610,7 @@ def _open_reviewer_tag_dialog() -> None:
     selected_tags = dlg.selected_tags()
     updated_tags, added_tags = append_missing_tags(current_tags, selected_tags)
     if not added_tags:
-        tooltip("All selected tags are already on this note.")
+        tooltip(_t("root_reviewer_tags_present"))
         return
 
     _save_note_tags(note, updated_tags)
@@ -4650,7 +4618,7 @@ def _open_reviewer_tag_dialog() -> None:
     summary = ", ".join(added_tags[:4])
     if len(added_tags) > 4:
         summary += ", ..."
-    tooltip(f"Added tags: {summary}")
+    tooltip(_t("root_reviewer_tags_added", tags=summary))
 
 
 _priority_shortcut = QShortcut(QKeySequence("Alt+P"), mw)
@@ -4730,10 +4698,10 @@ def addVideoFunction() -> None:
     if source_mode in ("youtube", "vimeo"):
         url = resolve_video_url_for_embed(dlg.video_url)
         if not url:
-            showInfo("Please enter a video URL.")
+            showInfo(_t("root_video_enter_url"))
             return
         if not is_supported_video_url(url):
-            showInfo("Could not find a valid YouTube or Vimeo URL.")
+            showInfo(_t("root_video_invalid_url"))
             return
         title = dlg.title or url
         max_height = dlg.download_max_height
@@ -4742,10 +4710,10 @@ def addVideoFunction() -> None:
         url = ""
         local_path = dlg.local_video_path
         if not local_path:
-            showInfo("Please choose a local video file.")
+            showInfo(_t("root_video_choose_file"))
             return
         if not os.path.isfile(local_path):
-            showInfo("Selected local video file does not exist.")
+            showInfo(_t("root_video_file_missing"))
             return
         title = dlg.title or os.path.splitext(os.path.basename(local_path))[0]
         max_height = None
@@ -4779,14 +4747,14 @@ def addVideoFunction() -> None:
                 import_operation.commit(storage_key=local_relpath)
             mw.col.reset()
             if local_relpath:
-                tooltip(f"Video card '{title}' added to {deck_name} (local copy ready).")
+                tooltip(_t("root_video_added_local", title=title, deck=deck_name))
             else:
-                tooltip(f"Video card '{title}' added to {deck_name}.")
+                tooltip(_t("root_video_added", title=title, deck=deck_name))
             return True
         except Exception as e:
             if import_operation is not None:
                 import_operation.rollback(error_code=type(e).__name__)
-            showInfo(f"Failed to add video card:\n{e}")
+            showInfo(_t("root_video_add_failed", error=e))
             return False
 
     if source_mode == "local":
@@ -4795,9 +4763,9 @@ def addVideoFunction() -> None:
         )
         try:
             label = (
-                "Importing local video…"
+                _t("root_video_importing_local")
                 if local_encode_mode == "original"
-                else "Importing and encoding local video…"
+                else _t("root_video_importing_encoding")
             )
             mw.progress.start(
                 label=label,
@@ -4835,11 +4803,11 @@ def addVideoFunction() -> None:
                 local_relpath = fut.result()
             except Exception as e:
                 import_operation.rollback(error_code=type(e).__name__)
-                showInfo(f"Local video import failed:\n{e}")
+                showInfo(_t("root_video_local_import_failed", error=e))
                 return
             if _active_profile() != active_profile:
                 import_operation.rollback(error_code="profile_changed")
-                showInfo("The Anki profile changed, so the video import was cancelled safely.")
+                showInfo(_t("root_video_profile_changed"))
                 return
             _add_card(local_relpath=local_relpath, youtube_url="")
 
@@ -4856,9 +4824,9 @@ def addVideoFunction() -> None:
 
     try:
         label = (
-            "Downloading original-quality video…"
+            _t("root_video_downloading_original")
             if original_quality
-            else "Downloading and compressing video…"
+            else _t("root_video_downloading_compressing")
         )
         mw.progress.start(
             label=label,
@@ -4898,11 +4866,11 @@ def addVideoFunction() -> None:
             local_relpath = fut.result()
         except Exception as e:
             import_operation.rollback(error_code=type(e).__name__)
-            showInfo(f"Video download/compression failed:\n{e}")
+            showInfo(_t("root_video_download_failed", error=e))
             return
         if _active_profile() != active_profile:
             import_operation.rollback(error_code="profile_changed")
-            showInfo("The Anki profile changed, so the video import was cancelled safely.")
+            showInfo(_t("root_video_profile_changed"))
             return
         _add_card(local_relpath=local_relpath)
 
@@ -4920,7 +4888,7 @@ def addWritingFunction() -> None:
 
     title = dlg.title.strip()
     if not title:
-        showInfo("Please enter a title.")
+        showInfo(_t("root_writing_enter_title"))
         return
 
     try:
@@ -4942,9 +4910,9 @@ def addWritingFunction() -> None:
             metadata=metadata,
         )
         mw.col.reset()
-        tooltip(f"Markdown card '{title}' added to {dlg.deck_name}.")
+        tooltip(_t("root_writing_card_added", title=title, deck=dlg.deck_name))
     except Exception as e:
-        showInfo(f"Failed to add markdown card:\n{e}")
+        showInfo(_t("root_writing_add_failed", error=e))
 
 
 def addLocalFileFunction() -> None:
@@ -4958,10 +4926,10 @@ def addLocalFileFunction() -> None:
 
     source_path = dlg.source_path
     if not source_path:
-        showInfo("Please choose a local file.")
+        showInfo(_t("root_local_file_choose"))
         return
     if not os.path.isfile(source_path):
-        showInfo("Selected local file does not exist.")
+        showInfo(_t("root_local_file_missing"))
         return
 
     title = dlg.title or os.path.splitext(os.path.basename(source_path))[0]
@@ -4979,9 +4947,9 @@ def addLocalFileFunction() -> None:
             note_text=dlg.note_text,
         )
         mw.col.reset()
-        tooltip(f"Local file card '{title}' added to {dlg.deck_name}.")
+        tooltip(_t("root_local_file_added", title=title, deck=dlg.deck_name))
     except Exception as e:
-        showInfo(f"Failed to add local file card:\n{e}")
+        showInfo(_t("root_local_file_add_failed", error=e))
 
 
 def addWebpageFunction() -> None:
@@ -5005,9 +4973,9 @@ def addWebpageFunction() -> None:
                 source_link=dlg.source_url or "",
             ),
         )
-        showInfo(f'PDF card "{dlg.title_text}" added to the Topics deck.')
+        showInfo(_t("root_webpage_pdf_added", title=dlg.title_text))
     except Exception as e:
-        showInfo(f"Failed to import webpage as PDF:\n{e}")
+        showInfo(_t("root_webpage_pdf_failed", error=e))
     finally:
         if pdf_path:
             try:
@@ -5026,11 +4994,11 @@ def reindexPdfTextFunction() -> None:
     try:
         note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
     except Exception as e:
-        showInfo(f"Could not list PDF cards:\n{e}")
+        showInfo(_t("root_pdf_list_failed", error=e))
         return
 
     if not note_ids:
-        showInfo("No PDF cards found to reindex.")
+        showInfo(_t("root_browser_no_pdf_reindex"))
         return
 
     pdf_dir = get_pdf_dir(profile)
@@ -5051,30 +5019,30 @@ def reindexPdfTextFunction() -> None:
             missing += 1
 
     if not documents:
-        showInfo("No readable PDF files were found to reindex.")
+        showInfo(_t("root_browser_no_pdf_files"))
         return
 
     cancelled = threading.Event()
     try:
         mw.progress.start(
-            label="Reindexing PDF text in the background…",
+            label=_t("root_pdf_reindex_background"),
             immediate=True,
             max=len(documents),
             can_cancel=True,
         )
     except TypeError:
-        mw.progress.start(label="Reindexing PDF text in the background…", immediate=True)
+        mw.progress.start(label=_t("root_pdf_reindex_background"), immediate=True)
 
     def progress(completed: int, total: int) -> None:
         def update() -> None:
             try:
                 mw.progress.update(
-                    label=f"Reindexing PDF text… {completed}/{total}",
+                    label=_t("root_pdf_reindex_progress", completed=completed, total=total),
                     value=completed,
                     max=total,
                 )
             except TypeError:
-                mw.progress.update(label=f"Reindexing PDF text… {completed}/{total}")
+                mw.progress.update(label=_t("root_pdf_reindex_progress", completed=completed, total=total))
             try:
                 want_cancel = getattr(mw.progress, "want_cancel", None)
                 if callable(want_cancel) and want_cancel():
@@ -5101,16 +5069,15 @@ def reindexPdfTextFunction() -> None:
         try:
             result = future.result()
         except Exception as exc:
-            showInfo(f"PDF text reindex failed:\n{exc}")
+            showInfo(_t("root_pdf_reindex_failed", error=exc))
             return
-        status = "cancelled" if result.cancelled else "complete"
-        showInfo(
-            f"PDF text reindex {status}.\n\n"
-            f"Processed: {result.indexed}\n"
-            f"Unchanged/skipped: {result.skipped}\n"
-            f"Missing before start: {missing}\n"
-            f"Errors: {result.failed}"
-        )
+        status_key = "root_pdf_reindex_cancelled" if result.cancelled else "root_pdf_reindex_complete"
+        showInfo(_t(status_key) + "\n\n" + "\n".join([
+            _t("root_pdf_reindex_processed", count=result.indexed),
+            _t("root_pdf_reindex_skipped", count=result.skipped),
+            _t("root_pdf_reindex_missing", count=missing),
+            _t("root_pdf_reindex_errors", count=result.failed),
+        ]))
 
     mw.taskman.run_in_background(task, done, uses_collection=False)
 
@@ -5151,19 +5118,19 @@ def _run_note_ocr_scan(note_ids: list[int], *, label: str) -> None:
     from .backend.image_ocr import ocr_note_images, tesseract_ready_message
 
     if not note_ids:
-        showInfo("No eligible cards found.")
+        showInfo(_t("root_browser_no_eligible_cards"))
         return
 
     missing_dep = tesseract_ready_message()
     if missing_dep:
-        showInfo(f"Tesseract OCR is required for this utility.\n\n{missing_dep}")
+        showInfo(_t("root_ocr_tesseract_required", details=missing_dep))
         return
 
     media_dir = ""
     try:
         media_dir = mw.col.media.dir()
     except Exception as exc:
-        showInfo(f"Could not access Anki media directory:\n{exc}")
+        showInfo(_t("root_ocr_media_access_failed", error=exc))
         return
 
     scanned = 0
@@ -5178,7 +5145,7 @@ def _run_note_ocr_scan(note_ids: list[int], *, label: str) -> None:
         total = len(note_ids)
         for idx, note_id in enumerate(note_ids, start=1):
             try:
-                mw.progress.update(label=f"({idx}/{total}) {label}")
+                mw.progress.update(label=_t("root_ocr_progress", index=idx, total=total, label=label))
             except Exception:
                 pass
             try:
@@ -5215,18 +5182,18 @@ def _run_note_ocr_scan(note_ids: list[int], *, label: str) -> None:
     except Exception:
         pass
 
-    lines = [f"{label} complete.\n"]
-    lines.append(f"Scanned notes: {scanned}")
-    lines.append(f"Updated OCR text: {updated}")
-    lines.append(f"Skipped special note types: {skipped_special}")
-    lines.append(f"Notes without images: {no_images}")
-    lines.append(f"Missing image files: {missing_images}")
+    lines = [_t("root_ocr_complete", label=label) + "\n"]
+    lines.append(_t("root_ocr_scanned", count=scanned))
+    lines.append(_t("root_ocr_updated", count=updated))
+    lines.append(_t("root_ocr_skipped_types", count=skipped_special))
+    lines.append(_t("root_ocr_no_images", count=no_images))
+    lines.append(_t("root_ocr_missing_images", count=missing_images))
     if failures:
-        lines.append(f"Errors: {len(failures)}")
+        lines.append(_t("root_pdf_reindex_errors", count=len(failures)))
         for msg in failures[:10]:
             lines.append(f"  • {msg}")
         if len(failures) > 10:
-            lines.append(f"  …and {len(failures) - 10} more")
+            lines.append("  " + _t("root_more_failures", count=len(failures) - 10))
     showInfo("\n".join(lines))
 
 
@@ -5234,7 +5201,7 @@ def _rebuild_ocr_cache_for_note_ids(note_ids: list[int], *, label: str) -> None:
     from .backend.image_ocr import rebuild_note_ocr_index_from_field, supported_image_ocr_note
 
     if not note_ids:
-        showInfo("No eligible cards found.")
+        showInfo(_t("root_browser_no_eligible_cards"))
         return
 
     rebuilt = 0
@@ -5247,7 +5214,7 @@ def _rebuild_ocr_cache_for_note_ids(note_ids: list[int], *, label: str) -> None:
         total = len(note_ids)
         for idx, note_id in enumerate(note_ids, start=1):
             try:
-                mw.progress.update(label=f"({idx}/{total}) {label}")
+                mw.progress.update(label=_t("root_ocr_progress", index=idx, total=total, label=label))
             except Exception:
                 pass
             try:
@@ -5270,53 +5237,53 @@ def _rebuild_ocr_cache_for_note_ids(note_ids: list[int], *, label: str) -> None:
     finally:
         mw.progress.finish()
 
-    lines = [f"{label} complete.\n"]
-    lines.append(f"Rebuilt notes: {rebuilt}")
-    lines.append(f"Blank OCR fields: {blank}")
-    lines.append(f"Skipped special note types: {skipped_special}")
+    lines = [_t("root_ocr_complete", label=label) + "\n"]
+    lines.append(_t("root_ocr_rebuilt", count=rebuilt))
+    lines.append(_t("root_ocr_blank", count=blank))
+    lines.append(_t("root_ocr_skipped_types", count=skipped_special))
     if failures:
-        lines.append(f"Errors: {len(failures)}")
+        lines.append(_t("root_pdf_reindex_errors", count=len(failures)))
         for msg in failures[:10]:
             lines.append(f"  • {msg}")
         if len(failures) > 10:
-            lines.append(f"  …and {len(failures) - 10} more")
+            lines.append("  " + _t("root_more_failures", count=len(failures) - 10))
     showInfo("\n".join(lines))
 
 
 def ocrImageTextFunction() -> None:
     _run_note_ocr_scan(
         _ocr_note_ids_for_card_ids(),
-        label="OCR image text",
+        label=_t("root_ocr_image_text_label"),
     )
 
 
 def reindexImageOcrCacheFunction() -> None:
     _rebuild_ocr_cache_for_note_ids(
         _ocr_note_ids_for_card_ids(),
-        label="Reindex OCR search cache",
+        label=_t("root_ocr_reindex_label"),
     )
 
 
 def _ocr_browser_selection(browser) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
-        showInfo("Select one or more Browser rows first.")
+        showInfo(_t("root_browser_select_rows"))
         return
     _run_note_ocr_scan(
         _ocr_note_ids_for_card_ids(card_ids),
-        label="OCR image text",
+        label=_t("root_ocr_image_text_label"),
     )
 
 
 def _show_browser_hidden_fields(browser) -> None:
     card_ids = _browser_selected_incremento_card_ids(browser)
     if not card_ids:
-        showInfo("Select one or more Browser rows first.")
+        showInfo(_t("root_browser_select_rows"))
         return
 
     note_ids = _ocr_note_ids_for_card_ids(card_ids)
     if not note_ids:
-        showInfo("No notes found for the selected Browser rows.")
+        showInfo(_t("root_browser_no_notes"))
         return
 
     chunks: list[str] = []
@@ -5324,9 +5291,9 @@ def _show_browser_hidden_fields(browser) -> None:
         try:
             note = mw.col.get_note(int(note_id))
             model = mw.col.models.get(note.mid)
-            model_name = str((model or {}).get("name") or "Note").strip() or "Note"
+            model_name = str((model or {}).get("name") or _t("root_hidden_fields_note")).strip() or _t("root_hidden_fields_note")
         except Exception as exc:
-            chunks.append(f"Note {note_id}\nCould not load note: {exc}")
+            chunks.append(_t("root_hidden_fields_load_failed", note_id=note_id, error=exc))
             continue
 
         title = ""
@@ -5334,13 +5301,13 @@ def _show_browser_hidden_fields(browser) -> None:
             title = str((list(getattr(note, "fields", []) or [""])[:1] or [""])[0] or "").strip()
         except Exception:
             title = ""
-        header = f"Note {note_id} · {model_name}"
+        header = _t("root_hidden_fields_header", note_id=note_id, model=model_name)
         if title:
-            header += f"\nTitle: {title}"
+            header += "\n" + _t("root_hidden_fields_note_title", title=title)
 
         rows = hidden_field_values(note)
         if not rows:
-            body = "No Incremento hidden fields exist on this note."
+            body = _t("root_hidden_fields_none")
         else:
             lines: list[str] = []
             for field_name in INCREMENTO_HIDDEN_FIELDS:
@@ -5348,12 +5315,12 @@ def _show_browser_hidden_fields(browser) -> None:
                 if match is None:
                     continue
                 value_text = str(match or "").strip()
-                lines.append(f"{field_name}:\n{value_text or '(empty)'}")
-            body = "\n\n".join(lines) if lines else "No Incremento hidden fields exist on this note."
+                lines.append(f"{field_name}:\n{value_text or _t('root_hidden_fields_empty')}")
+            body = "\n\n".join(lines) if lines else _t("root_hidden_fields_none")
         chunks.append(f"{header}\n\n{body}")
 
     dlg = QDialog(mw)
-    dlg.setWindowTitle("Incremento Hidden Fields")
+    dlg.setWindowTitle(_t("root_hidden_fields_title"))
     dlg.resize(860, 620)
     layout = QVBoxLayout(dlg)
     browser = QTextBrowser(dlg)
@@ -5363,6 +5330,7 @@ def _show_browser_hidden_fields(browser) -> None:
     browser.setPlainText(separator.join(chunks))
     layout.addWidget(browser, 1)
     buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dlg)
+    buttons.button(QDialogButtonBox.StandardButton.Close).setText(_t("admin_entries_close"))
     buttons.rejected.connect(dlg.reject)
     buttons.accepted.connect(dlg.accept)
     layout.addWidget(buttons)
@@ -5550,12 +5518,7 @@ def _format_pruned_progress_summary(counts: dict[str, int]) -> str:
     total = pdf_n + video_n + web_n
     if total <= 0:
         return ""
-    return (
-        f"Stale progress rows removed: {total}\n"
-        f"• PDF: {pdf_n}\n"
-        f"• Video: {video_n}\n"
-        f"• Web: {web_n}"
-    )
+    return _t("root_cleanup_progress_summary", total=total, pdf=pdf_n, video=video_n, web=web_n)
 
 
 def _format_pruned_document_text_index_summary(counts: dict[str, int]) -> str:
@@ -5564,11 +5527,7 @@ def _format_pruned_document_text_index_summary(counts: dict[str, int]) -> str:
     total = int(counts.get("document_text_index_total", 0) or 0)
     if total <= 0:
         return ""
-    return (
-        f"Stale search index rows removed: {total}\n"
-        f"• PDF pages: {pdf_n}\n"
-        f"• EPUB sections: {epub_n}"
-    )
+    return _t("root_cleanup_index_summary", total=total, pdf=pdf_n, epub=epub_n)
 
 
 def _format_pruned_ocr_summary(counts: dict[str, int]) -> str:
@@ -5577,11 +5536,7 @@ def _format_pruned_ocr_summary(counts: dict[str, int]) -> str:
     total = int(counts.get("note_ocr_index_total", 0) or 0)
     if total <= 0:
         return ""
-    return (
-        f"Stale OCR cache rows removed: {total}\n"
-        f"• Missing notes: {missing_note}\n"
-        f"• Missing cards: {missing_card}"
-    )
+    return _t("root_cleanup_ocr_summary", total=total, notes=missing_note, cards=missing_card)
 
 
 def _current_profile_name() -> str:
@@ -5985,7 +5940,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
         stale_text_index_counts = _count_stale_document_text_index_rows()
         stale_ocr_counts = _count_stale_ocr_rows()
     except Exception as e:
-        showInfo(f"Could not scan non-active profile artifacts:\n{e}")
+        showInfo(_t("root_cleanup_profile_scan_failed", error=e))
         return
 
     stale_total = sum(int(stale_counts.get(k, 0) or 0) for k in ("pdf_progress", "video_progress", "web_progress"))
@@ -5998,10 +5953,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
         and stale_text_index_total <= 0
         and stale_ocr_total <= 0
     ):
-        showInfo(
-            "No deletable cross-profile artifacts detected.\n\n"
-            "Nothing is safe to delete without affecting some profile."
-        )
+        showInfo(_t("root_cleanup_profile_none"))
         return
 
     profile_name = _current_profile_name()
@@ -6013,53 +5965,49 @@ def cleanupNonActiveProfileDataFunction() -> None:
     )
 
     lines = [
-        f"Active profile: {profile_name}",
+        _t("root_cleanup_active_profile", profile=profile_name),
         "",
-        "The following data is not referenced by this profile and may belong",
-        "to another profile (or be truly orphaned):",
+        _t("root_cleanup_profile_explanation"),
         "",
-        f"• PDF files: {len(orphan_pdfs)}",
-        f"• Video files: {len(orphan_videos)}",
-        f"• Progress rows: {stale_total} (PDF {stale_counts.get('pdf_progress', 0)}, "
-        f"Video {stale_counts.get('video_progress', 0)}, Web {stale_counts.get('web_progress', 0)})",
-        f"• Search index rows: {stale_text_index_total} (PDF {stale_text_index_counts.get('pdf_text_index', 0)}, "
-        f"EPUB {stale_text_index_counts.get('epub_text_index', 0)})",
-        f"• OCR cache rows: {stale_ocr_total} (missing notes {stale_ocr_counts.get('note_ocr_index_missing_note', 0)}, "
-        f"missing cards {stale_ocr_counts.get('note_ocr_index_missing_card', 0)})",
+        _t("root_cleanup_pdf_files", count=len(orphan_pdfs)),
+        _t("root_cleanup_video_files", count=len(orphan_videos)),
+        _t("root_cleanup_progress_rows", count=stale_total, pdf=stale_counts.get('pdf_progress', 0), video=stale_counts.get('video_progress', 0), web=stale_counts.get('web_progress', 0)),
+        _t("root_cleanup_index_rows", count=stale_text_index_total, pdf=stale_text_index_counts.get('pdf_text_index', 0), epub=stale_text_index_counts.get('epub_text_index', 0)),
+        _t("root_cleanup_cache_rows", count=stale_ocr_total, notes=stale_ocr_counts.get('note_ocr_index_missing_note', 0), cards=stale_ocr_counts.get('note_ocr_index_missing_card', 0)),
     ]
     if protected_pdfs:
-        lines.append(f"• Skipped PDF files tied to other profile(s): {len(protected_pdfs)}")
+        lines.append(_t("root_cleanup_protected_pdfs", count=len(protected_pdfs)))
     if protected_videos:
-        lines.append(f"• Skipped video files tied to other profile(s): {len(protected_videos)}")
+        lines.append(_t("root_cleanup_protected_videos", count=len(protected_videos)))
     if orphan_pdfs:
-        lines.append(f"• PDF folder: {pdf_dir}")
+        lines.append(_t("root_cleanup_pdf_folder", path=pdf_dir))
     if orphan_videos:
-        lines.append(f"• Video folder: {videos_dir}")
+        lines.append(_t("root_cleanup_video_folder", path=videos_dir))
     if total_bytes > 0:
-        lines.append(f"• Recoverable disk space: {total_str}")
+        lines.append(_t("root_cleanup_recoverable_space", size=total_str))
     if protected_pdfs:
         lines.append("")
-        lines.append("Skipped PDFs (kept):")
+        lines.append(_t("root_cleanup_skipped_pdfs_heading"))
         preview = protected_pdfs[:6]
         for fname in preview:
             profs = ", ".join(pdf_refs_map.get(fname, []))
-            lines.append(f"  - {fname}  (profiles: {profs})")
+            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
         if len(protected_pdfs) > len(preview):
-            lines.append(f"  …and {len(protected_pdfs) - len(preview)} more")
+            lines.append("  " + _t("root_more_failures", count=len(protected_pdfs) - len(preview)))
     if protected_videos:
         lines.append("")
-        lines.append("Skipped videos (kept):")
+        lines.append(_t("root_cleanup_skipped_videos_heading"))
         preview = protected_videos[:6]
         for fname in preview:
             profs = ", ".join(video_refs_map.get(fname, []))
-            lines.append(f"  - {fname}  (profiles: {profs})")
+            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
         if len(protected_videos) > len(preview):
-            lines.append(f"  …and {len(protected_videos) - len(preview)} more")
+            lines.append("  " + _t("root_more_failures", count=len(protected_videos) - len(preview)))
     lines.append("")
-    lines.append("Delete these now?")
+    lines.append(_t("root_cleanup_delete_now"))
 
     from aqt.utils import askUser
-    if not askUser("\n".join(lines), title="Clean Non-Active Profile Data"):
+    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_profile_data")):
         return
 
     deleted_pdfs = 0
@@ -6086,7 +6034,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
         pruned_counts = _prune_stale_progress_rows()
     except Exception as e:
         pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
-        errors.append(f"Rows: {e}")
+        errors.append(_t("root_cleanup_rows_error", error=e))
     try:
         pruned_text_index_counts = _prune_stale_document_text_index_rows()
     except Exception as e:
@@ -6095,7 +6043,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
             "epub_text_index": 0,
             "document_text_index_total": 0,
         }
-        errors.append(f"Search index: {e}")
+        errors.append(_t("root_cleanup_index_error", error=e))
     try:
         pruned_ocr_counts = _prune_stale_ocr_rows()
     except Exception as e:
@@ -6104,11 +6052,11 @@ def cleanupNonActiveProfileDataFunction() -> None:
             "note_ocr_index_missing_card": 0,
             "note_ocr_index_total": 0,
         }
-        errors.append(f"OCR cache: {e}")
+        errors.append(_t("root_cleanup_cache_error", error=e))
 
     summary = [
-        f"Deleted PDF files: {deleted_pdfs}/{len(orphan_pdfs)}",
-        f"Deleted video files: {deleted_videos}/{len(orphan_videos)}",
+        _t("root_cleanup_deleted_pdfs", deleted=deleted_pdfs, total=len(orphan_pdfs)),
+        _t("root_cleanup_deleted_videos", deleted=deleted_videos, total=len(orphan_videos)),
     ]
     pruned_summary = _format_pruned_progress_summary(pruned_counts)
     if pruned_summary:
@@ -6124,13 +6072,13 @@ def cleanupNonActiveProfileDataFunction() -> None:
         summary.append(pruned_ocr_summary)
     if total_bytes > 0:
         summary.append("")
-        summary.append(f"Potential recovered space: {total_str}")
+        summary.append(_t("root_cleanup_recovered_space", size=total_str))
     if errors:
         summary.append("")
-        summary.append("Errors:")
+        summary.append(_t("root_pdf_reindex_errors", count=len(errors)))
         summary.extend([f"• {e}" for e in errors[:20]])
         if len(errors) > 20:
-            summary.append(f"• …and {len(errors) - 20} more")
+            summary.append("• " + _t("root_more_failures", count=len(errors) - 20))
 
     showInfo("\n".join(summary))
 
@@ -6142,7 +6090,7 @@ def cleanupStaleProgressFunction() -> None:
         text_index_counts = _prune_stale_document_text_index_rows()
         ocr_counts = _prune_stale_ocr_rows()
     except Exception as e:
-        showInfo(f"Could not clean stale Incremento rows:\n{e}")
+        showInfo(_t("root_cleanup_stale_failed", error=e))
         return
 
     summary = _format_pruned_progress_summary(counts)
@@ -6152,7 +6100,7 @@ def cleanupStaleProgressFunction() -> None:
     if chunks:
         showInfo("\n\n".join(chunks))
         return
-    showInfo("No stale progress, search-index, or OCR cache rows found.")
+    showInfo(_t("root_cleanup_stale_none"))
 
 
 def cleanupOrphanPdfsFunction() -> None:
@@ -6169,11 +6117,11 @@ def cleanupOrphanPdfsFunction() -> None:
             if f.lower().endswith(".pdf")
         }
     except OSError as e:
-        showInfo(f"Could not read PDF directory:\n{e}")
+        showInfo(_t("root_cleanup_pdf_read_failed", error=e))
         return
 
     if not disk_files:
-        showInfo(f"No PDF files found in {pdf_dir}.")
+        showInfo(_t("root_cleanup_pdf_none", path=pdf_dir))
         return
 
     # All filenames referenced by an Incremento PDF note
@@ -6187,7 +6135,7 @@ def cleanupOrphanPdfsFunction() -> None:
                 referenced.add(fname)
         referenced.update(get_pdf_referenced_filenames(_ADDON_DIR, _active_profile()))
     except Exception as e:
-        showInfo(f"Could not query PDF cards:\n{e}")
+        showInfo(_t("root_cleanup_pdf_query_failed", error=e))
         return
 
     orphans = sorted(disk_files - referenced)
@@ -6210,15 +6158,9 @@ def cleanupOrphanPdfsFunction() -> None:
     cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
 
     if not deletable:
-        msg = (
-            f"No deletable orphaned PDFs found.\n\n"
-            f"{len(disk_files)} file(s) on disk; none are safe to delete."
-        )
+        msg = _t("root_cleanup_pdf_no_deletable", count=len(disk_files))
         if protected:
-            msg += (
-                f"\n\nSkipped {len(protected)} file(s) because they are "
-                "referenced by another profile."
-            )
+            msg += "\n\n" + _t("root_cleanup_other_profile_skip", count=len(protected))
         if cleanup_summaries:
             msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
@@ -6231,7 +6173,7 @@ def cleanupOrphanPdfsFunction() -> None:
         except OSError:
             return "?"
 
-    lines = [f"Found {len(deletable)} deletable orphaned PDF(s):\n"]
+    lines = [_t("root_cleanup_pdf_found", count=len(deletable)) + "\n"]
     total_bytes = 0
     for fname in deletable:
         fpath = os.path.join(pdf_dir, fname)
@@ -6241,19 +6183,19 @@ def cleanupOrphanPdfsFunction() -> None:
             pass
         lines.append(f"• {fname}  ({_fmt_size(fpath)})")
     if protected:
-        lines.append(f"\nSkipped {len(protected)} file(s) tied to other profile(s).")
+        lines.append("\n" + _t("root_cleanup_other_profile_tied", count=len(protected)))
         preview = protected[:8]
         for fname in preview:
             profs = ", ".join(refs_map.get(fname, []))
-            lines.append(f"  - {fname}  (profiles: {profs})")
+            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
         if len(protected) > len(preview):
-            lines.append(f"  …and {len(protected) - len(preview)} more")
+            lines.append("  " + _t("root_more_failures", count=len(protected) - len(preview)))
     total_str = f"{total_bytes / 1_048_576:.1f} MB" if total_bytes >= 1_048_576 else f"{total_bytes // 1024} KB"
-    lines.append(f"\nTotal: {total_str}")
-    lines.append("\nDelete these files?")
+    lines.append("\n" + _t("root_cleanup_total", size=total_str))
+    lines.append("\n" + _t("root_cleanup_delete_files"))
 
     from aqt.utils import askUser
-    if not askUser("\n".join(lines), title="Clean Up Orphaned PDFs"):
+    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_orphan_pdfs")):
         return
 
     deleted = 0
@@ -6267,23 +6209,21 @@ def cleanupOrphanPdfsFunction() -> None:
             errors.append(f"• {fname}: {e}")
 
     if not errors:
-        msg = f"Deleted {deleted} orphaned PDF file(s).\nRecovered {total_str}."
+        msg = _t("root_cleanup_pdf_deleted", count=deleted, size=total_str)
         if protected:
-            msg += f"\nSkipped {len(protected)} file(s) tied to other profile(s)."
+            msg += "\n" + _t("root_cleanup_other_profile_tied", count=len(protected))
         if cleanup_summaries:
             msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
     else:
-        showInfo(
-            f"Deleted {deleted} of {len(deletable)} file(s).\n\nErrors:\n" + "\n".join(errors)
-        )
+        showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
 
 
 def cleanupOrphanVideosFunction() -> None:
     """Delete local videos in user_files/<profile>/videos/ that no video card references."""
     videos_dir = str(_paths.get_videos_dir(_ADDON_DIR, _active_profile()))
     if not os.path.isdir(videos_dir):
-        showInfo(f"No local videos found in {videos_dir}.")
+        showInfo(_t("root_cleanup_videos_none", path=videos_dir))
         return
 
     try:
@@ -6294,11 +6234,11 @@ def cleanupOrphanVideosFunction() -> None:
             and os.path.isfile(os.path.join(videos_dir, f))
         ]
     except OSError as e:
-        showInfo(f"Could not read video directory:\n{e}")
+        showInfo(_t("root_cleanup_videos_read_failed", error=e))
         return
 
     if not disk_files:
-        showInfo(f"No local videos found in {videos_dir}.")
+        showInfo(_t("root_cleanup_videos_none", path=videos_dir))
         return
     disk_map = {f.lower(): f for f in disk_files}
 
@@ -6317,7 +6257,7 @@ def cleanupOrphanVideosFunction() -> None:
             if basename:
                 referenced.add(basename.lower())
     except Exception as e:
-        showInfo(f"Could not query video cards:\n{e}")
+        showInfo(_t("root_cleanup_videos_query_failed", error=e))
         return
 
     try:
@@ -6339,15 +6279,9 @@ def cleanupOrphanVideosFunction() -> None:
     orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
     deletable, protected, refs_map = _partition_any_profile_ties(orphans, "video")
     if not deletable:
-        msg = (
-            f"No deletable orphaned local videos found.\n\n"
-            f"{len(disk_files)} file(s) on disk; none are safe to delete."
-        )
+        msg = _t("root_cleanup_videos_no_deletable", count=len(disk_files))
         if protected:
-            msg += (
-                f"\n\nSkipped {len(protected)} file(s) because they are "
-                "referenced by another profile."
-            )
+            msg += "\n\n" + _t("root_cleanup_other_profile_skip", count=len(protected))
         if cleanup_summaries:
             msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
@@ -6361,7 +6295,7 @@ def cleanupOrphanVideosFunction() -> None:
             return "?"
 
     total_bytes = 0
-    lines = [f"Found {len(deletable)} deletable orphaned local video file(s):\n"]
+    lines = [_t("root_cleanup_videos_found", count=len(deletable)) + "\n"]
     for fname in deletable:
         fpath = os.path.join(videos_dir, fname)
         try:
@@ -6370,23 +6304,23 @@ def cleanupOrphanVideosFunction() -> None:
             pass
         lines.append(f"• {fname}  ({_fmt_size(fpath)})")
     if protected:
-        lines.append(f"\nSkipped {len(protected)} file(s) tied to other profile(s).")
+        lines.append("\n" + _t("root_cleanup_other_profile_tied", count=len(protected)))
         preview = protected[:8]
         for fname in preview:
             profs = ", ".join(refs_map.get(fname, []))
-            lines.append(f"  - {fname}  (profiles: {profs})")
+            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
         if len(protected) > len(preview):
-            lines.append(f"  …and {len(protected) - len(preview)} more")
+            lines.append("  " + _t("root_more_failures", count=len(protected) - len(preview)))
     total_str = (
         f"{total_bytes / 1_048_576:.1f} MB"
         if total_bytes >= 1_048_576
         else f"{total_bytes // 1024} KB"
     )
-    lines.append(f"\nTotal: {total_str}")
-    lines.append("\nDelete these files?")
+    lines.append("\n" + _t("root_cleanup_total", size=total_str))
+    lines.append("\n" + _t("root_cleanup_delete_files"))
 
     from aqt.utils import askUser
-    if not askUser("\n".join(lines), title="Clean Up Orphaned Videos"):
+    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_orphan_videos")):
         return
 
     deleted = 0
@@ -6400,24 +6334,43 @@ def cleanupOrphanVideosFunction() -> None:
             errors.append(f"• {fname}: {e}")
 
     if not errors:
-        msg = f"Deleted {deleted} orphaned video file(s).\nRecovered {total_str}."
+        msg = _t("root_cleanup_videos_deleted", count=deleted, size=total_str)
         if protected:
-            msg += f"\nSkipped {len(protected)} file(s) tied to other profile(s)."
+            msg += "\n" + _t("root_cleanup_other_profile_tied", count=len(protected))
         if cleanup_summaries:
             msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
         showInfo(msg)
     else:
-        showInfo(
-            f"Deleted {deleted} of {len(deletable)} file(s).\n\nErrors:\n" + "\n".join(errors)
-        )
+        showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
+
+
+def _save_settings_with_language_pack(cfg: dict, pending_pack: dict | None, profile: str) -> None:
+    """Restore the prior pack if Anki rejects the accompanying settings write."""
+    previous = None
+    if pending_pack is not None:
+        previous = _language_packs.load_pack(_ADDON_DIR, profile, pending_pack["locale"])
+    try:
+        if pending_pack is not None:
+            _language_packs.save_pack(_ADDON_DIR, profile, pending_pack)
+        _save_addon_config(mw.addonManager, __name__, cfg)
+    except Exception:
+        if pending_pack is not None:
+            if previous is None:
+                _language_packs.delete_pack(_ADDON_DIR, profile, pending_pack["locale"])
+            else:
+                _language_packs.save_pack(_ADDON_DIR, profile, previous)
+        raise
 
 
 def openSettingsFunction() -> None:
-    cfg = _load_addon_config(mw.addonManager, __name__)
+    settings_profile = _current_profile_name()
+    cfg = copy.deepcopy(_load_addon_config(mw.addonManager, __name__))
     previous_priority_direction = configured_priority_lower_is_more_important(cfg)
     note_type_names = sorted(m.name for m in mw.col.models.all_names_and_ids())
     dlg = IncrementoSettingsDialog(
         cfg.get("shortcuts") or {},
+        current_ui_language=cfg.get("ui_language", "auto"),
+        language_pack_context=(_ADDON_DIR, settings_profile),
         note_type_names=note_type_names,
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
         current_extract_priority=_add_card_dock_mod.configured_extract_priority(cfg),
@@ -6478,6 +6431,11 @@ def openSettingsFunction() -> None:
     if not dlg.exec():
         return
 
+    if settings_profile != _current_profile_name():
+        showInfo(_t("settings_language_profile_changed"))
+        return
+
+    cfg["ui_language"] = dlg.ui_language
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
     cfg["extract_priority"] = dlg.extract_priority
@@ -6533,7 +6491,11 @@ def openSettingsFunction() -> None:
     cfg["writing_word_count_mode"] = dlg.writing_word_count_mode
     cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
-    _save_addon_config(mw.addonManager, __name__, cfg)
+    try:
+        _save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile)
+    except Exception:
+        showInfo(_t("settings_save_failed"))
+        return
     _sync_reviewer_priority_badge()
     if mw.state == "review" and getattr(mw, "reviewer", None) is not None:
         _sync_reviewer_button_visibility(mw.reviewer)
@@ -6574,40 +6536,38 @@ def openSettingsFunction() -> None:
         from aqt.utils import askUser
 
         direction_label = (
-            "lower numbers are more important"
+            _t("root_settings_priority_lower")
             if dlg.priority_lower_is_more_important
-            else "higher numbers are more important"
+            else _t("root_settings_priority_higher")
         )
         if askUser(
             "\n".join(
                 [
-                    "You changed how Incremento interprets stored priority numbers.",
-                    f"New direction: {direction_label}.",
+                    _t("root_settings_priority_changed"),
+                    _t("root_settings_priority_direction", direction=direction_label),
                     "",
-                    "Do you also want to invert all existing stored priorities for the current profile?",
-                    "This rewrites each saved priority as 100 - priority.",
-                    "Example: 20 -> 80, 95 -> 5.",
+                    _t("root_settings_priority_invert_question"),
+                    _t("root_settings_priority_invert_detail"),
+                    _t("root_settings_priority_invert_example"),
                 ]
             ),
-            title="Invert Existing Priorities?",
+            title=_t("root_settings_priority_invert_title"),
         ):
             try:
                 updated = invert_all_priorities(_ADDON_DIR, _active_profile())
             except Exception as exc:
-                showInfo(f"Could not invert stored priorities:\n{exc}")
+                showInfo(_t("root_settings_priority_invert_failed", error=exc))
             else:
-                tooltip(
-                    f"Incremento settings updated. Inverted {updated} stored priorit{'y' if updated == 1 else 'ies'}."
-                )
+                tooltip(_tn("root_settings_priority_inverted", updated))
                 return
-    tooltip("Incremento settings updated.")
+    tooltip(_t("root_settings_updated"))
 
 
 def _open_database_editor() -> None:
     from .frontend.sqlite_editor_dialog import SQLiteEditorDialog
 
     profile = _active_profile()
-    mw.progress.start(label="Creating database checkpoint…", immediate=True)
+    mw.progress.start(label=_t("root_database_checkpoint_progress"), immediate=True)
     try:
         checkpoint_info = create_database_checkpoint(
             _ADDON_DIR,
@@ -6615,7 +6575,7 @@ def _open_database_editor() -> None:
             label="sqlite_editor",
         )
     except Exception as exc:
-        showInfo(f"Could not prepare the database editor:\n{exc}")
+        showInfo(_t("root_database_editor_failed", error=exc))
         return
     finally:
         mw.progress.finish()
@@ -6630,36 +6590,51 @@ def _open_database_editor() -> None:
 
 
 def openAboutFunction() -> None:
+    points = "".join(f"<li>{_html_escape(_t(key))}</li>" for key in (
+        "root_about_add_review",
+        "root_about_open_docks",
+        "root_about_extract",
+        "root_about_track",
+        "root_about_chrome_extension",
+    ))
     showInfo(
-        """
-        <h2>Incremento</h2>
-        <p><b>Author:</b> Paulo Baskovic</p>
-        <p>
-          Incremento is an Anki add-on for incremental reading and study workflows.
-          It keeps long-form material and review cards in one place inside Anki.
-        </p>
-        <p><b>General information</b></p>
-        <ul>
-          <li>Add and review PDFs, webpages, videos, and writing notes.</li>
-          <li>Open PDF, webpage, video, and writing docks while reviewing cards.</li>
-          <li>Extract selections into new cards and keep context linked to the source.</li>
-          <li>Track PDF position, highlights, video progress, and study statistics.</li>
-          <li>Use the Chrome extension to send the current webpage as PDF, webpage, or writing.</li>
-        </ul>
-        <p><b>Disclaimer:</b> By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.</p>
-        <p><b>License:</b> All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.</p>
-        """
+        f"<h2>Incremento</h2>"
+        f"<p><b>{_html_escape(_t('root_about_author'))}</b> Paulo Baskovic</p>"
+        f"<p>{_html_escape(_t('root_about_intro'))}</p>"
+        f"<p><b>{_html_escape(_t('root_about_general_info'))}</b></p>"
+        f"<ul>{points}</ul>"
+        f"<p><b>{_html_escape(_t('root_about_disclaimer_label'))}</b> {_html_escape(_t('root_about_disclaimer'))}</p>"
+        f"<p><b>{_html_escape(_t('root_about_license_label'))}</b> {_html_escape(_t('root_about_license'))}</p>"
     )
+
+
+def _retranslate_incremento_menu() -> None:
+    """Refresh existing actions on profile changes without duplicating shortcuts."""
+    if _menu is None:
+        return
+
+    def visit(menu):
+        for action in [menu.menuAction(), *menu.actions()]:
+            key = action.property("incremento_translation_key")
+            if key:
+                action.setText(_t(key))
+        for action in menu.actions():
+            if action.menu() is not None:
+                visit(action.menu())
+
+    visit(_menu)
 
 
 def _ensure_settings_menu_action() -> None:
     if _menu is None:
         return
     for act in _menu.actions():
-        if act.text() == "Settings":
+        if act.objectName() == "incremento_open_settings":
             return
 
-    action = QAction("Settings", mw)
+    action = QAction(_t("root_menu_settings"), mw)
+    action.setProperty("incremento_translation_key", "root_menu_settings")
+    action.setObjectName("incremento_open_settings")
     action.setMenuRole(QAction.MenuRole.NoRole)
     qconnect(action.triggered, openSettingsFunction)
 
@@ -6688,41 +6663,50 @@ def _build_incremento_menu() -> None:
 
     # Already attached — nothing to do.
     for act in menubar.actions():
-        if act.text() == "Incremento":
+        if act.objectName() == "incremento_menu":
             _menu = act.menu()
             menubar.update()
             return
 
-    _menu = QMenu("Incremento", menubar)
+    _menu = QMenu(_t("root_menu_incremento"), menubar)
+    _menu.menuAction().setProperty("incremento_translation_key", "root_menu_incremento")
+    _menu.menuAction().setObjectName("incremento_menu")
     menubar.addMenu(_menu)
 
-    _startAction = QAction("Start Incremental Learning", mw)
+    _startAction = QAction(_t("root_menu_start_learning"), mw)
+    _startAction.setProperty("incremento_translation_key", "root_menu_start_learning")
     qconnect(_startAction.triggered, learnFunction)
     _menu.addAction(_startAction)
     _register_shortcut_action("start_learning", _startAction)
 
-    _commandPaletteAction = QAction("Command Palette…", mw)
+    _commandPaletteAction = QAction(_t("root_menu_command_palette"), mw)
+    _commandPaletteAction.setProperty("incremento_translation_key", "root_menu_command_palette")
     qconnect(_commandPaletteAction.triggered, _open_command_palette)
     _menu.addAction(_commandPaletteAction)
     _register_shortcut_action("command_palette", _commandPaletteAction)
 
-    _activityCenterAction = QAction("Activity Center…", mw)
+    _activityCenterAction = QAction(_t("root_menu_activity_center"), mw)
+    _activityCenterAction.setProperty("incremento_translation_key", "root_menu_activity_center")
     qconnect(_activityCenterAction.triggered, _open_activity_center)
     _menu.addAction(_activityCenterAction)
     _register_shortcut_action("activity_center", _activityCenterAction)
 
-    _settingsAction = QAction("Settings", mw)
+    _settingsAction = QAction(_t("root_menu_settings"), mw)
+    _settingsAction.setProperty("incremento_translation_key", "root_menu_settings")
+    _settingsAction.setObjectName("incremento_open_settings")
     _settingsAction.setMenuRole(QAction.MenuRole.NoRole)
     qconnect(_settingsAction.triggered, openSettingsFunction)
     _menu.addAction(_settingsAction)
     _register_shortcut_action("open_settings", _settingsAction)
 
-    _aboutAction = QAction("About", mw)
+    _aboutAction = QAction(_t("root_menu_about"), mw)
+    _aboutAction.setProperty("incremento_translation_key", "root_menu_about")
     _aboutAction.setMenuRole(QAction.MenuRole.NoRole)
     qconnect(_aboutAction.triggered, openAboutFunction)
     _menu.addAction(_aboutAction)
 
-    _gettingStartedAction = QAction("Getting Started…", mw)
+    _gettingStartedAction = QAction(_t("root_menu_getting_started"), mw)
+    _gettingStartedAction.setProperty("incremento_translation_key", "root_menu_getting_started")
     _gettingStartedAction.setMenuRole(QAction.MenuRole.NoRole)
     qconnect(
         _gettingStartedAction.triggered,
@@ -6732,64 +6716,76 @@ def _build_incremento_menu() -> None:
 
     _menu.addSeparator()
 
-    _addContentMenu = QMenu("Add Content", _menu)
+    _addContentMenu = QMenu(_t("root_menu_add_content"), _menu)
+    _addContentMenu.menuAction().setProperty("incremento_translation_key", "root_menu_add_content")
     _menu.addMenu(_addContentMenu)
 
-    _addPdfAction = QAction("Add PDF", mw)
+    _addPdfAction = QAction(_t("root_menu_add_pdf"), mw)
+    _addPdfAction.setProperty("incremento_translation_key", "root_menu_add_pdf")
     qconnect(_addPdfAction.triggered, addPdfFunction)
     _addContentMenu.addAction(_addPdfAction)
     _register_shortcut_action("add_pdf", _addPdfAction)
 
-    _addEpubAction = QAction("Add EPUB", mw)
+    _addEpubAction = QAction(_t("root_menu_add_epub"), mw)
+    _addEpubAction.setProperty("incremento_translation_key", "root_menu_add_epub")
     qconnect(_addEpubAction.triggered, addEpubFunction)
     _addContentMenu.addAction(_addEpubAction)
     _register_shortcut_action("add_epub", _addEpubAction)
 
-    _addWebpageAction = QAction("Webpage to PDF", mw)
+    _addWebpageAction = QAction(_t("root_menu_webpage_to_pdf"), mw)
+    _addWebpageAction.setProperty("incremento_translation_key", "root_menu_webpage_to_pdf")
     qconnect(_addWebpageAction.triggered, addWebpageFunction)
     _addContentMenu.addAction(_addWebpageAction)
     _register_shortcut_action("webpage_to_pdf", _addWebpageAction)
 
-    _addVideoAction = QAction("Add Video", mw)
+    _addVideoAction = QAction(_t("root_menu_add_video"), mw)
+    _addVideoAction.setProperty("incremento_translation_key", "root_menu_add_video")
     qconnect(_addVideoAction.triggered, addVideoFunction)
     _addContentMenu.addAction(_addVideoAction)
     _register_shortcut_action("youtube_video", _addVideoAction)
 
-    _addWritingAction = QAction("Add to Markdown", mw)
+    _addWritingAction = QAction(_t("root_menu_add_markdown"), mw)
+    _addWritingAction.setProperty("incremento_translation_key", "root_menu_add_markdown")
     qconnect(_addWritingAction.triggered, addWritingFunction)
     _addContentMenu.addAction(_addWritingAction)
     _register_shortcut_action("add_writing", _addWritingAction)
 
-    _addWebAction = QAction("Web Page", mw)
+    _addWebAction = QAction(_t("root_menu_web_page"), mw)
+    _addWebAction.setProperty("incremento_translation_key", "root_menu_web_page")
     qconnect(_addWebAction.triggered, _web_dock_mod.add_web_function)
     _addContentMenu.addAction(_addWebAction)
     _register_shortcut_action("add_web_page", _addWebAction)
 
-    _addLocalFileAction = QAction("Add Local File", mw)
+    _addLocalFileAction = QAction(_t("root_menu_add_local_file"), mw)
+    _addLocalFileAction.setProperty("incremento_translation_key", "root_menu_add_local_file")
     qconnect(_addLocalFileAction.triggered, addLocalFileFunction)
     _addContentMenu.addAction(_addLocalFileAction)
     _register_shortcut_action("add_local_file", _addLocalFileAction)
 
-    _downloadCurrentVideoAction = QAction("Download Current Video Locally", mw)
+    _downloadCurrentVideoAction = QAction(_t("root_menu_download_video"), mw)
+    _downloadCurrentVideoAction.setProperty("incremento_translation_key", "root_menu_download_video")
     qconnect(
         _downloadCurrentVideoAction.triggered,
         lambda _checked=False: _download_current_reviewer_video_locally(),
     )
     _menu.addAction(_downloadCurrentVideoAction)
 
-    _configureCurrentVideoCaptionsAction = QAction("Configure Current Video Captions…", mw)
+    _configureCurrentVideoCaptionsAction = QAction(_t("root_menu_configure_captions"), mw)
+    _configureCurrentVideoCaptionsAction.setProperty("incremento_translation_key", "root_menu_configure_captions")
     qconnect(
         _configureCurrentVideoCaptionsAction.triggered,
         lambda _checked=False: _configure_current_reviewer_video_captions(),
     )
     _menu.addAction(_configureCurrentVideoCaptionsAction)
 
-    _knowledgeTreeAction = QAction("Open Knowledge tree", mw)
+    _knowledgeTreeAction = QAction(_t("root_menu_open_knowledge_tree"), mw)
+    _knowledgeTreeAction.setProperty("incremento_translation_key", "root_menu_open_knowledge_tree")
     qconnect(_knowledgeTreeAction.triggered, lambda _checked=False: _open_knowledge_tree())
     _menu.addAction(_knowledgeTreeAction)
     _register_shortcut_action("open_knowledge_tree", _knowledgeTreeAction)
 
-    _revealCurrentTreeAction = QAction("Reveal Current Card In Knowledge Tree", mw)
+    _revealCurrentTreeAction = QAction(_t("root_menu_reveal_current_tree"), mw)
+    _revealCurrentTreeAction.setProperty("incremento_translation_key", "root_menu_reveal_current_tree")
     qconnect(
         _revealCurrentTreeAction.triggered,
         lambda _checked=False: _reveal_current_card_in_knowledge_tree(),
@@ -6797,7 +6793,8 @@ def _build_incremento_menu() -> None:
     _menu.addAction(_revealCurrentTreeAction)
     _register_shortcut_action("reveal_current_knowledge_tree", _revealCurrentTreeAction)
 
-    _goToParentTreeAction = QAction("Go To Parent In Knowledge Tree", mw)
+    _goToParentTreeAction = QAction(_t("root_menu_go_parent_tree"), mw)
+    _goToParentTreeAction.setProperty("incremento_translation_key", "root_menu_go_parent_tree")
     qconnect(
         _goToParentTreeAction.triggered,
         lambda _checked=False: _go_to_parent_in_knowledge_tree(),
@@ -6807,7 +6804,8 @@ def _build_incremento_menu() -> None:
 
     _menu.addSeparator()
 
-    _timerToggleAction = QAction("Show Focus Timer", mw)
+    _timerToggleAction = QAction(_t("root_menu_focus_timer"), mw)
+    _timerToggleAction.setProperty("incremento_translation_key", "root_menu_focus_timer")
     _timerToggleAction.setCheckable(True)
     _timerToggleAction.setChecked(True)  # default; corrected by _build_timer_toolbar
 
@@ -6824,18 +6822,21 @@ def _build_incremento_menu() -> None:
 
     _menu.addSeparator()
 
-    _utilsMenu = QMenu("Utils", _menu)
+    _utilsMenu = QMenu(_t("root_menu_utils"), _menu)
+    _utilsMenu.menuAction().setProperty("incremento_translation_key", "root_menu_utils")
     _menu.addMenu(_utilsMenu)
 
     def _check_deps_manual() -> None:
         from .backend.deps import show_setup_dialog
         show_setup_dialog(mw, force=True)
 
-    _checkDepsAction = QAction("Check Dependencies…", mw)
+    _checkDepsAction = QAction(_t("root_menu_check_deps"), mw)
+    _checkDepsAction.setProperty("incremento_translation_key", "root_menu_check_deps")
     qconnect(_checkDepsAction.triggered, _check_deps_manual)
     _utilsMenu.addAction(_checkDepsAction)
 
-    _cardFormatUpdatesAction = QAction("Card Format Updates…", mw)
+    _cardFormatUpdatesAction = QAction(_t("root_menu_card_format_updates"), mw)
+    _cardFormatUpdatesAction.setProperty("incremento_translation_key", "root_menu_card_format_updates")
     qconnect(
         _cardFormatUpdatesAction.triggered,
         lambda _checked=False: _show_incremento_note_type_updates(manual=True),
@@ -6844,81 +6845,98 @@ def _build_incremento_menu() -> None:
 
     _utilsMenu.addSeparator()
 
-    _reindexPdfTextAction = QAction("Reindex PDF Text (Existing Cards)", mw)
+    _reindexPdfTextAction = QAction(_t("root_menu_reindex_pdf_text"), mw)
+    _reindexPdfTextAction.setProperty("incremento_translation_key", "root_menu_reindex_pdf_text")
     qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
     _utilsMenu.addAction(_reindexPdfTextAction)
 
-    _importNotebookCitationsAction = QAction("Import Notebook Citations to PDF Highlights…", mw)
+    _importNotebookCitationsAction = QAction(_t("root_menu_import_notebook_citations"), mw)
+    _importNotebookCitationsAction.setProperty("incremento_translation_key", "root_menu_import_notebook_citations")
     qconnect(_importNotebookCitationsAction.triggered, importNotebookCitationsFunction)
     _utilsMenu.addAction(_importNotebookCitationsAction)
 
-    _ocrImageTextAction = QAction("OCR Image Text (Existing Cards)…", mw)
+    _ocrImageTextAction = QAction(_t("root_menu_ocr_image_text"), mw)
+    _ocrImageTextAction.setProperty("incremento_translation_key", "root_menu_ocr_image_text")
     qconnect(_ocrImageTextAction.triggered, ocrImageTextFunction)
     _utilsMenu.addAction(_ocrImageTextAction)
 
-    _reindexImageOcrCacheAction = QAction("Reindex OCR Search Cache (From Hidden Field)", mw)
+    _reindexImageOcrCacheAction = QAction(_t("root_menu_reindex_ocr_cache"), mw)
+    _reindexImageOcrCacheAction.setProperty("incremento_translation_key", "root_menu_reindex_ocr_cache")
     qconnect(_reindexImageOcrCacheAction.triggered, reindexImageOcrCacheFunction)
     _utilsMenu.addAction(_reindexImageOcrCacheAction)
 
-    _cleanupNonActiveProfileDataAction = QAction("Clean Non-Active Profile Data…", mw)
+    _cleanupNonActiveProfileDataAction = QAction(_t("root_menu_cleanup_profile_data"), mw)
+    _cleanupNonActiveProfileDataAction.setProperty("incremento_translation_key", "root_menu_cleanup_profile_data")
     qconnect(_cleanupNonActiveProfileDataAction.triggered, cleanupNonActiveProfileDataFunction)
     _utilsMenu.addAction(_cleanupNonActiveProfileDataAction)
 
     _utilsMenu.addSeparator()
 
-    _cleanupOrphanPdfsAction = QAction("Clean Up Orphaned PDF Files…", mw)
+    _cleanupOrphanPdfsAction = QAction(_t("root_menu_cleanup_orphan_pdfs"), mw)
+    _cleanupOrphanPdfsAction.setProperty("incremento_translation_key", "root_menu_cleanup_orphan_pdfs")
     qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)
     _utilsMenu.addAction(_cleanupOrphanPdfsAction)
 
-    _cleanupOrphanVideosAction = QAction("Clean Up Orphaned Video Files…", mw)
+    _cleanupOrphanVideosAction = QAction(_t("root_menu_cleanup_orphan_videos"), mw)
+    _cleanupOrphanVideosAction.setProperty("incremento_translation_key", "root_menu_cleanup_orphan_videos")
     qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
     _utilsMenu.addAction(_cleanupOrphanVideosAction)
 
-    _cleanupStaleProgressAction = QAction("Clean Up Stale Progress / Search Index / OCR Rows…", mw)
+    _cleanupStaleProgressAction = QAction(_t("root_menu_cleanup_stale_rows"), mw)
+    _cleanupStaleProgressAction.setProperty("incremento_translation_key", "root_menu_cleanup_stale_rows")
     qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
     _utilsMenu.addAction(_cleanupStaleProgressAction)
 
-    _statsAction = QAction("Statistics", mw)
+    _statsAction = QAction(_t("root_menu_statistics"), mw)
+    _statsAction.setProperty("incremento_translation_key", "root_menu_statistics")
     qconnect(_statsAction.triggered, showStatsFunction)
     _menu.addAction(_statsAction)
     _register_shortcut_action("statistics", _statsAction)
 
-    _quickOpenPdfAction = QAction("Quick Open Content", mw)
+    _quickOpenPdfAction = QAction(_t("root_menu_quick_open_content"), mw)
+    _quickOpenPdfAction.setProperty("incremento_translation_key", "root_menu_quick_open_content")
     qconnect(_quickOpenPdfAction.triggered, _open_pdf_quick_jump)
     _menu.addAction(_quickOpenPdfAction)
     _register_shortcut_action("quick_open_pdf", _quickOpenPdfAction)
 
-    _documentBookshelfAction = QAction("Document Bookshelf", mw)
+    _documentBookshelfAction = QAction(_t("root_menu_document_bookshelf"), mw)
+    _documentBookshelfAction.setProperty("incremento_translation_key", "root_menu_document_bookshelf")
     qconnect(_documentBookshelfAction.triggered, _open_document_bookshelf)
     _menu.addAction(_documentBookshelfAction)
     _register_shortcut_action("document_bookshelf", _documentBookshelfAction)
 
-    _searchCurrentAction = QAction("Find In Current Document", mw)
+    _searchCurrentAction = QAction(_t("root_menu_find_current_document"), mw)
+    _searchCurrentAction.setProperty("incremento_translation_key", "root_menu_find_current_document")
     qconnect(_searchCurrentAction.triggered, _open_current_document_search)
     _menu.addAction(_searchCurrentAction)
     _register_shortcut_action("search_current_document", _searchCurrentAction)
 
-    _searchAllAction = QAction("Search ALL", mw)
+    _searchAllAction = QAction(_t("root_menu_search_all"), mw)
+    _searchAllAction.setProperty("incremento_translation_key", "root_menu_search_all")
     qconnect(_searchAllAction.triggered, _open_search_all)
     _menu.addAction(_searchAllAction)
     _register_shortcut_action("search_all", _searchAllAction)
 
     _menu.addSeparator()
 
-    _supportBundleAction = QAction("Export Support Bundle…", mw)
+    _supportBundleAction = QAction(_t("root_menu_export_support_bundle"), mw)
+    _supportBundleAction.setProperty("incremento_translation_key", "root_menu_export_support_bundle")
     qconnect(_supportBundleAction.triggered, exportSupportBundleFunction)
     _menu.addAction(_supportBundleAction)
 
-    _exportAction = QAction("Export Full Backup", mw)
+    _exportAction = QAction(_t("root_menu_export_full_backup"), mw)
+    _exportAction.setProperty("incremento_translation_key", "root_menu_export_full_backup")
     qconnect(_exportAction.triggered, exportFunction)
     _menu.addAction(_exportAction)
     _register_shortcut_action("export_user_data", _exportAction)
 
-    _restoreAction = QAction("Restore Full Backup…", mw)
+    _restoreAction = QAction(_t("root_menu_restore_full_backup"), mw)
+    _restoreAction.setProperty("incremento_translation_key", "root_menu_restore_full_backup")
     qconnect(_restoreAction.triggered, restoreFullBackupFunction)
     _menu.addAction(_restoreAction)
 
-    _autoBackupAction = QAction("Configure Automatic Full Backups…", mw)
+    _autoBackupAction = QAction(_t("root_menu_configure_auto_backups"), mw)
+    _autoBackupAction.setProperty("incremento_translation_key", "root_menu_configure_auto_backups")
     qconnect(_autoBackupAction.triggered, configureAutomaticBackupsFunction)
     _menu.addAction(_autoBackupAction)
 

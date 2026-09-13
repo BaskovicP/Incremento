@@ -1,0 +1,1074 @@
+{
+  "extension_name": {
+    "message": "Incremento 助手"
+  },
+  "extension_description": {
+    "message": "将 PDF、视频、网页、写作笔记和书签导入 Incremento，并跟踪视频停止时间。"
+  },
+  "command_copy_video_time": {
+    "message": "将最近记录的视频时间复制到剪贴板"
+  },
+  "command_add_pdf": {
+    "message": "将当前页面作为 PDF 添加到 Incremento"
+  },
+  "command_add_video": {
+    "message": "将当前页面作为视频添加到 Incremento"
+  },
+  "command_add_webpage": {
+    "message": "将当前页面作为网页添加到 Incremento"
+  },
+  "command_add_selection": {
+    "message": "将当前选区作为 Markdown 添加到 Incremento"
+  },
+  "command_add_page_markdown": {
+    "message": "将当前页面作为 Markdown 添加到 Incremento"
+  },
+  "command_capture_selection": {
+    "message": "将浏览器中选定的文本采集到 Anki"
+  },
+  "command_capture_snapshot": {
+    "message": "将浏览器快照采集到 Anki"
+  },
+  "popup_title": {
+    "message": "Incremento"
+  },
+  "bookmarks_title": {
+    "message": "Incremento 书签导入"
+  },
+  "offscreen_title": {
+    "message": "Incremento 剪贴板处理器"
+  },
+  "settings": {
+    "message": "设置"
+  },
+  "language": {
+    "message": "语言"
+  },
+  "language_auto": {
+    "message": "自动"
+  },
+  "language_save": {
+    "message": "保存"
+  },
+  "language_cancel": {
+    "message": "取消"
+  },
+  "language_saved": {
+    "message": "语言已保存。"
+  },
+  "language_save_error": {
+    "message": "无法保存语言。请重试。"
+  },
+  "language_description": {
+    "message": "选择助手界面的语言。更改会立即生效。"
+  },
+  "context_save_link": {
+    "message": "将链接作为网页保存到 Incremento"
+  },
+  "item_other": {
+    "message": "$COUNT$ 项",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "current_page": {
+    "message": "当前页面"
+  },
+  "send_to_incremento": {
+    "message": "发送到 Incremento"
+  },
+  "no_supported_page": {
+    "message": "未选择受支持的页面。"
+  },
+  "title": {
+    "message": "标题"
+  },
+  "deck": {
+    "message": "牌组"
+  },
+  "tags": {
+    "message": "标签"
+  },
+  "tag_hint": {
+    "message": "开始输入以选择已有的 Anki 标签，或输入新标签。"
+  },
+  "priority": {
+    "message": "优先级"
+  },
+  "markdown_scope": {
+    "message": "网页 Markdown 范围"
+  },
+  "main_content": {
+    "message": "主要内容"
+  },
+  "entire_page": {
+    "message": "整个页面"
+  },
+  "add_as_pdf": {
+    "message": "添加为 PDF"
+  },
+  "add_as_video": {
+    "message": "添加为视频"
+  },
+  "add_as_webpage": {
+    "message": "添加为网页"
+  },
+  "add_selection_markdown": {
+    "message": "将选区添加为 Markdown"
+  },
+  "add_page_markdown": {
+    "message": "将页面添加为 Markdown"
+  },
+  "automatic_site_access": {
+    "message": "自动访问网站"
+  },
+  "automatic_site_access_note": {
+    "message": "按需操作会临时访问当前标签页。仅当需要在导航后继续通过修饰键点击保存链接和跟踪网页卡片媒体时，才启用持久的 HTTP(S) 访问。"
+  },
+  "disable_auto_site_access": {
+    "message": "关闭自动访问网站"
+  },
+  "enable_auto_site_access": {
+    "message": "启用自动访问网站…"
+  },
+  "quick_link_save": {
+    "message": "快速保存链接"
+  },
+  "quick_link_save_note": {
+    "message": "将点击的链接直接保存为 Incremento 网页卡片，也可以继续导航。"
+  },
+  "enable_modifier_save": {
+    "message": "启用修饰键点击保存链接"
+  },
+  "modifier_key": {
+    "message": "修饰键"
+  },
+  "continue_following_link": {
+    "message": "保存后继续打开链接"
+  },
+  "enable_context_link": {
+    "message": "启用右键链接操作"
+  },
+  "save_quick_link_settings": {
+    "message": "保存快速链接设置"
+  },
+  "download_bookmarks": {
+    "message": "下载书签"
+  },
+  "trigger_text_capture": {
+    "message": "启动文本采集"
+  },
+  "trigger_snapshot_capture": {
+    "message": "启动快照采集"
+  },
+  "text_capture": {
+    "message": "文本采集"
+  },
+  "snapshot_capture": {
+    "message": "快照采集"
+  },
+  "not_assigned_chrome": {
+    "message": "未在 Chrome 中分配"
+  },
+  "open_shortcut_settings": {
+    "message": "打开快捷键设置"
+  },
+  "linked_card": {
+    "message": "关联的卡片"
+  },
+  "linked_card_status": {
+    "message": "此标签页已关联卡片 $COUNT$。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "not_linked_card_status": {
+    "message": "此标签页尚未关联 Incremento 卡片。请先从卡片的浏览器操作打开它。"
+  },
+  "detected_video_time": {
+    "message": "检测到当前视频时间：$TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_video_time_page": {
+    "message": "当前页面未检测到视频时间。"
+  },
+  "manual_time": {
+    "message": "手动时间"
+  },
+  "manual_time_placeholder": {
+    "message": "12:34、1:02:03、90 或 1m30s"
+  },
+  "save_manual_time": {
+    "message": "保存手动时间"
+  },
+  "copy_last_video_time": {
+    "message": "复制最近的视频时间"
+  },
+  "video_cards_note": {
+    "message": "视频卡片使用当前的 YouTube 或 Vimeo 网址。"
+  },
+  "selection_writing_note": {
+    "message": "选区写作将使用当前选区（$COUNT$ 个字符）。页面写作将网页内容导入为 Markdown。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "page_writing_note": {
+    "message": "选区写作会使用当前选区（如有）。页面写作将网页内容导入为 Markdown。"
+  },
+  "bridge_unavailable": {
+    "message": "无法连接 Anki 中的 Incremento。请保持 Anki 打开并重新加载附加组件。"
+  },
+  "bridge_origin_conflict": {
+    "message": "此助手副本未经授权。请重启 Anki 后重新打开弹出窗口。如果问题再次出现，请禁用其他 Chrome/Brave 配置文件中的重复助手副本。"
+  },
+  "bridge_error_authorization_required": {
+    "message": "需要重新连接 Incremento。请重试。"
+  },
+  "bridge_error_bridge_busy": {
+    "message": "Incremento 正忙。请稍后重试。"
+  },
+  "bridge_error_unknown_path": {
+    "message": "此 Incremento 操作不可用。请更新附加组件。"
+  },
+  "bridge_error_invalid_request": {
+    "message": "请求未被接受。请检查选定内容。"
+  },
+  "bridge_error_operation_failed": {
+    "message": "Incremento 无法完成此操作。"
+  },
+  "bridge_error_unsupported_transfer_encoding": {
+    "message": "不支持的请求编码。"
+  },
+  "bridge_error_invalid_content_length": {
+    "message": "请求长度无效。"
+  },
+  "bridge_error_request_too_large": {
+    "message": "请求过大。"
+  },
+  "bridge_error_request_timeout": {
+    "message": "请求超时。请重试。"
+  },
+  "bridge_error_incomplete_body": {
+    "message": "请求不完整。请重试。"
+  },
+  "bridge_error_invalid_json": {
+    "message": "请求数据无效。"
+  },
+  "action_video_time": {
+    "message": "Incremento（$PROVIDER$）$TIME$",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "deck_load_failed": {
+    "message": "无法从 Anki 加载牌组。使用 Topics。"
+  },
+  "page_inspect_failed": {
+    "message": "无法检查当前页面。"
+  },
+  "manual_time_invalid": {
+    "message": "请输入有效时间，例如 12:34、1:02:03、90 或 1m30s。"
+  },
+  "open_http_page": {
+    "message": "请先打开普通 HTTP(S) 页面。"
+  },
+  "no_active_tab": {
+    "message": "未找到活动标签页。"
+  },
+  "only_http_pages": {
+    "message": "只能将 HTTP(S) 页面发送到 Incremento。"
+  },
+  "open_video_page": {
+    "message": "请打开 YouTube 或 Vimeo 页面以添加视频卡片。"
+  },
+  "select_page_text": {
+    "message": "请先选择页面上的文本。"
+  },
+  "web_content_failed": {
+    "message": "无法读取此标签页的网页内容。"
+  },
+  "web_time_invalid": {
+    "message": "网页时间无效。"
+  },
+  "adding_writing": {
+    "message": "正在从网页 Markdown 添加写作卡片…"
+  },
+  "adding_card": {
+    "message": "正在添加 $KIND$ 卡片…",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "added_card": {
+    "message": "已添加 $KIND$ 卡片：$TITLE$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      },
+      "title": {
+        "content": "$2"
+      }
+    }
+  },
+  "add_content_failed": {
+    "message": "添加内容失败。"
+  },
+  "copying_video_time": {
+    "message": "正在复制最近的视频时间…"
+  },
+  "copied_video_time": {
+    "message": "已复制最近的视频时间。"
+  },
+  "no_stored_video_time": {
+    "message": "尚无已保存的视频时间。"
+  },
+  "copy_video_time_failed": {
+    "message": "复制视频时间失败。"
+  },
+  "saving_browser_time": {
+    "message": "正在将浏览器时间保存到关联卡片…"
+  },
+  "tab_not_linked": {
+    "message": "此标签页未关联 Incremento 卡片。请先从卡片打开页面。"
+  },
+  "no_detected_time": {
+    "message": "未检测到当前视频时间。请手动输入时间并保存。"
+  },
+  "only_http_time": {
+    "message": "只有普通 HTTP(S) 页面可以保存浏览器时间。"
+  },
+  "saved_time_card": {
+    "message": "已将 $TIME$ 保存到卡片 $COUNT$。",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "save_browser_time_failed": {
+    "message": "保存浏览器时间失败。"
+  },
+  "open_bookmarks_failed": {
+    "message": "无法打开书签导入器。"
+  },
+  "open_shortcuts_failed": {
+    "message": "无法打开 Chrome 快捷键设置。"
+  },
+  "starting_snapshot": {
+    "message": "正在启动快照采集…"
+  },
+  "starting_text_capture": {
+    "message": "正在启动文本采集…"
+  },
+  "snapshot_opened": {
+    "message": "已在页面中打开快照采集。"
+  },
+  "text_capture_opened": {
+    "message": "已在页面中打开文本采集。"
+  },
+  "snapshot_not_started": {
+    "message": "此标签页未启动快照采集。"
+  },
+  "text_capture_not_started": {
+    "message": "文本采集未启动。请先选择页面上的文本。"
+  },
+  "trigger_capture_failed": {
+    "message": "无法启动浏览器采集。"
+  },
+  "saving_link_settings": {
+    "message": "正在保存快速链接设置…"
+  },
+  "saved_link_settings": {
+    "message": "快速链接设置已保存。"
+  },
+  "save_link_settings_failed": {
+    "message": "保存快速链接设置失败。"
+  },
+  "disabling_site_access": {
+    "message": "正在关闭自动访问网站…"
+  },
+  "requesting_site_access": {
+    "message": "正在请求自动访问网站权限…"
+  },
+  "site_access_still_enabled": {
+    "message": "Chrome/Brave 仍启用了网站访问权限。请在扩展程序设置中更改。"
+  },
+  "site_access_disabled": {
+    "message": "已关闭自动访问网站。用户触发的操作仍可在当前标签页使用。"
+  },
+  "site_access_enabled": {
+    "message": "已启用自动访问网站，以便在导航后继续保存链接和跟踪网页卡片。"
+  },
+  "site_access_not_granted": {
+    "message": "未授予网站访问权限。用户触发的操作仍可在当前标签页使用。"
+  },
+  "site_access_change_failed": {
+    "message": "无法更改自动访问网站设置。"
+  },
+  "waiting_start": {
+    "message": "等待开始。"
+  },
+  "loading_bookmarks": {
+    "message": "正在加载书签…"
+  },
+  "bookmarks_loaded": {
+    "message": "书签已加载。"
+  },
+  "load_bookmarks_failed": {
+    "message": "加载书签失败。"
+  },
+  "untitled_bookmark": {
+    "message": "未命名书签"
+  },
+  "select_bookmark_first": {
+    "message": "导入前请至少选择一个书签。"
+  },
+  "importing_bookmarks_other": {
+    "message": "正在导入 $COUNT$ 个书签…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "preparing_import": {
+    "message": "正在准备导入…"
+  },
+  "importing_item": {
+    "message": "正在导入第 $INDEX$ 项，共 $COUNT$ 项：$TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "imported_item": {
+    "message": "已导入第 $INDEX$ 项，共 $COUNT$ 项：$TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "failed_item": {
+    "message": "第 $INDEX$ 项导入失败，共 $COUNT$ 项：$TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "import_bookmark_failed": {
+    "message": "导入书签失败。"
+  },
+  "imported_failed": {
+    "message": "已导入 $OK$ 个书签，$FAILED$ 个失败。",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "finished_with_errors": {
+    "message": "已完成：导入 $OK$ 个，失败 $FAILED$ 个。",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "imported_bookmarks_other": {
+    "message": "已导入 $COUNT$ 个书签。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_other": {
+    "message": "已完成导入 $COUNT$ 个书签。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmark_import": {
+    "message": "书签导入"
+  },
+  "send_chrome_bookmarks": {
+    "message": "将 Chrome 书签发送到 Incremento"
+  },
+  "bookmark_import_intro": {
+    "message": "选择文件夹或单个书签，逐项编辑标签，选择 PDF、YouTube/视频、网页或写作卡片，指定目标牌组和优先级，然后一次导入。"
+  },
+  "bookmarks": {
+    "message": "书签"
+  },
+  "reload": {
+    "message": "重新加载"
+  },
+  "folder_includes_nested": {
+    "message": "选中文件夹会包含所有嵌套的书签链接。"
+  },
+  "no_bookmarks": {
+    "message": "没有可用书签。"
+  },
+  "import_list": {
+    "message": "导入列表"
+  },
+  "bookmarks_selected_other": {
+    "message": "已选择 $COUNT$ 个书签",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "import_selected": {
+    "message": "导入所选"
+  },
+  "import_deck": {
+    "message": "导入牌组"
+  },
+  "all_selected_deck": {
+    "message": "所有选中的书签都将导入此牌组。"
+  },
+  "select_bookmarks_left": {
+    "message": "在左侧选择文件夹或单个书签以建立导入列表。"
+  },
+  "type": {
+    "message": "类型"
+  },
+  "video_kind": {
+    "message": "YouTube/视频"
+  },
+  "webpage_kind": {
+    "message": "网页"
+  },
+  "writing_kind": {
+    "message": "写作"
+  },
+  "folder": {
+    "message": "文件夹"
+  },
+  "selected_count": {
+    "message": "已选 $SELECTED$/$TOTAL$",
+    "placeholders": {
+      "selected": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "progress_title": {
+    "message": "导入进度"
+  },
+  "created_card": {
+    "message": "已创建 $KIND$ 卡片$ID$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      },
+      "id": {
+        "content": "$2"
+      }
+    }
+  },
+  "import_failed": {
+    "message": "导入失败。"
+  },
+  "untitled": {
+    "message": "未命名"
+  },
+  "tracking": {
+    "message": "正在跟踪"
+  },
+  "tracking_web_card": {
+    "message": "正在跟踪网页卡片"
+  },
+  "saved_time_badge_dismiss": {
+    "message": "关闭已保存浏览器时间标记"
+  },
+  "last_saved": {
+    "message": "最近保存"
+  },
+  "last_saved_time": {
+    "message": "最近保存 $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "remove": {
+    "message": "移除"
+  },
+  "browser_snapshot": {
+    "message": "浏览器快照"
+  },
+  "browser_selection": {
+    "message": "浏览器选区"
+  },
+  "send_capture_anki": {
+    "message": "将采集内容发送到 Anki"
+  },
+  "snapshots_ready_other": {
+    "message": "来自 $URL$ 的 $COUNT$ 张快照已就绪",
+    "placeholders": {
+      "url": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "selected_text_from": {
+    "message": "来自 $URL$ 的选中文本",
+    "placeholders": {
+      "url": {
+        "content": "$1"
+      }
+    }
+  },
+  "note_type": {
+    "message": "笔记类型"
+  },
+  "do_not_insert": {
+    "message": "不插入"
+  },
+  "page_title_field": {
+    "message": "页面标题字段"
+  },
+  "page_title_field_note": {
+    "message": "当前页面标题始终可用。首字段映射会获得唯一的快照后缀。"
+  },
+  "selected_text_field": {
+    "message": "选中文本字段"
+  },
+  "chars_ready": {
+    "message": "已有 $COUNT$ 个字符可插入。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_text_added": {
+    "message": "尚未添加文本。"
+  },
+  "source_url_field": {
+    "message": "来源网址字段"
+  },
+  "source_url_note": {
+    "message": "当前页面网址始终可用。"
+  },
+  "snapshot_field": {
+    "message": "快照字段"
+  },
+  "snapshots_selected_other": {
+    "message": "已选择 $COUNT$ 张快照。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_snapshots": {
+    "message": "本次采集中没有快照图像。"
+  },
+  "add_text_snapshots": {
+    "message": "添加要与这些快照一起保存的文本…"
+  },
+  "selected_text_edit": {
+    "message": "选中文本将显示在这里。保存前可以编辑。"
+  },
+  "text_to_add": {
+    "message": "要添加的文本"
+  },
+  "selected_text": {
+    "message": "选中文本"
+  },
+  "inserted_text_note": {
+    "message": "如果选定了选中文本字段，此内容会插入其中。"
+  },
+  "snapshots": {
+    "message": "快照"
+  },
+  "capture_more": {
+    "message": "继续采集"
+  },
+  "saving": {
+    "message": "正在保存…"
+  },
+  "create_note": {
+    "message": "创建笔记"
+  },
+  "creating_note": {
+    "message": "正在 Anki 中创建笔记…"
+  },
+  "created_note": {
+    "message": "已在牌组 $DECK$ 中创建 $TYPE$ 笔记。",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "type": {
+        "content": "$2"
+      }
+    }
+  },
+  "create_note_failed": {
+    "message": "创建笔记失败。"
+  },
+  "snapshot_mode": {
+    "message": "快照模式"
+  },
+  "snapshot_mode_intro": {
+    "message": "在页面上绘制一个或多个矩形。采集范围仅限当前视口。"
+  },
+  "snapshot_mode_hint": {
+    "message": "绘制矩形即可立即采集，然后可滚动页面采集其他区域。"
+  },
+  "capturing": {
+    "message": "正在采集…"
+  },
+  "snapshot_ready_other": {
+    "message": "$COUNT$ 张快照已就绪",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "undo": {
+    "message": "撤销"
+  },
+  "clear": {
+    "message": "清除"
+  },
+  "extract_now": {
+    "message": "立即提取"
+  },
+  "continue": {
+    "message": "继续"
+  },
+  "draw_region_first": {
+    "message": "请先绘制至少一个区域。"
+  },
+  "too_many_snapshots": {
+    "message": "快照过多。最多允许 $COUNT$ 张。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "capture_label": {
+    "message": "采集 $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failed_capture_tab": {
+    "message": "采集当前标签页失败。"
+  },
+  "no_note_types": {
+    "message": "Anki 中没有可用的笔记类型。"
+  },
+  "no_decks": {
+    "message": "Anki 中没有可用的牌组。"
+  },
+  "open_capture_failed": {
+    "message": "无法打开浏览器采集。"
+  },
+  "resumed_to": {
+    "message": "已从 $SECONDS$ 秒处继续播放",
+    "placeholders": {
+      "seconds": {
+        "content": "$1"
+      }
+    }
+  },
+  "failed_submit_capture": {
+    "message": "提交浏览器采集失败。"
+  },
+  "failed_decode_screenshot": {
+    "message": "无法解码屏幕截图。"
+  },
+  "only_http_links": {
+    "message": "只能将 HTTP(S) 链接保存到 Incremento。"
+  },
+  "add_webpage_failed": {
+    "message": "添加网页卡片失败。"
+  },
+  "adding_pdf": {
+    "message": "正在添加 PDF 卡片…"
+  },
+  "adding_video": {
+    "message": "正在添加视频卡片…"
+  },
+  "adding_webpage": {
+    "message": "正在添加网页卡片…"
+  },
+  "adding_selection_writing": {
+    "message": "正在从选区添加写作卡片…"
+  },
+  "unsupported_command": {
+    "message": "不支持的命令。"
+  },
+  "capture_start_failed": {
+    "message": "无法在此标签页启动浏览器采集。"
+  },
+  "copied_time": {
+    "message": "已复制视频时间：$TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "copy_time_failed": {
+    "message": "复制视频时间失败（$TIME$）",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "load_media_ref_failed": {
+    "message": "加载浏览器媒体引用失败。"
+  },
+  "load_capture_meta_failed": {
+    "message": "加载浏览器采集元数据失败。"
+  },
+  "copy_offscreen_reason": {
+    "message": "复制最近的视频停止时间，以便粘贴到 Anki。"
+  },
+  "page_html_too_large": {
+    "message": "页面 HTML 过大。最多 $COUNT$ 个字符。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "selected_text_too_large": {
+    "message": "选中文本过大。最多 $COUNT$ 个字符。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "extension_runtime_unavailable": {
+    "message": "Incremento 扩展运行环境不可用。"
+  },
+  "extension_request_failed": {
+    "message": "扩展请求失败。"
+  },
+  "continue_choose_fields": {
+    "message": "$ERROR$ 请点击一次“继续”以选择快照的目标字段。",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "bridge_handshake_failed": {
+    "message": "Incremento 桥接握手失败。"
+  },
+  "bridge_request_failed": {
+    "message": "请求失败（$STATUS$）",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "screenshot_not_png": {
+    "message": "屏幕截图必须是 PNG 数据网址。"
+  },
+  "screenshot_too_large": {
+    "message": "屏幕截图过大。最多 $COUNT$ 字节。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_too_large": {
+    "message": "单张快照过大。最多 $COUNT$ 字节。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "combined_snapshots_too_large": {
+    "message": "快照总大小过大。最多 $COUNT$ 字节。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "choose_note_type_deck": {
+    "message": "请选择笔记类型和牌组。"
+  },
+  "map_capture_field": {
+    "message": "请将至少一部分采集内容映射到笔记字段。"
+  },
+  "pdf_kind": {
+    "message": "PDF"
+  },
+  "content_kind": {
+    "message": "内容"
+  },
+  "language_export_template": {
+    "message": "导出空白模板…"
+  },
+  "language_export_selected": {
+    "message": "导出所选语言…"
+  },
+  "language_import_csv": {
+    "message": "导入翻译…"
+  },
+  "language_sheet_help": {
+    "message": "在 Excel、Google Sheets 或 LibreOffice 中打开 CSV。在顶部填写 locale 和 name，然后只编辑 translation 列。保存为 CSV UTF-8 后在此导入。"
+  },
+  "language_custom_name": {
+    "message": "$NAME$（已导入）",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "language_pack_preview": {
+    "message": "$NAME$：已翻译 $COUNT$ 行，共 $TOTAL$ 行。空白行使用英语。保存以应用；取消将放弃本次导入。",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "total": {
+        "content": "$3"
+      }
+    }
+  },
+  "language_pack_error": {
+    "message": "第 $ROW$ 行：$REASON$",
+    "placeholders": {
+      "row": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "language_pack_error_header": {
+    "message": "请保留原来的五个列标题。"
+  },
+  "language_pack_error_metadata": {
+    "message": "请保留顶部的 version、locale 和 name 行。"
+  },
+  "language_pack_error_version": {
+    "message": "不支持此文件版本。"
+  },
+  "language_pack_error_locale": {
+    "message": "请在 locale 行填写语言代码，例如 de 或 pt-BR。"
+  },
+  "language_pack_error_name": {
+    "message": "请在 name 行填写不超过 80 个字符的语言名称。"
+  },
+  "language_pack_error_duplicate": {
+    "message": "翻译行或元数据行重复。"
+  },
+  "language_pack_error_unknown": {
+    "message": "当前模板中没有此行。请导出新模板，并将翻译复制到其中。"
+  },
+  "language_pack_error_source": {
+    "message": "原文已更改。请从新模板中恢复原文。"
+  },
+  "language_pack_error_tokens": {
+    "message": "请原样保留原文中的所有占位符。"
+  },
+  "language_pack_error_markup": {
+    "message": "请保留原来的格式标签和属性；不要添加可执行内容。"
+  },
+  "language_pack_error_size": {
+    "message": "文件超过 2 MiB 限制。"
+  },
+  "language_pack_error_rows": {
+    "message": "文件超过 20,000 行限制。"
+  },
+  "language_pack_error_cell": {
+    "message": "单元格过长或包含不支持的控制字符。"
+  },
+  "language_pack_error_packs": {
+    "message": "最多可保存 20 种导入的语言。重新导入同一语言可更新翻译。"
+  },
+  "language_pack_error_csv": {
+    "message": "请将表格保存为 CSV UTF-8，保留五列和完整的引号。"
+  },
+  "language_pack_error_encoding": {
+    "message": "请使用 UTF-8 编码保存文件。"
+  },
+  "language_pack_error_file": {
+    "message": "无法读取或导出文件。请重试。"
+  }
+}

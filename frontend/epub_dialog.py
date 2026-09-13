@@ -36,6 +36,12 @@ except ImportError:
     from incremento.frontend.tag_edit import QuickTagEdit  # type: ignore
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 class AddEpubDialog(QDialog):
     def __init__(
         self,
@@ -46,7 +52,7 @@ class AddEpubDialog(QDialog):
     ):
         super().__init__(parent)
         self._addon_dir = addon_dir
-        self.setWindowTitle("Add EPUBs")
+        self.setWindowTitle(_t("imports_epub_title"))
         self.setMinimumSize(900, 560)
 
         self._epub_paths: list[str] = []
@@ -70,12 +76,12 @@ class AddEpubDialog(QDialog):
         layout.setSpacing(8)
 
         btn_row = QHBoxLayout()
-        self._add_files_btn = QPushButton("Add files…")
-        self._add_folder_btn = QPushButton("Add folder…")
-        self._select_all_btn = QPushButton("Select all")
-        self._deselect_all_btn = QPushButton("Deselect all")
-        self._remove_selected_btn = QPushButton("Remove selected")
-        self._undo_remove_btn = QPushButton("Undo remove")
+        self._add_files_btn = QPushButton(_t("imports_add_files"))
+        self._add_folder_btn = QPushButton(_t("imports_add_folder"))
+        self._select_all_btn = QPushButton(_t("imports_select_all"))
+        self._deselect_all_btn = QPushButton(_t("imports_deselect_all"))
+        self._remove_selected_btn = QPushButton(_t("imports_remove_selected"))
+        self._undo_remove_btn = QPushButton(_t("imports_undo_remove"))
         self._remove_selected_btn.setVisible(False)
         self._undo_remove_btn.setVisible(False)
         self._add_files_btn.clicked.connect(self._add_files)
@@ -94,7 +100,7 @@ class AddEpubDialog(QDialog):
         layout.addLayout(btn_row)
 
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText("Filter EPUBs by file name…")
+        self._search_edit.setPlaceholderText(_t("imports_filter_epubs"))
         self._search_edit.textChanged.connect(self._apply_table_filter)
         layout.addWidget(self._search_edit)
 
@@ -111,7 +117,7 @@ class AddEpubDialog(QDialog):
         layout.addWidget(self._status_lbl)
 
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(["Import", "File", "Tags", "Priority", "Status"])
+        self._table.setHorizontalHeaderLabels([_t("imports_import"), _t("imports_table_file"), _t("imports_table_tags"), _t("imports_table_priority"), _t("imports_table_status")])
         self._table.verticalHeader().setVisible(False)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -139,15 +145,15 @@ class AddEpubDialog(QDialog):
         form.setContentsMargins(0, 0, 0, 0)
 
         self._global_tag_edit = QuickTagEdit(compact=True)
-        form.addRow("Tags for all:", self._global_tag_edit)
+        form.addRow(_t("imports_tags_for_all"), self._global_tag_edit)
 
-        self._title_from_filename = QCheckBox("Use file name as title")
+        self._title_from_filename = QCheckBox(_t("imports_use_filename_title"))
         self._title_from_filename.setChecked(True)
         self._title_from_filename.toggled.connect(self._on_title_mode_changed)
         form.addRow("", self._title_from_filename)
 
         self._title_edit = QLineEdit()
-        form.addRow("Title:", self._title_edit)
+        form.addRow(_t("imports_title_label"), self._title_edit)
 
         self._deck_combo = QComboBox()
         for name in (deck_names or ["Topics"]):
@@ -155,7 +161,7 @@ class AddEpubDialog(QDialog):
         idx = self._deck_combo.findText(default_deck)
         if idx >= 0:
             self._deck_combo.setCurrentIndex(idx)
-        form.addRow("Deck:", self._deck_combo)
+        form.addRow(_t("imports_deck_label"), self._deck_combo)
 
         layout.addWidget(options)
 
@@ -181,8 +187,9 @@ class AddEpubDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self._ok_btn = self._buttons.button(QDialogButtonBox.StandardButton.Ok)
-        self._ok_btn.setText("Add")
+        self._ok_btn.setText(_t("imports_add"))
         self._cancel_btn = self._buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        self._cancel_btn.setText(_t("imports_cancel"))
         self._buttons.accepted.connect(self._start_add)
         self._buttons.rejected.connect(self.reject)
         layout.addWidget(self._buttons)
@@ -198,20 +205,20 @@ class AddEpubDialog(QDialog):
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Choose EPUB files",
+            _t("imports_select_epub_files"),
             self._last_dir(),
-            "EPUB files (*.epub)",
+            _t("imports_epub_file_filter"),
         )
         self._add_paths([p for p in paths if p])
 
     def _add_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "Choose folder", self._last_dir())
+        folder = QFileDialog.getExistingDirectory(self, _t("imports_select_folder"), self._last_dir())
         if not folder:
             return
         self._folder_progress.setRange(0, 0)
-        self._folder_progress.setFormat("Scanning EPUB folder…")
+        self._folder_progress.setFormat(_t("imports_epub_folder_scanning"))
         self._folder_progress.setVisible(True)
-        self._status_lbl.setText("Scanning EPUB folder…")
+        self._status_lbl.setText(_t("imports_epub_folder_scanning"))
         self._add_files_btn.setEnabled(False)
         self._add_folder_btn.setEnabled(False)
 
@@ -230,7 +237,7 @@ class AddEpubDialog(QDialog):
                 self._folder_progress.setVisible(False)
                 self._add_files_btn.setEnabled(True)
                 self._add_folder_btn.setEnabled(True)
-                self._show_error(f"Failed to scan EPUB folder: {exc}")
+                self._show_error(_t("imports_epub_scan_failed", error=exc))
                 self._update_counts()
                 return
             self._folder_progress.setRange(0, 1)
@@ -251,7 +258,7 @@ class AddEpubDialog(QDialog):
     def _start_folder_import(self, paths: list[str]) -> None:
         unique_paths = [path for path in paths if path not in self._tag_edits]
         if not unique_paths:
-            self._status_lbl.setText("Found 0 new EPUBs in folder")
+            self._status_lbl.setText(_t("imports_epub_folder_none"))
             self._finish_folder_import()
             return
 
@@ -296,7 +303,7 @@ class AddEpubDialog(QDialog):
         self._folder_progress.setValue(0)
         if completed_total > 0:
             self._status_lbl.setText(
-                f"Found {completed_total} EPUBs in folder · loaded into dialog"
+                _t("imports_epub_folder_loaded", count=completed_total)
             )
         self._add_files_btn.setEnabled(True)
         self._add_folder_btn.setEnabled(True)
@@ -309,9 +316,9 @@ class AddEpubDialog(QDialog):
         self._table.insertRow(row_idx)
         self._table.setRowHeight(row_idx, 42)
 
-        import_check = QCheckBox("Add")
+        import_check = QCheckBox(_t("imports_add"))
         import_check.setChecked(True if state is None else bool(state.get("import_enabled", True)))
-        import_check.setToolTip("Checked EPUBs will be imported when you click Add")
+        import_check.setToolTip(_t("imports_epub_checked_hint"))
         import_check.setStyleSheet("font-size: 11px; font-weight: 600;")
         import_check.toggled.connect(lambda _checked: self._update_counts())
         self._table.setCellWidget(row_idx, 0, self._wrap_cell_widget(import_check))
@@ -585,17 +592,17 @@ class AddEpubDialog(QDialog):
 
     def _start_add(self) -> None:
         if not self._epub_paths:
-            self._show_error("Choose at least one EPUB file.")
+            self._show_error(_t("imports_epub_choose_file"))
             return
         checked_paths = self._checked_paths()
         if not checked_paths:
-            self._show_error("Please check at least one EPUB to import.")
+            self._show_error(_t("imports_choose_checked_epub"))
             return
         if not self._title_from_filename.isChecked() and len(checked_paths) > 1:
-            self._show_error("For multiple EPUBs, enable 'Use file name as title'.")
+            self._show_error(_t("imports_multiple_epub_title"))
             return
         if not self._title_from_filename.isChecked() and not self._title_edit.text().strip():
-            self._show_error("Please enter a title.")
+            self._show_error(_t("imports_enter_title"))
             return
         self._error_lbl.setVisible(False)
 
@@ -629,7 +636,7 @@ class AddEpubDialog(QDialog):
 
         path, title, tags, priority = entries[idx]
         deck = self._deck_combo.currentText()
-        self._update_add_progress(idx, len(entries), path, phase="Starting")
+        self._update_add_progress(idx, len(entries), path, phase=_t("imports_starting"))
 
         try:
             from ..backend.epub_manager import add_epub_card
@@ -640,7 +647,7 @@ class AddEpubDialog(QDialog):
             from priority_manager import set_priority  # type: ignore
             from paths import get_active_profile as _active_profile  # type: ignore
 
-        self._set_row_status(path, "Adding…")
+        self._set_row_status(path, _t("imports_adding"))
         try:
             cid = add_epub_card(
                 self._addon_dir,
@@ -653,18 +660,18 @@ class AddEpubDialog(QDialog):
             set_priority(self._addon_dir, _active_profile(), cid, priority)
             self.created.append((path, title))
             self._set_row_status(path, "✓", color="#4caf50")
-            self._update_add_progress(idx + 1, len(entries), path, phase="Done")
+            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))
         except Exception as exc:
             self.failed.append((path, str(exc)))
             self._set_row_status(path, "✗", color="red")
-            self._update_add_progress(idx + 1, len(entries), path, phase="Failed")
+            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_failed"))
 
         QTimer.singleShot(0, lambda: self._process_files(entries, idx + 1))
 
     def _on_title_mode_changed(self, checked: bool) -> None:
         self._title_edit.setEnabled(not checked)
         self._title_edit.setPlaceholderText(
-            "Derived from each file name" if checked else "Card title"
+            _t("imports_derived_filename") if checked else _t("imports_card_title")
         )
 
     def _wrap_cell_widget(self, widget: QWidget, *, fill_width: bool = False) -> QWidget:
@@ -689,7 +696,7 @@ class AddEpubDialog(QDialog):
         spin.setFixedWidth(94)
         important_end = "0" if self._lower_priority_more_important else "100"
         spin.setToolTip(
-            f"Priority for this EPUB. {important_end} is highest importance, 50 is default."
+            _t("imports_epub_priority_hint", important_end=important_end)
         )
         spin.valueChanged.connect(lambda _value, s=spin: self._apply_priority_spin_style(s))
         self._apply_priority_spin_style(spin)
@@ -768,33 +775,33 @@ class AddEpubDialog(QDialog):
         self._add_progress.setMaximum(max(1, self._add_total_entries))
         self._add_progress.setValue(0)
         self._add_progress.setFormat(
-            f"Adding EPUBs… 0 / {self._add_total_entries}"
+            _t("imports_epub_progress", completed=0, total=self._add_total_entries)
             if self._add_total_entries
-            else "Adding EPUBs…"
+            else _t("imports_epub_adding")
         )
         self._add_progress.setVisible(self._add_total_entries > 0)
         self._add_status_lbl.setVisible(self._add_total_entries > 0)
         if self._add_total_entries > 0:
-            self._add_status_lbl.setText(f"Adding EPUBs… 0 / {self._add_total_entries}")
+            self._add_status_lbl.setText(_t("imports_epub_progress", completed=0, total=self._add_total_entries))
 
     def _update_add_progress(self, completed: int, total: int, path: str, *, phase: str) -> None:
         total = max(0, int(total))
         completed = max(0, min(int(completed), total))
         self._add_progress.setMaximum(max(1, total))
         self._add_progress.setValue(completed)
-        self._add_progress.setFormat(f"Adding EPUBs… {completed} / {total}")
+        self._add_progress.setFormat(_t("imports_epub_progress", completed=completed, total=total))
         self._add_status_lbl.setText(
-            f"Adding EPUBs… {completed} / {total} · {phase}: {Path(path).name}"
+            _t("imports_epub_progress_detail", completed=completed, total=total, phase=phase, filename=Path(path).name)
         )
 
     def _finish_add_progress(self) -> None:
         if self._add_total_entries > 0:
             self._add_progress.setValue(self._add_total_entries)
             self._add_progress.setFormat(
-                f"Adding EPUBs… {self._add_total_entries} / {self._add_total_entries}"
+                _t("imports_epub_progress", completed=self._add_total_entries, total=self._add_total_entries)
             )
             self._add_status_lbl.setText(
-                f"Adding EPUBs… {self._add_total_entries} / {self._add_total_entries}"
+                _t("imports_epub_progress", completed=self._add_total_entries, total=self._add_total_entries)
             )
         self._add_progress.setVisible(False)
         self._add_status_lbl.setVisible(False)
@@ -802,19 +809,16 @@ class AddEpubDialog(QDialog):
 
     def _folder_status_text(self, completed: int) -> str:
         remaining = max(0, self._folder_total_paths - completed)
-        return (
-            f"Found {self._folder_total_paths} EPUBs in folder · "
-            f"{remaining} remaining · adding… {completed} / {self._folder_total_paths}"
-        )
+        return _t("imports_epub_folder_progress", found=self._folder_total_paths, remaining=remaining, completed=completed, total=self._folder_total_paths)
 
     def _update_counts(self, *, prefix: str = "") -> None:
         total = len(self._epub_paths)
         visible = len(self._visible_rows())
         checked = len(self._checked_paths())
         query = self._search_edit.text().strip()
-        counts = f"{total} EPUBs in dialog · {checked} checked to import"
+        counts = _t("imports_epub_count_summary", total=total, checked=checked)
         if query:
-            counts += f" · {visible} visible"
+            counts += _t("imports_epub_visible_count", visible=visible)
         self._status_lbl.setText(f"{prefix} · {counts}" if prefix else counts)
 
     def _show_error(self, msg: str) -> None:

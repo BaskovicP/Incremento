@@ -8,13 +8,18 @@ import json
 import secrets
 
 try:
+    from ..backend.i18n import t as _t, tn as _tn
+except ImportError:
+    from backend.i18n import t as _t, tn as _tn
+
+try:
     from ..backend.config_service import DEFAULT_TOPIC_DONE_TAG
     from ..backend.topic_review_actions import StaleTopicAction, complete_topic, revisit_topic, undo_topic_action
-    from ..backend.custom_schedule import anki_logical_today
+    from ..backend.custom_schedule import add_calendar_months, anki_logical_today
 except ImportError:
     from backend.config_service import DEFAULT_TOPIC_DONE_TAG
     from backend.topic_review_actions import StaleTopicAction, complete_topic, revisit_topic, undo_topic_action
-    from backend.custom_schedule import anki_logical_today
+    from backend.custom_schedule import add_calendar_months, anki_logical_today
 
 
 DONE_DESCRIPTION = (
@@ -23,6 +28,13 @@ DONE_DESCRIPTION = (
     "Extracted cards continue reviewing. Undo restores both the card and its previous tags."
 )
 _COMMAND_PREFIX = "incremento_topic_done:"
+_TOPIC_ERROR_IDS = {
+    "This topic is no longer available for review.": "imports_topic_unavailable",
+    "Choose 3, 6 or 12 months, or a future date.": "imports_topic_invalid_months",
+    "Choose a future date within the next 100 years.": "imports_topic_invalid_date",
+    "The card's custom scheduling data is invalid.": "imports_topic_invalid_data",
+    "This action is no longer the latest change. Use Edit → Undo to review recent changes.": "imports_topic_undo_stale",
+}
 
 
 def build_topic_done_button_js(command: str | None) -> str:
@@ -49,9 +61,9 @@ def build_topic_done_button_js(command: str | None) -> str:
     const button = document.createElement("button");
     button.id = "incremento-topic-done-button";
     button.type = "button";
-    button.textContent = "✓ Done";
+    button.textContent = %s;
     button.title = %s;
-    button.setAttribute("aria-label", "Mark topic as done");
+    button.setAttribute("aria-label", %s);
     button.setAttribute("aria-description", button.title);
     button.onclick = () => pycmd(command);
     cell.appendChild(button);
@@ -59,7 +71,12 @@ def build_topic_done_button_js(command: str | None) -> str:
   }
   install();
 })();
-""" % (json.dumps(command), json.dumps(DONE_DESCRIPTION))
+""" % (
+        json.dumps(command),
+        json.dumps(_t("imports_topic_done_button")),
+        json.dumps(_t("imports_topic_done_description")),
+        json.dumps(_t("imports_topic_done_accessible")),
+    )
 
 
 @dataclass(frozen=True)
@@ -133,9 +150,9 @@ class TopicReviewActions:
 
         def operation(col):
             if col is not request.collection or not self._current(request):
-                raise StaleTopicAction("The current topic changed. Please try again.")
+                raise StaleTopicAction(_t("imports_topic_changed"))
             if not self._is_topic(col.get_card(request.card_id)):
-                raise StaleTopicAction("This card is no longer a topic.")
+                raise StaleTopicAction(_t("imports_topic_no_longer"))
             if completing:
                 return complete_topic(col, request.card_id, done_tag=done_tag)
             return revisit_topic(col, request.card_id, months=months, on_date=on_date)
@@ -145,7 +162,17 @@ class TopicReviewActions:
                 self._pending = None
             if self._current(request):
                 self._show_notice(
-                    request.reviewer.mw, result.message,
+                    request.reviewer.mw,
+                    (
+                        _t("imports_topic_done_notice")
+                        if completing
+                        else _t(
+                            "imports_topic_revisit_notice",
+                            date=(on_date or add_calendar_months(
+                                anki_logical_today(collection=request.collection), months
+                            )).isoformat(),
+                        )
+                    ),
                     lambda: self._undo(request, result.undo_step),
                 )
             # CollectionOp's normal study-queue hook advances the reviewer once.
@@ -170,7 +197,7 @@ class TopicReviewActions:
 
         def operation(col):
             if col is not request.collection or not self._same_profile(request):
-                raise StaleTopicAction("The profile changed.")
+                raise StaleTopicAction(_t("imports_topic_profile_changed"))
             return undo_topic_action(col, step)
 
         def success(result):
@@ -188,15 +215,15 @@ class TopicReviewActions:
             return
         request = self._request
         menu.addSeparator()
-        done = menu.addAction("Mark Topic as Done")
-        done.setToolTip(DONE_DESCRIPTION)
+        done = menu.addAction(_t("imports_topic_done_action"))
+        done.setToolTip(_t("imports_topic_done_description"))
         done.triggered.connect(lambda _checked=False: self._run(request))
-        revisit = menu.addMenu("Revisit in…")
+        revisit = menu.addMenu(_t("imports_topic_revisit_menu"))
         for months in (3, 6, 12):
-            action = revisit.addAction(f"{months} months")
+            action = revisit.addAction(_tn("imports_topic_months", months))
             action.triggered.connect(lambda _checked=False, m=months: self._run(request, months=m))
         revisit.addSeparator()
-        revisit.addAction("Choose date…").triggered.connect(lambda _checked=False: self._choose_date(request))
+        revisit.addAction(_t("imports_topic_choose_date")).triggered.connect(lambda _checked=False: self._choose_date(request))
 
     def _choose_date(self, request) -> None:
         if not self._current(request):
@@ -204,9 +231,9 @@ class TopicReviewActions:
         from aqt.qt import QDate, QDateEdit, QDialog, QDialogButtonBox, QLabel, QVBoxLayout
 
         dialog = QDialog(request.reviewer.mw)
-        dialog.setWindowTitle("Revisit Topic")
+        dialog.setWindowTitle(_t("imports_topic_revisit_title"))
         layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Choose when this topic should next be due:"))
+        layout.addWidget(QLabel(_t("imports_topic_revisit_help")))
         today = anki_logical_today(collection=request.collection)
         picker = QDateEdit(dialog)
         picker.setCalendarPopup(True)
@@ -214,9 +241,16 @@ class TopicReviewActions:
         picker.setMinimumDate(QDate(*(today + timedelta(days=1)).timetuple()[:3]))
         picker.setMaximumDate(QDate(*(today + timedelta(days=36500)).timetuple()[:3]))
         picker.setDate(QDate(*(today + timedelta(days=365)).timetuple()[:3]))
-        picker.setAccessibleName("Next review date")
+        picker.setAccessibleName(_t("imports_topic_next_date"))
         layout.addWidget(picker)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        for standard, key in (
+            (QDialogButtonBox.StandardButton.Ok, "imports_ok"),
+            (QDialogButtonBox.StandardButton.Cancel, "imports_cancel"),
+        ):
+            button = buttons.button(standard)
+            if button is not None:
+                button.setText(_t(key))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
@@ -238,12 +272,12 @@ class TopicReviewActions:
         label = QLabel(message, notice)
         label.setWordWrap(True)
         layout.addWidget(label)
-        undo_button = QPushButton("Undo", notice)
-        undo_button.setAccessibleName("Undo topic action")
+        undo_button = QPushButton(_t("imports_topic_undo"), notice)
+        undo_button.setAccessibleName(_t("imports_topic_undo_accessible"))
         undo_button.clicked.connect(lambda _checked=False: undo_callback())
         layout.addWidget(undo_button)
         close = QPushButton("×", notice)
-        close.setAccessibleName("Dismiss notification")
+        close.setAccessibleName(_t("imports_topic_dismiss"))
         close.clicked.connect(self._close_notice)
         layout.addWidget(close)
         notice.setAccessibleName(message)
@@ -273,7 +307,8 @@ class TopicReviewActions:
         from aqt.errors import show_exception
         from aqt.utils import tooltip
 
-        if isinstance(exc, StaleTopicAction):
-            tooltip(str(exc), parent=parent)
+        translated = _TOPIC_ERROR_IDS.get(str(exc))
+        if isinstance(exc, StaleTopicAction) or (isinstance(exc, ValueError) and translated):
+            tooltip(_t(translated) if translated else str(exc), parent=parent)
         else:
             show_exception(parent=parent, exception=exc)

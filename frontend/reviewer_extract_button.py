@@ -1,16 +1,23 @@
 import json
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t
+
 
 _BUTTON_ID = "incremento-reviewer-extract-button"
 _CELL_ID = "incremento-reviewer-extract-cell"
 
 
 def build_reviewer_extract_button_js(shortcut_text: str | None) -> str:
-    safe_shortcut = json.dumps(str(shortcut_text or "").strip())
+    shortcut = str(shortcut_text or "").strip()
+    description = t("reviewer_visibility_extract_description")
+    tooltip = t("reviewer_visibility_extract_shortcut", shortcut=shortcut) if shortcut else description
     return f"""
 (function() {{
   var buttonId = {_BUTTON_ID!r};
-  var shortcutText = {safe_shortcut};
+  var tooltipText = {json.dumps(tooltip)};
   var attempts = 0;
 
   function removeExisting() {{
@@ -29,9 +36,7 @@ def build_reviewer_extract_button_js(shortcut_text: str | None) -> str:
   function install() {{
     var existing = document.getElementById(buttonId);
     if (existing) {{
-      existing.title = shortcutText
-        ? "Extract selected content into a new card (" + shortcutText + ")"
-        : "Extract selected content into a new card";
+      existing.title = tooltipText;
       return;
     }}
 
@@ -82,12 +87,16 @@ def build_reviewer_extract_button_js(shortcut_text: str | None) -> str:
 
     var button = document.createElement("button");
     button.id = buttonId;
-    button.title = shortcutText
-      ? "Extract selected content into a new card (" + shortcutText + ")"
-      : "Extract selected content into a new card";
-    button.setAttribute("aria-label", "Extract selected content into a new card");
-    button.innerHTML =
-      '<span class="incremento-reviewer-extract-icon">+</span>Extract';
+    button.title = tooltipText;
+    button.setAttribute("aria-label", {json.dumps(description)});
+    var icon = document.createElement("span");
+    icon.className = "incremento-reviewer-extract-icon";
+    icon.textContent = "+";
+    icon.setAttribute("aria-hidden", "true");
+    var label = document.createElement("span");
+    label.textContent = {json.dumps(t("reviewer_visibility_extract_label"))};
+    button.appendChild(icon);
+    button.appendChild(label);
     button.onclick = function() {{
       pycmd("incremento_extract_card");
     }};

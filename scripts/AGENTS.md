@@ -4,6 +4,8 @@ Use this file for work in `scripts/`. These utilities are developer/release tool
 
 ## Script Map
 
+- `compile_i18n.py`: validates catalog parity, named placeholders, source calls and deterministic committed MO output; requires GNU gettext in development/CI only.
+- `i18n_inventory.py --check`: rejects new direct UI literals unless an exact, reasoned identifier/user-data exception appears in `i18n_literal_exceptions.json`.
 - `package_addon.py`: stages a clean runtime tree, optionally runs release gates, generates the package-root Anki `manifest.json`, creates a `.ankiaddon`, and validates its contents.
 - `repair_pipeline.py`: security boundary and implementation for bounded incident parsing, detached-worktree reproduce/repair/verify/critic stages, deterministic gates, optional disposable-Anki smoke, and review artifacts.
 - `llm_repair_loop.py`: compatibility/CLI adapter over `repair_pipeline.py`; keep shared constants and policy in the pipeline instead of forking behavior here.

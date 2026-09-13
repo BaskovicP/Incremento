@@ -1,7 +1,44 @@
+import os
 from pathlib import Path
+import subprocess
+import sys
+from textwrap import dedent
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_package_reader_shell_uses_initialized_locale_without_top_level_backend():
+    script = dedent("""
+        import os
+        import sys
+        import types
+        from pathlib import Path
+
+        root = Path(os.environ["INCREMENTO_TEST_ROOT"])
+        for name, path in (
+            ("incremento", root),
+            ("incremento.backend", root / "backend"),
+            ("incremento.frontend", root / "frontend"),
+        ):
+            package = types.ModuleType(name)
+            package.__path__ = [str(path)]
+            sys.modules[name] = package
+
+        from incremento.backend.i18n import initialize_language
+        initialize_language("hr", "en")
+        from incremento.frontend.reader_shell import reader_shell_spec
+        assert reader_shell_spec("pdf")[0].label == "Natrag"
+    """)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd="/private/tmp",
+        env={**os.environ, "INCREMENTO_TEST_ROOT": str(ROOT)},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_epub_video_and_web_apply_the_shared_pdf_reader_shell_contract():
@@ -20,21 +57,18 @@ def test_epub_reader_uses_pdf_style_bottom_customizable_controls():
     controls_position = build_source.index("layout.addWidget(dock._controls_host)")
 
     assert document_position < controls_position
-    assert '"Customize controls"' in build_source
-    assert '"Minimize controls"' in build_source
+    assert 't("reader_customize_controls")' in build_source
+    assert 't("reader_minimize_controls_label")' in build_source
     assert "reader_toolbar_clone_spec(\"epub\")" in build_source
     assert "reader_toolbar_expanded_group_rows(\"epub\")" in build_source
     assert "_make_epub_compound_group(" in build_source
     assert "_make_epub_toolbar_stack(" in build_source
-    assert '"Navigate"' in build_source
-    assert '"Zoom"' in build_source
-    assert '"Reading"' in build_source
+    assert 't("reader_navigate")' in build_source
+    assert 't("reader_zoom")' in build_source
+    assert 't("reader_reading")' in build_source
     assert "_make_epub_progress_meter(" in build_source
-    assert '"Annotate"' in build_source
-    assert '"Capture"' in build_source
-    assert '"Review"' in build_source
-    assert '"Cards"' in build_source
-    assert '"Status"' in build_source
+    for label_id in ("reader_annotate", "reader_capture", "reader_review", "reader_cards", "reader_status"):
+        assert f't("{label_id}")' in build_source
     for control_name in (
         "_location_btn",
         "_text_scale_lbl",

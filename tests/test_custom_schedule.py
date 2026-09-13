@@ -416,3 +416,34 @@ def test_profile_reset_discards_pending_and_tracked_custom_schedule_state():
 
     assert custom_schedule._PENDING_CUSTOM_SCHEDULE_ANSWERS == {}
     assert custom_schedule._CUSTOM_SCHEDULE_REVLOG_TRACKER._cards == {}
+
+
+def test_localized_builtin_preset_does_not_rename_legacy_or_custom_labels():
+    import backend.i18n as i18n
+    old = i18n.get_locale()
+    try:
+        i18n.initialize_language('hr')
+        builtin = custom_schedule.configured_custom_schedule_presets({})[0]
+        assert custom_schedule.display_custom_schedule_preset(builtin) == 'Svakodnevno'
+        assert builtin['label'] == 'Daily'
+        legacy = {'label': 'Daily', 'interval_value': 1, 'interval_unit': 'days'}
+        assert custom_schedule.display_custom_schedule_preset(legacy) == 'Daily'
+        renamed = {**builtin, 'label': 'My Daily'}
+        assert custom_schedule.display_custom_schedule_preset(renamed) == 'My Daily'
+        assert 'builtin_id' not in custom_schedule.normalize_custom_schedule_preset(renamed)
+        assert custom_schedule.format_custom_schedule_rule({'preset_label':'My Daily'}) == 'My Daily · Najmanja učestalost'
+        assert custom_schedule.normalize_custom_schedule_preset({'interval_value': 2})['label'] == 'Every 2 days'
+    finally:
+        i18n.initialize_language(old)
+
+
+def test_custom_schedule_display_uses_croatian_plural_rules():
+    import backend.i18n as i18n
+    old = i18n.get_locale()
+    try:
+        i18n.initialize_language('hr')
+        assert custom_schedule.display_custom_schedule_value(1, 'weeks') == 'Svaki 1 tjedan'
+        assert custom_schedule.display_custom_schedule_value(2, 'weeks') == 'Svaka 2 tjedna'
+        assert custom_schedule.display_custom_schedule_value(12, 'weeks') == 'Svakih 12 tjedana'
+    finally:
+        i18n.initialize_language(old)

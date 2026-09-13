@@ -1,0 +1,3157 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Incremento\n"
+"PO-Revision-Date: 2026-09-13 00:00+0000\n"
+"Last-Translator: Incremento\n"
+"Language-Team: 简体中文\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh-Hans\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#. Reader display label: {action} action in the {reader} reader.
+msgid "reader_accessible_description"
+msgstr "{reader} 阅读器中的“{action}”操作。"
+
+#. Reader display label: {reader} reader: {action}
+msgid "reader_accessible_name"
+msgstr "{reader} 阅读器：{action}"
+
+#. Reader display label: + Add Card
+msgid "reader_add_card"
+msgstr "+ 添加卡片"
+
+#. Reader display label: Annotate
+msgid "reader_annotate"
+msgstr "批注"
+
+#. Reader display label: Annotation & capture
+msgid "reader_annotation_capture"
+msgstr "批注与摘录"
+
+#. Reader display label: Back
+msgid "reader_back"
+msgstr "返回"
+
+#. Reader display label: Bookmark
+msgid "reader_bookmark"
+msgstr "书签"
+
+#. Reader display label: Bookmarks ({count})
+msgid "reader_bookmarks"
+msgstr "书签 ({count})"
+
+#. Reader display label: Capture
+msgid "reader_capture"
+msgstr "摘录"
+
+#. Reader display label: Cards
+msgid "reader_cards"
+msgstr "卡片"
+
+#. Reader display label: Links {state}
+msgid "reader_clickable_links"
+msgstr "链接{state}"
+
+#. Reader display label: EPUB
+msgid "reader_epub_name"
+msgstr "EPUB"
+
+#. Reader display label: ↦
+msgid "reader_exact_read_marker"
+msgstr "↦"
+
+#. Reader display label: Extract
+msgid "reader_extract"
+msgstr "摘录"
+
+#. Reader display label: ✓ Finished Reading
+msgid "reader_finished_reading"
+msgstr "✓ 已读完"
+
+#. Reader display label: Highlight when extracting
+msgid "reader_highlight_when_extracting"
+msgstr "摘录时高亮"
+
+#. Reader display label: 📑 Highlights ({count})
+msgid "reader_highlights"
+msgstr "📑 高亮 ({count})"
+
+#. Reader display label: ↩ Jump Back
+msgid "reader_jump_back"
+msgstr "↩ 返回跳转"
+
+#. Reader display label: More
+msgid "reader_more"
+msgstr "更多"
+
+#. Reader display label: Navigate
+msgid "reader_navigate"
+msgstr "导航"
+
+#. Reader display label: Navigation
+msgid "reader_navigation"
+msgstr "导航"
+
+#. Reader display label: Next →
+msgid "reader_next_page"
+msgstr "下一页 →"
+
+#. Reader display label: Open All in Browser
+msgid "reader_open_all_in_browser"
+msgstr "在浏览器中打开全部"
+
+#. Reader display label: 📄 Page cards ({count})
+msgid "reader_page_cards"
+msgstr "📄 本页卡片 ({count})"
+
+#. Reader display label: Page {current} / {total}
+msgid "reader_page_location"
+msgstr "第 {current} / {total} 页"
+
+#. Reader display label: PDF
+msgid "reader_pdf_name"
+msgstr "PDF"
+
+#. Reader display label: ← Prev
+msgid "reader_previous_page"
+msgstr "← 上一页"
+
+#. Reader display label: ✓ Read to here
+msgid "reader_read_to_here"
+msgstr "✓ 已读至此"
+
+#. Reader display label: Reading
+msgid "reader_reading"
+msgstr "阅读"
+
+#. Reader display label: 📖 Reading Limit
+msgid "reader_reading_limit"
+msgstr "📖 阅读上限"
+
+#. Reader display label: Regenerate Cover
+msgid "reader_regenerate_cover"
+msgstr "重新生成封面"
+
+#. Reader display label: Review
+msgid "reader_review"
+msgstr "复习"
+
+#. Reader display label: Review All
+msgid "reader_review_all"
+msgstr "复习全部"
+
+#. Reader display label: Review & cards
+msgid "reader_review_cards"
+msgstr "复习与卡片"
+
+#. Reader display label: 🧠 Review Due
+msgid "reader_review_due"
+msgstr "🧠 复习到期卡片"
+
+#. Reader display label: Search
+msgid "reader_search"
+msgstr "搜索"
+
+#. Reader display label: 📷 Snapshot
+msgid "reader_snapshot"
+msgstr "📷 截图"
+
+#. Reader display label: Status
+msgid "reader_status"
+msgstr "状态"
+
+#. Reader display label: ★ Bookmark
+msgid "reader_toolbar_bookmark"
+msgstr "★ 书签"
+
+#. Reader display label: ▶ Review All
+msgid "reader_toolbar_review_all"
+msgstr "▶ 复习全部"
+
+#. Reader display label: {action} in the {reader} reader
+msgid "reader_tooltip"
+msgstr "{reader} 阅读器：{action}"
+
+#. Reader display label: {action} is not available in the {reader} reader yet.
+msgid "reader_unavailable"
+msgstr "{reader} 阅读器暂不支持“{action}”。"
+
+#. Reader display label: Video
+msgid "reader_video_name"
+msgstr "视频"
+
+#. Reader display label: Web
+msgid "reader_web_name"
+msgstr "网页"
+
+#. Reader display label: Zoom
+msgid "reader_zoom"
+msgstr "缩放"
+
+#. Reader display label: +
+msgid "reader_zoom_in"
+msgstr "+"
+
+#. Reader display label: −
+msgid "reader_zoom_out"
+msgstr "−"
+
+#. Reader display label: {percent}%
+msgid "reader_zoom_percent"
+msgstr "{percent}%"
+
+#. Reader display text: Add current page
+msgid "reader_add_current_page"
+msgstr "添加当前页"
+
+#. Reader display text: Add highlight note
+msgid "reader_add_highlight_note"
+msgstr "添加高亮笔记"
+
+#. Reader display text: Add note
+msgid "reader_add_note"
+msgstr "添加笔记"
+
+#. Reader display text: Add note to this highlight
+msgid "reader_add_note_tooltip"
+msgstr "为此高亮添加笔记"
+
+#. Reader display text: All
+msgid "reader_all"
+msgstr "全部"
+
+#. Reader display text: Bookmark the current page as an interesting place
+msgid "reader_bookmark_current"
+msgstr "将当前页加入书签"
+
+#. Reader display text: Bookmarks ({count})
+msgid "reader_bookmarks_count"
+msgstr "书签 ({count})"
+
+#. Reader display text: Cancel snapshot
+msgid "reader_cancel_snapshot"
+msgstr "取消截图"
+
+#. Reader display text: Choose which control groups are visible
+msgid "reader_choose_controls"
+msgstr "选择显示的控件组"
+
+#. Reader display text: Close
+msgid "reader_close"
+msgstr "关闭"
+
+#. Reader display text: aqua
+msgid "reader_color_aqua"
+msgstr "青色"
+
+#. Reader display text: blue
+msgid "reader_color_blue"
+msgstr "蓝色"
+
+#. Reader display text: green
+msgid "reader_color_green"
+msgstr "绿色"
+
+#. Reader display text: orange
+msgid "reader_color_orange"
+msgstr "橙色"
+
+#. Reader display text: pink
+msgid "reader_color_pink"
+msgstr "粉色"
+
+#. Reader display text: purple
+msgid "reader_color_purple"
+msgstr "紫色"
+
+#. Reader display text: red
+msgid "reader_color_red"
+msgstr "红色"
+
+#. Reader display text: yellow
+msgid "reader_color_yellow"
+msgstr "黄色"
+
+#. Reader display text: Create Card
+msgid "reader_create_card"
+msgstr "创建卡片"
+
+#. Reader display text: Create Missing Cards ({count})
+msgid "reader_create_missing_cards"
+msgstr "创建缺失的卡片 ({count})"
+
+#. Reader display text: Customize
+msgid "reader_customize"
+msgstr "自定义"
+
+#. Reader display text: Customize controls
+msgid "reader_customize_controls"
+msgstr "自定义控件"
+
+#. Reader display text: Choose which groups stay visible in the reader toolbar.
+msgid "reader_customize_intro"
+msgstr "选择在阅读器工具栏中保持可见的控件组。"
+
+#. Reader display text: Customize PDF controls
+msgid "reader_customize_pdf_controls"
+msgstr "自定义 PDF 控件"
+
+#. Reader display text: Daily PDF reading limit for this card
+msgid "reader_daily_limit"
+msgstr "此卡片的 PDF 每日阅读上限"
+
+#. Reader display text: Delete
+msgid "reader_delete"
+msgstr "删除"
+
+#. Reader display text: Delete this highlight
+msgid "reader_delete_highlight"
+msgstr "删除此高亮"
+
+#. Reader display text: Dismiss
+msgid "reader_dismiss"
+msgstr "关闭"
+
+#. Reader display text: Done
+msgid "reader_done"
+msgstr "完成"
+
+#. Reader display text: Draw a rectangle to capture a region
+msgid "reader_draw_snapshot"
+msgstr "拖动矩形框截取区域"
+
+#. Reader display text: Edit highlight note
+msgid "reader_edit_highlight_note"
+msgstr "编辑高亮笔记"
+
+#. Reader display text: Edit note
+msgid "reader_edit_note"
+msgstr "编辑笔记"
+
+#. Reader display text: Edit note for this highlight
+msgid "reader_edit_note_tooltip"
+msgstr "编辑此高亮的笔记"
+
+#. Reader display text: Find
+msgid "reader_find"
+msgstr "查找"
+
+#. Reader display text: Mark this PDF as finished reading? / The card will be suspended and removed from future sessions.
+msgid "reader_finished_confirm"
+msgstr "将此 PDF 标记为已读完？\n此卡片将被暂停并从今后的学习会话中移除。"
+
+#. Reader display text: Mark this PDF as finished reading — suspends the card so it won't appear again
+msgid "reader_finished_tooltip"
+msgstr "标记此 PDF 已读完并暂停此卡片"
+
+#. Reader display text: Go to page {page}
+msgid "reader_go_to_page"
+msgstr "跳转到第 {page} 页"
+
+#. Reader display text: Highlight actions
+msgid "reader_highlight_actions"
+msgstr "高亮操作"
+
+#. Reader display text: Highlight {color}
+msgid "reader_highlight_color"
+msgstr "以{color}色高亮"
+
+#. Reader display text: Highlight: {excerpt}
+msgid "reader_highlight_excerpt"
+msgstr "高亮：{excerpt}"
+
+#. Reader display text: Highlights ({count})
+msgid "reader_highlights_count"
+msgstr "高亮 ({count})"
+
+#. Reader display text: Jump
+msgid "reader_jump"
+msgstr "跳转"
+
+#. Reader display text: Follow an internal PDF link to enable Jump Back
+msgid "reader_jump_back_hint"
+msgstr "点击 PDF 内部链接后可使用返回跳转"
+
+#. Reader display text: Jump back to page {page}
+msgid "reader_jump_back_page"
+msgstr "返回第 {page} 页"
+
+#. Reader display text: Hard stop
+msgid "reader_limit_hard_stop"
+msgstr "强制停止"
+
+#. Reader display text: {prefix} Come back after your next Incremento day reset.
+msgid "reader_limit_reached_hard"
+msgstr "{prefix} 请在下次 Incremento 每日重置后继续。"
+
+#. Reader display text: Daily limit reached: {used}/{total} pages today.
+msgid "reader_limit_reached_pages"
+msgstr "已达每日上限：今日 {used}/{total} 页。"
+
+#. Reader display text: Daily limit reached for this PDF.
+msgid "reader_limit_reached_pdf"
+msgstr "已达此 PDF 的每日上限。"
+
+#. Reader display text: {prefix} Use override to keep reading today.
+msgid "reader_limit_reached_soft"
+msgstr "{prefix} 可使用临时豁免继续今日阅读。"
+
+#. Reader display text: Soft lock
+msgid "reader_limit_soft_lock"
+msgstr "软限制"
+
+#. Reader display text: Warning
+msgid "reader_limit_warning"
+msgstr "警告"
+
+#. Reader display text: Disable PDF links and restore uninterrupted text selection
+msgid "reader_links_disable"
+msgstr "禁用 PDF 链接并恢复连续文本选择"
+
+#. Reader display text: Enable clickable links in this PDF
+msgid "reader_links_enable"
+msgstr "启用此 PDF 中的可点击链接"
+
+#. Reader display text: Links {state}
+msgid "reader_links_state"
+msgstr "链接{state}"
+
+#. Reader display text: Could not load this PDF.
+msgid "reader_load_error"
+msgstr "无法加载此 PDF。"
+
+#. Reader display text: Mark pages as read up to here without placing an exact marker
+msgid "reader_mark_read_to_here"
+msgstr "将此前页面标记为已读，不放置精确标记"
+
+#. Reader display text: Minimize reader controls to give the PDF more room
+msgid "reader_minimize_controls"
+msgstr "收起控件以扩大 PDF 显示区域"
+
+#. Reader display text: Minimize controls
+msgid "reader_minimize_controls_label"
+msgstr "收起控件"
+
+#. Reader display text: Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it.
+msgid "reader_move_exact_marker"
+msgstr "将精确阅读标记移至当前文字行。按住 Shift 点击可清除。"
+
+#. Reader display text: You are moving past today's {count}-page limit for this PDF.
+msgid "reader_moving_past_limit"
+msgstr "即将超过此 PDF 今日 {count} 页的上限。"
+
+#. Reader display text: Next Highlight
+msgid "reader_next_highlight"
+msgstr "下一处高亮"
+
+#. Reader display text: Next PDF page
+msgid "reader_next_pdf_page"
+msgstr "PDF 下一页"
+
+#. Reader display text: Next
+msgid "reader_next_short"
+msgstr "下一页"
+
+#. Reader display text: No bookmarks yet.
+msgid "reader_no_bookmarks"
+msgstr "暂无书签。"
+
+#. Reader display text: No highlight notes yet.
+msgid "reader_no_highlight_notes"
+msgstr "暂无高亮笔记。"
+
+#. Reader display text: No highlight notes on this page yet.
+msgid "reader_no_highlight_notes_page"
+msgstr "此页暂无高亮笔记。"
+
+#. Reader display text: No highlights yet.
+msgid "reader_no_highlights"
+msgstr "暂无高亮。"
+
+#. Reader display text: (no text)
+msgid "reader_no_text"
+msgstr "（无文字）"
+
+#. Reader display text: No unlinked text highlights remain in this PDF
+msgid "reader_no_unlinked_highlights"
+msgstr "此 PDF 中没有未关联的文字高亮"
+
+#. Reader display text: Notes only
+msgid "reader_notes_only"
+msgstr "仅笔记"
+
+#. Reader display text: Off
+msgid "reader_off"
+msgstr "关闭"
+
+#. Reader display text: On
+msgid "reader_on"
+msgstr "开启"
+
+#. Reader display text: Open all cards created from this PDF in the Anki Browser
+msgid "reader_open_all_cards"
+msgstr "在 Anki 浏览器中打开由此 PDF 创建的全部卡片"
+
+#. Reader display text: Open external link
+msgid "reader_open_external_link"
+msgstr "打开外部链接"
+
+#. Reader display text: Override active
+msgid "reader_override_active"
+msgstr "已启用临时豁免"
+
+#. Reader display text: Daily reading limit override is active for this PDF until the next day reset.
+msgid "reader_override_notice"
+msgstr "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。"
+
+#. Reader display text: Override today
+msgid "reader_override_today"
+msgstr "今日临时豁免"
+
+#. Reader display text: Page
+msgid "reader_page"
+msgstr "页码"
+
+#. Reader display text: Page cards ({count})
+msgid "reader_page_cards_count"
+msgstr "本页卡片 ({count})"
+
+#. Reader display text: Could not open this PDF page.
+msgid "reader_page_error"
+msgstr "无法打开此 PDF 页面。"
+
+#. Reader display text: Go to page
+msgid "reader_page_jump"
+msgstr "跳转到页面"
+
+#. Reader display text: Page {page}
+msgid "reader_page_number"
+msgstr "第 {page} 页"
+
+#. Reader display text: PDF Bookmarks
+msgid "reader_pdf_bookmarks"
+msgstr "PDF 书签"
+
+#. Reader display text: PDF reader controls
+msgid "reader_pdf_controls"
+msgstr "PDF 阅读器控件"
+
+#. Reader display text: PDF Highlights
+msgid "reader_pdf_highlights"
+msgstr "PDF 高亮"
+
+#. Reader display text: PDF page number
+msgid "reader_pdf_page_number"
+msgstr "PDF 页码"
+
+#. Reader display text: Place the exact READ UP UNTIL HERE marker at the current text row
+msgid "reader_place_exact_marker"
+msgstr "在当前文字行放置精确阅读标记"
+
+#. Reader display text: Prefill Add Card from this highlight
+msgid "reader_prefill_card"
+msgstr "根据此高亮预填新卡片"
+
+#. Reader display text: Prev
+msgid "reader_prev_short"
+msgstr "上一页"
+
+#. Reader display text: Preview Card
+msgid "reader_preview_card"
+msgstr "预览卡片"
+
+#. Reader display text: Preview the card already linked to this highlight
+msgid "reader_preview_linked_card"
+msgstr "预览已关联此高亮的卡片"
+
+#. Reader display text: Previous Highlight
+msgid "reader_previous_highlight"
+msgstr "上一处高亮"
+
+#. Reader display text: Previous PDF page
+msgid "reader_previous_pdf_page"
+msgstr "PDF 上一页"
+
+#. Reader display text: Read Up Until Here
+msgid "reader_read_marker"
+msgstr "已读至此"
+
+#. Reader display text: Read-through can go past today's {count}-page limit for this PDF.
+msgid "reader_read_past_limit"
+msgstr "标记已读可能超过此 PDF 今日 {count} 页的上限。"
+
+#. Reader display text: Read progress
+msgid "reader_read_progress"
+msgstr "阅读进度"
+
+#. Reader display text: Read progress: {read}/{total} pages
+msgid "reader_read_progress_pages"
+msgstr "阅读进度：{read}/{total} 页"
+
+#. Reader display text: p.1–{page}
+msgid "reader_read_range"
+msgstr "第 1–{page} 页"
+
+#. Reader display text: Read up to page {page} — click to toggle progress only
+msgid "reader_read_to_page"
+msgstr "已读至第 {page} 页 — 点击切换进度"
+
+#. Reader display text: {count} remaining
+msgid "reader_remaining"
+msgstr "剩余 {count}"
+
+#. Reader display text: Remove highlight
+msgid "reader_remove_highlight"
+msgstr "删除高亮"
+
+#. Reader display text: Remove snapshot highlight
+msgid "reader_remove_snapshot_highlight"
+msgstr "删除截图高亮"
+
+#. Reader display text: Could not render this PDF page.
+msgid "reader_render_error"
+msgstr "无法呈现此 PDF 页面。"
+
+#. Reader display text: Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF
+msgid "reader_review_all_tooltip"
+msgstr "选择此 PDF 关联卡片的主题、项目、范围、到期状态、数量和顺序"
+
+#. Reader display text: Search this PDF
+msgid "reader_search_pdf"
+msgstr "搜索此 PDF"
+
+#. Reader display text: {current} / {total}
+msgid "reader_search_position"
+msgstr "{current} / {total}"
+
+#. Reader display text: Set exact read marker
+msgid "reader_set_exact_marker"
+msgstr "设置精确阅读标记"
+
+#. Reader display text: Show all
+msgid "reader_show_all"
+msgstr "显示全部"
+
+#. Reader display text: Show saved interesting-place bookmarks
+msgid "reader_show_bookmarks"
+msgstr "显示已保存的书签"
+
+#. Reader display text: Show controls
+msgid "reader_show_controls"
+msgstr "显示控件"
+
+#. Reader display text: Show highlights list
+msgid "reader_show_highlights"
+msgstr "显示高亮列表"
+
+#. Reader display text: Stop point today: page {page}
+msgid "reader_stop_point"
+msgstr "今日停止位置：第 {page} 页"
+
+#. Reader display text: You stopped at: {text}
+msgid "reader_stopped_at"
+msgstr "停止于：{text}"
+
+#. Reader display text: You marked page {page} as your current stopping point
+msgid "reader_stopping_page"
+msgstr "已将第 {page} 页标记为当前停止位置"
+
+#. Reader display text: You marked this as your current stopping point
+msgid "reader_stopping_point"
+msgstr "已将此处标记为当前停止位置"
+
+#. Reader display text: This page
+msgid "reader_this_page"
+msgstr "此页"
+
+#. Reader display text: Today: {used}/{total} pages
+msgid "reader_today_pages"
+msgstr "今日：{used}/{total} 页"
+
+#. Reader display text: Use {color} highlight color
+msgid "reader_use_highlight_color"
+msgstr "使用{color}高亮颜色"
+
+#. Reader display text: Warning
+msgid "reader_warning"
+msgstr "警告"
+
+#. Reader display text: Whole PDF
+msgid "reader_whole_pdf"
+msgstr "整个 PDF"
+
+#. Reader display text: 0 results
+msgid "reader_zero_results"
+msgstr "0 条结果"
+
+#. EPUB reader display: Browser
+msgid "reader_browser"
+msgstr "浏览器"
+
+#. EPUB reader display: Cancel
+msgid "reader_cancel"
+msgstr "取消"
+
+#. EPUB reader display: Customize EPUB reader controls
+msgid "reader_customize_epub_accessible"
+msgstr "自定义 EPUB 阅读器控件"
+
+#. EPUB reader display: Customize EPUB Controls
+msgid "reader_customize_epub_controls"
+msgstr "自定义 EPUB 控件"
+
+#. EPUB reader display: Choose which groups stay visible in the EPUB reader toolbar.
+msgid "reader_customize_epub_intro"
+msgstr "选择在 EPUB 阅读器工具栏中保持可见的控件组。"
+
+#. EPUB reader display: Uses Incremento's day-end setting for daily reset.
+msgid "reader_day_end_hint"
+msgstr "每日重置使用 Incremento 的日终设置。"
+
+#. EPUB reader display: Decrease text size
+msgid "reader_decrease_text_size"
+msgstr "缩小文字"
+
+#. EPUB reader display: Details
+msgid "reader_details"
+msgstr "详情"
+
+#. EPUB reader display: Enabled:
+msgid "reader_enabled"
+msgstr "已启用："
+
+#. EPUB reader display: Add a card from the current selection
+msgid "reader_epub_add_card_tooltip"
+msgstr "根据当前选区添加卡片"
+
+#. EPUB reader display: Add a bookmark for this reading position
+msgid "reader_epub_bookmark_tooltip"
+msgstr "为此阅读位置添加书签"
+
+#. EPUB reader display: Show or hide EPUB bookmarks ({count} saved)
+msgid "reader_epub_bookmarks_saved_tooltip"
+msgstr "显示或隐藏 EPUB 书签（已保存 {count} 个）"
+
+#. EPUB reader display: Show or hide EPUB bookmarks
+msgid "reader_epub_bookmarks_tooltip"
+msgstr "显示或隐藏 EPUB 书签"
+
+#. EPUB reader display: Open this EPUB note in the browser
+msgid "reader_epub_browser_tooltip"
+msgstr "在浏览器中打开此 EPUB 笔记"
+
+#. EPUB reader display: EPUB reader card count
+msgid "reader_epub_card_count_accessible"
+msgstr "EPUB 阅读器卡片数量"
+
+#. EPUB reader display: Cards {count}
+msgid "reader_epub_cards_count"
+msgstr "卡片 {count}"
+
+#. EPUB reader display: Cards from this section
+msgid "reader_epub_cards_from_section"
+msgstr "此章节的卡片"
+
+#. EPUB reader display: Choose which EPUB control groups are visible
+msgid "reader_epub_choose_controls"
+msgstr "选择显示的 EPUB 控件组"
+
+#. EPUB reader display: EPUB reader compact location
+msgid "reader_epub_compact_location_accessible"
+msgstr "EPUB 阅读器简洁位置控件"
+
+#. EPUB reader display: EPUB reader controls
+msgid "reader_epub_controls_accessible"
+msgstr "EPUB 阅读器控件"
+
+#. EPUB reader display: Regenerate this EPUB card's cover image
+msgid "reader_epub_cover_tooltip"
+msgstr "重新生成此 EPUB 卡片的封面图像"
+
+#. EPUB reader display: Show or hide cards and highlights for this section ({cards} cards, {highlights} highlights)
+msgid "reader_epub_details_counts"
+msgstr "显示或隐藏此章节的卡片和高亮（{cards} 张卡片，{highlights} 处高亮）"
+
+#. EPUB reader display: Show or hide cards and highlights for this section
+msgid "reader_epub_details_tooltip"
+msgstr "显示或隐藏此章节的卡片和高亮"
+
+#. EPUB reader display: Place or move the exact READ UP UNTIL HERE marker; hold Shift to clear it
+msgid "reader_epub_exact_marker_tooltip"
+msgstr "放置或移动精确阅读标记；按住 Shift 可清除"
+
+#. EPUB reader display: Extract the current selection into the first Add Card field
+msgid "reader_epub_extract_tooltip"
+msgstr "将当前选区摘录到添加卡片的第一个字段"
+
+#. EPUB reader display: Mark this EPUB as finished or unfinished
+msgid "reader_epub_finished_tooltip"
+msgstr "将此 EPUB 标记为已读完或未读完"
+
+#. EPUB reader display: Go to EPUB page
+msgid "reader_epub_go_to_page"
+msgstr "跳转到 EPUB 页面"
+
+#. EPUB reader display: Go to EPUB page · {location}
+msgid "reader_epub_go_to_page_detail"
+msgstr "跳转到 EPUB 页面 · {location}"
+
+#. EPUB reader display: EPUB reader highlight count
+msgid "reader_epub_highlight_count_accessible"
+msgstr "EPUB 阅读器高亮数量"
+
+#. EPUB reader display: Highlight the current selection (Alt+H)
+msgid "reader_epub_highlight_tooltip"
+msgstr "高亮当前选区（Alt+H）"
+
+#. EPUB reader display: Highlights {count}
+msgid "reader_epub_highlights_count"
+msgstr "高亮 {count}"
+
+#. EPUB reader display: Highlights in this section
+msgid "reader_epub_highlights_in_section"
+msgstr "此章节的高亮"
+
+#. EPUB reader display: Show or hide EPUB highlights ({count} in this section)
+msgid "reader_epub_highlights_section_tooltip"
+msgstr "显示或隐藏 EPUB 高亮（本章节 {count} 处）"
+
+#. EPUB reader display: Show or hide EPUB highlights
+msgid "reader_epub_highlights_tooltip"
+msgstr "显示或隐藏 EPUB 高亮"
+
+#. EPUB reader display: Highlights 0
+msgid "reader_epub_highlights_zero"
+msgstr "高亮 0"
+
+#. EPUB reader display: EPUB reader: Jump Back
+msgid "reader_epub_jump_back_accessible"
+msgstr "EPUB 阅读器：返回跳转"
+
+#. EPUB reader display: Follow an internal EPUB link to enable Jump Back
+msgid "reader_epub_jump_back_hint"
+msgstr "点击 EPUB 内部链接后可使用返回跳转"
+
+#. EPUB reader display: Limit pages read per day for this EPUB
+msgid "reader_epub_limit_enabled"
+msgstr "限制此 EPUB 每日阅读页数"
+
+#. EPUB reader display: Today: {used} / {limit} pages · {remaining} remaining · {mode}
+msgid "reader_epub_limit_status"
+msgstr "今日：{used} / {limit} 页 · 剩余 {remaining} · {mode}"
+
+#. EPUB reader display: Today: {used} / {limit} pages · {remaining} remaining · {mode} · override active
+msgid "reader_epub_limit_status_override"
+msgstr "今日：{used} / {limit} 页 · 剩余 {remaining} · {mode} · 已启用临时豁免"
+
+#. EPUB reader display: Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}.
+msgid "reader_epub_limit_summary"
+msgstr "今日已读 {used}/{limit} 页，剩余 {remaining} 页。模式：{mode}。"
+
+#. EPUB reader display: EPUB Reading Limit
+msgid "reader_epub_limit_title"
+msgstr "EPUB 阅读上限"
+
+#. EPUB reader display: Adjust this EPUB's daily reading limit
+msgid "reader_epub_limit_tooltip"
+msgstr "调整此 EPUB 的每日阅读上限"
+
+#. EPUB reader display: EPUB reader: Links
+msgid "reader_epub_links_accessible"
+msgstr "EPUB 阅读器：链接"
+
+#. EPUB reader display: Disable EPUB links and restore uninterrupted text selection
+msgid "reader_epub_links_disable"
+msgstr "禁用 EPUB 链接并恢复连续文本选择"
+
+#. EPUB reader display: Enable clickable links in this EPUB
+msgid "reader_epub_links_enable"
+msgstr "启用此 EPUB 中的可点击链接"
+
+#. EPUB reader display: Minimize EPUB reader controls
+msgid "reader_epub_minimize_accessible"
+msgstr "收起 EPUB 阅读器控件"
+
+#. EPUB reader display: Minimize reader controls to give the EPUB more room
+msgid "reader_epub_minimize_controls"
+msgstr "收起控件以扩大 EPUB 显示区域"
+
+#. EPUB reader display: Next page or next section
+msgid "reader_epub_next_tooltip"
+msgstr "下一页或下一章节"
+
+#. EPUB reader display: No daily reading limit is set for this EPUB.
+msgid "reader_epub_no_limit"
+msgstr "此 EPUB 未设置每日阅读上限。"
+
+#. EPUB reader display: No cards created from this section yet.
+msgid "reader_epub_no_section_cards"
+msgstr "此章节尚未创建卡片。"
+
+#. EPUB reader display: No highlights in this section yet.
+msgid "reader_epub_no_section_highlights"
+msgstr "此章节暂无高亮。"
+
+#. EPUB reader display: Offer this due-card review automatically when opening this EPUB
+msgid "reader_epub_offer_due"
+msgstr "打开此 EPUB 时自动提示复习到期卡片"
+
+#. EPUB reader display: Open all cards created from this EPUB
+msgid "reader_epub_open_all_cards"
+msgstr "打开由此 EPUB 创建的全部卡片"
+
+#. EPUB reader display: EPUB reader page location
+msgid "reader_epub_page_location_accessible"
+msgstr "EPUB 阅读器页面位置"
+
+#. EPUB reader display: Previous page or previous section
+msgid "reader_epub_previous_tooltip"
+msgstr "上一页或上一章节"
+
+#. EPUB reader display: Read progress: {read}/{total} EPUB sections
+msgid "reader_epub_read_progress"
+msgstr "阅读进度：{read}/{total} 个 EPUB 章节"
+
+#. EPUB reader display: Mark EPUB sections as read up to here without placing an exact marker
+msgid "reader_epub_read_to_here_tooltip"
+msgstr "将此前 EPUB 章节标记为已读，不放置精确标记"
+
+#. EPUB reader display: Choose Topics, Items, scope, due state, limit, and order for cards attached to this EPUB
+msgid "reader_epub_review_all_tooltip"
+msgstr "选择此 EPUB 关联卡片的主题、项目、范围、到期状态、数量和顺序"
+
+#. EPUB reader display: Review Due EPUB Cards
+msgid "reader_epub_review_due_title"
+msgstr "复习到期 EPUB 卡片"
+
+#. EPUB reader display: Review due cards from this EPUB
+msgid "reader_epub_review_due_tooltip"
+msgstr "复习此 EPUB 的到期卡片"
+
+#. EPUB reader display: EPUB reader: Search
+msgid "reader_epub_search_accessible"
+msgstr "EPUB 阅读器：搜索"
+
+#. EPUB reader display: Search this EPUB
+msgid "reader_epub_search_placeholder"
+msgstr "搜索此 EPUB"
+
+#. EPUB reader display: Show the full EPUB reader controls
+msgid "reader_epub_show_full_controls"
+msgstr "显示完整的 EPUB 阅读器控件"
+
+#. EPUB reader display: Capture the current selection as an image (Alt+S)
+msgid "reader_epub_snapshot_tooltip"
+msgstr "将当前选区截取为图片（Alt+S）"
+
+#. EPUB reader display: You reached this EPUB's daily page limit. / Allowed today: up to page {allowed}. Target: page {target}.
+msgid "reader_epub_soft_limit_summary"
+msgstr "已达到此 EPUB 的每日页数上限。\n今日允许至第 {allowed} 页。目标：第 {target} 页。"
+
+#. EPUB reader display: Hard stop
+msgid "reader_hard_stop"
+msgstr "强制停止"
+
+#. EPUB reader display: Highlight
+msgid "reader_highlight"
+msgstr "高亮"
+
+#. EPUB reader display: Increase text size
+msgid "reader_increase_text_size"
+msgstr "放大文字"
+
+#. EPUB reader display: Jump back to section {number}
+msgid "reader_jump_back_section"
+msgstr "返回第 {number} 章节"
+
+#. EPUB reader display: Limit:
+msgid "reader_limit"
+msgstr "上限："
+
+#. EPUB reader display: Not Now
+msgid "reader_not_now"
+msgstr "暂不"
+
+#. EPUB reader display: Note
+msgid "reader_note_label"
+msgstr "笔记"
+
+#. EPUB reader display: note {number}
+msgid "reader_note_number"
+msgstr "笔记 {number}"
+
+#. EPUB reader display: OK
+msgid "reader_ok"
+msgstr "确定"
+
+#. EPUB reader display: Page:
+msgid "reader_page_label"
+msgstr "页码："
+
+#. EPUB reader display: Reviewing them first can refresh earlier context before you continue reading.
+msgid "reader_review_due_hint"
+msgstr "先复习这些卡片可帮助回忆前文，再继续阅读。"
+
+#. EPUB reader display: Review Now
+msgid "reader_review_now"
+msgstr "立即复习"
+
+#. EPUB reader display: Section {number}
+msgid "reader_section_number"
+msgstr "第 {number} 章节"
+
+#. EPUB reader display: Show EPUB {group} controls
+msgid "reader_show_epub_controls"
+msgstr "显示 EPUB {group} 控件"
+
+#. EPUB reader display: You can stop here or override the limit for today.
+msgid "reader_soft_limit_hint"
+msgstr "您可以在此停止，或为今天启用临时豁免。"
+
+#. EPUB reader display: Soft lock + override
+msgid "reader_soft_lock_override"
+msgstr "软限制 + 临时豁免"
+
+#. EPUB reader display: Warning only
+msgid "reader_warning_only"
+msgstr "仅警告"
+
+#. EPUB reader count: You have {count} due card from this EPUB near this reading point. / Source sections: {sections}
+msgid "reader_epub_due_summary"
+msgid_plural "reader_epub_due_summary_plural"
+msgstr[0] "此 EPUB 当前阅读位置附近有 {count} 张到期卡片。\n来源章节：{sections}"
+
+#. EPUB reader count: {count} card created from this section
+msgid "reader_epub_section_cards"
+msgid_plural "reader_epub_section_cards_plural"
+msgstr[0] "此章节创建了 {count} 张卡片"
+
+#. EPUB reader count: {count} highlight in this section
+msgid "reader_epub_section_highlights"
+msgid_plural "reader_epub_section_highlights_plural"
+msgstr[0] "本章节有 {count} 处高亮"
+
+#. EPUB reader count: Open the {count} card created on this EPUB page in the Anki Browser
+msgid "reader_epub_page_cards_tooltip"
+msgid_plural "reader_epub_page_cards_tooltip_plural"
+msgstr[0] "在 Anki 浏览器中打开此 EPUB 页面创建的 {count} 张卡片"
+
+#. EPUB reader display: Card {number}
+msgid "reader_card_number"
+msgstr "卡片 {number}"
+
+#. EPUB reader display: Due
+msgid "reader_due_state_due"
+msgstr "到期"
+
+#. EPUB reader display: Learning
+msgid "reader_due_state_learning"
+msgstr "学习中"
+
+#. EPUB reader display: New
+msgid "reader_due_state_new"
+msgstr "新卡片"
+
+#. EPUB reader display: Review
+msgid "reader_due_state_review"
+msgstr "复习"
+
+#. EPUB reader display: EPUB daily reading limit disabled.
+msgid "reader_epub_limit_disabled"
+msgstr "已禁用 EPUB 每日阅读上限。"
+
+#. EPUB reader display: EPUB limit saved: {count} pages/day ({mode}).
+msgid "reader_epub_limit_saved"
+msgstr "EPUB 上限已保存：每天 {count} 页（{mode}）。"
+
+#. EPUB reader display: {preview}, +{count} more
+msgid "reader_more_sections"
+msgstr "{preview}，另有 {count} 个"
+
+#. Due card list truncation
+msgid "reader_more_due_cards"
+msgid_plural "reader_more_due_cards_plural"
+msgstr[0] "……以及另外 {count} 张到期卡片。"
+
+#. EPUB reader message: Copy Link to This Place
+msgid "reader_copy_link_to_place"
+msgstr "复制此处链接"
+
+#. EPUB reader message: earlier sections
+msgid "reader_earlier_sections"
+msgstr "前面的章节"
+
+#. EPUB reader message: Could not delete EPUB bookmark: / {error}
+msgid "reader_epub_bookmark_delete_failed"
+msgstr "无法删除 EPUB 书签：\n{error}"
+
+#. EPUB reader message: Could not save EPUB bookmark: / {error}
+msgid "reader_epub_bookmark_save_failed"
+msgstr "无法保存 EPUB 书签：\n{error}"
+
+#. EPUB reader message: EPUB bookmark saved.
+msgid "reader_epub_bookmark_saved"
+msgstr "EPUB 书签已保存。"
+
+#. EPUB reader message: Could not determine which EPUB card needs a cover refresh.
+msgid "reader_epub_cover_card_missing"
+msgstr "无法确定需要更新封面的 EPUB 卡片。"
+
+#. EPUB reader message: EPUB cover cleared because the book has no cover image.
+msgid "reader_epub_cover_cleared"
+msgstr "书籍没有封面图像，已清除 EPUB 封面。"
+
+#. EPUB reader message: Could not regenerate this EPUB cover. /  / {error}
+msgid "reader_epub_cover_failed"
+msgstr "无法重新生成此 EPUB 的封面。\n\n{error}"
+
+#. EPUB reader message: EPUB cover regenerated from book metadata.
+msgid "reader_epub_cover_regenerated"
+msgstr "已根据书籍元数据重新生成 EPUB 封面。"
+
+#. EPUB reader message: No due extracted cards are available to review for this EPUB.
+msgid "reader_epub_due_unavailable"
+msgstr "此 EPUB 没有可复习的到期摘录卡片。"
+
+#. EPUB reader message: That EPUB highlight could not be found.
+msgid "reader_epub_highlight_missing"
+msgstr "找不到该 EPUB 高亮。"
+
+#. EPUB reader message: Could not save the EPUB highlight note. /  / {error}
+msgid "reader_epub_highlight_note_save_failed"
+msgstr "无法保存 EPUB 高亮笔记。\n\n{error}"
+
+#. EPUB reader message: EPUB highlight note saved.
+msgid "reader_epub_highlight_note_saved"
+msgstr "EPUB 高亮笔记已保存。"
+
+#. EPUB reader message: EPUB Highlight Note
+msgid "reader_epub_highlight_note_title"
+msgstr "EPUB 高亮笔记"
+
+#. EPUB reader message: Could not remove that EPUB highlight. /  / {error}
+msgid "reader_epub_highlight_remove_failed"
+msgstr "无法删除该 EPUB 高亮。\n\n{error}"
+
+#. EPUB reader message: EPUB highlight removed.
+msgid "reader_epub_highlight_removed"
+msgstr "EPUB 高亮已删除。"
+
+#. EPUB reader message: That EPUB highlight could not be updated.
+msgid "reader_epub_highlight_update_failed"
+msgstr "无法更新该 EPUB 高亮。"
+
+#. EPUB reader message: EPUB reading limit overridden for today.
+msgid "reader_epub_limit_overridden"
+msgstr "今日已临时豁免 EPUB 阅读上限。"
+
+#. EPUB reader message: Blocked an unsafe or unsupported EPUB link.
+msgid "reader_epub_link_blocked"
+msgstr "已阻止不安全或不受支持的 EPUB 链接。"
+
+#. EPUB reader message: EPUB link copied. Paste it into an Anki card.
+msgid "reader_epub_link_copied"
+msgstr "EPUB 链接已复制。可粘贴到 Anki 卡片中。"
+
+#. EPUB reader message: Could not open the EPUB link in your browser.
+msgid "reader_epub_link_open_failed"
+msgstr "无法在浏览器中打开 EPUB 链接。"
+
+#. EPUB reader message: EPUB read marker cleared.
+msgid "reader_epub_marker_cleared"
+msgstr "EPUB 阅读标记已清除。"
+
+#. EPUB reader message: Could not save EPUB read marker: / {error}
+msgid "reader_epub_marker_save_failed"
+msgstr "无法保存 EPUB 阅读标记：\n{error}"
+
+#. EPUB reader message: EPUB read marker updated.
+msgid "reader_epub_marker_updated"
+msgstr "EPUB 阅读标记已更新。"
+
+#. EPUB reader message: No cards created from this EPUB yet.
+msgid "reader_epub_no_cards"
+msgstr "尚未从此 EPUB 创建卡片。"
+
+#. EPUB reader message: No due extracted cards to review for this EPUB.
+msgid "reader_epub_no_due_cards"
+msgstr "此 EPUB 没有到期摘录卡片可复习。"
+
+#. EPUB reader message: No due extracted cards from this EPUB up to the current section.
+msgid "reader_epub_no_due_to_section"
+msgstr "此 EPUB 至当前章节没有到期摘录卡片。"
+
+#. EPUB reader message: No cards created from this EPUB page yet.
+msgid "reader_epub_no_page_cards"
+msgstr "尚未从此 EPUB 页面创建卡片。"
+
+#. EPUB reader message: Could not save EPUB read progress: / {error}
+msgid "reader_epub_progress_save_failed"
+msgstr "无法保存 EPUB 阅读进度：\n{error}"
+
+#. EPUB reader message: EPUB read progress updated.
+msgid "reader_epub_progress_updated"
+msgstr "EPUB 阅读进度已更新。"
+
+#. EPUB reader message: Could not reopen this EPUB after review.
+msgid "reader_epub_reopen_failed"
+msgstr "复习后无法重新打开此 EPUB。"
+
+#. EPUB reader message: Could not open EPUB section: / {error}
+msgid "reader_epub_section_open_failed"
+msgstr "无法打开 EPUB 章节：\n{error}"
+
+#. EPUB reader message: Could not secure EPUB section: / {error}
+msgid "reader_epub_section_secure_failed"
+msgstr "无法安全加载 EPUB 章节：\n{error}"
+
+#. EPUB reader message: Could not capture EPUB snapshot.
+msgid "reader_epub_snapshot_capture_failed"
+msgstr "无法截取 EPUB 内容。"
+
+#. EPUB reader message: Could not crop EPUB snapshot.
+msgid "reader_epub_snapshot_crop_failed"
+msgstr "无法裁剪 EPUB 截图。"
+
+#. EPUB reader message: Could not encode EPUB snapshot.
+msgid "reader_epub_snapshot_encode_failed"
+msgstr "无法编码 EPUB 截图。"
+
+#. EPUB reader message: EPUB snapshot failed: / {error}
+msgid "reader_epub_snapshot_failed"
+msgstr "EPUB 截图失败：\n{error}"
+
+#. EPUB reader message: Selected text is outside the visible EPUB viewport.
+msgid "reader_epub_snapshot_outside_view"
+msgstr "所选文字位于 EPUB 可见区域之外。"
+
+#. EPUB reader message: Could not change EPUB text size: / {error}
+msgid "reader_epub_text_size_failed"
+msgstr "无法更改 EPUB 文字大小：\n{error}"
+
+#. EPUB reader message: Field {number}
+msgid "reader_field_number"
+msgstr "字段 {number}"
+
+#. EPUB reader message: Insert image into:
+msgid "reader_insert_image_into"
+msgstr "将图片插入："
+
+#. EPUB reader message: Insert snapshot into field
+msgid "reader_insert_snapshot_title"
+msgstr "将截图插入字段"
+
+#. EPUB reader message: Interesting-place bookmarks
+msgid "reader_interesting_bookmarks"
+msgstr "感兴趣位置的书签"
+
+#. PDF reader message: Anki collection is not available.
+msgid "reader_anki_collection_unavailable"
+msgstr "Anki 集合不可用。"
+
+#. PDF reader message: Choose Replacement PDF
+msgid "reader_choose_replacement_pdf"
+msgstr "选择替代 PDF"
+
+#. PDF reader message: earlier pages
+msgid "reader_earlier_pages"
+msgstr "前面的页面"
+
+#. PDF reader message: Expected file:
+msgid "reader_expected_file"
+msgstr "预期文件："
+
+#. PDF reader message: (missing filename)
+msgid "reader_missing_filename"
+msgstr "（缺少文件名）"
+
+#. PDF reader message: {preview}, +{count} more
+msgid "reader_more_pages"
+msgstr "{preview}，另有 {count} 页"
+
+#. PDF reader message: Note ID {number}
+msgid "reader_note_id"
+msgstr "笔记 ID {number}"
+
+msgid "reader_note_cards"
+msgid_plural "reader_note_cards_plural"
+msgstr[0] "{count} 张卡片"
+
+msgid "reader_tags"
+msgstr "标签"
+
+#. PDF reader message: This note has no visible non-empty fields.
+msgid "reader_note_no_visible_fields"
+msgstr "此笔记没有可见的非空字段。"
+
+#. PDF reader message: Note type '{name}' was not found.
+msgid "reader_note_type_missing"
+msgstr "找不到笔记类型“{name}”。"
+
+#. PDF reader message: Open in Browser
+msgid "reader_open_in_browser"
+msgstr "在浏览器中打开"
+
+#. PDF reader message: Could not read the current Add Card target. /  / {error}
+msgid "reader_pdf_add_target_failed"
+msgstr "无法读取当前“添加卡片”目标。\n\n{error}"
+
+#. PDF reader message: Could not open attached PDF card review: / {error}
+msgid "reader_pdf_attached_review_failed"
+msgstr "无法打开关联 PDF 卡片的复习：\n{error}"
+
+#. PDF reader message: Finished creating PDF highlight cards. /  / Created: {created} / Skipped: {skipped} / Failed: {failed} /  / {errors}
+msgid "reader_pdf_batch_result"
+msgstr "PDF 高亮卡片创建完成。\n\n已创建：{created}\n已跳过：{skipped}\n失败：{failed}\n\n{errors}"
+
+#. PDF reader message: Row {index} ({highlight_id}): {error}
+msgid "reader_pdf_batch_row_error"
+msgstr "第 {index} 行（{highlight_id}）：{error}"
+
+#. PDF reader message: Created: {created}. Skipped: {skipped}.
+msgid "reader_pdf_batch_success"
+msgstr "已创建：{created}。已跳过：{skipped}。"
+
+#. PDF reader message: Could not delete PDF bookmark: / {error}
+msgid "reader_pdf_bookmark_delete_failed"
+msgstr "无法删除 PDF 书签：\n{error}"
+
+#. PDF reader message: Could not save PDF bookmark: / {error}
+msgid "reader_pdf_bookmark_save_failed"
+msgstr "无法保存 PDF 书签：\n{error}"
+
+#. PDF reader message: PDF bookmark saved.
+msgid "reader_pdf_bookmark_saved"
+msgstr "PDF 书签已保存。"
+
+#. PDF reader message: Could not open the PDF bulk highlight dialog. /  / {error}
+msgid "reader_pdf_bulk_dialog_failed"
+msgstr "无法打开 PDF 高亮批量处理对话框。\n\n{error}"
+
+#. PDF reader message: Could not open the bulk PDF highlight workflow. /  / {error}
+msgid "reader_pdf_bulk_workflow_failed"
+msgstr "无法打开 PDF 高亮批量处理流程。\n\n{error}"
+
+#. PDF reader message: PDF card suspended — it won't appear in future sessions.
+msgid "reader_pdf_card_suspended"
+msgstr "PDF 卡片已暂停，不会出现在今后的学习会话中。"
+
+#. PDF reader message: Could not determine which PDF card needs a cover refresh.
+msgid "reader_pdf_cover_card_missing"
+msgstr "无法确定需要更新封面的 PDF 卡片。"
+
+#. PDF reader message: PDF cover cleared because page 1 could not be rendered.
+msgid "reader_pdf_cover_cleared"
+msgstr "第一页无法呈现，已清除 PDF 封面。"
+
+#. PDF reader message: Could not regenerate this PDF cover. /  / {error}
+msgid "reader_pdf_cover_failed"
+msgstr "无法重新生成此 PDF 的封面。\n\n{error}"
+
+#. PDF reader message: PDF cover regenerated from page 1.
+msgid "reader_pdf_cover_regenerated"
+msgstr "已根据第一页重新生成 PDF 封面。"
+
+#. PDF reader message: Could not determine which PDF is currently open.
+msgid "reader_pdf_current_missing"
+msgstr "无法确定当前打开的是哪个 PDF。"
+
+#. PDF reader message: Could not open PDF due-card review: / {error}
+msgid "reader_pdf_due_review_failed"
+msgstr "无法打开 PDF 到期卡片复习：\n{error}"
+
+#. PDF reader message: No due extracted cards are available to review for this PDF.
+msgid "reader_pdf_due_unavailable"
+msgstr "此 PDF 没有可复习的到期摘录卡片。"
+
+#. PDF reader message: PDF Files (*.pdf)
+msgid "reader_pdf_file_filter"
+msgstr "PDF 文件 (*.pdf)"
+
+#. PDF reader message: Stored PDF file is missing. Choose a replacement PDF to repair this card.
+msgid "reader_pdf_file_missing_tooltip"
+msgstr "存储的 PDF 文件丢失。请选择替代 PDF 修复此卡片。"
+
+#. PDF reader message: Could not determine which PDF card owns this highlight.
+msgid "reader_pdf_highlight_card_missing"
+msgstr "无法确定此高亮属于哪张 PDF 卡片。"
+
+#. PDF reader message: This highlight has no text to prefill.
+msgid "reader_pdf_highlight_empty"
+msgstr "此高亮没有可用于预填的文字。"
+
+#. PDF reader message: That PDF highlight could not be found.
+msgid "reader_pdf_highlight_missing"
+msgstr "找不到该 PDF 高亮。"
+
+#. PDF reader message: Could not edit PDF highlight note. /  / {error}
+msgid "reader_pdf_highlight_note_edit_failed"
+msgstr "无法编辑 PDF 高亮笔记。\n\n{error}"
+
+#. PDF reader message: Could not save the PDF highlight note. /  / {error}
+msgid "reader_pdf_highlight_note_save_failed"
+msgstr "无法保存 PDF 高亮笔记。\n\n{error}"
+
+#. PDF reader message: PDF highlight note saved.
+msgid "reader_pdf_highlight_note_saved"
+msgstr "PDF 高亮笔记已保存。"
+
+#. PDF reader message: PDF Highlight Note
+msgid "reader_pdf_highlight_note_title"
+msgstr "PDF 高亮笔记"
+
+#. PDF reader message: PDF highlight sent to Add Card field {number}.
+msgid "reader_pdf_highlight_sent"
+msgstr "PDF 高亮已发送到“添加卡片”的字段 {number}。"
+
+#. PDF reader message: That PDF highlight could not be updated.
+msgid "reader_pdf_highlight_update_failed"
+msgstr "无法更新该 PDF 高亮。"
+
+#. PDF reader message: Could not open the PDF highlight card workflow. /  / {error}
+msgid "reader_pdf_highlight_workflow_failed"
+msgstr "无法打开 PDF 高亮卡片流程。\n\n{error}"
+
+#. PDF reader message: PDF daily reading limit disabled.
+msgid "reader_pdf_limit_disabled"
+msgstr "已禁用 PDF 每日阅读上限。"
+
+#. PDF reader message: Could not edit PDF reading limit: / {error}
+msgid "reader_pdf_limit_edit_failed"
+msgstr "无法编辑 PDF 阅读上限：\n{error}"
+
+#. PDF reader message: Limit pages read per day for this PDF
+msgid "reader_pdf_limit_enabled"
+msgstr "限制此 PDF 每日阅读页数"
+
+#. PDF reader message: PDF reading limit overridden for today.
+msgid "reader_pdf_limit_overridden"
+msgstr "今日已临时豁免 PDF 阅读上限。"
+
+#. PDF reader message: Could not override PDF reading limit: / {error}
+msgid "reader_pdf_limit_override_failed"
+msgstr "无法临时豁免 PDF 阅读上限：\n{error}"
+
+#. PDF reader message: PDF limit saved: {count} pages/day ({mode}).
+msgid "reader_pdf_limit_saved"
+msgstr "PDF 上限已保存：每天 {count} 页（{mode}）。"
+
+#. PDF reader message: Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}.
+msgid "reader_pdf_limit_summary"
+msgstr "今日已读 {used}/{limit} 页，剩余 {remaining} 页。模式：{mode}。"
+
+#. PDF reader message: PDF Reading Limit
+msgid "reader_pdf_limit_title"
+msgstr "PDF 阅读上限"
+
+#. PDF reader message: Blocked an unsafe or unsupported PDF link.
+msgid "reader_pdf_link_blocked"
+msgstr "已阻止不安全或不受支持的 PDF 链接。"
+
+#. PDF reader message: PDF link copied. Paste it into an Anki card.
+msgid "reader_pdf_link_copied"
+msgstr "PDF 链接已复制。可粘贴到 Anki 卡片中。"
+
+#. PDF reader message: This PDF card still exists, but its stored PDF file could not be found. Choose a replacement PDF to relink this card and reopen the viewer.
+msgid "reader_pdf_missing_explanation"
+msgstr "此 PDF 卡片仍然存在，但找不到其存储的 PDF 文件。请选择替代 PDF 重新关联卡片并打开阅读器。"
+
+#. PDF reader message: PDF file is missing
+msgid "reader_pdf_missing_title"
+msgstr "PDF 文件丢失"
+
+#. PDF reader message: No cards created from this PDF yet.
+msgid "reader_pdf_no_cards"
+msgstr "尚未从此 PDF 创建卡片。"
+
+#. PDF reader message: No compatible note type exposes the configured PDF highlight target field.
+msgid "reader_pdf_no_compatible_note_type"
+msgstr "没有兼容的笔记类型包含配置的 PDF 高亮目标字段。"
+
+#. PDF reader message: No due extracted cards to review for this PDF.
+msgid "reader_pdf_no_due_cards"
+msgstr "此 PDF 没有到期摘录卡片可复习。"
+
+#. PDF reader message: No due extracted cards from this PDF up to the current page.
+msgid "reader_pdf_no_due_to_page"
+msgstr "此 PDF 至当前页没有到期摘录卡片。"
+
+#. PDF reader message: No daily reading limit is set for this PDF.
+msgid "reader_pdf_no_limit"
+msgstr "此 PDF 未设置每日阅读上限。"
+
+#. PDF reader message: No cards created on this page yet.
+msgid "reader_pdf_no_page_cards"
+msgstr "此页尚未创建卡片。"
+
+#. PDF reader message: No unlinked text highlights remain for this PDF.
+msgid "reader_pdf_no_unlinked_highlights"
+msgstr "此 PDF 中没有未关联的文字高亮。"
+
+#. PDF reader message: Offer this due-card review automatically when opening this PDF
+msgid "reader_pdf_offer_due"
+msgstr "打开此 PDF 时自动提示复习到期卡片"
+
+#. PDF reader message: PDF Page Card Preview
+msgid "reader_pdf_page_card_preview"
+msgstr "PDF 页面卡片预览"
+
+#. PDF reader message: Could not relink this PDF card. /  / {error}
+msgid "reader_pdf_relink_failed"
+msgstr "无法重新关联此 PDF 卡片。\n\n{error}"
+
+#. PDF reader message: PDF card relinked to the replacement file.
+msgid "reader_pdf_relinked"
+msgstr "PDF 卡片已重新关联到替代文件。"
+
+#. PDF reader message: Could not reopen this PDF after review.
+msgid "reader_pdf_reopen_failed"
+msgstr "复习后无法重新打开此 PDF。"
+
+#. PDF reader message: Could not determine which PDF card needs repairing.
+msgid "reader_pdf_repair_card_missing"
+msgstr "无法确定需要修复的 PDF 卡片。"
+
+#. PDF reader message: Review Due PDF Cards
+msgid "reader_pdf_review_due_title"
+msgstr "复习到期 PDF 卡片"
+
+#. PDF reader message: Could not secure PDF viewer: / {error}
+msgid "reader_pdf_secure_failed"
+msgstr "无法安全加载 PDF 阅读器：\n{error}"
+
+#. PDF reader message: Snapshot is empty or too large
+msgid "reader_pdf_snapshot_empty_or_large"
+msgstr "截图为空或过大"
+
+#. PDF reader message: Snapshot failed: / {error}
+msgid "reader_pdf_snapshot_failed"
+msgstr "截图失败：\n{error}"
+
+#. PDF reader message: Snapshot is too large
+msgid "reader_pdf_snapshot_too_large"
+msgstr "截图过大"
+
+#. PDF reader message: Could not suspend card: / {error}
+msgid "reader_pdf_suspend_failed"
+msgstr "无法暂停卡片：\n{error}"
+
+#. PDF reader message: The configured PDF highlight target field is not visible.
+msgid "reader_pdf_target_field_hidden"
+msgstr "配置的 PDF 高亮目标字段不可见。"
+
+#. PDF reader message: PDF Viewer
+msgid "reader_pdf_viewer_title"
+msgstr "PDF 阅读器"
+
+#. PDF reader due card count
+msgid "reader_pdf_due_summary"
+msgid_plural "reader_pdf_due_summary_plural"
+msgstr[0] "此 PDF 至第 {current_page} 页有 {count} 张到期卡片。\n页面：{pages}"
+
+msgid "reader_add_comment"
+msgstr "添加评论"
+
+msgid "reader_all_files"
+msgstr "所有文件 (*)"
+
+msgid "reader_apply"
+msgstr "应用"
+
+msgid "reader_edit_comment"
+msgstr "编辑评论"
+
+msgid "reader_not_set"
+msgstr "未设置"
+
+msgid "reader_open_system_browser_failed"
+msgstr "Incremento：无法打开系统浏览器。"
+
+msgid "reader_refresh"
+msgstr "刷新"
+
+msgid "reader_video_add_card_here"
+msgstr "+ 在此处添加卡片"
+
+msgid "reader_video_bookmark_comment"
+msgstr "视频书签评论"
+
+msgid "reader_video_bookmark_comment_failed"
+msgstr "无法保存视频书签评论。\n\n{error}"
+
+msgid "reader_video_bookmark_comment_saved"
+msgstr "已保存视频书签评论。"
+
+msgid "reader_video_bookmark_delete_failed"
+msgstr "Incremento：无法删除视频书签。"
+
+msgid "reader_video_bookmark_not_found"
+msgstr "找不到该视频书签。"
+
+msgid "reader_video_bookmark_save_failed"
+msgstr "Incremento：无法保存视频书签。"
+
+msgid "reader_video_bookmark_saved"
+msgstr "Incremento：已在 {time} 保存视频书签。"
+
+msgid "reader_video_bookmark_update_failed"
+msgstr "无法更新该视频书签。"
+
+msgid "reader_video_browser_stop_saved"
+msgstr "Incremento：已将浏览器停止时间保存为 {time}。"
+
+msgid "reader_video_captions"
+msgstr "字幕…"
+
+msgid "reader_video_captions_intro"
+msgstr "为此视频卡片选择目标和参考字幕。可通过 yt-dlp 获取远程字幕，也支持手动导入 .srt/.vtt 文件。"
+
+msgid "reader_video_captions_title"
+msgstr "视频字幕"
+
+msgid "reader_video_card_unknown"
+msgstr "无法确定当前视频卡片。"
+
+msgid "reader_video_card_update_failed"
+msgstr "视频已下载，但无法更新卡片。"
+
+msgid "reader_video_choose_subtitle"
+msgstr "选择{slot}字幕"
+
+msgid "reader_video_clear_reference"
+msgstr "清除参考字幕"
+
+msgid "reader_video_clear_target"
+msgstr "清除目标字幕"
+
+msgid "reader_video_current_reference"
+msgstr "参考字幕：{label}"
+
+msgid "reader_video_current_target"
+msgstr "目标字幕：{label}"
+
+msgid "reader_video_decode_fallback"
+msgstr "Incremento：本地视频解码失败，改用 URL 流播放。"
+
+msgid "reader_video_decode_recommendation"
+msgstr "Incremento：Anki 无法解码本地视频。请使用 ffmpeg 重新下载以兼容 H.264。"
+
+msgid "reader_video_download_activity"
+msgstr "下载视频到本地"
+
+msgid "reader_video_download_failed"
+msgstr "视频下载失败：{error}"
+
+msgid "reader_video_download_local"
+msgstr "下载本地副本…"
+
+msgid "reader_video_download_reference"
+msgstr "下载为参考字幕"
+
+msgid "reader_video_download_target"
+msgstr "下载为目标字幕"
+
+msgid "reader_video_downloading"
+msgstr "正在下载视频"
+
+msgid "reader_video_downloading_copy"
+msgstr "正在下载本地视频副本…"
+
+msgid "reader_video_downloading_track"
+msgstr "正在下载 {label}…"
+
+msgid "reader_video_import_reference"
+msgstr "导入参考字幕文件…"
+
+msgid "reader_video_import_target"
+msgstr "导入目标字幕文件…"
+
+msgid "reader_video_invalid_time"
+msgstr "Incremento：请输入 mm:ss、1m30s 或 90s 这样的时间。"
+
+msgid "reader_video_invalid_url"
+msgstr "Incremento：此视频卡片没有有效的视频 URL。"
+
+msgid "reader_video_jump_back_ten"
+msgstr "后退 10 秒"
+
+msgid "reader_video_load_subtitles_failed"
+msgstr "无法加载字幕：{error}"
+
+msgid "reader_video_loading_tracks"
+msgstr "正在加载远程字幕轨道…"
+
+msgid "reader_video_local_copy_ready"
+msgstr "本地视频副本已就绪。"
+
+msgid "reader_video_local_download_failed"
+msgstr "Incremento：本地下载失败（{error}）。"
+
+msgid "reader_video_local_play_failed"
+msgstr "Incremento：本地视频无法在 Anki Qt 播放器中播放。"
+
+msgid "reader_video_local_requires_qt"
+msgstr "Incremento：本地播放需要 Qt 多媒体支持，改用网页播放。"
+
+msgid "reader_video_no_active_card"
+msgstr "Incremento：没有活动的视频卡片。"
+
+msgid "reader_video_no_remote_fallback"
+msgstr "Incremento：没有可用于浏览器回退的远程 URL。"
+
+msgid "reader_video_no_remote_for_captions"
+msgstr "此卡片没有受支持的远程 URL。您仍可附加手动字幕文件。"
+
+msgid "reader_video_no_remote_url"
+msgstr "Incremento：此视频卡片没有远程 URL。"
+
+msgid "reader_video_no_supported_remote"
+msgstr "Incremento：此视频卡片没有受支持的远程 URL。"
+
+msgid "reader_video_no_tracks"
+msgstr "未找到远程字幕轨道。您仍可导入手动字幕文件。"
+
+msgid "reader_video_pause"
+msgstr "暂停"
+
+msgid "reader_video_play"
+msgstr "播放"
+
+msgid "reader_video_redownload_local"
+msgstr "重新下载本地副本…"
+
+msgid "reader_video_redownloading_copy"
+msgstr "正在重新下载本地视频副本…"
+
+msgid "reader_video_reference"
+msgstr "参考"
+
+msgid "reader_video_reference_cc"
+msgstr "参考字幕"
+
+msgid "reader_video_reference_track"
+msgstr "参考轨道："
+
+msgid "reader_video_remote_tracks"
+msgstr "可用远程轨道："
+
+msgid "reader_video_replacing_copy"
+msgstr "正在替换现有本地副本"
+
+msgid "reader_video_resume_at"
+msgstr "从此处继续"
+
+msgid "reader_video_resume_saved"
+msgstr "Incremento：已将继续播放时间保存为 {time}。"
+
+msgid "reader_video_review_all_hint"
+msgstr "选择与此视频关联卡片的主题、项目、范围、到期状态、数量限制和顺序"
+
+msgid "reader_video_select_track"
+msgstr "选择轨道…"
+
+msgid "reader_video_select_track_first"
+msgstr "Incremento：请先选择字幕轨道。"
+
+msgid "reader_video_set_time"
+msgstr "设置时间"
+
+msgid "reader_video_speed"
+msgstr "速度"
+
+msgid "reader_video_starting_download"
+msgstr "开始下载"
+
+msgid "reader_video_status_accessible"
+msgstr "视频阅读器状态"
+
+msgid "reader_video_subtitle_download_failed"
+msgstr "字幕下载失败：{error}"
+
+msgid "reader_video_subtitle_files"
+msgstr "字幕文件（{patterns}）"
+
+msgid "reader_video_subtitle_import_failed"
+msgstr "Incremento：无法导入字幕文件（{error}）。"
+
+msgid "reader_video_subtitle_imported"
+msgstr "已将 {label} 导入{slot}。"
+
+msgid "reader_video_subtitles_active"
+msgstr "本地字幕叠加已启用：{tracks}。"
+
+msgid "reader_video_subtitles_cleared"
+msgstr "已清除{slot}字幕。"
+
+msgid "reader_video_subtitles_need_local"
+msgstr "字幕已配置。请下载本地副本以使用双字幕叠加。"
+
+msgid "reader_video_sync_invalid_format"
+msgstr "格式无效。请使用 12:34、1:02:03、1h2m3s 或秒数。"
+
+msgid "reader_video_sync_result"
+msgstr "结果：{time}（{seconds} 秒）"
+
+msgid "reader_video_sync_stop_time"
+msgstr "同步浏览器停止时间"
+
+msgid "reader_video_sync_time_placeholder"
+msgstr "12:34 或 1h2m3s"
+
+msgid "reader_video_target"
+msgstr "目标"
+
+msgid "reader_video_target_cc"
+msgstr "目标字幕"
+
+msgid "reader_video_target_track"
+msgstr "目标轨道："
+
+msgid "reader_video_time_placeholder"
+msgstr "mm:ss 或 123s"
+
+msgid "reader_video_track_saved"
+msgstr "已将 {label} 保存到{slot}。"
+
+msgid "reader_video_volume_short"
+msgstr "音量"
+
+msgid "reader_video_where_stopped"
+msgstr "您在浏览器中看到哪里了？"
+
+msgid "reader_video_bookmarks_count"
+msgid_plural "reader_video_bookmarks_count_plural"
+msgstr[0] "书签 {count}"
+
+msgid "reader_video_tracks_found"
+msgid_plural "reader_video_tracks_found_plural"
+msgstr[0] "找到 {count} 条远程字幕轨道。请下载到目标或参考字幕。"
+
+msgid "reader_home"
+msgstr "主页"
+
+msgid "reader_select_text_first"
+msgstr "请先选择一些文本。"
+
+msgid "reader_text_prompt"
+msgstr "文本："
+
+msgid "reader_web_add_card_hint"
+msgstr "打开添加卡片面板。"
+
+msgid "reader_web_back_hint"
+msgstr "在网页阅读器中返回上一页。"
+
+msgid "reader_web_bookmark_delete_failed"
+msgstr "无法删除网页书签：\n{error}"
+
+msgid "reader_web_bookmark_hint"
+msgstr "将当前网页位置保存为永久书签。"
+
+msgid "reader_web_bookmark_save_failed"
+msgstr "保存书签失败：\n{error}"
+
+msgid "reader_web_bookmark_saved"
+msgstr "Incremento：书签已保存。"
+
+msgid "reader_web_bookmark_unavailable"
+msgstr "Incremento：无法在此处添加书签。"
+
+msgid "reader_web_bookmarks_hint"
+msgstr "显示此卡片已保存的网页书签。"
+
+msgid "reader_web_card_add_failed"
+msgstr "添加网页卡片失败：\n{error}"
+
+msgid "reader_web_card_added"
+msgstr "网页卡片“{title}”已添加到牌组 {deck}。"
+
+msgid "reader_web_cards_at_url"
+msgstr "在此 URL 创建的卡片"
+
+msgid "reader_web_cards_hint"
+msgstr "显示从当前 URL 创建的卡片。"
+
+msgid "reader_web_drag_to_capture"
+msgstr "拖动以截取"
+
+msgid "reader_web_enter_url"
+msgstr "请输入 URL。"
+
+msgid "reader_web_extract_failed"
+msgstr "网页摘录失败：\n{error}"
+
+msgid "reader_web_extract_hint"
+msgstr "将当前所选文本复制到添加卡片面板的字段中。"
+
+msgid "reader_web_extract_into_field"
+msgstr "将所选内容摘录到字段"
+
+msgid "reader_web_group_capture"
+msgstr "采集"
+
+msgid "reader_web_group_external"
+msgstr "外部"
+
+msgid "reader_web_group_navigate"
+msgstr "导航"
+
+msgid "reader_web_group_review"
+msgstr "复习"
+
+msgid "reader_web_group_saved"
+msgstr "已保存"
+
+msgid "reader_web_home_hint"
+msgstr "将面板返回到网页卡片保存的主页。"
+
+msgid "reader_web_insert_image_into"
+msgstr "将图片插入到："
+
+msgid "reader_web_insert_snapshot"
+msgstr "将截图插入字段"
+
+msgid "reader_web_insert_text_into"
+msgstr "将所选文本插入到："
+
+msgid "reader_web_invalid_url"
+msgstr "Incremento：此网页卡片没有有效的 URL。"
+
+msgid "reader_web_last_media_time"
+msgstr "上次保存的媒体时间：{time}。"
+
+msgid "reader_web_marker_save_failed"
+msgstr "Incremento：笔记已添加，但无法保存网页摘录标记。"
+
+msgid "reader_web_media_time_copied"
+msgstr "Incremento：已复制保存的媒体时间 {time}。"
+
+msgid "reader_web_no_browser_card"
+msgstr "Incremento：当前没有打开的浏览器卡片。"
+
+msgid "reader_web_no_card"
+msgstr "Incremento：当前没有打开的网页卡片。"
+
+msgid "reader_web_no_cards_at_url"
+msgstr "Incremento：此 URL 尚未记录任何卡片。"
+
+msgid "reader_web_no_homepage"
+msgstr "Incremento：此网页卡片没有主页 URL。"
+
+msgid "reader_web_no_saved_media_time"
+msgstr "Incremento：此网页卡片尚无保存的媒体时间。"
+
+msgid "reader_web_open_home"
+msgstr "打开主页"
+
+msgid "reader_web_open_home_hint"
+msgstr "在系统浏览器中打开此网页卡片的原始主页。"
+
+msgid "reader_web_open_page"
+msgstr "打开页面"
+
+msgid "reader_web_open_page_hint"
+msgstr "在系统浏览器中打开当前页面。"
+
+msgid "reader_web_resume"
+msgstr "继续"
+
+msgid "reader_web_resume_at"
+msgstr "从 {time} 继续"
+
+msgid "reader_web_resume_copy_hint"
+msgstr "打开页面并将保存的时间复制到剪贴板。"
+
+msgid "reader_web_resume_hint"
+msgstr "在系统浏览器中重新打开已保存的媒体进度。"
+
+msgid "reader_web_resume_media_hint"
+msgstr "在保存的时间位置打开媒体。"
+
+msgid "reader_web_resume_original_hint"
+msgstr "重新打开原始页面，并请求浏览器扩展从该位置继续。"
+
+msgid "reader_web_resuming_original"
+msgstr "Incremento：正在重新打开原始页面并继续播放嵌入的媒体（需要 Incremento Companion 扩展）。"
+
+msgid "reader_web_review_all_unavailable"
+msgstr "网页阅读器中尚不支持“复习全部”。"
+
+msgid "reader_web_search_hint"
+msgstr "在当前网页中查找文本。"
+
+msgid "reader_web_search_page"
+msgstr "搜索当前网页"
+
+msgid "reader_web_snapshot_capture_failed"
+msgstr "网页截图失败：\n无法截取所选区域。"
+
+msgid "reader_web_snapshot_failed"
+msgstr "网页截图失败：\n{error}"
+
+msgid "reader_web_snapshot_hint"
+msgstr "从当前视口截取图片，类似 PDF 截图工具。"
+
+msgid "reader_web_status_accessible"
+msgstr "网页阅读器状态和当前地址"
+
+msgid "reader_web_track_extension"
+msgstr "通过 Chrome 扩展跟踪"
+
+msgid "reader_web_track_extension_hint"
+msgstr "勾选后，在外部打开此页面会让 Incremento Companion 扩展将网页卡片同步到该标签页最新访问的页面。"
+
+msgid "reader_web_tracking_home_enabled"
+msgstr "Incremento：已为此网页卡片的主页启用浏览器跟踪（需要 Incremento Companion 扩展）。"
+
+msgid "reader_web_tracking_tab_enabled"
+msgstr "Incremento：已为此网页卡片的标签页启用浏览器跟踪（需要 Incremento Companion 扩展）。"
+
+msgid "reader_web_bookmarks_count"
+msgid_plural "reader_web_bookmarks_count_plural"
+msgstr[0] "书签 {count}"
+
+msgid "reader_web_cards_count"
+msgid_plural "reader_web_cards_count_plural"
+msgstr[0] "卡片 {count}"
+
+msgid "reader_bookmark_comment_placeholder"
+msgstr "写一条可选备注，说明这一时刻的重要性…"
+
+msgid "reader_bookmark_label"
+msgstr "书签："
+
+msgid "reader_comment_label"
+msgstr "评论："
+
+msgid "reader_highlight_note_placeholder"
+msgstr "为此高亮段落写一条可选备注…"
+
+msgid "reader_no_text_parenthesized"
+msgstr "（无文本）"
+
+msgid "reader_selected_text_label"
+msgstr "所选文本："
+
+msgid "reader_text_note_label"
+msgstr "文字备注："
+
+msgid "reader_click_result_hint"
+msgstr "点击结果以跳转到{document}中的对应位置。"
+
+msgid "reader_current_document"
+msgstr "当前文档"
+
+msgid "reader_find_in_document"
+msgstr "在{document}中查找"
+
+msgid "reader_find_in_document_placeholder"
+msgstr "在{document}中查找"
+
+msgid "reader_no_document_matches"
+msgstr "当前文档中未找到匹配项。"
+
+msgid "reader_search_all"
+msgstr "搜索全部"
+
+msgid "reader_type_to_search_document"
+msgstr "输入文本以搜索当前文档。"
+
+msgid "reader_search_results_count"
+msgid_plural "reader_search_results_count_plural"
+msgstr[0] "{count} 个结果"
+
+msgid "reader_docs"
+msgstr "文档"
+
+msgid "reader_mode"
+msgstr "模式"
+
+msgid "reader_open_card_to_study"
+msgstr "同时打开卡片进行学习"
+
+msgid "reader_open_first_queue"
+msgstr "打开队列中的第一项"
+
+msgid "reader_open_last_note"
+msgstr "打开上次打开的笔记"
+
+msgid "reader_open_random_note"
+msgstr "随机打开笔记"
+
+msgid "reader_preserve_pdf_history"
+msgstr "不更改附加到 PDF 阅读历史的卡片"
+
+msgid "reader_priority_short"
+msgstr "优先级"
+
+msgid "reader_quick_open_content"
+msgstr "快速打开内容"
+
+msgid "reader_title"
+msgstr "标题"
+
+msgid "reader_type"
+msgstr "类型"
+
+msgid "reader_writing"
+msgstr "写作"
+
+msgid "reader_bulk_already_linked"
+msgstr "卡片已关联。"
+
+msgid "reader_bulk_check_one"
+msgstr "请至少勾选一行以创建卡片。"
+
+msgid "reader_bulk_create_missing_title"
+msgstr "创建缺失的 PDF 高亮卡片"
+
+msgid "reader_bulk_empty_highlight"
+msgstr "高亮文本为空。"
+
+msgid "reader_bulk_fix_invalid_count"
+msgid_plural "reader_bulk_fix_invalid_count_plural"
+msgstr[0] "请修复或取消勾选 {count} 个无效行。"
+
+msgid "reader_bulk_hint"
+msgstr "检查未关联的高亮，编辑需要填写的可见笔记字段，然后创建已勾选的行。"
+
+msgid "reader_bulk_none_left"
+msgstr "没有剩余的未关联高亮。"
+
+msgid "reader_bulk_ready_count"
+msgid_plural "reader_bulk_ready_count_plural"
+msgstr[0] "{count} 行已就绪。"
+
+msgid "reader_bulk_target_empty"
+msgstr "{field} 为空。"
+
+msgid "reader_bulk_target_summary"
+msgstr "目标：牌组 <b>{deck}</b> 中的 <b>{note_type}</b>，使用字段 <b>{field}</b>"
+
+msgid "reader_create"
+msgstr "创建"
+
+msgid "reader_create_selected"
+msgstr "创建所选"
+
+msgid "reader_deck_label"
+msgstr "牌组："
+
+msgid "reader_delete_selected"
+msgstr "删除所选"
+
+msgid "reader_note"
+msgstr "笔记"
+
+msgid "reader_note_type_label"
+msgstr "笔记类型："
+
+msgid "reader_ready"
+msgstr "就绪"
+
+msgid "reader_target"
+msgstr "目标"
+
+msgid "reader_uncheck_selected"
+msgstr "取消勾选所选"
+
+msgid "reader_unknown"
+msgstr "未知"
+
+msgid "reader_unknown_field"
+msgstr "未知字段"
+
+msgid "reader_choose"
+msgstr "选择…"
+
+msgid "reader_import"
+msgstr "导入"
+
+msgid "reader_none"
+msgstr "无"
+
+msgid "reader_notebook_choose_first"
+msgstr "请先选择 笔记本 HTML 导出文件。"
+
+msgid "reader_notebook_choose_html"
+msgstr "选择 笔记本 HTML"
+
+msgid "reader_notebook_choose_intro"
+msgstr "选择 Kindle 笔记本 HTML 导出文件以检查其条目。"
+
+msgid "reader_notebook_colors"
+msgstr "颜色：{colors}"
+
+msgid "reader_notebook_created"
+msgstr "已创建高亮：{count}"
+
+msgid "reader_notebook_file"
+msgstr "笔记本：{filename}"
+
+msgid "reader_notebook_filter_pdf_cards"
+msgstr "筛选现有的 Incremento PDF 卡片…"
+
+msgid "reader_notebook_highlights_count"
+msgstr "高亮：{count}"
+
+msgid "reader_notebook_html"
+msgstr "笔记本 HTML"
+
+msgid "reader_notebook_html_files"
+msgstr "HTML 文件 (*.html *.htm)"
+
+msgid "reader_notebook_import_failed"
+msgstr "无法导入笔记本引用。\n\n{error}"
+
+msgid "reader_notebook_import_summary"
+msgstr "导入摘要"
+
+msgid "reader_notebook_import_title"
+msgstr "将笔记本引用导入 PDF 高亮"
+
+msgid "reader_notebook_location"
+msgstr "位置 {number}"
+
+msgid "reader_notebook_location_entries_count"
+msgstr "仅有位置的条目：{count}"
+
+msgid "reader_notebook_no_existing_pdf"
+msgstr "未找到现有的 Incremento PDF 卡片。"
+
+msgid "reader_notebook_no_import_yet"
+msgstr "尚未运行导入。"
+
+msgid "reader_notebook_no_matching_pdf"
+msgstr "没有 Incremento PDF 卡片符合当前筛选条件。"
+
+msgid "reader_notebook_no_pdf_text"
+msgstr "未找到可搜索的 PDF 文本。"
+
+msgid "reader_notebook_notes_attached"
+msgstr "已附加笔记：{count}"
+
+msgid "reader_notebook_notes_count"
+msgstr "笔记：{count}"
+
+msgid "reader_notebook_page_entries_count"
+msgstr "关联页面的条目：{count}"
+
+msgid "reader_notebook_parse_failed"
+msgstr "无法解析所选的 笔记本 HTML。\n\n{error}"
+
+msgid "reader_notebook_pdf_file"
+msgstr "文件：{filename}"
+
+msgid "reader_notebook_pdf_read_error"
+msgstr "PDF 读取错误：{error}"
+
+msgid "reader_notebook_pymupdf_required"
+msgstr "导入笔记本引用需要 PyMuPDF。请通过 Incremento → 工具 → 检查依赖项… 安装。"
+
+msgid "reader_notebook_ready"
+msgstr "已准备好导入。"
+
+msgid "reader_notebook_select_pdf_first"
+msgstr "请先选择一个或多个现有的 Incremento PDF 卡片。其他 PDF 请先单独导入为 Incremento PDF 卡片，再运行此导入。"
+
+msgid "reader_notebook_unattached"
+msgstr "未附加笔记：{count}"
+
+msgid "reader_notebook_unattached_heading"
+msgstr "未附加的笔记："
+
+msgid "reader_notebook_unmatched"
+msgstr "未匹配的高亮：{count}"
+
+msgid "reader_notebook_unmatched_heading"
+msgstr "未匹配的高亮："
+
+msgid "reader_notebook_updated"
+msgstr "已更新高亮：{count}"
+
+msgid "reader_pdf_cards"
+msgstr "PDF 卡片"
+
+msgid "reader_pdf_number"
+msgstr "PDF {number}"
+
+msgid "reader_bookshelf_all_documents"
+msgstr "所有文档"
+
+msgid "reader_bookshelf_all_summary"
+msgstr "{documents} · {pdfs} · {epubs}"
+
+msgid "reader_bookshelf_all_tags"
+msgstr "所有标签（AND）"
+
+msgid "reader_bookshelf_any_tag"
+msgstr "任意标签（OR）"
+
+msgid "reader_bookshelf_browse_tags"
+msgstr "浏览标签"
+
+msgid "reader_bookshelf_browse_tags_accessible"
+msgstr "浏览文档书架标签"
+
+msgid "reader_bookshelf_browse_tags_hint"
+msgstr "显示此书架中文档使用的标签，常见标签排在前面。"
+
+msgid "reader_bookshelf_document_count"
+msgid_plural "reader_bookshelf_document_count_plural"
+msgstr[0] "{count} 份文档"
+
+msgid "reader_bookshelf_epub_count"
+msgid_plural "reader_bookshelf_epub_count_plural"
+msgstr[0] "{count} 本 EPUB"
+
+msgid "reader_bookshelf_epubs"
+msgstr "EPUB"
+
+msgid "reader_bookshelf_filter_tags_hint"
+msgstr "输入标签名称的一部分，或浏览这些文档使用的标签。匹配不区分大小写。"
+
+msgid "reader_bookshelf_filter_tags_placeholder"
+msgstr "按标签筛选——输入名称或浏览可用标签…"
+
+msgid "reader_bookshelf_intro"
+msgstr "点击封面以打开文档。PDF 首页和 EPUB 封面会逐步加载，以保持大型书库的响应速度。"
+
+msgid "reader_bookshelf_item_tooltip"
+msgstr "{title}\n类型：{kind}\n标签：{tags}\n{priority}\n点击打开"
+
+msgid "reader_bookshelf_more_tags"
+msgstr "（还有 {count} 个）"
+
+msgid "reader_bookshelf_no_documents"
+msgstr "未找到 Incremento 文档。"
+
+msgid "reader_bookshelf_no_epubs"
+msgstr "未找到 Incremento EPUB。"
+
+msgid "reader_bookshelf_no_pdfs"
+msgstr "未找到 Incremento PDF。"
+
+msgid "reader_bookshelf_no_tags"
+msgstr "没有可用的文档标签。"
+
+msgid "reader_bookshelf_pdf_count"
+msgid_plural "reader_bookshelf_pdf_count_plural"
+msgstr[0] "{count} 份 PDF"
+
+msgid "reader_bookshelf_pdf_only_hint"
+msgstr "此选项仅适用于 PDF 文档。"
+
+msgid "reader_bookshelf_pdfs"
+msgstr "PDF"
+
+msgid "reader_bookshelf_preserve_history"
+msgstr "不更改附加到 PDF 阅读历史的卡片（仅 PDF）"
+
+msgid "reader_bookshelf_preserve_history_hint"
+msgstr "打开阅读器时保持 PDF 关联卡片历史不变。"
+
+msgid "reader_bookshelf_priority_unset"
+msgstr "优先级：未设置"
+
+msgid "reader_bookshelf_priority_value"
+msgstr "优先级：{value}"
+
+msgid "reader_bookshelf_search_titles"
+msgstr "搜索文档标题…"
+
+msgid "reader_bookshelf_showing"
+msgstr "显示 {visible} / {total}"
+
+msgid "reader_bookshelf_tag_filter_accessible"
+msgstr "书架标签筛选器"
+
+msgid "reader_bookshelf_tag_mode_hint"
+msgstr "OR 匹配至少一个输入的标签；AND 要求匹配所有输入的标签。"
+
+msgid "reader_bookshelf_title"
+msgstr "文档书架"
+
+msgid "reader_show_label"
+msgstr "显示："
+
+msgid "reader_tags_label"
+msgstr "标签："
+
+msgid "reader_card"
+msgstr "卡片"
+
+msgid "reader_excluded"
+msgstr "已排除"
+
+msgid "reader_item"
+msgstr "项目"
+
+msgid "reader_media_action_count"
+msgstr "{action} {cards}"
+
+msgid "reader_media_another_filtered_deck"
+msgstr "另一个筛选牌组"
+
+msgid "reader_media_card_count_title"
+msgid_plural "reader_media_card_count_title_plural"
+msgstr[0] "{count} 张卡片"
+
+msgid "reader_media_card_unknown"
+msgstr "无法确定当前媒体卡片。"
+
+msgid "reader_media_continue_review"
+msgstr "继续并开始此次复习？"
+
+msgid "reader_media_current_position_hint"
+msgstr "当前{media}位置为{position}。选择此范围时，会排除位置未知的卡片。"
+
+msgid "reader_media_due_hint"
+msgstr "“仅到期”包括到期复习卡和目前可学的学习/重学卡；新卡与未来到期卡不包括在内。"
+
+msgid "reader_media_excluded_summary"
+msgstr "已排除：{items}。"
+
+msgid "reader_media_excluded_tab"
+msgstr "已排除（{count}）"
+
+msgid "reader_media_excluded_tree_accessible"
+msgstr "从复习中排除的卡片"
+
+msgid "reader_media_filtered_deck_impact"
+msgstr "冲突的筛选牌组：{decks}。这些筛选牌组中的所有卡片会先返回原牌组；之后只有所选卡片会进入本次复习。筛选牌组定义仍可用于重建。"
+
+msgid "reader_media_filtered_deck_item"
+msgstr "{name}（已选 {count} 张）"
+
+msgid "reader_media_filtered_fallback"
+msgstr "Anki 必须先清空这些牌组，使其中所有卡片返回原牌组；筛选牌组定义仍可用于重建。"
+
+msgid "reader_media_filtered_warning"
+msgid_plural "reader_media_filtered_warning_plural"
+msgstr[0] "Upozorenje：将移动其他筛选牌组中的 {count} 张卡片。"
+
+msgid "reader_media_filtered_warning_accessible"
+msgstr "筛选牌组变更警告"
+
+msgid "reader_media_generic"
+msgstr "媒体"
+
+msgid "reader_media_include_filtered"
+msgstr "包含已在其他筛选牌组中的卡片"
+
+msgid "reader_media_include_filtered_accessible"
+msgstr "包含其他筛选牌组中的卡片"
+
+msgid "reader_media_include_filtered_hint"
+msgstr "Anki 无法在筛选牌组之间移动单张卡片。启用后将清空每个冲突的筛选牌组，将其中所有卡片返回原牌组，再把匹配卡片移入本次复习。"
+
+msgid "reader_media_inspecting_cards"
+msgstr "正在检查关联卡片…"
+
+msgid "reader_media_inspection_failed"
+msgstr "无法检查与此{media}关联的卡片：\n\n{error}"
+
+msgid "reader_media_item_count"
+msgid_plural "reader_media_item_count_plural"
+msgstr[0] "{count} 个项目"
+
+msgid "reader_media_kind_hint"
+msgstr "主题和项目的分类采用与复习器相同的 Incremento 规则。"
+
+msgid "reader_media_leave_review_failed"
+msgstr "在筛选牌组之间移动卡片前，无法安全退出当前复习：\n\n{error}"
+
+msgid "reader_media_limit_hint"
+msgstr "在筛选和排序后限制卡片数量。“全部”表示无限制。"
+
+msgid "reader_media_links_label"
+msgstr "链接："
+
+msgid "reader_media_max_cards_label"
+msgstr "最多卡片数："
+
+msgid "reader_media_move_filtered_title"
+msgstr "从筛选牌组移动卡片？"
+
+msgid "reader_media_no_cards"
+msgstr "没有卡片"
+
+msgid "reader_media_no_matching_cards"
+msgstr "没有与此{media}关联的卡片符合所选主题/项目、链接、媒体范围和卡片状态筛选条件。"
+
+msgid "reader_media_order_hint"
+msgstr "媒体位置使用 PDF 页码、EPUB 章节或视频时间戳。嵌套卡片继承最近有位置的祖先。"
+
+msgid "reader_media_order_label"
+msgstr "复习顺序："
+
+msgid "reader_media_other_filtered_label"
+msgstr "其他筛选牌组："
+
+msgid "reader_media_position_page"
+msgstr "第 {number} 页"
+
+msgid "reader_media_position_section"
+msgstr "第 {number} 节"
+
+msgid "reader_media_range_label"
+msgstr "媒体范围："
+
+msgid "reader_media_ready_tab"
+msgstr "就绪（{count}）"
+
+msgid "reader_media_ready_tree_accessible"
+msgstr "待复习的卡片"
+
+msgid "reader_media_reminder"
+msgstr "提醒模式，不更改复习计划"
+
+msgid "reader_media_reminder_hint"
+msgstr "重新查看卡片而不更改下次到期日期或间隔。主题 A 因子和自定义排程规则会保留。取消勾选即可正常安排答案。"
+
+msgid "reader_media_reminder_schedule_status"
+msgstr "提醒模式：到期日期、间隔、主题 A 因子和自定义排程保持不变。"
+
+msgid "reader_media_review_intro"
+msgstr "选择要复习的与此{media}关联的卡片。直接链接包含从媒体摘录的卡片；嵌套链接包含知识树中的后代。可正常复习，也可启用不更改排程的提醒模式。"
+
+msgid "reader_media_review_label"
+msgstr "复习："
+
+msgid "reader_media_review_schedule_status"
+msgstr "复习模式：回答会更新卡片的复习计划。"
+
+msgid "reader_media_review_start_failed"
+msgstr "无法开始与此{media}关联的卡片复习"
+
+msgid "reader_media_review_title"
+msgstr "复习来自此{media}的卡片"
+
+msgid "reader_media_scheduling_label"
+msgstr "排程："
+
+msgid "reader_media_start_review"
+msgstr "开始复习"
+
+msgid "reader_media_start_review_accessible"
+msgstr "开始复习关联卡片"
+
+msgid "reader_media_state_label"
+msgstr "卡片状态："
+
+msgid "reader_media_summary_accessible"
+msgstr "复习选择摘要"
+
+msgid "reader_media_topic_count"
+msgid_plural "reader_media_topic_count_plural"
+msgstr[0] "{count} 个主题"
+
+msgid "reader_media_unknown_card"
+msgstr "未知卡片"
+
+msgid "reader_media_unknown_filtered_deck"
+msgstr "未知筛选牌组"
+
+msgid "reader_media_unknown_position_hint"
+msgstr "Incremento 无法确定此阅读器当前的媒体位置。"
+
+msgid "reader_media_will_move_from"
+msgstr "将从 {deck} 移动"
+
+msgid "reader_position"
+msgstr "位置"
+
+msgid "reader_preview"
+msgstr "预览"
+
+msgid "reader_topic"
+msgstr "主题"
+
+msgid "reader_media_topics_items"
+msgstr "主题和项目"
+
+msgid "reader_media_topics_only"
+msgstr "仅主题"
+
+msgid "reader_media_items_only"
+msgstr "仅项目"
+
+msgid "reader_media_direct_nested"
+msgstr "直接和嵌套卡片"
+
+msgid "reader_media_direct_only"
+msgstr "仅直接关联"
+
+msgid "reader_media_entire"
+msgstr "整个媒体"
+
+msgid "reader_media_to_current"
+msgstr "截至当前位置"
+
+msgid "reader_media_all_available"
+msgstr "所有可用卡片"
+
+msgid "reader_media_due_only"
+msgstr "仅当前到期/学习卡片"
+
+msgid "reader_media_order_attached"
+msgstr "关联顺序"
+
+msgid "reader_media_order_position"
+msgstr "媒体位置——从头到尾"
+
+msgid "reader_media_order_oldest"
+msgstr "创建日期——最早优先"
+
+msgid "reader_media_order_newest"
+msgstr "创建日期——最新优先"
+
+msgid "reader_media_order_due"
+msgstr "到期/学习卡片优先"
+
+msgid "reader_media_order_shortest"
+msgstr "间隔——最短优先"
+
+msgid "reader_media_order_longest"
+msgstr "间隔——最长优先"
+
+msgid "reader_media_order_random"
+msgstr "随机"
+
+msgid "reader_media_reason_suspended"
+msgstr "已暂停"
+
+msgid "reader_media_reason_buried"
+msgstr "已埋藏"
+
+msgid "reader_media_reason_filtered"
+msgstr "在其他筛选牌组中"
+
+msgid "reader_media_reason_missing"
+msgstr "卡片缺失"
+
+msgid "reader_media_reason_nested"
+msgstr "嵌套卡片已排除"
+
+msgid "reader_media_reason_beyond_current"
+msgstr "在当前位置之后"
+
+msgid "reader_media_reason_unknown_position"
+msgstr "位置未知"
+
+msgid "reader_media_reason_other_kind"
+msgstr "不属于所选主题/项目类型"
+
+msgid "reader_media_reason_not_due"
+msgstr "当前未到期"
+
+msgid "reader_media_reason_limit"
+msgstr "超出复习数量限制"
+
+msgid "reader_media_excluded_suspended"
+msgstr "已暂停 {count} 张"
+
+msgid "reader_media_excluded_buried"
+msgstr "已埋藏 {count} 张"
+
+msgid "reader_media_excluded_filtered"
+msgstr "{count} 张已在其他筛选牌组中"
+
+msgid "reader_media_excluded_missing"
+msgstr "缺失 {count} 张"
+
+msgid "reader_media_excluded_nested"
+msgstr "嵌套卡片 {count} 张"
+
+msgid "reader_media_excluded_beyond_current"
+msgstr "当前位置之后 {count} 张"
+
+msgid "reader_media_excluded_unknown_position"
+msgstr "媒体位置未知 {count} 张"
+
+msgid "reader_media_excluded_other_kind"
+msgstr "不属于所选主题/项目类型 {count} 张"
+
+msgid "reader_media_excluded_not_due"
+msgstr "当前未到期 {count} 张"
+
+msgid "reader_media_excluded_limit"
+msgstr "超出复习限制 {count} 张"
+
+msgid "reader_media_preview_ready"
+msgid_plural "reader_media_preview_ready_plural"
+msgstr[0] "待复习：{count} 张卡片（{topics}，{items}）。"
+
+msgid "reader_copy"
+msgstr "复制"
+
+msgid "reader_help"
+msgstr "帮助"
+
+msgid "reader_items"
+msgstr "项目"
+
+msgid "reader_topics"
+msgstr "主题"
+
+msgid "reader_not_applicable"
+msgstr "不适用"
+
+msgid "reader_save"
+msgstr "保存"
+
+msgid "reader_type_label"
+msgstr "类型："
+
+msgid "reader_postpone_action"
+msgstr "推迟"
+
+msgid "reader_postpone_adjust"
+msgstr "调整"
+
+msgid "reader_postpone_afactor_below_label"
+msgstr "A 因子低于："
+
+msgid "reader_postpone_all_outstanding"
+msgstr "所有待复习项目"
+
+msgid "reader_postpone_applied_count"
+msgid_plural "reader_postpone_applied_count_plural"
+msgstr[0] "已推迟 {count} 张卡片。"
+
+msgid "reader_postpone_apply_failed"
+msgstr "无法推迟所选卡片：\n{error}"
+
+msgid "reader_postpone_average_delay"
+msgstr "平均延迟：{percent}%"
+
+msgid "reader_postpone_average_interval"
+msgstr "平均延迟间隔：{days} 天"
+
+msgid "reader_postpone_branch_scope_label"
+msgstr "分支范围："
+
+msgid "reader_postpone_branch_scope_unavailable"
+msgstr "只有选中知识树节点时才能使用所选分支范围。"
+
+msgid "reader_postpone_browser_scope"
+msgstr "当前浏览器（{cards}）"
+
+msgid "reader_postpone_card_count"
+msgid_plural "reader_postpone_card_count_plural"
+msgstr[0] "{count} 张卡片"
+
+msgid "reader_postpone_choose_default"
+msgstr "请先选择或保存预设，再将其设为默认。"
+
+msgid "reader_postpone_conservative_settings"
+msgstr "始终选择最保守的设置"
+
+msgid "reader_postpone_count_label"
+msgstr "推迟数量："
+
+msgid "reader_postpone_current_browser"
+msgstr "当前浏览器"
+
+msgid "reader_postpone_default"
+msgstr "默认"
+
+msgid "reader_postpone_default_set"
+msgstr "预设已设为默认。"
+
+msgid "reader_postpone_delay_factor_label"
+msgstr "延迟系数："
+
+msgid "reader_postpone_delete_failed"
+msgstr "无法删除该推迟预设。"
+
+msgid "reader_postpone_elements"
+msgid_plural "reader_postpone_elements_plural"
+msgstr[0] "待推迟项目：{count}"
+
+msgid "reader_postpone_enter_name"
+msgstr "保存前请输入预设名称。"
+
+msgid "reader_postpone_fi_unavailable"
+msgstr "Incremento 尚不支持项目遗忘指数。"
+
+msgid "reader_postpone_forgetting_below_label"
+msgstr "遗忘指数低于："
+
+msgid "reader_postpone_global"
+msgstr "全局"
+
+msgid "reader_postpone_help_text"
+msgstr "推迟待复习项目会给卡片的间隔增加天数。\n\n延迟系数控制额外推迟的百分比。\n范围决定操作针对所有待复习卡片、所选分支还是当前浏览器。\n模拟会在进行任何更改前预览将推迟多少张卡片。"
+
+msgid "reader_postpone_ignore_settings"
+msgstr "忽略设置"
+
+msgid "reader_postpone_include_not_outstanding"
+msgstr "包含尚未到期的项目"
+
+msgid "reader_postpone_information"
+msgstr "信息"
+
+msgid "reader_postpone_interval_beyond_label"
+msgstr "间隔超过："
+
+msgid "reader_postpone_items_skipped"
+msgid_plural "reader_postpone_items_skipped_plural"
+msgstr[0] "跳过的项目：{count}"
+
+msgid "reader_postpone_liberal_settings"
+msgstr "始终选择最宽松的设置"
+
+msgid "reader_postpone_list"
+msgstr "列表"
+
+msgid "reader_postpone_max_found"
+msgstr "找到的最大间隔：{interval}"
+
+msgid "reader_postpone_max_interval_label"
+msgstr "最大间隔："
+
+msgid "reader_postpone_max_qualified"
+msgstr "符合条件的最大间隔：{interval}"
+
+msgid "reader_postpone_method"
+msgstr "方法"
+
+msgid "reader_postpone_min_interval_label"
+msgstr "最小间隔："
+
+msgid "reader_postpone_modify_item_fi"
+msgstr "根据遗忘指数调整项目延迟"
+
+msgid "reader_postpone_modify_priority"
+msgstr "根据项目优先级调整延迟"
+
+msgid "reader_postpone_modify_topic_afactor"
+msgstr "根据 A 因子调整主题延迟"
+
+msgid "reader_postpone_name_label"
+msgstr "名称："
+
+msgid "reader_postpone_named_browser_scope"
+msgstr "{name}（{cards}）"
+
+msgid "reader_postpone_no_qualified_cards"
+msgstr "当前设置下没有符合推迟条件的卡片。"
+
+msgid "reader_postpone_no_subbranch_presets"
+msgstr "此分支下没有已保存的子分支预设。"
+
+msgid "reader_postpone_parameters"
+msgstr "参数"
+
+msgid "reader_postpone_preset_deleted"
+msgstr "预设已删除。"
+
+msgid "reader_postpone_preset_saved"
+msgstr "推迟预设已保存。"
+
+msgid "reader_postpone_priority_percent_label"
+msgstr "优先级（%）："
+
+msgid "reader_postpone_respect_settings"
+msgstr "遵循设置"
+
+msgid "reader_postpone_restore_defaults"
+msgstr "恢复默认值"
+
+msgid "reader_postpone_scope"
+msgstr "范围"
+
+msgid "reader_postpone_scope_needs_card"
+msgstr "{scope} 范围至少需要一张卡片。"
+
+msgid "reader_postpone_select_branch_first"
+msgstr "列出子分支预设前，请先选择知识树分支。"
+
+msgid "reader_postpone_selected_branch"
+msgstr "所选分支或类别"
+
+msgid "reader_postpone_settings"
+msgstr "设置"
+
+msgid "reader_postpone_simulate"
+msgstr "模拟"
+
+msgid "reader_postpone_simulation_copied"
+msgstr "模拟摘要已复制。"
+
+msgid "reader_postpone_simulation_failed"
+msgstr "无法模拟分支推迟：\n{error}"
+
+msgid "reader_postpone_skip_conditions_label"
+msgstr "跳过条件："
+
+msgid "reader_postpone_skip_items"
+msgstr "跳过项目"
+
+msgid "reader_postpone_skip_parameters"
+msgstr "按参数跳过项目（下一页）"
+
+msgid "reader_postpone_skip_top"
+msgstr "跳过指定数量的最高优先级项目"
+
+msgid "reader_postpone_skip_topics"
+msgstr "跳过主题"
+
+msgid "reader_postpone_subbranch_hint"
+msgstr "子分支预设附属于已保存的分支预设。在选定分支上点击“保存”，将设置附加到该子树。"
+
+msgid "reader_postpone_subbranch_postpones"
+msgstr "子分支推迟"
+
+msgid "reader_postpone_subset"
+msgstr "子集"
+
+msgid "reader_postpone_title"
+msgstr "推迟待复习项目"
+
+msgid "reader_postpone_topics_skipped"
+msgid_plural "reader_postpone_topics_skipped_plural"
+msgstr[0] "跳过的主题：{count}"
+
+msgid "reader_tree_priority_afactor_label"
+msgstr "A 因子："
+
+msgid "reader_tree_priority_affected_count"
+msgid_plural "reader_tree_priority_affected_count_plural"
+msgstr[0] "这将影响 {count} 张卡片。"
+
+msgid "reader_tree_priority_children"
+msgid_plural "reader_tree_priority_children_plural"
+msgstr[0] "{count} 个直接子节点"
+
+msgid "reader_tree_priority_descendants"
+msgid_plural "reader_tree_priority_descendants_plural"
+msgstr[0] "{count} 个后代节点"
+
+msgid "reader_tree_priority_delta_label"
+msgstr "变化量："
+
+msgid "reader_tree_priority_end_label"
+msgstr "结束优先级："
+
+msgid "reader_tree_priority_fade_children"
+msgstr "逐级降低子节点优先级"
+
+msgid "reader_tree_priority_fade_hint"
+msgstr "保持所选节点不变，并随层级深度逐步降低后代的重要性。"
+
+msgid "reader_tree_priority_fade_operation_hint"
+msgstr "降低子节点的紧迫性，同时保持所选节点不变。"
+
+msgid "reader_tree_priority_focus_branch"
+msgstr "聚焦分支"
+
+msgid "reader_tree_priority_focus_hint"
+msgstr "将所选节点及其后代移向更重要的一端，所选节点移动幅度最大。"
+
+msgid "reader_tree_priority_focus_operation_hint"
+msgstr "将整个分支移向更重要的一端，以便更多地学习该分支。"
+
+msgid "reader_tree_priority_include_random_root"
+msgstr "将所选节点纳入随机分配"
+
+msgid "reader_tree_priority_include_spread_root"
+msgstr "将所选节点纳入分布"
+
+msgid "reader_tree_priority_last_interval_label"
+msgstr "上次间隔："
+
+msgid "reader_tree_priority_last_interval_value"
+msgid_plural "reader_tree_priority_last_interval_value_plural"
+msgstr[0] "{days} 天"
+
+msgid "reader_tree_priority_linear_spread"
+msgstr "在子树中分布"
+
+msgid "reader_tree_priority_maximum_label"
+msgstr "最大值："
+
+msgid "reader_tree_priority_minimum_label"
+msgstr "最小值："
+
+msgid "reader_tree_priority_no_fade_children"
+msgstr "该节点没有可降低的子节点优先级。"
+
+msgid "reader_tree_priority_no_random_children"
+msgstr "该节点没有可随机分配的子节点。"
+
+msgid "reader_tree_priority_no_spread_children"
+msgstr "该节点没有可分配优先级的子节点。"
+
+msgid "reader_tree_priority_operation_label"
+msgstr "操作："
+
+msgid "reader_tree_priority_priority_label"
+msgstr "优先级："
+
+msgid "reader_tree_priority_random_hint"
+msgstr "在所选范围内随机分配优先级。"
+
+msgid "reader_tree_priority_randomize"
+msgstr "随机分配子树"
+
+msgid "reader_tree_priority_range"
+msgstr "当前子树优先级范围：{minimum} 至 {maximum}"
+
+msgid "reader_tree_priority_selected_node"
+msgstr "所选知识树节点"
+
+msgid "reader_tree_priority_set_hint"
+msgstr "仅更新所选节点。主题节点也可以在此更改 A 因子。"
+
+msgid "reader_tree_priority_set_selected"
+msgstr "设置所选节点"
+
+msgid "reader_tree_priority_shift_hint"
+msgstr "对所选节点及所有后代应用相同的有符号变化量。"
+
+msgid "reader_tree_priority_shift_subtree"
+msgstr "移动子树"
+
+msgid "reader_tree_priority_spread_hint"
+msgstr "按树的深度将优先级从起始值重新分配到结束值。"
+
+msgid "reader_tree_priority_start_label"
+msgstr "起始优先级："
+
+msgid "reader_tree_priority_stats"
+msgstr "子树：{total} · {descendants} · {children} · 最大深度 {depth} · 重要端 {end}"
+
+msgid "reader_tree_priority_title"
+msgstr "知识树优先级"
+
+msgid "reader_tree_priority_total_cards"
+msgid_plural "reader_tree_priority_total_cards_plural"
+msgstr[0] "共 {count} 张卡片"
+
+msgid "reader_tree_subset_afactor"
+msgstr "A 因子"
+
+msgid "reader_tree_subset_browser_failed"
+msgstr "无法为此子集打开浏览器：\n{error}"
+
+msgid "reader_tree_subset_browser_unavailable"
+msgstr "无法从子集视图打开 Anki 浏览器。"
+
+msgid "reader_tree_subset_card_id"
+msgstr "卡片 ID"
+
+msgid "reader_tree_subset_current_scope"
+msgstr "当前子集"
+
+msgid "reader_tree_subset_deck"
+msgstr "牌组"
+
+msgid "reader_tree_subset_elements"
+msgstr "子集项目"
+
+msgid "reader_tree_subset_filter_label"
+msgstr "筛选："
+
+msgid "reader_tree_subset_filter_placeholder"
+msgstr "按标题、牌组或笔记类型筛选"
+
+msgid "reader_tree_subset_filter_status"
+msgid_plural "reader_tree_subset_filter_status_plural"
+msgstr[0] "筛选已启用：显示此子集中 {total} 张卡片中的 {visible} 张。"
+
+msgid "reader_tree_subset_interval"
+msgstr "间隔"
+
+msgid "reader_tree_subset_kind"
+msgstr "类型"
+
+msgid "reader_tree_subset_lapses"
+msgstr "遗忘次数"
+
+msgid "reader_tree_subset_last_review"
+msgstr "上次复习"
+
+msgid "reader_tree_subset_new"
+msgstr "新卡"
+
+msgid "reader_tree_subset_next_review"
+msgstr "下次复习"
+
+msgid "reader_tree_subset_no_cards"
+msgstr "此子集中没有可用卡片。"
+
+msgid "reader_tree_subset_node_only"
+msgstr "仅所选节点"
+
+msgid "reader_tree_subset_note_type"
+msgstr "笔记类型"
+
+msgid "reader_tree_subset_number"
+msgstr "序号"
+
+msgid "reader_tree_subset_open_browser"
+msgstr "在浏览器中打开"
+
+msgid "reader_tree_subset_postpone"
+msgstr "推迟子集"
+
+msgid "reader_tree_subset_priority"
+msgstr "优先级"
+
+msgid "reader_tree_subset_reps"
+msgstr "复习次数"
+
+msgid "reader_tree_subset_reveal_failed"
+msgstr "无法在知识树中显示此卡片：\n{error}"
+
+msgid "reader_tree_subset_reveal_tree"
+msgstr "在树中显示"
+
+msgid "reader_tree_subset_revealed"
+msgstr "已在知识树中显示所选卡片。"
+
+msgid "reader_tree_subset_scope_label"
+msgstr "范围："
+
+msgid "reader_tree_subset_scope_title"
+msgstr "{title} 子集"
+
+msgid "reader_tree_subset_select_hint"
+msgstr "选择一行或多行，以便只学习或推迟所选卡片。如果未选择任何行，操作将应用于所有可见行。"
+
+msgid "reader_tree_subset_study"
+msgstr "学习子集"
+
+msgid "reader_tree_subset_study_failed"
+msgstr "无法打开子集学习会话：\n{error}"
+
+msgid "reader_tree_subset_summary"
+msgid_plural "reader_tree_subset_summary_plural"
+msgstr[0] "{title} · {count} 张卡片，范围：{scope}。"
+
+msgid "reader_tree_subset_title"
+msgstr "子集复习 — {title}"
+
+msgid "reader_tree_subset_whole_subtree"
+msgstr "整个子树"
+
+msgid "reader_yes"
+msgstr "是"
+
+msgid "reader_no"
+msgstr "否"
+
+
+#. Generated citation label; document titles remain unchanged.
+msgid "reader_pdf_citation_label"
+msgstr "{title}，第 {page} 页"
+
+#. Generated citation label; document titles remain unchanged.
+msgid "reader_pdf_copied_label"
+msgstr "{title} — 第 {page} 页"

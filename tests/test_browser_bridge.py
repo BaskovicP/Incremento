@@ -99,7 +99,7 @@ def test_bridge_unbound_valid_origin_requests_fresh_handshake(monkeypatch):
     get_handler._send_json = lambda status, payload: responses.append((status, payload))
     get_handler._do_GET()
 
-    expected = (401, {"ok": False, "error": "Bridge authorization required."})
+    expected = (401, {"ok": False, "error": "Bridge authorization required.", "error_code": "authorization_required"})
     assert responses == [expected, expected]
 
 
@@ -116,7 +116,7 @@ def test_bridge_rejects_a_different_bound_extension_origin(monkeypatch):
 
     handler._do_POST()
 
-    assert responses == [(403, {"ok": False, "error": "Origin not allowed."})]
+    assert responses == [(403, {"ok": False, "error": "Origin not allowed.", "error_code": "origin_not_allowed"})]
 
 
 def test_bridge_rejects_oversized_body_before_reading(monkeypatch):
@@ -154,7 +154,7 @@ def test_bridge_rejects_transfer_encoded_bodies_before_reading():
     handler._do_POST()
 
     assert responses == [
-        (400, {"ok": False, "error": "Transfer-Encoding is not supported."})
+        (400, {"ok": False, "error": "Transfer-Encoding is not supported.", "error_code": "unsupported_transfer_encoding"})
     ]
     assert handler.close_connection is True
 from webpage_markdown import convert_webpage_html_to_markdown

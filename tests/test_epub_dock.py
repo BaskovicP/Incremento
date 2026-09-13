@@ -1,12 +1,27 @@
+import json
 import sys
 import types
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 sys.modules.setdefault("session", MagicMock())
 import aqt
 
 import epub_dock
+
+
+def test_epub_toolbar_is_refreshed_after_locale_initialization(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_EPUB_CONTROL_GROUPS", epub_dock._EPUB_CONTROL_GROUPS)
+    monkeypatch.setattr(epub_dock, "_EPUB_TOOLBAR_TEXT", epub_dock._EPUB_TOOLBAR_TEXT)
+    monkeypatch.setattr(epub_dock, "reader_toolbar_clone_spec", lambda _kind: (("navigation", "Navigacija", ()),))
+    monkeypatch.setattr(epub_dock, "reader_toolbar_action_text", lambda _kind: {"previous_page": "← Prethodna"})
+
+    epub_dock._refresh_epub_toolbar_text()
+
+    assert epub_dock._EPUB_CONTROL_GROUPS == (("navigation", "Navigacija"),)
+    assert epub_dock._EPUB_TOOLBAR_TEXT["previous_page"] == "← Prethodna"
 
 
 def test_epub_link_back_history_is_bounded_and_returns_newest_location():
@@ -153,6 +168,41 @@ def test_epub_page_script_supports_absolute_page_jump_and_all_pdf_highlight_colo
         assert color in script
         assert f'span.incremento-epub-highlight[data-color="{color}"]' in script
     assert "if (targetSection === STATE.sectionIndex)" not in script
+
+
+def test_epub_page_script_sets_selected_locale_and_translates_generated_controls(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "中文"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    monkeypatch.setattr(epub_dock, "get_locale", lambda: "zh-Hans", raising=False)
+    monkeypatch.setattr(epub_dock, "t", lambda key, **_values: {"reader_read_marker": "已读至此"}.get(key, key), raising=False)
+
+    script = epub_dock._build_page_script(
+        card_id=7, section_index=0, scroll_ratio=0.0, text_scale=1.0,
+        read_anchor=None, focus_offset=-1, search_query="", highlights=[],
+        bridge_nonce="private-token",
+    )
+
+    assert '"locale": "zh-Hans"' in script
+    assert f'"readMarker": {json.dumps("已读至此")}' in script
+    assert "document.documentElement.lang = STATE.locale" in script
+
+
+def test_epub_limit_summary_uses_translated_mode_code(monkeypatch):
+    messages = {
+        "reader_epub_limit_summary": "Danas: {used}/{limit} stranica, preostaje {remaining}. Način: {mode}.",
+        "reader_limit_soft_lock": "Meko zaključavanje",
+    }
+    monkeypatch.setattr(epub_dock, "t", lambda key, **values: messages[key].format(**values))
+
+    summary = epub_dock._epub_limit_summary_text({
+        "enabled": True,
+        "daily_page_limit": 5,
+        "pages_used": 2,
+        "pages_remaining": 3,
+        "enforcement_mode": "soft_lock",
+    })
+
+    assert summary == "Danas: 2/5 stranica, preostaje 3. Način: Meko zaključavanje."
 
 
 def test_epub_control_customization_hides_only_selected_groups(monkeypatch):
@@ -500,7 +550,8 @@ def test_epub_page_script_exposes_exact_right_click_anchor(monkeypatch):
     assert "caretRangeFromPoint" in script
     dock_source = Path(epub_dock.__file__).read_text(encoding="utf-8")
     assert "customContextMenuRequested" in dock_source
-    assert "Copy Link to This Place" in dock_source
+    assert 'action_label=t("reader_copy_link_to_place")' in dock_source
+    assert epub_dock.t("reader_copy_link_to_place") == "Copy Link to This Place"
 
 
 def test_epub_context_anchor_builds_clickable_card_link_and_rejects_stale_card(monkeypatch):
@@ -816,6 +867,27 @@ def test_current_card_epub_search_hits_use_section_title_fallback(monkeypatch):
     assert hits[0]["sectionTitle"] == "Chapter One"
     assert hits[1]["sectionTitle"] == "Section 2"
     assert hits[0]["focusOffset"] >= 0
+
+
+@pytest.mark.parametrize("locale,label", [("en", "Section 2"), ("hr", "Odjeljak 2"), ("zh-Hans", "第 2 章节")])
+def test_untitled_epub_section_is_localized_in_search_navigation_and_citation(monkeypatch, locale, label):
+    from backend.i18n import Translator
+
+    sections = [{"title": "Original Chapter"}, {"title": ""}]
+    monkeypatch.setattr(epub_dock, "t", Translator(locale).t)
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 9)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "book.epub")
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 1)
+    monkeypatch.setattr(epub_dock, "_current_epub_scroll_ratio", 0.25)
+    monkeypatch.setattr(epub_dock, "_last_selection_meta", {})
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: sections)
+    monkeypatch.setattr(epub_dock, "load_epub_metadata", lambda *args: {"sections": sections})
+    monkeypatch.setattr(epub_dock, "search_epub_text_index_for_card", lambda *args, **kwargs: [(1, "", "A phrase")])
+
+    assert epub_dock.current_card_epub_search_hits(9, "phrase")[0]["sectionTitle"] == label
+    assert epub_dock._current_epub_section_title() == label
+    assert f">{label}</a>" in epub_dock.epub_citation()
+    assert sections == [{"title": "Original Chapter"}, {"title": ""}]
 
 
 def test_on_epub_question_shown_never_opens_automatic_due_prompt(monkeypatch):

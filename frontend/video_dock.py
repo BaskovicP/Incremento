@@ -32,6 +32,10 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices
 try:
+    from ..backend.i18n import get_locale, t as _tr, tn
+except ImportError:
+    from backend.i18n import get_locale, t as _tr, tn
+try:
     from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
     from PyQt6.QtMultimediaWidgets import QVideoWidget
 except Exception:
@@ -201,6 +205,14 @@ _CURRENT_TIME_JS = (
 _HMS_INPUT_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?$")
 
 
+def _video_bookmark_count_label(count: int) -> str:
+    return tn("reader_video_bookmarks_count", count)
+
+
+def _video_subtitle_status(parts: list[str]) -> str:
+    return _tr("reader_video_subtitles_active", tracks=", ".join(parts))
+
+
 def current_video_card_id() -> int | None:
     try:
         return int(_current_video_card_id) if _current_video_card_id is not None else None
@@ -215,7 +227,7 @@ def _build_video_dock():
                                        QWebEngineProfile as _WEProf,
                                        QWebEnginePage as _WEPage)
 
-    dock = QDockWidget("Video", mw)
+    dock = QDockWidget(_tr("reader_video_name"), mw)
     dock.setObjectName("incremento_video_dock")
     dock.setMinimumWidth(560)
 
@@ -287,25 +299,25 @@ def _build_video_dock():
     seek_slider.setMinimumWidth(200)
     ctrl_layout.addWidget(seek_slider, 1)
 
-    reader_back_btn = QPushButton("Back")
-    reader_back_btn.setToolTip("Jump back 10 seconds")
+    reader_back_btn = QPushButton(_tr("reader_back"))
+    reader_back_btn.setToolTip(_tr("reader_video_jump_back_ten"))
     ctrl_layout.addWidget(reader_back_btn)
-    reader_search_btn = QPushButton("Search")
+    reader_search_btn = QPushButton(_tr("reader_search"))
     ctrl_layout.addWidget(reader_search_btn)
 
-    add_btn = QPushButton("+ Add Card at this point")
+    add_btn = QPushButton(_tr("reader_video_add_card_here"))
     ctrl_layout.addWidget(add_btn)
-    bookmark_btn = QPushButton("Bookmark")
+    bookmark_btn = QPushButton(_tr("reader_bookmark"))
     ctrl_layout.addWidget(bookmark_btn)
-    bookmarks_btn = QPushButton("Bookmarks 0")
+    bookmarks_btn = QPushButton(_video_bookmark_count_label(0))
     ctrl_layout.addWidget(bookmarks_btn)
-    browser_btn = QPushButton("Open in Browser")
+    browser_btn = QPushButton(_tr("reader_open_in_browser"))
     browser_btn.setEnabled(False)
     ctrl_layout.addWidget(browser_btn)
-    download_btn = QPushButton("Download Local Copy…")
+    download_btn = QPushButton(_tr("reader_video_download_local"))
     download_btn.setEnabled(False)
     ctrl_layout.addWidget(download_btn)
-    captions_btn = QPushButton("Captions…")
+    captions_btn = QPushButton(_tr("reader_video_captions"))
     captions_btn.setEnabled(False)
     ctrl_layout.addWidget(captions_btn)
     vbox.addWidget(ctrl)
@@ -314,14 +326,14 @@ def _build_video_dock():
     manual_layout = QHBoxLayout(manual_ctrl)
     manual_layout.setContentsMargins(8, 0, 8, 4)
     manual_layout.setSpacing(4)
-    resume_lbl = QLabel("Resume at")
+    resume_lbl = QLabel(_tr("reader_video_resume_at"))
     resume_input = QLineEdit()
-    resume_input.setPlaceholderText("mm:ss or 123s")
+    resume_input.setPlaceholderText(_tr("reader_video_time_placeholder"))
     resume_input.setMaximumWidth(150)
-    resume_btn = QPushButton("Set time")
-    review_all_btn = QPushButton("Review All…")
+    resume_btn = QPushButton(_tr("reader_video_set_time"))
+    review_all_btn = QPushButton(_tr("reader_review_all"))
     review_all_btn.setToolTip(
-        "Choose Topics, Items, scope, due state, limit, and order for cards attached to this video"
+        _tr("reader_video_review_all_hint")
     )
     review_all_btn.setEnabled(False)
     manual_layout.addWidget(resume_lbl)
@@ -336,12 +348,12 @@ def _build_video_dock():
     local_layout.setContentsMargins(8, 0, 8, 8)
 
     back_btn = QPushButton("−10s")
-    play_btn = QPushButton("Pause")
+    play_btn = QPushButton(_tr("reader_video_pause"))
     fwd_btn = QPushButton("+10s")
     rate_combo = QComboBox()
     rate_combo.addItems(["0.75x", "1.0x", "1.25x", "1.5x", "2.0x"])
     rate_combo.setCurrentText("1.0x")
-    vol_lbl = QLabel("Vol")
+    vol_lbl = QLabel(_tr("reader_video_volume_short"))
     vol_slider = QSlider(Qt.Orientation.Horizontal)
     vol_slider.setRange(0, 100)
     vol_slider.setValue(100)
@@ -350,7 +362,7 @@ def _build_video_dock():
     local_layout.addWidget(back_btn)
     local_layout.addWidget(play_btn)
     local_layout.addWidget(fwd_btn)
-    local_layout.addWidget(QLabel("Speed"))
+    local_layout.addWidget(QLabel(_tr("reader_video_speed")))
     local_layout.addWidget(rate_combo)
     local_layout.addWidget(vol_lbl)
     local_layout.addWidget(vol_slider)
@@ -368,16 +380,16 @@ def _build_video_dock():
             "review_all": review_all_btn,
         },
     )
-    ts_lbl.setAccessibleName("Video reader status")
+    ts_lbl.setAccessibleName(_tr("reader_video_status_accessible"))
 
     caption_ctrl = QWidget(container)
     caption_layout = QHBoxLayout(caption_ctrl)
     caption_layout.setContentsMargins(8, 0, 8, 8)
     caption_layout.setSpacing(6)
-    target_cc_btn = QPushButton("Target CC")
+    target_cc_btn = QPushButton(_tr("reader_video_target_cc"))
     target_cc_btn.setCheckable(True)
     target_cc_btn.setChecked(True)
-    reference_cc_btn = QPushButton("Reference CC")
+    reference_cc_btn = QPushButton(_tr("reader_video_reference_cc"))
     reference_cc_btn.setCheckable(True)
     reference_cc_btn.setChecked(True)
     caption_status = QLabel("")
@@ -485,7 +497,7 @@ def _local_video_html(
     reference_visible = "true" if reference_enabled else "false"
     script_nonce = secrets.token_urlsafe(24)
     return f"""<!doctype html>
-<html>
+<html lang="{html.escape(get_locale(), quote=True)}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'; media-src file: data:; style-src 'unsafe-inline'; script-src 'nonce-{script_nonce}'">
@@ -654,7 +666,7 @@ def _set_download_button_enabled(enabled: bool, *, has_local_copy: bool = False)
         return
     try:
         btn.setEnabled(bool(enabled))
-        btn.setText("Re-download Local Copy…" if has_local_copy else "Download Local Copy…")
+        btn.setText(_tr("reader_video_redownload_local") if has_local_copy else _tr("reader_video_download_local"))
     except Exception:
         pass
 
@@ -700,12 +712,12 @@ def _set_caption_controls_state(
         elif use_local_player:
             parts = []
             if has_target:
-                parts.append("target")
+                parts.append(_tr("reader_video_target"))
             if has_reference:
-                parts.append("reference")
-            status_lbl.setText(f"Local subtitle overlays active: {', '.join(parts)}.")
+                parts.append(_tr("reader_video_reference"))
+            status_lbl.setText(_video_subtitle_status(parts))
         else:
-            status_lbl.setText("Subtitles are configured. Download a local copy to use dual caption overlays.")
+            status_lbl.setText(_tr("reader_video_subtitles_need_local"))
     except Exception:
         pass
 
@@ -881,7 +893,7 @@ def _parse_manual_time(text: str) -> float | None:
 def _apply_manual_time(seconds: float) -> None:
     global _last_known_position
     if _current_video_card_id is None:
-        tooltip("Incremento: no active video card.")
+        tooltip(_tr("reader_video_no_active_card"))
         return
     target = max(0.0, float(seconds or 0.0))
     _last_known_position = target
@@ -891,7 +903,7 @@ def _apply_manual_time(seconds: float) -> None:
         set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, target)
     except Exception:
         pass
-    tooltip(f"Incremento: stored resume time at {fmt_time(target)}.")
+    tooltip(_tr("reader_video_resume_saved", time=fmt_time(target)))
     if _video_dock is not None:
         try:
             inp = getattr(_video_dock, "_resume_input", None)
@@ -909,7 +921,7 @@ def _on_manual_time_submit() -> None:
         return
     seconds = _parse_manual_time(inp.text())
     if seconds is None:
-        tooltip("Incremento: enter a time like mm:ss, 1m30s, or 90s.")
+        tooltip(_tr("reader_video_invalid_time"))
         return
     _apply_manual_time(seconds)
 
@@ -933,24 +945,24 @@ def _refresh_video_bookmarks_panel() -> None:
         return
     bookmarks = _video_bookmarks()
     try:
-        _video_dock._bookmarks_btn.setText(f"Bookmarks {len(bookmarks)}")
+        _video_dock._bookmarks_btn.setText(_video_bookmark_count_label(len(bookmarks)))
     except Exception:
         pass
     panel = getattr(_video_dock, "_bookmarks_panel", None)
     if panel is None:
         return
     html_parts = ["<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>"]
-    html_parts.append("<b>Interesting-place bookmarks</b>")
+    html_parts.append(f"<b>{html.escape(_tr('reader_interesting_bookmarks'))}</b>")
     if bookmarks:
         html_parts.append("<ul style='margin:8px 0 0 18px;padding:0'>")
         for bookmark in bookmarks:
             bookmark_id = html.escape(str(bookmark.get("id") or ""))
-            label = html.escape(str(bookmark.get("label") or "Bookmark"))
+            label = html.escape(str(bookmark.get("label") or _tr("reader_bookmark")))
             comment = str(bookmark.get("comment_text") or "").strip()
             comment_html = ""
-            action_label = "Add comment"
+            action_label = _tr("reader_add_comment")
             if comment:
-                action_label = "Edit comment"
+                action_label = _tr("reader_edit_comment")
                 comment_html = (
                     "<div style='color:#b9c1cc;margin:6px 0 0 0;white-space:pre-wrap'>"
                     f"{html.escape(comment)}"
@@ -962,25 +974,25 @@ def _refresh_video_bookmarks_panel() -> None:
                 f"<div style='font-weight:600;color:#f2f2f2'>{label}</div>"
                 f"{comment_html}"
                 "<div style='margin-top:6px'>"
-                f"<a href='inc://video-bookmark-open/{bookmark_id}'>Jump</a>"
+                f"<a href='inc://video-bookmark-open/{bookmark_id}'>{html.escape(_tr('reader_jump'))}</a>"
                 "<span style='color:#6b7280'>  ·  </span>"
-                f"<a href='inc://video-bookmark-comment/{bookmark_id}'>{action_label}</a>"
+                f"<a href='inc://video-bookmark-comment/{bookmark_id}'>{html.escape(action_label)}</a>"
                 "<span style='color:#6b7280'>  ·  </span>"
-                f"<a href='inc://video-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                f"<a href='inc://video-bookmark-delete/{bookmark_id}' style='color:#c66'>{html.escape(_tr('reader_delete'))}</a>"
                 "</div>"
                 "</div>"
                 "</li>"
             )
         html_parts.append("</ul>")
     else:
-        html_parts.append("<div style='color:#888;padding:6px 0 0'>No bookmarks yet.</div>")
+        html_parts.append(f"<div style='color:#888;padding:6px 0 0'>{html.escape(_tr('reader_no_bookmarks'))}</div>")
     html_parts.append("</div>")
     panel.setHtml("".join(html_parts))
 
 
 def _add_current_video_bookmark() -> None:
     if _current_video_card_id is None:
-        tooltip("Incremento: no active video card.")
+        tooltip(_tr("reader_video_no_active_card"))
         return
     seconds = float(_last_known_position or 0.0)
     if _using_local_qt_player and _video_dock is not None:
@@ -999,14 +1011,14 @@ def _add_current_video_bookmark() -> None:
             {"seconds": seconds},
         )
     except Exception:
-        tooltip("Incremento: could not save video bookmark.")
+        tooltip(_tr("reader_video_bookmark_save_failed"))
         return
     _refresh_video_bookmarks_panel()
     try:
         _video_dock._bookmarks_panel.setVisible(True)
     except Exception:
         pass
-    tooltip(f"Incremento: video bookmark saved at {fmt_time(seconds)}.")
+    tooltip(_tr("reader_video_bookmark_saved", time=fmt_time(seconds)))
 
 
 def _toggle_video_bookmarks_panel() -> None:
@@ -1035,7 +1047,7 @@ def _open_video_bookmark_link(url: QUrl) -> None:
                 bookmark_id,
             )
         except Exception:
-            tooltip("Incremento: could not delete video bookmark.")
+            tooltip(_tr("reader_video_bookmark_delete_failed"))
         _refresh_video_bookmarks_panel()
         return
     if s.startswith("inc://video-bookmark-comment/"):
@@ -1057,12 +1069,12 @@ def _edit_video_bookmark_comment(bookmark_id: str) -> None:
         return
     bookmark = next((item for item in _video_bookmarks() if str(item.get("id") or "") == str(bookmark_id or "")), None)
     if not bookmark:
-        showInfo("That video bookmark could not be found.")
+        showInfo(_tr("reader_video_bookmark_not_found"))
         return
     dialog = BookmarkCommentDialog(
         mw,
-        title="Video Bookmark Comment",
-        context_label=str(bookmark.get("label") or "Bookmark"),
+        title=_tr("reader_video_bookmark_comment"),
+        context_label=str(bookmark.get("label") or _tr("reader_bookmark")),
         current_comment=str(bookmark.get("comment_text") or ""),
     )
     if not dialog.exec():
@@ -1077,17 +1089,17 @@ def _edit_video_bookmark_comment(bookmark_id: str) -> None:
             dialog.comment_text(),
         )
     except Exception as exc:
-        showInfo(f"Could not save the video bookmark comment.\n\n{exc}")
+        showInfo(_tr("reader_video_bookmark_comment_failed", error=exc))
         return
     if not updated:
-        showInfo("That video bookmark could not be updated.")
+        showInfo(_tr("reader_video_bookmark_update_failed"))
         return
     _refresh_video_bookmarks_panel()
     try:
         _video_dock._bookmarks_panel.setVisible(True)
     except Exception:
         pass
-    tooltip("Video bookmark comment saved.")
+    tooltip(_tr("reader_video_bookmark_comment_saved"))
 
 
 def _seek_to_seconds(seconds: float) -> None:
@@ -1222,12 +1234,12 @@ def _on_local_playback_state_changed(state) -> None:
     if btn is None:
         return
     if QMediaPlayer is None:
-        btn.setText("Play")
+        btn.setText(_tr("reader_video_play"))
         return
     if state == QMediaPlayer.PlaybackState.PlayingState:
-        btn.setText("Pause")
+        btn.setText(_tr("reader_video_pause"))
     else:
-        btn.setText("Play")
+        btn.setText(_tr("reader_video_play"))
 
 
 def _on_local_media_status_changed(status) -> None:
@@ -1481,7 +1493,7 @@ def show_video_in_dock(
                     except Exception:
                         pass
             else:
-                tooltip("Incremento: local playback requires Qt multimedia support; falling back to web playback.")
+                tooltip(_tr("reader_video_local_requires_qt"))
             _set_caption_controls_state(
                 has_target=bool(target_cues),
                 has_reference=bool(reference_cues),
@@ -1553,7 +1565,7 @@ def show_video_in_dock(
         _start_video_timer()
         return
 
-    tooltip("Incremento: This video card has no valid video URL.")
+    tooltip(_tr("reader_video_invalid_url"))
     _set_caption_controls_state(
         has_target=bool(_current_target_subtitle_relpath),
         has_reference=bool(_current_reference_subtitle_relpath),
@@ -1650,7 +1662,7 @@ def _video_note_payload_for_card(card_id: int) -> tuple[str, dict]:
 def _start_all_video_review() -> bool:
     card_id = current_video_card_id()
     if card_id is None:
-        showInfo("Could not determine the current video card.")
+        showInfo(_tr("reader_video_card_unknown"))
         return False
 
     _persist_position_now()
@@ -1977,13 +1989,10 @@ def _on_video_time(t) -> None:
         if failed_decode:
             _local_fallback_done = True
             if is_supported_video_url(_current_video_url):
-                tooltip("Incremento: local video failed to decode, falling back to URL stream.")
+                tooltip(_tr("reader_video_decode_fallback"))
                 show_video_in_dock(_current_video_card_id, _current_video_url, t, "")
                 return
-            tooltip(
-                "Incremento: local video failed to decode in Anki. "
-                "Re-download with ffmpeg for H.264 compatibility."
-            )
+            tooltip(_tr("reader_video_decode_recommendation"))
 
     disp_t = t
     if _using_local_qt_player and _local_resume_pending and t <= 0.0 and _local_resume_ms > 0:
@@ -2041,7 +2050,7 @@ def _on_local_player_error(*_args) -> None:
             t = float(player.position()) / 1000.0
         except Exception:
             t = 0.0
-    tooltip("Incremento: local video failed to play in Anki Qt player.")
+    tooltip(_tr("reader_video_local_play_failed"))
 
 
 _USER_TIME_HMS_RE = re.compile(r"^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$")
@@ -2081,16 +2090,16 @@ def _split_hms(total_seconds: int) -> tuple[int, int, int]:
 
 def _show_browser_stop_time_dialog(default_sec: int) -> tuple[bool, int]:
     dlg = QDialog(mw)
-    dlg.setWindowTitle("Sync Browser Stop Time")
+    dlg.setWindowTitle(_tr("reader_video_sync_stop_time"))
     layout = QVBoxLayout(dlg)
 
-    prompt = QLabel("Where did you stop in browser?")
+    prompt = QLabel(_tr("reader_video_where_stopped"))
     layout.addWidget(prompt)
 
     raw_row = QHBoxLayout()
     raw_edit = QLineEdit(fmt_time(float(default_sec)))
-    raw_edit.setPlaceholderText("12:34 or 1h2m3s")
-    raw_apply = QPushButton("Apply")
+    raw_edit.setPlaceholderText(_tr("reader_video_sync_time_placeholder"))
+    raw_apply = QPushButton(_tr("reader_apply"))
     raw_row.addWidget(raw_edit, 1)
     raw_row.addWidget(raw_apply)
     layout.addLayout(raw_row)
@@ -2141,12 +2150,12 @@ def _show_browser_stop_time_dialog(default_sec: int) -> tuple[bool, int]:
         s_spin.setValue(ss)
         if update_raw:
             raw_edit.setText(fmt_time(float(total)))
-        status_lbl.setText(f"Result: {fmt_time(float(total))} ({int(total)}s)")
+        status_lbl.setText(_tr("reader_video_sync_result", time=fmt_time(float(total)), seconds=int(total)))
 
     def _apply_raw_text() -> None:
         parsed = _parse_user_time_seconds(raw_edit.text())
         if parsed is None:
-            status_lbl.setText("Invalid format. Use 12:34, 1:02:03, 1h2m3s, or seconds.")
+            status_lbl.setText(_tr("reader_video_sync_invalid_format"))
             return
         _set_from_total(parsed, update_raw=True)
 
@@ -2166,6 +2175,8 @@ def _show_browser_stop_time_dialog(default_sec: int) -> tuple[bool, int]:
     _set_from_total(default_sec, update_raw=True)
 
     button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    button_box.button(QDialogButtonBox.StandardButton.Ok).setText(_tr("reader_ok"))
+    button_box.button(QDialogButtonBox.StandardButton.Cancel).setText(_tr("reader_cancel"))
     qconnect(button_box.accepted, dlg.accept)
     qconnect(button_box.rejected, dlg.reject)
     layout.addWidget(button_box)
@@ -2213,7 +2224,7 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
         card_id=int(_current_video_card_id),
     )
     if not watch_url:
-        tooltip("Incremento: no remote URL is available for browser fallback.")
+        tooltip(_tr("reader_video_no_remote_fallback"))
         return
     try:
         set_video_position(_ADDON_DIR, _active_profile(), _current_video_card_id, float(sec))
@@ -2226,7 +2237,7 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
     except Exception:
         ok = False
     if not ok:
-        tooltip("Incremento: failed to open system browser.")
+        tooltip(_tr("reader_open_system_browser_failed"))
         return
 
     _browser_sync_pending = True
@@ -2238,7 +2249,7 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
 class _VideoCaptionDialog(QDialog):
     def __init__(self, *, parent=None):
         super().__init__(parent or mw)
-        self.setWindowTitle("Video Captions")
+        self.setWindowTitle(_tr("reader_video_captions_title"))
         self.setMinimumWidth(520)
         self._tracks: list[dict] = []
 
@@ -2254,10 +2265,7 @@ class _VideoCaptionDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        intro = QLabel(
-            "Choose target and reference subtitles for this video card. "
-            "Remote subtitles can be fetched with yt-dlp; manual .srt/.vtt files are also supported."
-        )
+        intro = QLabel(_tr("reader_video_captions_intro"))
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -2269,8 +2277,8 @@ class _VideoCaptionDialog(QDialog):
         layout.addWidget(self._current_reference)
 
         remote_row = QHBoxLayout()
-        remote_row.addWidget(QLabel("Available remote tracks:"))
-        self._refresh_btn = QPushButton("Refresh")
+        remote_row.addWidget(QLabel(_tr("reader_video_remote_tracks")))
+        self._refresh_btn = QPushButton(_tr("reader_refresh"))
         remote_row.addStretch()
         remote_row.addWidget(self._refresh_btn)
         layout.addLayout(remote_row)
@@ -2283,24 +2291,24 @@ class _VideoCaptionDialog(QDialog):
         self._target_combo = QComboBox()
         self._reference_combo = QComboBox()
         target_row = QHBoxLayout()
-        target_row.addWidget(QLabel("Target track:"))
+        target_row.addWidget(QLabel(_tr("reader_video_target_track")))
         target_row.addWidget(self._target_combo, 1)
-        self._download_target_btn = QPushButton("Download To Target")
+        self._download_target_btn = QPushButton(_tr("reader_video_download_target"))
         target_row.addWidget(self._download_target_btn)
         layout.addLayout(target_row)
 
         reference_row = QHBoxLayout()
-        reference_row.addWidget(QLabel("Reference track:"))
+        reference_row.addWidget(QLabel(_tr("reader_video_reference_track")))
         reference_row.addWidget(self._reference_combo, 1)
-        self._download_reference_btn = QPushButton("Download To Reference")
+        self._download_reference_btn = QPushButton(_tr("reader_video_download_reference"))
         reference_row.addWidget(self._download_reference_btn)
         layout.addLayout(reference_row)
 
         manual_row = QHBoxLayout()
-        self._import_target_btn = QPushButton("Import Target File…")
-        self._import_reference_btn = QPushButton("Import Reference File…")
-        self._clear_target_btn = QPushButton("Clear Target")
-        self._clear_reference_btn = QPushButton("Clear Reference")
+        self._import_target_btn = QPushButton(_tr("reader_video_import_target"))
+        self._import_reference_btn = QPushButton(_tr("reader_video_import_reference"))
+        self._clear_target_btn = QPushButton(_tr("reader_video_clear_target"))
+        self._clear_reference_btn = QPushButton(_tr("reader_video_clear_reference"))
         manual_row.addWidget(self._import_target_btn)
         manual_row.addWidget(self._import_reference_btn)
         manual_row.addWidget(self._clear_target_btn)
@@ -2308,6 +2316,7 @@ class _VideoCaptionDialog(QDialog):
         layout.addLayout(manual_row)
 
         close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close_box.button(QDialogButtonBox.StandardButton.Close).setText(_tr("reader_close"))
         qconnect(close_box.rejected, self.reject)
         qconnect(close_box.accepted, self.accept)
         layout.addWidget(close_box)
@@ -2331,11 +2340,11 @@ class _VideoCaptionDialog(QDialog):
         reference_label = str(current.get("reference_subtitle_label") or "").strip()
         reference_file = str(current.get("reference_subtitle_file") or "").strip()
         self._current_target.setText(
-            f"Target: {target_label or 'Not set'}"
+            _tr("reader_video_current_target", label=target_label or _tr("reader_not_set"))
             + (f"  [{target_file}]" if target_file else "")
         )
         self._current_reference.setText(
-            f"Reference: {reference_label or 'Not set'}"
+            _tr("reader_video_current_reference", label=reference_label or _tr("reader_not_set"))
             + (f"  [{reference_file}]" if reference_file else "")
         )
 
@@ -2343,7 +2352,7 @@ class _VideoCaptionDialog(QDialog):
         self._tracks = list(tracks or [])
         for combo in (self._target_combo, self._reference_combo):
             combo.clear()
-            combo.addItem("Select a track…", "")
+            combo.addItem(_tr("reader_video_select_track"), "")
             for track in self._tracks:
                 combo.addItem(str(track.get("label") or ""), str(track.get("track_id") or ""))
         has_tracks = bool(self._tracks)
@@ -2362,13 +2371,13 @@ class _VideoCaptionDialog(QDialog):
     def _refresh_tracks(self) -> None:
         if not self._video_url or not is_supported_video_url(self._video_url):
             self._remote_hint.setText(
-                "This card has no supported remote URL. You can still attach manual subtitle files."
+                _tr("reader_video_no_remote_for_captions")
             )
             self._populate_track_combos([])
             return
 
         self._refresh_btn.setEnabled(False)
-        self._remote_hint.setText("Loading remote subtitle tracks…")
+        self._remote_hint.setText(_tr("reader_video_loading_tracks"))
 
         def _task():
             return list_available_video_subtitles(_ADDON_DIR, _active_profile(), self._video_url)
@@ -2379,16 +2388,16 @@ class _VideoCaptionDialog(QDialog):
                 tracks = fut.result()
             except Exception as exc:
                 self._populate_track_combos([])
-                self._remote_hint.setText(f"Could not load subtitles: {exc}")
+                self._remote_hint.setText(_tr("reader_video_load_subtitles_failed", error=exc))
                 return
             self._populate_track_combos(tracks)
             if tracks:
                 self._remote_hint.setText(
-                    f"Found {len(tracks)} remote subtitle track(s). Download one into target or reference."
+                    tn("reader_video_tracks_found", len(tracks))
                 )
             else:
                 self._remote_hint.setText(
-                    "No remote subtitle tracks were found. You can still import manual subtitle files."
+                    _tr("reader_video_no_tracks")
                 )
 
         mw.taskman.run_in_background(_task, _on_done)
@@ -2416,15 +2425,15 @@ class _VideoCaptionDialog(QDialog):
         combo = self._target_combo if slot == "target" else self._reference_combo
         track = self._track_for_combo(combo)
         if track is None:
-            tooltip("Incremento: select a subtitle track first.")
+            tooltip(_tr("reader_video_select_track_first"))
             return
         if not self._video_url:
-            tooltip("Incremento: this video card has no remote URL.")
+            tooltip(_tr("reader_video_no_remote_url"))
             return
         label = str(track.get("label") or "").strip()
         language = str(track.get("language") or "").strip()
         automatic = bool(track.get("automatic"))
-        self._remote_hint.setText(f"Downloading {label}…")
+        self._remote_hint.setText(_tr("reader_video_downloading_track", label=label))
 
         note = _current_video_note()
         preferred_stem = ""
@@ -2447,12 +2456,12 @@ class _VideoCaptionDialog(QDialog):
             try:
                 result = fut.result()
             except Exception as exc:
-                self._remote_hint.setText(f"Subtitle download failed: {exc}")
+                self._remote_hint.setText(_tr("reader_video_subtitle_download_failed", error=exc))
                 return
             relpath = str(result.get("relpath") or "").strip()
             applied_label = str(result.get("label") or label or language).strip()
             self._apply_slot(slot, relpath=relpath, label=applied_label)
-            self._remote_hint.setText(f"Saved {applied_label} to {slot}.")
+            self._remote_hint.setText(_tr("reader_video_track_saved", label=applied_label, slot=_tr(f"reader_video_{slot}")))
 
         mw.taskman.run_in_background(_task, _on_done)
 
@@ -2461,9 +2470,9 @@ class _VideoCaptionDialog(QDialog):
         patterns = " ".join(f"*{ext}" for ext in exts)
         path, _ = QFileDialog.getOpenFileName(
             self,
-            f"Choose {slot.title()} Subtitle",
+            _tr("reader_video_choose_subtitle", slot=_tr(f"reader_video_{slot}")),
             "",
-            f"Subtitle files ({patterns});;All files (*)",
+            _tr("reader_video_subtitle_files", patterns=patterns) + ";;" + _tr("reader_all_files"),
         )
         if not path:
             return
@@ -2482,15 +2491,15 @@ class _VideoCaptionDialog(QDialog):
                 preferred_stem=f"{preferred_stem or 'video'}-{slot}",
             )
         except Exception as exc:
-            tooltip(f"Incremento: could not import subtitle file ({exc}).")
+            tooltip(_tr("reader_video_subtitle_import_failed", error=exc))
             return
         label = os.path.basename(path)
         self._apply_slot(slot, relpath=relpath, label=label)
-        self._remote_hint.setText(f"Imported {label} into {slot}.")
+        self._remote_hint.setText(_tr("reader_video_subtitle_imported", label=label, slot=_tr(f"reader_video_{slot}")))
 
     def _clear_slot(self, slot: str) -> None:
         self._apply_slot(slot, relpath="", label="")
-        self._remote_hint.setText(f"Cleared {slot} subtitles.")
+        self._remote_hint.setText(_tr("reader_video_subtitles_cleared", slot=_tr(f"reader_video_{slot}")))
 
 
 def _reload_current_video_card() -> None:
@@ -2518,7 +2527,7 @@ def _reload_current_video_card() -> None:
 def configure_current_video_captions() -> None:
     note = _current_video_note()
     if note is None:
-        tooltip("Incremento: no active video card.")
+        tooltip(_tr("reader_video_no_active_card"))
         return
     dlg = _VideoCaptionDialog(parent=mw)
     dlg.exec()
@@ -2527,32 +2536,32 @@ def configure_current_video_captions() -> None:
 def download_current_video_locally() -> None:
     note = _current_video_note()
     if note is None:
-        tooltip("Incremento: no active video card.")
+        tooltip(_tr("reader_video_no_active_card"))
         return
     try:
         video_url = str(note["YouTube_URL"] or "").strip()
     except Exception:
         video_url = ""
     if not is_supported_video_url(video_url):
-        tooltip("Incremento: this video card has no supported remote URL.")
+        tooltip(_tr("reader_video_no_supported_remote"))
         return
 
     current_media = get_video_note_media(note)
     has_existing_local = bool(current_media.get("local_video_file"))
     _set_download_button_enabled(False, has_local_copy=has_existing_local)
     activity_id = start_activity(
-        "Download video locally",
-        category="Video",
-        detail=("Replacing the existing local copy" if has_existing_local else "Starting download"),
+        _tr("reader_video_download_activity"),
+        category=_tr("reader_video_name"),
+        detail=(_tr("reader_video_replacing_copy") if has_existing_local else _tr("reader_video_starting_download")),
         progress=0,
     )
 
     try:
         mw.progress.start(
             label=(
-                "Re-downloading local video copy…"
+                _tr("reader_video_redownloading_copy")
                 if has_existing_local
-                else "Downloading local video copy…"
+                else _tr("reader_video_downloading_copy")
             ),
             immediate=True,
             value=0,
@@ -2561,9 +2570,9 @@ def download_current_video_locally() -> None:
     except TypeError:
         mw.progress.start(
             label=(
-                "Re-downloading local video copy…"
+                _tr("reader_video_redownloading_copy")
                 if has_existing_local
-                else "Downloading local video copy…"
+                else _tr("reader_video_downloading_copy")
             ),
             immediate=True,
         )
@@ -2578,7 +2587,7 @@ def download_current_video_locally() -> None:
         update_activity(
             activity_id,
             progress=max(0, min(100, int(percent))) / 100,
-            detail=str(label or "Downloading video"),
+            detail=str(label or _tr("reader_video_downloading")),
         )
         mw.taskman.run_on_main(
             lambda p=percent, label_text=label: _progress_main(p, label_text)
@@ -2598,18 +2607,18 @@ def download_current_video_locally() -> None:
         try:
             local_relpath = fut.result()
         except Exception as exc:
-            fail_activity(activity_id, f"Video download failed: {exc}")
-            tooltip(f"Incremento: local download failed ({exc}).")
+            fail_activity(activity_id, _tr("reader_video_download_failed", error=exc))
+            tooltip(_tr("reader_video_local_download_failed", error=exc))
             return
         if not _persist_current_video_note_media(local_video_file=local_relpath):
             fail_activity(
                 activity_id,
-                "The video downloaded, but the card could not be updated.",
+                _tr("reader_video_card_update_failed"),
             )
-            tooltip("Incremento: video downloaded, but the card could not be updated.")
+            tooltip(_tr("reader_video_card_update_failed"))
             return
-        finish_activity(activity_id, detail="Local video copy is ready.")
-        tooltip("Incremento: local video copy is ready.")
+        finish_activity(activity_id, detail=_tr("reader_video_local_copy_ready"))
+        tooltip(_tr("reader_video_local_copy_ready"))
         _reload_current_video_card()
 
     mw.taskman.run_in_background(_task, _on_done)
@@ -2661,7 +2670,7 @@ def _prompt_browser_stop_time() -> None:
         _position_lock_until = time.monotonic() + 8.0
         _seek_to_seconds(float(sec))
         _set_seek_ui(float(sec), _last_known_duration if _last_known_duration > 0 else None)
-    tooltip(f"Incremento: saved browser stop time at {fmt_time(float(sec))}.")
+    tooltip(_tr("reader_video_browser_stop_saved", time=fmt_time(float(sec))))
 
 
 def _do_video_add_card(t) -> None:

@@ -307,10 +307,10 @@ def test_bookshelf_tag_completion_replaces_only_the_active_token():
 def test_bookshelf_dialog_exposes_tag_filter_and_explicit_or_and_modes():
     source = Path(pdf_bookshelf.__file__).read_text(encoding="utf-8")
 
-    assert "Filter by tags" in source
-    assert "Any tag (OR)" in source
-    assert "All tags (AND)" in source
-    assert "Browse tags" in source
+    assert 't("reader_bookshelf_filter_tags_placeholder")' in source
+    assert 't("reader_bookshelf_any_tag")' in source
+    assert 't("reader_bookshelf_all_tags")' in source
+    assert 't("reader_bookshelf_browse_tags")' in source
     assert "QCompleter" in source
     assert "Qt.MatchFlag.MatchContains" in source
     assert "self._tag_search.textChanged" in source
@@ -336,6 +336,13 @@ def test_bookshelf_count_describes_current_document_filter():
         pdf_bookshelf._bookshelf_count_text(entries, [entries[2]], "PDF")
         == "Showing 1 of 2 PDFs"
     )
+
+
+def test_bookshelf_count_uses_locale_without_changing_kind_codes(monkeypatch):
+    monkeypatch.setattr(pdf_bookshelf, "tn", lambda key, count, **values: f"{key}:{count}", raising=False)
+    monkeypatch.setattr(pdf_bookshelf, "t", lambda key, **values: f"{key}:{values}", raising=False)
+    entry = pdf_bookshelf._BookshelfEntry("原文", 1, "PDF")
+    assert "reader_bookshelf_pdf_count:1" in pdf_bookshelf._bookshelf_count_text([entry], [entry], "PDF")
 
 
 def test_bookshelf_caption_colors_are_readable_in_dark_and_light_modes():

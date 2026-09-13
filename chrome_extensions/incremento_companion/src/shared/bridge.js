@@ -1,15 +1,21 @@
 import { bridgeFetch } from "./bridgeAuth.js";
+import { t } from "./i18n.js";
 
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 const BROWSER_MEDIA_REF_URL = "http://127.0.0.1:8766/incremento/browser-media-ref";
-const BRIDGE_UNAVAILABLE_MESSAGE = "Failed to reach Incremento in Anki. Keep Anki open and reload the addon.";
-const ORIGIN_CONFLICT_MESSAGE = "This Companion copy is not authorized. Restart Anki, then reopen the popup. If this returns, disable duplicate Companion copies in other Chrome/Brave profiles.";
+const BRIDGE_ERROR_CODES = new Set([
+  "authorization_required", "bridge_busy", "unknown_path", "invalid_request",
+  "operation_failed", "unsupported_transfer_encoding", "invalid_content_length",
+  "request_too_large", "request_timeout", "incomplete_body", "invalid_json",
+]);
 
 async function parseBridgeResponse(response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) {
-    throw new Error(String(data?.error || `Request failed (${response.status})`));
+    const error = new Error(String(data?.error || t("bridge_request_failed", { status: response.status })));
+    error.code = typeof data?.error_code === "string" ? data.error_code : "";
+    throw error;
   }
   return data;
 }
@@ -60,11 +66,12 @@ export async function submitBrowserCapture(payload) {
 
 export function formatBridgeError(error, fallbackMessage) {
   if (error instanceof TypeError) {
-    return BRIDGE_UNAVAILABLE_MESSAGE;
+    return t("bridge_unavailable");
   }
   const message = String(error?.message || "").trim();
-  if (message === "Origin not allowed.") {
-    return ORIGIN_CONFLICT_MESSAGE;
+  if (error?.code === "origin_not_allowed" || message === "Origin not allowed.") {
+    return t("bridge_origin_conflict");
   }
+  if (BRIDGE_ERROR_CODES.has(error?.code)) return t(`bridge_error_${error.code}`);
   return message || fallbackMessage;
 }

@@ -1,0 +1,802 @@
+# Incremento maintenance and shared utility dialogs. Preserve identifiers and confirmation tokens.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
+
+#. automatic backup automatic full backups profile
+msgid "admin_automatic_backup_automatic_full_backups_profile"
+msgstr "自动完整备份 — {profile}"
+
+#. automatic backup back up when this profile closes
+msgid "admin_automatic_backup_back_up_when_this_profile_closes"
+msgstr "关闭此配置档案时备份"
+
+#. automatic backup back up when this profile opens
+msgid "admin_automatic_backup_back_up_when_this_profile_opens"
+msgstr "打开此配置档案时备份"
+
+#. automatic backup backup folder
+msgid "admin_automatic_backup_backup_folder"
+msgstr "备份文件夹"
+
+#. automatic backup backup folder unavailable error
+msgid "admin_automatic_backup_backup_folder_unavailable_error"
+msgstr "备份文件夹不可用：{error}"
+
+#. automatic backup choose
+msgid "admin_automatic_backup_choose"
+msgstr "选择…"
+
+#. automatic backup choose an on open on close or timed
+msgid "admin_automatic_backup_choose_an_on_open_on_close_or_timed"
+msgstr "请选择打开时、关闭时或定时备份，或者关闭自动备份。"
+
+#. automatic backup choose any local folder including one synced by
+msgid "admin_automatic_backup_choose_any_local_folder_including_one_synced_by"
+msgstr "请选择本地文件夹，也可以选择由 Google Drive、Dropbox 或其他服务同步的文件夹。同步应用负责上传；Incremento 在本地创建 ZIP 文件。"
+
+#. automatic backup choose backup folder
+msgid "admin_automatic_backup_choose_backup_folder"
+msgstr "选择备份文件夹"
+
+#. automatic backup enable automatic full backups for this anki profile
+msgid "admin_automatic_backup_enable_automatic_full_backups_for_this_anki_profile"
+msgstr "为此 Anki 配置档案启用自动完整备份"
+
+#. automatic backup full backup destination folder
+msgid "admin_automatic_backup_full_backup_destination_folder"
+msgstr "完整备份的目标文件夹"
+
+#. automatic backup full backups contain private cards media and settings
+msgid "admin_automatic_backup_full_backups_contain_private_cards_media_and_settings"
+msgstr "完整备份包含私人卡片、媒体和设置。只有验证新 ZIP 后，才会删除此配置档案的旧自动备份 ZIP。备份在后台运行，并显示进度窗口。备份完成前，Anki 可能暂时无法使用。关闭时触发的备份会在 Anki 关闭集合前完成，因此关闭可能需要更长时间。"
+
+#. automatic backup hours 0 off
+msgid "admin_automatic_backup_hours_0_off"
+msgstr " 小时（0 = 关闭）"
+
+#. automatic backup keep latest automatic versions
+msgid "admin_automatic_backup_keep_latest_automatic_versions"
+msgstr "保留最近的自动备份版本数"
+
+#. automatic backup while anki is open every
+msgid "admin_automatic_backup_while_anki_is_open_every"
+msgstr "Anki 打开期间，间隔"
+
+#. backup progress automatic backup in progress
+msgid "admin_backup_progress_automatic_backup_in_progress"
+msgstr "正在自动备份"
+
+#. backup progress automatic backup stage
+msgid "admin_backup_progress_automatic_backup_stage"
+msgstr "自动备份阶段"
+
+#. backup progress automatic full backup in progress anki is temporarily
+msgid "admin_backup_progress_automatic_full_backup_in_progress_anki_is_temporarily"
+msgstr "正在创建自动完整备份…\nAnki 暂时无法使用。请等待备份完成。"
+
+#. backup progress incremento automatic backup
+msgid "admin_backup_progress_incremento_automatic_backup"
+msgstr "Incremento 自动备份"
+
+#. backup progress preparing backup
+msgid "admin_backup_progress_preparing_backup"
+msgstr "正在准备备份…"
+
+#. entries close
+msgid "admin_entries_close"
+msgstr "关闭"
+
+#. entries match count
+msgid "admin_entries_match_count"
+msgstr "第 {current} 个，共 {total} 个"
+
+#. entries next
+msgid "admin_entries_next"
+msgstr "下一个"
+
+#. entries no matches
+msgid "admin_entries_no_matches"
+msgstr "无匹配结果"
+
+#. entries previous
+msgid "admin_entries_previous"
+msgstr "上一个"
+
+#. entries search
+msgid "admin_entries_search"
+msgstr "搜索记录"
+
+#. entries title
+msgid "admin_entries_title"
+msgstr "Incremento 数据库记录"
+
+#. file available
+msgid "admin_file_available"
+msgstr "本地文件可用。"
+
+#. file choose
+msgid "admin_file_choose"
+msgstr "选择替代文件"
+
+#. file filter
+msgid "admin_file_filter"
+msgstr "所有文件 (*)"
+
+#. file label file
+msgid "admin_file_label_file"
+msgstr "<b>文件：</b> {value}"
+
+#. file label mode
+msgid "admin_file_label_mode"
+msgstr "<b>模式：</b> {value}"
+
+#. file label note
+msgid "admin_file_label_note"
+msgstr "<b>备注：</b> {value}"
+
+#. file label path
+msgid "admin_file_label_path"
+msgstr "<b>路径：</b> {value}"
+
+#. file managed
+msgid "admin_file_managed"
+msgstr "托管副本"
+
+#. file missing
+msgid "admin_file_missing"
+msgstr "链接的文件丢失。使用“重新链接”选择替代文件。"
+
+#. file none
+msgid "admin_file_none"
+msgstr "（无）"
+
+#. file open
+msgid "admin_file_open"
+msgstr "打开"
+
+#. file open failed
+msgid "admin_file_open_failed"
+msgstr "无法在默认本机应用中打开链接的文件。"
+
+#. file reference
+msgid "admin_file_reference"
+msgstr "引用原始文件"
+
+#. file relink
+msgid "admin_file_relink"
+msgstr "重新链接"
+
+#. file relink error
+msgid "admin_file_relink_error"
+msgstr "无法重新链接此本地文件：\n{error}"
+
+#. file relinked
+msgid "admin_file_relinked"
+msgstr "已重新链接本地文件。"
+
+#. file reveal
+msgid "admin_file_reveal"
+msgstr "在文件夹中显示"
+
+#. file reveal failed
+msgid "admin_file_reveal_failed"
+msgstr "无法在 Finder/资源管理器中显示链接的文件。"
+
+#. file title
+msgid "admin_file_title"
+msgstr "本地文件"
+
+#. full restore a full backup or restore is already running
+msgid "admin_full_restore_a_full_backup_or_restore_is_already_running"
+msgstr "完整备份或恢复已在进行中。"
+
+#. full restore anki could not open the restored collection
+msgid "admin_full_restore_anki_could_not_open_the_restored_collection"
+msgstr "Anki 无法打开恢复的集合。"
+
+#. full restore automatic sync preference could not be saved save
+msgid "admin_full_restore_automatic_sync_preference_could_not_be_saved_save"
+msgstr "。无法保存自动同步设置：{save_error}"
+
+#. full restore backup
+msgid "admin_full_restore_backup"
+msgstr "备份"
+
+#. full restore backup pre check failed error
+msgid "admin_full_restore_backup_pre_check_failed_error"
+msgstr "备份预检查失败：{error}"
+
+#. full restore backup profile source profile cards card count anki
+msgid "admin_full_restore_backup_profile_source_profile_cards_card_count_anki"
+msgstr "备份配置档案：{source_profile}\n卡片：{card_count}  •  Anki 媒体文件：{media_count}\nIncremento 文件：{file_count}{mismatch}{missing_covers}\n\n当前集合、Anki 媒体和 Incremento 配置档案文件将被替换。Anki 会先创建安全备份。集合自动同步和媒体定期同步将被关闭，直到您重新启用。其他配置档案的备份设置将保留。\n\n不会检查 AnkiWeb。之后的正常同步可能合并远程更改或删除。如果希望恢复的卡片替换 AnkiWeb，请在第一次手动同步时强制单向上传（Upload）；下载（Download）会替换本地集合。Anki 媒体同步会单独合并。"
+
+#. full restore checking backup
+msgid "admin_full_restore_checking_backup"
+msgstr "正在检查备份…"
+
+#. full restore closing profile for restore
+msgid "admin_full_restore_closing_profile_for_restore"
+msgstr "正在关闭配置档案以进行恢复…"
+
+#. full restore could not close the profile for restore error
+msgid "admin_full_restore_could_not_close_the_profile_for_restore_error"
+msgstr "无法关闭配置档案以进行恢复：{error}"
+
+#. full restore could not create an anki safety backup error
+msgid "admin_full_restore_could_not_create_an_anki_safety_backup_error"
+msgstr "无法创建 Anki 安全备份：{error}"
+
+#. full restore creating safety backup
+msgid "admin_full_restore_creating_safety_backup"
+msgstr "正在创建安全备份…"
+
+#. full restore full backup restored review the profile before syncing
+msgid "admin_full_restore_full_backup_restored_review_the_profile_before_syncing"
+msgstr "完整备份已恢复。同步前请检查配置档案。"
+
+#. full restore opening restored profile
+msgid "admin_full_restore_opening_restored_profile"
+msgstr "正在打开已恢复的配置档案…"
+
+#. full restore profile restored automatic sync is off
+msgid "admin_full_restore_profile_restored_automatic_sync_is_off"
+msgstr "配置档案已恢复；自动同步已关闭。"
+
+#. full restore replace the current anki profile profile name with
+msgid "admin_full_restore_replace_the_current_anki_profile_profile_name_with"
+msgstr "要用此备份替换当前 Anki 配置档案“{profile_name}”吗？"
+
+#. full restore replacing profile files
+msgid "admin_full_restore_replacing_profile_files"
+msgstr "正在替换配置档案文件…"
+
+#. full restore restore cancelled after successful pre check
+msgid "admin_full_restore_restore_cancelled_after_successful_pre_check"
+msgstr "预检查成功后已取消恢复。"
+
+#. full restore restore could not replace profile files error
+msgid "admin_full_restore_restore_could_not_replace_profile_files_error"
+msgstr "恢复无法替换配置档案文件：{error}"
+
+#. full restore restore could not replace profile files error the
+msgid "admin_full_restore_restore_could_not_replace_profile_files_error_the"
+msgstr "恢复无法替换配置档案文件：{error}。也无法重新打开原配置档案：{reopen_error}"
+
+#. full restore restore failed and the previous profile was restored
+msgid "admin_full_restore_restore_failed_and_the_previous_profile_was_restored"
+msgstr "恢复失败，已还原原配置档案，但部分设置无法保存：{error}"
+
+#. full restore restore failed and the previous profile was restored 65c4d6
+msgid "admin_full_restore_restore_failed_and_the_previous_profile_was_restored_65c4d6"
+msgstr "恢复失败，已还原原配置档案：{reason}"
+
+#. full restore restore failed reason automatic rollback also failed rollback
+msgid "admin_full_restore_restore_failed_reason_automatic_rollback_also_failed_rollback"
+msgstr "恢复失败：{reason}。自动回滚也失败了：{rollback_error}。原有文件保留在 {profile_path} 和 {runtime_path}。"
+
+#. full restore restore failed reason prior files were put back
+msgid "admin_full_restore_restore_failed_reason_prior_files_were_put_back"
+msgstr "恢复失败：{reason}。原有文件已放回，但无法重新打开配置档案：{reopen_error}"
+
+#. full restore restore failed reason the restored collection could not
+msgid "admin_full_restore_restore_failed_reason_the_restored_collection_could_not"
+msgstr "恢复失败：{reason}。无法关闭已恢复的集合以进行回滚：{close_error}。原有文件保留在 {profile_path} 和 {runtime_path}。"
+
+#. full restore restore full backup
+msgid "admin_full_restore_restore_full_backup"
+msgstr "恢复完整备份"
+
+#. full restore restore full profile backup
+msgid "admin_full_restore_restore_full_profile_backup"
+msgstr "恢复配置档案的完整备份"
+
+#. full restore restore stopped because the active profile changed
+msgid "admin_full_restore_restore_stopped_because_the_active_profile_changed"
+msgstr "由于活动配置档案已切换，恢复已停止。"
+
+#. full restore restore stopped because the profile changed or a
+msgid "admin_full_restore_restore_stopped_because_the_profile_changed_or_a"
+msgstr "由于配置档案已切换或备份已开始，恢复已停止。"
+
+#. full restore restore stopped with an incomplete rollback error the
+msgid "admin_full_restore_restore_stopped_with_an_incomplete_rollback_error_the"
+msgstr "恢复已停止，回滚未完成：{error} 原有文件保留在 {profile_path} 和 {runtime_path}。在恢复这些文件之前，请不要在 Anki 中打开此配置档案。"
+
+#. full restore restore succeeded but old file cleanup failed error
+msgid "admin_full_restore_restore_succeeded_but_old_file_cleanup_failed_error"
+msgstr "恢复成功，但清理旧文件失败：{error}。请检查 {profile_path} 和 {runtime_path}。"
+
+#. full restore rolling back failed restore
+msgid "admin_full_restore_rolling_back_failed_restore"
+msgstr "恢复失败，正在回滚…"
+
+#. full restore select full incremento backup
+msgid "admin_full_restore_select_full_incremento_backup"
+msgstr "选择 Incremento 完整备份"
+
+#. full restore staging checked backup
+msgid "admin_full_restore_staging_checked_backup"
+msgstr "正在暂存已检查的备份…"
+
+#. full restore the backup profile name differs from the current
+msgid "admin_full_restore_the_backup_profile_name_differs_from_the_current"
+msgstr "备份的配置档案名称与当前配置档案不同。备份中的 Incremento 文件将放入当前配置档案。"
+
+#. full restore the previous collection could not reopen
+msgid "admin_full_restore_the_previous_collection_could_not_reopen"
+msgstr "无法重新打开原集合。"
+
+#. full restore the profile changed or a backup started
+msgid "admin_full_restore_the_profile_changed_or_a_backup_started"
+msgstr "配置档案已切换或备份已开始。"
+
+#. full restore warning count pdf epub covers referenced by cards
+msgid "admin_full_restore_warning_count_pdf_epub_covers_referenced_by_cards"
+msgstr "警告：此备份缺少卡片引用的 {count} 张 PDF/EPUB 封面。来源标题将保留，但这些封面图像不会恢复。"
+
+#. full restore zip files zip
+msgid "admin_full_restore_zip_files_zip"
+msgstr "ZIP 文件 (*.zip)"
+
+#. image failed
+msgid "admin_image_failed"
+msgstr "无法旋转所选图片：\n{error}"
+
+#. image media unavailable
+msgid "admin_image_media_unavailable"
+msgstr "Anki 媒体集合不可用。"
+
+#. image missing
+msgid "admin_image_missing"
+msgstr "无法在 Anki 媒体中找到所选图片：\n{filename}"
+
+#. image rotate left
+msgid "admin_image_rotate_left"
+msgstr "将所选图片向左旋转 90°"
+
+#. image rotate right
+msgid "admin_image_rotate_right"
+msgstr "将所选图片向右旋转 90°"
+
+#. image rotated
+msgid "admin_image_rotated"
+msgstr "图片已旋转。"
+
+#. image select
+msgid "admin_image_select"
+msgstr "请先在卡片字段中选择一张本地图片。"
+
+#. image selection lost
+msgid "admin_image_selection_lost"
+msgstr "所选图片已不可用。请重新选择后再试。"
+
+#. no
+msgid "admin_no"
+msgstr "否"
+
+#. note update add fields
+msgid "admin_note_update_add_fields"
+msgstr "添加字段：{fields}"
+
+#. note update apply
+msgid "admin_note_update_apply"
+msgstr "应用更新"
+
+#. note update confirm
+msgid "admin_note_update_confirm"
+msgstr "我已先完成同步，且此设备上保存的是我想保留的集合。"
+
+#. note update empty
+msgid "admin_note_update_empty"
+msgstr "<li>没有待处理的更新。</li>"
+
+#. note update instructions
+msgid "admin_note_update_instructions"
+msgstr "<h2>Incremento 卡片格式更新</h2><p><b>Incremento 尚未更改您的 Anki 集合。</b></p><p>以下 Incremento 笔记类型需要更新字段或卡片模板：</p><ul>{update_list}</ul><p>更改笔记类型后，Anki 可能要求进行单向完整同步，因为它无法自动合并所有结构更改。</p><h3>建议的安全顺序</h3><ol><li>应用更新前，先正常同步此设备，并确认其他设备也已同步。</li><li>返回此处，确认此设备包含您要保留的集合，然后应用更新。</li><li>Anki 询问要保留哪个版本时，请在此设备选择<b>上传到 AnkiWeb（Upload to AnkiWeb）</b>。在其他设备上选择<b>下载（Download）</b>。</li></ol><p>您可以选择<b>稍后</b>；此时不会更改任何笔记类型。</p>"
+
+#. note update later
+msgid "admin_note_update_later"
+msgstr "稍后"
+
+#. note update repair
+msgid "admin_note_update_repair"
+msgstr "修复字段顺序"
+
+#. note update restore
+msgid "admin_note_update_restore"
+msgstr "恢复卡片模板"
+
+#. note update sync
+msgid "admin_note_update_sync"
+msgstr "更新前同步"
+
+#. note update template
+msgid "admin_note_update_template"
+msgstr "更新卡片模板"
+
+#. note update title
+msgid "admin_note_update_title"
+msgstr "Incremento 卡片格式更新"
+
+#. schedule apply now
+msgid "admin_schedule_apply_now"
+msgstr "立即应用到当前到期日"
+
+#. schedule behavior
+msgid "admin_schedule_behavior"
+msgstr "行为："
+
+#. schedule clear
+msgid "admin_schedule_clear"
+msgstr "清除规则"
+
+#. schedule current
+msgid "admin_schedule_current"
+msgstr "当前规则：<b>{rule}</b>"
+
+#. schedule days
+msgid "admin_schedule_days"
+msgstr "天"
+
+#. schedule hint
+msgid "admin_schedule_hint"
+msgstr "最低频率保留正常调度，但防止卡片的到期日晚于此规则。精确重复始终按此规则重设下次到期日。单次设置到期日仅应用一次，之后自动清除。"
+
+#. schedule mixed
+msgid "admin_schedule_mixed"
+msgstr "当前规则：<i>所选卡片规则不同</i>"
+
+#. schedule months
+msgid "admin_schedule_months"
+msgstr "月"
+
+#. schedule none
+msgid "admin_schedule_none"
+msgstr "当前规则：<i>无自定义规则</i>"
+
+#. schedule preset
+msgid "admin_schedule_preset"
+msgstr "预设："
+
+#. schedule preview
+msgid "admin_schedule_preview"
+msgstr "预览：<b>{rule}</b>"
+
+#. schedule quick
+msgid "admin_schedule_quick"
+msgstr "快速预设…"
+
+#. schedule repeat
+msgid "admin_schedule_repeat"
+msgstr "重复间隔："
+
+#. schedule selection
+msgid "admin_schedule_selection"
+msgid_plural "admin_schedule_selection_plural"
+msgstr[0] "将重复计划规则应用到所选的 {count} 张卡片。"
+
+#. schedule title
+msgid "admin_schedule_title"
+msgstr "自定义计划"
+
+#. schedule unit
+msgid "admin_schedule_unit"
+msgstr "单位："
+
+#. schedule weeks
+msgid "admin_schedule_weeks"
+msgstr "周"
+
+#. session continue
+msgid "admin_session_continue"
+msgstr "继续"
+
+#. session debug title
+msgid "admin_session_debug_title"
+msgstr "调试 — 计划顺序（{count} 张卡片）"
+
+#. session header
+msgid "admin_session_header"
+msgstr "#    类型     模式       标签                  第一个字段"
+
+#. session no tag
+msgid "admin_session_no_tag"
+msgstr "无标签"
+
+#. sqlite editor b automatic checkpoint b path time size
+msgid "admin_sqlite_editor_b_automatic_checkpoint_b_path_time_size"
+msgstr "<b>自动检查点：</b>{path}（{time}，{size}）"
+
+#. sqlite editor b automatic checkpoint b unavailable
+msgid "admin_sqlite_editor_b_automatic_checkpoint_b_unavailable"
+msgstr "<b>自动检查点：</b>不可用"
+
+#. sqlite editor b database b path
+msgid "admin_sqlite_editor_b_database_b_path"
+msgstr "<b>数据库：</b>{path}"
+
+#. sqlite editor b mode b mode warning
+msgid "admin_sqlite_editor_b_mode_b_mode_warning"
+msgstr "<b>模式：</b>{mode} - {warning}"
+
+#. sqlite editor b recent checkpoints b none
+msgid "admin_sqlite_editor_b_recent_checkpoints_b_none"
+msgstr "<b>最近的检查点：</b>无"
+
+#. sqlite editor b recent checkpoints b text
+msgid "admin_sqlite_editor_b_recent_checkpoints_b_text"
+msgstr "<b>最近的检查点：</b>{text}"
+
+#. sqlite editor cell update failed error
+msgid "admin_sqlite_editor_cell_update_failed_error"
+msgstr "单元格更新失败：{error}"
+
+#. sqlite editor close
+msgid "admin_sqlite_editor_close"
+msgstr "关闭"
+
+#. sqlite editor could not load rows for table error
+msgid "admin_sqlite_editor_could_not_load_rows_for_table_error"
+msgstr "无法加载表 {table} 的行：{error}"
+
+#. sqlite editor could not load schema error
+msgid "admin_sqlite_editor_could_not_load_schema_error"
+msgstr "无法加载结构：\n{error}"
+
+#. sqlite editor database connection is not available
+msgid "admin_sqlite_editor_database_connection_is_not_available"
+msgstr "数据库连接不可用。"
+
+#. sqlite editor direct cell editing is disabled for views
+msgid "admin_sqlite_editor_direct_cell_editing_is_disabled_for_views"
+msgstr "视图不支持直接编辑单元格。"
+
+#. sqlite editor direct cell editing is disabled until writes are
+msgid "admin_sqlite_editor_direct_cell_editing_is_disabled_until_writes_are"
+msgstr "启用写入前，无法直接编辑单元格。"
+
+#. sqlite editor direct cell editing uses sqlite rowid because this
+msgid "admin_sqlite_editor_direct_cell_editing_uses_sqlite_rowid_because_this"
+msgstr "此表未声明主键，因此直接编辑单元格使用 SQLite rowid。"
+
+#. sqlite editor direct cell editing uses the table primary key
+msgid "admin_sqlite_editor_direct_cell_editing_uses_the_table_primary_key"
+msgstr "直接编辑单元格通过表的主键更新行。"
+
+#. sqlite editor enter a sql statement first
+msgid "admin_sqlite_editor_enter_a_sql_statement_first"
+msgstr "请先输入 SQL 语句。"
+
+#. sqlite editor incremento database editor
+msgid "admin_sqlite_editor_incremento_database_editor"
+msgstr "Incremento 数据库编辑器"
+
+#. sqlite editor inspect the active profile s incremento sqlite database
+msgid "admin_sqlite_editor_inspect_the_active_profile_s_incremento_sqlite_database"
+msgstr "查看活动配置档案的 Incremento SQLite 数据库。此编辑器以只读模式打开。只有在明确知道要运行什么 SQL 时，才启用写入。"
+
+#. sqlite editor next
+msgid "admin_sqlite_editor_next"
+msgstr "下一页"
+
+#. sqlite editor no tables found
+msgid "admin_sqlite_editor_no_tables_found"
+msgstr "未找到表。"
+
+#. sqlite editor previous
+msgid "admin_sqlite_editor_previous"
+msgstr "上一页"
+
+#. sqlite editor query returned count row s more note
+msgid "admin_sqlite_editor_query_returned_count_row_s_more_note"
+msgstr "查询返回 {count} 行{more_note}。"
+
+#. sqlite editor read only examples select from priorities limit 20
+msgid "admin_sqlite_editor_read_only_examples_select_from_priorities_limit_20"
+msgstr "只读示例：\nSELECT * FROM priorities LIMIT 20;\nPRAGMA table_info(priorities);\n\n修改数据的 SQL 需要先启用写入。"
+
+#. sqlite editor refresh
+msgid "admin_sqlite_editor_refresh"
+msgstr "刷新"
+
+#. sqlite editor rows
+msgid "admin_sqlite_editor_rows"
+msgstr "行"
+
+#. sqlite editor rows table count total
+msgid "admin_sqlite_editor_rows_table_count_total"
+msgstr "行 — {table}（共 {count} 行）"
+
+#. sqlite editor run sql
+msgid "admin_sqlite_editor_run_sql"
+msgstr "运行 SQL"
+
+#. sqlite editor schema
+msgid "admin_sqlite_editor_schema"
+msgstr "结构"
+
+#. sqlite editor select a table
+msgid "admin_sqlite_editor_select_a_table"
+msgstr "请选择一个表。"
+
+#. sqlite editor showing start end of count
+msgid "admin_sqlite_editor_showing_start_end_of_count"
+msgstr "显示 {start}–{end}，共 {count}"
+
+#. sqlite editor sql console
+msgid "admin_sqlite_editor_sql_console"
+msgstr "SQL 控制台"
+
+#. sqlite editor sql error error
+msgid "admin_sqlite_editor_sql_error_error"
+msgstr "SQL 错误：{error}"
+
+#. sqlite editor sql write executed and committed
+msgid "admin_sqlite_editor_sql_write_executed_and_committed"
+msgstr "SQL 写入已执行并提交。"
+
+#. sqlite editor sql writes and cell editing are disabled
+msgid "admin_sqlite_editor_sql_writes_and_cell_editing_are_disabled"
+msgstr "SQL 写入和单元格编辑已禁用。"
+
+#. sqlite editor sql writes and cell editing are enabled for
+msgid "admin_sqlite_editor_sql_writes_and_cell_editing_are_enabled_for"
+msgstr "此编辑器会话已启用 SQL 写入和单元格编辑。"
+
+#. sqlite editor sql writes are already unlocked for this session
+msgid "admin_sqlite_editor_sql_writes_are_already_unlocked_for_this_session"
+msgstr "此会话已启用 SQL 写入。"
+
+#. sqlite editor sql writes are locked use unlock writes before
+msgid "admin_sqlite_editor_sql_writes_are_locked_use_unlock_writes_before"
+msgstr "SQL 写入已锁定。请先启用写入，再运行修改数据的 SQL。"
+
+#. sqlite editor sql writes unlocked for this editor session
+msgid "admin_sqlite_editor_sql_writes_unlocked_for_this_editor_session"
+msgstr "已为此编辑器会话启用 SQL 写入。"
+
+#. sqlite editor table table
+msgid "admin_sqlite_editor_table_table"
+msgstr "表：{table}"
+
+#. sqlite editor tables
+msgid "admin_sqlite_editor_tables"
+msgstr "表"
+
+#. sqlite editor the selected row could not be matched for
+msgid "admin_sqlite_editor_the_selected_row_could_not_be_matched_for"
+msgstr "无法匹配要更新的选定行。"
+
+#. sqlite editor this editor writes directly to the live incremento
+msgid "admin_sqlite_editor_this_editor_writes_directly_to_the_live_incremento"
+msgstr "此编辑器直接写入当前 Incremento 配置档案数据库。\n\n请输入 {phrase}，为此会话启用 SQL 写入："
+
+#. sqlite editor this row cannot be edited safely from the
+msgid "admin_sqlite_editor_this_row_cannot_be_edited_safely_from_the"
+msgstr "无法在网格中安全地编辑此行。"
+
+#. sqlite editor truncated
+msgid "admin_sqlite_editor_truncated"
+msgstr "（已截断）"
+
+#. sqlite editor unknown
+msgid "admin_sqlite_editor_unknown"
+msgstr "未知"
+
+#. sqlite editor unlock cancelled confirmation phrase did not match
+msgid "admin_sqlite_editor_unlock_cancelled_confirmation_phrase_did_not_match"
+msgstr "已取消启用写入。确认短语不匹配。"
+
+#. sqlite editor unlock database writes
+msgid "admin_sqlite_editor_unlock_database_writes"
+msgstr "启用数据库写入"
+
+#. sqlite editor unlock writes
+msgid "admin_sqlite_editor_unlock_writes"
+msgstr "启用写入…"
+
+#. sqlite editor unlocked for writes
+msgid "admin_sqlite_editor_unlocked_for_writes"
+msgstr "已启用写入"
+
+#. sqlite editor updated table column at row row
+msgid "admin_sqlite_editor_updated_table_column_at_row_row"
+msgstr "已更新第 {row} 行的 {table}.{column}。"
+
+#. sqlite read only
+msgid "admin_sqlite_read_only"
+msgstr "只读"
+
+#. tag add
+msgid "admin_tag_add"
+msgstr "添加标签"
+
+#. tag count
+msgid "admin_tag_count"
+msgid_plural "admin_tag_count_plural"
+msgstr[0] "{count} 个标签"
+
+#. timer across
+msgid "admin_timer_across"
+msgstr "{pages}，共 {books}"
+
+#. timer and
+msgid "admin_timer_and"
+msgstr "{first}及{second}"
+
+#. timer books
+msgid "admin_timer_books"
+msgid_plural "admin_timer_books_plural"
+msgstr[0] "{count} 本书"
+
+#. timer cards reviewed
+msgid "admin_timer_cards_reviewed"
+msgid_plural "admin_timer_cards_reviewed_plural"
+msgstr[0] "已复习 <b>{count}</b> 张卡片"
+
+#. timer complete
+msgid "admin_timer_complete"
+msgstr "会话完成"
+
+#. timer done
+msgid "admin_timer_done"
+msgstr "完成"
+
+#. timer duration
+msgid "admin_timer_duration"
+msgstr "{minutes} 分钟专注计时完成"
+
+#. timer empty
+msgid "admin_timer_empty"
+msgstr "本次计时未记录卡片或页面。"
+
+#. timer media pages
+msgid "admin_timer_media_pages"
+msgid_plural "admin_timer_media_pages_plural"
+msgstr[0] "<b>{count}</b> 页 {kind}"
+
+#. timer media pages read
+msgid "admin_timer_media_pages_read"
+msgid_plural "admin_timer_media_pages_read_plural"
+msgstr[0] "已阅读 <b>{count}</b> 页 {kind}"
+
+#. timer pages read
+msgid "admin_timer_pages_read"
+msgid_plural "admin_timer_pages_read_plural"
+msgstr[0] "已阅读 <b>{count}</b> 页"
+
+#. timer pause
+msgid "admin_timer_pause"
+msgstr "⏸  暂停"
+
+#. timer reset
+msgid "admin_timer_reset"
+msgstr "重置计时器（双击显示区域也可重置）"
+
+#. timer resume
+msgid "admin_timer_resume"
+msgstr "▶  继续"
+
+#. timer start
+msgid "admin_timer_start"
+msgstr "▶  开始"
+
+#. timer this
+msgid "admin_timer_this"
+msgstr "本次专注计时"
+
+#. timer title
+msgid "admin_timer_title"
+msgstr "专注计时器"
+
+#. timer today
+msgid "admin_timer_today"
+msgstr "今天"
+
+#. timer today summary
+msgid "admin_timer_today_summary"
+msgstr "截至今天目前：{pages}；{cards}。"
+
+#. yes
+msgid "admin_yes"
+msgstr "是"

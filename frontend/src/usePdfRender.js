@@ -165,8 +165,8 @@ export function usePdfRender() {
           renderTextLayer(pg, viewport);
           renderLinkAnnotations(pg, viewport, renderSequence, num);
         })
-        .catch(e => { setError('Render error: ' + e); busyRef.current = false; });
-    }).catch(e => { setError('Page error: ' + e); busyRef.current = false; });
+        .catch(() => { setError('reader_render_error'); busyRef.current = false; });
+    }).catch(() => { setError('reader_page_error'); busyRef.current = false; });
   }, [renderLinkAnnotations, renderTextLayer]);
 
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
@@ -190,7 +190,7 @@ export function usePdfRender() {
         pageRef.current = startPage;
         renderPage(startPage);
       })
-      .catch(e => setError('Load error: ' + e));
+      .catch(() => setError('reader_load_error'));
   }, [renderPage]);
 
   /**

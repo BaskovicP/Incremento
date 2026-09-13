@@ -1,0 +1,1178 @@
+# Import dialog interface. Edit translations here.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: en\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Import dialog label: Add Local File
+msgid "imports_add_local_file"
+msgstr "Add Local File"
+
+#. Import dialog label: File:
+msgid "imports_file_label"
+msgstr "File:"
+
+#. Import dialog label: Choose a local file…
+msgid "imports_choose_local_file"
+msgstr "Choose a local file…"
+
+#. Import dialog label: Browse…
+msgid "imports_browse"
+msgstr "Browse…"
+
+#. Import dialog label: Title:
+msgid "imports_title_label"
+msgstr "Title:"
+
+#. Import dialog label: Card title
+msgid "imports_card_title"
+msgstr "Card title"
+
+#. Import dialog label: Storage mode:
+msgid "imports_storage_mode"
+msgstr "Storage mode:"
+
+#. Import dialog label: Reference original file
+msgid "imports_storage_reference"
+msgstr "Reference original file"
+
+#. Import dialog label: Copy into Incremento
+msgid "imports_storage_managed"
+msgstr "Copy into Incremento"
+
+#. Import dialog label: Deck:
+msgid "imports_deck_label"
+msgstr "Deck:"
+
+#. Import dialog label: Note / instructions (optional):
+msgid "imports_note_optional"
+msgstr "Note / instructions (optional):"
+
+#. Import dialog label: Describe what to do with this file when the card appears…
+msgid "imports_file_note_placeholder"
+msgstr "Describe what to do with this file when the card appears…"
+
+#. Import dialog label: Add Local File Card
+msgid "imports_add_local_file_card"
+msgstr "Add Local File Card"
+
+#. Import dialog label: Cancel
+msgid "imports_cancel"
+msgstr "Cancel"
+
+#. Import dialog label: Choose local file
+msgid "imports_choose_local_file_dialog"
+msgstr "Choose local file"
+
+#. Import dialog label: All files (*)
+msgid "imports_all_files_filter"
+msgstr "All files (*)"
+
+#. Import dialog label: Copies the file into Incremento's per-profile storage so the card keeps working even if the original is moved.
+msgid "imports_managed_hint"
+msgstr "Copies the file into Incremento's per-profile storage so the card keeps working even if the original is moved."
+
+#. Import dialog label: Stores the current path on your computer. If the file is moved or deleted later, the card will need relinking.
+msgid "imports_reference_hint"
+msgstr "Stores the current path on your computer. If the file is moved or deleted later, the card will need relinking."
+
+#. Import dialog label: Add Web Page
+msgid "imports_add_web_page"
+msgstr "Add Web Page"
+
+#. Import dialog label: URL:
+msgid "imports_url_label"
+msgstr "URL:"
+
+#. Import dialog label: https://…
+msgid "imports_https_placeholder"
+msgstr "https://…"
+
+#. Import dialog label: Add Page
+msgid "imports_add_page"
+msgstr "Add Page"
+
+#. Import dialog label: Add to Markdown
+msgid "imports_add_markdown"
+msgstr "Add to Markdown"
+
+#. Import dialog label: Markdown note title
+msgid "imports_markdown_title_placeholder"
+msgstr "Markdown note title"
+
+#. Import dialog label: Filename (optional):
+msgid "imports_filename_optional"
+msgstr "Filename (optional):"
+
+#. Import dialog label: my-note.md  (stored under user_files/writing)
+msgid "imports_markdown_filename_placeholder"
+msgstr "my-note.md  (stored under user_files/writing)"
+
+#. Import dialog label: Import mode:
+msgid "imports_import_mode"
+msgstr "Import mode:"
+
+#. Import dialog label: Manual markdown
+msgid "imports_manual_markdown"
+msgstr "Manual markdown"
+
+#. Import dialog label: Import webpage markdown
+msgid "imports_webpage_markdown"
+msgstr "Import webpage markdown"
+
+#. Import dialog label: Source URL:
+msgid "imports_source_url"
+msgstr "Source URL:"
+
+#. Import dialog label: Fetch page
+msgid "imports_fetch_page"
+msgstr "Fetch page"
+
+#. Import dialog label: Webpage scope:
+msgid "imports_webpage_scope"
+msgstr "Webpage scope:"
+
+#. Import dialog label: Main content
+msgid "imports_main_content"
+msgstr "Main content"
+
+#. Import dialog label: Entire page
+msgid "imports_entire_page"
+msgstr "Entire page"
+
+#. Import dialog label: Initial markdown:
+msgid "imports_initial_markdown"
+msgstr "Initial markdown:"
+
+#. Import dialog label: The markdown file is autosaved while typing when this card is reviewed.
+msgid "imports_markdown_autosave_hint"
+msgstr "The markdown file is autosaved while typing when this card is reviewed."
+
+#. Import dialog label: Add Markdown Card
+msgid "imports_add_markdown_card"
+msgstr "Add Markdown Card"
+
+#. Import dialog label: Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.
+msgid "imports_webpage_fetch_hint"
+msgstr "Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars."
+
+#. Import dialog label: Write or paste markdown manually, or switch import mode to pull it from a webpage.
+msgid "imports_manual_hint"
+msgstr "Write or paste markdown manually, or switch import mode to pull it from a webpage."
+
+#. Import dialog label: Please enter a source URL first.
+msgid "imports_writing_source_required"
+msgstr "Please enter a source URL first."
+
+#. Import dialog label: Fetching webpage markdown…
+msgid "imports_fetching_markdown"
+msgstr "Fetching webpage markdown…"
+
+#. Import dialog label: Fetch failed.
+msgid "imports_fetch_failed_short"
+msgstr "Fetch failed."
+
+#. Import dialog label: No markdown content was extracted.
+msgid "imports_no_markdown_extracted"
+msgstr "No markdown content was extracted."
+
+#. Import dialog label: Failed to fetch webpage markdown:
+msgid "imports_no_readable_markdown"
+msgstr "Failed to fetch webpage markdown:\nNo readable content was extracted."
+
+#. Import dialog label: Webpage markdown loaded into the editor.
+msgid "imports_markdown_loaded"
+msgstr "Webpage markdown loaded into the editor."
+
+#. Writing import dialog UI: # Heading
+msgid "imports_markdown_editor_placeholder"
+msgstr "# Heading\n\nWrite initial content here…"
+
+#. Writing import dialog UI: Failed to fetch webpage markdown:
+msgid "imports_writing_fetch_failed"
+msgstr "Failed to fetch webpage markdown:\n{error}"
+
+#. Import video/webpage UI: Add Video
+msgid "imports_add_video"
+msgstr "Add Video"
+
+#. Import video/webpage UI: Source:
+msgid "imports_source_label"
+msgstr "Source:"
+
+#. Import video/webpage UI: YouTube URL
+msgid "imports_youtube_url"
+msgstr "YouTube URL"
+
+#. Import video/webpage UI: Vimeo URL
+msgid "imports_vimeo_url"
+msgstr "Vimeo URL"
+
+#. Import video/webpage UI: Local video file
+msgid "imports_local_video_file"
+msgstr "Local video file"
+
+#. Import video/webpage UI: Video URL:
+msgid "imports_video_url_label"
+msgstr "Video URL:"
+
+#. Import video/webpage UI: Local video file:
+msgid "imports_local_video_label"
+msgstr "Local video file:"
+
+#. Import video/webpage UI: Choose a local video file…
+msgid "imports_choose_local_video"
+msgstr "Choose a local video file…"
+
+#. Import video/webpage UI: Encoding:
+msgid "imports_encoding_label"
+msgstr "Encoding:"
+
+#. Import video/webpage UI: Original quality (no re-encoding)
+msgid "imports_original_quality"
+msgstr "Original quality (no re-encoding)"
+
+#. Import video/webpage UI: Encode H.264 high quality
+msgid "imports_encode_high"
+msgstr "Encode H.264 high quality"
+
+#. Import video/webpage UI: Encode H.264 smaller size
+msgid "imports_encode_small"
+msgstr "Encode H.264 smaller size"
+
+#. Import video/webpage UI: Download & compress into user_files/videos
+msgid "imports_download_compress"
+msgstr "Download & compress into user_files/videos"
+
+#. Import video/webpage UI: Requires yt-dlp and ffmpeg installed on your system.
+msgid "imports_download_requirements"
+msgstr "Requires yt-dlp and ffmpeg installed on your system."
+
+#. Import video/webpage UI: Max resolution:
+msgid "imports_max_resolution"
+msgstr "Max resolution:"
+
+#. Import video/webpage UI: Best available
+msgid "imports_best_available"
+msgstr "Best available"
+
+#. Import video/webpage UI: Refresh
+msgid "imports_refresh"
+msgstr "Refresh"
+
+#. Import video/webpage UI: Will try to auto-install yt-dlp on first use. Compression runs when ffmpeg is available.
+msgid "imports_ytdlp_ffmpeg_hint"
+msgstr "Will try to auto-install yt-dlp on first use. Compression runs when ffmpeg is available."
+
+#. Import video/webpage UI: Will try to auto-install yt-dlp on first use.
+msgid "imports_ytdlp_hint"
+msgstr "Will try to auto-install yt-dlp on first use."
+
+#. Import video/webpage UI: ffmpeg not found: video will still download, but compression is skipped.
+msgid "imports_ffmpeg_missing_hint"
+msgstr "ffmpeg not found: video will still download, but compression is skipped."
+
+#. Import video/webpage UI: Optional: creates a local compressed copy for offline playback.
+msgid "imports_offline_copy_hint"
+msgstr "Optional: creates a local compressed copy for offline playback."
+
+#. Import video/webpage UI: Choose Local Video
+msgid "imports_choose_local_video_dialog"
+msgstr "Choose Local Video"
+
+#. Import video/webpage UI: YouTube URL:
+msgid "imports_youtube_url_label"
+msgstr "YouTube URL:"
+
+#. Import video/webpage UI: Vimeo URL:
+msgid "imports_vimeo_url_label"
+msgstr "Vimeo URL:"
+
+#. Import video/webpage UI: Enter a valid YouTube or Vimeo URL to load available resolutions.
+msgid "imports_video_resolutions_enter_url"
+msgstr "Enter a valid YouTube or Vimeo URL to load available resolutions."
+
+#. Import video/webpage UI: Loading resolutions…
+msgid "imports_video_resolutions_loading"
+msgstr "Loading resolutions…"
+
+#. Import video/webpage UI: Fetching available resolutions…
+msgid "imports_video_resolutions_fetching"
+msgstr "Fetching available resolutions…"
+
+#. Import video/webpage UI: Unknown error.
+msgid "imports_unknown_error"
+msgstr "Unknown error."
+
+#. Import video/webpage UI: No explicit resolutions found. Using best available.
+msgid "imports_video_resolutions_none"
+msgstr "No explicit resolutions found. Using best available."
+
+#. Import video/webpage UI: Webpage to PDF
+msgid "imports_webpage_to_pdf"
+msgstr "Webpage to PDF"
+
+#. Import video/webpage UI: https://example.com/article
+msgid "imports_webpage_url_placeholder"
+msgstr "https://example.com/article"
+
+#. Import video/webpage UI: Card title:
+msgid "imports_webpage_card_title_label"
+msgstr "Card title:"
+
+#. Import video/webpage UI: Article title
+msgid "imports_article_title"
+msgstr "Article title"
+
+#. Import video/webpage UI: Import
+msgid "imports_import"
+msgstr "Import"
+
+#. Import video/webpage UI: Please enter a URL.
+msgid "imports_webpage_enter_url"
+msgstr "Please enter a URL."
+
+#. Import video/webpage UI: Generating PDF…
+msgid "imports_webpage_generating_pdf"
+msgstr "Generating PDF…"
+
+#. Import video/webpage UI: Missing webpage source.
+msgid "imports_webpage_missing_source"
+msgstr "Missing webpage source."
+
+#. Import video/webpage UI: Failed to generate PDF.
+msgid "imports_webpage_pdf_failed"
+msgstr "Failed to generate PDF."
+
+#. Import video/webpage UI: Failed to load page.
+msgid "imports_webpage_load_failed"
+msgstr "Failed to load page."
+
+#. Video and webpage import UI: https://www.youtube.com/watch?v=… or https://player.vimeo.com/video/…
+msgid "imports_video_url_example"
+msgstr "https://www.youtube.com/watch?v=… or https://player.vimeo.com/video/…"
+
+#. Video and webpage import UI: Local import copies file into user_files/videos. Use original quality for no re-encoding.
+msgid "imports_video_local_hint"
+msgstr "Local import copies file into user_files/videos. Use original quality for no re-encoding."
+
+#. Video and webpage import UI: Video files ({patterns});;All files (*)
+msgid "imports_video_file_filter"
+msgstr "Video files ({patterns});;All files (*)"
+
+#. Video and webpage import UI: https://www.youtube.com/watch?v=…
+msgid "imports_youtube_url_example"
+msgstr "https://www.youtube.com/watch?v=…"
+
+#. Video and webpage import UI: https://player.vimeo.com/video/…
+msgid "imports_vimeo_url_example"
+msgstr "https://player.vimeo.com/video/…"
+
+#. Video and webpage import UI: Could not load resolutions ({error}). Using best available.
+msgid "imports_video_resolutions_failed"
+msgstr "Could not load resolutions ({error}). Using best available."
+
+#. Video and webpage import UI: Available: {heights}
+msgid "imports_video_resolutions_available"
+msgstr "Available: {heights}"
+
+#. Video and webpage import UI: Timed out generating PDF after {seconds} seconds.
+msgid "imports_webpage_pdf_timeout"
+msgstr "Timed out generating PDF after {seconds} seconds."
+
+#. PDF/EPUB import dialog UI: Add PDFs
+msgid "imports_pdf_title"
+msgstr "Add PDFs"
+
+#. PDF/EPUB import dialog UI: Add EPUBs
+msgid "imports_epub_title"
+msgstr "Add EPUBs"
+
+#. PDF/EPUB import dialog UI: Add files…
+msgid "imports_add_files"
+msgstr "Add files…"
+
+#. PDF/EPUB import dialog UI: Add folder…
+msgid "imports_add_folder"
+msgstr "Add folder…"
+
+#. PDF/EPUB import dialog UI: Select all
+msgid "imports_select_all"
+msgstr "Select all"
+
+#. PDF/EPUB import dialog UI: Deselect all
+msgid "imports_deselect_all"
+msgstr "Deselect all"
+
+#. PDF/EPUB import dialog UI: Remove selected
+msgid "imports_remove_selected"
+msgstr "Remove selected"
+
+#. PDF/EPUB import dialog UI: Undo remove
+msgid "imports_undo_remove"
+msgstr "Undo remove"
+
+#. PDF/EPUB import dialog UI: Filter PDFs by file name…
+msgid "imports_filter_pdfs"
+msgstr "Filter PDFs by file name…"
+
+#. PDF/EPUB import dialog UI: Filter EPUBs by file name…
+msgid "imports_filter_epubs"
+msgstr "Filter EPUBs by file name…"
+
+#. PDF/EPUB import dialog UI: File
+msgid "imports_table_file"
+msgstr "File"
+
+#. PDF/EPUB import dialog UI: Tags
+msgid "imports_table_tags"
+msgstr "Tags"
+
+#. PDF/EPUB import dialog UI: Priority
+msgid "imports_table_priority"
+msgstr "Priority"
+
+#. PDF/EPUB import dialog UI: OCR
+msgid "imports_table_ocr"
+msgstr "OCR"
+
+#. PDF/EPUB import dialog UI: Status
+msgid "imports_table_status"
+msgstr "Status"
+
+#. PDF/EPUB import dialog UI: Tags for all:
+msgid "imports_tags_for_all"
+msgstr "Tags for all:"
+
+#. PDF/EPUB import dialog UI: Use file name as title
+msgid "imports_use_filename_title"
+msgstr "Use file name as title"
+
+#. PDF/EPUB import dialog UI: Preview
+msgid "imports_preview"
+msgstr "Preview"
+
+#. PDF/EPUB import dialog UI: Select a file to preview
+msgid "imports_preview_select_file"
+msgstr "Select a file to preview"
+
+#. PDF/EPUB import dialog UI: Add
+msgid "imports_add"
+msgstr "Add"
+
+#. PDF/EPUB import dialog UI: Select PDF files
+msgid "imports_select_pdf_files"
+msgstr "Select PDF files"
+
+#. PDF/EPUB import dialog UI: PDF files (*.pdf)
+msgid "imports_pdf_file_filter"
+msgstr "PDF files (*.pdf)"
+
+#. PDF/EPUB import dialog UI: Select folder with PDFs
+msgid "imports_select_pdf_folder"
+msgstr "Select folder with PDFs"
+
+#. PDF/EPUB import dialog UI: Choose EPUB files
+msgid "imports_select_epub_files"
+msgstr "Choose EPUB files"
+
+#. PDF/EPUB import dialog UI: Choose folder
+msgid "imports_select_folder"
+msgstr "Choose folder"
+
+#. PDF/EPUB import dialog UI: EPUB files (*.epub)
+msgid "imports_epub_file_filter"
+msgstr "EPUB files (*.epub)"
+
+#. PDF/EPUB import dialog UI: Found 0 new PDFs in folder
+msgid "imports_pdf_folder_none"
+msgstr "Found 0 new PDFs in folder"
+
+#. PDF/EPUB import dialog UI: Found 0 new EPUBs in folder
+msgid "imports_epub_folder_none"
+msgstr "Found 0 new EPUBs in folder"
+
+#. PDF/EPUB import dialog UI: Checked PDFs will be imported when you click Add
+msgid "imports_pdf_checked_hint"
+msgstr "Checked PDFs will be imported when you click Add"
+
+#. PDF/EPUB import dialog UI: Checked EPUBs will be imported when you click Add
+msgid "imports_epub_checked_hint"
+msgstr "Checked EPUBs will be imported when you click Add"
+
+#. PDF/EPUB import dialog UI: Use OCR
+msgid "imports_use_ocr"
+msgstr "Use OCR"
+
+#. PDF/EPUB import dialog UI: Run Tesseract OCR to embed a text layer
+msgid "imports_ocr_tooltip"
+msgstr "Run Tesseract OCR to embed a text layer"
+
+#. PDF/EPUB import dialog UI: No OCR ⚠
+msgid "imports_no_ocr_warning"
+msgstr "No OCR ⚠"
+
+#. PDF/EPUB import dialog UI: No PDFs match the current filter
+msgid "imports_pdf_no_matches"
+msgstr "No PDFs match the current filter"
+
+#. PDF/EPUB import dialog UI: Loading…
+msgid "imports_loading"
+msgstr "Loading…"
+
+#. PDF/EPUB import dialog UI: Detecting…
+msgid "imports_detecting"
+msgstr "Detecting…"
+
+#. PDF/EPUB import dialog UI: Please add at least one PDF file.
+msgid "imports_pdf_choose_file"
+msgstr "Please add at least one PDF file."
+
+#. PDF/EPUB import dialog UI: Please check at least one PDF to import.
+msgid "imports_choose_checked_pdf"
+msgstr "Please check at least one PDF to import."
+
+#. PDF/EPUB import dialog UI: Choose at least one EPUB file.
+msgid "imports_epub_choose_file"
+msgstr "Choose at least one EPUB file."
+
+#. PDF/EPUB import dialog UI: Please check at least one EPUB to import.
+msgid "imports_choose_checked_epub"
+msgstr "Please check at least one EPUB to import."
+
+#. PDF/EPUB import dialog UI: For multiple PDFs, enable 'Use file name as title'.
+msgid "imports_multiple_pdf_title"
+msgstr "For multiple PDFs, enable 'Use file name as title'."
+
+#. PDF/EPUB import dialog UI: For multiple EPUBs, enable 'Use file name as title'.
+msgid "imports_multiple_epub_title"
+msgstr "For multiple EPUBs, enable 'Use file name as title'."
+
+#. PDF/EPUB import dialog UI: Please enter a title.
+msgid "imports_enter_title"
+msgstr "Please enter a title."
+
+#. PDF/EPUB import dialog UI: Starting
+msgid "imports_starting"
+msgstr "Starting"
+
+#. PDF/EPUB import dialog UI: Adding…
+msgid "imports_adding"
+msgstr "Adding…"
+
+#. PDF/EPUB import dialog UI: Done
+msgid "imports_done"
+msgstr "Done"
+
+#. PDF/EPUB import dialog UI: Failed
+msgid "imports_failed"
+msgstr "Failed"
+
+#. PDF/EPUB import dialog UI: Derived from each file name
+msgid "imports_derived_filename"
+msgstr "Derived from each file name"
+
+#. PDF/EPUB import dialog UI: Scanning EPUB folder…
+msgid "imports_epub_folder_scanning"
+msgstr "Scanning EPUB folder…"
+
+#. PDF/EPUB import dialog UI: Failed to scan EPUB folder:
+msgid "imports_epub_scanning_failed"
+msgstr "Failed to scan EPUB folder:"
+
+#. PDF/EPUB import feedback: Found {count} PDFs in folder · loaded into dialog
+msgid "imports_pdf_folder_loaded"
+msgstr "Found {count} PDFs in folder · loaded into dialog"
+
+#. PDF/EPUB import feedback: Found {count} EPUBs in folder · loaded into dialog
+msgid "imports_epub_folder_loaded"
+msgstr "Found {count} EPUBs in folder · loaded into dialog"
+
+#. PDF/EPUB import feedback: This PDF has no selectable text and Tesseract is not installed.
+msgid "imports_pdf_ocr_unavailable"
+msgstr "This PDF has no selectable text and Tesseract is not installed."
+
+#. PDF/EPUB import feedback: OCR…
+msgid "imports_ocr_running"
+msgstr "OCR…"
+
+#. PDF/EPUB import feedback: OCR {current}/{total}
+msgid "imports_ocr_progress"
+msgstr "OCR {current}/{total}"
+
+#. PDF/EPUB import feedback: ✓ (no text)
+msgid "imports_ocr_no_text"
+msgstr "✓ (no text)"
+
+#. PDF/EPUB import feedback: Priority for this PDF. {important_end} is highest importance, 50 is default.
+msgid "imports_pdf_priority_hint"
+msgstr "Priority for this PDF. {important_end} is highest importance, 50 is default."
+
+#. PDF/EPUB import feedback: Priority for this EPUB. {important_end} is highest importance, 50 is default.
+msgid "imports_epub_priority_hint"
+msgstr "Priority for this EPUB. {important_end} is highest importance, 50 is default."
+
+#. PDF/EPUB import feedback: Adding PDFs…
+msgid "imports_pdf_adding"
+msgstr "Adding PDFs…"
+
+#. PDF/EPUB import feedback: Adding EPUBs…
+msgid "imports_epub_adding"
+msgstr "Adding EPUBs…"
+
+#. PDF/EPUB import feedback: Adding PDFs… {completed} / {total}
+msgid "imports_pdf_progress"
+msgstr "Adding PDFs… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Adding EPUBs… {completed} / {total}
+msgid "imports_epub_progress"
+msgstr "Adding EPUBs… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Adding PDFs… {completed} / {total} · {phase}: {filename}
+msgid "imports_pdf_progress_detail"
+msgstr "Adding PDFs… {completed} / {total} · {phase}: {filename}"
+
+#. PDF/EPUB import feedback: Adding EPUBs… {completed} / {total} · {phase}: {filename}
+msgid "imports_epub_progress_detail"
+msgstr "Adding EPUBs… {completed} / {total} · {phase}: {filename}"
+
+#. PDF/EPUB import feedback: Found {found} PDFs in folder · {remaining} remaining · adding… {completed} / {total}
+msgid "imports_pdf_folder_progress"
+msgstr "Found {found} PDFs in folder · {remaining} remaining · adding… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Found {found} EPUBs in folder · {remaining} remaining · adding… {completed} / {total}
+msgid "imports_epub_folder_progress"
+msgstr "Found {found} EPUBs in folder · {remaining} remaining · adding… {completed} / {total}"
+
+#. PDF/EPUB import feedback: Failed to scan EPUB folder: {error}
+msgid "imports_epub_scan_failed"
+msgstr "Failed to scan EPUB folder: {error}"
+
+#. PDF/EPUB import feedback: {total} EPUBs in dialog · {checked} checked to import
+msgid "imports_epub_count_summary"
+msgstr "{total} EPUBs in dialog · {checked} checked to import"
+
+#. PDF/EPUB import feedback:  · {visible} visible
+msgid "imports_epub_visible_count"
+msgstr " · {visible} visible"
+
+#. Activity Center UI: Running
+msgid "imports_activity_running"
+msgstr "Running"
+
+#. Activity Center UI: Completed
+msgid "imports_activity_completed"
+msgstr "Completed"
+
+#. Activity Center UI: Failed
+msgid "imports_activity_failed"
+msgstr "Failed"
+
+#. Activity Center UI: Cancelled
+msgid "imports_activity_cancelled"
+msgstr "Cancelled"
+
+#. Activity Center UI: Unknown
+msgid "imports_activity_unknown"
+msgstr "Unknown"
+
+#. Activity Center UI: Complete
+msgid "imports_activity_complete"
+msgstr "Complete"
+
+#. Activity Center UI: Working…
+msgid "imports_activity_working"
+msgstr "Working…"
+
+#. Activity Center UI: now
+msgid "imports_activity_now"
+msgstr "now"
+
+#. Activity Center UI: Incremento Activity Center
+msgid "imports_activity_title"
+msgstr "Incremento Activity Center"
+
+#. Activity Center UI: See active and recent background work in one place. Cancel and Retry are enabled only when an operation supports them.
+msgid "imports_activity_intro"
+msgstr "See active and recent background work in one place. Cancel and Retry are enabled only when an operation supports them."
+
+#. Activity Center UI: Show completed activity
+msgid "imports_activity_show_finished"
+msgstr "Show completed activity"
+
+#. Activity Center UI: Show completed background activity
+msgid "imports_activity_show_finished_accessible"
+msgstr "Show completed background activity"
+
+#. Activity Center UI: Clear Finished
+msgid "imports_activity_clear_finished"
+msgstr "Clear Finished"
+
+#. Activity Center UI: Clear finished Incremento activity
+msgid "imports_activity_clear_finished_accessible"
+msgstr "Clear finished Incremento activity"
+
+#. Activity Center UI: Activity
+msgid "imports_activity_column_activity"
+msgstr "Activity"
+
+#. Activity Center UI: Category
+msgid "imports_activity_column_category"
+msgstr "Category"
+
+#. Activity Center UI: Status
+msgid "imports_activity_column_status"
+msgstr "Status"
+
+#. Activity Center UI: Progress
+msgid "imports_activity_column_progress"
+msgstr "Progress"
+
+#. Activity Center UI: Updated
+msgid "imports_activity_column_updated"
+msgstr "Updated"
+
+#. Activity Center UI: Incremento background activity
+msgid "imports_activity_tree_accessible"
+msgstr "Incremento background activity"
+
+#. Activity Center UI: Select an activity to see details.
+msgid "imports_activity_select_detail"
+msgstr "Select an activity to see details."
+
+#. Activity Center UI: Selected activity details
+msgid "imports_activity_detail_accessible"
+msgstr "Selected activity details"
+
+#. Activity Center UI: Cancel Task
+msgid "imports_activity_cancel_task"
+msgstr "Cancel Task"
+
+#. Activity Center UI: Retry
+msgid "imports_activity_retry"
+msgstr "Retry"
+
+#. Activity Center UI: Close
+msgid "imports_activity_close"
+msgstr "Close"
+
+#. Activity Center UI: Cancel selected activity
+msgid "imports_activity_cancel_accessible"
+msgstr "Cancel selected activity"
+
+#. Activity Center UI: Retry selected activity
+msgid "imports_activity_retry_accessible"
+msgstr "Retry selected activity"
+
+#. Activity Center UI: Close Incremento Activity Center
+msgid "imports_activity_close_accessible"
+msgstr "Close Incremento Activity Center"
+
+#. Activity Center UI: No activity to show.
+msgid "imports_activity_none"
+msgstr "No activity to show."
+
+#. Activity Center UI: No additional details.
+msgid "imports_activity_no_details"
+msgstr "No additional details."
+
+#. Activity Center elapsed time: {count} minute ago
+msgid "imports_activity_minutes_ago"
+msgid_plural "imports_activity_minutes_ago_plural"
+msgstr[0] "{count} minute ago"
+msgstr[1] "{count} minutes ago"
+
+#. Activity Center elapsed time: {count} hour ago
+msgid "imports_activity_hours_ago"
+msgid_plural "imports_activity_hours_ago_plural"
+msgstr[0] "{count} hour ago"
+msgstr[1] "{count} hours ago"
+
+#. Activity Center elapsed time: {count} day ago
+msgid "imports_activity_days_ago"
+msgid_plural "imports_activity_days_ago_plural"
+msgstr[0] "{count} day ago"
+msgstr[1] "{count} days ago"
+
+#. Auxiliary UI
+msgid "imports_ok"
+msgstr "OK"
+
+#. Auxiliary UI
+msgid "imports_reviewer_tags_title"
+msgstr "Append Tags"
+
+#. Auxiliary UI
+msgid "imports_reviewer_tags_intro"
+msgstr "Append tags to the current review card without opening Edit. Recent tags are shown first, and all collection tags are listed below. Type one or more new tags to add them directly."
+
+#. Auxiliary UI
+msgid "imports_reviewer_current_tags"
+msgstr "Current Tags"
+
+#. Auxiliary UI
+msgid "imports_reviewer_no_tags"
+msgstr "No tags on this note yet."
+
+#. Auxiliary UI
+msgid "imports_reviewer_latest_used"
+msgstr "Latest Used"
+
+#. Auxiliary UI
+msgid "imports_reviewer_no_recent"
+msgstr "No recent reviewer tags yet."
+
+#. Auxiliary UI
+msgid "imports_reviewer_search"
+msgstr "Search"
+
+#. Auxiliary UI
+msgid "imports_reviewer_search_placeholder"
+msgstr "Filter tags or type new tags"
+
+#. Auxiliary UI
+msgid "imports_reviewer_add_typed"
+msgstr "Add Typed"
+
+#. Auxiliary UI
+msgid "imports_reviewer_will_add"
+msgstr "Will Add"
+
+#. Auxiliary UI
+msgid "imports_reviewer_choose_tags"
+msgstr "Choose one or more tags."
+
+#. Auxiliary UI
+msgid "imports_reviewer_apply"
+msgstr "Apply"
+
+#. Auxiliary UI
+msgid "imports_reviewer_already_present"
+msgstr "Already present on this note."
+
+#. Auxiliary UI
+msgid "imports_priority_title"
+msgstr "Set Priority"
+
+#. Auxiliary UI
+msgid "imports_priority_first_half"
+msgstr "First half of slider (0–30)"
+
+#. Auxiliary UI
+msgid "imports_priority_second_half"
+msgstr "Second half of slider (70–100)"
+
+#. Auxiliary UI
+msgid "imports_priority_scale_hint"
+msgstr "{important} = highest importance · 50 = default · {least} = lowest importance"
+
+#. Auxiliary UI
+msgid "imports_priority_finer_hint"
+msgstr "{side} gives finer control over important cards."
+
+#. Auxiliary UI
+msgid "imports_priority_label"
+msgstr "Priority:"
+
+#. Auxiliary UI
+msgid "imports_priority_a_factor"
+msgstr "A-Factor:"
+
+#. Auxiliary UI
+msgid "imports_priority_last_interval"
+msgstr "Last interval: {days} d"
+
+#. Auxiliary UI
+msgid "imports_priority_a_lower"
+msgstr "Lower A-Factor → shorter intervals (important topic)."
+
+#. Auxiliary UI
+msgid "imports_priority_a_higher"
+msgstr "Higher A-Factor → longer intervals (less urgent)."
+
+#. Auxiliary UI
+msgid "imports_extract_title"
+msgstr "Extract Card"
+
+#. Auxiliary UI
+msgid "imports_extract_note_type"
+msgstr "Note type:"
+
+#. Auxiliary UI
+msgid "imports_extract_deck"
+msgstr "Deck:"
+
+#. Auxiliary UI
+msgid "imports_extract_priority_help"
+msgstr "Priority for the extracted card. {end} is the most important end."
+
+#. Auxiliary UI
+msgid "imports_extract_topic"
+msgstr "Topic"
+
+#. Auxiliary UI
+msgid "imports_extract_topic_help"
+msgstr "Add the configured topic tags to this extracted card."
+
+#. Auxiliary UI
+msgid "imports_extract_tree"
+msgstr "Auto-add lineage to knowledge tree"
+
+#. Auxiliary UI
+msgid "imports_extract_create"
+msgstr "Create Card"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_title"
+msgstr "Quick Tag Settings"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_intro"
+msgstr "Choose a unique color for each tag. Topic uses green automatically. Automatic restores the assigned default color."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_fixed_mode"
+msgstr "Use my fixed tag sets instead of recent tag sets"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_fixed_help"
+msgstr "Define the numbered slots yourself. Separate tags with spaces, commas, or semicolons. Fill slots from 1 upward without gaps."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_choose"
+msgstr "Choose…"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_automatic"
+msgstr "Automatic"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_color_conflict"
+msgstr "That color is already used by #{tag}. Choose a different color."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_choose_color"
+msgstr "Choose color for #{tag}"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_need_fixed"
+msgstr "Add at least one fixed tag set, or turn fixed mode off."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_no_gaps"
+msgstr "Fill fixed tag-set slots from 1 upward without gaps."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_unique"
+msgstr "Each fixed tag set must be unique."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_title"
+msgstr "Quick Add Tags"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_empty"
+msgstr "No tag sets are available yet. Open Settings… to define your own fixed tag sets."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_accessible"
+msgstr "{number} or {letter}: {tags}"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings"
+msgstr "Settings…"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_settings_help"
+msgstr "Configure fixed tag sets and colors"
+
+#. Auxiliary UI
+msgid "imports_quick_tags_select_rows"
+msgstr "Select one or more Browser rows first."
+
+#. Auxiliary UI
+msgid "imports_quick_tags_action"
+msgstr "Quick Add Tags…"
+
+#. Auxiliary UI
+msgid "imports_browser_priority_ambiguous"
+msgstr "Select exactly one Browser card row first."
+
+#. Auxiliary UI
+msgid "imports_edit_priority_unavailable"
+msgstr "Could not determine the card being edited."
+
+#. Auxiliary UI
+msgid "imports_priority_dialog_unavailable"
+msgstr "Priority dialog is unavailable."
+
+#. Auxiliary UI
+msgid "imports_browser_priority_tip"
+msgstr "Set priority for selected Browser card"
+
+#. Auxiliary UI
+msgid "imports_edit_priority_tip"
+msgstr "Set priority for the current card"
+
+#. Auxiliary UI
+msgid "imports_topic_done_button"
+msgstr "✓ Done"
+
+#. Auxiliary UI
+msgid "imports_topic_done_description"
+msgstr "Keep this topic as a reference and stop showing it in reviews. Add the Done tag selected in Settings → Topics to its note. Extracted cards continue reviewing. Undo restores both the card and its previous tags."
+
+#. Auxiliary UI
+msgid "imports_topic_done_accessible"
+msgstr "Mark topic as done"
+
+#. Auxiliary UI
+msgid "imports_topic_changed"
+msgstr "The current topic changed. Please try again."
+
+#. Auxiliary UI
+msgid "imports_topic_no_longer"
+msgstr "This card is no longer a topic."
+
+#. Auxiliary UI
+msgid "imports_topic_profile_changed"
+msgstr "The profile changed."
+
+#. Auxiliary UI
+msgid "imports_topic_done_action"
+msgstr "Mark Topic as Done"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_menu"
+msgstr "Revisit in…"
+
+#. Auxiliary UI
+msgid "imports_topic_choose_date"
+msgstr "Choose date…"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_title"
+msgstr "Revisit Topic"
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_help"
+msgstr "Choose when this topic should next be due:"
+
+#. Auxiliary UI
+msgid "imports_topic_next_date"
+msgstr "Next review date"
+
+#. Auxiliary UI
+msgid "imports_topic_undo"
+msgstr "Undo"
+
+#. Auxiliary UI
+msgid "imports_topic_undo_accessible"
+msgstr "Undo topic action"
+
+#. Auxiliary UI
+msgid "imports_topic_dismiss"
+msgstr "Dismiss notification"
+
+#. Auxiliary UI
+msgid "imports_topic_done_notice"
+msgstr "Topic marked as done."
+
+#. Auxiliary UI
+msgid "imports_topic_revisit_notice"
+msgstr "Topic scheduled for {date}."
+
+#. Auxiliary UI plural
+msgid "imports_quick_tags_intro"
+msgid_plural "imports_quick_tags_intro_plural"
+msgstr[0] "Apply one tag set to {count} selected note. Press 1–9 or A–I, or click a set. Slots run across each row. Each tag always keeps the same color."
+msgstr[1] "Apply one tag set to {count} selected notes. Press 1–9 or A–I, or click a set. Slots run across each row. Each tag always keeps the same color."
+
+#. Auxiliary UI plural
+msgid "imports_quick_tags_applied"
+msgid_plural "imports_quick_tags_applied_plural"
+msgstr[0] "Added {tags} to {count} note."
+msgstr[1] "Added {tags} to {count} notes."
+
+#. Auxiliary UI plural
+msgid "imports_topic_months"
+msgid_plural "imports_topic_months_plural"
+msgstr[0] "{count} month"
+msgstr[1] "{count} months"
+#. Quick tag example; topic is a canonical tag name.
+msgid "imports_quick_tags_placeholder"
+msgstr "topic psychology"
+
+#. Reviewer topic error
+msgid "imports_topic_unavailable"
+msgstr "This topic is no longer available for review."
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_months"
+msgstr "Choose 3, 6 or 12 months, or a future date."
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_date"
+msgstr "Choose a future date within the next 100 years."
+
+#. Reviewer topic error
+msgid "imports_topic_invalid_data"
+msgstr "The card's custom scheduling data is invalid."
+
+#. Reviewer topic error
+msgid "imports_topic_undo_stale"
+msgstr "This action is no longer the latest change. Use Edit → Undo to review recent changes."
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_menu"
+msgstr "Review buttons"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_group"
+msgstr "Show review button group"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_done"
+msgstr "Show Done button"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_postpone"
+msgstr "Show Postpone button"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_show_extract"
+msgstr "Show Extract button"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_label"
+msgstr "Extract"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_description"
+msgstr "Extract selected content into a new card"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_extract_shortcut"
+msgstr "Extract selected content into a new card ({shortcut})"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_priority"
+msgstr "Priority"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_a_factor"
+msgstr "A-Factor"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_saved"
+msgstr "Saved"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_schedule"
+msgstr "Schedule"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_source_pdf"
+msgstr "Source PDF"
+
+#. Reviewer menu and overlay
+msgid "reviewer_visibility_source_hint"
+msgstr "Source reference on this card opens the document."

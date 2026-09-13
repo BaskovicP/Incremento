@@ -40,6 +40,11 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase, QColor, QTextCharFormat, QKeySequence
 
 try:
+    from ..backend.i18n import format_date, t
+except ImportError:
+    from backend.i18n import format_date, t  # type: ignore
+
+try:
     from ..backend import paths as _paths
     from ..backend.config_service import load_addon_config
     from .file_shell import reveal_local_file
@@ -213,10 +218,10 @@ def _count_words(text: str | None, mode: str | None = None) -> int:
 def _scope_label(scope: str) -> str:
     normalized = str(scope or "").strip().lower()
     if normalized == "session":
-        return "Words this session"
+        return t("writing_words_session")
     if normalized == "all_time":
-        return "Words total"
-    return "Words today"
+        return t("writing_words_total")
+    return t("writing_words_today")
 
 
 def _current_progress_scope() -> str:
@@ -257,7 +262,7 @@ def _update_progress_display() -> None:
             count = all_time_total
         else:
             count = today_total
-        _writing_dock._progress_value_lbl.setText(f"{_scope_label(scope)}: {count}")
+        _writing_dock._progress_value_lbl.setText(t("writing_scope_count", scope=_scope_label(scope), count=count))
     except Exception:
         pass
 
@@ -314,16 +319,17 @@ def _set_saved_time() -> None:
         return
     now_txt = datetime.datetime.now().strftime("%H:%M:%S")
     try:
-        _writing_dock._saved_lbl.setText(f"Saved {now_txt}")
+        _writing_dock._saved_lbl.setText(t("writing_saved", time=now_txt))
     except Exception:
         pass
 
 
 def _format_backup_timestamp(value) -> str:
     try:
-        return datetime.datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.fromtimestamp(float(value))
+        return f"{format_date(timestamp)} {timestamp.strftime('%H:%M:%S')}"
     except Exception:
-        return "Unknown time"
+        return t("writing_unknown_time")
 
 
 def _current_scroll_ratio() -> float:
@@ -341,12 +347,12 @@ def _current_scroll_ratio() -> float:
 
 def _line_column_text() -> str:
     if _writing_dock is None:
-        return "Ln 1, Col 1"
+        return t("writing_line_column", line=1, column=1)
     try:
         cursor = _writing_dock._editor.textCursor()
-        return f"Ln {cursor.blockNumber() + 1}, Col {cursor.positionInBlock() + 1}"
+        return t("writing_line_column", line=cursor.blockNumber() + 1, column=cursor.positionInBlock() + 1)
     except Exception:
-        return "Ln 1, Col 1"
+        return t("writing_line_column", line=1, column=1)
 
 
 def _bookmark_line_number() -> int | None:
@@ -365,10 +371,10 @@ def _update_status_details() -> None:
     try:
         zoom_percent = int(round(float(getattr(_writing_dock, "_font_scale", _DEFAULT_FONT_SCALE)) * 100.0))
         bookmark_line = _bookmark_line_number()
-        bookmark_txt = f"Marker {bookmark_line}" if bookmark_line is not None else "Marker off"
-        wrap_txt = "Wrap on" if bool(getattr(_writing_dock, "_wrap_enabled", True)) else "Wrap off"
+        bookmark_txt = t("writing_marker_line", line=bookmark_line) if bookmark_line is not None else t("writing_marker_off")
+        wrap_txt = t("writing_wrap_on") if bool(getattr(_writing_dock, "_wrap_enabled", True)) else t("writing_wrap_off")
         _writing_dock._detail_lbl.setText(
-            f"{_line_column_text()}   •   {zoom_percent}%   •   {bookmark_txt}   •   {wrap_txt}"
+            t("writing_status_details", location=_line_column_text(), zoom=zoom_percent, marker=bookmark_txt, wrap=wrap_txt)
         )
     except Exception:
         pass
@@ -571,9 +577,9 @@ def _autosave_from_editor() -> None:
             backup_tiers=configured_writing_backup_tiers(),
         )
     except Exception:
-        _set_status("Autosave failed")
+        _set_status(t("writing_autosave_failed"))
         return
-    _set_status("Autosave on typing")
+    _set_status(t("writing_autosave_on_typing"))
     _set_saved_time()
     _sync_writing_word_stats(text=text)
     _save_writing_progress()
@@ -650,12 +656,12 @@ def _jump_to_marker() -> None:
         return
     bookmark_block = int(getattr(_writing_dock, "_bookmark_block_number", -1))
     if bookmark_block < 0:
-        tooltip("No marker set for this writing card.")
+        tooltip(t("writing_no_marker"))
         return
     try:
         block = _writing_dock._editor.document().findBlockByNumber(bookmark_block)
         if not block.isValid():
-            tooltip("Saved marker line is no longer available.")
+            tooltip(t("writing_marker_unavailable"))
             return
         cursor = QTextCursor(block)
         _writing_dock._editor.setTextCursor(cursor)
@@ -685,30 +691,30 @@ def _refresh_writing_bookmarks_panel() -> None:
         return
     bookmarks = _writing_bookmarks()
     try:
-        _writing_dock._bookmarks_btn.setText(f"Bookmarks {len(bookmarks)}")
+        _writing_dock._bookmarks_btn.setText(t("writing_bookmarks_count", count=len(bookmarks)))
     except Exception:
         pass
     panel = getattr(_writing_dock, "_bookmarks_panel", None)
     if panel is None:
         return
     html = ["<div style='font-family:sans-serif;font-size:12px;line-height:1.45'>"]
-    html.append("<b>Interesting-place bookmarks</b>")
+    html.append(f"<b>{escape(t('reader_interesting_bookmarks'))}</b>")
     if bookmarks:
         html.append("<ul>")
         for bookmark in bookmarks:
             bookmark_id = escape(str(bookmark.get("id") or ""), quote=True)
-            label = str(bookmark.get("label") or "Bookmark")
+            label = str(bookmark.get("label") or t("reader_bookmark"))
             safe_label = escape(label, quote=True)
             html.append(
                 "<li>"
                 f"{safe_label} "
-                f"<a href='inc://writing-bookmark-open/{bookmark_id}'>Jump</a> "
-                f"<a href='inc://writing-bookmark-delete/{bookmark_id}' style='color:#c66'>Delete</a>"
+                f"<a href='inc://writing-bookmark-open/{bookmark_id}'>{escape(t('reader_jump'))}</a> "
+                f"<a href='inc://writing-bookmark-delete/{bookmark_id}' style='color:#c66'>{escape(t('reader_delete'))}</a>"
                 "</li>"
             )
         html.append("</ul>")
     else:
-        html.append("<div style='color:#888;padding:6px 0 0'>No bookmarks yet.</div>")
+        html.append(f"<div style='color:#888;padding:6px 0 0'>{escape(t('reader_no_bookmarks'))}</div>")
     html.append("</div>")
     panel.setHtml("".join(html))
 
@@ -730,14 +736,14 @@ def _add_current_writing_bookmark() -> None:
             },
         )
     except Exception as exc:
-        showInfo(f"Could not save writing bookmark:\n{exc}")
+        showInfo(t("writing_bookmark_save_failed", error=exc))
         return
     _refresh_writing_bookmarks_panel()
     try:
         _writing_dock._bookmarks_panel.setVisible(True)
     except Exception:
         pass
-    tooltip("Writing bookmark saved.")
+    tooltip(t("writing_bookmark_saved"))
 
 
 def _toggle_writing_bookmarks_panel() -> None:
@@ -765,7 +771,7 @@ def _open_writing_bookmark_link(url: QUrl) -> None:
                 bookmark_id,
             )
         except Exception as exc:
-            showInfo(f"Could not delete writing bookmark:\n{exc}")
+            showInfo(t("writing_bookmark_delete_failed", error=exc))
         _refresh_writing_bookmarks_panel()
         return
     if not s.startswith("inc://writing-bookmark-open/"):
@@ -793,24 +799,24 @@ def _apply_markdown_transform(kind: str) -> None:
     selected = _normalize_selection_text(cursor.selectedText())
 
     if kind == "h1":
-        replacement = _prefix_lines_text(selected, "# ", "Heading")
+        replacement = _prefix_lines_text(selected, "# ", t("writing_placeholder_heading"))
     elif kind == "bold":
-        replacement = _wrap_selection_text(selected, "**", "**", "bold")
+        replacement = _wrap_selection_text(selected, "**", "**", t("writing_placeholder_bold"))
     elif kind == "italic":
-        replacement = _wrap_selection_text(selected, "*", "*", "italic")
+        replacement = _wrap_selection_text(selected, "*", "*", t("writing_placeholder_italic"))
     elif kind == "bullet":
-        replacement = _prefix_lines_text(selected, "- ", "List item")
+        replacement = _prefix_lines_text(selected, "- ", t("writing_placeholder_list_item"))
     elif kind == "number":
         body = selected.strip()
         if not body:
-            replacement = "1. List item"
+            replacement = "1. " + t("writing_placeholder_list_item")
         else:
             lines = body.splitlines()
             replacement = "\n".join(f"{idx + 1}. {line}" if line else f"{idx + 1}." for idx, line in enumerate(lines))
     elif kind == "quote":
-        replacement = _prefix_lines_text(selected, "> ", "Quote")
+        replacement = _prefix_lines_text(selected, "> ", t("writing_placeholder_quote"))
     elif kind == "code":
-        body = selected.strip("\n") or "code"
+        body = selected.strip("\n") or t("writing_placeholder_code")
         replacement = f"```\n{body}\n```"
     elif kind == "rule":
         replacement = "\n\n---\n\n"
@@ -865,7 +871,7 @@ def _on_editor_text_changed() -> None:
     if _writing_dock is None or _loading_editor or not _current_writing_relpath:
         return
     _refresh_markdown_preview()
-    _set_status("Saving…")
+    _set_status(t("writing_saving"))
     if _autosave_timer is not None:
         _autosave_timer.start()
     try:
@@ -936,18 +942,18 @@ def _reload_current_writing_from_disk() -> None:
     _sync_writing_word_stats(text=text)
     _save_writing_progress()
     _update_editor_highlights()
-    _set_status("Backup restored")
+    _set_status(t("writing_backup_restored"))
     _set_saved_time()
 
 
 class _WritingBackupDialog(QDialog):
     def __init__(self, parent, backups: list[dict]):
         super().__init__(parent)
-        self.setWindowTitle("Writing Backups")
+        self.setWindowTitle(t("writing_backups_title"))
         self.resize(520, 300)
         self._list = QListWidget(self)
         root = QVBoxLayout(self)
-        hint = QLabel("Choose a backup snapshot for this writing card. Restoring replaces the current markdown file.")
+        hint = QLabel(t("writing_backups_hint"))
         hint.setWordWrap(True)
         root.addWidget(hint)
         root.addWidget(self._list, 1)
@@ -955,7 +961,8 @@ class _WritingBackupDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Restore")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("writing_restore"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common_cancel"))
         qconnect(buttons.accepted, self.accept)
         qconnect(buttons.rejected, self.reject)
         root.addWidget(buttons)
@@ -977,12 +984,12 @@ class _WritingBackupDialog(QDialog):
 
 def _open_backup_restore_dialog() -> None:
     if _current_writing_card_id is None or not _current_writing_relpath:
-        tooltip("No writing card is open.")
+        tooltip(t("writing_no_card_open"))
         return
     _flush_editor_state()
     backups = list_writing_backups(_ADDON_DIR, _current_writing_relpath)
     if not backups:
-        showInfo("No writing backups are available for this card yet.")
+        showInfo(t("writing_no_backups"))
         return
     dlg = _WritingBackupDialog(mw, backups)
     if not dlg.exec():
@@ -993,13 +1000,13 @@ def _open_backup_restore_dialog() -> None:
     label = str(selected.get("label", selected.get("tier_key", "backup")))
     timestamp = _format_backup_timestamp(selected.get("created_at"))
     if not askUser(
-        f"Restore the {label} backup from {timestamp}?\n\nThis replaces the current markdown file for this writing card."
+        t("writing_restore_confirm", label=label, timestamp=timestamp)
     ):
         return
     try:
         restore_writing_backup(_ADDON_DIR, _current_writing_relpath, str(selected.get("tier_key", "")))
     except Exception as exc:
-        showInfo(f"Could not restore writing backup.\n\n{exc}")
+        showInfo(t("writing_restore_failed", error=exc))
         return
     _reload_current_writing_from_disk()
 
@@ -1037,7 +1044,7 @@ def _add_editor_shortcuts(dock) -> None:
 def _build_writing_dock():
     global _writing_dock, _autosave_timer, _state_save_timer
 
-    dock = QDockWidget("Writing", mw)
+    dock = QDockWidget(t("writing_title"), mw)
     dock.setObjectName("incremento_writing_dock")
     dock.setMinimumWidth(720)
 
@@ -1059,51 +1066,51 @@ def _build_writing_dock():
     toolbar = QHBoxLayout()
     toolbar.setSpacing(6)
 
-    toolbar.addWidget(_build_button("A-", lambda: _adjust_font_scale(-0.1), tooltip_text="Smaller text"))
-    toolbar.addWidget(_build_button("A+", lambda: _adjust_font_scale(0.1), tooltip_text="Larger text"))
+    toolbar.addWidget(_build_button(t("writing_smaller_text"), lambda: _adjust_font_scale(-0.1), tooltip_text=t("writing_smaller_text_tooltip")))
+    toolbar.addWidget(_build_button(t("writing_larger_text"), lambda: _adjust_font_scale(0.1), tooltip_text=t("writing_larger_text_tooltip")))
 
-    wrap_btn = _build_button("Wrap", lambda _checked=False: _toggle_wrap(), tooltip_text="Toggle line wrap", checkable=True)
+    wrap_btn = _build_button(t("writing_wrap"), lambda _checked=False: _toggle_wrap(), tooltip_text=t("writing_wrap_tooltip"), checkable=True)
     toolbar.addWidget(wrap_btn)
 
-    focus_btn = _build_button("Focus", lambda _checked=False: _toggle_focus_mode(), tooltip_text="Make preview less prominent", checkable=True)
+    focus_btn = _build_button(t("writing_focus"), lambda _checked=False: _toggle_focus_mode(), tooltip_text=t("writing_focus_tooltip"), checkable=True)
     toolbar.addWidget(focus_btn)
 
     preview_btn = _build_button(
-        "Preview",
+        t("common_preview"),
         lambda _checked=False: _toggle_preview(),
-        tooltip_text="Show or hide the markdown preview",
+        tooltip_text=t("writing_preview_tooltip"),
         checkable=True,
     )
     toolbar.addWidget(preview_btn)
 
     highlight_line_btn = _build_button(
-        "Line",
+        t("writing_line"),
         lambda _checked=False: _toggle_line_highlight(),
-        tooltip_text="Toggle current-line highlight",
+        tooltip_text=t("writing_line_tooltip"),
         checkable=True,
     )
     toolbar.addWidget(highlight_line_btn)
 
     toolbar.addSpacing(10)
-    toolbar.addWidget(_build_button("H1", lambda: _apply_markdown_transform("h1"), tooltip_text="Insert heading"))
-    toolbar.addWidget(_build_button("B", lambda: _apply_markdown_transform("bold"), tooltip_text="Bold"))
-    toolbar.addWidget(_build_button("I", lambda: _apply_markdown_transform("italic"), tooltip_text="Italic"))
-    toolbar.addWidget(_build_button("•", lambda: _apply_markdown_transform("bullet"), tooltip_text="Bullet list"))
-    toolbar.addWidget(_build_button("1.", lambda: _apply_markdown_transform("number"), tooltip_text="Numbered list"))
-    toolbar.addWidget(_build_button("Quote", lambda: _apply_markdown_transform("quote"), tooltip_text="Block quote"))
-    toolbar.addWidget(_build_button("</>", lambda: _apply_markdown_transform("code"), tooltip_text="Code block"))
-    toolbar.addWidget(_build_button("HR", lambda: _apply_markdown_transform("rule"), tooltip_text="Horizontal rule"))
+    toolbar.addWidget(_build_button("H1", lambda: _apply_markdown_transform("h1"), tooltip_text=t("writing_insert_heading")))
+    toolbar.addWidget(_build_button("B", lambda: _apply_markdown_transform("bold"), tooltip_text=t("writing_bold")))
+    toolbar.addWidget(_build_button("I", lambda: _apply_markdown_transform("italic"), tooltip_text=t("writing_italic")))
+    toolbar.addWidget(_build_button("•", lambda: _apply_markdown_transform("bullet"), tooltip_text=t("writing_bullet_list")))
+    toolbar.addWidget(_build_button("1.", lambda: _apply_markdown_transform("number"), tooltip_text=t("writing_numbered_list")))
+    toolbar.addWidget(_build_button(t("writing_quote"), lambda: _apply_markdown_transform("quote"), tooltip_text=t("writing_block_quote")))
+    toolbar.addWidget(_build_button("</>", lambda: _apply_markdown_transform("code"), tooltip_text=t("writing_code_block")))
+    toolbar.addWidget(_build_button("HR", lambda: _apply_markdown_transform("rule"), tooltip_text=t("writing_horizontal_rule")))
 
     toolbar.addSpacing(10)
-    toolbar.addWidget(_build_button("Set Marker", _move_marker_to_cursor, tooltip_text="Save the current line as a marker"))
-    toolbar.addWidget(_build_button("Jump", _jump_to_marker, tooltip_text="Jump to the saved marker line"))
-    toolbar.addWidget(_build_button("Clear", _clear_marker, tooltip_text="Clear the saved marker line"))
-    toolbar.addWidget(_build_button("Bookmark", _add_current_writing_bookmark, tooltip_text="Save the current line as an interesting-place bookmark"))
-    bookmarks_btn = _build_button("Bookmarks 0", _toggle_writing_bookmarks_panel, tooltip_text="Show saved writing bookmarks")
+    toolbar.addWidget(_build_button(t("writing_set_marker"), _move_marker_to_cursor, tooltip_text=t("writing_set_marker_tooltip")))
+    toolbar.addWidget(_build_button(t("writing_jump"), _jump_to_marker, tooltip_text=t("writing_jump_tooltip")))
+    toolbar.addWidget(_build_button(t("writing_clear"), _clear_marker, tooltip_text=t("writing_clear_tooltip")))
+    toolbar.addWidget(_build_button(t("writing_bookmark"), _add_current_writing_bookmark, tooltip_text=t("writing_bookmark_tooltip")))
+    bookmarks_btn = _build_button(t("writing_bookmarks_button", count=0), _toggle_writing_bookmarks_panel, tooltip_text=t("writing_bookmarks_tooltip"))
     toolbar.addWidget(bookmarks_btn)
     toolbar.addStretch(1)
-    toolbar.addWidget(_build_button("Backups", _open_backup_restore_dialog, tooltip_text="Restore one of the saved writing backups"))
-    toolbar.addWidget(_build_button("Reveal File", _open_writing_folder, tooltip_text="Reveal markdown file in Finder/Explorer"))
+    toolbar.addWidget(_build_button(t("writing_backups"), _open_backup_restore_dialog, tooltip_text=t("writing_backups_tooltip")))
+    toolbar.addWidget(_build_button(t("writing_reveal_file"), _open_writing_folder, tooltip_text=t("writing_reveal_file_tooltip")))
     layout.addLayout(toolbar)
 
     split = QSplitter(Qt.Orientation.Horizontal, root)
@@ -1112,13 +1119,13 @@ def _build_writing_dock():
     editor_layout = QVBoxLayout(editor_host)
     editor_layout.setContentsMargins(0, 0, 0, 0)
     editor_layout.setSpacing(4)
-    editor_label = QLabel("Markdown")
+    editor_label = QLabel(t("writing_markdown"))
     editor_label.setStyleSheet("font-weight: 600;")
     editor_layout.addWidget(editor_label)
 
     editor = QTextEdit(editor_host)
     editor.setAcceptRichText(False)
-    editor.setPlaceholderText("# Markdown writing\n\nThis note autosaves while you type.")
+    editor.setPlaceholderText(t("writing_placeholder"))
     mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
     base_font = QFont(mono)
     if base_font.pointSizeF() <= 0:
@@ -1131,7 +1138,7 @@ def _build_writing_dock():
     preview_layout = QVBoxLayout(preview_host)
     preview_layout.setContentsMargins(0, 0, 0, 0)
     preview_layout.setSpacing(4)
-    preview_label = QLabel("Preview")
+    preview_label = QLabel(t("common_preview"))
     preview_label.setStyleSheet("font-weight: 600;")
     preview_layout.addWidget(preview_label)
     preview = QTextBrowser(preview_host)
@@ -1143,19 +1150,19 @@ def _build_writing_dock():
     layout.addWidget(split, 1)
 
     bottom = QHBoxLayout()
-    status_lbl = QLabel("Idle")
+    status_lbl = QLabel(t("writing_idle"))
     status_lbl.setStyleSheet("font-size: 11px; color: #9aa0a6;")
-    detail_lbl = QLabel("Ln 1, Col 1")
+    detail_lbl = QLabel(t("writing_line_column", line=1, column=1))
     detail_lbl.setStyleSheet("font-size: 11px; color: #9aa0a6;")
-    progress_scope_label = QLabel("Progress")
+    progress_scope_label = QLabel(t("writing_progress"))
     progress_scope_label.setStyleSheet("font-size: 11px; color: #9aa0a6;")
     progress_scope_combo = QComboBox()
     progress_scope_combo.setMinimumContentsLength(8)
-    progress_scope_combo.addItem("Today", "today")
-    progress_scope_combo.addItem("Session", "session")
-    progress_scope_combo.addItem("All-time", "all_time")
+    progress_scope_combo.addItem(t("writing_today"), "today")
+    progress_scope_combo.addItem(t("writing_session"), "session")
+    progress_scope_combo.addItem(t("writing_all_time"), "all_time")
     progress_scope_combo.setCurrentIndex(0)
-    progress_value_lbl = QLabel("Words today: 0")
+    progress_value_lbl = QLabel(t("writing_words", scope=t("writing_today"), count=0))
     progress_value_lbl.setStyleSheet("font-size: 11px; color: #9aa0a6; font-weight: 600;")
     saved_lbl = QLabel("")
     saved_lbl.setStyleSheet("font-size: 11px; color: #9aa0a6;")
@@ -1311,7 +1318,7 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
     _update_editor_highlights()
     _update_progress_display()
     _refresh_writing_bookmarks_panel()
-    _set_status("Autosave on typing")
+    _set_status(t("writing_autosave_on_typing"))
     _writing_dock.show()
     _writing_dock.raise_()
 
@@ -1376,4 +1383,4 @@ def sync_writing_note_type() -> None:
 
 def add_writing_function() -> None:
     """Legacy entry point kept for parity with other dock modules."""
-    tooltip("Use Incremento → Add Content → Add to Markdown.")
+    tooltip(t("writing_add_content_hint"))

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+try:
+    from .i18n import t
+except ImportError:
+    from backend.i18n import t
+
+
 from typing import Literal
 
 try:
@@ -55,8 +61,8 @@ def item_pass_ease_for_card(card, button_count: int) -> int:
 def item_fail_pass_buttons(button_count: int, card=None) -> tuple[tuple[int, str], ...]:
     del button_count, card
     return (
-        (1, "Fail"),
-        (2, "Pass"),
+        (1, t("backend_item_fail")),
+        (2, t("backend_item_pass")),
     )
 
 

@@ -21,8 +21,10 @@ from aqt.qt import (
 
 try:
     from ..backend.reviewer_tags import filter_tags, normalize_tag_list
+    from ..backend.i18n import t as _t
 except ImportError:
     from backend.reviewer_tags import filter_tags, normalize_tag_list
+    from backend.i18n import t as _t
 
 
 def _tags_summary(tags: list[str], *, empty_text: str) -> str:
@@ -42,7 +44,7 @@ class ReviewerTagDialog(QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Append Tags")
+        self.setWindowTitle(_t("imports_reviewer_tags_title"))
         self.setMinimumWidth(560)
         self.setMinimumHeight(520)
 
@@ -59,16 +61,14 @@ class ReviewerTagDialog(QDialog):
         root.setSpacing(10)
 
         intro = QLabel(
-            "Append tags to the current review card without opening Edit. "
-            "Recent tags are shown first, and all collection tags are listed below. "
-            "Type one or more new tags to add them directly."
+            _t("imports_reviewer_tags_intro")
         )
         intro.setWordWrap(True)
         root.addWidget(intro)
 
         current_wrap = self._build_info_card(
-            "Current Tags",
-            _tags_summary(self._current_tags, empty_text="No tags on this note yet."),
+            _t("imports_reviewer_current_tags"),
+            _tags_summary(self._current_tags, empty_text=_t("imports_reviewer_no_tags")),
         )
         root.addWidget(current_wrap)
 
@@ -77,7 +77,7 @@ class ReviewerTagDialog(QDialog):
         recent_layout = QVBoxLayout(recent_card)
         recent_layout.setContentsMargins(10, 10, 10, 10)
         recent_layout.setSpacing(8)
-        recent_title = QLabel("Latest Used")
+        recent_title = QLabel(_t("imports_reviewer_latest_used"))
         recent_title.setStyleSheet("font-weight: 700;")
         recent_layout.addWidget(recent_title)
         self._recent_host = QWidget(recent_card)
@@ -89,20 +89,20 @@ class ReviewerTagDialog(QDialog):
         if self._recent_tags:
             self._populate_recent_buttons()
         else:
-            recent_empty = QLabel("No recent reviewer tags yet.")
+            recent_empty = QLabel(_t("imports_reviewer_no_recent"))
             recent_empty.setStyleSheet("color: palette(mid);")
             recent_layout.addWidget(recent_empty)
         root.addWidget(recent_card)
 
         search_row = QHBoxLayout()
-        search_label = QLabel("Search")
+        search_label = QLabel(_t("imports_reviewer_search"))
         self._search = QLineEdit(self)
-        self._search.setPlaceholderText("Filter tags or type new tags")
+        self._search.setPlaceholderText(_t("imports_reviewer_search_placeholder"))
         self._search.textChanged.connect(self._apply_filter)
         self._search.returnPressed.connect(self._add_typed_tags)
         search_row.addWidget(search_label)
         search_row.addWidget(self._search, 1)
-        self._add_typed_btn = QPushButton("Add Typed")
+        self._add_typed_btn = QPushButton(_t("imports_reviewer_add_typed"))
         self._add_typed_btn.clicked.connect(self._add_typed_tags)
         search_row.addWidget(self._add_typed_btn)
         root.addLayout(search_row)
@@ -113,7 +113,7 @@ class ReviewerTagDialog(QDialog):
         self._list.itemDoubleClicked.connect(self._toggle_item_selection)
         root.addWidget(self._list, 1)
 
-        pending_card = self._build_info_card("Will Add", "Choose one or more tags.")
+        pending_card = self._build_info_card(_t("imports_reviewer_will_add"), _t("imports_reviewer_choose_tags"), pending=True)
         self._pending_value = pending_card.findChild(QLabel, "incremento-reviewer-tag-pending")
         root.addWidget(pending_card)
 
@@ -124,8 +124,11 @@ class ReviewerTagDialog(QDialog):
         )
         self._apply_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
         if self._apply_btn is not None:
-            self._apply_btn.setText("Apply")
+            self._apply_btn.setText(_t("imports_reviewer_apply"))
             self._apply_btn.setEnabled(False)
+        cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_btn is not None:
+            cancel_btn.setText(_t("imports_cancel"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
@@ -135,7 +138,7 @@ class ReviewerTagDialog(QDialog):
         self._sync_pending_summary()
         self._search.setFocus()
 
-    def _build_info_card(self, title: str, value_text: str) -> QFrame:
+    def _build_info_card(self, title: str, value_text: str, *, pending: bool = False) -> QFrame:
         card = QFrame(self)
         card.setFrameShape(QFrame.Shape.StyledPanel)
         layout = QVBoxLayout(card)
@@ -145,7 +148,7 @@ class ReviewerTagDialog(QDialog):
         title_lbl.setStyleSheet("font-weight: 700;")
         value_lbl = QLabel(value_text)
         value_lbl.setWordWrap(True)
-        if title == "Will Add":
+        if pending:
             value_lbl.setObjectName("incremento-reviewer-tag-pending")
         layout.addWidget(title_lbl)
         layout.addWidget(value_lbl)
@@ -218,7 +221,7 @@ class ReviewerTagDialog(QDialog):
             key = tag.lower()
             if key in self._current_tag_keys:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-                item.setToolTip("Already present on this note.")
+                item.setToolTip(_t("imports_reviewer_already_present"))
                 item.setForeground(self.palette().mid())
             self._list.addItem(item)
             if key in self._pending_keys and key not in self._current_tag_keys:
@@ -266,7 +269,7 @@ class ReviewerTagDialog(QDialog):
         pending = self.selected_tags()
         if self._pending_value is not None:
             self._pending_value.setText(
-                _tags_summary(pending, empty_text="Choose one or more tags.")
+                _tags_summary(pending, empty_text=_t("imports_reviewer_choose_tags"))
             )
         can_apply = bool(pending)
         if self._apply_btn is not None:

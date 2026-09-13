@@ -117,3 +117,12 @@ def test_retry_restores_cancel_capability_for_failed_and_cancelled_activity():
         "cancel failed retry",
         "cancel initial",
     ]
+def test_missing_activity_presentation_uses_selected_language(monkeypatch):
+    from backend.i18n import Translator
+    monkeypatch.setattr(activity_log, 't', Translator('hr').t, raising=False)
+    activity_id = activity_log.start_activity('')
+    activity_log.fail_activity(activity_id, '')
+    entry = next(row for row in activity_log.snapshot_activities() if row['activity_id'] == activity_id)
+    assert entry['title'] == 'Zadatak Incremento'
+    assert entry['category'] == 'Općenito'
+    assert entry['detail'] == 'Radnja nije uspjela.'

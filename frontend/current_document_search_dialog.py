@@ -13,15 +13,19 @@ from aqt.qt import (
     QVBoxLayout,
     Qt,
 )
+try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
 
 
 def _document_hit_title(document_kind: str, hit: dict) -> str:
     if document_kind == "pdf":
-        return f"Page {int(hit.get('page', 1) or 1)}"
+        return t("reader_page_number", page=int(hit.get('page', 1) or 1))
     section_title = str(hit.get("sectionTitle") or "").strip()
     if section_title:
         return section_title
-    return f"Section {int(hit.get('sectionIndex', 0) or 0) + 1}"
+    return t("reader_section_number", number=int(hit.get('sectionIndex', 0) or 0) + 1)
 
 
 def _document_hit_summary(document_kind: str, hit: dict) -> str:
@@ -49,8 +53,8 @@ class _CurrentDocumentSearchDialog(QDialog):
         self._open_search_all_fn = open_search_all_fn
         self._hits: list[dict] = []
 
-        label = str(document_label or "").strip() or "Current Document"
-        self.setWindowTitle(f"Find In {label}")
+        label = str(document_label or "").strip() or t("reader_current_document")
+        self.setWindowTitle(t("reader_find_in_document", document=label))
         self.resize(720, 420)
 
         layout = QVBoxLayout(self)
@@ -60,7 +64,7 @@ class _CurrentDocumentSearchDialog(QDialog):
         search_row = QHBoxLayout()
         search_row.setSpacing(8)
         self._search = QLineEdit(self)
-        self._search.setPlaceholderText(f"Find in {label.lower()}")
+        self._search.setPlaceholderText(t("reader_find_in_document_placeholder", document=label))
         self._count = QLabel("", self)
         self._count.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self._count.setStyleSheet("color: #7a7a7a;")
@@ -74,7 +78,7 @@ class _CurrentDocumentSearchDialog(QDialog):
         layout.addWidget(self._results, 1)
 
         self._hint = QLabel(
-            f"Click a result to jump to that part of the {label.lower()}.",
+            t("reader_click_result_hint", document=label),
             self,
         )
         self._hint.setStyleSheet("color: #7a7a7a;")
@@ -82,8 +86,8 @@ class _CurrentDocumentSearchDialog(QDialog):
 
         button_row = QHBoxLayout()
         button_row.addStretch()
-        self._search_all_btn = QPushButton("Search ALL", self)
-        self._close_btn = QPushButton("Close", self)
+        self._search_all_btn = QPushButton(t("reader_search_all"), self)
+        self._close_btn = QPushButton(t("reader_close"), self)
         button_row.addWidget(self._search_all_btn)
         button_row.addWidget(self._close_btn)
         layout.addLayout(button_row)
@@ -109,20 +113,20 @@ class _CurrentDocumentSearchDialog(QDialog):
         self._search_all_btn.setEnabled(bool(normalized_query))
         if not normalized_query:
             self._count.setText("")
-            placeholder = QListWidgetItem("Type to search the current document.")
+            placeholder = QListWidgetItem(t("reader_type_to_search_document"))
             placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
             self._results.addItem(placeholder)
             return
 
         self._hits = list(self._search_hits_fn(normalized_query) or [])
         if not self._hits:
-            self._count.setText("0 results")
-            placeholder = QListWidgetItem("No matches found in the current document.")
+            self._count.setText(tn("reader_search_results_count", 0))
+            placeholder = QListWidgetItem(t("reader_no_document_matches"))
             placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
             self._results.addItem(placeholder)
             return
 
-        self._count.setText(f"{len(self._hits)} results")
+        self._count.setText(tn("reader_search_results_count", len(self._hits)))
         for index, hit in enumerate(self._hits):
             item = QListWidgetItem(_document_hit_summary(self._document_kind, hit))
             item.setData(Qt.ItemDataRole.UserRole, index)

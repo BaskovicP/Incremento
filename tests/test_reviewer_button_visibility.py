@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+
+from backend import i18n
 from backend.config_service import configured_reviewer_button_visibility
 
 from frontend.reviewer_button_visibility import (
@@ -57,6 +60,29 @@ class _Menu:
 
     def addSeparator(self):
         self.actions.append("separator")
+
+
+@pytest.mark.parametrize(
+    ("locale", "title", "labels"),
+    [("hr", "Gumbi za ponavljanje", ["Prikaži skup gumba za ponavljanje", "Prikaži gumb Gotovo", "Prikaži gumb Odgodi", "Prikaži gumb Izdvoji"]),
+     ("zh-Hans", "复习按钮", ["显示复习按钮组", "显示完成按钮", "显示推迟按钮", "显示提取按钮"])],
+)
+def test_more_menu_uses_selected_language_and_keeps_stable_toggle_keys(monkeypatch, locale, title, labels):
+    monkeypatch.setattr(i18n, "_translator", i18n.Translator(locale))
+    menu = _Menu()
+    changes = []
+    add_reviewer_button_visibility_menu(
+        menu, {"done": False, "postpone": True, "extract": True},
+        lambda key, value: changes.append((key, value)),
+        on_group_toggle=lambda value: changes.append(("group", value)),
+    )
+    submenu = menu.submenus[0]
+    assert submenu.title == title
+    actions = [action for action in submenu.actions if isinstance(action, _Action)]
+    assert [action.title for action in actions] == labels
+    for action in actions:
+        action.callback(False)
+    assert changes == [("group", False), ("done", False), ("postpone", False), ("extract", False)]
 
 
 def test_more_menu_offers_independent_checked_buttons_and_saves_one_choice():

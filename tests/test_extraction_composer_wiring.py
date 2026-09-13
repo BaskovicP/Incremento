@@ -11,9 +11,9 @@ def test_add_card_dock_has_autosave_recovery_and_visible_composer_language():
     assert "load_extraction_draft" in source
     assert "_schedule_extract_draft_autosave" in source
     assert "_restore_extract_draft" in source
-    assert "Unsaved extract draft" in source
-    assert "Extract composer" in source
-    assert "Draft autosaves" in source
+    assert 't("add_card_draft_accessible")' in source
+    assert 't("add_card_extract_composer")' in source
+    assert 't("add_card_draft_autosaves")' in source
 
 
 def test_profile_path_helper_owns_the_extract_draft_location():

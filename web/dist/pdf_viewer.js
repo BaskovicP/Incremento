@@ -7088,7 +7088,7 @@
     return {
       kind: "internal",
       targetPage,
-      label: String((annotation == null ? void 0 : annotation.title) || (annotation == null ? void 0 : annotation.contents) || `Go to page ${targetPage}`).slice(0, 240),
+      label: String((annotation == null ? void 0 : annotation.title) || (annotation == null ? void 0 : annotation.contents) || "").slice(0, 240),
       ...rect
     };
   }
@@ -7250,12 +7250,12 @@
           if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
           renderTextLayer(pg, viewport);
           renderLinkAnnotations(pg, viewport, renderSequence, num);
-        }).catch((e) => {
-          setError("Render error: " + e);
+        }).catch(() => {
+          setError("reader_render_error");
           busyRef.current = false;
         });
-      }).catch((e) => {
-        setError("Page error: " + e);
+      }).catch(() => {
+        setError("reader_page_error");
         busyRef.current = false;
       });
     }, [renderLinkAnnotations, renderTextLayer]);
@@ -7277,7 +7277,7 @@
         setTotalPages(total);
         pageRef.current = startPage;
         renderPage(startPage);
-      }).catch((e) => setError("Load error: " + e));
+      }).catch(() => setError("reader_load_error"));
     }, [renderPage]);
     const startViewer = reactExports.useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
       const normalizedCardId = Number(cardId);
@@ -7401,6 +7401,1046 @@
       setReadProgress
     };
   }
+  const reader_previous_page$2 = "Previous page";
+  const reader_next_page$2 = "Next page";
+  const reader_go_to_page$2 = "Go to page {page}";
+  const reader_page_cards_tooltip_one$1 = "Open the {count} card created on this page in the Anki Browser";
+  const reader_page_cards_tooltip_other$2 = "Open the {count} cards created on this page in the Anki Browser";
+  const reader_navigation$2 = "Navigation";
+  const reader_navigate$2 = "Navigate";
+  const reader_zoom$2 = "Zoom";
+  const reader_reading$2 = "Reading";
+  const reader_annotation_capture$2 = "Annotation & capture";
+  const reader_annotate$2 = "Annotate";
+  const reader_capture$2 = "Capture";
+  const reader_review_cards$2 = "Review & cards";
+  const reader_review$2 = "Review";
+  const reader_cards$2 = "Cards";
+  const reader_status$2 = "Status";
+  const reader_back$2 = "Back";
+  const reader_search$2 = "Search";
+  const reader_extract$2 = "Extract";
+  const reader_bookmark$2 = "Bookmark";
+  const reader_review_all$2 = "Review All";
+  const reader_pdf_controls$2 = "PDF reader controls";
+  const reader_previous_pdf_page$2 = "Previous PDF page";
+  const reader_next_pdf_page$2 = "Next PDF page";
+  const reader_pdf_page_number$2 = "PDF page number";
+  const reader_zoom_out$2 = "Zoom out";
+  const reader_zoom_in$2 = "Zoom in";
+  const reader_links_enable$2 = "Enable clickable links in this PDF";
+  const reader_links_disable$2 = "Disable PDF links and restore uninterrupted text selection";
+  const reader_jump_back_page$2 = "Jump back to page {page}";
+  const reader_jump_back_hint$2 = "Follow an internal PDF link to enable Jump Back";
+  const reader_choose_controls$2 = "Choose which control groups are visible";
+  const reader_minimize_controls$2 = "Minimize reader controls to give the PDF more room";
+  const reader_read_to_page$2 = "Read up to page {page} — click to toggle progress only";
+  const reader_mark_read_to_here$2 = "Mark pages as read up to here without placing an exact marker";
+  const reader_move_exact_marker$2 = "Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it.";
+  const reader_place_exact_marker$2 = "Place the exact READ UP UNTIL HERE marker at the current text row";
+  const reader_set_exact_marker$2 = "Set exact read marker";
+  const reader_read_progress_pages$2 = "Read progress: {read}/{total} pages";
+  const reader_read_progress$2 = "Read progress";
+  const reader_find$2 = "Find";
+  const reader_search_pdf$2 = "Search this PDF";
+  const reader_daily_limit$2 = "Daily PDF reading limit for this card";
+  const reader_override_active$2 = "Override active";
+  const reader_warning$2 = "Warning";
+  const reader_use_highlight_color$2 = "Use {color} highlight color";
+  const reader_highlight_color$2 = "Highlight {color}";
+  const reader_cancel_snapshot$2 = "Cancel snapshot";
+  const reader_draw_snapshot$2 = "Draw a rectangle to capture a region";
+  const reader_show_highlights$2 = "Show highlights list";
+  const reader_bookmark_current$2 = "Bookmark the current page as an interesting place";
+  const reader_show_bookmarks$2 = "Show saved interesting-place bookmarks";
+  const reader_review_all_tooltip$2 = "Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF";
+  const reader_open_all_cards$2 = "Open all cards created from this PDF in the Anki Browser";
+  const reader_finished_tooltip$2 = "Mark this PDF as finished reading — suspends the card so it won't appear again";
+  const reader_finished_confirm$2 = "Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.";
+  const reader_customize_pdf_controls$2 = "Customize PDF controls";
+  const reader_customize_controls$2 = "Customize controls";
+  const reader_customize_intro$2 = "Choose which groups stay visible in the reader toolbar.";
+  const reader_close$2 = "Close";
+  const reader_show_all$2 = "Show all";
+  const reader_done$2 = "Done";
+  const reader_pdf_bookmarks$2 = "PDF Bookmarks";
+  const reader_add_current_page$2 = "Add current page";
+  const reader_no_bookmarks$2 = "No bookmarks yet.";
+  const reader_load_error$2 = "Could not load this PDF.";
+  const reader_page_error$2 = "Could not open this PDF page.";
+  const reader_render_error$2 = "Could not render this PDF page.";
+  const reader_add_highlight_note$2 = "Add highlight note";
+  const reader_edit_highlight_note$2 = "Edit highlight note";
+  const reader_remove_highlight$2 = "Remove highlight";
+  const reader_remove_snapshot_highlight$2 = "Remove snapshot highlight";
+  const reader_page_jump$2 = "Go to page";
+  const reader_prev_short$2 = "Prev";
+  const reader_next_short$2 = "Next";
+  const reader_page_location$2 = "Page {current} / {total}";
+  const reader_links_state$2 = "Links {state}";
+  const reader_on$2 = "On";
+  const reader_off$2 = "Off";
+  const reader_jump_back$2 = "Jump Back";
+  const reader_show_controls$2 = "Show controls";
+  const reader_customize$2 = "Customize";
+  const reader_minimize_controls_label$2 = "Minimize controls";
+  const reader_page$2 = "Page";
+  const reader_read_to_here$2 = "Read to here";
+  const reader_read_range$2 = "p.1–{page}";
+  const reader_search_position$2 = "{current} / {total}";
+  const reader_zero_results$2 = "0 results";
+  const reader_all$2 = "All";
+  const reader_today_pages$2 = "Today: {used}/{total} pages";
+  const reader_remaining$2 = "{count} remaining";
+  const reader_limit_warning$2 = "Warning";
+  const reader_limit_soft_lock$2 = "Soft lock";
+  const reader_limit_hard_stop$2 = "Hard stop";
+  const reader_stop_point$2 = "Stop point today: page {page}";
+  const reader_override_today$2 = "Override today";
+  const reader_dismiss$2 = "Dismiss";
+  const reader_color_yellow$2 = "yellow";
+  const reader_color_green$2 = "green";
+  const reader_color_blue$2 = "blue";
+  const reader_color_pink$2 = "pink";
+  const reader_color_aqua$2 = "aqua";
+  const reader_color_orange$2 = "orange";
+  const reader_color_red$2 = "red";
+  const reader_color_purple$2 = "purple";
+  const reader_highlight_when_extracting$2 = "Highlight when extracting";
+  const reader_snapshot$2 = "Snapshot";
+  const reader_highlights_count$2 = "Highlights ({count})";
+  const reader_bookmarks_count$2 = "Bookmarks ({count})";
+  const reader_review_due$2 = "Review Due";
+  const reader_reading_limit$2 = "Reading Limit";
+  const reader_regenerate_cover$2 = "Regenerate Cover";
+  const reader_open_all_in_browser$2 = "Open All in Browser";
+  const reader_page_cards_count$2 = "Page cards ({count})";
+  const reader_add_card$2 = "Add Card";
+  const reader_finished_reading$2 = "Finished Reading";
+  const reader_jump$2 = "Jump";
+  const reader_delete$2 = "Delete";
+  const reader_page_number$2 = "Page {page}";
+  const reader_pdf_highlights$2 = "PDF Highlights";
+  const reader_previous_highlight$2 = "Previous Highlight";
+  const reader_next_highlight$2 = "Next Highlight";
+  const reader_whole_pdf$2 = "Whole PDF";
+  const reader_this_page$2 = "This page";
+  const reader_create_missing_tooltip_one$1 = "Create cards for {count} unlinked highlight in this PDF";
+  const reader_create_missing_tooltip_other$2 = "Create cards for {count} unlinked highlights in this PDF";
+  const reader_no_unlinked_highlights$2 = "No unlinked text highlights remain in this PDF";
+  const reader_create_missing_cards$2 = "Create Missing Cards ({count})";
+  const reader_notes_only$2 = "Notes only";
+  const reader_no_highlight_notes_page$2 = "No highlight notes on this page yet.";
+  const reader_no_highlight_notes$2 = "No highlight notes yet.";
+  const reader_no_highlights$2 = "No highlights yet.";
+  const reader_no_text$2 = "(no text)";
+  const reader_preview_card$2 = "Preview Card";
+  const reader_create_card$2 = "Create Card";
+  const reader_preview_linked_card$2 = "Preview the card already linked to this highlight";
+  const reader_prefill_card$2 = "Prefill Add Card from this highlight";
+  const reader_edit_note_tooltip$2 = "Edit note for this highlight";
+  const reader_add_note_tooltip$2 = "Add note to this highlight";
+  const reader_edit_note$2 = "Edit note";
+  const reader_add_note$2 = "Add note";
+  const reader_delete_highlight$2 = "Delete this highlight";
+  const reader_highlight_excerpt$2 = "Highlight: {excerpt}";
+  const reader_stopped_at$2 = "You stopped at: {text}";
+  const reader_stopping_page$2 = "You marked page {page} as your current stopping point";
+  const reader_read_marker$2 = "Read Up Until Here";
+  const reader_open_external_link$2 = "Open external link";
+  const reader_limit_reached_pages$2 = "Daily limit reached: {used}/{total} pages today.";
+  const reader_limit_reached_pdf$2 = "Daily limit reached for this PDF.";
+  const reader_limit_reached_hard$2 = "{prefix} Come back after your next Incremento day reset.";
+  const reader_limit_reached_soft$2 = "{prefix} Use override to keep reading today.";
+  const reader_moving_past_limit$2 = "You are moving past today's {count}-page limit for this PDF.";
+  const reader_read_past_limit$2 = "Read-through can go past today's {count}-page limit for this PDF.";
+  const reader_override_notice$2 = "Daily reading limit override is active for this PDF until the next day reset.";
+  const en = {
+    reader_previous_page: reader_previous_page$2,
+    reader_next_page: reader_next_page$2,
+    reader_go_to_page: reader_go_to_page$2,
+    reader_page_cards_tooltip_one: reader_page_cards_tooltip_one$1,
+    reader_page_cards_tooltip_other: reader_page_cards_tooltip_other$2,
+    reader_navigation: reader_navigation$2,
+    reader_navigate: reader_navigate$2,
+    reader_zoom: reader_zoom$2,
+    reader_reading: reader_reading$2,
+    reader_annotation_capture: reader_annotation_capture$2,
+    reader_annotate: reader_annotate$2,
+    reader_capture: reader_capture$2,
+    reader_review_cards: reader_review_cards$2,
+    reader_review: reader_review$2,
+    reader_cards: reader_cards$2,
+    reader_status: reader_status$2,
+    reader_back: reader_back$2,
+    reader_search: reader_search$2,
+    reader_extract: reader_extract$2,
+    reader_bookmark: reader_bookmark$2,
+    reader_review_all: reader_review_all$2,
+    reader_pdf_controls: reader_pdf_controls$2,
+    reader_previous_pdf_page: reader_previous_pdf_page$2,
+    reader_next_pdf_page: reader_next_pdf_page$2,
+    reader_pdf_page_number: reader_pdf_page_number$2,
+    reader_zoom_out: reader_zoom_out$2,
+    reader_zoom_in: reader_zoom_in$2,
+    reader_links_enable: reader_links_enable$2,
+    reader_links_disable: reader_links_disable$2,
+    reader_jump_back_page: reader_jump_back_page$2,
+    reader_jump_back_hint: reader_jump_back_hint$2,
+    reader_choose_controls: reader_choose_controls$2,
+    reader_minimize_controls: reader_minimize_controls$2,
+    reader_read_to_page: reader_read_to_page$2,
+    reader_mark_read_to_here: reader_mark_read_to_here$2,
+    reader_move_exact_marker: reader_move_exact_marker$2,
+    reader_place_exact_marker: reader_place_exact_marker$2,
+    reader_set_exact_marker: reader_set_exact_marker$2,
+    reader_read_progress_pages: reader_read_progress_pages$2,
+    reader_read_progress: reader_read_progress$2,
+    reader_find: reader_find$2,
+    reader_search_pdf: reader_search_pdf$2,
+    reader_daily_limit: reader_daily_limit$2,
+    reader_override_active: reader_override_active$2,
+    reader_warning: reader_warning$2,
+    reader_use_highlight_color: reader_use_highlight_color$2,
+    reader_highlight_color: reader_highlight_color$2,
+    reader_cancel_snapshot: reader_cancel_snapshot$2,
+    reader_draw_snapshot: reader_draw_snapshot$2,
+    reader_show_highlights: reader_show_highlights$2,
+    reader_bookmark_current: reader_bookmark_current$2,
+    reader_show_bookmarks: reader_show_bookmarks$2,
+    reader_review_all_tooltip: reader_review_all_tooltip$2,
+    reader_open_all_cards: reader_open_all_cards$2,
+    reader_finished_tooltip: reader_finished_tooltip$2,
+    reader_finished_confirm: reader_finished_confirm$2,
+    reader_customize_pdf_controls: reader_customize_pdf_controls$2,
+    reader_customize_controls: reader_customize_controls$2,
+    reader_customize_intro: reader_customize_intro$2,
+    reader_close: reader_close$2,
+    reader_show_all: reader_show_all$2,
+    reader_done: reader_done$2,
+    reader_pdf_bookmarks: reader_pdf_bookmarks$2,
+    reader_add_current_page: reader_add_current_page$2,
+    reader_no_bookmarks: reader_no_bookmarks$2,
+    reader_load_error: reader_load_error$2,
+    reader_page_error: reader_page_error$2,
+    reader_render_error: reader_render_error$2,
+    reader_add_highlight_note: reader_add_highlight_note$2,
+    reader_edit_highlight_note: reader_edit_highlight_note$2,
+    reader_remove_highlight: reader_remove_highlight$2,
+    reader_remove_snapshot_highlight: reader_remove_snapshot_highlight$2,
+    reader_page_jump: reader_page_jump$2,
+    reader_prev_short: reader_prev_short$2,
+    reader_next_short: reader_next_short$2,
+    reader_page_location: reader_page_location$2,
+    reader_links_state: reader_links_state$2,
+    reader_on: reader_on$2,
+    reader_off: reader_off$2,
+    reader_jump_back: reader_jump_back$2,
+    reader_show_controls: reader_show_controls$2,
+    reader_customize: reader_customize$2,
+    reader_minimize_controls_label: reader_minimize_controls_label$2,
+    reader_page: reader_page$2,
+    reader_read_to_here: reader_read_to_here$2,
+    reader_read_range: reader_read_range$2,
+    reader_search_position: reader_search_position$2,
+    reader_zero_results: reader_zero_results$2,
+    reader_all: reader_all$2,
+    reader_today_pages: reader_today_pages$2,
+    reader_remaining: reader_remaining$2,
+    reader_limit_warning: reader_limit_warning$2,
+    reader_limit_soft_lock: reader_limit_soft_lock$2,
+    reader_limit_hard_stop: reader_limit_hard_stop$2,
+    reader_stop_point: reader_stop_point$2,
+    reader_override_today: reader_override_today$2,
+    reader_dismiss: reader_dismiss$2,
+    reader_color_yellow: reader_color_yellow$2,
+    reader_color_green: reader_color_green$2,
+    reader_color_blue: reader_color_blue$2,
+    reader_color_pink: reader_color_pink$2,
+    reader_color_aqua: reader_color_aqua$2,
+    reader_color_orange: reader_color_orange$2,
+    reader_color_red: reader_color_red$2,
+    reader_color_purple: reader_color_purple$2,
+    reader_highlight_when_extracting: reader_highlight_when_extracting$2,
+    reader_snapshot: reader_snapshot$2,
+    reader_highlights_count: reader_highlights_count$2,
+    reader_bookmarks_count: reader_bookmarks_count$2,
+    reader_review_due: reader_review_due$2,
+    reader_reading_limit: reader_reading_limit$2,
+    reader_regenerate_cover: reader_regenerate_cover$2,
+    reader_open_all_in_browser: reader_open_all_in_browser$2,
+    reader_page_cards_count: reader_page_cards_count$2,
+    reader_add_card: reader_add_card$2,
+    reader_finished_reading: reader_finished_reading$2,
+    reader_jump: reader_jump$2,
+    reader_delete: reader_delete$2,
+    reader_page_number: reader_page_number$2,
+    reader_pdf_highlights: reader_pdf_highlights$2,
+    reader_previous_highlight: reader_previous_highlight$2,
+    reader_next_highlight: reader_next_highlight$2,
+    reader_whole_pdf: reader_whole_pdf$2,
+    reader_this_page: reader_this_page$2,
+    reader_create_missing_tooltip_one: reader_create_missing_tooltip_one$1,
+    reader_create_missing_tooltip_other: reader_create_missing_tooltip_other$2,
+    reader_no_unlinked_highlights: reader_no_unlinked_highlights$2,
+    reader_create_missing_cards: reader_create_missing_cards$2,
+    reader_notes_only: reader_notes_only$2,
+    reader_no_highlight_notes_page: reader_no_highlight_notes_page$2,
+    reader_no_highlight_notes: reader_no_highlight_notes$2,
+    reader_no_highlights: reader_no_highlights$2,
+    reader_no_text: reader_no_text$2,
+    reader_preview_card: reader_preview_card$2,
+    reader_create_card: reader_create_card$2,
+    reader_preview_linked_card: reader_preview_linked_card$2,
+    reader_prefill_card: reader_prefill_card$2,
+    reader_edit_note_tooltip: reader_edit_note_tooltip$2,
+    reader_add_note_tooltip: reader_add_note_tooltip$2,
+    reader_edit_note: reader_edit_note$2,
+    reader_add_note: reader_add_note$2,
+    reader_delete_highlight: reader_delete_highlight$2,
+    reader_highlight_excerpt: reader_highlight_excerpt$2,
+    reader_stopped_at: reader_stopped_at$2,
+    reader_stopping_page: reader_stopping_page$2,
+    reader_read_marker: reader_read_marker$2,
+    reader_open_external_link: reader_open_external_link$2,
+    reader_limit_reached_pages: reader_limit_reached_pages$2,
+    reader_limit_reached_pdf: reader_limit_reached_pdf$2,
+    reader_limit_reached_hard: reader_limit_reached_hard$2,
+    reader_limit_reached_soft: reader_limit_reached_soft$2,
+    reader_moving_past_limit: reader_moving_past_limit$2,
+    reader_read_past_limit: reader_read_past_limit$2,
+    reader_override_notice: reader_override_notice$2
+  };
+  const reader_previous_page$1 = "Prethodna stranica";
+  const reader_next_page$1 = "Sljedeća stranica";
+  const reader_go_to_page$1 = "Idi na stranicu {page}";
+  const reader_page_cards_tooltip_one = "Otvori {count} karticu stvorenu na ovoj stranici u pregledniku Anki";
+  const reader_page_cards_tooltip_few = "Otvori {count} kartice stvorene na ovoj stranici u pregledniku Anki";
+  const reader_page_cards_tooltip_other$1 = "Otvori {count} kartica stvorenih na ovoj stranici u pregledniku Anki";
+  const reader_navigation$1 = "Navigacija";
+  const reader_navigate$1 = "Navigacija";
+  const reader_zoom$1 = "Zumiranje";
+  const reader_reading$1 = "Čitanje";
+  const reader_annotation_capture$1 = "Bilješke i snimanje";
+  const reader_annotate$1 = "Označavanje";
+  const reader_capture$1 = "Snimanje";
+  const reader_review_cards$1 = "Ponavljanje i kartice";
+  const reader_review$1 = "Ponavljanje";
+  const reader_cards$1 = "Kartice";
+  const reader_status$1 = "Stanje";
+  const reader_back$1 = "Natrag";
+  const reader_search$1 = "Pretraži";
+  const reader_extract$1 = "Izdvoji";
+  const reader_bookmark$1 = "Označi mjesto";
+  const reader_review_all$1 = "Ponovi sve";
+  const reader_pdf_controls$1 = "Kontrole PDF čitača";
+  const reader_previous_pdf_page$1 = "Prethodna stranica PDF-a";
+  const reader_next_pdf_page$1 = "Sljedeća stranica PDF-a";
+  const reader_pdf_page_number$1 = "Broj stranice PDF-a";
+  const reader_zoom_out$1 = "Smanji prikaz";
+  const reader_zoom_in$1 = "Povećaj prikaz";
+  const reader_links_enable$1 = "Uključi poveznice u ovom PDF-u";
+  const reader_links_disable$1 = "Isključi poveznice u PDF-u i vrati neprekinut odabir teksta";
+  const reader_jump_back_page$1 = "Vrati se na stranicu {page}";
+  const reader_jump_back_hint$1 = "Slijedi unutarnju poveznicu u PDF-u za povratak";
+  const reader_choose_controls$1 = "Odaberi vidljive skupine kontrola";
+  const reader_minimize_controls$1 = "Smanji kontrole kako bi PDF imao više prostora";
+  const reader_read_to_page$1 = "Pročitano do stranice {page} — klikni za promjenu napretka";
+  const reader_mark_read_to_here$1 = "Označi stranice pročitanima do ovdje bez točne oznake";
+  const reader_move_exact_marker$1 = "Pomakni točnu oznaku čitanja na trenutačni redak. Shift-klik uklanja oznaku.";
+  const reader_place_exact_marker$1 = "Postavi točnu oznaku čitanja na trenutačni redak";
+  const reader_set_exact_marker$1 = "Postavi točnu oznaku čitanja";
+  const reader_read_progress_pages$1 = "Napredak čitanja: {read}/{total} stranica";
+  const reader_read_progress$1 = "Napredak čitanja";
+  const reader_find$1 = "Pronađi";
+  const reader_search_pdf$1 = "Pretraži ovaj PDF";
+  const reader_daily_limit$1 = "Dnevno ograničenje čitanja PDF-a za ovu karticu";
+  const reader_override_active$1 = "Iznimka je aktivna";
+  const reader_warning$1 = "Upozorenje";
+  const reader_use_highlight_color$1 = "Koristi {color} boju označavanja";
+  const reader_highlight_color$1 = "Označi bojom {color}";
+  const reader_cancel_snapshot$1 = "Odustani od snimke";
+  const reader_draw_snapshot$1 = "Nacrtaj pravokutnik za snimanje područja";
+  const reader_show_highlights$1 = "Prikaži popis oznaka";
+  const reader_bookmark_current$1 = "Označi trenutačnu stranicu kao zanimljivo mjesto";
+  const reader_show_bookmarks$1 = "Prikaži spremljena zanimljiva mjesta";
+  const reader_review_all_tooltip$1 = "Odaberi teme, stavke, opseg, dospjelost, ograničenje i redoslijed kartica povezanih s ovim PDF-om";
+  const reader_open_all_cards$1 = "Otvori sve kartice stvorene iz ovog PDF-a u pregledniku Anki";
+  const reader_finished_tooltip$1 = "Označi PDF pročitanim — kartica će se suspendirati";
+  const reader_finished_confirm$1 = "Označiti ovaj PDF pročitanim?\nKartica će se suspendirati i ukloniti iz budućih sesija.";
+  const reader_customize_pdf_controls$1 = "Prilagodi kontrole PDF-a";
+  const reader_customize_controls$1 = "Prilagodi kontrole";
+  const reader_customize_intro$1 = "Odaberi skupine koje ostaju vidljive u alatnoj traci čitača.";
+  const reader_close$1 = "Zatvori";
+  const reader_show_all$1 = "Prikaži sve";
+  const reader_done$1 = "Gotovo";
+  const reader_pdf_bookmarks$1 = "Oznake mjesta u PDF-u";
+  const reader_add_current_page$1 = "Dodaj trenutačnu stranicu";
+  const reader_no_bookmarks$1 = "Još nema oznaka mjesta.";
+  const reader_load_error$1 = "Nije moguće učitati ovaj PDF.";
+  const reader_page_error$1 = "Nije moguće otvoriti ovu stranicu PDF-a.";
+  const reader_render_error$1 = "Nije moguće prikazati ovu stranicu PDF-a.";
+  const reader_add_highlight_note$1 = "Dodaj bilješku oznaci";
+  const reader_edit_highlight_note$1 = "Uredi bilješku oznake";
+  const reader_remove_highlight$1 = "Ukloni oznaku";
+  const reader_remove_snapshot_highlight$1 = "Ukloni oznaku snimke";
+  const reader_page_jump$1 = "Idi na stranicu";
+  const reader_prev_short$1 = "Preth.";
+  const reader_next_short$1 = "Sljed.";
+  const reader_page_location$1 = "Stranica {current} / {total}";
+  const reader_links_state$1 = "Poveznice {state}";
+  const reader_on$1 = "uklj.";
+  const reader_off$1 = "isklj.";
+  const reader_jump_back$1 = "Povratak";
+  const reader_show_controls$1 = "Prikaži kontrole";
+  const reader_customize$1 = "Prilagodi";
+  const reader_minimize_controls_label$1 = "Smanji kontrole";
+  const reader_page$1 = "Stranica";
+  const reader_read_to_here$1 = "Pročitano do ovdje";
+  const reader_read_range$1 = "str. 1–{page}";
+  const reader_search_position$1 = "{current} / {total}";
+  const reader_zero_results$1 = "0 rezultata";
+  const reader_all$1 = "Sve";
+  const reader_today_pages$1 = "Danas: {used}/{total} stranica";
+  const reader_remaining$1 = "Preostaje {count}";
+  const reader_limit_warning$1 = "Upozorenje";
+  const reader_limit_soft_lock$1 = "Meko zaključavanje";
+  const reader_limit_hard_stop$1 = "Strogo zaustavljanje";
+  const reader_stop_point$1 = "Današnja točka zaustavljanja: stranica {page}";
+  const reader_override_today$1 = "Dopusti danas";
+  const reader_dismiss$1 = "Odbaci";
+  const reader_color_yellow$1 = "žuta";
+  const reader_color_green$1 = "zelena";
+  const reader_color_blue$1 = "plava";
+  const reader_color_pink$1 = "ružičasta";
+  const reader_color_aqua$1 = "tirkizna";
+  const reader_color_orange$1 = "narančasta";
+  const reader_color_red$1 = "crvena";
+  const reader_color_purple$1 = "ljubičasta";
+  const reader_highlight_when_extracting$1 = "Označi pri izdvajanju";
+  const reader_snapshot$1 = "Snimka";
+  const reader_highlights_count$1 = "Oznake ({count})";
+  const reader_bookmarks_count$1 = "Oznake mjesta ({count})";
+  const reader_review_due$1 = "Ponovi dospjele";
+  const reader_reading_limit$1 = "Ograničenje čitanja";
+  const reader_regenerate_cover$1 = "Obnovi naslovnicu";
+  const reader_open_all_in_browser$1 = "Otvori sve u pregledniku";
+  const reader_page_cards_count$1 = "Kartice stranice ({count})";
+  const reader_add_card$1 = "Dodaj karticu";
+  const reader_finished_reading$1 = "Završeno čitanje";
+  const reader_jump$1 = "Idi";
+  const reader_delete$1 = "Izbriši";
+  const reader_page_number$1 = "Stranica {page}";
+  const reader_pdf_highlights$1 = "Oznake u PDF-u";
+  const reader_previous_highlight$1 = "Prethodna oznaka";
+  const reader_next_highlight$1 = "Sljedeća oznaka";
+  const reader_whole_pdf$1 = "Cijeli PDF";
+  const reader_this_page$1 = "Ova stranica";
+  const reader_create_missing_tooltip_one = "Stvori kartice za {count} nepovezanu oznaku u ovom PDF-u";
+  const reader_create_missing_tooltip_few = "Stvori kartice za {count} nepovezane oznake u ovom PDF-u";
+  const reader_create_missing_tooltip_other$1 = "Stvori kartice za {count} nepovezanih oznaka u ovom PDF-u";
+  const reader_no_unlinked_highlights$1 = "U ovom PDF-u nema nepovezanih tekstnih oznaka";
+  const reader_create_missing_cards$1 = "Stvori nedostajuće kartice ({count})";
+  const reader_notes_only$1 = "Samo bilješke";
+  const reader_no_highlight_notes_page$1 = "Na ovoj stranici još nema bilješki oznaka.";
+  const reader_no_highlight_notes$1 = "Još nema bilješki oznaka.";
+  const reader_no_highlights$1 = "Još nema oznaka.";
+  const reader_no_text$1 = "(bez teksta)";
+  const reader_preview_card$1 = "Pregledaj karticu";
+  const reader_create_card$1 = "Stvori karticu";
+  const reader_preview_linked_card$1 = "Pregledaj karticu već povezanu s ovom oznakom";
+  const reader_prefill_card$1 = "Ispuni novu karticu iz ove oznake";
+  const reader_edit_note_tooltip$1 = "Uredi bilješku za ovu oznaku";
+  const reader_add_note_tooltip$1 = "Dodaj bilješku ovoj oznaci";
+  const reader_edit_note$1 = "Uredi bilješku";
+  const reader_add_note$1 = "Dodaj bilješku";
+  const reader_delete_highlight$1 = "Izbriši ovu oznaku";
+  const reader_highlight_excerpt$1 = "Oznaka: {excerpt}";
+  const reader_stopped_at$1 = "Zaustavili ste se na: {text}";
+  const reader_stopping_page$1 = "Označili ste stranicu {page} kao trenutačnu točku zaustavljanja";
+  const reader_read_marker$1 = "Pročitano do ovdje";
+  const reader_open_external_link$1 = "Otvori vanjsku poveznicu";
+  const reader_limit_reached_pages$1 = "Dosegnuto dnevno ograničenje: {used}/{total} stranica danas.";
+  const reader_limit_reached_pdf$1 = "Dosegnuto dnevno ograničenje za ovaj PDF.";
+  const reader_limit_reached_hard$1 = "{prefix} Vratite se nakon sljedećeg dnevnog resetiranja Incrementa.";
+  const reader_limit_reached_soft$1 = "{prefix} Koristite iznimku za nastavak čitanja danas.";
+  const reader_moving_past_limit$1 = "Prelazite današnje ograničenje od {count} stranica za ovaj PDF.";
+  const reader_read_past_limit$1 = "Označavanje pročitanoga može prijeći današnje ograničenje od {count} stranica za ovaj PDF.";
+  const reader_override_notice$1 = "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja.";
+  const hr = {
+    reader_previous_page: reader_previous_page$1,
+    reader_next_page: reader_next_page$1,
+    reader_go_to_page: reader_go_to_page$1,
+    reader_page_cards_tooltip_one,
+    reader_page_cards_tooltip_few,
+    reader_page_cards_tooltip_other: reader_page_cards_tooltip_other$1,
+    reader_navigation: reader_navigation$1,
+    reader_navigate: reader_navigate$1,
+    reader_zoom: reader_zoom$1,
+    reader_reading: reader_reading$1,
+    reader_annotation_capture: reader_annotation_capture$1,
+    reader_annotate: reader_annotate$1,
+    reader_capture: reader_capture$1,
+    reader_review_cards: reader_review_cards$1,
+    reader_review: reader_review$1,
+    reader_cards: reader_cards$1,
+    reader_status: reader_status$1,
+    reader_back: reader_back$1,
+    reader_search: reader_search$1,
+    reader_extract: reader_extract$1,
+    reader_bookmark: reader_bookmark$1,
+    reader_review_all: reader_review_all$1,
+    reader_pdf_controls: reader_pdf_controls$1,
+    reader_previous_pdf_page: reader_previous_pdf_page$1,
+    reader_next_pdf_page: reader_next_pdf_page$1,
+    reader_pdf_page_number: reader_pdf_page_number$1,
+    reader_zoom_out: reader_zoom_out$1,
+    reader_zoom_in: reader_zoom_in$1,
+    reader_links_enable: reader_links_enable$1,
+    reader_links_disable: reader_links_disable$1,
+    reader_jump_back_page: reader_jump_back_page$1,
+    reader_jump_back_hint: reader_jump_back_hint$1,
+    reader_choose_controls: reader_choose_controls$1,
+    reader_minimize_controls: reader_minimize_controls$1,
+    reader_read_to_page: reader_read_to_page$1,
+    reader_mark_read_to_here: reader_mark_read_to_here$1,
+    reader_move_exact_marker: reader_move_exact_marker$1,
+    reader_place_exact_marker: reader_place_exact_marker$1,
+    reader_set_exact_marker: reader_set_exact_marker$1,
+    reader_read_progress_pages: reader_read_progress_pages$1,
+    reader_read_progress: reader_read_progress$1,
+    reader_find: reader_find$1,
+    reader_search_pdf: reader_search_pdf$1,
+    reader_daily_limit: reader_daily_limit$1,
+    reader_override_active: reader_override_active$1,
+    reader_warning: reader_warning$1,
+    reader_use_highlight_color: reader_use_highlight_color$1,
+    reader_highlight_color: reader_highlight_color$1,
+    reader_cancel_snapshot: reader_cancel_snapshot$1,
+    reader_draw_snapshot: reader_draw_snapshot$1,
+    reader_show_highlights: reader_show_highlights$1,
+    reader_bookmark_current: reader_bookmark_current$1,
+    reader_show_bookmarks: reader_show_bookmarks$1,
+    reader_review_all_tooltip: reader_review_all_tooltip$1,
+    reader_open_all_cards: reader_open_all_cards$1,
+    reader_finished_tooltip: reader_finished_tooltip$1,
+    reader_finished_confirm: reader_finished_confirm$1,
+    reader_customize_pdf_controls: reader_customize_pdf_controls$1,
+    reader_customize_controls: reader_customize_controls$1,
+    reader_customize_intro: reader_customize_intro$1,
+    reader_close: reader_close$1,
+    reader_show_all: reader_show_all$1,
+    reader_done: reader_done$1,
+    reader_pdf_bookmarks: reader_pdf_bookmarks$1,
+    reader_add_current_page: reader_add_current_page$1,
+    reader_no_bookmarks: reader_no_bookmarks$1,
+    reader_load_error: reader_load_error$1,
+    reader_page_error: reader_page_error$1,
+    reader_render_error: reader_render_error$1,
+    reader_add_highlight_note: reader_add_highlight_note$1,
+    reader_edit_highlight_note: reader_edit_highlight_note$1,
+    reader_remove_highlight: reader_remove_highlight$1,
+    reader_remove_snapshot_highlight: reader_remove_snapshot_highlight$1,
+    reader_page_jump: reader_page_jump$1,
+    reader_prev_short: reader_prev_short$1,
+    reader_next_short: reader_next_short$1,
+    reader_page_location: reader_page_location$1,
+    reader_links_state: reader_links_state$1,
+    reader_on: reader_on$1,
+    reader_off: reader_off$1,
+    reader_jump_back: reader_jump_back$1,
+    reader_show_controls: reader_show_controls$1,
+    reader_customize: reader_customize$1,
+    reader_minimize_controls_label: reader_minimize_controls_label$1,
+    reader_page: reader_page$1,
+    reader_read_to_here: reader_read_to_here$1,
+    reader_read_range: reader_read_range$1,
+    reader_search_position: reader_search_position$1,
+    reader_zero_results: reader_zero_results$1,
+    reader_all: reader_all$1,
+    reader_today_pages: reader_today_pages$1,
+    reader_remaining: reader_remaining$1,
+    reader_limit_warning: reader_limit_warning$1,
+    reader_limit_soft_lock: reader_limit_soft_lock$1,
+    reader_limit_hard_stop: reader_limit_hard_stop$1,
+    reader_stop_point: reader_stop_point$1,
+    reader_override_today: reader_override_today$1,
+    reader_dismiss: reader_dismiss$1,
+    reader_color_yellow: reader_color_yellow$1,
+    reader_color_green: reader_color_green$1,
+    reader_color_blue: reader_color_blue$1,
+    reader_color_pink: reader_color_pink$1,
+    reader_color_aqua: reader_color_aqua$1,
+    reader_color_orange: reader_color_orange$1,
+    reader_color_red: reader_color_red$1,
+    reader_color_purple: reader_color_purple$1,
+    reader_highlight_when_extracting: reader_highlight_when_extracting$1,
+    reader_snapshot: reader_snapshot$1,
+    reader_highlights_count: reader_highlights_count$1,
+    reader_bookmarks_count: reader_bookmarks_count$1,
+    reader_review_due: reader_review_due$1,
+    reader_reading_limit: reader_reading_limit$1,
+    reader_regenerate_cover: reader_regenerate_cover$1,
+    reader_open_all_in_browser: reader_open_all_in_browser$1,
+    reader_page_cards_count: reader_page_cards_count$1,
+    reader_add_card: reader_add_card$1,
+    reader_finished_reading: reader_finished_reading$1,
+    reader_jump: reader_jump$1,
+    reader_delete: reader_delete$1,
+    reader_page_number: reader_page_number$1,
+    reader_pdf_highlights: reader_pdf_highlights$1,
+    reader_previous_highlight: reader_previous_highlight$1,
+    reader_next_highlight: reader_next_highlight$1,
+    reader_whole_pdf: reader_whole_pdf$1,
+    reader_this_page: reader_this_page$1,
+    reader_create_missing_tooltip_one,
+    reader_create_missing_tooltip_few,
+    reader_create_missing_tooltip_other: reader_create_missing_tooltip_other$1,
+    reader_no_unlinked_highlights: reader_no_unlinked_highlights$1,
+    reader_create_missing_cards: reader_create_missing_cards$1,
+    reader_notes_only: reader_notes_only$1,
+    reader_no_highlight_notes_page: reader_no_highlight_notes_page$1,
+    reader_no_highlight_notes: reader_no_highlight_notes$1,
+    reader_no_highlights: reader_no_highlights$1,
+    reader_no_text: reader_no_text$1,
+    reader_preview_card: reader_preview_card$1,
+    reader_create_card: reader_create_card$1,
+    reader_preview_linked_card: reader_preview_linked_card$1,
+    reader_prefill_card: reader_prefill_card$1,
+    reader_edit_note_tooltip: reader_edit_note_tooltip$1,
+    reader_add_note_tooltip: reader_add_note_tooltip$1,
+    reader_edit_note: reader_edit_note$1,
+    reader_add_note: reader_add_note$1,
+    reader_delete_highlight: reader_delete_highlight$1,
+    reader_highlight_excerpt: reader_highlight_excerpt$1,
+    reader_stopped_at: reader_stopped_at$1,
+    reader_stopping_page: reader_stopping_page$1,
+    reader_read_marker: reader_read_marker$1,
+    reader_open_external_link: reader_open_external_link$1,
+    reader_limit_reached_pages: reader_limit_reached_pages$1,
+    reader_limit_reached_pdf: reader_limit_reached_pdf$1,
+    reader_limit_reached_hard: reader_limit_reached_hard$1,
+    reader_limit_reached_soft: reader_limit_reached_soft$1,
+    reader_moving_past_limit: reader_moving_past_limit$1,
+    reader_read_past_limit: reader_read_past_limit$1,
+    reader_override_notice: reader_override_notice$1
+  };
+  const reader_previous_page = "上一页";
+  const reader_next_page = "下一页";
+  const reader_go_to_page = "跳转到第 {page} 页";
+  const reader_page_cards_tooltip_other = "在 Anki 浏览器中打开本页创建的 {count} 张卡片";
+  const reader_navigation = "导航";
+  const reader_navigate = "导航";
+  const reader_zoom = "缩放";
+  const reader_reading = "阅读";
+  const reader_annotation_capture = "批注与摘录";
+  const reader_annotate = "批注";
+  const reader_capture = "摘录";
+  const reader_review_cards = "复习与卡片";
+  const reader_review = "复习";
+  const reader_cards = "卡片";
+  const reader_status = "状态";
+  const reader_back = "返回";
+  const reader_search = "搜索";
+  const reader_extract = "摘录";
+  const reader_bookmark = "书签";
+  const reader_review_all = "复习全部";
+  const reader_pdf_controls = "PDF 阅读器控件";
+  const reader_previous_pdf_page = "PDF 上一页";
+  const reader_next_pdf_page = "PDF 下一页";
+  const reader_pdf_page_number = "PDF 页码";
+  const reader_zoom_out = "缩小";
+  const reader_zoom_in = "放大";
+  const reader_links_enable = "启用此 PDF 中的可点击链接";
+  const reader_links_disable = "禁用 PDF 链接并恢复连续文本选择";
+  const reader_jump_back_page = "返回第 {page} 页";
+  const reader_jump_back_hint = "点击 PDF 内部链接后可使用返回跳转";
+  const reader_choose_controls = "选择显示的控件组";
+  const reader_minimize_controls = "收起控件以扩大 PDF 显示区域";
+  const reader_read_to_page = "已读至第 {page} 页 — 点击切换进度";
+  const reader_mark_read_to_here = "将此前页面标记为已读，不放置精确标记";
+  const reader_move_exact_marker = "将精确阅读标记移至当前文字行。按住 Shift 点击可清除。";
+  const reader_place_exact_marker = "在当前文字行放置精确阅读标记";
+  const reader_set_exact_marker = "设置精确阅读标记";
+  const reader_read_progress_pages = "阅读进度：{read}/{total} 页";
+  const reader_read_progress = "阅读进度";
+  const reader_find = "查找";
+  const reader_search_pdf = "搜索此 PDF";
+  const reader_daily_limit = "此卡片的 PDF 每日阅读上限";
+  const reader_override_active = "已启用临时豁免";
+  const reader_warning = "警告";
+  const reader_use_highlight_color = "使用{color}高亮颜色";
+  const reader_highlight_color = "以{color}色高亮";
+  const reader_cancel_snapshot = "取消截图";
+  const reader_draw_snapshot = "拖动矩形框截取区域";
+  const reader_show_highlights = "显示高亮列表";
+  const reader_bookmark_current = "将当前页加入书签";
+  const reader_show_bookmarks = "显示已保存的书签";
+  const reader_review_all_tooltip = "选择此 PDF 关联卡片的主题、项目、范围、到期状态、数量和顺序";
+  const reader_open_all_cards = "在 Anki 浏览器中打开由此 PDF 创建的全部卡片";
+  const reader_finished_tooltip = "标记此 PDF 已读完并暂停此卡片";
+  const reader_finished_confirm = "将此 PDF 标记为已读完？\n此卡片将被暂停并从今后的学习会话中移除。";
+  const reader_customize_pdf_controls = "自定义 PDF 控件";
+  const reader_customize_controls = "自定义控件";
+  const reader_customize_intro = "选择在阅读器工具栏中保持可见的控件组。";
+  const reader_close = "关闭";
+  const reader_show_all = "显示全部";
+  const reader_done = "完成";
+  const reader_pdf_bookmarks = "PDF 书签";
+  const reader_add_current_page = "添加当前页";
+  const reader_no_bookmarks = "暂无书签。";
+  const reader_load_error = "无法加载此 PDF。";
+  const reader_page_error = "无法打开此 PDF 页面。";
+  const reader_render_error = "无法呈现此 PDF 页面。";
+  const reader_add_highlight_note = "添加高亮笔记";
+  const reader_edit_highlight_note = "编辑高亮笔记";
+  const reader_remove_highlight = "删除高亮";
+  const reader_remove_snapshot_highlight = "删除截图高亮";
+  const reader_page_jump = "跳转到页面";
+  const reader_prev_short = "上一页";
+  const reader_next_short = "下一页";
+  const reader_page_location = "第 {current} / {total} 页";
+  const reader_links_state = "链接{state}";
+  const reader_on = "开启";
+  const reader_off = "关闭";
+  const reader_jump_back = "返回跳转";
+  const reader_show_controls = "显示控件";
+  const reader_customize = "自定义";
+  const reader_minimize_controls_label = "收起控件";
+  const reader_page = "页码";
+  const reader_read_to_here = "已读至此";
+  const reader_read_range = "第 1–{page} 页";
+  const reader_search_position = "{current} / {total}";
+  const reader_zero_results = "0 条结果";
+  const reader_all = "全部";
+  const reader_today_pages = "今日：{used}/{total} 页";
+  const reader_remaining = "剩余 {count}";
+  const reader_limit_warning = "警告";
+  const reader_limit_soft_lock = "软限制";
+  const reader_limit_hard_stop = "强制停止";
+  const reader_stop_point = "今日停止位置：第 {page} 页";
+  const reader_override_today = "今日临时豁免";
+  const reader_dismiss = "关闭";
+  const reader_color_yellow = "黄色";
+  const reader_color_green = "绿色";
+  const reader_color_blue = "蓝色";
+  const reader_color_pink = "粉色";
+  const reader_color_aqua = "青色";
+  const reader_color_orange = "橙色";
+  const reader_color_red = "红色";
+  const reader_color_purple = "紫色";
+  const reader_highlight_when_extracting = "摘录时高亮";
+  const reader_snapshot = "截图";
+  const reader_highlights_count = "高亮 ({count})";
+  const reader_bookmarks_count = "书签 ({count})";
+  const reader_review_due = "复习到期卡片";
+  const reader_reading_limit = "阅读上限";
+  const reader_regenerate_cover = "重新生成封面";
+  const reader_open_all_in_browser = "在浏览器中打开全部";
+  const reader_page_cards_count = "本页卡片 ({count})";
+  const reader_add_card = "添加卡片";
+  const reader_finished_reading = "已读完";
+  const reader_jump = "跳转";
+  const reader_delete = "删除";
+  const reader_page_number = "第 {page} 页";
+  const reader_pdf_highlights = "PDF 高亮";
+  const reader_previous_highlight = "上一处高亮";
+  const reader_next_highlight = "下一处高亮";
+  const reader_whole_pdf = "整个 PDF";
+  const reader_this_page = "此页";
+  const reader_create_missing_tooltip_other = "为此 PDF 中 {count} 处未关联高亮创建卡片";
+  const reader_no_unlinked_highlights = "此 PDF 中没有未关联的文字高亮";
+  const reader_create_missing_cards = "创建缺失的卡片 ({count})";
+  const reader_notes_only = "仅笔记";
+  const reader_no_highlight_notes_page = "此页暂无高亮笔记。";
+  const reader_no_highlight_notes = "暂无高亮笔记。";
+  const reader_no_highlights = "暂无高亮。";
+  const reader_no_text = "（无文字）";
+  const reader_preview_card = "预览卡片";
+  const reader_create_card = "创建卡片";
+  const reader_preview_linked_card = "预览已关联此高亮的卡片";
+  const reader_prefill_card = "根据此高亮预填新卡片";
+  const reader_edit_note_tooltip = "编辑此高亮的笔记";
+  const reader_add_note_tooltip = "为此高亮添加笔记";
+  const reader_edit_note = "编辑笔记";
+  const reader_add_note = "添加笔记";
+  const reader_delete_highlight = "删除此高亮";
+  const reader_highlight_excerpt = "高亮：{excerpt}";
+  const reader_stopped_at = "停止于：{text}";
+  const reader_stopping_page = "已将第 {page} 页标记为当前停止位置";
+  const reader_read_marker = "已读至此";
+  const reader_open_external_link = "打开外部链接";
+  const reader_limit_reached_pages = "已达每日上限：今日 {used}/{total} 页。";
+  const reader_limit_reached_pdf = "已达此 PDF 的每日上限。";
+  const reader_limit_reached_hard = "{prefix} 请在下次 Incremento 每日重置后继续。";
+  const reader_limit_reached_soft = "{prefix} 可使用临时豁免继续今日阅读。";
+  const reader_moving_past_limit = "即将超过此 PDF 今日 {count} 页的上限。";
+  const reader_read_past_limit = "标记已读可能超过此 PDF 今日 {count} 页的上限。";
+  const reader_override_notice = "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。";
+  const zhHans = {
+    reader_previous_page,
+    reader_next_page,
+    reader_go_to_page,
+    reader_page_cards_tooltip_other,
+    reader_navigation,
+    reader_navigate,
+    reader_zoom,
+    reader_reading,
+    reader_annotation_capture,
+    reader_annotate,
+    reader_capture,
+    reader_review_cards,
+    reader_review,
+    reader_cards,
+    reader_status,
+    reader_back,
+    reader_search,
+    reader_extract,
+    reader_bookmark,
+    reader_review_all,
+    reader_pdf_controls,
+    reader_previous_pdf_page,
+    reader_next_pdf_page,
+    reader_pdf_page_number,
+    reader_zoom_out,
+    reader_zoom_in,
+    reader_links_enable,
+    reader_links_disable,
+    reader_jump_back_page,
+    reader_jump_back_hint,
+    reader_choose_controls,
+    reader_minimize_controls,
+    reader_read_to_page,
+    reader_mark_read_to_here,
+    reader_move_exact_marker,
+    reader_place_exact_marker,
+    reader_set_exact_marker,
+    reader_read_progress_pages,
+    reader_read_progress,
+    reader_find,
+    reader_search_pdf,
+    reader_daily_limit,
+    reader_override_active,
+    reader_warning,
+    reader_use_highlight_color,
+    reader_highlight_color,
+    reader_cancel_snapshot,
+    reader_draw_snapshot,
+    reader_show_highlights,
+    reader_bookmark_current,
+    reader_show_bookmarks,
+    reader_review_all_tooltip,
+    reader_open_all_cards,
+    reader_finished_tooltip,
+    reader_finished_confirm,
+    reader_customize_pdf_controls,
+    reader_customize_controls,
+    reader_customize_intro,
+    reader_close,
+    reader_show_all,
+    reader_done,
+    reader_pdf_bookmarks,
+    reader_add_current_page,
+    reader_no_bookmarks,
+    reader_load_error,
+    reader_page_error,
+    reader_render_error,
+    reader_add_highlight_note,
+    reader_edit_highlight_note,
+    reader_remove_highlight,
+    reader_remove_snapshot_highlight,
+    reader_page_jump,
+    reader_prev_short,
+    reader_next_short,
+    reader_page_location,
+    reader_links_state,
+    reader_on,
+    reader_off,
+    reader_jump_back,
+    reader_show_controls,
+    reader_customize,
+    reader_minimize_controls_label,
+    reader_page,
+    reader_read_to_here,
+    reader_read_range,
+    reader_search_position,
+    reader_zero_results,
+    reader_all,
+    reader_today_pages,
+    reader_remaining,
+    reader_limit_warning,
+    reader_limit_soft_lock,
+    reader_limit_hard_stop,
+    reader_stop_point,
+    reader_override_today,
+    reader_dismiss,
+    reader_color_yellow,
+    reader_color_green,
+    reader_color_blue,
+    reader_color_pink,
+    reader_color_aqua,
+    reader_color_orange,
+    reader_color_red,
+    reader_color_purple,
+    reader_highlight_when_extracting,
+    reader_snapshot,
+    reader_highlights_count,
+    reader_bookmarks_count,
+    reader_review_due,
+    reader_reading_limit,
+    reader_regenerate_cover,
+    reader_open_all_in_browser,
+    reader_page_cards_count,
+    reader_add_card,
+    reader_finished_reading,
+    reader_jump,
+    reader_delete,
+    reader_page_number,
+    reader_pdf_highlights,
+    reader_previous_highlight,
+    reader_next_highlight,
+    reader_whole_pdf,
+    reader_this_page,
+    reader_create_missing_tooltip_other,
+    reader_no_unlinked_highlights,
+    reader_create_missing_cards,
+    reader_notes_only,
+    reader_no_highlight_notes_page,
+    reader_no_highlight_notes,
+    reader_no_highlights,
+    reader_no_text,
+    reader_preview_card,
+    reader_create_card,
+    reader_preview_linked_card,
+    reader_prefill_card,
+    reader_edit_note_tooltip,
+    reader_add_note_tooltip,
+    reader_edit_note,
+    reader_add_note,
+    reader_delete_highlight,
+    reader_highlight_excerpt,
+    reader_stopped_at,
+    reader_stopping_page,
+    reader_read_marker,
+    reader_open_external_link,
+    reader_limit_reached_pages,
+    reader_limit_reached_pdf,
+    reader_limit_reached_hard,
+    reader_limit_reached_soft,
+    reader_moving_past_limit,
+    reader_read_past_limit,
+    reader_override_notice
+  };
+  const CATALOGS = { en, hr, "zh-Hans": zhHans };
+  function normalizeReaderLocale(value) {
+    if (typeof value !== "string") return "en";
+    const tag = value.trim().replaceAll("_", "-").toLowerCase();
+    const parts = tag.split("-");
+    if (!parts.every((part) => /^[a-z0-9]+$/.test(part))) return "en";
+    if (parts[0] === "en" || parts[0] === "hr") return parts[0];
+    if (parts[0] === "zh") {
+      if (parts.includes("hant") || parts.some((part) => ["tw", "hk", "mo"].includes(part))) return "en";
+      if (tag === "zh" || parts.includes("hans") || parts.some((part) => ["cn", "sg"].includes(part))) return "zh-Hans";
+    }
+    return "en";
+  }
+  function interpolate(template, values) {
+    let missing = false;
+    const result = template.replace(/\{([a-z][a-z0-9_]*)\}/gi, (_match, key) => {
+      if (!Object.hasOwn(values, key)) {
+        missing = true;
+        return "";
+      }
+      return String(values[key]);
+    });
+    return missing ? null : result;
+  }
+  function messageFromCatalogs(catalogs, locale, id, values = {}) {
+    var _a;
+    const selected = catalogs[normalizeReaderLocale(locale)] ?? catalogs.en ?? {};
+    for (const template of [selected[id], (_a = catalogs.en) == null ? void 0 : _a[id]]) {
+      if (typeof template !== "string") continue;
+      const rendered = interpolate(template, values);
+      if (rendered !== null) return rendered;
+    }
+    return "Translation unavailable";
+  }
+  function readerMessage(locale, id, values = {}) {
+    return messageFromCatalogs(CATALOGS, locale, id, values);
+  }
+  function pluralFromCatalogs(catalogs, locale, id, count, values = {}) {
+    var _a, _b;
+    const normalized = normalizeReaderLocale(locale);
+    const selectedKey = `${id}_${new Intl.PluralRules(normalized).select(Number(count))}`;
+    const selectedTemplate = (_a = catalogs[normalized]) == null ? void 0 : _a[selectedKey];
+    if (typeof selectedTemplate === "string") {
+      const rendered = interpolate(selectedTemplate, {
+        ...values,
+        count: new Intl.NumberFormat(normalized).format(count)
+      });
+      if (rendered !== null) return rendered;
+    }
+    const englishKey = `${id}_${new Intl.PluralRules("en").select(Number(count))}`;
+    const englishTemplate = (_b = catalogs.en) == null ? void 0 : _b[englishKey];
+    if (typeof englishTemplate !== "string") return "Translation unavailable";
+    return interpolate(englishTemplate, {
+      ...values,
+      count: new Intl.NumberFormat("en").format(count)
+    }) ?? "Translation unavailable";
+  }
+  function readerPlural(locale, id, count, values = {}) {
+    return pluralFromCatalogs(CATALOGS, locale, id, count, values);
+  }
+  function canonicalCustomLocale(value) {
+    if (typeof value !== "string" || value.length > 64) return null;
+    try {
+      return Intl.getCanonicalLocales(value.trim().replaceAll("_", "-"))[0] ?? null;
+    } catch (_error) {
+      return null;
+    }
+  }
+  function customReaderSnapshot(locale, payload) {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    const canonical = canonicalCustomLocale(locale);
+    if (!canonical || canonicalCustomLocale(payload.locale) !== canonical) return null;
+    if (!payload.messages || typeof payload.messages !== "object" || Array.isArray(payload.messages)) return null;
+    const messages = /* @__PURE__ */ Object.create(null);
+    for (const [key, value] of Object.entries(payload.messages)) {
+      const plural = /^([a-z][a-z0-9_]*)::(zero|one|two|few|many|other)$/.exec(key);
+      const source = plural ? en[`${plural[1]}_other`] : en[key];
+      if (typeof source !== "string" || typeof value !== "string" || !value.trim()) continue;
+      const fields = (text) => [...new Set([...text.matchAll(/\{([a-z][a-z0-9_]*)\}/gi)].map((match) => match[1]))].sort().join(",");
+      if (fields(value) !== fields(source)) continue;
+      messages[key] = value;
+    }
+    return { locale: canonical, messages: Object.freeze(messages) };
+  }
+  function createReaderLanguage(locale, customPayload = null) {
+    const custom = customReaderSnapshot(locale, customPayload);
+    if (!custom) {
+      const selected = customPayload == null ? normalizeReaderLocale(locale) : "en";
+      return Object.freeze({
+        locale: selected,
+        tr: (id, values) => readerMessage(selected, id, values),
+        plural: (id, count, values) => readerPlural(selected, id, count, values)
+      });
+    }
+    const numericLocale = Intl.PluralRules.supportedLocalesOf(custom.locale).length && Intl.NumberFormat.supportedLocalesOf(custom.locale).length ? custom.locale : "en";
+    const pluralRules = new Intl.PluralRules(numericLocale);
+    const numberFormat = new Intl.NumberFormat(numericLocale);
+    return Object.freeze({
+      locale: custom.locale,
+      tr: (id, values = {}) => {
+        const template = custom.messages[id];
+        return (typeof template === "string" ? interpolate(template, values) : null) ?? readerMessage("en", id, values);
+      },
+      plural: (id, count, values = {}) => {
+        const template = custom.messages[`${id}::${pluralRules.select(Number(count))}`];
+        return (typeof template === "string" ? interpolate(template, { ...values, count: numberFormat.format(count) }) : null) ?? readerPlural("en", id, count, values);
+      }
+    });
+  }
+  const DEFAULT_LANGUAGE = createReaderLanguage("en");
   const HL_COLORS$1 = {
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
@@ -7416,6 +8456,7 @@
     return String((highlight == null ? void 0 : highlight.color) || "") === "snapshot";
   }
   function HighlightLayer({
+    language = DEFAULT_LANGUAGE,
     pageHighlights,
     renderInfo,
     deleteHighlight,
@@ -7538,7 +8579,7 @@
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
-                  title: hasNote ? "Edit highlight note" : "Add highlight note",
+                  title: language.tr(hasNote ? "reader_edit_highlight_note" : "reader_add_highlight_note"),
                   onClick: () => editHighlightNote(h.id),
                   style: {
                     width: 16,
@@ -7560,7 +8601,7 @@
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
-                  title: isSnapshotHighlight(h) ? "Remove snapshot highlight" : "Remove highlight",
+                  title: language.tr(isSnapshotHighlight(h) ? "reader_remove_snapshot_highlight" : "reader_remove_highlight"),
                   onClick: () => deleteHighlight(h.id),
                   style: {
                     width: 16,
@@ -7664,6 +8705,19 @@
     const targetOffset = Math.max(0, Math.min(pointOffset - preferredOffset, maxOffset));
     return targetOffset / maxOffset;
   }
+  const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+  function joinPdfTextParts(left, right) {
+    const previous = String(left || "");
+    const next = String(right || "");
+    if (!previous) return next;
+    if (!next) return previous;
+    const last = Array.from(previous).at(-1);
+    const first = Array.from(next)[0];
+    return `${previous}${CJK.test(last) && CJK.test(first) ? "" : " "}${next}`;
+  }
+  function truncatePdfText(value, length) {
+    return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
+  }
   const HL_COLORS = {
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
@@ -7732,10 +8786,10 @@
     background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))"
   };
   const CONTROL_GROUPS = [
-    ["navigation", "Navigation"],
-    ["reading", "Reading"],
-    ["annotation", "Annotation & capture"],
-    ["review", "Review & cards"]
+    ["navigation", "reader_navigation"],
+    ["reading", "reader_reading"],
+    ["annotation", "reader_annotation_capture"],
+    ["review", "reader_review_cards"]
   ];
   const DEFAULT_CONTROL_VISIBILITY = {
     navigation: true,
@@ -7852,16 +8906,18 @@
             text = text.slice(0, -1) + piece;
             insertedCount -= 1;
           } else {
-            text += " " + piece;
-            insertedCount += 1;
+            const joined = joinPdfTextParts(text, piece);
+            insertedCount += joined.length - text.length - piece.length;
+            text = joined;
           }
           if (offsetTopLast !== 0) {
             lastYDiffs.push(node.offsetTop - offsetTopLast);
           }
           lastFontSize = fontSize;
         } else if (offsetLeftLast + textWidthLast < node.offsetLeft - 2 && !piece.startsWith(" ")) {
-          text += " " + piece;
-          insertedCount += 1;
+          const joined = joinPdfTextParts(text, piece);
+          insertedCount += joined.length - text.length - piece.length;
+          text = joined;
         } else if (offsetLeftLast + textWidthLast > node.offsetLeft - 5) {
           text = text.trimEnd() + piece;
         } else {
@@ -8007,7 +9063,7 @@
       const matched = [];
       for (let end = start; end < spans.length && end < start + maxWindow; end += 1) {
         const piece = spans[end].text;
-        combined = combined ? `${combined} ${piece}` : piece;
+        combined = joinPdfTextParts(combined, piece);
         matched.push(spans[end].span);
         if (combined.includes(target)) {
           return matched;
@@ -8044,6 +9100,8 @@
     };
   }
   function PdfViewer() {
+    const [language, setLanguage] = reactExports.useState(() => createReaderLanguage("en"));
+    const { tr, plural } = language;
     const {
       page,
       totalPages,
@@ -8220,12 +9278,12 @@
       setHoveredHighlightNote(null);
     }, []);
     const describeLimitReached = reactExports.useCallback(() => {
-      const prefix = limitTotal > 0 ? `Daily limit reached: ${Math.max(limitUsed, limitTotal)}/${limitTotal} pages today.` : "Daily limit reached for this PDF.";
+      const prefix = limitTotal > 0 ? tr("reader_limit_reached_pages", { used: Math.max(limitUsed, limitTotal), total: limitTotal }) : tr("reader_limit_reached_pdf");
       if (limitMode === "hard_stop") {
-        return `${prefix} Come back after your next Incremento day reset.`;
+        return tr("reader_limit_reached_hard", { prefix });
       }
-      return `${prefix} Use override to keep reading today.`;
-    }, [limitMode, limitTotal, limitUsed]);
+      return tr("reader_limit_reached_soft", { prefix });
+    }, [limitMode, limitTotal, limitUsed, tr]);
     const canMoveToPage = reactExports.useCallback((targetPage) => {
       if (!limitEnabled || targetPage <= pageRef.current) {
         return true;
@@ -8239,7 +9297,7 @@
       if (limitMode === "warning") {
         setLimitNotice({
           kind: "warning",
-          text: `You are moving past today's ${limitTotal}-page limit for this PDF.`
+          text: tr("reader_moving_past_limit", { count: limitTotal })
         });
         return true;
       }
@@ -8248,7 +9306,7 @@
         text: describeLimitReached()
       });
       return false;
-    }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, pageRef]);
+    }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, pageRef, tr]);
     const canMarkReadAtPage = reactExports.useCallback((targetPage) => {
       if (!limitEnabled) {
         return true;
@@ -8259,7 +9317,7 @@
       if (limitMode === "warning") {
         setLimitNotice({
           kind: "warning",
-          text: `Read-through can go past today's ${limitTotal}-page limit for this PDF.`
+          text: tr("reader_read_past_limit", { count: limitTotal })
         });
         return true;
       }
@@ -8268,7 +9326,7 @@
         text: describeLimitReached()
       });
       return false;
-    }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled]);
+    }, [allowedMaxPage, describeLimitReached, limitEnabled, limitMode, limitTotal, overrideEnabled, tr]);
     const buildReadAnchor = reactExports.useCallback(() => {
       const tl = textLayerRef.current;
       const scale = Number(lastScaleRef.current || 0);
@@ -8284,7 +9342,7 @@
           return {
             page: pageRef.current,
             ...coords2,
-            text: selectionCleaned(selection, tl).slice(0, 240)
+            text: truncatePdfText(selectionCleaned(selection, tl), 240)
           };
         }
       }
@@ -8298,7 +9356,7 @@
       return {
         page: pageRef.current,
         ...coords,
-        text: String(span.textContent || "").trim().slice(0, 240)
+        text: truncatePdfText(String(span.textContent || "").trim(), 240)
       };
     }, [lastScaleRef, pageRef, textLayerRef]);
     const requestLimitOverride = reactExports.useCallback(() => {
@@ -8313,14 +9371,14 @@
       if (overrideEnabled && limitReached) {
         setLimitNotice({
           kind: "info",
-          text: "Daily reading limit override is active for this PDF until the next day reset."
+          text: tr("reader_override_notice")
         });
         return;
       }
       if (!limitReached && (limitNotice == null ? void 0 : limitNotice.kind) !== "warning") {
         setLimitNotice(null);
       }
-    }, [limitEnabled, limitNotice == null ? void 0 : limitNotice.kind, limitReached, overrideEnabled]);
+    }, [limitEnabled, limitNotice == null ? void 0 : limitNotice.kind, limitReached, overrideEnabled, tr]);
     reactExports.useEffect(() => {
       var _a, _b;
       const pendingId = pendingHighlightScrollRef.current;
@@ -8856,7 +9914,10 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null) => {
+        const nextLanguage = createReaderLanguage(startLocale, startCustomLanguage);
+        setLanguage(nextLanguage);
+        document.documentElement.lang = nextLanguage.locale;
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         window._incPdfHighlights = null;
@@ -8944,7 +10005,9 @@
           pending.limitStatus || DEFAULT_LIMIT_STATUS,
           pending.autoHighlightOnExtract,
           pending.scrollToTopOnPageChange,
-          pending.bookmarks || []
+          pending.bookmarks || [],
+          pending.locale || "en",
+          pending.customLanguage || null
         );
       }
       return () => {
@@ -9080,7 +10143,7 @@
             {
               id: "pdf-controls",
               role: "toolbar",
-              "aria-label": "PDF reader controls",
+              "aria-label": tr("reader_pdf_controls"),
               style: {
                 position: "fixed",
                 bottom: 0,
@@ -9109,49 +10172,50 @@
                     flexWrap: "wrap"
                   },
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        "aria-label": "Previous PDF page",
-                        onClick: () => limitAwareNav(-1),
-                        title: "Previous page",
-                        children: "← Prev"
-                      }
-                    ),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "button",
                       {
-                        type: "button",
-                        onClick: openPageJump,
-                        title: "Go to page",
-                        style: { minWidth: 132, fontWeight: 700 },
+                        "aria-label": tr("reader_previous_pdf_page"),
+                        onClick: () => limitAwareNav(-1),
+                        title: tr("reader_previous_page"),
                         children: [
-                          "Page ",
-                          page,
-                          " / ",
-                          totalPages || "—"
+                          "← ",
+                          tr("reader_prev_short")
                         ]
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
-                        "aria-label": "Next PDF page",
+                        type: "button",
+                        onClick: openPageJump,
+                        title: tr("reader_page_jump"),
+                        style: { minWidth: 132, fontWeight: 700 },
+                        children: tr("reader_page_location", { current: page, total: totalPages || "—" })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        "aria-label": tr("reader_next_pdf_page"),
                         onClick: () => limitAwareNav(1),
-                        title: "Next page",
-                        children: "Next →"
+                        title: tr("reader_next_page"),
+                        children: [
+                          tr("reader_next_short"),
+                          " →"
+                        ]
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "#d4d4d8", fontWeight: 700, minWidth: 48, textAlign: "center" }, children: [
                       Math.round(zoom * 100),
                       "%"
                     ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
                         type: "button",
                         "aria-pressed": clickableLinks,
-                        title: clickableLinks ? "Disable PDF links and restore uninterrupted text selection" : "Enable clickable links in this PDF",
+                        title: clickableLinks ? tr("reader_links_disable") : tr("reader_links_enable"),
                         onClick: () => setClickableLinks((value) => !value),
                         style: {
                           border: clickableLinks ? "1px solid rgba(96,165,250,0.78)" : "1px solid rgba(180,180,180,0.35)",
@@ -9159,24 +10223,24 @@
                           color: clickableLinks ? "rgb(147,197,253)" : "inherit",
                           fontWeight: clickableLinks ? 700 : 400
                         },
-                        children: [
-                          "Links ",
-                          clickableLinks ? "On" : "Off"
-                        ]
+                        children: tr("reader_links_state", { state: clickableLinks ? tr("reader_on") : tr("reader_off") })
                       }
                     ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "button",
                       {
                         type: "button",
                         disabled: linkBackHistory.length === 0,
                         onClick: jumpBackFromPdfLink,
-                        title: linkBackHistory.length > 0 ? `Jump back to page ${linkBackHistory.at(-1).page}` : "Follow an internal PDF link to enable Jump Back",
+                        title: linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint"),
                         style: {
                           opacity: linkBackHistory.length > 0 ? 1 : 0.48,
                           cursor: linkBackHistory.length > 0 ? "pointer" : "default"
                         },
-                        children: "↩ Jump Back"
+                        children: [
+                          "↩ ",
+                          tr("reader_jump_back")
+                        ]
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9191,10 +10255,10 @@
                           background: "rgba(59,130,246,0.14)",
                           fontWeight: 700
                         },
-                        children: "Show controls"
+                        children: tr("reader_show_controls")
                       }
                     ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(true), title: "Choose which control groups are visible", children: "Customize" })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(true), title: tr("reader_choose_controls"), children: tr("reader_customize") })
                   ]
                 }
               ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -9204,9 +10268,9 @@
                     {
                       type: "button",
                       onClick: () => setShowControlChooser(true),
-                      title: "Choose which control groups are visible",
+                      title: tr("reader_choose_controls"),
                       style: { padding: "2px 9px", fontSize: 11 },
-                      children: "Customize controls"
+                      children: tr("reader_customize_controls")
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9215,7 +10279,7 @@
                       type: "button",
                       onClick: () => setControlsCollapsed(true),
                       "aria-expanded": "true",
-                      title: "Minimize reader controls to give the PDF more room",
+                      title: tr("reader_minimize_controls"),
                       style: {
                         border: "1px solid rgba(180,180,180,0.35)",
                         background: "rgba(255,255,255,0.04)",
@@ -9223,30 +10287,33 @@
                         padding: "2px 9px",
                         fontSize: 11
                       },
-                      children: "Minimize controls"
+                      children: tr("reader_minimize_controls_label")
                     }
                   )
                 ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "stretch", justifyContent: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }, children: [
                   controlVisibility.navigation && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_GROUP_STYLE, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Navigate" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_navigate") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
-                            "aria-label": "Previous PDF page",
+                            "aria-label": tr("reader_previous_pdf_page"),
                             onClick: () => limitAwareNav(-1),
-                            children: "← Prev"
+                            children: [
+                              "← ",
+                              tr("reader_prev_short")
+                            ]
                           }
                         ),
                         pageJumpEditing ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 170, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 15, fontWeight: 700 }, children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Page" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_page") }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "input",
                             {
                               ref: pageJumpInputRef,
-                              "aria-label": "PDF page number",
+                              "aria-label": tr("reader_pdf_page_number"),
                               type: "number",
                               min: "1",
                               max: totalPages || void 0,
@@ -9286,7 +10353,7 @@
                           {
                             type: "button",
                             onClick: openPageJump,
-                            title: totalPages > 0 ? "Go to page" : void 0,
+                            title: totalPages > 0 ? tr("reader_page_jump") : void 0,
                             style: {
                               minWidth: 170,
                               height: 32,
@@ -9300,40 +10367,43 @@
                               borderRadius: 8,
                               cursor: totalPages > 0 ? "pointer" : "default"
                             },
-                            children: totalPages > 0 ? `Page ${page} / ${totalPages}` : "Page — / —"
+                            children: tr("reader_page_location", { current: totalPages > 0 ? page : "—", total: totalPages || "—" })
                           }
                         ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
-                            "aria-label": "Next PDF page",
+                            "aria-label": tr("reader_next_pdf_page"),
                             onClick: () => limitAwareNav(1),
-                            children: "Next →"
+                            children: [
+                              tr("reader_next_short"),
+                              " →"
+                            ]
                           }
                         )
                       ] })
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Zoom" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_zoom") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": "Zoom out", onClick: () => adjustZoom(-1), children: "−" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_out"), onClick: () => adjustZoom(-1), children: "−" }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { minWidth: 54, textAlign: "center", fontSize: 15, fontWeight: 700 }, children: [
                           Math.round(zoom * 100),
                           "%"
                         ] }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": "Zoom in", onClick: () => adjustZoom(1), children: "+" })
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_in"), onClick: () => adjustZoom(1), children: "+" })
                       ] })
                     ] })
                   ] }),
                   controlVisibility.reading && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12 }, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Reading" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_reading") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
-                            title: readPage > 0 ? `Read up to page ${readPage} — click to toggle progress only` : "Mark pages as read up to here without placing an exact marker",
+                            title: readPage > 0 ? tr("reader_read_to_page", { page: readPage }) : tr("reader_mark_read_to_here"),
                             style: {
                               background: readPage > 0 && page <= readPage ? "rgba(34,197,94,0.3)" : "transparent",
                               border: "1px solid rgba(34,197,94,0.6)",
@@ -9345,14 +10415,17 @@
                               fontWeight: readPage > 0 && page <= readPage ? "bold" : "normal"
                             },
                             onClick: limitAwareMarkRead,
-                            children: "✓ Read to here"
+                            children: [
+                              "✓ ",
+                              tr("reader_read_to_here")
+                            ]
                           }
                         ),
                         /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
-                            title: showReadMarker ? "Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it." : "Place the exact READ UP UNTIL HERE marker at the current text row",
-                            "aria-label": "Set exact read marker",
+                            title: showReadMarker ? tr("reader_move_exact_marker") : tr("reader_place_exact_marker"),
+                            "aria-label": tr("reader_set_exact_marker"),
                             style: {
                               display: "inline-flex",
                               alignItems: "center",
@@ -9373,12 +10446,12 @@
                             children: "↦"
                           }
                         ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
                             type: "button",
                             "aria-pressed": clickableLinks,
-                            title: clickableLinks ? "Disable PDF links and restore uninterrupted text selection" : "Enable clickable links in this PDF",
+                            title: clickableLinks ? tr("reader_links_disable") : tr("reader_links_enable"),
                             onClick: () => setClickableLinks((value) => !value),
                             style: {
                               background: clickableLinks ? "rgba(59,130,246,0.22)" : "rgba(255,255,255,0.03)",
@@ -9390,19 +10463,16 @@
                               fontSize: 12,
                               fontWeight: clickableLinks ? 700 : 400
                             },
-                            children: [
-                              "Links ",
-                              clickableLinks ? "On" : "Off"
-                            ]
+                            children: tr("reader_links_state", { state: clickableLinks ? tr("reader_on") : tr("reader_off") })
                           }
                         ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
                             type: "button",
                             disabled: linkBackHistory.length === 0,
                             onClick: jumpBackFromPdfLink,
-                            title: linkBackHistory.length > 0 ? `Jump back to page ${linkBackHistory.at(-1).page}` : "Follow an internal PDF link to enable Jump Back",
+                            title: linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint"),
                             style: {
                               background: "rgba(255,255,255,0.03)",
                               border: "1px solid rgba(180,180,180,0.32)",
@@ -9413,10 +10483,13 @@
                               padding: "4px 10px",
                               fontSize: 12
                             },
-                            children: "↩ Jump Back"
+                            children: [
+                              "↩ ",
+                              tr("reader_jump_back")
+                            ]
                           }
                         ),
-                        readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
+                        readPage > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
                           fontSize: 11,
                           color: "rgb(22,163,74)",
                           fontWeight: "bold",
@@ -9424,17 +10497,14 @@
                           borderRadius: 999,
                           background: "rgba(22,163,74,0.12)",
                           border: "1px solid rgba(22,163,74,0.24)"
-                        }, children: [
-                          "p.1–",
-                          readPage
-                        ] })
+                        }, children: tr("reader_read_range", { page: readPage }) })
                       ] })
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "span",
                       {
-                        title: totalPages > 0 ? `Read progress: ${readPage}/${totalPages} pages` : "Read progress",
+                        title: totalPages > 0 ? tr("reader_read_progress_pages", { read: readPage, total: totalPages }) : tr("reader_read_progress"),
                         style: {
                           display: "inline-flex",
                           alignItems: "center",
@@ -9469,7 +10539,7 @@
                   ] })
                 ] }),
                 controlVisibility.reading && findOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#d4d4d8", fontWeight: 600 }, children: "Find" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#d4d4d8", fontWeight: 600 }, children: tr("reader_find") }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "input",
                     {
@@ -9477,7 +10547,7 @@
                       type: "text",
                       value: searchQuery,
                       onChange: (event) => setSearchQuery(event.target.value),
-                      placeholder: "Search this PDF",
+                      placeholder: tr("reader_search_pdf"),
                       style: {
                         width: 260,
                         height: 32,
@@ -9495,7 +10565,7 @@
                       role: "status",
                       "aria-live": "polite",
                       style: { minWidth: 64, textAlign: "center", color: "#a1a1aa", fontSize: 12 },
-                      children: searchQuery ? searchHits.length ? `${Math.max(0, activeSearchHitIndex + 1)} / ${searchHits.length}` : "0 results" : ""
+                      children: searchQuery ? searchHits.length ? tr("reader_search_position", { current: Math.max(0, activeSearchHitIndex + 1), total: searchHits.length }) : tr("reader_zero_results") : ""
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9504,7 +10574,7 @@
                       type: "button",
                       disabled: !searchHits.length,
                       onClick: () => window.pycmd("incremento_pdf_find_nav:" + JSON.stringify({ direction: -1 })),
-                      children: "Prev"
+                      children: tr("reader_prev_short")
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9513,7 +10583,7 @@
                       type: "button",
                       disabled: !searchHits.length,
                       onClick: () => window.pycmd("incremento_pdf_find_nav:" + JSON.stringify({ direction: 1 })),
-                      children: "Next"
+                      children: tr("reader_next_short")
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9524,7 +10594,7 @@
                         setFindOpen(false);
                         setSearchQuery("");
                       },
-                      children: "Close"
+                      children: tr("reader_close")
                     }
                   ),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9532,7 +10602,7 @@
                     {
                       type: "button",
                       onClick: () => window.pycmd("incremento_pdf_open_find_dialog"),
-                      children: "All"
+                      children: tr("reader_all")
                     }
                   )
                 ] }),
@@ -9551,24 +10621,21 @@
                         fontSize: 12,
                         fontWeight: 600
                       },
-                      title: "Daily PDF reading limit for this card",
+                      title: tr("reader_daily_limit"),
                       children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: `Today: ${limitUsed}/${limitTotal} pages` }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_today_pages", { used: limitUsed, total: limitTotal }) }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { opacity: 0.72 }, children: "•" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: `${Math.max(0, limitRemaining)} remaining` }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_remaining", { count: Math.max(0, limitRemaining) }) }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { opacity: 0.72 }, children: "•" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: (limitStatus == null ? void 0 : limitStatus.enforcement_label) || "Warning" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr(`reader_limit_${(limitStatus == null ? void 0 : limitStatus.enforcement_mode) || "warning"}`) }),
                         overrideEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { opacity: 0.72 }, children: "•" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "rgb(96,165,250)" }, children: "Override active" })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "rgb(96,165,250)" }, children: tr("reader_override_active") })
                         ] })
                       ]
                     }
                   ),
-                  allowedMaxPage != null && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: 11, color: "#c8c8c8" }, children: [
-                    "Stop point today: page ",
-                    allowedMaxPage
-                  ] })
+                  allowedMaxPage != null && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 11, color: "#c8c8c8" }, children: tr("reader_stop_point", { page: allowedMaxPage }) })
                 ] }),
                 controlVisibility.reading && limitNotice && /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   "div",
@@ -9590,8 +10657,8 @@
                     children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: limitNotice.text }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
-                        limitNotice.kind === "soft_lock" && !overrideEnabled && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: requestLimitOverride, children: "Override today" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: clearLimitNotice, children: "Dismiss" })
+                        limitNotice.kind === "soft_lock" && !overrideEnabled && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: requestLimitOverride, children: tr("reader_override_today") }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: clearLimitNotice, children: tr("reader_dismiss") })
                       ] })
                     ]
                   }
@@ -9599,14 +10666,14 @@
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "stretch", justifyContent: "center", gap: 12, flexWrap: "wrap" }, children: [
                   hasPdfCard && controlVisibility.annotation && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Annotate" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_annotate") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, padding: "2px 4px" }, children: Object.keys(HL_COLORS).map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
-                            "aria-label": "Use " + c + " highlight color",
+                            "aria-label": tr("reader_use_highlight_color", { color: tr(`reader_color_${c}`) }),
                             "aria-pressed": hlColor === c,
-                            title: `Highlight ${c}`,
+                            title: tr("reader_highlight_color", { color: tr(`reader_color_${c}`) }),
                             onMouseDown: (e) => {
                               e.preventDefault();
                               pickHighlightColor(c, true);
@@ -9644,18 +10711,18 @@
                               onChange: (e) => applyAutoHighlightSetting(e.target.checked)
                             }
                           ),
-                          "Highlight when extracting"
+                          tr("reader_highlight_when_extracting")
                         ] })
                       ] })
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Capture" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_capture") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
-                            title: snapshotMode ? "Cancel snapshot" : "Draw a rectangle to capture a region",
+                            title: snapshotMode ? tr("reader_cancel_snapshot") : tr("reader_draw_snapshot"),
                             style: {
                               background: snapshotMode ? "rgba(37,99,235,0.2)" : "transparent",
                               border: "1px solid rgba(37,99,235,0.5)",
@@ -9671,13 +10738,16 @@
                               setSnapRect(null);
                               snapStartRef.current = null;
                             },
-                            children: "📷 Snapshot"
+                            children: [
+                              "📷 ",
+                              tr("reader_snapshot")
+                            ]
                           }
                         ),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
-                            title: "Show highlights list",
+                            title: tr("reader_show_highlights"),
                             style: {
                               background: showHighlightsPanel ? "rgba(56,189,248,0.2)" : "transparent",
                               border: "1px solid rgba(56,189,248,0.55)",
@@ -9693,24 +10763,26 @@
                               setShowHighlightsPanel((o) => !o);
                             },
                             children: [
-                              "📑 Highlights (",
-                              highlights.length,
-                              ")"
+                              "📑 ",
+                              tr("reader_highlights_count", { count: highlights.length })
+                            ]
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            title: tr("reader_bookmark_current"),
+                            onClick: addBookmark,
+                            children: [
+                              "★ ",
+                              tr("reader_bookmark")
                             ]
                           }
                         ),
                         /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
-                            title: "Bookmark the current page as an interesting place",
-                            onClick: addBookmark,
-                            children: "★ Bookmark"
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "button",
-                          {
-                            title: "Show saved interesting-place bookmarks",
+                            title: tr("reader_show_bookmarks"),
                             style: {
                               background: showBookmarksPanel ? "rgba(250,204,21,0.18)" : "transparent",
                               border: "1px solid rgba(250,204,21,0.55)",
@@ -9725,11 +10797,7 @@
                               refreshBookmarks();
                               setShowBookmarksPanel((o) => !o);
                             },
-                            children: [
-                              "Bookmarks (",
-                              bookmarks.length,
-                              ")"
-                            ]
+                            children: tr("reader_bookmarks_count", { count: bookmarks.length })
                           }
                         )
                       ] })
@@ -9738,37 +10806,46 @@
                   controlVisibility.review && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12, flexWrap: "wrap" }, children: [
                     hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Review" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_review") }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: "🧠 Review Due" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`), children: [
+                            "🧠 ",
+                            tr("reader_review_due")
+                          ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
                             "button",
                             {
-                              title: "Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF",
+                              title: tr("reader_review_all_tooltip"),
                               onClick: () => window.pycmd(`incremento_pdf_review_all:${cardIdRef.current}:${pageRef.current}`),
-                              children: "▶ Review All"
+                              children: [
+                                "▶ ",
+                                tr("reader_review_all")
+                              ]
                             }
                           ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: "📖 Reading Limit" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_regenerate_cover:${cardIdRef.current}`), children: "Regenerate Cover" })
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`), children: [
+                            "📖 ",
+                            tr("reader_reading_limit")
+                          ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd(`incremento_pdf_regenerate_cover:${cardIdRef.current}`), children: tr("reader_regenerate_cover") })
                         ] })
                       ] }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Cards" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_cards") }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
-                              title: "Open all cards created from this PDF in the Anki Browser",
+                              title: tr("reader_open_all_cards"),
                               onClick: () => window.pycmd("incremento_open_all_pdf_cards:" + cardIdRef.current),
-                              children: "Open All in Browser"
+                              children: tr("reader_open_all_in_browser")
                             }
                           ),
                           pageCards.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
                             "button",
                             {
-                              title: `Open the ${pageCards.length} card${pageCards.length > 1 ? "s" : ""} created on this page in the Anki Browser`,
+                              title: plural("reader_page_cards_tooltip", pageCards.length),
                               onClick: () => window.pycmd("incremento_open_page_cards:" + JSON.stringify(
                                 pageCards.map((card) => Number(card.note_id || 0)).filter((noteId) => Number.isInteger(noteId) && noteId > 0)
                               )),
@@ -9783,22 +10860,24 @@
                                 fontWeight: "bold"
                               },
                               children: [
-                                "📄 Page cards (",
-                                pageCards.length,
-                                ")"
+                                "📄 ",
+                                tr("reader_page_cards_count", { count: pageCards.length })
                               ]
                             }
                           ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" })
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: [
+                            "+ ",
+                            tr("reader_add_card")
+                          ] })
                         ] })
                       ] }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Status" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_status") }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
-                            title: "Mark this PDF as finished reading — suspends the card so it won't appear again",
+                            title: tr("reader_finished_tooltip"),
                             style: {
                               background: "transparent",
                               border: "1px solid rgba(220,50,50,0.45)",
@@ -9809,18 +10888,24 @@
                               fontSize: 12
                             },
                             onClick: () => {
-                              if (window.confirm("Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions.")) {
+                              if (window.confirm(tr("reader_finished_confirm"))) {
                                 window.pycmd("incremento_pdf_finished:" + cardIdRef.current);
                               }
                             },
-                            children: "✓ Finished Reading"
+                            children: [
+                              "✓ ",
+                              tr("reader_finished_reading")
+                            ]
                           }
                         )
                       ] })
                     ] }),
                     !hasPdfCard && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: "Cards" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: "+ Add Card" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_cards") }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => window.pycmd("incremento_open_add_card"), children: [
+                        "+ ",
+                        tr("reader_add_card")
+                      ] })
                     ] })
                   ] })
                 ] })
@@ -9832,7 +10917,7 @@
             {
               role: "dialog",
               "aria-modal": "true",
-              "aria-label": "Customize PDF controls",
+              "aria-label": tr("reader_customize_pdf_controls"),
               onClick: () => setShowControlChooser(false),
               style: {
                 position: "fixed",
@@ -9860,12 +10945,15 @@
                   children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 16, fontWeight: 700 }, children: "Customize controls" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { marginTop: 4, fontSize: 12, color: "rgba(220,220,220,0.68)" }, children: "Choose which groups stay visible in the reader toolbar." })
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 16, fontWeight: 700 }, children: [
+                          " ",
+                          tr("reader_customize_controls")
+                        ] }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { marginTop: 4, fontSize: 12, color: "rgba(220,220,220,0.68)" }, children: tr("reader_customize_intro") })
                       ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(false), "aria-label": "Close", children: "×" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(false), "aria-label": tr("reader_close"), children: "×" })
                     ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: CONTROL_GROUPS.map(([key, label]) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: CONTROL_GROUPS.map(([key, labelId]) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "label",
                       {
                         style: {
@@ -9890,14 +10978,14 @@
                               }))
                             }
                           ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: label })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr(labelId) })
                         ]
                       },
                       key
                     )) }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setControlVisibility(DEFAULT_CONTROL_VISIBILITY), children: "Show all" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(false), style: { fontWeight: 700 }, children: "Done" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setControlVisibility(DEFAULT_CONTROL_VISIBILITY), children: tr("reader_show_all") }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowControlChooser(false), style: { fontWeight: 700 }, children: tr("reader_done") })
                     ] })
                   ]
                 }
@@ -9923,13 +11011,19 @@
               },
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { fontSize: 13 }, children: "PDF Bookmarks" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("strong", { style: { fontSize: 13 }, children: [
+                    " ",
+                    tr("reader_pdf_bookmarks")
+                  ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: addBookmark, style: { fontSize: 12, padding: "1px 8px" }, children: "Add current page" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setShowBookmarksPanel(false), style: { fontSize: 12, padding: "1px 8px" }, children: "Close" })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: addBookmark, style: { fontSize: 12, padding: "1px 8px" }, children: tr("reader_add_current_page") }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setShowBookmarksPanel(false), style: { fontSize: 12, padding: "1px 8px" }, children: tr("reader_close") })
                   ] })
                 ] }),
-                bookmarks.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: "No bookmarks yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: bookmarks.map((bookmark) => {
+                bookmarks.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 12, opacity: 0.75 }, children: [
+                  " ",
+                  tr("reader_no_bookmarks")
+                ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: bookmarks.map((bookmark) => {
                   var _a;
                   return /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "div",
@@ -9942,7 +11036,7 @@
                         padding: "8px 10px"
                       },
                       children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, fontWeight: 700 }, children: bookmark.label || `Page ${((_a = bookmark == null ? void 0 : bookmark.location) == null ? void 0 : _a.page) || 1}` }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 12, fontWeight: 700 }, children: bookmark.label || tr("reader_page_number", { page: ((_a = bookmark == null ? void 0 : bookmark.location) == null ? void 0 : _a.page) || 1 }) }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", gap: 6, flexShrink: 0 }, children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
@@ -9952,7 +11046,7 @@
                                 setShowBookmarksPanel(false);
                               },
                               style: { fontSize: 11, padding: "1px 7px" },
-                              children: "Jump"
+                              children: tr("reader_jump")
                             }
                           ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9968,7 +11062,7 @@
                                 fontSize: 11,
                                 padding: "1px 7px"
                               },
-                              children: "Delete"
+                              children: tr("reader_delete")
                             }
                           )
                         ] })
@@ -9999,7 +11093,7 @@
               },
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { fontSize: 13 }, children: "PDF Highlights" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { fontSize: 13 }, children: tr("reader_pdf_highlights") }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
@@ -10007,7 +11101,7 @@
                         onClick: () => moveHighlightCursor(-1),
                         disabled: sortedHighlights.length === 0,
                         style: { fontSize: 12, padding: "1px 8px" },
-                        children: "Previous Highlight"
+                        children: tr("reader_previous_highlight")
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -10016,7 +11110,7 @@
                         onClick: () => moveHighlightCursor(1),
                         disabled: sortedHighlights.length === 0,
                         style: { fontSize: 12, padding: "1px 8px" },
-                        children: "Next Highlight"
+                        children: tr("reader_next_highlight")
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -10032,7 +11126,7 @@
                           fontSize: 12,
                           padding: "1px 8px"
                         },
-                        children: "Whole PDF"
+                        children: tr("reader_whole_pdf")
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -10048,10 +11142,10 @@
                           fontSize: 12,
                           padding: "1px 8px"
                         },
-                        children: "This page"
+                        children: tr("reader_this_page")
                       }
                     ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
                         onClick: () => window.pycmd("incremento_pdf_hl_bulk_cards"),
@@ -10065,11 +11159,8 @@
                           fontSize: 12,
                           padding: "1px 8px"
                         },
-                        title: missingCardHighlightCount > 0 ? `Create cards for ${missingCardHighlightCount} unlinked highlight${missingCardHighlightCount === 1 ? "" : "s"} in this PDF` : "No unlinked text highlights remain in this PDF",
-                        children: [
-                          "Create Missing Cards",
-                          missingCardHighlightCount > 0 ? ` (${missingCardHighlightCount})` : ""
-                        ]
+                        title: missingCardHighlightCount > 0 ? plural("reader_create_missing_tooltip", missingCardHighlightCount) : tr("reader_no_unlinked_highlights"),
+                        children: tr("reader_create_missing_cards", { count: missingCardHighlightCount })
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -10085,7 +11176,7 @@
                           fontSize: 12,
                           padding: "1px 8px"
                         },
-                        children: "Notes only"
+                        children: tr("reader_notes_only")
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -10101,14 +11192,14 @@
                           fontSize: 12,
                           padding: "1px 8px"
                         },
-                        children: "Close"
+                        children: tr("reader_close")
                       }
                     )
                   ] })
                 ] }),
-                highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? "No highlight notes on this page yet." : "No highlight notes yet." : "No highlights yet." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.map((hl) => {
+                highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? tr("reader_no_highlight_notes_page") : tr("reader_no_highlight_notes") : tr("reader_no_highlights") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.map((hl) => {
                   const note = String(hl.note || "").trim();
-                  const excerpt = String(hl.text || "(no text)").trim();
+                  const excerpt = String(hl.text || tr("reader_no_text")).trim();
                   const linkedNoteId = Number(hl.linked_note_id || 0);
                   const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
                   const isActive = String(hl.id || "") === String(activeHighlightId || "");
@@ -10125,7 +11216,7 @@
                         cursor: "pointer",
                         padding: "8px 10px"
                       },
-                      title: `Go to page ${hl.page || 1}`,
+                      title: tr("reader_go_to_page", { page: hl.page || 1 }),
                       children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 3 }, children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.9 }, children: [
@@ -10143,10 +11234,7 @@
                                 }
                               }
                             ),
-                            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-                              "Page ",
-                              hl.page || 1
-                            ] })
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_page_number", { page: hl.page || 1 }) })
                           ] }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", fontSize: 11 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "span",
@@ -10155,7 +11243,7 @@
                                 color: hasLinkedCard ? "rgb(147,197,253)" : "rgba(229,231,235,0.72)",
                                 fontWeight: 700
                               },
-                              children: hasLinkedCard ? "Preview Card" : "Create Card"
+                              children: hasLinkedCard ? tr("reader_preview_card") : tr("reader_create_card")
                             }
                           ) })
                         ] }),
@@ -10163,7 +11251,7 @@
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
-                              title: hasLinkedCard ? "Preview the card already linked to this highlight" : "Prefill Add Card from this highlight",
+                              title: hasLinkedCard ? tr("reader_preview_linked_card") : tr("reader_prefill_card"),
                               onClick: (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -10183,13 +11271,13 @@
                                 padding: "1px 7px",
                                 flexShrink: 0
                               },
-                              children: hasLinkedCard ? "Preview Card" : "Create Card"
+                              children: hasLinkedCard ? tr("reader_preview_card") : tr("reader_create_card")
                             }
                           ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
-                              title: note ? "Edit note for this highlight" : "Add note to this highlight",
+                              title: note ? tr("reader_edit_note_tooltip") : tr("reader_add_note_tooltip"),
                               onClick: (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -10205,13 +11293,13 @@
                                 padding: "1px 7px",
                                 flexShrink: 0
                               },
-                              children: note ? "Edit note" : "Add note"
+                              children: note ? tr("reader_edit_note") : tr("reader_add_note")
                             }
                           ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
-                              title: "Delete this highlight",
+                              title: tr("reader_delete_highlight"),
                               onClick: (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -10227,16 +11315,13 @@
                                 padding: "1px 7px",
                                 flexShrink: 0
                               },
-                              children: "Delete"
+                              children: tr("reader_delete")
                             }
                           )
                         ] }),
                         note && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(191,219,254)" }, children: note }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 11, lineHeight: 1.35, color: "rgba(229,231,235,0.72)", marginTop: 6 }, children: [
-                            "Highlight: ",
-                            excerpt
-                          ] })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, lineHeight: 1.35, color: "rgba(229,231,235,0.72)", marginTop: 6 }, children: tr("reader_highlight_excerpt", { excerpt }) })
                         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: excerpt }),
                           note && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: [
@@ -10258,7 +11343,7 @@
               role: "alert",
               "aria-live": "assertive",
               style: { color: "red", padding: "4px 8px", textAlign: "center" },
-              children: error
+              children: tr(error)
             }
           ),
           hoveredHighlightNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -10337,10 +11422,10 @@
                       boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
                       pointerEvents: "none"
                     },
-                    title: (readAnchor == null ? void 0 : readAnchor.text) ? `You stopped at: ${readAnchor.text}` : `You marked page ${readPage} as your current stopping point`,
+                    title: (readAnchor == null ? void 0 : readAnchor.text) ? tr("reader_stopped_at", { text: readAnchor.text }) : tr("reader_stopping_page", { page: readPage }),
                     children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Read Up Until Here" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_read_marker") })
                     ]
                   }
                 ),
@@ -10367,10 +11452,10 @@
                       boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
                       pointerEvents: "none"
                     },
-                    title: `You marked page ${readPage} as your current stopping point`,
+                    title: tr("reader_stopping_page", { page: readPage }),
                     children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Read Up Until Here" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_read_marker") })
                     ]
                   }
                 ),
@@ -10390,8 +11475,8 @@
                       {
                         type: "button",
                         tabIndex: clickableLinks ? 0 : -1,
-                        "aria-label": link.label || (link.kind === "external" ? "Open external link" : `Go to page ${link.targetPage}`),
-                        title: link.label || (link.kind === "external" ? link.url : `Go to page ${link.targetPage}`),
+                        "aria-label": link.label || (link.kind === "external" ? tr("reader_open_external_link") : tr("reader_go_to_page", { page: link.targetPage })),
+                        title: link.label || (link.kind === "external" ? link.url : tr("reader_go_to_page", { page: link.targetPage })),
                         onClick: (event) => activatePdfLink(event, link),
                         style: {
                           position: "absolute",
@@ -10418,6 +11503,7 @@
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   HighlightLayer,
                   {
+                    language,
                     pageHighlights,
                     renderInfo,
                     deleteHighlight,

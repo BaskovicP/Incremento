@@ -6,6 +6,11 @@ import copy
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t  # type: ignore
+
 
 ONBOARDING_VERSION = 1
 
@@ -23,45 +28,39 @@ def default_onboarding_steps() -> list[OnboardingStep]:
     return [
         OnboardingStep(
             "welcome",
-            "Welcome to Incremento",
-            "Incremento keeps long-form reading, extraction, review, and progress "
-            "inside Anki. This short guide follows the safest first workflow.",
+            t("onboarding_welcome_title"),
+            t("onboarding_welcome_body"),
         ),
         OnboardingStep(
             "add_document",
-            "1. Add your first document",
-            "Start with a PDF or EPUB. Incremento stores managed documents inside "
-            "the active Anki profile and restores your reading position.",
+            t("onboarding_add_document_title"),
+            t("onboarding_add_document_body"),
             "add_pdf",
-            "Add PDF…",
+            t("onboarding_add_document_action"),
         ),
         OnboardingStep(
             "extract",
-            "2. Extract one useful idea",
-            "Select a passage in the reader and choose Extract. Review the source, "
-            "destination field, tags, priority, and duplicate warning before saving.",
+            t("onboarding_extract_title"),
+            t("onboarding_extract_body"),
         ),
         OnboardingStep(
             "start_session",
-            "3. Start a small session",
-            "Use the Basic session view first. Choose a small card count and your "
-            "Topic/Item and Document/Other mix; Advanced keeps the full scheduler.",
+            t("onboarding_start_session_title"),
+            t("onboarding_start_session_body"),
             "start_learning",
-            "Open session setup…",
+            t("onboarding_start_session_action"),
         ),
         OnboardingStep(
             "extension_privacy",
-            "4. Connect the browser only if needed",
-            "The companion extension uses temporary access by default. Persistent "
-            "Automatic site access is optional and can be revoked in the popup.",
+            t("onboarding_extension_privacy_title"),
+            t("onboarding_extension_privacy_body"),
         ),
         OnboardingStep(
             "backup",
-            "5. Create a backup",
-            "Export a full backup before a large import or workflow change. Runtime "
-            "content remains isolated under the active Anki profile.",
+            t("onboarding_backup_title"),
+            t("onboarding_backup_body"),
             "export_user_data",
-            "Export backup…",
+            t("onboarding_backup_action"),
         ),
     ]
 
@@ -114,18 +113,18 @@ def create_onboarding_dialog(
     class IncrementoOnboardingDialog(QDialog):
         def __init__(self):
             super().__init__(parent)
-            self.setWindowTitle("Getting Started with Incremento")
+            self.setWindowTitle(t("onboarding_dialog_title"))
             self.setMinimumSize(640, 420)
             self.setModal(False)
             self._completed = False
 
             root = QVBoxLayout(self)
             self.progress_label = QLabel("")
-            self.progress_label.setAccessibleName("Onboarding progress")
+            self.progress_label.setAccessibleName(t("onboarding_progress_accessible"))
             root.addWidget(self.progress_label)
 
             self.pages = QStackedWidget()
-            self.pages.setAccessibleName("Incremento onboarding steps")
+            self.pages.setAccessibleName(t("onboarding_steps_accessible"))
             for step in steps:
                 page = QWidget()
                 page_layout = QVBoxLayout(page)
@@ -149,17 +148,17 @@ def create_onboarding_dialog(
             root.addWidget(self.pages, 1)
 
             buttons = QHBoxLayout()
-            self.skip_button = QPushButton("Skip guide")
-            self.skip_button.setAccessibleName("Skip onboarding guide")
+            self.skip_button = QPushButton(t("onboarding_skip"))
+            self.skip_button.setAccessibleName(t("onboarding_skip_accessible"))
             self.skip_button.clicked.connect(self._finish)
             buttons.addWidget(self.skip_button)
             buttons.addStretch(1)
-            self.back_button = QPushButton("Back")
-            self.back_button.setAccessibleName("Go to previous onboarding step")
+            self.back_button = QPushButton(t("common_back"))
+            self.back_button.setAccessibleName(t("onboarding_back_accessible"))
             self.back_button.clicked.connect(self._back)
             buttons.addWidget(self.back_button)
-            self.next_button = QPushButton("Next")
-            self.next_button.setAccessibleName("Go to next onboarding step")
+            self.next_button = QPushButton(t("common_next"))
+            self.next_button.setAccessibleName(t("onboarding_next_accessible"))
             self.next_button.clicked.connect(self._next)
             buttons.addWidget(self.next_button)
             root.addLayout(buttons)
@@ -181,13 +180,17 @@ def create_onboarding_dialog(
             self.pages.setCurrentIndex(self.pages.currentIndex() + 1)
 
         def _sync_navigation(self, index: int) -> None:
-            self.progress_label.setText(f"Step {index + 1} of {len(steps)}")
+            self.progress_label.setText(
+                t("onboarding_progress", current=index + 1, total=len(steps))
+            )
             self.back_button.setEnabled(index > 0)
-            self.next_button.setText("Finish" if index == len(steps) - 1 else "Next")
+            self.next_button.setText(
+                t("common_finish") if index == len(steps) - 1 else t("common_next")
+            )
             self.next_button.setAccessibleName(
-                "Finish onboarding guide"
+                t("onboarding_finish_accessible")
                 if index == len(steps) - 1
-                else "Go to next onboarding step"
+                else t("onboarding_next_accessible")
             )
 
         def _finish(self) -> None:

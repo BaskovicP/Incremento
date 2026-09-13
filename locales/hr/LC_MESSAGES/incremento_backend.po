@@ -1,0 +1,386 @@
+# Incremento backend presentation strings. Machine values remain unchanged.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: hr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
+
+#. Incremento UI: activity failed
+msgid "backend_activity_failed"
+msgstr "Radnja nije uspjela."
+
+#. Incremento UI: activity general
+msgid "backend_activity_general"
+msgstr "Općenito"
+
+#. Incremento UI: activity task
+msgid "backend_activity_task"
+msgstr "Zadatak Incremento"
+
+#. Incremento UI: close
+msgid "backend_close"
+msgstr "Zatvori"
+
+#. Incremento UI: deps ankiconnect
+msgid "backend_deps_ankiconnect"
+msgstr "AnkiConnect  (potreban za sinkronizaciju i uvoz iz proširenja preglednika)"
+
+#. Incremento UI: deps ankiconnect instructions
+msgid "backend_deps_ankiconnect_instructions"
+msgstr "Instalirajte i dodatak AnkiConnect ako želite koristiti Incrementovo proširenje preglednika za uvoz stranica i sinkronizaciju položaja videa.\n\nAnkiConnect je dodatak za Anki. Instalirajte ga iz Anki sustava dodataka, a zatim ponovno pokrenite Anki."
+
+#. Incremento UI: deps found
+msgid "backend_deps_found"
+msgstr "Pronađeno na: {path}"
+
+#. Incremento UI: deps install failed
+msgid "backend_deps_install_failed"
+msgstr "<span style=\"color: #e05050;\">Automatska instalacija nije uspjela. Pogledajte upute ispod.</span>"
+
+#. Incremento UI: deps install pymupdf
+msgid "backend_deps_install_pymupdf"
+msgstr "Automatski instaliraj PyMuPDF"
+
+#. Incremento UI: deps installed
+msgid "backend_deps_installed"
+msgstr "<span style=\"color: gray; font-size: small;\">Instalirano — nije potrebna dodatna radnja.</span>"
+
+#. Incremento UI: deps installed check
+msgid "backend_deps_installed_check"
+msgstr "Instalirano ✓"
+
+#. Incremento UI: deps installed restart
+msgid "backend_deps_installed_restart"
+msgstr "<span style=\"color: #4caf50;\">Uspješno instalirano. <b>Ponovno pokrenite Anki</b> za aktivaciju.</span>"
+
+#. Incremento UI: deps installing
+msgid "backend_deps_installing"
+msgstr "Instaliranje…"
+
+#. Incremento UI: deps installing pymupdf
+msgid "backend_deps_installing_pymupdf"
+msgstr "<span style=\"color: gray; font-size: small;\">Instaliranje PyMuPDF-a — pričekajte…</span>"
+
+#. Incremento UI: deps intro
+msgid "backend_deps_intro"
+msgstr "Incremento koristi neobvezne komponente za PDF OCR i sinkronizaciju s proširenjem preglednika. Osnovne funkcije rade i bez njih."
+
+#. Incremento UI: deps manual install
+msgid "backend_deps_manual_install"
+msgstr "Ručna instalacija:\n    {executable} -m pip install \"{requirement}\""
+
+#. Incremento UI: deps not installed
+msgid "backend_deps_not_installed"
+msgstr "<span style=\"color: gray; font-size: small;\">Nije instalirano. Kliknite gumb ispod za automatsku instalaciju u Ankijevo Python okruženje. Zatim ćete morati ponovno pokrenuti Anki.</span>"
+
+#. Incremento UI: deps pymupdf
+msgid "backend_deps_pymupdf"
+msgstr "PyMuPDF  (prikaz PDF-a i izdvajanje teksta)"
+
+#. Incremento UI: deps pymupdf instructions
+msgid "backend_deps_pymupdf_instructions"
+msgstr "Incremento može automatski instalirati PyMuPDF.\n\nAko automatska instalacija ne uspije, pokrenite ovu naredbu u terminalu:\n\n    {executable} -m pip install \"{requirement}\"\n\nZatim ponovno pokrenite Anki."
+
+#. Incremento UI: deps restart notice
+msgid "backend_deps_restart_notice"
+msgstr "PyMuPDF je instaliran — ponovno pokrenite Anki za korištenje."
+
+#. Incremento UI: deps tesseract
+msgid "backend_deps_tesseract"
+msgstr "Tesseract OCR  (pretvara skenirane stranice u pretraživ tekst)"
+
+#. Incremento UI: deps tesseract linux
+msgid "backend_deps_tesseract_linux"
+msgstr "Instalirajte Tesseract upraviteljem paketa:\n\n    Ubuntu / Debian:  sudo apt install tesseract-ocr\n    Fedora:           sudo dnf install tesseract\n    Arch:             sudo pacman -S tesseract\n    openSUSE:         sudo zypper install tesseract-ocr\n\nNakon instalacije ponovno pokrenite Anki."
+
+#. Incremento UI: deps tesseract mac
+msgid "backend_deps_tesseract_mac"
+msgstr "Instalirajte Tesseract putem Homebrewa:\n\n    brew install tesseract\n\nNemate Homebrew? Najprije ga instalirajte s https://brew.sh.\n\nNakon instalacije ponovno pokrenite Anki."
+
+#. Incremento UI: deps tesseract windows
+msgid "backend_deps_tesseract_windows"
+msgstr "Preuzmite i pokrenite instalacijski program Tesseract za Windows:\n\n    https://github.com/UB-Mannheim/tesseract/wiki\n\nTijekom instalacije odaberite 'Add Tesseract to PATH'.\nAko preskočite tu opciju, instalirajte ga na zadanu lokaciju:\n    C:\\Program Files\\Tesseract-OCR\\\n\nNakon instalacije ponovno pokrenite Anki."
+
+#. Incremento UI: deps title
+msgid "backend_deps_title"
+msgstr "Incremento — postavljanje ovisnosti"
+
+#. Incremento UI: extract answer empty
+msgid "backend_extract_answer_empty"
+msgstr "Odgovor je prazan."
+
+#. Incremento UI: extract invalid block
+msgid "backend_extract_invalid_block"
+msgstr "Nevaljan blok pitanja i odgovora."
+
+#. Incremento UI: extract missing answer
+msgid "backend_extract_missing_answer"
+msgstr "Nedostaje redak A:."
+
+#. Incremento UI: extract missing question
+msgid "backend_extract_missing_question"
+msgstr "Nedostaje redak Q:."
+
+#. Incremento UI: extract question empty
+msgid "backend_extract_question_empty"
+msgstr "Pitanje je prazno."
+
+#. Incremento UI: extract question first
+msgid "backend_extract_question_first"
+msgstr "Blok mora početi s Q:."
+
+#. Incremento UI: extract tree help
+msgid "backend_extract_tree_help"
+msgstr "Podrijetlo izdvojenog sadržaja automatski se dodaje u stablo znanja. Nove izdvojene kartice smještaju se ispod izvorne nadređene kartice kada je dostupna."
+
+#. Incremento UI: item fail
+msgid "backend_item_fail"
+msgstr "Ne znam"
+
+#. Incremento UI: item pass
+msgid "backend_item_pass"
+msgstr "Znam"
+
+#. Incremento UI: schedule days
+msgid "backend_schedule_days"
+msgid_plural "backend_schedule_days_plural"
+msgstr[0] "Svaki {count} dan"
+msgstr[1] "Svaka {count} dana"
+msgstr[2] "Svakih {count} dana"
+
+#. Incremento UI: schedule mode fixed repeat
+msgid "backend_schedule_mode_fixed_repeat"
+msgstr "Ponavljaj točno"
+
+#. Incremento UI: schedule mode minimum cadence
+msgid "backend_schedule_mode_minimum_cadence"
+msgstr "Najmanja učestalost"
+
+#. Incremento UI: schedule mode one time
+msgid "backend_schedule_mode_one_time"
+msgstr "Jednokratno postavi rok"
+
+#. Incremento UI: schedule months
+msgid "backend_schedule_months"
+msgid_plural "backend_schedule_months_plural"
+msgstr[0] "Svaki {count} mjesec"
+msgstr[1] "Svaka {count} mjeseca"
+msgstr[2] "Svakih {count} mjeseci"
+
+#. Incremento UI: schedule preset daily
+msgid "backend_schedule_preset_daily"
+msgstr "Svakodnevno"
+
+#. Incremento UI: schedule preset every 2 days
+msgid "backend_schedule_preset_every_2_days"
+msgstr "Svaka 2 dana"
+
+#. Incremento UI: schedule preset every 2 weeks
+msgid "backend_schedule_preset_every_2_weeks"
+msgstr "Svaka 2 tjedna"
+
+#. Incremento UI: schedule preset every 3 days
+msgid "backend_schedule_preset_every_3_days"
+msgstr "Svaka 3 dana"
+
+#. Incremento UI: schedule preset monthly
+msgid "backend_schedule_preset_monthly"
+msgstr "Svaki mjesec"
+
+#. Incremento UI: schedule preset weekly
+msgid "backend_schedule_preset_weekly"
+msgstr "Svaki tjedan"
+
+#. Incremento UI: schedule weeks
+msgid "backend_schedule_weeks"
+msgid_plural "backend_schedule_weeks_plural"
+msgstr[0] "Svaki {count} tjedan"
+msgstr[1] "Svaka {count} tjedna"
+msgstr[2] "Svakih {count} tjedana"
+
+#. Incremento UI: session branch empty
+msgid "backend_session_branch_empty"
+msgstr "U grani „{title}” nema kartica dostupnih za učenje."
+
+#. Incremento UI: session dialog unavailable
+msgid "backend_session_dialog_unavailable"
+msgstr "Dijalog Incrementova raspoređivača nije dostupan u ovoj verziji Ankija."
+
+#. Incremento UI: session duplicate ids
+msgid "backend_session_duplicate_ids"
+msgstr "Filtrirani špil nije moguće obnoviti iz aktivnog reda koji sadrži ponovljene kartice."
+
+#. Incremento UI: session empty review
+msgid "backend_session_empty_review"
+msgstr "Nema kartica dostupnih za ponavljanje."
+
+#. Incremento UI: session enter failed
+msgid "backend_session_enter_failed"
+msgstr "Nije moguće započeti ponavljanje:\n{error}"
+
+#. Incremento UI: session enter incremento failed
+msgid "backend_session_enter_incremento_failed"
+msgstr "Nije moguće započeti Incrementovo ponavljanje:\n\n{error}"
+
+#. Incremento UI: session invalid ids
+msgid "backend_session_invalid_ids"
+msgstr "Filtrirani špil nije moguće izraditi bez valjanih ID-ova kartica."
+
+#. Incremento UI: session missing selector
+msgid "backend_session_missing_selector"
+msgstr "{error_message}: nije zadan odabir kartica."
+
+#. Incremento UI: session no cards
+msgid "backend_session_no_cards"
+msgstr "Nema kartica dostupnih za učenje."
+
+#. Incremento UI: session no selected
+msgid "backend_session_no_selected"
+msgstr "Nijedna odabrana kartica nije dostupna za učenje."
+
+#. Incremento UI: session normal deck
+msgid "backend_session_normal_deck"
+msgstr "„{deck}” je običan špil. Najprije ga izbrišite ili preimenujte."
+
+#. Incremento UI: session start error
+msgid "backend_session_start_error"
+msgstr "Nije moguće pokrenuti ponavljanje"
+
+#. Incremento UI: session start incremento failed
+msgid "backend_session_start_incremento_failed"
+msgstr "Nije moguće pokrenuti Incrementovu sesiju:\n\n{error}"
+
+#. Incremento UI: session unavailable linked
+msgid "backend_session_unavailable_linked"
+msgid_plural "backend_session_unavailable_linked_plural"
+msgstr[0] "{count} povezana kartica nije dostupna jer Anki ne može premjestiti obustavljene, zakopane ili već filtrirane kartice u ovaj špil za ponavljanje."
+msgstr[1] "{count} povezane kartice nisu dostupne jer Anki ne može premjestiti obustavljene, zakopane ili već filtrirane kartice u ovaj špil za ponavljanje."
+msgstr[2] "{count} povezanih kartica nije dostupno jer Anki ne može premjestiti obustavljene, zakopane ili već filtrirane kartice u ovaj špil za ponavljanje."
+
+#. Incremento UI: session unavailable partial
+msgid "backend_session_unavailable_partial"
+msgid_plural "backend_session_unavailable_partial_plural"
+msgstr[0] "{count} tražena kartica nije dodana. Anki ne može premjestiti obustavljene, zakopane ili već filtrirane kartice u ovaj špil. Preostale povezane kartice bit će ponovljene."
+msgstr[1] "{count} tražene kartice nisu dodane. Anki ne može premjestiti obustavljene, zakopane ili već filtrirane kartice u ovaj špil. Preostale povezane kartice bit će ponovljene."
+msgstr[2] "{count} traženih kartica nije dodano. Anki ne može premjestiti obustavljene, zakopane ili već filtrirane kartice u ovaj špil. Preostale povezane kartice bit će ponovljene."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_card_missing"
+msgstr "{kind} kartica nije pronađena."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_note_missing"
+msgstr "Povezana {kind} bilješka nije pronađena."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_filename_missing"
+msgstr "Ova {kind} bilješka nema spremljen naziv {kind} datoteke."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_file_missing"
+msgstr "{kind} datoteka nije pronađena."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_stored_missing"
+msgstr "Spremljena {kind} datoteka nije pronađena:\n{path}"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_note_rejected"
+msgstr "Dodavanje {kind} kartice nije uspjelo. Anki je odbio bilješku."
+
+#. Document validation error shown by readers and imports
+msgid "backend_pdf_replacement_missing"
+msgstr "Zamjenska PDF datoteka nije pronađena."
+
+#. Document validation error shown by readers and imports
+msgid "backend_epub_stored_unavailable"
+msgstr "Spremljena EPUB datoteka nije pronađena ili ju je potrebno ponovno sigurno raspakirati."
+
+#. Document validation error shown by readers and imports
+msgid "backend_epub_no_sections"
+msgstr "EPUB nema čitljivih odjeljaka."
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_html_empty"
+msgstr "HTML web-stranice je prazan."
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_unreadable"
+msgstr "Nije moguće izdvojiti čitljiv sadržaj web-stranice."
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_download_empty"
+msgstr "Preuzimanje web-stranice vratilo je prazan odgovor."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_row_error"
+msgstr "Redak {row}: {detail}"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_format"
+msgstr "Jezična datoteka nije ispravna. Izvezite novi predložak i zadržite njegovu strukturu."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_version"
+msgstr "Jezična datoteka koristi nepodržanu verziju formata."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_locale"
+msgstr "U redak metapodataka locale unesite valjanu oznaku jezika, primjerice de ili pt-BR."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_name"
+msgstr "U redak metapodataka name unesite naziv jezika na tom jeziku (do 80 znakova)."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_cell"
+msgstr "Ćelija sadrži nevažeće znakove ili je veća od 16 KiB."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_rows"
+msgstr "Jezična tablica sadrži previše redaka (najviše 20.000)."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_unknown"
+msgstr "Ovaj ključ poruke ili oblik množine nije u trenutačnom predlošku."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_size"
+msgstr "Jezična datoteka je prevelika (najviše 2 MiB)."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_encoding"
+msgstr "Spremite jezičnu tablicu kao CSV UTF-8."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_headers"
+msgstr "Zadržite stupce component, key, form, source, translation tim redoslijedom."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_columns"
+msgstr "Svaki redak mora sadržavati točno pet stupaca."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_duplicate"
+msgstr "Ovaj redak poruke ili metapodataka pojavljuje se više puta."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_metadata"
+msgstr "Zadržite točno retke metapodataka version, locale i name."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_source"
+msgstr "Izvorni tekst je promijenjen. Izvezite novu tablicu i kopirajte samo prijevode."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_tokens"
+msgstr "Zadržite sve zamjenske oznake točno kao u izvorniku, uključujući zagrade, znakove dolara i oblikovanje."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_markup"
+msgstr "Zadržite izvorne HTML oznake i atribute u izvornom redoslijedu. Skripte i izvršivi tekst nisu dopušteni."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_limit"
+msgstr "Profil može sadržavati najviše 20 vlastitih jezika. Ažurirajte postojeći jezik."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_storage"
+msgstr "Jezični paket nije moguće sigurno spremiti. Prethodna datoteka je sačuvana."

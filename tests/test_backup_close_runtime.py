@@ -5,9 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend import backup_schedule
+from backend.i18n import Translator
 
 
 def _entrypoint_function(namespace, name):
+    namespace.setdefault("_t", Translator("en").t)
     source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text(
         encoding="utf-8"
     )

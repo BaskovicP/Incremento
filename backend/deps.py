@@ -9,6 +9,11 @@ Two kinds of dependency:
 """
 
 from __future__ import annotations
+try:
+    from .i18n import t
+except ImportError:
+    from backend.i18n import t
+
 
 from collections.abc import Callable
 import os
@@ -70,46 +75,27 @@ def tesseract_instructions() -> str:
     p = _platform()
     if p == "Darwin":
         return (
-            "Install Tesseract via Homebrew:\n\n"
-            "    brew install tesseract\n\n"
-            "Don't have Homebrew?  Visit https://brew.sh to install it first.\n\n"
-            "After installation, restart Anki."
+            t('backend_deps_tesseract_mac')
         )
     if p == "Windows":
         return (
-            "Download and run the Tesseract installer for Windows:\n\n"
-            "    https://github.com/UB-Mannheim/tesseract/wiki\n\n"
-            "During setup, choose 'Add Tesseract to PATH'.\n"
-            "If you skip that option, install to the default location:\n"
-            "    C:\\Program Files\\Tesseract-OCR\\\n\n"
-            "After installation, restart Anki."
+            t('backend_deps_tesseract_windows')
         )
     # Linux
     return (
-        "Install Tesseract with your package manager:\n\n"
-        "    Ubuntu / Debian:  sudo apt install tesseract-ocr\n"
-        "    Fedora:           sudo dnf install tesseract\n"
-        "    Arch:             sudo pacman -S tesseract\n"
-        "    openSUSE:         sudo zypper install tesseract-ocr\n\n"
-        "After installation, restart Anki."
+        t('backend_deps_tesseract_linux')
     )
 
 
 def pymupdf_instructions() -> str:
     return (
-        "PyMuPDF can be installed automatically by Incremento.\n\n"
-        "If automatic installation fails, run this command in a terminal:\n\n"
-        f"    {sys.executable} -m pip install \"{PYMUPDF_REQUIREMENT}\"\n\n"
-        "Then restart Anki."
+        t("backend_deps_pymupdf_instructions", executable=sys.executable, requirement=PYMUPDF_REQUIREMENT)
     )
 
 
 def ankiconnect_instructions() -> str:
     return (
-        "Install the AnkiConnect add-on as well if you want to use the "
-        "Incremento browser companion for page import and video time sync.\n\n"
-        "AnkiConnect is an Anki add-on, so install it from the Anki add-on "
-        "ecosystem and restart Anki afterwards."
+        t('backend_deps_ankiconnect_instructions')
     )
 
 
@@ -174,7 +160,7 @@ def show_setup_dialog(mw, force: bool = False) -> None:
     tess_ok     = has_tesseract()
 
     dlg = QDialog(mw)
-    dlg.setWindowTitle("Incremento — Dependency Setup")
+    dlg.setWindowTitle(t('backend_deps_title'))
     dlg.setMinimumWidth(500)
     layout = QVBoxLayout(dlg)
     layout.setSpacing(12)
@@ -190,8 +176,7 @@ def show_setup_dialog(mw, force: bool = False) -> None:
         return row
 
     intro = QLabel(
-        "Incremento uses optional setup components for PDF OCR and browser "
-        "companion sync. Core features work without them."
+        t('backend_deps_intro')
     )
     intro.setWordWrap(True)
     intro.setStyleSheet("color: gray;")
@@ -203,23 +188,20 @@ def show_setup_dialog(mw, force: bool = False) -> None:
     layout.addWidget(sep)
 
     # PyMuPDF row
-    layout.addLayout(_row("PyMuPDF  (PDF rendering & text extraction)", pymupdf_ok))
+    layout.addLayout(_row(t('backend_deps_pymupdf'), pymupdf_ok))
 
     _pymupdf_status = QLabel()
     _pymupdf_status.setWordWrap(True)
-    _pymupdf_install_btn = QPushButton("Install PyMuPDF automatically")
+    _pymupdf_install_btn = QPushButton(t('backend_deps_install_pymupdf'))
 
     if pymupdf_ok:
         _pymupdf_status.setText(
-            '<span style="color: gray; font-size: small;">Installed — no action needed.</span>'
+            t('backend_deps_installed')
         )
         _pymupdf_install_btn.setVisible(False)
     else:
         _pymupdf_status.setText(
-            '<span style="color: gray; font-size: small;">'
-            "Not installed. Click the button below to install it automatically "
-            "into Anki's Python environment. You will need to restart Anki afterwards."
-            "</span>"
+            t('backend_deps_not_installed')
         )
         _pymupdf_install_btn.setStyleSheet("font-weight: bold;")
 
@@ -227,7 +209,7 @@ def show_setup_dialog(mw, force: bool = False) -> None:
     layout.addWidget(_pymupdf_install_btn)
 
     # Tesseract row
-    layout.addLayout(_row("Tesseract OCR  (converts scanned pages to searchable text)", tess_ok))
+    layout.addLayout(_row(t('backend_deps_tesseract'), tess_ok))
 
     _tess_browser = QTextBrowser()
     _tess_browser.setOpenExternalLinks(True)
@@ -235,13 +217,13 @@ def show_setup_dialog(mw, force: bool = False) -> None:
     _tess_browser.setStyleSheet("font-size: 12px;")
 
     if tess_ok:
-        _tess_browser.setPlainText(f"Found at: {tesseract_path()}")
+        _tess_browser.setPlainText(t("backend_deps_found", path=tesseract_path()))
     else:
         _tess_browser.setPlainText(tesseract_instructions())
 
     layout.addWidget(_tess_browser)
 
-    _ankiconnect_label = QLabel("AnkiConnect  (needed for browser companion sync/import)")
+    _ankiconnect_label = QLabel(t('backend_deps_ankiconnect'))
     _ankiconnect_label.setStyleSheet("font-weight: bold;")
     _ankiconnect_label.setWordWrap(True)
     layout.addWidget(_ankiconnect_label)
@@ -259,36 +241,34 @@ def show_setup_dialog(mw, force: bool = False) -> None:
     layout.addWidget(sep2)
 
     buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+    buttons.button(QDialogButtonBox.StandardButton.Close).setText(t("backend_close"))
     buttons.rejected.connect(dlg.reject)
     layout.addWidget(buttons)
 
     # Wire install button
     def _do_install() -> None:
         _pymupdf_install_btn.setEnabled(False)
-        _pymupdf_install_btn.setText("Installing…")
+        _pymupdf_install_btn.setText(t('backend_deps_installing'))
         _pymupdf_status.setText(
-            '<span style="color: gray; font-size: small;">Installing PyMuPDF — please wait…</span>'
+            t('backend_deps_installing_pymupdf')
         )
 
         def _done(ok: bool) -> None:
             if ok:
-                _pymupdf_install_btn.setText("Installed ✓")
+                _pymupdf_install_btn.setText(t('backend_deps_installed_check'))
                 _pymupdf_status.setText(
-                    '<span style="color: #4caf50;">Installed successfully. '
-                    "<b>Please restart Anki</b> to activate it.</span>"
+                    t('backend_deps_installed_restart')
                 )
-                tooltip("PyMuPDF installed — restart Anki to use it.")
+                tooltip(t('backend_deps_restart_notice'))
             else:
                 _pymupdf_install_btn.setEnabled(True)
-                _pymupdf_install_btn.setText("Install PyMuPDF automatically")
+                _pymupdf_install_btn.setText(t('backend_deps_install_pymupdf'))
                 _pymupdf_status.setText(
-                    '<span style="color: #e05050;">Automatic install failed. '
-                    "See instructions below.</span>"
+                    t('backend_deps_install_failed')
                 )
                 from aqt.qt import QLabel as _QL
                 _fallback = _QL(
-                    f"Manual install:\n    {sys.executable} -m pip install "
-                    f'"{PYMUPDF_REQUIREMENT}"'
+                    t("backend_deps_manual_install", executable=sys.executable, requirement=PYMUPDF_REQUIREMENT)
                 )
                 _fallback.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
                 _fallback.setWordWrap(True)

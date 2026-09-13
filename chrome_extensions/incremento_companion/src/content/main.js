@@ -20,6 +20,8 @@ import {
   getTagSuggestions,
   normalizeAvailableTags,
 } from "../shared/tagAutocomplete.js";
+import { formatNumber, initializeLanguage, subscribeLanguage, t, tn, watchLanguageStorage } from "../shared/i18n.js";
+import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
 (() => {
   const CONTENT_SCRIPT_VERSION = "browser-capture-v8";
@@ -44,6 +46,14 @@ import {
   const PRIORITY_MAX = 100;
   let linkSaveSettings = DEFAULT_LINK_SAVE_SETTINGS;
   let lastContextLinkInfo = null;
+  let lastSavedBrowserMediaReference = null;
+  let lastTrackingBadgeMode = "";
+  const captureValidationMessage = (result) => {
+    if (!result?.errorCode) return String(result?.error || "");
+    const params = { ...result.errorParams };
+    if (params.count != null) params.count = formatNumber(params.count);
+    return t(result.errorCode, params, result.error);
+  };
   globalThis.__incrementoLastSelectedText = String(globalThis.__incrementoLastSelectedText || "").trim();
 
   function getTrackedSelectionText() {
@@ -277,7 +287,7 @@ import {
 
     const label = document.createElement("span");
     label.id = "incremento-tracking-badge-label";
-    label.textContent = "Tracking";
+    label.textContent = t("tracking");
     badge.appendChild(label);
 
     document.documentElement.appendChild(badge);
@@ -285,6 +295,7 @@ import {
   }
 
   function setTrackingBadge(visible, mode = "") {
+    lastTrackingBadgeMode = visible ? mode : "";
     const badge = ensureTrackingBadge();
     const label = document.getElementById("incremento-tracking-badge-label");
     if (!badge || !label) {
@@ -294,7 +305,7 @@ import {
       badge.style.display = "none";
       return;
     }
-    label.textContent = mode === "web" ? "Tracking Web Card" : "Tracking";
+    label.textContent = mode === "web" ? t("tracking_web_card") : t("tracking");
     badge.style.display = "inline-flex";
   }
 
@@ -359,7 +370,7 @@ import {
     const close = document.createElement("button");
     close.type = "button";
     close.textContent = "×";
-    close.setAttribute("aria-label", "Dismiss saved browser time badge");
+    close.setAttribute("aria-label", t("saved_time_badge_dismiss"));
     Object.assign(close.style, {
       appearance: "none",
       border: "0",
@@ -386,6 +397,7 @@ import {
   }
 
   function setSavedBrowserMediaBadge(reference) {
+    lastSavedBrowserMediaReference = reference;
     const badge = ensureSavedBrowserMediaBadge();
     const label = document.getElementById("incremento-browser-media-ref-badge-label");
     if (!badge || !label) {
@@ -400,7 +412,7 @@ import {
       return;
     }
     const timeText = String(reference?.timeText || formatMediaTime(reference?.seconds));
-    label.textContent = timeText ? `Last saved ${timeText}` : "Last saved";
+    label.textContent = timeText ? t("last_saved_time", { time: timeText }) : t("last_saved");
     badge.style.display = "inline-flex";
   }
 
@@ -412,6 +424,16 @@ import {
     }
   }
 
+  watchLanguageStorage();
+  void initializeLanguage();
+  subscribeLanguage(() => {
+    const trackingBadge = document.getElementById("incremento-tracking-badge");
+    refreshTrackingBadgeLanguage(trackingBadge, () => setTrackingBadge(true, lastTrackingBadgeMode));
+    if (lastSavedBrowserMediaReference) setSavedBrowserMediaBadge(lastSavedBrowserMediaReference);
+    const close = document.querySelector("#incremento-browser-media-ref-badge button");
+    close?.setAttribute("aria-label", t("saved_time_badge_dismiss"));
+    browserCaptureUi?.refreshLanguage?.();
+  });
   void loadLinkSaveSettings();
   try {
     chrome?.storage?.onChanged?.addListener((changes, areaName) => {
@@ -444,14 +466,14 @@ import {
         }
         const selectedText = getTrackedSelectionText();
         if (!selectedText) {
-          showToast("Select text on the page first.");
+          showToast(t("select_page_text"));
           sendResponse?.({ ok: false });
           return false;
         }
         void openBrowserCaptureDialog({ mode: "selection", selectedText, snapshots: [] }).then(
           () => sendResponse?.({ ok: true }),
           (error) => {
-            showToast(error?.message || "Failed to open browser capture.");
+            showToast(error?.message || t("open_capture_failed"));
             closeBrowserCaptureUi();
             sendResponse?.({ ok: false, error: String(error?.message || "") });
           }
@@ -467,7 +489,7 @@ import {
         };
         const validation = validateBrowserCaptureContext(context);
         if (!validation.ok) {
-          sendResponse?.(validation);
+          sendResponse?.({ ...validation, error: captureValidationMessage(validation) });
           return false;
         }
         sendResponse?.({
@@ -512,13 +534,13 @@ import {
     return new Promise((resolve, reject) => {
       const rt = getRuntime();
       if (!rt?.sendMessage) {
-        reject(new Error("Incremento extension runtime is unavailable."));
+        reject(new Error(t("extension_runtime_unavailable")));
         return;
       }
       rt.sendMessage(message, (response) => {
         const error = chrome.runtime.lastError;
         if (error) {
-          reject(new Error(error.message || "Extension request failed."));
+          reject(new Error(error.message || t("extension_request_failed")));
           return;
         }
         resolve(response || null);
@@ -529,7 +551,7 @@ import {
   async function loadBrowserCaptureMeta() {
     const response = await runtimeRequest({ type: "LOAD_BROWSER_CAPTURE_META" });
     if (!response?.ok) {
-      throw new Error(String(response?.error || "Failed to load browser capture metadata."));
+      throw new Error(String(response?.error || t("load_capture_meta_failed")));
     }
     return response;
   }
@@ -537,7 +559,7 @@ import {
   async function submitBrowserCapture(payload) {
     const response = await runtimeRequest({ type: "SUBMIT_BROWSER_CAPTURE", payload });
     if (!response?.ok) {
-      throw new Error(String(response?.error || "Failed to submit browser capture."));
+      throw new Error(String(response?.error || t("failed_submit_capture")));
     }
     return response;
   }
@@ -545,7 +567,7 @@ import {
   async function captureVisibleTabPng() {
     const response = await runtimeRequest({ type: "CAPTURE_VISIBLE_TAB" });
     if (!response?.ok || !response?.dataUrl) {
-      throw new Error(String(response?.error || "Failed to capture the current tab."));
+      throw new Error(String(response?.error || t("failed_capture_tab")));
     }
     return response.dataUrl;
   }
@@ -580,10 +602,10 @@ import {
   async function loadSnapshotCaptureState(selectedText = "", snapshots = []) {
     const meta = browserCaptureState?.meta || await loadBrowserCaptureMeta();
     if (!Array.isArray(meta?.noteTypes) || meta.noteTypes.length === 0) {
-      throw new Error("No note types are available in Anki.");
+      throw new Error(t("no_note_types"));
     }
     if (!Array.isArray(meta?.deckNames) || meta.deckNames.length === 0) {
-      throw new Error("No decks are available in Anki.");
+      throw new Error(t("no_decks"));
     }
     const currentSettings = browserCaptureState?.form || await loadBrowserCaptureSettings(meta);
     browserCaptureState = {
@@ -618,7 +640,7 @@ import {
     const validation = validateBrowserCapturePayload(payload);
     if (!validation.ok) {
       throw new Error(
-        `${validation.error} Open Continue once to choose the destination fields for snapshot capture.`
+        t("continue_choose_fields", { error: captureValidationMessage(validation) })
       );
     }
     const result = await submitBrowserCapture(payload);
@@ -1146,7 +1168,7 @@ import {
 
       const removeButton = document.createElement("button");
       removeButton.type = "button";
-      removeButton.textContent = "Remove";
+      removeButton.textContent = t("remove");
       removeButton.addEventListener("click", () => {
         browserCaptureState.snapshots = browserCaptureState.snapshots.filter((item) => item.id !== snapshot.id);
         renderBrowserCaptureDialog();
@@ -1162,6 +1184,7 @@ import {
   async function renderBrowserCaptureDialog() {
     const ui = ensureBrowserCaptureUiRoot();
     const { shell, shadow } = ui;
+    ui.refreshLanguage = () => { void renderBrowserCaptureDialog(); };
     const state = browserCaptureState;
     clearShell();
 
@@ -1176,18 +1199,18 @@ import {
 
     const eyebrow = document.createElement("p");
     eyebrow.className = "eyebrow";
-    eyebrow.textContent = state.mode === "snapshot" ? "Browser snapshot" : "Browser selection";
+    eyebrow.textContent = state.mode === "snapshot" ? t("browser_snapshot") : t("browser_selection");
     panel.appendChild(eyebrow);
 
     const title = document.createElement("h2");
-    title.textContent = "Send capture to Anki";
+    title.textContent = t("send_capture_anki");
     panel.appendChild(title);
 
     const lead = document.createElement("p");
     lead.className = "lead";
     lead.textContent = state.mode === "snapshot"
-      ? `${state.snapshots.length} snapshot${state.snapshots.length === 1 ? "" : "s"} ready from ${state.context.url}`
-      : `Selected text from ${state.context.url}`;
+      ? tn("snapshots_ready", state.snapshots.length, { url: state.context.url })
+      : t("selected_text_from", { url: state.context.url });
     panel.appendChild(lead);
 
     const form = document.createElement("form");
@@ -1229,7 +1252,7 @@ import {
       state.form = updateMappingsForNoteType(state.form, noteTypeSelect.value, nextMappings);
       renderBrowserCaptureDialog();
     });
-    grid.appendChild(createField("Note type", noteTypeSelect));
+    grid.appendChild(createField(t("note_type"), noteTypeSelect));
 
     const deckSelect = document.createElement("select");
     for (const deckName of state.meta.deckNames) {
@@ -1242,7 +1265,7 @@ import {
     deckSelect.addEventListener("change", () => {
       state.form.deckName = deckSelect.value;
     });
-    grid.appendChild(createField("Deck", deckSelect));
+    grid.appendChild(createField(t("deck"), deckSelect));
 
     const tagAutocomplete = createTagAutocompleteControl(
       state.form.tagsText,
@@ -1253,10 +1276,10 @@ import {
     );
     browserCaptureUi.handleTagAutocompleteKeyDown = tagAutocomplete.handleKeyDown;
     grid.appendChild(createField(
-      "Tags",
+      t("tags"),
       tagAutocomplete.element,
       true,
-      "Start typing to choose an existing Anki tag, or enter a new one."
+      t("tag_hint")
     ));
 
     const priorityWrap = document.createElement("div");
@@ -1288,7 +1311,7 @@ import {
     priorityValue.addEventListener("change", () => syncPriority(priorityValue.value));
     priorityWrap.appendChild(prioritySlider);
     priorityWrap.appendChild(priorityValue);
-    grid.appendChild(createField("Priority", priorityWrap));
+    grid.appendChild(createField(t("priority"), priorityWrap));
 
     const fields = state.meta.noteTypes.find((item) => item.name === state.form.noteTypeName)?.fields || [];
     const mappingOptions = ["", ...fields];
@@ -1297,7 +1320,7 @@ import {
       for (const fieldName of mappingOptions) {
         const option = document.createElement("option");
         option.value = fieldName;
-        option.textContent = fieldName || "Do not insert";
+        option.textContent = fieldName || t("do_not_insert");
         select.appendChild(option);
       }
       select.value = mappingOptions.includes(currentValue) ? currentValue : "";
@@ -1309,7 +1332,7 @@ import {
 
     const hasTextContent = Boolean(state.context.selectedText);
     grid.appendChild(createField(
-      "Page title field",
+      t("page_title_field"),
       makeMappingSelect(state.form.fieldMappings.titleField, (value) => {
         state.form = updateMappingsForNoteType(state.form, state.form.noteTypeName, {
           ...state.form.fieldMappings,
@@ -1317,11 +1340,11 @@ import {
         });
       }),
       false,
-      "The current page title is always available. First-field mappings get a unique snapshot suffix."
+      t("page_title_field_note")
     ));
 
     grid.appendChild(createField(
-      "Selected text field",
+      t("selected_text_field"),
       makeMappingSelect(state.form.fieldMappings.selectedTextField, (value) => {
         state.form = updateMappingsForNoteType(state.form, state.form.noteTypeName, {
           ...state.form.fieldMappings,
@@ -1330,12 +1353,12 @@ import {
       }),
       false,
       hasTextContent
-        ? `${state.context.selectedText.length} chars ready for insertion.`
-        : "No text added yet."
+        ? t("chars_ready", { count: state.context.selectedText.length })
+        : t("no_text_added")
     ));
 
     grid.appendChild(createField(
-      "Source URL field",
+      t("source_url_field"),
       makeMappingSelect(state.form.fieldMappings.urlField, (value) => {
         state.form = updateMappingsForNoteType(state.form, state.form.noteTypeName, {
           ...state.form.fieldMappings,
@@ -1343,11 +1366,11 @@ import {
         });
       }),
       false,
-      "The current page URL is always available."
+      t("source_url_note")
     ));
 
     grid.appendChild(createField(
-      "Snapshot field",
+      t("snapshot_field"),
       makeMappingSelect(state.form.fieldMappings.snapshotField, (value) => {
         state.form = updateMappingsForNoteType(state.form, state.form.noteTypeName, {
           ...state.form.fieldMappings,
@@ -1355,29 +1378,29 @@ import {
         });
       }),
       true,
-      state.snapshots.length > 0 ? `${state.snapshots.length} snapshot${state.snapshots.length === 1 ? "" : "s"} selected.` : "No snapshot images in this capture."
+      state.snapshots.length > 0 ? tn("snapshots_selected", state.snapshots.length) : t("no_snapshots")
     ));
 
     const selectedTextInput = document.createElement("textarea");
     selectedTextInput.value = state.context.selectedText;
     selectedTextInput.placeholder = state.mode === "snapshot"
-      ? "Add text to store with these snapshots..."
-      : "Selected text will appear here. You can edit it before saving.";
+      ? t("add_text_snapshots")
+      : t("selected_text_edit");
     selectedTextInput.addEventListener("input", () => {
       state.context.selectedText = selectedTextInput.value;
     });
     grid.appendChild(createField(
-      state.mode === "snapshot" ? "Text to add" : "Selected text",
+      state.mode === "snapshot" ? t("text_to_add") : t("selected_text"),
       selectedTextInput,
       true,
-      "This content is inserted into the selected text field if one is chosen."
+      t("inserted_text_note")
     ));
 
     if (state.snapshots.length > 0) {
       const snapshotWrap = document.createElement("div");
       snapshotWrap.className = "field full";
       const label = document.createElement("label");
-      label.textContent = "Snapshots";
+      label.textContent = t("snapshots");
       snapshotWrap.appendChild(label);
       snapshotWrap.appendChild(renderSnapshotCards(shadow, state.snapshots));
       grid.appendChild(snapshotWrap);
@@ -1385,7 +1408,9 @@ import {
 
     const status = document.createElement("p");
     status.className = `status${state.statusKind ? ` ${state.statusKind}` : ""}`;
-    status.textContent = state.statusText;
+    status.textContent = state.statusValidation
+      ? captureValidationMessage(state.statusValidation)
+      : (state.statusCode ? t(state.statusCode) : state.statusText);
     form.appendChild(status);
 
     const actions = document.createElement("div");
@@ -1395,7 +1420,7 @@ import {
       const addMoreButton = document.createElement("button");
       addMoreButton.type = "button";
       addMoreButton.className = "ghost-btn";
-      addMoreButton.textContent = "Capture more";
+      addMoreButton.textContent = t("capture_more");
       addMoreButton.addEventListener("click", () => startSnapshotCapture(state.snapshots));
       actions.appendChild(addMoreButton);
     }
@@ -1403,14 +1428,14 @@ import {
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
     cancelButton.className = "secondary-btn";
-    cancelButton.textContent = "Cancel";
+    cancelButton.textContent = t("language_cancel");
     cancelButton.addEventListener("click", () => closeBrowserCaptureUi());
     actions.appendChild(cancelButton);
 
     const submitButton = document.createElement("button");
     submitButton.type = "submit";
     submitButton.className = "primary-btn";
-    submitButton.textContent = state.submitting ? "Saving..." : "Create note";
+    submitButton.textContent = state.submitting ? t("saving") : t("create_note");
     submitButton.disabled = !!state.submitting;
     actions.appendChild(submitButton);
 
@@ -1433,24 +1458,30 @@ import {
       const validation = validateBrowserCapturePayload(payload);
       if (!validation.ok) {
         state.statusKind = "error";
-        state.statusText = validation.error;
+        state.statusCode = "";
+        state.statusValidation = validation;
+        state.statusText = captureValidationMessage(validation);
         renderBrowserCaptureDialog();
         return;
       }
 
       state.submitting = true;
       state.statusKind = "";
-      state.statusText = "Creating note in Anki...";
+      state.statusValidation = null;
+      state.statusCode = "creating_note";
+      state.statusText = t("creating_note");
       renderBrowserCaptureDialog();
       try {
         const result = await submitBrowserCapture(payload);
         await saveBrowserCaptureSettings(state.form);
-        showToast(`Created ${result.noteTypeName} note in ${result.deckName}.`);
+        showToast(t("created_note", { type: result.noteTypeName, deck: result.deckName }));
         closeBrowserCaptureUi();
       } catch (error) {
         state.submitting = false;
         state.statusKind = "error";
-        state.statusText = error?.message || "Failed to create note.";
+        state.statusValidation = null;
+        state.statusCode = "";
+        state.statusText = error?.message || t("create_note_failed");
         renderBrowserCaptureDialog();
       }
     });
@@ -1462,7 +1493,7 @@ import {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("Failed to decode screenshot."));
+      img.onerror = () => reject(new Error(t("failed_decode_screenshot")));
       img.src = dataUrl;
     });
   }
@@ -1578,7 +1609,7 @@ import {
 
   async function captureSnapshotRegion(region, existingSnapshots = []) {
     if (existingSnapshots.length >= MAX_BROWSER_CAPTURE_SNAPSHOTS) {
-      throw new Error(`Too many snapshots. Maximum is ${MAX_BROWSER_CAPTURE_SNAPSHOTS}.`);
+      throw new Error(t("too_many_snapshots", { count: MAX_BROWSER_CAPTURE_SNAPSHOTS }));
     }
     const ui = ensureBrowserCaptureUiRoot();
     ui.shell.style.display = "none";
@@ -1589,7 +1620,7 @@ import {
         maxBytes: MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
       });
       if (!screenshotValidation.ok) {
-        throw new Error(screenshotValidation.error);
+        throw new Error(captureValidationMessage(screenshotValidation));
       }
       const normalizedRegion = normalizeSelectionRect(region);
       const croppedDataUrl = await cropScreenshotDataUrl(dataUrl, normalizedRegion);
@@ -1597,7 +1628,7 @@ import {
         maxBytes: MAX_BROWSER_CAPTURE_IMAGE_BYTES,
       });
       if (!croppedValidation.ok) {
-        throw new Error(croppedValidation.error);
+        throw new Error(captureValidationMessage(croppedValidation));
       }
       return {
         id: `${Date.now()}-${existingSnapshots.length}-${Math.random().toString(16).slice(2, 8)}`,
@@ -1606,7 +1637,7 @@ import {
         base64: dataUrlToBase64(croppedDataUrl),
       };
     } catch (error) {
-      throw new Error(error?.message || "Failed to capture the current tab.");
+      throw new Error(error?.message || t("failed_capture_tab"));
     } finally {
       if (browserCaptureUi?.shell) {
         browserCaptureUi.shell.style.display = "";
@@ -1643,11 +1674,19 @@ import {
 
     const toolbar = document.createElement("div");
     toolbar.className = "capture-toolbar";
-    toolbar.innerHTML = `
-      <strong>Snapshot Mode</strong>
-      <span>Draw one or more rectangles on the page. The capture is limited to the current viewport.</span>
-      <span class="spacer"></span>
-    `;
+    const setToolbarCopy = (hintKey) => {
+      toolbar.replaceChildren();
+      const heading = document.createElement("strong");
+      heading.textContent = t("snapshot_mode");
+      toolbar.appendChild(heading);
+      const hint = document.createElement("span");
+      hint.textContent = t(hintKey);
+      toolbar.appendChild(hint);
+      const spacer = document.createElement("span");
+      spacer.className = "spacer";
+      toolbar.appendChild(spacer);
+    };
+    setToolbarCopy("snapshot_mode_intro");
     shell.appendChild(toolbar);
 
     const snapshots = [...existingSnapshots];
@@ -1656,21 +1695,17 @@ import {
     let captureInFlight = false;
 
     const updateToolbar = () => {
-      toolbar.innerHTML = `
-        <strong>Snapshot Mode</strong>
-        <span>Draw a rectangle to capture it immediately, then scroll and capture another area if needed.</span>
-        <span class="spacer"></span>
-      `;
+      setToolbarCopy("snapshot_mode_hint");
       const count = document.createElement("span");
       count.textContent = captureInFlight
-        ? "Capturing..."
-        : `${snapshots.length} snapshot${snapshots.length === 1 ? "" : "s"} ready`;
+        ? t("capturing")
+        : tn("snapshot_ready", snapshots.length);
       toolbar.appendChild(count);
 
       const undoButton = document.createElement("button");
       undoButton.type = "button";
       undoButton.className = "toolbar-btn";
-      undoButton.textContent = "Undo";
+      undoButton.textContent = t("undo");
       undoButton.disabled = captureInFlight || snapshots.length === 0;
       undoButton.addEventListener("click", () => {
         snapshots.pop();
@@ -1681,7 +1716,7 @@ import {
       const clearButton = document.createElement("button");
       clearButton.type = "button";
       clearButton.className = "toolbar-btn";
-      clearButton.textContent = "Clear";
+      clearButton.textContent = t("clear");
       clearButton.disabled = captureInFlight || snapshots.length === 0;
       clearButton.addEventListener("click", () => {
         snapshots.splice(0, snapshots.length);
@@ -1692,21 +1727,21 @@ import {
       const cancelButton = document.createElement("button");
       cancelButton.type = "button";
       cancelButton.className = "toolbar-btn";
-      cancelButton.textContent = "Cancel";
+      cancelButton.textContent = t("language_cancel");
       cancelButton.addEventListener("click", () => closeBrowserCaptureUi());
       toolbar.appendChild(cancelButton);
 
       const quickCreateButton = document.createElement("button");
       quickCreateButton.type = "button";
       quickCreateButton.className = "toolbar-btn";
-      quickCreateButton.textContent = "Extract now";
+      quickCreateButton.textContent = t("extract_now");
       quickCreateButton.disabled = captureInFlight || snapshots.length === 0;
       quickCreateButton.addEventListener("click", async () => {
         if (captureInFlight) {
           return;
         }
         if (!snapshots.length) {
-          showToast("Draw at least one region first.");
+          showToast(t("draw_region_first"));
           return;
         }
         captureInFlight = true;
@@ -1716,12 +1751,12 @@ import {
             browserCaptureState?.context?.selectedText || "",
             [...snapshots]
           );
-          showToast(`Created ${result.noteTypeName} note in ${result.deckName}.`);
+          showToast(t("created_note", { type: result.noteTypeName, deck: result.deckName }));
           closeBrowserCaptureUi();
         } catch (error) {
           captureInFlight = false;
           updateToolbar();
-          showToast(error?.message || "Failed to create note.");
+          showToast(error?.message || t("create_note_failed"));
         }
       });
       toolbar.appendChild(quickCreateButton);
@@ -1729,13 +1764,13 @@ import {
       const doneButton = document.createElement("button");
       doneButton.type = "button";
       doneButton.className = "toolbar-btn primary";
-      doneButton.textContent = "Continue";
+      doneButton.textContent = t("continue");
       doneButton.addEventListener("click", () => {
         if (captureInFlight) {
           return;
         }
         if (!snapshots.length) {
-          showToast("Draw at least one region first.");
+          showToast(t("draw_region_first"));
           return;
         }
         void openBrowserCaptureDialog({
@@ -1746,16 +1781,17 @@ import {
       });
       toolbar.appendChild(doneButton);
     };
+    ui.refreshLanguage = updateToolbar;
 
     const beginRect = (x, y) => {
       if (snapshots.length >= MAX_BROWSER_CAPTURE_SNAPSHOTS) {
-        showToast(`Too many snapshots. Maximum is ${MAX_BROWSER_CAPTURE_SNAPSHOTS}.`);
+        showToast(t("too_many_snapshots", { count: MAX_BROWSER_CAPTURE_SNAPSHOTS }));
         return;
       }
       activeRegion = { x, y, width: 0, height: 0 };
       activeRect = document.createElement("div");
       activeRect.className = "selection-rect";
-      activeRect.dataset.label = `Capture ${snapshots.length + 1}`;
+      activeRect.dataset.label = t("capture_label", { count: snapshots.length + 1 });
       captureShell.appendChild(activeRect);
     };
 
@@ -1815,7 +1851,7 @@ import {
           const snapshot = await captureSnapshotRegion(normalized, snapshots);
           snapshots.push(snapshot);
         } catch (error) {
-          showToast(error?.message || "Failed to capture the current tab.");
+          showToast(error?.message || t("failed_capture_tab"));
         }
       } else {
         rectToRemove.remove();
@@ -1842,10 +1878,10 @@ import {
     } else {
       const meta = browserCaptureState?.meta || await loadBrowserCaptureMeta();
       if (!Array.isArray(meta?.noteTypes) || meta.noteTypes.length === 0) {
-        throw new Error("No note types are available in Anki.");
+        throw new Error(t("no_note_types"));
       }
       if (!Array.isArray(meta?.deckNames) || meta.deckNames.length === 0) {
-        throw new Error("No decks are available in Anki.");
+        throw new Error(t("no_decks"));
       }
       const currentSettings = browserCaptureState?.form || await loadBrowserCaptureSettings(meta);
       browserCaptureState = {
@@ -1874,11 +1910,11 @@ import {
     }
     const selectedText = getTrackedSelectionText();
     if (!selectedText) {
-      showToast("Select text on the page first.");
-      return { ok: false, error: "Select text on the page first." };
+      showToast(t("select_page_text"));
+      return { ok: false, error: t("select_page_text") };
     }
     void openBrowserCaptureDialog({ mode: "selection", selectedText, snapshots: [] }).catch((error) => {
-      showToast(error?.message || "Failed to open browser capture.");
+      showToast(error?.message || t("open_capture_failed"));
       closeBrowserCaptureUi();
     });
     return { ok: true };
@@ -1913,7 +1949,7 @@ import {
     event.preventDefault();
     event.stopPropagation();
     void openBrowserCaptureDialog({ mode: "selection", selectedText, snapshots: [] }).catch((error) => {
-      showToast(error?.message || "Failed to open browser capture.");
+      showToast(error?.message || t("open_capture_failed"));
       closeBrowserCaptureUi();
     });
   }, true);
@@ -2118,7 +2154,7 @@ import {
     }
     try {
       video.currentTime = targetSeconds;
-      showToast(`Resumed to ${targetSeconds}s`);
+      showToast(t("resumed_to", { seconds: targetSeconds }));
       return true;
     } catch (_err) {
       if (triesLeft > 0) {

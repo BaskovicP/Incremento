@@ -1,5 +1,10 @@
 import json
 
+try:
+    from ..backend.i18n import t
+except ImportError:
+    from backend.i18n import t
+
 
 _BADGE_ID = "incremento-reviewer-priority-badge"
 _STYLE_ID = "incremento-reviewer-priority-badge-style"
@@ -292,19 +297,19 @@ def build_reviewer_priority_badge_js(
   }}
   var renderMarkup =
     '<div class="incremento-priority-metric incremento-priority-wrap">' +
-      '<span class="incremento-priority-label">Priority</span>' +
+      '<span class="incremento-priority-label"></span>' +
       '<span class="incremento-priority-value"></span>' +
     '</div>' +
     '<div class="incremento-priority-metric incremento-a-factor-wrap">' +
-      '<span class="incremento-priority-label">A-Factor</span>' +
+      '<span class="incremento-priority-label"></span>' +
       '<span class="incremento-priority-value incremento-a-factor-value"></span>' +
     '</div>' +
     '<div class="incremento-priority-metric incremento-browser-time-wrap">' +
-      '<span class="incremento-priority-label">Saved</span>' +
+      '<span class="incremento-priority-label"></span>' +
       '<span class="incremento-priority-value incremento-browser-time-value"></span>' +
     '</div>' +
     '<div class="incremento-priority-metric incremento-schedule-wrap">' +
-      '<span class="incremento-priority-label">Schedule</span>' +
+      '<span class="incremento-priority-label"></span>' +
       '<span class="incremento-priority-value incremento-schedule-value"></span>' +
     '</div>';
   if (!badge) {{
@@ -334,6 +339,15 @@ def build_reviewer_priority_badge_js(
   }}
   if (valueNode) {{
     valueNode.textContent = {safe_value};
+  }}
+  const metricLabels = [
+    [".incremento-priority-wrap", {json.dumps(t("reviewer_visibility_priority"))}],
+    [".incremento-a-factor-wrap", {json.dumps(t("reviewer_visibility_a_factor"))}],
+    [".incremento-browser-time-wrap", {json.dumps(t("reviewer_visibility_saved"))}],
+    [".incremento-schedule-wrap", {json.dumps(t("reviewer_visibility_schedule"))}],
+  ];
+  for (const [selector, text] of metricLabels) {{
+    badge.querySelector(selector + " .incremento-priority-label").textContent = text;
   }}
   badge.style.setProperty("--incremento-priority-accent", {safe_accent});
   badge.style.setProperty("--incremento-priority-soft", {safe_background});

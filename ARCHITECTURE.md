@@ -23,6 +23,8 @@ Incremento adds four stores around that canonical collection:
 
 The companion extension also keeps browser-only preferences and linked-tab state in extension storage. It does not replace an Incremento or Anki store. Ordinary-page access is gesture-scoped with `activeTab`; persistent required hosts are provider/loopback only. Users may separately opt into optional HTTP(S) access for cross-navigation link saving and Web tracking; the service worker dynamically registers or removes the content loader with that permission. Its bounded PDF stream and capture budgets reduce browser-process exposure before the authenticated bridge performs independent validation.
 
+Custom UI language packs are profile files under `user_files/<Profile>/language_packs/`, routed through `backend/paths.py` and bounded/validated by `backend/language_packs.py`. They contain UI text only, never executable catalogs or Anki content. Settings stages an import in memory and saves the pack together with the config choice on acceptance, restoring the previous pack if saving fails. The config preference uses `custom:<locale>`; profile-open resolves that frozen startup preference against only the opened profile's pack, and missing packs fall back to English. Profile-close clears the custom snapshot, and existing root menu actions are relabeled without recreating shortcuts. PDF startup receives a validated snapshot that is cleared for the next document/profile when absent. The companion independently stores its pack registry and preference in one local storage write. Both apps share a generated English CSV schema and bundled editable snapshots; see `TRANSLATING.md` for their contract.
+
 ## Dependency direction
 
 The intended direction is:

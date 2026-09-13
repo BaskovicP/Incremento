@@ -1654,7 +1654,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if not _request_slots.acquire(blocking=False):
-            self._send_json(503, {"ok": False, "error": "Bridge is busy."})
+            self._send_json(503, {"ok": False, "error": "Bridge is busy.", "error_code": "bridge_busy"})
             return
         try:
             self._do_GET()
@@ -1666,7 +1666,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         request_path = parsed.path
         if request_path == BRIDGE_HANDSHAKE_PATH:
             if not self._request_origin_allowed(allow_unbound=True) or not self._bind_handshake_origin():
-                self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+                self._send_json(403, {"ok": False, "error": "Origin not allowed.", "error_code": "origin_not_allowed"})
                 return
             with _bridge_identity_lock:
                 token = _bridge_token
@@ -1680,16 +1680,16 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             )
             return
         if request_path not in {BROWSER_CAPTURE_META_PATH, BROWSER_MEDIA_REF_PATH}:
-            self._send_json(404, {"ok": False, "error": "Unknown path."})
+            self._send_json(404, {"ok": False, "error": "Unknown path.", "error_code": "unknown_path"})
             return
         if not self._request_origin_allowed():
             if self._request_origin_allowed(allow_unbound=True):
-                self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+                self._send_json(401, {"ok": False, "error": "Bridge authorization required.", "error_code": "authorization_required"})
             else:
-                self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+                self._send_json(403, {"ok": False, "error": "Origin not allowed.", "error_code": "origin_not_allowed"})
             return
         if not self._request_authenticated():
-            self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+            self._send_json(401, {"ok": False, "error": "Bridge authorization required.", "error_code": "authorization_required"})
             return
 
         try:
@@ -1701,17 +1701,17 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                     lambda: _load_browser_media_ref_on_main(int(query["card_id"]))
                 )
         except ValueError as exc:
-            self._send_json(400, {"ok": False, "error": str(exc)})
+            self._send_json(400, {"ok": False, "error": str(exc), "error_code": "invalid_request"})
             return
         except Exception:
-            self._send_json(500, {"ok": False, "error": "Bridge operation failed."})
+            self._send_json(500, {"ok": False, "error": "Bridge operation failed.", "error_code": "operation_failed"})
             return
 
         self._send_json(200, result)
 
     def do_POST(self) -> None:
         if not _request_slots.acquire(blocking=False):
-            self._send_json(503, {"ok": False, "error": "Bridge is busy."})
+            self._send_json(503, {"ok": False, "error": "Bridge is busy.", "error_code": "bridge_busy"})
             return
         try:
             self._do_POST()
@@ -1721,47 +1721,47 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
     def _do_POST(self) -> None:
         request_path = urlsplit(self.path).path
         if request_path not in {BRIDGE_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH, BROWSER_MEDIA_REF_PATH}:
-            self._send_json(404, {"ok": False, "error": "Unknown path."})
+            self._send_json(404, {"ok": False, "error": "Unknown path.", "error_code": "unknown_path"})
             return
         if not self._request_origin_allowed():
             if self._request_origin_allowed(allow_unbound=True):
-                self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+                self._send_json(401, {"ok": False, "error": "Bridge authorization required.", "error_code": "authorization_required"})
             else:
-                self._send_json(403, {"ok": False, "error": "Origin not allowed."})
+                self._send_json(403, {"ok": False, "error": "Origin not allowed.", "error_code": "origin_not_allowed"})
             return
         if not self._request_authenticated():
-            self._send_json(401, {"ok": False, "error": "Bridge authorization required."})
+            self._send_json(401, {"ok": False, "error": "Bridge authorization required.", "error_code": "authorization_required"})
             return
 
         if str(self.headers.get("Transfer-Encoding") or "").strip():
             self.close_connection = True
-            self._send_json(400, {"ok": False, "error": "Transfer-Encoding is not supported."})
+            self._send_json(400, {"ok": False, "error": "Transfer-Encoding is not supported.", "error_code": "unsupported_transfer_encoding"})
             return
 
         try:
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
-            self._send_json(400, {"ok": False, "error": "Invalid Content-Length."})
+            self._send_json(400, {"ok": False, "error": "Invalid Content-Length.", "error_code": "invalid_content_length"})
             return
         if length < 0 or length > _MAX_REQUEST_BYTES:
             self.close_connection = True
-            self._send_json(413, {"ok": False, "error": "Request is too large."})
+            self._send_json(413, {"ok": False, "error": "Request is too large.", "error_code": "request_too_large"})
             return
         try:
             raw = self.rfile.read(length)
         except (OSError, TimeoutError):
             self.close_connection = True
-            self._send_json(408, {"ok": False, "error": "Request body timed out."})
+            self._send_json(408, {"ok": False, "error": "Request body timed out.", "error_code": "request_timeout"})
             return
         if len(raw) != length:
             self.close_connection = True
-            self._send_json(400, {"ok": False, "error": "Incomplete request body."})
+            self._send_json(400, {"ok": False, "error": "Incomplete request body.", "error_code": "incomplete_body"})
             return
 
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
         except Exception:
-            self._send_json(400, {"ok": False, "error": "Invalid JSON."})
+            self._send_json(400, {"ok": False, "error": "Invalid JSON.", "error_code": "invalid_json"})
             return
 
         try:
@@ -1780,10 +1780,10 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             else:
                 result = _run_on_main_and_wait(lambda: _save_browser_media_ref_on_main(payload))
         except ValueError as exc:
-            self._send_json(400, {"ok": False, "error": str(exc)})
+            self._send_json(400, {"ok": False, "error": str(exc), "error_code": "invalid_request"})
             return
         except Exception:
-            self._send_json(500, {"ok": False, "error": "Bridge operation failed."})
+            self._send_json(500, {"ok": False, "error": "Bridge operation failed.", "error_code": "operation_failed"})
             return
 
         self._send_json(200, result)

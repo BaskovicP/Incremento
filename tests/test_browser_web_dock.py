@@ -1,9 +1,41 @@
 import json
 import types
 
+import pytest
+
 from PyQt6.QtCore import QUrl
 
 import web_dock
+
+
+@pytest.mark.parametrize('locale,invalid,capture,outside', [
+    ('hr', 'Neispravne granice snimke', 'Nije moguće snimiti web-prikaz.', 'Odabrano područje nalazi se izvan trenutačnog prikaza.'),
+    ('zh-Hans', '截图范围无效', '无法截取网页视图。', '所选区域位于当前视口之外。'),
+])
+def test_snapshot_validation_errors_follow_the_selected_language(monkeypatch, locale, invalid, capture, outside):
+    from backend.i18n import Translator
+    monkeypatch.setattr(web_dock, 't', Translator(locale).t)
+    controller = web_dock._WebDockController(web_dock._WebDockRuntime(dock=types.SimpleNamespace(_view=object())))
+    with pytest.raises(RuntimeError, match=invalid):
+        controller.handle_snapshot({'x': 'invalid'})
+    null = types.SimpleNamespace(isNull=lambda: True)
+    monkeypatch.setattr(web_dock, '_grab_web_view_without_extraction_markers', lambda view: null)
+    data = {'x': 0, 'y': 0, 'width': 20, 'height': 20, 'url': 'https://example.com'}
+    with pytest.raises(RuntimeError) as error:
+        controller.handle_snapshot(data)
+    assert str(error.value) == capture
+    image = types.SimpleNamespace(isNull=lambda: False, devicePixelRatio=lambda: 1, copy=lambda *args: null)
+    monkeypatch.setattr(web_dock, '_grab_web_view_without_extraction_markers', lambda view: image)
+    with pytest.raises(RuntimeError) as error:
+        controller.handle_snapshot(data)
+    assert str(error.value) == outside
+
+
+def test_web_reader_counts_use_translated_plural_messages(monkeypatch):
+    monkeypatch.setattr(web_dock, "tn", lambda key, count, **values: f"{key}:{count}", raising=False)
+
+    assert web_dock._web_card_count_label(2) == "reader_web_cards_count:2"
+    assert web_dock._web_bookmark_count_label(1) == "reader_web_bookmarks_count:1"
 
 
 def _extract_record(*, card_id=42, url="https://example.com/guide", exact="passage"):

@@ -1,0 +1,164 @@
+[
+  {
+    "file": "__init__.py",
+    "sink": "create_database_checkpoint",
+    "text": "sqlite_editor",
+    "reason": "Internal checkpoint category, not a displayed label."
+  },
+  {
+    "file": "__init__.py",
+    "sink": "showInfo",
+    "text": "f\"<h2>Incremento</h2>\"\n        f\"<p><b>{_html_escape(_t('root_about_author'))}</b> Paulo Baskovic</p>\"\n        f\"<p>{_html_escape(_t('root_about_intro'))}</p>\"\n        f\"<p><b>{_html_escape(_t('root_about_general_info'))}</b></p>\"\n        f\"<ul>{points}</ul>\"\n        f\"<p><b>{_html_escape(_t('root_about_disclaimer_label'))}</b> {_html_escape(_t('root_about_disclaimer'))}</p>\"\n        f\"<p><b>{_html_escape(_t('root_about_license_label'))}</b> {_html_escape(_t('root_about_license'))}</p>\"",
+    "reason": "Presentation wrapper containing already-localized labels and/or user values."
+  },
+  {
+    "file": "backend/session.py",
+    "sink": "showInfo",
+    "text": "f\"{error_message}:\\n{exc}\"",
+    "reason": "Localized caller-provided error heading followed by technical exception detail."
+  },
+  {
+    "file": "frontend/add_video_dialog.py",
+    "sink": "addItem",
+    "text": "f\"{int(h)}p\"",
+    "reason": "Video resolution notation, e.g. 720p."
+  },
+  {
+    "file": "frontend/browser_quick_tags.py",
+    "sink": "QLabel",
+    "text": "f\"#{tag}\"",
+    "reason": "User-owned tag text with a fixed decorative symbol."
+  },
+  {
+    "file": "frontend/command_palette.py",
+    "sink": "setText",
+    "text": "f\"{group}{shortcut}\"",
+    "reason": "Presentation wrapper containing already-localized labels and/or user values."
+  },
+  {
+    "file": "frontend/epub_dock.py",
+    "sink": "t",
+    "text": "{text}",
+    "reason": "Literal placeholder forwarded into localized EPUB JavaScript template."
+  },
+  {
+    "file": "frontend/epub_dock.py",
+    "sink": "setText",
+    "text": "f\"{active_index + 1} / {total_hits}\"",
+    "reason": "Integer-only percentage or positional counter; no language-dependent words."
+  },
+  {
+    "file": "frontend/extract_card_dialog.py",
+    "sink": "QLabel",
+    "text": "f\"{fname}:\"",
+    "reason": "User/Anki-owned note field name."
+  },
+  {
+    "file": "frontend/knowledge_tree_dialog.py",
+    "sink": "QLabel",
+    "text": "f\"{field_name}:\"",
+    "reason": "User/Anki-owned note field name."
+  },
+  {
+    "file": "frontend/knowledge_tree_postpone_dialog.py",
+    "sink": "setText",
+    "text": "f\"{max(0.0, (self._item_delay_factor.value() - 1.0) * 100.0):.0f}%\"",
+    "reason": "Integer-only percentage or positional counter; no language-dependent words."
+  },
+  {
+    "file": "frontend/knowledge_tree_postpone_dialog.py",
+    "sink": "setText",
+    "text": "f\"{max(0.0, (self._topic_delay_factor.value() - 1.0) * 100.0):.0f}%\"",
+    "reason": "Integer-only percentage or positional counter; no language-dependent words."
+  },
+  {
+    "file": "frontend/media_review_dialog.py",
+    "sink": "setText",
+    "text": "f\"{format_media_review_preview(selection)}\\n{scheduling_text}\"",
+    "reason": "Presentation wrapper containing already-localized labels and/or user values."
+  },
+  {
+    "file": "frontend/pdf_bookshelf.py",
+    "sink": "QLabel",
+    "text": "f\"<b>{t('reader_bookshelf_title')}</b>\"",
+    "reason": "Presentation wrapper containing already-localized labels and/or user values."
+  },
+  {
+    "file": "frontend/pdf_quick_jump.py",
+    "sink": "QLabel",
+    "text": "f\"<b>{t('reader_mode')}</b>\"",
+    "reason": "Presentation wrapper containing already-localized labels and/or user values."
+  },
+  {
+    "file": "frontend/pdf_quick_jump.py",
+    "sink": "QLabel",
+    "text": "f\"<b>{key}</b>: {desc}\"",
+    "reason": "Keyboard key and already-localized shortcut description."
+  },
+  {
+    "file": "frontend/reviewer_tag_dialog.py",
+    "sink": "QPushButton",
+    "text": "f\"#{tag}\"",
+    "reason": "User-owned tag text with a fixed decorative symbol."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "QLabel",
+    "text": "f\"<b>{text}</b>\"",
+    "reason": "Presentation wrapper containing already-localized labels and/or user values."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "setPlaceholderText",
+    "text": "tag1, tag2",
+    "reason": "Literal tag syntax example; tags are stable user data."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "setPlaceholderText",
+    "text": "topic",
+    "reason": "Literal tag syntax example; tags are stable user data."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "setPlaceholderText",
+    "text": "item",
+    "reason": "Literal tag syntax example; tags are stable user data."
+  },
+  {
+    "file": "frontend/tag_edit.py",
+    "sink": "setText",
+    "text": "f\"{tag}  \\N{WASTEBASKET}\"",
+    "reason": "User-owned tag text with a fixed decorative symbol."
+  },
+  {
+    "file": "frontend/learn_dialog.py",
+    "sink": "getSaveFileName",
+    "text": "incremento_stats.json",
+    "reason": "Stable default export filename; file formats and names are locale-independent."
+  },
+  {
+    "file": "frontend/writing_dock.py",
+    "sink": "_build_button",
+    "text": "HR",
+    "reason": "Standard horizontal-rule formatting abbreviation; adjacent tooltip is localized."
+  },
+  {
+    "file": "frontend/browser_quick_tags.py",
+    "sink": "QLabel",
+    "text": "f\"{number_key} / {letter_key}\"",
+    "reason": "Two stable keyboard shortcut keys, not translatable prose."
+  },
+  {
+    "file": "frontend/stats_dialog.py",
+    "sink": "getSaveFileName",
+    "text": "f\"incremento-statistics-{_effective_date(self._day_end_time)}.csv\"",
+    "reason": "Stable generated export filename with locale-independent date and file extension."
+  },
+  {
+    "file": "frontend/language_pack_settings.py",
+    "sink": "getSaveFileName",
+    "text": "incremento-translations.csv",
+    "reason": "Stable portable export filename, not a translatable UI label."
+  }
+]

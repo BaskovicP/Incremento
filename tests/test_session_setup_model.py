@@ -30,6 +30,55 @@ def test_basic_summary_handles_current_settings_and_bounds_dirty_values():
     )
 
 
+def test_basic_summary_uses_the_i18n_message_boundary(monkeypatch):
+    import frontend.session_setup_model as model
+
+    seen = []
+
+    def translate(message_id, **values):
+        seen.append((message_id, values))
+        return "localized summary"
+
+    monkeypatch.setattr(model, "t", translate)
+
+    assert model.format_basic_session_summary(
+        session_card_count=30,
+        topics_slider=25,
+        pdf_slider=80,
+        preset_name="Work",
+    ) == "localized summary"
+    assert seen == [
+        (
+            "session_basic_summary",
+            {
+                "count": 30,
+                "topic_percent": 75,
+                "item_percent": 25,
+                "document_percent": 20,
+                "other_percent": 80,
+                "preset": "Work",
+            },
+        )
+    ]
+
+
+def test_basic_summary_uses_the_croatian_catalog(monkeypatch):
+    import frontend.session_setup_model as model
+    from backend.i18n import Translator
+
+    monkeypatch.setattr(model, "t", Translator("hr").t)
+
+    assert model.format_basic_session_summary(
+        session_card_count=30,
+        topics_slider=25,
+        pdf_slider=80,
+        preset_name="Work",
+    ) == (
+        "30 kartica · Teme 75% / Stavke 25% · Dokumenti 20% / Ostalo 80% "
+        "· Predložak: Work"
+    )
+
+
 def test_setup_mode_is_fail_closed_to_basic():
     assert normalize_setup_mode("advanced") == ADVANCED_MODE
     assert normalize_setup_mode(" BASIC ") == BASIC_MODE

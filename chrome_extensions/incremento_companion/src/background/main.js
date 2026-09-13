@@ -1,4 +1,4 @@
-import { importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
+import { formatBridgeError, importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
 import { bridgeFetch } from "../shared/bridgeAuth.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
@@ -20,6 +20,9 @@ import {
   buildPreferredWritingFilename,
 } from "../shared/writingTitle.js";
 import { syncPersistentSiteContentScript } from "../shared/siteAccess.js";
+import { formatNumber, initializeLanguage, t, subscribeLanguage, watchLanguageStorage } from "../shared/i18n.js";
+import { readPageContextFromTab } from "../shared/pageContext.js";
+import { cardKindLabel } from "../shared/cardKind.js";
 
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
@@ -51,6 +54,17 @@ const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 const CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID = "incremento-save-link-as-webpage";
 let contextMenuSyncQueue = Promise.resolve();
+let lastActionState = null;
+// Start loading the saved preference immediately, without delaying MV3 listener
+// registration. Every feedback-producing action waits on this same read.
+const languageReady = initializeLanguage().catch(() => {});
+
+function captureValidationMessage(result) {
+  if (!result?.errorCode) return String(result?.error || "");
+  const params = { ...result.errorParams };
+  if (params.count != null) params.count = formatNumber(params.count);
+  return t(result.errorCode, params, result.error);
+}
 
 function isHttpUrl(rawUrl) {
   return /^https?:\/\//i.test(String(rawUrl || ""));
@@ -61,9 +75,12 @@ function getTabUrl(tab) {
 }
 
 async function parseBridgeResponse(response) {
+  await languageReady;
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) {
-    throw new Error(String(data?.error || `Request failed (${response.status})`));
+    const error = new Error(String(data?.error || t("bridge_request_failed", { status: response.status })));
+    error.code = typeof data?.error_code === "string" ? data.error_code : "";
+    throw new Error(formatBridgeError(error, t("bridge_error_operation_failed")));
   }
   return data;
 }
@@ -825,6 +842,7 @@ async function getCurrentMediaContextInTab(tabId) {
 }
 
 async function invokeBrowserCaptureInTab(tabId, mode) {
+  await languageReady;
   if (typeof tabId !== "number") {
     return { ok: false };
   }
@@ -836,7 +854,7 @@ async function invokeBrowserCaptureInTab(tabId, mode) {
       }, { frameId: 0 });
       return response || { ok: false };
     } catch (error) {
-      return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
+      return { ok: false, error: String(error?.message || t("trigger_capture_failed")) };
     }
   };
   try {
@@ -847,7 +865,7 @@ async function invokeBrowserCaptureInTab(tabId, mode) {
     }
     return response;
   } catch (error) {
-    return { ok: false, error: String(error?.message || "Failed to trigger browser capture.") };
+    return { ok: false, error: String(error?.message || t("trigger_capture_failed")) };
   }
 }
 
@@ -872,6 +890,7 @@ async function triggerBrowserCaptureOnTab(tab, mode) {
 }
 
 async function capturePageContext(tabId) {
+  await languageReady;
   if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
     return null;
   }
@@ -893,35 +912,13 @@ async function capturePageContext(tabId) {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: (maxHtmlChars, maxSelectedTextChars) => {
-        const html = document.documentElement?.outerHTML || "";
-        const selectionText = (
-          (window.getSelection?.().toString() || "").trim()
-          || String(globalThis.__incrementoLastSelectedText || "").trim()
-        );
-        if (html.length > maxHtmlChars) {
-          return {
-            ok: false,
-            error: `Page HTML is too large. Maximum is ${maxHtmlChars} characters.`,
-          };
-        }
-        if (selectionText.length > maxSelectedTextChars) {
-          return {
-            ok: false,
-            error: `Selected text is too large. Maximum is ${maxSelectedTextChars} characters.`,
-          };
-        }
-        return {
-          ok: true,
-          html,
-          selectionText,
-          title: document.title || "",
-          url: window.location.href || "",
-        };
-      },
+      func: readPageContextFromTab,
       args: [MAX_BROWSER_CAPTURE_HTML_CHARS, MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS],
     });
     const result = results?.[0]?.result || null;
+    if (result?.errorCode) {
+      throw new Error(t(result.errorCode, result.errorParams || {}));
+    }
     if (result?.error) {
       throw new Error(String(result.error));
     }
@@ -1005,33 +1002,34 @@ async function loadLinkSaveSettings() {
 }
 
 async function syncLinkSaveContextMenu() {
+  await languageReady;
   contextMenuSyncQueue = contextMenuSyncQueue
     .catch(() => {})
     .then(async () => {
-      if (!chrome.contextMenus?.removeAll || !chrome.contextMenus?.create) {
+      if (!chrome.contextMenus?.create) {
         return;
       }
       const settings = await loadLinkSaveSettings();
-      await new Promise((resolve) => {
-        try {
-          chrome.contextMenus.removeAll(() => resolve());
-        } catch (_error) {
-          resolve();
-        }
-      });
       if (!settings.contextMenuEnabled) {
+        if (chrome.contextMenus.remove) {
+          await new Promise((resolve) => chrome.contextMenus.remove(CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID, () => { void chrome.runtime?.lastError; resolve(); }));
+        }
         return;
       }
       await new Promise((resolve) => {
         try {
-          chrome.contextMenus.create({
+          const create = () => chrome.contextMenus.create({
             id: CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID,
-            title: "Save link to Incremento as webpage",
+            title: t("context_save_link"),
             contexts: ["link"],
-          }, () => {
-            void chrome.runtime?.lastError;
-            resolve();
-          });
+          }, () => { void chrome.runtime?.lastError; resolve(); });
+          if (chrome.contextMenus.update) {
+            chrome.contextMenus.update(CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID, { title: t("context_save_link") }, () => {
+              if (chrome.runtime?.lastError) create(); else resolve();
+            });
+          } else {
+            create();
+          }
         } catch (_error) {
           resolve();
         }
@@ -1063,9 +1061,10 @@ async function loadContextMenuLinkInfo(tabId, linkUrl) {
 }
 
 async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
+  await languageReady;
   const url = String(rawUrl || "").trim();
   if (!isSupportedLinkSaveUrl(url)) {
-    const message = "Only http(s) links can be saved to Incremento.";
+    const message = t("only_http_links");
     if (typeof tabId === "number") {
       await showToastInTab(tabId, message);
     }
@@ -1083,11 +1082,11 @@ async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
   try {
     const result = await importIntoIncremento(payload);
     if (typeof tabId === "number") {
-      await showToastInTab(tabId, `Added ${result.kind} card: ${result.title}`);
+      await showToastInTab(tabId, t("added_card", { kind: cardKindLabel(result.kind), title: result.title }));
     }
     return { ok: true, result };
   } catch (error) {
-    const message = String(error?.message || "Failed to add webpage card.");
+    const message = String(error?.message || t("add_webpage_failed"));
     if (typeof tabId === "number") {
       await showToastInTab(tabId, message);
     }
@@ -1096,12 +1095,13 @@ async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
 }
 
 async function addCurrentPageToIncremento(command) {
+  await languageReady;
   const tab = await getActiveTab();
   if (!tab?.id) {
-    return {ok: false, error: "No active tab found."};
+    return {ok: false, error: t("no_active_tab")};
   }
   if (!isHttpUrl(getTabUrl(tab))) {
-    return {ok: false, error: "Only http(s) pages can be sent to Incremento."};
+    return {ok: false, error: t("only_http_pages")};
   }
 
   const context = await capturePageContext(tab.id);
@@ -1111,7 +1111,7 @@ async function addCurrentPageToIncremento(command) {
   const html = String(context?.html || "");
 
   if (!isHttpUrl(pageUrl)) {
-    return {ok: false, error: "Only http(s) pages can be sent to Incremento."};
+    return {ok: false, error: t("only_http_pages")};
   }
 
   let payload = null;
@@ -1119,7 +1119,7 @@ async function addCurrentPageToIncremento(command) {
 
   if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF) {
     payload = buildImportPayload("pdf", {url: pageUrl, title: pageTitle, selectionText, html});
-    progressMessage = "Adding PDF card...";
+    progressMessage = t("adding_pdf");
     const pdfPayload = await getPdfPayloadForUrl(pageUrl);
     if (pdfPayload) {
       payload.pdfBase64 = pdfPayload.pdfBase64;
@@ -1127,10 +1127,10 @@ async function addCurrentPageToIncremento(command) {
     }
   } else if (command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO) {
     if (!isSupportedVideoUrl(pageUrl)) {
-      return {ok: false, error: "Open a YouTube or Vimeo page to add a video card."};
+      return {ok: false, error: t("open_video_page")};
     }
     payload = buildImportPayload("video", {url: pageUrl, title: pageTitle, selectionText, html});
-    progressMessage = "Adding video card...";
+    progressMessage = t("adding_video");
     const state = TAB_STATE.get(tab.id);
     const startSeconds = Math.max(0, Math.floor(Number(state?.seconds || 0)));
     if (startSeconds > 0) {
@@ -1150,10 +1150,10 @@ async function addCurrentPageToIncremento(command) {
         mediaTitle: String(media?.mediaTitle || media?.pageTitle || pageTitle || "").trim(),
       },
     );
-    progressMessage = "Adding webpage card...";
+    progressMessage = t("adding_webpage");
   } else if (command === COMMAND_ADD_SELECTION_TO_MARKDOWN) {
     if (!selectionText) {
-      return {ok: false, error: "Select text on the page first."};
+      return {ok: false, error: t("select_page_text")};
     }
     payload = buildImportPayload("writing", {
       url: pageUrl,
@@ -1161,18 +1161,18 @@ async function addCurrentPageToIncremento(command) {
       selectionText,
       html
     }, {writingMode: "selection"});
-    progressMessage = "Adding writing card from selection...";
+    progressMessage = t("adding_selection_writing");
   } else if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
     if (!html) {
-      return {ok: false, error: "Could not read webpage content from this tab."};
+      return {ok: false, error: t("web_content_failed")};
     }
     payload = buildImportPayload("writing", {url: pageUrl, title: pageTitle, selectionText, html}, {
       writingMode: "webpage_markdown",
       pageContentScope: "main",
     });
-    progressMessage = "Adding writing card from webpage markdown...";
+    progressMessage = t("adding_writing");
   } else {
-    return {ok: false, error: "Unsupported command."};
+    return {ok: false, error: t("unsupported_command")};
   }
 
   try {
@@ -1181,10 +1181,10 @@ async function addCurrentPageToIncremento(command) {
     if (command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE && Number(result?.cardId) > 0) {
       await registerWebCardTracking(tab.id, Number(result.cardId), pageUrl);
     }
-    await showToastInTab(tab.id, `Added ${result.kind} card: ${result.title}`);
+    await showToastInTab(tab.id, t("added_card", { kind: cardKindLabel(result.kind), title: result.title }));
     return {ok: true, result};
   } catch (error) {
-    const message = String(error?.message || progressMessage || "Failed to add content.");
+    const message = String(error?.message || progressMessage || t("add_content_failed"));
     await showToastInTab(tab.id, message);
     return {ok: false, error: message};
   }
@@ -1196,7 +1196,7 @@ async function reportBrowserCaptureTrigger(tabId, ok, fallbackMessage = "") {
   }
   const text = ok
     ? ""
-    : (fallbackMessage || "Browser capture could not start on this tab.");
+    : (fallbackMessage || t("capture_start_failed"));
   if (!text) {
     return;
   }
@@ -1204,6 +1204,7 @@ async function reportBrowserCaptureTrigger(tabId, ok, fallbackMessage = "") {
 }
 
 async function ensureOffscreen() {
+  await languageReady;
   if (!chrome.offscreen?.createDocument) {
     return false;
   }
@@ -1220,7 +1221,7 @@ async function ensureOffscreen() {
     await chrome.offscreen.createDocument({
       url: OFFSCREEN_PATH,
       reasons: [chrome.offscreen.Reason.CLIPBOARD],
-      justification: "Copy latest video stop time for pasting into Anki.",
+      justification: t("copy_offscreen_reason"),
     });
     return true;
   } catch (_err) {
@@ -1381,15 +1382,22 @@ function updateActionState(state) {
   if (!state) {
     return;
   }
+  lastActionState = state;
   const seconds = Math.max(0, Math.floor(Number(state.seconds) || 0));
   const provider = state.provider || "video";
   const timeText = formatTime(seconds);
   void chrome.action.setBadgeBackgroundColor({ color: "#0d6efd" });
   void chrome.action.setBadgeText({ text: seconds > 0 ? "▶" : "" });
-  void chrome.action.setTitle({ title: `Incremento (${provider}) ${timeText}` });
+  void languageReady.then(() => chrome.action.setTitle({ title: t("action_video_time", { provider, time: timeText }) }));
+}
+
+function refreshActionTitle() {
+  if (lastActionState) updateActionState(lastActionState);
+  else void chrome.action?.setTitle?.({ title: t("extension_name") });
 }
 
 async function copyLatestStoredTime(showFeedback) {
+  await languageReady;
   let payload = null;
   try {
     const data = await chrome.storage.local.get(STORAGE_KEY);
@@ -1401,7 +1409,7 @@ async function copyLatestStoredTime(showFeedback) {
     if (showFeedback) {
       const tab = await getActiveTab();
       if (tab?.id) {
-        await showToastInTab(tab.id, "No stored video time yet.");
+        await showToastInTab(tab.id, t("no_stored_video_time"));
       }
     }
     return false;
@@ -1411,7 +1419,7 @@ async function copyLatestStoredTime(showFeedback) {
   if (showFeedback) {
     const tab = await getActiveTab();
     if (tab?.id) {
-      const msg = copied ? `Copied video time: ${text}` : `Failed to copy video time (${text})`;
+      const msg = copied ? t("copied_time", { time: text }) : t("copy_time_failed", { time: text });
       await showToastInTab(tab.id, msg);
     }
   }
@@ -1426,7 +1434,7 @@ async function captureVisibleTabForSender(sender) {
     maxBytes: MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
   });
   if (!validation.ok) {
-    throw new Error(validation.error);
+    throw new Error(captureValidationMessage(validation));
   }
   return dataUrl;
 }
@@ -1463,6 +1471,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "web_media_heartbeat") {
     void (async () => {
+      await languageReady;
       const tabId = sender?.tab?.id;
       if (typeof tabId !== "number") {
         sendResponse?.({ ok: false });
@@ -1476,6 +1485,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "COPY_LATEST_VIDEO_TIME") {
     void (async () => {
+      await languageReady;
       const copied = await copyLatestStoredTime(Boolean(msg.showFeedback));
       sendResponse?.({ ok: copied });
     })();
@@ -1484,6 +1494,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "GET_LINKED_CARD_CONTEXT") {
     void (async () => {
+      await languageReady;
       const senderTabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
       const requestedTabId = Number(msg.tabId);
       const tabId = Number.isFinite(requestedTabId) && requestedTabId > 0
@@ -1501,6 +1512,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "REGISTER_WEB_CARD_TRACKING") {
     void (async () => {
+      await languageReady;
       const senderTabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
       const requestedTabId = Number(msg.tabId);
       const tabId = Number.isFinite(requestedTabId) && requestedTabId > 0
@@ -1519,6 +1531,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "LOAD_BROWSER_MEDIA_REF") {
     void (async () => {
+      await languageReady;
       const senderTabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
       const requestedCardId = Math.max(0, Math.floor(Number(msg.cardId) || 0));
       let cardId = requestedCardId;
@@ -1536,7 +1549,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       } catch (error) {
         sendResponse?.({
           ok: false,
-          error: String(error?.message || "Failed to load browser media reference."),
+          error: String(error?.message || t("load_media_ref_failed")),
         });
       }
     })();
@@ -1545,6 +1558,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "GET_TRACKING_STATUS") {
     void (async () => {
+      await languageReady;
       const tabId = sender?.tab?.id;
       if (typeof tabId !== "number") {
         sendResponse?.({ tracked: false, mode: "" });
@@ -1558,11 +1572,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "LOAD_BROWSER_CAPTURE_META") {
     void (async () => {
+      await languageReady;
       try {
         const result = await loadBrowserCaptureMeta();
         sendResponse?.(result);
       } catch (error) {
-        sendResponse?.({ ok: false, error: String(error?.message || "Failed to load browser capture metadata.") });
+        sendResponse?.({ ok: false, error: String(error?.message || t("load_capture_meta_failed")) });
       }
     })();
     return true;
@@ -1570,6 +1585,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "SAVE_CLICKED_LINK_AS_WEBPAGE") {
     void (async () => {
+      await languageReady;
       const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
       const result = await addExplicitWebpageToIncremento(
         tabId,
@@ -1583,10 +1599,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "SUBMIT_BROWSER_CAPTURE") {
     void (async () => {
+      await languageReady;
       try {
         const validation = validateBrowserCapturePayload(msg.payload || {});
         if (!validation.ok) {
-          throw new Error(validation.error);
+          throw new Error(captureValidationMessage(validation));
         }
         const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
         const payload = await attachLinkedParentCard(
@@ -1597,7 +1614,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const result = await submitBrowserCapture(payload);
         sendResponse?.(result);
       } catch (error) {
-        sendResponse?.({ ok: false, error: String(error?.message || "Failed to submit browser capture.") });
+        sendResponse?.({ ok: false, error: String(error?.message || t("failed_submit_capture")) });
       }
     })();
     return true;
@@ -1605,11 +1622,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "CAPTURE_VISIBLE_TAB") {
     void (async () => {
+      await languageReady;
       try {
         const dataUrl = await captureVisibleTabForSender(sender);
         sendResponse?.({ ok: true, dataUrl });
       } catch (error) {
-        sendResponse?.({ ok: false, error: String(error?.message || "Failed to capture the current tab.") });
+        sendResponse?.({ ok: false, error: String(error?.message || t("failed_capture_tab")) });
       }
     })();
     return true;
@@ -1617,11 +1635,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "TRIGGER_BROWSER_CAPTURE") {
     void (async () => {
+      await languageReady;
       const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
       const mode = String(msg.mode || "").trim().toLowerCase();
       const ok = await triggerBrowserCapture(mode === "snapshot" ? "snapshot" : "selection");
       if (typeof tabId === "number") {
-        await reportBrowserCaptureTrigger(tabId, ok, "Browser capture could not start on this tab.");
+        await reportBrowserCaptureTrigger(tabId, ok, t("capture_start_failed"));
       }
       sendResponse?.({ ok });
     })();
@@ -1706,7 +1725,7 @@ if (chrome.webNavigation?.onReferenceFragmentUpdated) {
 }
 
 chrome.action.onClicked.addListener(() => {
-  void copyLatestStoredTime(true);
+  void languageReady.then(() => copyLatestStoredTime(true));
 });
 
 if (chrome.contextMenus?.onClicked) {
@@ -1715,6 +1734,7 @@ if (chrome.contextMenus?.onClicked) {
       return;
     }
     void (async () => {
+      await languageReady;
       const tabId = typeof tab?.id === "number" ? tab.id : null;
       const linkUrl = String(info.linkUrl || "").trim();
       const contextLink = tabId !== null ? await loadContextMenuLinkInfo(tabId, linkUrl) : null;
@@ -1725,43 +1745,53 @@ if (chrome.contextMenus?.onClicked) {
 }
 
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (command === COMMAND_BROWSER_CAPTURE_SELECTION) {
-    void (tab ? triggerBrowserCaptureOnTab(tab, "selection") : triggerBrowserCapture("selection"));
-    return;
-  }
-  if (command === COMMAND_BROWSER_CAPTURE_SNAPSHOT) {
-    void (tab ? triggerBrowserCaptureOnTab(tab, "snapshot") : triggerBrowserCapture("snapshot"));
-    return;
-  }
-  if (command !== "copy-last-video-time") {
-    if (
-      command === COMMAND_ADD_CURRENT_PAGE_AS_PDF
-      || command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO
-      || command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE
-      || command === COMMAND_ADD_SELECTION_TO_MARKDOWN
-      || command === COMMAND_ADD_PAGE_TO_MARKDOWN
-    ) {
-      void addCurrentPageToIncremento(command);
+  void languageReady.then(() => {
+    if (command === COMMAND_BROWSER_CAPTURE_SELECTION) {
+      void (tab ? triggerBrowserCaptureOnTab(tab, "selection") : triggerBrowserCapture("selection"));
+      return;
     }
-    return;
-  }
-  void copyLatestStoredTime(true);
+    if (command === COMMAND_BROWSER_CAPTURE_SNAPSHOT) {
+      void (tab ? triggerBrowserCaptureOnTab(tab, "snapshot") : triggerBrowserCapture("snapshot"));
+      return;
+    }
+    if (command !== "copy-last-video-time") {
+      if (
+        command === COMMAND_ADD_CURRENT_PAGE_AS_PDF
+        || command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO
+        || command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE
+        || command === COMMAND_ADD_SELECTION_TO_MARKDOWN
+        || command === COMMAND_ADD_PAGE_TO_MARKDOWN
+      ) {
+        void addCurrentPageToIncremento(command);
+      }
+      return;
+    }
+    void copyLatestStoredTime(true);
+  });
 });
 
 void refreshPersistentSiteAccess({ injectOpenTabs: true });
-void syncLinkSaveContextMenu();
+watchLanguageStorage();
+subscribeLanguage(() => {
+  void syncLinkSaveContextMenu();
+  refreshActionTitle();
+});
+void languageReady.then(() => {
+  void syncLinkSaveContextMenu();
+  refreshActionTitle();
+});
 
 if (chrome.runtime?.onInstalled) {
   chrome.runtime.onInstalled.addListener(() => {
     void refreshPersistentSiteAccess({ injectOpenTabs: true });
-    void syncLinkSaveContextMenu();
+    void languageReady.then(() => { void syncLinkSaveContextMenu(); refreshActionTitle(); });
   });
 }
 
 if (chrome.runtime?.onStartup) {
   chrome.runtime.onStartup.addListener(() => {
     void refreshPersistentSiteAccess({ injectOpenTabs: true });
-    void syncLinkSaveContextMenu();
+    void languageReady.then(() => { void syncLinkSaveContextMenu(); refreshActionTitle(); });
   });
 }
 

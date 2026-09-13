@@ -1,0 +1,708 @@
+# Incremento interface strings. Edit translations here; compile with scripts/compile_i18n.py.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: en\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "common_cancel"
+msgstr "Cancel"
+
+msgid "common_ok"
+msgstr "OK"
+
+msgid "settings_add_card_item_button_tags"
+msgstr "Add Card item-button tags:"
+
+msgid "settings_add_card_topic_button_tags"
+msgstr "Add Card topic-button tags:"
+
+msgid "settings_advanced"
+msgstr "Advanced"
+
+msgid "settings_advanced_tools_expose_internal_incremento_runtime_data_for_inspection"
+msgstr "Advanced tools expose internal Incremento runtime data for inspection and debugging. These tools operate on the active profile only and are intended for power users."
+
+msgid "settings_all_time"
+msgstr "All-time"
+
+msgid "settings_anki_still_records_each_topic_answer_as_good_and"
+msgstr "Anki still records each topic answer as Good and updates that card's FSRS memory state. Keep topic cards in a dedicated deck-options preset if you want topic reviews isolated from item-card FSRS optimization."
+
+msgid "settings_any_card_with_one_of_these_tags_is_also"
+msgstr "Any card with one of these tags is also treated as a topic, even if its card type would normally behave like an item."
+
+msgid "settings_assign_keyboard_shortcuts_for_incremento_actions_leave_a_field"
+msgstr "Assign keyboard shortcuts for Incremento actions. Leave a field empty to disable that shortcut."
+
+msgid "settings_assign_toggle_reviewer_buttons_in_the_shortcuts_tab_to"
+msgstr "Assign Toggle Reviewer Buttons in the Shortcuts tab to hide or restore these buttons together without changing the choices above."
+
+msgid "settings_auto_start_duration"
+msgstr "Auto-start duration:"
+
+msgid "settings_automatically_start_focus_timer_on_matching_cards"
+msgstr "Automatically start focus timer on matching cards"
+
+msgid "settings_automatically_start_the_focus_timer_when_a_matching_card"
+msgstr "Automatically start the focus timer when a matching card is shown. If the timer is already running, it keeps the current session."
+
+msgid "settings_backup_15m"
+msgstr "15 minutes"
+
+msgid "settings_backup_1d"
+msgstr "1 day"
+
+msgid "settings_backup_1h"
+msgstr "1 hour"
+
+msgid "settings_backup_1m"
+msgstr "1 minute"
+
+msgid "settings_backup_30m"
+msgstr "30 minutes"
+
+msgid "settings_backup_5m"
+msgstr "5 minutes"
+
+msgid "settings_backup_6h"
+msgstr "6 hours"
+
+msgid "settings_backup_7d"
+msgstr "7 days"
+
+msgid "settings_backups"
+msgstr "Backups"
+
+msgid "settings_browser_right_click_can_apply_repeating_schedule_rules_such"
+msgstr "Browser right-click can apply repeating schedule rules such as every 2 days or monthly. Manage the default rule behavior and quick presets here."
+
+msgid "settings_buttons_shown_in_the_review_bar_also_in_more"
+msgstr "Buttons shown in the review bar (also in More → Review buttons):"
+
+msgid "settings_card_creation"
+msgstr "Card Creation"
+
+msgid "settings_card_types"
+msgstr "Card types:"
+
+msgid "settings_choose_how_extracted_content_opens_by_default_how_its"
+msgstr "Choose how extracted content opens by default, how its priority is derived, whether extracts should start as topics, and which provenance links should be saved with new extracts."
+
+msgid "settings_choose_the_default_behavior_for_markdown_writing_cards_after"
+msgstr "Choose the default behavior for markdown writing cards. After a card is opened once, its own saved editor state takes over. The progress widget shows per-card word progress for today, the current card-open session, or all time."
+
+msgid "settings_clear"
+msgstr "Clear"
+
+msgid "settings_clear_all"
+msgstr "Clear All"
+
+msgid "settings_controls_the_floating_priority_a_factor_saved_time_and"
+msgstr "Controls the floating priority, A-factor, saved-time, and schedule badge. Topic classification follows the Topics settings; every other card uses the item option."
+
+msgid "settings_copy_source_card_tags_to_extracted_cards"
+msgstr "Copy source card tags to extracted cards"
+
+msgid "settings_create_automatic_writing_backups"
+msgstr "Create automatic writing backups"
+
+msgid "settings_create_the_topics_deck_automatically_when_a_selected_profile"
+msgstr "Create the Topics deck automatically when a selected profile opens"
+
+msgid "settings_custom_schedule_behavior_help"
+msgstr "Minimum cadence keeps normal scheduling but prevents intervals longer than the chosen limit. Repeat exactly sets the same interval after each review. One-time set due applies once without creating a repeating rule."
+
+msgid "settings_custom_scheduling"
+msgstr "Custom Scheduling"
+
+msgid "settings_days"
+msgstr " days"
+
+msgid "settings_default_behavior"
+msgstr "Default behavior:"
+
+msgid "settings_default_extract_card_type"
+msgstr "Default extract card type:"
+
+msgid "settings_default_progress_scope"
+msgstr "Default progress scope:"
+
+msgid "settings_default_topic_a_factor"
+msgstr "Default topic A-factor:"
+
+msgid "settings_done"
+msgstr "Done"
+
+msgid "settings_done_appears_on_topic_cards_postpone_appears_only_when"
+msgstr "Done appears on topic cards; Postpone appears only when topic postponement is enabled."
+
+msgid "settings_done_tag"
+msgstr "Done tag"
+
+msgid "settings_done_tag_help"
+msgstr "Done suspends the current topic card and adds this tag to its note. Tags are shared by all cards of that note; only the current card is suspended. Undo restores the card and its previous tags together. Enter one tag, such as topic/done or reading::finished. Leave empty to use topic/done."
+
+msgid "settings_done_tag_invalid"
+msgstr "Enter one valid Done tag, up to 255 characters, without spaces or empty :: levels."
+
+msgid "settings_done_tag_label"
+msgstr "Done tag:"
+
+msgid "settings_each_selected_interval_keeps_one_rolling_snapshot_per_writing"
+msgstr "Each selected interval keeps one rolling snapshot per writing card. Existing backup files remain restorable even if you later uncheck an interval."
+
+msgid "settings_editor_defaults"
+msgstr "Editor Defaults"
+
+msgid "settings_enable_red_postpone_button_on_topic_cards"
+msgstr "Enable red Postpone button on topic cards"
+
+msgid "settings_enable_timed_skip_button_on_items"
+msgstr "Enable timed Skip button on items"
+
+msgid "settings_examples_a_pdf_page_reference_the_current_web_page"
+msgstr "Examples: a PDF page reference, the current web page URL, or a parent card link when you extract from an existing card."
+
+msgid "settings_extract"
+msgstr "Extract"
+
+msgid "settings_extraction"
+msgstr "Extraction"
+
+msgid "settings_fallback_extract_priority"
+msgstr "Fallback extract priority:"
+
+msgid "settings_focus_timer"
+msgstr "Focus Timer"
+
+msgid "settings_for_example_10_schedules_110_of_the_normal_next"
+msgstr "For example, 10% schedules 110% of the normal next interval and multiplies the persistent A-factor by 1.1."
+
+msgid "settings_for_example_10_schedules_90_of_the_normal_next"
+msgstr "For example, 10% schedules 90% of the normal next interval and multiplies the persistent A-factor by 0.9."
+
+msgid "settings_hard_cap_for_topic_intervals_the_deck_preset_s"
+msgstr "Hard cap for topic intervals. The deck preset's Maximum interval also applies; Incremento uses whichever cap is lower."
+
+msgid "settings_higher_priority_number_is_more_important"
+msgstr "Higher priority number is more important"
+
+msgid "settings_highlight_the_current_writing_line"
+msgstr "Highlight the current writing line"
+
+msgid "settings_highlight_when_extracting"
+msgstr "Highlight when extracting"
+
+msgid "settings_how_strongly_less_lengthens_the_immediate_interval_and_increases"
+msgstr "How strongly Less lengthens the immediate interval and increases the persistent A-factor."
+
+msgid "settings_how_strongly_more_shortens_the_immediate_interval_and_reduces"
+msgstr "How strongly More shortens the immediate interval and reduces the persistent A-factor."
+
+msgid "settings_if_you_switch_this_direction_incremento_can_optionally_invert"
+msgstr "If you switch this direction, Incremento can optionally invert stored priorities for the current profile on save."
+
+msgid "settings_incremento_settings"
+msgstr "Incremento Settings"
+
+msgid "settings_item_and_other_cards"
+msgstr "Item and other cards"
+
+msgid "settings_item_skip"
+msgstr "Item Skip"
+
+msgid "settings_keyboard_shortcut_conflicts"
+msgstr "Keyboard shortcut conflicts"
+
+msgid "settings_known_profiles"
+msgstr "Known profiles: {profiles}"
+
+msgid "settings_known_profiles_empty"
+msgstr "Known profiles will appear here when available."
+
+msgid "settings_language_auto"
+msgstr "Automatic — follow Anki"
+
+msgid "settings_language_label"
+msgstr "Interface language:"
+
+msgid "settings_language_restart"
+msgstr "Save your choice, then restart Anki to apply the language. Your current work stays open until you restart."
+
+msgid "settings_language_tab"
+msgstr "Language"
+
+msgid "settings_leave_blank_for_all_profiles_or_enter_one_profile"
+msgstr "Leave blank for all profiles, or enter one profile name per line"
+
+msgid "settings_leave_this_blank_to_apply_automatic_topics_deck_creation"
+msgstr "Leave this blank to apply automatic Topics deck creation to every profile. If you enter profile names here, only those profiles will get the deck automatically."
+
+msgid "settings_less_adjustment"
+msgstr "Less adjustment:"
+
+msgid "settings_local_file"
+msgstr "Local file"
+
+msgid "settings_lower_priority_number_is_more_important"
+msgstr "Lower priority number is more important"
+
+msgid "settings_mark_extracted_cards_as_topics"
+msgstr "Mark extracted cards as topics"
+
+msgid "settings_maximum_topic_interval"
+msgstr "Maximum topic interval:"
+
+msgid "settings_min"
+msgstr " min"
+
+msgid "settings_minimum_cadence"
+msgstr "Minimum cadence"
+
+msgid "settings_more_adjustment"
+msgstr "More adjustment:"
+
+msgid "settings_multiplier_help"
+msgstr "Used when the extracted text came from a card that already has a priority. {example}"
+
+msgid "settings_multiplier_higher"
+msgstr "For a source priority of 60, multiplier 1.02 creates extract priority 61.2."
+
+msgid "settings_multiplier_lower"
+msgstr "For a source priority of 6, multiplier 0.98 creates extract priority 5.88."
+
+msgid "settings_multiplier_tooltip"
+msgstr "New extracts use source priority × this value when the source card is known. {example}"
+
+msgid "settings_one_preset_per_line_label_value_unit_example_every"
+msgstr "One preset per line: Label | Value | Unit\nExample: Every 2 days | 2 | days"
+
+msgid "settings_one_time_set_due"
+msgstr "One-time set due"
+
+msgid "settings_only_create_for_these_profiles"
+msgstr "Only create for these profiles:"
+
+msgid "settings_only_used_for_timed_snooze_example_60_minutes_hides"
+msgstr "Only used for Timed snooze. Example: 60 minutes hides the topic for an hour, then lets it come back automatically."
+
+msgid "settings_open_a_guarded_database_inspector_for_the_current_profile"
+msgstr "Open a guarded database inspector for the current profile's Incremento SQLite database. A timestamped checkpoint is created automatically before the editor opens."
+
+msgid "settings_open_database_editor"
+msgstr "Open Database Editor..."
+
+msgid "settings_optional_extra_filter_if_you_fill_this_in_the"
+msgstr "Optional extra filter. If you fill this in, the auto-start timer only triggers for cards that match one of these tags in addition to the selected card types."
+
+msgid "settings_parent_cards_in_extract_card"
+msgstr "Parent cards in Extract Card"
+
+msgid "settings_pdf_highlight_card_target_field"
+msgstr "PDF highlight card target field:"
+
+msgid "settings_pdf_pages"
+msgstr "PDF pages"
+
+msgid "settings_play_a_beep_when_the_focus_timer_finishes"
+msgstr "Play a beep when the focus timer finishes"
+
+msgid "settings_postpone"
+msgstr "Postpone"
+
+msgid "settings_postpone_button"
+msgstr "Postpone Button"
+
+msgid "settings_postpone_mode"
+msgstr "Postpone mode:"
+
+msgid "settings_prefer_resuming_embedded_web_card_media_in_the_original"
+msgstr "Prefer resuming embedded web-card media in the original page"
+
+msgid "settings_priority_assigned"
+msgstr "Priority assigned to newly extracted cards. {important_end} is the most important end."
+
+msgid "settings_priority_direction"
+msgstr "Priority direction:"
+
+msgid "settings_priority_fallback_help"
+msgstr "Used when Incremento cannot derive the new extract's priority from a source card. {important_end} is the most important end with your current priority direction."
+
+msgid "settings_profile_sqlite_database"
+msgstr "Profile SQLite Database"
+
+msgid "settings_progress"
+msgstr "Progress"
+
+msgid "settings_quick_presets"
+msgstr "Quick presets:"
+
+msgid "settings_remember_scrolling_position_in_browser_cards"
+msgstr "Remember scrolling position in browser cards"
+
+msgid "settings_repeat_exactly"
+msgstr "Repeat exactly"
+
+msgid "settings_restore_defaults"
+msgstr "Restore Defaults"
+
+msgid "settings_restore_saved_bookmark_line_when_reopening_writing_cards"
+msgstr "Restore saved bookmark line when reopening writing cards"
+
+msgid "settings_review"
+msgstr "Review"
+
+msgid "settings_review_flow"
+msgstr "Review Flow"
+
+msgid "settings_review_settings_control_how_priority_numbers_are_interpreted_which"
+msgstr "Review settings control how priority numbers are interpreted, which extra prompts appear after answering, how browser cards resume, and how optional repeating schedule rules behave."
+
+msgid "settings_reviewer_controls"
+msgstr "Reviewer Controls"
+
+msgid "settings_save_failed"
+msgstr "Could not save settings. Please try again."
+
+msgid "settings_save_links_for"
+msgstr "Save links for:"
+
+msgid "settings_saved_provenance"
+msgstr "Saved Provenance"
+
+msgid "settings_scroll_to_top_when_going_to_the_next_pdf"
+msgstr "Scroll to top when going to the next PDF page"
+
+msgid "settings_session"
+msgstr "Session"
+
+msgid "settings_session_only"
+msgstr "Session only"
+
+msgid "settings_session_resets_when_you_leave_and_reopen_that_writing"
+msgstr "Session resets when you leave and reopen that writing card."
+
+msgid "settings_shortcut_conflicts"
+msgstr "Resolve duplicate shortcuts before saving:\n{conflicts}"
+
+msgid "settings_shortcut_for"
+msgstr "Shortcut for {action}"
+
+msgid "settings_shortcuts"
+msgstr "Shortcuts"
+
+msgid "settings_show_incremento_metadata_ocr_fields_in_browser_and_note"
+msgstr "Show Incremento metadata / OCR fields in Browser and note editors"
+
+msgid "settings_show_markdown_preview_in_writing_cards"
+msgstr "Show markdown preview in writing cards"
+
+msgid "settings_show_priority_dialog_after_each_card_is_done_before"
+msgstr "Show priority dialog after each card is done before moving forward"
+
+msgid "settings_show_review_button_group"
+msgstr "Show review button group"
+
+msgid "settings_show_reviewer_priority_badge_on"
+msgstr "Show reviewer priority badge on:"
+
+msgid "settings_show_the_writing_progress_counter_in_the_dock"
+msgstr "Show the writing progress counter in the dock"
+
+msgid "settings_simple_whitespace"
+msgstr "Simple whitespace"
+
+msgid "settings_simple_whitespace_counts_chunks_separated_by_spaces_word_like"
+msgstr "Simple whitespace counts chunks separated by spaces. Word-like is closer to word-processor counting for punctuation, contractions, and hyphenated text."
+
+msgid "settings_skip_duration"
+msgstr "Skip duration:"
+
+msgid "settings_source_priority_multiplier"
+msgstr "Source priority multiplier:"
+
+msgid "settings_start_writing_cards_in_focus_mode"
+msgstr "Start writing cards in focus mode"
+
+msgid "settings_starting_a_factor_for_topic_cards_before_they_build"
+msgstr "Starting A-factor for topic cards before they build their own topic review history."
+
+msgid "settings_tags"
+msgstr "Tags:"
+
+msgid "settings_the_editor_starts_read_only_sql_writes_stay_locked"
+msgstr "The editor starts read-only. SQL writes stay locked until you explicitly unlock them."
+
+msgid "settings_these_appear_in_browser_scheduling_menus_for_one_click"
+msgstr "These appear in browser scheduling menus for one-click reuse. Example lines: 'Every 2 days | 2 | days' or 'Monthly review | 1 | months'."
+
+msgid "settings_these_cards_use_topic_review_behavior_such_as_more"
+msgstr "These cards use topic review behavior such as More / Same / Less and A-factor scheduling instead of standard item grading."
+
+msgid "settings_these_links_are_stored_in_dedicated_incremento_metadata_fields"
+msgstr "These links are stored in dedicated Incremento metadata fields so the new extract can point back to where it came from."
+
+msgid "settings_these_tags_are_toggled_when_you_click_the_item"
+msgstr "These tags are toggled when you click the Item button. Example: 'item, flashcard' for short recall-oriented notes."
+
+msgid "settings_these_tags_are_toggled_when_you_click_the_topic"
+msgstr "These tags are toggled when you click the Topic button in Add Card or the note editor. Example: 'topic, article' marks long-form notes as topic material."
+
+msgid "settings_this_decides_whether_smaller_numbers_mean_do_this_sooner"
+msgstr "This decides whether smaller numbers mean 'do this sooner' or larger numbers do. If you change it, Incremento can invert stored priorities for the current profile when you save."
+
+msgid "settings_this_is_used_by_extract_card_when_it_creates"
+msgstr "This is used by Extract Card when it creates a new note from selected text. Use 'current Add Card type' if you want extraction to follow whatever note type is currently selected there."
+
+msgid "settings_timed_snooze"
+msgstr "Timed snooze"
+
+msgid "settings_timed_snooze_duration"
+msgstr "Timed snooze duration:"
+
+msgid "settings_timed_snooze_hides_the_topic_until_the_timer_expires"
+msgstr "Timed snooze hides the topic until the timer expires. Session only keeps it out until the current study session ends or postponed cards are released."
+
+msgid "settings_today"
+msgstr "Today"
+
+msgid "settings_today_counts_words_written_today_on_this_card_session"
+msgstr "Today counts words written today on this card. Session counts only the current open session for this card. All-time uses the card's full saved writing history."
+
+msgid "settings_topic_a_factor_and_custom_schedules_cannot_exceed_this"
+msgstr "Topic A-factor and custom schedules cannot exceed this many days. The card's Anki deck-options maximum interval remains an additional cap."
+
+msgid "settings_topic_cards"
+msgstr "Topic cards"
+
+msgid "settings_topic_cards_use_more_same_less_buttons_and_a"
+msgstr "Topic cards use More / Same / Less buttons and A-factor scheduling instead of flashcard grading. All three choices submit Good to Anki; Incremento alone uses More or Less to change topic frequency. You can also add a red Postpone button for difficult topics."
+
+msgid "settings_topic_identity"
+msgstr "Topic Identity"
+
+msgid "settings_topic_settings_control_which_cards_are_treated_as_topics"
+msgstr "Topic settings control which cards are treated as topics, which tags the Add Card topic and item buttons apply, and whether topic reviews show the red Postpone action."
+
+msgid "settings_topic_tags"
+msgstr "Topic tags:"
+
+msgid "settings_topics"
+msgstr "Topics"
+
+msgid "settings_topics_deck"
+msgstr "Topics Deck"
+
+msgid "settings_track_web_card_external_pages_via_chrome_extension_by"
+msgstr "Track web-card external pages via Chrome extension by default"
+
+msgid "settings_treat_these_card_types_as_topics"
+msgstr "Treat these card types as topics:"
+
+msgid "settings_units_days_weeks_months_lines_with_invalid_values_are"
+msgstr "Units: days, weeks, months. Lines with invalid values are ignored."
+
+msgid "settings_use_current_add_card_type"
+msgstr "Use current Add Card type"
+
+msgid "settings_use_fail_pass_buttons_on_items"
+msgstr "Use Fail / Pass buttons on items"
+
+msgid "settings_used_only_when_a_topic_card_does_not_yet"
+msgstr "Used only when a topic card does not yet have stored topic-schedule state."
+
+msgid "settings_used_when_a_topic_card_has_no_stored_topic"
+msgstr "Used when a topic card has no stored topic-schedule history yet. Higher values generally stretch topic reviews further apart."
+
+msgid "settings_video"
+msgstr "Video"
+
+msgid "settings_web"
+msgstr "Web"
+
+msgid "settings_web_pages_urls"
+msgstr "Web pages / URLs"
+
+msgid "settings_when_incremento_automatically_starts_the_focus_timer_for_a"
+msgstr "When Incremento automatically starts the focus timer for a matching card, use this many minutes."
+
+msgid "settings_when_you_click_skip_on_an_item_card_incremento"
+msgstr "When you click Skip on an item card, Incremento buries it temporarily and brings it back after this many minutes. Example: 30 minutes hides the item for the rest of the current short study burst, then lets it reappear later."
+
+msgid "settings_when_you_create_a_card_from_a_pdf_highlight"
+msgstr "When you create a card from a PDF highlight, Incremento prefills this one-based Add Card field index."
+
+msgid "settings_word_counting_mode"
+msgstr "Word counting mode:"
+
+msgid "settings_word_like"
+msgstr "Word-like"
+
+msgid "settings_word_like_mode_approximates_microsoft_word_better_for_punctuation"
+msgstr "Word-like mode approximates Microsoft Word better for punctuation, apostrophes, and hyphenated words."
+
+msgid "settings_wrap_long_lines_in_writing_cards"
+msgstr "Wrap long lines in writing cards"
+
+msgid "settings_writing"
+msgstr "Writing"
+
+msgid "shortcut_activity_center"
+msgstr "Activity Center"
+
+msgid "shortcut_add_epub"
+msgstr "Add EPUB"
+
+msgid "shortcut_add_local_file"
+msgstr "Add Local File"
+
+msgid "shortcut_add_pdf"
+msgstr "Add PDF"
+
+msgid "shortcut_add_web_page"
+msgstr "Web Page"
+
+msgid "shortcut_add_writing"
+msgstr "Add to Markdown"
+
+msgid "shortcut_append_tags_reviewer"
+msgstr "Append Tags To Reviewed Card"
+
+msgid "shortcut_command_palette"
+msgstr "Command Palette"
+
+msgid "shortcut_document_bookshelf"
+msgstr "Document Bookshelf"
+
+msgid "shortcut_export_user_data"
+msgstr "Export Full Backup"
+
+msgid "shortcut_extract_card"
+msgstr "Extract Card"
+
+msgid "shortcut_go_to_parent_knowledge_tree"
+msgstr "Go To Parent In Knowledge Tree"
+
+msgid "shortcut_group_navigation"
+msgstr "Navigation"
+
+msgid "shortcut_group_review"
+msgstr "Review"
+
+msgid "shortcut_group_study"
+msgstr "Study"
+
+msgid "shortcut_open_knowledge_tree"
+msgstr "Open Knowledge Tree"
+
+msgid "shortcut_open_settings"
+msgstr "Settings"
+
+msgid "shortcut_pdf_mark_read"
+msgstr "PDF Viewer: Mark Read"
+
+msgid "shortcut_pdf_next_page"
+msgstr "PDF Viewer: Next Page"
+
+msgid "shortcut_pdf_prev_page"
+msgstr "PDF Viewer: Previous Page"
+
+msgid "shortcut_pdf_zoom_in"
+msgstr "PDF Viewer: Zoom In"
+
+msgid "shortcut_pdf_zoom_out"
+msgstr "PDF Viewer: Zoom Out"
+
+msgid "shortcut_quick_open_pdf"
+msgstr "Quick Open Content"
+
+msgid "shortcut_reveal_current_knowledge_tree"
+msgstr "Reveal Current Card In Knowledge Tree"
+
+msgid "shortcut_search_all"
+msgstr "Search ALL"
+
+msgid "shortcut_search_current_document"
+msgstr "Find In Current Document"
+
+msgid "shortcut_set_priority"
+msgstr "Set Priority"
+
+msgid "shortcut_start_learning"
+msgstr "Start Incremental Learning"
+
+msgid "shortcut_statistics"
+msgstr "Statistics"
+
+msgid "shortcut_toggle_focus_timer"
+msgstr "Show Focus Timer"
+
+msgid "shortcut_toggle_reviewer_buttons"
+msgstr "Toggle Reviewer Buttons"
+
+msgid "shortcut_webpage_to_pdf"
+msgstr "Webpage to PDF"
+
+msgid "shortcut_youtube_video"
+msgstr "Add Video"
+
+#. Editor transfer button tooltip; field is an unchanged user-defined name.
+msgid "editor_insert_selected_text_into_field"
+msgstr "Insert selected text into {field}"
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_encode_failed"
+msgstr "Could not encode snapshot image."
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_invalid_bounds"
+msgstr "Invalid snapshot bounds: {error}"
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_capture_failed_detail"
+msgstr "Could not capture web view: {error}"
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_capture_failed"
+msgstr "Could not capture web view."
+
+#. Web snapshot validation; technical details remain unchanged.
+msgid "web_snapshot_outside_viewport"
+msgstr "The selected region was outside the current viewport."
+
+msgid "settings_language_pack_hint"
+msgstr "Export a CSV template, edit its translation column in a spreadsheet, then import it. Blank translations use English. Imports are saved to this profile when you confirm Settings; importing the same language replaces its previous pack."
+
+msgid "settings_language_export_template"
+msgstr "Export template…"
+
+msgid "settings_language_export_selected"
+msgstr "Export selected language…"
+
+msgid "settings_language_import"
+msgstr "Import translations…"
+
+msgid "settings_language_imported_name"
+msgstr "{name} (Imported)"
+
+msgid "settings_language_missing_pack"
+msgstr "{locale} (Not installed in this profile)"
+
+msgid "settings_language_import_ready"
+msgstr "{name}: {count} translated entries ready. Confirm Settings to save, then restart Anki to apply. Cancel discards this import."
+
+msgid "settings_language_file_error"
+msgstr "The file could not be read or written."
+
+msgid "settings_language_import_failed"
+msgstr "Import failed: {detail}"
+
+msgid "settings_language_export_failed"
+msgstr "Export failed: {detail}"
+
+msgid "settings_language_export_success"
+msgstr "CSV exported. Edit only the translation column, including the language code and name at the top; save as CSV UTF-8."
+
+msgid "settings_language_csv_filter"
+msgstr "CSV tables (*.csv *.tsv);;All files (*)"
+
+msgid "settings_language_profile_changed"
+msgstr "The active profile changed. Reopen Settings to import translations into the intended profile."

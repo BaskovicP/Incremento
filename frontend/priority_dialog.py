@@ -3,6 +3,12 @@ from aqt.qt import (
     QPushButton, QWidget, Qt, QTimer, QEvent,
 )
 from PyQt6.QtGui import QPainter, QLinearGradient, QColor
+from html import escape
+
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
 
 # ── Non-linear mapping ────────────────────────────────────────────────────────
 # Slider range 0–10000. The important end gets finer control.
@@ -134,7 +140,7 @@ class PriorityDialog(QDialog):
         parent=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle("Set Priority")
+        self.setWindowTitle(_t("imports_priority_title"))
         self.setMinimumWidth(380)
 
         self._building = False  # guard against recursive signal loops
@@ -152,6 +158,7 @@ class PriorityDialog(QDialog):
         # Info label
         if card_label:
             lbl = QLabel(card_label)
+            lbl.setTextFormat(Qt.TextFormat.PlainText)
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
 
@@ -159,17 +166,16 @@ class PriorityDialog(QDialog):
         important_end = "0" if self._lower_is_more_important else "100"
         less_important_end = "100" if self._lower_is_more_important else "0"
         slider_side_hint = (
-            "First half of slider (0–30)"
+            _t("imports_priority_first_half")
             if self._lower_is_more_important
-            else "Second half of slider (70–100)"
+            else _t("imports_priority_second_half")
         )
         hint = QLabel(
             "<small><i>"
-            f"{important_end} = highest importance &nbsp;·&nbsp; "
-            "50 = default &nbsp;·&nbsp; "
-            f"{less_important_end} = lowest importance<br>"
-            f"{slider_side_hint} gives finer control over important cards."
-            "</i></small>"
+            + escape(_t("imports_priority_scale_hint", important=important_end, least=less_important_end))
+            + "<br>"
+            + escape(_t("imports_priority_finer_hint", side=slider_side_hint))
+            + "</i></small>"
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -196,7 +202,7 @@ class PriorityDialog(QDialog):
 
         # Priority spinbox
         spin_row = QHBoxLayout()
-        spin_row.addWidget(QLabel("Priority:"))
+        spin_row.addWidget(QLabel(_t("imports_priority_label")))
         self._spin = QDoubleSpinBox()
         self._spin.setRange(0.0, 100.0)
         self._spin.setDecimals(4)
@@ -209,7 +215,7 @@ class PriorityDialog(QDialog):
         # A-factor row — only for topic cards
         if current_a_factor is not None:
             af_row = QHBoxLayout()
-            af_row.addWidget(QLabel("A-Factor:"))
+            af_row.addWidget(QLabel(_t("imports_priority_a_factor")))
             self._a_spin = QDoubleSpinBox()
             self._a_spin.setRange(1.1, 100.0)
             self._a_spin.setDecimals(3)
@@ -219,21 +225,24 @@ class PriorityDialog(QDialog):
             af_row.addWidget(self._a_spin)
             if current_interval is not None:
                 af_row.addSpacing(16)
-                af_row.addWidget(QLabel(f"Last interval: {current_interval} d"))
+                af_row.addWidget(QLabel(_t("imports_priority_last_interval", days=current_interval)))
             af_row.addStretch()
             layout.addLayout(af_row)
             af_hint = QLabel(
-                "<small><i>Lower A-Factor → shorter intervals (important topic).<br>"
-                "Higher A-Factor → longer intervals (less urgent).</i></small>"
+                "<small><i>"
+                + escape(_t("imports_priority_a_lower"))
+                + "<br>"
+                + escape(_t("imports_priority_a_higher"))
+                + "</i></small>"
             )
             af_hint.setWordWrap(True)
             layout.addWidget(af_hint)
 
         # OK / Cancel
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("OK")
+        ok_btn = QPushButton(_t("imports_ok"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)

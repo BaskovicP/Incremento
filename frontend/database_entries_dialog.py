@@ -15,6 +15,12 @@ from aqt.qt import (
 )
 from PyQt6.QtGui import QColor, QTextCharFormat, QTextCursor
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 
 @dataclass(frozen=True)
 class TextMatch:
@@ -93,16 +99,16 @@ class DatabaseEntriesDialog(QDialog):
         self._matches: list[TextMatch] = []
         self._active_match_index = -1
 
-        self.setWindowTitle("Incremento Database Entries")
+        self.setWindowTitle(_t("admin_entries_title"))
         self.resize(980, 700)
 
         layout = QVBoxLayout(self)
 
         controls = QHBoxLayout()
         self._search_edit = QLineEdit(self)
-        self._search_edit.setPlaceholderText("Search entries")
-        self._previous_button = QPushButton("Previous", self)
-        self._next_button = QPushButton("Next", self)
+        self._search_edit.setPlaceholderText(_t("admin_entries_search"))
+        self._previous_button = QPushButton(_t("admin_entries_previous"), self)
+        self._next_button = QPushButton(_t("admin_entries_next"), self)
         self._count_label = QLabel("", self)
         controls.addWidget(self._search_edit, 1)
         controls.addWidget(self._previous_button)
@@ -116,6 +122,7 @@ class DatabaseEntriesDialog(QDialog):
         layout.addWidget(self._text_browser, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText(_t("admin_entries_close"))
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
@@ -160,9 +167,9 @@ class DatabaseEntriesDialog(QDialog):
         if not has_query:
             self._count_label.setText("")
         elif not has_matches:
-            self._count_label.setText("No matches")
+            self._count_label.setText(_t("admin_entries_no_matches"))
         else:
-            self._count_label.setText(f"{self._active_match_index + 1} of {len(self._matches)}")
+            self._count_label.setText(_t("admin_entries_match_count", current=self._active_match_index + 1, total=len(self._matches)))
         self._apply_highlights()
 
     def _apply_highlights(self) -> None:

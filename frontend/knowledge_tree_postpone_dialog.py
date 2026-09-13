@@ -26,6 +26,10 @@ from aqt.qt import (
     qconnect,
 )
 from aqt.utils import showInfo, tooltip
+try:
+    from ..backend.i18n import t, tn
+except ImportError:
+    from backend.i18n import t, tn
 
 try:
     from aqt import dialogs
@@ -45,10 +49,8 @@ try:
         SUBTREE_MODE_RESPECT,
         apply_postpone_plan,
         branch_scope_label,
-        browser_scope_label,
         default_postpone_preset,
         delete_postpone_preset,
-        format_simulation_summary,
         get_branch_attached_preset,
         get_postpone_preset,
         list_subbranch_presets,
@@ -72,10 +74,8 @@ except ImportError:
         SUBTREE_MODE_RESPECT,
         apply_postpone_plan,
         branch_scope_label,
-        browser_scope_label,
         default_postpone_preset,
         delete_postpone_preset,
-        format_simulation_summary,
         get_branch_attached_preset,
         get_postpone_preset,
         list_subbranch_presets,
@@ -150,6 +150,18 @@ def _unique_ints(values: Iterable[int]) -> list[int]:
     return out
 
 
+def _format_postpone_summary(summary: dict) -> str:
+    return "\n".join([
+        tn("reader_postpone_elements", int(summary.get("elements_to_postpone") or 0)),
+        t("reader_postpone_average_interval", days=f"{float(summary.get('average_delay_interval') or 0.0):.1f}"),
+        t("reader_postpone_average_delay", percent=f"{float(summary.get('average_delay') or 0.0):.1f}"),
+        tn("reader_postpone_items_skipped", int(summary.get("items_skipped") or 0)),
+        tn("reader_postpone_topics_skipped", int(summary.get("topics_skipped") or 0)),
+        t("reader_postpone_max_qualified", interval=int(summary.get("max_interval_qualified") or 0)),
+        t("reader_postpone_max_found", interval=int(summary.get("max_interval_found") or 0)),
+    ])
+
+
 def _make_double_spin(
     *,
     minimum: float = 0.0,
@@ -183,7 +195,7 @@ class _SimulationDialog(QDialog):
     def __init__(self, summary_text: str, parent=None):
         super().__init__(parent)
         self._summary_text = str(summary_text or "").strip()
-        self.setWindowTitle("Information")
+        self.setWindowTitle(t("reader_postpone_information"))
         self.setMinimumWidth(560)
 
         root = QVBoxLayout(self)
@@ -196,8 +208,8 @@ class _SimulationDialog(QDialog):
         root.addWidget(self._body)
 
         buttons = QHBoxLayout()
-        ok_btn = QPushButton("OK")
-        copy_btn = QPushButton("Copy")
+        ok_btn = QPushButton(t("reader_ok"))
+        copy_btn = QPushButton(t("reader_copy"))
         buttons.addStretch(1)
         buttons.addWidget(ok_btn)
         buttons.addWidget(copy_btn)
@@ -210,7 +222,7 @@ class _SimulationDialog(QDialog):
         clipboard = QApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(self._summary_text)
-            tooltip("Simulation summary copied.")
+            tooltip(t("reader_postpone_simulation_copied"))
 
 
 class KnowledgeTreePostponeDialog(QDialog):
@@ -236,7 +248,7 @@ class KnowledgeTreePostponeDialog(QDialog):
         self._loading_preset = False
         self._last_simulation: dict | None = None
 
-        self.setWindowTitle("Postpone outstanding elements")
+        self.setWindowTitle(t("reader_postpone_title"))
         self.resize(980, 760)
         self._apply_style()
 
@@ -250,9 +262,9 @@ class KnowledgeTreePostponeDialog(QDialog):
         self._scope_tab = QWidget(self)
         self._parameters_tab = QWidget(self)
         self._adjust_tab = QWidget(self)
-        self._tabs.addTab(self._scope_tab, "Scope")
-        self._tabs.addTab(self._parameters_tab, "Parameters")
-        self._tabs.addTab(self._adjust_tab, "Adjust")
+        self._tabs.addTab(self._scope_tab, t("reader_postpone_scope"))
+        self._tabs.addTab(self._parameters_tab, t("reader_postpone_parameters"))
+        self._tabs.addTab(self._adjust_tab, t("reader_postpone_adjust"))
 
         self._build_scope_tab()
         self._build_parameters_tab()
@@ -260,10 +272,10 @@ class KnowledgeTreePostponeDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        self._postpone_btn = QPushButton("Postpone")
-        self._simulate_btn = QPushButton("Simulate")
-        self._close_btn = QPushButton("Close")
-        self._help_btn = QPushButton("Help")
+        self._postpone_btn = QPushButton(t("reader_postpone_action"))
+        self._simulate_btn = QPushButton(t("reader_postpone_simulate"))
+        self._close_btn = QPushButton(t("reader_close"))
+        self._help_btn = QPushButton(t("reader_help"))
         buttons.addWidget(self._postpone_btn)
         buttons.addWidget(self._simulate_btn)
         buttons.addWidget(self._close_btn)
@@ -312,12 +324,12 @@ class KnowledgeTreePostponeDialog(QDialog):
         outer = QVBoxLayout(self._scope_tab)
         outer.setSpacing(10)
 
-        subset_box = QGroupBox("Subset")
+        subset_box = QGroupBox(t("reader_postpone_subset"))
         subset_layout = QVBoxLayout(subset_box)
         self._scope_group = QButtonGroup(self)
-        self._scope_all = QRadioButton("All outstanding repetitions")
-        self._scope_branch = QRadioButton("Selected branch or category")
-        self._scope_browser = QRadioButton(self._browser_scope_name or "Current browser")
+        self._scope_all = QRadioButton(t("reader_postpone_all_outstanding"))
+        self._scope_branch = QRadioButton(t("reader_postpone_selected_branch"))
+        self._scope_browser = QRadioButton(self._browser_scope_name or t("reader_postpone_current_browser"))
         self._scope_group.addButton(self._scope_all)
         self._scope_group.addButton(self._scope_branch)
         self._scope_group.addButton(self._scope_browser)
@@ -326,11 +338,11 @@ class KnowledgeTreePostponeDialog(QDialog):
         subset_layout.addWidget(self._scope_browser)
         outer.addWidget(subset_box)
 
-        method_box = QGroupBox("Method")
+        method_box = QGroupBox(t("reader_postpone_method"))
         method_layout = QGridLayout(method_box)
         self._method_group = QButtonGroup(self)
-        self._method_skip_top = QRadioButton("Skip the following number of top priority elements")
-        self._method_parameters = QRadioButton("Skip elements as defined by Parameters (next page)")
+        self._method_skip_top = QRadioButton(t("reader_postpone_skip_top"))
+        self._method_parameters = QRadioButton(t("reader_postpone_skip_parameters"))
         self._skip_top_spin = _make_int_spin(value=50)
         self._method_group.addButton(self._method_skip_top)
         self._method_group.addButton(self._method_parameters)
@@ -339,19 +351,19 @@ class KnowledgeTreePostponeDialog(QDialog):
         method_layout.addWidget(self._method_parameters, 1, 0, 1, 2)
         outer.addWidget(method_box)
 
-        settings_box = QGroupBox("Settings")
+        settings_box = QGroupBox(t("reader_postpone_settings"))
         settings_layout = QGridLayout(settings_box)
-        settings_layout.addWidget(QLabel("Name:"), 0, 0)
+        settings_layout.addWidget(QLabel(t("reader_postpone_name_label")), 0, 0)
         self._preset_combo = QComboBox()
         self._preset_combo.setEditable(True)
         settings_layout.addWidget(self._preset_combo, 0, 1, 1, 3)
-        settings_layout.addWidget(QLabel("Branch scope:"), 1, 0)
+        settings_layout.addWidget(QLabel(t("reader_postpone_branch_scope_label")), 1, 0)
         self._branch_scope_edit = QLineEdit()
         self._branch_scope_edit.setReadOnly(True)
         settings_layout.addWidget(self._branch_scope_edit, 1, 1, 1, 3)
-        self._save_btn = QPushButton("Save")
-        self._default_btn = QPushButton("Default")
-        self._delete_btn = QPushButton("Delete")
+        self._save_btn = QPushButton(t("reader_save"))
+        self._default_btn = QPushButton(t("reader_postpone_default"))
+        self._delete_btn = QPushButton(t("reader_delete"))
         settings_layout.addWidget(self._save_btn, 2, 1)
         settings_layout.addWidget(self._default_btn, 2, 2)
         settings_layout.addWidget(self._delete_btn, 2, 3)
@@ -375,7 +387,7 @@ class KnowledgeTreePostponeDialog(QDialog):
         outer.setSpacing(10)
 
         top_row = QHBoxLayout()
-        self._restore_defaults_btn = QPushButton("Restore defaults")
+        self._restore_defaults_btn = QPushButton(t("reader_postpone_restore_defaults"))
         top_row.addWidget(self._restore_defaults_btn)
         top_row.addStretch(1)
         outer.addLayout(top_row)
@@ -385,9 +397,9 @@ class KnowledgeTreePostponeDialog(QDialog):
         grid.setVerticalSpacing(10)
 
         grid.addWidget(QLabel(""), 0, 0)
-        items_heading = QLabel("Items")
+        items_heading = QLabel(t("reader_items"))
         items_heading.setObjectName("PostponeHeading")
-        topics_heading = QLabel("Topics")
+        topics_heading = QLabel(t("reader_topics"))
         topics_heading.setObjectName("PostponeHeading")
         grid.addWidget(items_heading, 0, 1, 1, 2)
         grid.addWidget(topics_heading, 0, 3, 1, 2)
@@ -397,7 +409,7 @@ class KnowledgeTreePostponeDialog(QDialog):
         self._topic_delay_factor = _make_double_spin(minimum=1.0, maximum=10.0, value=1.5)
         self._item_delay_percent = QLabel("")
         self._topic_delay_percent = QLabel("")
-        grid.addWidget(QLabel("Delay factor:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_delay_factor_label")), row, 0)
         grid.addWidget(self._item_delay_factor, row, 1)
         grid.addWidget(self._item_delay_percent, row, 2)
         grid.addWidget(self._topic_delay_factor, row, 3)
@@ -406,66 +418,66 @@ class KnowledgeTreePostponeDialog(QDialog):
         row += 1
         self._item_max_interval = _make_int_spin(value=50)
         self._topic_max_interval = _make_int_spin(value=100)
-        grid.addWidget(QLabel("Maximum interval:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_max_interval_label")), row, 0)
         grid.addWidget(self._item_max_interval, row, 1, 1, 2)
         grid.addWidget(self._topic_max_interval, row, 3, 1, 2)
 
         row += 1
         self._item_min_interval = _make_int_spin(value=1)
         self._topic_min_interval = _make_int_spin(value=6)
-        grid.addWidget(QLabel("Minimum interval:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_min_interval_label")), row, 0)
         grid.addWidget(self._item_min_interval, row, 1, 1, 2)
         grid.addWidget(self._topic_min_interval, row, 3, 1, 2)
 
         row += 1
-        skip_hint = QLabel("Skip conditions:")
+        skip_hint = QLabel(t("reader_postpone_skip_conditions_label"))
         skip_hint.setObjectName("PostponeHeading")
         grid.addWidget(skip_hint, row, 0)
 
         row += 1
-        self._item_skip = QCheckBox("Skip items")
-        self._topic_skip = QCheckBox("Skip topics")
-        grid.addWidget(QLabel("Type:"), row, 0)
+        self._item_skip = QCheckBox(t("reader_postpone_skip_items"))
+        self._topic_skip = QCheckBox(t("reader_postpone_skip_topics"))
+        grid.addWidget(QLabel(t("reader_type_label")), row, 0)
         grid.addWidget(self._item_skip, row, 1, 1, 2)
         grid.addWidget(self._topic_skip, row, 3, 1, 2)
 
         row += 1
         self._item_interval_beyond = _make_int_spin(value=500)
         self._topic_interval_beyond = _make_int_spin(value=800)
-        grid.addWidget(QLabel("Interval beyond:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_interval_beyond_label")), row, 0)
         grid.addWidget(self._item_interval_beyond, row, 1, 1, 2)
         grid.addWidget(self._topic_interval_beyond, row, 3, 1, 2)
 
         row += 1
         self._item_fi_below = _make_double_spin(minimum=0.0, maximum=100.0, value=6.0)
         self._item_fi_below.setEnabled(False)
-        self._item_fi_below.setSpecialValueText("N/A")
+        self._item_fi_below.setSpecialValueText(t("reader_not_applicable"))
         self._item_fi_below.setValue(0.0)
-        self._topic_fi_placeholder = QLineEdit("N/A")
+        self._topic_fi_placeholder = QLineEdit(t("reader_not_applicable"))
         self._topic_fi_placeholder.setReadOnly(True)
-        grid.addWidget(QLabel("Forgetting index below:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_forgetting_below_label")), row, 0)
         grid.addWidget(self._item_fi_below, row, 1, 1, 2)
         grid.addWidget(self._topic_fi_placeholder, row, 3, 1, 2)
 
         row += 1
-        self._item_afactor_placeholder = QLineEdit("N/A")
+        self._item_afactor_placeholder = QLineEdit(t("reader_not_applicable"))
         self._item_afactor_placeholder.setReadOnly(True)
         self._topic_a_factor_below = _make_double_spin(minimum=0.0, maximum=100.0, value=1.01)
-        grid.addWidget(QLabel("A-Factor below:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_afactor_below_label")), row, 0)
         grid.addWidget(self._item_afactor_placeholder, row, 1, 1, 2)
         grid.addWidget(self._topic_a_factor_below, row, 3, 1, 2)
 
         row += 1
         self._item_postpone_count = _make_int_spin(value=50)
         self._topic_postpone_count = _make_int_spin(value=100)
-        grid.addWidget(QLabel("Postpone count:"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_count_label")), row, 0)
         grid.addWidget(self._item_postpone_count, row, 1, 1, 2)
         grid.addWidget(self._topic_postpone_count, row, 3, 1, 2)
 
         row += 1
         self._item_priority_threshold = _make_double_spin(minimum=0.0, maximum=100.0, value=6.0)
         self._topic_priority_threshold = _make_double_spin(minimum=0.0, maximum=100.0, value=3.0)
-        grid.addWidget(QLabel("Priority (%):"), row, 0)
+        grid.addWidget(QLabel(t("reader_postpone_priority_percent_label")), row, 0)
         grid.addWidget(self._item_priority_threshold, row, 1, 1, 2)
         grid.addWidget(self._topic_priority_threshold, row, 3, 1, 2)
 
@@ -480,13 +492,13 @@ class KnowledgeTreePostponeDialog(QDialog):
         outer = QVBoxLayout(self._adjust_tab)
         outer.setSpacing(10)
 
-        subbranch_box = QGroupBox("Sub-branch postpones")
+        subbranch_box = QGroupBox(t("reader_postpone_subbranch_postpones"))
         subbranch_layout = QGridLayout(subbranch_box)
         self._subbranch_group = QButtonGroup(self)
-        self._respect_settings = QRadioButton("Respect settings")
-        self._ignore_settings = QRadioButton("Ignore settings")
-        self._conservative_settings = QRadioButton("Always choose most conservative settings")
-        self._liberal_settings = QRadioButton("Always choose most liberal settings")
+        self._respect_settings = QRadioButton(t("reader_postpone_respect_settings"))
+        self._ignore_settings = QRadioButton(t("reader_postpone_ignore_settings"))
+        self._conservative_settings = QRadioButton(t("reader_postpone_conservative_settings"))
+        self._liberal_settings = QRadioButton(t("reader_postpone_liberal_settings"))
         for button in (
             self._respect_settings,
             self._ignore_settings,
@@ -498,24 +510,22 @@ class KnowledgeTreePostponeDialog(QDialog):
         subbranch_layout.addWidget(self._ignore_settings, 1, 0)
         subbranch_layout.addWidget(self._conservative_settings, 2, 0)
         subbranch_layout.addWidget(self._liberal_settings, 3, 0)
-        self._list_presets_btn = QPushButton("List")
+        self._list_presets_btn = QPushButton(t("reader_postpone_list"))
         subbranch_layout.addWidget(self._list_presets_btn, 1, 1)
         outer.addWidget(subbranch_box)
 
-        self._include_non_outstanding = QCheckBox("Include elements that are not outstanding")
-        self._modify_item_delay_by_fi = QCheckBox("Modify item delay in proportion to forgetting index")
+        self._include_non_outstanding = QCheckBox(t("reader_postpone_include_not_outstanding"))
+        self._modify_item_delay_by_fi = QCheckBox(t("reader_postpone_modify_item_fi"))
         self._modify_item_delay_by_fi.setEnabled(False)
-        self._modify_item_delay_by_fi.setToolTip("Item forgetting index is not available in Incremento yet.")
-        self._modify_topic_delay_by_a_factor = QCheckBox("Modify topic delay in proportion to A-Factor")
-        self._modify_delay_by_priority = QCheckBox("Modify delay in proportion to element priority")
+        self._modify_item_delay_by_fi.setToolTip(t("reader_postpone_fi_unavailable"))
+        self._modify_topic_delay_by_a_factor = QCheckBox(t("reader_postpone_modify_topic_afactor"))
+        self._modify_delay_by_priority = QCheckBox(t("reader_postpone_modify_priority"))
         outer.addWidget(self._include_non_outstanding)
         outer.addWidget(self._modify_item_delay_by_fi)
         outer.addWidget(self._modify_topic_delay_by_a_factor)
         outer.addWidget(self._modify_delay_by_priority)
 
-        hint = QLabel(
-            "Sub-branch presets are attached to saved branch presets. Use Save on a selected branch to attach settings to that subtree."
-        )
+        hint = QLabel(t("reader_postpone_subbranch_hint"))
         hint.setObjectName("PostponeHint")
         hint.setWordWrap(True)
         outer.addWidget(hint)
@@ -541,17 +551,19 @@ class KnowledgeTreePostponeDialog(QDialog):
                 self._profile,
                 self._branch_root_card_id,
             )
+            if label == f"Card {self._branch_root_card_id}":
+                label = t("reader_card_number", number=self._branch_root_card_id)
         elif self._scope_browser.isChecked():
             label = self._browser_scope_label()
         else:
-            label = "Global"
+            label = t("reader_postpone_global")
         self._branch_scope_edit.setText(label)
 
     def _browser_scope_label(self) -> str:
         if self._browser_scope_name:
             count = len(self._browser_card_ids)
-            return f"{self._browser_scope_name} ({count} card{'s' if count != 1 else ''})"
-        return browser_scope_label(self._browser_card_ids)
+            return t("reader_postpone_named_browser_scope", name=self._browser_scope_name, cards=tn("reader_postpone_card_count", count))
+        return t("reader_postpone_browser_scope", cards=tn("reader_postpone_card_count", len(self._browser_card_ids)))
 
     def _refresh_presets(self) -> None:
         current_name = self._preset_combo.currentText().strip()
@@ -721,7 +733,7 @@ class KnowledgeTreePostponeDialog(QDialog):
     def _save_current_preset(self) -> None:
         name = self._preset_combo.currentText().strip()
         if not name:
-            showInfo("Enter a preset name before saving.")
+            showInfo(t("reader_postpone_enter_name"))
             return
         scope = self._current_config()["scope"]
         branch_root_card_id = self._branch_root_card_id if scope == SCOPE_SELECTED_BRANCH else None
@@ -735,34 +747,34 @@ class KnowledgeTreePostponeDialog(QDialog):
         )
         self._refresh_presets()
         self._preset_combo.setEditText(name)
-        tooltip("Postpone preset saved.")
+        tooltip(t("reader_postpone_preset_saved"))
 
     def _mark_current_preset_default(self) -> None:
         name = self._preset_combo.currentText().strip()
         if not name:
-            showInfo("Choose or save a preset before marking it as default.")
+            showInfo(t("reader_postpone_choose_default"))
             return
         if get_postpone_preset(self._addon_dir, self._profile, name) is None:
             self._save_current_preset()
         if set_default_postpone_preset(self._addon_dir, self._profile, name):
             self._refresh_presets()
             self._preset_combo.setEditText(name)
-            tooltip("Preset set as default.")
+            tooltip(t("reader_postpone_default_set"))
 
     def _delete_selected_preset(self) -> None:
         name = self._preset_combo.currentText().strip()
         if not name:
             return
         if not delete_postpone_preset(self._addon_dir, self._profile, name):
-            showInfo("Could not delete that postpone preset.")
+            showInfo(t("reader_postpone_delete_failed"))
             return
         self._refresh_presets()
         self._preset_combo.setEditText("")
-        tooltip("Preset deleted.")
+        tooltip(t("reader_postpone_preset_deleted"))
 
     def _show_subbranch_presets(self) -> None:
         if self._branch_root_card_id is None:
-            showInfo("Select a knowledge-tree branch before listing sub-branch presets.")
+            showInfo(t("reader_postpone_select_branch_first"))
             return
         presets = list_subbranch_presets(
             self._addon_dir,
@@ -770,7 +782,7 @@ class KnowledgeTreePostponeDialog(QDialog):
             self._branch_root_card_id,
         )
         if not presets:
-            showInfo("No saved sub-branch presets were found below this branch.")
+            showInfo(t("reader_postpone_no_subbranch_presets"))
             return
         lines = [
             f"{row['branch_title']}  —  {row['preset_name']}"
@@ -780,10 +792,10 @@ class KnowledgeTreePostponeDialog(QDialog):
 
     def _validate_scope(self) -> bool:
         if self._scope_branch.isChecked() and self._branch_root_card_id is None:
-            showInfo("Selected branch scope is only available when a knowledge-tree node is selected.")
+            showInfo(t("reader_postpone_branch_scope_unavailable"))
             return False
         if self._scope_browser.isChecked() and not self._browser_card_ids:
-            showInfo(f"{self._scope_browser.text()} scope needs at least one card.")
+            showInfo(t("reader_postpone_scope_needs_card", scope=self._scope_browser.text()))
             return False
         return True
 
@@ -799,10 +811,10 @@ class KnowledgeTreePostponeDialog(QDialog):
                 browser_card_ids=self._browser_card_ids if self._scope_browser.isChecked() else None,
             )
         except Exception as exc:
-            showInfo(f"Could not simulate branch postponing:\n{exc}")
+            showInfo(t("reader_postpone_simulation_failed", error=exc))
             return
         self._last_simulation = summary
-        _SimulationDialog(format_simulation_summary(summary), parent=self).exec()
+        _SimulationDialog(_format_postpone_summary(summary), parent=self).exec()
 
     def _apply_postpone(self) -> None:
         if not self._validate_scope():
@@ -816,19 +828,14 @@ class KnowledgeTreePostponeDialog(QDialog):
                 browser_card_ids=self._browser_card_ids if self._scope_browser.isChecked() else None,
             )
         except Exception as exc:
-            showInfo(f"Could not postpone the selected cards:\n{exc}")
+            showInfo(t("reader_postpone_apply_failed", error=exc))
             return
         count = int(summary.get("applied_count") or 0)
         if count <= 0:
-            showInfo("No cards qualified for postponing with the current settings.")
+            showInfo(t("reader_postpone_no_qualified_cards"))
             return
-        tooltip(f"Postponed {count} card{'s' if count != 1 else ''}.")
+        tooltip(tn("reader_postpone_applied_count", count))
         self.accept()
 
     def _show_help(self) -> None:
-        showInfo(
-            "Postpone outstanding elements delays cards by adding extra interval days.\n\n"
-            "Delay factor controls the extra postponement percentage.\n"
-            "Scope chooses whether to operate on all outstanding cards, the selected branch, or the current Browser.\n"
-            "Simulate previews how many cards would be postponed before anything is changed."
-        )
+        showInfo(t("reader_postpone_help_text"))

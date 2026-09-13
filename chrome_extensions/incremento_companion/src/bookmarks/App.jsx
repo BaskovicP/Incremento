@@ -19,12 +19,14 @@ import { BookmarkTree } from "./components/BookmarkTree.jsx";
 import { ImportRows } from "./components/ImportRows.jsx";
 import { ProgressPanel } from "./components/ProgressPanel.jsx";
 import { ResultsList } from "./components/ResultsList.jsx";
+import { displayMessage, message, t, tn } from "../shared/i18n.js";
+import { useLanguage } from "../shared/i18nReact.js";
 
 function makeStatus(text = "", kind = "") {
   return { text, kind };
 }
 
-function makeProgress(total = 0, completed = 0, note = "Waiting to start.") {
+function makeProgress(total = 0, completed = 0, note = message("waiting_start")) {
   const safeTotal = Math.max(0, Number(total) || 0);
   const safeCompleted = Math.max(0, Math.min(safeTotal, Number(completed) || 0));
   return {
@@ -36,6 +38,7 @@ function makeProgress(total = 0, completed = 0, note = "Waiting to start.") {
 }
 
 export function BookmarksApp() {
+  const language = useLanguage();
   const [tree, setTree] = useState([]);
   const [itemsById, setItemsById] = useState({});
   const [deckNames, setDeckNames] = useState(["Topics"]);
@@ -49,13 +52,13 @@ export function BookmarksApp() {
   const [progress, setProgress] = useState(makeProgress());
 
   const selectedItems = useMemo(
-    () => getSelectedItems(itemsById).sort((left, right) => left.title.localeCompare(right.title)),
-    [itemsById]
+    () => getSelectedItems(itemsById).sort((left, right) => left.title.localeCompare(right.title, language)),
+    [itemsById, language]
   );
 
   async function loadBookmarks() {
     setBusy(true);
-    setStatus(makeStatus("Loading bookmarks..."));
+    setStatus(makeStatus(message("loading_bookmarks")));
     setProgress(makeProgress());
     setResults([]);
     try {
@@ -65,13 +68,13 @@ export function BookmarksApp() {
       setItemsById(nextItemsById);
       setTreeLoadError(false);
       setTreeLoaded(true);
-      setStatus(makeStatus("Bookmarks loaded."));
+      setStatus(makeStatus(message("bookmarks_loaded")));
     } catch (error) {
       setTree([]);
       setItemsById({});
       setTreeLoadError(true);
       setTreeLoaded(true);
-      setStatus(makeStatus(error?.message || "Failed to load bookmarks.", "error"));
+      setStatus(makeStatus(error?.message || t("load_bookmarks_failed"), "error"));
     } finally {
       setBusy(false);
     }
@@ -102,7 +105,7 @@ export function BookmarksApp() {
     } catch (error) {
       setDeckNames(["Topics"]);
       setDeckName((currentDeck) => currentDeck || "Topics");
-      setDeckLoadError(formatBridgeError(error, "Failed to load decks from Anki. Using Topics."));
+      setDeckLoadError(error);
     }
   }
 
@@ -191,13 +194,13 @@ export function BookmarksApp() {
       priority: item.priority,
     }));
     if (items.length === 0) {
-      setStatus(makeStatus("Select at least one bookmark before importing.", "error"));
+      setStatus(makeStatus(message("select_bookmark_first"), "error"));
       return;
     }
 
     setBusy(true);
-    setStatus(makeStatus(`Importing ${items.length} bookmark${items.length === 1 ? "" : "s"}...`));
-    setProgress(makeProgress(items.length, 0, "Preparing import..."));
+    setStatus(makeStatus(message("importing_bookmarks", {}, items.length)));
+    setProgress(makeProgress(items.length, 0, message("preparing_import")));
     setResults([]);
     setItemsById((currentItems) => {
       const nextItems = { ...currentItems };
@@ -206,6 +209,7 @@ export function BookmarksApp() {
           ...item,
           importState: "",
           importError: "",
+          importErrorCause: null,
         };
       }
       return nextItems;
@@ -218,7 +222,7 @@ export function BookmarksApp() {
     try {
       for (let index = 0; index < items.length; index += 1) {
         const item = items[index];
-        setProgress(makeProgress(items.length, index, `Importing ${index + 1} of ${items.length}: ${item.title}`));
+        setProgress(makeProgress(items.length, index, message("importing_item", { index: index + 1, count: items.length, title: item.title })));
 
         let result;
         try {
@@ -243,19 +247,22 @@ export function BookmarksApp() {
           setItemsById((currentItems) => updateBookmarkItem(currentItems, item.id, {
             importState: "success",
             importError: "",
+            importErrorCause: null,
           }));
         } catch (error) {
-          const message = formatBridgeError(error, "Failed to import bookmark.");
+          const message = formatBridgeError(error, t("import_bookmark_failed"));
           result = {
             ok: false,
             kind: item.kind,
             title: item.title,
             error: message,
+            errorCause: error,
           };
           failCount += 1;
           setItemsById((currentItems) => updateBookmarkItem(currentItems, item.id, {
             importState: "error",
             importError: message,
+            importErrorCause: error,
           }));
         }
 
@@ -266,21 +273,21 @@ export function BookmarksApp() {
             items.length,
             index + 1,
             result?.ok
-              ? `Imported ${index + 1} of ${items.length}: ${item.title}`
-              : `Failed ${index + 1} of ${items.length}: ${item.title}`
+              ? message("imported_item", { index: index + 1, count: items.length, title: item.title })
+              : message("failed_item", { index: index + 1, count: items.length, title: item.title })
           )
         );
       }
 
       if (failCount > 0) {
         setStatus(makeStatus(
-          `Imported ${okCount} bookmark${okCount === 1 ? "" : "s"}; ${failCount} failed.`,
+          message("imported_failed", { ok: okCount, failed: failCount }),
           "error"
         ));
-        setProgress(makeProgress(items.length, items.length, `Finished with ${okCount} imported and ${failCount} failed.`));
+        setProgress(makeProgress(items.length, items.length, message("finished_with_errors", { ok: okCount, failed: failCount })));
       } else {
-        setStatus(makeStatus(`Imported ${okCount} bookmark${okCount === 1 ? "" : "s"}.`, "success"));
-        setProgress(makeProgress(items.length, items.length, `Finished importing ${okCount} bookmark${okCount === 1 ? "" : "s"}.`));
+        setStatus(makeStatus(message("imported_bookmarks", {}, okCount), "success"));
+        setProgress(makeProgress(items.length, items.length, message("finished_bookmarks", {}, okCount)));
       }
     } finally {
       setBusy(false);
@@ -290,12 +297,10 @@ export function BookmarksApp() {
   return (
     <main className="page">
       <section className="hero">
-        <div className="eyebrow">Bookmark Import</div>
-        <h1>Send Chrome bookmarks to Incremento</h1>
+        <div className="eyebrow">{t("bookmark_import")}</div>
+        <h1>{t("send_chrome_bookmarks")}</h1>
         <p className="hero-copy">
-          Select folders or individual bookmarks, edit tags per row, choose whether each item
-          becomes a PDF, YouTube/Video, Webpage, or Writing card, choose a target deck, and set
-          each card priority before importing them in one run.
+          {t("bookmark_import_intro")}
         </p>
       </section>
 
@@ -304,17 +309,17 @@ export function BookmarksApp() {
       <section className="workspace">
         <aside className="panel tree-panel">
           <div className="panel-head">
-            <h2>Bookmarks</h2>
+            <h2>{t("bookmarks")}</h2>
             <button
               className="ghost-btn ghost-btn-inline"
               id="reload-bookmarks"
               disabled={busy}
               onClick={() => void loadBookmarks()}
             >
-              Reload
+              {t("reload")}
             </button>
           </div>
-          <p className="muted">Checking a folder includes all nested bookmark links.</p>
+          <p className="muted">{t("folder_includes_nested")}</p>
           <div className="bookmark-tree" id="bookmark-tree">
             {tree.length > 0 ? (
               <BookmarkTree
@@ -325,9 +330,9 @@ export function BookmarksApp() {
                 onToggleBookmark={toggleBookmark}
               />
             ) : treeLoadError ? (
-              <div className="empty-state">Failed to load bookmarks.</div>
+              <div className="empty-state">{t("load_bookmarks_failed")}</div>
             ) : treeLoaded ? (
-              <div className="empty-state">No bookmarks available.</div>
+              <div className="empty-state">{t("no_bookmarks")}</div>
             ) : null}
           </div>
         </aside>
@@ -335,9 +340,9 @@ export function BookmarksApp() {
         <section className="panel rows-panel">
           <div className="panel-head">
             <div>
-              <h2>Import list</h2>
+              <h2>{t("import_list")}</h2>
               <p className="muted" id="selection-summary">
-                {`${selectedItems.length} bookmark${selectedItems.length === 1 ? "" : "s"} selected`}
+                {tn("bookmarks_selected", selectedItems.length)}
               </p>
             </div>
             <button
@@ -346,12 +351,12 @@ export function BookmarksApp() {
               disabled={busy}
               onClick={() => void importSelected()}
             >
-              Import selected
+              {t("import_selected")}
             </button>
           </div>
           <div className="global-controls">
             <div className="field deck-field">
-              <span className="field-label">Import deck</span>
+              <span className="field-label">{t("import_deck")}</span>
               <select
                 id="bookmark-deck-select"
                 value={deckName}
@@ -364,9 +369,9 @@ export function BookmarksApp() {
                   </option>
                 ))}
               </select>
-              <p className="deck-hint">All selected bookmarks will be imported into this deck.</p>
+              <p className="deck-hint">{t("all_selected_deck")}</p>
               {deckLoadError ? (
-                <p className="deck-hint is-error">{deckLoadError}</p>
+                <p className="deck-hint is-error">{formatBridgeError(deckLoadError, t("deck_load_failed"))}</p>
               ) : null}
             </div>
           </div>
@@ -382,7 +387,7 @@ export function BookmarksApp() {
             onCommitPriorityText={commitPriorityText}
           />
           <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
-            {status.text}
+            {displayMessage(status.text)}
           </p>
           <ResultsList results={results} />
         </section>

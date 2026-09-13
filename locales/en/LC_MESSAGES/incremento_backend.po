@@ -1,0 +1,381 @@
+# Incremento backend presentation strings. Machine values remain unchanged.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: en\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Incremento UI: activity failed
+msgid "backend_activity_failed"
+msgstr "The operation failed."
+
+#. Incremento UI: activity general
+msgid "backend_activity_general"
+msgstr "General"
+
+#. Incremento UI: activity task
+msgid "backend_activity_task"
+msgstr "Incremento task"
+
+#. Incremento UI: close
+msgid "backend_close"
+msgstr "Close"
+
+#. Incremento UI: deps ankiconnect
+msgid "backend_deps_ankiconnect"
+msgstr "AnkiConnect  (needed for browser companion sync/import)"
+
+#. Incremento UI: deps ankiconnect instructions
+msgid "backend_deps_ankiconnect_instructions"
+msgstr "Install the AnkiConnect add-on as well if you want to use the Incremento browser companion for page import and video time sync.\n\nAnkiConnect is an Anki add-on, so install it from the Anki add-on ecosystem and restart Anki afterwards."
+
+#. Incremento UI: deps found
+msgid "backend_deps_found"
+msgstr "Found at: {path}"
+
+#. Incremento UI: deps install failed
+msgid "backend_deps_install_failed"
+msgstr "<span style=\"color: #e05050;\">Automatic install failed. See instructions below.</span>"
+
+#. Incremento UI: deps install pymupdf
+msgid "backend_deps_install_pymupdf"
+msgstr "Install PyMuPDF automatically"
+
+#. Incremento UI: deps installed
+msgid "backend_deps_installed"
+msgstr "<span style=\"color: gray; font-size: small;\">Installed — no action needed.</span>"
+
+#. Incremento UI: deps installed check
+msgid "backend_deps_installed_check"
+msgstr "Installed ✓"
+
+#. Incremento UI: deps installed restart
+msgid "backend_deps_installed_restart"
+msgstr "<span style=\"color: #4caf50;\">Installed successfully. <b>Please restart Anki</b> to activate it.</span>"
+
+#. Incremento UI: deps installing
+msgid "backend_deps_installing"
+msgstr "Installing…"
+
+#. Incremento UI: deps installing pymupdf
+msgid "backend_deps_installing_pymupdf"
+msgstr "<span style=\"color: gray; font-size: small;\">Installing PyMuPDF — please wait…</span>"
+
+#. Incremento UI: deps intro
+msgid "backend_deps_intro"
+msgstr "Incremento uses optional setup components for PDF OCR and browser companion sync. Core features work without them."
+
+#. Incremento UI: deps manual install
+msgid "backend_deps_manual_install"
+msgstr "Manual install:\n    {executable} -m pip install \"{requirement}\""
+
+#. Incremento UI: deps not installed
+msgid "backend_deps_not_installed"
+msgstr "<span style=\"color: gray; font-size: small;\">Not installed. Click the button below to install it automatically into Anki's Python environment. You will need to restart Anki afterwards.</span>"
+
+#. Incremento UI: deps pymupdf
+msgid "backend_deps_pymupdf"
+msgstr "PyMuPDF  (PDF rendering & text extraction)"
+
+#. Incremento UI: deps pymupdf instructions
+msgid "backend_deps_pymupdf_instructions"
+msgstr "PyMuPDF can be installed automatically by Incremento.\n\nIf automatic installation fails, run this command in a terminal:\n\n    {executable} -m pip install \"{requirement}\"\n\nThen restart Anki."
+
+#. Incremento UI: deps restart notice
+msgid "backend_deps_restart_notice"
+msgstr "PyMuPDF installed — restart Anki to use it."
+
+#. Incremento UI: deps tesseract
+msgid "backend_deps_tesseract"
+msgstr "Tesseract OCR  (converts scanned pages to searchable text)"
+
+#. Incremento UI: deps tesseract linux
+msgid "backend_deps_tesseract_linux"
+msgstr "Install Tesseract with your package manager:\n\n    Ubuntu / Debian:  sudo apt install tesseract-ocr\n    Fedora:           sudo dnf install tesseract\n    Arch:             sudo pacman -S tesseract\n    openSUSE:         sudo zypper install tesseract-ocr\n\nAfter installation, restart Anki."
+
+#. Incremento UI: deps tesseract mac
+msgid "backend_deps_tesseract_mac"
+msgstr "Install Tesseract via Homebrew:\n\n    brew install tesseract\n\nDon't have Homebrew?  Visit https://brew.sh to install it first.\n\nAfter installation, restart Anki."
+
+#. Incremento UI: deps tesseract windows
+msgid "backend_deps_tesseract_windows"
+msgstr "Download and run the Tesseract installer for Windows:\n\n    https://github.com/UB-Mannheim/tesseract/wiki\n\nDuring setup, choose 'Add Tesseract to PATH'.\nIf you skip that option, install to the default location:\n    C:\\Program Files\\Tesseract-OCR\\\n\nAfter installation, restart Anki."
+
+#. Incremento UI: deps title
+msgid "backend_deps_title"
+msgstr "Incremento — Dependency Setup"
+
+#. Incremento UI: extract answer empty
+msgid "backend_extract_answer_empty"
+msgstr "Answer is empty."
+
+#. Incremento UI: extract invalid block
+msgid "backend_extract_invalid_block"
+msgstr "Invalid Q/A block."
+
+#. Incremento UI: extract missing answer
+msgid "backend_extract_missing_answer"
+msgstr "Missing A: line."
+
+#. Incremento UI: extract missing question
+msgid "backend_extract_missing_question"
+msgstr "Missing Q: line."
+
+#. Incremento UI: extract question empty
+msgid "backend_extract_question_empty"
+msgstr "Question is empty."
+
+#. Incremento UI: extract question first
+msgid "backend_extract_question_first"
+msgstr "Block must start with Q:."
+
+#. Incremento UI: extract tree help
+msgid "backend_extract_tree_help"
+msgstr "Extract lineage is added to the knowledge tree automatically. New extract cards are placed beneath their source parent when available."
+
+#. Incremento UI: item fail
+msgid "backend_item_fail"
+msgstr "Fail"
+
+#. Incremento UI: item pass
+msgid "backend_item_pass"
+msgstr "Pass"
+
+#. Incremento UI: schedule days
+msgid "backend_schedule_days"
+msgid_plural "backend_schedule_days_plural"
+msgstr[0] "Every {count} day"
+msgstr[1] "Every {count} days"
+
+#. Incremento UI: schedule mode fixed repeat
+msgid "backend_schedule_mode_fixed_repeat"
+msgstr "Repeat exactly"
+
+#. Incremento UI: schedule mode minimum cadence
+msgid "backend_schedule_mode_minimum_cadence"
+msgstr "Minimum cadence"
+
+#. Incremento UI: schedule mode one time
+msgid "backend_schedule_mode_one_time"
+msgstr "One-time set due"
+
+#. Incremento UI: schedule months
+msgid "backend_schedule_months"
+msgid_plural "backend_schedule_months_plural"
+msgstr[0] "Every {count} month"
+msgstr[1] "Every {count} months"
+
+#. Incremento UI: schedule preset daily
+msgid "backend_schedule_preset_daily"
+msgstr "Daily"
+
+#. Incremento UI: schedule preset every 2 days
+msgid "backend_schedule_preset_every_2_days"
+msgstr "Every 2 days"
+
+#. Incremento UI: schedule preset every 2 weeks
+msgid "backend_schedule_preset_every_2_weeks"
+msgstr "Every 2 weeks"
+
+#. Incremento UI: schedule preset every 3 days
+msgid "backend_schedule_preset_every_3_days"
+msgstr "Every 3 days"
+
+#. Incremento UI: schedule preset monthly
+msgid "backend_schedule_preset_monthly"
+msgstr "Monthly"
+
+#. Incremento UI: schedule preset weekly
+msgid "backend_schedule_preset_weekly"
+msgstr "Weekly"
+
+#. Incremento UI: schedule weeks
+msgid "backend_schedule_weeks"
+msgid_plural "backend_schedule_weeks_plural"
+msgstr[0] "Every {count} week"
+msgstr[1] "Every {count} weeks"
+
+#. Incremento UI: session branch empty
+msgid "backend_session_branch_empty"
+msgstr "No cards available to study in branch \"{title}\"."
+
+#. Incremento UI: session dialog unavailable
+msgid "backend_session_dialog_unavailable"
+msgstr "Incremento's scheduler dialog is unavailable in this Anki build."
+
+#. Incremento UI: session duplicate ids
+msgid "backend_session_duplicate_ids"
+msgstr "Cannot rebuild a filtered deck from a live queue that contains duplicate card entries."
+
+#. Incremento UI: session empty review
+msgid "backend_session_empty_review"
+msgstr "No cards available to review."
+
+#. Incremento UI: session enter failed
+msgid "backend_session_enter_failed"
+msgstr "Could not enter review:\n{error}"
+
+#. Incremento UI: session enter incremento failed
+msgid "backend_session_enter_incremento_failed"
+msgstr "Could not enter the Incremento review session:\n\n{error}"
+
+#. Incremento UI: session invalid ids
+msgid "backend_session_invalid_ids"
+msgstr "Cannot build a filtered deck without valid card IDs."
+
+#. Incremento UI: session missing selector
+msgid "backend_session_missing_selector"
+msgstr "{error_message}: no card selector was provided."
+
+#. Incremento UI: session no cards
+msgid "backend_session_no_cards"
+msgstr "No cards available to study."
+
+#. Incremento UI: session no selected
+msgid "backend_session_no_selected"
+msgstr "No selected card is available to study."
+
+#. Incremento UI: session normal deck
+msgid "backend_session_normal_deck"
+msgstr "'{deck}' is a normal deck. Delete or rename it first."
+
+#. Incremento UI: session start error
+msgid "backend_session_start_error"
+msgstr "Could not start review"
+
+#. Incremento UI: session start incremento failed
+msgid "backend_session_start_incremento_failed"
+msgstr "Could not start the Incremento session:\n\n{error}"
+
+#. Incremento UI: session unavailable linked
+msgid "backend_session_unavailable_linked"
+msgid_plural "backend_session_unavailable_linked_plural"
+msgstr[0] "{count} linked card was unavailable because Anki cannot move suspended, buried, or already-filtered cards into this review deck."
+msgstr[1] "{count} linked cards were unavailable because Anki cannot move suspended, buried, or already-filtered cards into this review deck."
+
+#. Incremento UI: session unavailable partial
+msgid "backend_session_unavailable_partial"
+msgid_plural "backend_session_unavailable_partial_plural"
+msgstr[0] "{count} requested card was not added. Anki cannot move suspended, buried, or already-filtered cards into this review deck. The remaining linked cards will be reviewed."
+msgstr[1] "{count} requested cards were not added. Anki cannot move suspended, buried, or already-filtered cards into this review deck. The remaining linked cards will be reviewed."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_card_missing"
+msgstr "{kind} card was not found."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_note_missing"
+msgstr "Linked {kind} note was not found."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_filename_missing"
+msgstr "This {kind} note does not have a stored {kind} filename."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_file_missing"
+msgstr "{kind} file was not found."
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_stored_missing"
+msgstr "Stored {kind} file was not found:\n{path}"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_note_rejected"
+msgstr "Failed to add {kind} card. Anki rejected the note."
+
+#. Document validation error shown by readers and imports
+msgid "backend_pdf_replacement_missing"
+msgstr "Replacement PDF was not found."
+
+#. Document validation error shown by readers and imports
+msgid "backend_epub_stored_unavailable"
+msgstr "Stored EPUB file was not found or needs secure re-extraction."
+
+#. Document validation error shown by readers and imports
+msgid "backend_epub_no_sections"
+msgstr "EPUB has no readable sections."
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_html_empty"
+msgstr "Webpage HTML is empty."
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_unreadable"
+msgstr "Could not extract readable content from the webpage."
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_download_empty"
+msgstr "Webpage download returned an empty response."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_row_error"
+msgstr "Row {row}: {detail}"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_format"
+msgstr "This language file is malformed. Export a fresh template and keep its structure."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_version"
+msgstr "This language file uses an unsupported format version."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_locale"
+msgstr "Enter a valid language code in the locale metadata row, for example de or pt-BR."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_name"
+msgstr "Enter the language name in its own language in the name metadata row (up to 80 characters)."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_cell"
+msgstr "A cell contains invalid characters or exceeds 16 KiB."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_rows"
+msgstr "The language sheet contains too many rows (maximum 20,000)."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_unknown"
+msgstr "This message key or plural form is not in the current template."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_size"
+msgstr "The language file is too large (maximum 2 MiB)."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_encoding"
+msgstr "Save the language sheet as CSV UTF-8."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_headers"
+msgstr "Keep the columns component, key, form, source, translation in that order."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_columns"
+msgstr "Each row must contain exactly five columns."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_duplicate"
+msgstr "This message or metadata row appears more than once."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_metadata"
+msgstr "Keep exactly the version, locale and name metadata rows."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_source"
+msgstr "The source text has changed. Export a new sheet and copy only the translations."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_tokens"
+msgstr "Keep every placeholder exactly as shown in the source, including braces, dollar signs and formatting."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_markup"
+msgstr "Keep the original HTML tags and attributes in their original order. Scripts and executable text are not allowed."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_limit"
+msgstr "A profile can contain at most 20 custom languages. Update an existing language instead."
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_storage"
+msgstr "The language pack could not be saved safely. The previous file has been preserved."

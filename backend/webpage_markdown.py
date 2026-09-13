@@ -5,6 +5,12 @@ from urllib.parse import urljoin
 from urllib.request import Request
 
 try:
+    from .i18n import t
+except ImportError:
+    from i18n import t
+
+
+try:
     from .content_safety import (
         external_plain_text,
         external_plain_text_to_markdown,
@@ -454,7 +460,7 @@ def convert_webpage_html_to_markdown(
     clean_html = str(html or "").strip()
     scope = "full" if str(content_scope or "").strip().lower() == "full" else "main"
     if not clean_html:
-        raise ValueError("Webpage HTML is empty.")
+        raise ValueError(t("backend_webpage_html_empty"))
 
     parser = _TreeBuilder()
     parser.feed(clean_html)
@@ -468,7 +474,7 @@ def convert_webpage_html_to_markdown(
             external_plain_text_to_markdown(_node_text(content_root))
         )
     if not markdown:
-        raise ValueError("Could not extract readable content from the webpage.")
+        raise ValueError(t("backend_webpage_unreadable"))
     return {
         "title": resolved_title,
         "markdown": markdown,
@@ -505,7 +511,7 @@ def fetch_webpage_markdown(
         if "charset=" in content_type:
             charset = content_type.split("charset=", 1)[1].split(";", 1)[0].strip()
     if not raw_bytes:
-        raise RuntimeError("Webpage download returned an empty response.")
+        raise RuntimeError(t("backend_webpage_download_empty"))
     encoding = charset or "utf-8"
     try:
         html = raw_bytes.decode(encoding, errors="replace")

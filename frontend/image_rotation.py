@@ -8,6 +8,12 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
+try:
     from aqt import gui_hooks, mw
     from aqt.qt import (
         QByteArray,
@@ -202,18 +208,18 @@ def _rotate_selected_image(editor, degrees: int) -> None:
     def source_received(src) -> None:
         filename = _media_filename_from_src(src)
         if filename is None:
-            tooltip("Select a local image in a card field first.")
+            tooltip(_t("admin_image_select"))
             return
 
         collection = getattr(mw, "col", None)
         media = getattr(collection, "media", None)
         if media is None:
-            showWarning("Anki's media collection is unavailable.")
+            showWarning(_t("admin_image_media_unavailable"))
             return
 
         source_path = os.path.join(media.dir(), filename)
         if not os.path.isfile(source_path):
-            showWarning(f"Could not find the selected image in Anki media:\n{filename}")
+            showWarning(_t("admin_image_missing", filename=filename))
             return
 
         try:
@@ -223,21 +229,21 @@ def _rotate_selected_image(editor, degrees: int) -> None:
                 data,
             )
         except Exception as exc:
-            showWarning(f"Could not rotate the selected image:\n{exc}")
+            showWarning(_t("admin_image_failed", error=exc))
             return
 
         def image_replaced(changed) -> None:
             if not changed:
                 tooltip(
-                    "The selected image is no longer available. Select it and try again."
+                    _t("admin_image_selection_lost")
                 )
                 return
 
             save = getattr(editor, "call_after_note_saved", None)
             if callable(save):
-                save(lambda: tooltip("Image rotated."), keepFocus=True)
+                save(lambda: tooltip(_t("admin_image_rotated")), keepFocus=True)
             else:
-                tooltip("Image rotated.")
+                tooltip(_t("admin_image_rotated"))
 
         web.evalWithCallback(_replace_selected_image_js(new_filename), image_replaced)
 
@@ -258,7 +264,7 @@ def _add_image_rotation_buttons(buttons, editor) -> None:
             None,
             "incrementoRotateImageLeft",
             _rotate_left,
-            tip="Rotate selected image 90° left",
+            tip=_t("admin_image_rotate_left"),
             label="↶",
             id=ROTATE_LEFT_BUTTON_ID,
             disables=False,
@@ -269,7 +275,7 @@ def _add_image_rotation_buttons(buttons, editor) -> None:
             None,
             "incrementoRotateImageRight",
             _rotate_right,
-            tip="Rotate selected image 90° right",
+            tip=_t("admin_image_rotate_right"),
             label="↷",
             id=ROTATE_RIGHT_BUTTON_ID,
             disables=False,

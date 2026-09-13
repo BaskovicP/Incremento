@@ -3,6 +3,8 @@ import {
   formatPriority,
   priorityToSliderValue,
 } from "../bookmarkModel.js";
+import { t } from "../../shared/i18n.js";
+import { formatBridgeError } from "../../shared/bridge.js";
 
 export function ImportRows({
   items,
@@ -18,7 +20,7 @@ export function ImportRows({
   if (items.length === 0) {
     return (
       <div className="empty-state">
-        Select folders or individual bookmarks on the left to build the import list.
+        {t("select_bookmarks_left")}
       </div>
     );
   }
@@ -39,7 +41,7 @@ export function ImportRows({
               />
             </label>
             <div className="field">
-              <span className="field-label">Title</span>
+              <span className="field-label">{t("title")}</span>
               <input
                 type="text"
                 value={item.title}
@@ -49,20 +51,20 @@ export function ImportRows({
               />
             </div>
             <div className="field">
-              <span className="field-label">Type</span>
+              <span className="field-label">{t("type")}</span>
               <select
                 value={item.kind}
                 disabled={disabled}
                 onChange={(event) => onUpdateKind(item.id, event.target.value)}
               >
                 <option value="pdf">PDF</option>
-                <option value="video">YouTube/Video</option>
-                <option value="webpage">Webpage</option>
-                <option value="writing">Writing</option>
+                <option value="video">{t("video_kind")}</option>
+                <option value="webpage">{t("webpage_kind")}</option>
+                <option value="writing">{t("writing_kind")}</option>
               </select>
             </div>
             <div className="field">
-              <span className="field-label">Tags</span>
+              <span className="field-label">{t("tags")}</span>
               <input
                 type="text"
                 value={item.tagsText}
@@ -73,7 +75,7 @@ export function ImportRows({
               />
             </div>
             <div className="field priority-field">
-              <span className="field-label">Priority</span>
+              <span className="field-label">{t("priority")}</span>
               <div className="priority-controls">
                 <div className="priority-slider-wrap">
                   <input
@@ -108,9 +110,9 @@ export function ImportRows({
           </div>
           <div className="row-meta">
             <div className="row-url">{item.url}</div>
-            <div className="row-url">{item.folderPath || "Bookmarks"}</div>
+            <div className="row-url">{item.folderPath || t("bookmarks")}</div>
             {item.importState === "error" && item.importError ? (
-              <div className="row-error">{item.importError}</div>
+              <div className="row-error">{item.importErrorCause ? formatBridgeError(item.importErrorCause, t("import_bookmark_failed")) : item.importError}</div>
             ) : null}
           </div>
         </article>

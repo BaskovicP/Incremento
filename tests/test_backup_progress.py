@@ -183,6 +183,7 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
         "os": os,
         "QTimer": types.SimpleNamespace(singleShot=lambda _delay, callback: callback()),
         "tooltip": lambda _message: None,
+        "_t": __import__("backend.i18n", fromlist=["Translator"]).Translator("en").t,
     }
     exec(compile(ast.Module(body=[function], type_ignores=[]), "__init__.py", "exec"), namespace)
 

@@ -23,12 +23,15 @@ jobs:
       - name: Install Qt system runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libegl1
+          sudo apt-get install --yes --no-install-recommends libegl1 gettext
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m pip check
+      - run: python scripts/compile_i18n.py --check
+      - run: python scripts/build_translation_catalog.py --check
+      - run: python scripts/i18n_inventory.py --check
       - run: python -m compileall -q __init__.py backend frontend scripts
       - run: python -m ruff check .
       - run: python -m mypy
@@ -54,6 +57,8 @@ jobs:
         working-directory: frontend
       - run: npm test
         working-directory: chrome_extensions/incremento_companion
+      - run: npm test
+        working-directory: frontend
       - run: npm run build
         working-directory: frontend
       - run: npm run build:extension

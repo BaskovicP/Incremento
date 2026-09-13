@@ -2,6 +2,21 @@ import config_service
 import pytest
 
 
+@pytest.mark.parametrize("raw,expected", [(None,"auto"),("hr", "hr"),("zh_CN","zh-Hans"),
+    ("en-US","en"),("invalid","auto"),([],"auto"),
+    ("custom:pt_br", "custom:pt-BR"), ("custom:hr", "custom:hr"),
+    ("custom:../../x", "auto")])
+def test_ui_language_is_normalized_without_mutating_other_config(raw, expected):
+    config = {"ui_language": raw, "future": {"kept": True}}
+    assert config_service.normalize_config(config)["ui_language"] == expected
+    assert config_service.normalize_config(config)["future"] == {"kept": True}
+    assert config["ui_language"] == raw
+
+
+def test_missing_ui_language_defaults_to_auto():
+    assert config_service.normalize_config({})["ui_language"] == "auto"
+
+
 @pytest.mark.parametrize("raw, expected", [
     ({}, "topic/done"),
     ({"topic_done_tag": "reading::finished"}, "reading::finished"),

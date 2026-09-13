@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 const HANDSHAKE_URL = "http://127.0.0.1:8766/incremento/handshake";
 const PROTOCOL_VERSION = 2;
 
@@ -7,7 +9,9 @@ async function requestAuthorization() {
   const response = await fetch(HANDSHAKE_URL, { method: "GET", cache: "no-store" });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok || Number(data.protocol) !== PROTOCOL_VERSION || !data.token) {
-    throw new Error(String(data?.error || "Incremento bridge handshake failed."));
+    const error = new Error(String(data?.error || t("bridge_handshake_failed")));
+    error.code = typeof data?.error_code === "string" ? data.error_code : "";
+    throw error;
   }
   return String(data.token);
 }

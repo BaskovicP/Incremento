@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+try:
+    from ..backend.i18n import t, format_number, format_date
+except ImportError:
+    from backend.i18n import t, format_number, format_date
+
 import datetime as _dt
 import sqlite3
+import html
 from typing import Any
 
 from aqt.qt import (
@@ -37,9 +43,10 @@ except ImportError:
 
 def _format_timestamp(value: object) -> str:
     try:
-        return _dt.datetime.fromtimestamp(int(value)).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = _dt.datetime.fromtimestamp(int(value))
+        return format_date(timestamp) + " " + timestamp.strftime("%H:%M:%S")
     except Exception:
-        return "Unknown"
+        return t('admin_sqlite_editor_unknown')
 
 
 def _format_size(size_bytes: object) -> str:
@@ -53,8 +60,8 @@ def _format_size(size_bytes: object) -> str:
         size /= 1024.0
         unit_index += 1
     if unit_index == 0:
-        return f"{int(size)} {units[unit_index]}"
-    return f"{size:.1f} {units[unit_index]}"
+        return f"{format_number(int(size))} {units[unit_index]}"
+    return f"{format_number(size, digits=1)} {units[unit_index]}"
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -87,15 +94,14 @@ class SQLiteEditorDialog(QDialog):
         self._row_column_names: list[str] = []
         self._row_column_types: dict[str, str] = {}
         self._suspend_row_update = False
-        self.setWindowTitle("Incremento Database Editor")
+        self.setWindowTitle(t('admin_sqlite_editor_incremento_database_editor'))
         self.resize(1220, 760)
 
         root = QVBoxLayout(self)
         root.setSpacing(8)
 
         intro = QLabel(
-            "Inspect the active profile's Incremento SQLite database. "
-            "This editor starts read-only. Unlock writes only if you know exactly what SQL you intend to run."
+            t('admin_sqlite_editor_inspect_the_active_profile_s_incremento_sqlite_database')
         )
         intro.setWordWrap(True)
         root.addWidget(intro)
@@ -113,11 +119,11 @@ class SQLiteEditorDialog(QDialog):
 
         top_actions = QHBoxLayout()
         top_actions.setSpacing(8)
-        self._unlock_btn = QPushButton("Unlock Writes...")
+        self._unlock_btn = QPushButton(t('admin_sqlite_editor_unlock_writes'))
         self._unlock_btn.clicked.connect(self._unlock_writes)
         top_actions.addWidget(self._unlock_btn)
 
-        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn = QPushButton(t('admin_sqlite_editor_refresh'))
         self._refresh_btn.clicked.connect(self._refresh_current_view)
         top_actions.addWidget(self._refresh_btn)
         top_actions.addStretch(1)
@@ -130,7 +136,7 @@ class SQLiteEditorDialog(QDialog):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(6)
-        left_layout.addWidget(QLabel("Tables"))
+        left_layout.addWidget(QLabel(t('admin_sqlite_editor_tables')))
         self._table_list = QListWidget()
         self._table_list.currentItemChanged.connect(self._on_table_changed)
         left_layout.addWidget(self._table_list, 1)
@@ -140,15 +146,15 @@ class SQLiteEditorDialog(QDialog):
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(6)
-        self._table_title = QLabel("Rows")
+        self._table_title = QLabel(t('admin_sqlite_editor_rows'))
         center_layout.addWidget(self._table_title)
 
         table_nav = QHBoxLayout()
         table_nav.setSpacing(8)
-        self._prev_rows_btn = QPushButton("Previous")
+        self._prev_rows_btn = QPushButton(t('admin_sqlite_editor_previous'))
         self._prev_rows_btn.clicked.connect(self._load_previous_rows)
         table_nav.addWidget(self._prev_rows_btn)
-        self._next_rows_btn = QPushButton("Next")
+        self._next_rows_btn = QPushButton(t('admin_sqlite_editor_next'))
         self._next_rows_btn.clicked.connect(self._load_next_rows)
         table_nav.addWidget(self._next_rows_btn)
         self._rows_page_label = QLabel()
@@ -171,25 +177,22 @@ class SQLiteEditorDialog(QDialog):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(6)
-        right_layout.addWidget(QLabel("Schema"))
+        right_layout.addWidget(QLabel(t('admin_sqlite_editor_schema')))
         self._schema_text = QPlainTextEdit()
         self._schema_text.setReadOnly(True)
         self._schema_text.setMaximumBlockCount(2000)
         right_layout.addWidget(self._schema_text, 1)
-        right_layout.addWidget(QLabel("SQL Console"))
+        right_layout.addWidget(QLabel(t('admin_sqlite_editor_sql_console')))
         self._sql_edit = QPlainTextEdit()
         self._sql_edit.setPlaceholderText(
-            "Read-only examples:\n"
-            "SELECT * FROM priorities LIMIT 20;\n"
-            "PRAGMA table_info(priorities);\n\n"
-            "Mutating SQL requires Unlock Writes."
+            t('admin_sqlite_editor_read_only_examples_select_from_priorities_limit_20')
         )
         self._sql_edit.setMinimumHeight(160)
         right_layout.addWidget(self._sql_edit)
 
         sql_actions = QHBoxLayout()
         sql_actions.setSpacing(8)
-        self._run_sql_btn = QPushButton("Run SQL")
+        self._run_sql_btn = QPushButton(t('admin_sqlite_editor_run_sql'))
         self._run_sql_btn.clicked.connect(self._run_sql)
         sql_actions.addWidget(self._run_sql_btn)
         sql_actions.addStretch(1)
@@ -212,7 +215,7 @@ class SQLiteEditorDialog(QDialog):
 
         close_row = QHBoxLayout()
         close_row.addStretch(1)
-        self._close_btn = QPushButton("Close")
+        self._close_btn = QPushButton(t('admin_sqlite_editor_close'))
         self._close_btn.clicked.connect(self.accept)
         close_row.addWidget(self._close_btn)
         root.addLayout(close_row)
@@ -245,13 +248,13 @@ class SQLiteEditorDialog(QDialog):
         self._refresh_mode_label()
 
     def _refresh_mode_label(self) -> None:
-        mode = "Read-only" if self._read_only else "Unlocked for writes"
+        mode = t("admin_sqlite_read_only") if self._read_only else t('admin_sqlite_editor_unlocked_for_writes')
         warning = (
-            "SQL writes and cell editing are disabled."
+            t('admin_sqlite_editor_sql_writes_and_cell_editing_are_disabled')
             if self._read_only
-            else "SQL writes and cell editing are enabled for this editor session."
+            else t('admin_sqlite_editor_sql_writes_and_cell_editing_are_enabled_for')
         )
-        self._mode_label.setText(f"<b>Mode:</b> {mode} - {warning}")
+        self._mode_label.setText(t('admin_sqlite_editor_b_mode_b_mode_warning', mode=html.escape(str(mode)), warning=html.escape(str(warning))))
         self._sync_row_editability()
 
     def _refresh_header(self) -> None:
@@ -262,25 +265,22 @@ class SQLiteEditorDialog(QDialog):
                 db_path = ""
         else:
             db_path = ""
-        self._db_label.setText(f"<b>Database:</b> {db_path}")
+        self._db_label.setText(t('admin_sqlite_editor_b_database_b_path', path=html.escape(str(db_path))))
         if self._checkpoint_info:
             self._checkpoint_label.setText(
-                "<b>Automatic checkpoint:</b> "
-                f"{self._checkpoint_info.get('path', '')} "
-                f"({_format_timestamp(self._checkpoint_info.get('created_at'))}, "
-                f"{_format_size(self._checkpoint_info.get('size_bytes'))})"
+                t('admin_sqlite_editor_b_automatic_checkpoint_b_path_time_size', path=html.escape(str(self._checkpoint_info.get('path', ''))), time=html.escape(str(_format_timestamp(self._checkpoint_info.get('created_at')))), size=html.escape(str(_format_size(self._checkpoint_info.get('size_bytes')))))
             )
         else:
-            self._checkpoint_label.setText("<b>Automatic checkpoint:</b> unavailable")
+            self._checkpoint_label.setText(t('admin_sqlite_editor_b_automatic_checkpoint_b_unavailable'))
         recent = list_database_checkpoints(self._addon_dir, self._profile, limit=3)
         if recent:
             text = "; ".join(
                 f"{row['filename']} ({_format_timestamp(row['created_at'])})"
                 for row in recent
             )
-            self._recent_checkpoints_label.setText(f"<b>Recent checkpoints:</b> {text}")
+            self._recent_checkpoints_label.setText(t('admin_sqlite_editor_b_recent_checkpoints_b_text', text=html.escape(str(text))))
         else:
-            self._recent_checkpoints_label.setText("<b>Recent checkpoints:</b> none")
+            self._recent_checkpoints_label.setText(t('admin_sqlite_editor_b_recent_checkpoints_b_none'))
 
     def _refresh_schema(self) -> None:
         if self._conn is None:
@@ -312,7 +312,7 @@ class SQLiteEditorDialog(QDialog):
             self._table_list.setCurrentRow(0)
         else:
             self._current_table = ""
-            self._schema_text.setPlainText("No tables found.")
+            self._schema_text.setPlainText(t('admin_sqlite_editor_no_tables_found'))
             self._clear_table_widget(self._rows_table)
 
     def _refresh_current_view(self) -> None:
@@ -340,9 +340,9 @@ class SQLiteEditorDialog(QDialog):
 
     def _load_table_rows(self) -> None:
         if self._conn is None or not self._current_table:
-            self._table_title.setText("Rows")
+            self._table_title.setText(t('admin_sqlite_editor_rows'))
             self._rows_page_label.setText("")
-            self._schema_text.setPlainText("Select a table.")
+            self._schema_text.setPlainText(t('admin_sqlite_editor_select_a_table'))
             self._clear_table_widget(self._rows_table)
             return
         table_name = _quote_identifier(self._current_table)
@@ -364,12 +364,12 @@ class SQLiteEditorDialog(QDialog):
                 (self._ROW_LIMIT, self._row_offset),
             ).fetchall()
         except Exception as exc:
-            self._schema_text.setPlainText(f"Could not load schema:\n{exc}")
-            self._sql_status.setText(f"Could not load rows for {self._current_table}: {exc}")
+            self._schema_text.setPlainText(t('admin_sqlite_editor_could_not_load_schema_error', error=exc))
+            self._sql_status.setText(t('admin_sqlite_editor_could_not_load_rows_for_table_error', table=self._current_table, error=exc))
             self._clear_table_widget(self._rows_table)
             return
 
-        schema_lines = [f"Table: {self._current_table}", ""]
+        schema_lines = [t('admin_sqlite_editor_table_table', table=self._current_table), ""]
         for column in schema_rows:
             schema_lines.append(
                 f"{column['name']}  {column['type'] or 'TEXT'}"
@@ -377,18 +377,18 @@ class SQLiteEditorDialog(QDialog):
             )
         schema_lines.append("")
         if self._current_table_type != "table":
-            schema_lines.append("Direct cell editing is disabled for views.")
+            schema_lines.append(t('admin_sqlite_editor_direct_cell_editing_is_disabled_for_views'))
         elif self._read_only:
-            schema_lines.append("Direct cell editing is disabled until writes are unlocked.")
+            schema_lines.append(t('admin_sqlite_editor_direct_cell_editing_is_disabled_until_writes_are'))
         elif has_primary_key:
-            schema_lines.append("Direct cell editing uses the table primary key to update rows.")
+            schema_lines.append(t('admin_sqlite_editor_direct_cell_editing_uses_the_table_primary_key'))
         else:
-            schema_lines.append("Direct cell editing uses SQLite rowid because this table has no declared primary key.")
+            schema_lines.append(t('admin_sqlite_editor_direct_cell_editing_uses_sqlite_rowid_because_this'))
         self._schema_text.setPlainText("\n".join(schema_lines))
-        self._table_title.setText(f"Rows - {self._current_table} ({count} total)")
+        self._table_title.setText(t('admin_sqlite_editor_rows_table_count_total', table=self._current_table, count=count))
         start_row = self._row_offset + 1 if rows else 0
         end_row = self._row_offset + len(rows)
-        self._rows_page_label.setText(f"Showing {start_row}-{end_row} of {count}")
+        self._rows_page_label.setText(t('admin_sqlite_editor_showing_start_end_of_count', start=start_row, end=end_row, count=count))
         self._prev_rows_btn.setEnabled(self._row_offset > 0)
         self._next_rows_btn.setEnabled(end_row < count)
         self._populate_table_widget(self._rows_table, rows, schema_rows=schema_rows)
@@ -396,54 +396,53 @@ class SQLiteEditorDialog(QDialog):
     def _run_sql(self) -> None:
         sql = self._sql_edit.toPlainText().strip()
         if not sql:
-            self._sql_status.setText("Enter a SQL statement first.")
+            self._sql_status.setText(t('admin_sqlite_editor_enter_a_sql_statement_first'))
             return
         if self._conn is None:
-            self._sql_status.setText("Database connection is not available.")
+            self._sql_status.setText(t('admin_sqlite_editor_database_connection_is_not_available'))
             return
         mutating = self._is_mutating_sql(sql)
         if mutating and self._read_only:
             self._sql_status.setText(
-                "SQL writes are locked. Use Unlock Writes before running mutating SQL."
+                t('admin_sqlite_editor_sql_writes_are_locked_use_unlock_writes_before')
             )
             return
         try:
             if mutating:
                 self._conn.executescript(sql)
                 self._conn.commit()
-                self._sql_status.setText("SQL write executed and committed.")
+                self._sql_status.setText(t('admin_sqlite_editor_sql_write_executed_and_committed'))
                 self._clear_table_widget(self._result_table)
                 self._refresh_current_view()
                 return
             cur = self._conn.execute(sql)
             rows = cur.fetchmany(self._RESULT_LIMIT)
             self._populate_table_widget(self._result_table, rows)
-            more_note = " (truncated)" if len(rows) >= self._RESULT_LIMIT else ""
+            more_note = t('admin_sqlite_editor_truncated') if len(rows) >= self._RESULT_LIMIT else ""
             self._sql_status.setText(
-                f"Query returned {len(rows)} row(s){more_note}."
+                t('admin_sqlite_editor_query_returned_count_row_s_more_note', count=len(rows), more_note=more_note)
             )
         except Exception as exc:
-            self._sql_status.setText(f"SQL error: {exc}")
+            self._sql_status.setText(t('admin_sqlite_editor_sql_error_error', error=exc))
 
     def _unlock_writes(self) -> None:
         if not self._read_only:
-            self._sql_status.setText("SQL writes are already unlocked for this session.")
+            self._sql_status.setText(t('admin_sqlite_editor_sql_writes_are_already_unlocked_for_this_session'))
             return
         text, accepted = QInputDialog.getText(
             self,
-            "Unlock Database Writes",
-            "This editor writes directly to the live Incremento profile database.\n\n"
-            f"Type {self._UNLOCK_PHRASE} to enable SQL writes for this session:",
+            t('admin_sqlite_editor_unlock_database_writes'),
+            t('admin_sqlite_editor_this_editor_writes_directly_to_the_live_incremento', phrase=self._UNLOCK_PHRASE),
         )
         if not accepted:
             return
         if str(text or "").strip() != self._UNLOCK_PHRASE:
-            self._sql_status.setText("Unlock cancelled. Confirmation phrase did not match.")
+            self._sql_status.setText(t('admin_sqlite_editor_unlock_cancelled_confirmation_phrase_did_not_match'))
             return
         self._open_connection(read_only=False)
         self._refresh_header()
         self._refresh_current_view()
-        self._sql_status.setText("SQL writes unlocked for this editor session.")
+        self._sql_status.setText(t('admin_sqlite_editor_sql_writes_unlocked_for_this_editor_session'))
 
     def _sync_row_editability(self) -> None:
         editable = self._table_allows_direct_edit()
@@ -479,7 +478,7 @@ class SQLiteEditorDialog(QDialog):
             return
         key_info = self._row_update_keys[row_index]
         if not key_info.get("where"):
-            self._sql_status.setText("This row cannot be edited safely from the grid.")
+            self._sql_status.setText(t('admin_sqlite_editor_this_row_cannot_be_edited_safely_from_the'))
             return
         column_name = self._row_column_names[column_index]
         column_type = self._row_column_types.get(column_name, "")
@@ -495,16 +494,16 @@ class SQLiteEditorDialog(QDialog):
                 item.setText("" if old_value is None else str(old_value))
             finally:
                 self._suspend_row_update = False
-            self._sql_status.setText(f"Cell update failed: {exc}")
+            self._sql_status.setText(t('admin_sqlite_editor_cell_update_failed_error', error=exc))
             return
         key_info.setdefault("values", {})[column_name] = new_value
         self._sql_status.setText(
-            f"Updated {self._current_table}.{column_name} at row {self._row_offset + row_index + 1}."
+            t('admin_sqlite_editor_updated_table_column_at_row_row', table=self._current_table, column=column_name, row=self._row_offset + row_index + 1)
         )
 
     def _update_table_cell(self, column_name: str, new_value: object, key_info: dict[str, Any]) -> None:
         if self._conn is None:
-            raise RuntimeError("Database connection is not available.")
+            raise RuntimeError(t('admin_sqlite_editor_database_connection_is_not_available'))
         where_parts = [f"{_quote_identifier(name)} IS ?" if value is None else f"{_quote_identifier(name)} = ?" for name, value in key_info["where"]]
         sql = (
             f"UPDATE {_quote_identifier(self._current_table)} "
@@ -515,7 +514,7 @@ class SQLiteEditorDialog(QDialog):
         cur = self._conn.execute(sql, params)
         self._conn.commit()
         if cur.rowcount == 0:
-            raise RuntimeError("The selected row could not be matched for update.")
+            raise RuntimeError(t('admin_sqlite_editor_the_selected_row_could_not_be_matched_for'))
 
     @staticmethod
     def _coerce_cell_value(raw_text: str, declared_type: str, old_value: object) -> object:

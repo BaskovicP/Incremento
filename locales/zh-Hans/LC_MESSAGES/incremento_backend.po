@@ -1,0 +1,376 @@
+# Incremento backend presentation strings. Machine values remain unchanged.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
+
+#. Incremento UI: activity failed
+msgid "backend_activity_failed"
+msgstr "操作失败。"
+
+#. Incremento UI: activity general
+msgid "backend_activity_general"
+msgstr "常规"
+
+#. Incremento UI: activity task
+msgid "backend_activity_task"
+msgstr "Incremento 任务"
+
+#. Incremento UI: close
+msgid "backend_close"
+msgstr "关闭"
+
+#. Incremento UI: deps ankiconnect
+msgid "backend_deps_ankiconnect"
+msgstr "AnkiConnect（浏览器扩展同步和导入所需）"
+
+#. Incremento UI: deps ankiconnect instructions
+msgid "backend_deps_ankiconnect_instructions"
+msgstr "若要使用 Incremento 浏览器扩展导入网页并同步视频进度，请同时安装 AnkiConnect 插件。\n\nAnkiConnect 是 Anki 插件，请通过 Anki 插件生态系统安装，然后重新启动 Anki。"
+
+#. Incremento UI: deps found
+msgid "backend_deps_found"
+msgstr "位置：{path}"
+
+#. Incremento UI: deps install failed
+msgid "backend_deps_install_failed"
+msgstr "<span style=\"color: #e05050;\">自动安装失败。请参阅下方说明。</span>"
+
+#. Incremento UI: deps install pymupdf
+msgid "backend_deps_install_pymupdf"
+msgstr "自动安装 PyMuPDF"
+
+#. Incremento UI: deps installed
+msgid "backend_deps_installed"
+msgstr "<span style=\"color: gray; font-size: small;\">已安装 — 无需操作。</span>"
+
+#. Incremento UI: deps installed check
+msgid "backend_deps_installed_check"
+msgstr "已安装 ✓"
+
+#. Incremento UI: deps installed restart
+msgid "backend_deps_installed_restart"
+msgstr "<span style=\"color: #4caf50;\">安装成功。请<b>重新启动 Anki</b>以启用。</span>"
+
+#. Incremento UI: deps installing
+msgid "backend_deps_installing"
+msgstr "正在安装…"
+
+#. Incremento UI: deps installing pymupdf
+msgid "backend_deps_installing_pymupdf"
+msgstr "<span style=\"color: gray; font-size: small;\">正在安装 PyMuPDF — 请稍候…</span>"
+
+#. Incremento UI: deps intro
+msgid "backend_deps_intro"
+msgstr "Incremento 使用可选组件进行 PDF OCR 和浏览器扩展同步。基本功能无需这些组件也可使用。"
+
+#. Incremento UI: deps manual install
+msgid "backend_deps_manual_install"
+msgstr "手动安装：\n    {executable} -m pip install \"{requirement}\""
+
+#. Incremento UI: deps not installed
+msgid "backend_deps_not_installed"
+msgstr "<span style=\"color: gray; font-size: small;\">尚未安装。点击下方按钮，自动安装到 Anki 的 Python 环境中。随后需要重新启动 Anki。</span>"
+
+#. Incremento UI: deps pymupdf
+msgid "backend_deps_pymupdf"
+msgstr "PyMuPDF（PDF 渲染与文本提取）"
+
+#. Incremento UI: deps pymupdf instructions
+msgid "backend_deps_pymupdf_instructions"
+msgstr "Incremento 可以自动安装 PyMuPDF。\n\n如果自动安装失败，请在终端中运行以下命令：\n\n    {executable} -m pip install \"{requirement}\"\n\n然后重新启动 Anki。"
+
+#. Incremento UI: deps restart notice
+msgid "backend_deps_restart_notice"
+msgstr "PyMuPDF 已安装 — 请重新启动 Anki 后使用。"
+
+#. Incremento UI: deps tesseract
+msgid "backend_deps_tesseract"
+msgstr "Tesseract OCR（将扫描页转换为可搜索文本）"
+
+#. Incremento UI: deps tesseract linux
+msgid "backend_deps_tesseract_linux"
+msgstr "使用包管理器安装 Tesseract：\n\n    Ubuntu / Debian:  sudo apt install tesseract-ocr\n    Fedora:           sudo dnf install tesseract\n    Arch:             sudo pacman -S tesseract\n    openSUSE:         sudo zypper install tesseract-ocr\n\n安装后，请重新启动 Anki。"
+
+#. Incremento UI: deps tesseract mac
+msgid "backend_deps_tesseract_mac"
+msgstr "通过 Homebrew 安装 Tesseract：\n\n    brew install tesseract\n\n没有 Homebrew？请先访问 https://brew.sh 安装。\n\n安装后，请重新启动 Anki。"
+
+#. Incremento UI: deps tesseract windows
+msgid "backend_deps_tesseract_windows"
+msgstr "下载并运行 Windows 版 Tesseract 安装程序：\n\n    https://github.com/UB-Mannheim/tesseract/wiki\n\n安装时选择 'Add Tesseract to PATH'。\n如果跳过此选项，请安装到默认位置：\n    C:\\Program Files\\Tesseract-OCR\\\n\n安装后，请重新启动 Anki。"
+
+#. Incremento UI: deps title
+msgid "backend_deps_title"
+msgstr "Incremento — 依赖项设置"
+
+#. Incremento UI: extract answer empty
+msgid "backend_extract_answer_empty"
+msgstr "答案为空。"
+
+#. Incremento UI: extract invalid block
+msgid "backend_extract_invalid_block"
+msgstr "问答文本块无效。"
+
+#. Incremento UI: extract missing answer
+msgid "backend_extract_missing_answer"
+msgstr "缺少 A: 行。"
+
+#. Incremento UI: extract missing question
+msgid "backend_extract_missing_question"
+msgstr "缺少 Q: 行。"
+
+#. Incremento UI: extract question empty
+msgid "backend_extract_question_empty"
+msgstr "问题为空。"
+
+#. Incremento UI: extract question first
+msgid "backend_extract_question_first"
+msgstr "文本块必须以 Q: 开头。"
+
+#. Incremento UI: extract tree help
+msgid "backend_extract_tree_help"
+msgstr "提取内容的来源关系会自动添加到知识树中。若源父卡片可用，新提取的卡片会放在其下方。"
+
+#. Incremento UI: item fail
+msgid "backend_item_fail"
+msgstr "不会"
+
+#. Incremento UI: item pass
+msgid "backend_item_pass"
+msgstr "会"
+
+#. Incremento UI: schedule days
+msgid "backend_schedule_days"
+msgid_plural "backend_schedule_days_plural"
+msgstr[0] "每 {count} 天"
+
+#. Incremento UI: schedule mode fixed repeat
+msgid "backend_schedule_mode_fixed_repeat"
+msgstr "精确重复"
+
+#. Incremento UI: schedule mode minimum cadence
+msgid "backend_schedule_mode_minimum_cadence"
+msgstr "最低频率"
+
+#. Incremento UI: schedule mode one time
+msgid "backend_schedule_mode_one_time"
+msgstr "单次设置到期日"
+
+#. Incremento UI: schedule months
+msgid "backend_schedule_months"
+msgid_plural "backend_schedule_months_plural"
+msgstr[0] "每 {count} 个月"
+
+#. Incremento UI: schedule preset daily
+msgid "backend_schedule_preset_daily"
+msgstr "每天"
+
+#. Incremento UI: schedule preset every 2 days
+msgid "backend_schedule_preset_every_2_days"
+msgstr "每 2 天"
+
+#. Incremento UI: schedule preset every 2 weeks
+msgid "backend_schedule_preset_every_2_weeks"
+msgstr "每 2 周"
+
+#. Incremento UI: schedule preset every 3 days
+msgid "backend_schedule_preset_every_3_days"
+msgstr "每 3 天"
+
+#. Incremento UI: schedule preset monthly
+msgid "backend_schedule_preset_monthly"
+msgstr "每月"
+
+#. Incremento UI: schedule preset weekly
+msgid "backend_schedule_preset_weekly"
+msgstr "每周"
+
+#. Incremento UI: schedule weeks
+msgid "backend_schedule_weeks"
+msgid_plural "backend_schedule_weeks_plural"
+msgstr[0] "每 {count} 周"
+
+#. Incremento UI: session branch empty
+msgid "backend_session_branch_empty"
+msgstr "分支“{title}”中没有可学习的卡片。"
+
+#. Incremento UI: session dialog unavailable
+msgid "backend_session_dialog_unavailable"
+msgstr "此 Anki 版本中无法使用 Incremento 调度设置对话框。"
+
+#. Incremento UI: session duplicate ids
+msgid "backend_session_duplicate_ids"
+msgstr "活动队列包含重复卡片，无法重建筛选牌组。"
+
+#. Incremento UI: session empty review
+msgid "backend_session_empty_review"
+msgstr "没有可复习的卡片。"
+
+#. Incremento UI: session enter failed
+msgid "backend_session_enter_failed"
+msgstr "无法进入复习：\n{error}"
+
+#. Incremento UI: session enter incremento failed
+msgid "backend_session_enter_incremento_failed"
+msgstr "无法进入 Incremento 复习会话：\n\n{error}"
+
+#. Incremento UI: session invalid ids
+msgid "backend_session_invalid_ids"
+msgstr "没有有效的卡片 ID，无法创建筛选牌组。"
+
+#. Incremento UI: session missing selector
+msgid "backend_session_missing_selector"
+msgstr "{error_message}：未提供卡片选择器。"
+
+#. Incremento UI: session no cards
+msgid "backend_session_no_cards"
+msgstr "没有可学习的卡片。"
+
+#. Incremento UI: session no selected
+msgid "backend_session_no_selected"
+msgstr "所选卡片均不可用于学习。"
+
+#. Incremento UI: session normal deck
+msgid "backend_session_normal_deck"
+msgstr "“{deck}”是普通牌组。请先删除或重命名。"
+
+#. Incremento UI: session start error
+msgid "backend_session_start_error"
+msgstr "无法开始复习"
+
+#. Incremento UI: session start incremento failed
+msgid "backend_session_start_incremento_failed"
+msgstr "无法开始 Incremento 会话：\n\n{error}"
+
+#. Incremento UI: session unavailable linked
+msgid "backend_session_unavailable_linked"
+msgid_plural "backend_session_unavailable_linked_plural"
+msgstr[0] "{count} 张关联卡片不可用，因为 Anki 无法将已暂停、已隐藏或已在其他筛选牌组中的卡片移入此复习牌组。"
+
+#. Incremento UI: session unavailable partial
+msgid "backend_session_unavailable_partial"
+msgid_plural "backend_session_unavailable_partial_plural"
+msgstr[0] "{count} 张请求的卡片未添加。Anki 无法将已暂停、已隐藏或已在其他筛选牌组中的卡片移入此复习牌组。其余关联卡片将进入复习。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_card_missing"
+msgstr "未找到 {kind} 卡片。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_note_missing"
+msgstr "未找到关联的 {kind} 笔记。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_filename_missing"
+msgstr "此 {kind} 笔记未保存 {kind} 文件名。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_file_missing"
+msgstr "未找到 {kind} 文件。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_stored_missing"
+msgstr "未找到已保存的 {kind} 文件：\n{path}"
+
+#. Document validation error shown by readers and imports
+msgid "backend_document_note_rejected"
+msgstr "添加 {kind} 卡片失败。Anki 拒绝了该笔记。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_pdf_replacement_missing"
+msgstr "未找到替换用的 PDF 文件。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_epub_stored_unavailable"
+msgstr "未找到已保存的 EPUB 文件，或需要重新安全解压。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_epub_no_sections"
+msgstr "EPUB 没有可读的章节。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_html_empty"
+msgstr "网页 HTML 为空。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_unreadable"
+msgstr "无法从网页提取可读内容。"
+
+#. Document validation error shown by readers and imports
+msgid "backend_webpage_download_empty"
+msgstr "网页下载返回了空响应。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_row_error"
+msgstr "第 {row} 行：{detail}"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_format"
+msgstr "语言文件格式无效。请导出新模板并保留其结构。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_version"
+msgstr "此语言文件使用了不支持的格式版本。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_locale"
+msgstr "请在 locale 元数据行中输入有效的语言代码，例如 de 或 pt-BR。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_name"
+msgstr "请在 name 元数据行中输入该语言的原生名称（最多 80 个字符）。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_cell"
+msgstr "单元格包含无效字符或超过 16 KiB。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_rows"
+msgstr "语言表格行数过多（最多 20,000 行）。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_unknown"
+msgstr "此消息键或复数形式不在当前模板中。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_size"
+msgstr "语言文件过大（最大 2 MiB）。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_encoding"
+msgstr "请将语言表格另存为 CSV UTF-8。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_headers"
+msgstr "请按顺序保留 component、key、form、source、translation 列。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_columns"
+msgstr "每行必须包含五列。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_duplicate"
+msgstr "此消息或元数据行重复出现。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_metadata"
+msgstr "请保留 version、locale 和 name 三个元数据行。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_source"
+msgstr "源文本已更改。请导出新表格，仅复制译文。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_tokens"
+msgstr "请完整保留源文本中的每个占位符，包括括号、美元符号和格式。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_markup"
+msgstr "请按原有顺序保留 HTML 标签和属性。不允许使用脚本或可执行文本。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_limit"
+msgstr "每个配置文件最多可包含 20 种自定义语言。请更新已有语言。"
+
+#. Custom language spreadsheet validation.
+msgid "backend_language_pack_storage"
+msgstr "无法安全保存语言包。已保留原有文件。"

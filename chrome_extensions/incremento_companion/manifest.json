@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Incremento Companion",
+  "default_locale": "en",
+  "name": "__MSG_extension_name__",
   "version": "0.2.0",
-  "description": "Imports PDFs, videos, webpages, writing notes, and bookmarks into Incremento while tracking video stop times.",
+  "description": "__MSG_extension_description__",
   "permissions": [
     "storage",
     "offscreen",
@@ -40,34 +41,34 @@
         "default": "Alt+Shift+V",
         "mac": "Alt+Shift+V"
       },
-      "description": "Copy latest tracked video time to clipboard"
+      "description": "__MSG_command_copy_video_time__"
     },
     "add-current-page-as-pdf": {
-      "description": "Add current page to Incremento as PDF"
+      "description": "__MSG_command_add_pdf__"
     },
     "add-current-page-as-video": {
-      "description": "Add current page to Incremento as video"
+      "description": "__MSG_command_add_video__"
     },
     "add-current-page-as-webpage": {
-      "description": "Add current page to Incremento as webpage"
+      "description": "__MSG_command_add_webpage__"
     },
     "add-selection-to-markdown": {
-      "description": "Add current selection to Incremento as markdown"
+      "description": "__MSG_command_add_selection__"
     },
     "add-page-to-markdown": {
-      "description": "Add current page to Incremento as markdown"
+      "description": "__MSG_command_add_page_markdown__"
     },
     "browser-capture-selection": {
       "suggested_key": {
         "default": "Alt+X"
       },
-      "description": "Capture selected browser text into Anki"
+      "description": "__MSG_command_capture_selection__"
     },
     "browser-capture-snapshot": {
       "suggested_key": {
         "default": "Alt+Shift+X"
       },
-      "description": "Capture browser snapshots into Anki"
+      "description": "__MSG_command_capture_snapshot__"
     }
   },
   "content_scripts": [
@@ -97,7 +98,7 @@
     }
   ],
   "action": {
-    "default_title": "Incremento Companion",
+    "default_title": "__MSG_extension_name__",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

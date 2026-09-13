@@ -3,6 +3,65 @@ import sys
 import types
 
 
+def test_transfer_button_tooltips_translate_and_keep_field_names_literal(monkeypatch):
+    import json
+    import subprocess
+    from backend.i18n import Translator
+
+    for locale, expected, fallback in [('hr', 'Umetni odabrani tekst u Naziv $& <题>', 'Umetni odabrani tekst u Polje 2'), ('zh-Hans', '将所选文本插入Naziv $& <题>', '将所选文本插入字段 2')]:
+        monkeypatch.setattr(dock, 't', Translator(locale).t)
+        monkeypatch.setattr(dock, '_pending_extract_options', {'source': 'web'})
+        editor = _FakeEditor(_FakeNote(field_names=['Naziv $& <题>']))
+        editor.web = _FakeWeb()
+        dock._inject_transfer_buttons(editor)
+        js = editor.web.eval_calls[-1]
+        harness = '''
+            const vm = require('node:vm');
+            const buttons = [], commands = [];
+            const sourceBadge = {textContent:''};
+            const panel = {style:{}, querySelector:selector=>selector==='#incremento-extract-source'?sourceBadge:null};
+            const fields = [0,1].map(i => {
+                const host = {parentElement:{}, querySelectorAll:()=>[], querySelector:()=>null,
+                    appendChild:button=>buttons.push(button)};
+                return {id:'f'+i, closest:()=>host, parentElement:host};
+            });
+            const context = {window:{}, pycmd:x=>commands.push(x),
+                MutationObserver:class {observe(){}},
+                document:{body:{}, getElementById:()=>panel, querySelectorAll:()=>fields,
+                    createElement:()=>({dataset:{},style:{},events:{},addEventListener(event,fn){this.events[event]=fn;}})}};
+            vm.runInNewContext(SCRIPT,context);
+            buttons[0].events.click({preventDefault(){},stopPropagation(){}});
+            process.stdout.write(JSON.stringify({titles:buttons.map(b=>b.title),commands,source:sourceBadge.textContent}));
+        '''.replace('SCRIPT', json.dumps(js))
+        result = subprocess.run(['node', '-e', harness], capture_output=True, text=True, timeout=10)
+        assert result.returncode == 0, result.stderr
+        rendered = json.loads(result.stdout)
+        assert rendered['titles'] == [expected, fallback]
+        assert rendered['source'] == Translator(locale).t('reader_web_name')
+        assert 'incremento_transfer_selection:0' in rendered['commands']
+
+
+def test_tag_button_fallback_lookup_uses_translated_tooltip(monkeypatch):
+    import json
+    import subprocess
+    from backend.i18n import Translator
+
+    monkeypatch.setattr(dock, 't', Translator('hr').t)
+    editor = _FakeEditor()
+    editor.web = _FakeWeb()
+    dock._set_add_card_tag_button_state(editor, dock._TOPIC_TAG_BUTTON_ID, True)
+    harness = '''
+        const vm = require('node:vm');
+        const button={textContent:'Tema',style:{},attrs:{},getAttribute:()=>TITLE,
+            setAttribute(key,value){this.attrs[key]=value;}};
+        vm.runInNewContext(SCRIPT,{setTimeout(){},document:{getElementById:()=>null,querySelectorAll:()=>[button]}});
+        process.stdout.write(JSON.stringify(button.attrs));
+    '''.replace('TITLE', json.dumps(Translator('hr').t('add_card_topic_button_tooltip'))).replace('SCRIPT', json.dumps(editor.web.eval_calls[-1]))
+    result = subprocess.run(['node', '-e', harness], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['aria-pressed'] == 'true'
+
+
 class _FakeWindow:
     def __init__(self):
         self.set_menu_bar_args = []
@@ -2032,7 +2091,10 @@ def test_inject_transfer_buttons_shows_extract_options_for_pending_snapshot(monk
     assert "var optionsVisible = true;" in js
     assert "var defaultExtractPriority = 18.0;" in js
     assert "panel.style.display = this.optionsVisible ? 'flex' : 'none';" in js
-    assert "Batch Q/A…" in js
+    assert "var extractLabels =" in js
+    assert "extractLabels.batch" in js
+    # Both initial creation and refresh must use the chosen UI language.
+    assert js.count("extractSourceLabel || extractLabels.selection") == 2
     assert "pycmd('incremento_open_extract_batch');" in js
 
 

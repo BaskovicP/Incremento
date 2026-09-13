@@ -1,0 +1,1257 @@
+# Incremento composition-root interface. Edit translations here.
+msgid ""
+msgstr "Project-Id-Version: Incremento\nLanguage: en\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Menu or action: About
+msgid "root_menu_about"
+msgstr "About"
+
+#. Menu or action: Activity Center…
+msgid "root_menu_activity_center"
+msgstr "Activity Center…"
+
+#. Menu or action: Add Content
+msgid "root_menu_add_content"
+msgstr "Add Content"
+
+#. Menu or action: Add EPUB
+msgid "root_menu_add_epub"
+msgstr "Add EPUB"
+
+#. Menu or action: Add Local File
+msgid "root_menu_add_local_file"
+msgstr "Add Local File"
+
+#. Menu or action: Add to Markdown
+msgid "root_menu_add_markdown"
+msgstr "Add to Markdown"
+
+#. Menu or action: Add PDF
+msgid "root_menu_add_pdf"
+msgstr "Add PDF"
+
+#. Menu or action: Add Video
+msgid "root_menu_add_video"
+msgstr "Add Video"
+
+#. Menu or action: Card Format Updates…
+msgid "root_menu_card_format_updates"
+msgstr "Card Format Updates…"
+
+#. Menu or action: Check Dependencies…
+msgid "root_menu_check_deps"
+msgstr "Check Dependencies…"
+
+#. Menu or action: Clean Up Orphaned PDF Files…
+msgid "root_menu_cleanup_orphan_pdfs"
+msgstr "Clean Up Orphaned PDF Files…"
+
+#. Menu or action: Clean Up Orphaned Video Files…
+msgid "root_menu_cleanup_orphan_videos"
+msgstr "Clean Up Orphaned Video Files…"
+
+#. Menu or action: Clean Non-Active Profile Data…
+msgid "root_menu_cleanup_profile_data"
+msgstr "Clean Non-Active Profile Data…"
+
+#. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
+msgid "root_menu_cleanup_stale_rows"
+msgstr "Clean Up Stale Progress / Search Index / OCR Rows…"
+
+#. Menu or action: Command Palette…
+msgid "root_menu_command_palette"
+msgstr "Command Palette…"
+
+#. Menu or action: Configure Automatic Full Backups…
+msgid "root_menu_configure_auto_backups"
+msgstr "Configure Automatic Full Backups…"
+
+#. Menu or action: Configure Current Video Captions…
+msgid "root_menu_configure_captions"
+msgstr "Configure Current Video Captions…"
+
+#. Menu or action: Document Bookshelf
+msgid "root_menu_document_bookshelf"
+msgstr "Document Bookshelf"
+
+#. Menu or action: Download Current Video Locally
+msgid "root_menu_download_video"
+msgstr "Download Current Video Locally"
+
+#. Menu or action: Export Full Backup
+msgid "root_menu_export_full_backup"
+msgstr "Export Full Backup"
+
+#. Menu or action: Export Support Bundle…
+msgid "root_menu_export_support_bundle"
+msgstr "Export Support Bundle…"
+
+#. Menu or action: Find In Current Document
+msgid "root_menu_find_current_document"
+msgstr "Find In Current Document"
+
+#. Menu or action: Show Focus Timer
+msgid "root_menu_focus_timer"
+msgstr "Show Focus Timer"
+
+#. Menu or action: Getting Started…
+msgid "root_menu_getting_started"
+msgstr "Getting Started…"
+
+#. Menu or action: Go To Parent In Knowledge Tree
+msgid "root_menu_go_parent_tree"
+msgstr "Go To Parent In Knowledge Tree"
+
+#. Menu or action: Import Notebook Citations to PDF Highlights…
+msgid "root_menu_import_notebook_citations"
+msgstr "Import Notebook Citations to PDF Highlights…"
+
+#. Menu or action: Incremento
+msgid "root_menu_incremento"
+msgstr "Incremento"
+
+#. Menu or action: OCR Image Text (Existing Cards)…
+msgid "root_menu_ocr_image_text"
+msgstr "OCR Image Text (Existing Cards)…"
+
+#. Menu or action: Open Knowledge tree
+msgid "root_menu_open_knowledge_tree"
+msgstr "Open Knowledge tree"
+
+#. Menu or action: Quick Open Content
+msgid "root_menu_quick_open_content"
+msgstr "Quick Open Content"
+
+#. Menu or action: Reindex OCR Search Cache (From Hidden Field)
+msgid "root_menu_reindex_ocr_cache"
+msgstr "Reindex OCR Search Cache (From Hidden Field)"
+
+#. Menu or action: Reindex PDF Text (Existing Cards)
+msgid "root_menu_reindex_pdf_text"
+msgstr "Reindex PDF Text (Existing Cards)"
+
+#. Menu or action: Restore Full Backup…
+msgid "root_menu_restore_full_backup"
+msgstr "Restore Full Backup…"
+
+#. Menu or action: Reveal Current Card In Knowledge Tree
+msgid "root_menu_reveal_current_tree"
+msgstr "Reveal Current Card In Knowledge Tree"
+
+#. Menu or action: Search ALL
+msgid "root_menu_search_all"
+msgstr "Search ALL"
+
+#. Menu or action: Settings
+msgid "root_menu_settings"
+msgstr "Settings"
+
+#. Menu or action: Start Incremental Learning
+msgid "root_menu_start_learning"
+msgstr "Start Incremental Learning"
+
+#. Menu or action: Statistics
+msgid "root_menu_statistics"
+msgstr "Statistics"
+
+#. Menu or action: Utils
+msgid "root_menu_utils"
+msgstr "Utils"
+
+#. Menu or action: Web Page
+msgid "root_menu_web_page"
+msgstr "Web Page"
+
+#. Menu or action: Webpage to PDF
+msgid "root_menu_webpage_to_pdf"
+msgstr "Webpage to PDF"
+
+#. Incremento composition-root UI: Select one or more Browser rows first.
+msgid "root_browser_select_rows"
+msgstr "Select one or more Browser rows first."
+
+#. Incremento composition-root UI: No topic cards found in the selected Browser rows.
+msgid "root_browser_no_topic_cards"
+msgstr "No topic cards found in the selected Browser rows."
+
+#. Incremento composition-root UI: No Incremento PDF cards found in the selected Browser rows.
+msgid "root_browser_no_pdf_cards"
+msgstr "No Incremento PDF cards found in the selected Browser rows."
+
+#. Incremento composition-root UI: No Incremento EPUB cards found in the selected Browser rows.
+msgid "root_browser_no_epub_cards"
+msgstr "No Incremento EPUB cards found in the selected Browser rows."
+
+#. Incremento composition-root UI: No selected cards are available to study.
+msgid "root_browser_no_selected_cards"
+msgstr "No selected cards are available to study."
+
+#. Incremento composition-root UI: No notes found for the selected Browser rows.
+msgid "root_browser_no_notes"
+msgstr "No notes found for the selected Browser rows."
+
+#. Incremento composition-root UI: No card is currently being reviewed.
+msgid "root_reviewer_no_review_card"
+msgstr "No card is currently being reviewed."
+
+#. Incremento composition-root UI: No video review card is currently active.
+msgid "root_reviewer_no_video_card"
+msgstr "No video review card is currently active."
+
+#. Incremento composition-root UI: No review card is currently active.
+msgid "root_reviewer_no_active_card"
+msgstr "No review card is currently active."
+
+#. Incremento composition-root UI: Current card is not linked in the knowledge tree.
+msgid "root_reviewer_card_not_in_tree"
+msgstr "Current card is not linked in the knowledge tree."
+
+#. Incremento composition-root UI: Current card is already at the top of the knowledge tree.
+msgid "root_reviewer_card_at_tree_top"
+msgstr "Current card is already at the top of the knowledge tree."
+
+#. Incremento composition-root UI: Selected branch does not contain any knowledge-tree cards.
+msgid "root_reviewer_branch_empty"
+msgstr "Selected branch does not contain any knowledge-tree cards."
+
+#. Incremento composition-root UI: Could not load the current note.
+msgid "root_reviewer_note_load_failed"
+msgstr "Could not load the current note."
+
+#. Incremento composition-root UI: No tags exist in this collection yet.
+msgid "root_reviewer_no_tags"
+msgstr "No tags exist in this collection yet."
+
+#. Incremento composition-root UI: All selected tags are already on this note.
+msgid "root_reviewer_tags_present"
+msgstr "All selected tags are already on this note."
+
+#. Incremento composition-root UI: Open a PDF or EPUB before searching the current document.
+msgid "root_palette_open_document"
+msgstr "Open a PDF or EPUB before searching the current document."
+
+#. Incremento composition-root UI: Open a PDF before changing pages.
+msgid "root_palette_open_pdf_pages"
+msgstr "Open a PDF before changing pages."
+
+#. Incremento composition-root UI: Open a PDF before changing zoom.
+msgid "root_palette_open_pdf_zoom"
+msgstr "Open a PDF before changing zoom."
+
+#. Incremento composition-root UI: Open a PDF before marking a page read.
+msgid "root_palette_open_pdf_read"
+msgstr "Open a PDF before marking a page read."
+
+#. Incremento composition-root UI: Open a reader or reviewer card before extracting.
+msgid "root_palette_open_reader_extract"
+msgstr "Open a reader or reviewer card before extracting."
+
+#. Incremento composition-root UI: Topic postponed to later in this review.
+msgid "root_topic_postponed_session"
+msgstr "Topic postponed to later in this review."
+
+#. Incremento composition-root UI: No PDF cards found to reindex.
+msgid "root_browser_no_pdf_reindex"
+msgstr "No PDF cards found to reindex."
+
+#. Incremento composition-root UI: No readable PDF files were found to reindex.
+msgid "root_browser_no_pdf_files"
+msgstr "No readable PDF files were found to reindex."
+
+#. Incremento composition-root UI: No eligible cards found.
+msgid "root_browser_no_eligible_cards"
+msgstr "No eligible cards found."
+
+#. Incremento composition-root UI: Study Selected Cards ({count_label})
+msgid "root_browser_study_selected"
+msgstr "Study Selected Cards ({count_label})"
+
+#. Incremento composition-root UI: Make Topic ({count_label})
+msgid "root_browser_make_topic"
+msgstr "Make Topic ({count_label})"
+
+#. Incremento composition-root UI: Make Item ({count_label})
+msgid "root_browser_make_item"
+msgstr "Make Item ({count_label})"
+
+#. Incremento composition-root UI: Set A-Factor… ({count_label})
+msgid "root_browser_set_a_factor"
+msgstr "Set A-Factor… ({count_label})"
+
+#. Incremento composition-root UI: Custom Schedule… ({count_label})
+msgid "root_browser_custom_schedule"
+msgstr "Custom Schedule… ({count_label})"
+
+#. Incremento composition-root UI: Regenerate PDF Covers ({count_label})
+msgid "root_browser_regenerate_pdf_covers"
+msgstr "Regenerate PDF Covers ({count_label})"
+
+#. Incremento composition-root UI: Regenerate EPUB Covers ({count_label})
+msgid "root_browser_regenerate_epub_covers"
+msgstr "Regenerate EPUB Covers ({count_label})"
+
+#. Incremento composition-root UI: OCR Image Text ({count_label})
+msgid "root_browser_ocr_image_text"
+msgstr "OCR Image Text ({count_label})"
+
+#. Incremento composition-root UI: Show Hidden Fields ({count_label})
+msgid "root_browser_show_hidden_fields"
+msgstr "Show Hidden Fields ({count_label})"
+
+#. Incremento composition-root UI: Show Database Entries ({count_label})
+msgid "root_browser_show_database_entries"
+msgstr "Show Database Entries ({count_label})"
+
+#. Number of selected Browser cards; count is display-only.
+msgid "root_browser_selected_card"
+msgid_plural "root_browser_selected_card_plural"
+msgstr[0] "{count} selected card"
+msgstr[1] "{count} selected cards"
+
+#. Browser action feedback: Converted {converted}, but {failed}.
+msgid "root_browser_conversion_partial"
+msgstr "Converted {converted}, but {failed}."
+
+#. Browser action feedback: Converted {converted}.
+msgid "root_browser_conversion_done"
+msgstr "Converted {converted}."
+
+#. Browser action feedback: Saved {summary} on {saved}. Applied now to {applied}.
+msgid "root_browser_schedule_saved_applied"
+msgstr "Saved {summary} on {saved}. Applied now to {applied}."
+
+#. Browser action feedback: Saved {summary} on {saved}.
+msgid "root_browser_schedule_saved"
+msgstr "Saved {summary} on {saved}."
+
+#. Browser action feedback: Set A-Factor
+msgid "root_browser_a_factor_title"
+msgstr "Set A-Factor"
+
+#. Browser action feedback: A-Factor:
+msgid "root_browser_a_factor_label"
+msgstr "A-Factor:"
+
+#. Browser action feedback: No topic cards were updated. {failed} failed to load or save.
+msgid "root_browser_a_factor_no_updates_error"
+msgstr "No topic cards were updated. {failed} failed to load or save."
+
+#. Browser action feedback: Set A-Factor {value} on {updated}.
+msgid "root_browser_a_factor_set"
+msgstr "Set A-Factor {value} on {updated}."
+
+#. Browser action feedback: Regenerating PDF covers…
+msgid "root_browser_cover_progress_pdf_label"
+msgstr "Regenerating PDF covers…"
+
+#. Browser action feedback: ({index}/{total}) Regenerating PDF covers…
+msgid "root_browser_cover_progress_pdf"
+msgstr "({index}/{total}) Regenerating PDF covers…"
+
+#. Browser action feedback: Regenerating EPUB covers…
+msgid "root_browser_cover_progress_epub_label"
+msgstr "Regenerating EPUB covers…"
+
+#. Browser action feedback: ({index}/{total}) Regenerating EPUB covers…
+msgid "root_browser_cover_progress_epub"
+msgstr "({index}/{total}) Regenerating EPUB covers…"
+
+#. Browser action feedback: Card {card_id}: {error}
+msgid "root_browser_cover_failed_card"
+msgstr "Card {card_id}: {error}"
+
+#. Browser action feedback: … and {count} more.
+msgid "root_browser_more_failures"
+msgstr "… and {count} more."
+
+#. Browser action feedback: Regenerated {regenerated} and cleared {cleared}.
+msgid "root_browser_cover_summary_pdf"
+msgstr "Regenerated {regenerated} and cleared {cleared}."
+
+#. Browser action feedback: Regenerated {regenerated} and cleared {cleared}.
+msgid "root_browser_cover_summary_epub"
+msgstr "Regenerated {regenerated} and cleared {cleared}."
+
+#. Browser action feedback: Failures:
+msgid "root_browser_failures_heading"
+msgstr "Failures:"
+
+#. Browser count-dependent feedback: Converted {count} selected card to a topic
+msgid "root_browser_cards_to_topics"
+msgid_plural "root_browser_cards_to_topics_plural"
+msgstr[0] "Converted {count} selected card to a topic"
+msgstr[1] "Converted {count} selected cards to topics"
+
+#. Browser count-dependent feedback: Converted {count} selected card to an item
+msgid "root_browser_cards_to_items"
+msgid_plural "root_browser_cards_to_items_plural"
+msgstr[0] "Converted {count} selected card to an item"
+msgstr[1] "Converted {count} selected cards to items"
+
+#. Browser count-dependent feedback: {count} selected card failed
+msgid "root_browser_failed_cards"
+msgid_plural "root_browser_failed_cards_plural"
+msgstr[0] "{count} selected card failed"
+msgstr[1] "{count} selected cards failed"
+
+#. Browser count-dependent feedback: Cleared custom schedule on {count} selected card.
+msgid "root_browser_schedule_cleared"
+msgid_plural "root_browser_schedule_cleared_plural"
+msgstr[0] "Cleared custom schedule on {count} selected card."
+msgstr[1] "Cleared custom schedule on {count} selected cards."
+
+#. Browser count-dependent feedback: {count} card
+msgid "root_browser_schedule_saved_cards"
+msgid_plural "root_browser_schedule_saved_cards_plural"
+msgstr[0] "{count} card"
+msgstr[1] "{count} cards"
+
+#. Browser count-dependent feedback: {count} topic card
+msgid "root_browser_topic_cards"
+msgid_plural "root_browser_topic_cards_plural"
+msgstr[0] "{count} topic card"
+msgstr[1] "{count} topic cards"
+
+#. Browser count-dependent feedback: Skipped {count} non-topic card.
+msgid "root_browser_skipped_non_topic"
+msgid_plural "root_browser_skipped_non_topic_plural"
+msgstr[0] "Skipped {count} non-topic card."
+msgstr[1] "Skipped {count} non-topic cards."
+
+#. Browser count-dependent feedback: {count} PDF cover
+msgid "root_browser_pdf_covers"
+msgid_plural "root_browser_pdf_covers_plural"
+msgstr[0] "{count} PDF cover"
+msgstr[1] "{count} PDF covers"
+
+#. Browser count-dependent feedback: {count} EPUB cover
+msgid "root_browser_epub_covers"
+msgid_plural "root_browser_epub_covers_plural"
+msgstr[0] "{count} EPUB cover"
+msgstr[1] "{count} EPUB covers"
+
+#. Browser count-dependent feedback: Skipped {count} non-PDF selected card.
+msgid "root_browser_skipped_non_pdf"
+msgid_plural "root_browser_skipped_non_pdf_plural"
+msgstr[0] "Skipped {count} non-PDF selected card."
+msgstr[1] "Skipped {count} non-PDF selected cards."
+
+#. Browser count-dependent feedback: Skipped {count} non-EPUB selected card.
+msgid "root_browser_skipped_non_epub"
+msgid_plural "root_browser_skipped_non_epub_plural"
+msgstr[0] "Skipped {count} non-EPUB selected card."
+msgstr[1] "Skipped {count} non-EPUB selected cards."
+
+#. Browser database and direct review UI: Selected card IDs
+msgid "root_browser_database_selected_ids"
+msgstr "Selected card IDs"
+
+#. Browser database and direct review UI: Profile: {profile}
+msgid "root_browser_database_profile"
+msgstr "Profile: {profile}"
+
+#. Browser database and direct review UI: Database: {path}
+msgid "root_browser_database_path"
+msgstr "Database: {path}"
+
+#. Browser database and direct review UI: Card {card_id}
+msgid "root_browser_database_card"
+msgstr "Card {card_id}"
+
+#. Browser database and direct review UI: No Incremento database rows found for card {card_id}.
+msgid "root_browser_database_no_rows"
+msgstr "No Incremento database rows found for card {card_id}."
+
+#. Browser database and direct review UI: effective values (not yet persisted)
+msgid "root_browser_database_effective_values"
+msgstr "effective values (not yet persisted)"
+
+#. Browser database and direct review UI: rowid {rowid}
+msgid "root_browser_database_rowid"
+msgstr "rowid {rowid}"
+
+#. Browser database and direct review UI: row
+msgid "root_browser_database_row"
+msgstr "row"
+
+#. Browser database and direct review UI: Could not read Incremento database entries:
+msgid "root_browser_database_read_failed"
+msgstr "Could not read Incremento database entries:\n{error}"
+
+#. Browser database and direct review UI: Review Selected is unavailable with this Anki reviewer version. Incremento left the selected cards unchanged. Please update Anki or use a normal filtered-deck review.
+msgid "root_browser_review_unsupported"
+msgstr "Review Selected is unavailable with this Anki reviewer version. Incremento left the selected cards unchanged. Please update Anki or use a normal filtered-deck review."
+
+#. Browser database and direct review UI: Review Selected could not create a compatible Anki review queue. Incremento left the selected cards unchanged; use a normal filtered-deck review instead.
+msgid "root_browser_review_queue_failed"
+msgstr "Review Selected could not create a compatible Anki review queue. Incremento left the selected cards unchanged; use a normal filtered-deck review instead."
+
+#. Browser database and direct review UI: {studying} {skipped}
+msgid "root_browser_review_start_skipped"
+msgstr "{studying} {skipped}"
+
+#. Browser database and direct review UI: Could not start studying the selected cards:
+msgid "root_browser_review_start_failed"
+msgstr "Could not start studying the selected cards:\n{error}"
+
+#. Browser direct review count: Studying {count} selected card.
+msgid "root_browser_review_studying"
+msgid_plural "root_browser_review_studying_plural"
+msgstr[0] "Studying {count} selected card."
+msgstr[1] "Studying {count} selected cards."
+
+#. Browser direct review count: Skipped {count} unavailable card.
+msgid "root_browser_review_skipped"
+msgid_plural "root_browser_review_skipped_plural"
+msgstr[0] "Skipped {count} unavailable card."
+msgstr[1] "Skipped {count} unavailable cards."
+
+#. Composition-root note formats and About UI: Anki sync could not be started automatically:
+msgid "root_sync_start_failed"
+msgstr "Anki sync could not be started automatically:\n{error}"
+
+#. Composition-root note formats and About UI: Incremento could not inspect card formats:
+msgid "root_note_formats_inspect_failed"
+msgstr "Incremento could not inspect card formats:\n{error}"
+
+#. Composition-root note formats and About UI: All existing Incremento card formats are up to date.
+msgid "root_note_formats_current"
+msgstr "All existing Incremento card formats are up to date."
+
+#. Composition-root note formats and About UI: Incremento has not changed the collection. Anki Sync will open now. After every device is synchronized, return to Incremento > Utils > Card Format Updates and apply the update.
+msgid "root_note_formats_sync_first"
+msgstr "Incremento has not changed the collection. Anki Sync will open now. After every device is synchronized, return to Incremento > Utils > Card Format Updates and apply the update."
+
+#. Composition-root note formats and About UI: none confirmed
+msgid "root_note_formats_none_confirmed"
+msgstr "none confirmed"
+
+#. Composition-root note formats and About UI: Incremento stopped the card-format update because Anki reported an error while updating {note_type}.
+msgid "root_note_formats_apply_partial"
+msgstr "Incremento stopped the card-format update because Anki reported an error while updating {note_type}.\n\nFormats confirmed as saved before the error: {applied}.\n\nDo not choose a one-way sync yet. Restart Anki, then open Incremento > Utils > Card Format Updates and retry. If the error continues, export a support bundle.\n\nTechnical detail: {error}"
+
+#. Composition-root note formats and About UI: Incremento could not apply the card-format update:
+msgid "root_note_formats_apply_failed"
+msgstr "Incremento could not apply the card-format update:\n{error}"
+
+#. Composition-root note formats and About UI: The Incremento card formats were already up to date.
+msgid "root_note_formats_already_current"
+msgstr "The Incremento card formats were already up to date."
+
+#. Composition-root note formats and About UI: Incremento updated the approved card formats. Anki Sync will open next. This device now contains the updated schema: choose Upload to AnkiWeb. Then choose Download on your other devices.
+msgid "root_note_formats_applied"
+msgstr "Incremento updated the approved card formats. Anki Sync will open next. This device now contains the updated schema: choose Upload to AnkiWeb. Then choose Download on your other devices."
+
+#. Composition-root note formats and About UI: Author:
+msgid "root_about_author"
+msgstr "Author:"
+
+#. Composition-root note formats and About UI: Incremento is an Anki add-on for incremental reading and study workflows. It keeps long-form material and review cards in one place inside Anki.
+msgid "root_about_intro"
+msgstr "Incremento is an Anki add-on for incremental reading and study workflows. It keeps long-form material and review cards in one place inside Anki."
+
+#. Composition-root note formats and About UI: General information
+msgid "root_about_general_info"
+msgstr "General information"
+
+#. Composition-root note formats and About UI: Add and review PDFs, webpages, videos, and writing notes.
+msgid "root_about_add_review"
+msgstr "Add and review PDFs, webpages, videos, and writing notes."
+
+#. Composition-root note formats and About UI: Open PDF, webpage, video, and writing docks while reviewing cards.
+msgid "root_about_open_docks"
+msgstr "Open PDF, webpage, video, and writing docks while reviewing cards."
+
+#. Composition-root note formats and About UI: Extract selections into new cards and keep context linked to the source.
+msgid "root_about_extract"
+msgstr "Extract selections into new cards and keep context linked to the source."
+
+#. Composition-root note formats and About UI: Track PDF position, highlights, video progress, and study statistics.
+msgid "root_about_track"
+msgstr "Track PDF position, highlights, video progress, and study statistics."
+
+#. Composition-root note formats and About UI: Use the Chrome extension to send the current webpage as PDF, webpage, or writing.
+msgid "root_about_chrome_extension"
+msgstr "Use the Chrome extension to send the current webpage as PDF, webpage, or writing."
+
+#. Composition-root note formats and About UI: Disclaimer:
+msgid "root_about_disclaimer_label"
+msgstr "Disclaimer:"
+
+#. Composition-root note formats and About UI: By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.
+msgid "root_about_disclaimer"
+msgstr "By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use."
+
+#. Composition-root note formats and About UI: License:
+msgid "root_about_license_label"
+msgstr "License:"
+
+#. Composition-root note formats and About UI: All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+msgid "root_about_license"
+msgstr "All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic."
+
+#. Incremento composition-root UI: Please enter a video URL.
+msgid "root_video_enter_url"
+msgstr "Please enter a video URL."
+
+#. Incremento composition-root UI: Could not find a valid YouTube or Vimeo URL.
+msgid "root_video_invalid_url"
+msgstr "Could not find a valid YouTube or Vimeo URL."
+
+#. Incremento composition-root UI: Please choose a local video file.
+msgid "root_video_choose_file"
+msgstr "Please choose a local video file."
+
+#. Incremento composition-root UI: Selected local video file does not exist.
+msgid "root_video_file_missing"
+msgstr "Selected local video file does not exist."
+
+#. Incremento composition-root UI: Importing local video…
+msgid "root_video_importing_local"
+msgstr "Importing local video…"
+
+#. Incremento composition-root UI: Importing and encoding local video…
+msgid "root_video_importing_encoding"
+msgstr "Importing and encoding local video…"
+
+#. Incremento composition-root UI: Downloading original-quality video…
+msgid "root_video_downloading_original"
+msgstr "Downloading original-quality video…"
+
+#. Incremento composition-root UI: Downloading and compressing video…
+msgid "root_video_downloading_compressing"
+msgstr "Downloading and compressing video…"
+
+#. Incremento composition-root UI: The Anki profile changed, so the video import was cancelled safely.
+msgid "root_video_profile_changed"
+msgstr "The Anki profile changed, so the video import was cancelled safely."
+
+#. Incremento composition-root UI: Please enter a title.
+msgid "root_writing_enter_title"
+msgstr "Please enter a title."
+
+#. Incremento composition-root UI: Please choose a local file.
+msgid "root_local_file_choose"
+msgstr "Please choose a local file."
+
+#. Incremento composition-root UI: Selected local file does not exist.
+msgid "root_local_file_missing"
+msgstr "Selected local file does not exist."
+
+#. Root reviewer/import feedback: Topic postponed for {minutes} minutes.
+msgid "root_topic_postponed_minutes"
+msgstr "Topic postponed for {minutes} minutes."
+
+#. Root reviewer/import feedback: Skipped for {minutes} minutes.
+msgid "root_item_skipped_minutes"
+msgstr "Skipped for {minutes} minutes."
+
+#. Root reviewer/import feedback: Created: {count}
+msgid "root_batch_created"
+msgstr "Created: {count}"
+
+#. Root reviewer/import feedback: Skipped: {count}
+msgid "root_batch_skipped"
+msgstr "Skipped: {count}"
+
+#. Root reviewer/import feedback: Failed: {count}
+msgid "root_batch_failed"
+msgstr "Failed: {count}"
+
+#. Root reviewer/import feedback: Could not create batch extracts:
+msgid "root_batch_create_failed"
+msgstr "Could not create batch extracts:\n{error}"
+
+#. Root reviewer/import feedback: Priority set to {priority}
+msgid "root_reviewer_priority_set"
+msgstr "Priority set to {priority}"
+
+#. Root reviewer/import feedback:   ·  A-Factor {value}
+msgid "root_reviewer_a_factor_set"
+msgstr "  ·  A-Factor {value}"
+
+#. Root reviewer/import feedback: Added tags: {tags}
+msgid "root_reviewer_tags_added"
+msgstr "Added tags: {tags}"
+
+#. Root reviewer/import feedback: Video card '{title}' added to {deck} (local copy ready).
+msgid "root_video_added_local"
+msgstr "Video card '{title}' added to {deck} (local copy ready)."
+
+#. Root reviewer/import feedback: Video card '{title}' added to {deck}.
+msgid "root_video_added"
+msgstr "Video card '{title}' added to {deck}."
+
+#. Root reviewer/import feedback: Failed to add video card:
+msgid "root_video_add_failed"
+msgstr "Failed to add video card:\n{error}"
+
+#. Root reviewer/import feedback: Local video import failed:
+msgid "root_video_local_import_failed"
+msgstr "Local video import failed:\n{error}"
+
+#. Root reviewer/import feedback: Video download/compression failed:
+msgid "root_video_download_failed"
+msgstr "Video download/compression failed:\n{error}"
+
+#. Root reviewer/import feedback: Markdown card '{title}' added to {deck}.
+msgid "root_writing_card_added"
+msgstr "Markdown card '{title}' added to {deck}."
+
+#. Root reviewer/import feedback: Failed to add markdown card:
+msgid "root_writing_add_failed"
+msgstr "Failed to add markdown card:\n{error}"
+
+#. Root reviewer/import feedback: Local file card '{title}' added to {deck}.
+msgid "root_local_file_added"
+msgstr "Local file card '{title}' added to {deck}."
+
+#. Root reviewer/import feedback: Failed to add local file card:
+msgid "root_local_file_add_failed"
+msgstr "Failed to add local file card:\n{error}"
+
+#. Root reviewer/import feedback: PDF card "{title}" added to the Topics deck.
+msgid "root_webpage_pdf_added"
+msgstr "PDF card \"{title}\" added to the Topics deck."
+
+#. Root reviewer/import feedback: Failed to import webpage as PDF:
+msgid "root_webpage_pdf_failed"
+msgstr "Failed to import webpage as PDF:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Could not open document:
+msgid "root_document_open_failed"
+msgstr "Could not open document:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Could not load the Document Bookshelf:
+msgid "root_bookshelf_load_failed"
+msgstr "Could not load the Document Bookshelf:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Could not prepare branch study session:
+msgid "root_branch_study_failed"
+msgstr "Could not prepare branch study session:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: …and {count} more
+msgid "root_more_failures"
+msgstr "…and {count} more"
+
+#. Root PDF/EPUB import and OCR status: All imports failed ({count}):
+msgid "root_import_pdf_all_failed"
+msgstr "All imports failed ({count}):\n\n{details}{extra}"
+
+#. Root PDF/EPUB import and OCR status: All EPUB imports failed ({count}):
+msgid "root_import_epub_all_failed"
+msgstr "All EPUB imports failed ({count}):\n\n{details}{extra}"
+
+#. Root PDF/EPUB import and OCR status: Could not list PDF cards:
+msgid "root_pdf_list_failed"
+msgstr "Could not list PDF cards:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: Reindexing PDF text in the background…
+msgid "root_pdf_reindex_background"
+msgstr "Reindexing PDF text in the background…"
+
+#. Root PDF/EPUB import and OCR status: Reindexing PDF text… {completed}/{total}
+msgid "root_pdf_reindex_progress"
+msgstr "Reindexing PDF text… {completed}/{total}"
+
+#. Root PDF/EPUB import and OCR status: PDF text reindex failed:
+msgid "root_pdf_reindex_failed"
+msgstr "PDF text reindex failed:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: PDF text reindex cancelled.
+msgid "root_pdf_reindex_cancelled"
+msgstr "PDF text reindex cancelled."
+
+#. Root PDF/EPUB import and OCR status: PDF text reindex complete.
+msgid "root_pdf_reindex_complete"
+msgstr "PDF text reindex complete."
+
+#. Root PDF/EPUB import and OCR status: Processed: {count}
+msgid "root_pdf_reindex_processed"
+msgstr "Processed: {count}"
+
+#. Root PDF/EPUB import and OCR status: Unchanged/skipped: {count}
+msgid "root_pdf_reindex_skipped"
+msgstr "Unchanged/skipped: {count}"
+
+#. Root PDF/EPUB import and OCR status: Missing before start: {count}
+msgid "root_pdf_reindex_missing"
+msgstr "Missing before start: {count}"
+
+#. Root PDF/EPUB import and OCR status: Errors: {count}
+msgid "root_pdf_reindex_errors"
+msgstr "Errors: {count}"
+
+#. Root PDF/EPUB import and OCR status: Tesseract OCR is required for this utility.
+msgid "root_ocr_tesseract_required"
+msgstr "Tesseract OCR is required for this utility.\n\n{details}"
+
+#. Root PDF/EPUB import and OCR status: Could not access Anki media directory:
+msgid "root_ocr_media_access_failed"
+msgstr "Could not access Anki media directory:\n{error}"
+
+#. Root PDF/EPUB import and OCR status: ({index}/{total}) {label}
+msgid "root_ocr_progress"
+msgstr "({index}/{total}) {label}"
+
+#. Root PDF/EPUB import and OCR status: {label} complete.
+msgid "root_ocr_complete"
+msgstr "{label} complete."
+
+#. Root PDF/EPUB import and OCR status: Scanned notes: {count}
+msgid "root_ocr_scanned"
+msgstr "Scanned notes: {count}"
+
+#. Root PDF/EPUB import and OCR status: Updated OCR text: {count}
+msgid "root_ocr_updated"
+msgstr "Updated OCR text: {count}"
+
+#. Root PDF/EPUB import and OCR status: Skipped special note types: {count}
+msgid "root_ocr_skipped_types"
+msgstr "Skipped special note types: {count}"
+
+#. Root PDF/EPUB import and OCR status: Notes without images: {count}
+msgid "root_ocr_no_images"
+msgstr "Notes without images: {count}"
+
+#. Root PDF/EPUB import and OCR status: Missing image files: {count}
+msgid "root_ocr_missing_images"
+msgstr "Missing image files: {count}"
+
+#. Root PDF/EPUB import and OCR status: Rebuilt notes: {count}
+msgid "root_ocr_rebuilt"
+msgstr "Rebuilt notes: {count}"
+
+#. Root PDF/EPUB import and OCR status: Blank OCR fields: {count}
+msgid "root_ocr_blank"
+msgstr "Blank OCR fields: {count}"
+
+#. Root import card count: Added {count} PDF card → {deck}
+msgid "root_import_pdf_added"
+msgid_plural "root_import_pdf_added_plural"
+msgstr[0] "Added {count} PDF card → {deck}"
+msgstr[1] "Added {count} PDF cards → {deck}"
+
+#. Root import card count: Added {count} EPUB card → {deck}
+msgid "root_import_epub_added"
+msgid_plural "root_import_epub_added_plural"
+msgstr[0] "Added {count} EPUB card → {deck}"
+msgstr[1] "Added {count} EPUB cards → {deck}"
+
+#. Incremento composition-root UI: OCR image text
+msgid "root_ocr_image_text_label"
+msgstr "OCR image text"
+
+#. Incremento composition-root UI: Reindex OCR search cache
+msgid "root_ocr_reindex_label"
+msgstr "Reindex OCR search cache"
+
+#. Incremento composition-root UI: Incremento Hidden Fields
+msgid "root_hidden_fields_title"
+msgstr "Incremento Hidden Fields"
+
+#. Incremento composition-root UI: No Incremento hidden fields exist on this note.
+msgid "root_hidden_fields_none"
+msgstr "No Incremento hidden fields exist on this note."
+
+#. Incremento composition-root UI: (empty)
+msgid "root_hidden_fields_empty"
+msgstr "(empty)"
+
+#. Browser hidden field inspection: Note
+msgid "root_hidden_fields_note"
+msgstr "Note"
+
+#. Browser hidden field inspection: Note {note_id}
+msgid "root_hidden_fields_load_failed"
+msgstr "Note {note_id}\nCould not load note: {error}"
+
+#. Browser hidden field inspection: Note {note_id} · {model}
+msgid "root_hidden_fields_header"
+msgstr "Note {note_id} · {model}"
+
+#. Browser hidden field inspection: Title: {title}
+msgid "root_hidden_fields_note_title"
+msgstr "Title: {title}"
+
+#. Incremento composition-root UI: Full Backup
+msgid "root_backup_full_title"
+msgstr "Full Backup"
+
+#. Incremento composition-root UI: Export a full backup of the current Anki profile, or configure automatic backups to a local or synced folder.
+msgid "root_backup_choice_description"
+msgstr "Export a full backup of the current Anki profile, or configure automatic backups to a local or synced folder."
+
+#. Incremento composition-root UI: Export Now…
+msgid "root_backup_export_now"
+msgstr "Export Now…"
+
+#. Incremento composition-root UI: Automatic Backups…
+msgid "root_backup_automatic_button"
+msgstr "Automatic Backups…"
+
+#. Incremento composition-root UI: Export Current Incremento Profile Backup
+msgid "root_backup_file_dialog_title"
+msgstr "Export Current Incremento Profile Backup"
+
+#. Incremento composition-root UI: ZIP files (*.zip)
+msgid "root_backup_file_filter"
+msgstr "ZIP files (*.zip)"
+
+#. Incremento composition-root UI: The previous close backup failed. Check the backup destination.
+msgid "root_backup_close_failed"
+msgstr "The previous close backup failed. Check the backup destination."
+
+#. Incremento composition-root UI: A full backup is already running. See Activity Center.
+msgid "root_backup_already_running"
+msgstr "A full backup is already running. See Activity Center."
+
+#. Incremento composition-root UI: Full profile backup
+msgid "root_backup_activity_title"
+msgstr "Full profile backup"
+
+#. Incremento composition-root UI: Backup
+msgid "root_backup_activity_category"
+msgstr "Backup"
+
+#. Incremento composition-root UI: Preparing backup…
+msgid "root_backup_activity_preparing"
+msgstr "Preparing backup…"
+
+#. Incremento composition-root UI: Creating Anki package…
+msgid "root_backup_activity_creating_package"
+msgstr "Creating Anki package…"
+
+#. Incremento composition-root UI: Snapshotting Incremento user_files…
+msgid "root_backup_activity_snapshotting"
+msgstr "Snapshotting Incremento user_files…"
+
+#. Incremento composition-root UI: Writing backup ZIP…
+msgid "root_backup_activity_writing_zip"
+msgstr "Writing backup ZIP…"
+
+#. Incremento composition-root UI: Backup saved, but its schedule timestamp could not be updated.
+msgid "root_backup_schedule_timestamp_failed"
+msgstr "Backup saved, but its schedule timestamp could not be updated."
+
+#. Incremento composition-root UI: Automatic full backup saved.
+msgid "root_backup_automatic_saved"
+msgstr "Automatic full backup saved."
+
+#. Incremento composition-root UI: Full backup saved. Details are in Activity Center.
+msgid "root_backup_saved"
+msgstr "Full backup saved. Details are in Activity Center."
+
+#. Incremento composition-root UI: Creating privacy-safe support bundle…
+msgid "root_support_progress"
+msgstr "Creating privacy-safe support bundle…"
+
+#. Backup and support-bundle UI: Automatic backup folder unavailable: {error}
+msgid "root_backup_folder_unavailable"
+msgstr "Automatic backup folder unavailable: {error}"
+
+#. Backup and support-bundle UI: Close backup folder unavailable: {error}
+msgid "root_backup_close_folder_unavailable"
+msgstr "Close backup folder unavailable: {error}"
+
+#. Backup and support-bundle UI: Backup destination unavailable: {error}
+msgid "root_backup_destination_unavailable"
+msgstr "Backup destination unavailable: {error}"
+
+#. Backup and support-bundle UI: Automatic backup destination unavailable: {error}
+msgid "root_backup_auto_destination_unavailable"
+msgstr "Automatic backup destination unavailable: {error}"
+
+#. Backup and support-bundle UI: Could not show backup progress: {error}
+msgid "root_backup_progress_failed"
+msgstr "Could not show backup progress: {error}"
+
+#. Backup and support-bundle UI: Creating Anki package… exported media {count}
+msgid "root_backup_exported_media"
+msgstr "Creating Anki package… exported media {count}"
+
+#. Backup and support-bundle UI: Profile changed before the backup completed.
+msgid "root_backup_profile_changed"
+msgstr "Profile changed before the backup completed."
+
+#. Backup and support-bundle UI: Automatic backup failed:
+msgid "root_backup_failed_auto"
+msgstr "Automatic backup failed:\n{error}"
+
+#. Backup and support-bundle UI: Export failed:
+msgid "root_backup_failed_manual"
+msgstr "Export failed:\n{error}"
+
+#. Backup and support-bundle UI: Saved to {path}
+msgid "root_backup_saved_to"
+msgstr "Saved to {path}"
+
+#. Backup and support-bundle UI: Backup saved, but old versions could not be removed: {error}
+msgid "root_backup_retention_failed"
+msgstr "Backup saved, but old versions could not be removed: {error}"
+
+#. Backup and support-bundle UI: Could not create the support bundle:
+msgid "root_support_create_failed"
+msgstr "Could not create the support bundle:\n\n{error}"
+
+#. Backup and support-bundle UI: Privacy-safe support bundle created.
+msgid "root_support_created"
+msgstr "Privacy-safe support bundle created.\n\nIncluded {count} recent diagnostic event(s).\nIt contains no card/note text, raw IDs, deck/tag/profile names, media, user/media filenames, local paths, URLs, database rows, exception messages, or exact activity timestamps. Fixed shipped-code filenames appear only beside their hashes.\n\nSaved to:\n{path}"
+
+#. Root settings and cleanup summary: Incremento settings updated.
+msgid "root_settings_updated"
+msgstr "Incremento settings updated."
+
+#. Root settings and cleanup summary: No stale progress, search-index, or OCR cache rows found.
+msgid "root_cleanup_stale_none"
+msgstr "No stale progress, search-index, or OCR cache rows found."
+
+#. Root settings and cleanup summary: Stale progress rows removed: {total}
+msgid "root_cleanup_progress_summary"
+msgstr "Stale progress rows removed: {total}\n• PDF: {pdf}\n• Video: {video}\n• Web: {web}"
+
+#. Root settings and cleanup summary: Stale search index rows removed: {total}
+msgid "root_cleanup_index_summary"
+msgstr "Stale search index rows removed: {total}\n• PDF pages: {pdf}\n• EPUB sections: {epub}"
+
+#. Root settings and cleanup summary: Stale OCR cache rows removed: {total}
+msgid "root_cleanup_ocr_summary"
+msgstr "Stale OCR cache rows removed: {total}\n• Missing notes: {notes}\n• Missing cards: {cards}"
+
+#. Root settings and cleanup summary: lower numbers are more important
+msgid "root_settings_priority_lower"
+msgstr "lower numbers are more important"
+
+#. Root settings and cleanup summary: higher numbers are more important
+msgid "root_settings_priority_higher"
+msgstr "higher numbers are more important"
+
+#. Root settings and cleanup summary: You changed how Incremento interprets stored priority numbers.
+msgid "root_settings_priority_changed"
+msgstr "You changed how Incremento interprets stored priority numbers."
+
+#. Root settings and cleanup summary: New direction: {direction}.
+msgid "root_settings_priority_direction"
+msgstr "New direction: {direction}."
+
+#. Root settings and cleanup summary: Do you also want to invert all existing stored priorities for the current profile?
+msgid "root_settings_priority_invert_question"
+msgstr "Do you also want to invert all existing stored priorities for the current profile?"
+
+#. Root settings and cleanup summary: This rewrites each saved priority as 100 - priority.
+msgid "root_settings_priority_invert_detail"
+msgstr "This rewrites each saved priority as 100 - priority."
+
+#. Root settings and cleanup summary: Example: 20 -> 80, 95 -> 5.
+msgid "root_settings_priority_invert_example"
+msgstr "Example: 20 -> 80, 95 -> 5."
+
+#. Root settings and cleanup summary: Invert Existing Priorities?
+msgid "root_settings_priority_invert_title"
+msgstr "Invert Existing Priorities?"
+
+#. Root settings and cleanup summary: Could not invert stored priorities:
+msgid "root_settings_priority_invert_failed"
+msgstr "Could not invert stored priorities:\n{error}"
+
+#. Root settings and cleanup summary: Creating database checkpoint…
+msgid "root_database_checkpoint_progress"
+msgstr "Creating database checkpoint…"
+
+#. Root settings and cleanup summary: Could not prepare the database editor:
+msgid "root_database_editor_failed"
+msgstr "Could not prepare the database editor:\n{error}"
+
+#. Root settings priority count: Incremento settings updated. Inverted {count} stored priority.
+msgid "root_settings_priority_inverted"
+msgid_plural "root_settings_priority_inverted_plural"
+msgstr[0] "Incremento settings updated. Inverted {count} stored priority."
+msgstr[1] "Incremento settings updated. Inverted {count} stored priorities."
+
+#. Cleanup UI: Could not clean stale Incremento rows:
+msgid "root_cleanup_stale_failed"
+msgstr "Could not clean stale Incremento rows:\n{error}"
+
+#. Cleanup UI: Could not scan non-active profile artifacts:
+msgid "root_cleanup_profile_scan_failed"
+msgstr "Could not scan non-active profile artifacts:\n{error}"
+
+#. Cleanup UI: No deletable cross-profile artifacts detected.
+msgid "root_cleanup_profile_none"
+msgstr "No deletable cross-profile artifacts detected.\n\nNothing is safe to delete without affecting some profile."
+
+#. Cleanup UI: Active profile: {profile}
+msgid "root_cleanup_active_profile"
+msgstr "Active profile: {profile}"
+
+#. Cleanup UI: The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):
+msgid "root_cleanup_profile_explanation"
+msgstr "The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):"
+
+#. Cleanup UI: • PDF files: {count}
+msgid "root_cleanup_pdf_files"
+msgstr "• PDF files: {count}"
+
+#. Cleanup UI: • Video files: {count}
+msgid "root_cleanup_video_files"
+msgstr "• Video files: {count}"
+
+#. Cleanup UI: • Progress rows: {count} (PDF {pdf}, Video {video}, Web {web})
+msgid "root_cleanup_progress_rows"
+msgstr "• Progress rows: {count} (PDF {pdf}, Video {video}, Web {web})"
+
+#. Cleanup UI: • Search index rows: {count} (PDF {pdf}, EPUB {epub})
+msgid "root_cleanup_index_rows"
+msgstr "• Search index rows: {count} (PDF {pdf}, EPUB {epub})"
+
+#. Cleanup UI: • OCR cache rows: {count} (missing notes {notes}, missing cards {cards})
+msgid "root_cleanup_cache_rows"
+msgstr "• OCR cache rows: {count} (missing notes {notes}, missing cards {cards})"
+
+#. Cleanup UI: • Skipped PDF files tied to other profiles: {count}
+msgid "root_cleanup_protected_pdfs"
+msgstr "• Skipped PDF files tied to other profiles: {count}"
+
+#. Cleanup UI: • Skipped video files tied to other profiles: {count}
+msgid "root_cleanup_protected_videos"
+msgstr "• Skipped video files tied to other profiles: {count}"
+
+#. Cleanup UI: • PDF folder: {path}
+msgid "root_cleanup_pdf_folder"
+msgstr "• PDF folder: {path}"
+
+#. Cleanup UI: • Video folder: {path}
+msgid "root_cleanup_video_folder"
+msgstr "• Video folder: {path}"
+
+#. Cleanup UI: • Recoverable disk space: {size}
+msgid "root_cleanup_recoverable_space"
+msgstr "• Recoverable disk space: {size}"
+
+#. Cleanup UI: Skipped PDFs (kept):
+msgid "root_cleanup_skipped_pdfs_heading"
+msgstr "Skipped PDFs (kept):"
+
+#. Cleanup UI: Skipped videos (kept):
+msgid "root_cleanup_skipped_videos_heading"
+msgstr "Skipped videos (kept):"
+
+#. Cleanup UI:   - {filename}  (profiles: {profiles})
+msgid "root_cleanup_file_profiles"
+msgstr "  - {filename}  (profiles: {profiles})"
+
+#. Cleanup UI: Delete these now?
+msgid "root_cleanup_delete_now"
+msgstr "Delete these now?"
+
+#. Cleanup UI: Rows: {error}
+msgid "root_cleanup_rows_error"
+msgstr "Rows: {error}"
+
+#. Cleanup UI: Search index: {error}
+msgid "root_cleanup_index_error"
+msgstr "Search index: {error}"
+
+#. Cleanup UI: OCR cache: {error}
+msgid "root_cleanup_cache_error"
+msgstr "OCR cache: {error}"
+
+#. Cleanup UI: Deleted PDF files: {deleted}/{total}
+msgid "root_cleanup_deleted_pdfs"
+msgstr "Deleted PDF files: {deleted}/{total}"
+
+#. Cleanup UI: Deleted video files: {deleted}/{total}
+msgid "root_cleanup_deleted_videos"
+msgstr "Deleted video files: {deleted}/{total}"
+
+#. Cleanup UI: Potential recovered space: {size}
+msgid "root_cleanup_recovered_space"
+msgstr "Potential recovered space: {size}"
+
+#. Orphan-file cleanup UI: Could not read PDF directory:
+msgid "root_cleanup_pdf_read_failed"
+msgstr "Could not read PDF directory:\n{error}"
+
+#. Orphan-file cleanup UI: No PDF files found in {path}.
+msgid "root_cleanup_pdf_none"
+msgstr "No PDF files found in {path}."
+
+#. Orphan-file cleanup UI: Could not query PDF cards:
+msgid "root_cleanup_pdf_query_failed"
+msgstr "Could not query PDF cards:\n{error}"
+
+#. Orphan-file cleanup UI: No deletable orphaned PDFs found.
+msgid "root_cleanup_pdf_no_deletable"
+msgstr "No deletable orphaned PDFs found.\n\n{count} files on disk; none are safe to delete."
+
+#. Orphan-file cleanup UI: Skipped {count} files because another profile references them.
+msgid "root_cleanup_other_profile_skip"
+msgstr "Skipped {count} files because another profile references them."
+
+#. Orphan-file cleanup UI: Found {count} deletable orphaned PDFs:
+msgid "root_cleanup_pdf_found"
+msgstr "Found {count} deletable orphaned PDFs:"
+
+#. Orphan-file cleanup UI: Skipped {count} files tied to other profiles.
+msgid "root_cleanup_other_profile_tied"
+msgstr "Skipped {count} files tied to other profiles."
+
+#. Orphan-file cleanup UI: Total: {size}
+msgid "root_cleanup_total"
+msgstr "Total: {size}"
+
+#. Orphan-file cleanup UI: Delete these files?
+msgid "root_cleanup_delete_files"
+msgstr "Delete these files?"
+
+#. Orphan-file cleanup UI: Deleted {count} orphaned PDF files.
+msgid "root_cleanup_pdf_deleted"
+msgstr "Deleted {count} orphaned PDF files.\nRecovered {size}."
+
+#. Orphan-file cleanup UI: Deleted {deleted} of {total} files.
+msgid "root_cleanup_partial_deleted"
+msgstr "Deleted {deleted} of {total} files.\n\nErrors:\n{errors}"
+
+#. Orphan-file cleanup UI: No local videos found in {path}.
+msgid "root_cleanup_videos_none"
+msgstr "No local videos found in {path}."
+
+#. Orphan-file cleanup UI: Could not read video directory:
+msgid "root_cleanup_videos_read_failed"
+msgstr "Could not read video directory:\n{error}"
+
+#. Orphan-file cleanup UI: Could not query video cards:
+msgid "root_cleanup_videos_query_failed"
+msgstr "Could not query video cards:\n{error}"
+
+#. Orphan-file cleanup UI: No deletable orphaned local videos found.
+msgid "root_cleanup_videos_no_deletable"
+msgstr "No deletable orphaned local videos found.\n\n{count} files on disk; none are safe to delete."
+
+#. Orphan-file cleanup UI: Found {count} deletable orphaned local video files:
+msgid "root_cleanup_videos_found"
+msgstr "Found {count} deletable orphaned local video files:"
+
+#. Orphan-file cleanup UI: Deleted {count} orphaned video files.
+msgid "root_cleanup_videos_deleted"
+msgstr "Deleted {count} orphaned video files.\nRecovered {size}."
+
+#. Root remaining UI: Source PDF
+msgid "root_reviewer_source_pdf"
+msgstr "Source PDF"
+
+#. Root remaining UI: Loading document bookshelf…
+msgid "root_bookshelf_loading"
+msgstr "Loading document bookshelf…"
+
+#. Root remaining UI: Could not start backup: {error}
+msgid "root_backup_start_failed"
+msgstr "Could not start backup: {error}"
+
+#. Root remaining UI: Export Privacy-Safe Incremento Support Bundle
+msgid "root_support_export_title"
+msgstr "Export Privacy-Safe Incremento Support Bundle"
+
+#. Item reviewer action; the command remains incremento_item_skip.
+msgid "root_reviewer_skip"
+msgstr "Skip"

@@ -111,7 +111,7 @@ test("validateBrowserCapturePayload requires note type and deck", () => {
       fieldMappings: {},
       snapshots: [],
     }),
-    { ok: false, error: "Choose a note type and deck." }
+    { ok: false, error: "Choose a note type and deck.", errorCode: "choose_note_type_deck", errorParams: {} }
   );
 });
 
@@ -129,7 +129,7 @@ test("validateBrowserCapturePayload requires mapped content", () => {
       },
       snapshots: [{ filename: "snap-1.png", base64: "abcd" }],
     }),
-    { ok: false, error: "Map at least one available capture part to a note field." }
+    { ok: false, error: "Map at least one available capture part to a note field.", errorCode: "map_capture_field", errorParams: {} }
   );
 });
 
@@ -165,8 +165,14 @@ test("validateBrowserCapturePayload rejects too many snapshots before transport"
       fieldMappings: { snapshotField: "Back" },
       snapshots,
     }),
-    { ok: false, error: "Too many snapshots. Maximum is 12." }
+    { ok: false, error: "Too many snapshots. Maximum is 12.", errorCode: "too_many_snapshots", errorParams: { count: 12 } }
   );
+});
+
+test("capture validation exposes a stable code and parameters for UI translation", () => {
+  const result = browserCaptureModel.validateBrowserCaptureScreenshotDataUrl("data:text/plain;base64,YQ==");
+  assert.equal(result.errorCode, "screenshot_not_png");
+  assert.deepEqual(result.errorParams, {});
 });
 
 test("validateBrowserCapturePayload rejects oversized selected text before transport", () => {
@@ -178,7 +184,7 @@ test("validateBrowserCapturePayload rejects oversized selected text before trans
       fieldMappings: { selectedTextField: "Front" },
       snapshots: [],
     }),
-    { ok: false, error: "Selected text is too large. Maximum is 200000 characters." }
+    { ok: false, error: "Selected text is too large. Maximum is 200000 characters.", errorCode: "selected_text_too_large", errorParams: { count: 200000 } }
   );
 });
 
@@ -191,7 +197,7 @@ test("validateBrowserCaptureContext rejects oversized page HTML", () => {
       title: "Example",
       url: "https://example.com",
     }),
-    { ok: false, error: "Page HTML is too large. Maximum is 2000000 characters." }
+    { ok: false, error: "Page HTML is too large. Maximum is 2000000 characters.", errorCode: "page_html_too_large", errorParams: { count: 2000000 } }
   );
 });
 
@@ -205,7 +211,7 @@ test("validateBrowserCaptureScreenshotDataUrl rejects oversized PNG data", () =>
       "data:image/png;base64,YWJjZGVm",
       { maxBytes: 4 }
     ),
-    { ok: false, error: "Screenshot is too large. Maximum is 4 bytes." }
+    { ok: false, error: "Screenshot is too large. Maximum is 4 bytes.", errorCode: "screenshot_too_large", errorParams: { count: 4 } }
   );
   assert.deepEqual(
     browserCaptureModel.validateBrowserCaptureScreenshotDataUrl(

@@ -29,10 +29,16 @@ except ImportError:
     )
 
 
+try:
+    from ..backend.i18n import t as _t
+except ImportError:
+    from backend.i18n import t as _t
+
+
 class AddLocalFileDialog(QDialog):
     def __init__(self, deck_names: list[str], default_deck: str = "Topics", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Add Local File")
+        self.setWindowTitle(_t("imports_add_local_file"))
         self.setMinimumWidth(560)
         self.resize(660, 420)
 
@@ -40,26 +46,26 @@ class AddLocalFileDialog(QDialog):
         layout.setSpacing(8)
         layout.setContentsMargins(14, 14, 14, 14)
 
-        layout.addWidget(QLabel("File:"))
+        layout.addWidget(QLabel(_t("imports_file_label")))
         file_row = QHBoxLayout()
         self._file_edit = QLineEdit()
         self._file_edit.setReadOnly(True)
-        self._file_edit.setPlaceholderText("Choose a local file…")
+        self._file_edit.setPlaceholderText(_t("imports_choose_local_file"))
         file_row.addWidget(self._file_edit, 1)
-        self._browse_btn = QPushButton("Browse…")
+        self._browse_btn = QPushButton(_t("imports_browse"))
         file_row.addWidget(self._browse_btn)
         layout.addLayout(file_row)
 
-        layout.addWidget(QLabel("Title:"))
+        layout.addWidget(QLabel(_t("imports_title_label")))
         self._title_edit = QLineEdit()
-        self._title_edit.setPlaceholderText("Card title")
+        self._title_edit.setPlaceholderText(_t("imports_card_title"))
         layout.addWidget(self._title_edit)
 
         mode_row = QHBoxLayout()
-        mode_row.addWidget(QLabel("Storage mode:"))
+        mode_row.addWidget(QLabel(_t("imports_storage_mode")))
         self._mode_combo = QComboBox()
-        self._mode_combo.addItem("Reference original file", LOCAL_FILE_MODE_REFERENCE)
-        self._mode_combo.addItem("Copy into Incremento", LOCAL_FILE_MODE_MANAGED_COPY)
+        self._mode_combo.addItem(_t("imports_storage_reference"), LOCAL_FILE_MODE_REFERENCE)
+        self._mode_combo.addItem(_t("imports_storage_managed"), LOCAL_FILE_MODE_MANAGED_COPY)
         mode_row.addWidget(self._mode_combo, 1)
         layout.addLayout(mode_row)
 
@@ -72,7 +78,7 @@ class AddLocalFileDialog(QDialog):
         layout.addWidget(self._tag_edit)
 
         deck_row = QHBoxLayout()
-        deck_row.addWidget(QLabel("Deck:"))
+        deck_row.addWidget(QLabel(_t("imports_deck_label")))
         self._deck_combo = QComboBox()
         for name in deck_names:
             self._deck_combo.addItem(name)
@@ -83,16 +89,16 @@ class AddLocalFileDialog(QDialog):
         deck_row.addWidget(self._deck_combo, 1)
         layout.addLayout(deck_row)
 
-        layout.addWidget(QLabel("Note / instructions (optional):"))
+        layout.addWidget(QLabel(_t("imports_note_optional")))
         self._note_edit = QTextEdit()
         self._note_edit.setAcceptRichText(False)
-        self._note_edit.setPlaceholderText("Describe what to do with this file when the card appears…")
+        self._note_edit.setPlaceholderText(_t("imports_file_note_placeholder"))
         layout.addWidget(self._note_edit, 1)
 
         btn_row = QHBoxLayout()
-        ok_btn = QPushButton("Add Local File Card")
+        ok_btn = QPushButton(_t("imports_add_local_file_card"))
         ok_btn.setDefault(True)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton(_t("imports_cancel"))
         btn_row.addStretch()
         btn_row.addWidget(ok_btn)
         btn_row.addWidget(cancel_btn)
@@ -105,7 +111,7 @@ class AddLocalFileDialog(QDialog):
         self._refresh_mode_hint()
 
     def _browse_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Choose local file", "", "All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, _t("imports_choose_local_file_dialog"), "", _t("imports_all_files_filter"))
         if not path:
             return
         self._file_edit.setText(path)
@@ -115,11 +121,11 @@ class AddLocalFileDialog(QDialog):
     def _refresh_mode_hint(self) -> None:
         if self.storage_mode == LOCAL_FILE_MODE_MANAGED_COPY:
             self._mode_hint.setText(
-                "Copies the file into Incremento's per-profile storage so the card keeps working even if the original is moved."
+                _t("imports_managed_hint")
             )
             return
         self._mode_hint.setText(
-            "Stores the current path on your computer. If the file is moved or deleted later, the card will need relinking."
+            _t("imports_reference_hint")
         )
 
     @property

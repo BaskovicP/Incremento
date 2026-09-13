@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, datetime
+from math import isfinite
 from typing import Callable
 
 from aqt import mw
@@ -21,6 +23,38 @@ from aqt.qt import (
     qconnect,
 )
 from aqt.utils import showInfo, tooltip
+try:
+    from ..backend.i18n import format_date, t, tn
+except ImportError:
+    from backend.i18n import format_date, t, tn
+
+
+def _subset_summary_text(title: str, count: int, include_descendants: bool) -> str:
+    scope = t("reader_tree_subset_whole_subtree") if include_descendants else t("reader_tree_subset_node_only")
+    return tn("reader_tree_subset_summary", count, title=title, scope=scope)
+
+
+def _localized_review_day(label: str, sort_key: object) -> str:
+    if "," not in label:
+        return label
+    try:
+        timestamp = float(sort_key)
+        if isfinite(timestamp):
+            if 1 <= timestamp <= date.max.toordinal():
+                return format_date(date.fromordinal(int(timestamp)))
+            return format_date(datetime.fromtimestamp(timestamp).date())
+    except (OverflowError, OSError, TypeError, ValueError):
+        pass
+    return label
+
+
+def _display_subset_title(row: dict) -> str:
+    title = str(row.get("title") or "")
+    display = str(row.get("display_title") or title)
+    card_id = int(row.get("card_id") or 0)
+    if title == f"Card {card_id}" and display.endswith(title):
+        return display[: -len(title)] + t("reader_card_number", number=card_id)
+    return display
 
 try:
     from aqt import dialogs
@@ -69,19 +103,19 @@ class _SortItem(QTableWidgetItem):
 class KnowledgeTreeSubsetDialog(QDialog):
     _CARD_ID_ROLE = int(Qt.ItemDataRole.UserRole) + 1
     _COLUMNS = [
-        "#",
-        "Title",
-        "Kind",
-        "Priority",
-        "Interval",
-        "Next Review",
-        "Last Review",
-        "Reps",
-        "Lapses",
-        "A-Factor",
-        "Deck",
-        "Note Type",
-        "Card ID",
+        "reader_tree_subset_number",
+        "reader_title",
+        "reader_tree_subset_kind",
+        "reader_tree_subset_priority",
+        "reader_tree_subset_interval",
+        "reader_tree_subset_next_review",
+        "reader_tree_subset_last_review",
+        "reader_tree_subset_reps",
+        "reader_tree_subset_lapses",
+        "reader_tree_subset_afactor",
+        "reader_tree_subset_deck",
+        "reader_tree_subset_note_type",
+        "reader_tree_subset_card_id",
     ]
 
     def __init__(
@@ -106,9 +140,9 @@ class KnowledgeTreeSubsetDialog(QDialog):
             addon_dir=self._addon_dir,
             profile=self._profile,
         ) or {}
-        self._root_title = str(root_meta.get("title") or f"Card {self._root_card_id}")
+        self._root_title = str(root_meta.get("title") or t("reader_card_number", number=self._root_card_id))
 
-        self.setWindowTitle(f"Subset Review — {self._root_title}")
+        self.setWindowTitle(t("reader_tree_subset_title", title=self._root_title))
         self.resize(1280, 760)
         self._apply_style()
 
@@ -122,7 +156,7 @@ class KnowledgeTreeSubsetDialog(QDialog):
         hero_layout.setContentsMargins(12, 12, 12, 12)
         hero_layout.setSpacing(6)
 
-        title = QLabel("Subset Elements")
+        title = QLabel(t("reader_tree_subset_elements"))
         title.setObjectName("SubsetTitle")
         hero_layout.addWidget(title)
 
@@ -134,25 +168,25 @@ class KnowledgeTreeSubsetDialog(QDialog):
         controls = QHBoxLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setSpacing(10)
-        controls.addWidget(QLabel("Scope:"))
+        controls.addWidget(QLabel(t("reader_tree_subset_scope_label")))
         self._scope_group = QButtonGroup(self)
-        self._scope_subtree = QRadioButton("Whole subtree")
-        self._scope_node_only = QRadioButton("Selected node only")
+        self._scope_subtree = QRadioButton(t("reader_tree_subset_whole_subtree"))
+        self._scope_node_only = QRadioButton(t("reader_tree_subset_node_only"))
         self._scope_group.addButton(self._scope_subtree)
         self._scope_group.addButton(self._scope_node_only)
         self._scope_subtree.setChecked(True)
         controls.addWidget(self._scope_subtree)
         controls.addWidget(self._scope_node_only)
         controls.addSpacing(16)
-        controls.addWidget(QLabel("Filter:"))
+        controls.addWidget(QLabel(t("reader_tree_subset_filter_label")))
         self._filter_edit = QLineEdit()
-        self._filter_edit.setPlaceholderText("Filter by title, deck, or note type")
+        self._filter_edit.setPlaceholderText(t("reader_tree_subset_filter_placeholder"))
         controls.addWidget(self._filter_edit, 1)
         hero_layout.addLayout(controls)
         outer.addWidget(hero)
 
         self._table = QTableWidget(0, len(self._COLUMNS), self)
-        self._table.setHorizontalHeaderLabels(self._COLUMNS)
+        self._table.setHorizontalHeaderLabels([t(message_id) for message_id in self._COLUMNS])
         self._table.verticalHeader().setVisible(False)
         self._table.setAlternatingRowColors(True)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -185,11 +219,11 @@ class KnowledgeTreeSubsetDialog(QDialog):
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(8)
-        self._browser_btn = QPushButton("Open In Browser")
-        self._reveal_btn = QPushButton("Reveal In Tree")
-        self._study_btn = QPushButton("Study Subset")
-        self._postpone_btn = QPushButton("Postpone Subset")
-        self._close_btn = QPushButton("Close")
+        self._browser_btn = QPushButton(t("reader_tree_subset_open_browser"))
+        self._reveal_btn = QPushButton(t("reader_tree_subset_reveal_tree"))
+        self._study_btn = QPushButton(t("reader_tree_subset_study"))
+        self._postpone_btn = QPushButton(t("reader_tree_subset_postpone"))
+        self._close_btn = QPushButton(t("reader_close"))
         actions.addWidget(self._browser_btn)
         actions.addWidget(self._reveal_btn)
         actions.addStretch(1)
@@ -291,7 +325,8 @@ class KnowledgeTreeSubsetDialog(QDialog):
             priority_text = "" if priority is None else f"{float(priority):.0f}"
             a_factor = row.get("a_factor")
             a_factor_text = "" if a_factor is None else f"{float(a_factor):.3f}".rstrip("0").rstrip(".")
-            kind = "Topic" if normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC) == NODE_KIND_TOPIC else "Item"
+            kind_code = normalize_node_kind(row.get("node_kind") or NODE_KIND_TOPIC)
+            kind = t("reader_topic") if kind_code == NODE_KIND_TOPIC else t("reader_item")
 
             self._set_cell(
                 row_index,
@@ -303,14 +338,22 @@ class KnowledgeTreeSubsetDialog(QDialog):
             self._set_cell(
                 row_index,
                 1,
-                str(row.get("display_title") or row.get("title") or ""),
+                _display_subset_title(row),
                 sort_key=str(row.get("title") or "").lower(),
             )
-            self._set_cell(row_index, 2, kind, sort_key=kind)
+            self._set_cell(row_index, 2, kind, sort_key=kind_code)
             self._set_cell(row_index, 3, priority_text, sort_key=(float(priority) if priority is not None else 9999.0))
             self._set_cell(row_index, 4, str(int(row.get("interval") or 0)), sort_key=int(row.get("interval") or 0))
-            self._set_cell(row_index, 5, str(row.get("next_review") or ""), sort_key=float(row.get("next_review_sort") or float("inf")))
-            self._set_cell(row_index, 6, str(row.get("last_review") or ""), sort_key=float(row.get("last_review_sort") or float("-inf")))
+            next_review = str(row.get("next_review") or "")
+            next_review = {
+                "Suspended": t("reader_media_reason_suspended"),
+                "Buried": t("reader_media_reason_buried"),
+                "New": t("reader_tree_subset_new"),
+            }.get(next_review, next_review)
+            next_review = _localized_review_day(next_review, row.get("next_review_sort"))
+            self._set_cell(row_index, 5, next_review, sort_key=float(row.get("next_review_sort") or float("inf")))
+            last_review = _localized_review_day(str(row.get("last_review") or ""), row.get("last_review_sort"))
+            self._set_cell(row_index, 6, last_review, sort_key=float(row.get("last_review_sort") or float("-inf")))
             self._set_cell(row_index, 7, str(int(row.get("reps") or 0)), sort_key=int(row.get("reps") or 0))
             self._set_cell(row_index, 8, str(int(row.get("lapses") or 0)), sort_key=int(row.get("lapses") or 0))
             self._set_cell(row_index, 9, a_factor_text, sort_key=(float(a_factor) if a_factor is not None else 9999.0))
@@ -325,19 +368,14 @@ class KnowledgeTreeSubsetDialog(QDialog):
     def _update_summary(self) -> None:
         total_rows = len(self._all_rows)
         visible_rows = len(self._visible_rows)
-        scope_text = "whole subtree" if self._include_descendants() else "selected node only"
-        self._summary_label.setText(
-            f"{self._root_title} · {total_rows} card{'s' if total_rows != 1 else ''} in {scope_text}."
-        )
+        self._summary_label.setText(_subset_summary_text(self._root_title, total_rows, self._include_descendants()))
         if visible_rows == total_rows:
             self._footer_label.setText(
-                "Select one or more rows to study or postpone only that selection. "
-                "If nothing is selected, actions operate on all visible rows."
+                t("reader_tree_subset_select_hint")
             )
         else:
             self._footer_label.setText(
-                f"Filter active: showing {visible_rows} of {total_rows} card"
-                f"{'' if total_rows == 1 else 's'} in this subset."
+                tn("reader_tree_subset_filter_status", total_rows, visible=visible_rows, total=total_rows)
             )
 
     def _selected_row_indexes(self) -> list[int]:
@@ -385,14 +423,14 @@ class KnowledgeTreeSubsetDialog(QDialog):
         if not card_ids:
             return
         if dialogs is None or mw is None:
-            showInfo("Could not open Anki Browser from the subset view.")
+            showInfo(t("reader_tree_subset_browser_unavailable"))
             return
         query = " OR ".join(f"cid:{card_id}" for card_id in card_ids)
         try:
             browser = dialogs.open("Browser", mw)
             browser.search_for(query)
         except Exception as exc:
-            showInfo(f"Could not open the Browser for this subset:\n{exc}")
+            showInfo(t("reader_tree_subset_browser_failed", error=exc))
 
     def _reveal_selected_in_tree(self) -> None:
         if self._reveal_in_tree is None:
@@ -402,19 +440,19 @@ class KnowledgeTreeSubsetDialog(QDialog):
             return
         try:
             self._reveal_in_tree(int(card_ids[0]))
-            tooltip("Revealed the selected card in the knowledge tree.")
+            tooltip(t("reader_tree_subset_revealed"))
         except Exception as exc:
-            showInfo(f"Could not reveal this card in the knowledge tree:\n{exc}")
+            showInfo(t("reader_tree_subset_reveal_failed", error=exc))
 
     def _study_scope_title(self, card_ids: list[int]) -> str:
         if len(card_ids) == len(self._all_rows) and self._include_descendants():
             return self._root_title
-        return f"{self._root_title} subset"
+        return t("reader_tree_subset_scope_title", title=self._root_title)
 
     def _study_subset(self) -> None:
         card_ids = self._active_card_ids()
         if not card_ids:
-            showInfo("No cards are available in this subset.")
+            showInfo(t("reader_tree_subset_no_cards"))
             return
         try:
             learnFunction(
@@ -425,19 +463,19 @@ class KnowledgeTreeSubsetDialog(QDialog):
                 }
             )
         except Exception as exc:
-            showInfo(f"Could not open the subset study session:\n{exc}")
+            showInfo(t("reader_tree_subset_study_failed", error=exc))
 
     def _postpone_subset(self) -> None:
         card_ids = self._active_card_ids()
         if not card_ids:
-            showInfo("No cards are available in this subset.")
+            showInfo(t("reader_tree_subset_no_cards"))
             return
         dlg = KnowledgeTreePostponeDialog(
             self._addon_dir,
             profile=self._profile,
             branch_root_card_id=self._root_card_id,
             browser_card_ids=card_ids,
-            browser_scope_name="Current subset",
+            browser_scope_name=t("reader_tree_subset_current_scope"),
             initial_scope=SCOPE_CURRENT_BROWSER,
             parent=self,
         )

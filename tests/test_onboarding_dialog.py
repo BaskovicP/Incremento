@@ -42,3 +42,22 @@ def test_onboarding_covers_the_complete_first_success_path():
     ]
     assert all(step.title and step.body for step in steps)
     assert steps[-1].action_id == "export_user_data"
+
+
+def test_onboarding_step_copy_is_resolved_through_i18n(monkeypatch):
+    import frontend.onboarding_dialog as onboarding
+
+    translated = {
+        "onboarding_welcome_title": "Dobro došli u Incremento",
+        "onboarding_welcome_body": "Localized body",
+    }
+    monkeypatch.setattr(
+        onboarding,
+        "t",
+        lambda message_id, **values: translated.get(message_id, message_id),
+    )
+
+    first = onboarding.default_onboarding_steps()[0]
+
+    assert first.title == "Dobro došli u Incremento"
+    assert first.body == "Localized body"

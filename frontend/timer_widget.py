@@ -14,6 +14,12 @@ from aqt.qt import (QWidget, QHBoxLayout, QPushButton, QLabel, QTimer,
                     QApplication, qconnect)
 
 try:
+    from ..backend.i18n import t as _t, tn as _tn
+except ImportError:
+    from backend.i18n import t as _t, tn as _tn
+
+
+try:
     from ..backend.config_service import load_addon_config
 except ImportError:
     from config_service import load_addon_config  # type: ignore
@@ -275,60 +281,33 @@ def _daily_activity_summary_for_report(cards: int, pdf_pages: set, epub_pages: s
     }
 
 
-def _plural(count: int, singular: str, plural: str | None = None) -> str:
-    return singular if count == 1 else (plural or f"{singular}s")
-
-
 def _timer_run_summary_lines(cards: int, pdf_pages: set, epub_pages: set) -> list[str]:
-    lines = [f"<b>{cards}</b> {_plural(cards, 'card')} reviewed"]
-
-    if pdf_pages:
-        by_pdf: dict[int, set] = {}
-        for cid, page in pdf_pages:
-            by_pdf.setdefault(cid, set()).add(page)
-        total_pages = sum(len(v) for v in by_pdf.values())
-        n_pdfs = len(by_pdf)
-        lines.append(
-            f"<b>{total_pages}</b> PDF {_plural(total_pages, 'page')} read"
-            f" across {n_pdfs} {_plural(n_pdfs, 'book')}"
-        )
-
-    if epub_pages:
-        by_epub: dict[int, set] = {}
-        for cid, page in epub_pages:
-            by_epub.setdefault(cid, set()).add(page)
-        total_pages = sum(len(v) for v in by_epub.values())
-        n_epubs = len(by_epub)
-        lines.append(
-            f"<b>{total_pages}</b> EPUB {_plural(total_pages, 'page')} read"
-            f" across {n_epubs} {_plural(n_epubs, 'book')}"
-        )
-
+    lines = [_tn("admin_timer_cards_reviewed", cards)]
+    for kind, pages in (("PDF", pdf_pages), ("EPUB", epub_pages)):
+        if not pages:
+            continue
+        books = len({card_id for card_id, _page in pages})
+        lines.append(_t(
+            "admin_timer_across",
+            pages=_tn("admin_timer_media_pages_read", len(pages), kind=kind),
+            books=_tn("admin_timer_books", books),
+        ))
     if cards == 0 and not pdf_pages and not epub_pages:
-        lines = ["No cards or pages tracked for this timer run."]
-
+        return [_t("admin_timer_empty")]
     return lines
 
 
 def _today_summary_line(daily: dict) -> str:
-    daily_pages = int(daily["pages"])
-    daily_cards = int(daily["cards"])
-    page_text = f"<b>{daily_pages}</b> {_plural(daily_pages, 'page')} read"
-
-    breakdown: list[str] = []
-    pdf_pages = int(daily.get("pdf_pages", 0) or 0)
-    epub_pages = int(daily.get("epub_pages", 0) or 0)
-    if pdf_pages:
-        breakdown.append(f"<b>{pdf_pages}</b> PDF {_plural(pdf_pages, 'page')}")
-    if epub_pages:
-        breakdown.append(f"<b>{epub_pages}</b> EPUB {_plural(epub_pages, 'page')}")
+    page_text = _tn("admin_timer_pages_read", int(daily["pages"]))
+    breakdown = []
+    for kind, key in (("PDF", "pdf_pages"), ("EPUB", "epub_pages")):
+        count = int(daily.get(key, 0) or 0)
+        if count:
+            breakdown.append(_tn("admin_timer_media_pages", count, kind=kind))
     if breakdown:
-        page_text = f"{page_text} ({' and '.join(breakdown)})"
-
-    return (
-        f"{page_text} and "
-        f"<b>{daily_cards}</b> {_plural(daily_cards, 'card')} reviewed so far today."
-    )
+        details = _t("admin_timer_and", first=breakdown[0], second=breakdown[1]) if len(breakdown) > 1 else breakdown[0]
+        page_text = f"{page_text} ({details})"
+    return _t("admin_timer_today_summary", pages=page_text, cards=_tn("admin_timer_cards_reviewed", int(daily["cards"])))
 
 
 def _resolved_config(config: dict | None = None) -> dict:
@@ -493,7 +472,7 @@ def finish_timer(widget) -> None:
     """Finalize timer state, play the completion tone, and show the summary."""
     widget._qt_timer.stop()
     widget._running = False
-    widget._start_btn.setText("▶  Start")
+    widget._start_btn.setText(_t("admin_timer_start"))
     _timer_running_set(False)
     play_timer_completion_tone()
     QTimer.singleShot(0, show_timer_summary)
@@ -549,7 +528,7 @@ class _TimerWidget(QWidget):
 
         row.addSpacing(4)
 
-        self._start_btn = QPushButton("▶  Start")
+        self._start_btn = QPushButton(_t("admin_timer_start"))
         self._start_btn.setFixedHeight(22)
         self._start_btn.clicked.connect(self._toggle)
         row.addWidget(self._start_btn)
@@ -557,7 +536,7 @@ class _TimerWidget(QWidget):
         reset_btn = QPushButton("↺")
         reset_btn.setFixedHeight(22)
         reset_btn.setFixedWidth(26)
-        reset_btn.setToolTip("Reset timer (double-click display also resets)")
+        reset_btn.setToolTip(_t("admin_timer_reset"))
         reset_btn.clicked.connect(self._reset)
         row.addWidget(reset_btn)
 
@@ -595,7 +574,7 @@ class _TimerWidget(QWidget):
         if self._rem <= 0:
             self._rem = self._sel * 60
         self._running = True
-        self._start_btn.setText("⏸  Pause")
+        self._start_btn.setText(_t("admin_timer_pause"))
         self._render()
         self._begin_session()
         self._qt_timer.start()
@@ -612,7 +591,7 @@ class _TimerWidget(QWidget):
     def _pause(self) -> None:
         self._qt_timer.stop()
         self._running = False
-        self._start_btn.setText("▶  Resume")
+        self._start_btn.setText(_t("admin_timer_resume"))
         self._render()
         _timer_running_set(False)
 
@@ -620,7 +599,7 @@ class _TimerWidget(QWidget):
         self._qt_timer.stop()
         self._running = False
         self._rem = self._sel * 60
-        self._start_btn.setText("▶  Start")
+        self._start_btn.setText(_t("admin_timer_start"))
         self._render()
         _timer_running_set(False)
         reset_activity_counters()
@@ -650,18 +629,18 @@ def show_timer_summary() -> None:
     reset_activity_counters()
 
     dlg = QDialog(mw)
-    dlg.setWindowTitle("Session Complete")
+    dlg.setWindowTitle(_t("admin_timer_complete"))
     dlg.setMinimumWidth(360)
 
     layout = QVBoxLayout(dlg)
     layout.setSpacing(12)
     layout.setContentsMargins(24, 24, 24, 20)
 
-    title_lbl = QLabel(f"{dur}-minute focus timer complete")
+    title_lbl = QLabel(_t("admin_timer_duration", minutes=dur))
     title_lbl.setStyleSheet("font-size: 17px; font-weight: bold;")
     layout.addWidget(title_lbl)
 
-    run_heading = QLabel("This focus timer")
+    run_heading = QLabel(_t("admin_timer_this"))
     run_heading.setStyleSheet("font-size: 12px; font-weight: bold;")
     layout.addWidget(run_heading)
 
@@ -673,7 +652,7 @@ def show_timer_summary() -> None:
 
     layout.addSpacing(2)
 
-    today_heading = QLabel("Today")
+    today_heading = QLabel(_t("admin_timer_today"))
     today_heading.setStyleSheet("font-size: 12px; font-weight: bold;")
     layout.addWidget(today_heading)
 
@@ -684,7 +663,7 @@ def show_timer_summary() -> None:
 
     layout.addSpacing(4)
 
-    ok_btn = QPushButton("Done")
+    ok_btn = QPushButton(_t("admin_timer_done"))
     ok_btn.setStyleSheet(
         "QPushButton { background: #2979ff; color: white; border: none;"
         " padding: 9px; font-size: 14px; border-radius: 4px; }"
@@ -734,7 +713,7 @@ def build_timer_toolbar(timer_toggle_action) -> None:
     avoid importing __init__ from here (which would be circular).
     """
     global _timer_toolbar, _timer_widget
-    tb = QToolBar("Focus Timer", mw)
+    tb = QToolBar(_t("admin_timer_title"), mw)
     tb.setObjectName("incremento_timer_toolbar")
     tb.setMovable(False)
     tb.setFloatable(False)

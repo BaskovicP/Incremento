@@ -33,6 +33,11 @@ from aqt.qt import (
 )
 
 try:
+    from ..backend.i18n import format_date, format_number, t, tn
+except ImportError:
+    from backend.i18n import format_date, format_number, t, tn  # type: ignore
+
+try:
     from ..backend.statistics import (
         load_stats,
         load_daily_history,
@@ -67,20 +72,8 @@ except ImportError:
 
 # ── colour palettes ────────────────────────────────────────────────────────────
 _TYPE_ORDER = ["topics", "items", "pdf", "epub", "youtube", "webpage"]
-_TYPE_LABELS = {
-    "topics": "Topics",
-    "items": "Items",
-    "pdf": "PDFs",
-    "epub": "EPUBs",
-    "youtube": "Videos",
-    "webpage": "Web pages",
-}
 _TYPE_COLORS = ["#4a90d9", "#7bc67e", "#e0a020", "#8e6ad8", "#e05050", "#1abc9c"]
 _MODE_COLORS = ["#e0a020", "#8da0cb"]  # Priority, Random
-_MODE_LABELS = {
-    "priority": "Priority",
-    "random": "Random",
-}
 _TAG_COLORS = [  # cycled for arbitrary tag lists
     "#4a90d9",
     "#7bc67e",
@@ -96,6 +89,31 @@ _TREND_PAGE_COLORS = ["#e0a020", "#8e6ad8"]
 _TREND_TIME_COLORS = ["#1abc9c"]
 
 
+def _type_label(key: str) -> str:
+    return t(
+        {
+            "topics": "stats_type_topics",
+            "items": "stats_type_items",
+            "pdf": "stats_type_pdfs",
+            "epub": "stats_type_epubs",
+            "youtube": "stats_type_videos",
+            "webpage": "stats_type_web_pages",
+            "video": "ui_type_video", "writing": "ui_type_writing", "local_file": "ui_type_local_file",
+        }.get(key, "stats_type_unknown"),
+        type_name=key.replace("_", " ").title(),
+    )
+
+
+def _mode_label(key: str) -> str:
+    return t(
+        {
+            "priority": "stats_mode_priority",
+            "random": "stats_mode_random",
+        }.get(key, "stats_mode_unknown"),
+        mode_name=key.replace("_", " ").title(),
+    )
+
+
 def _accessible_chart_summary(
     title: str,
     items: list[tuple[str, float]],
@@ -107,14 +125,14 @@ def _accessible_chart_summary(
     formatter = value_formatter or _format_count
     normalized = [(str(label), max(0.0, float(value))) for label, value in items]
     if not normalized:
-        return f"{title}. No data."
+        return t("stats_accessible_no_data", title=title)
     visible = normalized[: max(1, int(maximum_items))]
     details = ", ".join(
         f"{label}: {formatter(value)}" for label, value in visible
     )
     remainder = len(normalized) - len(visible)
-    suffix = f", and {remainder} more values" if remainder > 0 else ""
-    return f"{title}. {details}{suffix}."
+    suffix = tn("stats_accessible_more_values", remainder) if remainder > 0 else ""
+    return t("stats_accessible_summary", title=title, details=details, suffix=suffix)
 
 
 # ── bar chart widget ───────────────────────────────────────────────────────────
@@ -142,10 +160,10 @@ class _BarChart(QWidget):
         self._fmt = value_formatter or (lambda v: str(int(round(v))))
         self.setFixedHeight(self._ROW_H * max(1, len(items)) + 4)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setAccessibleName("Statistics bar chart")
+        self.setAccessibleName(t("stats_bar_chart_accessible"))
         self.setAccessibleDescription(
             _accessible_chart_summary(
-                "Statistics bar chart",
+                t("stats_bar_chart_accessible"),
                 self._items,
                 value_formatter=self._fmt,
             )
@@ -234,7 +252,7 @@ class _DailyStackedChart(QWidget):
         self._fmt = value_formatter or _format_count
         self.setMinimumHeight(205)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setAccessibleName("Daily statistics trend chart")
+        self.setAccessibleName(t("stats_trend_chart_accessible"))
         totals = [(name, sum(values)) for name, values in self._series]
         date_range = (
             f" from {self._labels[0]} through {self._labels[-1]}"
@@ -243,7 +261,7 @@ class _DailyStackedChart(QWidget):
         )
         self.setAccessibleDescription(
             _accessible_chart_summary(
-                f"Daily statistics trend{date_range}",
+                t("stats_trend_chart_title", date_range=date_range),
                 totals,
                 value_formatter=self._fmt,
             )
@@ -341,16 +359,16 @@ class _ActivityHeatmap(QTableWidget):
         weeks = max(1, int(math.ceil((first_weekday + len(self._cells)) / 7)))
         super().__init__(7, weeks, parent)
         self._on_day_selected = on_day_selected
-        self.setAccessibleName("Daily reading and study activity heatmap")
+        self.setAccessibleName(t("stats_heatmap_accessible"))
         active_days = sum(
             1 for cell in self._cells if int(cell.get("intensity", 0) or 0) > 0
         )
         self.setAccessibleDescription(
             _accessible_chart_summary(
-                "Daily reading and study activity heatmap",
+                t("stats_heatmap_accessible"),
                 [
-                    ("active days", float(active_days)),
-                    ("shown days", float(len(self._cells))),
+                    (t("stats_active_days"), float(active_days)),
+                    (t("stats_shown_days"), float(len(self._cells))),
                 ],
             )
         )
@@ -361,7 +379,7 @@ class _ActivityHeatmap(QTableWidget):
         self.verticalHeader().setVisible(True)
         self.verticalHeader().setDefaultSectionSize(20)
         self.setVerticalHeaderLabels(
-            ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+            tuple(t(f"stats_weekday_{day}") for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun"))
         )
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         self.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
@@ -377,10 +395,12 @@ class _ActivityHeatmap(QTableWidget):
             intensity = int(cell.get("intensity", 0) or 0)
             item.setBackground(QColor(self._COLORS[max(0, min(4, intensity))]))
             detail = dict(cell.get("detail") or {})
-            tooltip_text = (
-                f"{cell.get('date')}: {_format_count(float(detail.get('cards', 0)))} cards, "
-                f"{_format_count(float(detail.get('pages', 0)))} pages, "
-                f"{_fmt_duration(float(detail.get('seconds', 0)))}"
+            tooltip_text = t(
+                "stats_heatmap_tooltip",
+                date=cell.get("date"),
+                cards=_format_count(float(detail.get("cards", 0))),
+                pages=_format_count(float(detail.get("pages", 0))),
+                duration=_fmt_duration(float(detail.get("seconds", 0))),
             )
             item.setToolTip(tooltip_text)
             item.setData(Qt.ItemDataRole.UserRole, index)
@@ -475,10 +495,10 @@ def _fmt_duration(seconds: float) -> str:
     m = (total % 3600) // 60
     s = total % 60
     if h:
-        return f"{h}h {m}m"
+        return t("stats_duration_hours_minutes", hours=h, minutes=m)
     if m:
-        return f"{m}m {s}s"
-    return f"{s}s"
+        return t("stats_duration_minutes_seconds", minutes=m, seconds=s)
+    return t("stats_duration_seconds", seconds=s)
 
 
 def _positive_items(values: dict) -> list[tuple[str, float]]:
@@ -496,9 +516,8 @@ def _positive_items(values: dict) -> list[tuple[str, float]]:
 
 
 def _format_count(value: float) -> str:
-    if float(value).is_integer():
-        return str(int(value))
-    return f"{value:g}"
+    numeric = float(value)
+    return format_number(int(numeric) if numeric.is_integer() else numeric)
 
 
 def _tag_items(tag_counts: dict) -> list[tuple[str, float]]:
@@ -529,7 +548,7 @@ def _ordered_mode_items(mode_counts: dict) -> list[tuple[str, float]]:
         except Exception:
             value = 0.0
         if value > 0:
-            items.append((_MODE_LABELS.get(key, key.replace("_", " ").title()), value))
+            items.append((_mode_label(key), value))
 
     for key in ("priority", "random"):
         _append(key)
@@ -540,9 +559,9 @@ def _ordered_mode_items(mode_counts: dict) -> list[tuple[str, float]]:
     return items
 
 
-def _top_label(items: list[tuple[str, float]], empty: str = "None") -> str:
+def _top_label(items: list[tuple[str, float]], empty: str | None = None) -> str:
     if not items:
-        return empty
+        return empty if empty is not None else t("common_none")
     label, _value = max(items, key=lambda item: (item[1], item[0].casefold()))
     return label
 
@@ -561,10 +580,10 @@ def _summary_metrics(counts: dict, time_stats: dict) -> list[tuple[str, str]]:
     top_tag = _top_label(_tag_items(clean_counts["tags"]))
 
     return [
-        ("Cards studied", _format_count(total_cards)),
-        ("Review time", _fmt_duration(total_seconds)),
-        ("Avg/card", _fmt_duration(average_seconds)),
-        ("Top type/tag", f"{top_type} / {top_tag}"),
+        (t("stats_cards_studied"), _format_count(total_cards)),
+        (t("stats_review_time"), _fmt_duration(total_seconds)),
+        (t("stats_average_per_card"), _fmt_duration(average_seconds)),
+        (t("stats_top_type_tag"), f"{top_type} / {top_tag}"),
     ]
 
 
@@ -607,21 +626,15 @@ def _history_summary_metrics(history: list[dict]) -> list[tuple[str, str]]:
     seconds = sum(item[2] for item in totals)
     active_days = sum(1 for item in totals if any(value > 0 for value in item))
     return [
-        ("Cards studied", _format_count(cards)),
-        ("Pages read", _format_count(pages)),
-        ("Study time", _fmt_duration(seconds)),
-        ("Active days", f"{active_days} / {len(history)}"),
+        (t("stats_cards_studied"), _format_count(cards)),
+        (t("stats_pages_read"), _format_count(pages)),
+        (t("stats_study_time"), _fmt_duration(seconds)),
+        (t("stats_active_days"), f"{active_days} / {len(history)}"),
     ]
 
 
 def _history_date_label(value) -> str:
-    text = str(value or "")
-    try:
-        month = int(text[5:7])
-        day = int(text[8:10])
-    except Exception:
-        return text[:10]
-    return f"{month}/{day}"
+    return format_date(value, format="short")
 
 
 def _history_chart_series(history: list[dict]) -> dict:
@@ -651,12 +664,12 @@ def _history_chart_series(history: list[dict]) -> dict:
     return {
         "labels": labels,
         "cards": [
-            ("Topics", topics),
-            ("Items", items),
-            ("Other", other_cards),
+            (t("stats_type_topics"), topics),
+            (t("stats_type_items"), items),
+            (t("stats_type_other"), other_cards),
         ],
-        "pages": [("PDF", pdf_pages), ("EPUB", epub_pages)],
-        "minutes": [("Minutes", minutes)],
+        "pages": [(t("stats_type_pdf"), pdf_pages), (t("stats_type_epub"), epub_pages)],
+        "minutes": [(t("stats_minutes"), minutes)],
     }
 
 
@@ -664,7 +677,7 @@ def _history_insight(history: list[dict]) -> str:
     totals = [_history_row_totals(row) for row in history]
     active = [item for item in totals if any(value > 0 for value in item)]
     if not active:
-        return "No reading or study activity recorded in this range yet."
+        return t("stats_no_history_activity")
 
     index = len(totals) - 1
     if index >= 0 and not any(value > 0 for value in totals[index]):
@@ -676,11 +689,11 @@ def _history_insight(history: list[dict]) -> str:
 
     average_cards = sum(item[0] for item in active) / len(active)
     average_pages = sum(item[1] for item in active) / len(active)
-    day_word = "day" if streak == 1 else "days"
-    return (
-        f"Current streak: {streak} {day_word} · Active-day average: "
-        f"{_format_count(average_cards)} cards and "
-        f"{_format_count(average_pages)} pages"
+    return tn(
+        "stats_history_insight",
+        streak,
+        cards=_format_count(average_cards),
+        pages=_format_count(average_pages),
     )
 
 
@@ -797,16 +810,17 @@ def _comparison_label(history: list[dict], days: int) -> str:
         values = comparison[metric]
         percent = values["percent"]
         if percent is None:
-            delta = "no previous activity"
+            delta = t("stats_no_previous_activity")
         else:
             delta = f"{percent:+.0f}%"
         return f"{formatter(values['current'])} ({delta})"
 
-    return (
-        f"Compared with the previous {days} days: "
-        f"{change('cards', _format_count)} cards · "
-        f"{change('pages', _format_count)} pages · "
-        f"{change('seconds', _fmt_duration)} study time"
+    return t(
+        "stats_period_comparison",
+        days=days,
+        cards=change("cards", _format_count),
+        pages=change("pages", _format_count),
+        study_time=change("seconds", _fmt_duration),
     )
 
 
@@ -824,7 +838,7 @@ def _ordered_type_items(type_counts: dict) -> list[tuple[str, float]]:
         except Exception:
             value = 0.0
         if value > 0:
-            items.append((_TYPE_LABELS.get(key, key.replace("_", " ").title()), value))
+            items.append((_type_label(key), value))
 
     for key in _TYPE_ORDER:
         _append(key)
@@ -894,7 +908,7 @@ class StatsDialog(QDialog):
         except Exception:
             self._history = []
 
-        self.setWindowTitle("Incremento — Statistics")
+        self.setWindowTitle(t("stats_dialog_title"))
         self.setMinimumWidth(850)
         self.setMinimumHeight(620)
         self._setup_ui()
@@ -951,12 +965,12 @@ class StatsDialog(QDialog):
         self._scope_group = QButtonGroup(self)
         for i, (key, label) in enumerate(
             [
-                ("session", "This Session"),
-                ("daily", "Today"),
-                ("7d", "7 Days"),
-                ("30d", "30 Days"),
-                ("365d", "Year"),
-                ("lifetime", "All Time"),
+                ("session", t("stats_scope_session")),
+                ("daily", t("stats_scope_today")),
+                ("7d", t("stats_scope_7_days")),
+                ("30d", t("stats_scope_30_days")),
+                ("365d", t("stats_scope_year")),
+                ("lifetime", t("stats_scope_all_time")),
             ]
         ):
             rb = QRadioButton(label)
@@ -974,24 +988,24 @@ class StatsDialog(QDialog):
         goals_layout.setContentsMargins(8, 7, 8, 7)
         goals_layout.setSpacing(5)
         goal_controls = QHBoxLayout()
-        goal_heading = QLabel("Daily goals")
+        goal_heading = QLabel(t("stats_daily_goals"))
         goal_heading.setStyleSheet("font-weight: bold;")
         goal_controls.addWidget(goal_heading)
-        self._goal_cards = self._goal_spin("Cards", self._goals.get("cards", 0))
-        self._goal_pages = self._goal_spin("Pages", self._goals.get("pages", 0))
+        self._goal_cards = self._goal_spin(t("stats_cards"), self._goals.get("cards", 0))
+        self._goal_pages = self._goal_spin(t("stats_pages"), self._goals.get("pages", 0))
         self._goal_minutes = self._goal_spin(
-            "Minutes",
+            t("stats_minutes"),
             self._goals.get("minutes", 0),
         )
         for label, spin in (
-            ("Cards/day:", self._goal_cards),
-            ("Pages/day:", self._goal_pages),
-            ("Minutes/day:", self._goal_minutes),
+            (t("stats_cards_per_day"), self._goal_cards),
+            (t("stats_pages_per_day"), self._goal_pages),
+            (t("stats_minutes_per_day"), self._goal_minutes),
         ):
             goal_controls.addWidget(QLabel(label))
             goal_controls.addWidget(spin)
-        save_goals = QPushButton("Save Goals")
-        save_goals.setAccessibleName("Save daily statistics goals")
+        save_goals = QPushButton(t("stats_save_goals"))
+        save_goals.setAccessibleName(t("stats_save_goals_accessible"))
         qconnect(save_goals.clicked, self._save_goals)
         goal_controls.addWidget(save_goals)
         goal_controls.addStretch(1)
@@ -1000,19 +1014,19 @@ class StatsDialog(QDialog):
         progress_row = QHBoxLayout()
         self._goal_progress_bars = {}
         for metric, label in (
-            ("cards", "Cards"),
-            ("pages", "Pages"),
-            ("minutes", "Minutes"),
+            ("cards", t("stats_cards")),
+            ("pages", t("stats_pages")),
+            ("minutes", t("stats_minutes")),
         ):
             bar = QProgressBar(self)
             bar.setRange(0, 100)
-            bar.setAccessibleName(f"Today's {label.lower()} goal progress")
+            bar.setAccessibleName(t("stats_goal_progress_accessible", label=label))
             self._goal_progress_bars[metric] = bar
             progress_row.addWidget(bar, 1)
         goals_layout.addLayout(progress_row)
         self._goal_status = QLabel("")
         self._goal_status.setWordWrap(True)
-        self._goal_status.setAccessibleName("Statistics goal and export status")
+        self._goal_status.setAccessibleName(t("stats_status_accessible"))
         goals_layout.addWidget(self._goal_status)
         outer.addWidget(goals)
         self._refresh_goal_progress()
@@ -1036,11 +1050,11 @@ class StatsDialog(QDialog):
         # Close button
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        export_btn = QPushButton("Export History CSV…")
-        export_btn.setAccessibleName("Export Incremento statistics history as CSV")
+        export_btn = QPushButton(t("stats_export_history_csv"))
+        export_btn.setAccessibleName(t("stats_export_history_csv_accessible"))
         qconnect(export_btn.clicked, self._export_csv)
         btn_row.addWidget(export_btn)
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(t("common_close"))
         qconnect(close_btn.clicked, self.accept)
         btn_row.addWidget(close_btn)
         outer.addLayout(btn_row)
@@ -1051,12 +1065,12 @@ class StatsDialog(QDialog):
     def _goal_spin(self, label: str, value) -> QSpinBox:
         spin = QSpinBox(self)
         spin.setRange(0, 1_000_000)
-        spin.setSpecialValueText("Off")
+        spin.setSpecialValueText(t("common_off"))
         try:
             spin.setValue(max(0, min(1_000_000, int(round(float(value or 0))))))
         except Exception:
             spin.setValue(0)
-        spin.setAccessibleName(f"Daily {label.lower()} goal")
+        spin.setAccessibleName(t("stats_daily_goal_accessible", label=label))
         return spin
 
     def _save_goals(self) -> None:
@@ -1072,9 +1086,9 @@ class StatsDialog(QDialog):
                 requested,
             )
         except Exception:
-            self._goal_status.setText("Could not save daily goals.")
+            self._goal_status.setText(t("stats_save_goals_failed"))
             return
-        self._goal_status.setText("Daily goals saved for this Anki profile.")
+        self._goal_status.setText(t("stats_goals_saved"))
         self._refresh_goal_progress()
 
     def _today_history_row(self) -> dict:
@@ -1091,27 +1105,38 @@ class StatsDialog(QDialog):
 
     def _refresh_goal_progress(self) -> None:
         progress = _daily_goal_progress(self._today_history_row(), self._goals)
-        labels = {"cards": "Cards", "pages": "Pages", "minutes": "Minutes"}
+        labels = {
+            "cards": t("stats_cards"),
+            "pages": t("stats_pages"),
+            "minutes": t("stats_minutes"),
+        }
         for metric, values in progress.items():
             bar = self._goal_progress_bars[metric]
             target = float(values["target"])
             value = float(values["value"])
             if target <= 0:
                 bar.setValue(0)
-                bar.setFormat(f"{labels[metric]} goal off · {_format_count(value)} today")
+                bar.setFormat(
+                    t("stats_goal_off", label=labels[metric], value=_format_count(value))
+                )
             else:
                 bar.setValue(int(round(float(values["ratio"]) * 100)))
                 bar.setFormat(
-                    f"{labels[metric]} {_format_count(value)} / {_format_count(target)}"
+                    t(
+                        "stats_goal_progress",
+                        label=labels[metric],
+                        value=_format_count(value),
+                        target=_format_count(target),
+                    )
                 )
 
     def _export_csv(self) -> None:
         default_name = f"incremento-statistics-{_effective_date(self._day_end_time)}.csv"
         path, _selected_filter = QFileDialog.getSaveFileName(
             self,
-            "Export Statistics History",
+            t("stats_export_dialog_title"),
             default_name,
-            "CSV files (*.csv);;All files (*)",
+            t("stats_export_file_filter"),
         )
         if not path:
             return
@@ -1121,20 +1146,21 @@ class StatsDialog(QDialog):
                 encoding="utf-8",
             )
         except Exception:
-            self._goal_status.setText("Could not export statistics CSV.")
+            self._goal_status.setText(t("stats_export_failed"))
             return
-        self._goal_status.setText("Statistics history exported as CSV.")
+        self._goal_status.setText(t("stats_exported"))
 
     def _show_day_drilldown(self, detail: dict) -> None:
-        text = (
-            f"{detail.get('date') or 'Selected day'} · "
-            f"{_format_count(float(detail.get('cards', 0)))} cards "
-            f"({_format_count(float(detail.get('topics', 0)))} topics, "
-            f"{_format_count(float(detail.get('items', 0)))} items, "
-            f"{_format_count(float(detail.get('other_cards', 0)))} other) · "
-            f"{_format_count(float(detail.get('pdf_pages', 0)))} PDF + "
-            f"{_format_count(float(detail.get('epub_pages', 0)))} EPUB pages · "
-            f"{_fmt_duration(float(detail.get('seconds', 0)))} study time"
+        text = t(
+            "stats_day_detail",
+            date=detail.get("date") or t("stats_selected_day"),
+            cards=_format_count(float(detail.get("cards", 0))),
+            topics=_format_count(float(detail.get("topics", 0))),
+            items=_format_count(float(detail.get("items", 0))),
+            other=_format_count(float(detail.get("other_cards", 0))),
+            pdf_pages=_format_count(float(detail.get("pdf_pages", 0))),
+            epub_pages=_format_count(float(detail.get("epub_pages", 0))),
+            duration=_fmt_duration(float(detail.get("seconds", 0))),
         )
         try:
             self._day_drilldown_label.setText(text)
@@ -1146,20 +1172,20 @@ class StatsDialog(QDialog):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 8, 0, 2)
         heading_row = QHBoxLayout()
-        heading = QLabel("Activity Heatmap")
+        heading = QLabel(t("stats_activity_heatmap"))
         heading.setStyleSheet("font-weight: bold; font-size: 10pt;")
         heading_row.addWidget(heading)
         heading_row.addStretch(1)
-        heading_row.addWidget(QLabel("Color by:"))
+        heading_row.addWidget(QLabel(t("stats_color_by")))
         metric_combo = QComboBox(container)
         for label, metric in (
-            ("All activity", "activity"),
-            ("Cards", "cards"),
-            ("Pages", "pages"),
-            ("Minutes", "minutes"),
+            (t("stats_all_activity"), "activity"),
+            (t("stats_cards"), "cards"),
+            (t("stats_pages"), "pages"),
+            (t("stats_minutes"), "minutes"),
         ):
             metric_combo.addItem(label, metric)
-        metric_combo.setAccessibleName("Activity heatmap metric")
+        metric_combo.setAccessibleName(t("stats_heatmap_metric_accessible"))
         heading_row.addWidget(metric_combo)
         layout.addLayout(heading_row)
 
@@ -1168,11 +1194,11 @@ class StatsDialog(QDialog):
         heatmap_layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(heatmap_holder)
         self._day_drilldown_label = QLabel(
-            "Select a heatmap day to inspect cards, pages, and study time.",
+            t("stats_heatmap_select_day"),
             container,
         )
         self._day_drilldown_label.setWordWrap(True)
-        self._day_drilldown_label.setAccessibleName("Selected statistics day details")
+        self._day_drilldown_label.setAccessibleName(t("stats_selected_day_accessible"))
         layout.addWidget(self._day_drilldown_label)
 
         def rebuild(*_args) -> None:
@@ -1214,7 +1240,7 @@ class StatsDialog(QDialog):
             _comparison_label(list(self._history[-days * 2 :]), days)
         )
         comparison.setWordWrap(True)
-        comparison.setAccessibleName("Comparison with previous statistics period")
+        comparison.setAccessibleName(t("stats_comparison_accessible"))
         comparison.setStyleSheet(
             "padding: 6px 8px; border-radius: 6px; "
             "background: rgba(74, 144, 217, 0.10);"
@@ -1235,7 +1261,7 @@ class StatsDialog(QDialog):
         if show_daily_charts and has_values(chart_data["cards"]):
             self._clayout.addWidget(
                 _trend_section(
-                    "Cards Studied by Day",
+                    t("stats_cards_by_day"),
                     chart_data["labels"],
                     chart_data["cards"],
                     _TREND_CARD_COLORS,
@@ -1245,7 +1271,7 @@ class StatsDialog(QDialog):
         if show_daily_charts and has_values(chart_data["pages"]):
             self._clayout.addWidget(
                 _trend_section(
-                    "Pages Read by Day",
+                    t("stats_pages_by_day"),
                     chart_data["labels"],
                     chart_data["pages"],
                     _TREND_PAGE_COLORS,
@@ -1255,7 +1281,7 @@ class StatsDialog(QDialog):
         if show_daily_charts and has_values(chart_data["minutes"]):
             self._clayout.addWidget(
                 _trend_section(
-                    "Study Time by Day",
+                    t("stats_time_by_day"),
                     chart_data["labels"],
                     chart_data["minutes"],
                     _TREND_TIME_COLORS,
@@ -1267,7 +1293,7 @@ class StatsDialog(QDialog):
         if not any(
             has_values(chart_data[key]) for key in ("cards", "pages", "minutes")
         ):
-            note = QLabel("No reading or study history recorded for this range yet.")
+            note = QLabel(t("stats_no_history_activity"))
             note.setAlignment(Qt.AlignmentFlag.AlignCenter)
             note.setStyleSheet("color: gray; padding: 32px;")
             note.setWordWrap(True)
@@ -1305,9 +1331,9 @@ class StatsDialog(QDialog):
 
         if total == 0 and total_seconds <= 0:
             hint = (
-                "No session statistics recorded yet."
+                t("stats_no_session_statistics")
                 if scope == "session"
-                else "No clean statistics data recorded for this scope."
+                else t("stats_no_scope_statistics")
             )
             note = QLabel(hint)
             note.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1322,7 +1348,7 @@ class StatsDialog(QDialog):
         if type_items:
             self._clayout.addWidget(
                 _section(
-                    "Card-Type Distribution",
+                    t("stats_card_type_distribution"),
                     type_items,
                     _TYPE_COLORS,
                     self._content,
@@ -1334,7 +1360,7 @@ class StatsDialog(QDialog):
         if mode_items:
             self._clayout.addWidget(
                 _section(
-                    "Mode Distribution",
+                    t("stats_mode_distribution"),
                     mode_items,
                     _MODE_COLORS,
                     self._content,
@@ -1346,7 +1372,7 @@ class StatsDialog(QDialog):
         if sorted_tags:
             self._clayout.addWidget(
                 _section(
-                    "Tags",
+                    t("stats_tags"),
                     sorted_tags,
                     _TAG_COLORS,
                     self._content,
@@ -1358,7 +1384,7 @@ class StatsDialog(QDialog):
         if time_type_items:
             self._clayout.addWidget(
                 _section(
-                    "Review Time by Card Type",
+                    t("stats_review_time_by_type"),
                     time_type_items,
                     _TYPE_COLORS,
                     self._content,
@@ -1371,7 +1397,7 @@ class StatsDialog(QDialog):
         if sorted_ttags:
             self._clayout.addWidget(
                 _section(
-                    "Review Time by Tag",
+                    t("stats_review_time_by_tag"),
                     sorted_ttags,
                     _TAG_COLORS,
                     self._content,

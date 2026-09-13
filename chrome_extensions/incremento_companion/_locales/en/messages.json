@@ -1,0 +1,1208 @@
+{
+  "extension_name": {
+    "message": "Incremento Companion"
+  },
+  "extension_description": {
+    "message": "Imports PDFs, videos, webpages, writing notes, and bookmarks into Incremento while tracking video stop times."
+  },
+  "command_copy_video_time": {
+    "message": "Copy latest tracked video time to clipboard"
+  },
+  "command_add_pdf": {
+    "message": "Add current page to Incremento as PDF"
+  },
+  "command_add_video": {
+    "message": "Add current page to Incremento as video"
+  },
+  "command_add_webpage": {
+    "message": "Add current page to Incremento as webpage"
+  },
+  "command_add_selection": {
+    "message": "Add current selection to Incremento as markdown"
+  },
+  "command_add_page_markdown": {
+    "message": "Add current page to Incremento as markdown"
+  },
+  "command_capture_selection": {
+    "message": "Capture selected browser text into Anki"
+  },
+  "command_capture_snapshot": {
+    "message": "Capture browser snapshots into Anki"
+  },
+  "popup_title": {
+    "message": "Incremento"
+  },
+  "bookmarks_title": {
+    "message": "Incremento Bookmark Import"
+  },
+  "offscreen_title": {
+    "message": "Incremento Clipboard Worker"
+  },
+  "settings": {
+    "message": "Settings"
+  },
+  "language": {
+    "message": "Language"
+  },
+  "language_auto": {
+    "message": "Automatic"
+  },
+  "language_save": {
+    "message": "Save"
+  },
+  "language_cancel": {
+    "message": "Cancel"
+  },
+  "language_saved": {
+    "message": "Language saved."
+  },
+  "language_save_error": {
+    "message": "Could not save language. Try again."
+  },
+  "language_description": {
+    "message": "Choose the language for the Companion interface. Changes apply immediately."
+  },
+  "context_save_link": {
+    "message": "Save link to Incremento as webpage"
+  },
+  "item_one": {
+    "message": "$COUNT$ item",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "item_few": {
+    "message": "$COUNT$ items",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "item_other": {
+    "message": "$COUNT$ items",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "current_page": {
+    "message": "Current page"
+  },
+  "send_to_incremento": {
+    "message": "Send to Incremento"
+  },
+  "no_supported_page": {
+    "message": "No supported page selected."
+  },
+  "title": {
+    "message": "Title"
+  },
+  "deck": {
+    "message": "Deck"
+  },
+  "tags": {
+    "message": "Tags"
+  },
+  "tag_hint": {
+    "message": "Start typing to choose an existing Anki tag, or enter a new one."
+  },
+  "priority": {
+    "message": "Priority"
+  },
+  "markdown_scope": {
+    "message": "Webpage markdown scope"
+  },
+  "main_content": {
+    "message": "Main content"
+  },
+  "entire_page": {
+    "message": "Entire page"
+  },
+  "add_as_pdf": {
+    "message": "Add as PDF"
+  },
+  "add_as_video": {
+    "message": "Add as Video"
+  },
+  "add_as_webpage": {
+    "message": "Add as Webpage"
+  },
+  "add_selection_markdown": {
+    "message": "Add Selection to Markdown"
+  },
+  "add_page_markdown": {
+    "message": "Add Page to Markdown"
+  },
+  "automatic_site_access": {
+    "message": "Automatic site access"
+  },
+  "automatic_site_access_note": {
+    "message": "On-demand actions use temporary access to the current tab. Enable persistent HTTP(S) access only if modifier-click saving and Web-card media tracking should continue after navigation."
+  },
+  "disable_auto_site_access": {
+    "message": "Disable automatic site access"
+  },
+  "enable_auto_site_access": {
+    "message": "Enable automatic site access..."
+  },
+  "quick_link_save": {
+    "message": "Quick link save"
+  },
+  "quick_link_save_note": {
+    "message": "Save clicked links directly to Incremento as webpage cards and optionally keep navigating."
+  },
+  "enable_modifier_save": {
+    "message": "Enable modifier-click save on links"
+  },
+  "modifier_key": {
+    "message": "Modifier key"
+  },
+  "continue_following_link": {
+    "message": "Continue following the link after saving"
+  },
+  "enable_context_link": {
+    "message": "Enable right-click link action"
+  },
+  "save_quick_link_settings": {
+    "message": "Save quick link settings"
+  },
+  "download_bookmarks": {
+    "message": "Download bookmarks"
+  },
+  "trigger_text_capture": {
+    "message": "Trigger text capture"
+  },
+  "trigger_snapshot_capture": {
+    "message": "Trigger snapshot capture"
+  },
+  "text_capture": {
+    "message": "Text capture"
+  },
+  "snapshot_capture": {
+    "message": "Snapshot capture"
+  },
+  "not_assigned_chrome": {
+    "message": "Not assigned in Chrome"
+  },
+  "open_shortcut_settings": {
+    "message": "Open shortcut settings"
+  },
+  "linked_card": {
+    "message": "Linked card"
+  },
+  "linked_card_status": {
+    "message": "This tab is linked to card $COUNT$.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "not_linked_card_status": {
+    "message": "This tab is not linked to an Incremento card yet. Open it from a card's browser action first."
+  },
+  "detected_video_time": {
+    "message": "Detected current video time: $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_video_time_page": {
+    "message": "No current video time detected on this page right now."
+  },
+  "manual_time": {
+    "message": "Manual time"
+  },
+  "manual_time_placeholder": {
+    "message": "12:34, 1:02:03, 90, or 1m30s"
+  },
+  "save_manual_time": {
+    "message": "Save manual time"
+  },
+  "copy_last_video_time": {
+    "message": "Copy last video time"
+  },
+  "video_cards_note": {
+    "message": "Video cards use the current YouTube or Vimeo URL."
+  },
+  "selection_writing_note": {
+    "message": "Selection writing will use the current selection ($COUNT$ chars). Page writing imports webpage content as markdown.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "page_writing_note": {
+    "message": "Selection writing uses the current selection when present. Page writing imports webpage content as markdown."
+  },
+  "bridge_unavailable": {
+    "message": "Failed to reach Incremento in Anki. Keep Anki open and reload the addon."
+  },
+  "bridge_origin_conflict": {
+    "message": "This Companion copy is not authorized. Restart Anki, then reopen the popup. If this returns, disable duplicate Companion copies in other Chrome/Brave profiles."
+  },
+  "bridge_error_authorization_required": {
+    "message": "A new Incremento connection is required. Try again."
+  },
+  "bridge_error_bridge_busy": {
+    "message": "Incremento is busy. Try again shortly."
+  },
+  "bridge_error_unknown_path": {
+    "message": "This Incremento action is unavailable. Update the addon."
+  },
+  "bridge_error_invalid_request": {
+    "message": "The request could not be accepted. Check the selected content."
+  },
+  "bridge_error_operation_failed": {
+    "message": "Incremento could not complete the action."
+  },
+  "bridge_error_unsupported_transfer_encoding": {
+    "message": "Unsupported request encoding."
+  },
+  "bridge_error_invalid_content_length": {
+    "message": "Invalid request length."
+  },
+  "bridge_error_request_too_large": {
+    "message": "The request is too large."
+  },
+  "bridge_error_request_timeout": {
+    "message": "The request timed out. Try again."
+  },
+  "bridge_error_incomplete_body": {
+    "message": "The request was incomplete. Try again."
+  },
+  "bridge_error_invalid_json": {
+    "message": "Invalid request data."
+  },
+  "action_video_time": {
+    "message": "Incremento ($PROVIDER$) $TIME$",
+    "placeholders": {
+      "provider": {
+        "content": "$1"
+      },
+      "time": {
+        "content": "$2"
+      }
+    }
+  },
+  "deck_load_failed": {
+    "message": "Failed to load decks from Anki. Using Topics."
+  },
+  "page_inspect_failed": {
+    "message": "Failed to inspect the current page."
+  },
+  "manual_time_invalid": {
+    "message": "Enter a valid time like 12:34, 1:02:03, 90, or 1m30s."
+  },
+  "open_http_page": {
+    "message": "Open a normal http(s) page first."
+  },
+  "no_active_tab": {
+    "message": "No active tab found."
+  },
+  "only_http_pages": {
+    "message": "Only http(s) pages can be sent to Incremento."
+  },
+  "open_video_page": {
+    "message": "Open a YouTube or Vimeo page to add a video card."
+  },
+  "select_page_text": {
+    "message": "Select text on the page first."
+  },
+  "web_content_failed": {
+    "message": "Could not read webpage content from this tab."
+  },
+  "web_time_invalid": {
+    "message": "Invalid web page time."
+  },
+  "adding_writing": {
+    "message": "Adding writing card from webpage markdown..."
+  },
+  "adding_card": {
+    "message": "Adding $KIND$ card...",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "added_card": {
+    "message": "Added $KIND$ card: $TITLE$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      },
+      "title": {
+        "content": "$2"
+      }
+    }
+  },
+  "add_content_failed": {
+    "message": "Failed to add content."
+  },
+  "copying_video_time": {
+    "message": "Copying last video time..."
+  },
+  "copied_video_time": {
+    "message": "Copied last video time."
+  },
+  "no_stored_video_time": {
+    "message": "No stored video time yet."
+  },
+  "copy_video_time_failed": {
+    "message": "Failed to copy video time."
+  },
+  "saving_browser_time": {
+    "message": "Saving browser time to the linked card..."
+  },
+  "tab_not_linked": {
+    "message": "This tab is not linked to an Incremento card. Open the page from a card first."
+  },
+  "no_detected_time": {
+    "message": "No current video time was detected. Enter a time manually to save it."
+  },
+  "only_http_time": {
+    "message": "Only normal http(s) pages can store browser times."
+  },
+  "saved_time_card": {
+    "message": "Saved $TIME$ to card $COUNT$.",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "save_browser_time_failed": {
+    "message": "Failed to save browser time."
+  },
+  "open_bookmarks_failed": {
+    "message": "Failed to open bookmark importer."
+  },
+  "open_shortcuts_failed": {
+    "message": "Failed to open Chrome shortcut settings."
+  },
+  "starting_snapshot": {
+    "message": "Starting snapshot capture..."
+  },
+  "starting_text_capture": {
+    "message": "Starting text capture..."
+  },
+  "snapshot_opened": {
+    "message": "Snapshot capture opened in the page."
+  },
+  "text_capture_opened": {
+    "message": "Text capture opened in the page."
+  },
+  "snapshot_not_started": {
+    "message": "Snapshot capture did not start on this tab."
+  },
+  "text_capture_not_started": {
+    "message": "Text capture did not start. Select text on the page first."
+  },
+  "trigger_capture_failed": {
+    "message": "Failed to trigger browser capture."
+  },
+  "saving_link_settings": {
+    "message": "Saving quick link settings..."
+  },
+  "saved_link_settings": {
+    "message": "Saved quick link settings."
+  },
+  "save_link_settings_failed": {
+    "message": "Failed to save quick link settings."
+  },
+  "disabling_site_access": {
+    "message": "Disabling automatic site access..."
+  },
+  "requesting_site_access": {
+    "message": "Requesting automatic site access..."
+  },
+  "site_access_still_enabled": {
+    "message": "Chrome/Brave kept site access enabled. Change it in extension settings."
+  },
+  "site_access_disabled": {
+    "message": "Automatic site access disabled. User-triggered actions still work on the current tab."
+  },
+  "site_access_enabled": {
+    "message": "Automatic site access enabled for link saving and Web-card tracking across navigation."
+  },
+  "site_access_not_granted": {
+    "message": "Site access was not granted. User-triggered actions still work on the current tab."
+  },
+  "site_access_change_failed": {
+    "message": "Could not change automatic site access."
+  },
+  "waiting_start": {
+    "message": "Waiting to start."
+  },
+  "loading_bookmarks": {
+    "message": "Loading bookmarks..."
+  },
+  "bookmarks_loaded": {
+    "message": "Bookmarks loaded."
+  },
+  "load_bookmarks_failed": {
+    "message": "Failed to load bookmarks."
+  },
+  "untitled_bookmark": {
+    "message": "Untitled bookmark"
+  },
+  "select_bookmark_first": {
+    "message": "Select at least one bookmark before importing."
+  },
+  "importing_bookmarks_one": {
+    "message": "Importing $COUNT$ bookmark...",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "importing_bookmarks_few": {
+    "message": "Importing $COUNT$ bookmarks...",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "importing_bookmarks_other": {
+    "message": "Importing $COUNT$ bookmarks...",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "preparing_import": {
+    "message": "Preparing import..."
+  },
+  "importing_item": {
+    "message": "Importing $INDEX$ of $COUNT$: $TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "imported_item": {
+    "message": "Imported $INDEX$ of $COUNT$: $TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "failed_item": {
+    "message": "Failed $INDEX$ of $COUNT$: $TITLE$",
+    "placeholders": {
+      "index": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "title": {
+        "content": "$3"
+      }
+    }
+  },
+  "import_bookmark_failed": {
+    "message": "Failed to import bookmark."
+  },
+  "imported_failed": {
+    "message": "Imported $OK$ bookmarks; $FAILED$ failed.",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "finished_with_errors": {
+    "message": "Finished with $OK$ imported and $FAILED$ failed.",
+    "placeholders": {
+      "ok": {
+        "content": "$1"
+      },
+      "failed": {
+        "content": "$2"
+      }
+    }
+  },
+  "imported_bookmarks_one": {
+    "message": "Imported $COUNT$ bookmark.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "imported_bookmarks_few": {
+    "message": "Imported $COUNT$ bookmarks.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "imported_bookmarks_other": {
+    "message": "Imported $COUNT$ bookmarks.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_one": {
+    "message": "Finished importing $COUNT$ bookmark.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_few": {
+    "message": "Finished importing $COUNT$ bookmarks.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "finished_bookmarks_other": {
+    "message": "Finished importing $COUNT$ bookmarks.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmark_import": {
+    "message": "Bookmark Import"
+  },
+  "send_chrome_bookmarks": {
+    "message": "Send Chrome bookmarks to Incremento"
+  },
+  "bookmark_import_intro": {
+    "message": "Select folders or individual bookmarks, edit tags per row, choose whether each item becomes a PDF, YouTube/Video, Webpage, or Writing card, choose a target deck, and set each card priority before importing them in one run."
+  },
+  "bookmarks": {
+    "message": "Bookmarks"
+  },
+  "reload": {
+    "message": "Reload"
+  },
+  "folder_includes_nested": {
+    "message": "Checking a folder includes all nested bookmark links."
+  },
+  "no_bookmarks": {
+    "message": "No bookmarks available."
+  },
+  "import_list": {
+    "message": "Import list"
+  },
+  "bookmarks_selected_one": {
+    "message": "$COUNT$ bookmark selected",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmarks_selected_few": {
+    "message": "$COUNT$ bookmarks selected",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "bookmarks_selected_other": {
+    "message": "$COUNT$ bookmarks selected",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "import_selected": {
+    "message": "Import selected"
+  },
+  "import_deck": {
+    "message": "Import deck"
+  },
+  "all_selected_deck": {
+    "message": "All selected bookmarks will be imported into this deck."
+  },
+  "select_bookmarks_left": {
+    "message": "Select folders or individual bookmarks on the left to build the import list."
+  },
+  "type": {
+    "message": "Type"
+  },
+  "video_kind": {
+    "message": "YouTube/Video"
+  },
+  "webpage_kind": {
+    "message": "Webpage"
+  },
+  "writing_kind": {
+    "message": "Writing"
+  },
+  "folder": {
+    "message": "Folder"
+  },
+  "selected_count": {
+    "message": "$SELECTED$/$TOTAL$ selected",
+    "placeholders": {
+      "selected": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      }
+    }
+  },
+  "progress_title": {
+    "message": "Import progress"
+  },
+  "created_card": {
+    "message": "Created $KIND$ card$ID$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      },
+      "id": {
+        "content": "$2"
+      }
+    }
+  },
+  "import_failed": {
+    "message": "Import failed."
+  },
+  "untitled": {
+    "message": "Untitled"
+  },
+  "tracking": {
+    "message": "Tracking"
+  },
+  "tracking_web_card": {
+    "message": "Tracking Web Card"
+  },
+  "saved_time_badge_dismiss": {
+    "message": "Dismiss saved browser time badge"
+  },
+  "last_saved": {
+    "message": "Last saved"
+  },
+  "last_saved_time": {
+    "message": "Last saved $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "remove": {
+    "message": "Remove"
+  },
+  "browser_snapshot": {
+    "message": "Browser snapshot"
+  },
+  "browser_selection": {
+    "message": "Browser selection"
+  },
+  "send_capture_anki": {
+    "message": "Send capture to Anki"
+  },
+  "snapshots_ready_one": {
+    "message": "$COUNT$ snapshot ready from $URL$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "url": {
+        "content": "$2"
+      }
+    }
+  },
+  "snapshots_ready_few": {
+    "message": "$COUNT$ snapshots ready from $URL$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "url": {
+        "content": "$2"
+      }
+    }
+  },
+  "snapshots_ready_other": {
+    "message": "$COUNT$ snapshots ready from $URL$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      },
+      "url": {
+        "content": "$2"
+      }
+    }
+  },
+  "selected_text_from": {
+    "message": "Selected text from $URL$",
+    "placeholders": {
+      "url": {
+        "content": "$1"
+      }
+    }
+  },
+  "note_type": {
+    "message": "Note type"
+  },
+  "do_not_insert": {
+    "message": "Do not insert"
+  },
+  "page_title_field": {
+    "message": "Page title field"
+  },
+  "page_title_field_note": {
+    "message": "The current page title is always available. First-field mappings get a unique snapshot suffix."
+  },
+  "selected_text_field": {
+    "message": "Selected text field"
+  },
+  "chars_ready": {
+    "message": "$COUNT$ chars ready for insertion.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_text_added": {
+    "message": "No text added yet."
+  },
+  "source_url_field": {
+    "message": "Source URL field"
+  },
+  "source_url_note": {
+    "message": "The current page URL is always available."
+  },
+  "snapshot_field": {
+    "message": "Snapshot field"
+  },
+  "snapshots_selected_one": {
+    "message": "$COUNT$ snapshot selected.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshots_selected_few": {
+    "message": "$COUNT$ snapshots selected.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshots_selected_other": {
+    "message": "$COUNT$ snapshots selected.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "no_snapshots": {
+    "message": "No snapshot images in this capture."
+  },
+  "add_text_snapshots": {
+    "message": "Add text to store with these snapshots..."
+  },
+  "selected_text_edit": {
+    "message": "Selected text will appear here. You can edit it before saving."
+  },
+  "text_to_add": {
+    "message": "Text to add"
+  },
+  "selected_text": {
+    "message": "Selected text"
+  },
+  "inserted_text_note": {
+    "message": "This content is inserted into the selected text field if one is chosen."
+  },
+  "snapshots": {
+    "message": "Snapshots"
+  },
+  "capture_more": {
+    "message": "Capture more"
+  },
+  "saving": {
+    "message": "Saving..."
+  },
+  "create_note": {
+    "message": "Create note"
+  },
+  "creating_note": {
+    "message": "Creating note in Anki..."
+  },
+  "created_note": {
+    "message": "Created $TYPE$ note in $DECK$.",
+    "placeholders": {
+      "type": {
+        "content": "$1"
+      },
+      "deck": {
+        "content": "$2"
+      }
+    }
+  },
+  "create_note_failed": {
+    "message": "Failed to create note."
+  },
+  "snapshot_mode": {
+    "message": "Snapshot Mode"
+  },
+  "snapshot_mode_intro": {
+    "message": "Draw one or more rectangles on the page. The capture is limited to the current viewport."
+  },
+  "snapshot_mode_hint": {
+    "message": "Draw a rectangle to capture it immediately, then scroll and capture another area if needed."
+  },
+  "capturing": {
+    "message": "Capturing..."
+  },
+  "snapshot_ready_one": {
+    "message": "$COUNT$ snapshot ready",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_ready_few": {
+    "message": "$COUNT$ snapshots ready",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_ready_other": {
+    "message": "$COUNT$ snapshots ready",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "undo": {
+    "message": "Undo"
+  },
+  "clear": {
+    "message": "Clear"
+  },
+  "extract_now": {
+    "message": "Extract now"
+  },
+  "continue": {
+    "message": "Continue"
+  },
+  "draw_region_first": {
+    "message": "Draw at least one region first."
+  },
+  "too_many_snapshots": {
+    "message": "Too many snapshots. Maximum is $COUNT$.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "capture_label": {
+    "message": "Capture $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "failed_capture_tab": {
+    "message": "Failed to capture the current tab."
+  },
+  "no_note_types": {
+    "message": "No note types are available in Anki."
+  },
+  "no_decks": {
+    "message": "No decks are available in Anki."
+  },
+  "open_capture_failed": {
+    "message": "Failed to open browser capture."
+  },
+  "resumed_to": {
+    "message": "Resumed to $SECONDS$ s",
+    "placeholders": {
+      "seconds": {
+        "content": "$1"
+      }
+    }
+  },
+  "failed_submit_capture": {
+    "message": "Failed to submit browser capture."
+  },
+  "failed_decode_screenshot": {
+    "message": "Failed to decode screenshot."
+  },
+  "only_http_links": {
+    "message": "Only http(s) links can be saved to Incremento."
+  },
+  "add_webpage_failed": {
+    "message": "Failed to add webpage card."
+  },
+  "adding_pdf": {
+    "message": "Adding PDF card..."
+  },
+  "adding_video": {
+    "message": "Adding video card..."
+  },
+  "adding_webpage": {
+    "message": "Adding webpage card..."
+  },
+  "adding_selection_writing": {
+    "message": "Adding writing card from selection..."
+  },
+  "unsupported_command": {
+    "message": "Unsupported command."
+  },
+  "capture_start_failed": {
+    "message": "Browser capture could not start on this tab."
+  },
+  "copied_time": {
+    "message": "Copied video time: $TIME$",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "copy_time_failed": {
+    "message": "Failed to copy video time ($TIME$)",
+    "placeholders": {
+      "time": {
+        "content": "$1"
+      }
+    }
+  },
+  "load_media_ref_failed": {
+    "message": "Failed to load browser media reference."
+  },
+  "load_capture_meta_failed": {
+    "message": "Failed to load browser capture metadata."
+  },
+  "copy_offscreen_reason": {
+    "message": "Copy latest video stop time for pasting into Anki."
+  },
+  "page_html_too_large": {
+    "message": "Page HTML is too large. Maximum is $COUNT$ characters.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "selected_text_too_large": {
+    "message": "Selected text is too large. Maximum is $COUNT$ characters.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "extension_runtime_unavailable": {
+    "message": "Incremento extension runtime is unavailable."
+  },
+  "extension_request_failed": {
+    "message": "Extension request failed."
+  },
+  "continue_choose_fields": {
+    "message": "$ERROR$ Open Continue once to choose the destination fields for snapshot capture.",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "bridge_handshake_failed": {
+    "message": "Incremento bridge handshake failed."
+  },
+  "bridge_request_failed": {
+    "message": "Request failed ($STATUS$)",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "screenshot_not_png": {
+    "message": "Screenshot must be a PNG data URL."
+  },
+  "screenshot_too_large": {
+    "message": "Screenshot is too large. Maximum is $COUNT$ bytes.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_too_large": {
+    "message": "A snapshot is too large. Maximum is $COUNT$ bytes.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "combined_snapshots_too_large": {
+    "message": "Combined snapshots is too large. Maximum is $COUNT$ bytes.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "choose_note_type_deck": {
+    "message": "Choose a note type and deck."
+  },
+  "map_capture_field": {
+    "message": "Map at least one available capture part to a note field."
+  },
+  "pdf_kind": {
+    "message": "PDF"
+  },
+  "content_kind": {
+    "message": "Content"
+  },
+  "language_export_template": {
+    "message": "Export blank template…"
+  },
+  "language_export_selected": {
+    "message": "Export selected language…"
+  },
+  "language_import_csv": {
+    "message": "Import translations…"
+  },
+  "language_sheet_help": {
+    "message": "Open the CSV in Excel, Google Sheets or LibreOffice. Fill in locale and name at the top, then edit only the translation column. Save as CSV UTF-8 and import it here."
+  },
+  "language_custom_name": {
+    "message": "$NAME$ (imported)",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "language_pack_preview": {
+    "message": "$NAME$: $COUNT$ of $TOTAL$ translation rows. Blank rows use English. Save to apply; Cancel discards this import.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "total": {
+        "content": "$3"
+      }
+    }
+  },
+  "language_pack_error": {
+    "message": "Row $ROW$: $REASON$",
+    "placeholders": {
+      "row": {
+        "content": "$1"
+      },
+      "reason": {
+        "content": "$2"
+      }
+    }
+  },
+  "language_pack_error_header": {
+    "message": "Keep the five original column headers."
+  },
+  "language_pack_error_metadata": {
+    "message": "Keep the version, locale and name rows at the top."
+  },
+  "language_pack_error_version": {
+    "message": "This file version is not supported."
+  },
+  "language_pack_error_locale": {
+    "message": "Enter a language code such as de or pt-BR in the locale row."
+  },
+  "language_pack_error_name": {
+    "message": "Enter a language name of up to 80 characters in the name row."
+  },
+  "language_pack_error_duplicate": {
+    "message": "A translation or metadata row appears more than once."
+  },
+  "language_pack_error_unknown": {
+    "message": "This row is not in the current template. Export a new template and copy your translations into it."
+  },
+  "language_pack_error_source": {
+    "message": "The source text changed. Restore it from a fresh template."
+  },
+  "language_pack_error_tokens": {
+    "message": "Keep every placeholder exactly as in the source text."
+  },
+  "language_pack_error_markup": {
+    "message": "Keep the original formatting tags and attributes; do not add executable content."
+  },
+  "language_pack_error_size": {
+    "message": "The file exceeds the 2 MiB limit."
+  },
+  "language_pack_error_rows": {
+    "message": "The file exceeds the 20,000-row limit."
+  },
+  "language_pack_error_cell": {
+    "message": "A cell is too long or contains unsupported control characters."
+  },
+  "language_pack_error_packs": {
+    "message": "Up to 20 imported languages can be saved. Reimport the same language to update it."
+  },
+  "language_pack_error_csv": {
+    "message": "Save the spreadsheet as CSV UTF-8 with five columns and intact quotation marks."
+  },
+  "language_pack_error_encoding": {
+    "message": "Save the file using UTF-8 encoding."
+  },
+  "language_pack_error_file": {
+    "message": "The file could not be read or exported. Try again."
+  }
+}

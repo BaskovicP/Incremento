@@ -1,0 +1,3191 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Incremento\n"
+"PO-Revision-Date: 2026-09-13 00:00+0000\n"
+"Last-Translator: Incremento\n"
+"Language-Team: English\n"
+"MIME-Version: 1.0\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Reader display label: {action} action in the {reader} reader.
+msgid "reader_accessible_description"
+msgstr "{action} action in the {reader} reader."
+
+#. Reader display label: {reader} reader: {action}
+msgid "reader_accessible_name"
+msgstr "{reader} reader: {action}"
+
+#. Reader display label: + Add Card
+msgid "reader_add_card"
+msgstr "+ Add Card"
+
+#. Reader display label: Annotate
+msgid "reader_annotate"
+msgstr "Annotate"
+
+#. Reader display label: Annotation & capture
+msgid "reader_annotation_capture"
+msgstr "Annotation & capture"
+
+#. Reader display label: Back
+msgid "reader_back"
+msgstr "Back"
+
+#. Reader display label: Bookmark
+msgid "reader_bookmark"
+msgstr "Bookmark"
+
+#. Reader display label: Bookmarks ({count})
+msgid "reader_bookmarks"
+msgstr "Bookmarks ({count})"
+
+#. Reader display label: Capture
+msgid "reader_capture"
+msgstr "Capture"
+
+#. Reader display label: Cards
+msgid "reader_cards"
+msgstr "Cards"
+
+#. Reader display label: Links {state}
+msgid "reader_clickable_links"
+msgstr "Links {state}"
+
+#. Reader display label: EPUB
+msgid "reader_epub_name"
+msgstr "EPUB"
+
+#. Reader display label: ↦
+msgid "reader_exact_read_marker"
+msgstr "↦"
+
+#. Reader display label: Extract
+msgid "reader_extract"
+msgstr "Extract"
+
+#. Reader display label: ✓ Finished Reading
+msgid "reader_finished_reading"
+msgstr "✓ Finished Reading"
+
+#. Reader display label: Highlight when extracting
+msgid "reader_highlight_when_extracting"
+msgstr "Highlight when extracting"
+
+#. Reader display label: 📑 Highlights ({count})
+msgid "reader_highlights"
+msgstr "📑 Highlights ({count})"
+
+#. Reader display label: ↩ Jump Back
+msgid "reader_jump_back"
+msgstr "↩ Jump Back"
+
+#. Reader display label: More
+msgid "reader_more"
+msgstr "More"
+
+#. Reader display label: Navigate
+msgid "reader_navigate"
+msgstr "Navigate"
+
+#. Reader display label: Navigation
+msgid "reader_navigation"
+msgstr "Navigation"
+
+#. Reader display label: Next →
+msgid "reader_next_page"
+msgstr "Next →"
+
+#. Reader display label: Open All in Browser
+msgid "reader_open_all_in_browser"
+msgstr "Open All in Browser"
+
+#. Reader display label: 📄 Page cards ({count})
+msgid "reader_page_cards"
+msgstr "📄 Page cards ({count})"
+
+#. Reader display label: Page {current} / {total}
+msgid "reader_page_location"
+msgstr "Page {current} / {total}"
+
+#. Reader display label: PDF
+msgid "reader_pdf_name"
+msgstr "PDF"
+
+#. Reader display label: ← Prev
+msgid "reader_previous_page"
+msgstr "← Prev"
+
+#. Reader display label: ✓ Read to here
+msgid "reader_read_to_here"
+msgstr "✓ Read to here"
+
+#. Reader display label: Reading
+msgid "reader_reading"
+msgstr "Reading"
+
+#. Reader display label: 📖 Reading Limit
+msgid "reader_reading_limit"
+msgstr "📖 Reading Limit"
+
+#. Reader display label: Regenerate Cover
+msgid "reader_regenerate_cover"
+msgstr "Regenerate Cover"
+
+#. Reader display label: Review
+msgid "reader_review"
+msgstr "Review"
+
+#. Reader display label: Review All
+msgid "reader_review_all"
+msgstr "Review All"
+
+#. Reader display label: Review & cards
+msgid "reader_review_cards"
+msgstr "Review & cards"
+
+#. Reader display label: 🧠 Review Due
+msgid "reader_review_due"
+msgstr "🧠 Review Due"
+
+#. Reader display label: Search
+msgid "reader_search"
+msgstr "Search"
+
+#. Reader display label: 📷 Snapshot
+msgid "reader_snapshot"
+msgstr "📷 Snapshot"
+
+#. Reader display label: Status
+msgid "reader_status"
+msgstr "Status"
+
+#. Reader display label: ★ Bookmark
+msgid "reader_toolbar_bookmark"
+msgstr "★ Bookmark"
+
+#. Reader display label: ▶ Review All
+msgid "reader_toolbar_review_all"
+msgstr "▶ Review All"
+
+#. Reader display label: {action} in the {reader} reader
+msgid "reader_tooltip"
+msgstr "{action} in the {reader} reader"
+
+#. Reader display label: {action} is not available in the {reader} reader yet.
+msgid "reader_unavailable"
+msgstr "{action} is not available in the {reader} reader yet."
+
+#. Reader display label: Video
+msgid "reader_video_name"
+msgstr "Video"
+
+#. Reader display label: Web
+msgid "reader_web_name"
+msgstr "Web"
+
+#. Reader display label: Zoom
+msgid "reader_zoom"
+msgstr "Zoom"
+
+#. Reader display label: +
+msgid "reader_zoom_in"
+msgstr "+"
+
+#. Reader display label: −
+msgid "reader_zoom_out"
+msgstr "−"
+
+#. Reader display label: {percent}%
+msgid "reader_zoom_percent"
+msgstr "{percent}%"
+
+#. Reader display text: Add current page
+msgid "reader_add_current_page"
+msgstr "Add current page"
+
+#. Reader display text: Add highlight note
+msgid "reader_add_highlight_note"
+msgstr "Add highlight note"
+
+#. Reader display text: Add note
+msgid "reader_add_note"
+msgstr "Add note"
+
+#. Reader display text: Add note to this highlight
+msgid "reader_add_note_tooltip"
+msgstr "Add note to this highlight"
+
+#. Reader display text: All
+msgid "reader_all"
+msgstr "All"
+
+#. Reader display text: Bookmark the current page as an interesting place
+msgid "reader_bookmark_current"
+msgstr "Bookmark the current page as an interesting place"
+
+#. Reader display text: Bookmarks ({count})
+msgid "reader_bookmarks_count"
+msgstr "Bookmarks ({count})"
+
+#. Reader display text: Cancel snapshot
+msgid "reader_cancel_snapshot"
+msgstr "Cancel snapshot"
+
+#. Reader display text: Choose which control groups are visible
+msgid "reader_choose_controls"
+msgstr "Choose which control groups are visible"
+
+#. Reader display text: Close
+msgid "reader_close"
+msgstr "Close"
+
+#. Reader display text: aqua
+msgid "reader_color_aqua"
+msgstr "aqua"
+
+#. Reader display text: blue
+msgid "reader_color_blue"
+msgstr "blue"
+
+#. Reader display text: green
+msgid "reader_color_green"
+msgstr "green"
+
+#. Reader display text: orange
+msgid "reader_color_orange"
+msgstr "orange"
+
+#. Reader display text: pink
+msgid "reader_color_pink"
+msgstr "pink"
+
+#. Reader display text: purple
+msgid "reader_color_purple"
+msgstr "purple"
+
+#. Reader display text: red
+msgid "reader_color_red"
+msgstr "red"
+
+#. Reader display text: yellow
+msgid "reader_color_yellow"
+msgstr "yellow"
+
+#. Reader display text: Create Card
+msgid "reader_create_card"
+msgstr "Create Card"
+
+#. Reader display text: Create Missing Cards ({count})
+msgid "reader_create_missing_cards"
+msgstr "Create Missing Cards ({count})"
+
+#. Reader display text: Customize
+msgid "reader_customize"
+msgstr "Customize"
+
+#. Reader display text: Customize controls
+msgid "reader_customize_controls"
+msgstr "Customize controls"
+
+#. Reader display text: Choose which groups stay visible in the reader toolbar.
+msgid "reader_customize_intro"
+msgstr "Choose which groups stay visible in the reader toolbar."
+
+#. Reader display text: Customize PDF controls
+msgid "reader_customize_pdf_controls"
+msgstr "Customize PDF controls"
+
+#. Reader display text: Daily PDF reading limit for this card
+msgid "reader_daily_limit"
+msgstr "Daily PDF reading limit for this card"
+
+#. Reader display text: Delete
+msgid "reader_delete"
+msgstr "Delete"
+
+#. Reader display text: Delete this highlight
+msgid "reader_delete_highlight"
+msgstr "Delete this highlight"
+
+#. Reader display text: Dismiss
+msgid "reader_dismiss"
+msgstr "Dismiss"
+
+#. Reader display text: Done
+msgid "reader_done"
+msgstr "Done"
+
+#. Reader display text: Draw a rectangle to capture a region
+msgid "reader_draw_snapshot"
+msgstr "Draw a rectangle to capture a region"
+
+#. Reader display text: Edit highlight note
+msgid "reader_edit_highlight_note"
+msgstr "Edit highlight note"
+
+#. Reader display text: Edit note
+msgid "reader_edit_note"
+msgstr "Edit note"
+
+#. Reader display text: Edit note for this highlight
+msgid "reader_edit_note_tooltip"
+msgstr "Edit note for this highlight"
+
+#. Reader display text: Find
+msgid "reader_find"
+msgstr "Find"
+
+#. Reader display text: Mark this PDF as finished reading? / The card will be suspended and removed from future sessions.
+msgid "reader_finished_confirm"
+msgstr "Mark this PDF as finished reading?\nThe card will be suspended and removed from future sessions."
+
+#. Reader display text: Mark this PDF as finished reading — suspends the card so it won't appear again
+msgid "reader_finished_tooltip"
+msgstr "Mark this PDF as finished reading — suspends the card so it won't appear again"
+
+#. Reader display text: Go to page {page}
+msgid "reader_go_to_page"
+msgstr "Go to page {page}"
+
+#. Reader display text: Highlight actions
+msgid "reader_highlight_actions"
+msgstr "Highlight actions"
+
+#. Reader display text: Highlight {color}
+msgid "reader_highlight_color"
+msgstr "Highlight {color}"
+
+#. Reader display text: Highlight: {excerpt}
+msgid "reader_highlight_excerpt"
+msgstr "Highlight: {excerpt}"
+
+#. Reader display text: Highlights ({count})
+msgid "reader_highlights_count"
+msgstr "Highlights ({count})"
+
+#. Reader display text: Jump
+msgid "reader_jump"
+msgstr "Jump"
+
+#. Reader display text: Follow an internal PDF link to enable Jump Back
+msgid "reader_jump_back_hint"
+msgstr "Follow an internal PDF link to enable Jump Back"
+
+#. Reader display text: Jump back to page {page}
+msgid "reader_jump_back_page"
+msgstr "Jump back to page {page}"
+
+#. Reader display text: Hard stop
+msgid "reader_limit_hard_stop"
+msgstr "Hard stop"
+
+#. Reader display text: {prefix} Come back after your next Incremento day reset.
+msgid "reader_limit_reached_hard"
+msgstr "{prefix} Come back after your next Incremento day reset."
+
+#. Reader display text: Daily limit reached: {used}/{total} pages today.
+msgid "reader_limit_reached_pages"
+msgstr "Daily limit reached: {used}/{total} pages today."
+
+#. Reader display text: Daily limit reached for this PDF.
+msgid "reader_limit_reached_pdf"
+msgstr "Daily limit reached for this PDF."
+
+#. Reader display text: {prefix} Use override to keep reading today.
+msgid "reader_limit_reached_soft"
+msgstr "{prefix} Use override to keep reading today."
+
+#. Reader display text: Soft lock
+msgid "reader_limit_soft_lock"
+msgstr "Soft lock"
+
+#. Reader display text: Warning
+msgid "reader_limit_warning"
+msgstr "Warning"
+
+#. Reader display text: Disable PDF links and restore uninterrupted text selection
+msgid "reader_links_disable"
+msgstr "Disable PDF links and restore uninterrupted text selection"
+
+#. Reader display text: Enable clickable links in this PDF
+msgid "reader_links_enable"
+msgstr "Enable clickable links in this PDF"
+
+#. Reader display text: Links {state}
+msgid "reader_links_state"
+msgstr "Links {state}"
+
+#. Reader display text: Could not load this PDF.
+msgid "reader_load_error"
+msgstr "Could not load this PDF."
+
+#. Reader display text: Mark pages as read up to here without placing an exact marker
+msgid "reader_mark_read_to_here"
+msgstr "Mark pages as read up to here without placing an exact marker"
+
+#. Reader display text: Minimize reader controls to give the PDF more room
+msgid "reader_minimize_controls"
+msgstr "Minimize reader controls to give the PDF more room"
+
+#. Reader display text: Minimize controls
+msgid "reader_minimize_controls_label"
+msgstr "Minimize controls"
+
+#. Reader display text: Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it.
+msgid "reader_move_exact_marker"
+msgstr "Move the exact READ UP UNTIL HERE marker to the current text row. Shift-click to clear it."
+
+#. Reader display text: You are moving past today's {count}-page limit for this PDF.
+msgid "reader_moving_past_limit"
+msgstr "You are moving past today's {count}-page limit for this PDF."
+
+#. Reader display text: Next Highlight
+msgid "reader_next_highlight"
+msgstr "Next Highlight"
+
+#. Reader display text: Next PDF page
+msgid "reader_next_pdf_page"
+msgstr "Next PDF page"
+
+#. Reader display text: Next
+msgid "reader_next_short"
+msgstr "Next"
+
+#. Reader display text: No bookmarks yet.
+msgid "reader_no_bookmarks"
+msgstr "No bookmarks yet."
+
+#. Reader display text: No highlight notes yet.
+msgid "reader_no_highlight_notes"
+msgstr "No highlight notes yet."
+
+#. Reader display text: No highlight notes on this page yet.
+msgid "reader_no_highlight_notes_page"
+msgstr "No highlight notes on this page yet."
+
+#. Reader display text: No highlights yet.
+msgid "reader_no_highlights"
+msgstr "No highlights yet."
+
+#. Reader display text: (no text)
+msgid "reader_no_text"
+msgstr "(no text)"
+
+#. Reader display text: No unlinked text highlights remain in this PDF
+msgid "reader_no_unlinked_highlights"
+msgstr "No unlinked text highlights remain in this PDF"
+
+#. Reader display text: Notes only
+msgid "reader_notes_only"
+msgstr "Notes only"
+
+#. Reader display text: Off
+msgid "reader_off"
+msgstr "Off"
+
+#. Reader display text: On
+msgid "reader_on"
+msgstr "On"
+
+#. Reader display text: Open all cards created from this PDF in the Anki Browser
+msgid "reader_open_all_cards"
+msgstr "Open all cards created from this PDF in the Anki Browser"
+
+#. Reader display text: Open external link
+msgid "reader_open_external_link"
+msgstr "Open external link"
+
+#. Reader display text: Override active
+msgid "reader_override_active"
+msgstr "Override active"
+
+#. Reader display text: Daily reading limit override is active for this PDF until the next day reset.
+msgid "reader_override_notice"
+msgstr "Daily reading limit override is active for this PDF until the next day reset."
+
+#. Reader display text: Override today
+msgid "reader_override_today"
+msgstr "Override today"
+
+#. Reader display text: Page
+msgid "reader_page"
+msgstr "Page"
+
+#. Reader display text: Page cards ({count})
+msgid "reader_page_cards_count"
+msgstr "Page cards ({count})"
+
+#. Reader display text: Could not open this PDF page.
+msgid "reader_page_error"
+msgstr "Could not open this PDF page."
+
+#. Reader display text: Go to page
+msgid "reader_page_jump"
+msgstr "Go to page"
+
+#. Reader display text: Page {page}
+msgid "reader_page_number"
+msgstr "Page {page}"
+
+#. Reader display text: PDF Bookmarks
+msgid "reader_pdf_bookmarks"
+msgstr "PDF Bookmarks"
+
+#. Reader display text: PDF reader controls
+msgid "reader_pdf_controls"
+msgstr "PDF reader controls"
+
+#. Reader display text: PDF Highlights
+msgid "reader_pdf_highlights"
+msgstr "PDF Highlights"
+
+#. Reader display text: PDF page number
+msgid "reader_pdf_page_number"
+msgstr "PDF page number"
+
+#. Reader display text: Place the exact READ UP UNTIL HERE marker at the current text row
+msgid "reader_place_exact_marker"
+msgstr "Place the exact READ UP UNTIL HERE marker at the current text row"
+
+#. Reader display text: Prefill Add Card from this highlight
+msgid "reader_prefill_card"
+msgstr "Prefill Add Card from this highlight"
+
+#. Reader display text: Prev
+msgid "reader_prev_short"
+msgstr "Prev"
+
+#. Reader display text: Preview Card
+msgid "reader_preview_card"
+msgstr "Preview Card"
+
+#. Reader display text: Preview the card already linked to this highlight
+msgid "reader_preview_linked_card"
+msgstr "Preview the card already linked to this highlight"
+
+#. Reader display text: Previous Highlight
+msgid "reader_previous_highlight"
+msgstr "Previous Highlight"
+
+#. Reader display text: Previous PDF page
+msgid "reader_previous_pdf_page"
+msgstr "Previous PDF page"
+
+#. Reader display text: Read Up Until Here
+msgid "reader_read_marker"
+msgstr "Read Up Until Here"
+
+#. Reader display text: Read-through can go past today's {count}-page limit for this PDF.
+msgid "reader_read_past_limit"
+msgstr "Read-through can go past today's {count}-page limit for this PDF."
+
+#. Reader display text: Read progress
+msgid "reader_read_progress"
+msgstr "Read progress"
+
+#. Reader display text: Read progress: {read}/{total} pages
+msgid "reader_read_progress_pages"
+msgstr "Read progress: {read}/{total} pages"
+
+#. Reader display text: p.1–{page}
+msgid "reader_read_range"
+msgstr "p.1–{page}"
+
+#. Reader display text: Read up to page {page} — click to toggle progress only
+msgid "reader_read_to_page"
+msgstr "Read up to page {page} — click to toggle progress only"
+
+#. Reader display text: {count} remaining
+msgid "reader_remaining"
+msgstr "{count} remaining"
+
+#. Reader display text: Remove highlight
+msgid "reader_remove_highlight"
+msgstr "Remove highlight"
+
+#. Reader display text: Remove snapshot highlight
+msgid "reader_remove_snapshot_highlight"
+msgstr "Remove snapshot highlight"
+
+#. Reader display text: Could not render this PDF page.
+msgid "reader_render_error"
+msgstr "Could not render this PDF page."
+
+#. Reader display text: Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF
+msgid "reader_review_all_tooltip"
+msgstr "Choose Topics, Items, scope, due state, limit, and order for cards attached to this PDF"
+
+#. Reader display text: Search this PDF
+msgid "reader_search_pdf"
+msgstr "Search this PDF"
+
+#. Reader display text: {current} / {total}
+msgid "reader_search_position"
+msgstr "{current} / {total}"
+
+#. Reader display text: Set exact read marker
+msgid "reader_set_exact_marker"
+msgstr "Set exact read marker"
+
+#. Reader display text: Show all
+msgid "reader_show_all"
+msgstr "Show all"
+
+#. Reader display text: Show saved interesting-place bookmarks
+msgid "reader_show_bookmarks"
+msgstr "Show saved interesting-place bookmarks"
+
+#. Reader display text: Show controls
+msgid "reader_show_controls"
+msgstr "Show controls"
+
+#. Reader display text: Show highlights list
+msgid "reader_show_highlights"
+msgstr "Show highlights list"
+
+#. Reader display text: Stop point today: page {page}
+msgid "reader_stop_point"
+msgstr "Stop point today: page {page}"
+
+#. Reader display text: You stopped at: {text}
+msgid "reader_stopped_at"
+msgstr "You stopped at: {text}"
+
+#. Reader display text: You marked page {page} as your current stopping point
+msgid "reader_stopping_page"
+msgstr "You marked page {page} as your current stopping point"
+
+#. Reader display text: You marked this as your current stopping point
+msgid "reader_stopping_point"
+msgstr "You marked this as your current stopping point"
+
+#. Reader display text: This page
+msgid "reader_this_page"
+msgstr "This page"
+
+#. Reader display text: Today: {used}/{total} pages
+msgid "reader_today_pages"
+msgstr "Today: {used}/{total} pages"
+
+#. Reader display text: Use {color} highlight color
+msgid "reader_use_highlight_color"
+msgstr "Use {color} highlight color"
+
+#. Reader display text: Warning
+msgid "reader_warning"
+msgstr "Warning"
+
+#. Reader display text: Whole PDF
+msgid "reader_whole_pdf"
+msgstr "Whole PDF"
+
+#. Reader display text: 0 results
+msgid "reader_zero_results"
+msgstr "0 results"
+
+#. EPUB reader display: Browser
+msgid "reader_browser"
+msgstr "Browser"
+
+#. EPUB reader display: Cancel
+msgid "reader_cancel"
+msgstr "Cancel"
+
+#. EPUB reader display: Customize EPUB reader controls
+msgid "reader_customize_epub_accessible"
+msgstr "Customize EPUB reader controls"
+
+#. EPUB reader display: Customize EPUB Controls
+msgid "reader_customize_epub_controls"
+msgstr "Customize EPUB Controls"
+
+#. EPUB reader display: Choose which groups stay visible in the EPUB reader toolbar.
+msgid "reader_customize_epub_intro"
+msgstr "Choose which groups stay visible in the EPUB reader toolbar."
+
+#. EPUB reader display: Uses Incremento's day-end setting for daily reset.
+msgid "reader_day_end_hint"
+msgstr "Uses Incremento's day-end setting for daily reset."
+
+#. EPUB reader display: Decrease text size
+msgid "reader_decrease_text_size"
+msgstr "Decrease text size"
+
+#. EPUB reader display: Details
+msgid "reader_details"
+msgstr "Details"
+
+#. EPUB reader display: Enabled:
+msgid "reader_enabled"
+msgstr "Enabled:"
+
+#. EPUB reader display: Add a card from the current selection
+msgid "reader_epub_add_card_tooltip"
+msgstr "Add a card from the current selection"
+
+#. EPUB reader display: Add a bookmark for this reading position
+msgid "reader_epub_bookmark_tooltip"
+msgstr "Add a bookmark for this reading position"
+
+#. EPUB reader display: Show or hide EPUB bookmarks ({count} saved)
+msgid "reader_epub_bookmarks_saved_tooltip"
+msgstr "Show or hide EPUB bookmarks ({count} saved)"
+
+#. EPUB reader display: Show or hide EPUB bookmarks
+msgid "reader_epub_bookmarks_tooltip"
+msgstr "Show or hide EPUB bookmarks"
+
+#. EPUB reader display: Open this EPUB note in the browser
+msgid "reader_epub_browser_tooltip"
+msgstr "Open this EPUB note in the browser"
+
+#. EPUB reader display: EPUB reader card count
+msgid "reader_epub_card_count_accessible"
+msgstr "EPUB reader card count"
+
+#. EPUB reader display: Cards {count}
+msgid "reader_epub_cards_count"
+msgstr "Cards {count}"
+
+#. EPUB reader display: Cards from this section
+msgid "reader_epub_cards_from_section"
+msgstr "Cards from this section"
+
+#. EPUB reader display: Choose which EPUB control groups are visible
+msgid "reader_epub_choose_controls"
+msgstr "Choose which EPUB control groups are visible"
+
+#. EPUB reader display: EPUB reader compact location
+msgid "reader_epub_compact_location_accessible"
+msgstr "EPUB reader compact location"
+
+#. EPUB reader display: EPUB reader controls
+msgid "reader_epub_controls_accessible"
+msgstr "EPUB reader controls"
+
+#. EPUB reader display: Regenerate this EPUB card's cover image
+msgid "reader_epub_cover_tooltip"
+msgstr "Regenerate this EPUB card's cover image"
+
+#. EPUB reader display: Show or hide cards and highlights for this section ({cards} cards, {highlights} highlights)
+msgid "reader_epub_details_counts"
+msgstr "Show or hide cards and highlights for this section ({cards} cards, {highlights} highlights)"
+
+#. EPUB reader display: Show or hide cards and highlights for this section
+msgid "reader_epub_details_tooltip"
+msgstr "Show or hide cards and highlights for this section"
+
+#. EPUB reader display: Place or move the exact READ UP UNTIL HERE marker; hold Shift to clear it
+msgid "reader_epub_exact_marker_tooltip"
+msgstr "Place or move the exact READ UP UNTIL HERE marker; hold Shift to clear it"
+
+#. EPUB reader display: Extract the current selection into the first Add Card field
+msgid "reader_epub_extract_tooltip"
+msgstr "Extract the current selection into the first Add Card field"
+
+#. EPUB reader display: Mark this EPUB as finished or unfinished
+msgid "reader_epub_finished_tooltip"
+msgstr "Mark this EPUB as finished or unfinished"
+
+#. EPUB reader display: Go to EPUB page
+msgid "reader_epub_go_to_page"
+msgstr "Go to EPUB page"
+
+#. EPUB reader display: Go to EPUB page · {location}
+msgid "reader_epub_go_to_page_detail"
+msgstr "Go to EPUB page · {location}"
+
+#. EPUB reader display: EPUB reader highlight count
+msgid "reader_epub_highlight_count_accessible"
+msgstr "EPUB reader highlight count"
+
+#. EPUB reader display: Highlight the current selection (Alt+H)
+msgid "reader_epub_highlight_tooltip"
+msgstr "Highlight the current selection (Alt+H)"
+
+#. EPUB reader display: Highlights {count}
+msgid "reader_epub_highlights_count"
+msgstr "Highlights {count}"
+
+#. EPUB reader display: Highlights in this section
+msgid "reader_epub_highlights_in_section"
+msgstr "Highlights in this section"
+
+#. EPUB reader display: Show or hide EPUB highlights ({count} in this section)
+msgid "reader_epub_highlights_section_tooltip"
+msgstr "Show or hide EPUB highlights ({count} in this section)"
+
+#. EPUB reader display: Show or hide EPUB highlights
+msgid "reader_epub_highlights_tooltip"
+msgstr "Show or hide EPUB highlights"
+
+#. EPUB reader display: Highlights 0
+msgid "reader_epub_highlights_zero"
+msgstr "Highlights 0"
+
+#. EPUB reader display: EPUB reader: Jump Back
+msgid "reader_epub_jump_back_accessible"
+msgstr "EPUB reader: Jump Back"
+
+#. EPUB reader display: Follow an internal EPUB link to enable Jump Back
+msgid "reader_epub_jump_back_hint"
+msgstr "Follow an internal EPUB link to enable Jump Back"
+
+#. EPUB reader display: Limit pages read per day for this EPUB
+msgid "reader_epub_limit_enabled"
+msgstr "Limit pages read per day for this EPUB"
+
+#. EPUB reader display: Today: {used} / {limit} pages · {remaining} remaining · {mode}
+msgid "reader_epub_limit_status"
+msgstr "Today: {used} / {limit} pages · {remaining} remaining · {mode}"
+
+#. EPUB reader display: Today: {used} / {limit} pages · {remaining} remaining · {mode} · override active
+msgid "reader_epub_limit_status_override"
+msgstr "Today: {used} / {limit} pages · {remaining} remaining · {mode} · override active"
+
+#. EPUB reader display: Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}.
+msgid "reader_epub_limit_summary"
+msgstr "Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}."
+
+#. EPUB reader display: EPUB Reading Limit
+msgid "reader_epub_limit_title"
+msgstr "EPUB Reading Limit"
+
+#. EPUB reader display: Adjust this EPUB's daily reading limit
+msgid "reader_epub_limit_tooltip"
+msgstr "Adjust this EPUB's daily reading limit"
+
+#. EPUB reader display: EPUB reader: Links
+msgid "reader_epub_links_accessible"
+msgstr "EPUB reader: Links"
+
+#. EPUB reader display: Disable EPUB links and restore uninterrupted text selection
+msgid "reader_epub_links_disable"
+msgstr "Disable EPUB links and restore uninterrupted text selection"
+
+#. EPUB reader display: Enable clickable links in this EPUB
+msgid "reader_epub_links_enable"
+msgstr "Enable clickable links in this EPUB"
+
+#. EPUB reader display: Minimize EPUB reader controls
+msgid "reader_epub_minimize_accessible"
+msgstr "Minimize EPUB reader controls"
+
+#. EPUB reader display: Minimize reader controls to give the EPUB more room
+msgid "reader_epub_minimize_controls"
+msgstr "Minimize reader controls to give the EPUB more room"
+
+#. EPUB reader display: Next page or next section
+msgid "reader_epub_next_tooltip"
+msgstr "Next page or next section"
+
+#. EPUB reader display: No daily reading limit is set for this EPUB.
+msgid "reader_epub_no_limit"
+msgstr "No daily reading limit is set for this EPUB."
+
+#. EPUB reader display: No cards created from this section yet.
+msgid "reader_epub_no_section_cards"
+msgstr "No cards created from this section yet."
+
+#. EPUB reader display: No highlights in this section yet.
+msgid "reader_epub_no_section_highlights"
+msgstr "No highlights in this section yet."
+
+#. EPUB reader display: Offer this due-card review automatically when opening this EPUB
+msgid "reader_epub_offer_due"
+msgstr "Offer this due-card review automatically when opening this EPUB"
+
+#. EPUB reader display: Open all cards created from this EPUB
+msgid "reader_epub_open_all_cards"
+msgstr "Open all cards created from this EPUB"
+
+#. EPUB reader display: EPUB reader page location
+msgid "reader_epub_page_location_accessible"
+msgstr "EPUB reader page location"
+
+#. EPUB reader display: Previous page or previous section
+msgid "reader_epub_previous_tooltip"
+msgstr "Previous page or previous section"
+
+#. EPUB reader display: Read progress: {read}/{total} EPUB sections
+msgid "reader_epub_read_progress"
+msgstr "Read progress: {read}/{total} EPUB sections"
+
+#. EPUB reader display: Mark EPUB sections as read up to here without placing an exact marker
+msgid "reader_epub_read_to_here_tooltip"
+msgstr "Mark EPUB sections as read up to here without placing an exact marker"
+
+#. EPUB reader display: Choose Topics, Items, scope, due state, limit, and order for cards attached to this EPUB
+msgid "reader_epub_review_all_tooltip"
+msgstr "Choose Topics, Items, scope, due state, limit, and order for cards attached to this EPUB"
+
+#. EPUB reader display: Review Due EPUB Cards
+msgid "reader_epub_review_due_title"
+msgstr "Review Due EPUB Cards"
+
+#. EPUB reader display: Review due cards from this EPUB
+msgid "reader_epub_review_due_tooltip"
+msgstr "Review due cards from this EPUB"
+
+#. EPUB reader display: EPUB reader: Search
+msgid "reader_epub_search_accessible"
+msgstr "EPUB reader: Search"
+
+#. EPUB reader display: Search this EPUB
+msgid "reader_epub_search_placeholder"
+msgstr "Search this EPUB"
+
+#. EPUB reader display: Show the full EPUB reader controls
+msgid "reader_epub_show_full_controls"
+msgstr "Show the full EPUB reader controls"
+
+#. EPUB reader display: Capture the current selection as an image (Alt+S)
+msgid "reader_epub_snapshot_tooltip"
+msgstr "Capture the current selection as an image (Alt+S)"
+
+#. EPUB reader display: You reached this EPUB's daily page limit. / Allowed today: up to page {allowed}. Target: page {target}.
+msgid "reader_epub_soft_limit_summary"
+msgstr "You reached this EPUB's daily page limit.\nAllowed today: up to page {allowed}. Target: page {target}."
+
+#. EPUB reader display: Hard stop
+msgid "reader_hard_stop"
+msgstr "Hard stop"
+
+#. EPUB reader display: Highlight
+msgid "reader_highlight"
+msgstr "Highlight"
+
+#. EPUB reader display: Increase text size
+msgid "reader_increase_text_size"
+msgstr "Increase text size"
+
+#. EPUB reader display: Jump back to section {number}
+msgid "reader_jump_back_section"
+msgstr "Jump back to section {number}"
+
+#. EPUB reader display: Limit:
+msgid "reader_limit"
+msgstr "Limit:"
+
+#. EPUB reader display: Not Now
+msgid "reader_not_now"
+msgstr "Not Now"
+
+#. EPUB reader display: Note
+msgid "reader_note_label"
+msgstr "Note"
+
+#. EPUB reader display: note {number}
+msgid "reader_note_number"
+msgstr "note {number}"
+
+#. EPUB reader display: OK
+msgid "reader_ok"
+msgstr "OK"
+
+#. EPUB reader display: Page:
+msgid "reader_page_label"
+msgstr "Page:"
+
+#. EPUB reader display: Reviewing them first can refresh earlier context before you continue reading.
+msgid "reader_review_due_hint"
+msgstr "Reviewing them first can refresh earlier context before you continue reading."
+
+#. EPUB reader display: Review Now
+msgid "reader_review_now"
+msgstr "Review Now"
+
+#. EPUB reader display: Section {number}
+msgid "reader_section_number"
+msgstr "Section {number}"
+
+#. EPUB reader display: Show EPUB {group} controls
+msgid "reader_show_epub_controls"
+msgstr "Show EPUB {group} controls"
+
+#. EPUB reader display: You can stop here or override the limit for today.
+msgid "reader_soft_limit_hint"
+msgstr "You can stop here or override the limit for today."
+
+#. EPUB reader display: Soft lock + override
+msgid "reader_soft_lock_override"
+msgstr "Soft lock + override"
+
+#. EPUB reader display: Warning only
+msgid "reader_warning_only"
+msgstr "Warning only"
+
+#. EPUB reader count: You have {count} due card from this EPUB near this reading point. / Source sections: {sections}
+msgid "reader_epub_due_summary"
+msgid_plural "reader_epub_due_summary_plural"
+msgstr[0] "You have {count} due card from this EPUB near this reading point.\nSource sections: {sections}"
+msgstr[1] "You have {count} due cards from this EPUB near this reading point.\nSource sections: {sections}"
+
+#. EPUB reader count: {count} card created from this section
+msgid "reader_epub_section_cards"
+msgid_plural "reader_epub_section_cards_plural"
+msgstr[0] "{count} card created from this section"
+msgstr[1] "{count} cards created from this section"
+
+#. EPUB reader count: {count} highlight in this section
+msgid "reader_epub_section_highlights"
+msgid_plural "reader_epub_section_highlights_plural"
+msgstr[0] "{count} highlight in this section"
+msgstr[1] "{count} highlights in this section"
+
+#. EPUB reader count: Open the {count} card created on this EPUB page in the Anki Browser
+msgid "reader_epub_page_cards_tooltip"
+msgid_plural "reader_epub_page_cards_tooltip_plural"
+msgstr[0] "Open the {count} card created on this EPUB page in the Anki Browser"
+msgstr[1] "Open the {count} cards created on this EPUB page in the Anki Browser"
+
+#. EPUB reader display: Card {number}
+msgid "reader_card_number"
+msgstr "Card {number}"
+
+#. EPUB reader display: Due
+msgid "reader_due_state_due"
+msgstr "Due"
+
+#. EPUB reader display: Learning
+msgid "reader_due_state_learning"
+msgstr "Learning"
+
+#. EPUB reader display: New
+msgid "reader_due_state_new"
+msgstr "New"
+
+#. EPUB reader display: Review
+msgid "reader_due_state_review"
+msgstr "Review"
+
+#. EPUB reader display: EPUB daily reading limit disabled.
+msgid "reader_epub_limit_disabled"
+msgstr "EPUB daily reading limit disabled."
+
+#. EPUB reader display: EPUB limit saved: {count} pages/day ({mode}).
+msgid "reader_epub_limit_saved"
+msgstr "EPUB limit saved: {count} pages/day ({mode})."
+
+#. EPUB reader display: {preview}, +{count} more
+msgid "reader_more_sections"
+msgstr "{preview}, +{count} more"
+
+#. Due card list truncation
+msgid "reader_more_due_cards"
+msgid_plural "reader_more_due_cards_plural"
+msgstr[0] "…and {count} more due card."
+msgstr[1] "…and {count} more due cards."
+
+#. EPUB reader message: Copy Link to This Place
+msgid "reader_copy_link_to_place"
+msgstr "Copy Link to This Place"
+
+#. EPUB reader message: earlier sections
+msgid "reader_earlier_sections"
+msgstr "earlier sections"
+
+#. EPUB reader message: Could not delete EPUB bookmark: / {error}
+msgid "reader_epub_bookmark_delete_failed"
+msgstr "Could not delete EPUB bookmark:\n{error}"
+
+#. EPUB reader message: Could not save EPUB bookmark: / {error}
+msgid "reader_epub_bookmark_save_failed"
+msgstr "Could not save EPUB bookmark:\n{error}"
+
+#. EPUB reader message: EPUB bookmark saved.
+msgid "reader_epub_bookmark_saved"
+msgstr "EPUB bookmark saved."
+
+#. EPUB reader message: Could not determine which EPUB card needs a cover refresh.
+msgid "reader_epub_cover_card_missing"
+msgstr "Could not determine which EPUB card needs a cover refresh."
+
+#. EPUB reader message: EPUB cover cleared because the book has no cover image.
+msgid "reader_epub_cover_cleared"
+msgstr "EPUB cover cleared because the book has no cover image."
+
+#. EPUB reader message: Could not regenerate this EPUB cover. /  / {error}
+msgid "reader_epub_cover_failed"
+msgstr "Could not regenerate this EPUB cover.\n\n{error}"
+
+#. EPUB reader message: EPUB cover regenerated from book metadata.
+msgid "reader_epub_cover_regenerated"
+msgstr "EPUB cover regenerated from book metadata."
+
+#. EPUB reader message: No due extracted cards are available to review for this EPUB.
+msgid "reader_epub_due_unavailable"
+msgstr "No due extracted cards are available to review for this EPUB."
+
+#. EPUB reader message: That EPUB highlight could not be found.
+msgid "reader_epub_highlight_missing"
+msgstr "That EPUB highlight could not be found."
+
+#. EPUB reader message: Could not save the EPUB highlight note. /  / {error}
+msgid "reader_epub_highlight_note_save_failed"
+msgstr "Could not save the EPUB highlight note.\n\n{error}"
+
+#. EPUB reader message: EPUB highlight note saved.
+msgid "reader_epub_highlight_note_saved"
+msgstr "EPUB highlight note saved."
+
+#. EPUB reader message: EPUB Highlight Note
+msgid "reader_epub_highlight_note_title"
+msgstr "EPUB Highlight Note"
+
+#. EPUB reader message: Could not remove that EPUB highlight. /  / {error}
+msgid "reader_epub_highlight_remove_failed"
+msgstr "Could not remove that EPUB highlight.\n\n{error}"
+
+#. EPUB reader message: EPUB highlight removed.
+msgid "reader_epub_highlight_removed"
+msgstr "EPUB highlight removed."
+
+#. EPUB reader message: That EPUB highlight could not be updated.
+msgid "reader_epub_highlight_update_failed"
+msgstr "That EPUB highlight could not be updated."
+
+#. EPUB reader message: EPUB reading limit overridden for today.
+msgid "reader_epub_limit_overridden"
+msgstr "EPUB reading limit overridden for today."
+
+#. EPUB reader message: Blocked an unsafe or unsupported EPUB link.
+msgid "reader_epub_link_blocked"
+msgstr "Blocked an unsafe or unsupported EPUB link."
+
+#. EPUB reader message: EPUB link copied. Paste it into an Anki card.
+msgid "reader_epub_link_copied"
+msgstr "EPUB link copied. Paste it into an Anki card."
+
+#. EPUB reader message: Could not open the EPUB link in your browser.
+msgid "reader_epub_link_open_failed"
+msgstr "Could not open the EPUB link in your browser."
+
+#. EPUB reader message: EPUB read marker cleared.
+msgid "reader_epub_marker_cleared"
+msgstr "EPUB read marker cleared."
+
+#. EPUB reader message: Could not save EPUB read marker: / {error}
+msgid "reader_epub_marker_save_failed"
+msgstr "Could not save EPUB read marker:\n{error}"
+
+#. EPUB reader message: EPUB read marker updated.
+msgid "reader_epub_marker_updated"
+msgstr "EPUB read marker updated."
+
+#. EPUB reader message: No cards created from this EPUB yet.
+msgid "reader_epub_no_cards"
+msgstr "No cards created from this EPUB yet."
+
+#. EPUB reader message: No due extracted cards to review for this EPUB.
+msgid "reader_epub_no_due_cards"
+msgstr "No due extracted cards to review for this EPUB."
+
+#. EPUB reader message: No due extracted cards from this EPUB up to the current section.
+msgid "reader_epub_no_due_to_section"
+msgstr "No due extracted cards from this EPUB up to the current section."
+
+#. EPUB reader message: No cards created from this EPUB page yet.
+msgid "reader_epub_no_page_cards"
+msgstr "No cards created from this EPUB page yet."
+
+#. EPUB reader message: Could not save EPUB read progress: / {error}
+msgid "reader_epub_progress_save_failed"
+msgstr "Could not save EPUB read progress:\n{error}"
+
+#. EPUB reader message: EPUB read progress updated.
+msgid "reader_epub_progress_updated"
+msgstr "EPUB read progress updated."
+
+#. EPUB reader message: Could not reopen this EPUB after review.
+msgid "reader_epub_reopen_failed"
+msgstr "Could not reopen this EPUB after review."
+
+#. EPUB reader message: Could not open EPUB section: / {error}
+msgid "reader_epub_section_open_failed"
+msgstr "Could not open EPUB section:\n{error}"
+
+#. EPUB reader message: Could not secure EPUB section: / {error}
+msgid "reader_epub_section_secure_failed"
+msgstr "Could not secure EPUB section:\n{error}"
+
+#. EPUB reader message: Could not capture EPUB snapshot.
+msgid "reader_epub_snapshot_capture_failed"
+msgstr "Could not capture EPUB snapshot."
+
+#. EPUB reader message: Could not crop EPUB snapshot.
+msgid "reader_epub_snapshot_crop_failed"
+msgstr "Could not crop EPUB snapshot."
+
+#. EPUB reader message: Could not encode EPUB snapshot.
+msgid "reader_epub_snapshot_encode_failed"
+msgstr "Could not encode EPUB snapshot."
+
+#. EPUB reader message: EPUB snapshot failed: / {error}
+msgid "reader_epub_snapshot_failed"
+msgstr "EPUB snapshot failed:\n{error}"
+
+#. EPUB reader message: Selected text is outside the visible EPUB viewport.
+msgid "reader_epub_snapshot_outside_view"
+msgstr "Selected text is outside the visible EPUB viewport."
+
+#. EPUB reader message: Could not change EPUB text size: / {error}
+msgid "reader_epub_text_size_failed"
+msgstr "Could not change EPUB text size:\n{error}"
+
+#. EPUB reader message: Field {number}
+msgid "reader_field_number"
+msgstr "Field {number}"
+
+#. EPUB reader message: Insert image into:
+msgid "reader_insert_image_into"
+msgstr "Insert image into:"
+
+#. EPUB reader message: Insert snapshot into field
+msgid "reader_insert_snapshot_title"
+msgstr "Insert snapshot into field"
+
+#. EPUB reader message: Interesting-place bookmarks
+msgid "reader_interesting_bookmarks"
+msgstr "Interesting-place bookmarks"
+
+#. PDF reader message: Anki collection is not available.
+msgid "reader_anki_collection_unavailable"
+msgstr "Anki collection is not available."
+
+#. PDF reader message: Choose Replacement PDF
+msgid "reader_choose_replacement_pdf"
+msgstr "Choose Replacement PDF"
+
+#. PDF reader message: earlier pages
+msgid "reader_earlier_pages"
+msgstr "earlier pages"
+
+#. PDF reader message: Expected file:
+msgid "reader_expected_file"
+msgstr "Expected file:"
+
+#. PDF reader message: (missing filename)
+msgid "reader_missing_filename"
+msgstr "(missing filename)"
+
+#. PDF reader message: {preview}, +{count} more
+msgid "reader_more_pages"
+msgstr "{preview}, +{count} more"
+
+#. PDF reader message: Note ID {number}
+msgid "reader_note_id"
+msgstr "Note ID {number}"
+
+msgid "reader_note_cards"
+msgid_plural "reader_note_cards_plural"
+msgstr[0] "{count} card"
+msgstr[1] "{count} cards"
+
+msgid "reader_tags"
+msgstr "Tags"
+
+#. PDF reader message: This note has no visible non-empty fields.
+msgid "reader_note_no_visible_fields"
+msgstr "This note has no visible non-empty fields."
+
+#. PDF reader message: Note type '{name}' was not found.
+msgid "reader_note_type_missing"
+msgstr "Note type '{name}' was not found."
+
+#. PDF reader message: Open in Browser
+msgid "reader_open_in_browser"
+msgstr "Open in Browser"
+
+#. PDF reader message: Could not read the current Add Card target. /  / {error}
+msgid "reader_pdf_add_target_failed"
+msgstr "Could not read the current Add Card target.\n\n{error}"
+
+#. PDF reader message: Could not open attached PDF card review: / {error}
+msgid "reader_pdf_attached_review_failed"
+msgstr "Could not open attached PDF card review:\n{error}"
+
+#. PDF reader message: Finished creating PDF highlight cards. /  / Created: {created} / Skipped: {skipped} / Failed: {failed} /  / {errors}
+msgid "reader_pdf_batch_result"
+msgstr "Finished creating PDF highlight cards.\n\nCreated: {created}\nSkipped: {skipped}\nFailed: {failed}\n\n{errors}"
+
+#. PDF reader message: Row {index} ({highlight_id}): {error}
+msgid "reader_pdf_batch_row_error"
+msgstr "Row {index} ({highlight_id}): {error}"
+
+#. PDF reader message: Created: {created}. Skipped: {skipped}.
+msgid "reader_pdf_batch_success"
+msgstr "Created: {created}. Skipped: {skipped}."
+
+#. PDF reader message: Could not delete PDF bookmark: / {error}
+msgid "reader_pdf_bookmark_delete_failed"
+msgstr "Could not delete PDF bookmark:\n{error}"
+
+#. PDF reader message: Could not save PDF bookmark: / {error}
+msgid "reader_pdf_bookmark_save_failed"
+msgstr "Could not save PDF bookmark:\n{error}"
+
+#. PDF reader message: PDF bookmark saved.
+msgid "reader_pdf_bookmark_saved"
+msgstr "PDF bookmark saved."
+
+#. PDF reader message: Could not open the PDF bulk highlight dialog. /  / {error}
+msgid "reader_pdf_bulk_dialog_failed"
+msgstr "Could not open the PDF bulk highlight dialog.\n\n{error}"
+
+#. PDF reader message: Could not open the bulk PDF highlight workflow. /  / {error}
+msgid "reader_pdf_bulk_workflow_failed"
+msgstr "Could not open the bulk PDF highlight workflow.\n\n{error}"
+
+#. PDF reader message: PDF card suspended — it won't appear in future sessions.
+msgid "reader_pdf_card_suspended"
+msgstr "PDF card suspended — it won't appear in future sessions."
+
+#. PDF reader message: Could not determine which PDF card needs a cover refresh.
+msgid "reader_pdf_cover_card_missing"
+msgstr "Could not determine which PDF card needs a cover refresh."
+
+#. PDF reader message: PDF cover cleared because page 1 could not be rendered.
+msgid "reader_pdf_cover_cleared"
+msgstr "PDF cover cleared because page 1 could not be rendered."
+
+#. PDF reader message: Could not regenerate this PDF cover. /  / {error}
+msgid "reader_pdf_cover_failed"
+msgstr "Could not regenerate this PDF cover.\n\n{error}"
+
+#. PDF reader message: PDF cover regenerated from page 1.
+msgid "reader_pdf_cover_regenerated"
+msgstr "PDF cover regenerated from page 1."
+
+#. PDF reader message: Could not determine which PDF is currently open.
+msgid "reader_pdf_current_missing"
+msgstr "Could not determine which PDF is currently open."
+
+#. PDF reader message: Could not open PDF due-card review: / {error}
+msgid "reader_pdf_due_review_failed"
+msgstr "Could not open PDF due-card review:\n{error}"
+
+#. PDF reader message: No due extracted cards are available to review for this PDF.
+msgid "reader_pdf_due_unavailable"
+msgstr "No due extracted cards are available to review for this PDF."
+
+#. PDF reader message: PDF Files (*.pdf)
+msgid "reader_pdf_file_filter"
+msgstr "PDF Files (*.pdf)"
+
+#. PDF reader message: Stored PDF file is missing. Choose a replacement PDF to repair this card.
+msgid "reader_pdf_file_missing_tooltip"
+msgstr "Stored PDF file is missing. Choose a replacement PDF to repair this card."
+
+#. PDF reader message: Could not determine which PDF card owns this highlight.
+msgid "reader_pdf_highlight_card_missing"
+msgstr "Could not determine which PDF card owns this highlight."
+
+#. PDF reader message: This highlight has no text to prefill.
+msgid "reader_pdf_highlight_empty"
+msgstr "This highlight has no text to prefill."
+
+#. PDF reader message: That PDF highlight could not be found.
+msgid "reader_pdf_highlight_missing"
+msgstr "That PDF highlight could not be found."
+
+#. PDF reader message: Could not edit PDF highlight note. /  / {error}
+msgid "reader_pdf_highlight_note_edit_failed"
+msgstr "Could not edit PDF highlight note.\n\n{error}"
+
+#. PDF reader message: Could not save the PDF highlight note. /  / {error}
+msgid "reader_pdf_highlight_note_save_failed"
+msgstr "Could not save the PDF highlight note.\n\n{error}"
+
+#. PDF reader message: PDF highlight note saved.
+msgid "reader_pdf_highlight_note_saved"
+msgstr "PDF highlight note saved."
+
+#. PDF reader message: PDF Highlight Note
+msgid "reader_pdf_highlight_note_title"
+msgstr "PDF Highlight Note"
+
+#. PDF reader message: PDF highlight sent to Add Card field {number}.
+msgid "reader_pdf_highlight_sent"
+msgstr "PDF highlight sent to Add Card field {number}."
+
+#. PDF reader message: That PDF highlight could not be updated.
+msgid "reader_pdf_highlight_update_failed"
+msgstr "That PDF highlight could not be updated."
+
+#. PDF reader message: Could not open the PDF highlight card workflow. /  / {error}
+msgid "reader_pdf_highlight_workflow_failed"
+msgstr "Could not open the PDF highlight card workflow.\n\n{error}"
+
+#. PDF reader message: PDF daily reading limit disabled.
+msgid "reader_pdf_limit_disabled"
+msgstr "PDF daily reading limit disabled."
+
+#. PDF reader message: Could not edit PDF reading limit: / {error}
+msgid "reader_pdf_limit_edit_failed"
+msgstr "Could not edit PDF reading limit:\n{error}"
+
+#. PDF reader message: Limit pages read per day for this PDF
+msgid "reader_pdf_limit_enabled"
+msgstr "Limit pages read per day for this PDF"
+
+#. PDF reader message: PDF reading limit overridden for today.
+msgid "reader_pdf_limit_overridden"
+msgstr "PDF reading limit overridden for today."
+
+#. PDF reader message: Could not override PDF reading limit: / {error}
+msgid "reader_pdf_limit_override_failed"
+msgstr "Could not override PDF reading limit:\n{error}"
+
+#. PDF reader message: PDF limit saved: {count} pages/day ({mode}).
+msgid "reader_pdf_limit_saved"
+msgstr "PDF limit saved: {count} pages/day ({mode})."
+
+#. PDF reader message: Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}.
+msgid "reader_pdf_limit_summary"
+msgstr "Today: {used}/{limit} pages used, {remaining} remaining. Mode: {mode}."
+
+#. PDF reader message: PDF Reading Limit
+msgid "reader_pdf_limit_title"
+msgstr "PDF Reading Limit"
+
+#. PDF reader message: Blocked an unsafe or unsupported PDF link.
+msgid "reader_pdf_link_blocked"
+msgstr "Blocked an unsafe or unsupported PDF link."
+
+#. PDF reader message: PDF link copied. Paste it into an Anki card.
+msgid "reader_pdf_link_copied"
+msgstr "PDF link copied. Paste it into an Anki card."
+
+#. PDF reader message: This PDF card still exists, but its stored PDF file could not be found. Choose a replacement PDF to relink this card and reopen the viewer.
+msgid "reader_pdf_missing_explanation"
+msgstr "This PDF card still exists, but its stored PDF file could not be found. Choose a replacement PDF to relink this card and reopen the viewer."
+
+#. PDF reader message: PDF file is missing
+msgid "reader_pdf_missing_title"
+msgstr "PDF file is missing"
+
+#. PDF reader message: No cards created from this PDF yet.
+msgid "reader_pdf_no_cards"
+msgstr "No cards created from this PDF yet."
+
+#. PDF reader message: No compatible note type exposes the configured PDF highlight target field.
+msgid "reader_pdf_no_compatible_note_type"
+msgstr "No compatible note type exposes the configured PDF highlight target field."
+
+#. PDF reader message: No due extracted cards to review for this PDF.
+msgid "reader_pdf_no_due_cards"
+msgstr "No due extracted cards to review for this PDF."
+
+#. PDF reader message: No due extracted cards from this PDF up to the current page.
+msgid "reader_pdf_no_due_to_page"
+msgstr "No due extracted cards from this PDF up to the current page."
+
+#. PDF reader message: No daily reading limit is set for this PDF.
+msgid "reader_pdf_no_limit"
+msgstr "No daily reading limit is set for this PDF."
+
+#. PDF reader message: No cards created on this page yet.
+msgid "reader_pdf_no_page_cards"
+msgstr "No cards created on this page yet."
+
+#. PDF reader message: No unlinked text highlights remain for this PDF.
+msgid "reader_pdf_no_unlinked_highlights"
+msgstr "No unlinked text highlights remain for this PDF."
+
+#. PDF reader message: Offer this due-card review automatically when opening this PDF
+msgid "reader_pdf_offer_due"
+msgstr "Offer this due-card review automatically when opening this PDF"
+
+#. PDF reader message: PDF Page Card Preview
+msgid "reader_pdf_page_card_preview"
+msgstr "PDF Page Card Preview"
+
+#. PDF reader message: Could not relink this PDF card. /  / {error}
+msgid "reader_pdf_relink_failed"
+msgstr "Could not relink this PDF card.\n\n{error}"
+
+#. PDF reader message: PDF card relinked to the replacement file.
+msgid "reader_pdf_relinked"
+msgstr "PDF card relinked to the replacement file."
+
+#. PDF reader message: Could not reopen this PDF after review.
+msgid "reader_pdf_reopen_failed"
+msgstr "Could not reopen this PDF after review."
+
+#. PDF reader message: Could not determine which PDF card needs repairing.
+msgid "reader_pdf_repair_card_missing"
+msgstr "Could not determine which PDF card needs repairing."
+
+#. PDF reader message: Review Due PDF Cards
+msgid "reader_pdf_review_due_title"
+msgstr "Review Due PDF Cards"
+
+#. PDF reader message: Could not secure PDF viewer: / {error}
+msgid "reader_pdf_secure_failed"
+msgstr "Could not secure PDF viewer:\n{error}"
+
+#. PDF reader message: Snapshot is empty or too large
+msgid "reader_pdf_snapshot_empty_or_large"
+msgstr "Snapshot is empty or too large"
+
+#. PDF reader message: Snapshot failed: / {error}
+msgid "reader_pdf_snapshot_failed"
+msgstr "Snapshot failed:\n{error}"
+
+#. PDF reader message: Snapshot is too large
+msgid "reader_pdf_snapshot_too_large"
+msgstr "Snapshot is too large"
+
+#. PDF reader message: Could not suspend card: / {error}
+msgid "reader_pdf_suspend_failed"
+msgstr "Could not suspend card:\n{error}"
+
+#. PDF reader message: The configured PDF highlight target field is not visible.
+msgid "reader_pdf_target_field_hidden"
+msgstr "The configured PDF highlight target field is not visible."
+
+#. PDF reader message: PDF Viewer
+msgid "reader_pdf_viewer_title"
+msgstr "PDF Viewer"
+
+#. PDF reader due card count
+msgid "reader_pdf_due_summary"
+msgid_plural "reader_pdf_due_summary_plural"
+msgstr[0] "You have {count} due card from this PDF on pages up to {current_page}.\nPages: {pages}"
+msgstr[1] "You have {count} due cards from this PDF on pages up to {current_page}.\nPages: {pages}"
+
+msgid "reader_add_comment"
+msgstr "Add comment"
+
+msgid "reader_all_files"
+msgstr "All files (*)"
+
+msgid "reader_apply"
+msgstr "Apply"
+
+msgid "reader_edit_comment"
+msgstr "Edit comment"
+
+msgid "reader_not_set"
+msgstr "Not set"
+
+msgid "reader_open_system_browser_failed"
+msgstr "Incremento: failed to open system browser."
+
+msgid "reader_refresh"
+msgstr "Refresh"
+
+msgid "reader_video_add_card_here"
+msgstr "+ Add Card at this point"
+
+msgid "reader_video_bookmark_comment"
+msgstr "Video Bookmark Comment"
+
+msgid "reader_video_bookmark_comment_failed"
+msgstr "Could not save the video bookmark comment.\n\n{error}"
+
+msgid "reader_video_bookmark_comment_saved"
+msgstr "Video bookmark comment saved."
+
+msgid "reader_video_bookmark_delete_failed"
+msgstr "Incremento: could not delete video bookmark."
+
+msgid "reader_video_bookmark_not_found"
+msgstr "That video bookmark could not be found."
+
+msgid "reader_video_bookmark_save_failed"
+msgstr "Incremento: could not save video bookmark."
+
+msgid "reader_video_bookmark_saved"
+msgstr "Incremento: video bookmark saved at {time}."
+
+msgid "reader_video_bookmark_update_failed"
+msgstr "That video bookmark could not be updated."
+
+msgid "reader_video_browser_stop_saved"
+msgstr "Incremento: saved browser stop time at {time}."
+
+msgid "reader_video_captions"
+msgstr "Captions…"
+
+msgid "reader_video_captions_intro"
+msgstr "Choose target and reference subtitles for this video card. Remote subtitles can be fetched with yt-dlp; manual .srt/.vtt files are also supported."
+
+msgid "reader_video_captions_title"
+msgstr "Video Captions"
+
+msgid "reader_video_card_unknown"
+msgstr "Could not determine the current video card."
+
+msgid "reader_video_card_update_failed"
+msgstr "The video downloaded, but the card could not be updated."
+
+msgid "reader_video_choose_subtitle"
+msgstr "Choose {slot} Subtitle"
+
+msgid "reader_video_clear_reference"
+msgstr "Clear Reference"
+
+msgid "reader_video_clear_target"
+msgstr "Clear Target"
+
+msgid "reader_video_current_reference"
+msgstr "Reference: {label}"
+
+msgid "reader_video_current_target"
+msgstr "Target: {label}"
+
+msgid "reader_video_decode_fallback"
+msgstr "Incremento: local video failed to decode, falling back to URL stream."
+
+msgid "reader_video_decode_recommendation"
+msgstr "Incremento: local video failed to decode in Anki. Re-download with ffmpeg for H.264 compatibility."
+
+msgid "reader_video_download_activity"
+msgstr "Download video locally"
+
+msgid "reader_video_download_failed"
+msgstr "Video download failed: {error}"
+
+msgid "reader_video_download_local"
+msgstr "Download Local Copy…"
+
+msgid "reader_video_download_reference"
+msgstr "Download To Reference"
+
+msgid "reader_video_download_target"
+msgstr "Download To Target"
+
+msgid "reader_video_downloading"
+msgstr "Downloading video"
+
+msgid "reader_video_downloading_copy"
+msgstr "Downloading local video copy…"
+
+msgid "reader_video_downloading_track"
+msgstr "Downloading {label}…"
+
+msgid "reader_video_import_reference"
+msgstr "Import Reference File…"
+
+msgid "reader_video_import_target"
+msgstr "Import Target File…"
+
+msgid "reader_video_invalid_time"
+msgstr "Incremento: enter a time like mm:ss, 1m30s, or 90s."
+
+msgid "reader_video_invalid_url"
+msgstr "Incremento: This video card has no valid video URL."
+
+msgid "reader_video_jump_back_ten"
+msgstr "Jump back 10 seconds"
+
+msgid "reader_video_load_subtitles_failed"
+msgstr "Could not load subtitles: {error}"
+
+msgid "reader_video_loading_tracks"
+msgstr "Loading remote subtitle tracks…"
+
+msgid "reader_video_local_copy_ready"
+msgstr "Local video copy is ready."
+
+msgid "reader_video_local_download_failed"
+msgstr "Incremento: local download failed ({error})."
+
+msgid "reader_video_local_play_failed"
+msgstr "Incremento: local video failed to play in Anki Qt player."
+
+msgid "reader_video_local_requires_qt"
+msgstr "Incremento: local playback requires Qt multimedia support; falling back to web playback."
+
+msgid "reader_video_no_active_card"
+msgstr "Incremento: no active video card."
+
+msgid "reader_video_no_remote_fallback"
+msgstr "Incremento: no remote URL is available for browser fallback."
+
+msgid "reader_video_no_remote_for_captions"
+msgstr "This card has no supported remote URL. You can still attach manual subtitle files."
+
+msgid "reader_video_no_remote_url"
+msgstr "Incremento: this video card has no remote URL."
+
+msgid "reader_video_no_supported_remote"
+msgstr "Incremento: this video card has no supported remote URL."
+
+msgid "reader_video_no_tracks"
+msgstr "No remote subtitle tracks were found. You can still import manual subtitle files."
+
+msgid "reader_video_pause"
+msgstr "Pause"
+
+msgid "reader_video_play"
+msgstr "Play"
+
+msgid "reader_video_redownload_local"
+msgstr "Re-download Local Copy…"
+
+msgid "reader_video_redownloading_copy"
+msgstr "Re-downloading local video copy…"
+
+msgid "reader_video_reference"
+msgstr "reference"
+
+msgid "reader_video_reference_cc"
+msgstr "Reference CC"
+
+msgid "reader_video_reference_track"
+msgstr "Reference track:"
+
+msgid "reader_video_remote_tracks"
+msgstr "Available remote tracks:"
+
+msgid "reader_video_replacing_copy"
+msgstr "Replacing the existing local copy"
+
+msgid "reader_video_resume_at"
+msgstr "Resume at"
+
+msgid "reader_video_resume_saved"
+msgstr "Incremento: stored resume time at {time}."
+
+msgid "reader_video_review_all_hint"
+msgstr "Choose Topics, Items, scope, due state, limit, and order for cards attached to this video"
+
+msgid "reader_video_select_track"
+msgstr "Select a track…"
+
+msgid "reader_video_select_track_first"
+msgstr "Incremento: select a subtitle track first."
+
+msgid "reader_video_set_time"
+msgstr "Set time"
+
+msgid "reader_video_speed"
+msgstr "Speed"
+
+msgid "reader_video_starting_download"
+msgstr "Starting download"
+
+msgid "reader_video_status_accessible"
+msgstr "Video reader status"
+
+msgid "reader_video_subtitle_download_failed"
+msgstr "Subtitle download failed: {error}"
+
+msgid "reader_video_subtitle_files"
+msgstr "Subtitle files ({patterns})"
+
+msgid "reader_video_subtitle_import_failed"
+msgstr "Incremento: could not import subtitle file ({error})."
+
+msgid "reader_video_subtitle_imported"
+msgstr "Imported {label} into {slot}."
+
+msgid "reader_video_subtitles_active"
+msgstr "Local subtitle overlays active: {tracks}."
+
+msgid "reader_video_subtitles_cleared"
+msgstr "Cleared {slot} subtitles."
+
+msgid "reader_video_subtitles_need_local"
+msgstr "Subtitles are configured. Download a local copy to use dual caption overlays."
+
+msgid "reader_video_sync_invalid_format"
+msgstr "Invalid format. Use 12:34, 1:02:03, 1h2m3s, or seconds."
+
+msgid "reader_video_sync_result"
+msgstr "Result: {time} ({seconds}s)"
+
+msgid "reader_video_sync_stop_time"
+msgstr "Sync Browser Stop Time"
+
+msgid "reader_video_sync_time_placeholder"
+msgstr "12:34 or 1h2m3s"
+
+msgid "reader_video_target"
+msgstr "target"
+
+msgid "reader_video_target_cc"
+msgstr "Target CC"
+
+msgid "reader_video_target_track"
+msgstr "Target track:"
+
+msgid "reader_video_time_placeholder"
+msgstr "mm:ss or 123s"
+
+msgid "reader_video_track_saved"
+msgstr "Saved {label} to {slot}."
+
+msgid "reader_video_volume_short"
+msgstr "Vol"
+
+msgid "reader_video_where_stopped"
+msgstr "Where did you stop in browser?"
+
+msgid "reader_video_bookmarks_count"
+msgid_plural "reader_video_bookmarks_count_plural"
+msgstr[0] "Bookmarks {count}"
+msgstr[1] "Bookmarks {count}"
+
+msgid "reader_video_tracks_found"
+msgid_plural "reader_video_tracks_found_plural"
+msgstr[0] "Found {count} remote subtitle track. Download one into target or reference."
+msgstr[1] "Found {count} remote subtitle tracks. Download one into target or reference."
+
+msgid "reader_home"
+msgstr "Home"
+
+msgid "reader_select_text_first"
+msgstr "Select some text first."
+
+msgid "reader_text_prompt"
+msgstr "Text:"
+
+msgid "reader_web_add_card_hint"
+msgstr "Open the Add Card dock."
+
+msgid "reader_web_back_hint"
+msgstr "Go back one page in the Web reader."
+
+msgid "reader_web_bookmark_delete_failed"
+msgstr "Could not delete web bookmark:\n{error}"
+
+msgid "reader_web_bookmark_hint"
+msgstr "Save the current web location as a permanent interesting-place bookmark."
+
+msgid "reader_web_bookmark_save_failed"
+msgstr "Failed to save bookmark:\n{error}"
+
+msgid "reader_web_bookmark_saved"
+msgstr "Incremento: bookmark saved."
+
+msgid "reader_web_bookmark_unavailable"
+msgstr "Incremento: couldn't place a bookmark here."
+
+msgid "reader_web_bookmarks_hint"
+msgstr "Show saved web bookmarks for this card."
+
+msgid "reader_web_card_add_failed"
+msgstr "Failed to add web card:\n{error}"
+
+msgid "reader_web_card_added"
+msgstr "Web card '{title}' added to {deck}."
+
+msgid "reader_web_cards_at_url"
+msgstr "Cards created at this URL"
+
+msgid "reader_web_cards_hint"
+msgstr "Show cards created from the current URL."
+
+msgid "reader_web_drag_to_capture"
+msgstr "Drag to Capture"
+
+msgid "reader_web_enter_url"
+msgstr "Please enter a URL."
+
+msgid "reader_web_extract_failed"
+msgstr "Web extraction failed:\n{error}"
+
+msgid "reader_web_extract_hint"
+msgstr "Copy the current text selection into a field in the Add Card dock."
+
+msgid "reader_web_extract_into_field"
+msgstr "Extract selection into field"
+
+msgid "reader_web_group_capture"
+msgstr "Capture"
+
+msgid "reader_web_group_external"
+msgstr "External"
+
+msgid "reader_web_group_navigate"
+msgstr "Navigate"
+
+msgid "reader_web_group_review"
+msgstr "Review"
+
+msgid "reader_web_group_saved"
+msgstr "Saved"
+
+msgid "reader_web_home_hint"
+msgstr "Return the dock to the web card's stored homepage."
+
+msgid "reader_web_insert_image_into"
+msgstr "Insert image into:"
+
+msgid "reader_web_insert_snapshot"
+msgstr "Insert snapshot into field"
+
+msgid "reader_web_insert_text_into"
+msgstr "Insert selected text into:"
+
+msgid "reader_web_invalid_url"
+msgstr "Incremento: this web card has no valid URL."
+
+msgid "reader_web_last_media_time"
+msgstr "Last saved media time: {time}."
+
+msgid "reader_web_marker_save_failed"
+msgstr "Incremento: the note was added, but its Web extraction marker could not be saved."
+
+msgid "reader_web_media_time_copied"
+msgstr "Incremento: copied saved media time {time}."
+
+msgid "reader_web_no_browser_card"
+msgstr "Incremento: no browser card is currently open."
+
+msgid "reader_web_no_card"
+msgstr "Incremento: no web card is currently open."
+
+msgid "reader_web_no_cards_at_url"
+msgstr "Incremento: no cards recorded for this URL yet."
+
+msgid "reader_web_no_homepage"
+msgstr "Incremento: this web card has no homepage URL."
+
+msgid "reader_web_no_saved_media_time"
+msgstr "Incremento: no saved media time for this web card yet."
+
+msgid "reader_web_open_home"
+msgstr "Open Home"
+
+msgid "reader_web_open_home_hint"
+msgstr "Open the original homepage for this web card in your system browser."
+
+msgid "reader_web_open_page"
+msgstr "Open Page"
+
+msgid "reader_web_open_page_hint"
+msgstr "Open the current page in your system browser."
+
+msgid "reader_web_resume"
+msgstr "Resume"
+
+msgid "reader_web_resume_at"
+msgstr "Resume {time}"
+
+msgid "reader_web_resume_copy_hint"
+msgstr "Opens the page and copies the saved time to your clipboard."
+
+msgid "reader_web_resume_hint"
+msgstr "Reopen saved media progress in your system browser."
+
+msgid "reader_web_resume_media_hint"
+msgstr "Opens the saved media at that time."
+
+msgid "reader_web_resume_original_hint"
+msgstr "Reopens the original page and asks the browser extension to resume there."
+
+msgid "reader_web_resuming_original"
+msgstr "Incremento: reopening the original page and resuming the embedded media there (requires the Incremento Companion extension)."
+
+msgid "reader_web_review_all_unavailable"
+msgstr "Review All is not available in the Web reader yet."
+
+msgid "reader_web_search_hint"
+msgstr "Find text in the current web page."
+
+msgid "reader_web_search_page"
+msgstr "Search Current Web Page"
+
+msgid "reader_web_snapshot_capture_failed"
+msgstr "Web snapshot failed:\nCould not capture selected region."
+
+msgid "reader_web_snapshot_failed"
+msgstr "Web snapshot failed:\n{error}"
+
+msgid "reader_web_snapshot_hint"
+msgstr "Capture an image from the current viewport, like the PDF snapshot tool."
+
+msgid "reader_web_status_accessible"
+msgstr "Web reader status and current address"
+
+msgid "reader_web_track_extension"
+msgstr "Track via Chrome extension"
+
+msgid "reader_web_track_extension_hint"
+msgstr "When checked, opening this page externally lets the Incremento Companion extension keep the web card synced to the latest page visited in that tab."
+
+msgid "reader_web_tracking_home_enabled"
+msgstr "Incremento: browser tracking enabled for this web card homepage (requires the Incremento Companion extension)."
+
+msgid "reader_web_tracking_tab_enabled"
+msgstr "Incremento: browser tracking enabled for this web card tab (requires the Incremento Companion extension)."
+
+msgid "reader_web_bookmarks_count"
+msgid_plural "reader_web_bookmarks_count_plural"
+msgstr[0] "Bookmarks {count}"
+msgstr[1] "Bookmarks {count}"
+
+msgid "reader_web_cards_count"
+msgid_plural "reader_web_cards_count_plural"
+msgstr[0] "Cards {count}"
+msgstr[1] "Cards {count}"
+
+msgid "reader_bookmark_comment_placeholder"
+msgstr "Write an optional note about why this moment matters…"
+
+msgid "reader_bookmark_label"
+msgstr "Bookmark:"
+
+msgid "reader_comment_label"
+msgstr "Comment:"
+
+msgid "reader_highlight_note_placeholder"
+msgstr "Write an optional note for this highlighted passage…"
+
+msgid "reader_no_text_parenthesized"
+msgstr "(no text)"
+
+msgid "reader_selected_text_label"
+msgstr "Selected text:"
+
+msgid "reader_text_note_label"
+msgstr "Text note:"
+
+msgid "reader_click_result_hint"
+msgstr "Click a result to jump to that part of the {document}."
+
+msgid "reader_current_document"
+msgstr "Current Document"
+
+msgid "reader_find_in_document"
+msgstr "Find In {document}"
+
+msgid "reader_find_in_document_placeholder"
+msgstr "Find in {document}"
+
+msgid "reader_no_document_matches"
+msgstr "No matches found in the current document."
+
+msgid "reader_search_all"
+msgstr "Search ALL"
+
+msgid "reader_type_to_search_document"
+msgstr "Type to search the current document."
+
+msgid "reader_search_results_count"
+msgid_plural "reader_search_results_count_plural"
+msgstr[0] "{count} result"
+msgstr[1] "{count} results"
+
+msgid "reader_docs"
+msgstr "Docs"
+
+msgid "reader_mode"
+msgstr "Mode"
+
+msgid "reader_open_card_to_study"
+msgstr "Open the card also to study"
+
+msgid "reader_open_first_queue"
+msgstr "Open First in Queue"
+
+msgid "reader_open_last_note"
+msgstr "Open Last Opened Note"
+
+msgid "reader_open_random_note"
+msgstr "Open Random Note"
+
+msgid "reader_preserve_pdf_history"
+msgstr "Don't change cards attached to PDF reading history"
+
+msgid "reader_priority_short"
+msgstr "Prio"
+
+msgid "reader_quick_open_content"
+msgstr "Quick Open Content"
+
+msgid "reader_title"
+msgstr "Title"
+
+msgid "reader_type"
+msgstr "Type"
+
+msgid "reader_writing"
+msgstr "Writing"
+
+msgid "reader_bulk_already_linked"
+msgstr "Card already linked."
+
+msgid "reader_bulk_check_one"
+msgstr "Check at least one row to create cards."
+
+msgid "reader_bulk_create_missing_title"
+msgstr "Create Missing PDF Highlight Cards"
+
+msgid "reader_bulk_empty_highlight"
+msgstr "Highlight text is empty."
+
+msgid "reader_bulk_fix_invalid_count"
+msgid_plural "reader_bulk_fix_invalid_count_plural"
+msgstr[0] "Fix or uncheck {count} invalid checked row."
+msgstr[1] "Fix or uncheck {count} invalid checked rows."
+
+msgid "reader_bulk_hint"
+msgstr "Review the unlinked highlights, edit any visible note fields you want to fill, and create the checked rows."
+
+msgid "reader_bulk_none_left"
+msgstr "No unlinked highlights remain."
+
+msgid "reader_bulk_ready_count"
+msgid_plural "reader_bulk_ready_count_plural"
+msgstr[0] "{count} row ready."
+msgstr[1] "{count} rows ready."
+
+msgid "reader_bulk_target_empty"
+msgstr "{field} is empty."
+
+msgid "reader_bulk_target_summary"
+msgstr "Target: <b>{note_type}</b> in deck <b>{deck}</b> using <b>{field}</b>"
+
+msgid "reader_create"
+msgstr "Create"
+
+msgid "reader_create_selected"
+msgstr "Create Selected"
+
+msgid "reader_deck_label"
+msgstr "Deck:"
+
+msgid "reader_delete_selected"
+msgstr "Delete Selected"
+
+msgid "reader_note"
+msgstr "Note"
+
+msgid "reader_note_type_label"
+msgstr "Note type:"
+
+msgid "reader_ready"
+msgstr "Ready"
+
+msgid "reader_target"
+msgstr "Target"
+
+msgid "reader_uncheck_selected"
+msgstr "Uncheck Selected"
+
+msgid "reader_unknown"
+msgstr "Unknown"
+
+msgid "reader_unknown_field"
+msgstr "Unknown field"
+
+msgid "reader_choose"
+msgstr "Choose…"
+
+msgid "reader_import"
+msgstr "Import"
+
+msgid "reader_none"
+msgstr "none"
+
+msgid "reader_notebook_choose_first"
+msgstr "Choose a Notebook HTML export first."
+
+msgid "reader_notebook_choose_html"
+msgstr "Choose Notebook HTML"
+
+msgid "reader_notebook_choose_intro"
+msgstr "Choose a Kindle Notebook HTML export to inspect its entries."
+
+msgid "reader_notebook_colors"
+msgstr "Colors: {colors}"
+
+msgid "reader_notebook_created"
+msgstr "Highlights created: {count}"
+
+msgid "reader_notebook_file"
+msgstr "Notebook: {filename}"
+
+msgid "reader_notebook_filter_pdf_cards"
+msgstr "Filter existing Incremento PDF cards…"
+
+msgid "reader_notebook_highlights_count"
+msgstr "Highlights: {count}"
+
+msgid "reader_notebook_html"
+msgstr "Notebook HTML"
+
+msgid "reader_notebook_html_files"
+msgstr "HTML files (*.html *.htm)"
+
+msgid "reader_notebook_import_failed"
+msgstr "Could not import notebook citations.\n\n{error}"
+
+msgid "reader_notebook_import_summary"
+msgstr "Import summary"
+
+msgid "reader_notebook_import_title"
+msgstr "Import Notebook Citations to PDF Highlights"
+
+msgid "reader_notebook_location"
+msgstr "Location {number}"
+
+msgid "reader_notebook_location_entries_count"
+msgstr "Location-only entries: {count}"
+
+msgid "reader_notebook_no_existing_pdf"
+msgstr "No existing Incremento PDF cards were found."
+
+msgid "reader_notebook_no_import_yet"
+msgstr "No import has been run yet."
+
+msgid "reader_notebook_no_matching_pdf"
+msgstr "No Incremento PDF cards matched the current filter."
+
+msgid "reader_notebook_no_pdf_text"
+msgstr "No searchable PDF text was found."
+
+msgid "reader_notebook_notes_attached"
+msgstr "Notes attached: {count}"
+
+msgid "reader_notebook_notes_count"
+msgstr "Notes: {count}"
+
+msgid "reader_notebook_page_entries_count"
+msgstr "Page-backed entries: {count}"
+
+msgid "reader_notebook_parse_failed"
+msgstr "Could not parse the selected Notebook HTML.\n\n{error}"
+
+msgid "reader_notebook_pdf_file"
+msgstr "File: {filename}"
+
+msgid "reader_notebook_pdf_read_error"
+msgstr "PDF read error: {error}"
+
+msgid "reader_notebook_pymupdf_required"
+msgstr "PyMuPDF is required for notebook citation import. Install it from Incremento -> Utils -> Check Dependencies…"
+
+msgid "reader_notebook_ready"
+msgstr "Ready to import."
+
+msgid "reader_notebook_select_pdf_first"
+msgstr "Select one or more existing Incremento PDF cards first. Import arbitrary PDFs separately as Incremento PDF cards, then run this import."
+
+msgid "reader_notebook_unattached"
+msgstr "Notes not attached: {count}"
+
+msgid "reader_notebook_unattached_heading"
+msgstr "Unattached notes:"
+
+msgid "reader_notebook_unmatched"
+msgstr "Highlights not matched: {count}"
+
+msgid "reader_notebook_unmatched_heading"
+msgstr "Unmatched highlights:"
+
+msgid "reader_notebook_updated"
+msgstr "Highlights updated: {count}"
+
+msgid "reader_pdf_cards"
+msgstr "PDF cards"
+
+msgid "reader_pdf_number"
+msgstr "PDF {number}"
+
+msgid "reader_bookshelf_all_documents"
+msgstr "All documents"
+
+msgid "reader_bookshelf_all_summary"
+msgstr "{documents} · {pdfs} · {epubs}"
+
+msgid "reader_bookshelf_all_tags"
+msgstr "All tags (AND)"
+
+msgid "reader_bookshelf_any_tag"
+msgstr "Any tag (OR)"
+
+msgid "reader_bookshelf_browse_tags"
+msgstr "Browse tags"
+
+msgid "reader_bookshelf_browse_tags_accessible"
+msgstr "Browse bookshelf tags"
+
+msgid "reader_bookshelf_browse_tags_hint"
+msgstr "Show tags used by documents in this bookshelf, with the most common tags first."
+
+msgid "reader_bookshelf_document_count"
+msgid_plural "reader_bookshelf_document_count_plural"
+msgstr[0] "{count} document"
+msgstr[1] "{count} documents"
+
+msgid "reader_bookshelf_epub_count"
+msgid_plural "reader_bookshelf_epub_count_plural"
+msgstr[0] "{count} EPUB"
+msgstr[1] "{count} EPUBs"
+
+msgid "reader_bookshelf_epubs"
+msgstr "EPUBs"
+
+msgid "reader_bookshelf_filter_tags_hint"
+msgstr "Start typing any part of a tag name, or browse tags used by these documents. Matching ignores uppercase/lowercase."
+
+msgid "reader_bookshelf_filter_tags_placeholder"
+msgstr "Filter by tags — type a name or browse available tags…"
+
+msgid "reader_bookshelf_intro"
+msgstr "Click a cover to open that document. PDF first pages and EPUB covers load progressively so a large library stays responsive."
+
+msgid "reader_bookshelf_item_tooltip"
+msgstr "{title}\nType: {kind}\nTags: {tags}\n{priority}\nClick to open"
+
+msgid "reader_bookshelf_more_tags"
+msgstr "(+{count} more)"
+
+msgid "reader_bookshelf_no_documents"
+msgstr "No Incremento documents found."
+
+msgid "reader_bookshelf_no_epubs"
+msgstr "No Incremento EPUBs found."
+
+msgid "reader_bookshelf_no_pdfs"
+msgstr "No Incremento PDFs found."
+
+msgid "reader_bookshelf_no_tags"
+msgstr "No document tags are available."
+
+msgid "reader_bookshelf_pdf_count"
+msgid_plural "reader_bookshelf_pdf_count_plural"
+msgstr[0] "{count} PDF"
+msgstr[1] "{count} PDFs"
+
+msgid "reader_bookshelf_pdf_only_hint"
+msgstr "This option applies only to PDF documents."
+
+msgid "reader_bookshelf_pdfs"
+msgstr "PDFs"
+
+msgid "reader_bookshelf_preserve_history"
+msgstr "Don't change cards attached to PDF reading history (PDFs only)"
+
+msgid "reader_bookshelf_preserve_history_hint"
+msgstr "Keeps PDF-linked card history unchanged while opening the reader."
+
+msgid "reader_bookshelf_priority_unset"
+msgstr "Priority: not set"
+
+msgid "reader_bookshelf_priority_value"
+msgstr "Priority: {value}"
+
+msgid "reader_bookshelf_search_titles"
+msgstr "Search document titles…"
+
+msgid "reader_bookshelf_showing"
+msgstr "Showing {visible} of {total}"
+
+msgid "reader_bookshelf_tag_filter_accessible"
+msgstr "Bookshelf tag filter"
+
+msgid "reader_bookshelf_tag_mode_hint"
+msgstr "OR matches at least one entered tag; AND requires every entered tag."
+
+msgid "reader_bookshelf_title"
+msgstr "Document Bookshelf"
+
+msgid "reader_show_label"
+msgstr "Show:"
+
+msgid "reader_tags_label"
+msgstr "Tags:"
+
+msgid "reader_card"
+msgstr "Card"
+
+msgid "reader_excluded"
+msgstr "Excluded"
+
+msgid "reader_item"
+msgstr "Item"
+
+msgid "reader_media_action_count"
+msgstr "{action} {cards}"
+
+msgid "reader_media_another_filtered_deck"
+msgstr "another filtered deck"
+
+msgid "reader_media_card_count_title"
+msgid_plural "reader_media_card_count_title_plural"
+msgstr[0] "{count} Card"
+msgstr[1] "{count} Cards"
+
+msgid "reader_media_card_unknown"
+msgstr "Could not determine the current media card."
+
+msgid "reader_media_continue_review"
+msgstr "Continue and start this review?"
+
+msgid "reader_media_current_position_hint"
+msgstr "The current {media} position is {position}. Cards without a known position are excluded when this range is selected."
+
+msgid "reader_media_due_hint"
+msgstr "Due only includes due review cards and learning/relearning cards ready now; new and future cards stay out."
+
+msgid "reader_media_excluded_summary"
+msgstr "Excluded: {items}."
+
+msgid "reader_media_excluded_tab"
+msgstr "Excluded ({count})"
+
+msgid "reader_media_excluded_tree_accessible"
+msgstr "Cards excluded from review"
+
+msgid "reader_media_filtered_deck_impact"
+msgstr "Conflicting filtered decks: {decks}. Every card in these filtered decks will first return to its original deck; only the selected cards will then enter this review. The filtered-deck definitions remain available to rebuild."
+
+msgid "reader_media_filtered_deck_item"
+msgstr "{name} ({count} selected)"
+
+msgid "reader_media_filtered_fallback"
+msgstr "Anki must empty those decks first, so all cards in those decks return to their original decks; the filtered-deck definitions remain available to rebuild."
+
+msgid "reader_media_filtered_warning"
+msgid_plural "reader_media_filtered_warning_plural"
+msgstr[0] "Warning: {count} card currently in other filtered decks will be moved."
+msgstr[1] "Warning: {count} cards currently in other filtered decks will be moved."
+
+msgid "reader_media_filtered_warning_accessible"
+msgstr "Filtered deck change warning"
+
+msgid "reader_media_generic"
+msgstr "media"
+
+msgid "reader_media_include_filtered"
+msgstr "Include cards already in another filtered deck"
+
+msgid "reader_media_include_filtered_accessible"
+msgstr "Include cards from other filtered decks"
+
+msgid "reader_media_include_filtered_hint"
+msgstr "Anki cannot move individual cards between filtered decks. Enabling this empties each conflicting filtered deck, returns all of its cards to their original decks, and then moves the matching cards into this review."
+
+msgid "reader_media_inspecting_cards"
+msgstr "Inspecting attached cards…"
+
+msgid "reader_media_inspection_failed"
+msgstr "Could not inspect cards attached to this {media}:\n\n{error}"
+
+msgid "reader_media_item_count"
+msgid_plural "reader_media_item_count_plural"
+msgstr[0] "{count} item"
+msgstr[1] "{count} items"
+
+msgid "reader_media_kind_hint"
+msgstr "Topic and Item classification uses the same Incremento rules as the reviewer."
+
+msgid "reader_media_leave_review_failed"
+msgstr "Could not safely leave the current review before moving cards between filtered decks:\n\n{error}"
+
+msgid "reader_media_limit_hint"
+msgstr "Limit the number of cards after filtering and ordering. All means no limit."
+
+msgid "reader_media_links_label"
+msgstr "Links:"
+
+msgid "reader_media_max_cards_label"
+msgstr "Maximum cards:"
+
+msgid "reader_media_move_filtered_title"
+msgstr "Move Cards from Filtered Decks?"
+
+msgid "reader_media_no_cards"
+msgstr "No Cards"
+
+msgid "reader_media_no_matching_cards"
+msgstr "No cards attached to this {media} match the selected Topic/Item, link, media-range, and card-state filters."
+
+msgid "reader_media_order_hint"
+msgstr "Media position uses PDF pages, EPUB sections, or video timestamps. Nested cards inherit their nearest positioned ancestor."
+
+msgid "reader_media_order_label"
+msgstr "Review order:"
+
+msgid "reader_media_other_filtered_label"
+msgstr "Other filtered decks:"
+
+msgid "reader_media_position_page"
+msgstr "page {number}"
+
+msgid "reader_media_position_section"
+msgstr "section {number}"
+
+msgid "reader_media_range_label"
+msgstr "Media range:"
+
+msgid "reader_media_ready_tab"
+msgstr "Ready ({count})"
+
+msgid "reader_media_ready_tree_accessible"
+msgstr "Cards ready to review"
+
+msgid "reader_media_reminder"
+msgstr "Reminder without schedule changes"
+
+msgid "reader_media_reminder_hint"
+msgstr "Revisit cards without changing their next due date or interval. Topic A-factors and custom schedule rules are preserved. Clear this option to schedule answers normally."
+
+msgid "reader_media_reminder_schedule_status"
+msgstr "Reminder: due dates, intervals, topic A-factors and custom schedules stay unchanged."
+
+msgid "reader_media_review_intro"
+msgstr "Choose which cards attached to this {media} to review. Direct links include cards extracted from the media; nested links include their knowledge-tree descendants. Review normally, or enable a reminder without schedule changes."
+
+msgid "reader_media_review_label"
+msgstr "Review:"
+
+msgid "reader_media_review_schedule_status"
+msgstr "Review: answers update card schedules."
+
+msgid "reader_media_review_start_failed"
+msgstr "Could not start the attached {media} card review"
+
+msgid "reader_media_review_title"
+msgstr "Review Cards from This {media}"
+
+msgid "reader_media_scheduling_label"
+msgstr "Scheduling:"
+
+msgid "reader_media_start_review"
+msgstr "Start Review"
+
+msgid "reader_media_start_review_accessible"
+msgstr "Start attached-card review"
+
+msgid "reader_media_state_label"
+msgstr "Card state:"
+
+msgid "reader_media_summary_accessible"
+msgstr "Review selection summary"
+
+msgid "reader_media_topic_count"
+msgid_plural "reader_media_topic_count_plural"
+msgstr[0] "{count} topic"
+msgstr[1] "{count} topics"
+
+msgid "reader_media_unknown_card"
+msgstr "Unknown card"
+
+msgid "reader_media_unknown_filtered_deck"
+msgstr "Unknown filtered deck"
+
+msgid "reader_media_unknown_position_hint"
+msgstr "Incremento could not determine a current media position for this reader."
+
+msgid "reader_media_will_move_from"
+msgstr "Will move from {deck}"
+
+msgid "reader_position"
+msgstr "Position"
+
+msgid "reader_preview"
+msgstr "Preview"
+
+msgid "reader_topic"
+msgstr "Topic"
+
+msgid "reader_media_topics_items"
+msgstr "Topics and items"
+
+msgid "reader_media_topics_only"
+msgstr "Topics only"
+
+msgid "reader_media_items_only"
+msgstr "Items only"
+
+msgid "reader_media_direct_nested"
+msgstr "Direct and nested cards"
+
+msgid "reader_media_direct_only"
+msgstr "Direct attachments only"
+
+msgid "reader_media_entire"
+msgstr "Entire media"
+
+msgid "reader_media_to_current"
+msgstr "Up to current position"
+
+msgid "reader_media_all_available"
+msgstr "All available cards"
+
+msgid "reader_media_due_only"
+msgstr "Due / learning now only"
+
+msgid "reader_media_order_attached"
+msgstr "Attached order"
+
+msgid "reader_media_order_position"
+msgstr "Media position — beginning to end"
+
+msgid "reader_media_order_oldest"
+msgstr "Creation date — oldest first"
+
+msgid "reader_media_order_newest"
+msgstr "Creation date — newest first"
+
+msgid "reader_media_order_due"
+msgstr "Due / learning cards first"
+
+msgid "reader_media_order_shortest"
+msgstr "Interval — shortest first"
+
+msgid "reader_media_order_longest"
+msgstr "Interval — longest first"
+
+msgid "reader_media_order_random"
+msgstr "Random"
+
+msgid "reader_media_reason_suspended"
+msgstr "Suspended"
+
+msgid "reader_media_reason_buried"
+msgstr "Buried"
+
+msgid "reader_media_reason_filtered"
+msgstr "In another filtered deck"
+
+msgid "reader_media_reason_missing"
+msgstr "Card is missing"
+
+msgid "reader_media_reason_nested"
+msgstr "Nested card excluded"
+
+msgid "reader_media_reason_beyond_current"
+msgstr "After current position"
+
+msgid "reader_media_reason_unknown_position"
+msgstr "Position is unknown"
+
+msgid "reader_media_reason_other_kind"
+msgstr "Outside selected Topic/Item type"
+
+msgid "reader_media_reason_not_due"
+msgstr "Not due now"
+
+msgid "reader_media_reason_limit"
+msgstr "Past review limit"
+
+msgid "reader_media_excluded_suspended"
+msgstr "{count} suspended"
+
+msgid "reader_media_excluded_buried"
+msgstr "{count} buried"
+
+msgid "reader_media_excluded_filtered"
+msgstr "{count} already in another filtered deck"
+
+msgid "reader_media_excluded_missing"
+msgstr "{count} missing"
+
+msgid "reader_media_excluded_nested"
+msgstr "{count} nested"
+
+msgid "reader_media_excluded_beyond_current"
+msgstr "{count} after the current position"
+
+msgid "reader_media_excluded_unknown_position"
+msgstr "{count} without a known media position"
+
+msgid "reader_media_excluded_other_kind"
+msgstr "{count} outside the chosen Topic/Item type"
+
+msgid "reader_media_excluded_not_due"
+msgstr "{count} not due now"
+
+msgid "reader_media_excluded_limit"
+msgstr "{count} past the review limit"
+
+msgid "reader_media_preview_ready"
+msgid_plural "reader_media_preview_ready_plural"
+msgstr[0] "Ready to review: {count} card ({topics}, {items})."
+msgstr[1] "Ready to review: {count} cards ({topics}, {items})."
+
+msgid "reader_copy"
+msgstr "Copy"
+
+msgid "reader_help"
+msgstr "Help"
+
+msgid "reader_items"
+msgstr "Items"
+
+msgid "reader_topics"
+msgstr "Topics"
+
+msgid "reader_not_applicable"
+msgstr "N/A"
+
+msgid "reader_save"
+msgstr "Save"
+
+msgid "reader_type_label"
+msgstr "Type:"
+
+msgid "reader_postpone_action"
+msgstr "Postpone"
+
+msgid "reader_postpone_adjust"
+msgstr "Adjust"
+
+msgid "reader_postpone_afactor_below_label"
+msgstr "A-Factor below:"
+
+msgid "reader_postpone_all_outstanding"
+msgstr "All outstanding repetitions"
+
+msgid "reader_postpone_applied_count"
+msgid_plural "reader_postpone_applied_count_plural"
+msgstr[0] "Postponed {count} card."
+msgstr[1] "Postponed {count} cards."
+
+msgid "reader_postpone_apply_failed"
+msgstr "Could not postpone the selected cards:\n{error}"
+
+msgid "reader_postpone_average_delay"
+msgstr "Average delay: {percent}%"
+
+msgid "reader_postpone_average_interval"
+msgstr "Average delay interval: {days} days"
+
+msgid "reader_postpone_branch_scope_label"
+msgstr "Branch scope:"
+
+msgid "reader_postpone_branch_scope_unavailable"
+msgstr "Selected branch scope is only available when a knowledge-tree node is selected."
+
+msgid "reader_postpone_browser_scope"
+msgstr "Current Browser ({cards})"
+
+msgid "reader_postpone_card_count"
+msgid_plural "reader_postpone_card_count_plural"
+msgstr[0] "{count} card"
+msgstr[1] "{count} cards"
+
+msgid "reader_postpone_choose_default"
+msgstr "Choose or save a preset before marking it as default."
+
+msgid "reader_postpone_conservative_settings"
+msgstr "Always choose most conservative settings"
+
+msgid "reader_postpone_count_label"
+msgstr "Postpone count:"
+
+msgid "reader_postpone_current_browser"
+msgstr "Current browser"
+
+msgid "reader_postpone_default"
+msgstr "Default"
+
+msgid "reader_postpone_default_set"
+msgstr "Preset set as default."
+
+msgid "reader_postpone_delay_factor_label"
+msgstr "Delay factor:"
+
+msgid "reader_postpone_delete_failed"
+msgstr "Could not delete that postpone preset."
+
+msgid "reader_postpone_elements"
+msgid_plural "reader_postpone_elements_plural"
+msgstr[0] "Elements to postpone: {count}"
+msgstr[1] "Elements to postpone: {count}"
+
+msgid "reader_postpone_enter_name"
+msgstr "Enter a preset name before saving."
+
+msgid "reader_postpone_fi_unavailable"
+msgstr "Item forgetting index is not available in Incremento yet."
+
+msgid "reader_postpone_forgetting_below_label"
+msgstr "Forgetting index below:"
+
+msgid "reader_postpone_global"
+msgstr "Global"
+
+msgid "reader_postpone_help_text"
+msgstr "Postpone outstanding elements delays cards by adding extra interval days.\n\nDelay factor controls the extra postponement percentage.\nScope chooses whether to operate on all outstanding cards, the selected branch, or the current Browser.\nSimulate previews how many cards would be postponed before anything is changed."
+
+msgid "reader_postpone_ignore_settings"
+msgstr "Ignore settings"
+
+msgid "reader_postpone_include_not_outstanding"
+msgstr "Include elements that are not outstanding"
+
+msgid "reader_postpone_information"
+msgstr "Information"
+
+msgid "reader_postpone_interval_beyond_label"
+msgstr "Interval beyond:"
+
+msgid "reader_postpone_items_skipped"
+msgid_plural "reader_postpone_items_skipped_plural"
+msgstr[0] "Items skipped: {count}"
+msgstr[1] "Items skipped: {count}"
+
+msgid "reader_postpone_liberal_settings"
+msgstr "Always choose most liberal settings"
+
+msgid "reader_postpone_list"
+msgstr "List"
+
+msgid "reader_postpone_max_found"
+msgstr "Max interval found: {interval}"
+
+msgid "reader_postpone_max_interval_label"
+msgstr "Maximum interval:"
+
+msgid "reader_postpone_max_qualified"
+msgstr "Max interval qualified: {interval}"
+
+msgid "reader_postpone_method"
+msgstr "Method"
+
+msgid "reader_postpone_min_interval_label"
+msgstr "Minimum interval:"
+
+msgid "reader_postpone_modify_item_fi"
+msgstr "Modify item delay in proportion to forgetting index"
+
+msgid "reader_postpone_modify_priority"
+msgstr "Modify delay in proportion to element priority"
+
+msgid "reader_postpone_modify_topic_afactor"
+msgstr "Modify topic delay in proportion to A-Factor"
+
+msgid "reader_postpone_name_label"
+msgstr "Name:"
+
+msgid "reader_postpone_named_browser_scope"
+msgstr "{name} ({cards})"
+
+msgid "reader_postpone_no_qualified_cards"
+msgstr "No cards qualified for postponing with the current settings."
+
+msgid "reader_postpone_no_subbranch_presets"
+msgstr "No saved sub-branch presets were found below this branch."
+
+msgid "reader_postpone_parameters"
+msgstr "Parameters"
+
+msgid "reader_postpone_preset_deleted"
+msgstr "Preset deleted."
+
+msgid "reader_postpone_preset_saved"
+msgstr "Postpone preset saved."
+
+msgid "reader_postpone_priority_percent_label"
+msgstr "Priority (%):"
+
+msgid "reader_postpone_respect_settings"
+msgstr "Respect settings"
+
+msgid "reader_postpone_restore_defaults"
+msgstr "Restore defaults"
+
+msgid "reader_postpone_scope"
+msgstr "Scope"
+
+msgid "reader_postpone_scope_needs_card"
+msgstr "{scope} scope needs at least one card."
+
+msgid "reader_postpone_select_branch_first"
+msgstr "Select a knowledge-tree branch before listing sub-branch presets."
+
+msgid "reader_postpone_selected_branch"
+msgstr "Selected branch or category"
+
+msgid "reader_postpone_settings"
+msgstr "Settings"
+
+msgid "reader_postpone_simulate"
+msgstr "Simulate"
+
+msgid "reader_postpone_simulation_copied"
+msgstr "Simulation summary copied."
+
+msgid "reader_postpone_simulation_failed"
+msgstr "Could not simulate branch postponing:\n{error}"
+
+msgid "reader_postpone_skip_conditions_label"
+msgstr "Skip conditions:"
+
+msgid "reader_postpone_skip_items"
+msgstr "Skip items"
+
+msgid "reader_postpone_skip_parameters"
+msgstr "Skip elements as defined by Parameters (next page)"
+
+msgid "reader_postpone_skip_top"
+msgstr "Skip the following number of top priority elements"
+
+msgid "reader_postpone_skip_topics"
+msgstr "Skip topics"
+
+msgid "reader_postpone_subbranch_hint"
+msgstr "Sub-branch presets are attached to saved branch presets. Use Save on a selected branch to attach settings to that subtree."
+
+msgid "reader_postpone_subbranch_postpones"
+msgstr "Sub-branch postpones"
+
+msgid "reader_postpone_subset"
+msgstr "Subset"
+
+msgid "reader_postpone_title"
+msgstr "Postpone outstanding elements"
+
+msgid "reader_postpone_topics_skipped"
+msgid_plural "reader_postpone_topics_skipped_plural"
+msgstr[0] "Topics skipped: {count}"
+msgstr[1] "Topics skipped: {count}"
+
+msgid "reader_tree_priority_afactor_label"
+msgstr "A-Factor:"
+
+msgid "reader_tree_priority_affected_count"
+msgid_plural "reader_tree_priority_affected_count_plural"
+msgstr[0] "This will affect {count} card."
+msgstr[1] "This will affect {count} cards."
+
+msgid "reader_tree_priority_children"
+msgid_plural "reader_tree_priority_children_plural"
+msgstr[0] "{count} direct child"
+msgstr[1] "{count} direct children"
+
+msgid "reader_tree_priority_descendants"
+msgid_plural "reader_tree_priority_descendants_plural"
+msgstr[0] "{count} descendant"
+msgstr[1] "{count} descendants"
+
+msgid "reader_tree_priority_delta_label"
+msgstr "Delta:"
+
+msgid "reader_tree_priority_end_label"
+msgstr "End priority:"
+
+msgid "reader_tree_priority_fade_children"
+msgstr "Fade Child Priorities"
+
+msgid "reader_tree_priority_fade_hint"
+msgstr "Keeps the selected node anchored and progressively makes descendants less important by depth."
+
+msgid "reader_tree_priority_fade_operation_hint"
+msgstr "Reduce child urgency while leaving the selected node fixed."
+
+msgid "reader_tree_priority_focus_branch"
+msgstr "Focus Branch"
+
+msgid "reader_tree_priority_focus_hint"
+msgstr "Moves the selected node and its descendants toward the important end, with the selected node shifting the most."
+
+msgid "reader_tree_priority_focus_operation_hint"
+msgstr "Bias the whole branch toward the important end so this branch is studied more."
+
+msgid "reader_tree_priority_include_random_root"
+msgstr "Include selected node in randomization"
+
+msgid "reader_tree_priority_include_spread_root"
+msgstr "Include selected node in spread"
+
+msgid "reader_tree_priority_last_interval_label"
+msgstr "Last interval:"
+
+msgid "reader_tree_priority_last_interval_value"
+msgid_plural "reader_tree_priority_last_interval_value_plural"
+msgstr[0] "{days} day"
+msgstr[1] "{days} days"
+
+msgid "reader_tree_priority_linear_spread"
+msgstr "Spread Across Subtree"
+
+msgid "reader_tree_priority_maximum_label"
+msgstr "Maximum:"
+
+msgid "reader_tree_priority_minimum_label"
+msgstr "Minimum:"
+
+msgid "reader_tree_priority_no_fade_children"
+msgstr "This node has no child priorities to fade."
+
+msgid "reader_tree_priority_no_random_children"
+msgstr "This node has no children to randomize."
+
+msgid "reader_tree_priority_no_spread_children"
+msgstr "This node has no children to spread priorities across."
+
+msgid "reader_tree_priority_operation_label"
+msgstr "Operation:"
+
+msgid "reader_tree_priority_priority_label"
+msgstr "Priority:"
+
+msgid "reader_tree_priority_random_hint"
+msgstr "Assign random priorities within the chosen range."
+
+msgid "reader_tree_priority_randomize"
+msgstr "Randomize Subtree"
+
+msgid "reader_tree_priority_range"
+msgstr "Current subtree priority range: {minimum} to {maximum}"
+
+msgid "reader_tree_priority_selected_node"
+msgstr "Selected knowledge-tree node"
+
+msgid "reader_tree_priority_set_hint"
+msgstr "Update only the selected node. Topic nodes can also change A-Factor here."
+
+msgid "reader_tree_priority_set_selected"
+msgstr "Set Selected Node"
+
+msgid "reader_tree_priority_shift_hint"
+msgstr "Apply the same signed delta to the selected node and every descendant."
+
+msgid "reader_tree_priority_shift_subtree"
+msgstr "Shift Subtree"
+
+msgid "reader_tree_priority_spread_hint"
+msgstr "Redistribute priorities by tree depth from the start value to the end value."
+
+msgid "reader_tree_priority_start_label"
+msgstr "Start priority:"
+
+msgid "reader_tree_priority_stats"
+msgstr "Subtree: {total} · {descendants} · {children} · max depth {depth} · important end {end}"
+
+msgid "reader_tree_priority_title"
+msgstr "Knowledge-tree Priority"
+
+msgid "reader_tree_priority_total_cards"
+msgid_plural "reader_tree_priority_total_cards_plural"
+msgstr[0] "{count} card total"
+msgstr[1] "{count} cards total"
+
+msgid "reader_tree_subset_afactor"
+msgstr "A-Factor"
+
+msgid "reader_tree_subset_browser_failed"
+msgstr "Could not open the Browser for this subset:\n{error}"
+
+msgid "reader_tree_subset_browser_unavailable"
+msgstr "Could not open Anki Browser from the subset view."
+
+msgid "reader_tree_subset_card_id"
+msgstr "Card ID"
+
+msgid "reader_tree_subset_current_scope"
+msgstr "Current subset"
+
+msgid "reader_tree_subset_deck"
+msgstr "Deck"
+
+msgid "reader_tree_subset_elements"
+msgstr "Subset Elements"
+
+msgid "reader_tree_subset_filter_label"
+msgstr "Filter:"
+
+msgid "reader_tree_subset_filter_placeholder"
+msgstr "Filter by title, deck, or note type"
+
+msgid "reader_tree_subset_filter_status"
+msgid_plural "reader_tree_subset_filter_status_plural"
+msgstr[0] "Filter active: showing {visible} of {total} card in this subset."
+msgstr[1] "Filter active: showing {visible} of {total} cards in this subset."
+
+msgid "reader_tree_subset_interval"
+msgstr "Interval"
+
+msgid "reader_tree_subset_kind"
+msgstr "Kind"
+
+msgid "reader_tree_subset_lapses"
+msgstr "Lapses"
+
+msgid "reader_tree_subset_last_review"
+msgstr "Last Review"
+
+msgid "reader_tree_subset_new"
+msgstr "New"
+
+msgid "reader_tree_subset_next_review"
+msgstr "Next Review"
+
+msgid "reader_tree_subset_no_cards"
+msgstr "No cards are available in this subset."
+
+msgid "reader_tree_subset_node_only"
+msgstr "Selected node only"
+
+msgid "reader_tree_subset_note_type"
+msgstr "Note Type"
+
+msgid "reader_tree_subset_number"
+msgstr "#"
+
+msgid "reader_tree_subset_open_browser"
+msgstr "Open In Browser"
+
+msgid "reader_tree_subset_postpone"
+msgstr "Postpone Subset"
+
+msgid "reader_tree_subset_priority"
+msgstr "Priority"
+
+msgid "reader_tree_subset_reps"
+msgstr "Reps"
+
+msgid "reader_tree_subset_reveal_failed"
+msgstr "Could not reveal this card in the knowledge tree:\n{error}"
+
+msgid "reader_tree_subset_reveal_tree"
+msgstr "Reveal In Tree"
+
+msgid "reader_tree_subset_revealed"
+msgstr "Revealed the selected card in the knowledge tree."
+
+msgid "reader_tree_subset_scope_label"
+msgstr "Scope:"
+
+msgid "reader_tree_subset_scope_title"
+msgstr "{title} subset"
+
+msgid "reader_tree_subset_select_hint"
+msgstr "Select one or more rows to study or postpone only that selection. If nothing is selected, actions operate on all visible rows."
+
+msgid "reader_tree_subset_study"
+msgstr "Study Subset"
+
+msgid "reader_tree_subset_study_failed"
+msgstr "Could not open the subset study session:\n{error}"
+
+msgid "reader_tree_subset_summary"
+msgid_plural "reader_tree_subset_summary_plural"
+msgstr[0] "{title} · {count} card in {scope}."
+msgstr[1] "{title} · {count} cards in {scope}."
+
+msgid "reader_tree_subset_title"
+msgstr "Subset Review — {title}"
+
+msgid "reader_tree_subset_whole_subtree"
+msgstr "Whole subtree"
+
+msgid "reader_yes"
+msgstr "Yes"
+
+msgid "reader_no"
+msgstr "No"
+
+
+#. Generated citation label; document titles remain unchanged.
+msgid "reader_pdf_citation_label"
+msgstr "Page {page}. of {title}"
+
+#. Generated citation label; document titles remain unchanged.
+msgid "reader_pdf_copied_label"
+msgstr "{title} — page {page}"
