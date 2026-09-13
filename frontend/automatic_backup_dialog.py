@@ -60,8 +60,9 @@ class AutomaticBackupDialog(QDialog):
         notice = QLabel(
             "Full backups contain private cards, media, and settings. Old automatic ZIPs "
             "for this profile are removed only after a new ZIP is verified. Backups run "
-            "in the background. A close-triggered backup finishes before Anki can "
-            "close the collection, so closing may take longer."
+            "in the background with a visible progress window. Anki may be temporarily "
+            "unavailable until the backup finishes. A close-triggered backup finishes "
+            "before Anki closes the collection, so closing may take longer."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)

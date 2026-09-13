@@ -109,6 +109,38 @@ def test_normalize_config_repairs_reviewer_priority_badge_card_types():
     }
 
 
+def test_reviewer_button_visibility_defaults_visible_and_preserves_one_disabled_choice():
+    assert config_service.configured_reviewer_button_visibility({}) == {
+        "done": True, "postpone": True, "extract": True,
+    }
+    normalized = config_service.normalize_config({
+        "reviewer_button_visibility": {
+            "done": "false", "postpone": True, "extract": 0, "future": "keep",
+        },
+        "other_setting": "untouched",
+    })
+    assert normalized["reviewer_button_visibility"] == {
+        "done": False, "postpone": True, "extract": False, "future": "keep",
+    }
+    assert normalized["other_setting"] == "untouched"
+    assert config_service.configured_reviewer_button_visibility(normalized) == {
+        "done": False, "postpone": True, "extract": False,
+    }
+
+
+def test_reviewer_button_group_toggle_normalizes_without_changing_individual_choices():
+    assert config_service.configured_reviewer_button_group_visible({}) is True
+    normalized = config_service.normalize_config({
+        "reviewer_button_group_visible": "false",
+        "reviewer_button_visibility": {"done": False, "postpone": True, "extract": True},
+    })
+    assert normalized["reviewer_button_group_visible"] is False
+    assert config_service.configured_reviewer_button_group_visible(normalized) is False
+    assert config_service.configured_reviewer_button_visibility(normalized) == {
+        "done": False, "postpone": True, "extract": True,
+    }
+
+
 def test_automatic_backup_config_is_profile_scoped_and_invalid_values_fail_closed():
     result = config_service.normalize_config({"automatic_backups": {
         "P": {"enabled": True, "directory": "/backup", "versions": 99,

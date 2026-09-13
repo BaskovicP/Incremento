@@ -491,6 +491,29 @@ def test_reviewer_badge_visibility_is_exported_without_unknown_nested_values() -
     assert PRIVATE_VALUES[0] not in json.dumps(sanitized)
 
 
+def test_reviewer_bar_visibility_reports_only_known_boolean_choices() -> None:
+    defaults = {
+        "reviewer_button_group_visible": True,
+        "reviewer_button_visibility": {
+            "done": True, "postpone": True, "extract": True,
+        }
+    }
+    sanitized = diagnostics.sanitize_config({
+        "reviewer_button_group_visible": False,
+        "reviewer_button_visibility": {
+            "done": False, "postpone": True, "extract": False,
+            "private_action": PRIVATE_VALUES[0],
+        }
+    }, defaults)
+
+    assert sanitized["settings"]["reviewer_button_visibility"] == {
+        "done": False, "postpone": True, "extract": False,
+        "_redacted_unknown_entries": 1,
+    }
+    assert sanitized["settings"]["reviewer_button_group_visible"] is False
+    assert PRIVATE_VALUES[0] not in json.dumps(sanitized)
+
+
 def test_operation_scope_uses_callable_and_wrapped_function_modules() -> None:
     def incremento_handler():
         pass

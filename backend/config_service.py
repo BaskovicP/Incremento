@@ -15,10 +15,16 @@ except ImportError:
 
 CONFIG_SCHEMA_VERSION = 2
 DEFAULT_TOPIC_DONE_TAG = "topic/done"
+DEFAULT_REVIEWER_BUTTON_VISIBILITY = {
+    "done": True,
+    "postpone": True,
+    "extract": True,
+}
 _DAY_END_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 _BOOLEAN_DEFAULTS = {
     "priority_lower_is_more_important": True,
+    "reviewer_button_group_visible": True,
     "remember_browser_card_scroll": True,
     "show_priority_dialog_after_answer": False,
     "show_incremento_fields": False,
@@ -126,6 +132,23 @@ def configured_topic_done_tag(config: Mapping[str, Any] | None = None) -> str:
         return DEFAULT_TOPIC_DONE_TAG
 
 
+def configured_reviewer_button_visibility(
+    config: Mapping[str, Any] | None = None,
+) -> dict[str, bool]:
+    raw = (config or {}).get("reviewer_button_visibility")
+    values = raw if isinstance(raw, Mapping) else {}
+    return {
+        name: _bool(values.get(name), default)
+        for name, default in DEFAULT_REVIEWER_BUTTON_VISIBILITY.items()
+    }
+
+
+def configured_reviewer_button_group_visible(
+    config: Mapping[str, Any] | None = None,
+) -> bool:
+    return _bool((config or {}).get("reviewer_button_group_visible"), True)
+
+
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
@@ -153,6 +176,12 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         for kind in ("topics", "items"):
             badge_types[kind] = _bool(badge_types.get(kind), True)
         config["reviewer_priority_badge_card_types"] = badge_types
+    if "reviewer_button_visibility" in config:
+        raw_visibility = config["reviewer_button_visibility"]
+        config["reviewer_button_visibility"] = {
+            **(copy.deepcopy(dict(raw_visibility)) if isinstance(raw_visibility, Mapping) else {}),
+            **configured_reviewer_button_visibility(config),
+        }
     for key, (number_default, minimum, maximum, cast) in _NUMBER_LIMITS.items():
         if key in config:
             config[key] = _number(

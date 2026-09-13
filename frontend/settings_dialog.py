@@ -25,7 +25,11 @@ from aqt.qt import (
 )
 
 try:
-    from ..backend.config_service import DEFAULT_TOPIC_DONE_TAG, configured_topic_done_tag, normalize_topic_done_tag
+    from ..backend.config_service import (
+        DEFAULT_TOPIC_DONE_TAG, configured_reviewer_button_visibility,
+        configured_reviewer_button_group_visible,
+        configured_topic_done_tag, normalize_topic_done_tag,
+    )
     from ..backend.custom_schedule import (
         configured_custom_schedule_default_mode,
         configured_custom_schedule_presets,
@@ -33,7 +37,11 @@ try:
         normalize_custom_schedule_preset,
     )
 except ImportError:
-    from backend.config_service import DEFAULT_TOPIC_DONE_TAG, configured_topic_done_tag, normalize_topic_done_tag
+    from backend.config_service import (  # type: ignore
+        DEFAULT_TOPIC_DONE_TAG, configured_reviewer_button_visibility,
+        configured_reviewer_button_group_visible,
+        configured_topic_done_tag, normalize_topic_done_tag,
+    )
     from backend.custom_schedule import (  # type: ignore
         configured_custom_schedule_default_mode,
         configured_custom_schedule_presets,
@@ -167,6 +175,13 @@ SHORTCUT_ACTION_SPECS = [
         "id": "extract_card",
         "label": "Extract Card",
         "default": "Alt+X",
+    },
+    {
+        "id": "toggle_reviewer_buttons",
+        "label": "Toggle Reviewer Buttons",
+        "default": "",
+        "group": "Review",
+        "keywords": ("show", "hide", "done", "postpone", "extract"),
     },
     {
         "id": "append_tags_reviewer",
@@ -318,6 +333,8 @@ class IncrementoSettingsDialog(QDialog):
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
         current_reviewer_priority_badge_card_types: dict[str, bool] | None = None,
+        current_reviewer_button_visibility: dict[str, bool] | None = None,
+        current_reviewer_button_group_visible: bool = True,
         current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
         current_pdf_scroll_to_top_on_page_change: bool = True,
@@ -683,6 +700,45 @@ class IncrementoSettingsDialog(QDialog):
 
         review_layout.addWidget(_subsection_title("Reviewer Controls"))
         reviewer_controls_layout = _section_body()
+
+        button_visibility = configured_reviewer_button_visibility(
+            {"reviewer_button_visibility": current_reviewer_button_visibility}
+        )
+        self._reviewer_button_group_cb = QCheckBox("Show review button group")
+        self._reviewer_button_group_cb.setChecked(
+            configured_reviewer_button_group_visible(
+                {"reviewer_button_group_visible": current_reviewer_button_group_visible}
+            )
+        )
+        reviewer_controls_layout.addWidget(self._reviewer_button_group_cb)
+        review_buttons = QWidget()
+        review_buttons_layout = QHBoxLayout(review_buttons)
+        review_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        self._reviewer_done_button_cb = QCheckBox("Done")
+        self._reviewer_postpone_button_cb = QCheckBox("Postpone")
+        self._reviewer_extract_button_cb = QCheckBox("Extract")
+        for key, checkbox in (
+            ("done", self._reviewer_done_button_cb),
+            ("postpone", self._reviewer_postpone_button_cb),
+            ("extract", self._reviewer_extract_button_cb),
+        ):
+            checkbox.setChecked(button_visibility[key])
+            review_buttons_layout.addWidget(checkbox)
+        review_buttons_layout.addStretch(1)
+        buttons_label = QLabel("Buttons shown in the review bar (also in More → Review buttons):")
+        buttons_label.setWordWrap(True)
+        reviewer_controls_layout.addWidget(buttons_label)
+        reviewer_controls_layout.addWidget(review_buttons)
+        group_hint = QLabel(
+            "Assign Toggle Reviewer Buttons in the Shortcuts tab to hide or restore these buttons together without changing the choices above."
+        )
+        group_hint.setWordWrap(True)
+        reviewer_controls_layout.addWidget(group_hint)
+        availability_hint = QLabel(
+            "Done appears on topic cards; Postpone appears only when topic postponement is enabled."
+        )
+        availability_hint.setWordWrap(True)
+        reviewer_controls_layout.addWidget(availability_hint)
 
         self._remember_browser_card_scroll_cb = QCheckBox(
             "Remember scrolling position in browser cards"
@@ -1656,6 +1712,18 @@ class IncrementoSettingsDialog(QDialog):
             "topics": bool(self._reviewer_priority_badge_topics_cb.isChecked()),
             "items": bool(self._reviewer_priority_badge_items_cb.isChecked()),
         }
+
+    @property
+    def reviewer_button_visibility(self) -> dict[str, bool]:
+        return {
+            "done": bool(self._reviewer_done_button_cb.isChecked()),
+            "postpone": bool(self._reviewer_postpone_button_cb.isChecked()),
+            "extract": bool(self._reviewer_extract_button_cb.isChecked()),
+        }
+
+    @property
+    def reviewer_button_group_visible(self) -> bool:
+        return bool(self._reviewer_button_group_cb.isChecked())
 
     @property
     def remember_browser_card_scroll(self) -> bool:

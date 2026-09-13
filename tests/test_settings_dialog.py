@@ -582,6 +582,42 @@ class TestIncrementoSettingsDialogReviewerButtons:
         dialog = IncrementoSettingsDialog({}, current_use_fail_pass_on_items=False)
         assert dialog.use_fail_pass_on_items is False
 
+    def test_more_menu_buttons_are_also_editable_in_review_settings(self):
+        dialog = IncrementoSettingsDialog(
+            {}, current_reviewer_button_visibility={
+                "done": False, "postpone": True, "extract": True,
+            },
+            current_reviewer_button_group_visible=False,
+        )
+        assert dialog.reviewer_button_group_visible is False
+        assert dialog.reviewer_button_visibility == {
+            "done": False, "postpone": True, "extract": True,
+        }
+        dialog._reviewer_button_group_cb.setChecked(True)
+        assert dialog.reviewer_button_group_visible is True
+        dialog._reviewer_extract_button_cb.setChecked(False)
+        assert dialog.reviewer_button_visibility == {
+            "done": False, "postpone": True, "extract": False,
+        }
+
+    def test_settings_wiring_refreshes_current_review_bar(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(
+            node for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef) and node.name == "openSettingsFunction"
+        )
+        body = ast.get_source_segment(source, function)
+        assert "current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg)" in body
+        assert "current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg)" in body
+        assert 'visibility = dict(cfg.get("reviewer_button_visibility") or {})' in body
+        assert 'visibility.update(dlg.reviewer_button_visibility)' in body
+        assert 'cfg["reviewer_button_visibility"] = visibility' in body
+        assert 'cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible' in body
+        assert "_sync_reviewer_button_visibility(mw.reviewer)" in body
+
 
 class TestIncrementoSettingsDialogReviewerPriorityBadge:
     def test_card_type_visibility_defaults_enabled(self):
@@ -682,6 +718,17 @@ class TestIncrementoSettingsDialogShortcuts:
 
         assert extract_spec["label"] == "Extract Card"
         assert default_shortcuts()["extract_card"] == "Alt+X"
+
+    def test_review_button_group_shortcut_is_assignable_without_a_default(self):
+        spec = next(
+            spec for spec in SHORTCUT_ACTION_SPECS
+            if spec["id"] == "toggle_reviewer_buttons"
+        )
+        assert spec["label"] == "Toggle Reviewer Buttons"
+        assert default_shortcuts()["toggle_reviewer_buttons"] == ""
+        assert resolved_runtime_shortcuts({"toggle_reviewer_buttons": "Alt+B"})[
+            "toggle_reviewer_buttons"
+        ] == "Alt+B"
 
     def test_document_bookshelf_shortcut_is_exposed_in_settings(self):
         bookshelf_spec = next(

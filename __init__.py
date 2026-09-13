@@ -210,6 +210,8 @@ from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
 from .backend import backup_schedule as _backup_schedule
 from .backend.config_service import (
+    configured_reviewer_button_group_visible,
+    configured_reviewer_button_visibility,
     configured_topic_done_tag as _configured_topic_done_tag,
     load_addon_config as _load_addon_config,
     migrate_persisted_config as _migrate_persisted_config,
@@ -246,6 +248,11 @@ from .frontend.pdf_bookshelf import (
 )
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_button_style import build_reviewer_button_style_js
+from .frontend.reviewer_button_visibility import (
+    add_reviewer_button_visibility_menu,
+    build_reviewer_button_visibility_js,
+    effective_reviewer_button_visibility,
+)
 from .frontend.reviewer_topic_actions import TopicReviewActions
 from .frontend.reviewer_priority_badge import (
     build_reviewer_priority_badge_js,
@@ -1301,7 +1308,7 @@ def _incremento_show_answer_button(self) -> None:
 <td class=stat2 align=center>
 <button title="{show_answer_key}" id="ansbut" onclick='pycmd("ans");'>{show_answer}<span class=stattxt>{remaining}</span></button>
 </td>
-<td class=stat2 align=center>
+<td class=stat2 align=center id="incremento-topic-postpone-cell">
 <button title="{postpone_key}" id="incremento-postpone-but" onclick='pycmd("incremento_topic_postpone");'>Postpone<span class=stattxt>{postpone_due}</span></button>
 </td>
 </tr></table>
@@ -1395,6 +1402,7 @@ def _sync_reviewer_extract_button(reviewer) -> None:
         reviewer.bottom.web.eval(build_reviewer_button_style_js())
     except Exception:
         pass
+    _sync_reviewer_button_visibility(reviewer)
     try:
         reviewer.bottom.web.eval(
             build_reviewer_extract_button_js(_configured_shortcut_text("extract_card"))
@@ -1405,6 +1413,69 @@ def _sync_reviewer_extract_button(reviewer) -> None:
         _topic_review_actions.sync(reviewer)
     except Exception:
         pass
+
+
+def _sync_reviewer_button_visibility(reviewer) -> None:
+    try:
+        cfg = _load_addon_config(mw.addonManager, __name__)
+        reviewer.bottom.web.eval(
+            build_reviewer_button_visibility_js(
+                effective_reviewer_button_visibility(
+                    configured_reviewer_button_visibility(cfg),
+                    configured_reviewer_button_group_visible(cfg),
+                )
+            )
+        )
+    except Exception:
+        pass
+
+
+def _add_reviewer_button_visibility_menu(reviewer, menu) -> None:
+    if mw.state != "review" or mw.reviewer is not reviewer or reviewer.card is None:
+        return
+    profile = _active_profile()
+    config = _load_addon_config(mw.addonManager, __name__)
+    menu.addSeparator()
+
+    def on_toggle(key: str, checked: bool) -> None:
+        if (
+            mw.state != "review" or mw.reviewer is not reviewer
+            or reviewer.card is None or _active_profile() != profile
+        ):
+            return
+        updated = _load_addon_config(mw.addonManager, __name__)
+        visibility = dict(updated.get("reviewer_button_visibility") or {})
+        visibility[key] = checked
+        updated["reviewer_button_visibility"] = visibility
+        _save_addon_config(mw.addonManager, __name__, updated)
+        _sync_reviewer_button_visibility(reviewer)
+
+    def on_group_toggle(checked: bool) -> None:
+        if (
+            mw.state != "review" or mw.reviewer is not reviewer
+            or reviewer.card is None or _active_profile() != profile
+        ):
+            return
+        updated = _load_addon_config(mw.addonManager, __name__)
+        updated["reviewer_button_group_visible"] = checked
+        _save_addon_config(mw.addonManager, __name__, updated)
+        _sync_reviewer_button_visibility(reviewer)
+
+    add_reviewer_button_visibility_menu(
+        menu, configured_reviewer_button_visibility(config), on_toggle,
+        group_visible=configured_reviewer_button_group_visible(config),
+        on_group_toggle=on_group_toggle,
+    )
+
+
+def _toggle_reviewer_button_group() -> None:
+    reviewer = getattr(mw, "reviewer", None)
+    if mw.state != "review" or reviewer is None or reviewer.card is None:
+        return
+    cfg = _load_addon_config(mw.addonManager, __name__)
+    cfg["reviewer_button_group_visible"] = not configured_reviewer_button_group_visible(cfg)
+    _save_addon_config(mw.addonManager, __name__, cfg)
+    _sync_reviewer_button_visibility(reviewer)
 
 
 def _incremento_show_ease_buttons(self) -> None:
@@ -2480,6 +2551,7 @@ gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_apply_custom_schedule_after_answer)
 gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
 gui_hooks.reviewer_will_show_context_menu.append(_topic_review_actions.add_context_menu)
+gui_hooks.reviewer_will_show_context_menu.append(_add_reviewer_button_visibility_menu)
 gui_hooks.profile_will_close.append(_topic_review_actions.reset)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(_clear_direct_review_queue)
@@ -4001,6 +4073,7 @@ def _start_full_backup(
         export_stats_json,
     )
     from .backend.export_bundle import snapshot_tree
+    from .frontend.backup_progress import AutomaticBackupProgress
     from .backend.activity_log import (
         start_activity, update_activity, finish_activity, fail_activity,
     )
@@ -4040,6 +4113,14 @@ def _start_full_backup(
     activity_id = start_activity(
         "Full profile backup", category="Backup", detail="Preparing backup…",
     )
+    progress = AutomaticBackupProgress(mw) if automatic_policy is not None else None
+    if progress is not None:
+        try:
+            progress.start()
+        except Exception as exc:
+            fail_activity(activity_id, f"Could not show backup progress: {exc}")
+            os.remove(archive_tmp_path)
+            return False
     _full_backup_running = True
 
     def _restore_instructions() -> str:
@@ -4076,6 +4157,8 @@ def _start_full_backup(
 
     def _progress(label: str) -> None:
         update_activity(activity_id, detail=label)
+        if progress is not None:
+            progress.update(label)
 
     try:
         # This touches Qt/WebEngine-owned dock state and must stay on the main
@@ -4292,16 +4375,22 @@ def _start_full_backup(
         try:
             _on_done(fut)
         finally:
-            callbacks = _backup_idle_callbacks
-            _backup_idle_callbacks = []
-            for callback in callbacks:
-                QTimer.singleShot(0, callback)
+            try:
+                if progress is not None:
+                    progress.finish()
+            finally:
+                callbacks = _backup_idle_callbacks
+                _backup_idle_callbacks = []
+                for callback in callbacks:
+                    QTimer.singleShot(0, callback)
 
     try:
         mw.taskman.run_in_background(_task, _on_done_and_resume)
     except Exception as exc:
         _full_backup_running = False
         fail_activity(activity_id, f"Could not start backup: {exc}")
+        if progress is not None:
+            progress.finish()
         try:
             os.remove(archive_tmp_path)
         except OSError:
@@ -4573,6 +4662,11 @@ _extract_shortcut = QShortcut(QKeySequence("Alt+X"), mw)
 _extract_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
 qconnect(_extract_shortcut.activated, _extract_card)
 _register_shortcut_action("extract_card", _extract_shortcut)
+
+_reviewer_buttons_shortcut = QShortcut(QKeySequence(), mw)
+_reviewer_buttons_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+qconnect(_reviewer_buttons_shortcut.activated, _toggle_reviewer_button_group)
+_register_shortcut_action("toggle_reviewer_buttons", _reviewer_buttons_shortcut)
 
 _reviewer_tag_shortcut = QShortcut(QKeySequence("Alt+T"), mw)
 _reviewer_tag_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
@@ -6336,6 +6430,8 @@ def openSettingsFunction() -> None:
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
         current_reviewer_priority_badge_card_types=configured_reviewer_priority_badge_card_types(cfg),
+        current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
+        current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_pdf_scroll_to_top_on_page_change=_pdf_dock_mod.configured_scroll_to_top_on_page_change(cfg),
@@ -6394,6 +6490,10 @@ def openSettingsFunction() -> None:
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
     cfg["reviewer_priority_badge_card_types"] = dlg.reviewer_priority_badge_card_types
+    visibility = dict(cfg.get("reviewer_button_visibility") or {})
+    visibility.update(dlg.reviewer_button_visibility)
+    cfg["reviewer_button_visibility"] = visibility
+    cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["pdf_scroll_to_top_on_page_change"] = dlg.pdf_scroll_to_top_on_page_change
@@ -6435,6 +6535,8 @@ def openSettingsFunction() -> None:
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     _save_addon_config(mw.addonManager, __name__, cfg)
     _sync_reviewer_priority_badge()
+    if mw.state == "review" and getattr(mw, "reviewer", None) is not None:
+        _sync_reviewer_button_visibility(mw.reviewer)
     try:
         if _web_dock_mod._runtime.dock is not None:
             checked = bool(dlg.track_web_window_with_extension)

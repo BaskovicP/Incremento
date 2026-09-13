@@ -104,19 +104,18 @@ def test_full_backup_includes_cover_named_in_a_plain_note_field(model_name, cove
         with tempfile.TemporaryDirectory(prefix='incremento-cover-export-') as temporary:
             root = Path(temporary)
             collection = Collection(str(root / 'collection.anki2'))
-            model = collection.models.new('__MODEL_NAME__')
-            for field in ('Title', '__COVER_FIELD__'):
-                collection.models.add_field(model, collection.models.new_field(field))
-            template = collection.models.new_template('Card 1')
-            template['qfmt'] = '{{Title}}'
-            template['afmt'] = '{{FrontSide}}'
-            collection.models.add_template(model, template)
-            collection.models.add(model)
+            # Reuse the original Basic model ID. A new model created just
+            # before export can collide with the exporter's disposable Basic
+            # model ID in the same millisecond and lose the copied card.
+            model = collection.models.by_name('Basic')
+            model['name'] = '__MODEL_NAME__'
+            collection.models.add_field(model, collection.models.new_field('__COVER_FIELD__'))
+            collection.models.update_dict(model)
             cover = root / 'cover.png'
             cover.write_bytes(b'valid-image-placeholder')
             media_name = collection.media.add_file(str(cover))
             note = collection.new_note(model)
-            note['Title'] = 'A long PDF source title'
+            note['Front'] = 'A long document source title'
             note['__COVER_FIELD__'] = media_name
             collection.add_note(note, collection.decks.id('Cover Test'))
             assert list(collection.media.files_in_str(model['id'], media_name)) == []

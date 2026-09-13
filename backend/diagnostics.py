@@ -375,6 +375,8 @@ _KNOWN_CONFIG_KEYS = {
     "priority_lower_is_more_important",
     "profiles",
     "remember_browser_card_scroll",
+    "reviewer_button_visibility",
+    "reviewer_button_group_visible",
     "reviewer_priority_badge_card_types",
     "scheduler_scope",
     "scheduler_presets",

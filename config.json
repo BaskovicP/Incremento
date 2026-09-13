@@ -19,6 +19,12 @@
         "topics": true,
         "items": true
     },
+    "reviewer_button_visibility": {
+        "done": true,
+        "postpone": true,
+        "extract": true
+    },
+    "reviewer_button_group_visible": true,
     "show_incremento_fields": false,
     "auto_timer_enabled": false,
     "auto_timer_tags": [],
