@@ -109,6 +109,20 @@ def get_pdf_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "pdfs"
 
 
+def get_pdf_annotation_dir(addon_dir: str, profile: str, card_id: int) -> Path:
+    if int(card_id) <= 0:
+        raise ValueError('Invalid PDF card identity.')
+    return get_user_files_dir(addon_dir, profile) / 'pdf_annotations' / str(int(card_id))
+
+
+def get_pdf_annotation_reader_path(addon_dir: str, profile: str, card_id: int) -> Path:
+    return get_pdf_annotation_dir(addon_dir, profile, card_id) / 'reader.pdf'
+
+
+def get_pdf_annotation_backup_path(addon_dir: str, profile: str, card_id: int, *, source: bool = False) -> Path:
+    return get_pdf_annotation_dir(addon_dir, profile, card_id) / ('source-backup.pdf' if source else 'managed-backup.pdf')
+
+
 def get_epub_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "epubs"
 

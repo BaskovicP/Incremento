@@ -118,6 +118,25 @@ test('blank highlight notes do not create hover targets', () => {
   assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 0);
 });
 
+test('native underline and text comments keep their PDF appearance and offer editable notes', () => {
+  for (const kind of ['Underline', 'Text', 'FreeText', 'Square']) {
+    const edits = [];
+    const nodes = render([{ id: kind, color: 'yellow', note: 'Imported note', pdf_annotation: { kind },
+      rects: [{ x: 10, y: 20, w: 100, h: 20 }] }], { editHighlightNote: id => edits.push(id) });
+    assert.equal(nodes.find(node => node.props?.style?.zIndex === 1).props.style.background, 'transparent');
+    nodes.find(node => node.props?.className === 'incremento-pdf-note-action').props.onClick();
+    assert.deepEqual(edits, [kind]);
+  }
+});
+
+test('native highlight colors and opacity are preserved and painted only once', () => {
+  const highlight = { id: 'native', color: 'yellow', pdf_annotation: { kind: 'Highlight', color: [0.2, 0.8, 0.4], opacity: 0.6 },
+    rects: [{ x: 10, y: 20, w: 100, h: 20 }] };
+  const paint = overrides => render([highlight], overrides).find(node => node.props?.style?.zIndex === 1).props.style.background;
+  assert.equal(paint(), 'rgba(51,204,102,0.6)');
+  assert.equal(paint({ nativeHighlightsVisible: true }), 'transparent');
+});
+
 test('annotation note icons are transparent until hover or keyboard focus and still edit the chosen note', () => {
   for (const note of ['', 'Saved annotation note']) {
     const edits = [];

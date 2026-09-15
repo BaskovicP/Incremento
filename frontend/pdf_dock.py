@@ -138,6 +138,12 @@ try:
 except ImportError:
     from pdf_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
 try:
+    from .pdf_annotation_sync import PdfAnnotationSyncQueue, sync_error_text
+    from ..backend.pdf_annotations import pdf_annotation_sync_state
+except ImportError:
+    from pdf_annotation_sync import PdfAnnotationSyncQueue, sync_error_text
+    from pdf_annotations import pdf_annotation_sync_state
+try:
     from ..backend.reader_bookmarks import (
         add_reader_bookmark,
         delete_reader_bookmark,
@@ -222,6 +228,85 @@ _PDF_ADD_PROMPT_SUPPRESSION_SECONDS = 5.0
 _PDF_REF_EXCERPT_MAX_CHARS = 320
 _MAX_PDF_BRIDGE_MESSAGE_CHARS = 12_000_000
 _MAX_PDF_SNAPSHOT_BYTES = 8 * 1024 * 1024
+_pdf_annotation_generation = 0
+_annotation_queue = PdfAnnotationSyncQueue(lambda work, done: mw.taskman.run_in_background(work, done))
+
+
+def reset_for_profile_switch() -> None:
+    """Retire file workers and reader callbacks before profile storage changes."""
+    global _pdf_dock
+    _annotation_queue.reset()
+    _hide_pdf_dock_for_inactive_context()
+    if _pdf_dock is not None:
+        try:
+            dialog = getattr(_pdf_dock, '_annotation_dialog', None)
+            if dialog:
+                dialog.reject()
+        except RuntimeError:
+            pass
+
+
+def _pdf_annotation_context_matches(profile, card_id, filename, dock, generation):
+    return (_active_profile() == profile and current_pdf_card_id() == card_id
+            and _current_pdf_filename == filename and _pdf_dock is dock
+            and _pdf_annotation_generation == generation)
+
+
+def _reload_current_pdf_annotations(result):
+    cid = current_pdf_card_id()
+    if cid is None:
+        return
+    profile = _active_profile()
+    show_pdf_in_dock(cid, _current_pdf_filename, get_page(_ADDON_DIR, profile, cid),
+                     get_zoom(_ADDON_DIR, profile, cid), preserve_history=True,
+                     search_query=_current_pdf_search_query, search_hits=list(_current_pdf_search_hits),
+                     active_search_hit_index=_current_pdf_search_hit_index,
+                     offer_due_review_prompt=False, _annotation_result=result)
+
+
+def _schedule_pdf_annotation_sync(*, source_path=None, callback=None, refresh=False):
+    cid = current_pdf_card_id()
+    dock = _pdf_dock
+    if cid is None or dock is None or not _current_pdf_filename:
+        return
+    profile, filename, generation = _active_profile(), _current_pdf_filename, _pdf_annotation_generation
+    def done(result, error):
+        if not _pdf_annotation_context_matches(profile, cid, filename, dock, generation):
+            return
+        if error:
+            tooltip(sync_error_text(error))
+        else:
+            try:
+                dock._view.page().runJavaScript('window.incrementoReceivePdfHighlights && '
+                    f'window.incrementoReceivePdfHighlights({json.dumps(_pdf_highlights_payload(cid))});')
+                if refresh or result.get('appearance_changed'):
+                    _reload_current_pdf_annotations(result)
+                if result.get('conflicts'):
+                    tooltip(t('reader_pdf_sync_conflicts'))
+            except RuntimeError:
+                return
+        if callback:
+            callback(result, error)
+    _annotation_queue.request(_ADDON_DIR, profile, cid, filename, source_path=source_path, callback=done,
+                              callback_key=callback or ('reader-refresh', generation))
+
+
+def _show_pdf_annotation_sync_dialog():
+    cid = current_pdf_card_id()
+    if cid is None or _pdf_dock is None:
+        return
+    try:
+        from .pdf_annotation_dialog import show_pdf_annotation_dialog
+    except ImportError:
+        from pdf_annotation_dialog import show_pdf_annotation_dialog
+    profile, filename = _active_profile(), _current_pdf_filename
+    dock, generation = _pdf_dock, _pdf_annotation_generation
+    state = pdf_annotation_sync_state(_ADDON_DIR, profile, cid) or {}
+    def request(source, done):
+        if _pdf_annotation_context_matches(profile, cid, filename, dock, generation):
+            _schedule_pdf_annotation_sync(source_path=source, callback=done, refresh=True)
+    show_pdf_annotation_dialog(_pdf_dock, _pdf_storage_path(filename), state.get('source_path', ''),
+                               request)
 
 
 def _path_is_within_root(root: str | Path | None, candidate: str | Path) -> bool:
@@ -276,6 +361,8 @@ def _clear_current_pdf_context() -> int | None:
     global _current_pdf_card_id, _current_pdf_filename
     global _current_pdf_search_query, _current_pdf_search_hits, _current_pdf_search_hit_index
     global _pdf_via_link, _pdf_preserve_history, _pdf_showing_missing_screen
+    global _pdf_annotation_generation
+    _pdf_annotation_generation += 1
     previous_card_id = current_pdf_card_id()
     _current_pdf_card_id = None
     _current_pdf_filename = None
@@ -1194,6 +1281,7 @@ _MSG_NAV = "incremento_pdf_nav:"
 _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
+_MSG_ANNOTATIONS = "incremento_pdf_annotations"
 _MSG_HL_DEL = "incremento_pdf_hl_del:"
 _MSG_MARK_READ = "incremento_pdf_mark_read:"
 _MSG_CMD1 = "incremento_pdf_cmd1:"
@@ -1432,6 +1520,8 @@ def _regenerate_pdf_cover() -> None:
 
 def _edit_pdf_highlight_note(hl_id: str) -> None:
     card_id = current_pdf_card_id()
+    profile = _active_profile()
+    generation = _pdf_annotation_generation
     if card_id is None:
         showInfo(t("reader_pdf_highlight_card_missing"))
         return
@@ -1454,10 +1544,12 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
     )
     if not dialog.exec():
         return
+    if _active_profile() != profile or current_pdf_card_id() != card_id or _pdf_annotation_generation != generation:
+        return
     try:
         updated = update_highlight_note(
             _ADDON_DIR,
-            _active_profile(),
+            profile,
             int(card_id),
             str(highlight.get("id") or ""),
             dialog.note_text(),
@@ -1479,6 +1571,7 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
     except Exception:
         pass
     tooltip(t("reader_pdf_highlight_note_saved"))
+    _schedule_pdf_annotation_sync()
 
 
 def _current_pdf_highlight_by_id(hl_id: str) -> dict | None:
@@ -2210,13 +2303,18 @@ def _handle_pdf_js_message(msg: str) -> None:
     elif msg.startswith(_MSG_HL_ADD):
         try:
             data = json.loads(msg[len(_MSG_HL_ADD) :])
+            if int(data['cardId']) != current_pdf_card_id():
+                return
             add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
+            _schedule_pdf_annotation_sync()
         except Exception as e:
             print(f"[Incremento] pdf_dock: highlight add failed: {e}")
     elif msg.startswith(_MSG_HL_DEL):
         try:
             data = json.loads(msg[len(_MSG_HL_DEL) :])
             card_id = int(data["cardId"])
+            if card_id != current_pdf_card_id():
+                return
             highlight_id = str(data["id"] or "")
             remove_highlight(_ADDON_DIR, _active_profile(), card_id, highlight_id)
             delete_pdf_card_source_for_highlight(
@@ -2225,8 +2323,11 @@ def _handle_pdf_js_message(msg: str) -> None:
                 card_id,
                 highlight_id,
             )
+            _schedule_pdf_annotation_sync()
         except Exception as e:
             print(f"[Incremento] pdf_dock: highlight delete failed: {e}")
+    elif msg == _MSG_ANNOTATIONS:
+        _show_pdf_annotation_sync_dialog()
     elif msg.startswith(_MSG_MARK_READ):
         payload_raw = msg[len(_MSG_MARK_READ) :]
         try:
@@ -3001,9 +3102,20 @@ def show_pdf_in_dock(
     preserve_history=False,
     offer_due_review_prompt=True,
     scroll_ratio_override: float | None = None,
+    _annotation_result: dict | None = None,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     global _pdf_showing_missing_screen
+    global _pdf_annotation_generation
+    if _annotation_result is None:
+        _pdf_annotation_generation += 1
+        if _pdf_dock is not None:
+            try:
+                dialog = getattr(_pdf_dock, '_annotation_dialog', None)
+                if dialog:
+                    dialog.reject()
+            except RuntimeError:
+                pass
     try:
         normalized_card_id = int(card_id)
     except Exception:
@@ -3047,6 +3159,34 @@ def show_pdf_in_dock(
             _build_pdf_dock()
 
     secured_pdf_path = _pdf_storage_path(resolved_filename)
+    if _annotation_result is None and normalized_card_id > 0 and os.path.exists(secured_pdf_path):
+        profile, generation, dock = _active_profile(), _pdf_annotation_generation, _pdf_dock
+        dock.show()
+        dock.raise_()
+        try:
+            dock._view.setEnabled(False)
+            dock.setWindowTitle(t('reader_pdf_sync_running'))
+        except AttributeError:
+            pass
+        def prepared(result, error):
+            if not _pdf_annotation_context_matches(profile, normalized_card_id, resolved_filename, dock, generation):
+                return
+            if error:
+                tooltip(sync_error_text(error))
+                result = {'reader_path': secured_pdf_path, 'native_highlights_visible': True}
+            show_pdf_in_dock(card_id, resolved_filename, page, zoom, via_link, read_page, search_query,
+                             jump_excerpt, jump_highlight_id, search_hits, active_search_hit_index,
+                             preserve_history, offer_due_review_prompt, scroll_ratio_override,
+                             _annotation_result=result)
+        _annotation_queue.request(_ADDON_DIR, profile, normalized_card_id, resolved_filename, callback=prepared)
+        return
+    if _annotation_result:
+        secured_pdf_path = _annotation_result['reader_path']
+    try:
+        _pdf_dock._view.setEnabled(True)
+        _pdf_dock.setWindowTitle(t('reader_pdf_viewer_title'))
+    except AttributeError:
+        pass
     try:
         secured_page = _pdf_dock._view.page()
         prepare_document_load = getattr(secured_page, "prepare_document_load", None)
@@ -3073,7 +3213,7 @@ def show_pdf_in_dock(
         tooltip(t("reader_pdf_file_missing_tooltip"))
         return
 
-    pdf_file_url = QUrl.fromLocalFile(secured_pdf_path).toString()
+    pdf_file_url = QUrl.fromLocalFile(secured_pdf_path).toString() + '?incremento=' + secrets.token_hex(8)
 
     resolved_read_page = int(read_page or 0)
     if normalized_card_id > 0 and resolved_read_page <= 0:
@@ -3113,6 +3253,7 @@ def show_pdf_in_dock(
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
+        f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
         f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)} }};"
         f"typeof incrementoPdfStart === 'function' && "
@@ -3124,11 +3265,17 @@ def show_pdf_in_dock(
     was_showing_missing_screen = _pdf_showing_missing_screen
     _pdf_showing_missing_screen = False
     if was_showing_missing_screen or current != _DOCK_HTML:
+        loading_dock = _pdf_dock
+        loading_view, loading_generation, loading_profile = loading_dock._view, _pdf_annotation_generation, _active_profile()
 
         def _on_first_load(ok):
-            _pdf_dock._view.loadFinished.disconnect(_on_first_load)
-            if ok:
-                _pdf_dock._view.page().runJavaScript(js)
+            try:
+                loading_view.loadFinished.disconnect(_on_first_load)
+            except RuntimeError:
+                return
+            if ok and _pdf_annotation_context_matches(loading_profile, normalized_card_id, resolved_filename,
+                                                     loading_dock, loading_generation):
+                loading_view.page().runJavaScript(js)
 
         _pdf_dock._view.loadFinished.connect(_on_first_load)
         _pdf_dock._view.load(QUrl(_DOCK_HTML))

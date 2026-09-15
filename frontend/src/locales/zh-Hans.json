@@ -150,5 +150,6 @@
   "reader_limit_reached_soft": "{prefix} 可使用临时豁免继续今日阅读。",
   "reader_moving_past_limit": "即将超过此 PDF 今日 {count} 页的上限。",
   "reader_read_past_limit": "标记已读可能超过此 PDF 今日 {count} 页的上限。",
-  "reader_override_notice": "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。"
+  "reader_override_notice": "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。",
+  "reader_pdf_sync_title": "PDF 批注同步…"
 }

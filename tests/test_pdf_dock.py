@@ -936,6 +936,38 @@ def test_pdf_storage_path_rejects_traversal(monkeypatch):
     assert pdf_dock._pdf_storage_path("../../../etc/passwd") == ""
 
 
+def test_annotation_sync_callback_cannot_update_a_different_card_or_profile(monkeypatch):
+    callbacks, scripts = [], []
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=scripts.append)))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'book.pdf')
+    profile = ['Profile A']
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: profile[0])
+    monkeypatch.setattr(pdf_dock, '_annotation_queue', types.SimpleNamespace(request=lambda *args, callback, **kw: callbacks.append(callback)))
+    monkeypatch.setattr(pdf_dock, '_pdf_highlights_payload', lambda card: [{'id': 'imported'}])
+    pdf_dock._schedule_pdf_annotation_sync()
+    profile[0] = 'Profile B'
+    callbacks.pop()(dict(reader_path='/tmp/reader.pdf'), None)
+    assert scripts == []
+    profile[0] = 'Profile A'
+    pdf_dock._schedule_pdf_annotation_sync()
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 77)
+    callbacks.pop()(dict(reader_path='/tmp/reader.pdf'), None)
+    assert scripts == []
+
+
+def test_highlight_bridge_saves_only_the_active_card_and_schedules_pdf_sync(monkeypatch):
+    saved, synced = [], []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, 'add_highlight', lambda *args: saved.append(args))
+    monkeypatch.setattr(pdf_dock, '_schedule_pdf_annotation_sync', lambda: synced.append(True))
+    for card in [77, 42]:
+        pdf_dock._handle_pdf_js_message(pdf_dock._MSG_HL_ADD + json.dumps({'cardId': card, 'highlight': {'id': 'h'}}))
+    assert len(saved) == 1 and saved[0][2] == 42
+    assert synced == [True]
+
+
 @pytest.mark.parametrize("reader_locale,custom_language", [
     ("zh-Hans", None),
     ("de", {"locale": "de", "messages": {"reader_previous_page": 'Vorherige Seite "<title>"'}}),
@@ -1037,6 +1069,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
         lambda filename: f"/tmp/{filename}" if filename == "new-file.pdf" else "",
     )
     monkeypatch.setattr(pdf_dock.os.path, "exists", lambda path: path == "/tmp/new-file.pdf")
+    sync_requests = []
+    def prepare_annotations(*args, callback, **kwargs):
+        sync_requests.append(args)
+        callback({'reader_path': '/tmp/new-file.pdf'}, None)
+    monkeypatch.setattr(pdf_dock, '_annotation_queue', types.SimpleNamespace(request=prepare_annotations))
 
     pdf_dock.show_pdf_in_dock(
         77,
@@ -1048,6 +1085,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     )
 
     assert pdf_dock._current_pdf_filename == "new-file.pdf"
+    assert len(sync_requests) == 1
     assert pdf_dock._pdf_showing_missing_screen is False
     assert events == []
     assert len(load_calls) == 1
@@ -1545,6 +1583,8 @@ def test_pdf_highlight_delete_prunes_exact_source(monkeypatch):
     deleted = []
     monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 55)
+    monkeypatch.setattr(pdf_dock, '_schedule_pdf_annotation_sync', lambda: None)
     monkeypatch.setattr(
         pdf_dock,
         "remove_highlight",

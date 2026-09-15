@@ -39,6 +39,15 @@ def test_reconciliation_deletes_only_stale_external_rows(tmp_path):
     ).fetchall() == [(1, 11)]
 
 
+def test_reconciliation_removes_only_sync_metadata_for_deleted_pdf_owners(tmp_path):
+    conn = db.get_connection(str(tmp_path), 'TestProfile')
+    conn.executemany('INSERT INTO pdf_annotation_sync(card_id, filename, document_id) VALUES (?, ?, ?)',
+                     [(1, 'one.pdf', 'one'), (2, 'two.pdf', 'two')])
+    conn.commit()
+    reconciliation.reconcile_profile_state(str(tmp_path), 'TestProfile', live_card_ids={1}, live_note_ids=set())
+    assert conn.execute('SELECT card_id FROM pdf_annotation_sync').fetchall() == [(1,)]
+
+
 def test_reconciliation_detaches_missing_knowledge_tree_parent(tmp_path):
     addon_dir = str(tmp_path)
     profile = "TestProfile"

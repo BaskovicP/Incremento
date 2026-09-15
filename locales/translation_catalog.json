@@ -14088,6 +14088,169 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_sync_cancelled",
+      "form": "",
+      "source": "PDF annotation sync was cancelled. Your Incremento annotations remain saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_complete",
+      "form": "",
+      "source": "PDF annotations are up to date.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_conflicts",
+      "form": "",
+      "source": "Concurrent edits were preserved. Comments on the same highlight were combined; different positions were kept as separate annotations.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_dependency",
+      "form": "",
+      "source": "PDF annotation sync needs PyMuPDF 1.26 or newer. Install or update it through Incremento → Utils → Check Dependencies… Your Incremento annotations remain saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_explanation",
+      "form": "",
+      "source": "Highlights and comments sync automatically when you open this PDF or edit an annotation. Link the original PDF once to share annotations with other readers. Save changes in the other reader, then reopen this PDF or use Sync now.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_file_changed",
+      "form": "",
+      "source": "The PDF changed during sync. Your newer edits remain saved; use Sync now to try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_files",
+      "form": "",
+      "source": "Incremento PDF: {managed}\nOriginal PDF: {original}",
+      "tokens": [
+        "{managed}",
+        "{original}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_limits",
+      "form": "",
+      "source": "This PDF exceeds the annotation sync size, page, annotation or time limit. Your Incremento annotations remain saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_link_original",
+      "form": "",
+      "source": "Link original PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_mismatch",
+      "form": "",
+      "source": "The PDF page content has changed or the selected original is a different document. Sync stopped without applying annotations to it.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_now",
+      "form": "",
+      "source": "Sync now",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_open",
+      "form": "",
+      "source": "Sync and open in another PDF reader",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_protected",
+      "form": "",
+      "source": "Signed, password-protected or annotation-restricted PDFs cannot be synced. Your Incremento annotations remain saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_ready",
+      "form": "",
+      "source": "Sync runs in the background. Before each changed PDF is replaced, its previous version is backed up in this profile.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_running",
+      "form": "",
+      "source": "Syncing PDF annotations…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_title",
+      "form": "",
+      "source": "PDF annotation sync…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_unlink",
+      "form": "",
+      "source": "Unlink original PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_unlinked",
+      "form": "",
+      "source": "Not linked",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_unsafe_path",
+      "form": "",
+      "source": "The PDF is missing or its location cannot be used safely. Link its current original file, or unlink the original to sync only the Incremento PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_write_failed",
+      "form": "",
+      "source": "PDF annotation sync failed. Check that the PDF is writable, then use Sync now. Your Incremento annotations remain saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_target_field_hidden",
       "form": "",
       "source": "The configured PDF highlight target field is not visible.",
@@ -31783,6 +31946,14 @@
       "key": "reader_pdf_page_number",
       "form": "",
       "source": "PDF page number",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_sync_title",
+      "form": "",
+      "source": "PDF annotation sync…",
       "tokens": [],
       "markup": []
     },

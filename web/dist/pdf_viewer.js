@@ -7133,6 +7133,8 @@
     const containerRef = reactExports.useRef(null);
     const textLayerRef = reactExports.useRef(null);
     const renderSequenceRef = reactExports.useRef(0);
+    const loadSequenceRef = reactExports.useRef(0);
+    const loadingTaskRef = reactExports.useRef(null);
     reactExports.useEffect(() => {
       pageRef.current = page;
     }, [page]);
@@ -7220,6 +7222,7 @@
       }
       doc.getPage(num).then((pg) => {
         var _a2;
+        if (renderSequence !== renderSequenceRef.current) return;
         const backId = activeCvsRef.current === "a" ? "b" : "a";
         const frontId = activeCvsRef.current;
         const backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
@@ -7241,6 +7244,7 @@
         backCvs.style.width = viewport.width + "px";
         backCvs.style.height = viewport.height + "px";
         pg.render({ canvasContext: backCvs.getContext("2d"), viewport, transform: [dpr, 0, 0, dpr, 0, 0] }).promise.then(() => {
+          if (renderSequence !== renderSequenceRef.current) return;
           backCvs.style.display = "block";
           if (frontCvs) frontCvs.style.display = "none";
           activeCvsRef.current = backId;
@@ -7251,33 +7255,55 @@
           renderTextLayer(pg, viewport);
           renderLinkAnnotations(pg, viewport, renderSequence, num);
         }).catch(() => {
+          if (renderSequence !== renderSequenceRef.current) return;
           setError("reader_render_error");
           busyRef.current = false;
         });
       }).catch(() => {
+        if (renderSequence !== renderSequenceRef.current) return;
         setError("reader_page_error");
         busyRef.current = false;
       });
     }, [renderLinkAnnotations, renderTextLayer]);
     const doStart = reactExports.useCallback(() => {
+      var _a, _b;
+      const sequence = ++loadSequenceRef.current;
+      ++renderSequenceRef.current;
+      busyRef.current = false;
+      pdfDocRef.current = null;
+      try {
+        (_b = (_a = loadingTaskRef.current) == null ? void 0 : _a.destroy()) == null ? void 0 : _b.catch(() => {
+        });
+      } catch (_) {
+      }
       const lib = window.pdfjsLib;
       lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
       window._pdfWorkerSrc = null;
       const pdfUrl = window._pdfFileUrl || "/" + encodeURIComponent(filenameRef.current);
       window._pdfFileUrl = null;
-      lib.getDocument({
+      const task = lib.getDocument({
         url: pdfUrl,
         // Imported PDFs are untrusted input. Incremento does not need the PDF.js
         // dynamic-code path, so keep it disabled even if a document requests it.
         isEvalSupported: false
-      }).promise.then((doc) => {
+      });
+      loadingTaskRef.current = task;
+      task.promise.then((doc) => {
+        var _a2;
+        if (sequence !== loadSequenceRef.current) {
+          (_a2 = doc.destroy()) == null ? void 0 : _a2.catch(() => {
+          });
+          return;
+        }
         pdfDocRef.current = doc;
         const total = doc.numPages;
         const startPage = Math.min(Math.max(pageRef.current, 1), total);
         setTotalPages(total);
         pageRef.current = startPage;
         renderPage(startPage);
-      }).catch(() => setError("reader_load_error"));
+      }).catch(() => {
+        if (sequence === loadSequenceRef.current) setError("reader_load_error");
+      });
     }, [renderPage]);
     const startViewer = reactExports.useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
       const normalizedCardId = Number(cardId);
@@ -7555,6 +7581,7 @@
   const reader_moving_past_limit$2 = "You are moving past today's {count}-page limit for this PDF.";
   const reader_read_past_limit$2 = "Read-through can go past today's {count}-page limit for this PDF.";
   const reader_override_notice$2 = "Daily reading limit override is active for this PDF until the next day reset.";
+  const reader_pdf_sync_title$2 = "PDF annotation sync…";
   const en = {
     reader_previous_page: reader_previous_page$2,
     reader_next_page: reader_next_page$2,
@@ -7709,7 +7736,8 @@
     reader_limit_reached_soft: reader_limit_reached_soft$2,
     reader_moving_past_limit: reader_moving_past_limit$2,
     reader_read_past_limit: reader_read_past_limit$2,
-    reader_override_notice: reader_override_notice$2
+    reader_override_notice: reader_override_notice$2,
+    reader_pdf_sync_title: reader_pdf_sync_title$2
   };
   const reader_previous_page$1 = "Prethodna stranica";
   const reader_next_page$1 = "Sljedeća stranica";
@@ -7867,6 +7895,7 @@
   const reader_moving_past_limit$1 = "Prelazite današnje ograničenje od {count} stranica za ovaj PDF.";
   const reader_read_past_limit$1 = "Označavanje pročitanoga može prijeći današnje ograničenje od {count} stranica za ovaj PDF.";
   const reader_override_notice$1 = "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja.";
+  const reader_pdf_sync_title$1 = "Sinkronizacija PDF bilješki…";
   const hr = {
     reader_previous_page: reader_previous_page$1,
     reader_next_page: reader_next_page$1,
@@ -8023,7 +8052,8 @@
     reader_limit_reached_soft: reader_limit_reached_soft$1,
     reader_moving_past_limit: reader_moving_past_limit$1,
     reader_read_past_limit: reader_read_past_limit$1,
-    reader_override_notice: reader_override_notice$1
+    reader_override_notice: reader_override_notice$1,
+    reader_pdf_sync_title: reader_pdf_sync_title$1
   };
   const reader_previous_page = "上一页";
   const reader_next_page = "下一页";
@@ -8177,6 +8207,7 @@
   const reader_moving_past_limit = "即将超过此 PDF 今日 {count} 页的上限。";
   const reader_read_past_limit = "标记已读可能超过此 PDF 今日 {count} 页的上限。";
   const reader_override_notice = "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。";
+  const reader_pdf_sync_title = "PDF 批注同步…";
   const zhHans = {
     reader_previous_page,
     reader_next_page,
@@ -8329,7 +8360,8 @@
     reader_limit_reached_soft,
     reader_moving_past_limit,
     reader_read_past_limit,
-    reader_override_notice
+    reader_override_notice,
+    reader_pdf_sync_title
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -8488,8 +8520,18 @@
   function isSnapshotHighlight(highlight) {
     return String((highlight == null ? void 0 : highlight.color) || "") === "snapshot";
   }
+  function highlightBackground(highlight, nativeHighlightsVisible) {
+    if (isSnapshotHighlight(highlight)) return "rgba(37,99,235,0.12)";
+    const native = highlight.pdf_annotation;
+    if (native && (native.kind !== "Highlight" || nativeHighlightsVisible)) return "transparent";
+    if (Array.isArray(native == null ? void 0 : native.color) && native.color.length === 3 && native.color.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) && Number.isFinite(native.opacity) && native.opacity >= 0 && native.opacity <= 1) {
+      return `rgba(${native.color.map((value) => Math.round(value * 255)).join(",")},${native.opacity})`;
+    }
+    return HL_COLORS$1[highlight.color] || HL_COLORS$1.yellow;
+  }
   function HighlightLayer({
     language = DEFAULT_LANGUAGE,
+    nativeHighlightsVisible = false,
     pageHighlights,
     renderInfo,
     deleteHighlight,
@@ -8570,7 +8612,7 @@
               top: r.y * renderInfo.scale,
               width: r.w * renderInfo.scale,
               height: r.h * renderInfo.scale,
-              background: HL_COLORS$1[h.color] || HL_COLORS$1.yellow,
+              background: highlightBackground(h, nativeHighlightsVisible),
               border: isSnapshotHighlight(h) ? "2px solid rgba(37,99,235,0.95)" : "none",
               boxSizing: "border-box",
               mixBlendMode: isSnapshotHighlight(h) ? "normal" : "multiply",
@@ -9173,6 +9215,7 @@
       setReadProgress: rawSetReadProgress
     } = usePdfRender();
     const [highlights, setHighlights] = reactExports.useState([]);
+    const [nativeHighlightsVisible, setNativeHighlightsVisible] = reactExports.useState(false);
     const [hlColor, setHlColor] = reactExports.useState("yellow");
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
     const scrollToTopOnPageChangeRef = reactExports.useRef(true);
@@ -9968,6 +10011,8 @@
         document.documentElement.lang = nextLanguage.locale;
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
+        setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
+        window._pdfNativeHighlightsVisible = null;
         window._incPdfHighlights = null;
         setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : window._incPdfBookmarks || []);
         window._incPdfBookmarks = null;
@@ -11146,6 +11191,17 @@
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
+                        onClick: () => {
+                          var _a;
+                          return (_a = window.pycmd) == null ? void 0 : _a.call(window, "incremento_pdf_annotations");
+                        },
+                        style: { fontSize: 12, padding: "1px 8px" },
+                        children: tr("reader_pdf_sync_title")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
                         onClick: () => moveHighlightCursor(-1),
                         disabled: sortedHighlights.length === 0,
                         style: { fontSize: 12, padding: "1px 8px" },
@@ -11551,6 +11607,7 @@
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   HighlightLayer,
                   {
+                    nativeHighlightsVisible,
                     language,
                     pageHighlights,
                     renderInfo,

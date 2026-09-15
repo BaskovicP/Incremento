@@ -62,6 +62,28 @@ Anki collection reads and mutations follow Anki's operation model:
 
 ## SQLite schema lifecycle
 
+PDF annotation interchange is owned by `backend/pdf_annotations.py`. Migration 9
+adds native annotation metadata to `pdf_highlights` and a per-card
+`pdf_annotation_sync` table containing stable per-page PDF names, the last merged
+annotation baseline, a page-content fingerprint, and an explicitly linked
+original path. Incremento's SQLite annotations and the managed/linked PDFs are
+reconciled in both directions. Neither store alone overrides concurrent edits.
+Original paths and comment baselines are private user metadata.
+
+Captured-profile workers stage and validate PDF files beside their destinations,
+check for intervening file changes, save the previous versions to profile-local
+backup slots, and atomically replace each PDF before committing the SQLite
+baseline. Stable PDF annotation names make retries after partial writes
+idempotent. SQLite edits made during file I/O are retained and trigger another
+pass. A private per-document catalog stamp identifies the last shared baseline;
+missing annotations in an older/unstamped snapshot are preserved rather than
+interpreted as deletions. No user comment text is stored in that stamp.
+The derived `pdf_annotations/<card_id>/reader.pdf` omits native highlights
+and Incremento snapshot frames so the interactive viewer paints them once; other
+annotation appearances stay native. These paths belong to `backend/paths.py` and
+are included with the profile tree in full backups. Unlinked original PDFs are
+never scanned or inferred. Protected or changed-content documents fail closed.
+
 `backend/db_schema.py` owns the migration ledger. `schema_migrations` and `PRAGMA user_version` advance in the same transaction as each schema change. Failed migrations roll back the schema, ledger row, and version together.
 
 `backend/db.py` currently contains the legacy baseline plus ordered post-ledger migrations. New schema changes must:

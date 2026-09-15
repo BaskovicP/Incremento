@@ -158,6 +158,7 @@ _CARD_TABLES = (
     ("pdf_due_review_prompts", "card_id"),
     ("pdf_daily_limit_usage", "card_id"),
     ("pdf_highlights", "card_id"),
+    ("pdf_annotation_sync", "card_id"),
     ("epub_progress", "card_id"),
     ("epub_daily_limits", "card_id"),
     ("epub_due_review_prompts", "card_id"),

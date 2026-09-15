@@ -3189,3 +3189,63 @@ msgstr "Page {page}. of {title}"
 #. Generated citation label; document titles remain unchanged.
 msgid "reader_pdf_copied_label"
 msgstr "{title} — page {page}"
+
+msgid "reader_pdf_sync_title"
+msgstr "PDF annotation sync…"
+
+msgid "reader_pdf_sync_explanation"
+msgstr "Highlights and comments sync automatically when you open this PDF or edit an annotation. Link the original PDF once to share annotations with other readers. Save changes in the other reader, then reopen this PDF or use Sync now."
+
+msgid "reader_pdf_sync_files"
+msgstr "Incremento PDF: {managed}\nOriginal PDF: {original}"
+
+msgid "reader_pdf_sync_unlinked"
+msgstr "Not linked"
+
+msgid "reader_pdf_sync_ready"
+msgstr "Sync runs in the background. Before each changed PDF is replaced, its previous version is backed up in this profile."
+
+msgid "reader_pdf_sync_now"
+msgstr "Sync now"
+
+msgid "reader_pdf_sync_link_original"
+msgstr "Link original PDF…"
+
+msgid "reader_pdf_sync_unlink"
+msgstr "Unlink original PDF"
+
+msgid "reader_pdf_sync_open"
+msgstr "Sync and open in another PDF reader"
+
+msgid "reader_pdf_sync_running"
+msgstr "Syncing PDF annotations…"
+
+msgid "reader_pdf_sync_complete"
+msgstr "PDF annotations are up to date."
+
+msgid "reader_pdf_sync_conflicts"
+msgstr "Concurrent edits were preserved. Comments on the same highlight were combined; different positions were kept as separate annotations."
+
+msgid "reader_pdf_sync_dependency"
+msgstr "PDF annotation sync needs PyMuPDF 1.26 or newer. Install or update it through Incremento → Utils → Check Dependencies… Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_mismatch"
+msgstr "The PDF page content has changed or the selected original is a different document. Sync stopped without applying annotations to it."
+
+msgid "reader_pdf_sync_protected"
+msgstr "Signed, password-protected or annotation-restricted PDFs cannot be synced. Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_file_changed"
+msgstr "The PDF changed during sync. Your newer edits remain saved; use Sync now to try again."
+
+msgid "reader_pdf_sync_cancelled"
+msgstr "PDF annotation sync was cancelled. Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_limits"
+msgstr "This PDF exceeds the annotation sync size, page, annotation or time limit. Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_unsafe_path"
+msgstr "The PDF is missing or its location cannot be used safely. Link its current original file, or unlink the original to sync only the Incremento PDF."
+
+msgid "reader_pdf_sync_write_failed"
+msgstr "PDF annotation sync failed. Check that the PDF is writable, then use Sync now. Your Incremento annotations remain saved."

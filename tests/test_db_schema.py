@@ -100,6 +100,27 @@ def test_invalid_migration_ledger_definitions_fail_closed(migrations):
         initialize_schema(conn, bootstrap=lambda _conn: None, migrations=migrations)
 
 
+def test_pdf_annotation_sync_migration_rolls_back_metadata_table_and_version(tmp_path):
+    import db
+
+    conn = sqlite3.connect(':memory:')
+    previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 8)
+    initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+    def fail(connection):
+        db._migration_9_pdf_annotation_sync(connection)
+        raise RuntimeError('annotation migration interruption')
+
+    with pytest.raises(RuntimeError, match='interruption'):
+        initialize_schema(conn, bootstrap=db._create_tables,
+                          migrations=previous + ((9, 'pdf_annotation_sync', fail),))
+
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == 8
+    assert 'pdf_annotation_sync' not in {r[0] for r in conn.execute('SELECT name FROM sqlite_master')}
+    assert 'annotation_json' not in {r[1] for r in conn.execute('PRAGMA table_info(pdf_highlights)')}
+    assert conn.execute('SELECT max(version) FROM schema_migrations').fetchone()[0] == 8
+    conn.close()
+
+
 def test_statistics_history_migration_rolls_back_all_new_tables_on_failure():
     import db
 
@@ -140,7 +161,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "

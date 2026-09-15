@@ -154,5 +154,6 @@
   "reader_limit_reached_soft": "{prefix} Koristite iznimku za nastavak čitanja danas.",
   "reader_moving_past_limit": "Prelazite današnje ograničenje od {count} stranica za ovaj PDF.",
   "reader_read_past_limit": "Označavanje pročitanoga može prijeći današnje ograničenje od {count} stranica za ovaj PDF.",
-  "reader_override_notice": "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja."
+  "reader_override_notice": "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja.",
+  "reader_pdf_sync_title": "Sinkronizacija PDF bilješki…"
 }

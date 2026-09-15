@@ -3155,3 +3155,63 @@ msgstr "{title}，第 {page} 页"
 #. Generated citation label; document titles remain unchanged.
 msgid "reader_pdf_copied_label"
 msgstr "{title} — 第 {page} 页"
+
+msgid "reader_pdf_sync_title"
+msgstr "PDF 批注同步…"
+
+msgid "reader_pdf_sync_explanation"
+msgstr "打开此 PDF 或编辑批注时，高亮和注释会自动同步。关联一次原始 PDF 即可与其他阅读器共享批注。在其他阅读器中保存修改后，请重新打开此 PDF 或点击“立即同步”。"
+
+msgid "reader_pdf_sync_files"
+msgstr "Incremento PDF：{managed}\n原始 PDF：{original}"
+
+msgid "reader_pdf_sync_unlinked"
+msgstr "未关联"
+
+msgid "reader_pdf_sync_ready"
+msgstr "同步在后台运行。替换已修改的 PDF 前，会将其上一版本备份到当前配置文件。"
+
+msgid "reader_pdf_sync_now"
+msgstr "立即同步"
+
+msgid "reader_pdf_sync_link_original"
+msgstr "关联原始 PDF…"
+
+msgid "reader_pdf_sync_unlink"
+msgstr "取消关联原始 PDF"
+
+msgid "reader_pdf_sync_open"
+msgstr "同步并在其他 PDF 阅读器中打开"
+
+msgid "reader_pdf_sync_running"
+msgstr "正在同步 PDF 批注…"
+
+msgid "reader_pdf_sync_complete"
+msgstr "PDF 批注已同步。"
+
+msgid "reader_pdf_sync_conflicts"
+msgstr "已保留同时发生的修改。同一高亮的注释已合并；位置不同的修改保留为独立批注。"
+
+msgid "reader_pdf_sync_dependency"
+msgstr "PDF 批注同步需要 PyMuPDF 1.26 或更高版本。请通过 Incremento → 工具 → 检查依赖项…安装或更新。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_mismatch"
+msgstr "PDF 页面内容已更改，或所选原始文件属于不同文档。同步已停止，未向其应用批注。"
+
+msgid "reader_pdf_sync_protected"
+msgstr "无法同步已签名、受密码保护或限制批注的 PDF。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_file_changed"
+msgstr "同步期间 PDF 发生了变化。较新的修改仍已保存；请点击“立即同步”重试。"
+
+msgid "reader_pdf_sync_cancelled"
+msgstr "PDF 批注同步已取消。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_limits"
+msgstr "此 PDF 超过批注同步的文件大小、页数、批注数量或时间限制。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_unsafe_path"
+msgstr "PDF 缺失或无法安全使用其位置。请关联当前原始文件，或取消关联以仅同步 Incremento PDF。"
+
+msgid "reader_pdf_sync_write_failed"
+msgstr "PDF 批注同步失败。请确认 PDF 可写，然后点击“立即同步”。Incremento 批注仍已保存。"

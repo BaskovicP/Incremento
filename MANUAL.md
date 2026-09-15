@@ -470,6 +470,33 @@ with a saved note shows one note popup beside the pointer.
 The note icon stays transparent until you hover over its annotation controls
 or focus it with the keyboard, keeping it out of screenshots when idle.
 
+With PyMuPDF 1.26 or newer installed, opening a PDF or editing its annotations
+syncs highlights and notes into the managed PDF as standard, editable PDF
+annotations. Existing PDF highlights, underlines, squiggles, strikeouts, sticky
+notes, free-text boxes, rectangles, and circles also appear in Incremento's
+Highlights panel. Their comments can be edited there. Other annotation types
+remain in the PDF with their native appearance.
+
+To share changes with a PDF outside Incremento, open **Highlights → PDF annotation
+sync… → Link original PDF…** and select the matching document once. Incremento
+then syncs both files on open and annotation edits. Use **Sync and open in another
+PDF reader** to open the linked original (or the managed PDF when unlinked).
+After editing in another reader, save there and reopen the Incremento PDF or
+choose **Sync now**. Files are not watched continuously. **Unlink original PDF**
+stops writing the external file.
+
+Concurrent comments on the same passage are combined; conflicting positions
+are retained as separate annotations. Incremento preserves newer annotations
+absent from an older PDF snapshot. Readers that
+remove Incremento's sync stamp cannot propagate deletions; remove those
+annotations in Incremento instead. Before replacing a changed PDF, Incremento
+keeps its previous version under `user_files/<Profile>/pdf_annotations/<card_id>/`
+as `managed-backup.pdf` or `source-backup.pdf`; each slot holds one previous
+version. `reader.pdf` is a derived display copy that avoids painting highlights
+twice. Original-file links and sync history are profile-specific. Signed,
+password-protected, annotation-restricted, oversized, or changed-content PDFs
+stop sync with an explanation; Incremento's saved annotations remain available.
+Legacy citation highlights without page rectangles stay in Incremento only.
 
 ### Cross-references
 
@@ -915,7 +942,7 @@ On first run, Incremento can show a dependency setup dialog.
 
 Optional tools:
 
-- **PyMuPDF `>=1.24,<2`** for stronger PDF rendering and text extraction
+- **PyMuPDF `>=1.26,<2`** for PDF rendering, text extraction, and annotation sync
 - **Tesseract OCR** for scanned/image-only PDFs
 - **yt-dlp** for optional local YouTube/Vimeo downloads; ffmpeg is optional for compression and required for local re-encoding
 

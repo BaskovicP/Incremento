@@ -25,8 +25,21 @@ function isSnapshotHighlight(highlight) {
   return String(highlight?.color || '') === 'snapshot';
 }
 
+function highlightBackground(highlight, nativeHighlightsVisible) {
+  if (isSnapshotHighlight(highlight)) return 'rgba(37,99,235,0.12)';
+  const native = highlight.pdf_annotation;
+  if (native && (native.kind !== 'Highlight' || nativeHighlightsVisible)) return 'transparent';
+  if (Array.isArray(native?.color) && native.color.length === 3
+      && native.color.every(value => Number.isFinite(value) && value >= 0 && value <= 1)
+      && Number.isFinite(native.opacity) && native.opacity >= 0 && native.opacity <= 1) {
+    return `rgba(${native.color.map(value => Math.round(value * 255)).join(',')},${native.opacity})`;
+  }
+  return HL_COLORS[highlight.color] || HL_COLORS.yellow;
+}
+
 export default function HighlightLayer({
   language = DEFAULT_LANGUAGE,
+  nativeHighlightsVisible = false,
   pageHighlights,
   renderInfo,
   deleteHighlight,
@@ -99,7 +112,7 @@ export default function HighlightLayer({
               top:           r.y * renderInfo.scale,
               width:         r.w * renderInfo.scale,
               height:        r.h * renderInfo.scale,
-              background:    HL_COLORS[h.color] || HL_COLORS.yellow,
+              background:    highlightBackground(h, nativeHighlightsVisible),
               border:        isSnapshotHighlight(h) ? '2px solid rgba(37,99,235,0.95)' : 'none',
               boxSizing:     'border-box',
               mixBlendMode:  isSnapshotHighlight(h) ? 'normal' : 'multiply',

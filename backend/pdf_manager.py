@@ -1477,6 +1477,12 @@ def replace_pdf_card_file(
             pass
         raise
     sync_pdf_card_file_references(addon_dir, profile_name, col, cid)
+    # An explicit replacement no longer refers to the linked original document.
+    # Leave saved highlights and backups intact; the next open starts a baseline
+    # for the newly selected managed PDF.
+    conn = get_connection(addon_dir, profile_name)
+    with conn:
+        conn.execute('DELETE FROM pdf_annotation_sync WHERE card_id=?', (cid,))
 
     try:
         replace_pdf_text_index(addon_dir, profile_name, cid, page_texts)

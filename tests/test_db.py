@@ -2040,7 +2040,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 8
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -2053,6 +2053,7 @@ class TestConnectionSwitching:
             (6, "statistics_history"),
             (7, "statistics_goals"),
             (8, "web_extract_anchors"),
+            (9, "pdf_annotation_sync"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):
@@ -2224,7 +2225,8 @@ class TestExportHelpers:
         import json
         conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute(
-            "INSERT INTO pdf_highlights VALUES ('h1', 5, 2, 'blue', 'some text', 'saved note', '[]')"
+            "INSERT INTO pdf_highlights (id, card_id, page, color, text, note, rects) "
+            "VALUES ('h1', 5, 2, 'blue', 'some text', 'saved note', '[]')"
         )
         conn.commit()
         result = json.loads(db.export_highlights_json(self.addon_dir, "TestProfile"))

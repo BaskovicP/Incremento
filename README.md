@@ -50,7 +50,7 @@ Common add-on paths:
 
 Core functionality works without extra system setup, but some PDF features improve when these are available:
 
-- `PyMuPDF >=1.24,<2`: PDF rendering and text extraction
+- `PyMuPDF >=1.26,<2`: PDF rendering, text extraction, and annotation sync
 - `Tesseract`: OCR for image-only PDFs
 - `yt-dlp`: optional local YouTube/Vimeo downloads
 

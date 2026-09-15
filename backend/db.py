@@ -586,6 +586,22 @@ def _migration_8_web_extract_anchors(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_9_pdf_annotation_sync(conn: sqlite3.Connection) -> None:
+    """Track PDF annotation identity and three-way interchange baselines."""
+    _begin_migration_script(conn, """
+        ALTER TABLE pdf_highlights ADD COLUMN annotation_json TEXT NOT NULL DEFAULT '{}'
+            CHECK (length(annotation_json) <= 262144);
+        CREATE TABLE pdf_annotation_sync (
+            card_id INTEGER PRIMARY KEY CHECK (card_id > 0),
+            filename TEXT NOT NULL,
+            document_id TEXT NOT NULL,
+            source_path TEXT NOT NULL DEFAULT '',
+            content_digest TEXT NOT NULL DEFAULT '',
+            baseline_json TEXT NOT NULL DEFAULT '{}' CHECK (length(baseline_json) <= 8388608)
+        );
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -594,6 +610,7 @@ _SCHEMA_MIGRATIONS = (
     (6, "statistics_history", _migration_6_statistics_history),
     (7, "statistics_goals", _migration_7_statistics_goals),
     (8, "web_extract_anchors", _migration_8_web_extract_anchors),
+    (9, "pdf_annotation_sync", _migration_9_pdf_annotation_sync),
 )
 
 

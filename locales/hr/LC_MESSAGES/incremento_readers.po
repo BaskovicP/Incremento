@@ -3223,3 +3223,63 @@ msgstr "Stranica {page}. iz {title}"
 #. Generated citation label; document titles remain unchanged.
 msgid "reader_pdf_copied_label"
 msgstr "{title} — stranica {page}"
+
+msgid "reader_pdf_sync_title"
+msgstr "Sinkronizacija PDF bilješki…"
+
+msgid "reader_pdf_sync_explanation"
+msgstr "Oznake i bilješke sinkroniziraju se pri otvaranju ovog PDF-a ili uređivanju bilješke. Jednom povežite izvorni PDF za dijeljenje bilješki s drugim čitačima. Spremite promjene u drugom čitaču pa ponovno otvorite ovaj PDF ili odaberite Sinkroniziraj sada."
+
+msgid "reader_pdf_sync_files"
+msgstr "Incremento PDF: {managed}\nIzvorni PDF: {original}"
+
+msgid "reader_pdf_sync_unlinked"
+msgstr "Nije povezan"
+
+msgid "reader_pdf_sync_ready"
+msgstr "Sinkronizacija se izvodi u pozadini. Prije zamjene izmijenjenog PDF-a prethodna verzija sigurnosno se kopira u ovaj profil."
+
+msgid "reader_pdf_sync_now"
+msgstr "Sinkroniziraj sada"
+
+msgid "reader_pdf_sync_link_original"
+msgstr "Poveži izvorni PDF…"
+
+msgid "reader_pdf_sync_unlink"
+msgstr "Odspoji izvorni PDF"
+
+msgid "reader_pdf_sync_open"
+msgstr "Sinkroniziraj i otvori u drugom PDF čitaču"
+
+msgid "reader_pdf_sync_running"
+msgstr "Sinkronizacija PDF bilješki…"
+
+msgid "reader_pdf_sync_complete"
+msgstr "PDF bilješke su ažurne."
+
+msgid "reader_pdf_sync_conflicts"
+msgstr "Istodobne promjene su sačuvane. Bilješke uz istu oznaku spojene su, a različiti položaji sačuvani kao zasebne bilješke."
+
+msgid "reader_pdf_sync_dependency"
+msgstr "Sinkronizacija PDF bilješki zahtijeva PyMuPDF 1.26 ili noviji. Instalirajte ili ažurirajte ga putem Incremento → Alati → Provjeri ovisnosti…. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_mismatch"
+msgstr "Sadržaj PDF stranica je promijenjen ili odabrani izvornik nije isti dokument. Sinkronizacija je zaustavljena bez primjene bilješki na njega."
+
+msgid "reader_pdf_sync_protected"
+msgstr "Potpisani PDF-ovi, PDF-ovi zaštićeni lozinkom ili s ograničenim bilješkama ne mogu se sinkronizirati. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_file_changed"
+msgstr "PDF se promijenio tijekom sinkronizacije. Novije promjene su spremljene; pokušajte ponovno putem Sinkroniziraj sada."
+
+msgid "reader_pdf_sync_cancelled"
+msgstr "Sinkronizacija PDF bilješki je otkazana. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_limits"
+msgstr "Ovaj PDF prelazi ograničenje veličine, broja stranica, bilješki ili trajanja sinkronizacije. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_unsafe_path"
+msgstr "PDF nedostaje ili se njegova lokacija ne može sigurno koristiti. Povežite trenutni izvornik ili odspojite izvornik za sinkronizaciju samo Incremento PDF-a."
+
+msgid "reader_pdf_sync_write_failed"
+msgstr "Sinkronizacija PDF bilješki nije uspjela. Provjerite može li se PDF zapisivati pa odaberite Sinkroniziraj sada. Vaše Incremento bilješke ostaju spremljene."

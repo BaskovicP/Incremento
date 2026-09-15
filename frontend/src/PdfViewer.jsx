@@ -476,6 +476,7 @@ export default function PdfViewer() {
 
   // ── Highlight state ────────────────────────────────────────────────────────
   const [highlights,    setHighlights]    = useState([]);
+  const [nativeHighlightsVisible, setNativeHighlightsVisible] = useState(false);
   const [hlColor,       setHlColor]       = useState('yellow');
   const [autoHighlight, setAutoHighlight] = useState(false);
   const scrollToTopOnPageChangeRef = useRef(true);
@@ -1407,6 +1408,8 @@ export default function PdfViewer() {
       document.documentElement.lang = nextLanguage.locale;
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
+      setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
+      window._pdfNativeHighlightsVisible = null;
       window._incPdfHighlights = null;
       setBookmarks(Array.isArray(startBookmarks) ? startBookmarks : (window._incPdfBookmarks || []));
       window._incPdfBookmarks = null;
@@ -2521,6 +2524,12 @@ export default function PdfViewer() {
             <strong style={{ fontSize: 13 }}>{tr('reader_pdf_highlights')}</strong>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button
+                onClick={() => window.pycmd?.('incremento_pdf_annotations')}
+                style={{ fontSize: 12, padding: '1px 8px' }}
+              >
+                {tr('reader_pdf_sync_title')}
+              </button>
+              <button
                 onClick={() => moveHighlightCursor(-1)}
                 disabled={sortedHighlights.length === 0}
                 style={{ fontSize: 12, padding: '1px 8px' }}
@@ -2905,6 +2914,7 @@ export default function PdfViewer() {
         </div>
 
         <HighlightLayer
+          nativeHighlightsVisible={nativeHighlightsVisible}
           language={language}
           pageHighlights={pageHighlights}
           renderInfo={renderInfo}

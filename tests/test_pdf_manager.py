@@ -1000,6 +1000,10 @@ class TestReplacePdfCardFile:
     def test_relinks_note_and_refreshes_text_index(self, tmp_path):
         replacement_pdf = tmp_path / "replacement.pdf"
         replacement_pdf.write_bytes(b"%PDF replacement")
+        conn = db.get_connection(str(tmp_path), 'TestProfile')
+        conn.execute("INSERT INTO pdf_annotation_sync(card_id, filename, document_id, source_path) "
+                     "VALUES (77, 'old-file.pdf', 'old-document', '/original.pdf')")
+        conn.commit()
         db.add_pdf_card_source(
             str(tmp_path),
             "TestProfile",
@@ -1062,6 +1066,8 @@ class TestReplacePdfCardFile:
         assert note[INCREMENTO_CONTENT_ID_FIELD] == "stable-pdf-content-id"
         assert db.get_pdf_card_source_filename(str(tmp_path), "TestProfile", 77, 3) == "new-file.pdf"
         col.update_note.assert_called_once_with(note)
+        assert conn.execute('SELECT card_id FROM pdf_annotation_sync WHERE card_id=77').fetchall() == [], \
+            'explicit replacement must detach the old original-file link and baseline'
 
 
 class TestRepairPdfCardFilename:

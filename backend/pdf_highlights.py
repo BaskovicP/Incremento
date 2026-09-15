@@ -8,7 +8,7 @@ except ImportError:
 
 def load_highlights(addon_dir: str, profile: str, card_id: int) -> list:
     rows = get_connection(addon_dir, profile).execute(
-        "SELECT id, page, color, text, note, rects FROM pdf_highlights WHERE card_id = ?",
+        "SELECT id, page, color, text, note, rects, annotation_json FROM pdf_highlights WHERE card_id = ?",
         (card_id,),
     ).fetchall()
     return [
@@ -19,6 +19,7 @@ def load_highlights(addon_dir: str, profile: str, card_id: int) -> list:
             "text": r[3],
             "note": r[4],
             "rects": json.loads(r[5]),
+            **({'pdf_annotation': json.loads(r[6])} if r[6] != '{}' else {}),
         }
         for r in rows
     ]
@@ -27,8 +28,8 @@ def load_highlights(addon_dir: str, profile: str, card_id: int) -> list:
 def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
     conn = get_connection(addon_dir, profile)
     conn.execute(
-        "INSERT OR REPLACE INTO pdf_highlights (id, card_id, page, color, text, note, rects) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO pdf_highlights (id, card_id, page, color, text, note, rects, annotation_json) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             hl["id"],
             card_id,
@@ -37,6 +38,7 @@ def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
             hl.get("text", ""),
             hl.get("note", ""),
             json.dumps(hl.get("rects", [])),
+            json.dumps(hl.get('pdf_annotation', {})),
         ),
     )
     conn.commit()

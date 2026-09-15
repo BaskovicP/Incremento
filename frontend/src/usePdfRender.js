@@ -55,6 +55,8 @@ export function usePdfRender() {
   const containerRef       = useRef(null);
   const textLayerRef       = useRef(null);
   const renderSequenceRef  = useRef(0);
+  const loadSequenceRef    = useRef(0);
+  const loadingTaskRef     = useRef(null);
 
   useEffect(() => { pageRef.current = page; }, [page]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
@@ -131,6 +133,7 @@ export function usePdfRender() {
     }
 
     doc.getPage(num).then(pg => {
+      if (renderSequence !== renderSequenceRef.current) return;
       const backId  = activeCvsRef.current === 'a' ? 'b' : 'a';
       const frontId = activeCvsRef.current;
       const backCvs  = backId  === 'a' ? canvasARef.current : canvasBRef.current;
@@ -155,6 +158,7 @@ export function usePdfRender() {
       pg.render({ canvasContext: backCvs.getContext('2d'), viewport, transform: [dpr, 0, 0, dpr, 0, 0] })
         .promise
         .then(() => {
+          if (renderSequence !== renderSequenceRef.current) return;
           backCvs.style.display  = 'block';
           if (frontCvs) frontCvs.style.display = 'none';
           activeCvsRef.current = backId;
@@ -165,24 +169,41 @@ export function usePdfRender() {
           renderTextLayer(pg, viewport);
           renderLinkAnnotations(pg, viewport, renderSequence, num);
         })
-        .catch(() => { setError('reader_render_error'); busyRef.current = false; });
-    }).catch(() => { setError('reader_page_error'); busyRef.current = false; });
+        .catch(() => {
+          if (renderSequence !== renderSequenceRef.current) return;
+          setError('reader_render_error'); busyRef.current = false;
+        });
+    }).catch(() => {
+      if (renderSequence !== renderSequenceRef.current) return;
+      setError('reader_page_error'); busyRef.current = false;
+    });
   }, [renderLinkAnnotations, renderTextLayer]);
 
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
+    const sequence = ++loadSequenceRef.current;
+    ++renderSequenceRef.current;
+    busyRef.current = false;
+    pdfDocRef.current = null;
+    try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
     const lib = window.pdfjsLib;
     lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
     window._pdfWorkerSrc = null;
     const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
     window._pdfFileUrl = null;
-    lib.getDocument({
+    const task = lib.getDocument({
       url: pdfUrl,
       // Imported PDFs are untrusted input. Incremento does not need the PDF.js
       // dynamic-code path, so keep it disabled even if a document requests it.
       isEvalSupported: false,
-    }).promise
+    });
+    loadingTaskRef.current = task;
+    task.promise
       .then(doc => {
+        if (sequence !== loadSequenceRef.current) {
+          doc.destroy()?.catch(() => {});
+          return;
+        }
         pdfDocRef.current = doc;
         const total     = doc.numPages;
         const startPage = Math.min(Math.max(pageRef.current, 1), total);
@@ -190,7 +211,9 @@ export function usePdfRender() {
         pageRef.current = startPage;
         renderPage(startPage);
       })
-      .catch(() => setError('reader_load_error'));
+      .catch(() => {
+        if (sequence === loadSequenceRef.current) setError('reader_load_error');
+      });
   }, [renderPage]);
 
   /**
