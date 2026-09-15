@@ -481,6 +481,9 @@ To share changes with a PDF outside Incremento, open **Highlights → PDF annota
 sync… → Link original PDF…** and select the matching document once. Incremento
 then syncs both files on open and annotation edits. Use **Sync and open in another
 PDF reader** to open the linked original (or the managed PDF when unlinked).
+**Show in Finder** on macOS or **Show in File Explorer** on Windows selects that
+file in its folder without syncing. On other systems, **Show containing folder**
+opens the folder.
 After editing in another reader, save there and reopen the Incremento PDF or
 choose **Sync now**. Files are not watched continuously. **Unlink original PDF**
 stops writing the external file.

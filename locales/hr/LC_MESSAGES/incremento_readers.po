@@ -3283,3 +3283,15 @@ msgstr "PDF nedostaje ili se njegova lokacija ne može sigurno koristiti. Povež
 
 msgid "reader_pdf_sync_write_failed"
 msgstr "Sinkronizacija PDF bilješki nije uspjela. Provjerite može li se PDF zapisivati pa odaberite Sinkroniziraj sada. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_reveal_finder"
+msgstr "Prikaži u Finderu"
+
+msgid "reader_pdf_sync_reveal_explorer"
+msgstr "Prikaži u Eksploreru za datoteke"
+
+msgid "reader_pdf_sync_reveal_folder"
+msgstr "Prikaži mapu datoteke"
+
+msgid "reader_pdf_sync_reveal_failed"
+msgstr "PDF nije moguće prikazati u njegovoj mapi. Provjerite postoji li datoteka i pokušajte ponovno."

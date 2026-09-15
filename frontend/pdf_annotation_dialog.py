@@ -1,16 +1,17 @@
 """Explicit original-file linking and annotation refresh in the PDF reader."""
 from pathlib import Path
+import sys
 
 from aqt.qt import QDialog, QDialogButtonBox, QFileDialog, QLabel, QPushButton, QVBoxLayout, Qt
 
 try:
     from ..backend.i18n import t
     from .pdf_annotation_sync import sync_error_text
-    from .file_shell import open_local_file
+    from .file_shell import open_local_file, reveal_local_file
 except ImportError:
     from i18n import t
     from pdf_annotation_sync import sync_error_text
-    from file_shell import open_local_file
+    from file_shell import open_local_file, reveal_local_file
 
 
 def show_pdf_annotation_dialog(parent, managed_path, source_path, request):
@@ -67,11 +68,19 @@ def show_pdf_annotation_dialog(parent, managed_path, source_path, request):
         path, _filter = QFileDialog.getOpenFileName(dialog, t('reader_pdf_sync_link_original'), '', t('reader_pdf_file_filter'))
         if path:
             sync(path)
+    def reveal():
+        target = Path(source[0] or managed_path)
+        if not target.is_file() or target.is_symlink() or not reveal_local_file(str(target)):
+            status.setText(t('reader_pdf_sync_reveal_failed'))
+    reveal_key = ('reader_pdf_sync_reveal_finder' if sys.platform == 'darwin' else
+                  'reader_pdf_sync_reveal_explorer' if sys.platform.startswith('win') else
+                  'reader_pdf_sync_reveal_folder')
     for key, action in [
         ('reader_pdf_sync_now', lambda: sync()),
         ('reader_pdf_sync_link_original', link),
         ('reader_pdf_sync_unlink', lambda: sync('')),
         ('reader_pdf_sync_open', lambda: sync(open_after=True)),
+        (reveal_key, reveal),
     ]:
         button = QPushButton(t(key))
         button.clicked.connect(lambda _checked=False, action=action: action())

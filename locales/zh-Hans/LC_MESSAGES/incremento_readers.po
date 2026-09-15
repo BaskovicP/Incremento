@@ -3215,3 +3215,15 @@ msgstr "PDF 缺失或无法安全使用其位置。请关联当前原始文件�
 
 msgid "reader_pdf_sync_write_failed"
 msgstr "PDF 批注同步失败。请确认 PDF 可写，然后点击“立即同步”。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_reveal_finder"
+msgstr "在 Finder 中显示"
+
+msgid "reader_pdf_sync_reveal_explorer"
+msgstr "在文件资源管理器中显示"
+
+msgid "reader_pdf_sync_reveal_folder"
+msgstr "显示所在文件夹"
+
+msgid "reader_pdf_sync_reveal_failed"
+msgstr "无法在所在文件夹中显示 PDF。请确认文件仍然存在，然后重试。"

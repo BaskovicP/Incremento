@@ -3249,3 +3249,15 @@ msgstr "The PDF is missing or its location cannot be used safely. Link its curre
 
 msgid "reader_pdf_sync_write_failed"
 msgstr "PDF annotation sync failed. Check that the PDF is writable, then use Sync now. Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_reveal_finder"
+msgstr "Show in Finder"
+
+msgid "reader_pdf_sync_reveal_explorer"
+msgstr "Show in File Explorer"
+
+msgid "reader_pdf_sync_reveal_folder"
+msgstr "Show containing folder"
+
+msgid "reader_pdf_sync_reveal_failed"
+msgstr "Could not show the PDF in its folder. Check that it still exists and try again."

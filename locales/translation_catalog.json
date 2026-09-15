@@ -14203,6 +14203,38 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_sync_reveal_explorer",
+      "form": "",
+      "source": "Show in File Explorer",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_reveal_failed",
+      "form": "",
+      "source": "Could not show the PDF in its folder. Check that it still exists and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_reveal_finder",
+      "form": "",
+      "source": "Show in Finder",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_reveal_folder",
+      "form": "",
+      "source": "Show containing folder",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_sync_running",
       "form": "",
       "source": "Syncing PDF annotations…",
