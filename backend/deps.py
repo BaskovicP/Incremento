@@ -2,8 +2,8 @@
 Dependency detection and guided installation for Incremento.
 
 Two kinds of dependency:
-  - Python packages (PyMuPDF / fitz): can be pip-installed automatically
-    inside Anki's own Python environment.
+  - Python packages (PyMuPDF / fitz): explicitly installed with a compatible
+    interpreter into Incremento's local dependency folder.
   - System binaries (Tesseract): must be installed by the user at the OS
     level; we provide platform-specific instructions.
 """
@@ -16,12 +16,153 @@ except ImportError:
 
 
 from collections.abc import Callable
+import importlib
+import json
 import os
+from pathlib import Path
 import platform
+import re
+import shlex
 import shutil
+import subprocess
 import sys
+import tempfile
+import threading
+import uuid
 
-PYMUPDF_REQUIREMENT = "PyMuPDF>=1.24,<2"
+PYMUPDF_REQUIREMENT = "PyMuPDF>=1.26,<2"
+_install_lock = threading.Lock()
+_PYTHON_NAME = re.compile(r'python(?:3(?:\.\d+)?)?(?:\.exe)?$', re.IGNORECASE)
+_PYTHON_PROBE = (
+    'import json,platform,sys,pip; print(json.dumps({"version": list(sys.version_info[:2]), '
+    '"machine": platform.machine(), "implementation": sys.implementation.name}))'
+)
+_PACKAGE_PROBE = (
+    'import json,sys; sys.path.insert(0,sys.argv[1]); import pymupdf; '
+    'doc=pymupdf.open(); doc.new_page(); doc.close(); '
+    'print(json.dumps({"version": pymupdf.VersionBind, "file": pymupdf.__file__}))'
+)
+
+
+def _pymupdf_target() -> Path:
+    tag = f'{sys.implementation.cache_tag}-{sys.platform}-{platform.machine().lower()}'
+    return Path(__file__).resolve().parent.parent / '.dependencies' / 'pymupdf' / tag
+
+
+def activate_pymupdf() -> None:
+    """Activate an already installed package before the readers use it."""
+    target = _pymupdf_target()
+    if (target / 'pymupdf' / '__init__.py').is_file() and not target.is_symlink():
+        path = str(target)
+        if path not in sys.path:
+            sys.path.insert(0, path)
+            importlib.invalidate_caches()
+
+
+def _python_candidates() -> list[str]:
+    version = f'{sys.version_info.major}.{sys.version_info.minor}'
+    names = [f'python{version}', 'python3', 'python']
+    candidates = [sys.executable, getattr(sys, '_base_executable', '')]
+    for prefix in {sys.prefix, sys.base_prefix}:
+        candidates.extend(str(Path(prefix) / 'bin' / name) for name in names)
+        candidates.append(str(Path(prefix) / 'Scripts' / 'python.exe'))
+    if _platform() == 'Darwin':
+        root = Path.home() / 'Library' / 'Application Support' / 'AnkiProgramFiles'
+    elif _platform() == 'Windows':
+        root = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'AnkiProgramFiles'
+        candidates.append(str(root.parent / 'Programs' / 'Python' /
+                              f'Python{sys.version_info.major}{sys.version_info.minor}' / 'python.exe'))
+    else:
+        root = Path.home() / '.local' / 'share' / 'AnkiProgramFiles'
+    candidates.extend(str(root / '.venv' / 'bin' / name) for name in names)
+    candidates.append(str(root / '.venv' / 'Scripts' / 'python.exe'))
+    candidates.extend(str(path) for path in sorted((root / 'python').glob(f'*/bin/python{version}')))
+    candidates.extend(str(path) for path in sorted((root / 'python').glob('*/python.exe')))
+    candidates.extend(found for name in names if (found := shutil.which(name)))
+    return list(dict.fromkeys(path for path in candidates if path))
+
+
+def _subprocess_env() -> dict[str, str]:
+    # Embedded Anki can set Python's home to its application bundle. A real
+    # interpreter must discover its own standard library and site packages.
+    env = os.environ.copy()
+    env.pop('PYTHONHOME', None)
+    env.pop('PYTHONPATH', None)
+    return env
+
+
+def _cpu(value: str) -> str:
+    return {'aarch64': 'arm64', 'amd64': 'x86_64'}.get(value.lower(), value.lower())
+
+
+def _installer_python() -> str | None:
+    for candidate in _python_candidates():
+        path = Path(candidate)
+        if not _PYTHON_NAME.fullmatch(path.name) or not path.is_file():
+            continue
+        # A zero exit from an application launcher is not proof of Python.
+        if not _PYTHON_NAME.fullmatch(path.resolve().name):
+            continue
+        try:
+            proc = subprocess.run([candidate, '-I', '-c', _PYTHON_PROBE],
+                                  capture_output=True, timeout=5, env=_subprocess_env())
+            data = json.loads(proc.stdout) if proc.returncode == 0 else {}
+            if (isinstance(data, dict) and isinstance(data.get('machine'), str)
+                    and data.get('version') == list(sys.version_info[:2])
+                    and data.get('implementation') == sys.implementation.name
+                    and _cpu(data.get('machine', '')) == _cpu(platform.machine())):
+                return candidate
+        except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+            continue
+    return None
+
+
+def _install_pymupdf_package() -> bool:
+    with _install_lock:
+        python = _installer_python()
+        if not python:
+            return False
+        target = _pymupdf_target()
+        if target.is_symlink() or any(parent.is_symlink() for parent in target.parents):
+            return False
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.pymupdf-', dir=target.parent) as directory:
+            stage = Path(directory)
+            proc = subprocess.run([
+                python, '-I', '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check',
+                '--no-input', '--only-binary=:all:', '--no-deps', '--target', str(stage),
+                PYMUPDF_REQUIREMENT,
+            ], capture_output=True, timeout=180, env=_subprocess_env())
+            if proc.returncode != 0:
+                return False
+            checked = subprocess.run([python, '-I', '-c', _PACKAGE_PROBE, str(stage)],
+                                     capture_output=True, timeout=30, env=_subprocess_env())
+            if checked.returncode != 0:
+                return False
+            try:
+                data = json.loads(checked.stdout)
+                if not isinstance(data, dict) or not isinstance(data.get('version'), str) or not isinstance(data.get('file'), str):
+                    return False
+                version = tuple(int(part) for part in data['version'].split('.')[:2])
+                imported = Path(data['file']).resolve()
+                if not (1, 26) <= version < (2, 0) or not imported.is_relative_to(stage.resolve()):
+                    return False
+            except (KeyError, TypeError, ValueError):
+                return False
+            backup = target.with_name('.pymupdf-old-' + uuid.uuid4().hex)
+            if target.exists():
+                target.rename(backup)
+            try:
+                os.replace(stage, target)
+            except OSError:
+                if backup.exists():
+                    backup.rename(target)
+                raise
+            finally:
+                # Windows can retain loaded native libraries until Anki exits.
+                if target.exists() and backup.exists():
+                    shutil.rmtree(backup, ignore_errors=True)
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -31,9 +172,9 @@ PYMUPDF_REQUIREMENT = "PyMuPDF>=1.24,<2"
 
 def has_pymupdf() -> bool:
     try:
-        import fitz  # noqa: F401
-        return True
-    except ImportError:
+        import fitz
+        return tuple(int(part) for part in fitz.VersionBind.split('.')[:2]) >= (1, 26)
+    except (ImportError, AttributeError, TypeError, ValueError):
         return False
 
 
@@ -88,8 +229,15 @@ def tesseract_instructions() -> str:
 
 
 def pymupdf_instructions() -> str:
+    executable = sys.executable if _PYTHON_NAME.fullmatch(Path(sys.executable).name) else f'python{sys.version_info.major}.{sys.version_info.minor}'
+    command = [executable, '-I', '-m', 'pip', 'install', '--only-binary=:all:', '--no-deps',
+               '--upgrade', '--target', str(_pymupdf_target()), PYMUPDF_REQUIREMENT]
+    if _platform() == 'Windows' and not _PYTHON_NAME.fullmatch(Path(sys.executable).name):
+        command[:1] = ['py', f'-{sys.version_info.major}.{sys.version_info.minor}']
+    formatted = subprocess.list2cmdline(command) if _platform() == 'Windows' else shlex.join(command)
     return (
-        t("backend_deps_pymupdf_instructions", executable=sys.executable, requirement=PYMUPDF_REQUIREMENT)
+        t('backend_deps_pymupdf_instructions', command=formatted,
+          version=f'{sys.version_info.major}.{sys.version_info.minor}')
     )
 
 
@@ -106,27 +254,11 @@ def ankiconnect_instructions() -> str:
 
 def install_pymupdf(mw, on_done: "Callable[[bool], None] | None" = None) -> None:
     """
-    Install PyMuPDF into Anki's Python environment in a background thread.
+    Install and verify PyMuPDF in Incremento's folder in a background thread.
     on_done(success) is called on the main thread when the install completes.
     """
-    import subprocess
-
     def _task() -> bool:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "--quiet",
-                "--disable-pip-version-check",
-                "--no-input",
-                PYMUPDF_REQUIREMENT,
-            ],
-            capture_output=True,
-            timeout=180,
-        )
-        return proc.returncode == 0
+        return _install_pymupdf_package()
 
     def _on_done(fut) -> None:
         try:
@@ -268,7 +400,7 @@ def show_setup_dialog(mw, force: bool = False) -> None:
                 )
                 from aqt.qt import QLabel as _QL
                 _fallback = _QL(
-                    t("backend_deps_manual_install", executable=sys.executable, requirement=PYMUPDF_REQUIREMENT)
+                    pymupdf_instructions()
                 )
                 _fallback.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
                 _fallback.setWordWrap(True)

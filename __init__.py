@@ -9,6 +9,7 @@ import zipfile
 from urllib.parse import unquote
 
 from aqt import mw, gui_hooks
+from .backend.deps import activate_pymupdf as _activate_pymupdf
 from .backend.i18n import initialize_language as _initialize_language, t as _t, tn as _tn
 from .backend import language_packs as _language_packs
 from .backend.config_service import load_addon_config as _load_initial_config
@@ -289,6 +290,8 @@ from .backend.reviewer_extract import (
     initial_extract_field_values as _initial_extract_field_values,
     knowledge_tree_link_state as _knowledge_tree_link_state,
 )
+
+_activate_pymupdf()
 
 # Resolve only at addon startup. Saving Settings deliberately keeps the running
 # reviewer/docks in their current language until the next Anki restart.

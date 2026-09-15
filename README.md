@@ -54,7 +54,7 @@ Core functionality works without extra system setup, but some PDF features impro
 - `Tesseract`: OCR for image-only PDFs
 - `yt-dlp`: optional local YouTube/Vimeo downloads
 
-Incremento can guide first-run setup from inside Anki. PyMuPDF installation is an explicit user action and yt-dlp is never silently installed into Anki's Python environment. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
+Incremento can guide first-run setup from inside Anki. PyMuPDF installation is an explicit user action. A compatible Python interpreter installs and verifies it in Incremento's local `.dependencies/` folder; restart Anki to activate it. yt-dlp is never silently installed into Anki's Python environment. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
 
 ## Quick Start
 

@@ -19,6 +19,7 @@ user_files/*
 __pycache__/
 *.py[cod]
 .venv/
+.dependencies/
 
 # ── Caches ──────────────────────────────────────────────────────────────────
 .mypy_cache/

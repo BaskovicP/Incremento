@@ -175,4 +175,11 @@ The release command is:
 
 It compiles Python, runs the full Python suite, rebuilds the PDF viewer and companion extension, runs extension tests, validates required archive entries, and rejects runtime data, path traversal, caches, and bytecode. CI repeats the Python suite on supported Python versions and verifies generated extension assets are committed.
 
-Runtime dependency installation is always explicit. PyMuPDF is bounded to `>=1.24,<2`; yt-dlp is never silently installed into Anki's Python environment.
+Runtime dependency installation is always explicit. PyMuPDF is bounded to
+`>=1.26,<2`. `backend/deps.py` selects a real interpreter matching Anki's Python
+version and CPU architecture, installs a wheel in a temporary folder, and checks
+its native import before replacing the current installation. Runtime packages
+live under `.dependencies/pymupdf/<runtime-tag>/`, outside profile data and release
+inputs. The composition root activates that folder before readers use it; it
+never launches the Anki executable as Python. yt-dlp is never silently installed
+into Anki's Python environment.

@@ -68,7 +68,7 @@ msgstr "Ručna instalacija:\n    {executable} -m pip install \"{requirement}\""
 
 #. Incremento UI: deps not installed
 msgid "backend_deps_not_installed"
-msgstr "<span style=\"color: gray; font-size: small;\">Nije instalirano. Kliknite gumb ispod za automatsku instalaciju u Ankijevo Python okruženje. Zatim ćete morati ponovno pokrenuti Anki.</span>"
+msgstr "<span style=\"color: gray; font-size: small;\">Nije instalirano. Kliknite gumb ispod za instalaciju u Incrementovu lokalnu mapu ovisnosti. Nakon toga ponovno pokrenite Anki.</span>"
 
 #. Incremento UI: deps pymupdf
 msgid "backend_deps_pymupdf"
@@ -76,7 +76,7 @@ msgstr "PyMuPDF  (prikaz PDF-a i izdvajanje teksta)"
 
 #. Incremento UI: deps pymupdf instructions
 msgid "backend_deps_pymupdf_instructions"
-msgstr "Incremento može automatski instalirati PyMuPDF.\n\nAko automatska instalacija ne uspije, pokrenite ovu naredbu u terminalu:\n\n    {executable} -m pip install \"{requirement}\"\n\nZatim ponovno pokrenite Anki."
+msgstr "Incremento može automatski instalirati PyMuPDF u svoju lokalnu mapu ovisnosti.\n\nAko kompatibilan Python nije pronađen, instalirajte Python {version} s alatom pip sa stranice https://www.python.org/downloads/, ponovno pokrenite Anki i pokušajte ponovno. Verzija Pythona i arhitektura procesora moraju odgovarati Ankiju.\n\nRučna instalacija:\n    {command}\n\nZatim ponovno pokrenite Anki."
 
 #. Incremento UI: deps restart notice
 msgid "backend_deps_restart_notice"

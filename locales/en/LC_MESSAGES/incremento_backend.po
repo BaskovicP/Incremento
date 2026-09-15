@@ -68,7 +68,7 @@ msgstr "Manual install:\n    {executable} -m pip install \"{requirement}\""
 
 #. Incremento UI: deps not installed
 msgid "backend_deps_not_installed"
-msgstr "<span style=\"color: gray; font-size: small;\">Not installed. Click the button below to install it automatically into Anki's Python environment. You will need to restart Anki afterwards.</span>"
+msgstr "<span style=\"color: gray; font-size: small;\">Not installed. Click the button below to install it into Incremento's local dependency folder. Restart Anki afterwards.</span>"
 
 #. Incremento UI: deps pymupdf
 msgid "backend_deps_pymupdf"
@@ -76,7 +76,7 @@ msgstr "PyMuPDF  (PDF rendering & text extraction)"
 
 #. Incremento UI: deps pymupdf instructions
 msgid "backend_deps_pymupdf_instructions"
-msgstr "PyMuPDF can be installed automatically by Incremento.\n\nIf automatic installation fails, run this command in a terminal:\n\n    {executable} -m pip install \"{requirement}\"\n\nThen restart Anki."
+msgstr "PyMuPDF can be installed automatically into Incremento's local dependency folder.\n\nIf no compatible Python is found, install Python {version} with pip from https://www.python.org/downloads/, restart Anki, and retry the install button. Python must match Anki's version and CPU architecture.\n\nManual installation:\n    {command}\n\nThen restart Anki."
 
 #. Incremento UI: deps restart notice
 msgid "backend_deps_restart_notice"

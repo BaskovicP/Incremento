@@ -946,6 +946,13 @@ Optional tools:
 - **Tesseract OCR** for scanned/image-only PDFs
 - **yt-dlp** for optional local YouTube/Vimeo downloads; ffmpeg is optional for compression and required for local re-encoding
 
+The PyMuPDF install button uses a real Python interpreter matching Anki's Python
+version and CPU architecture, verifies that the downloaded native package works,
+and installs it in Incremento's `.dependencies/` folder. Restart Anki to activate
+it. This folder is local to the installation and is excluded from add-on releases
+and profile backups. If no compatible interpreter with pip is available, the
+setup dialog provides the required Python version and a manual install command.
+
 The PyMuPDF button performs an explicit, version-bounded installation after you choose it. Incremento never silently installs yt-dlp into Anki's Python environment; install yt-dlp yourself when you want local video downloads. Tesseract and ffmpeg must be installed at the system level.
 
 ### Reindex PDF text

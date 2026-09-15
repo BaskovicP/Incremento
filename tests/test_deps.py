@@ -1,9 +1,26 @@
 """Tests for backend/deps.py"""
 import sys
 import os
+import json
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
+import pytest
 import deps
+
+
+def successful_package_install(command, **kwargs):
+    """Model only the external pip/native-import process boundary."""
+    if '-m' in command:
+        stage = Path(command[command.index('--target') + 1])
+        (stage / 'pymupdf').mkdir()
+        (stage / 'pymupdf' / '__init__.py').write_text('# synthetic wheel\n')
+        return SimpleNamespace(returncode=0, stdout=b'')
+    stage = Path(command[-1])
+    return SimpleNamespace(returncode=0, stdout=json.dumps({
+        'version': '1.28.2', 'file': str(stage / 'pymupdf' / '__init__.py'),
+    }).encode())
 
 
 # ---------------------------------------------------------------------------
@@ -12,8 +29,12 @@ import deps
 
 
 class TestHasPymupdf:
+    def test_old_version_is_unavailable_so_the_dependency_dialog_offers_an_update(self):
+        with patch.dict(sys.modules, {'fitz': SimpleNamespace(VersionBind='1.24.0')}):
+            assert deps.has_pymupdf() is False
+
     def test_returns_true_when_fitz_importable(self):
-        fake_fitz = MagicMock()
+        fake_fitz = SimpleNamespace(VersionBind='1.26.0')
         with patch.dict(sys.modules, {"fitz": fake_fitz}):
             assert deps.has_pymupdf() is True
 
@@ -29,7 +50,7 @@ class TestHasPymupdf:
         assert result is False
 
     def test_returns_true_with_mock_in_sys_modules(self):
-        with patch.dict(sys.modules, {"fitz": MagicMock()}):
+        with patch.dict(sys.modules, {"fitz": SimpleNamespace(VersionBind='1.28.2')}):
             assert deps.has_pymupdf() is True
 
     def test_returns_false_when_import_raises(self):
@@ -199,6 +220,27 @@ class TestAnkiconnectInstructions:
 
 
 class TestInstallPymupdf:
+    @pytest.fixture(autouse=True)
+    def isolated_dependency_target(self, tmp_path, monkeypatch):
+        self.target = tmp_path / 'dependencies' / 'pymupdf'
+        monkeypatch.setattr(deps, '_pymupdf_target', lambda: self.target)
+
+    def test_gui_executable_is_never_launched_as_pip_or_reported_as_success(self, monkeypatch):
+        monkeypatch.setattr(sys, 'executable', '/Applications/Anki.app/Contents/MacOS/Anki')
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        task, _ = mw.taskman.run_in_background.call_args[0]
+        with patch('subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=b'')) as run:
+            assert task() is False
+        assert all(call.args[0][0] != sys.executable for call in run.call_args_list)
+
+    def test_zero_exit_without_a_verified_package_is_not_success(self):
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        task, _ = mw.taskman.run_in_background.call_args[0]
+        with patch('subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=b'')):
+            assert task() is False
+
     def test_calls_taskman_run_in_background(self):
         mw = MagicMock()
         deps.install_pymupdf(mw)
@@ -244,17 +286,16 @@ class TestInstallPymupdf:
         future.result.return_value = True
         _on_done_fn(future)  # should not raise even with no callback
 
-    def test_task_returns_true_when_pip_succeeds(self):
-        """The background _task() function returns True when pip exits 0."""
+    def test_task_returns_true_when_pip_succeeds_and_native_package_is_verified(self):
         mw = MagicMock()
         deps.install_pymupdf(mw)
         call_args = mw.taskman.run_in_background.call_args[0]
         _task_fn, _ = call_args
-        proc = MagicMock()
-        proc.returncode = 0
-        with patch("subprocess.run", return_value=proc):
+        with patch('deps._installer_python', return_value=sys.executable), \
+             patch('subprocess.run', side_effect=successful_package_install):
             result = _task_fn()
         assert result is True
+        assert (self.target / 'pymupdf' / '__init__.py').is_file()
 
     def test_task_returns_false_when_pip_fails(self):
         """The background _task() function returns False when pip exits non-zero."""
@@ -264,20 +305,125 @@ class TestInstallPymupdf:
         _task_fn, _ = call_args
         proc = MagicMock()
         proc.returncode = 1
-        with patch("subprocess.run", return_value=proc):
+        with patch('deps._installer_python', return_value=sys.executable), \
+             patch("subprocess.run", return_value=proc):
             result = _task_fn()
         assert result is False
+        assert not self.target.exists()
 
     def test_installer_uses_bounded_noninteractive_requirement(self):
         mw = MagicMock()
         deps.install_pymupdf(mw)
         task, _ = mw.taskman.run_in_background.call_args[0]
-        proc = MagicMock(returncode=0)
-        with patch("subprocess.run", return_value=proc) as run:
+        with patch('deps._installer_python', return_value=sys.executable), \
+             patch('subprocess.run', side_effect=successful_package_install) as run:
             task()
-        command = run.call_args.args[0]
+        command = run.call_args_list[0].args[0]
         assert deps.PYMUPDF_REQUIREMENT in command
         assert "--no-input" in command
+        assert '--only-binary=:all:' in command
+        assert '-I' in command
+        assert '--target' in command
+
+    @pytest.mark.parametrize('verified_version', ['1.24.0', '2.0.0', None])
+    def test_unusable_download_preserves_previous_installation(self, verified_version):
+        self.target.mkdir(parents=True)
+        old = self.target / 'previous.txt'
+        old.write_text('keep the existing installation')
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        task, _ = mw.taskman.run_in_background.call_args[0]
+        def run(command, **kwargs):
+            proc = successful_package_install(command, **kwargs)
+            if '-m' not in command:
+                record = json.loads(proc.stdout)
+                record['version'] = verified_version
+                proc.stdout = json.dumps(record).encode()
+            return proc
+        with patch('deps._installer_python', return_value=sys.executable), \
+             patch('subprocess.run', side_effect=run):
+            assert task() is False
+        assert old.read_text() == 'keep the existing installation'
+        assert list(self.target.parent.iterdir()) == [self.target]
+
+    def test_package_from_other_python_environment_is_not_accepted(self):
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        task, _ = mw.taskman.run_in_background.call_args[0]
+        def run(command, **kwargs):
+            proc = successful_package_install(command, **kwargs)
+            if '-m' not in command:
+                proc.stdout = json.dumps({'version': '1.28.2', 'file': '/elsewhere/pymupdf/__init__.py'}).encode()
+            return proc
+        with patch('deps._installer_python', return_value=sys.executable), \
+             patch('subprocess.run', side_effect=run):
+            assert task() is False
+        assert not self.target.exists()
+
+    def test_failed_directory_replacement_restores_previous_installation(self):
+        self.target.mkdir(parents=True)
+        (self.target / 'previous.txt').write_text('original')
+        mw = MagicMock()
+        deps.install_pymupdf(mw)
+        task, done = mw.taskman.run_in_background.call_args[0]
+        from concurrent.futures import Future
+        future = Future()
+        with patch('deps._installer_python', return_value=sys.executable), \
+             patch('subprocess.run', side_effect=successful_package_install), \
+             patch('deps.os.replace', side_effect=OSError('cannot activate download')):
+            with pytest.raises(OSError) as caught:
+                task()
+        future.set_exception(caught.value)
+        done(future)
+        assert (self.target / 'previous.txt').read_text() == 'original'
+        assert list(self.target.parent.iterdir()) == [self.target]
+
+
+def test_interpreter_selection_checks_version_and_cpu_and_avoids_gui(tmp_path, monkeypatch):
+    gui = tmp_path / 'Anki'
+    wrong_version = tmp_path / 'python3.11'
+    wrong_cpu = tmp_path / 'python3.12'
+    correct = tmp_path / 'python3'
+    for candidate in (gui, wrong_version, wrong_cpu, correct):
+        candidate.touch()
+    monkeypatch.setattr(deps, '_python_candidates', lambda: list(map(str, (gui, wrong_version, wrong_cpu, correct))))
+    monkeypatch.setattr(deps.platform, 'machine', lambda: 'arm64')
+    def run(command, **kwargs):
+        record = {'version': list(sys.version_info[:2]), 'machine': 'aarch64',
+                  'implementation': sys.implementation.name}
+        if command[0] == str(wrong_version):
+            record['version'] = [3, 9]
+        if command[0] == str(wrong_cpu):
+            record['machine'] = 'x86_64'
+        return SimpleNamespace(returncode=0, stdout=json.dumps(record).encode())
+    with patch('subprocess.run', side_effect=run) as called:
+        assert deps._installer_python() == str(correct)
+    assert len(called.call_args_list) == 3
+    assert all(call.args[0][0] != str(gui) for call in called.call_args_list)
+
+
+def test_startup_activates_only_the_current_runtime_dependency_folder(tmp_path, monkeypatch):
+    target = tmp_path / 'pymupdf'
+    monkeypatch.setattr(deps, '_pymupdf_target', lambda: target)
+    original_paths = list(sys.path)
+    try:
+        deps.activate_pymupdf()
+        assert sys.path == original_paths
+        (target / 'pymupdf').mkdir(parents=True)
+        (target / 'pymupdf' / '__init__.py').write_text('# synthetic wheel\n')
+        deps.activate_pymupdf()
+        deps.activate_pymupdf()
+        assert sys.path[0] == str(target)
+        assert sys.path.count(str(target)) == 1
+    finally:
+        sys.path[:] = original_paths
+
+
+def test_manual_instructions_never_suggest_running_the_anki_launcher(monkeypatch):
+    monkeypatch.setattr(sys, 'executable', '/Applications/Anki.app/Contents/MacOS/Anki')
+    text = deps.pymupdf_instructions()
+    assert sys.executable not in text
+    assert '--target' in text and 'python' in text and 'pip' in text
 
 
 def test_dependency_instructions_translate_prose_and_preserve_commands(monkeypatch):
