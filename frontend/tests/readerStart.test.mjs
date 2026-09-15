@@ -30,12 +30,12 @@ function registerBridge(pending = null) {
     'setActiveHighlightId', 'suppressScrollPersistence', 'setLimitStatus',
     'setLimitNotice', 'applyAutoHighlightSetting', 'applyScrollToTopOnPageChangeSetting',
     'limitAwareNav', 'adjustZoom', 'limitAwareMarkRead', 'openFind', 'setPageCards',
-    'updateHighlightNote', 'setSearchJumpNonce',
+    'updateHighlightNote', 'setSearchJumpNonce', 'finishHighlightColorPicker',
   ]) scope[name] = () => {};
   for (const name of [
     'pendingExcerptJumpRef', 'pendingHighlightScrollRef', 'pendingReadAnchorScrollRef',
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
-    'pageRef', 'suppressSearchSyncRef',
+    'pageRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
   ]) scope[name] = { current: null };
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };

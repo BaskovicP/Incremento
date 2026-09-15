@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { normalizeHighlightColor } from '../src/highlightColors.mjs';
 import vm from 'node:vm';
 import { transformWithEsbuild } from 'vite';
 import { normalizePdfHighlightRects } from '../src/pdfHighlightRects.mjs';
@@ -137,6 +138,13 @@ test('native highlight colors and opacity are preserved and painted only once', 
   assert.equal(paint({ nativeHighlightsVisible: true }), 'transparent');
 });
 
+test('custom hex highlights paint their own color before PDF sync', () => {
+  for (const color of ['#123abc', '#123ABC']) {
+    const nodes = render([{ id: 'custom', color, rects: [{ x: 10, y: 20, w: 100, h: 20 }] }]);
+    assert.equal(nodes.find(node => node.props?.style?.zIndex === 1).props.style.background, 'rgba(18,58,188,0.42)');
+  }
+});
+
 test('annotation note icons are transparent until hover or keyboard focus and still edit the chosen note', () => {
   for (const note of ['', 'Saved annotation note']) {
     const edits = [];
@@ -227,3 +235,46 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
   assert.deepEqual(payload.highlight.rects, [{ x: 10, y: 20, w: 70, h: 20 }]);
   assert.deepEqual(JSON.parse(JSON.stringify(displayed)), [payload.highlight]);
 });
+
+for (const outcome of ['selected', 'cancelled', 'page-changed']) {
+  test(`custom PDF picker ${outcome} preserves selection and applies only to its page`, () => {
+    const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
+    const start = source.indexOf('  const makeHighlight = useCallback(');
+    const finish = source.indexOf('  const limitAwareNav', start);
+    const saved = [];
+    const node = {};
+    const range = {
+      collapsed: false, commonAncestorContainer: node,
+      toString: () => 'Selected passage',
+      getClientRects: () => [{ left: 10, top: 20, width: 100, height: 20 }],
+    };
+    let selection = { isCollapsed: false, rangeCount: 1,
+      getRangeAt: () => ({ ...range, cloneRange: () => range }) };
+    const scope = {
+      useCallback: callback => callback, normalizePdfHighlightRects, normalizeHighlightColor,
+      textLayerRef: { current: { contains: candidate => candidate === node,
+        getBoundingClientRect: () => ({ left: 0, top: 0 }) } },
+      lastScaleRef: { current: 1 }, pageRef: { current: 6 }, cardIdRef: { current: 42 },
+      hlColorRef: { current: 'yellow' }, pendingHighlightSelectionRef: { current: null },
+      setHlColor: () => {}, setHighlights: () => {},
+      window: { getSelection: () => selection, pycmd: command => saved.push(command) },
+    };
+    vm.runInNewContext(`${source.slice(start, finish)}\nglobalThis.open = openHighlightColorPicker; globalThis.finish = finishHighlightColorPicker;`, scope);
+    scope.open();
+    assert.deepEqual(JSON.parse(saved[0].slice('incremento_pdf_hl_color:'.length)),
+      { cardId: 42, currentColor: 'yellow' });
+    selection = null; // Opening the Qt panel may remove the browser's selection.
+    if (outcome === 'page-changed') scope.pageRef.current = 7;
+    scope.finish(outcome === 'cancelled' ? null : '#123ABC');
+    assert.equal(scope.pendingHighlightSelectionRef.current, null);
+    if (outcome === 'selected') {
+      const highlight = JSON.parse(saved[1].slice('incremento_pdf_hl_add:'.length)).highlight;
+      assert.equal(highlight.color, '#123abc');
+      assert.equal(highlight.text, 'Selected passage');
+      assert.equal(highlight.page, 6);
+    } else assert.equal(saved.length, 1, 'Cancel and page changes must not add annotations');
+    assert.equal(scope.hlColorRef.current, outcome === 'cancelled' ? 'yellow' : '#123abc');
+    scope.finish('#654321');
+    assert.equal(saved.length, outcome === 'selected' ? 2 : 1, 'A selection is consumed only once');
+  });
+}

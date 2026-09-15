@@ -1671,3 +1671,29 @@ def test_start_all_pdf_review_passes_reader_context_and_restores_reader(monkeypa
             },
         )
     ]
+
+
+@pytest.mark.parametrize('switch_context', [False, True], ids=['current-document', 'profile-switched'])
+def test_custom_color_result_is_delivered_only_to_its_current_pdf(monkeypatch, switch_context):
+    scripts, picks = [], []
+    page = types.SimpleNamespace(runJavaScript=scripts.append)
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: page))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'book.pdf')
+    monkeypatch.setattr(pdf_dock, '_pdf_annotation_generation', 10)
+    monkeypatch.setattr(pdf_dock, 'current_pdf_card_id', lambda: 42)
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'Profile A')
+    def choose(parent, current):
+        picks.append((parent, current))
+        if switch_context:
+            monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'Profile B')
+        return '#123abc'
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', types.SimpleNamespace(choose_highlight_color=choose))
+    pdf_dock._choose_pdf_highlight_color({'cardId': 999, 'currentColor': 'yellow'})
+    assert not picks and not scripts
+    pdf_dock._choose_pdf_highlight_color({'cardId': 42, 'currentColor': '#123ABC'})
+    assert picks == [(dock, '#123abc')]
+    if switch_context:
+        assert not scripts
+    else:
+        assert len(scripts) == 1 and 'incrementoPickPdfHighlightColor("#123abc")' in scripts[0]

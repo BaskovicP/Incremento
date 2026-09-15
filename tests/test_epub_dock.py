@@ -12,6 +12,13 @@ import aqt
 import epub_dock
 
 
+def test_epub_custom_hex_color_is_selected_without_falling_back_to_yellow(monkeypatch):
+    monkeypatch.setattr(epub_dock, '_epub_dock', None)
+    monkeypatch.setattr(epub_dock, '_current_epub_highlight_color', 'yellow')
+    epub_dock._select_epub_highlight_color('#123ABC')
+    assert epub_dock._current_epub_highlight_color == '#123abc'
+
+
 def test_epub_toolbar_is_refreshed_after_locale_initialization(monkeypatch):
     monkeypatch.setattr(epub_dock, "_EPUB_CONTROL_GROUPS", epub_dock._EPUB_CONTROL_GROUPS)
     monkeypatch.setattr(epub_dock, "_EPUB_TOOLBAR_TEXT", epub_dock._EPUB_TOOLBAR_TEXT)
@@ -1056,3 +1063,89 @@ def test_start_all_epub_review_passes_reader_context_and_restores_reader(monkeyp
         )
     ]
     assert read_markers == [("/tmp/addon", "TestProfile", 66, 3)]
+
+
+@pytest.mark.parametrize('switch_context', [False, True], ids=['current-section', 'section-changed'])
+def test_epub_picker_remembers_selection_and_drops_result_after_navigation(monkeypatch, switch_context):
+    scripts, callbacks, picks = [], [], []
+    page = types.SimpleNamespace(bridge_nonce=lambda: 'current-nonce')
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: page))
+    monkeypatch.setattr(epub_dock, '_epub_dock', dock)
+    monkeypatch.setattr(epub_dock, '_current_epub_card_id', 42)
+    monkeypatch.setattr(epub_dock, '_current_epub_filename', 'book.epub')
+    monkeypatch.setattr(epub_dock, '_current_epub_section_index', 0)
+    monkeypatch.setattr(epub_dock, '_current_epub_highlight_color', 'yellow')
+    monkeypatch.setattr(epub_dock, '_active_profile', lambda: 'Profile A')
+    def run(_page, script, callback=None):
+        scripts.append(script)
+        if callback:
+            callbacks.append(callback)
+    monkeypatch.setattr(epub_dock, '_run_epub_javascript', run)
+    def choose(parent, current):
+        picks.append((parent, current))
+        if switch_context:
+            monkeypatch.setattr(epub_dock, '_current_epub_section_index', 1)
+        return '#123abc'
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', types.SimpleNamespace(choose_highlight_color=choose))
+    epub_dock._choose_epub_highlight_color()
+    assert len(scripts) == 1 and 'incrementoRememberEpubHighlightSelection' in scripts[0]
+    assert not picks
+    callbacks.pop()(None)
+    assert picks == [(dock, 'yellow')]
+    if switch_context:
+        assert len(scripts) == 1
+        assert epub_dock._current_epub_highlight_color == 'yellow'
+    else:
+        assert epub_dock._current_epub_highlight_color == '#123abc'
+        assert 'incrementoPickEpubHighlightColor("#123abc")' in scripts[-1]
+
+
+@pytest.mark.parametrize('accepted', [True, False], ids=['hex-selected', 'cancelled'])
+def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch, accepted):
+    import json
+    import subprocess
+    monkeypatch.setattr(epub_dock, '_current_sections', lambda: [{'text': 'Selected passage'}])
+    monkeypatch.setattr(epub_dock, 'configured_highlight_when_extracting', lambda: False)
+    script = epub_dock._build_page_script(card_id=42, section_index=0, scroll_ratio=0,
+        text_scale=1, read_anchor=None, focus_offset=-1, search_query='', highlights=[],
+        bridge_nonce='test-nonce', highlight_color='yellow')
+    normalize = script[script.index('      const HIGHLIGHT_COLORS'):script.index('      function send')]
+    paint = script[script.index('      function applyHighlight'):script.index('      function selectionMeta')]
+    set_color = script[script.index('      window.incrementoSetEpubHighlightColor'):script.index('      window.incrementoSetEpubReadAnchor')]
+    picker = script[script.index('      let pendingHighlightSelection'):script.index('      window.incrementoSnapshotEpubSelection')]
+    program = '''
+        const fs = require('node:fs');
+        const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+        const STATE = { cardId: 42, sectionIndex: 0, highlightColor: 'yellow' };
+        const window = {}, rows = [], wrappers = [];
+        let selection = { text: 'Selected passage', startOffset: 2, endOffset: 18 };
+        const selectionMeta = () => selection;
+        const clearSelection = () => { selection = null; };
+        const pointFromOffset = offset => ({ node: {nodeValue: 'Selected passage longer'}, offset });
+        const updateHighlightNodeNote = () => {};
+        const send = command => rows.push(JSON.parse(command.slice('incremento_epub_hl_add:'.length)).highlight);
+        const document = {
+            createRange: () => ({setStart(){}, setEnd(){}, collapsed: false,
+                extractContents(){ return {}; }, insertNode(){} }),
+            createElement: () => { const node = {dataset: {}, style: {}, appendChild(){}}; wrappers.push(node); return node; },
+        };
+        eval(input.code);
+        window.incrementoRememberEpubHighlightSelection();
+        selection = null;
+        window.incrementoPickEpubHighlightColor(input.accepted ? '#123ABC' : null);
+        window.incrementoPickEpubHighlightColor('#654321');
+        process.stdout.write(JSON.stringify({rows, wrappers}));
+    '''
+    result = subprocess.run(['node', '-e', program], input=json.dumps({
+        'code': normalize + paint + set_color + picker, 'accepted': accepted}),
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    state = json.loads(result.stdout)
+    if not accepted:
+        assert state == {'rows': [], 'wrappers': []}
+    else:
+        assert len(state['rows']) == 1
+        assert state['rows'][0]['color'] == '#123abc'
+        assert state['rows'][0]['text'] == 'Selected passage'
+        assert state['rows'][0]['startOffset'] == 2 and state['rows'][0]['endOffset'] == 18
+        assert state['wrappers'][0]['style']['backgroundColor'] == 'rgba(18,58,188,0.42)'

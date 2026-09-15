@@ -3295,3 +3295,11 @@ msgstr "Prikaži mapu datoteke"
 
 msgid "reader_pdf_sync_reveal_failed"
 msgstr "PDF nije moguće prikazati u njegovoj mapi. Provjerite postoji li datoteka i pokušajte ponovno."
+
+#. Annotation palette and hex color picker.
+msgid "reader_more_colors"
+msgstr "Više boja…"
+
+#. Annotation palette and hex color picker.
+msgid "reader_choose_annotation_color"
+msgstr "Odaberite boju bilješke"

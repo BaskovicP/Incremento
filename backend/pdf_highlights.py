@@ -2,7 +2,9 @@ import json
 
 try:
     from .db import get_connection
+    from .highlight_colors import normalize_highlight_color
 except ImportError:
+    from highlight_colors import normalize_highlight_color
     from db import get_connection  # test environment (backend/ on sys.path)
 
 
@@ -26,6 +28,7 @@ def load_highlights(addon_dir: str, profile: str, card_id: int) -> list:
 
 
 def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
+    color = normalize_highlight_color(hl.get("color", "yellow"), allow_snapshot=True)
     conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT OR REPLACE INTO pdf_highlights (id, card_id, page, color, text, note, rects, annotation_json) "
@@ -34,7 +37,7 @@ def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
             hl["id"],
             card_id,
             hl.get("page", 1),
-            hl.get("color", "yellow"),
+            color,
             hl.get("text", ""),
             hl.get("note", ""),
             json.dumps(hl.get("rects", [])),

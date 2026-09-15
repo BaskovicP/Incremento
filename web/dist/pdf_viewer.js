@@ -7582,6 +7582,8 @@
   const reader_read_past_limit$2 = "Read-through can go past today's {count}-page limit for this PDF.";
   const reader_override_notice$2 = "Daily reading limit override is active for this PDF until the next day reset.";
   const reader_pdf_sync_title$2 = "PDF annotation sync…";
+  const reader_more_colors$2 = "More colors…";
+  const reader_choose_annotation_color$2 = "Choose annotation color";
   const en = {
     reader_previous_page: reader_previous_page$2,
     reader_next_page: reader_next_page$2,
@@ -7737,7 +7739,9 @@
     reader_moving_past_limit: reader_moving_past_limit$2,
     reader_read_past_limit: reader_read_past_limit$2,
     reader_override_notice: reader_override_notice$2,
-    reader_pdf_sync_title: reader_pdf_sync_title$2
+    reader_pdf_sync_title: reader_pdf_sync_title$2,
+    reader_more_colors: reader_more_colors$2,
+    reader_choose_annotation_color: reader_choose_annotation_color$2
   };
   const reader_previous_page$1 = "Prethodna stranica";
   const reader_next_page$1 = "Sljedeća stranica";
@@ -7896,6 +7900,8 @@
   const reader_read_past_limit$1 = "Označavanje pročitanoga može prijeći današnje ograničenje od {count} stranica za ovaj PDF.";
   const reader_override_notice$1 = "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja.";
   const reader_pdf_sync_title$1 = "Sinkronizacija PDF bilješki…";
+  const reader_more_colors$1 = "Više boja…";
+  const reader_choose_annotation_color$1 = "Odaberite boju bilješke";
   const hr = {
     reader_previous_page: reader_previous_page$1,
     reader_next_page: reader_next_page$1,
@@ -8053,7 +8059,9 @@
     reader_moving_past_limit: reader_moving_past_limit$1,
     reader_read_past_limit: reader_read_past_limit$1,
     reader_override_notice: reader_override_notice$1,
-    reader_pdf_sync_title: reader_pdf_sync_title$1
+    reader_pdf_sync_title: reader_pdf_sync_title$1,
+    reader_more_colors: reader_more_colors$1,
+    reader_choose_annotation_color: reader_choose_annotation_color$1
   };
   const reader_previous_page = "上一页";
   const reader_next_page = "下一页";
@@ -8208,6 +8216,8 @@
   const reader_read_past_limit = "标记已读可能超过此 PDF 今日 {count} 页的上限。";
   const reader_override_notice = "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。";
   const reader_pdf_sync_title = "PDF 批注同步…";
+  const reader_more_colors = "更多颜色…";
+  const reader_choose_annotation_color = "选择批注颜色";
   const zhHans = {
     reader_previous_page,
     reader_next_page,
@@ -8361,7 +8371,9 @@
     reader_moving_past_limit,
     reader_read_past_limit,
     reader_override_notice,
-    reader_pdf_sync_title
+    reader_pdf_sync_title,
+    reader_more_colors,
+    reader_choose_annotation_color
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -8505,8 +8517,7 @@
       return merged;
     });
   }
-  const DEFAULT_LANGUAGE = createReaderLanguage("en");
-  const HL_COLORS$1 = {
+  const HL_COLORS = {
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
     blue: "rgba(30,144,255,0.4)",
@@ -8514,9 +8525,36 @@
     aqua: "rgba(45,212,191,0.42)",
     orange: "rgba(251,146,60,0.42)",
     red: "rgba(248,113,113,0.42)",
-    purple: "rgba(168,85,247,0.4)",
-    snapshot: "rgba(37,99,235,0.12)"
+    purple: "rgba(168,85,247,0.4)"
   };
+  const HL_SOLID = {
+    yellow: "#FFE000",
+    green: "#00C850",
+    blue: "#1E90FF",
+    pink: "#FF508C",
+    aqua: "#2DD4BF",
+    orange: "#FB923C",
+    red: "#F87171",
+    purple: "#A855F7",
+    snapshot: "#2563EB"
+  };
+  function normalizeHighlightColor(value) {
+    const color = String(value || "").trim().toLowerCase();
+    if (Object.hasOwn(HL_COLORS, color)) return color;
+    if (/^#[0-9a-f]{3}$/.test(color)) return "#" + [...color.slice(1)].map((c) => c + c).join("");
+    return /^#[0-9a-f]{6}$/.test(color) ? color : null;
+  }
+  function highlightSolidColor(value) {
+    const color = value === "snapshot" ? value : normalizeHighlightColor(value);
+    return Object.hasOwn(HL_SOLID, color) ? HL_SOLID[color] : color || "#9CA3AF";
+  }
+  function highlightBackgroundColor(value) {
+    const color = normalizeHighlightColor(value);
+    if (!color) return HL_COLORS.yellow;
+    if (HL_COLORS[color]) return HL_COLORS[color];
+    return `rgba(${[1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)).join(",")},0.42)`;
+  }
+  const DEFAULT_LANGUAGE = createReaderLanguage("en");
   function isSnapshotHighlight(highlight) {
     return String((highlight == null ? void 0 : highlight.color) || "") === "snapshot";
   }
@@ -8527,7 +8565,7 @@
     if (Array.isArray(native == null ? void 0 : native.color) && native.color.length === 3 && native.color.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) && Number.isFinite(native.opacity) && native.opacity >= 0 && native.opacity <= 1) {
       return `rgba(${native.color.map((value) => Math.round(value * 255)).join(",")},${native.opacity})`;
     }
-    return HL_COLORS$1[highlight.color] || HL_COLORS$1.yellow;
+    return highlightBackgroundColor(highlight.color);
   }
   function HighlightLayer({
     language = DEFAULT_LANGUAGE,
@@ -8808,27 +8846,6 @@
   function truncatePdfText(value, length) {
     return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
   }
-  const HL_COLORS = {
-    yellow: "rgba(255,220,0,0.45)",
-    green: "rgba(0,200,80,0.4)",
-    blue: "rgba(30,144,255,0.4)",
-    pink: "rgba(255,80,140,0.4)",
-    aqua: "rgba(45,212,191,0.42)",
-    orange: "rgba(251,146,60,0.42)",
-    red: "rgba(248,113,113,0.42)",
-    purple: "rgba(168,85,247,0.4)"
-  };
-  const HL_SOLID = {
-    yellow: "#FFE000",
-    green: "#00C850",
-    blue: "#1E90FF",
-    pink: "#FF508C",
-    aqua: "#2DD4BF",
-    orange: "#FB923C",
-    red: "#F87171",
-    purple: "#A855F7",
-    snapshot: "#2563EB"
-  };
   const CONTROLS_HEIGHT = 250;
   const COLLAPSED_CONTROLS_HEIGHT = 58;
   const DEFAULT_LIMIT_STATUS = {
@@ -9220,6 +9237,7 @@
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
     const scrollToTopOnPageChangeRef = reactExports.useRef(true);
     const hlColorRef = reactExports.useRef("yellow");
+    const pendingHighlightSelectionRef = reactExports.useRef(null);
     const autoHighlightRef = reactExports.useRef(false);
     const applyAutoHighlightSetting = reactExports.useCallback((value) => {
       const enabled = !!value;
@@ -9818,6 +9836,8 @@
       return true;
     }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
     const pickHighlightColor = reactExports.useCallback((color, applyNow = false) => {
+      color = normalizeHighlightColor(color);
+      if (!color) return;
       hlColorRef.current = color;
       setHlColor(color);
       if (!applyNow) return;
@@ -9826,6 +9846,32 @@
         sel.removeAllRanges();
       }
     }, [makeHighlight]);
+    const openHighlightColorPicker = reactExports.useCallback(() => {
+      var _a;
+      const sel = window.getSelection();
+      const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
+      pendingHighlightSelectionRef.current = range && ((_a = textLayerRef.current) == null ? void 0 : _a.contains(range.commonAncestorContainer)) ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
+      window.pycmd("incremento_pdf_hl_color:" + JSON.stringify({
+        cardId: cardIdRef.current,
+        currentColor: hlColorRef.current
+      }));
+    }, [cardIdRef, textLayerRef, pageRef]);
+    const finishHighlightColorPicker = reactExports.useCallback((value) => {
+      var _a;
+      const pending = pendingHighlightSelectionRef.current;
+      pendingHighlightSelectionRef.current = null;
+      const color = normalizeHighlightColor(value);
+      if (!color) return;
+      pickHighlightColor(color);
+      if (!pending || pending.page !== pageRef.current || pending.cardId !== cardIdRef.current) return;
+      const range = pending.range;
+      if (range && makeHighlight({
+        rangeCount: 1,
+        isCollapsed: range.collapsed,
+        getRangeAt: () => range,
+        toString: () => range.toString()
+      }, color)) (_a = window.getSelection()) == null ? void 0 : _a.removeAllRanges();
+    }, [pickHighlightColor, makeHighlight, pageRef, cardIdRef]);
     const limitAwareNav = reactExports.useCallback((delta, options = {}) => {
       const scrollToTop = options.scrollToTop !== void 0 ? !!options.scrollToTop : delta > 0;
       if (delta > 0) {
@@ -10030,6 +10076,7 @@
         pendingResumePageRef.current = Math.max(1, parseInt(startPage, 10) || 1);
         suppressScrollPersistence(700);
         setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
+        pendingHighlightSelectionRef.current = null;
         setLimitNotice(null);
         if (typeof startAutoHighlightOnExtract === "boolean") {
           applyAutoHighlightSetting(startAutoHighlightOnExtract);
@@ -10037,6 +10084,7 @@
         applyScrollToTopOnPageChangeSetting(startScrollToTopOnPageChange);
         startViewer(cardId, filename, startPage, startZoom, startReadPage);
       };
+      window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
       window.incrementoPdfStart = startWithHighlights;
       window.incrementoPdfNav = limitAwareNav;
       window.incrementoPdfZoom = adjustZoom;
@@ -10104,6 +10152,7 @@
         );
       }
       return () => {
+        delete window.incrementoPickPdfHighlightColor;
         delete window.incrementoPdfStart;
         delete window.incrementoPdfNav;
         delete window.incrementoPdfZoom;
@@ -10120,6 +10169,7 @@
       };
     }, [
       startViewer,
+      finishHighlightColorPicker,
       limitAwareNav,
       adjustZoom,
       limitAwareMarkRead,
@@ -10785,6 +10835,33 @@
                           },
                           c
                         )) }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            title: `${tr("reader_choose_annotation_color")} (${highlightSolidColor(hlColor)})`,
+                            onMouseDown: (e) => e.preventDefault(),
+                            onClick: openHighlightColorPicker,
+                            style: {
+                              background: "transparent",
+                              border: "1px solid rgba(138,138,138,0.4)",
+                              color: "#ddd",
+                              borderRadius: 6,
+                              padding: "5px 8px",
+                              cursor: "pointer"
+                            },
+                            children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                                display: "inline-block",
+                                width: 12,
+                                height: 12,
+                                background: highlightSolidColor(hlColor),
+                                borderRadius: 3,
+                                marginRight: 6
+                              } }),
+                              tr("reader_more_colors")
+                            ]
+                          }
+                        ),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { style: {
                           fontSize: 12,
                           cursor: "pointer",
@@ -11331,7 +11408,7 @@
                                   width: 10,
                                   height: 10,
                                   borderRadius: 999,
-                                  background: HL_SOLID[hl.color] || "#9CA3AF",
+                                  background: highlightSolidColor(hl.color),
                                   border: "1px solid rgba(255,255,255,0.35)",
                                   display: "inline-block",
                                   flexShrink: 0

@@ -9493,6 +9493,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_choose_annotation_color",
+      "form": "",
+      "source": "Choose annotation color",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_choose_controls",
       "form": "",
       "source": "Choose which control groups are visible",
@@ -12516,6 +12524,14 @@
       "key": "reader_more",
       "form": "",
       "source": "More",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_more_colors",
+      "form": "",
+      "source": "More colors…",
       "tokens": [],
       "markup": []
     },
@@ -31145,6 +31161,14 @@
     },
     {
       "component": "reader",
+      "key": "reader_choose_annotation_color",
+      "form": "",
+      "source": "Choose annotation color",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_choose_controls",
       "form": "",
       "source": "Choose which control groups are visible",
@@ -31645,6 +31669,14 @@
       "key": "reader_minimize_controls_label",
       "form": "",
       "source": "Minimize controls",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_more_colors",
+      "form": "",
+      "source": "More colors…",
       "tokens": [],
       "markup": []
     },

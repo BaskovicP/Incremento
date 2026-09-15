@@ -3227,3 +3227,11 @@ msgstr "显示所在文件夹"
 
 msgid "reader_pdf_sync_reveal_failed"
 msgstr "无法在所在文件夹中显示 PDF。请确认文件仍然存在，然后重试。"
+
+#. Annotation palette and hex color picker.
+msgid "reader_more_colors"
+msgstr "更多颜色…"
+
+#. Annotation palette and hex color picker.
+msgid "reader_choose_annotation_color"
+msgstr "选择批注颜色"

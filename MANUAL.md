@@ -464,6 +464,11 @@ You can highlight text in the current color with:
 - `Alt+H` on Windows/Linux
 
 Highlights are saved per PDF and reappear whenever you reopen the card.
+Use the eight quick swatches or **More colors…** for a larger palette and a custom
+HTML color such as `#123ABC`. Click **OK** to select the color; selected text is
+highlighted immediately, or the color is used for your next highlight. Custom
+colors are saved in the database and preserved when synced to PDFs.
+
 Text highlights join small gaps between text fragments on the same line and
 render overlapping selection boxes once for even color. Hovering a highlight
 with a saved note shows one note popup beside the pointer.
@@ -516,7 +521,7 @@ If old cards are missing page-level search results, run **Incremento → Utils �
 
 ### EPUB cards and reader
 
-EPUB cards use a dedicated reader dock that clones the PDF reader toolbar. The same four customizable groups stay below the document: **Navigation** (Navigate + Zoom), **Reading** (read-to-here, exact marker, Links, Jump Back, range, and progress), **Annotation & capture** (the same eight highlight colors, extraction highlighting, Snapshot, Highlights, Bookmark, and Bookmarks), and **Review & cards** (Review Due, Review All, Reading Limit, Regenerate Cover, browser/card actions, and Finished Reading). EPUB maps PDF zoom to reflowable text scale and stable read progress to EPUB sections. The page-location button supports direct page jumps, current-section cards appear as **Page cards**, and an enabled daily reading limit appears in the toolbar. **Minimize controls** produces the same compact action order as PDF; use **Customize controls** to hide groups and **Show controls** to restore the full toolbar.
+EPUB cards use a dedicated reader dock that clones the PDF reader toolbar. The same four customizable groups stay below the document: **Navigation** (Navigate + Zoom), **Reading** (read-to-here, exact marker, Links, Jump Back, range, and progress), **Annotation & capture** (the same eight quick highlight colors and **More colors…** palette with hex entry, extraction highlighting, Snapshot, Highlights, Bookmark, and Bookmarks), and **Review & cards** (Review Due, Review All, Reading Limit, Regenerate Cover, browser/card actions, and Finished Reading). EPUB maps PDF zoom to reflowable text scale and stable read progress to EPUB sections. The page-location button supports direct page jumps, current-section cards appear as **Page cards**, and an enabled daily reading limit appears in the toolbar. **Minimize controls** produces the same compact action order as PDF; use **Customize controls** to hide groups and **Show controls** to restore the full toolbar.
 
 Current EPUB features include:
 

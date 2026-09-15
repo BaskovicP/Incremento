@@ -151,5 +151,7 @@
   "reader_moving_past_limit": "即将超过此 PDF 今日 {count} 页的上限。",
   "reader_read_past_limit": "标记已读可能超过此 PDF 今日 {count} 页的上限。",
   "reader_override_notice": "此 PDF 的每日阅读上限临时豁免已启用，直至下次每日重置。",
-  "reader_pdf_sync_title": "PDF 批注同步…"
+  "reader_pdf_sync_title": "PDF 批注同步…",
+  "reader_more_colors": "更多颜色…",
+  "reader_choose_annotation_color": "选择批注颜色"
 }

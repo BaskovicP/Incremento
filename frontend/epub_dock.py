@@ -10,6 +10,11 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from aqt import mw
+
+try:
+    from ..backend.highlight_colors import normalize_highlight_color
+except ImportError:
+    from highlight_colors import normalize_highlight_color
 from aqt.qt import (
     QApplication,
     QCheckBox,
@@ -1610,11 +1615,10 @@ def _build_page_script(
 ) -> str:
     sections = _current_sections()
     section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
-    resolved_highlight_color = (
-        str(highlight_color)
-        if str(highlight_color) in _EPUB_HIGHLIGHT_COLORS
-        else "yellow"
-    )
+    try:
+        resolved_highlight_color = normalize_highlight_color(highlight_color)
+    except ValueError:
+        resolved_highlight_color = "yellow"
     state = {
         "cardId": int(card_id),
         "sectionIndex": int(section_index),
@@ -1646,6 +1650,12 @@ def _build_page_script(
       document.documentElement.lang = STATE.locale;
       const BRIDGE = {json.dumps(_PYCMD_BRIDGE)} + {json.dumps(str(bridge_nonce))} + ':';
       const HIGHLIGHT_COLORS = {json.dumps(tuple(_EPUB_HIGHLIGHT_COLORS))};
+      function normalizeHighlightColor(value) {{
+        const color = String(value || '').trim().toLowerCase();
+        if (HIGHLIGHT_COLORS.indexOf(color) >= 0) return color;
+        if (/^#[0-9a-f]{{3}}$/.test(color)) return '#' + color.slice(1).split('').map(c => c + c).join('');
+        return /^#[0-9a-f]{{6}}$/.test(color) ? color : null;
+      }}
       function send(msg) {{
         console.log(BRIDGE + msg);
       }}
@@ -2008,7 +2018,12 @@ def _build_page_script(
         const wrapper = document.createElement('span');
         wrapper.className = 'incremento-epub-highlight';
         wrapper.dataset.id = String(hl.id || '');
-        wrapper.dataset.color = String(hl.color || 'yellow');
+        const color = normalizeHighlightColor(hl.color) || 'yellow';
+        wrapper.dataset.color = color;
+        if (color.charAt(0) === '#') {{
+          const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+          wrapper.style.backgroundColor = 'rgba(' + rgb.join(',') + ',0.42)';
+        }}
         updateHighlightNodeNote(wrapper, hl.note || '');
         const fragment = range.extractContents();
         wrapper.appendChild(fragment);
@@ -2263,8 +2278,7 @@ def _build_page_script(
         STATE.autoHighlightOnExtract = !!value;
       }};
       window.incrementoSetEpubHighlightColor = function(value) {{
-        const color = String(value || '').toLowerCase();
-        STATE.highlightColor = HIGHLIGHT_COLORS.indexOf(color) >= 0 ? color : 'yellow';
+        STATE.highlightColor = normalizeHighlightColor(value) || 'yellow';
         return STATE.highlightColor;
       }};
       window.incrementoSetEpubReadAnchor = function(anchor) {{
@@ -2283,15 +2297,25 @@ def _build_page_script(
         }}));
         return true;
       }};
-      window.incrementoAddEpubHighlight = function() {{
-        const meta = selectionMeta();
+      let pendingHighlightSelection = null;
+      window.incrementoRememberEpubHighlightSelection = function() {{
+        pendingHighlightSelection = selectionMeta();
+      }};
+      window.incrementoPickEpubHighlightColor = function(value) {{
+        const meta = pendingHighlightSelection;
+        pendingHighlightSelection = null;
+        const color = normalizeHighlightColor(value);
+        if (!color) return;
+        window.incrementoSetEpubHighlightColor(color);
+        if (meta) window.incrementoAddEpubHighlight(meta);
+      }};
+      window.incrementoAddEpubHighlight = function(savedSelection = null) {{
+        const meta = savedSelection || selectionMeta();
         if (!meta) return false;
         const hl = {{
           id: 'hl-' + Date.now().toString(16) + '-' + Math.random().toString(16).slice(2, 8),
           sectionIndex: STATE.sectionIndex,
-          color: HIGHLIGHT_COLORS.indexOf(STATE.highlightColor) >= 0
-            ? STATE.highlightColor
-            : 'yellow',
+          color: normalizeHighlightColor(STATE.highlightColor) || 'yellow',
           text: meta.text,
           startOffset: meta.startOffset,
           endOffset: meta.endOffset,
@@ -2963,6 +2987,9 @@ def _build_epub_dock() -> None:
         color_btn.setAccessibleName(t("reader_use_highlight_color", color=t(f"reader_color_{color_name}")))
         color_btn.setChecked(color_name == _current_epub_highlight_color)
         dock._highlight_color_buttons[color_name] = color_btn
+    dock._more_colors_btn = _make_epub_button(
+        dock, _EPUB_TOOLBAR_TEXT["more_colors"], t("reader_choose_annotation_color"),
+    )
     dock._snapshot_btn = _make_epub_button(
         dock,
         _EPUB_TOOLBAR_TEXT["snapshot"],
@@ -3153,6 +3180,7 @@ def _build_epub_dock() -> None:
         groups_host,
         t("reader_annotate"),
         *dock._highlight_color_buttons.values(),
+        dock._more_colors_btn,
         dock._highlight_extract_cb,
     )
     capture_stack = _make_epub_toolbar_stack(
@@ -3463,6 +3491,7 @@ def _build_epub_dock() -> None:
                 create_highlight=True,
             ),
         )
+    qconnect(dock._more_colors_btn.clicked, _choose_epub_highlight_color)
     qconnect(view.loadFinished, _on_load_finished)
     qconnect(view.urlChanged, _on_view_url_changed)
 
@@ -4957,9 +4986,10 @@ def _jump_section_boundary(delta: int) -> None:
 
 def _select_epub_highlight_color(color: str, *, create_highlight: bool = False) -> None:
     global _current_epub_highlight_color
-    resolved = str(color or "").strip().casefold()
-    if resolved not in _EPUB_HIGHLIGHT_COLORS:
-        resolved = "yellow"
+    try:
+        resolved = normalize_highlight_color(color)
+    except ValueError:
+        return
     _current_epub_highlight_color = resolved
     if _epub_dock is None:
         return
@@ -4974,6 +5004,35 @@ def _select_epub_highlight_color(color: str, *, create_highlight: bool = False) 
     if create_highlight:
         script += "window.incrementoAddEpubHighlight && window.incrementoAddEpubHighlight();"
     _run_epub_javascript(_epub_dock._view.page(), script)
+
+
+def _choose_epub_highlight_color() -> None:
+    try:
+        from .highlight_color_dialog import choose_highlight_color
+    except ImportError:
+        from highlight_color_dialog import choose_highlight_color
+    dock = _epub_dock
+    if dock is None or _current_epub_card_id is None:
+        return
+    page = dock._view.page()
+    context = (_active_profile(), _current_epub_card_id, _current_epub_filename,
+               _current_epub_section_index, page.bridge_nonce())
+    def matches():
+        return (_epub_dock is dock and context == (
+            _active_profile(), _current_epub_card_id, _current_epub_filename,
+            _current_epub_section_index, page.bridge_nonce()))
+    def remembered(_result):
+        if not matches():
+            return
+        color = choose_highlight_color(dock, _current_epub_highlight_color)
+        if not matches():
+            return
+        if color:
+            _select_epub_highlight_color(color)
+        _run_epub_javascript(page, 'window.incrementoPickEpubHighlightColor && '
+                             f'window.incrementoPickEpubHighlightColor({json.dumps(color)});')
+    _run_epub_javascript(page, 'window.incrementoRememberEpubHighlightSelection && '
+                         'window.incrementoRememberEpubHighlightSelection();', remembered)
 
 
 def _request_highlight() -> None:

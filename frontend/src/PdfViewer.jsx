@@ -2,32 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer  from './HighlightLayer.jsx';
 import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
+import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
 import { createReaderLanguage } from './i18n.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
 
-const HL_COLORS = {
-  yellow: 'rgba(255,220,0,0.45)',
-  green:  'rgba(0,200,80,0.4)',
-  blue:   'rgba(30,144,255,0.4)',
-  pink:   'rgba(255,80,140,0.4)',
-  aqua:   'rgba(45,212,191,0.42)',
-  orange: 'rgba(251,146,60,0.42)',
-  red:    'rgba(248,113,113,0.42)',
-  purple: 'rgba(168,85,247,0.4)',
-};
-const HL_SOLID = {
-  yellow: '#FFE000',
-  green:  '#00C850',
-  blue:   '#1E90FF',
-  pink:   '#FF508C',
-  aqua:   '#2DD4BF',
-  orange: '#FB923C',
-  red:    '#F87171',
-  purple: '#A855F7',
-  snapshot: '#2563EB',
-};
 const CONTROLS_HEIGHT = 250;
 const COLLAPSED_CONTROLS_HEIGHT = 58;
 
@@ -481,6 +461,7 @@ export default function PdfViewer() {
   const [autoHighlight, setAutoHighlight] = useState(false);
   const scrollToTopOnPageChangeRef = useRef(true);
   const hlColorRef       = useRef('yellow');
+  const pendingHighlightSelectionRef = useRef(null);
   const autoHighlightRef = useRef(false);
   const applyAutoHighlightSetting = useCallback((value) => {
     const enabled = !!value;
@@ -1171,6 +1152,8 @@ export default function PdfViewer() {
   }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
 
   const pickHighlightColor = useCallback((color, applyNow = false) => {
+    color = normalizeHighlightColor(color);
+    if (!color) return;
     hlColorRef.current = color;
     setHlColor(color);
     if (!applyNow) return;
@@ -1179,6 +1162,30 @@ export default function PdfViewer() {
       sel.removeAllRanges();
     }
   }, [makeHighlight]);
+
+  const openHighlightColorPicker = useCallback(() => {
+    const sel = window.getSelection();
+    const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
+    pendingHighlightSelectionRef.current = range && textLayerRef.current?.contains(range.commonAncestorContainer)
+      ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
+    window.pycmd('incremento_pdf_hl_color:' + JSON.stringify({
+      cardId: cardIdRef.current, currentColor: hlColorRef.current,
+    }));
+  }, [cardIdRef, textLayerRef, pageRef]);
+
+  const finishHighlightColorPicker = useCallback((value) => {
+    const pending = pendingHighlightSelectionRef.current;
+    pendingHighlightSelectionRef.current = null;
+    const color = normalizeHighlightColor(value);
+    if (!color) return;
+    pickHighlightColor(color);
+    if (!pending || pending.page !== pageRef.current || pending.cardId !== cardIdRef.current) return;
+    const range = pending.range;
+    if (range && makeHighlight({
+      rangeCount: 1, isCollapsed: range.collapsed,
+      getRangeAt: () => range, toString: () => range.toString(),
+    }, color)) window.getSelection()?.removeAllRanges();
+  }, [pickHighlightColor, makeHighlight, pageRef, cardIdRef]);
 
   const limitAwareNav = useCallback((delta, options = {}) => {
     const scrollToTop = options.scrollToTop !== undefined
@@ -1427,6 +1434,7 @@ export default function PdfViewer() {
       pendingResumePageRef.current = Math.max(1, parseInt(startPage, 10) || 1);
       suppressScrollPersistence(700);
       setLimitStatus(startLimitStatus || DEFAULT_LIMIT_STATUS);
+      pendingHighlightSelectionRef.current = null;
       setLimitNotice(null);
       if (typeof startAutoHighlightOnExtract === 'boolean') {
         applyAutoHighlightSetting(startAutoHighlightOnExtract);
@@ -1435,6 +1443,7 @@ export default function PdfViewer() {
       startViewer(cardId, filename, startPage, startZoom, startReadPage);
     };
 
+    window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
     window.incrementoPdfStart = startWithHighlights;
     window.incrementoPdfNav   = limitAwareNav;
     window.incrementoPdfZoom  = adjustZoom;
@@ -1504,6 +1513,7 @@ export default function PdfViewer() {
       );
     }
     return () => {
+      delete window.incrementoPickPdfHighlightColor;
       delete window.incrementoPdfStart;
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
@@ -1520,6 +1530,7 @@ export default function PdfViewer() {
     };
   }, [
     startViewer,
+    finishHighlightColorPicker,
     limitAwareNav,
     adjustZoom,
     limitAwareMarkRead,
@@ -2164,6 +2175,17 @@ export default function PdfViewer() {
                       />
                     ))}
                   </span>
+                  <button
+                    title={`${tr('reader_choose_annotation_color')} (${highlightSolidColor(hlColor)})`}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={openHighlightColorPicker}
+                    style={{ background: 'transparent', border: '1px solid rgba(138,138,138,0.4)',
+                      color: '#ddd', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}
+                  >
+                    <span aria-hidden="true" style={{ display: 'inline-block', width: 12, height: 12,
+                      background: highlightSolidColor(hlColor), borderRadius: 3, marginRight: 6 }} />
+                    {tr('reader_more_colors')}
+                  </button>
                   <label style={{
                     fontSize: 12,
                     cursor: 'pointer',
@@ -2656,7 +2678,7 @@ export default function PdfViewer() {
                             width: 10,
                             height: 10,
                             borderRadius: 999,
-                            background: HL_SOLID[hl.color] || '#9CA3AF',
+                            background: highlightSolidColor(hl.color),
                             border: '1px solid rgba(255,255,255,0.35)',
                             display: 'inline-block',
                             flexShrink: 0,

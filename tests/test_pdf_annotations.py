@@ -100,8 +100,34 @@ def test_incremento_highlight_and_unicode_note_become_one_editable_pdf_annotatio
     assert filename.read_bytes() == before, 'unchanged sync must not rewrite or duplicate annotations'
 
 
+def test_custom_hex_color_is_kept_in_database_and_exported_pdf(tmp_path):
+    filename = pdf_file(tmp_path)
+    highlight = local_highlight('A searchable custom-color note')
+    highlight['color'] = '#123abc'
+    add_highlight(str(tmp_path), PROFILE, CARD, highlight)
+    sync(tmp_path)
+    with fitz.open(filename) as doc:
+        native = next(doc[0].annots())
+        assert native.colors['stroke'] == pytest.approx([18 / 255, 58 / 255, 188 / 255])
+        assert native.opacity == pytest.approx(.42)
+    saved = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    assert saved['color'] == '#123abc'
+    assert saved['note'] == highlight['note'] and saved['text'] == highlight['text']
+    before = filename.read_bytes()
+    sync(tmp_path)
+    assert filename.read_bytes() == before
 
 
+def test_custom_native_pdf_color_is_imported_as_exact_hex(tmp_path):
+    filename = pdf_file(tmp_path)
+    def populate(doc):
+        page = doc[0]
+        native = page.add_highlight_annot(fitz.Rect(60, 65, 210, 83))
+        native.set_colors(stroke=(18 / 255, 58 / 255, 188 / 255))
+        native.update(opacity=.42)
+    change_pdf(filename, populate)
+    sync(tmp_path)
+    assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['color'] == '#123abc'
 
 
 def test_existing_native_highlights_and_comments_import_without_losing_other_annotation_types(tmp_path):
@@ -545,3 +571,13 @@ def test_annotation_sync_state_is_profile_scoped(tmp_path):
     sync(tmp_path)
     assert annotations.pdf_annotation_sync_state(str(tmp_path), 'OtherProfile', CARD) is None
     assert load_highlights(str(tmp_path), 'OtherProfile', CARD)[0]['note'] == 'Other profile'
+
+
+def test_picked_hex_matching_a_legacy_swatch_keeps_its_hex_identity(tmp_path):
+    pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, {'id': 'custom-green', 'page': 1,
+        'color': '#00c850', 'text': 'A passage', 'note': '',
+        'rects': [{'x': 60, 'y': 65, 'w': 150, 'h': 18}]})
+    sync(tmp_path)
+    sync(tmp_path)
+    assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['color'] == '#00c850'

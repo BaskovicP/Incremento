@@ -25,10 +25,12 @@ try:
     from . import paths
     from .db import get_connection
     from .pdf_highlights import load_highlights
+    from .highlight_colors import highlight_appearance, color_from_rgb
 except ImportError:
     import paths
     from db import get_connection
     from pdf_highlights import load_highlights
+    from highlight_colors import highlight_appearance, color_from_rgb
 
 
 MAX_PDF_BYTES = 256 * 1024 * 1024
@@ -38,14 +40,6 @@ MAX_RECTS = 2000
 MAX_BASELINE_CHARS = 8388608
 SUPPORTED_KINDS = {'Highlight', 'Underline', 'Squiggly', 'StrikeOut', 'Text', 'FreeText', 'Square', 'Circle'}
 MARKUP_KINDS = {'Highlight', 'Underline', 'Squiggly', 'StrikeOut'}
-COLORS = {
-    'yellow': ([1, 220 / 255, 0], .45), 'green': ([0, 200 / 255, 80 / 255], .4),
-    'blue': ([30 / 255, 144 / 255, 1], .4), 'pink': ([1, 80 / 255, 140 / 255], .4),
-    'aqua': ([45 / 255, 212 / 255, 191 / 255], .42), 'orange': ([251 / 255, 146 / 255, 60 / 255], .42),
-    'red': ([248 / 255, 113 / 255, 113 / 255], .42), 'purple': ([168 / 255, 85 / 255, 247 / 255], .4),
-    'snapshot': ([37 / 255, 99 / 255, 235 / 255], .95),
-}
-
 # PyMuPDF's process-global runtime and multi-file writes are serialized. SQLite
 # readers and ordinary highlight edits never acquire this long-lived lock.
 _sync_lock = threading.Lock()
@@ -232,7 +226,10 @@ def _prepare(highlight, document_id):
     metadata.setdefault('name', f'Incremento-{document_id}-{sha256(hl["id"].encode()).hexdigest()[:24]}')
     if metadata['kind'] not in SUPPORTED_KINDS or not isinstance(metadata['name'], str) or len(metadata['name']) > 1024:
         raise PdfAnnotationSyncError('invalid_annotation')
-    color, opacity = COLORS.get(hl.get('color'), COLORS['yellow'])
+    try:
+        color, opacity = highlight_appearance(hl.get('color', 'yellow'))
+    except ValueError as exc:
+        raise PdfAnnotationSyncError('invalid_annotation') from exc
     metadata['color'] = _rgb(metadata.get('color', color))
     if metadata.get('fill'):
         metadata['fill'] = _rgb(metadata['fill'])
@@ -332,8 +329,7 @@ def _read_native(doc, known, content_digest, cancel, deadline):
             hl_id = known.get(_name_key(index + 1, name), 'native-' + sha256(_name_key(index + 1, name).encode()).hexdigest()[:32])
             color = _rgb(annot.colors.get('stroke') or annot.colors.get('fill'))
             opacity = annot.opacity if annot.opacity >= 0 else 1
-            palette = min((key for key in COLORS if key != 'snapshot'), key=lambda key: sum(
-                (a - b) ** 2 for a, b in zip(COLORS[key][0], color)))
+            palette = color_from_rgb(color)
             old = known.get(('row', hl_id))
             if old and old.get('color') == 'snapshot':
                 palette = 'snapshot'

@@ -6,20 +6,10 @@
 
 import { createReaderLanguage } from './i18n.mjs';
 import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
+import { highlightBackgroundColor } from './highlightColors.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
-const HL_COLORS = {
-  yellow: 'rgba(255,220,0,0.45)',
-  green:  'rgba(0,200,80,0.4)',
-  blue:   'rgba(30,144,255,0.4)',
-  pink:   'rgba(255,80,140,0.4)',
-  aqua:   'rgba(45,212,191,0.42)',
-  orange: 'rgba(251,146,60,0.42)',
-  red:    'rgba(248,113,113,0.42)',
-  purple: 'rgba(168,85,247,0.4)',
-  snapshot: 'rgba(37,99,235,0.12)',
-};
 
 function isSnapshotHighlight(highlight) {
   return String(highlight?.color || '') === 'snapshot';
@@ -34,7 +24,7 @@ function highlightBackground(highlight, nativeHighlightsVisible) {
       && Number.isFinite(native.opacity) && native.opacity >= 0 && native.opacity <= 1) {
     return `rgba(${native.color.map(value => Math.round(value * 255)).join(',')},${native.opacity})`;
   }
-  return HL_COLORS[highlight.color] || HL_COLORS.yellow;
+  return highlightBackgroundColor(highlight.color);
 }
 
 export default function HighlightLayer({

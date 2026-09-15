@@ -153,5 +153,7 @@
   "reader_moving_past_limit": "You are moving past today's {count}-page limit for this PDF.",
   "reader_read_past_limit": "Read-through can go past today's {count}-page limit for this PDF.",
   "reader_override_notice": "Daily reading limit override is active for this PDF until the next day reset.",
-  "reader_pdf_sync_title": "PDF annotation sync…"
+  "reader_pdf_sync_title": "PDF annotation sync…",
+  "reader_more_colors": "More colors…",
+  "reader_choose_annotation_color": "Choose annotation color"
 }

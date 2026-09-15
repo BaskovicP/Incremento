@@ -1281,6 +1281,7 @@ _MSG_NAV = "incremento_pdf_nav:"
 _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
+_MSG_HL_COLOR = "incremento_pdf_hl_color:"
 _MSG_ANNOTATIONS = "incremento_pdf_annotations"
 _MSG_HL_DEL = "incremento_pdf_hl_del:"
 _MSG_MARK_READ = "incremento_pdf_mark_read:"
@@ -1516,6 +1517,31 @@ def _regenerate_pdf_cover() -> None:
         tooltip(t("reader_pdf_cover_regenerated"))
     else:
         tooltip(t("reader_pdf_cover_cleared"))
+
+
+def _choose_pdf_highlight_color(data: dict) -> None:
+    if not isinstance(data, dict):
+        return
+    try:
+        from .highlight_color_dialog import choose_highlight_color
+    except ImportError:
+        from highlight_color_dialog import choose_highlight_color
+    try:
+        from ..backend.highlight_colors import normalize_highlight_color
+    except ImportError:
+        from highlight_colors import normalize_highlight_color
+    cid = current_pdf_card_id()
+    dock = _pdf_dock
+    if cid is None or dock is None or int(data.get('cardId', 0)) != cid:
+        return
+    color = normalize_highlight_color(data.get('currentColor', 'yellow'))
+    context = (_active_profile(), cid, _current_pdf_filename, dock, _pdf_annotation_generation)
+    selected = choose_highlight_color(dock, color)
+    if not _pdf_annotation_context_matches(*context):
+        return
+    dock._view.page().runJavaScript(
+        'window.incrementoPickPdfHighlightColor && '
+        f'window.incrementoPickPdfHighlightColor({json.dumps(selected)});')
 
 
 def _edit_pdf_highlight_note(hl_id: str) -> None:
@@ -2299,6 +2325,11 @@ def _handle_pdf_js_message(msg: str) -> None:
                     float(payload.get("scrollRatio", 0.0) or 0.0),
                 )
         except Exception:
+            pass
+    elif msg.startswith(_MSG_HL_COLOR):
+        try:
+            _choose_pdf_highlight_color(json.loads(msg[len(_MSG_HL_COLOR):]))
+        except (ValueError, TypeError, RuntimeError):
             pass
     elif msg.startswith(_MSG_HL_ADD):
         try:

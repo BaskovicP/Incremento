@@ -3261,3 +3261,11 @@ msgstr "Show containing folder"
 
 msgid "reader_pdf_sync_reveal_failed"
 msgstr "Could not show the PDF in its folder. Check that it still exists and try again."
+
+#. Annotation palette and hex color picker.
+msgid "reader_more_colors"
+msgstr "More colors…"
+
+#. Annotation palette and hex color picker.
+msgid "reader_choose_annotation_color"
+msgstr "Choose annotation color"

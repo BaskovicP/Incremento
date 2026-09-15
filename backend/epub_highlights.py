@@ -2,7 +2,9 @@ from __future__ import annotations
 
 try:
     from .db import get_connection
+    from .highlight_colors import normalize_highlight_color
 except ImportError:
+    from highlight_colors import normalize_highlight_color
     from db import get_connection  # type: ignore
 
 
@@ -31,6 +33,7 @@ def load_highlights(addon_dir: str, profile: str, card_id: int) -> list[dict]:
 
 
 def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
+    color = normalize_highlight_color(str(hl.get("color") or "yellow"), allow_snapshot=False)
     conn = get_connection(addon_dir, profile)
     conn.execute(
         "INSERT OR REPLACE INTO epub_highlights "
@@ -40,7 +43,7 @@ def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
             str(hl.get("id") or ""),
             int(card_id),
             int(hl.get("sectionIndex", 0) or 0),
-            str(hl.get("color") or "yellow"),
+            color,
             str(hl.get("text") or ""),
             str(hl.get("note") or ""),
             int(hl.get("startOffset", 0) or 0),

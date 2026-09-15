@@ -155,5 +155,7 @@
   "reader_moving_past_limit": "Prelazite današnje ograničenje od {count} stranica za ovaj PDF.",
   "reader_read_past_limit": "Označavanje pročitanoga može prijeći današnje ograničenje od {count} stranica za ovaj PDF.",
   "reader_override_notice": "Iznimka dnevnog ograničenja čitanja aktivna je za ovaj PDF do sljedećeg dnevnog resetiranja.",
-  "reader_pdf_sync_title": "Sinkronizacija PDF bilješki…"
+  "reader_pdf_sync_title": "Sinkronizacija PDF bilješki…",
+  "reader_more_colors": "Više boja…",
+  "reader_choose_annotation_color": "Odaberite boju bilješke"
 }
