@@ -8578,7 +8578,6 @@
         (h) => !String(h.note || "").trim() ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
-            title: String(h.note || "").trim(),
             onMouseEnter: (event) => showHighlightNote(h, event),
             onMouseMove: moveHighlightNote,
             onMouseLeave: hideHighlightNote,

@@ -88,6 +88,36 @@ test('merged text highlight geometry scales and offsets with the PDF text layer'
   assert.deepEqual(paintedRects(nodes), [{ x: 50, y: 40, w: 140, h: 40 }]);
 });
 
+test('hovering a saved note invokes the custom popup without a second native tooltip', () => {
+  const highlight = { id: 'noted', color: 'yellow', note: 'Arabic العربية\n\nA saved note', rects: [
+    { x: 10, y: 20, w: 100, h: 20 },
+    { x: 10, y: 22, w: 100, h: 16 },
+  ] };
+  const calls = [];
+  const nodes = render([highlight], {
+    showHighlightNote: (value, event) => calls.push(['show', value.note, event.clientX]),
+    moveHighlightNote: () => calls.push(['move']),
+    hideHighlightNote: () => calls.push(['hide']),
+  });
+  const targets = nodes.filter(node => node.props?.onMouseEnter);
+
+  assert.ok(targets.length > 0);
+  for (const target of targets) {
+    assert.equal(target.props.title, undefined, 'a title would trigger the duplicate native tooltip');
+  }
+  assert.equal(targets.length, 1);
+  const target = targets[0];
+  target.props.onMouseEnter({ clientX: 60 });
+  target.props.onMouseMove({ clientX: 70 });
+  target.props.onMouseLeave();
+  assert.deepEqual(calls, [['show', highlight.note, 60], ['move'], ['hide']]);
+});
+
+test('blank highlight notes do not create hover targets', () => {
+  const nodes = render([{ id: 'blank', note: ' \n ', rects: [{ x: 10, y: 20, w: 100, h: 20 }] }]);
+  assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 0);
+});
+
 test('highlight normalization is stable across selection order and repeated display', () => {
   const rects = [
     { x: 10, y: 20, w: 40, h: 20 },

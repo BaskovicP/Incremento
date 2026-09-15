@@ -110,7 +110,6 @@ export default function HighlightLayer({
           : h.rects.map((r, ri) => (
               <div
                 key={`note-${h.id}-${ri}`}
-                title={String(h.note || '').trim()}
                 onMouseEnter={(event) => showHighlightNote(h, event)}
                 onMouseMove={moveHighlightNote}
                 onMouseLeave={hideHighlightNote}
