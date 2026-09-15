@@ -5,6 +5,7 @@
  */
 
 import { createReaderLanguage } from './i18n.mjs';
+import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
@@ -40,6 +41,10 @@ export default function HighlightLayer({
   handleSnapMove,
   handleSnapEnd,
 }) {
+  const displayHighlights = pageHighlights.map(h => ({
+    ...h,
+    rects: isSnapshotHighlight(h) ? h.rects : normalizePdfHighlightRects(h.rects),
+  }));
   const renderNoteIcon = (hasNote) => (
     <svg
       aria-hidden="true"
@@ -75,7 +80,7 @@ export default function HighlightLayer({
   return (
     <>
       {/* ── Highlight rects — below text layer (z:1), non-blocking ── */}
-      {pageHighlights.map(h =>
+      {displayHighlights.map(h =>
         h.rects.map((r, ri) => (
           <div
             key={`${h.id}-${ri}`}
@@ -99,7 +104,7 @@ export default function HighlightLayer({
       )}
 
       {/* ── Hover targets for note-bearing highlights — above text layer ── */}
-      {pageHighlights.map(h =>
+      {displayHighlights.map(h =>
         !String(h.note || '').trim()
           ? null
           : h.rects.map((r, ri) => (
@@ -124,7 +129,7 @@ export default function HighlightLayer({
       )}
 
       {/* ── Highlight action buttons — above text layer (z:10), one cluster per highlight ── */}
-      {pageHighlights.map(h => {
+      {displayHighlights.map(h => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
         const hasNote = !!String(h.note || '').trim();

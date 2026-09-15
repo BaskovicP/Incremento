@@ -464,6 +464,9 @@ You can highlight text in the current color with:
 - `Alt+H` on Windows/Linux
 
 Highlights are saved per PDF and reappear whenever you reopen the card.
+Text highlights join small gaps between text fragments on the same line and
+render overlapping selection boxes once for even color.
+
 
 ### Cross-references
 

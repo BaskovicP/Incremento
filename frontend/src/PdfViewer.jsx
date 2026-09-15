@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer  from './HighlightLayer.jsx';
+import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
 import { createReaderLanguage } from './i18n.mjs';
@@ -1146,13 +1147,13 @@ export default function PdfViewer() {
     if (!tl || !tl.contains(range.commonAncestorContainer)) return false;
     const tlRect = tl.getBoundingClientRect();
     const scale = lastScaleRef.current;
-    const rects = Array.from(range.getClientRects())
+    const rects = normalizePdfHighlightRects(Array.from(range.getClientRects())
       .map(r => ({
         x: (r.left - tlRect.left) / scale,
         y: (r.top  - tlRect.top)  / scale,
         w: r.width  / scale,
         h: r.height / scale,
-      }))
+      })))
       .filter(r => r.w > 2 && r.h > 2);
     if (!rects.length) return false;
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);

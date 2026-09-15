@@ -8440,6 +8440,39 @@
       }
     });
   }
+  function normalizePdfHighlightRects(rects) {
+    const valid = (Array.isArray(rects) ? rects : []).filter((r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h })).sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2) || a.x - b.x);
+    const lines = [];
+    for (const rect of valid) {
+      const line = lines.at(-1);
+      const reference = line == null ? void 0 : line[0];
+      const overlap = reference ? Math.min(reference.y + reference.h, rect.y + rect.h) - Math.max(reference.y, rect.y) : 0;
+      const minHeight = reference ? Math.min(reference.h, rect.h) : 0;
+      const centerDistance = reference ? Math.abs(reference.y + reference.h / 2 - (rect.y + rect.h / 2)) : Infinity;
+      if (reference && overlap >= minHeight * 0.6 && centerDistance <= minHeight * 0.5) {
+        line.push(rect);
+      } else {
+        lines.push([rect]);
+      }
+    }
+    return lines.flatMap((line) => {
+      const merged = [];
+      for (const rect of line.sort((a, b) => a.x - b.x)) {
+        const previous = merged.at(-1);
+        const maxGap = previous ? Math.min(previous.h, rect.h) * 0.5 : 0;
+        if (previous && rect.x - (previous.x + previous.w) <= maxGap) {
+          const right = Math.max(previous.x + previous.w, rect.x + rect.w);
+          const bottom = Math.max(previous.y + previous.h, rect.y + rect.h);
+          previous.y = Math.min(previous.y, rect.y);
+          previous.w = right - previous.x;
+          previous.h = bottom - previous.y;
+        } else {
+          merged.push({ ...rect });
+        }
+      }
+      return merged;
+    });
+  }
   const DEFAULT_LANGUAGE = createReaderLanguage("en");
   const HL_COLORS$1 = {
     yellow: "rgba(255,220,0,0.45)",
@@ -8471,6 +8504,10 @@
     handleSnapMove,
     handleSnapEnd
   }) {
+    const displayHighlights = pageHighlights.map((h) => ({
+      ...h,
+      rects: isSnapshotHighlight(h) ? h.rects : normalizePdfHighlightRects(h.rects)
+    }));
     const renderNoteIcon = (hasNote) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "svg",
       {
@@ -8514,7 +8551,7 @@
       }
     );
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-      pageHighlights.map(
+      displayHighlights.map(
         (h) => h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
@@ -8537,7 +8574,7 @@
           `${h.id}-${ri}`
         ))
       ),
-      pageHighlights.map(
+      displayHighlights.map(
         (h) => !String(h.note || "").trim() ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
@@ -8559,7 +8596,7 @@
           `note-${h.id}-${ri}`
         ))
       ),
-      pageHighlights.map((h) => {
+      displayHighlights.map((h) => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
         const hasNote = !!String(h.note || "").trim();
@@ -9707,12 +9744,12 @@
       if (!tl || !tl.contains(range.commonAncestorContainer)) return false;
       const tlRect = tl.getBoundingClientRect();
       const scale = lastScaleRef.current;
-      const rects = Array.from(range.getClientRects()).map((r) => ({
+      const rects = normalizePdfHighlightRects(Array.from(range.getClientRects()).map((r) => ({
         x: (r.left - tlRect.left) / scale,
         y: (r.top - tlRect.top) / scale,
         w: r.width / scale,
         h: r.height / scale
-      })).filter((r) => r.w > 2 && r.h > 2);
+      }))).filter((r) => r.w > 2 && r.h > 2);
       if (!rects.length) return false;
       const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
       const hl = {
