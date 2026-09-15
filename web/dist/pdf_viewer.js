@@ -8551,6 +8551,15 @@
       }
     );
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+        .incremento-pdf-note-action {
+          opacity: 0;
+        }
+        .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
+        .incremento-pdf-note-action:focus-visible {
+          opacity: 1;
+        }
+      ` }),
       displayHighlights.map(
         (h) => h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
@@ -8602,6 +8611,7 @@
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
           {
+            className: "incremento-pdf-highlight-actions",
             style: {
               position: "absolute",
               left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 28,
@@ -8615,6 +8625,8 @@
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
+                  className: "incremento-pdf-note-action",
+                  "aria-label": language.tr(hasNote ? "reader_edit_highlight_note" : "reader_add_highlight_note"),
                   title: language.tr(hasNote ? "reader_edit_highlight_note" : "reader_add_highlight_note"),
                   onClick: () => editHighlightNote(h.id),
                   style: {

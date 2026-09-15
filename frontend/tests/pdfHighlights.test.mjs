@@ -118,6 +118,26 @@ test('blank highlight notes do not create hover targets', () => {
   assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 0);
 });
 
+test('annotation note icons are transparent until hover or keyboard focus and still edit the chosen note', () => {
+  for (const note of ['', 'Saved annotation note']) {
+    const edits = [];
+    const nodes = render([{ id: 'annotation', color: 'yellow', note, rects: [
+      { x: 10, y: 20, w: 100, h: 20 },
+    ] }], { editHighlightNote: id => edits.push(id) });
+    const css = nodes.filter(node => node.type === 'style').map(node => node.props.children).join('\n');
+    const action = nodes.find(node => node.type === 'button' && node.props.className === 'incremento-pdf-note-action');
+
+    assert.ok(action, 'the note action must use the hover-only visibility rules');
+    assert.match(css, /\.incremento-pdf-note-action\s*\{\s*opacity:\s*0\s*;/);
+    assert.match(css, /\.incremento-pdf-highlight-actions:hover\s+\.incremento-pdf-note-action\s*,\s*\.incremento-pdf-note-action:focus-visible\s*\{\s*opacity:\s*1\s*;/);
+    assert.ok(nodes.some(node => node.props?.className === 'incremento-pdf-highlight-actions'));
+    assert.equal(action.props['aria-label'], note ? 'Edit highlight note' : 'Add highlight note');
+    assert.notEqual(action.props.tabIndex, -1, 'keyboard users must still be able to reach the action');
+    action.props.onClick();
+    assert.deepEqual(edits, ['annotation']);
+  }
+});
+
 test('highlight normalization is stable across selection order and repeated display', () => {
   const rects = [
     { x: 10, y: 20, w: 40, h: 20 },

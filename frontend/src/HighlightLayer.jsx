@@ -79,6 +79,15 @@ export default function HighlightLayer({
 
   return (
     <>
+      <style>{`
+        .incremento-pdf-note-action {
+          opacity: 0;
+        }
+        .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
+        .incremento-pdf-note-action:focus-visible {
+          opacity: 1;
+        }
+      `}</style>
       {/* ── Highlight rects — below text layer (z:1), non-blocking ── */}
       {displayHighlights.map(h =>
         h.rects.map((r, ri) => (
@@ -135,6 +144,7 @@ export default function HighlightLayer({
         return (
           <div
             key={`actions-${h.id}`}
+            className="incremento-pdf-highlight-actions"
             style={{
               position: 'absolute',
               left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 28,
@@ -146,6 +156,8 @@ export default function HighlightLayer({
             }}
           >
             <button
+              className="incremento-pdf-note-action"
+              aria-label={language.tr(hasNote ? 'reader_edit_highlight_note' : 'reader_add_highlight_note')}
               title={language.tr(hasNote ? 'reader_edit_highlight_note' : 'reader_add_highlight_note')}
               onClick={() => editHighlightNote(h.id)}
               style={{

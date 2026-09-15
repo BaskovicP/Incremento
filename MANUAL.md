@@ -467,6 +467,8 @@ Highlights are saved per PDF and reappear whenever you reopen the card.
 Text highlights join small gaps between text fragments on the same line and
 render overlapping selection boxes once for even color. Hovering a highlight
 with a saved note shows one note popup beside the pointer.
+The note icon stays transparent until you hover over its annotation controls
+or focus it with the keyboard, keeping it out of screenshots when idle.
 
 
 ### Cross-references
