@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer  from './HighlightLayer.jsx';
+import PdfSelectionLayer from './PdfSelectionLayer.jsx';
 import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
@@ -1129,6 +1130,9 @@ export default function PdfViewer() {
     if (!tl || !tl.contains(range.commonAncestorContainer)) return false;
     const tlRect = tl.getBoundingClientRect();
     const scale = lastScaleRef.current;
+    // Saved highlights use unscaled PDF coordinates so they survive zoom changes.
+    // Merge their word boxes with the same rule as the live blue selection; the
+    // saved annotation therefore keeps the continuous appearance after reopening.
     const rects = normalizePdfHighlightRects(Array.from(range.getClientRects())
       .map(r => ({
         x: (r.left - tlRect.left) / scale,
@@ -2934,6 +2938,8 @@ export default function PdfViewer() {
             />
           ))}
         </div>
+
+        <PdfSelectionLayer textLayerRef={textLayerRef} renderInfo={renderInfo} />
 
         <HighlightLayer
           nativeHighlightsVisible={nativeHighlightsVisible}

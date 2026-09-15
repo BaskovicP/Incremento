@@ -75,6 +75,35 @@ test('highlight geometry preserves separate lines, column gaps, and different an
   assert.deepEqual(actual.sort(byPosition), [left, right, nextLine, left].sort(byPosition));
 });
 
+test('justified PDF words with wide spaces paint one uninterrupted line at every zoom', () => {
+  // The reported line: "errors or omissions. No liability is assumed ...".
+  // Its justified spaces are 19–23 px wide with 37 px selection boxes.
+  const rects = [
+    [55, 87], [165, 30], [216, 155], [392, 45], [458, 113],
+    [592, 23], [637, 128], [787, 42], [850, 146], [1017, 30], [1069, 202],
+  ].map(([x, w]) => ({ x, y: 125, w, h: 37 }));
+  const original = structuredClone(rects);
+
+  for (const scale of [0.5, 1, 2]) {
+    const actual = paintedRects(render([{ id: 'justified', color: 'blue', rects }], {
+      renderInfo: { scale, tlLeft: 0 },
+    }));
+    assert.deepEqual(actual, [{ x: 55 * scale, y: 125 * scale, w: 1216 * scale, h: 37 * scale }]);
+  }
+  assert.deepEqual(rects, original);
+});
+
+test('wide word-space merging stays bounded at a text height and leaves larger gutters clear', () => {
+  assert.deepEqual(normalizePdfHighlightRects([
+    { x: 10, y: 20, w: 50, h: 20 },
+    { x: 80, y: 20, w: 40, h: 20 },
+    { x: 141, y: 20, w: 60, h: 20 },
+  ]), [
+    { x: 10, y: 20, w: 110, h: 20 },
+    { x: 141, y: 20, w: 60, h: 20 },
+  ]);
+});
+
 test('snapshot highlights retain their exact selected region', () => {
   const rects = [{ x: 10, y: 10, w: 80, h: 20 }, { x: 95, y: 10, w: 40, h: 20 }];
   assert.deepEqual(paintedRects(render([{ id: 'snapshot', color: 'snapshot', rects }])), rects);

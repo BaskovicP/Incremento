@@ -469,8 +469,10 @@ HTML color such as `#123ABC`. Click **OK** to select the color; selected text is
 highlighted immediately, or the color is used for your next highlight. Custom
 colors are saved in the database and preserved when synced to PDFs.
 
-Text highlights join small gaps between text fragments on the same line and
-render overlapping selection boxes once for even color. Hovering a highlight
+The blue text-selection preview and saved text highlights join word spaces,
+including wider spaces in justified text, between PDF text fragments on the
+same line. Overlapping boxes render once for even color; separate lines and
+wide column gutters remain clear. Hovering a highlight
 with a saved note shows one note popup beside the pointer.
 The note icon stays transparent until you hover over its annotation controls
 or focus it with the keyboard, keeping it out of screenshots when idle.

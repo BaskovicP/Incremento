@@ -8503,7 +8503,7 @@
       const merged = [];
       for (const rect of line.sort((a, b) => a.x - b.x)) {
         const previous = merged.at(-1);
-        const maxGap = previous ? Math.min(previous.h, rect.h) * 0.5 : 0;
+        const maxGap = previous ? Math.min(previous.h, rect.h) : 0;
         if (previous && rect.x - (previous.x + previous.w) <= maxGap) {
           const right = Math.max(previous.x + previous.w, rect.x + rect.w);
           const bottom = Math.max(previous.y + previous.h, rect.y + rect.h);
@@ -8779,6 +8779,90 @@
             pointerEvents: "none",
             boxSizing: "border-box"
           } })
+        }
+      )
+    ] });
+  }
+  function observePdfTextSelection(textLayer, onChange, {
+    document: document2 = globalThis.document,
+    window: window2 = globalThis.window
+  } = {}) {
+    let frame = null;
+    const update = () => {
+      frame = null;
+      const selection = window2.getSelection();
+      if (!selection || selection.isCollapsed || !selection.rangeCount) {
+        onChange([]);
+        return;
+      }
+      const rects = [];
+      const layerRect = textLayer.getBoundingClientRect();
+      for (let index = 0; index < selection.rangeCount; index += 1) {
+        const range = selection.getRangeAt(index);
+        if (!textLayer.contains(range.commonAncestorContainer)) {
+          onChange([]);
+          return;
+        }
+        rects.push(...Array.from(range.getClientRects(), (rect) => ({
+          x: rect.left - layerRect.left,
+          y: rect.top - layerRect.top,
+          w: rect.width,
+          h: rect.height
+        })));
+      }
+      onChange(normalizePdfHighlightRects(rects));
+    };
+    const schedule = () => {
+      if (frame === null) frame = window2.requestAnimationFrame(update);
+    };
+    const observer = new window2.MutationObserver(schedule);
+    observer.observe(textLayer, { childList: true, subtree: true, characterData: true });
+    document2.addEventListener("selectionchange", schedule);
+    schedule();
+    return () => {
+      document2.removeEventListener("selectionchange", schedule);
+      observer.disconnect();
+      if (frame !== null) window2.cancelAnimationFrame(frame);
+    };
+  }
+  function PdfSelectionLayer({ textLayerRef, renderInfo }) {
+    const [rects, setRects] = reactExports.useState([]);
+    reactExports.useEffect(() => {
+      const textLayer = textLayerRef.current;
+      if (!textLayer) return;
+      return observePdfTextSelection(textLayer, setRects);
+    }, [textLayerRef, renderInfo]);
+    if (!rects.length) return null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: "#pdf-text-layer ::selection { background: transparent; }" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          id: "pdf-selection-layer",
+          "aria-hidden": true,
+          style: {
+            position: "absolute",
+            left: renderInfo.tlLeft,
+            top: 0,
+            pointerEvents: "none",
+            userSelect: "none",
+            zIndex: 3
+          },
+          children: rects.map((rect, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              style: {
+                position: "absolute",
+                left: rect.x,
+                top: rect.y,
+                width: rect.w,
+                height: rect.h,
+                background: "rgba(0,100,255,0.3)",
+                mixBlendMode: "multiply"
+              }
+            },
+            index
+          ))
         }
       )
     ] });
@@ -11681,6 +11765,7 @@
                     ))
                   }
                 ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(PdfSelectionLayer, { textLayerRef, renderInfo }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   HighlightLayer,
                   {

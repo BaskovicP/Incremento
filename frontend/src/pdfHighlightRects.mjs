@@ -1,6 +1,15 @@
-// A DOM Range can report both an inline element's box and its text box, plus
-// separate boxes for changes of font (for example italic words). Paint their
-// union once per line, bridging only gaps small enough to be inter-word spaces.
+/**
+ * Turn fragmented PDF selection boxes into continuous painted line segments.
+ * PDF.js places words/font runs in separate spans, so getClientRects() can leave
+ * unpainted word spaces and report overlapping element/text boxes. First group
+ * boxes by their vertical alignment, then merge nearby boxes from left to right.
+ * Painting each union once also prevents overlapping boxes from darkening the
+ * highlight. The result covers the selected endpoints, not the full page width.
+ *
+ * This helper is shared by the blue live selection preview and saved highlights.
+ * Heights and gaps use the same units, so the merge rule works at different zooms
+ * and with either rendered CSS coordinates or unscaled PDF coordinates.
+ */
 export function normalizePdfHighlightRects(rects) {
   const valid = (Array.isArray(rects) ? rects : [])
     .filter(r => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0)
@@ -31,7 +40,11 @@ export function normalizePdfHighlightRects(rects) {
     const merged = [];
     for (const rect of line.sort((a, b) => a.x - b.x)) {
       const previous = merged.at(-1);
-      const maxGap = previous ? Math.min(previous.h, rect.h) * 0.5 : 0;
+      // The original half-height cutoff missed justified word spaces: the
+      // reported 37 px text boxes had 19–23 px gaps, exceeding 18.5 px.
+      // Allow one text height instead. This is still a bounded heuristic:
+      // larger gaps stay separate, which avoids filling wide column gutters.
+      const maxGap = previous ? Math.min(previous.h, rect.h) : 0;
       if (previous && rect.x - (previous.x + previous.w) <= maxGap) {
         const right = Math.max(previous.x + previous.w, rect.x + rect.w);
         const bottom = Math.max(previous.y + previous.h, rect.y + rect.h);
