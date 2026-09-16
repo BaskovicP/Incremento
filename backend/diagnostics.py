@@ -370,6 +370,8 @@ _KNOWN_CONFIG_KEYS = {
     "item_skip_enabled",
     "item_skip_minutes",
     "onboarding_completed_version",
+    "pdf_default_appearance",
+    "pdf_force_default_appearance",
     "pdf_highlight_extract_field",
     "pin_hash",
     "prefer_web_card_resume_in_original_page",
