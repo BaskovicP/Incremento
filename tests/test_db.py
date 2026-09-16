@@ -54,6 +54,7 @@ class TestGetConnection:
         columns = [r[1] for r in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()]
         assert "scroll_ratio" in columns
         assert "read_anchor_json" in columns
+        assert "appearance_mode" in columns
 
     def test_creates_pdf_daily_limits_tables(self):
         addon_dir = _fresh_dir()
@@ -2040,7 +2041,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -2054,6 +2055,8 @@ class TestConnectionSwitching:
             (7, "statistics_goals"),
             (8, "web_extract_anchors"),
             (9, "pdf_annotation_sync"),
+            (10, "reader_custom_colors"),
+            (11, "pdf_appearance"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):
@@ -2144,6 +2147,7 @@ class TestConnectionSwitching:
         assert "scroll_ratio" in columns
         assert "read_page" in columns
         assert "read_anchor_json" in columns
+        assert "appearance_mode" in columns
 
     def test_migrates_old_epub_progress_schema(self):
         addon_dir = _fresh_dir()
@@ -2203,9 +2207,10 @@ class TestExportHelpers:
         import json
         conn = db.get_connection(self.addon_dir, "TestProfile")
         conn.execute(
-            "INSERT INTO pdf_progress (card_id, page, zoom, scroll_ratio, read_page, read_anchor_json) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (10, 3, 1.5, 0.42, 3, '{"page":3,"x":10.5,"y":22.0,"w":40.0,"h":12.0}'),
+            "INSERT INTO pdf_progress "
+            "(card_id, page, zoom, scroll_ratio, read_page, read_anchor_json, appearance_mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (10, 3, 1.5, 0.42, 3, '{"page":3,"x":10.5,"y":22.0,"w":40.0,"h":12.0}', "night"),
         )
         conn.commit()
         result = json.loads(db.export_pdf_progress_json(self.addon_dir, "TestProfile"))
@@ -2215,6 +2220,7 @@ class TestExportHelpers:
         assert result["10"]["scroll_ratio"] == 0.42
         assert result["10"]["read_page"] == 3
         assert result["10"]["read_anchor"]["page"] == 3
+        assert result["10"]["appearance_mode"] == "night"
 
     def test_export_highlights_json_empty(self):
         import json

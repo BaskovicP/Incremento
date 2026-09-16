@@ -7435,6 +7435,11 @@
   const reader_navigation$2 = "Navigation";
   const reader_navigate$2 = "Navigate";
   const reader_zoom$2 = "Zoom";
+  const reader_pdf_appearance$2 = "PDF appearance";
+  const reader_pdf_appearance_hint$2 = "Switch PDF pages between original colors, neutral dark mode, and warm night mode";
+  const reader_pdf_appearance_original$2 = "Original";
+  const reader_pdf_appearance_dark$2 = "Dark";
+  const reader_pdf_appearance_night$2 = "Night";
   const reader_reading$2 = "Reading";
   const reader_annotation_capture$2 = "Annotation & capture";
   const reader_annotate$2 = "Annotate";
@@ -7593,6 +7598,11 @@
     reader_navigation: reader_navigation$2,
     reader_navigate: reader_navigate$2,
     reader_zoom: reader_zoom$2,
+    reader_pdf_appearance: reader_pdf_appearance$2,
+    reader_pdf_appearance_hint: reader_pdf_appearance_hint$2,
+    reader_pdf_appearance_original: reader_pdf_appearance_original$2,
+    reader_pdf_appearance_dark: reader_pdf_appearance_dark$2,
+    reader_pdf_appearance_night: reader_pdf_appearance_night$2,
     reader_reading: reader_reading$2,
     reader_annotation_capture: reader_annotation_capture$2,
     reader_annotate: reader_annotate$2,
@@ -7752,6 +7762,11 @@
   const reader_navigation$1 = "Navigacija";
   const reader_navigate$1 = "Navigacija";
   const reader_zoom$1 = "Zumiranje";
+  const reader_pdf_appearance$1 = "Izgled PDF-a";
+  const reader_pdf_appearance_hint$1 = "Prikaži stranice PDF-a u izvornim bojama, neutralnom tamnom ili toplom noćnom načinu";
+  const reader_pdf_appearance_original$1 = "Izvorno";
+  const reader_pdf_appearance_dark$1 = "Tamno";
+  const reader_pdf_appearance_night$1 = "Noćno";
   const reader_reading$1 = "Čitanje";
   const reader_annotation_capture$1 = "Bilješke i snimanje";
   const reader_annotate$1 = "Označavanje";
@@ -7912,6 +7927,11 @@
     reader_navigation: reader_navigation$1,
     reader_navigate: reader_navigate$1,
     reader_zoom: reader_zoom$1,
+    reader_pdf_appearance: reader_pdf_appearance$1,
+    reader_pdf_appearance_hint: reader_pdf_appearance_hint$1,
+    reader_pdf_appearance_original: reader_pdf_appearance_original$1,
+    reader_pdf_appearance_dark: reader_pdf_appearance_dark$1,
+    reader_pdf_appearance_night: reader_pdf_appearance_night$1,
     reader_reading: reader_reading$1,
     reader_annotation_capture: reader_annotation_capture$1,
     reader_annotate: reader_annotate$1,
@@ -8070,6 +8090,11 @@
   const reader_navigation = "导航";
   const reader_navigate = "导航";
   const reader_zoom = "缩放";
+  const reader_pdf_appearance = "PDF 外观";
+  const reader_pdf_appearance_hint = "在原始颜色、中性深色模式和暖色夜间模式之间切换 PDF 页面";
+  const reader_pdf_appearance_original = "原始";
+  const reader_pdf_appearance_dark = "深色";
+  const reader_pdf_appearance_night = "夜间";
   const reader_reading = "阅读";
   const reader_annotation_capture = "批注与摘录";
   const reader_annotate = "批注";
@@ -8226,6 +8251,11 @@
     reader_navigation,
     reader_navigate,
     reader_zoom,
+    reader_pdf_appearance,
+    reader_pdf_appearance_hint,
+    reader_pdf_appearance_original,
+    reader_pdf_appearance_dark,
+    reader_pdf_appearance_night,
     reader_reading,
     reader_annotation_capture,
     reader_annotate,
@@ -8930,6 +8960,27 @@
   function truncatePdfText(value, length) {
     return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
   }
+  const PDF_APPEARANCE_MODES = Object.freeze(["original", "dark", "night"]);
+  const PAGE_APPEARANCE = Object.freeze({
+    original: Object.freeze({
+      background: "#1e1e1e",
+      filter: "none"
+    }),
+    dark: Object.freeze({
+      background: "#09090b",
+      filter: "invert(0.9) hue-rotate(180deg) brightness(0.92) contrast(0.92)"
+    }),
+    night: Object.freeze({
+      background: "#17130d",
+      filter: "invert(0.88) hue-rotate(180deg) sepia(0.24) saturate(0.78) brightness(0.82) contrast(0.9)"
+    })
+  });
+  function normalizePdfAppearanceMode(value) {
+    return PDF_APPEARANCE_MODES.includes(value) ? value : "original";
+  }
+  function pdfPageAppearance(value) {
+    return PAGE_APPEARANCE[normalizePdfAppearanceMode(value)];
+  }
   const CONTROLS_HEIGHT = 250;
   const COLLAPSED_CONTROLS_HEIGHT = 58;
   const DEFAULT_LIMIT_STATUS = {
@@ -8975,6 +9026,18 @@
     width: 1,
     alignSelf: "stretch",
     background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))"
+  };
+  const PDF_APPEARANCE_SELECT_STYLE = {
+    colorScheme: "dark",
+    color: "#f4f4f5",
+    backgroundColor: "#27272a",
+    border: "1px solid rgba(180,180,180,0.46)",
+    borderRadius: 8,
+    padding: "0 8px"
+  };
+  const PDF_APPEARANCE_OPTION_STYLE = {
+    color: "#f4f4f5",
+    backgroundColor: "#27272a"
   };
   const CONTROL_GROUPS = [
     ["navigation", "reader_navigation"],
@@ -9371,6 +9434,16 @@
     const [clickableLinks, setClickableLinks] = reactExports.useState(false);
     const [linkBackHistory, setLinkBackHistory] = reactExports.useState([]);
     const [linkBackScrollNonce, setLinkBackScrollNonce] = reactExports.useState(0);
+    const [appearanceMode, setAppearanceMode] = reactExports.useState("original");
+    const pageAppearance = pdfPageAppearance(appearanceMode);
+    const applyAppearanceMode = reactExports.useCallback((value) => {
+      const mode = normalizePdfAppearanceMode(value);
+      setAppearanceMode(mode);
+      const cardId = Number(cardIdRef.current || 0);
+      if (cardId > 0) {
+        window.pycmd("incremento_pdf_appearance:" + JSON.stringify({ cardId, mode }));
+      }
+    }, [cardIdRef]);
     const controlsInitialisedRef = reactExports.useRef(false);
     reactExports.useEffect(() => {
       if (!controlsInitialisedRef.current) {
@@ -10135,10 +10208,11 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original") => {
         const nextLanguage = createReaderLanguage(startLocale, startCustomLanguage);
         setLanguage(nextLanguage);
         document.documentElement.lang = nextLanguage.locale;
+        setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
@@ -10179,6 +10253,9 @@
       };
       window.incrementoSetScrollToTopOnPageChange = (value) => {
         applyScrollToTopOnPageChangeSetting(value);
+      };
+      window.incrementoSetPdfAppearanceMode = (mode) => {
+        setAppearanceMode(normalizePdfAppearanceMode(mode));
       };
       window.incrementoReceivePageCards = (data) => {
         if (data.page === pageRef.current) {
@@ -10232,7 +10309,8 @@
           pending.scrollToTopOnPageChange,
           pending.bookmarks || [],
           pending.locale || "en",
-          pending.customLanguage || null
+          pending.customLanguage || null,
+          pending.appearanceMode || "original"
         );
       }
       return () => {
@@ -10244,6 +10322,7 @@
         delete window.incrementoPdfOpenFind;
         delete window.incrementoSetAutoHighlightOnExtract;
         delete window.incrementoSetScrollToTopOnPageChange;
+        delete window.incrementoSetPdfAppearanceMode;
         delete window.incrementoReceivePageCards;
         delete window.incrementoReceivePdfHighlights;
         delete window.incrementoReceivePdfLimitStatus;
@@ -10342,8 +10421,10 @@
       {
         style: {
           width: "100%",
+          minHeight: "100vh",
           minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : void 0,
-          paddingBottom: `${visibleControlsHeight}px`
+          paddingBottom: `${visibleControlsHeight}px`,
+          background: pageAppearance.background
         },
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
@@ -10353,6 +10434,13 @@
         #pdf-controls [tabindex]:focus-visible {
           outline: 3px solid #60a5fa !important;
           outline-offset: 2px;
+        }
+        #pdf-controls select {
+          color-scheme: dark;
+        }
+        #pdf-controls select option {
+          color: #f4f4f5;
+          background-color: #27272a;
         }
         @media (prefers-reduced-motion: reduce) {
           #pdf-controls *,
@@ -10437,6 +10525,21 @@
                       Math.round(zoom * 100),
                       "%"
                     ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "select",
+                      {
+                        "aria-label": tr("reader_pdf_appearance"),
+                        title: tr("reader_pdf_appearance_hint"),
+                        value: appearanceMode,
+                        onChange: (event) => applyAppearanceMode(event.target.value),
+                        style: {
+                          ...PDF_APPEARANCE_SELECT_STYLE,
+                          height: 30,
+                          borderRadius: 6
+                        },
+                        children: PDF_APPEARANCE_MODES.map((mode) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: mode, style: PDF_APPEARANCE_OPTION_STYLE, children: tr(`reader_pdf_appearance_${mode}`) }, mode))
+                      }
+                    ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
@@ -10621,6 +10724,26 @@
                         ] }),
                         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_in"), onClick: () => adjustZoom(1), children: "+" })
                       ] })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "pdf-appearance-mode", style: TOOLBAR_LABEL_STYLE, children: tr("reader_pdf_appearance") }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "select",
+                        {
+                          id: "pdf-appearance-mode",
+                          "aria-label": tr("reader_pdf_appearance"),
+                          title: tr("reader_pdf_appearance_hint"),
+                          value: appearanceMode,
+                          onChange: (event) => applyAppearanceMode(event.target.value),
+                          style: {
+                            ...PDF_APPEARANCE_SELECT_STYLE,
+                            height: 32,
+                            minWidth: 104
+                          },
+                          children: PDF_APPEARANCE_MODES.map((mode) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: mode, style: PDF_APPEARANCE_OPTION_STYLE, children: tr(`reader_pdf_appearance_${mode}`) }, mode))
+                        }
+                      )
                     ] })
                   ] }),
                   controlVisibility.reading && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { ...TOOLBAR_GROUP_STYLE, padding: "10px 14px", gap: 12 }, children: [
@@ -11639,14 +11762,24 @@
             {
               id: "pdf-canvas-wrapper",
               ref: containerRef,
-              style: { position: "relative", display: "block", textAlign: "center" },
+              style: {
+                position: "relative",
+                display: "block",
+                textAlign: "center",
+                background: pageAppearance.background
+              },
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "canvas",
                   {
                     ref: canvasARef,
                     id: "pdf-canvas-a",
-                    style: { display: "block", margin: "0 auto", pointerEvents: "none" }
+                    style: {
+                      display: "block",
+                      margin: "0 auto",
+                      pointerEvents: "none",
+                      filter: pageAppearance.filter
+                    }
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -11660,7 +11793,8 @@
                       top: 0,
                       left: "50%",
                       transform: "translateX(-50%)",
-                      pointerEvents: "none"
+                      pointerEvents: "none",
+                      filter: pageAppearance.filter
                     }
                   }
                 ),

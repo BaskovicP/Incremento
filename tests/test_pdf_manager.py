@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import shutil
+import pytest
 from unittest.mock import MagicMock, patch, call
 
 # ---------------------------------------------------------------------------
@@ -707,6 +708,44 @@ class TestGetSetPage:
         pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=10, page=3)
         pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=10, page=12)
         assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=10) == 12
+
+
+class TestPdfAppearance:
+    def setup_method(self):
+        db.close_connection()
+        self.addon_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        db.close_connection()
+        shutil.rmtree(self.addon_dir, ignore_errors=True)
+
+    def test_missing_pdf_has_no_saved_appearance(self):
+        assert pdf_manager.get_pdf_appearance_mode(
+            self.addon_dir, "TestProfile", card_id=42
+        ) is None
+
+    def test_appearance_is_saved_per_pdf_and_preserves_other_progress(self):
+        pdf_manager.set_page(self.addon_dir, "TestProfile", card_id=5, page=7)
+        pdf_manager.set_pdf_appearance_mode(
+            self.addon_dir, "TestProfile", card_id=5, mode="night"
+        )
+        pdf_manager.set_pdf_appearance_mode(
+            self.addon_dir, "TestProfile", card_id=6, mode="dark"
+        )
+
+        assert pdf_manager.get_pdf_appearance_mode(
+            self.addon_dir, "TestProfile", card_id=5
+        ) == "night"
+        assert pdf_manager.get_pdf_appearance_mode(
+            self.addon_dir, "TestProfile", card_id=6
+        ) == "dark"
+        assert pdf_manager.get_page(self.addon_dir, "TestProfile", card_id=5) == 7
+
+    def test_invalid_appearance_is_rejected(self):
+        with pytest.raises(ValueError, match="PDF appearance"):
+            pdf_manager.set_pdf_appearance_mode(
+                self.addon_dir, "TestProfile", card_id=5, mode="sepia"
+            )
 
 
 class TestPdfScrollRatio:

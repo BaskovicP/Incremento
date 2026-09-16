@@ -8,6 +8,11 @@ import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
 import { createReaderLanguage } from './i18n.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
+import {
+  PDF_APPEARANCE_MODES,
+  normalizePdfAppearanceMode,
+  pdfPageAppearance,
+} from './pdfAppearance.mjs';
 
 const CONTROLS_HEIGHT = 250;
 const COLLAPSED_CONTROLS_HEIGHT = 58;
@@ -59,6 +64,20 @@ const TOOLBAR_SEPARATOR_STYLE = {
   width: 1,
   alignSelf: 'stretch',
   background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))',
+};
+
+const PDF_APPEARANCE_SELECT_STYLE = {
+  colorScheme: 'dark',
+  color: '#f4f4f5',
+  backgroundColor: '#27272a',
+  border: '1px solid rgba(180,180,180,0.46)',
+  borderRadius: 8,
+  padding: '0 8px',
+};
+
+const PDF_APPEARANCE_OPTION_STYLE = {
+  color: '#f4f4f5',
+  backgroundColor: '#27272a',
 };
 
 const CONTROL_GROUPS = [
@@ -516,6 +535,16 @@ export default function PdfViewer() {
   const [clickableLinks, setClickableLinks] = useState(false);
   const [linkBackHistory, setLinkBackHistory] = useState([]);
   const [linkBackScrollNonce, setLinkBackScrollNonce] = useState(0);
+  const [appearanceMode, setAppearanceMode] = useState('original');
+  const pageAppearance = pdfPageAppearance(appearanceMode);
+  const applyAppearanceMode = useCallback((value) => {
+    const mode = normalizePdfAppearanceMode(value);
+    setAppearanceMode(mode);
+    const cardId = Number(cardIdRef.current || 0);
+    if (cardId > 0) {
+      window.pycmd('incremento_pdf_appearance:' + JSON.stringify({ cardId, mode }));
+    }
+  }, [cardIdRef]);
 
   // On short windows the reader should start in a focused mode. Keep this as
   // an initial preference only, so manually expanding the toolbar is stable
@@ -1413,10 +1442,12 @@ export default function PdfViewer() {
       startBookmarks = null,
       startLocale = 'en',
       startCustomLanguage = null,
+      startAppearanceMode = 'original',
     ) => {
       const nextLanguage = createReaderLanguage(startLocale, startCustomLanguage);
       setLanguage(nextLanguage);
       document.documentElement.lang = nextLanguage.locale;
+      setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
@@ -1458,6 +1489,9 @@ export default function PdfViewer() {
     };
     window.incrementoSetScrollToTopOnPageChange = (value) => {
       applyScrollToTopOnPageChangeSetting(value);
+    };
+    window.incrementoSetPdfAppearanceMode = (mode) => {
+      setAppearanceMode(normalizePdfAppearanceMode(mode));
     };
 
     window.incrementoReceivePageCards = (data) => {
@@ -1514,6 +1548,7 @@ export default function PdfViewer() {
         pending.bookmarks || [],
         pending.locale || 'en',
         pending.customLanguage || null,
+        pending.appearanceMode || 'original',
       );
     }
     return () => {
@@ -1525,6 +1560,7 @@ export default function PdfViewer() {
       delete window.incrementoPdfOpenFind;
       delete window.incrementoSetAutoHighlightOnExtract;
       delete window.incrementoSetScrollToTopOnPageChange;
+      delete window.incrementoSetPdfAppearanceMode;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfHighlights;
       delete window.incrementoReceivePdfLimitStatus;
@@ -1638,8 +1674,10 @@ export default function PdfViewer() {
     <div
       style={{
         width: '100%',
+        minHeight: '100vh',
         minWidth: minViewerWidth > 0 ? `${minViewerWidth}px` : undefined,
         paddingBottom: `${visibleControlsHeight}px`,
+        background: pageAppearance.background,
       }}
     >
       <style>{`
@@ -1649,6 +1687,13 @@ export default function PdfViewer() {
         #pdf-controls [tabindex]:focus-visible {
           outline: 3px solid #60a5fa !important;
           outline-offset: 2px;
+        }
+        #pdf-controls select {
+          color-scheme: dark;
+        }
+        #pdf-controls select option {
+          color: #f4f4f5;
+          background-color: #27272a;
         }
         @media (prefers-reduced-motion: reduce) {
           #pdf-controls *,
@@ -1721,6 +1766,23 @@ export default function PdfViewer() {
             <span style={{ color: '#d4d4d8', fontWeight: 700, minWidth: 48, textAlign: 'center' }}>
               {Math.round(zoom * 100)}%
             </span>
+            <select
+              aria-label={tr("reader_pdf_appearance")}
+              title={tr("reader_pdf_appearance_hint")}
+              value={appearanceMode}
+              onChange={(event) => applyAppearanceMode(event.target.value)}
+              style={{
+                ...PDF_APPEARANCE_SELECT_STYLE,
+                height: 30,
+                borderRadius: 6,
+              }}
+            >
+              {PDF_APPEARANCE_MODES.map((mode) => (
+                <option key={mode} value={mode} style={PDF_APPEARANCE_OPTION_STYLE}>
+                  {tr(`reader_pdf_appearance_${mode}`)}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               aria-pressed={clickableLinks}
@@ -1885,6 +1947,30 @@ export default function PdfViewer() {
                   &#43;
                 </button>
               </span>
+            </div>
+            <span style={TOOLBAR_SEPARATOR_STYLE} />
+            <div style={TOOLBAR_STACK_STYLE}>
+              <label htmlFor="pdf-appearance-mode" style={TOOLBAR_LABEL_STYLE}>
+                {tr('reader_pdf_appearance')}
+              </label>
+              <select
+                id="pdf-appearance-mode"
+                aria-label={tr("reader_pdf_appearance")}
+                title={tr("reader_pdf_appearance_hint")}
+                value={appearanceMode}
+                onChange={(event) => applyAppearanceMode(event.target.value)}
+                style={{
+                  ...PDF_APPEARANCE_SELECT_STYLE,
+                  height: 32,
+                  minWidth: 104,
+                }}
+              >
+                {PDF_APPEARANCE_MODES.map((mode) => (
+                  <option key={mode} value={mode} style={PDF_APPEARANCE_OPTION_STYLE}>
+                    {tr(`reader_pdf_appearance_${mode}`)}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>}
 
@@ -2834,13 +2920,24 @@ export default function PdfViewer() {
       <div
         id="pdf-canvas-wrapper"
         ref={containerRef}
-        style={{ position: 'relative', display: 'block', textAlign: 'center' }}
+        style={{
+          position: 'relative',
+          display: 'block',
+          textAlign: 'center',
+          background: pageAppearance.background,
+        }}
       >
         <canvas ref={canvasARef} id="pdf-canvas-a"
-          style={{ display: 'block', margin: '0 auto', pointerEvents: 'none' }} />
+          style={{
+            display: 'block',
+            margin: '0 auto',
+            pointerEvents: 'none',
+            filter: pageAppearance.filter,
+          }} />
         <canvas ref={canvasBRef} id="pdf-canvas-b"
           style={{ display: 'none', position: 'absolute', top: 0, left: '50%',
-                   transform: 'translateX(-50%)', pointerEvents: 'none' }} />
+                   transform: 'translateX(-50%)', pointerEvents: 'none',
+                   filter: pageAppearance.filter }} />
 
         {showReadMarker && readMarkerRect && (
           <div

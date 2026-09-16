@@ -617,6 +617,7 @@ _SAFE_DATABASE_TABLES = (
     "pdf_text_index",
     "priorities",
     "reader_bookmarks",
+    "reader_custom_colors",
     "reconciliation_runs",
     "reviewer_recent_tags",
     "schema_migrations",

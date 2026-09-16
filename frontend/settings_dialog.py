@@ -29,7 +29,8 @@ try:
     from ..backend.config_service import (
         DEFAULT_TOPIC_DONE_TAG, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
-        configured_topic_done_tag, normalize_topic_done_tag,
+        configured_topic_done_tag, normalize_pdf_appearance_mode,
+        normalize_topic_done_tag,
     )
     from ..backend.custom_schedule import (
         configured_custom_schedule_default_mode,
@@ -42,7 +43,8 @@ except ImportError:
     from backend.config_service import (  # type: ignore
         DEFAULT_TOPIC_DONE_TAG, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
-        configured_topic_done_tag, normalize_topic_done_tag,
+        configured_topic_done_tag, normalize_pdf_appearance_mode,
+        normalize_topic_done_tag,
     )
     from backend.custom_schedule import (  # type: ignore
         configured_custom_schedule_default_mode,
@@ -353,6 +355,8 @@ class IncrementoSettingsDialog(QDialog):
         current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
         current_pdf_scroll_to_top_on_page_change: bool = True,
+        current_pdf_default_appearance: str = "original",
+        current_pdf_force_default_appearance: bool = False,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
         current_use_fail_pass_on_items: bool = True,
@@ -798,6 +802,39 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_pdf_scroll_to_top_on_page_change)
         )
         reviewer_controls_layout.addWidget(self._pdf_scroll_to_top_on_page_change_cb)
+
+        pdf_appearance_row = QWidget()
+        pdf_appearance_layout = QHBoxLayout(pdf_appearance_row)
+        pdf_appearance_layout.setContentsMargins(0, 0, 0, 0)
+        pdf_appearance_layout.addWidget(QLabel(t("settings_pdf_appearance_default")))
+        self._pdf_default_appearance_combo = QComboBox()
+        for mode, label_key in (
+            ("original", "settings_pdf_appearance_original"),
+            ("dark", "settings_pdf_appearance_dark"),
+            ("night", "settings_pdf_appearance_night"),
+        ):
+            self._pdf_default_appearance_combo.addItem(t(label_key), mode)
+        selected_appearance = normalize_pdf_appearance_mode(
+            current_pdf_default_appearance
+        )
+        for index in range(self._pdf_default_appearance_combo.count()):
+            if self._pdf_default_appearance_combo.itemData(index) == selected_appearance:
+                self._pdf_default_appearance_combo.setCurrentIndex(index)
+                break
+        pdf_appearance_layout.addWidget(self._pdf_default_appearance_combo)
+        pdf_appearance_layout.addStretch(1)
+        reviewer_controls_layout.addWidget(pdf_appearance_row)
+
+        self._pdf_force_default_appearance_cb = QCheckBox(
+            t("settings_pdf_appearance_force")
+        )
+        self._pdf_force_default_appearance_cb.setChecked(
+            bool(current_pdf_force_default_appearance)
+        )
+        reviewer_controls_layout.addWidget(self._pdf_force_default_appearance_cb)
+        pdf_appearance_hint = QLabel(t("settings_pdf_appearance_hint"))
+        pdf_appearance_hint.setWordWrap(True)
+        reviewer_controls_layout.addWidget(pdf_appearance_hint)
 
         self._prefer_web_card_resume_in_original_page_cb = QCheckBox(
             t('settings_prefer_resuming_embedded_web_card_media_in_the_original')
@@ -1766,6 +1803,16 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def pdf_scroll_to_top_on_page_change(self) -> bool:
         return bool(self._pdf_scroll_to_top_on_page_change_cb.isChecked())
+
+    @property
+    def pdf_default_appearance(self) -> str:
+        return normalize_pdf_appearance_mode(
+            self._pdf_default_appearance_combo.currentData()
+        )
+
+    @property
+    def pdf_force_default_appearance(self) -> bool:
+        return bool(self._pdf_force_default_appearance_cb.isChecked())
 
     @property
     def show_incremento_fields(self) -> bool:

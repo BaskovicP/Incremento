@@ -21,6 +21,7 @@ _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _MAX_FILENAME_STEM = 80
 _PDF_DISPLAY_LABEL_MAX_LEN = 48
 _PDF_UUID_SUFFIX_RE = re.compile(r"^(?P<label>.+)-(?P<uuid>[0-9a-f]{32})$", re.IGNORECASE)
+PDF_APPEARANCE_MODES = frozenset({"original", "dark", "night"})
 
 
 def _safe_pdf_stem(raw_name: str, fallback: str = "document") -> str:
@@ -345,6 +346,46 @@ def get_scroll_ratio(addon_dir: str, profile: str, card_id: int) -> float:
         .fetchone()
     )
     return _normalize_scroll_ratio(row[0]) if row else 0.0
+
+
+def get_pdf_appearance_mode(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+) -> str | None:
+    """Return this PDF's explicit appearance choice, if one has been saved."""
+    row = (
+        get_connection(addon_dir, profile)
+        .execute(
+            "SELECT appearance_mode FROM pdf_progress WHERE card_id = ?",
+            (int(card_id),),
+        )
+        .fetchone()
+    )
+    mode = str(row[0] or "") if row else ""
+    return mode if mode in PDF_APPEARANCE_MODES else None
+
+
+def set_pdf_appearance_mode(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    mode: str,
+) -> None:
+    """Persist one validated appearance without changing reading progress."""
+    normalized = str(mode or "").strip().casefold()
+    if normalized not in PDF_APPEARANCE_MODES:
+        raise ValueError("Unsupported PDF appearance mode.")
+    normalized_card_id = int(card_id)
+    if normalized_card_id <= 0:
+        raise ValueError("PDF card id must be positive.")
+    conn = get_connection(addon_dir, profile)
+    conn.execute(
+        "INSERT INTO pdf_progress (card_id, appearance_mode) VALUES (?, ?) "
+        "ON CONFLICT(card_id) DO UPDATE SET appearance_mode = excluded.appearance_mode",
+        (normalized_card_id, normalized),
+    )
+    conn.commit()
 
 
 def set_page(addon_dir: str, profile: str, card_id: int, page: int) -> None:
@@ -1151,7 +1192,7 @@ def _find_missing_pdf_card_to_relink(
         except Exception:
             continue
 
-        stored_path = pdf_storage_abspath(stored_filename)
+        stored_path = pdf_storage_abspath(stored_filename, profile=profile)
         if stored_path and os.path.exists(stored_path):
             live_matches.append(card_id)
         else:
@@ -1177,10 +1218,11 @@ def add_pdf_card(
     daily_page_limit: int | None = None,
     enforcement_mode: str = "warning",
     precomputed_page_texts: list[str] | None = None,
+    profile: str | None = None,
 ) -> int:
     """Copy PDF to media, create note, return card id."""
     ensure_pdf_note_type(col)
-    profile = _paths.get_active_profile()
+    profile = profile or _paths.get_active_profile()
 
     relink_card_id = _find_missing_pdf_card_to_relink(
         addon_dir,

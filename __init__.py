@@ -4266,7 +4266,7 @@ def _start_full_backup(
                         "config.json": "Incremento add-on config",
                         "restore.txt": "Restore instructions for a fresh install",
                         "data/priorities.json": "Card priorities (human-readable copy)",
-                        "data/pdf_progress.json": "PDF reading positions and zoom levels",
+                        "data/pdf_progress.json": "PDF reading positions, zoom levels, and appearance choices",
                         "data/highlights.json": "PDF text highlights",
                         "data/stats.json": "Session, daily and lifetime statistics",
                     },
@@ -6393,6 +6393,8 @@ def openSettingsFunction() -> None:
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_pdf_scroll_to_top_on_page_change=_pdf_dock_mod.configured_scroll_to_top_on_page_change(cfg),
+        current_pdf_default_appearance=_pdf_dock_mod.configured_pdf_default_appearance(cfg),
+        current_pdf_force_default_appearance=_pdf_dock_mod.configured_pdf_force_default_appearance(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
@@ -6460,6 +6462,8 @@ def openSettingsFunction() -> None:
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["pdf_scroll_to_top_on_page_change"] = dlg.pdf_scroll_to_top_on_page_change
+    cfg["pdf_default_appearance"] = dlg.pdf_default_appearance
+    cfg["pdf_force_default_appearance"] = dlg.pdf_force_default_appearance
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
@@ -6520,6 +6524,14 @@ def openSettingsFunction() -> None:
     try:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             f"window.incrementoSetScrollToTopOnPageChange && window.incrementoSetScrollToTopOnPageChange({json.dumps(dlg.pdf_scroll_to_top_on_page_change)});"
+        )
+    except Exception:
+        pass
+    try:
+        resolved_pdf_appearance = _pdf_dock_mod.resolved_current_pdf_appearance(cfg)
+        _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
+            "window.incrementoSetPdfAppearanceMode && "
+            f"window.incrementoSetPdfAppearanceMode({json.dumps(resolved_pdf_appearance)});"
         )
     except Exception:
         pass

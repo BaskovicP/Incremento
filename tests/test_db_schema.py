@@ -161,7 +161,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "
@@ -178,6 +178,32 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     finally:
         conn.rollback()
         db.close_connection()
+
+
+def test_pdf_appearance_migration_rolls_back_column_and_version():
+    import db
+
+    conn = sqlite3.connect(":memory:")
+    previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 10)
+    initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+
+    def fail(connection):
+        db._migration_11_pdf_appearance(connection)
+        raise RuntimeError("appearance migration interruption")
+
+    with pytest.raises(RuntimeError, match="interruption"):
+        initialize_schema(
+            conn,
+            bootstrap=db._create_tables,
+            migrations=previous + ((11, "pdf_appearance", fail),),
+        )
+
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 10
+    assert "appearance_mode" not in {
+        row[1] for row in conn.execute("PRAGMA table_info(pdf_progress)")
+    }
+    assert conn.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 10
+    conn.close()
 
 
 def test_statistics_goals_migration_rolls_back_table_and_ledger_on_failure():

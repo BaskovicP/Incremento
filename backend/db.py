@@ -17,6 +17,7 @@ epub_daily_limits — per-card daily reading limit config for EPUBs
 epub_due_review_prompts — per-card on-open due-review prompt config for EPUBs
 epub_daily_limit_usage — per-card per-day EPUB reading usage and overrides
 epub_highlights — highlighted passages per EPUB section
+reader_custom_colors — sixteen ordered PDF/EPUB color-picker swatches per profile
 writing_progress — per-card editor state for markdown writing notes
 writing_word_stats — per-card writing word-count baselines and totals
 stats           — daily and lifetime review statistics (JSON blobs per scope)
@@ -83,6 +84,7 @@ _TOPIC_A_FACTOR_MIN = 1.1
 _TOPIC_A_FACTOR_MAX = 100.0
 _DEFAULT_TOPIC_A_FACTOR = 3.5
 _SQL_VARIABLE_CHUNK_SIZE = 900
+READER_CUSTOM_COLOR_COUNT = 16
 
 
 def _iter_sql_chunks(values, chunk_size: int | None = None):
@@ -602,6 +604,34 @@ def _migration_9_pdf_annotation_sync(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_10_reader_custom_colors(conn: sqlite3.Connection) -> None:
+    """Persist the shared PDF/EPUB custom palette under its owning profile."""
+    _begin_migration_script(conn, """
+        CREATE TABLE reader_custom_colors (
+            slot INTEGER PRIMARY KEY CHECK (slot >= 0 AND slot < 16),
+            color TEXT NOT NULL CHECK (
+                length(color) = 7 AND substr(color, 1, 1) = '#'
+                AND substr(color, 2) NOT GLOB '*[^0-9a-f]*'
+            )
+        );
+    """)
+
+
+def _migration_11_pdf_appearance(conn: sqlite3.Connection) -> None:
+    """Remember the selected page appearance independently for each PDF card."""
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(pdf_progress)").fetchall()
+    }
+    if "appearance_mode" not in columns:
+        _begin_migration_script(
+            conn,
+            "ALTER TABLE pdf_progress "
+            "ADD COLUMN appearance_mode TEXT NOT NULL DEFAULT '' "
+            "CHECK (appearance_mode IN ('', 'original', 'dark', 'night'));",
+        )
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -611,6 +641,8 @@ _SCHEMA_MIGRATIONS = (
     (7, "statistics_goals", _migration_7_statistics_goals),
     (8, "web_extract_anchors", _migration_8_web_extract_anchors),
     (9, "pdf_annotation_sync", _migration_9_pdf_annotation_sync),
+    (10, "reader_custom_colors", _migration_10_reader_custom_colors),
+    (11, "pdf_appearance", _migration_11_pdf_appearance),
 )
 
 
@@ -620,6 +652,39 @@ def _initialize_database(conn: sqlite3.Connection) -> None:
         bootstrap=_create_tables,
         migrations=_SCHEMA_MIGRATIONS,
     )
+
+
+def get_reader_custom_colors(addon_dir: str, profile: str) -> list[str] | None:
+    """Return all swatch slots, or None before this profile first uses the picker."""
+    rows = get_connection(addon_dir, profile).execute(
+        "SELECT slot, color FROM reader_custom_colors ORDER BY slot LIMIT ?",
+        (READER_CUSTOM_COLOR_COUNT,),
+    ).fetchall()
+    if not rows:
+        return None
+    colors = ['#ffffff'] * READER_CUSTOM_COLOR_COUNT
+    for slot, color in rows:
+        colors[slot] = color
+    return colors
+
+
+def set_reader_custom_colors(addon_dir: str, profile: str, colors: list[str]) -> None:
+    """Atomically save all sixteen slots without deduplicating or reordering them."""
+    if not isinstance(colors, (list, tuple)) or len(colors) != READER_CUSTOM_COLOR_COUNT:
+        raise ValueError('The custom palette must contain exactly sixteen colors.')
+    if any(
+        not isinstance(color, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color)
+        for color in colors
+    ):
+        raise ValueError('Custom palette colors must be six-digit HTML hex colors.')
+    normalized = [color.lower() for color in colors]
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        conn.execute('DELETE FROM reader_custom_colors')
+        conn.executemany(
+            'INSERT INTO reader_custom_colors(slot, color) VALUES (?, ?)',
+            enumerate(normalized),
+        )
 
 
 def _create_tables(conn: sqlite3.Connection) -> None:
@@ -2486,13 +2551,13 @@ def export_pdf_progress_json(addon_dir: str, profile: str) -> str:
     rows = (
         get_connection(addon_dir, profile)
         .execute(
-            "SELECT card_id, page, zoom, scroll_ratio, read_page, read_anchor_json "
+            "SELECT card_id, page, zoom, scroll_ratio, read_page, read_anchor_json, appearance_mode "
             "FROM pdf_progress ORDER BY card_id"
         )
         .fetchall()
     )
     result = {}
-    for card_id, page, zoom, scroll_ratio, read_page, read_anchor_json in rows:
+    for card_id, page, zoom, scroll_ratio, read_page, read_anchor_json, appearance_mode in rows:
         item = {
             "page": page,
             "zoom": zoom,
@@ -2504,6 +2569,8 @@ def export_pdf_progress_json(addon_dir: str, profile: str) -> str:
                 item["read_anchor"] = json.loads(read_anchor_json)
             except Exception:
                 item["read_anchor"] = {}
+        if str(appearance_mode or "") in {"original", "dark", "night"}:
+            item["appearance_mode"] = str(appearance_mode)
         result[str(card_id)] = item
     return json.dumps(result, indent=2)
 
@@ -3527,7 +3594,7 @@ def search_pdf_text_index_for_card(
 
 
 def replace_epub_text_index(
-    addon_dir: str, profile: str, card_id: int, sections: list[tuple[str, str]]
+    addon_dir: str, profile: str, card_id: int, sections: list[tuple[str, str]], *, commit: bool = True
 ) -> None:
     conn = get_connection(addon_dir, profile)
     conn.execute("DELETE FROM epub_text_index WHERE card_id = ?", (card_id,))
@@ -3541,7 +3608,8 @@ def replace_epub_text_index(
             "INSERT INTO epub_text_index (card_id, section_index, title, text) VALUES (?, ?, ?, ?)",
             rows,
         )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def search_epub_text_index(

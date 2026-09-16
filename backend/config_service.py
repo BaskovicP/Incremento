@@ -26,6 +26,7 @@ DEFAULT_REVIEWER_BUTTON_VISIBILITY = {
     "postpone": True,
     "extract": True,
 }
+PDF_APPEARANCE_MODES = frozenset({"original", "dark", "night"})
 _DAY_END_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 _BOOLEAN_DEFAULTS = {
@@ -45,6 +46,7 @@ _BOOLEAN_DEFAULTS = {
     "writing_progress_visible": True,
     "auto_create_topics_deck": True,
     "topic_postpone_enabled": False,
+    "pdf_force_default_appearance": False,
 }
 
 _NUMBER_LIMITS: dict[
@@ -175,12 +177,34 @@ def configured_reviewer_button_group_visible(
     return _bool((config or {}).get("reviewer_button_group_visible"), True)
 
 
+def normalize_pdf_appearance_mode(value: Any) -> str:
+    """Return one supported PDF page appearance, defaulting safely to original."""
+    if not isinstance(value, str):
+        return "original"
+    normalized = value.strip().casefold()
+    return normalized if normalized in PDF_APPEARANCE_MODES else "original"
+
+
+def configured_pdf_default_appearance(
+    config: Mapping[str, Any] | None = None,
+) -> str:
+    return normalize_pdf_appearance_mode((config or {}).get("pdf_default_appearance"))
+
+
+def configured_pdf_force_default_appearance(
+    config: Mapping[str, Any] | None = None,
+) -> bool:
+    return _bool((config or {}).get("pdf_force_default_appearance"), False)
+
+
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
     config["topic_done_tag"] = configured_topic_done_tag(config)
+    config["pdf_default_appearance"] = configured_pdf_default_appearance(config)
+    config["pdf_force_default_appearance"] = configured_pdf_force_default_appearance(config)
     backup_profiles = config.get("automatic_backups")
     config["automatic_backups"] = {
         str(profile): normalize_policy(policy)

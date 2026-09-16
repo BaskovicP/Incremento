@@ -721,6 +721,37 @@ class TestIncrementoSettingsDialogPdfPaging:
         assert dialog.pdf_scroll_to_top_on_page_change is False
 
 
+class TestIncrementoSettingsDialogPdfAppearance:
+    def test_pdf_appearance_policy_defaults_to_original_without_force(self):
+        dialog = IncrementoSettingsDialog({})
+
+        assert dialog.pdf_default_appearance == "original"
+        assert dialog.pdf_force_default_appearance is False
+
+    def test_pdf_appearance_policy_respects_saved_values(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_pdf_default_appearance="night",
+            current_pdf_force_default_appearance=True,
+        )
+
+        assert dialog.pdf_default_appearance == "night"
+        assert dialog.pdf_force_default_appearance is True
+
+    def test_settings_entrypoint_loads_and_saves_pdf_appearance_policy(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+
+        assert "current_pdf_default_appearance=" in source
+        assert "current_pdf_force_default_appearance=" in source
+        assert 'cfg["pdf_default_appearance"] = dlg.pdf_default_appearance' in source
+        assert (
+            'cfg["pdf_force_default_appearance"] = '
+            "dlg.pdf_force_default_appearance"
+        ) in source
+
+
 class TestIncrementoSettingsDialogTopicsDeckCreation:
     def test_topics_deck_creation_defaults_enabled_for_all_profiles(self):
         dialog = IncrementoSettingsDialog({})
@@ -744,6 +775,13 @@ class TestIncrementoSettingsDialogTopicsDeckCreation:
 
 
 class TestIncrementoSettingsDialogShortcuts:
+    def test_markdown_document_is_separate_from_writing_and_assignable(self):
+        spec = next(spec for spec in SHORTCUT_ACTION_SPECS if spec["id"] == "add_markdown_document")
+        assert spec["label"] == "Add Markdown Document"
+        assert default_shortcuts()["add_markdown_document"] == ""
+        assert resolved_runtime_shortcuts({"add_markdown_document": "Alt+M"})["add_markdown_document"] == "Alt+M"
+        assert default_shortcuts()["add_writing"] == ""
+
     def test_command_palette_uses_the_cross_platform_ctrl_k_default(self):
         palette_spec = next(
             spec for spec in SHORTCUT_ACTION_SPECS if spec["id"] == "command_palette"

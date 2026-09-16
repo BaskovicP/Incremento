@@ -14,6 +14,8 @@
     "extract_copy_source_tags": false,
     "highlight_when_extracting": true,
     "pdf_highlight_extract_field": 1,
+    "pdf_default_appearance": "original",
+    "pdf_force_default_appearance": false,
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "show_priority_dialog_after_answer": false,

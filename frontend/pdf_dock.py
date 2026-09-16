@@ -75,12 +75,22 @@ except ImportError:
 try:
     from ..backend.paths import get_active_profile as _active_profile
     from ..backend.content_safety import external_plain_text_to_anki_html
-    from ..backend.config_service import load_addon_config
+    from ..backend.config_service import (
+        configured_pdf_default_appearance as _configured_pdf_default_appearance,
+        configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
+        load_addon_config,
+        normalize_pdf_appearance_mode,
+    )
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile
     from content_safety import external_plain_text_to_anki_html  # type: ignore
-    from config_service import load_addon_config  # type: ignore
+    from config_service import (  # type: ignore
+        configured_pdf_default_appearance as _configured_pdf_default_appearance,
+        configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
+        load_addon_config,
+        normalize_pdf_appearance_mode,
+    )
     from anki_compat import show_reviewer_question  # type: ignore
 
 try:
@@ -91,6 +101,7 @@ try:
         get_pdf_daily_limit_settings,
         get_pdf_due_review_prompt_settings,
         get_pdf_daily_limit_status,
+        get_pdf_appearance_mode,
         get_zoom,
         get_scroll_ratio,
         get_read_anchor,
@@ -104,6 +115,7 @@ try:
         save_pdf_due_review_prompt_settings,
         set_page,
         set_pdf_daily_limit_override,
+        set_pdf_appearance_mode,
         set_scroll_ratio,
         set_zoom,
         set_read_page,
@@ -116,6 +128,7 @@ except ImportError:
         get_pdf_daily_limit_settings,
         get_pdf_due_review_prompt_settings,
         get_pdf_daily_limit_status,
+        get_pdf_appearance_mode,
         get_zoom,
         get_scroll_ratio,
         get_read_anchor,
@@ -129,6 +142,7 @@ except ImportError:
         save_pdf_due_review_prompt_settings,
         set_page,
         set_pdf_daily_limit_override,
+        set_pdf_appearance_mode,
         set_scroll_ratio,
         set_zoom,
         set_read_page,
@@ -347,6 +361,48 @@ def configured_pdf_highlight_extract_field(config: dict | None = None) -> int:
 def configured_scroll_to_top_on_page_change(config: dict | None = None) -> bool:
     cfg = _config(config)
     return bool(cfg.get("pdf_scroll_to_top_on_page_change", True))
+
+
+def configured_pdf_default_appearance(config: dict | None = None) -> str:
+    return _configured_pdf_default_appearance(_config(config))
+
+
+def configured_pdf_force_default_appearance(config: dict | None = None) -> bool:
+    return _configured_pdf_force_default_appearance(_config(config))
+
+
+def resolve_pdf_appearance_mode(
+    saved_mode: str | None,
+    config: dict | None = None,
+) -> str:
+    """Resolve per-document appearance against the optional global force policy."""
+    cfg = _config(config)
+    default_mode = configured_pdf_default_appearance(cfg)
+    if configured_pdf_force_default_appearance(cfg):
+        return default_mode
+    if isinstance(saved_mode, str) and saved_mode.strip().casefold() in {
+        "original",
+        "dark",
+        "night",
+    }:
+        return normalize_pdf_appearance_mode(saved_mode)
+    return default_mode
+
+
+def resolved_current_pdf_appearance(config: dict | None = None) -> str:
+    """Resolve the active PDF after a live Settings policy change."""
+    card_id = current_pdf_card_id()
+    saved_mode = None
+    if card_id is not None:
+        try:
+            saved_mode = get_pdf_appearance_mode(
+                _ADDON_DIR,
+                _active_profile(),
+                card_id,
+            )
+        except Exception:
+            saved_mode = None
+    return resolve_pdf_appearance_mode(saved_mode, config)
 
 
 def current_pdf_card_id() -> int | None:
@@ -1280,6 +1336,7 @@ _PYCMD_BRIDGE = "__incremento_pycmd__:"
 _MSG_NAV = "incremento_pdf_nav:"
 _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
+_MSG_APPEARANCE = "incremento_pdf_appearance:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
 _MSG_HL_COLOR = "incremento_pdf_hl_color:"
 _MSG_ANNOTATIONS = "incremento_pdf_annotations"
@@ -1536,7 +1593,7 @@ def _choose_pdf_highlight_color(data: dict) -> None:
         return
     color = normalize_highlight_color(data.get('currentColor', 'yellow'))
     context = (_active_profile(), cid, _current_pdf_filename, dock, _pdf_annotation_generation)
-    selected = choose_highlight_color(dock, color)
+    selected = choose_highlight_color(dock, color, addon_dir=_ADDON_DIR, profile=context[0])
     if not _pdf_annotation_context_matches(*context):
         return
     dock._view.page().runJavaScript(
@@ -2324,6 +2381,21 @@ def _handle_pdf_js_message(msg: str) -> None:
                     cid,
                     float(payload.get("scrollRatio", 0.0) or 0.0),
                 )
+        except Exception:
+            pass
+    elif msg.startswith(_MSG_APPEARANCE):
+        try:
+            payload = json.loads(msg[len(_MSG_APPEARANCE) :])
+            cid = int(payload.get("cardId", 0) or 0)
+            mode = str(payload.get("mode") or "").strip().casefold()
+            if cid != current_pdf_card_id() or mode not in {"original", "dark", "night"}:
+                return
+            set_pdf_appearance_mode(
+                _ADDON_DIR,
+                _active_profile(),
+                cid,
+                mode,
+            )
         except Exception:
             pass
     elif msg.startswith(_MSG_HL_COLOR):
@@ -3269,6 +3341,15 @@ def show_pdf_in_dock(
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
     reader_locale = get_locale()
     custom_reader_language = get_custom_reader_payload()
+    try:
+        saved_appearance = get_pdf_appearance_mode(
+            _ADDON_DIR,
+            _active_profile(),
+            int(card_id),
+        )
+    except Exception:
+        saved_appearance = None
+    appearance_mode = resolve_pdf_appearance_mode(saved_appearance)
 
     if search_hits is None:
         if str(search_query or "").strip():
@@ -3286,10 +3367,10 @@ def show_pdf_in_dock(
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}));"
     )
 
     current = _pdf_dock._view.url().toString()

@@ -113,6 +113,63 @@ def test_pdf_bridge_rejects_static_prefix_and_stale_card(monkeypatch):
     assert messages == [pdf_dock._MSG_OPEN_ADD_CARD]
 
 
+def test_pdf_appearance_policy_uses_saved_mode_unless_force_is_enabled():
+    assert pdf_dock.resolve_pdf_appearance_mode(
+        "night",
+        {"pdf_default_appearance": "dark", "pdf_force_default_appearance": False},
+    ) == "night"
+    assert pdf_dock.resolve_pdf_appearance_mode(
+        None,
+        {"pdf_default_appearance": "dark", "pdf_force_default_appearance": False},
+    ) == "dark"
+    assert pdf_dock.resolve_pdf_appearance_mode(
+        "night",
+        {"pdf_default_appearance": "original", "pdf_force_default_appearance": True},
+    ) == "original"
+
+
+def test_current_pdf_appearance_re_resolves_after_settings_change(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_appearance_mode",
+        lambda addon_dir, profile, card_id: "night",
+    )
+
+    assert pdf_dock.resolved_current_pdf_appearance(
+        {"pdf_default_appearance": "dark", "pdf_force_default_appearance": False}
+    ) == "night"
+    assert pdf_dock.resolved_current_pdf_appearance(
+        {"pdf_default_appearance": "dark", "pdf_force_default_appearance": True}
+    ) == "dark"
+
+
+def test_pdf_appearance_bridge_saves_only_for_current_card(monkeypatch):
+    saved = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "set_pdf_appearance_mode",
+        lambda addon_dir, profile, card_id, mode: saved.append(
+            (addon_dir, profile, card_id, mode)
+        ),
+    )
+
+    pdf_dock._handle_pdf_js_message(
+        pdf_dock._MSG_APPEARANCE + json.dumps({"cardId": 99, "mode": "night"})
+    )
+    pdf_dock._handle_pdf_js_message(
+        pdf_dock._MSG_APPEARANCE + json.dumps({"cardId": 42, "mode": "sepia"})
+    )
+    pdf_dock._handle_pdf_js_message(
+        pdf_dock._MSG_APPEARANCE + json.dumps({"cardId": 42, "mode": "dark"})
+    )
+
+    assert saved == [(pdf_dock._ADDON_DIR, "TestProfile", 42, "dark")]
+
+
 def test_pdf_request_boundary_allows_only_viewer_assets_and_active_pdf(tmp_path):
     viewer_root = tmp_path / "web"
     viewer_root.mkdir()
@@ -1048,6 +1105,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "_current_pdf_limit_status", lambda *args, **kwargs: {"enabled": False})
     monkeypatch.setattr(pdf_dock, "get_read_anchor", lambda *args, **kwargs: None)
     monkeypatch.setattr(pdf_dock, "get_scroll_ratio", lambda *args, **kwargs: 0.42)
+    monkeypatch.setattr(pdf_dock, "get_pdf_appearance_mode", lambda *args, **kwargs: "night")
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
@@ -1096,7 +1154,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
-    assert f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}));' in js_calls[0]
+    assert (
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night"));'
+        in js_calls[0]
+    )
+    assert 'appearanceMode: "night"' in js_calls[0]
     assert '"old-file.pdf"' not in js_calls[0]
 
 
@@ -1683,8 +1745,8 @@ def test_custom_color_result_is_delivered_only_to_its_current_pdf(monkeypatch, s
     monkeypatch.setattr(pdf_dock, '_pdf_annotation_generation', 10)
     monkeypatch.setattr(pdf_dock, 'current_pdf_card_id', lambda: 42)
     monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'Profile A')
-    def choose(parent, current):
-        picks.append((parent, current))
+    def choose(parent, current, *, addon_dir, profile):
+        picks.append((parent, current, addon_dir, profile))
         if switch_context:
             monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'Profile B')
         return '#123abc'
@@ -1692,7 +1754,7 @@ def test_custom_color_result_is_delivered_only_to_its_current_pdf(monkeypatch, s
     pdf_dock._choose_pdf_highlight_color({'cardId': 999, 'currentColor': 'yellow'})
     assert not picks and not scripts
     pdf_dock._choose_pdf_highlight_color({'cardId': 42, 'currentColor': '#123ABC'})
-    assert picks == [(dock, '#123abc')]
+    assert picks == [(dock, '#123abc', pdf_dock._ADDON_DIR, 'Profile A')]
     if switch_context:
         assert not scripts
     else:
