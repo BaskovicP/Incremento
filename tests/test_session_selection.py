@@ -25,6 +25,57 @@ class _FakeStats:
         raise ValueError(scope)
 
 
+def test_strict_topic_quota_counts_pdf_and_epub_topics_before_filling_items():
+    cfg = SchedulerConfig(
+        session_card_count=10, topics_rate=0.6, pdf_rate=0.5,
+        enforce_priority=True, phase_order=["type"], use_tags=False,
+    )
+    topic_picks = 0
+    sequence = []
+
+    def pick(**kwargs):
+        nonlocal topic_picks
+        kind = kwargs["force_card_type"]
+        if kind == "topics":
+            topic_picks += 1
+            kind = ["pdf", "epub", "pdf"][topic_picks - 1] if topic_picks <= 3 else "topics"
+        sequence.append(kind)
+        return types.SimpleNamespace(card=len(sequence), card_type=kind, tag=None, mode="priority")
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=pick
+    ):
+        picker = session_selection.SessionPicker(cfg, "/tmp/unused")
+        picker.pick_until(10)
+
+    assert sequence == ["pdf", "epub", "pdf", "topics", "topics", "topics"] + ["items"] * 4
+
+
+def test_item_document_keeps_concrete_type_and_item_quota_across_snapshot_refill_and_rollback():
+    cfg = SchedulerConfig(session_card_count=2, topics_rate=0, enforce_priority=True, phase_order=["type"])
+    seen = []
+
+    def pick(**kwargs):
+        seen.append(copy.deepcopy(kwargs["counts"]["type"]))
+        return types.SimpleNamespace(card=len(seen), card_type="epub", study_kind="items", tag=None, mode="priority")
+
+    with patch("session_selection.StatsManager", _FakeStats), patch(
+        "session_selection.get_card_from_scheduler", side_effect=pick
+    ):
+        picker = session_selection.SessionPicker(cfg, "/tmp/unused")
+        assert picker.pick_until(1) == [1]
+        snapshot = picker.snapshot()
+        picker = session_selection.SessionPicker(cfg, "/tmp/unused", snapshot=snapshot)
+        assert picker._picked_content_type_count("topics") == 0
+        assert picker._picked_content_type_count("items") == 1
+        assert picker.pick_until(2) == [2]
+        assert picker.session_counts["type"] == {"epub": 2}
+        assert seen[1] == {"epub": 0, "items": 1}
+        picker._restore_snapshot(snapshot)
+        assert picker._picked_content_type_count("topics") == 0
+        assert picker._picked_content_type_count("items") == 1
+
+
 def test_soft_mode_selection_tracks_counts_and_meta():
     cfg = SchedulerConfig(
         session_card_count=3,

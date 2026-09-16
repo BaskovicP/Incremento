@@ -43,7 +43,7 @@ except ImportError:
 
 try:
     from ..backend import cards as _card_utils
-    from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.config_service import DOCUMENT_MIX_VERSION, load_addon_config, normalize_document_mix, save_addon_config
     from ..backend.scheduler_config import (
         MAX_SESSION_CARD_COUNT,
         SchedulerConfig,
@@ -69,7 +69,7 @@ try:
     )
 except ImportError:
     import cards as _card_utils
-    from config_service import load_addon_config, save_addon_config  # type: ignore
+    from config_service import DOCUMENT_MIX_VERSION, load_addon_config, normalize_document_mix, save_addon_config  # type: ignore
     from scheduler_config import (
         MAX_SESSION_CARD_COUNT,
         SchedulerConfig,
@@ -1501,20 +1501,22 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_limit_main_status_lbl.setStyleSheet("color: gray; font-size: 11px;")
         pdf_limit_layout.addWidget(self._pdf_limit_main_status_lbl)
 
-        # ── 5. PDF soft-mix rate ──────────────────────────────────────────────
+        # ── 5. Document share within Topics ───────────────────────────────────
         pdf_val = self._saved.get("pdf_slider", 100)
         pdf_row = QHBoxLayout()
         self._pdf_left_lbl = QLabel(t("session_percent", value=100 - pdf_val))
         self._pdf_left_lbl.setFixedWidth(36)
         pdf_row.addWidget(self._pdf_left_lbl)
-        _lbl_pdf = QLabel(t("session_documents"))
+        _lbl_pdf = QLabel(t("session_documents_within_topics"))
         _lbl_pdf.setToolTip(t("session_documents_tooltip"))
         pdf_row.addWidget(_lbl_pdf)
         self._pdf_slider = QSlider(Qt.Orientation.Horizontal)
         self._pdf_slider.setRange(0, 100)
+        self._pdf_slider.setAccessibleName(t("session_documents_other_mix_accessible"))
+        self._pdf_slider.setToolTip(t("session_document_mix_help"))
         self._pdf_slider.setValue(pdf_val)
         pdf_row.addWidget(self._pdf_slider)
-        _lbl_other = QLabel(t("session_other"))
+        _lbl_other = QLabel(t("session_non_document_topics"))
         _lbl_other.setToolTip(t("session_other_tooltip"))
         pdf_row.addWidget(_lbl_other)
         self._pdf_right_lbl = QLabel(t("session_percent", value=pdf_val))
@@ -1527,11 +1529,11 @@ class SchedulerConfigDialog(QDialog):
         )
         self._pdf_lock_cb.setFixedWidth(48)
         pdf_row.addWidget(self._pdf_lock_cb)
-        pdf_row.addWidget(QLabel(t("session_group")))
-        self._pdf_group_edit = QLineEdit(str(main_groups.get("pdf", _DEFAULT_MAIN_GROUPS["pdf"])))
-        self._pdf_group_edit.setFixedWidth(90)
-        self._pdf_group_edit.setToolTip(t("session_group_tooltip"))
-        pdf_row.addWidget(self._pdf_group_edit)
+        # Retain the serialized legacy field, but a conditional percentage
+        # cannot share a 100% pool with whole-session Topic/selection percentages.
+        self._pdf_group_edit = QLineEdit(self)
+        self._pdf_group_edit.setText(str(main_groups.get("pdf", _DEFAULT_MAIN_GROUPS["pdf"])))
+        self._pdf_group_edit.hide()
         pdf_row.addWidget(_info_icon(
             t("session_document_mix_help")
         ))
@@ -1604,7 +1606,7 @@ class SchedulerConfigDialog(QDialog):
         layout.addWidget(self._tag_content_title_lbl)
         self._tag_content_table = QTableWidget(0, 5)
         self._tag_content_table.setHorizontalHeaderLabels(
-            [t("session_tag"), t("session_pdf"), t("session_topics"), t("session_items"), t("session_total")]
+            [t("session_tag"), t("session_document_topics"), t("session_non_document_topics"), t("session_items"), t("session_total")]
         )
         self._tag_content_table.verticalHeader().setVisible(False)
         self._tag_content_table.setAlternatingRowColors(True)
@@ -2282,18 +2284,19 @@ class SchedulerConfigDialog(QDialog):
         self._basic_layout.addLayout(topics_row)
 
         docs_row = QHBoxLayout()
-        docs_row.addWidget(QLabel(t("session_documents")))
+        docs_row.addWidget(QLabel(t("session_documents_within_topics")))
         self._basic_docs_left_label = QLabel("")
         self._basic_docs_left_label.setFixedWidth(42)
         docs_row.addWidget(self._basic_docs_left_label)
         self._basic_docs_slider = QSlider(Qt.Orientation.Horizontal)
         self._basic_docs_slider.setRange(0, 100)
         self._basic_docs_slider.setAccessibleName(t("session_documents_other_mix_accessible"))
+        self._basic_docs_slider.setToolTip(t("session_document_mix_help"))
         docs_row.addWidget(self._basic_docs_slider, 1)
         self._basic_docs_right_label = QLabel("")
         self._basic_docs_right_label.setFixedWidth(42)
         docs_row.addWidget(self._basic_docs_right_label)
-        docs_row.addWidget(QLabel(t("session_other")))
+        docs_row.addWidget(QLabel(t("session_non_document_topics")))
         self._basic_layout.addLayout(docs_row)
 
         self._basic_summary_label = QLabel("")
@@ -2391,7 +2394,20 @@ class SchedulerConfigDialog(QDialog):
         self._set_widget_value_without_signal(self._basic_docs_slider, docs_value)
         self._basic_docs_left_label.setText(t("session_percent", value=100 - docs_value))
         self._basic_docs_right_label.setText(t("session_percent", value=docs_value))
+        self._refresh_document_mix_enabled()
         self._basic_summary_label.setText(self._basic_summary_text())
+
+    def _refresh_document_mix_enabled(self) -> None:
+        """Keep the remembered Docs preference inert when Topics is zero."""
+        enabled = self._topics_slider.value() < 100 and not self._pdf_lock_cb.isChecked()
+        self._pdf_slider.setEnabled(enabled)
+        if hasattr(self, "_basic_docs_slider"):
+            self._basic_docs_slider.setEnabled(enabled)
+        docs = 100 - self._pdf_slider.value() if self._topics_slider.value() < 100 else 0
+        for left, right in (("_pdf_left_lbl", "_pdf_right_lbl"), ("_basic_docs_left_label", "_basic_docs_right_label")):
+            if hasattr(self, left):
+                getattr(self, left).setText(t("session_percent", value=docs))
+                getattr(self, right).setText(t("session_percent", value=100 - docs))
 
     def _update_day_end_visibility(self) -> None:
         is_daily = self._scope_combo.currentData() == "daily"
@@ -3127,10 +3143,10 @@ class SchedulerConfigDialog(QDialog):
         targets = self._get_main_targets()
         locks = self._get_main_lock_state()
         groups = self._get_main_group_state()
-        all_keys = ["topics", "pdf", "priority"]
+        all_keys = ["topics", "priority"]
 
         self._topics_slider.setEnabled(not locks["topics"])
-        self._pdf_slider.setEnabled(not locks["pdf"])
+        self._refresh_document_mix_enabled()
         self._random_slider.setEnabled(not locks["priority"])
 
         if changed_key is not None and locks.get(changed_key, False):
@@ -3161,6 +3177,7 @@ class SchedulerConfigDialog(QDialog):
                 )
 
         self._apply_main_targets(targets)
+        self._refresh_document_mix_enabled()
 
     def _on_main_slider_changed(self, changed_key: str) -> None:
         if self._updating:
@@ -3661,6 +3678,7 @@ class SchedulerConfigDialog(QDialog):
             "topics_slider":      self._topics_slider.value(),
             "random_slider":      self._random_slider.value(),
             "pdf_slider":         self._pdf_slider.value(),
+            "document_mix_version": DOCUMENT_MIX_VERSION,
             "main_locks": {
                 "topics": self._topics_lock_cb.isChecked(),
                 "pdf": self._pdf_lock_cb.isChecked(),
@@ -3871,6 +3889,7 @@ class SchedulerConfigDialog(QDialog):
 
     def _load_profile_dict(self, d: dict) -> None:
         """Apply a profile dict to all dialog widgets."""
+        d = normalize_document_mix(d)
         self._count_spin.setValue(d.get("session_card_count", 50))
 
         topics_val = d.get("topics_slider", 10)

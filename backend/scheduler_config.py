@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 try:
-    from .config_service import load_addon_config
+    from .config_service import load_addon_config, normalize_document_mix
 except ImportError:
-    from config_service import load_addon_config  # type: ignore
+    from config_service import load_addon_config, normalize_document_mix  # type: ignore
 
 NO_TAGS_KEY = "__no_tags__"
 READY_NEW_CLAUSE = "is:new"
@@ -117,7 +117,7 @@ class SchedulerConfig:
     include_due: bool = True             # include is:due (review) cards
     preserve_order: bool = True          # build filtered deck in scheduler-selected order
     show_debug: bool = False             # show card order debug dialog at session start
-    pdf_rate: float = 0.0                # fraction of session picks that are PDF cards
+    pdf_rate: float = 0.0                # fraction of Topics that target PDF/EPUB documents
     content_type_weights: dict = field(default_factory=dict)  # {"pdf"|"youtube"|"webpage": fraction}
     allow_content_tag_fallback: bool = False  # document/media tag misses may fall back to the full content pool
     priority_lower_is_more_important: bool = True
@@ -160,7 +160,7 @@ def load_scheduler_config() -> SchedulerConfig:
 
 def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     """Build a SchedulerConfig from the raw ``dialog`` config sub-dict."""
-    d = d if isinstance(d, dict) else {}
+    d = normalize_document_mix(d)
     session_card_count = _bounded_int(
         d.get("session_card_count", 50),
         50,
@@ -220,7 +220,7 @@ def _config_from_dialog_dict(d: dict) -> SchedulerConfig:
     preserve_order = _config_bool(d.get("preserve_order", True), True)
     show_debug = _config_bool(d.get("show_debug", False), False)
     auto_refill_session = _config_bool(d.get("auto_refill_session", False), False)
-    # The UI slider runs from Docs on the left to Other on the right.
+    # The UI slider runs from Documents within Topics to non-document Topics.
     pdf_slider = _bounded_number(d.get("pdf_slider", 100), 100, 0, 100)
     pdf_rate = 1.0 - pdf_slider / 100.0
     priority_lower_is_more_important = _config_bool(

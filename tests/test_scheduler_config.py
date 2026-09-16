@@ -128,11 +128,11 @@ class TestConfigFromDialogDict:
         assert cfg.include_rest is False
 
     def test_pdf_slider_sets_rate(self):
-        cfg = _config_from_dialog_dict({"pdf_slider": 25})
+        cfg = _config_from_dialog_dict({"pdf_slider": 25, "document_mix_version": 2})
         assert cfg.pdf_rate == pytest.approx(0.75)
 
-    def test_saved_twenty_percent_docs_remains_twenty_percent(self):
-        cfg = _config_from_dialog_dict({"pdf_slider": 80})
+    def test_saved_twenty_percent_docs_within_topics_remains_twenty_percent(self):
+        cfg = _config_from_dialog_dict({"pdf_slider": 80, "document_mix_version": 2})
         assert cfg.pdf_rate == pytest.approx(0.20)
 
     def test_zero_weight_tag_rows_are_inactive(self):

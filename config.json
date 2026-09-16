@@ -1,5 +1,6 @@
 {
-    "config_schema_version": 2,
+    "config_schema_version": 3,
+    "dialog": {"document_mix_version": 2},
     "ui_language": "auto",
     "onboarding_completed_version": 0,
     "scheduler_presets": {},

@@ -1,6 +1,24 @@
 import scheduler_preview
 
 
+def test_documents_are_ten_percent_of_sixty_topics_not_the_whole_session():
+    mix = scheduler_preview.compute_expected_mix(100, 40, 90, 50)
+
+    assert mix["content_counts"] == {"pdf": 6, "topics": 54, "items": 40}
+
+
+def test_items_only_has_no_document_topics_even_with_documents_at_one_hundred_percent():
+    mix = scheduler_preview.compute_expected_mix(100, 100, 0, 50)
+
+    assert mix["content_counts"] == {"pdf": 0, "topics": 0, "items": 100}
+
+
+def test_rounding_splits_topics_and_items_before_dividing_topic_subtypes():
+    mix = scheduler_preview.compute_expected_mix(30, 25, 80, 50)
+
+    assert mix["content_counts"] == {"pdf": 5, "topics": 18, "items": 7}
+
+
 def test_equal_slider_example_shares():
     mix = scheduler_preview.compute_expected_mix(
         session_card_count=40,
@@ -9,17 +27,17 @@ def test_equal_slider_example_shares():
         random_slider=50,
     )
 
-    assert mix["content_shares"]["pdf"] == 0.5
+    assert mix["content_shares"]["pdf"] == 0.25
     assert mix["content_shares"]["topics"] == 0.25
-    assert mix["content_shares"]["items"] == 0.25
+    assert mix["content_shares"]["items"] == 0.5
     assert mix["mode_shares"]["random"] == 0.5
     assert mix["mode_shares"]["priority"] == 0.5
 
-    assert mix["content_counts"] == {"pdf": 20, "topics": 10, "items": 10}
+    assert mix["content_counts"] == {"pdf": 10, "topics": 10, "items": 20}
     assert mix["mode_counts"] == {"random": 20, "priority": 20}
 
 
-def test_topics_slider_applies_inside_non_pdf_pool():
+def test_document_slider_applies_inside_topic_pool():
     mix = scheduler_preview.compute_expected_mix(
         session_card_count=20,
         topics_slider=0,   # 100% topics

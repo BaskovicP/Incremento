@@ -36,6 +36,7 @@ class SchedulerResult(NamedTuple):
     card_type: str        # "topics" | "items" | "pdf" | "epub" | "youtube" | "webpage"
     tag: str | None       # tag used, or None if fallback ignored it
     mode: str             # "random" | "priority"
+    study_kind: str | None = None  # semantic Topic/Item kind for an Item-classified document
 
 
 def soft_pick(weights: dict, counts: dict, alpha=0.2, epsilon=0.05) -> str:
@@ -81,8 +82,8 @@ def get_card_from_scheduler(
         exclude_ids=None,
         force_card_type=None,   # "topics" | "items" | "pdf" | "youtube" | "webpage" | None
         force_mode=None,        # "random" | "priority" | None — skips soft_pick for mode
-        topics_filter: str = "deck:Topics",
-        items_filter: str = "-deck:Topics",
+        topics_filter: str = "",
+        items_filter: str = "",
         ready_filter: str = "(is:new OR (is:learn is:due) OR (is:review is:due)) -is:suspended",
         pdf_rate: float = 0.0,
         pdf_filter: str = DOCUMENT_FILTER,
@@ -105,12 +106,13 @@ def get_card_from_scheduler(
     # clamping here keeps direct callers from creating negative bucket weights.
     document_share = max(0.0, min(1.0, float(pdf_rate)))
     topic_share = max(0.0, min(1.0, float(topics_rate)))
-    standard_share = 1.0 - document_share
     type_weights = {
-        "pdf": document_share,
-        "topics": topic_share * standard_share,
-        "items": (1.0 - topic_share) * standard_share,
+        "pdf": topic_share * document_share,
+        "topics": topic_share * (1.0 - document_share),
+        "items": 1.0 - topic_share,
     }
+    type_counts = dict(counts["type"])
+    type_counts["pdf"] = type_counts.get("pdf", 0) + type_counts.pop("epub", 0)
 
     def enabled_standard_fallback(card_type: str) -> str | None:
         """Return an enabled Topics/Items fallback without crossing 0% endpoints."""
@@ -127,15 +129,21 @@ def get_card_from_scheduler(
     # 1. Decisions
     if force_card_type is not None:
         card_type = force_card_type
-    elif document_share > 0:
-        # Three-way pick: pdf vs topics vs items
-        card_type = soft_pick(type_weights, counts["type"], alpha, epsilon)
     else:
+        # Balance Topics/Items first, including documents in the Topic total.
+        # A frontloaded document reservation must not inflate the Topic share.
         card_type = soft_pick(
             {"topics": topic_share, "items": 1.0 - topic_share},
-            counts["type"],
+            {"topics": type_counts.get("topics", 0) + type_counts["pdf"],
+             "items": type_counts.get("items", 0)},
             alpha,
             epsilon,
+        )
+    if card_type == "topics" and document_share > 0:
+        # Normal picks and strict Topic quotas share the same conditional mix.
+        card_type = soft_pick(
+            {"pdf": document_share, "topics": 1.0 - document_share},
+            {kind: type_counts.get(kind, 0) for kind in ("pdf", "topics")}, alpha, epsilon,
         )
 
     mode = force_mode if force_mode is not None else soft_pick(
@@ -227,12 +235,14 @@ def get_card_from_scheduler(
             return priority_available(raw)
         return random_available(raw)
 
-    # When PDF cards are scheduled separately, exclude them from topics/items pools
-    pdf_exclusion = f" -({pdf_filter})" if document_share > 0 else ""
+    # Documents cannot leak through the non-document Topic branch at Docs=0.
+    # Item-classified documents remain Items, regardless of the Docs setting.
+    pdf_exclusion = f" -({DOCUMENT_FILTER})"
     effective_topics_filter = topics_filter + pdf_exclusion
-    effective_items_filter  = items_filter  + pdf_exclusion
+    effective_items_filter = items_filter
+    topic_document_filter = f"({pdf_filter}) ({topics_filter})" if topics_filter.strip() else pdf_filter
 
-    def _ct_pick(cache_prefix, all_fn, tag_fn, fn_kwargs):
+    def _ct_pick(cache_prefix, all_fn, tag_fn, fn_kwargs, *, topic_only=False, fixed_tag=None):
         """Tag-aware pick within a content-type pool (pdf / youtube / webpage).
 
         If use_tags is on, does a soft_pick over tag weights first then fetches
@@ -241,14 +251,18 @@ def get_card_from_scheduler(
         Returns (cards, resolved_tag).
         """
         loader_kwargs = dict(fn_kwargs)
+        if topic_only:
+            cache_prefix += "_topics"
         if col is not None:
             loader_kwargs["col"] = col
+        if topic_only:
+            loader_kwargs.update(topic_only=True, topic_classifier=topic_classifier)
         if use_tags and tag_weights:
             remainder = max(0.0, 1.0 - sum(tag_weights.values())) if include_rest else 0.0
             extended = dict(tag_weights)
             if remainder > 1e-6:
                 extended[NO_TAGS_KEY] = remainder
-            tag = soft_pick(extended, counts["tags"], alpha, epsilon)
+            tag = fixed_tag if fixed_tag is not None else soft_pick(extended, counts["tags"], alpha, epsilon)
             if tag == NO_TAGS_KEY:
                 other_filters = {
                     key: exclude_tags_from_filter(value, tag_weights)
@@ -257,6 +271,8 @@ def get_card_from_scheduler(
                 other_kwargs = dict(other_filters)
                 if col is not None:
                     other_kwargs["col"] = col
+                if topic_only:
+                    other_kwargs.update(topic_only=True, topic_classifier=topic_classifier)
                 return available(
                     cached_pool(
                         (cache_prefix, "other", tuple(sorted(other_filters.items()))),
@@ -351,26 +367,47 @@ def get_card_from_scheduler(
             lambda: card_utils.get_item_cards_by_tag(tag, **kwargs),
         )
 
+    def document_topic_fallback(tag=None):
+        """Exhaust an enabled sibling subtype without changing semantic kind/tag."""
+        if document_share <= 0 or (topic_share <= 0 and force_card_type != "topics"):
+            return None
+        cards, resolved_tag = _ct_pick(
+            "pdf", card_utils.get_all_pdf_cards, card_utils.get_pdf_cards_by_tag,
+            {"pdf_filter": topic_document_filter}, topic_only=True, fixed_tag=tag,
+        )
+        if not cards:
+            return None
+        card = random.choice(cards) if mode == "random" else cards[0]
+        doc_kwargs = {"col": col} if col is not None else {}
+        doc_type = card_utils.get_document_card_type(card, **doc_kwargs) or "pdf"
+        return SchedulerResult(card=card, card_type=doc_type, tag=resolved_tag, mode=mode)
+
     # 2a. PDF pick path — no ready_filter, always eligible
     if card_type == "pdf":
         pdf_cards, pdf_tag = _ct_pick(
             "pdf",
             card_utils.get_all_pdf_cards,
             card_utils.get_pdf_cards_by_tag,
-            {"pdf_filter": pdf_filter},
+            {"pdf_filter": topic_document_filter if force_card_type in (None, "topics") else pdf_filter},
+            topic_only=force_card_type in (None, "topics"),
         )
         if pdf_cards:
             card = random.choice(pdf_cards) if mode == "random" else pdf_cards[0]
             doc_kwargs = {"col": col} if col is not None else {}
             doc_type = card_utils.get_document_card_type(card, **doc_kwargs) or "pdf"
             return SchedulerResult(card=card, card_type=doc_type, tag=pdf_tag, mode=mode)
-        if not allow_type_fallback:
+        if force_card_type == "topics" and document_share < 1:
+            # Exhaustion may cross subtypes within a forced Topic quota, but
+            # must not borrow an Item or revive a 0% non-document subtype.
+            actual_type = card_type = "topics"
+        elif not allow_type_fallback:
             return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
-        fallback_type = enabled_standard_fallback(card_type)
-        if fallback_type is None:
-            return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
-        actual_type = fallback_type
-        card_type = actual_type
+        else:
+            fallback_type = enabled_standard_fallback(card_type)
+            if fallback_type is None:
+                return SchedulerResult(card=None, card_type="pdf", tag=pdf_tag, mode=mode)
+            actual_type = fallback_type
+            card_type = actual_type
 
     # 2b. YouTube pick path — no ready_filter, always eligible
     if card_type == "youtube":
@@ -427,6 +464,10 @@ def get_card_from_scheduler(
                 cards = available(all_topics(other_only=True))
             else:
                 cards = available(all_items(other_only=True))
+            if not cards and card_type == "topics":
+                sibling = document_topic_fallback(NO_TAGS_KEY)
+                if sibling is not None:
+                    return sibling
             if not cards and allow_type_fallback:
                 fallback_type = enabled_standard_fallback(card_type)
                 if fallback_type == "items":
@@ -435,6 +476,10 @@ def get_card_from_scheduler(
                 elif fallback_type == "topics":
                     actual_type = fallback_type
                     cards = available(all_topics(other_only=True))
+            if not cards and card_type == "items" and allow_type_fallback:
+                sibling = document_topic_fallback(NO_TAGS_KEY)
+                if sibling is not None:
+                    return sibling
             if not cards:
                 return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
         else:
@@ -444,6 +489,10 @@ def get_card_from_scheduler(
                 cards = available(tagged_topics(tag))
             else:
                 cards = available(tagged_items(tag))
+            if not cards and card_type == "topics":
+                sibling = document_topic_fallback(tag)
+                if sibling is not None:
+                    return sibling
 
             # Type fallback: try the other type, but STAY within the tag
             if not cards and allow_type_fallback:
@@ -454,6 +503,10 @@ def get_card_from_scheduler(
                 elif fallback_type == "topics":
                     actual_type = fallback_type
                     cards = available(tagged_topics(tag))
+            if not cards and card_type == "items" and allow_type_fallback:
+                sibling = document_topic_fallback(tag)
+                if sibling is not None:
+                    return sibling
 
             # No cards at all for this tag → caller handles it (next tag or Phase 2)
             if not cards:
@@ -465,6 +518,10 @@ def get_card_from_scheduler(
             cards = available(all_topics())
         else:
             cards = available(all_items())
+        if not cards and card_type == "topics":
+            sibling = document_topic_fallback()
+            if sibling is not None:
+                return sibling
 
         # Type fallback across all cards
         if not cards and allow_type_fallback:
@@ -475,9 +532,18 @@ def get_card_from_scheduler(
             elif fallback_type == "topics":
                 actual_type = fallback_type
                 cards = available(all_topics())
+        if not cards and card_type == "items" and allow_type_fallback:
+            sibling = document_topic_fallback()
+            if sibling is not None:
+                return sibling
 
         if not cards:
             return SchedulerResult(card=None, card_type=actual_type, tag=actual_tag, mode=mode)
 
     card = random.choice(cards) if mode == "random" else cards[0]
+    if actual_type == "items":
+        doc_kwargs = {"col": col} if col is not None else {}
+        doc_type = card_utils.get_document_card_type(card, **doc_kwargs)
+        if doc_type:
+            return SchedulerResult(card=card, card_type=doc_type, tag=actual_tag, mode=mode, study_kind="items")
     return SchedulerResult(card=card, card_type=actual_type, tag=actual_tag, mode=mode)

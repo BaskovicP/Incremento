@@ -10,11 +10,13 @@ try:
     from . import cards as card_utils
     from .scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, exclude_tags_from_filter, get_card_from_scheduler
     from .statistics import StatsManager
+    from .scheduler_preview import compute_content_counts
     from .paths import get_active_profile as _active_profile
 except ImportError:
     import cards as card_utils  # type: ignore
     from scheduler import DOCUMENT_FILTER, NO_TAGS_KEY, exclude_tags_from_filter, get_card_from_scheduler  # type: ignore
     from statistics import StatsManager  # type: ignore
+    from scheduler_preview import compute_content_counts  # type: ignore
     from paths import get_active_profile as _active_profile  # type: ignore
 
 
@@ -295,12 +297,7 @@ def _expected_content_counts(cfg, total_target_count: int) -> dict[str, int]:
     target_count = max(0, int(total_target_count or 0))
     pdf_rate = float(getattr(cfg, "pdf_rate", 0.0) or 0.0)
     topics_rate = float(getattr(cfg, "topics_rate", 0.0) or 0.0)
-    shares = {
-        "pdf": pdf_rate,
-        "topics": topics_rate * (1.0 - pdf_rate),
-        "items": (1.0 - topics_rate) * (1.0 - pdf_rate),
-    }
-    return _apportion_counts(target_count, shares)
+    return compute_content_counts(target_count, topics_rate, pdf_rate)
 
 
 def _ordered_tag_quota_target(cfg, tag: str, total_target_count: int) -> int:
@@ -441,6 +438,7 @@ class SessionPicker:
         self.selected_ids: list[int] = []
         self.picked_meta: dict[int, dict] = {}
         self.picked_ids: set[int] = set()
+        self._document_item_counts: dict[str, int] = {}
         self._scheduler_pool_cache: dict = {}
         self.ordered_priority_entries = _normalized_priority_order_entries(cfg)
         self.ordered_priority_picked: dict[str, int] = {}
@@ -545,6 +543,11 @@ class SessionPicker:
         self.selected_ids = selected_ids
         self.picked_ids = set(selected_ids)
         self.picked_meta = picked_meta
+        self._document_item_counts = {}
+        for meta in picked_meta.values():
+            if meta.get("study_kind") == "items" and meta.get("card_type") in {"pdf", "epub"}:
+                kind = meta["card_type"]
+                self._document_item_counts[kind] = self._document_item_counts.get(kind, 0) + 1
         self.ordered_priority_picked = {
             str(key): max(0, int(value or 0))
             for key, value in dict(snap.get("ordered_priority_picked") or {}).items()
@@ -573,8 +576,14 @@ class SessionPicker:
         youtube_filter_override: str | None = None,
         webpage_filter_override: str | None = None,
     ) -> bool:
+        balancing_counts = self.scheduler_counts
+        if self._document_item_counts:
+            balancing_counts = {**self.scheduler_counts, "type": dict(self.scheduler_counts["type"])}
+            for kind, amount in self._document_item_counts.items():
+                balancing_counts["type"][kind] -= amount
+                balancing_counts["type"]["items"] = balancing_counts["type"].get("items", 0) + amount
         result = get_card_from_scheduler(
-            counts=self.scheduler_counts,
+            counts=balancing_counts,
             topics_rate=self.cfg.topics_rate,
             random_rate=self.cfg.random_rate,
             use_tags=use_tags,
@@ -600,6 +609,10 @@ class SessionPicker:
         )
         if result.card is None:
             return False
+        study_kind = getattr(result, "study_kind", None)
+        if study_kind == "items" and result.card_type in {"pdf", "epub"}:
+            kind = result.card_type
+            self._document_item_counts[kind] = self._document_item_counts.get(kind, 0) + 1
         _record_selected_card(
             card_id=result.card,
             card_type=result.card_type,
@@ -611,6 +624,7 @@ class SessionPicker:
             added_to_filtered=self.picked_ids,
             scheduler_counts=self.scheduler_counts,
             session_counts=self.session_counts,
+            extra_meta={"study_kind": study_kind} if study_kind else None,
         )
         return True
 
@@ -619,6 +633,12 @@ class SessionPicker:
         return max(deficit * 12, 24), max(deficit * 4, 8)
 
     def _picked_content_type_count(self, content_type: str) -> int:
+        if content_type in {"topics", "items"}:
+            counts = self.session_counts.get("type") or {}
+            document_items = sum(self._document_item_counts.values())
+            if content_type == "items":
+                return int(counts.get("items", 0) or 0) + document_items
+            return sum(int(counts.get(kind, 0) or 0) for kind in ("topics", "pdf", "epub")) - document_items
         if content_type == "pdf":
             return sum(
                 int((self.session_counts.get("type") or {}).get(kind, 0) or 0)
@@ -790,12 +810,12 @@ class SessionPicker:
                     ("topics", topics_target),
                     ("items", items_target),
                 ]:
-                    current_count = int((self.session_counts.get("type") or {}).get(forced_type, 0) or 0)
+                    current_count = self._picked_content_type_count(forced_type)
                     max_attempts, max_misses = self._phase_retry_budget(type_target, current_count)
                     _attempt_pick_loop(
                         pick_fn=lambda forced_type=forced_type, type_target=type_target: (
                             False
-                            if int((self.session_counts.get("type") or {}).get(forced_type, 0) or 0) >= type_target
+                            if self._picked_content_type_count(forced_type) >= type_target
                             or len(self.selected_ids) >= total_target_count
                             else self._pick(
                                 use_tags=self.remaining_use_tags,
@@ -809,7 +829,7 @@ class SessionPicker:
                             )
                         ),
                         target_reached_fn=lambda forced_type=forced_type, type_target=type_target: (
-                            int((self.session_counts.get("type") or {}).get(forced_type, 0) or 0) >= type_target
+                            self._picked_content_type_count(forced_type) >= type_target
                             or len(self.selected_ids) >= total_target_count
                         ),
                         max_attempts=max_attempts,

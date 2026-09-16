@@ -26,6 +26,13 @@ def _apportion_counts(total: int, shares: dict[str, float]) -> dict[str, int]:
     return counts
 
 
+def compute_content_counts(total: int, topics_rate: float, document_rate: float) -> dict[str, int]:
+    """Round the Topic/Item split first, then divide only the Topic allocation."""
+    parent = _apportion_counts(total, {"topics": topics_rate, "items": 1.0 - topics_rate})
+    children = _apportion_counts(parent["topics"], {"pdf": document_rate, "topics": 1.0 - document_rate})
+    return {**children, "items": parent["items"]}
+
+
 def compute_expected_mix(
     session_card_count: int,
     topics_slider: int,
@@ -38,9 +45,9 @@ def compute_expected_mix(
     random_rate = random_slider / 100.0
 
     content_shares = {
-        "pdf": pdf_rate,
+        "pdf": topics_rate * pdf_rate,
         "topics": topics_rate * (1.0 - pdf_rate),
-        "items": (1.0 - topics_rate) * (1.0 - pdf_rate),
+        "items": 1.0 - topics_rate,
     }
     mode_shares = {
         "random": random_rate,
@@ -49,7 +56,7 @@ def compute_expected_mix(
 
     return {
         "content_shares": content_shares,
-        "content_counts": _apportion_counts(session_card_count, content_shares),
+        "content_counts": compute_content_counts(session_card_count, topics_rate, pdf_rate),
         "mode_shares": mode_shares,
         "mode_counts": _apportion_counts(session_card_count, mode_shares),
     }

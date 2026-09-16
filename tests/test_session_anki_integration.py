@@ -8,6 +8,109 @@ import sys
 from textwrap import dedent
 
 
+def test_document_topic_hierarchy_respects_classification_endpoints_strict_quotas_and_refill():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    script = dedent(
+        r"""
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        from anki.collection import Collection
+        from backend.cards import get_all_pdf_cards
+        from backend.scheduler import get_card_from_scheduler
+        from backend.scheduler_config import SchedulerConfig
+        from backend.session_selection import SessionPicker
+        from backend.topic_scheduler import TopicCardClassifier
+        from backend import session as incremento_session
+
+        with tempfile.TemporaryDirectory(prefix="incremento-document-topic-mix-") as root:
+            col = Collection(os.path.join(root, "collection.anki2"))
+            try:
+                basic = col.models.by_name("Basic")
+                for name in ("Incremento PDF", "Incremento EPUB"):
+                    model = col.models.copy(basic)
+                    model["id"] = 0
+                    model["name"] = name
+                    col.models.add(model)
+
+                counter = 0
+                def add(model_name="Basic", tags=(), future=False):
+                    global counter
+                    counter += 1
+                    note = col.new_note(col.models.by_name(model_name))
+                    note["Front"] = f"fixture-{counter}"
+                    note["Back"] = "answer"
+                    note.tags = list(tags)
+                    col.add_note(note, col.decks.id("Home"))
+                    cid = int(note.card_ids()[0])
+                    if future:
+                        card = col.get_card(cid)
+                        card.type = card.queue = 2
+                        card.ivl = 30
+                        card.due = col.sched.today + 30
+                        col.update_card(card)
+                    return cid
+
+                item_document = add("Incremento EPUB", tags=("item", "work"))
+                documents = {add(name, tags=("work",), future=True)
+                             for name in ("Incremento PDF", "Incremento EPUB") for _ in range(6)}
+                topics = {add(tags=("topic", "work")) for _ in range(100)}
+                items = {item_document} | {add(tags=("work",)) for _ in range(100)}
+                classifier = TopicCardClassifier(
+                    enabled_note_type_names=frozenset({"Incremento PDF", "Incremento EPUB"}),
+                    topic_tags=frozenset({"topic"}), item_tags=frozenset({"item"}), topics_deck_name="Topics",
+                )
+                assert set(get_all_pdf_cards(col=col, topic_only=True, topic_classifier=classifier)) == documents
+                common = dict(col=col, topic_classifier=classifier, use_tags=False, force_mode="priority")
+
+                assert get_card_from_scheduler(topics_rate=1, pdf_rate=1, ready_filter="cid:0", **common).card in documents
+                assert get_card_from_scheduler(topics_rate=1, pdf_rate=1, topics_filter="tag:missing", **common).card is None
+                assert get_card_from_scheduler(force_card_type="pdf", topics_filter="cid:0", **common).card in documents | {item_document}
+                assert get_card_from_scheduler(topics_rate=1, pdf_rate=0, **common).card in topics
+                item_pick = get_card_from_scheduler(topics_rate=0, pdf_rate=1, **common)
+                assert item_pick.card == item_document
+                assert item_pick.card_type == "epub" and item_pick.study_kind == "items"
+
+                cfg = SchedulerConfig(
+                    session_card_count=100, topics_rate=0.6, pdf_rate=0.1, random_rate=0,
+                    enforce_priority=True, phase_order=["type"], use_tags=True,
+                    tag_weights={"work": 1.0}, include_rest=False,
+                )
+                with patch("backend.scheduler.random.random", return_value=0.5):
+                    picker = SessionPicker(cfg, root, col=col, topic_classifier=classifier, profile="Fixture")
+                    picker.pick_until(100)
+                    assert len(set(picker.selected_ids)) == 100
+                    assert len(set(picker.selected_ids) & documents) == 6
+                    assert len(set(picker.selected_ids) & topics) == 54
+                    assert len(set(picker.selected_ids) & items) == 40
+                    assert picker.picked_meta[item_document]["study_kind"] == "items"
+                    assert picker.picked_meta[item_document]["card_type"] == "epub"
+                    restored = SessionPicker(cfg, root, col=col, topic_classifier=classifier,
+                                             profile="Fixture", snapshot=picker.snapshot())
+                    restored.pick_until(110)
+                    assert len(set(restored.selected_ids)) == 110
+                    assert restored._picked_content_type_count("topics") == 66
+                    assert restored._picked_content_type_count("items") == 44
+
+                built = incremento_session._prepare_filtered_review_deck(
+                    restored.selected_ids, deck_name="Incremento Session", preserve_order=True,
+                    select_deck=False, col=col, return_result=True,
+                )
+                assert built.deck_id is not None
+                assert set(col.find_cards('deck:"Incremento Session"')) == set(restored.selected_ids)
+            finally:
+                col.close()
+        print("real Anki hierarchical document mix: ok")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=repo_root, capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "hierarchical document mix: ok" in result.stdout
+
+
 def test_anki_manages_completed_and_learning_cards_without_exit_rebuild():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     script = dedent(

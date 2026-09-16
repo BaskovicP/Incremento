@@ -4,8 +4,10 @@ from __future__ import annotations
 
 try:
     from ..backend.i18n import t
+    from ..backend.scheduler_preview import compute_expected_mix
 except ImportError:
     from backend.i18n import t  # type: ignore
+    from backend.scheduler_preview import compute_expected_mix  # type: ignore
 
 
 BASIC_MODE = "basic"
@@ -38,7 +40,10 @@ def format_basic_session_summary(
     item_percent = _bounded_int(topics_slider, 0, 100, 10)
     other_percent = _bounded_int(pdf_slider, 0, 100, 100)
     topic_percent = 100 - item_percent
-    document_percent = 100 - other_percent
+    if topic_percent == 0:
+        other_percent = 100
+    document_percent = 100 - other_percent if topic_percent > 0 else 0
+    counts = compute_expected_mix(count, item_percent, other_percent, 50)["content_counts"]
     preset = str(preset_name or "").strip() or t("session_current_settings")
     return t(
         "session_basic_summary",
@@ -48,4 +53,7 @@ def format_basic_session_summary(
         document_percent=document_percent,
         other_percent=other_percent,
         preset=preset,
+        document_count=counts["pdf"],
+        other_topic_count=counts["topics"],
+        item_count=counts["items"],
     )

@@ -720,9 +720,95 @@ def _mock_card_utils_with_pdf(
 
 
 class TestPdfRatePaths:
+    def test_soft_item_exhaustion_can_use_document_topics_when_that_subtype_is_enabled(self):
+        with patch("scheduler.soft_pick", side_effect=["items"]), _mock_card_utils_with_pdf(pdf_cards=[301]):
+            result = scheduler.get_card_from_scheduler(
+                topics_rate=0.6, pdf_rate=1, force_mode="priority", use_tags=False,
+            )
+
+        assert (result.card, result.card_type) == (301, "pdf")
+
+    def test_forced_topic_uses_enabled_document_subtype_when_other_topics_are_exhausted_without_changing_tag(self):
+        counts = {"type": {"pdf": 9}, "tags": {}, "mode": {}}
+        with patch("scheduler.random.random", return_value=0.5), _mock_card_utils_with_pdf(
+            all_item=[201], tag_item=[201], pdf_cards=[301], pdf_tag_cards=[301]
+        ):
+            result = scheduler.get_card_from_scheduler(
+                force_card_type="topics", force_mode="priority", topics_rate=1,
+                pdf_rate=0.1, counts=counts, use_tags=True, tag_weights={"work": 1.0},
+            )
+
+        assert (result.card, result.card_type, result.tag) == (301, "pdf", "work")
+
+    def test_frontloaded_documents_count_toward_topic_balance_before_the_document_submix(self):
+        counts = {"type": {"pdf": 10, "epub": 10}, "tags": {}, "mode": {}}
+        with patch("scheduler.random.random", return_value=0.5), _mock_card_utils_with_pdf(
+            all_topic=[101], all_item=[201], pdf_cards=[301]
+        ):
+            result = scheduler.get_card_from_scheduler(
+                topics_rate=0.6, pdf_rate=0.1, counts=counts, use_tags=False, force_mode="priority"
+            )
+
+        assert (result.card, result.card_type) == (201, "items")
+
+    def test_forced_topic_submix_ignores_item_counts_when_balancing_documents(self):
+        seen = []
+
+        def pick(weights, counts, *args):
+            seen.append((dict(weights), dict(counts)))
+            return "pdf" if "pdf" in weights else "priority"
+
+        with patch("scheduler.soft_pick", side_effect=pick), _mock_card_utils_with_pdf(pdf_cards=[301]):
+            result = scheduler.get_card_from_scheduler(
+                force_card_type="topics", pdf_rate=0.1, topics_rate=0.6, use_tags=False,
+                counts={"type": {"pdf": 2, "epub": 4, "topics": 54, "items": 400}, "tags": {}, "mode": {}},
+            )
+
+        assert result.card_type == "pdf"
+        assert seen[0] == ({"pdf": 0.1, "topics": 0.9}, {"pdf": 6, "topics": 54})
+
+    def test_forced_topic_can_use_other_topics_when_document_subtype_is_exhausted(self):
+        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]), _mock_card_utils_with_pdf(
+            all_topic=[101], all_item=[201]
+        ):
+            result = scheduler.get_card_from_scheduler(
+                force_card_type="topics", pdf_rate=0.5, topics_rate=0.6, use_tags=False
+            )
+
+        assert (result.card, result.card_type) == (101, "topics")
+
+    def test_items_only_never_picks_document_topics(self):
+        with patch("scheduler.random.random", return_value=0.0), _mock_card_utils_with_pdf(
+            pdf_cards=[301], all_topic=[101], all_item=[201]
+        ):
+            result = scheduler.get_card_from_scheduler(
+                topics_rate=0.0, pdf_rate=1.0, random_rate=0.0, use_tags=False
+            )
+
+        assert (result.card, result.card_type) == (201, "items")
+
+    def test_soft_scheduler_balances_topics_items_then_documents_and_combines_epub_counts(self):
+        seen = []
+
+        def pick(weights, counts, *args):
+            seen.append((dict(weights), dict(counts)))
+            return "topics" if "items" in weights else "pdf" if "pdf" in weights else "priority"
+
+        counts = {"type": {"pdf": 2, "epub": 4, "topics": 54, "items": 40}, "tags": {}, "mode": {}}
+        with patch("scheduler.soft_pick", side_effect=pick), _mock_card_utils_with_pdf(pdf_cards=[301]):
+            scheduler.get_card_from_scheduler(
+                topics_rate=0.6, pdf_rate=0.1, counts=counts, use_tags=False
+            )
+
+        import pytest
+        assert seen[0][0] == pytest.approx({"topics": 0.6, "items": 0.4})
+        assert seen[0][1] == {"topics": 60, "items": 40}
+        assert seen[1] == ({"pdf": 0.1, "topics": 0.9}, {"pdf": 6, "topics": 54})
+        assert counts["type"]["pdf"] == 2  # balancing must not mutate concrete statistics
+
     def test_pdf_type_returns_pdf_card_priority_mode(self):
         """When card_type=='pdf', a PDF card is returned in priority mode (index 0)."""
-        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+        with patch("scheduler.soft_pick", side_effect=["topics", "pdf", "priority"]):
             with _mock_card_utils_with_pdf(pdf_cards=[301, 302, 303]):
                 result = scheduler.get_card_from_scheduler(pdf_rate=0.2, use_tags=False)
         assert result.card == 301
@@ -730,7 +816,7 @@ class TestPdfRatePaths:
         assert result.mode == "priority"
 
     def test_pdf_type_returns_pdf_card_random_mode(self):
-        with patch("scheduler.soft_pick", side_effect=["pdf", "random"]):
+        with patch("scheduler.soft_pick", side_effect=["topics", "pdf", "random"]):
             with _mock_card_utils_with_pdf(pdf_cards=[301, 302, 303]):
                 with patch("scheduler.random.choice", return_value=302):
                     result = scheduler.get_card_from_scheduler(pdf_rate=0.2, use_tags=False)
@@ -738,7 +824,7 @@ class TestPdfRatePaths:
         assert result.card_type == "pdf"
 
     def test_document_pick_preserves_epub_card_type(self):
-        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+        with patch("scheduler.soft_pick", side_effect=["topics", "pdf", "priority"]):
             with _mock_card_utils_with_pdf(pdf_cards=[301]):
                 with patch("scheduler.card_utils.get_document_card_type", return_value="epub"):
                     result = scheduler.get_card_from_scheduler(pdf_rate=0.2, use_tags=False)
@@ -748,7 +834,7 @@ class TestPdfRatePaths:
 
     def test_pdf_type_falls_back_to_topics_when_no_pdf_cards(self):
         """When pdf_cards is empty, fall back to topics (topics_rate >= 0.5)."""
-        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+        with patch("scheduler.soft_pick", side_effect=["topics", "pdf", "priority"]):
             with _mock_card_utils_with_pdf(pdf_cards=[], all_topic=[101]):
                 result = scheduler.get_card_from_scheduler(
                     pdf_rate=0.2, topics_rate=0.7, use_tags=False
@@ -757,7 +843,7 @@ class TestPdfRatePaths:
         assert result.card_type == "topics"
 
     def test_pdf_only_endpoint_does_not_fall_back_when_document_pool_is_empty(self):
-        with patch("scheduler.soft_pick", side_effect=["pdf", "priority"]):
+        with patch("scheduler.soft_pick", side_effect=["topics", "pdf", "priority"]):
             with _mock_card_utils_with_pdf(
                 pdf_cards=[],
                 all_topic=[101],
@@ -765,7 +851,7 @@ class TestPdfRatePaths:
             ):
                 result = scheduler.get_card_from_scheduler(
                     pdf_rate=1.0,
-                    topics_rate=0.7,
+                    topics_rate=1.0,  # documents-only now also requires 100% Topics
                     use_tags=False,
                 )
 
@@ -808,8 +894,8 @@ class TestPdfRatePaths:
         assert (first.card, second.card) == (301, 302)
         get_all_pdf_cards.assert_called_once()
 
-    def test_pdf_soft_pick_uses_three_way_weights(self):
-        """With pdf_rate > 0, soft_pick receives a 3-key weights dict."""
+    def test_pdf_soft_pick_uses_parent_then_topic_subtype_weights(self):
+        """Documents are selected only after the parent Topic branch is chosen."""
         captured = []
         original_sp = scheduler.soft_pick
 
@@ -821,15 +907,13 @@ class TestPdfRatePaths:
             with _mock_card_utils_with_pdf(pdf_cards=[301]):
                 scheduler.get_card_from_scheduler(pdf_rate=0.1, use_tags=False)
 
-        type_weights = captured[0]
-        assert "pdf" in type_weights
-        assert "topics" in type_weights
-        assert "items" in type_weights
+        assert captured[0] == {"topics": 0.3, "items": 0.7}
+        assert captured[1] == {"pdf": 0.1, "topics": 0.9}
 
     def test_pdf_tag_miss_does_not_fall_back_to_all_pdfs_by_default(self):
         with patch(
             "scheduler.soft_pick",
-            side_effect=["pdf", "priority", "statistics", "statistics"],
+            side_effect=["topics", "pdf", "priority", "statistics", "statistics"],
         ):
             with _mock_card_utils_with_pdf(
                 pdf_cards=[301],
@@ -848,7 +932,7 @@ class TestPdfRatePaths:
         assert result.tag == "statistics"
 
     def test_pdf_tag_miss_can_use_legacy_full_pool_fallback_when_enabled(self):
-        with patch("scheduler.soft_pick", side_effect=["pdf", "priority", "statistics"]):
+        with patch("scheduler.soft_pick", side_effect=["topics", "pdf", "priority", "statistics"]):
             with _mock_card_utils_with_pdf(pdf_cards=[301], pdf_tag_cards=[]):
                 result = scheduler.get_card_from_scheduler(
                     pdf_rate=0.2,

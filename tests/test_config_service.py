@@ -2,6 +2,61 @@ import config_service
 import pytest
 
 
+def test_legacy_document_mix_migrates_current_state_and_presets_once_without_mutating_input():
+    from copy import deepcopy
+    raw = {
+        "config_schema_version": 2,
+        "dialog": {"topics_slider": 100, "pdf_slider": 34, "future": {"keep": True}},
+        "profiles": {"Half": {"topics_slider": 50, "pdf_slider": 50}},
+    }
+    original = deepcopy(raw)
+
+    migrated = config_service.normalize_config(raw)
+
+    assert migrated["dialog"] == {
+        "topics_slider": 34, "pdf_slider": 0, "document_mix_version": 2, "future": {"keep": True},
+    }
+    assert migrated["scheduler_presets"]["Half"] == {
+        "topics_slider": 25, "pdf_slider": 33, "document_mix_version": 2,
+    }
+    assert migrated["profiles"] == migrated["scheduler_presets"]
+    assert config_service.normalize_config(migrated) == migrated
+    assert raw == original
+
+
+def test_new_topic_document_mix_is_not_reinterpreted_as_legacy():
+    dialog = {"topics_slider": 40, "pdf_slider": 90, "document_mix_version": 2}
+    normalized = config_service.normalize_config({"dialog": dialog, "scheduler_presets": {"New": dialog}})
+
+    assert normalized["dialog"] == dialog
+    assert normalized["scheduler_presets"]["New"] == dialog
+
+
+@pytest.mark.parametrize("topics_slider", [0, 40, 100], ids=["all-topics", "mixed", "all-items"])
+@pytest.mark.parametrize("pdf_slider", [0, 34, 50, 90, 100], ids=["all-docs", "screenshot", "half-docs", "few-docs", "no-docs"])
+def test_document_mix_migration_preserves_legacy_three_way_targets_with_slider_rounding(topics_slider, pdf_slider):
+    dialog = {"topics_slider": topics_slider, "pdf_slider": pdf_slider}
+    migrated = config_service.normalize_config({"dialog": dialog})["dialog"]
+    topics = 1 - migrated["topics_slider"] / 100
+    docs = 1 - migrated["pdf_slider"] / 100
+    actual = {"pdf": topics * docs, "topics": topics * (1 - docs), "items": 1 - topics}
+    old_topics = 1 - topics_slider / 100
+    old_docs = 1 - pdf_slider / 100
+
+    assert actual == pytest.approx({
+        "pdf": old_docs, "topics": old_topics * (1 - old_docs), "items": (1 - old_topics) * (1 - old_docs),
+    }, abs=0.01)
+    assert config_service.normalize_config({"dialog": migrated})["dialog"] == migrated
+
+
+def test_future_document_mix_marker_and_unknown_preset_fields_are_preserved():
+    dialog = {"topics_slider": 40, "pdf_slider": 90, "document_mix_version": 3, "future": {"keep": True}}
+    result = config_service.normalize_config({"dialog": dialog, "scheduler_presets": {"Future": dialog}})
+
+    assert result["dialog"] == dialog
+    assert result["scheduler_presets"]["Future"] == dialog
+
+
 @pytest.mark.parametrize("raw,expected", [(None,"auto"),("hr", "hr"),("zh_CN","zh-Hans"),
     ("en-US","en"),("invalid","auto"),([],"auto"),
     ("custom:pt_br", "custom:pt-BR"), ("custom:hr", "custom:hr"),
@@ -15,6 +70,39 @@ def test_ui_language_is_normalized_without_mutating_other_config(raw, expected):
 
 def test_missing_ui_language_defaults_to_auto():
     assert config_service.normalize_config({})["ui_language"] == "auto"
+
+
+@pytest.mark.parametrize(
+    "raw_mode, expected_mode",
+    [
+        (None, "original"),
+        ("original", "original"),
+        ("dark", "dark"),
+        ("night", "night"),
+        (" DARK ", "dark"),
+        ("sepia", "original"),
+        ([], "original"),
+    ],
+)
+def test_pdf_appearance_policy_is_normalized(raw_mode, expected_mode):
+    normalized = config_service.normalize_config(
+        {
+            "pdf_default_appearance": raw_mode,
+            "pdf_force_default_appearance": "yes",
+            "future_setting": {"keep": True},
+        }
+    )
+
+    assert normalized["pdf_default_appearance"] == expected_mode
+    assert normalized["pdf_force_default_appearance"] is True
+    assert normalized["future_setting"] == {"keep": True}
+
+
+def test_missing_pdf_appearance_policy_defaults_to_original_without_force():
+    normalized = config_service.normalize_config({})
+
+    assert normalized["pdf_default_appearance"] == "original"
+    assert normalized["pdf_force_default_appearance"] is False
 
 
 @pytest.mark.parametrize("raw, expected", [
@@ -52,7 +140,7 @@ def test_normalize_config_migrates_named_scheduler_profiles():
         {"profiles": {"Focus": {"session_card_count": 20}}}
     )
 
-    assert result["config_schema_version"] == 2
+    assert result["config_schema_version"] == 3
     assert result["scheduler_presets"] == {
         "Focus": {"session_card_count": 20}
     }

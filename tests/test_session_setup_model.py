@@ -14,7 +14,8 @@ def test_basic_summary_explains_the_four_primary_session_choices():
         preset_name="Work",
     ) == (
         "30 cards · Topics 75% / Items 25% · "
-        "Documents 20% / Other 80% · Preset: Work"
+        "Within Topics: Documents 20% / Other 80% · "
+        "Target: 5 Documents + 18 other Topics + 7 Items · Preset: Work"
     )
 
 
@@ -26,7 +27,17 @@ def test_basic_summary_handles_current_settings_and_bounds_dirty_values():
         preset_name="",
     ) == (
         "9,999 cards · Topics 100% / Items 0% · "
-        "Documents 0% / Other 100% · Preset: Current Settings"
+        "Within Topics: Documents 0% / Other 100% · "
+        "Target: 0 Documents + 9999 other Topics + 0 Items · Preset: Current Settings"
+    )
+
+
+def test_items_only_summary_shows_no_document_topics_but_retains_all_items():
+    assert format_basic_session_summary(
+        session_card_count=100, topics_slider=100, pdf_slider=10, preset_name="Items",
+    ) == (
+        "100 cards · Topics 0% / Items 100% · Within Topics: Documents 0% / Other 100% · "
+        "Target: 0 Documents + 0 other Topics + 100 Items · Preset: Items"
     )
 
 
@@ -57,6 +68,9 @@ def test_basic_summary_uses_the_i18n_message_boundary(monkeypatch):
                 "document_percent": 20,
                 "other_percent": 80,
                 "preset": "Work",
+                "document_count": 5,
+                "other_topic_count": 18,
+                "item_count": 7,
             },
         )
     ]
@@ -74,8 +88,8 @@ def test_basic_summary_uses_the_croatian_catalog(monkeypatch):
         pdf_slider=80,
         preset_name="Work",
     ) == (
-        "30 kartica · Teme 75% / Stavke 25% · Dokumenti 20% / Ostalo 80% "
-        "· Predložak: Work"
+        "30 kartica · Teme 75% / Stavke 25% · Unutar tema: Dokumenti 20% / Ostalo 80% "
+        "· Cilj: 5 dokumenata + 18 ostalih tema + 7 stavki · Predložak: Work"
     )
 
 

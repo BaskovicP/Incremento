@@ -6,6 +6,11 @@ from unittest.mock import MagicMock, patch
 import cards
 
 
+def test_priority_sort_falls_back_safely_without_an_active_collection():
+    with patch("cards.mw", types.SimpleNamespace()):
+        assert cards.sort_cards_for_priority_mode([30, 10, 20]) == [10, 20, 30]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

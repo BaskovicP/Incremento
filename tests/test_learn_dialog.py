@@ -370,6 +370,42 @@ class _FakeValueWidget:
         self.enabled = bool(enabled)
 
 
+def test_document_mix_is_disabled_in_both_views_for_items_only_and_restored_with_topics():
+    dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+    dialog._topics_slider = _FakeValueWidget(100)
+    dialog._pdf_slider = _FakeValueWidget(90)
+    dialog._basic_docs_slider = _FakeValueWidget(90)
+    dialog._pdf_lock_cb = _FakeCheckBox(False)
+
+    dialog._refresh_document_mix_enabled()
+    assert not dialog._pdf_slider.enabled and not dialog._basic_docs_slider.enabled
+    assert dialog._pdf_slider.value() == 90  # retain the preference for switching back to Topics
+
+    dialog._topics_slider.setValue(40)
+    dialog._refresh_document_mix_enabled()
+    assert dialog._pdf_slider.enabled and dialog._basic_docs_slider.enabled
+
+    dialog._pdf_lock_cb.setChecked(True)
+    dialog._refresh_document_mix_enabled()
+    assert not dialog._pdf_slider.enabled and not dialog._basic_docs_slider.enabled
+
+
+def test_conditional_documents_do_not_rebalance_the_whole_session_topic_percentage():
+    dialog = _build_dialog_for_state_tests()
+    dialog._updating = False
+    dialog._topics_lock_cb.setChecked(False)
+    dialog._priority_lock_cb.setChecked(False)
+    dialog._topics_slider.setValue(40)
+    dialog._pdf_slider.setValue(90)
+    dialog._topics_group_edit.setText("shared")
+    dialog._pdf_group_edit.setText("shared")
+
+    dialog._rebalance_main_pool("pdf")
+
+    assert dialog._topics_slider.value() == 40
+    assert dialog._pdf_slider.value() == 90
+
+
 class _FakeLineEdit:
     def __init__(self, text=""):
         self._text = str(text)
@@ -894,7 +930,8 @@ class TestSchedulerConfigDialogState:
 
         assert dialog._basic_summary_text() == (
             "40 cards · Topics 70% / Items 30% · "
-            "Documents 15% / Other 85% · Preset: Morning"
+            "Within Topics: Documents 15% / Other 85% · "
+            "Target: 4 Documents + 24 other Topics + 12 Items · Preset: Morning"
         )
 
     def test_setup_mode_switches_between_basic_and_advanced_panels(self):
@@ -1117,6 +1154,7 @@ class TestSchedulerConfigDialogState:
         data = dialog._build_current_dict()
 
         assert data["auto_refill_session"] is True
+        assert data["document_mix_version"] == 2
 
     def test_to_config_forwards_auto_refill_session(self):
         dialog = _build_dialog_for_state_tests()

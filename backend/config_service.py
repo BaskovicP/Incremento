@@ -18,7 +18,8 @@ except ImportError:
     from backup_schedule import normalize_policy
 
 
-CONFIG_SCHEMA_VERSION = 2
+CONFIG_SCHEMA_VERSION = 3
+DOCUMENT_MIX_VERSION = 2
 DEFAULT_TOPIC_DONE_TAG = "topic/done"
 DEFAULT_REVIEWER_BUTTON_VISIBILITY = {
     "done": True,
@@ -84,8 +85,28 @@ def _number(value: Any, default, minimum, maximum, cast):
     return cast(bounded)
 
 
+def normalize_document_mix(raw: Any) -> dict:
+    """Migrate the old whole-session document share to a share within Topics.
+
+    Keep the old three-way target as closely as whole-percent sliders allow.
+    A per-setup marker protects saved presets and repeated reads from conversion.
+    """
+    dialog = copy.deepcopy(dict(raw)) if isinstance(raw, Mapping) else {}
+    if "pdf_slider" not in dialog:
+        return dialog
+    if _number(dialog.get("document_mix_version"), 1, 1, 1_000, int) >= DOCUMENT_MIX_VERSION:
+        return dialog
+    old_items = _number(dialog.get("topics_slider"), 10, 0, 100, float) / 100
+    documents = 1 - _number(dialog.get("pdf_slider"), 100, 0, 100, float) / 100
+    topics = 1 - old_items * (1 - documents)
+    dialog["topics_slider"] = round(100 * (1 - topics))
+    dialog["pdf_slider"] = round(100 * (1 - documents / topics)) if topics > 0 else 100
+    dialog["document_mix_version"] = DOCUMENT_MIX_VERSION
+    return dialog
+
+
 def _normalize_dialog(raw: Any) -> dict:
-    dialog: dict[str, Any] = copy.deepcopy(dict(raw)) if isinstance(raw, Mapping) else {}
+    dialog: dict[str, Any] = normalize_document_mix(raw)
     if "session_card_count" in dialog:
         dialog["session_card_count"] = _number(
             dialog.get("session_card_count"), 50, 1, 9999, int
@@ -203,7 +224,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     if not isinstance(presets, Mapping):
         presets = config.get("profiles")
     normalized_presets = {
-        str(name): copy.deepcopy(dict(values))
+        str(name): _normalize_dialog(values)
         for name, values in (presets.items() if isinstance(presets, Mapping) else [])
         if str(name).strip() and isinstance(values, Mapping)
     }

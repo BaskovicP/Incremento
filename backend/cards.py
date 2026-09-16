@@ -29,12 +29,20 @@ def _card_due_map(card_ids, *, col=None) -> dict[int, int]:
     """Return due values for card_ids without exceeding SQLite variable limits."""
     due_map: dict[int, int] = {}
     ids = list(card_ids)
+    try:
+        collection = _collection(col)
+        database = collection.db
+    except AttributeError:
+        # Unit-level callers and shutdown races may not have a live Anki
+        # collection. Priority ordering can still use explicit priorities and
+        # stable card ids without due-date tie breaking.
+        return due_map
     for start in range(0, len(ids), _SQL_VARIABLE_CHUNK_SIZE):
         chunk = ids[start : start + _SQL_VARIABLE_CHUNK_SIZE]
         if not chunk:
             continue
         placeholders = ",".join("?" * len(chunk))
-        rows = _collection(col).db.all(
+        rows = database.all(
             f"SELECT id, due FROM cards WHERE id IN ({placeholders})", *chunk
         )
         due_map.update({row[0]: row[1] for row in rows})
@@ -449,9 +457,16 @@ def count_ready_item_cards_by_tag(
     ))
 
 
-def get_all_pdf_cards(pdf_filter: str = DOCUMENT_FILTER, *, col=None):
+def get_all_pdf_cards(pdf_filter: str = DOCUMENT_FILTER, *, col=None, topic_only=False, topic_classifier=None):
     """Return non-suspended documents except explicitly deferred topics."""
     collection = _collection(col)
+    if topic_only:
+        return get_all_topic_cards(
+            topics_filter=pdf_filter,
+            ready_filter=f"-is:suspended {reader_revisit_filter(collection)}",
+            col=collection,
+            topic_classifier=topic_classifier,
+        )
     return _sort_by_due(collection.find_cards(f"{pdf_filter} -is:suspended {reader_revisit_filter(collection)}"), col=collection)
 
 
@@ -484,8 +499,14 @@ def get_all_webpage_cards(webpage_filter: str = 'note:"Incremento Web"', *, col=
     return _sort_by_due(collection.find_cards(f"{webpage_filter} -is:suspended {reader_revisit_filter(collection)}"), col=collection)
 
 
-def get_pdf_cards_by_tag(tag: str, pdf_filter: str = DOCUMENT_FILTER, *, col=None):
+def get_pdf_cards_by_tag(tag: str, pdf_filter: str = DOCUMENT_FILTER, *, col=None, topic_only=False, topic_classifier=None):
     collection = _collection(col)
+    if topic_only:
+        return get_topic_cards_by_tag(
+            tag, topics_filter=pdf_filter,
+            ready_filter=f"-is:suspended {reader_revisit_filter(collection)}",
+            col=collection, topic_classifier=topic_classifier,
+        )
     return _sort_by_due(
         collection.find_cards(f"{pdf_filter} tag:{tag} -is:suspended {reader_revisit_filter(collection)}"),
         col=collection,
