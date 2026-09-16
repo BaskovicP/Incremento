@@ -1,5 +1,6 @@
 """Contracts for opt-in profile-scoped full-backup scheduling and rotation."""
 
+import os
 import zipfile
 
 import pytest
@@ -17,6 +18,10 @@ def test_normalize_policy_disables_invalid_destination_and_bounds_retention():
         "interval_hours": 0, "versions": 20, "last_success": 0.0,
         "last_close_failed": False,
     }
+
+
+def test_new_automatic_backup_policy_defaults_to_five_versions():
+    assert backup_schedule.normalize_policy({})["versions"] == 5
 
 
 def test_due_on_open_and_interval_use_only_successful_backup_time():
@@ -89,3 +94,99 @@ def test_rotation_keeps_just_verified_archive_when_clock_moved_back(tmp_path):
     assert removed == [tmp_path / names[1]]
     assert (tmp_path / names[0]).exists()
     assert (tmp_path / names[2]).exists()
+
+
+def test_rotation_keeps_selected_five_versions_after_sixth_success(tmp_path):
+    names = [backup_schedule.backup_filename("P", t) for t in range(1, 7)]
+    for name in names:
+        (tmp_path / name).write_bytes(b"zip")
+    manual = tmp_path / "incremento_P_full_backup_manual.zip"
+    manual.write_bytes(b"manual")
+    other = tmp_path / backup_schedule.backup_filename("Q", 1)
+    other.write_bytes(b"other")
+
+    removed = backup_schedule.prune_backups(
+        tmp_path, "P", 5, protected=tmp_path / names[-1]
+    )
+
+    assert removed == [tmp_path / names[0]]
+    assert {path.name for path in tmp_path.iterdir()} == set(names[1:]) | {
+        manual.name, other.name,
+    }
+
+
+@pytest.mark.parametrize("keep", [1, 5])
+def test_slot_target_fills_selected_count_then_reuses_oldest_after_atomic_replace(
+    tmp_path, keep,
+):
+    slots = []
+    for number in range(1, keep + 1):
+        target = backup_schedule.next_backup_path(tmp_path, "P", keep)
+        assert target.name == f"incremento_P_auto_backup_slot_{number:02d}.zip"
+        target.write_bytes(f"verified backup {number}".encode())
+        timestamp = number * 1_000_000_000
+        os.utime(target, ns=(timestamp, timestamp))
+        slots.append(target)
+
+    target = backup_schedule.next_backup_path(tmp_path, "P", keep)
+    assert target == slots[0]
+    assert target.read_bytes() == b"verified backup 1"
+
+    staged = tmp_path / ".staged.zip"
+    staged.write_bytes(b"new verified backup")
+    os.replace(staged, target)
+    assert target.read_bytes() == b"new verified backup"
+    for number, other in enumerate(slots[1:], start=2):
+        assert other.read_bytes() == f"verified backup {number}".encode()
+    assert backup_schedule.prune_backups(tmp_path, "P", keep, protected=target) == []
+    assert len(list(tmp_path.glob("*.zip"))) == keep
+    assert backup_schedule.next_backup_path(tmp_path, "P", keep) == slots[
+        1 if keep > 1 else 0
+    ]
+
+
+def test_new_slots_retire_legacy_timestamp_backups_after_verified_replacement(tmp_path):
+    legacy = [backup_schedule.backup_filename("P", t) for t in range(1, 5)]
+    for name in legacy:
+        (tmp_path / name).write_bytes(b"old")
+
+    target = backup_schedule.next_backup_path(tmp_path, "P", 3)
+    target.write_bytes(b"new verified backup")
+    removed = backup_schedule.prune_backups(tmp_path, "P", 3, protected=target)
+
+    assert set(removed) == {tmp_path / legacy[0], tmp_path / legacy[1]}
+    assert {path.name for path in tmp_path.glob("*.zip")} == {
+        target.name, legacy[2], legacy[3],
+    }
+
+
+def test_reusable_backup_slot_rejects_symlink_without_touching_target(tmp_path):
+    outside = tmp_path / "user-document.zip"
+    outside.write_bytes(b"user content")
+    slot = tmp_path / "incremento_P_auto_backup_slot_01.zip"
+    slot.symlink_to(outside)
+
+    with pytest.raises(ValueError, match="regular file"):
+        backup_schedule.next_backup_path(tmp_path, "P", 1)
+
+    assert outside.read_bytes() == b"user content"
+    assert slot.is_symlink()
+
+
+def test_fixed_slots_replace_future_dated_legacy_backups_during_migration(tmp_path):
+    legacy = [
+        backup_schedule.backup_filename("P", 4_102_444_800 + offset)
+        for offset in range(3)
+    ]
+    for name in legacy:
+        (tmp_path / name).write_bytes(b"legacy")
+
+    for number in range(1, 4):
+        target = backup_schedule.next_backup_path(tmp_path, "P", 3)
+        target.write_bytes(f"new {number}".encode())
+        backup_schedule.prune_backups(tmp_path, "P", 3, protected=target)
+
+    assert {path.name for path in tmp_path.glob("*.zip")} == {
+        f"incremento_P_auto_backup_slot_{number:02d}.zip"
+        for number in range(1, 4)
+    }

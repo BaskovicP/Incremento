@@ -14,6 +14,10 @@ except ImportError:
     from paths import sanitize_profile_name
 
 
+MAX_AUTOMATIC_BACKUP_VERSIONS = 20
+DEFAULT_AUTOMATIC_BACKUP_VERSIONS = 5
+
+
 def normalize_policy(raw: object) -> dict:
     source = raw if isinstance(raw, Mapping) else {}
     directory = source.get("directory", "")
@@ -25,9 +29,9 @@ def normalize_policy(raw: object) -> dict:
     except (ValueError, TypeError, OverflowError):
         hours = 0
     try:
-        versions = int(source.get("versions", 5))
+        versions = int(source.get("versions", DEFAULT_AUTOMATIC_BACKUP_VERSIONS))
     except (ValueError, TypeError, OverflowError):
-        versions = 5
+        versions = DEFAULT_AUTOMATIC_BACKUP_VERSIONS
     try:
         last_success = float(source.get("last_success", 0))
     except (ValueError, TypeError, OverflowError):
@@ -38,7 +42,7 @@ def normalize_policy(raw: object) -> dict:
         "on_open": source.get("on_open", False) is True,
         "on_close": source.get("on_close", False) is True,
         "interval_hours": max(0, min(720, hours)),
-        "versions": max(1, min(20, versions)),
+        "versions": max(1, min(MAX_AUTOMATIC_BACKUP_VERSIONS, versions)),
         "last_success": last_success if math.isfinite(last_success) and last_success > 0 else 0.0,
         "last_close_failed": source.get("last_close_failed") is True,
     }
@@ -70,8 +74,43 @@ def validate_destination(directory: str, profile_root: Path) -> Path:
 
 
 def backup_filename(profile: str, now: float) -> str:
+    """Name of a legacy timestamped automatic archive."""
     stamp = dt.datetime.fromtimestamp(now, dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     return f"incremento_{sanitize_profile_name(profile)}_auto_backup_{stamp}.zip"
+
+
+def _slot_path(directory: Path, profile: str, slot: int) -> Path:
+    return directory / (
+        f"incremento_{sanitize_profile_name(profile)}_auto_backup_slot_{slot:02d}.zip"
+    )
+
+
+def next_backup_path(directory: Path, profile: str, keep: int) -> Path:
+    """Fill fixed slots, then select the oldest for atomic replacement."""
+    limit = max(1, min(MAX_AUTOMATIC_BACKUP_VERSIONS, int(keep)))
+    occupied = []
+    for slot in range(1, limit + 1):
+        path = _slot_path(directory, profile, slot)
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise ValueError("An automatic backup slot is not a regular file.")
+        if not path.exists():
+            return path
+        occupied.append(path)
+    return min(occupied, key=lambda path: (path.stat().st_mtime_ns, path.name))
+
+
+def _backup_recency(path: Path, timestamp_pattern: re.Pattern[str]) -> tuple[int, int]:
+    match = timestamp_pattern.fullmatch(path.name)
+    if match:
+        try:
+            stamp = dt.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%fZ")
+            instant = int(stamp.replace(tzinfo=dt.timezone.utc).timestamp() * 1_000_000_000)
+            return (0, instant)
+        except ValueError:
+            return (0, path.stat().st_mtime_ns)
+    # Every slot archive was written by the new rotation scheme after the
+    # timestamped archives. Migrate them out even if an old clock was wrong.
+    return (1, path.stat().st_mtime_ns)
 
 
 def prune_backups(
@@ -79,14 +118,16 @@ def prune_backups(
 ) -> list[Path]:
     """Rotate only this profile's own automatic ZIPs, never manual exports."""
     prefix = f"incremento_{sanitize_profile_name(profile)}_auto_backup_"
-    pattern = re.compile(rf"{re.escape(prefix)}\d{{8}}T\d{{12}}Z\.zip\Z")
+    timestamp_pattern = re.compile(rf"{re.escape(prefix)}(\d{{8}}T\d{{12}}Z)\.zip\Z")
+    slot_pattern = re.compile(rf"{re.escape(prefix)}slot_(?:0[1-9]|1\d|20)\.zip\Z")
     candidates = sorted(
         (path for path in directory.iterdir()
-         if pattern.fullmatch(path.name) and path.is_file() and not path.is_symlink()),
-        key=lambda path: path.name,
+         if (timestamp_pattern.fullmatch(path.name) or slot_pattern.fullmatch(path.name))
+         and path.is_file() and not path.is_symlink()),
+        key=lambda path: (_backup_recency(path, timestamp_pattern), path.name),
         reverse=True,
     )
-    limit = max(1, min(20, int(keep)))
+    limit = max(1, min(MAX_AUTOMATIC_BACKUP_VERSIONS, int(keep)))
     if protected in candidates:
         retained = {protected, *[path for path in candidates if path != protected][:limit - 1]}
     else:

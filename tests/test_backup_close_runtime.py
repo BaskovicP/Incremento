@@ -4,6 +4,8 @@ import ast
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from backend import backup_schedule
 from backend.i18n import Translator
 
@@ -58,10 +60,46 @@ def test_close_waits_for_existing_backup_then_starts_close_backup_before_unload(
     namespace["_backup_idle_callbacks"].pop(0)()
     assert len(starts) == 1
     assert starts[0][1]["on_close"] is True
-    assert Path(starts[0][0]).parent == destination
+    assert Path(starts[0][0]) == destination / "incremento_P_auto_backup_slot_01.zip"
     assert closed == []
     namespace["_backup_idle_callbacks"].pop(0)()
     assert closed == [True]
+
+
+@pytest.mark.parametrize("trigger, trigger_policy", [
+    ("open", {"on_open": True}),
+    ("interval", {"interval_hours": 1}),
+])
+def test_automatic_backup_triggers_choose_reusable_slot(
+    tmp_path, trigger, trigger_policy,
+):
+    profile_root = tmp_path / "addon" / "user_files" / "P"
+    profile_root.mkdir(parents=True)
+    destination = tmp_path / "backups"
+    destination.mkdir()
+    started = []
+    namespace = {
+        "__name__": "incremento",
+        "_ADDON_DIR": str(tmp_path / "addon"),
+        "_active_profile": lambda: "P",
+        "_auto_backup_generation": 1,
+        "_load_addon_config": lambda *_: {"automatic_backups": {"P": {
+            "enabled": True, "directory": str(destination), "versions": 5,
+            **trigger_policy,
+        }}},
+        "_backup_schedule": backup_schedule,
+        "_paths": SimpleNamespace(get_user_files_dir=lambda *_: profile_root),
+        "_start_full_backup": lambda path, *, automatic_policy: started.append(path),
+        "mw": SimpleNamespace(addonManager=object()),
+        "tooltip": lambda _message: None,
+        "time": SimpleNamespace(time=lambda: 3601.0),
+    }
+
+    _entrypoint_function(namespace, "_attempt_automatic_backup")(
+        trigger, "P", 1,
+    )
+
+    assert started == [str(destination / "incremento_P_auto_backup_slot_01.zip")]
 
 
 def test_unavailable_close_destination_reports_failure_and_continues_unload(tmp_path):

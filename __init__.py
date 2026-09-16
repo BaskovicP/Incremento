@@ -3928,10 +3928,10 @@ def _attempt_automatic_backup(trigger: str, profile: str, generation: int) -> No
         folder = _backup_schedule.validate_destination(
             policy["directory"], _paths.get_user_files_dir(_ADDON_DIR, profile)
         )
+        path = _backup_schedule.next_backup_path(folder, profile, policy["versions"])
     except (OSError, ValueError) as exc:
         tooltip(_t("root_backup_folder_unavailable", error=exc))
         return
-    path = folder / _backup_schedule.backup_filename(profile, time.time())
     _start_full_backup(str(path), automatic_policy=policy)
 
 
@@ -4002,12 +4002,12 @@ def _prepare_profile_close(resume_close) -> None:
         folder = _backup_schedule.validate_destination(
             policy["directory"], _paths.get_user_files_dir(_ADDON_DIR, profile)
         )
+        path = _backup_schedule.next_backup_path(folder, profile, policy["versions"])
     except (OSError, ValueError) as exc:
         tooltip(_t("root_backup_close_folder_unavailable", error=exc))
         _record_close_backup_result(profile, failed=True)
         resume_close()
         return
-    path = folder / _backup_schedule.backup_filename(profile, time.time())
     if _start_full_backup(str(path), automatic_policy=policy, close_triggered=True):
         _backup_idle_callbacks.append(resume_close)
     else:

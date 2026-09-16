@@ -1,5 +1,9 @@
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
+from textwrap import dedent
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,3 +88,36 @@ def test_automatic_backup_dialog_exposes_close_trigger():
     )
     assert 't("admin_automatic_backup_back_up_when_this_profile_closes")' in source.replace("'", '"')
     assert '"on_close": self._on_close.isChecked()' in source
+
+
+def test_automatic_backup_dialog_preserves_user_selected_retention_count():
+    script = dedent("""
+        import os
+        import sys
+        import types
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from aqt.qt import QApplication
+
+        package = types.ModuleType("incremento")
+        package.__path__ = [os.getcwd()]
+        sys.modules["incremento"] = package
+        from incremento.frontend.automatic_backup_dialog import AutomaticBackupDialog
+
+        app = QApplication([])
+        with TemporaryDirectory() as root:
+            dialog = AutomaticBackupDialog(
+                "Test", Path(root), {"directory": root, "versions": 5}
+            )
+            assert dialog._versions.maximum() == 20
+            assert dialog._versions.value() == 5
+            dialog._versions.setValue(7)
+            assert dialog.policy["versions"] == 7
+            dialog.close()
+    """)
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=ROOT,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

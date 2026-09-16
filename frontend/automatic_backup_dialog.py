@@ -12,9 +12,13 @@ from aqt.qt import (
 from aqt.utils import showInfo
 
 try:
-    from ..backend.backup_schedule import normalize_policy, validate_destination
+    from ..backend.backup_schedule import (
+        MAX_AUTOMATIC_BACKUP_VERSIONS, normalize_policy, validate_destination,
+    )
 except ImportError:
-    from backup_schedule import normalize_policy, validate_destination
+    from backup_schedule import (
+        MAX_AUTOMATIC_BACKUP_VERSIONS, normalize_policy, validate_destination,
+    )
 
 
 class AutomaticBackupDialog(QDialog):
@@ -56,7 +60,7 @@ class AutomaticBackupDialog(QDialog):
         self._hours.setSuffix(t('admin_automatic_backup_hours_0_off'))
         form.addRow(t('admin_automatic_backup_while_anki_is_open_every'), self._hours)
         self._versions = QSpinBox()
-        self._versions.setRange(1, 20)
+        self._versions.setRange(1, MAX_AUTOMATIC_BACKUP_VERSIONS)
         self._versions.setValue(current["versions"])
         form.addRow(t('admin_automatic_backup_keep_latest_automatic_versions'), self._versions)
         layout.addLayout(form)
