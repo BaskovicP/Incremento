@@ -251,7 +251,7 @@ from .frontend.onboarding_dialog import (
 from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
 from .frontend.pdf_bookshelf import (
     _DocumentBookshelfDialog,
-    _load_bookshelf_entries,
+    _load_bookshelf_snapshot,
 )
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_button_style import build_reviewer_button_style_js
@@ -3410,15 +3410,23 @@ def _open_pdf_quick_jump() -> None:
 def _open_document_bookshelf() -> None:
     from aqt.operations import QueryOp
 
-    def load_entries(col):
-        return _load_bookshelf_entries(_ADDON_DIR, collection=col)
+    captured_profile = _active_profile()
 
-    def show_bookshelf(entries) -> None:
+    def load_entries(col):
+        return _load_bookshelf_snapshot(
+            _ADDON_DIR,
+            captured_profile,
+            collection=col,
+        )
+
+    def show_bookshelf(snapshot) -> None:
+        entries, attachment_counts = snapshot
         dlg = _DocumentBookshelfDialog(
             mw,
             addon_dir=_ADDON_DIR,
             last_opened_card_id=_last_opened_document_cid,
             entries=list(entries or []),
+            attachment_counts=dict(attachment_counts or {}),
         )
         if not dlg.exec():
             return

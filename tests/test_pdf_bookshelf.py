@@ -1,13 +1,16 @@
 import os
+import subprocess
 import sys
+import threading
 from pathlib import Path
+from textwrap import dedent
 
 
 # Some older dialog tests replace the shared aqt.qt test double during
 # collection. Supply only the names needed to import this dialog module so the
 # pure loader/path regressions remain order-independent.
 _qt_module = sys.modules.get("aqt.qt")
-if _qt_module is not None and not hasattr(_qt_module, "QAbstractItemView"):
+if _qt_module is not None:
     for _name in (
         "QAbstractItemView",
         "QCheckBox",
@@ -23,11 +26,16 @@ if _qt_module is not None and not hasattr(_qt_module, "QAbstractItemView"):
         "QListView",
         "QListWidget",
         "QListWidgetItem",
+        "QMenu",
         "QPalette",
+        "QPainter",
+        "QPen",
         "QPixmap",
         "QPushButton",
         "QSize",
         "QStyle",
+        "QStyleOptionViewItem",
+        "QStyledItemDelegate",
         "QTimer",
         "QVBoxLayout",
     ):
@@ -37,6 +45,9 @@ if _qt_module is not None and not hasattr(_qt_module, "QAbstractItemView"):
         _qt_module.qconnect = lambda *_args, **_kwargs: None
 
 import pdf_bookshelf
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class _FakeNote:
@@ -120,6 +131,7 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
             source_filename="alpha.pdf",
             priority=25,
             tags=("reading", "Work"),
+            note_id=1,
         ),
         pdf_bookshelf._BookshelfEntry(
             title="Beta EPUB",
@@ -129,7 +141,47 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
             source_filename="beta.epub",
             priority=75,
             tags=("reading", "machine_learning"),
+            note_id=2,
         ),
+    ]
+
+
+def test_bookshelf_snapshot_preloads_attachment_counts_for_title_duplicates(
+    monkeypatch,
+):
+    entries = [
+        pdf_bookshelf._BookshelfEntry("Worked Copy", 1, "PDF"),
+        pdf_bookshelf._BookshelfEntry("worked copy", 2, "PDF"),
+        pdf_bookshelf._BookshelfEntry("Unrelated", 3, "PDF"),
+    ]
+    collection = object()
+    calls = []
+
+    def load_entries(addon_dir, *, collection=None, profile=None):
+        calls.append(("load", addon_dir, collection, profile))
+        return entries
+
+    def attachment_counts(addon_dir, profile, candidates, *, col):
+        calls.append(("counts", addon_dir, profile, candidates, col))
+        return {1: 4, 2: 0}
+
+    monkeypatch.setattr(pdf_bookshelf, "_load_bookshelf_entries", load_entries)
+    monkeypatch.setattr(
+        pdf_bookshelf,
+        "_bookshelf_attachment_counts",
+        attachment_counts,
+    )
+
+    snapshot = pdf_bookshelf._load_bookshelf_snapshot(
+        "/addon",
+        "Captured",
+        collection=collection,
+    )
+
+    assert snapshot == (entries, {1: 4, 2: 0})
+    assert calls == [
+        ("load", "/addon", collection, "Captured"),
+        ("counts", "/addon", "Captured", entries[:2], collection),
     ]
 
 
@@ -160,6 +212,7 @@ def test_bookshelf_keeps_legacy_pdf_without_cover_field(monkeypatch):
             cover_filename="",
             source_filename="legacy.pdf",
             priority=None,
+            note_id=7,
         )
     ]
 
@@ -176,6 +229,432 @@ def test_bookshelf_filter_is_case_insensitive_and_preserves_order():
     assert pdf_bookshelf._filter_bookshelf_entries(entries, "", "EPUB") == [
         entries[1]
     ]
+
+
+def test_bookshelf_possible_duplicates_match_original_filename_within_kind():
+    uuid_a = "a" * 32
+    uuid_b = "b" * 32
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "Guide",
+            1,
+            "PDF",
+            source_filename=f"Guide-{uuid_a}.pdf",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Guide [2]",
+            2,
+            "PDF",
+            source_filename=f"guide-{uuid_b}.PDF",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Guide",
+            3,
+            "EPUB",
+            source_filename=f"Guide-{uuid_a}.epub",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Guide",
+            4,
+            "PDF",
+            source_filename=f"other-{uuid_a}.pdf",
+        ),
+    ]
+
+    groups = pdf_bookshelf._bookshelf_duplicate_groups(entries)
+
+    assert groups == ((entries[0], entries[1]),)
+    assert pdf_bookshelf._bookshelf_duplicate_entries(entries) == entries[:2]
+
+
+def test_bookshelf_possible_duplicates_fall_back_to_normalized_legacy_title():
+    entries = [
+        pdf_bookshelf._BookshelfEntry("Legacy Book", 1, "EPUB"),
+        pdf_bookshelf._BookshelfEntry("legacy book\u200b", 2, "EPUB"),
+        pdf_bookshelf._BookshelfEntry("Legacy Book [3]", 3, "EPUB"),
+        pdf_bookshelf._BookshelfEntry("Legacy Book", 4, "PDF"),
+    ]
+
+    assert pdf_bookshelf._bookshelf_duplicate_groups(entries) == (
+        (entries[0], entries[1], entries[2]),
+    )
+
+
+def test_bookshelf_possible_duplicates_use_word_and_trigram_title_similarity():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "Neuroscience: Exploring the Brain",
+            1,
+            "PDF",
+            source_filename=f"source-one-{'a' * 32}.pdf",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Exploring Brain — Neurosciences",
+            2,
+            "PDF",
+            source_filename=f"source-two-{'b' * 32}.pdf",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Unrelated",
+            3,
+            "PDF",
+            source_filename=f"source-three-{'c' * 32}.pdf",
+        ),
+    ]
+
+    matches = pdf_bookshelf._bookshelf_duplicate_matches(entries)
+
+    assert matches[1] == (entries[1],)
+    assert matches[2] == (entries[0],)
+    assert 3 not in matches
+
+
+def test_bookshelf_possible_duplicates_use_fuzzy_original_filename():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "First title",
+            1,
+            "PDF",
+            source_filename=f"Sword_and_Scimitar-{'a' * 32}.pdf",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Completely different title",
+            2,
+            "PDF",
+            source_filename=f"the-sword-scimitar-scan-{'b' * 32}.pdf",
+        ),
+    ]
+
+    assert pdf_bookshelf._bookshelf_duplicate_groups(entries) == (
+        (entries[0], entries[1]),
+    )
+
+
+def test_bookshelf_possible_duplicates_use_pdf_metadata_title():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "First import",
+            1,
+            "PDF",
+            source_filename=f"opaque-one-{'a' * 32}.pdf",
+            metadata_title="Neuroscience: Exploring the Brain",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Second import",
+            2,
+            "PDF",
+            source_filename=f"opaque-two-{'b' * 32}.pdf",
+            metadata_title="Exploring Brain — Neurosciences",
+        ),
+    ]
+
+    assert pdf_bookshelf._bookshelf_duplicate_groups(entries) == (
+        (entries[0], entries[1]),
+    )
+
+
+def test_bookshelf_pdf_metadata_title_ignores_generic_values_and_number_mismatches():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "Alpha",
+            1,
+            "PDF",
+            metadata_title="Untitled",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Beta",
+            2,
+            "PDF",
+            metadata_title="untitled",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Gamma",
+            3,
+            "PDF",
+            metadata_title="Collected Essays Volume 1",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Delta",
+            4,
+            "PDF",
+            metadata_title="Collected Essays Volume 2",
+        ),
+    ]
+
+    assert pdf_bookshelf._bookshelf_duplicate_groups(entries) == ()
+
+
+def test_bookshelf_loads_pdf_metadata_titles_for_captured_profile(
+    monkeypatch,
+    tmp_path,
+):
+    first_pdf = tmp_path / "first.pdf"
+    second_pdf = tmp_path / "second.pdf"
+    first_pdf.write_bytes(b"%PDF-1.7")
+    second_pdf.write_bytes(b"%PDF-1.7")
+    resolved = {
+        "first.pdf": str(first_pdf),
+        "second.pdf": str(second_pdf),
+    }
+    path_calls = []
+    title_calls = []
+    monkeypatch.setattr(
+        pdf_bookshelf,
+        "pdf_storage_abspath",
+        lambda filename, *, profile=None: (
+            path_calls.append((filename, profile)) or resolved.get(filename, "")
+        ),
+    )
+    monkeypatch.setattr(
+        pdf_bookshelf,
+        "_cached_pdf_metadata_title",
+        lambda path: title_calls.append(path) or f"Metadata {Path(path).stem}",
+    )
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "First",
+            1,
+            "PDF",
+            source_filename="first.pdf",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "EPUB",
+            2,
+            "EPUB",
+            source_filename="book.epub",
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Second",
+            3,
+            "PDF",
+            source_filename="second.pdf",
+        ),
+    ]
+
+    assert pdf_bookshelf._load_pdf_metadata_titles(
+        entries,
+        profile="Captured",
+    ) == {
+        1: "Metadata first",
+        3: "Metadata second",
+    }
+    assert path_calls == [
+        ("first.pdf", "Captured"),
+        ("second.pdf", "Captured"),
+    ]
+    assert title_calls == [str(first_pdf), str(second_pdf)]
+
+
+def test_bookshelf_reads_and_cleans_standard_pdf_title(monkeypatch, tmp_path):
+    pdf_path = tmp_path / "metadata.pdf"
+    pdf_path.write_bytes(b"%PDF-1.7")
+    instances = []
+
+    class _FakePdfDocument:
+        class MetaDataField:
+            Title = object()
+
+        def __init__(self, _parent):
+            self.loaded = ""
+            self.closed = False
+            instances.append(self)
+
+        def load(self, path):
+            self.loaded = path
+
+        def metaData(self, field):
+            assert field is self.MetaDataField.Title
+            return "  Brain\x00 Research\nHandbook  "
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(pdf_bookshelf, "QPdfDocument", _FakePdfDocument)
+
+    assert pdf_bookshelf._read_pdf_metadata_title(str(pdf_path)) == (
+        "Brain Research Handbook"
+    )
+    assert instances[0].loaded == str(pdf_path)
+    assert instances[0].closed is True
+
+
+def test_bookshelf_pdf_metadata_scan_honors_cancellation(monkeypatch):
+    cancelled = threading.Event()
+    cancelled.set()
+    monkeypatch.setattr(
+        pdf_bookshelf,
+        "pdf_storage_abspath",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("cancelled scan must not resolve files")
+        ),
+    )
+
+    assert pdf_bookshelf._load_pdf_metadata_titles(
+        [
+            pdf_bookshelf._BookshelfEntry(
+                "Cancelled",
+                1,
+                "PDF",
+                source_filename="cancelled.pdf",
+            )
+        ],
+        profile="Captured",
+        cancelled=cancelled,
+    ) == {}
+
+
+def test_bookshelf_fuzzy_matching_respects_numbers_and_common_word_frequency():
+    entries = [
+        pdf_bookshelf._BookshelfEntry("World History Volume 1", 1, "PDF"),
+        pdf_bookshelf._BookshelfEntry("World History Volume 2", 2, "PDF"),
+        pdf_bookshelf._BookshelfEntry("Common Handbook Biology", 3, "PDF"),
+        pdf_bookshelf._BookshelfEntry("Common Handbook Chemistry", 4, "PDF"),
+        pdf_bookshelf._BookshelfEntry("Common Handbook Physics", 5, "PDF"),
+    ]
+
+    assert pdf_bookshelf._bookshelf_duplicate_groups(entries) == ()
+
+
+def test_bookshelf_duplicate_filter_combines_with_existing_filters():
+    entries = [
+        pdf_bookshelf._BookshelfEntry(
+            "Guide",
+            1,
+            "PDF",
+            source_filename=f"guide-{'a' * 32}.pdf",
+            tags=("work",),
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Guide [2]",
+            2,
+            "PDF",
+            source_filename=f"guide-{'b' * 32}.pdf",
+            tags=("archive",),
+        ),
+        pdf_bookshelf._BookshelfEntry(
+            "Unique",
+            3,
+            "PDF",
+            source_filename=f"unique-{'a' * 32}.pdf",
+            tags=("work",),
+        ),
+    ]
+
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "guide",
+        "PDF",
+        tag_query="work",
+        duplicates_only=True,
+    ) == [entries[0]]
+    assert pdf_bookshelf._filter_bookshelf_entries(
+        entries,
+        "",
+        "PDF",
+        tag_query="work",
+        duplicates_only=False,
+    ) == [entries[0], entries[2]]
+
+
+def test_bookshelf_delete_targets_distinct_live_note_ids_only():
+    entries = [
+        pdf_bookshelf._BookshelfEntry("One", 1, "PDF", note_id=11),
+        pdf_bookshelf._BookshelfEntry("Two", 2, "PDF", note_id=11),
+        pdf_bookshelf._BookshelfEntry("Missing", 3, "PDF", note_id=0),
+        pdf_bookshelf._BookshelfEntry("Three", 4, "PDF", note_id=22),
+    ]
+
+    assert pdf_bookshelf._bookshelf_note_ids(entries) == (11, 22)
+    assert pdf_bookshelf._without_bookshelf_notes(entries, (11,)) == entries[2:]
+
+
+def test_bookshelf_delete_attachment_check_uses_lightweight_media_resolver(monkeypatch):
+    calls = []
+
+    def linked_ids(addon_dir, profile, card_id, **kwargs):
+        calls.append((addon_dir, profile, card_id, kwargs))
+        if card_id == 1:
+            return (10, 20)
+        return (10, 40)
+
+    monkeypatch.setattr(
+        pdf_bookshelf,
+        "linked_media_attachment_card_ids",
+        linked_ids,
+    )
+    entries = [
+        pdf_bookshelf._BookshelfEntry("PDF", 1, "PDF", note_id=101),
+        pdf_bookshelf._BookshelfEntry("EPUB", 2, "EPUB", note_id=102),
+    ]
+    collection = object()
+
+    assert pdf_bookshelf._bookshelf_attached_card_ids(
+        "/addon",
+        "Captured",
+        entries,
+        col=collection,
+    ) == (10, 20, 40)
+    assert [call[2] for call in calls] == [1, 2]
+    assert [call[3]["media_kind"] for call in calls] == ["pdf", "epub"]
+    assert all(call[3]["col"] is collection for call in calls)
+
+
+def test_bookshelf_attachment_counts_are_per_document_and_drive_duplicate_badge(
+    monkeypatch,
+):
+    def linked_ids(_addon_dir, _profile, card_id, **_kwargs):
+        if card_id == 1:
+            return (10, 10)
+        return (20,)
+
+    monkeypatch.setattr(
+        pdf_bookshelf,
+        "linked_media_attachment_card_ids",
+        linked_ids,
+    )
+    first = pdf_bookshelf._BookshelfEntry("First", 1, "PDF")
+    second = pdf_bookshelf._BookshelfEntry("Second", 2, "EPUB")
+    counts = pdf_bookshelf._bookshelf_attachment_counts(
+        "/addon",
+        "Captured",
+        [first, second],
+        col=object(),
+    )
+
+    assert counts == {1: 1, 2: 1}
+    assert pdf_bookshelf._bookshelf_entry_has_attachment_badge(
+        first,
+        duplicates_only=True,
+        attachment_counts=counts,
+    ) is True
+    assert pdf_bookshelf._bookshelf_entry_has_attachment_badge(
+        first,
+        duplicates_only=False,
+        attachment_counts=counts,
+    ) is False
+    assert pdf_bookshelf._bookshelf_entry_has_attachment_badge(
+        pdf_bookshelf._BookshelfEntry("Unworked", 3, "PDF"),
+        duplicates_only=True,
+        attachment_counts=counts,
+    ) is False
+
+
+def test_bookshelf_delete_confirmation_warns_about_attached_cards():
+    without_attachments = pdf_bookshelf._bookshelf_delete_confirmation(
+        document_count=1,
+        attached_card_count=0,
+        keep_one=False,
+    )
+    with_attachments = pdf_bookshelf._bookshelf_delete_confirmation(
+        document_count=1,
+        attached_card_count=3,
+        keep_one=False,
+    )
+
+    assert "attached" not in without_attachments.casefold()
+    assert "3 attached cards" in with_attachments
+    assert "will remain in Anki" in with_attachments
+    assert "may no longer work" in with_attachments
 
 
 def test_bookshelf_tag_query_normalizes_separators_case_and_duplicates():
@@ -315,6 +794,106 @@ def test_bookshelf_dialog_exposes_tag_filter_and_explicit_or_and_modes():
     assert "Qt.MatchFlag.MatchContains" in source
     assert "self._tag_search.textChanged" in source
     assert "self._tag_mode_combo.currentIndexChanged" in source
+
+
+def test_bookshelf_dialog_exposes_duplicate_filter_and_safe_delete_context_menu():
+    source = Path(pdf_bookshelf.__file__).read_text(encoding="utf-8")
+
+    assert 't("reader_bookshelf_duplicates_only")' in source
+    assert "Qt.ContextMenuPolicy.CustomContextMenu" in source
+    assert "self._list.customContextMenuRequested" in source
+    assert "def _show_context_menu" in source
+    assert "remove_notes(" in source
+    assert "askUser(" in source
+    assert "_load_pdf_metadata_titles(" in source
+    assert "uses_collection=False" in source
+    assert '"reader_bookshelf_pdf_metadata_title"' in source
+    assert "_bookshelf_attached_card_ids(" in source
+    assert "QueryOp(" in source
+    assert 't("reader_bookshelf_attachment_check_failed")' in source
+    assert "class _BookshelfItemDelegate" in source
+    assert "_ATTACHMENT_BADGE_ROLE" in source
+    assert "self._list.setItemDelegate(" in source
+    assert "_ATTACHMENT_BADGE_ROLE," in source
+    assert "attachment_counts: dict[int, int] | None = None" in source
+    assert "def _duplicates_filter_changed" in source
+    assert "self._start_duplicate_attachment_scan()" in source
+    assert '"reader_bookshelf_attached_badge_tooltip"' in source
+    assert "self._list.itemClicked" not in source
+
+
+def test_bookshelf_attachment_badge_renders_above_normal_and_selected_cover():
+    script = dedent("""
+        import os
+        import sys
+        import types
+        from aqt.qt import (
+            QApplication,
+            QColor,
+            QIcon,
+            QListView,
+            QListWidget,
+            QListWidgetItem,
+            QPixmap,
+            QSize,
+        )
+
+        package = types.ModuleType("incremento")
+        package.__path__ = [os.getcwd()]
+        sys.modules["incremento"] = package
+        from incremento.frontend import pdf_bookshelf
+
+        app = QApplication([])
+        view = QListWidget()
+        view.resize(220, 380)
+        view.setViewMode(QListView.ViewMode.IconMode)
+        view.setIconSize(QSize(160, 220))
+        view.setGridSize(QSize(196, 350))
+        delegate = pdf_bookshelf._BookshelfItemDelegate(view)
+        view.setItemDelegate(delegate)
+
+        cover = QPixmap(160, 220)
+        cover.fill(QColor("#ececec"))
+        item = QListWidgetItem("Worked document")
+        item.setIcon(QIcon(cover))
+        item.setData(pdf_bookshelf._ATTACHMENT_BADGE_ROLE, 18)
+        item.setSizeHint(QSize(196, 350))
+        view.addItem(item)
+        view.show()
+
+        def badge_pixels():
+            app.processEvents()
+            image = view.viewport().grab().toImage()
+            target = QColor("#188038")
+            points = []
+            for y in range(image.height()):
+                for x in range(image.width()):
+                    color = image.pixelColor(x, y)
+                    if (
+                        abs(color.red() - target.red()) <= 2
+                        and abs(color.green() - target.green()) <= 2
+                        and abs(color.blue() - target.blue()) <= 2
+                    ):
+                        points.append((x, y))
+            assert len(points) > 300, len(points)
+            assert max(x for x, _y in points) > 130
+            assert min(y for _x, y in points) < 60
+
+        badge_pixels()
+        view.setCurrentItem(item)
+        item.setSelected(True)
+        badge_pixels()
+        view.close()
+    """)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_bookshelf_count_describes_current_document_filter():

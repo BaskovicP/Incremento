@@ -178,6 +178,46 @@ def test_pdf_review_all_includes_descendants_of_attached_tree_root(monkeypatch):
     assert [row["media_position"] for row in rows] == [7, 7, 7]
 
 
+def test_live_attachment_ids_skip_review_classification_and_missing_cards(monkeypatch):
+    source_card_id = 500
+    cards = {
+        1000: _card(1000, 10),
+        1100: _card(1100, 11, queue=-1),
+        2000: _card(2000, 20),
+    }
+    col = _FakeCollection(
+        notes={
+            10: _FakeNote(source_card_id),
+            11: _FakeNote(source_card_id),
+        },
+        cards=cards,
+        metadata_note_ids=[11],
+    )
+    monkeypatch.setattr(
+        media_review,
+        "get_pdf_document_source_rows",
+        lambda *_args: [{"note_id": 10, "position": 7}],
+    )
+    monkeypatch.setattr(
+        media_review,
+        "get_knowledge_tree_nodes",
+        lambda *_args: [
+            {"card_id": 1000, "parent_card_id": None, "sort_order": 0},
+            {"card_id": 2000, "parent_card_id": 1000, "sort_order": 0},
+            {"card_id": 3000, "parent_card_id": 2000, "sort_order": 0},
+        ],
+    )
+
+    assert media_review.linked_media_attachment_card_ids(
+        "/addon",
+        "Profile",
+        source_card_id,
+        col=col,
+        media_kind="pdf",
+    ) == (1000, 1100, 2000)
+    assert not any(query.startswith("cid:") for query in col.card_queries)
+
+
 def test_note_search_is_chunked_for_large_link_sets(monkeypatch):
     note_ids = list(range(1, 452))
     cards = {note_id + 10_000: _card(note_id + 10_000, note_id) for note_id in note_ids}

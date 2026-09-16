@@ -521,6 +521,80 @@ def _card_availability(card, *, target_deck_id: int | None) -> str:
     return MEDIA_REVIEW_AVAILABILITY_AVAILABLE
 
 
+def linked_media_attachment_card_ids(
+    addon_dir: str,
+    profile: str,
+    source_card_id: int,
+    *,
+    col,
+    media_kind: str = "",
+    linked_source_rows: Iterable[dict] | None = None,
+    linked_note_ids: Iterable[int] | None = None,
+    linked_card_ids: Iterable[int] | None = None,
+    include_tree_descendants: bool = True,
+) -> tuple[int, ...]:
+    """Return distinct live cards attached to one media card.
+
+    This is the lightweight existence/count path for bookshelf safety UI.  It
+    deliberately avoids due-state searches, deck inspection, labels, and
+    Topic/Item classification performed by the Review All preview resolver.
+    """
+    try:
+        source_card_id = int(source_card_id)
+    except Exception:
+        return ()
+    if source_card_id <= 0:
+        return ()
+
+    normalized_media_kind = normalize_media_kind(media_kind)
+    raw_source_rows = list(linked_source_rows or [])
+    raw_source_rows.extend(
+        _legacy_source_rows(
+            addon_dir,
+            profile,
+            normalized_media_kind,
+            source_card_id,
+        )
+    )
+    note_ids = [
+        row.get("note_id")
+        for row in raw_source_rows
+        if isinstance(row, dict)
+    ]
+    note_ids.extend(linked_note_ids or [])
+    note_ids.extend(_metadata_child_note_ids(col, source_card_id))
+
+    direct_card_ids = _positive_unique(
+        [*_card_ids_for_note_ids(col, _positive_unique(note_ids)), *(linked_card_ids or [])]
+    )
+    direct_card_ids = [
+        card_id for card_id in direct_card_ids if card_id != source_card_id
+    ]
+    candidate_card_ids = list(direct_card_ids)
+    if include_tree_descendants:
+        candidate_card_ids.extend(
+            link.get("card_id")
+            for link in _knowledge_tree_descendant_links(
+                addon_dir,
+                profile,
+                source_card_id,
+                directly_linked_card_ids=direct_card_ids,
+            )
+        )
+
+    live_card_ids: list[int] = []
+    for card_id in _positive_unique(candidate_card_ids):
+        if card_id == source_card_id:
+            continue
+        try:
+            card = col.get_card(card_id)
+        except Exception:
+            continue
+        if card is not None:
+            live_card_ids.append(card_id)
+    return tuple(sorted(live_card_ids))
+
+
 def inspect_linked_media_review_rows(
     addon_dir: str,
     profile: str,
