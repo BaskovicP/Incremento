@@ -102,11 +102,13 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 | **Getting Started…** | Reopen the first-run reading/extraction/session/backup guide |
 | **Settings** | Configure extraction, review, topic, writing, shortcut, and advanced options |
 | **About** | Show a summary of addon capabilities |
-| **Add Content → Add PDF** | Import a PDF as a topic card |
+| **Add Content → Add PDF / DjVu** | Import a PDF or DjVu as a topic card |
 | **Add Content → Add EPUB** | Import one or more EPUBs as topic cards |
+| **Add Content → Add Markdown Document…** | Batch-import rendered Markdown learning documents with preview |
+| **Edit Current Markdown Document…** | Edit the open Markdown study copy with source and preview |
 | **Add Content → Webpage to PDF** | Render a webpage into a PDF card |
 | **Add Content → Add Video** | Add a YouTube, Vimeo, or local video card |
-| **Add Content → Add to Markdown** | Create a writing card backed by a markdown file |
+| **Add Content → Add Markdown Writing…** | Create a writing card backed by a markdown file |
 | **Add Content → Web Page** | Create a browsable web page card |
 | **Add Content → Add Local File** | Create a card that opens or tracks a local file |
 | **Download Current Video Locally** | Download the active remote video into the current profile |
@@ -149,7 +151,7 @@ If you leave before finishing, Anki keeps the unfinished cards in **Incremento S
 
 The session dialog also supports:
 
-- a **Basic** view for the preset, card count, Topic/Item mix, Document/Other mix, summary, and preview
+- a **Basic** view for the preset, card count, Topic/Item mix, Documents within Topics, summary, and preview
 - an **Advanced** view for every scheduler quota, filter, card-state, ordering, and diagnostic control
 - named presets that you can save, load, rename, and delete
 - optional live preview before starting
@@ -193,7 +195,7 @@ If all three boxes are off, no ordinary topic/item card is eligible. Incremento 
 
 ### Topics <-> Items balance
 
-Controls what share of the session goes to topics versus normal review cards.
+Controls what share of the whole session goes to Topics versus Items. Topics include document-reading cards; the next slider divides only the Topic portion.
 
 - Move left for more topics
 - Move right for more items
@@ -202,14 +204,23 @@ Incremento also shows the current number of ready topic and item cards.
 
 The 0% and 100% endpoints are exact: a bucket set to 0% is disabled and is not reintroduced by scheduler smoothing or empty-pool fallback. For example, an Items-only preview with no matching Items reports fewer scheduled cards instead of substituting Topics.
 
-### Docs <-> Other balance
+### Documents within Topics (%)
 
-Controls how often PDF and EPUB reading cards are woven into normal scheduling.
+Controls what percentage of the Topic portion targets PDF and EPUB reading cards. It does not reduce the Item allocation. The remaining Topics are non-document Topics.
 
-- Move left for more Docs
-- Move fully right for 0% Docs
+- Move left for more documents within Topics
+- Move fully right for 0% document Topics in normal mixing
+- Move fully left to target only documents within Topics
 
-Document cards are eligible regardless of New/Learning/Due state. Separate content-type priorities can still reserve a hard document quota in strict mode.
+For example, 100 cards with 60% Topics / 40% Items and 10% Documents within Topics targets **6 Documents + 54 other Topics + 40 Items**. It is not 10 documents out of the whole session. Integer estimates split Topics/Items first, then divide the Topic allocation; actual soft scheduling depends on available cards and the balancing scope.
+
+At 100% Items, the document control is disabled and displays 0%; its saved preference is retained for when Topics are enabled again. PDFs and EPUBs explicitly classified as Items remain eligible as Items and do not consume the document-Topic target. Regular flashcards extracted from a document are not automatically document-reading cards.
+
+The estimate table separates Documents (Topics), Other Topics, and Items. Documents plus Other Topics form the Topic total. Percentages inside each table column describe tag shares, not Topic/Item percentages.
+
+Document Topics are eligible regardless of New/Learning/Due state and respect Topic classification, Topic filters, and active tag constraints. Separate Advanced content-type priorities can still reserve document places independently before the normal mix; these explicit overrides can change the final allocation, including in an Items-only setup.
+
+Saved setups from the previous whole-session document mix are converted once, including named presets and the legacy preset alias. The conversion preserves the old expected three-way mix as closely as whole-percent sliders allow: for example, the old 66% Docs / 100% Items setup becomes 66% Topics / 34% Items with 100% Documents within Topics. Unknown settings and locks are retained; documents no longer share the main slider balancing pool. Small rounding differences and explicit classification overrides can affect the resulting counts.
 
 ### Priority <-> Random balance
 
@@ -287,9 +298,9 @@ The dialog also has buttons to delete session, daily, and lifetime statistics or
 
 Incremento now supports several kinds of topic material.
 
-### Add PDF
+### Add PDF / DjVu
 
-Use **Incremento → Add Content → Add PDF** to import a PDF file into Incremento.
+Use **Incremento → Add Content → Add PDF / DjVu** to import one or more PDF or DjVu files into Incremento. DjVu documents are converted to PDFs while preserving existing selectable text; see the DjVu import guidance below. When Tesseract is available, **OCR all possible** selects every document that can use OCR—including documents whose text check finishes after you click it—and **Don't OCR anything** clears every OCR choice. Documents with usable text or without the required OCR tools remain unchanged.
 
 This creates an **Incremento PDF** note and copies the PDF into `user_files/<ProfileName>/pdfs/`.
 
@@ -298,6 +309,18 @@ This creates an **Incremento PDF** note and copies the PDF into `user_files/<Pro
 Use **Incremento → Add Content → Add EPUB** to import one or more EPUB books.
 
 Incremento stores the source EPUB under `user_files/<ProfileName>/epubs/` and extracts readable section data under `user_files/<ProfileName>/epub_extracted/` for the reader and search features.
+
+### Add Markdown Document
+
+Use **Incremento → Add Content → Add Markdown Document…** to import UTF-8 `.md` or `.markdown` files as rendered learning documents. The split dialog provides **Add files…**, **Add folder…**, a filename filter, import checkboxes, per-file tags and priority, and a rendered preview on the right. **Select all / Deselect all** affects only visible rows; checked hidden rows still import. Global tags are combined with each file's tags. Titles use each filename by default; uncheck **Use file name as title** to supply a shared title. Choose the destination deck, then **Add**. A batch accepts up to 1,000 files; folder discovery scans at most 50,000 entries. Preview is text-only and does not load images or activate links. This is separate from **Add Markdown Writing**, which creates an incremental-writing card.
+
+Markdown is rendered into a managed EPUB study copy, so it uses the existing document reader rather than the writing editor. It supports headings, emphasis, lists, tables, fenced code blocks, and footnotes. Level-1 and level-2 headings start reader sections; a file without headings becomes one section. Highlights, selection-to-card extraction, bookmarks, in-document search, Search ALL, reading markers/progress, reading limits, and Review All use the same EPUB/PDF-style workflow. Open the document from **Document Bookshelf → All documents / EPUBs**, Quick Open Content, or its study card. Its note type, scheduling, and statistics are EPUB-backed; provenance identifies the source as Markdown.
+
+The original file is never edited. Its exact Markdown bytes and supported local PNG/JPEG/GIF/WebP images are included in the managed EPUB under `user_files/<ProfileName>/epubs/`; the reader/search cache lives under `epub_extracted/`. Changes to the original after import do not update the study copy. Images must be regular files inside the Markdown file's folder (including subfolders), not symlinks or escaping paths. Missing/unsupported/remote images show their alt text. Scripts, active HTML, user CSS, and remote resources are removed; external HTTP(S) links remain opt-in through **Links On** and open in the system browser. Limits are 2 MiB of Markdown, 8 MiB per image, 128 images / 48 MiB total, and 2,000 reader sections.
+
+To edit the open study document, use the reader's **Edit Markdown…** button or **Incremento → Edit Current Markdown Document…**. Edit the source alongside its live, text-only preview and choose **Save document**. Saving updates the same document and its search index, then refreshes the reader. It does not change the Anki note, scheduling, tags, priority, or extracted cards. Embedded images are retained even if the original image files are gone; new local or remote image files are not loaded from the editor. One previous managed EPUB version is kept at `user_files/<ProfileName>/markdown_backups/<document-filename>.epub`; a later successful save replaces that backup. Highlights, bookmarks, reading progress and saved reader links remain, but editing headings or text may move their positions. A concurrent document change rejects the save; reopen the editor to load the latest version. Closing with unsaved changes asks before discarding them.
+
+The import runs in the background and captures the current Anki profile. **Settings → Shortcuts → Add Markdown Document** can assign a key; there is no default shortcut. The command is also available in the Command Palette.
 
 ### Webpage to PDF
 
@@ -328,9 +351,9 @@ For local files, Incremento can either:
 - encode H.264 high quality
 - encode H.264 smaller size
 
-### Add to Markdown
+### Add Markdown Writing
 
-Use **Incremento → Add Content → Add to Markdown** to create an **Incremento Writing** note backed by a markdown file under `user_files/<ProfileName>/writing/`.
+Use **Incremento → Add Content → Add Markdown Writing…** to create an **Incremento Writing** note backed by a markdown file under `user_files/<ProfileName>/writing/`.
 
 You can provide:
 
@@ -374,6 +397,35 @@ The popup and the full text/snapshot capture form load existing tags from the ac
 
 PDF cards remain the most feature-rich workflow in Incremento.
 
+### Importing DjVu documents
+
+Choose **Incremento → Add Content → Add PDF / DjVu** and select `.djvu` or
+`.djv` files, or a folder containing PDFs and DjVu documents. Titles, tags,
+priority and the import checkboxes work the same for both formats.
+
+Incremento converts DjVu documents in the background into managed PDFs, keeping
+the existing text layer and its positions. The resulting card uses the PDF
+reader, Document Bookshelf, search, highlighting and extraction tools. The
+original DjVu file is left untouched. A DjVu preview becomes available in the
+bookshelf after import. Cancel stops conversion and pending imports; documents
+already imported remain available.
+
+DjVu import requires **PyMuPDF** and **DjVuLibre** (`ddjvu` and `djvutxt`).
+Check **Incremento → Utils → Check Dependencies…** for installation guidance.
+On macOS, install DjVuLibre with `brew install djvulibre`; on Debian/Ubuntu,
+use `sudo apt install djvulibre-bin`. On Windows, install DjVuLibre and add its
+tool directory to PATH. Restart Anki after installing dependencies.
+
+Existing DjVu text is reused without running OCR again. **Use OCR** is optional
+and runs only when the whole document has no usable text layer and Tesseract is
+available. Use **OCR all possible** or **Don't OCR anything** to set every eligible
+PDF and DjVu row at once. Without OCR, image-only documents can still be read,
+but their text cannot be selected. DjVu outlines and hyperlinks are not transferred. Indirect
+multi-file documents must first be bundled into one DjVu file. Invalid or
+unsupported text layers fail visibly instead of silently losing their text.
+Conversion limits are 256 MiB input, 1 GiB output, 5,000 pages, 8 MiB of text per
+page and five minutes per DjVuLibre command.
+
 ### What a PDF card stores
 
 Each PDF note includes:
@@ -386,12 +438,15 @@ Each PDF note includes:
 
 When a PDF card is reviewed, the PDF dock opens on the right.
 
-Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. The separate tag field accepts exact Anki tag names separated by spaces, commas, or semicolons. Start typing any part of a tag to see case-insensitive suggestions, or select **Browse tags** to discover tags already used by bookshelf documents; frequently used tags appear first, and choosing one completes only the tag currently being typed. Choose **Any tag (OR)** to include documents carrying at least one requested tag, or **All tags (AND)** to require every requested tag; tag matching ignores uppercase/lowercase and combines with the title and document-type filters. PDF tiles use their stored first-page cover; EPUB tiles use their stored book cover. Every tile has a bold, theme-aware title underneath and opens the appropriate reader with one click. Suspended document cards remain visible because the shelf is a document opener rather than a study queue. For older PDFs without a stored cover, Incremento renders a temporary first-page preview in the background. A document whose cover or source is unavailable keeps a placeholder instead of blocking the dialog.
+Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. **Possible duplicates only** compares document titles and reconstructed original filenames within the same document type, plus the standard embedded `Title` metadata between PDFs. PDF metadata is read and cached in the background, so opening the shelf does not wait for every PDF; hover a PDF tile to see the discovered metadata title. Generic metadata such as `Untitled` is ignored. The matcher combines case-insensitive word matching, lower weight for words that occur in many shelf entries, and three-character groups (trigrams) that tolerate punctuation, word-form, and small spelling differences. Numeric parts such as years or volume numbers must match. Treat the results as candidates rather than guaranteed byte-for-byte copies. While **Possible duplicates only** is selected, Incremento checks candidate documents for live attached Topic or Item cards in a background collection query. A green check appears over the top-right of a cover when attachments exist; hover it to see the distinct card count. This marker can help identify a copy on which you have already worked, but it does not change the duplicate score or choose which copy to retain. Right-click a tile to delete that document or, when it belongs to a duplicate group, delete its directly matching candidates while keeping the selected one. Before showing confirmation, Incremento checks the same direct, provenance, legacy-source, and knowledge-tree relationships used by Review All. When live attached cards exist, the confirmation reports their distinct count and explains that the cards remain in Anki while links back to deleted documents may stop working. If that check fails or the active profile changes, nothing is deleted. Confirmed deletion removes the corresponding Anki notes/cards through Anki's undoable collection operation. Managed source files remain so Undo can restore the documents safely.
+
+The separate tag field accepts exact Anki tag names separated by spaces, commas, or semicolons. Start typing any part of a tag to see case-insensitive suggestions, or select **Browse tags** to discover tags already used by bookshelf documents; frequently used tags appear first, and choosing one completes only the tag currently being typed. Choose **Any tag (OR)** to include documents carrying at least one requested tag, or **All tags (AND)** to require every requested tag; tag matching ignores uppercase/lowercase and combines with the title and document-type filters. PDF tiles use their stored first-page cover; EPUB tiles use their stored book cover. Every tile has a bold, theme-aware title underneath and opens the appropriate reader with one left-click. Suspended document cards remain visible because the shelf is a document opener rather than a study queue. For older PDFs without a stored cover, Incremento renders a temporary first-page preview in the background. A document whose cover or source is unavailable keeps a placeholder instead of blocking the dialog.
 
 Main controls include:
 
 - previous / next page
 - zoom out / zoom in
+- **PDF appearance** with **Original**, neutral **Dark**, and warmer low-glare **Night** page modes; each PDF remembers its own choice, and the display filter does not alter the source PDF or snapshots
 - highlight color selection
 - **Add Card**
 - **Review Due** for due extracted cards near the current reading point
@@ -467,7 +522,12 @@ Highlights are saved per PDF and reappear whenever you reopen the card.
 Use the eight quick swatches or **More colors…** for a larger palette and a custom
 HTML color such as `#123ABC`. Click **OK** to select the color; selected text is
 highlighted immediately, or the color is used for your next highlight. Custom
-colors are saved in the database and preserved when synced to PDFs.
+colors used on highlights are saved in the database and preserved when synced to
+PDFs. **Add to Custom Colors** stores up to 16 palette swatches in their original
+slots. They are saved when the picker closes (including **Cancel**), survive Anki
+restarts, and are shared between PDF and EPUB readers within the current profile.
+The palette is included in Incremento database backups; **Cancel** still leaves
+the current annotation color unchanged.
 
 The blue text-selection preview and saved text highlights join word spaces,
 including wider spaces in justified text, between PDF text fragments on the
@@ -612,7 +672,7 @@ When a bookmark is saved, Incremento reopens that web card at the bookmarked poi
 
 If a page does not behave properly inside Anki's built-in web view, use **Open in Window** to open the current page externally. When **Track via Chrome extension** is checked, the companion extension keeps syncing the same web card to the latest page visited in that browser tab.
 
-In **Incremento → Settings → Review**, you can also choose whether web-card media should try to resume in the original page first and whether browser-card scroll should be remembered by default.
+In **Incremento → Settings → Review**, you can choose a default PDF appearance. With **Always force this appearance for every PDF** off, a PDF's remembered choice wins and the default is used for PDFs without one. With it on, every PDF opens in the selected Original/light, Dark, or Night appearance; the per-PDF choices remain saved and become active again when forcing is turned off. The same tab also controls whether web-card media should try to resume in the original page first and whether browser-card scroll should be remembered by default.
 
 ### Writing cards
 
@@ -873,7 +933,7 @@ The APKG and `user_files/<ProfileName>/` snapshot always refer to the same activ
 
 Incremento runs SQLite's integrity check and copies the database through SQLite's backup API. It writes and validates a temporary ZIP before atomically replacing the selected destination. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
 
-Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Keep 1–20 automatic versions (5 by default). The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Automatic backups run in the background with a progress window that explains why Anki is temporarily unavailable and shows the current stage. Progress and failures also appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before older automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
+Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Choose how many automatic versions to keep, from 1 to 20 (5 by default). Incremento fills that many fixed ZIP slots; once they are full, the next successful, validated backup replaces the oldest slot. For example, with five selected, the sixth backup replaces the first. Older timestamp-named automatic ZIPs are retired as the new slots fill. The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Automatic backups run in the background with a progress window that explains why Anki is temporarily unavailable and shows the current stage. Progress and failures also appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before an existing slot is replaced or older automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
 
 A folder synced by the Google Drive desktop app (or another cloud-sync app) can be selected, but Incremento itself does not sign in to a cloud service or verify that the ZIP finished uploading. These full backups include private cards, media and configuration: protect the sync account and destination accordingly. Keep an additional backup outside the sync service if you need protection against cloud-side deletion or account loss.
 
@@ -1011,7 +1071,7 @@ Incremento's configurable shortcuts can be changed in **Incremento → Settings 
 | `Ctrl+Alt+=` | PDF viewer zoom in |
 | `Ctrl+Alt+M` | Mark current PDF as finished reading |
 
-Many menu actions have no default shortcut but can still be assigned here, including Start Incremental Learning, Add PDF, Add EPUB, Add Video, Add to Markdown, Web Page, Add Local File, Statistics, Settings, Export, and knowledge-tree actions.
+Many menu actions have no default shortcut but can still be assigned here, including Start Incremental Learning, Add PDF / DjVu, Add EPUB, Add Markdown Document, Edit Current Markdown Document, Add Video, Add Markdown Writing, Web Page, Add Local File, Statistics, Settings, Export, and knowledge-tree actions.
 
 **Toggle Reviewer Buttons** also has no default key. Assign one here to collapse or restore Done, Postpone, and Extract together while reviewing; the saved individual choices return when the group is shown again.
 
@@ -1039,7 +1099,7 @@ Inside the quick-open dialog:
 
 ### Document Bookshelf
 
-The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs. Choose **All documents**, **PDFs**, or **EPUBs**, type in the search box to filter titles, and use the tag autocomplete or **Browse tags** with **OR/AND** matching to narrow the shelf without remembering exact spelling. Use the arrow keys and Return for keyboard selection, or click any cover tile to open it immediately. Opening a PDF restores its saved page/zoom state; opening an EPUB restores its saved section and scroll position. Thumbnails load progressively, and missing PDF previews render one at a time, so opening a large library does not synchronously render every document. **Don't change cards attached to PDF reading history** is enabled only for a selected PDF. **Open the card also to study** works for either format and starts the selected document card after opening its reader. If an older profile customized the former PDF Bookshelf shortcut, Incremento carries that shortcut into Document Bookshelf automatically. If `Option/Alt+Shift+P` was also assigned to Quick Open Content, the Bookshelf keeps that key; Quick Open Content remains available from the Incremento menu and can be given a different shortcut in Settings.
+The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs. Choose **All documents**, **PDFs**, or **EPUBs**, type in the search box to filter titles, and use the tag autocomplete or **Browse tags** with **OR/AND** matching to narrow the shelf without remembering exact spelling. **Possible duplicates only** can be combined with those filters and uses cached rare-word plus trigram similarity across document titles, original filenames, and embedded PDF metadata titles. The profile-captured metadata scan runs off the UI thread and ignores generic titles. Duplicate mode also caches per-document attachment counts and overlays a green top-right check on covers with live Topic or Item attachments; the hover text gives the count. The badge is informational and does not affect matching. Right-click a candidate to delete it or keep it and delete its directly matching candidates. A separate background collection query recounts distinct live attached cards before confirmation; attached cards are not deleted, and the warning explains that their document links may stop working. A failed or stale attachment check cancels deletion. The confirmation also explains that the document's Anki note/card is deleted while the managed source stays available for Undo. Use the arrow keys and Return for keyboard selection, or left-click any cover tile to open it immediately. Opening a PDF restores its saved page, zoom, and appearance state unless Settings force another appearance; opening an EPUB restores its saved section and scroll position. Thumbnails load progressively, and missing PDF previews render one at a time, so opening a large library does not synchronously render every document. **Don't change cards attached to PDF reading history** is enabled only for a selected PDF. **Open the card also to study** works for either format and starts the selected document card after opening its reader. If an older profile customized the former PDF Bookshelf shortcut, Incremento carries that shortcut into Document Bookshelf automatically. If `Option/Alt+Shift+P` was also assigned to Quick Open Content, the Bookshelf keeps that key; Quick Open Content remains available from the Incremento menu and can be given a different shortcut in Settings.
 
 ---
 
@@ -1047,7 +1107,7 @@ The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs
 
 ### Workflow A: Classic incremental reading from PDFs
 
-1. Add a PDF with **Incremento → Add Content → Add PDF**.
+1. Add a PDF with **Incremento → Add Content → Add PDF / DjVu**.
 2. Start a session with some topic share.
 3. Read in the PDF dock.
 4. Use `Ctrl/Cmd+1..4` to extract key text into new cards.
@@ -1077,7 +1137,7 @@ The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs
 
 ### Workflow E: Writing-first study
 
-1. Create a writing card with **Incremento → Add Content → Add to Markdown**.
+1. Create a writing card with **Incremento → Add Content → Add Markdown Writing…**.
 2. Draft notes in markdown while reviewing the card.
 3. Let Incremento autosave continuously.
 4. Select passages from your writing and turn them into review cards.

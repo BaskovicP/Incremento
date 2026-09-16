@@ -10,6 +10,8 @@ The ZIP now includes:
 - `user_files/<ProfileName>/` - the Incremento runtime folder for the currently open Anki profile, including:
   - `incremento.db`
   - `pdfs/`
+  - `epubs/` (including managed Markdown learning documents)
+  - `markdown_backups/` (one previous edited version per Markdown document)
   - `videos/`
   - `writing/`
   - `web_profile/`

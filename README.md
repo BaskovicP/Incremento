@@ -8,9 +8,11 @@ Incremento supports Anki 24.11 and newer. Optional features that depend on Anki'
 
 - Builds filtered study sessions with configurable card states, topic/item and document mixes, tags, priorities, ordering, and optional auto-refill
 - Opens PDF, EPUB, video, web, writing, and local-file material in persistent reviewer docks that remember progress
-- Provides a searchable PDF-and-EPUB Document Bookshelf on `Option+Shift+P` / `Alt+Shift+P`, with a format selector and visual one-click opening
+- Provides a searchable PDF-and-EPUB Document Bookshelf on `Option+Shift+P` / `Alt+Shift+P`, with format/tag filters, possible-duplicate cleanup, and visual one-click opening
 - Reviews cards attached to the current PDF, EPUB, or video with Topic/Item, direct/nested, media-range, due-state, ordering, and count controls, then restores the source position
 - Creates cards from selections and highlights while preserving source metadata and links
+- Imports DjVu documents as PDFs while preserving their existing selectable text
+- Batch-imports `.md` / `.markdown` learning documents with a rendered preview and per-file options; edits the current managed study copy with source/preview and a previous-version backup (separate from Markdown Writing cards)
 - Provides topic A-factor scheduling, per-card custom schedules, postpone tools, and Anki-compatible Undo/Redo behavior
 - Includes document search, colored Browser quick tags, a card-backed knowledge tree, 7/30-day reading and study graphs, and a focus timer
 - Exports a privacy-safe support bundle with redacted settings, recent typed events, version data, and code fingerprints for easier bug reports
@@ -52,6 +54,7 @@ Core functionality works without extra system setup, but some PDF features impro
 
 - `PyMuPDF >=1.26,<2`: PDF rendering, text extraction, and annotation sync
 - `Tesseract`: OCR for image-only PDFs
+- `DjVuLibre`: optional DjVu import (`ddjvu` and `djvutxt`), together with PyMuPDF
 - `yt-dlp`: optional local YouTube/Vimeo downloads
 
 Incremento can guide first-run setup from inside Anki. PyMuPDF installation is an explicit user action. A compatible Python interpreter installs and verifies it in Incremento's local `.dependencies/` folder; restart Anki to activate it. yt-dlp is never silently installed into Anki's Python environment. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
@@ -61,7 +64,7 @@ Incremento can guide first-run setup from inside Anki. PyMuPDF installation is a
 After installing and restarting Anki:
 
 1. Open **Incremento → Start Incremental Learning** to build a study session.
-2. Use **Incremento → Add Content → Add PDF** to add a PDF-backed topic card.
+2. Use **Incremento → Add Content → Add PDF / DjVu** to add a PDF-backed topic card from either format.
 3. Use **Incremento → Export Full Backup** to create a migration/backup ZIP.
 4. If something goes wrong, use **Incremento → Export Support Bundle…** to create a diagnostic ZIP that is safe to attach to a bug report.
 

@@ -62,6 +62,15 @@ Anki collection reads and mutations follow Anki's operation model:
 
 ## SQLite schema lifecycle
 
+Migration 10 adds `reader_custom_colors`, a bounded, ordered sixteen-slot palette
+shared by the PDF and EPUB annotation pickers within each profile. The shared Qt
+dialog restores these swatches on open and commits all slots atomically on close,
+including Cancel, without changing the selected annotation color on Cancel.
+On first use, an existing Qt palette seeds the profile's swatches. Qt's global
+palette is restored after the picker closes so other profiles and unrelated color
+dialogs do not inherit edits. The profile database, not Qt preferences, owns
+subsequent reader swatches and includes them in ordinary Incremento backups.
+
 PDF annotation interchange is owned by `backend/pdf_annotations.py`. Migration 9
 adds native annotation metadata to `pdf_highlights` and a per-card
 `pdf_annotation_sync` table containing stable per-page PDF names, the last merged
@@ -86,6 +95,8 @@ never scanned or inferred. Protected or changed-content documents fail closed.
 
 `backend/db_schema.py` owns the migration ledger. `schema_migrations` and `PRAGMA user_version` advance in the same transaction as each schema change. Failed migrations roll back the schema, ledger row, and version together.
 
+PDF reading state is profile-scoped in `pdf_progress`. Alongside page, zoom, scroll, and read-marker state, its validated `appearance_mode` stores the explicit Original, Dark, or Night choice for each PDF card. The config-backed PDF appearance policy supplies the default or temporarily forces one mode globally; forcing does not overwrite per-document state.
+
 `backend/db.py` currently contains the legacy baseline plus ordered post-ledger migrations. New schema changes must:
 
 1. add one monotonic migration with a stable name;
@@ -99,6 +110,10 @@ never scanned or inferred. Protected or changed-content documents fail closed.
 Web extraction markers are supplemental state, not card content. An anchor is staged before the Add Card field callback so the amber marker cannot be lost by a delayed adapter; the profile-scoped extraction draft and a bounded Web-dock runtime copy retain the same validated record until the transfer is rejected, discarded, or finalized. Only the Incremento Add Card note that owns that draft may finalize it. After Anki has successfully created the note, `web_card_sources` stores the text quote/DOM anchor or snapshot region/element anchor under the captured Web card and exact normalized HTTP(S) URL, and the runtime copy is released so the marker repaints green. The private bridge is installed once after navigation and resolves anchors to bounded document-space rectangles without inserting extraction elements, styles, or mutation observers into the remote page. A pointer-transparent native Qt layer above `QWebEngineView` paints amber/green markers and follows Qt's scroll, resize, and content-size signals; generation, profile, card, page, URL, anchor-ID, state, kind, coordinate, and count checks reject stale or forged callbacks. The Anki note remains authoritative. Invalid, ambiguous, oversized, stale-profile, or stale-card anchors fail closed without blocking text or snapshot transfer or note creation.
 
 ## Cross-store imports and recovery
+
+`backend/markdown_manager.py` converts bounded UTF-8 Markdown into a temporary offline EPUB, preserving the original Markdown bytes and only contained regular raster-image files. Python-Markdown is supplied by Anki. Rendered content uses an inert tag/attribute allowlist; remote resources, active HTML, CSS, symlinks, and escaping image paths cannot enter the study copy. Major headings become EPUB sections and document-local anchors are rewritten to those sections. `frontend/markdown_document_dialog.py` prepares the copy through the non-collection executor, rejects stale/closed-profile callbacks, and performs the journaled import through a serialized `CollectionOp`. The existing EPUB manager owns storage, canonical `content_items.kind = epub`, note type, index, scheduling, progress, and reader state. Dedicated provenance stores `Incremento_Source_Type = Markdown`; no new SQLite schema or writing state is introduced. The exact original source remains inside the EPUB as `source.md`, and user-owned source files are never modified.
+
+The Markdown batch importer snapshots per-file options before background conversion and serialized imports. Its Qt previews sanitize text and deny all resource loading. `frontend/markdown_edit_dialog.py` edits the managed `source.md`, not the original external file. The backend validates the exact canonical card/storage owner, bounds source/embedded assets, rejects symlinks and stale archive revisions, validates a new reader cache before replacement, and replaces the archive/cache/search index with exception rollback. An in-process lock serializes Markdown saves; Anki state and supplemental annotations/positions are untouched. `source_assets.json` retains original image-reference mappings without reopening external files. One previous archive per document is retained under the path-owned, profile-scoped `markdown_backups/` directory; file edits are not Anki Undo operations.
 
 Creating PDF, EPUB, writing, managed local-file, or downloaded/local-video content crosses Anki, SQLite, and profile files. These workflows use `backend/operation_journal.py`:
 
