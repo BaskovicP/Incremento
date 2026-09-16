@@ -2,6 +2,9 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
 
+msgid "shortcut_add_markdown_document"
+msgstr "添加 Markdown 文档"
+
 msgid "common_cancel"
 msgstr "取消"
 
@@ -555,13 +558,16 @@ msgid "shortcut_add_local_file"
 msgstr "添加本地文件"
 
 msgid "shortcut_add_pdf"
-msgstr "添加 PDF"
+msgstr "添加 PDF / DjVu"
 
 msgid "shortcut_add_web_page"
 msgstr "网页"
 
+msgid "shortcut_edit_markdown_document"
+msgstr "编辑当前 Markdown 文档"
+
 msgid "shortcut_add_writing"
-msgstr "添加到 Markdown"
+msgstr "添加 Markdown 写作"
 
 msgid "shortcut_append_tags_reviewer"
 msgstr "为正在复习的卡片添加标签"

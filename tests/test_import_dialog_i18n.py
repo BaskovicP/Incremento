@@ -48,3 +48,15 @@ def test_pdf_and_epub_import_pickers_translate_selection_help():
     epub = (ROOT / "frontend/epub_dialog.py").read_text(encoding="utf-8")
     assert 'setWindowTitle("Add PDFs")' not in pdf
     assert 'setWindowTitle("Add EPUBs")' not in epub
+
+
+def test_djvu_import_pickers_describe_both_formats_in_all_languages():
+    for locale in ("en", "hr", "zh-Hans"):
+        tr = Translator(locale)
+        assert "DjVu" in tr.t("imports_pdf_djvu_title")
+        assert "*.djvu" in tr.t("imports_pdf_djvu_file_filter")
+        assert "*.djv" in tr.t("imports_pdf_djvu_file_filter")
+        assert "DjVu" in tr.t("imports_pdf_djvu_choose_file")
+        assert "DjVu" in tr.t("root_menu_add_pdf")
+        assert "DjVu" in tr.t("shortcut_add_pdf")
+        assert "DjVu" in tr.t("onboarding_add_document_action")

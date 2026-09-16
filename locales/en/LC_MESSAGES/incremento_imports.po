@@ -2,7 +2,160 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: en\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "imports_markdown_document_title"
+msgstr "Add Markdown Document"
+
+msgid "imports_markdown_document_description"
+msgstr "Import Markdown files for reading and study. Your original files stay unchanged."
+
+msgid "imports_markdown_filter_names"
+msgstr "Filter Markdown files by name…"
+
+msgid "imports_markdown_files"
+msgstr "Markdown files"
+
+msgid "imports_markdown_batch_limit"
+msgstr "Limited to 1,000 files per import and 50,000 scanned entries. Add another folder separately if needed."
+
+msgid "imports_markdown_scanning"
+msgstr "Finding Markdown files…"
+
+msgid "imports_markdown_batch_result"
+msgstr "Imported {added} document(s); {failed} failed. Successful imports are retained."
+
+msgid "imports_markdown_edit_title"
+msgstr "Edit Markdown — {title}"
+
+msgid "imports_markdown_edit_description"
+msgstr "Edit the managed study copy; your original file stays unchanged. Embedded images are retained; new image files are not loaded. Saving keeps the same card and a backup of the previous version. Existing highlights, bookmarks and extracted cards remain, but their positions may move after edits."
+
+msgid "imports_markdown_source"
+msgstr "Markdown source"
+
+msgid "imports_markdown_edit_loading"
+msgstr "Loading Markdown source…"
+
+msgid "imports_markdown_save"
+msgstr "Save document"
+
+msgid "imports_markdown_edit_saving"
+msgstr "Saving document and updating search…"
+
+msgid "imports_markdown_discard_title"
+msgstr "Discard Markdown changes?"
+
+msgid "imports_markdown_discard_question"
+msgstr "Your changes have not been saved. Discard them?"
+
+msgid "imports_markdown_edit_button"
+msgstr "Edit Markdown…"
+
+msgid "imports_markdown_edit_unavailable"
+msgstr "Open a Markdown learning document in the reader first. Markdown Writing cards are edited directly in their writing dock."
+
+msgid "imports_markdown_edit_conflict"
+msgstr "This document changed since the editor opened. Close and reopen the editor to load the latest version."
+
+msgid "imports_markdown_file_label"
+msgstr "Markdown file"
+
+msgid "imports_markdown_choose_file"
+msgstr "Choose Markdown file…"
+
+msgid "imports_markdown_file_filter"
+msgstr "Markdown files (*.md *.MD *.markdown *.MARKDOWN)"
+
+msgid "imports_markdown_rendering"
+msgstr "Rendering Markdown…"
+
+msgid "imports_markdown_failed"
+msgstr "Markdown operation failed: {error}"
+
+msgid "imports_markdown_cancelled"
+msgstr "Markdown import cancelled because the document or profile was closed."
+
+msgid "imports_markdown_undo"
+msgstr "Import Markdown document"
+
+msgid "imports_markdown_invalid_file"
+msgstr "Choose a non-empty UTF-8 .md or .markdown file (not a binary file or symlink)."
+
+msgid "imports_markdown_too_large"
+msgstr "The file exceeds the import limit: 2 MiB for Markdown, 8 MiB per image."
+
+msgid "imports_markdown_images_too_large"
+msgstr "Local images exceed the document limit of 128 images or 48 MiB in total."
+
+msgid "imports_markdown_sections_invalid"
+msgstr "The Markdown has no readable sections or exceeds 2,000 sections."
+
 #. Import dialog label: Add Local File
+msgid "imports_pdf_djvu_title"
+msgstr "Add PDFs / DjVu"
+
+msgid "imports_filter_pdf_djvu"
+msgstr "Filter PDFs / DjVu by file name…"
+
+msgid "imports_select_pdf_djvu_files"
+msgstr "Select PDF or DjVu files"
+
+msgid "imports_pdf_djvu_file_filter"
+msgstr "PDF and DjVu files (*.pdf *.PDF *.djvu *.DJVU *.djv *.DJV);;PDF files (*.pdf *.PDF);;DjVu files (*.djvu *.DJVU *.djv *.DJV)"
+
+msgid "imports_select_pdf_djvu_folder"
+msgstr "Select folder with PDF or DjVu files"
+
+msgid "imports_djvu_preview"
+msgstr "DjVu preview is available in the bookshelf after import.\nExisting text is preserved during conversion to PDF."
+
+msgid "imports_djvu_converting"
+msgstr "Converting DjVu…"
+
+msgid "imports_djvu_progress"
+msgstr "DjVu text {current}/{total}"
+
+msgid "imports_djvu_undo"
+msgstr "Import DjVu"
+
+msgid "imports_djvu_preserve_text"
+msgstr "Preserve text"
+
+msgid "imports_djvu_ocr_tooltip"
+msgstr "Existing DjVu text is always preserved. Optional OCR runs only if the document has no usable text layer."
+
+msgid "imports_pdf_djvu_choose_file"
+msgstr "Please add at least one PDF or DjVu file."
+
+msgid "imports_pdf_djvu_choose_checked"
+msgstr "Please check at least one PDF or DjVu to import."
+
+msgid "imports_pdf_djvu_multiple_title"
+msgstr "For multiple documents, enable 'Use file name as title'."
+
+msgid "imports_pdf_djvu_folder_none"
+msgstr "Found 0 new PDF or DjVu files in folder"
+
+msgid "imports_pdf_djvu_folder_loaded"
+msgstr "Found {count} documents in folder · loaded into dialog"
+
+msgid "imports_pdf_djvu_folder_progress"
+msgstr "Found {found} documents · {remaining} remaining · {completed}/{total}"
+
+msgid "imports_pdf_djvu_checked_hint"
+msgstr "Checked PDFs and DjVu documents will be imported when you click Add"
+
+msgid "imports_pdf_djvu_no_matches"
+msgstr "No documents match the current filter"
+
+msgid "imports_pdf_djvu_priority_hint"
+msgstr "Priority for this document. {important_end} is highest importance, 50 is default."
+
+msgid "imports_pdf_djvu_progress"
+msgstr "Adding documents… {completed} / {total}"
+
+msgid "imports_pdf_djvu_progress_detail"
+msgstr "Adding documents… {completed} / {total} · {phase} · {filename}"
+
 msgid "imports_add_local_file"
 msgstr "Add Local File"
 
@@ -92,7 +245,7 @@ msgstr "Add Page"
 
 #. Import dialog label: Add to Markdown
 msgid "imports_add_markdown"
-msgstr "Add to Markdown"
+msgstr "Add Markdown Writing"
 
 #. Import dialog label: Markdown note title
 msgid "imports_markdown_title_placeholder"
@@ -148,7 +301,7 @@ msgstr "The markdown file is autosaved while typing when this card is reviewed."
 
 #. Import dialog label: Add Markdown Card
 msgid "imports_add_markdown_card"
-msgstr "Add Markdown Card"
+msgstr "Add Markdown Writing"
 
 #. Import dialog label: Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.
 msgid "imports_webpage_fetch_hint"
@@ -433,6 +586,14 @@ msgstr "Priority"
 #. PDF/EPUB import dialog UI: OCR
 msgid "imports_table_ocr"
 msgstr "OCR"
+
+#. PDF/DjVu import dialog UI: OCR all possible
+msgid "imports_ocr_all_possible"
+msgstr "OCR all possible"
+
+#. PDF/DjVu import dialog UI: Don't OCR anything
+msgid "imports_ocr_none"
+msgstr "Don't OCR anything"
 
 #. PDF/EPUB import dialog UI: Status
 msgid "imports_table_status"

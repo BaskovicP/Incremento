@@ -2,6 +2,9 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: en\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "shortcut_add_markdown_document"
+msgstr "Add Markdown Document"
+
 msgid "common_cancel"
 msgstr "Cancel"
 
@@ -555,13 +558,16 @@ msgid "shortcut_add_local_file"
 msgstr "Add Local File"
 
 msgid "shortcut_add_pdf"
-msgstr "Add PDF"
+msgstr "Add PDF / DjVu"
 
 msgid "shortcut_add_web_page"
 msgstr "Web Page"
 
+msgid "shortcut_edit_markdown_document"
+msgstr "Edit Current Markdown Document"
+
 msgid "shortcut_add_writing"
-msgstr "Add to Markdown"
+msgstr "Add Markdown Writing"
 
 msgid "shortcut_append_tags_reviewer"
 msgstr "Append Tags To Reviewed Card"

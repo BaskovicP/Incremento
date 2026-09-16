@@ -2603,6 +2603,38 @@
     },
     {
       "component": "addon",
+      "key": "backend_deps_djvulibre",
+      "form": "",
+      "source": "DjVuLibre (optional DjVu import)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_djvulibre_linux",
+      "form": "",
+      "source": "Install your distribution's DjVuLibre tools (Debian/Ubuntu: sudo apt install djvulibre-bin). Then restart Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_djvulibre_mac",
+      "form": "",
+      "source": "Install DjVuLibre with Homebrew: brew install djvulibre\nThen restart Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_djvulibre_windows",
+      "form": "",
+      "source": "Install DjVuLibre from https://djvu.sourceforge.net/ and add its tool folder to PATH. Then restart Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "backend_deps_found",
       "form": "",
       "source": "Found at: {path}",
@@ -2776,6 +2808,66 @@
       "form": "",
       "source": "Incremento — Dependency Setup",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_budget",
+      "form": "",
+      "source": "DjVu conversion exceeded its size, page-count, or time limit.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_cancelled",
+      "form": "",
+      "source": "DjVu import cancelled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_decode_failed",
+      "form": "",
+      "source": "DjVuLibre could not decode this document. Use a single-file (bundled) DjVu document and a build with PDF output support.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_dependency",
+      "form": "",
+      "source": "DjVu import requires DjVuLibre (ddjvu and djvutxt).\n\n{instructions}",
+      "tokens": [
+        "{instructions}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_invalid",
+      "form": "",
+      "source": "DjVu conversion failed: the document or its positioned text layer is invalid or unsupported.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_output_exists",
+      "form": "",
+      "source": "The conversion destination already exists. Choose a new file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_djvu_pymupdf",
+      "form": "",
+      "source": "DjVu text preservation requires PyMuPDF. Open Incremento → Utils → Check Dependencies… to install it.\n\n{instructions}",
+      "tokens": [
+        "{instructions}"
+      ],
       "markup": []
     },
     {
@@ -4626,7 +4718,7 @@
       "component": "addon",
       "key": "imports_add_markdown",
       "form": "",
-      "source": "Add to Markdown",
+      "source": "Add Markdown Writing",
       "tokens": [],
       "markup": []
     },
@@ -4634,7 +4726,7 @@
       "component": "addon",
       "key": "imports_add_markdown_card",
       "form": "",
-      "source": "Add Markdown Card",
+      "source": "Add Markdown Writing",
       "tokens": [],
       "markup": []
     },
@@ -4811,6 +4903,57 @@
       "key": "imports_detecting",
       "form": "",
       "source": "Detecting…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_converting",
+      "form": "",
+      "source": "Converting DjVu…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_ocr_tooltip",
+      "form": "",
+      "source": "Existing DjVu text is always preserved. Optional OCR runs only if the document has no usable text layer.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_preserve_text",
+      "form": "",
+      "source": "Preserve text",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_preview",
+      "form": "",
+      "source": "DjVu preview is available in the bookshelf after import.\nExisting text is preserved during conversion to PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_progress",
+      "form": "",
+      "source": "DjVu text {current}/{total}",
+      "tokens": [
+        "{current}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_undo",
+      "form": "",
+      "source": "Import DjVu",
       "tokens": [],
       "markup": []
     },
@@ -5186,6 +5329,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_filter_pdf_djvu",
+      "form": "",
+      "source": "Filter PDFs / DjVu by file name…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_filter_pdfs",
       "form": "",
       "source": "Filter PDFs by file name…",
@@ -5290,9 +5441,160 @@
     },
     {
       "component": "addon",
+      "key": "imports_markdown_batch_limit",
+      "form": "",
+      "source": "Limited to 1,000 files per import and 50,000 scanned entries. Add another folder separately if needed.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_batch_result",
+      "form": "",
+      "source": "Imported {added} document(s); {failed} failed. Successful imports are retained.",
+      "tokens": [
+        "{added}",
+        "{failed}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_cancelled",
+      "form": "",
+      "source": "Markdown import cancelled because the document or profile was closed.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_choose_file",
+      "form": "",
+      "source": "Choose Markdown file…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_discard_question",
+      "form": "",
+      "source": "Your changes have not been saved. Discard them?",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_discard_title",
+      "form": "",
+      "source": "Discard Markdown changes?",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_document_description",
+      "form": "",
+      "source": "Import Markdown files for reading and study. Your original files stay unchanged.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_document_title",
+      "form": "",
+      "source": "Add Markdown Document",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_button",
+      "form": "",
+      "source": "Edit Markdown…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_conflict",
+      "form": "",
+      "source": "This document changed since the editor opened. Close and reopen the editor to load the latest version.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_description",
+      "form": "",
+      "source": "Edit the managed study copy; your original file stays unchanged. Embedded images are retained; new image files are not loaded. Saving keeps the same card and a backup of the previous version. Existing highlights, bookmarks and extracted cards remain, but their positions may move after edits.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_loading",
+      "form": "",
+      "source": "Loading Markdown source…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_saving",
+      "form": "",
+      "source": "Saving document and updating search…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_title",
+      "form": "",
+      "source": "Edit Markdown — {title}",
+      "tokens": [
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_edit_unavailable",
+      "form": "",
+      "source": "Open a Markdown learning document in the reader first. Markdown Writing cards are edited directly in their writing dock.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_markdown_editor_placeholder",
       "form": "",
       "source": "# Heading\n\nWrite initial content here…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_failed",
+      "form": "",
+      "source": "Markdown operation failed: {error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_file_filter",
+      "form": "",
+      "source": "Markdown files (*.md *.MD *.markdown *.MARKDOWN)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_file_label",
+      "form": "",
+      "source": "Markdown file",
       "tokens": [],
       "markup": []
     },
@@ -5306,6 +5608,38 @@
     },
     {
       "component": "addon",
+      "key": "imports_markdown_files",
+      "form": "",
+      "source": "Markdown files",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_filter_names",
+      "form": "",
+      "source": "Filter Markdown files by name…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_images_too_large",
+      "form": "",
+      "source": "Local images exceed the document limit of 128 images or 48 MiB in total.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_invalid_file",
+      "form": "",
+      "source": "Choose a non-empty UTF-8 .md or .markdown file (not a binary file or symlink).",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_markdown_loaded",
       "form": "",
       "source": "Webpage markdown loaded into the editor.",
@@ -5314,9 +5648,65 @@
     },
     {
       "component": "addon",
+      "key": "imports_markdown_rendering",
+      "form": "",
+      "source": "Rendering Markdown…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_save",
+      "form": "",
+      "source": "Save document",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_scanning",
+      "form": "",
+      "source": "Finding Markdown files…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_sections_invalid",
+      "form": "",
+      "source": "The Markdown has no readable sections or exceeds 2,000 sections.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_source",
+      "form": "",
+      "source": "Markdown source",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_markdown_title_placeholder",
       "form": "",
       "source": "Markdown note title",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_too_large",
+      "form": "",
+      "source": "The file exceeds the import limit: 2 MiB for Markdown, 8 MiB per image.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_markdown_undo",
+      "form": "",
+      "source": "Import Markdown document",
       "tokens": [],
       "markup": []
     },
@@ -5378,9 +5768,25 @@
     },
     {
       "component": "addon",
+      "key": "imports_ocr_all_possible",
+      "form": "",
+      "source": "OCR all possible",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_ocr_no_text",
       "form": "",
       "source": "✓ (no text)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_ocr_none",
+      "form": "",
+      "source": "Don't OCR anything",
       "tokens": [],
       "markup": []
     },
@@ -5456,6 +5862,127 @@
       "key": "imports_pdf_choose_file",
       "form": "",
       "source": "Please add at least one PDF file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_checked_hint",
+      "form": "",
+      "source": "Checked PDFs and DjVu documents will be imported when you click Add",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_choose_checked",
+      "form": "",
+      "source": "Please check at least one PDF or DjVu to import.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_choose_file",
+      "form": "",
+      "source": "Please add at least one PDF or DjVu file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_file_filter",
+      "form": "",
+      "source": "PDF and DjVu files (*.pdf *.PDF *.djvu *.DJVU *.djv *.DJV);;PDF files (*.pdf *.PDF);;DjVu files (*.djvu *.DJVU *.djv *.DJV)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_folder_loaded",
+      "form": "",
+      "source": "Found {count} documents in folder · loaded into dialog",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_folder_none",
+      "form": "",
+      "source": "Found 0 new PDF or DjVu files in folder",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_folder_progress",
+      "form": "",
+      "source": "Found {found} documents · {remaining} remaining · {completed}/{total}",
+      "tokens": [
+        "{completed}",
+        "{found}",
+        "{remaining}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_multiple_title",
+      "form": "",
+      "source": "For multiple documents, enable 'Use file name as title'.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_no_matches",
+      "form": "",
+      "source": "No documents match the current filter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_priority_hint",
+      "form": "",
+      "source": "Priority for this document. {important_end} is highest importance, 50 is default.",
+      "tokens": [
+        "{important_end}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_progress",
+      "form": "",
+      "source": "Adding documents… {completed} / {total}",
+      "tokens": [
+        "{completed}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_progress_detail",
+      "form": "",
+      "source": "Adding documents… {completed} / {total} · {phase} · {filename}",
+      "tokens": [
+        "{completed}",
+        "{filename}",
+        "{phase}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pdf_djvu_title",
+      "form": "",
+      "source": "Add PDFs / DjVu",
       "tokens": [],
       "markup": []
     },
@@ -6102,6 +6629,22 @@
       "key": "imports_select_folder",
       "form": "",
       "source": "Choose folder",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_select_pdf_djvu_files",
+      "form": "",
+      "source": "Select PDF or DjVu files",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_select_pdf_djvu_folder",
+      "form": "",
+      "source": "Select folder with PDF or DjVu files",
       "tokens": [],
       "markup": []
     },
@@ -8439,7 +8982,7 @@
       "component": "addon",
       "key": "onboarding_add_document_action",
       "form": "",
-      "source": "Add PDF…",
+      "source": "Add PDF / DjVu…",
       "tokens": [],
       "markup": []
     },
@@ -8447,7 +8990,7 @@
       "component": "addon",
       "key": "onboarding_add_document_body",
       "form": "",
-      "source": "Start with a PDF or EPUB. Incremento stores managed documents inside the active Anki profile and restores your reading position.",
+      "source": "Start with a PDF, EPUB or DjVu document. Incremento stores managed documents inside the active Anki profile and restores your reading position.",
       "tokens": [],
       "markup": []
     },
@@ -8846,6 +9389,82 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_attached_badge_tooltip",
+      "form": "few",
+      "source": "Worked on: {count} attached Topic or Item cards",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attached_badge_tooltip",
+      "form": "many",
+      "source": "Worked on: {count} attached Topic or Item cards",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attached_badge_tooltip",
+      "form": "one",
+      "source": "Worked on: {count} attached Topic or Item card",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attached_badge_tooltip",
+      "form": "other",
+      "source": "Worked on: {count} attached Topic or Item cards",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attached_badge_tooltip",
+      "form": "two",
+      "source": "Worked on: {count} attached Topic or Item cards",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attached_badge_tooltip",
+      "form": "zero",
+      "source": "Worked on: {count} attached Topic or Item cards",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attachment_check_busy",
+      "form": "",
+      "source": "An attached-card check is already running.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_attachment_check_failed",
+      "form": "",
+      "source": "Incremento could not check for attached cards, so nothing was deleted. Please try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_browse_tags",
       "form": "",
       "source": "Browse tags",
@@ -8866,6 +9485,242 @@
       "form": "",
       "source": "Show tags used by documents in this bookshelf, with the most common tags first.",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_checking_attached_cards",
+      "form": "",
+      "source": "Checking for attached cards…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_checking_duplicate_attachments",
+      "form": "",
+      "source": "Checking duplicate candidates for attached Topic or Item cards…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_attached_warning",
+      "form": "few",
+      "source": "{count} attached cards were found. They will remain in Anki, but their links back to deleted documents may no longer work.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_attached_warning",
+      "form": "many",
+      "source": "{count} attached cards were found. They will remain in Anki, but their links back to deleted documents may no longer work.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_attached_warning",
+      "form": "one",
+      "source": "{count} attached card was found. It will remain in Anki, but its link back to a deleted document may no longer work.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_attached_warning",
+      "form": "other",
+      "source": "{count} attached cards were found. They will remain in Anki, but their links back to deleted documents may no longer work.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_attached_warning",
+      "form": "two",
+      "source": "{count} attached cards were found. They will remain in Anki, but their links back to deleted documents may no longer work.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_attached_warning",
+      "form": "zero",
+      "source": "{count} attached cards were found. They will remain in Anki, but their links back to deleted documents may no longer work.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_confirm",
+      "form": "",
+      "source": "Delete this document from Anki?\n\nIts note and card will be deleted. The managed source file will be kept so Anki Undo can restore the document safely.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_document",
+      "form": "",
+      "source": "Delete document…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_other_duplicates",
+      "form": "",
+      "source": "Delete other possible duplicates…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_others_confirm",
+      "form": "few",
+      "source": "Delete {count} other possible duplicates from Anki?\n\nTheir notes and cards will be deleted; the selected document will remain. Managed source files will be kept so Anki Undo can restore the documents safely.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_others_confirm",
+      "form": "many",
+      "source": "Delete {count} other possible duplicates from Anki?\n\nTheir notes and cards will be deleted; the selected document will remain. Managed source files will be kept so Anki Undo can restore the documents safely.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_others_confirm",
+      "form": "one",
+      "source": "Delete {count} other possible duplicate from Anki?\n\nIts note and card will be deleted; the selected document will remain. The managed source file will be kept so Anki Undo can restore the document safely.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_others_confirm",
+      "form": "other",
+      "source": "Delete {count} other possible duplicates from Anki?\n\nTheir notes and cards will be deleted; the selected document will remain. Managed source files will be kept so Anki Undo can restore the documents safely.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_others_confirm",
+      "form": "two",
+      "source": "Delete {count} other possible duplicates from Anki?\n\nTheir notes and cards will be deleted; the selected document will remain. Managed source files will be kept so Anki Undo can restore the documents safely.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_others_confirm",
+      "form": "zero",
+      "source": "Delete {count} other possible duplicates from Anki?\n\nTheir notes and cards will be deleted; the selected document will remain. Managed source files will be kept so Anki Undo can restore the documents safely.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_profile_changed",
+      "form": "",
+      "source": "The active profile changed while attached cards were being checked. Nothing was deleted.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_delete_unavailable",
+      "form": "",
+      "source": "This document can no longer be deleted from the bookshelf. Refresh and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_deleted_count",
+      "form": "few",
+      "source": "Deleted {count} documents from Anki.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_deleted_count",
+      "form": "many",
+      "source": "Deleted {count} documents from Anki.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_deleted_count",
+      "form": "one",
+      "source": "Deleted {count} document from Anki.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_deleted_count",
+      "form": "other",
+      "source": "Deleted {count} documents from Anki.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_deleted_count",
+      "form": "two",
+      "source": "Deleted {count} documents from Anki.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_deleted_count",
+      "form": "zero",
+      "source": "Deleted {count} documents from Anki.",
+      "tokens": [
+        "{count}"
+      ],
       "markup": []
     },
     {
@@ -8926,6 +9781,38 @@
       "tokens": [
         "{count}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_duplicate_attachment_check_failed",
+      "form": "",
+      "source": "Incremento could not check duplicate candidates for attached cards. Toggle Possible duplicates only to try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_duplicates_hint",
+      "form": "",
+      "source": "Compares document titles, original filenames, and PDF metadata titles using rare-word weighting and three-character groups (trigrams). Numbers such as volumes and years must match. A green check on a cover means that document has attached Topic or Item cards. Review candidates before deleting.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_duplicates_only",
+      "form": "",
+      "source": "Possible duplicates only",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_duplicates_scanning_hint",
+      "form": "",
+      "source": "Checking PDF metadata titles in the background…",
+      "tokens": [],
       "markup": []
     },
     {
@@ -9016,7 +9903,7 @@
       "component": "addon",
       "key": "reader_bookshelf_intro",
       "form": "",
-      "source": "Click a cover to open that document. PDF first pages and EPUB covers load progressively so a large library stays responsive.",
+      "source": "Click a cover to open it. To clean up repeated imports, select Possible duplicates only, then right-click a document. Covers load progressively so a large library stays responsive.",
       "tokens": [],
       "markup": []
     },
@@ -9048,6 +9935,14 @@
       "key": "reader_bookshelf_no_documents",
       "form": "",
       "source": "No Incremento documents found.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_no_duplicates_hint",
+      "form": "",
+      "source": "No possible duplicates were found by document title, original filename, or PDF metadata title.",
       "tokens": [],
       "markup": []
     },
@@ -9132,6 +10027,16 @@
       "source": "{count} PDFs",
       "tokens": [
         "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_pdf_metadata_title",
+      "form": "",
+      "source": "PDF metadata title: {title}",
+      "tokens": [
+        "{title}"
       ],
       "markup": []
     },
@@ -20848,6 +21753,28 @@
     },
     {
       "component": "addon",
+      "key": "root_import_markdown_document_added",
+      "form": "",
+      "source": "Added Markdown document “{title}” to deck “{deck}”. Open it from the Document Bookshelf (EPUBs) or study its card.",
+      "tokens": [
+        "{deck}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_import_markdown_documents_added",
+      "form": "",
+      "source": "Imported {count} Markdown document(s) into {deck}.",
+      "tokens": [
+        "{count}",
+        "{deck}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_import_pdf_added",
       "form": "few",
       "source": "Added {count} PDF cards → {deck}",
@@ -21015,7 +21942,15 @@
       "component": "addon",
       "key": "root_menu_add_markdown",
       "form": "",
-      "source": "Add to Markdown",
+      "source": "Add Markdown Writing…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_menu_add_markdown_document",
+      "form": "",
+      "source": "Add Markdown Document…",
       "tokens": [],
       "markup": []
     },
@@ -21023,7 +21958,7 @@
       "component": "addon",
       "key": "root_menu_add_pdf",
       "form": "",
-      "source": "Add PDF",
+      "source": "Add PDF / DjVu",
       "tokens": [],
       "markup": []
     },
@@ -21120,6 +22055,14 @@
       "key": "root_menu_download_video",
       "form": "",
       "source": "Download Current Video Locally",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_menu_edit_markdown_document",
+      "form": "",
+      "source": "Edit Current Markdown Document…",
       "tokens": [],
       "markup": []
     },
@@ -22743,7 +23686,7 @@
       "component": "addon",
       "key": "session_basic_intro",
       "form": "",
-      "source": "Choose the session size and the two main mixes. Open Advanced for tag quotas, scheduling phases, card states, ordering, and diagnostics.",
+      "source": "Choose the session size, then the Topic/Item split. Documents are a percentage within Topics, not of the whole session. Open Advanced for quotas, card states, ordering, and diagnostics.",
       "tokens": [],
       "markup": []
     },
@@ -22751,12 +23694,15 @@
       "component": "addon",
       "key": "session_basic_summary",
       "form": "",
-      "source": "{count:,} cards · Topics {topic_percent}% / Items {item_percent}% · Documents {document_percent}% / Other {other_percent}% · Preset: {preset}",
+      "source": "{count:,} cards · Topics {topic_percent}% / Items {item_percent}% · Within Topics: Documents {document_percent}% / Other {other_percent}% · Target: {document_count} Documents + {other_topic_count} other Topics + {item_count} Items · Preset: {preset}",
       "tokens": [
         "{count:,}",
+        "{document_count}",
         "{document_percent}",
+        "{item_count}",
         "{item_percent}",
         "{other_percent}",
+        "{other_topic_count}",
         "{preset}",
         "{topic_percent}"
       ],
@@ -23202,7 +24148,15 @@
       "component": "addon",
       "key": "session_document_mix_help",
       "form": "",
-      "source": "Soft document mix rate — how often a PDF or EPUB card is picked during normal scheduling.\n\nUnlike Content type priorities (which fill a hard quota first), this is a stochastic target: document cards are woven throughout the session.\n\nExample: Docs = 20 % → roughly 1 in 5 picks targets a PDF/EPUB card. Set to 0 % (slider fully right) to exclude documents from soft mixing.\n\nYou can use both: priority fills a hard quota first, then soft mixing adds more document cards in the remaining slots.",
+      "source": "Percentage of Topics targeting PDF or EPUB document-reading cards. Items are unaffected.\n\nExample: 100 cards, 60% Topics / 40% Items, and 10% Documents within Topics targets 6 Documents + 54 other Topics + 40 Items.\n\n0% disables document Topics in normal mixing; 100% targets only documents within Topics. With 0% Topics this control is disabled, but its preference is remembered. Documents explicitly classified as Items remain Items.\n\nThis is a soft target, not an exact quota. Advanced content priorities may independently reserve documents before normal mixing.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "session_document_topics",
+      "form": "",
+      "source": "Documents (Topics)",
       "tokens": [],
       "markup": []
     },
@@ -23218,7 +24172,7 @@
       "component": "addon",
       "key": "session_documents_other_mix_accessible",
       "form": "",
-      "source": "Document and Other mix",
+      "source": "Documents within Topics percentage",
       "tokens": [],
       "markup": []
     },
@@ -23226,7 +24180,15 @@
       "component": "addon",
       "key": "session_documents_tooltip",
       "form": "",
-      "source": "Incremento PDF and EPUB reading cards — always eligible regardless of scheduling state",
+      "source": "PDF and EPUB reading cards classified as Topics; this percentage applies only within the Topic portion",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "session_documents_within_topics",
+      "form": "",
+      "source": "Documents within Topics (%)",
       "tokens": [],
       "markup": []
     },
@@ -23242,7 +24204,7 @@
       "component": "addon",
       "key": "session_expected_counts",
       "form": "",
-      "source": "At {count} cards/session: PDF {pdf}, Topics {topics}, Items {items} · Random {random}, Priority {priority} (availability may shift actual results)",
+      "source": "Target at {count} cards/session: {pdf} Documents + {topics} other Topics + {items} Items · Random {random}, Priority {priority} (availability and advanced quotas may shift actual results)",
       "tokens": [
         "{count}",
         "{items}",
@@ -23257,7 +24219,7 @@
       "component": "addon",
       "key": "session_expected_mix",
       "form": "",
-      "source": "Expected mix: PDF {pdf}, Topics {topics}, Items {items} · Random {random}, Priority {priority}",
+      "source": "Expected mix: Documents {pdf}, other Topics {topics}, Items {items} · Random {random}, Priority {priority}",
       "tokens": [
         "{items}",
         "{pdf}",
@@ -23396,7 +24358,7 @@
       "component": "addon",
       "key": "session_heatmap_note",
       "form": "",
-      "source": "Cells show estimated count and share within each content column.",
+      "source": "Cells show estimated count and tag share within each content column. Documents plus other Topics form the Topic total.",
       "tokens": [],
       "markup": []
     },
@@ -23540,7 +24502,7 @@
       "component": "addon",
       "key": "session_lock_pdf_tooltip",
       "form": "",
-      "source": "Lock PDF target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it.",
+      "source": "Lock the document percentage within Topics. This conditional percentage does not rebalance the Topic/Item mix.",
       "tokens": [],
       "markup": []
     },
@@ -23597,6 +24559,14 @@
       "key": "session_no_pdf_match",
       "form": "",
       "source": "No PDFs match this search",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "session_non_document_topics",
+      "form": "",
+      "source": "Other Topics",
       "tokens": [],
       "markup": []
     },
@@ -23674,7 +24644,7 @@
       "component": "addon",
       "key": "session_other_tooltip",
       "form": "",
-      "source": "All non-document cards (topics and items)",
+      "source": "Topic cards that are not PDF or EPUB documents; Items are controlled separately",
       "tokens": [],
       "markup": []
     },
@@ -24854,7 +25824,7 @@
       "component": "addon",
       "key": "session_topics_ratio_help",
       "form": "",
-      "source": "Ratio of topic cards (concepts, long reads) vs item cards (flashcards, Q&A).\n\nExample: 90 % Topics with 50 cards → ~45 topic cards and ~5 item cards.\n\nTopics filter and Items filter (Advanced section) determine which cards belong to each group.",
+      "source": "Share of all session cards classified as Topics versus Items. Topics include document-reading cards.\n\nExample: 100 cards with 60% Topics / 40% Items targets 60 Topics (including documents) and 40 Items. Documents within Topics then divides only those 60 Topics.\n\n100% Items disables document Topics in normal mixing. Classification overrides and Advanced filters still apply.",
       "tokens": [],
       "markup": []
     },
@@ -25797,6 +26767,54 @@
     },
     {
       "component": "addon",
+      "key": "settings_pdf_appearance_dark",
+      "form": "",
+      "source": "Dark",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_appearance_default",
+      "form": "",
+      "source": "Default PDF appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_appearance_force",
+      "form": "",
+      "source": "Always force this appearance for every PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_appearance_hint",
+      "form": "",
+      "source": "When forcing is off, each PDF remembers its own selection and new PDFs use the default. When forcing is on, every PDF opens in the selected appearance without erasing its saved choice.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_appearance_night",
+      "form": "",
+      "source": "Night",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_appearance_original",
+      "form": "",
+      "source": "Original / light",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_pdf_highlight_card_target_field",
       "form": "",
       "source": "PDF highlight card target field:",
@@ -26493,9 +27511,17 @@
     },
     {
       "component": "addon",
+      "key": "shortcut_add_markdown_document",
+      "form": "",
+      "source": "Add Markdown Document",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "shortcut_add_pdf",
       "form": "",
-      "source": "Add PDF",
+      "source": "Add PDF / DjVu",
       "tokens": [],
       "markup": []
     },
@@ -26511,7 +27537,7 @@
       "component": "addon",
       "key": "shortcut_add_writing",
       "form": "",
-      "source": "Add to Markdown",
+      "source": "Add Markdown Writing",
       "tokens": [],
       "markup": []
     },
@@ -26536,6 +27562,14 @@
       "key": "shortcut_document_bookshelf",
       "form": "",
       "source": "Document Bookshelf",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_edit_markdown_document",
+      "form": "",
+      "source": "Edit Current Markdown Document",
       "tokens": [],
       "markup": []
     },
@@ -31979,6 +33013,46 @@
       "tokens": [
         "{page}"
       ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_appearance",
+      "form": "",
+      "source": "PDF appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_appearance_dark",
+      "form": "",
+      "source": "Dark",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_appearance_hint",
+      "form": "",
+      "source": "Switch PDF pages between original colors, neutral dark mode, and warm night mode",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_appearance_night",
+      "form": "",
+      "source": "Night",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_appearance_original",
+      "form": "",
+      "source": "Original",
+      "tokens": [],
       "markup": []
     },
     {

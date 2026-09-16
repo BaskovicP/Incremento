@@ -2,6 +2,18 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: hr\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2;\n"
 
+msgid "root_menu_edit_markdown_document"
+msgstr "Uredi trenutačni Markdown dokument…"
+
+msgid "root_import_markdown_documents_added"
+msgstr "Uvezeno Markdown dokumenata u {deck}: {count}."
+
+msgid "root_menu_add_markdown_document"
+msgstr "Dodaj Markdown dokument…"
+
+msgid "root_import_markdown_document_added"
+msgstr "Markdown dokument „{title}” dodan je u špil „{deck}”. Otvorite ga s Police dokumenata (EPUB) ili učite njegovu karticu."
+
 #. Menu or action: About
 msgid "root_menu_about"
 msgstr "O dodatku"
@@ -24,11 +36,11 @@ msgstr "Dodaj lokalnu datoteku"
 
 #. Menu or action: Add to Markdown
 msgid "root_menu_add_markdown"
-msgstr "Dodaj u Markdown"
+msgstr "Dodaj Markdown pisanje…"
 
 #. Menu or action: Add PDF
 msgid "root_menu_add_pdf"
-msgstr "Dodaj PDF"
+msgstr "Dodaj PDF / DjVu"
 
 #. Menu or action: Add Video
 msgid "root_menu_add_video"

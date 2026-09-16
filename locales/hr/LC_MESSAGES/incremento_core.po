@@ -2,6 +2,9 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: hr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
 
+msgid "shortcut_add_markdown_document"
+msgstr "Dodaj Markdown dokument"
+
 msgid "common_cancel"
 msgstr "Odustani"
 
@@ -555,13 +558,16 @@ msgid "shortcut_add_local_file"
 msgstr "Dodaj lokalnu datoteku"
 
 msgid "shortcut_add_pdf"
-msgstr "Dodaj PDF"
+msgstr "Dodaj PDF / DjVu"
 
 msgid "shortcut_add_web_page"
 msgstr "Web-stranica"
 
+msgid "shortcut_edit_markdown_document"
+msgstr "Uredi trenutačni Markdown dokument"
+
 msgid "shortcut_add_writing"
-msgstr "Dodaj u Markdown"
+msgstr "Dodaj Markdown pisanje"
 
 msgid "shortcut_append_tags_reviewer"
 msgstr "Dodaj oznake ponavljanoj kartici"

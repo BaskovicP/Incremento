@@ -2,7 +2,160 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
 
+msgid "imports_markdown_document_title"
+msgstr "添加 Markdown 文档"
+
+msgid "imports_markdown_document_description"
+msgstr "导入 Markdown 文件，用于阅读和学习。原始文件保持不变。"
+
+msgid "imports_markdown_filter_names"
+msgstr "按名称筛选 Markdown 文件…"
+
+msgid "imports_markdown_files"
+msgstr "Markdown 文件"
+
+msgid "imports_markdown_batch_limit"
+msgstr "每次最多导入 1,000 个文件，扫描 50,000 个条目。如有需要，请另行添加其他文件夹。"
+
+msgid "imports_markdown_scanning"
+msgstr "正在查找 Markdown 文件…"
+
+msgid "imports_markdown_batch_result"
+msgstr "已导入 {added} 个文档；{failed} 个失败。成功导入的文档已保留。"
+
+msgid "imports_markdown_edit_title"
+msgstr "编辑 Markdown — {title}"
+
+msgid "imports_markdown_edit_description"
+msgstr "编辑学习副本，原始文件保持不变。保留已嵌入的图片，不加载新的图片文件。保存时保留同一卡片并备份上一版本。现有高亮、书签和提取的卡片仍会保留，但编辑后其位置可能发生变化。"
+
+msgid "imports_markdown_source"
+msgstr "Markdown 源文"
+
+msgid "imports_markdown_edit_loading"
+msgstr "正在加载 Markdown 源文…"
+
+msgid "imports_markdown_save"
+msgstr "保存文档"
+
+msgid "imports_markdown_edit_saving"
+msgstr "正在保存文档并更新搜索…"
+
+msgid "imports_markdown_discard_title"
+msgstr "放弃 Markdown 更改？"
+
+msgid "imports_markdown_discard_question"
+msgstr "更改尚未保存。是否放弃？"
+
+msgid "imports_markdown_edit_button"
+msgstr "编辑 Markdown…"
+
+msgid "imports_markdown_edit_unavailable"
+msgstr "请先在阅读器中打开 Markdown 学习文档。Markdown 写作卡片可直接在写作面板中编辑。"
+
+msgid "imports_markdown_edit_conflict"
+msgstr "文档在编辑器打开后已发生变化。请关闭并重新打开编辑器以加载最新版本。"
+
+msgid "imports_markdown_file_label"
+msgstr "Markdown 文件"
+
+msgid "imports_markdown_choose_file"
+msgstr "选择 Markdown 文件…"
+
+msgid "imports_markdown_file_filter"
+msgstr "Markdown 文件 (*.md *.MD *.markdown *.MARKDOWN)"
+
+msgid "imports_markdown_rendering"
+msgstr "正在渲染 Markdown…"
+
+msgid "imports_markdown_failed"
+msgstr "无法导入 Markdown：{error}"
+
+msgid "imports_markdown_cancelled"
+msgstr "文档或配置文件已关闭，Markdown 导入已取消。"
+
+msgid "imports_markdown_undo"
+msgstr "导入 Markdown 文档"
+
+msgid "imports_markdown_invalid_file"
+msgstr "请选择非空的 UTF-8 .md 或 .markdown 文件（不能是二进制文件或符号链接）。"
+
+msgid "imports_markdown_too_large"
+msgstr "文件超过导入限制：Markdown 为 2 MiB，每张图片为 8 MiB。"
+
+msgid "imports_markdown_images_too_large"
+msgstr "本地图片超过文档限制：最多 128 张，总大小不超过 48 MiB。"
+
+msgid "imports_markdown_sections_invalid"
+msgstr "Markdown 没有可读章节，或章节数超过 2,000。"
+
 #. Import dialog label: Add Local File
+msgid "imports_pdf_djvu_title"
+msgstr "添加 PDF / DjVu"
+
+msgid "imports_filter_pdf_djvu"
+msgstr "按文件名筛选 PDF / DjVu…"
+
+msgid "imports_select_pdf_djvu_files"
+msgstr "选择 PDF 或 DjVu 文件"
+
+msgid "imports_pdf_djvu_file_filter"
+msgstr "PDF 和 DjVu 文件 (*.pdf *.PDF *.djvu *.DJVU *.djv *.DJV);;PDF 文件 (*.pdf *.PDF);;DjVu 文件 (*.djvu *.DJVU *.djv *.DJV)"
+
+msgid "imports_select_pdf_djvu_folder"
+msgstr "选择包含 PDF 或 DjVu 文件的文件夹"
+
+msgid "imports_djvu_preview"
+msgstr "导入后可在书架中预览 DjVu。\n转换为 PDF 时将保留现有文本。"
+
+msgid "imports_djvu_converting"
+msgstr "正在转换 DjVu…"
+
+msgid "imports_djvu_progress"
+msgstr "DjVu 文本 {current}/{total}"
+
+msgid "imports_djvu_undo"
+msgstr "导入 DjVu"
+
+msgid "imports_djvu_preserve_text"
+msgstr "保留文本"
+
+msgid "imports_djvu_ocr_tooltip"
+msgstr "始终保留现有 DjVu 文本。可选 OCR 仅在文档没有可用文本层时运行。"
+
+msgid "imports_pdf_djvu_choose_file"
+msgstr "请添加至少一个 PDF 或 DjVu 文件。"
+
+msgid "imports_pdf_djvu_choose_checked"
+msgstr "请勾选至少一个要导入的 PDF 或 DjVu。"
+
+msgid "imports_pdf_djvu_multiple_title"
+msgstr "导入多个文档时，请启用“使用文件名作为标题”。"
+
+msgid "imports_pdf_djvu_folder_none"
+msgstr "文件夹中没有新的 PDF 或 DjVu 文件"
+
+msgid "imports_pdf_djvu_folder_loaded"
+msgstr "文件夹中找到 {count} 个文档 · 已加载到对话框"
+
+msgid "imports_pdf_djvu_folder_progress"
+msgstr "找到 {found} 个文档 · 剩余 {remaining} 个 · {completed}/{total}"
+
+msgid "imports_pdf_djvu_checked_hint"
+msgstr "点击添加时将导入勾选的 PDF 和 DjVu 文档"
+
+msgid "imports_pdf_djvu_no_matches"
+msgstr "没有符合当前筛选条件的文档"
+
+msgid "imports_pdf_djvu_priority_hint"
+msgstr "此文档的优先级。{important_end} 表示最高重要性，默认值为 50。"
+
+msgid "imports_pdf_djvu_progress"
+msgstr "正在添加文档… {completed} / {total}"
+
+msgid "imports_pdf_djvu_progress_detail"
+msgstr "正在添加文档… {completed} / {total} · {phase} · {filename}"
+
 msgid "imports_add_local_file"
 msgstr "添加本地文件"
 
@@ -92,7 +245,7 @@ msgstr "添加页面"
 
 #. Import dialog label: Add to Markdown
 msgid "imports_add_markdown"
-msgstr "添加到 Markdown"
+msgstr "添加 Markdown 写作"
 
 #. Import dialog label: Markdown note title
 msgid "imports_markdown_title_placeholder"
@@ -148,7 +301,7 @@ msgstr "复习这张卡片时，输入的 Markdown 内容会自动保存。"
 
 #. Import dialog label: Add Markdown Card
 msgid "imports_add_markdown_card"
-msgstr "添加 Markdown 卡片"
+msgstr "添加 Markdown 写作"
 
 #. Import dialog label: Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.
 msgid "imports_webpage_fetch_hint"
@@ -433,6 +586,14 @@ msgstr "优先级"
 #. PDF/EPUB import dialog UI: OCR
 msgid "imports_table_ocr"
 msgstr "OCR"
+
+#. PDF/DjVu import dialog UI: OCR all possible
+msgid "imports_ocr_all_possible"
+msgstr "尽可能全部 OCR"
+
+#. PDF/DjVu import dialog UI: Don't OCR anything
+msgid "imports_ocr_none"
+msgstr "全部不进行 OCR"
 
 #. PDF/EPUB import dialog UI: Status
 msgid "imports_table_status"

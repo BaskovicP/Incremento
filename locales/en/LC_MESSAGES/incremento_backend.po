@@ -2,6 +2,40 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: en\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "backend_deps_djvulibre"
+msgstr "DjVuLibre (optional DjVu import)"
+
+msgid "backend_djvu_cancelled"
+msgstr "DjVu import cancelled."
+
+msgid "backend_djvu_budget"
+msgstr "DjVu conversion exceeded its size, page-count, or time limit."
+
+msgid "backend_djvu_decode_failed"
+msgstr "DjVuLibre could not decode this document. Use a single-file (bundled) DjVu document and a build with PDF output support."
+
+msgid "backend_djvu_output_exists"
+msgstr "The conversion destination already exists. Choose a new file."
+
+msgid "backend_djvu_invalid"
+msgstr "DjVu conversion failed: the document or its positioned text layer is invalid or unsupported."
+
+msgid "backend_djvu_dependency"
+msgstr "DjVu import requires DjVuLibre (ddjvu and djvutxt).\n\n{instructions}"
+
+msgid "backend_djvu_pymupdf"
+msgstr "DjVu text preservation requires PyMuPDF. Open Incremento → Utils → Check Dependencies… to install it.\n\n{instructions}"
+
+msgid "backend_deps_djvulibre_mac"
+msgstr "Install DjVuLibre with Homebrew: brew install djvulibre\nThen restart Anki."
+
+msgid "backend_deps_djvulibre_windows"
+msgstr "Install DjVuLibre from https://djvu.sourceforge.net/ and add its tool folder to PATH. Then restart Anki."
+
+msgid "backend_deps_djvulibre_linux"
+msgstr "Install your distribution's DjVuLibre tools (Debian/Ubuntu: sudo apt install djvulibre-bin). Then restart Anki."
+
+
 #. Incremento UI: activity failed
 msgid "backend_activity_failed"
 msgstr "The operation failed."

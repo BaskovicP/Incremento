@@ -2299,9 +2299,64 @@ msgstr "浏览文档书架标签"
 msgid "reader_bookshelf_browse_tags_hint"
 msgstr "显示此书架中文档使用的标签，常见标签排在前面。"
 
+msgid "reader_bookshelf_delete_confirm"
+msgstr "从 Anki 中删除此文档？\n\n其笔记和卡片将被删除。托管的源文件会保留，以便 Anki 撤销操作能够安全恢复文档。"
+
+msgid "reader_bookshelf_attachment_check_busy"
+msgstr "附属卡片检查已在进行中。"
+
+msgid "reader_bookshelf_attachment_check_failed"
+msgstr "Incremento 无法检查附属卡片，因此未删除任何内容。请重试。"
+
+msgid "reader_bookshelf_attached_badge_tooltip"
+msgid_plural "reader_bookshelf_attached_badge_tooltip_plural"
+msgstr[0] "已处理：有 {count} 张附属的主题或条目卡片"
+
+msgid "reader_bookshelf_checking_attached_cards"
+msgstr "正在检查附属卡片…"
+
+msgid "reader_bookshelf_checking_duplicate_attachments"
+msgstr "正在检查重复候选项是否有附属的主题或条目卡片…"
+
+msgid "reader_bookshelf_delete_attached_warning"
+msgid_plural "reader_bookshelf_delete_attached_warning_plural"
+msgstr[0] "发现 {count} 张附属卡片。卡片会保留在 Anki 中，但其中返回已删除文档的链接可能不再有效。"
+
+msgid "reader_bookshelf_delete_document"
+msgstr "删除文档…"
+
+msgid "reader_bookshelf_delete_other_duplicates"
+msgstr "删除其他可能的重复项…"
+
+msgid "reader_bookshelf_delete_others_confirm"
+msgid_plural "reader_bookshelf_delete_others_confirm_plural"
+msgstr[0] "从 Anki 中删除其他 {count} 个可能的重复项？\n\n其笔记和卡片将被删除；所选文档会保留。托管的源文件会保留，以便 Anki 撤销操作能够安全恢复文档。"
+
+msgid "reader_bookshelf_delete_profile_changed"
+msgstr "检查附属卡片时，当前配置文件发生了变化。未删除任何内容。"
+
+msgid "reader_bookshelf_delete_unavailable"
+msgstr "已无法从书架删除此文档。请刷新后重试。"
+
+msgid "reader_bookshelf_deleted_count"
+msgid_plural "reader_bookshelf_deleted_count_plural"
+msgstr[0] "已从 Anki 删除 {count} 份文档。"
+
 msgid "reader_bookshelf_document_count"
 msgid_plural "reader_bookshelf_document_count_plural"
 msgstr[0] "{count} 份文档"
+
+msgid "reader_bookshelf_duplicates_hint"
+msgstr "使用低频词加权和三字符组（trigram）比较文档标题、原始文件名和 PDF 元数据标题。卷号、年份等数字必须相同。封面上的绿色对勾表示该文档有附属的主题或条目卡片。删除前请检查候选项。"
+
+msgid "reader_bookshelf_duplicates_only"
+msgstr "仅显示可能的重复项"
+
+msgid "reader_bookshelf_duplicates_scanning_hint"
+msgstr "正在后台检查 PDF 元数据标题…"
+
+msgid "reader_bookshelf_duplicate_attachment_check_failed"
+msgstr "Incremento 无法检查重复候选项的附属卡片。请关闭并重新启用“仅显示可能的重复项”后重试。"
 
 msgid "reader_bookshelf_epub_count"
 msgid_plural "reader_bookshelf_epub_count_plural"
@@ -2317,7 +2372,7 @@ msgid "reader_bookshelf_filter_tags_placeholder"
 msgstr "按标签筛选——输入名称或浏览可用标签…"
 
 msgid "reader_bookshelf_intro"
-msgstr "点击封面以打开文档。PDF 首页和 EPUB 封面会逐步加载，以保持大型书库的响应速度。"
+msgstr "点击封面以打开文档。若要清理重复导入，请选择“仅显示可能的重复项”，然后右键点击文档。封面会逐步加载，以保持大型书库的响应速度。"
 
 msgid "reader_bookshelf_item_tooltip"
 msgstr "{title}\n类型：{kind}\n标签：{tags}\n{priority}\n点击打开"
@@ -2327,6 +2382,12 @@ msgstr "（还有 {count} 个）"
 
 msgid "reader_bookshelf_no_documents"
 msgstr "未找到 Incremento 文档。"
+
+msgid "reader_bookshelf_no_duplicates_hint"
+msgstr "未按文档标题、原始文件名或 PDF 元数据标题找到可能的重复项。"
+
+msgid "reader_bookshelf_pdf_metadata_title"
+msgstr "PDF 元数据标题：{title}"
 
 msgid "reader_bookshelf_no_epubs"
 msgstr "未找到 Incremento EPUB。"

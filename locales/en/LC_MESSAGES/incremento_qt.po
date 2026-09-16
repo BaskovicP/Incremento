@@ -32,7 +32,7 @@ msgid "session_current_settings"
 msgstr "Current Settings"
 
 msgid "session_basic_summary"
-msgstr "{count:,} cards · Topics {topic_percent}% / Items {item_percent}% · Documents {document_percent}% / Other {other_percent}% · Preset: {preset}"
+msgstr "{count:,} cards · Topics {topic_percent}% / Items {item_percent}% · Within Topics: Documents {document_percent}% / Other {other_percent}% · Target: {document_count} Documents + {other_topic_count} other Topics + {item_count} Items · Preset: {preset}"
 
 msgid "onboarding_welcome_title"
 msgstr "Welcome to Incremento"
@@ -44,10 +44,10 @@ msgid "onboarding_add_document_title"
 msgstr "1. Add your first document"
 
 msgid "onboarding_add_document_body"
-msgstr "Start with a PDF or EPUB. Incremento stores managed documents inside the active Anki profile and restores your reading position."
+msgstr "Start with a PDF, EPUB or DjVu document. Incremento stores managed documents inside the active Anki profile and restores your reading position."
 
 msgid "onboarding_add_document_action"
-msgstr "Add PDF…"
+msgstr "Add PDF / DjVu…"
 
 msgid "onboarding_extract_title"
 msgstr "2. Extract one useful idea"
@@ -562,7 +562,7 @@ msgid "session_group_tooltip"
 msgstr "Rows with the same group name are constrained together."
 
 msgid "session_basic_intro"
-msgstr "Choose the session size and the two main mixes. Open Advanced for tag quotas, scheduling phases, card states, ordering, and diagnostics."
+msgstr "Choose the session size, then the Topic/Item split. Documents are a percentage within Topics, not of the whole session. Open Advanced for quotas, card states, ordering, and diagnostics."
 
 msgid "session_basic_help_accessible"
 msgstr "Basic session setup help"
@@ -573,8 +573,17 @@ msgstr "Topic and Item mix"
 msgid "session_documents"
 msgstr "Documents"
 
+msgid "session_documents_within_topics"
+msgstr "Documents within Topics (%)"
+
+msgid "session_non_document_topics"
+msgstr "Other Topics"
+
+msgid "session_document_topics"
+msgstr "Documents (Topics)"
+
 msgid "session_documents_other_mix_accessible"
-msgstr "Document and Other mix"
+msgstr "Documents within Topics percentage"
 
 msgid "session_other"
 msgstr "Other"
@@ -685,10 +694,10 @@ msgid "session_pages_per_day"
 msgstr "pages / day"
 
 msgid "session_documents_tooltip"
-msgstr "Incremento PDF and EPUB reading cards — always eligible regardless of scheduling state"
+msgstr "PDF and EPUB reading cards classified as Topics; this percentage applies only within the Topic portion"
 
 msgid "session_other_tooltip"
-msgstr "All non-document cards (topics and items)"
+msgstr "Topic cards that are not PDF or EPUB documents; Items are controlled separately"
 
 msgid "session_priority"
 msgstr "Priority"
@@ -1130,7 +1139,7 @@ msgstr[1] "{count} branches"
 msgid "session_lock_topics_tooltip"
 msgstr "Lock Topics target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it."
 msgid "session_lock_pdf_tooltip"
-msgstr "Lock PDF target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it."
+msgstr "Lock the document percentage within Topics. This conditional percentage does not rebalance the Topic/Item mix."
 msgid "session_lock_priority_tooltip"
 msgstr "Lock Priority target in the pooled main mix.\nWhen locked, other unlocked main targets rebalance around it."
 msgid "session_live_preview_button_tooltip"
@@ -1287,9 +1296,9 @@ msgstr "<span style=\"color: gray; font-size: small;\">Other cards: {effective}%
 msgid "session_pdf_limit_detailed_status"
 msgstr "Today: {used}/{limit} pages, {remaining} remaining. Current page {current_page}, stop point today page {allowed_page}."
 msgid "session_expected_mix"
-msgstr "Expected mix: PDF {pdf}, Topics {topics}, Items {items} · Random {random}, Priority {priority}"
+msgstr "Expected mix: Documents {pdf}, other Topics {topics}, Items {items} · Random {random}, Priority {priority}"
 msgid "session_expected_counts"
-msgstr "At {count} cards/session: PDF {pdf}, Topics {topics}, Items {items} · Random {random}, Priority {priority} (availability may shift actual results)"
+msgstr "Target at {count} cards/session: {pdf} Documents + {topics} other Topics + {items} Items · Random {random}, Priority {priority} (availability and advanced quotas may shift actual results)"
 msgid "session_other_tag_label"
 msgstr "Other <span style=\"color: gray; font-size: small;\">(outside selected tags)</span>"
 msgid "session_tag_counts"
@@ -1766,9 +1775,9 @@ msgstr "Toggle configured item tags"
 msgid "session_card_types_help"
 msgstr "Which Anki scheduling states are included in the session pool.\n\n• New — cards you've never studied before\n• Learning — learning / relearning cards due now\n• Due / Review — mature cards scheduled for today\n\nNote: PDF, YouTube and Webpage cards are always eligible regardless of these checkboxes — they bypass Anki's scheduling state."
 msgid "session_topics_ratio_help"
-msgstr "Ratio of topic cards (concepts, long reads) vs item cards (flashcards, Q&A).\n\nExample: 90 % Topics with 50 cards → ~45 topic cards and ~5 item cards.\n\nTopics filter and Items filter (Advanced section) determine which cards belong to each group."
+msgstr "Share of all session cards classified as Topics versus Items. Topics include document-reading cards.\n\nExample: 100 cards with 60% Topics / 40% Items targets 60 Topics (including documents) and 40 Items. Documents within Topics then divides only those 60 Topics.\n\n100% Items disables document Topics in normal mixing. Classification overrides and Advanced filters still apply."
 msgid "session_document_mix_help"
-msgstr "Soft document mix rate — how often a PDF or EPUB card is picked during normal scheduling.\n\nUnlike Content type priorities (which fill a hard quota first), this is a stochastic target: document cards are woven throughout the session.\n\nExample: Docs = 20 % → roughly 1 in 5 picks targets a PDF/EPUB card. Set to 0 % (slider fully right) to exclude documents from soft mixing.\n\nYou can use both: priority fills a hard quota first, then soft mixing adds more document cards in the remaining slots."
+msgstr "Percentage of Topics targeting PDF or EPUB document-reading cards. Items are unaffected.\n\nExample: 100 cards, 60% Topics / 40% Items, and 10% Documents within Topics targets 6 Documents + 54 other Topics + 40 Items.\n\n0% disables document Topics in normal mixing; 100% targets only documents within Topics. With 0% Topics this control is disabled, but its preference is remembered. Documents explicitly classified as Items remain Items.\n\nThis is a soft target, not an exact quota. Advanced content priorities may independently reserve documents before normal mixing."
 msgid "session_selection_mode_help"
 msgstr "How cards are selected from the eligible pool at each pick.\n\n• Priority (left) — picks the most overdue card first (sorted by due date). Use this to work through your backlog in order.\n• Random (right) — picks any eligible card at random. Use this for a varied, low-stakes session.\n\nExample: 99 % Random → almost always picks randomly; 1 % Priority → the most overdue card occasionally sneaks in."
 msgid "session_scheduler_scope_help"
@@ -1937,7 +1946,7 @@ msgid "session_preview_pdf_target"
 msgstr "{title} · p.{page} · card {card_id}"
 
 msgid "session_heatmap_note"
-msgstr "Cells show estimated count and share within each content column."
+msgstr "Cells show estimated count and tag share within each content column. Documents plus other Topics form the Topic total."
 
 msgid "session_heatmap_normalized"
 msgstr "Tag shares are normalized because configured totals exceed 100%."
@@ -2005,3 +2014,21 @@ msgstr "Card text: {fields}"
 
 msgid "knowledge_tree_card_reference"
 msgstr "card {card_id}"
+
+msgid "settings_pdf_appearance_default"
+msgstr "Default PDF appearance"
+
+msgid "settings_pdf_appearance_original"
+msgstr "Original / light"
+
+msgid "settings_pdf_appearance_dark"
+msgstr "Dark"
+
+msgid "settings_pdf_appearance_night"
+msgstr "Night"
+
+msgid "settings_pdf_appearance_force"
+msgstr "Always force this appearance for every PDF"
+
+msgid "settings_pdf_appearance_hint"
+msgstr "When forcing is off, each PDF remembers its own selection and new PDFs use the default. When forcing is on, every PDF opens in the selected appearance without erasing its saved choice."

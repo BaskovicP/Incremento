@@ -2313,10 +2313,69 @@ msgstr "Browse bookshelf tags"
 msgid "reader_bookshelf_browse_tags_hint"
 msgstr "Show tags used by documents in this bookshelf, with the most common tags first."
 
+msgid "reader_bookshelf_delete_confirm"
+msgstr "Delete this document from Anki?\n\nIts note and card will be deleted. The managed source file will be kept so Anki Undo can restore the document safely."
+
+msgid "reader_bookshelf_attachment_check_busy"
+msgstr "An attached-card check is already running."
+
+msgid "reader_bookshelf_attachment_check_failed"
+msgstr "Incremento could not check for attached cards, so nothing was deleted. Please try again."
+
+msgid "reader_bookshelf_attached_badge_tooltip"
+msgid_plural "reader_bookshelf_attached_badge_tooltip_plural"
+msgstr[0] "Worked on: {count} attached Topic or Item card"
+msgstr[1] "Worked on: {count} attached Topic or Item cards"
+
+msgid "reader_bookshelf_checking_attached_cards"
+msgstr "Checking for attached cards…"
+
+msgid "reader_bookshelf_checking_duplicate_attachments"
+msgstr "Checking duplicate candidates for attached Topic or Item cards…"
+
+msgid "reader_bookshelf_delete_attached_warning"
+msgid_plural "reader_bookshelf_delete_attached_warning_plural"
+msgstr[0] "{count} attached card was found. It will remain in Anki, but its link back to a deleted document may no longer work."
+msgstr[1] "{count} attached cards were found. They will remain in Anki, but their links back to deleted documents may no longer work."
+
+msgid "reader_bookshelf_delete_document"
+msgstr "Delete document…"
+
+msgid "reader_bookshelf_delete_other_duplicates"
+msgstr "Delete other possible duplicates…"
+
+msgid "reader_bookshelf_delete_others_confirm"
+msgid_plural "reader_bookshelf_delete_others_confirm_plural"
+msgstr[0] "Delete {count} other possible duplicate from Anki?\n\nIts note and card will be deleted; the selected document will remain. The managed source file will be kept so Anki Undo can restore the document safely."
+msgstr[1] "Delete {count} other possible duplicates from Anki?\n\nTheir notes and cards will be deleted; the selected document will remain. Managed source files will be kept so Anki Undo can restore the documents safely."
+
+msgid "reader_bookshelf_delete_profile_changed"
+msgstr "The active profile changed while attached cards were being checked. Nothing was deleted."
+
+msgid "reader_bookshelf_delete_unavailable"
+msgstr "This document can no longer be deleted from the bookshelf. Refresh and try again."
+
+msgid "reader_bookshelf_deleted_count"
+msgid_plural "reader_bookshelf_deleted_count_plural"
+msgstr[0] "Deleted {count} document from Anki."
+msgstr[1] "Deleted {count} documents from Anki."
+
 msgid "reader_bookshelf_document_count"
 msgid_plural "reader_bookshelf_document_count_plural"
 msgstr[0] "{count} document"
 msgstr[1] "{count} documents"
+
+msgid "reader_bookshelf_duplicates_hint"
+msgstr "Compares document titles, original filenames, and PDF metadata titles using rare-word weighting and three-character groups (trigrams). Numbers such as volumes and years must match. A green check on a cover means that document has attached Topic or Item cards. Review candidates before deleting."
+
+msgid "reader_bookshelf_duplicates_only"
+msgstr "Possible duplicates only"
+
+msgid "reader_bookshelf_duplicates_scanning_hint"
+msgstr "Checking PDF metadata titles in the background…"
+
+msgid "reader_bookshelf_duplicate_attachment_check_failed"
+msgstr "Incremento could not check duplicate candidates for attached cards. Toggle Possible duplicates only to try again."
 
 msgid "reader_bookshelf_epub_count"
 msgid_plural "reader_bookshelf_epub_count_plural"
@@ -2333,7 +2392,7 @@ msgid "reader_bookshelf_filter_tags_placeholder"
 msgstr "Filter by tags — type a name or browse available tags…"
 
 msgid "reader_bookshelf_intro"
-msgstr "Click a cover to open that document. PDF first pages and EPUB covers load progressively so a large library stays responsive."
+msgstr "Click a cover to open it. To clean up repeated imports, select Possible duplicates only, then right-click a document. Covers load progressively so a large library stays responsive."
 
 msgid "reader_bookshelf_item_tooltip"
 msgstr "{title}\nType: {kind}\nTags: {tags}\n{priority}\nClick to open"
@@ -2343,6 +2402,12 @@ msgstr "(+{count} more)"
 
 msgid "reader_bookshelf_no_documents"
 msgstr "No Incremento documents found."
+
+msgid "reader_bookshelf_no_duplicates_hint"
+msgstr "No possible duplicates were found by document title, original filename, or PDF metadata title."
+
+msgid "reader_bookshelf_pdf_metadata_title"
+msgstr "PDF metadata title: {title}"
 
 msgid "reader_bookshelf_no_epubs"
 msgstr "No Incremento EPUBs found."

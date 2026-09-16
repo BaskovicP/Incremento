@@ -2,6 +2,18 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
 
+msgid "root_menu_edit_markdown_document"
+msgstr "编辑当前 Markdown 文档…"
+
+msgid "root_import_markdown_documents_added"
+msgstr "已将 {count} 个 Markdown 文档导入 {deck}。"
+
+msgid "root_menu_add_markdown_document"
+msgstr "添加 Markdown 文档…"
+
+msgid "root_import_markdown_document_added"
+msgstr "已将 Markdown 文档“{title}”添加到牌组“{deck}”。可从文档书架（EPUB）打开，或学习其卡片。"
+
 #. Menu or action: About
 msgid "root_menu_about"
 msgstr "关于"
@@ -24,11 +36,11 @@ msgstr "添加本地文件"
 
 #. Menu or action: Add to Markdown
 msgid "root_menu_add_markdown"
-msgstr "添加到 Markdown"
+msgstr "添加 Markdown 写作…"
 
 #. Menu or action: Add PDF
 msgid "root_menu_add_pdf"
-msgstr "添加 PDF"
+msgstr "添加 PDF / DjVu"
 
 #. Menu or action: Add Video
 msgid "root_menu_add_video"

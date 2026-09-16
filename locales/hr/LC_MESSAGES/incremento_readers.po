@@ -2327,11 +2327,74 @@ msgstr "Pregledaj oznake police dokumenata"
 msgid "reader_bookshelf_browse_tags_hint"
 msgstr "Prikaži oznake dokumenata na ovoj polici, počevši od najčešćih."
 
+msgid "reader_bookshelf_delete_confirm"
+msgstr "Izbrisati ovaj dokument iz Ankija?\n\nNjegova bilješka i kartica bit će izbrisane. Upravljana izvorna datoteka ostat će sačuvana kako bi Anki Poništi mogao sigurno vratiti dokument."
+
+msgid "reader_bookshelf_attachment_check_busy"
+msgstr "Provjera priloženih kartica već je u tijeku."
+
+msgid "reader_bookshelf_attachment_check_failed"
+msgstr "Incremento nije mogao provjeriti priložene kartice, pa ništa nije izbrisano. Pokušajte ponovno."
+
+msgid "reader_bookshelf_attached_badge_tooltip"
+msgid_plural "reader_bookshelf_attached_badge_tooltip_plural"
+msgstr[0] "Obrađeno: {count} priložena kartica Teme ili Stavke"
+msgstr[1] "Obrađeno: {count} priložene kartice Teme ili Stavke"
+msgstr[2] "Obrađeno: {count} priloženih kartica Teme ili Stavke"
+
+msgid "reader_bookshelf_checking_attached_cards"
+msgstr "Provjera priloženih kartica…"
+
+msgid "reader_bookshelf_checking_duplicate_attachments"
+msgstr "Provjera kandidata za duplikate radi priloženih kartica Teme ili Stavke…"
+
+msgid "reader_bookshelf_delete_attached_warning"
+msgid_plural "reader_bookshelf_delete_attached_warning_plural"
+msgstr[0] "Pronađena je {count} priložena kartica. Ostat će u Ankiju, ali njezina poveznica na izbrisani dokument možda više neće raditi."
+msgstr[1] "Pronađene su {count} priložene kartice. Ostat će u Ankiju, ali njihove poveznice na izbrisane dokumente možda više neće raditi."
+msgstr[2] "Pronađeno je {count} priloženih kartica. Ostat će u Ankiju, ali njihove poveznice na izbrisane dokumente možda više neće raditi."
+
+msgid "reader_bookshelf_delete_document"
+msgstr "Izbriši dokument…"
+
+msgid "reader_bookshelf_delete_other_duplicates"
+msgstr "Izbriši ostale moguće duplikate…"
+
+msgid "reader_bookshelf_delete_others_confirm"
+msgid_plural "reader_bookshelf_delete_others_confirm_plural"
+msgstr[0] "Izbrisati {count} drugi mogući duplikat iz Ankija?\n\nNjegova bilješka i kartica bit će izbrisane; odabrani dokument ostat će sačuvan. Upravljana izvorna datoteka ostat će sačuvana kako bi Anki Poništi mogao sigurno vratiti dokument."
+msgstr[1] "Izbrisati {count} druga moguća duplikata iz Ankija?\n\nNjihove bilješke i kartice bit će izbrisane; odabrani dokument ostat će sačuvan. Upravljane izvorne datoteke ostat će sačuvane kako bi Anki Poništi mogao sigurno vratiti dokumente."
+msgstr[2] "Izbrisati {count} drugih mogućih duplikata iz Ankija?\n\nNjihove bilješke i kartice bit će izbrisane; odabrani dokument ostat će sačuvan. Upravljane izvorne datoteke ostat će sačuvane kako bi Anki Poništi mogao sigurno vratiti dokumente."
+
+msgid "reader_bookshelf_delete_profile_changed"
+msgstr "Aktivni profil promijenio se tijekom provjere priloženih kartica. Ništa nije izbrisano."
+
+msgid "reader_bookshelf_delete_unavailable"
+msgstr "Ovaj se dokument više ne može izbrisati s police. Osvježite i pokušajte ponovno."
+
+msgid "reader_bookshelf_deleted_count"
+msgid_plural "reader_bookshelf_deleted_count_plural"
+msgstr[0] "Izbrisan je {count} dokument iz Ankija."
+msgstr[1] "Izbrisana su {count} dokumenta iz Ankija."
+msgstr[2] "Izbrisano je {count} dokumenata iz Ankija."
+
 msgid "reader_bookshelf_document_count"
 msgid_plural "reader_bookshelf_document_count_plural"
 msgstr[0] "{count} dokument"
 msgstr[1] "{count} dokumenta"
 msgstr[2] "{count} dokumenata"
+
+msgid "reader_bookshelf_duplicates_hint"
+msgstr "Uspoređuje naslove dokumenata, izvorne nazive datoteka i naslove iz metapodataka PDF-a ponderiranjem rjeđih riječi i skupina od tri znaka (trigrama). Brojevi poput svezaka i godina moraju se podudarati. Zelena kvačica na naslovnici znači da dokument ima priložene kartice Teme ili Stavke. Pregledajte kandidate prije brisanja."
+
+msgid "reader_bookshelf_duplicates_only"
+msgstr "Samo mogući duplikati"
+
+msgid "reader_bookshelf_duplicates_scanning_hint"
+msgstr "Provjera naslova iz metapodataka PDF-a u pozadini…"
+
+msgid "reader_bookshelf_duplicate_attachment_check_failed"
+msgstr "Incremento nije mogao provjeriti priložene kartice kandidata za duplikate. Isključite i ponovno uključite Samo mogući duplikati kako biste pokušali ponovno."
 
 msgid "reader_bookshelf_epub_count"
 msgid_plural "reader_bookshelf_epub_count_plural"
@@ -2349,7 +2412,7 @@ msgid "reader_bookshelf_filter_tags_placeholder"
 msgstr "Filtriraj po oznakama — upiši naziv ili pregledaj dostupne oznake…"
 
 msgid "reader_bookshelf_intro"
-msgstr "Kliknite naslovnicu da biste otvorili dokument. Prve stranice PDF-a i EPUB naslovnice učitavaju se postupno kako bi velika zbirka ostala odzivna."
+msgstr "Kliknite naslovnicu da biste je otvorili. Za uklanjanje ponovljenih uvoza odaberite Samo mogući duplikati, a zatim desnom tipkom kliknite dokument. Naslovnice se učitavaju postupno kako bi velika zbirka ostala odzivna."
 
 msgid "reader_bookshelf_item_tooltip"
 msgstr "{title}\nVrsta: {kind}\nOznake: {tags}\n{priority}\nKliknite za otvaranje"
@@ -2359,6 +2422,12 @@ msgstr "(+još {count})"
 
 msgid "reader_bookshelf_no_documents"
 msgstr "Nisu pronađeni Incremento dokumenti."
+
+msgid "reader_bookshelf_no_duplicates_hint"
+msgstr "Nisu pronađeni mogući duplikati prema naslovu dokumenta, izvornom nazivu datoteke ili naslovu iz metapodataka PDF-a."
+
+msgid "reader_bookshelf_pdf_metadata_title"
+msgstr "Naslov iz metapodataka PDF-a: {title}"
 
 msgid "reader_bookshelf_no_epubs"
 msgstr "Nisu pronađeni Incremento EPUB-ovi."

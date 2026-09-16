@@ -2,6 +2,40 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=1; plural=0;\n"
 
+msgid "backend_deps_djvulibre"
+msgstr "DjVuLibre（可选 DjVu 导入）"
+
+msgid "backend_djvu_cancelled"
+msgstr "DjVu 导入已取消。"
+
+msgid "backend_djvu_budget"
+msgstr "DjVu 转换超过了大小、页数或时间限制。"
+
+msgid "backend_djvu_decode_failed"
+msgstr "DjVuLibre 无法解码此文档。请使用单文件（捆绑）DjVu 文档以及支持 PDF 输出的版本。"
+
+msgid "backend_djvu_output_exists"
+msgstr "转换目标文件已存在。请选择新文件。"
+
+msgid "backend_djvu_invalid"
+msgstr "DjVu 转换失败：文档或其定位文本层无效或不受支持。"
+
+msgid "backend_djvu_dependency"
+msgstr "导入 DjVu 需要 DjVuLibre（ddjvu 和 djvutxt）。\n\n{instructions}"
+
+msgid "backend_djvu_pymupdf"
+msgstr "保留 DjVu 文本需要 PyMuPDF。请打开 Incremento → 工具 → 检查依赖项… 进行安装。\n\n{instructions}"
+
+msgid "backend_deps_djvulibre_mac"
+msgstr "使用 Homebrew 安装 DjVuLibre：brew install djvulibre\n然后重启 Anki。"
+
+msgid "backend_deps_djvulibre_windows"
+msgstr "从 https://djvu.sourceforge.net/ 安装 DjVuLibre，并将工具目录添加到 PATH。然后重启 Anki。"
+
+msgid "backend_deps_djvulibre_linux"
+msgstr "安装发行版的 DjVuLibre 工具（Debian/Ubuntu：sudo apt install djvulibre-bin）。然后重启 Anki。"
+
+
 #. Incremento UI: activity failed
 msgid "backend_activity_failed"
 msgstr "操作失败。"

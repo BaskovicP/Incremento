@@ -2,6 +2,40 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: hr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2);\n"
 
+msgid "backend_deps_djvulibre"
+msgstr "DjVuLibre (neobavezan uvoz DjVu dokumenata)"
+
+msgid "backend_djvu_cancelled"
+msgstr "Uvoz DjVu dokumenta je otkazan."
+
+msgid "backend_djvu_budget"
+msgstr "Pretvorba DjVu dokumenta premašila je ograničenje veličine, broja stranica ili vremena."
+
+msgid "backend_djvu_decode_failed"
+msgstr "DjVuLibre nije mogao pročitati dokument. Koristite DjVu dokument u jednoj datoteci i verziju s podrškom za izvoz PDF-a."
+
+msgid "backend_djvu_output_exists"
+msgstr "Odredišna datoteka pretvorbe već postoji. Odaberite novu datoteku."
+
+msgid "backend_djvu_invalid"
+msgstr "Pretvorba DjVu dokumenta nije uspjela: dokument ili njegov pozicionirani tekst nije valjan ili podržan."
+
+msgid "backend_djvu_dependency"
+msgstr "Uvoz DjVu dokumenata zahtijeva DjVuLibre (ddjvu i djvutxt).\n\n{instructions}"
+
+msgid "backend_djvu_pymupdf"
+msgstr "Za očuvanje DjVu teksta potreban je PyMuPDF. Otvorite Incremento → Alati → Provjeri ovisnosti… za instalaciju.\n\n{instructions}"
+
+msgid "backend_deps_djvulibre_mac"
+msgstr "Instalirajte DjVuLibre putem Homebrewa: brew install djvulibre\nZatim ponovno pokrenite Anki."
+
+msgid "backend_deps_djvulibre_windows"
+msgstr "Instalirajte DjVuLibre sa https://djvu.sourceforge.net/ i dodajte mapu alata u PATH. Zatim ponovno pokrenite Anki."
+
+msgid "backend_deps_djvulibre_linux"
+msgstr "Instalirajte DjVuLibre alate svoje distribucije (Debian/Ubuntu: sudo apt install djvulibre-bin). Zatim ponovno pokrenite Anki."
+
+
 #. Incremento UI: activity failed
 msgid "backend_activity_failed"
 msgstr "Radnja nije uspjela."

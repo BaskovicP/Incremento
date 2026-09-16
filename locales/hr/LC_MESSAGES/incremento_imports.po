@@ -2,7 +2,160 @@
 msgid ""
 msgstr "Project-Id-Version: Incremento\nLanguage: hr\nPO-Revision-Date: 2026-09-13 00:00+0000\nLast-Translator: Incremento\nLanguage-Team: Incremento\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2;\n"
 
+msgid "imports_markdown_document_title"
+msgstr "Dodaj Markdown dokument"
+
+msgid "imports_markdown_document_description"
+msgstr "Uvezite Markdown datoteke za čitanje i učenje. Izvorne datoteke ostaju nepromijenjene."
+
+msgid "imports_markdown_filter_names"
+msgstr "Filtriraj Markdown datoteke po nazivu…"
+
+msgid "imports_markdown_files"
+msgstr "Markdown datoteke"
+
+msgid "imports_markdown_batch_limit"
+msgstr "Ograničeno na 1.000 datoteka po uvozu i 50.000 pregledanih stavki. Po potrebi dodajte drugu mapu zasebno."
+
+msgid "imports_markdown_scanning"
+msgstr "Traženje Markdown datoteka…"
+
+msgid "imports_markdown_batch_result"
+msgstr "Uvezeno dokumenata: {added}; neuspjelo: {failed}. Uspješni uvozi su sačuvani."
+
+msgid "imports_markdown_edit_title"
+msgstr "Uredi Markdown — {title}"
+
+msgid "imports_markdown_edit_description"
+msgstr "Uređujete kopiju za učenje; izvorna datoteka ostaje nepromijenjena. Ugrađene slike se čuvaju; nove slikovne datoteke se ne učitavaju. Spremanje zadržava istu karticu i sigurnosnu kopiju prethodne verzije. Isticanja, knjižne oznake i izdvojene kartice ostaju, ali njihovi se položaji mogu pomaknuti."
+
+msgid "imports_markdown_source"
+msgstr "Markdown izvor"
+
+msgid "imports_markdown_edit_loading"
+msgstr "Učitavanje Markdown izvora…"
+
+msgid "imports_markdown_save"
+msgstr "Spremi dokument"
+
+msgid "imports_markdown_edit_saving"
+msgstr "Spremanje dokumenta i ažuriranje pretraživanja…"
+
+msgid "imports_markdown_discard_title"
+msgstr "Odbaci Markdown izmjene?"
+
+msgid "imports_markdown_discard_question"
+msgstr "Izmjene nisu spremljene. Želite li ih odbaciti?"
+
+msgid "imports_markdown_edit_button"
+msgstr "Uredi Markdown…"
+
+msgid "imports_markdown_edit_unavailable"
+msgstr "Najprije otvorite Markdown dokument za učenje u čitaču. Kartice za Markdown pisanje uređuju se izravno u prozoru za pisanje."
+
+msgid "imports_markdown_edit_conflict"
+msgstr "Dokument je izmijenjen nakon otvaranja uređivača. Zatvorite i ponovno otvorite uređivač za najnoviju verziju."
+
+msgid "imports_markdown_file_label"
+msgstr "Markdown datoteka"
+
+msgid "imports_markdown_choose_file"
+msgstr "Odaberi Markdown datoteku…"
+
+msgid "imports_markdown_file_filter"
+msgstr "Markdown datoteke (*.md *.MD *.markdown *.MARKDOWN)"
+
+msgid "imports_markdown_rendering"
+msgstr "Prikazivanje Markdowna…"
+
+msgid "imports_markdown_failed"
+msgstr "Nije moguće uvesti Markdown: {error}"
+
+msgid "imports_markdown_cancelled"
+msgstr "Uvoz Markdowna otkazan je jer je dokument ili profil zatvoren."
+
+msgid "imports_markdown_undo"
+msgstr "Uvezi Markdown dokument"
+
+msgid "imports_markdown_invalid_file"
+msgstr "Odaberite nepraznu UTF-8 datoteku .md ili .markdown (ne binarnu datoteku ni simboličku poveznicu)."
+
+msgid "imports_markdown_too_large"
+msgstr "Datoteka premašuje ograničenje uvoza: 2 MiB za Markdown, 8 MiB po slici."
+
+msgid "imports_markdown_images_too_large"
+msgstr "Lokalne slike premašuju ograničenje dokumenta od 128 slika ili ukupno 48 MiB."
+
+msgid "imports_markdown_sections_invalid"
+msgstr "Markdown nema čitljive odjeljke ili premašuje 2.000 odjeljaka."
+
 #. Import dialog label: Add Local File
+msgid "imports_pdf_djvu_title"
+msgstr "Dodaj PDF / DjVu dokumente"
+
+msgid "imports_filter_pdf_djvu"
+msgstr "Filtriraj PDF / DjVu dokumente po nazivu datoteke…"
+
+msgid "imports_select_pdf_djvu_files"
+msgstr "Odaberite PDF ili DjVu datoteke"
+
+msgid "imports_pdf_djvu_file_filter"
+msgstr "PDF i DjVu datoteke (*.pdf *.PDF *.djvu *.DJVU *.djv *.DJV);;PDF datoteke (*.pdf *.PDF);;DjVu datoteke (*.djvu *.DJVU *.djv *.DJV)"
+
+msgid "imports_select_pdf_djvu_folder"
+msgstr "Odaberite mapu s PDF ili DjVu datotekama"
+
+msgid "imports_djvu_preview"
+msgstr "Pretpregled DjVu dokumenta dostupan je na polici nakon uvoza.\nPostojeći tekst čuva se pri pretvorbi u PDF."
+
+msgid "imports_djvu_converting"
+msgstr "Pretvaranje DjVu dokumenta…"
+
+msgid "imports_djvu_progress"
+msgstr "DjVu tekst {current}/{total}"
+
+msgid "imports_djvu_undo"
+msgstr "Uvezi DjVu"
+
+msgid "imports_djvu_preserve_text"
+msgstr "Sačuvaj tekst"
+
+msgid "imports_djvu_ocr_tooltip"
+msgstr "Postojeći DjVu tekst uvijek se čuva. Neobavezni OCR izvodi se samo ako dokument nema upotrebljiv tekst."
+
+msgid "imports_pdf_djvu_choose_file"
+msgstr "Dodajte barem jednu PDF ili DjVu datoteku."
+
+msgid "imports_pdf_djvu_choose_checked"
+msgstr "Označite barem jedan PDF ili DjVu za uvoz."
+
+msgid "imports_pdf_djvu_multiple_title"
+msgstr "Za više dokumenata uključite 'Koristi naziv datoteke kao naslov'."
+
+msgid "imports_pdf_djvu_folder_none"
+msgstr "U mapi nema novih PDF ili DjVu datoteka"
+
+msgid "imports_pdf_djvu_folder_loaded"
+msgstr "Pronađeno {count} dokumenata u mapi · učitano u dijalog"
+
+msgid "imports_pdf_djvu_folder_progress"
+msgstr "Pronađeno {found} dokumenata · preostalo {remaining} · {completed}/{total}"
+
+msgid "imports_pdf_djvu_checked_hint"
+msgstr "Označeni PDF i DjVu dokumenti uvest će se kada kliknete Dodaj"
+
+msgid "imports_pdf_djvu_no_matches"
+msgstr "Nema dokumenata koji odgovaraju filtru"
+
+msgid "imports_pdf_djvu_priority_hint"
+msgstr "Prioritet dokumenta. {important_end} je najveća važnost, 50 je zadano."
+
+msgid "imports_pdf_djvu_progress"
+msgstr "Dodavanje dokumenata… {completed} / {total}"
+
+msgid "imports_pdf_djvu_progress_detail"
+msgstr "Dodavanje dokumenata… {completed} / {total} · {phase} · {filename}"
+
 msgid "imports_add_local_file"
 msgstr "Dodaj lokalnu datoteku"
 
@@ -92,7 +245,7 @@ msgstr "Dodaj stranicu"
 
 #. Import dialog label: Add to Markdown
 msgid "imports_add_markdown"
-msgstr "Dodaj u Markdown"
+msgstr "Dodaj Markdown pisanje"
 
 #. Import dialog label: Markdown note title
 msgid "imports_markdown_title_placeholder"
@@ -148,7 +301,7 @@ msgstr "Markdown datoteka automatski se sprema dok tipkate tijekom ponavljanja o
 
 #. Import dialog label: Add Markdown Card
 msgid "imports_add_markdown_card"
-msgstr "Dodaj Markdown karticu"
+msgstr "Dodaj Markdown pisanje"
 
 #. Import dialog label: Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.
 msgid "imports_webpage_fetch_hint"
@@ -433,6 +586,14 @@ msgstr "Prioritet"
 #. PDF/EPUB import dialog UI: OCR
 msgid "imports_table_ocr"
 msgstr "OCR"
+
+#. PDF/DjVu import dialog UI: OCR all possible
+msgid "imports_ocr_all_possible"
+msgstr "OCR gdje god je moguće"
+
+#. PDF/DjVu import dialog UI: Don't OCR anything
+msgid "imports_ocr_none"
+msgstr "Ne izvršavaj OCR"
 
 #. PDF/EPUB import dialog UI: Status
 msgid "imports_table_status"
