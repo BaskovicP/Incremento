@@ -195,6 +195,28 @@ def has_tesseract() -> bool:
     return tesseract_path() is not None
 
 
+def djvu_tools() -> dict[str, str]:
+    """Find already installed DjVuLibre tools; never install them implicitly."""
+    found = {}
+    for name in ("ddjvu", "djvutxt"):
+        candidates = [shutil.which(name)]
+        candidates.extend(str(Path(prefix) / name) for prefix in
+                          ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"))
+        for prefix in (os.environ.get("ProgramFiles", r"C:\Program Files"),
+                       os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")):
+            for folder in ("DjVuLibre", "DjVuLibre/bin"):
+                candidates.append(str(Path(prefix) / folder / (name + ".exe")))
+        path = next((path for path in candidates if path and os.path.isfile(path) and os.access(path, os.X_OK)), None)
+        if path:
+            found[name] = path
+    return found
+
+
+def djvulibre_instructions() -> str:
+    key = {"Darwin": "mac", "Windows": "windows"}.get(_platform(), "linux")
+    return t("backend_deps_djvulibre_" + key)
+
+
 def status() -> dict[str, bool]:
     """Return a snapshot of all dependency states."""
     return {
@@ -354,6 +376,12 @@ def show_setup_dialog(mw, force: bool = False) -> None:
         _tess_browser.setPlainText(tesseract_instructions())
 
     layout.addWidget(_tess_browser)
+
+    layout.addLayout(_row(t("backend_deps_djvulibre"), len(djvu_tools()) == 2))
+    djvu_help = QLabel(djvulibre_instructions())
+    djvu_help.setWordWrap(True)
+    djvu_help.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(djvu_help)
 
     _ankiconnect_label = QLabel(t('backend_deps_ankiconnect'))
     _ankiconnect_label.setStyleSheet("font-weight: bold;")

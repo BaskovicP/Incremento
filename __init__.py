@@ -3833,6 +3833,15 @@ def addEpubFunction() -> None:
         showInfo(_t("root_import_epub_all_failed", count=len(failed), details=failed_lines, extra=extra))
 
 
+def addMarkdownDocumentFunction() -> None:
+    from .frontend.markdown_document_dialog import AddMarkdownDocumentDialog
+
+    deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
+    dlg = AddMarkdownDocumentDialog(_ADDON_DIR, deck_names, default_deck="Topics", parent=mw)
+    if dlg.exec() and dlg.created:
+        showInfo(_t("root_import_markdown_documents_added", count=len(dlg.created), deck=dlg.deck_name), textFormat="plain")
+
+
 def importNotebookCitationsFunction() -> None:
     from .frontend.notebook_citation_import_dialog import NotebookCitationImportDialog
 
@@ -4883,7 +4892,7 @@ def addVideoFunction() -> None:
 
 
 def addWritingFunction() -> None:
-    """Incremento -> Add Content -> Add to Markdown"""
+    """Incremento -> Add Content -> Add Markdown Writing"""
     from .frontend.add_writing_dialog import AddWritingDialog
 
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
@@ -6748,6 +6757,18 @@ def _build_incremento_menu() -> None:
     qconnect(_addEpubAction.triggered, addEpubFunction)
     _addContentMenu.addAction(_addEpubAction)
     _register_shortcut_action("add_epub", _addEpubAction)
+
+    _addMarkdownDocumentAction = QAction(_t("root_menu_add_markdown_document"), mw)
+    _addMarkdownDocumentAction.setProperty("incremento_translation_key", "root_menu_add_markdown_document")
+    qconnect(_addMarkdownDocumentAction.triggered, addMarkdownDocumentFunction)
+    _addContentMenu.addAction(_addMarkdownDocumentAction)
+    _register_shortcut_action("add_markdown_document", _addMarkdownDocumentAction)
+
+    _editMarkdownDocumentAction = QAction(_t("root_menu_edit_markdown_document"), mw)
+    _editMarkdownDocumentAction.setProperty("incremento_translation_key", "root_menu_edit_markdown_document")
+    qconnect(_editMarkdownDocumentAction.triggered, _epub_dock_mod.edit_current_markdown_document)
+    _menu.addAction(_editMarkdownDocumentAction)
+    _register_shortcut_action("edit_markdown_document", _editMarkdownDocumentAction)
 
     _addWebpageAction = QAction(_t("root_menu_webpage_to_pdf"), mw)
     _addWebpageAction.setProperty("incremento_translation_key", "root_menu_webpage_to_pdf")

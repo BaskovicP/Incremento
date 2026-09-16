@@ -1587,9 +1587,12 @@ def add_epub_card(
     title: str,
     deck_name: str = "Topics",
     tags: list[str] | None = None,
+    *,
+    profile: str | None = None,
+    source_type: str = "EPUB",
 ) -> int:
     ensure_epub_note_type(col)
-    profile = _paths.get_active_profile()
+    profile = profile or _paths.get_active_profile()
     with ImportOperation(addon_dir, profile, "epub") as operation:
         return _create_new_epub_card(
             addon_dir,
@@ -1600,6 +1603,7 @@ def add_epub_card(
             deck_name=deck_name,
             tags=tags,
             operation=operation,
+            source_type=source_type,
         )
 
 
@@ -1613,6 +1617,7 @@ def _create_new_epub_card(
     deck_name: str,
     tags: list[str] | None,
     operation: ImportOperation,
+    source_type: str = "EPUB",
 ) -> int:
     """Create one EPUB card and compensate extracted files on failure."""
 
@@ -1657,7 +1662,7 @@ def _create_new_epub_card(
         apply_incremento_metadata(
             note,
             build_incremento_metadata(
-                source_type="EPUB",
+                source_type=source_type,
                 source_title=base_title,
                 source_link=f"epubs/{stored_filename}",
                 content_id=operation.content_id,

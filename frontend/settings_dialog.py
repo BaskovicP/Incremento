@@ -96,13 +96,25 @@ SHORTCUT_ACTION_SPECS = [
         "default": "",
     },
     {
+        "id": "add_markdown_document",
+        "label": "Add Markdown Document",
+        "default": "",
+        "keywords": ("md", "markdown", "document", "read"),
+    },
+    {
+        "id": "edit_markdown_document",
+        "label": "Edit Current Markdown Document",
+        "default": "",
+        "keywords": ("md", "markdown", "edit", "document"),
+    },
+    {
         "id": "youtube_video",
         "label": "Add Video",
         "default": "",
     },
     {
         "id": "add_writing",
-        "label": "Add to Markdown",
+        "label": "Add Markdown Writing",
         "default": "",
     },
     {

@@ -864,6 +864,42 @@ def _show_epub_reader_context_menu(view, position) -> bool:
     )
 
 
+def is_current_markdown_document() -> bool:
+    if not _current_epub_card_id or not _current_epub_filename or not getattr(mw, 'col', None):
+        return False
+    try:
+        note = mw.col.get_card(_current_epub_card_id).note()
+        return ((note.note_type() or {}).get('name') == 'Incremento EPUB'
+                and note['Incremento_Source_Type'] == 'Markdown'
+                and note['EPUB_Filename'] == _current_epub_filename)
+    except Exception:
+        return False
+
+
+def edit_current_markdown_document() -> None:
+    if not is_current_markdown_document():
+        showInfo(t('imports_markdown_edit_unavailable'), textFormat='plain')
+        return
+    try:
+        from .markdown_edit_dialog import EditMarkdownDocumentDialog
+    except ImportError:
+        from frontend.markdown_edit_dialog import EditMarkdownDocumentDialog
+    profile, card_id, filename = _active_profile(), _current_epub_card_id, _current_epub_filename
+    section, ratio = _current_epub_section_index, _current_epub_scroll_ratio
+    note = mw.col.get_card(card_id).note()
+    title = str(note['Incremento_Source_Title'] or Path(filename).stem)
+    def current():
+        return (_current_epub_card_id == card_id and _current_epub_filename == filename
+                and _active_profile() == profile)
+    def refresh():
+        if current():
+            show_epub_in_dock(card_id, filename, section_index=section, scroll_ratio=ratio,
+                              offer_due_review_prompt=False)
+    dialog = EditMarkdownDocumentDialog(_ADDON_DIR, profile, card_id, filename, title,
+        is_current=current, on_saved=refresh, parent=mw)
+    dialog.exec()
+
+
 def epub_citation() -> str:
     if not _current_epub_card_id or not _current_epub_filename:
         return ""
@@ -3318,6 +3354,11 @@ def _build_epub_dock() -> None:
 
     controls_layout.addWidget(controls_expanded)
     controls_layout.addWidget(controls_compact)
+    dock._markdown_edit_btn = QPushButton(t('imports_markdown_edit_button'), controls_host)
+    dock._markdown_edit_btn.setAccessibleName(t('imports_markdown_edit_button'))
+    dock._markdown_edit_btn.clicked.connect(edit_current_markdown_document)
+    dock._markdown_edit_btn.setVisible(False)
+    controls_layout.addWidget(dock._markdown_edit_btn, alignment=Qt.AlignmentFlag.AlignRight)
     controls_compact.setVisible(False)
     dock._controls_host = controls_host
     dock._controls_expanded = controls_expanded
@@ -4331,6 +4372,9 @@ def _update_epub_limit_status_control() -> None:
 def _update_title_and_buttons() -> None:
     if _epub_dock is None:
         return
+    markdown_edit = getattr(_epub_dock, '_markdown_edit_btn', None)
+    if markdown_edit is not None:
+        markdown_edit.setVisible(is_current_markdown_document())
     sections = _current_sections()
     count = len(sections)
     title_text = _EPUB_TOOLBAR_TEXT["page_location"].format(
@@ -5024,7 +5068,9 @@ def _choose_epub_highlight_color() -> None:
     def remembered(_result):
         if not matches():
             return
-        color = choose_highlight_color(dock, _current_epub_highlight_color)
+        color = choose_highlight_color(
+            dock, _current_epub_highlight_color, addon_dir=_ADDON_DIR, profile=context[0],
+        )
         if not matches():
             return
         if color:

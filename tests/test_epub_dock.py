@@ -12,6 +12,28 @@ import aqt
 import epub_dock
 
 
+@pytest.mark.parametrize('model', ['Incremento Writing', 'Basic'])
+def test_markdown_editor_is_unavailable_for_non_document_notes_even_with_matching_metadata(monkeypatch, model):
+    class Note(dict):
+        def note_type(self):
+            return {'name': model}
+    note = Note(Incremento_Source_Type='Markdown', EPUB_Filename='managed.epub')
+    col = types.SimpleNamespace(get_card=lambda cid: types.SimpleNamespace(note=lambda: note))
+    monkeypatch.setattr(epub_dock, 'mw', types.SimpleNamespace(col=col))
+    monkeypatch.setattr(epub_dock, '_current_epub_card_id', 41)
+    monkeypatch.setattr(epub_dock, '_current_epub_filename', 'managed.epub')
+    assert epub_dock.is_current_markdown_document() is False
+
+
+def test_markdown_editor_is_unavailable_when_the_open_card_was_deleted(monkeypatch):
+    def deleted(cid):
+        raise LookupError('Deleted card')
+    monkeypatch.setattr(epub_dock, 'mw', types.SimpleNamespace(col=types.SimpleNamespace(get_card=deleted)))
+    monkeypatch.setattr(epub_dock, '_current_epub_card_id', 41)
+    monkeypatch.setattr(epub_dock, '_current_epub_filename', 'managed.epub')
+    assert epub_dock.is_current_markdown_document() is False
+
+
 def test_epub_custom_hex_color_is_selected_without_falling_back_to_yellow(monkeypatch):
     monkeypatch.setattr(epub_dock, '_epub_dock', None)
     monkeypatch.setattr(epub_dock, '_current_epub_highlight_color', 'yellow')
@@ -1081,8 +1103,8 @@ def test_epub_picker_remembers_selection_and_drops_result_after_navigation(monke
         if callback:
             callbacks.append(callback)
     monkeypatch.setattr(epub_dock, '_run_epub_javascript', run)
-    def choose(parent, current):
-        picks.append((parent, current))
+    def choose(parent, current, *, addon_dir, profile):
+        picks.append((parent, current, addon_dir, profile))
         if switch_context:
             monkeypatch.setattr(epub_dock, '_current_epub_section_index', 1)
         return '#123abc'
@@ -1091,7 +1113,7 @@ def test_epub_picker_remembers_selection_and_drops_result_after_navigation(monke
     assert len(scripts) == 1 and 'incrementoRememberEpubHighlightSelection' in scripts[0]
     assert not picks
     callbacks.pop()(None)
-    assert picks == [(dock, 'yellow')]
+    assert picks == [(dock, 'yellow', epub_dock._ADDON_DIR, 'Profile A')]
     if switch_context:
         assert len(scripts) == 1
         assert epub_dock._current_epub_highlight_color == 'yellow'

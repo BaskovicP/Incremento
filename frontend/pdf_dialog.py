@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+import threading
+from types import SimpleNamespace
 
 from aqt import mw
 from aqt.qt import (
@@ -41,8 +43,12 @@ except ImportError:
 
 try:
     from ..backend.i18n import t as _t
+    from ..backend import paths as _paths
+    from ..backend import djvu_manager as _djvu_manager
 except ImportError:
     from backend.i18n import t as _t
+    from backend import paths as _paths
+    from backend import djvu_manager as _djvu_manager
 
 
 def _resolve_pdf_storage_abspath(
@@ -87,7 +93,12 @@ class AddPdfDialog(QDialog):
     ):
         super().__init__(parent)
         self._addon_dir = addon_dir
-        self.setWindowTitle(_t("imports_pdf_title"))
+        self._profile = _paths.get_active_profile()
+        self._collection = mw.col
+        self._closed = False
+        self._cancel_event = threading.Event()
+        self.finished.connect(self._on_finished)
+        self.setWindowTitle(_t("imports_pdf_djvu_title"))
         self.setMinimumSize(900, 560)
 
         self._pdf_paths: list[str] = []
@@ -97,6 +108,7 @@ class AddPdfDialog(QDialog):
         self._preview_inflight: set[str] = set()
         self._has_text: dict[str, bool | None] = {}  # None=detecting
         self._ocr_checks: dict[str, QCheckBox] = {}
+        self._ocr_bulk_choice: bool | None = None
         self._import_checks: dict[str, QCheckBox] = {}
         self._lower_priority_more_important = self._load_priority_direction()
         self._priority_spins: dict[str, QDoubleSpinBox] = {}
@@ -149,9 +161,20 @@ class AddPdfDialog(QDialog):
         left_layout.addLayout(btn_row)
 
         self._search_edit = QLineEdit()
-        self._search_edit.setPlaceholderText(_t("imports_filter_pdfs"))
+        self._search_edit.setPlaceholderText(_t("imports_filter_pdf_djvu"))
         self._search_edit.textChanged.connect(self._apply_table_filter)
         left_layout.addWidget(self._search_edit)
+
+        ocr_row = QHBoxLayout()
+        ocr_row.addWidget(QLabel(_t("imports_table_ocr")))
+        self._ocr_all_btn = QPushButton(_t("imports_ocr_all_possible"))
+        self._ocr_all_btn.clicked.connect(lambda: self._set_all_ocr_checks(True))
+        self._ocr_none_btn = QPushButton(_t("imports_ocr_none"))
+        self._ocr_none_btn.clicked.connect(lambda: self._set_all_ocr_checks(False))
+        ocr_row.addWidget(self._ocr_all_btn)
+        ocr_row.addWidget(self._ocr_none_btn)
+        ocr_row.addStretch()
+        left_layout.addLayout(ocr_row)
 
         self._folder_progress = QProgressBar()
         self._folder_progress.setVisible(False)
@@ -230,6 +253,7 @@ class AddPdfDialog(QDialog):
         right_layout.addWidget(preview_header)
 
         self._preview_lbl = QLabel(_t("imports_preview_select_file"))
+        self._preview_lbl.setWordWrap(True)
         self._preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_lbl.setStyleSheet(
             "background: #1e1e1e; border: 1px solid #444; border-radius: 4px; color: #888;"
@@ -290,17 +314,18 @@ class AddPdfDialog(QDialog):
 
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
-            self, _t("imports_select_pdf_files"), self._last_dir(), _t("imports_pdf_file_filter")
+            self, _t("imports_select_pdf_djvu_files"), self._last_dir(), _t("imports_pdf_djvu_file_filter")
         )
         self._add_paths([p for p in paths if p])
 
     def _add_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
-            self, _t("imports_select_pdf_folder"), self._last_dir()
+            self, _t("imports_select_pdf_djvu_folder"), self._last_dir()
         )
         if not folder:
             return
-        paths = sorted(str(p) for p in Path(folder).glob("*.pdf"))
+        paths = sorted(str(p) for p in Path(folder).iterdir()
+                       if p.is_file() and p.suffix.casefold() in {".pdf", ".djvu", ".djv"})
         self._start_folder_import(paths)
 
     def _add_paths(self, paths: list[str]) -> None:
@@ -312,7 +337,7 @@ class AddPdfDialog(QDialog):
         unique_paths = [path for path in paths if path not in self._tag_edits]
         if not unique_paths:
             self._folder_status_lbl.setVisible(True)
-            self._folder_status_lbl.setText(_t("imports_pdf_folder_none"))
+            self._folder_status_lbl.setText(_t("imports_pdf_djvu_folder_none"))
             self._finish_folder_import()
             return
 
@@ -359,7 +384,7 @@ class AddPdfDialog(QDialog):
         if completed_total > 0:
             self._folder_status_lbl.setVisible(True)
             self._folder_status_lbl.setText(
-                _t("imports_pdf_folder_loaded", count=completed_total)
+                _t("imports_pdf_djvu_folder_loaded", count=completed_total)
             )
         self._add_files_btn.setEnabled(True)
         self._add_folder_btn.setEnabled(True)
@@ -374,7 +399,7 @@ class AddPdfDialog(QDialog):
         # Column 0: import checkbox
         import_check = QCheckBox(_t("imports_add"))
         import_check.setChecked(True if state is None else bool(state.get("import_enabled", True)))
-        import_check.setToolTip(_t("imports_pdf_checked_hint"))
+        import_check.setToolTip(_t("imports_pdf_djvu_checked_hint"))
         import_check.setStyleSheet("font-size: 11px; font-weight: 600;")
         self._table.setCellWidget(row_idx, 0, self._wrap_cell_widget(import_check))
         self._import_checks[path] = import_check
@@ -413,7 +438,7 @@ class AddPdfDialog(QDialog):
 
         # Start background tasks
         self._ensure_preview(path)
-        if self._has_text[path] is None:
+        if self._has_text[path] is None and not _djvu_manager.is_djvu(path):
             self._check_text_bg(path)
 
         if len(self._pdf_paths) == 1:
@@ -457,7 +482,7 @@ class AddPdfDialog(QDialog):
                     from backend.deps import has_tesseract, tesseract_instructions
                 if has_tesseract():
                     cb = QCheckBox(_t("imports_use_ocr"))
-                    cb.setChecked(True)
+                    cb.setChecked(self._ocr_checked_by_default(True))
                     cb.setToolTip(_t("imports_ocr_tooltip"))
                     cb.setStyleSheet("font-size: 10px;")
                     self._table.setCellWidget(row, 4, self._wrap_cell_widget(cb))
@@ -516,7 +541,7 @@ class AddPdfDialog(QDialog):
                 self._table.setCurrentCell(replacement_row, 1)
             else:
                 self._preview_lbl.setPixmap(QPixmap())
-                self._preview_lbl.setText(_t("imports_pdf_no_matches"))
+                self._preview_lbl.setText(_t("imports_pdf_djvu_no_matches"))
                 self._preview_name.clear()
         self._on_selection_changed()
 
@@ -607,7 +632,7 @@ class AddPdfDialog(QDialog):
         else:
             self._table.clearSelection()
             self._preview_lbl.setPixmap(QPixmap())
-            self._preview_lbl.setText(_t("imports_pdf_no_matches"))
+            self._preview_lbl.setText(_t("imports_pdf_djvu_no_matches"))
             self._preview_name.clear()
         self._on_selection_changed()
 
@@ -678,6 +703,17 @@ class AddPdfDialog(QDialog):
         if changed:
             self._error_lbl.setVisible(False)
 
+    def _set_all_ocr_checks(self, checked: bool) -> None:
+        """Apply a bulk OCR choice to all current and subsequently detected rows."""
+        self._ocr_bulk_choice = bool(checked)
+        for checkbox in self._ocr_checks.values():
+            checkbox.setChecked(bool(checked))
+
+    def _ocr_checked_by_default(self, default: bool) -> bool:
+        if self._ocr_bulk_choice is None:
+            return bool(default)
+        return self._ocr_bulk_choice
+
     def _checked_paths(self) -> list[str]:
         checked_paths: list[str] = []
         for path in self._pdf_paths:
@@ -703,6 +739,8 @@ class AddPdfDialog(QDialog):
         )
 
     def _ensure_preview(self, path: str) -> None:
+        if _djvu_manager.is_djvu(path):
+            return
         if path in self._preview_cache or path in self._preview_inflight:
             return
         self._preview_inflight.add(path)
@@ -748,6 +786,10 @@ class AddPdfDialog(QDialog):
 
     def _show_preview(self, path: str) -> None:
         self._preview_name.setText(Path(path).name)
+        if _djvu_manager.is_djvu(path):
+            self._preview_lbl.setPixmap(QPixmap())
+            self._preview_lbl.setText(_t("imports_djvu_preview"))
+            return
         if path in self._preview_cache:
             self._apply_preview_pixmap(self._preview_cache[path])
         else:
@@ -759,18 +801,29 @@ class AddPdfDialog(QDialog):
 
     def _start_add(self) -> None:
         if not self._pdf_paths:
-            self._show_error(_t("imports_pdf_choose_file"))
+            self._show_error(_t("imports_pdf_djvu_choose_file"))
             return
         checked_paths = self._checked_paths()
         if not checked_paths:
-            self._show_error(_t("imports_choose_checked_pdf"))
+            self._show_error(_t("imports_pdf_djvu_choose_checked"))
             return
         if not self._title_from_filename.isChecked() and len(checked_paths) > 1:
-            self._show_error(_t("imports_multiple_pdf_title"))
+            self._show_error(_t("imports_pdf_djvu_multiple_title"))
             return
         if not self._title_from_filename.isChecked() and not self._title_edit.text().strip():
             self._show_error(_t("imports_enter_title"))
             return
+        if any(_djvu_manager.is_djvu(path) for path in checked_paths):
+            try:
+                from ..backend import deps
+            except ImportError:
+                from backend import deps
+            if len(deps.djvu_tools()) != 2:
+                self._show_error(_t("backend_djvu_dependency", instructions=deps.djvulibre_instructions()))
+                return
+            if not deps.has_pymupdf():
+                self._show_error(_t("backend_djvu_pymupdf", instructions=deps.pymupdf_instructions()))
+                return
         self._error_lbl.setVisible(False)
 
         global_tags = self._global_tag_edit.tags()
@@ -796,6 +849,12 @@ class AddPdfDialog(QDialog):
         self._cancel_btn.setEnabled(False)
         self._add_files_btn.setEnabled(False)
         self._add_folder_btn.setEnabled(False)
+        self._select_all_btn.setEnabled(False)
+        self._deselect_all_btn.setEnabled(False)
+        self._ocr_all_btn.setEnabled(False)
+        self._ocr_none_btn.setEnabled(False)
+        self._remove_selected_btn.setEnabled(False)
+        self._undo_remove_btn.setEnabled(False)
 
         self._process_files(entries, 0)
 
@@ -819,6 +878,9 @@ class AddPdfDialog(QDialog):
             return
 
         path, title, tags, do_ocr, priority = entries[idx]
+        if _djvu_manager.is_djvu(path):
+            self._process_djvu_file(entries, idx)
+            return
         deck = self._deck_combo.currentText()
         self._update_add_progress(idx, len(entries), path, phase=_t("imports_starting"))
 
@@ -906,6 +968,102 @@ class AddPdfDialog(QDialog):
 
         mw.taskman.run_in_background(ocr_task, ocr_done)
 
+    def _on_finished(self, _result) -> None:
+        self._closed = True
+        self._cancel_event.set()
+
+    def _request_current(self) -> bool:
+        return (not self._closed and _paths.get_active_profile() == self._profile
+                and mw.col is self._collection)
+
+    def _process_djvu_file(self, entries: list, idx: int) -> None:
+        """Convert off the collection queue, then serialize the bounded import."""
+        if not self._request_current():
+            return
+        path, title, tags, do_ocr, priority = entries[idx]
+        deck = self._deck_combo.currentText()
+        profile, collection = self._profile, self._collection
+        cancelled = self._cancel_event
+        addon_dir = self._addon_dir
+        self._cancel_btn.setEnabled(True)
+        self._set_row_status(path, _t("imports_djvu_converting"))
+        self._update_add_progress(idx, len(entries), path, phase=_t("imports_djvu_converting"))
+
+        def progress(current, total):
+            def update():
+                if self._request_current():
+                    self._set_row_status(path, _t("imports_djvu_progress", current=current, total=total))
+                    self._update_add_progress(idx, len(entries), path,
+                                              phase=_t("imports_djvu_progress", current=current, total=total))
+            mw.taskman.run_on_main(update)
+
+        def prepare():
+            return _djvu_manager.prepare_djvu_pdf(path, do_ocr=do_ocr, progress_cb=progress,
+                                                  cancel_cb=lambda: cancelled.is_set()
+                                                  or _paths.get_active_profile() != profile)
+
+        def failure(exc):
+            if self._request_current():
+                self.failed.append((path, str(exc)))
+                self._set_row_status(path, "✗", color="red")
+                self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_failed"))
+                self._process_files(entries, idx + 1)
+
+        def prepared_done(future):
+            try:
+                prepared = future.result()
+            except Exception as exc:
+                failure(exc)
+                return
+            if not self._request_current():
+                prepared.close()
+                return
+            try:
+                from aqt.operations import CollectionOp
+                try:
+                    from ..backend import pdf_manager
+                    from ..backend.priority_manager import set_priority
+                except ImportError:
+                    from backend import pdf_manager
+                    from backend.priority_manager import set_priority
+
+                def operation(col):
+                    if col is not collection or cancelled.is_set() or _paths.get_active_profile() != profile:
+                        raise _djvu_manager.DjvuImportError(_t("backend_djvu_cancelled"))
+                    undo_step = col.add_custom_undo_entry(_t("imports_djvu_undo"))
+                    cid = pdf_manager.add_pdf_card(addon_dir, col, prepared.path, title, deck_name=deck,
+                                                  tags=tags, profile=profile,
+                                                  precomputed_page_texts=prepared.page_texts)
+                    set_priority(addon_dir, profile, cid, priority)
+                    return SimpleNamespace(changes=col.merge_undo_entries(undo_step), card_id=cid)
+
+                def success(_result):
+                    prepared.close()
+                    if not self._request_current():
+                        return
+                    self.created.append((path, title))
+                    has_text = any(text.strip() for text in prepared.page_texts)
+                    self._set_row_status(path, "✓" if has_text else _t("imports_ocr_no_text"),
+                                         color="#4caf50" if has_text else "#ff9800")
+                    self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))
+                    self._process_files(entries, idx + 1)
+
+                def import_failure(exc):
+                    prepared.close()
+                    failure(exc)
+
+                self._set_row_status(path, _t("imports_adding"))
+                self._cancel_btn.setEnabled(False)
+                CollectionOp(self, operation).success(success).failure(import_failure).run_in_background()
+            except Exception as exc:
+                prepared.close()
+                failure(exc)
+
+        try:
+            mw.taskman.run_in_background(prepare, prepared_done, uses_collection=False)
+        except Exception as exc:
+            failure(exc)
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _on_title_mode_changed(self, checked: bool) -> None:
@@ -942,6 +1100,23 @@ class AddPdfDialog(QDialog):
         }
 
     def _set_ocr_cell_from_state(self, path: str, row: int, state: dict | None) -> None:
+        if _djvu_manager.is_djvu(path):
+            try:
+                from ..backend.deps import has_tesseract
+            except ImportError:
+                from backend.deps import has_tesseract
+            if has_tesseract():
+                checkbox = QCheckBox(_t("imports_use_ocr"))
+                default_checked = bool(state and state.get("ocr_enabled"))
+                checkbox.setChecked(self._ocr_checked_by_default(default_checked))
+                checkbox.setToolTip(_t("imports_djvu_ocr_tooltip"))
+                self._ocr_checks[path] = checkbox
+                self._table.setCellWidget(row, 4, self._wrap_cell_widget(checkbox))
+            else:
+                label = QLabel(_t("imports_djvu_preserve_text"))
+                label.setToolTip(_t("imports_djvu_ocr_tooltip"))
+                self._table.setCellWidget(row, 4, self._wrap_cell_widget(label))
+            return
         if not state or state.get("has_text") is None:
             lbl = QLabel(_t("imports_detecting"))
             lbl.setStyleSheet("font-size: 10px; color: gray;")
@@ -963,7 +1138,12 @@ class AddPdfDialog(QDialog):
             from backend.deps import has_tesseract, tesseract_instructions
         if has_tesseract():
             cb = QCheckBox(_t("imports_use_ocr"))
-            cb.setChecked(True if state.get("ocr_enabled") is None else bool(state.get("ocr_enabled")))
+            default_checked = (
+                True
+                if state.get("ocr_enabled") is None
+                else bool(state.get("ocr_enabled"))
+            )
+            cb.setChecked(self._ocr_checked_by_default(default_checked))
             cb.setToolTip(_t("imports_ocr_tooltip"))
             cb.setStyleSheet("font-size: 10px;")
             self._table.setCellWidget(row, 4, self._wrap_cell_widget(cb))
@@ -987,7 +1167,7 @@ class AddPdfDialog(QDialog):
         spin.setFixedWidth(94)
         important_end = "0" if self._lower_priority_more_important else "100"
         spin.setToolTip(
-            _t("imports_pdf_priority_hint", important_end=important_end)
+            _t("imports_pdf_djvu_priority_hint", important_end=important_end)
         )
         spin.valueChanged.connect(lambda _value, s=spin: self._apply_priority_spin_style(s))
         self._apply_priority_spin_style(spin)
@@ -1070,33 +1250,33 @@ class AddPdfDialog(QDialog):
         self._add_progress.setMaximum(max(1, self._add_total_entries))
         self._add_progress.setValue(0)
         self._add_progress.setFormat(
-            _t("imports_pdf_progress", completed=0, total=self._add_total_entries)
+            _t("imports_pdf_djvu_progress", completed=0, total=self._add_total_entries)
             if self._add_total_entries
             else _t("imports_pdf_adding")
         )
         self._add_progress.setVisible(self._add_total_entries > 0)
         self._add_status_lbl.setVisible(self._add_total_entries > 0)
         if self._add_total_entries > 0:
-            self._add_status_lbl.setText(_t("imports_pdf_progress", completed=0, total=self._add_total_entries))
+            self._add_status_lbl.setText(_t("imports_pdf_djvu_progress", completed=0, total=self._add_total_entries))
 
     def _update_add_progress(self, completed: int, total: int, path: str, *, phase: str) -> None:
         total = max(0, int(total))
         completed = max(0, min(int(completed), total))
         self._add_progress.setMaximum(max(1, total))
         self._add_progress.setValue(completed)
-        self._add_progress.setFormat(_t("imports_pdf_progress", completed=completed, total=total))
+        self._add_progress.setFormat(_t("imports_pdf_djvu_progress", completed=completed, total=total))
         self._add_status_lbl.setText(
-            _t("imports_pdf_progress_detail", completed=completed, total=total, phase=phase, filename=Path(path).name)
+            _t("imports_pdf_djvu_progress_detail", completed=completed, total=total, phase=phase, filename=Path(path).name)
         )
 
     def _finish_add_progress(self) -> None:
         if self._add_total_entries > 0:
             self._add_progress.setValue(self._add_total_entries)
             self._add_progress.setFormat(
-                _t("imports_pdf_progress", completed=self._add_total_entries, total=self._add_total_entries)
+                _t("imports_pdf_djvu_progress", completed=self._add_total_entries, total=self._add_total_entries)
             )
             self._add_status_lbl.setText(
-                _t("imports_pdf_progress", completed=self._add_total_entries, total=self._add_total_entries)
+                _t("imports_pdf_djvu_progress", completed=self._add_total_entries, total=self._add_total_entries)
             )
         self._add_progress.setVisible(False)
         self._add_status_lbl.setVisible(False)
@@ -1104,7 +1284,7 @@ class AddPdfDialog(QDialog):
 
     def _folder_status_text(self, completed: int) -> str:
         remaining = max(0, self._folder_total_paths - completed)
-        return _t("imports_pdf_folder_progress", found=self._folder_total_paths, remaining=remaining, completed=completed, total=self._folder_total_paths)
+        return _t("imports_pdf_djvu_folder_progress", found=self._folder_total_paths, remaining=remaining, completed=completed, total=self._folder_total_paths)
 
     def keyPressEvent(self, event) -> None:
         if event.key() == Qt.Key.Key_Delete:

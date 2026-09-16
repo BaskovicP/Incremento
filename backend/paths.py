@@ -131,6 +131,12 @@ def get_epub_extract_root(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "epub_extracted"
 
 
+def get_markdown_backup_path(addon_dir: str, profile: str, filename: str) -> Path:
+    if not filename or Path(filename).name != filename or '\\' in filename or not filename.endswith('.epub'):
+        raise ValueError('Invalid Markdown document filename.')
+    return get_user_files_dir(addon_dir, profile) / 'markdown_backups' / filename
+
+
 def get_videos_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "videos"
 
