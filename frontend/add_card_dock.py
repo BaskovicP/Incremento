@@ -114,6 +114,7 @@ _DEFAULT_EXTRACT_SOURCE_LINKS = {
 _DEFAULT_ADD_CARD_TOPIC_TAGS = ["topic"]
 _DEFAULT_ADD_CARD_ITEM_TAGS = ["item"]
 _ADD_CARD_PRIORITY_BUTTON_ID = "incremento-add-card-priority"
+_EXTRACT_BATCH_BUTTON_ID = "incremento-add-card-batch-qa"
 _TOPIC_TAG_BUTTON_ID = "incremento-add-card-topic-tag"
 _ITEM_TAG_BUTTON_ID = "incremento-add-card-item-tag"
 
@@ -2146,12 +2147,27 @@ def apply_extract_options_to_note(note, options: dict | None) -> dict | None:
                 exclude_tags=classification_excludes,
             )
         tags_changed = bool(copied_tags)
-    if bool(applied.get("mark_topic")) and add_topic_tags_to_note(note):
-        tags_changed = True
+    added_tags = copy_source_tags_to_note(note, applied.get("tags") or [])
+    tags_changed = tags_changed or bool(added_tags)
+    tags_before_classification = _note_tags(note)
+    if bool(applied.get("mark_topic")):
+        _activate_exclusive_note_tag_set(
+            note,
+            configured_add_card_topic_tags(),
+            configured_add_card_item_tags(),
+        )
+    elif bool(applied.get("mark_item")):
+        _activate_exclusive_note_tag_set(
+            note,
+            configured_add_card_item_tags(),
+            configured_add_card_topic_tags(),
+        )
+    tags_changed = tags_changed or _note_tags(note) != tags_before_classification
     if tags_changed:
         _save_note_tag_changes(note)
     changed = apply_priority_to_note_cards(note, float(applied.get("priority", 50.0)))
     applied["copied_source_tags"] = copied_tags
+    applied["added_tags"] = added_tags
     applied["priority_cards_changed"] = changed
     return applied
 
@@ -2268,8 +2284,8 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
     return apply_extract_context_to_note(note, options=options, context=context)
 
 
-def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
-    editor = _dock_editor()
+def snapshot_add_card_target_state(*, editor=None, min_visible_fields: int = 1) -> dict:
+    editor = editor if _is_live_add_mode_editor(editor) else _dock_editor()
     if editor is None or getattr(editor, "note", None) is None:
         raise RuntimeError(t("add_card_dock_unavailable"))
 
@@ -2308,8 +2324,10 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
 
     deck_name = ""
     deck_id = None
-    dock = get_add_card_dock()
-    dlg = getattr(dock, "_addcards_dialog", None) if dock is not None else None
+    dlg = getattr(editor, "parentWindow", None)
+    if dlg is None:
+        dock = get_add_card_dock()
+        dlg = getattr(dock, "_addcards_dialog", None) if dock is not None else None
     try:
         deck_id = getattr(getattr(dlg, "deck_chooser", None), "selected_deck_id", None)
     except Exception:
@@ -2321,12 +2339,11 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
         except Exception:
             deck_name = ""
 
-    options = pending_extract_options() or {}
-    context = pending_extract_context() or {}
-    if not options:
+    owns_dock_extract = editor is _dock_editor()
+    options = (pending_extract_options() or {}) if owns_dock_extract else {}
+    context = (pending_extract_context() or {}) if options else {}
+    if not options and owns_dock_extract and _has_recent_selection():
         source = str(_last_selection_source or "").strip()
-        if not source:
-            raise RuntimeError(t("add_card_no_extract_context"))
         source_card_id = _source_card_id_for_transfer(source)
         options = {
             "priority": _extract_priority_for_transfer(),
@@ -2345,9 +2362,23 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
                 "link_to_knowledge_tree": True,
                 "knowledge_tree_tooltip": t("add_card_knowledge_tree_lineage_tooltip"),
             }
+    if not options:
+        options = {
+            "priority": scratch_priority_for_editor(editor),
+            "mark_topic": _note_has_all_tags(note, configured_add_card_topic_tags()),
+            "mark_item": _note_has_all_tags(note, configured_add_card_item_tags()),
+        }
 
     batch_options = dict(options)
-    batch_options["mark_topic"] = False
+    mark_topic = bool(batch_options.get("mark_topic"))
+    mark_item = bool(batch_options.get("mark_item")) and not mark_topic
+    batch_options["mark_topic"] = mark_topic
+    batch_options["mark_item"] = mark_item
+    classification_tags = _classification_tag_set()
+    default_tags = [
+        tag for tag in _note_tags(note)
+        if tag.lower() not in classification_tags
+    ]
     return {
         "note_type_model": dict(note_type),
         "note_type_name": note_type_name,
@@ -2356,15 +2387,31 @@ def snapshot_add_card_target_state(*, min_visible_fields: int = 1) -> dict:
         "visible_fields": list(visible_fields),
         "extract_options": batch_options,
         "extract_context": dict(context),
+        "default_classification": "topic" if mark_topic else "item" if mark_item else "other",
+        "default_tags": default_tags,
     }
 
 
-def snapshot_extract_batch_state() -> dict:
-    state = snapshot_add_card_target_state(min_visible_fields=2)
+def snapshot_extract_batch_state(*, editor=None) -> dict:
+    state = snapshot_add_card_target_state(editor=editor, min_visible_fields=2)
     visible_fields = list(state.get("visible_fields") or [])
     state["question_field"] = visible_fields[0]
     state["answer_field"] = visible_fields[1]
     return state
+
+
+def batch_extract_options_for_row(row: dict, base_options: dict | None = None) -> dict:
+    options = dict(base_options or {})
+    source = dict(row or {})
+    if "priority" in source:
+        options["priority"] = _clamp_priority(source.get("priority"))
+    classification = str(source.get("classification") or "").strip().lower()
+    if classification in {"topic", "item", "other"}:
+        options["mark_topic"] = classification == "topic"
+        options["mark_item"] = classification == "item"
+    if "tags" in source:
+        options["tags"] = _normalize_tag_list(source.get("tags") or [])
+    return options
 
 
 def create_extract_batch_notes(
@@ -2393,12 +2440,10 @@ def create_extract_batch_notes(
     else:
         deck_id = deck["id"]
 
-    summary: dict[str, object] = {
-        "created": 0,
-        "skipped": 0,
-        "failed": 0,
-        "errors": [],
-    }
+    created_count = 0
+    skipped_count = 0
+    failed_count = 0
+    errors: list[str] = []
     base_options = dict(extract_options or {})
     base_context = dict(extract_context or {})
 
@@ -2406,7 +2451,7 @@ def create_extract_batch_notes(
         question = str((row or {}).get("question") or "").strip()
         answer = str((row or {}).get("answer") or "").strip()
         if not question or not answer:
-            summary["skipped"] = int(summary["skipped"]) + 1
+            skipped_count += 1
             continue
         try:
             note = mw.col.new_note(model)
@@ -2416,7 +2461,8 @@ def create_extract_batch_notes(
             added = mw.col.add_note(note, deck_id)
             if not added:
                 raise RuntimeError(t("add_card_note_rejected"))
-            applied_options = apply_extract_options_to_note(note, dict(base_options)) or dict(base_options)
+            row_options = batch_extract_options_for_row(row, base_options)
+            applied_options = apply_extract_options_to_note(note, row_options) or row_options
             apply_extract_context_to_note(
                 note,
                 options=applied_options,
@@ -2425,14 +2471,17 @@ def create_extract_batch_notes(
             if str((applied_options or {}).get("source") or "").strip():
                 mark_reviewer_extract_note_added(applied_options)
             _notify_video_extract_note_added(note, applied_options)
-            summary["created"] = int(summary["created"]) + 1
+            created_count += 1
         except Exception as exc:
-            summary["failed"] = int(summary["failed"]) + 1
-            errors = list(summary["errors"])
+            failed_count += 1
             errors.append(f"Row {index}: {exc}")
-            summary["errors"] = errors
 
-    return summary
+    return {
+        "created": created_count,
+        "skipped": skipped_count,
+        "failed": failed_count,
+        "errors": errors,
+    }
 
 
 def mark_reviewer_extract_note_added(options: dict | None) -> None:
@@ -2474,7 +2523,7 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
     if str((options or {}).get("source") or "").strip() != "video":
         return
     try:
-        source_card_id = int((options or {}).get("source_card_id"))
+        source_card_id = int(str((options or {}).get("source_card_id")))
     except Exception:
         return
     created_card_ids = _card_ids_for_note(note)
@@ -2930,7 +2979,7 @@ def _apply_pending_extract_tags_to_editor(
 
     options = pending_extract_options() or {}
     classification_excludes = _classification_tag_set()
-    source_tags = []
+    source_tags: list[str] = []
     if configured_extract_copy_source_tags():
         source_tags = options.get("source_tags") or []
         if not source_tags:
@@ -3136,6 +3185,15 @@ def _on_add_card_priority_button(editor) -> None:
         tooltip(t("add_card_priority_open_failed"))
 
 
+def _on_extract_batch_button(editor) -> None:
+    if not _is_live_add_mode_editor(editor):
+        return
+    try:
+        editor.web.eval("pycmd('incremento_open_extract_batch');")
+    except Exception:
+        tooltip(t("add_card_batch_open_failed"))
+
+
 def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
     if getattr(editor, "addMode", False):
         buttons.append(
@@ -3146,6 +3204,17 @@ def _add_add_card_tag_toolbar_buttons(buttons, editor) -> None:
                 tip=t("add_card_priority_button_tooltip"),
                 label="P",
                 id=_ADD_CARD_PRIORITY_BUTTON_ID,
+                disables=False,
+            )
+        )
+        buttons.append(
+            editor.addButton(
+                None,
+                "incrementoOpenBatchQA",
+                _on_extract_batch_button,
+                tip=t("add_card_batch_qa"),
+                label="Q/A",
+                id=_EXTRACT_BATCH_BUTTON_ID,
                 disables=False,
             )
         )

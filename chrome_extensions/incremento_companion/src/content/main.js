@@ -7,14 +7,16 @@ import {
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
 import {
+  MAX_BROWSER_CAPTURE_HTML_CHARS,
   MAX_BROWSER_CAPTURE_IMAGE_BYTES,
   MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
+  MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
   MAX_BROWSER_CAPTURE_SNAPSHOTS,
   normalizeBrowserCaptureSelectedText,
-  validateBrowserCaptureContext,
   validateBrowserCapturePayload,
   validateBrowserCaptureScreenshotDataUrl,
 } from "../shared/browserCaptureModel.js";
+import { readPageContextFromTab } from "../shared/pageContext.js";
 import {
   applyTagSuggestion,
   getTagSuggestions,
@@ -24,7 +26,7 @@ import { formatNumber, initializeLanguage, subscribeLanguage, t, tn, watchLangua
 import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v8";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v9";
   const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
@@ -481,21 +483,19 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         return true;
       }
       if (msg.type === "GET_PAGE_CONTEXT") {
-        const context = {
-          html: document.documentElement?.outerHTML || "",
-          selectionText: getTrackedSelectionText(),
-          title: document.title || "",
-          url: window.location.href || "",
-        };
-        const validation = validateBrowserCaptureContext(context);
-        if (!validation.ok) {
-          sendResponse?.({ ...validation, error: captureValidationMessage(validation) });
+        const context = readPageContextFromTab(
+          MAX_BROWSER_CAPTURE_HTML_CHARS,
+          MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+          {
+            includeHtml: msg.includeHtml !== false,
+            htmlScope: msg.htmlScope,
+          },
+        );
+        if (!context.ok) {
+          sendResponse?.({ ...context, error: captureValidationMessage(context) });
           return false;
         }
-        sendResponse?.({
-          ok: true,
-          ...context,
-        });
+        sendResponse?.(context);
         return false;
       }
       if (msg.type === "GET_CONTEXT_LINK_INFO") {

@@ -16,6 +16,40 @@ body {
   padding: 14px;
 }
 
+.outcome-flash {
+  position: fixed;
+  z-index: 2147483647;
+  inset: 0;
+  box-sizing: border-box;
+  border: 6px solid transparent;
+  pointer-events: none;
+  animation: outcome-border-confirmation 900ms ease-out both;
+}
+
+.outcome-flash.is-success {
+  border-color: #20a45b;
+  background: rgba(32, 164, 91, 0.08);
+  box-shadow: inset 0 0 28px rgba(32, 164, 91, 0.42);
+}
+
+.outcome-flash.is-error {
+  border-color: #cf3636;
+  background: rgba(207, 54, 54, 0.08);
+  box-shadow: inset 0 0 28px rgba(207, 54, 54, 0.42);
+}
+
+@keyframes outcome-border-confirmation {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outcome-flash {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .popup-navigation {
   display: flex;
   justify-content: flex-end;
@@ -278,14 +312,71 @@ h1 {
 }
 
 .status {
+  display: grid;
+  gap: 3px;
   min-height: 18px;
   margin-top: 10px;
 }
 
-.status.is-error {
+.status-main:not(:empty) {
+  font-weight: 700;
+  color: #473a24;
+}
+
+.status-detail {
+  display: block;
+  color: #5d5b57;
+}
+
+.error-diagnostics {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+  padding: 10px;
+  border: 1px solid rgba(171, 47, 47, 0.3);
+  border-radius: 10px;
+  background: rgba(171, 47, 47, 0.06);
+  color: #742626;
+}
+
+.error-diagnostics pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #4d2020;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.copy-error-btn {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(171, 47, 47, 0.35);
+  border-radius: 8px;
+  background: #fffaf7;
+  color: #742626;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.copy-error-notice {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status.is-error,
+.status.is-error .status-main,
+.status.is-error .status-detail {
   color: #ab2f2f;
 }
 
-.status.is-success {
+.status.is-success,
+.status.is-success .status-main,
+.status.is-success .status-detail {
   color: #216c3f;
 }

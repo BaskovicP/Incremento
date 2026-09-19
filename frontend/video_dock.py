@@ -23,11 +23,11 @@ from pathlib import Path
 
 from aqt import mw
 from aqt.utils import showInfo, tooltip
-from aqt.qt import (QDockWidget, QWidget, QVBoxLayout, QHBoxLayout,
-                    QPushButton, QLabel, QTimer, Qt, qconnect, QStackedLayout,
-                    QComboBox, QSlider, QApplication, QDialog, QLineEdit,
-                    QFileDialog,
-                    QSpinBox, QDialogButtonBox, QTextBrowser)
+from aqt.qt import (QAction, QApplication, QComboBox, QDialog, QDialogButtonBox,
+                    QDockWidget, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+                    QMenu, QPushButton, QSlider, QSpinBox, QStackedLayout,
+                    QTextBrowser, QTimer, QToolButton, QVBoxLayout, QWidget,
+                    Qt, qconnect)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices
@@ -285,63 +285,165 @@ def _build_video_dock():
 
     vbox.addWidget(media_host, 1)
 
-    ctrl = QWidget(container)
-    ctrl_layout = QHBoxLayout(ctrl)
-    ctrl_layout.setContentsMargins(8, 4, 8, 4)
+    toolbar = QWidget(container)
+    toolbar.setObjectName("incremento_video_toolbar")
+    toolbar_layout = QHBoxLayout(toolbar)
+    toolbar_layout.setContentsMargins(12, 8, 12, 8)
+    toolbar_layout.setSpacing(10)
 
-    ts_lbl = QLabel("\u25b6  0:00")
-    ts_lbl.setStyleSheet("font-family: monospace; font-size: 12px;")
-    ctrl_layout.addWidget(ts_lbl)
+    time_group = QWidget(toolbar)
+    time_group.setObjectName("incremento_video_time_group")
+    time_layout = QHBoxLayout(time_group)
+    time_layout.setContentsMargins(0, 0, 0, 0)
+    time_layout.setSpacing(0)
+    ts_lbl = QLabel("\u25b6  0:00", time_group)
+    ts_lbl.setObjectName("incremento_video_time_label")
+    time_layout.addWidget(ts_lbl)
+    resume_lbl = QLabel(_tr("reader_video_resume_at"))
+    resume_lbl.setObjectName("incremento_video_resume_label")
+    time_layout.addWidget(resume_lbl)
+    resume_input = QLineEdit(time_group)
+    resume_input.setObjectName("incremento_video_resume_input")
+    resume_input.setPlaceholderText(_tr("reader_video_time_placeholder"))
+    resume_input.setMinimumWidth(72)
+    resume_input.setMaximumWidth(105)
+    resume_input.setAccessibleName(_tr("reader_video_resume_at"))
+    time_layout.addWidget(resume_input)
+    resume_btn = QPushButton(_tr("reader_video_set_time"), time_group)
+    resume_btn.setObjectName("incremento_video_set_time_button")
+    time_layout.addWidget(resume_btn)
+    toolbar_layout.addWidget(time_group)
+
+    extract_btn = QPushButton(_tr("reader_video_add_card_here"), toolbar)
+    extract_btn.setObjectName("incremento_video_extract_button")
+    toolbar_layout.addWidget(extract_btn)
+
+    bookmark_group = QWidget(toolbar)
+    bookmark_group.setObjectName("incremento_video_bookmark_group")
+    bookmark_layout = QHBoxLayout(bookmark_group)
+    bookmark_layout.setContentsMargins(0, 0, 0, 0)
+    bookmark_layout.setSpacing(0)
+    bookmark_btn = QPushButton(_tr("reader_bookmark"), bookmark_group)
+    bookmark_btn.setObjectName("incremento_video_bookmark_button")
+    bookmarks_btn = QPushButton("0", bookmark_group)
+    bookmarks_btn.setObjectName("incremento_video_bookmark_count_button")
+    bookmarks_btn.setAccessibleName(_video_bookmark_count_label(0))
+    bookmarks_btn.setToolTip(_video_bookmark_count_label(0))
+    bookmark_layout.addWidget(bookmark_btn)
+    bookmark_layout.addWidget(bookmarks_btn)
+    toolbar_layout.addWidget(bookmark_group)
+    toolbar_layout.addStretch(1)
+
+    overflow_btn = QToolButton(toolbar)
+    overflow_btn.setObjectName("incremento_video_overflow_button")
+    overflow_btn.setText("\u2022\u2022\u2022")
+    overflow_menu = QMenu(overflow_btn)
+    overflow_menu.setObjectName("incremento_video_overflow_menu")
+    overflow_menu.setMinimumWidth(250)
+    back_action = QAction(_tr("reader_back"), overflow_menu)
+    search_action = QAction(_tr("reader_search"), overflow_menu)
+    browser_action = QAction(_tr("reader_open_in_browser"), overflow_menu)
+    download_action = QAction(_tr("reader_video_download_local"), overflow_menu)
+    captions_action = QAction(_tr("reader_video_captions"), overflow_menu)
+    review_all_action = QAction(_tr("reader_review_all"), overflow_menu)
+    search_action.setEnabled(False)
+    browser_action.setEnabled(False)
+    download_action.setEnabled(False)
+    captions_action.setEnabled(False)
+    review_all_action.setEnabled(False)
+    overflow_menu.addAction(back_action)
+    overflow_menu.addAction(search_action)
+    overflow_menu.addAction(browser_action)
+    overflow_menu.addAction(download_action)
+    overflow_menu.addAction(captions_action)
+    overflow_menu.addSeparator()
+    overflow_menu.addAction(review_all_action)
+    overflow_btn.setMenu(overflow_menu)
+    overflow_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    toolbar_layout.addWidget(overflow_btn)
+
+    toolbar.setStyleSheet(
+        "QWidget#incremento_video_toolbar {"
+        " background: palette(window); border-top: 1px solid palette(midlight);"
+        "}"
+        "QWidget#incremento_video_time_group, QWidget#incremento_video_bookmark_group {"
+        " background: palette(base); border: 1px solid palette(midlight); border-radius: 9px;"
+        "}"
+        "QLabel#incremento_video_time_label {"
+        " border: none; border-right: 1px solid palette(midlight); padding: 7px 10px;"
+        " font-family: monospace; font-size: 12px; font-weight: 600;"
+        "}"
+        "QLabel#incremento_video_resume_label {"
+        " border: none; padding: 0 0 0 10px; color: palette(placeholder-text);"
+        "}"
+        "QLineEdit#incremento_video_resume_input {"
+        " border: none; background: transparent; padding: 7px 5px;"
+        " selection-background-color: palette(highlight);"
+        "}"
+        "QPushButton#incremento_video_set_time_button {"
+        " border: none; border-left: 1px solid palette(midlight); border-radius: 0;"
+        " background: transparent; color: palette(highlight); padding: 7px 10px;"
+        " font-weight: 600;"
+        "}"
+        "QPushButton#incremento_video_set_time_button:hover {"
+        " background: palette(alternate-base);"
+        "}"
+        "QPushButton#incremento_video_extract_button {"
+        " border: 1px solid palette(highlight); border-radius: 9px;"
+        " background: palette(highlight); color: palette(highlighted-text);"
+        " padding: 7px 15px; font-weight: 650;"
+        "}"
+        "QPushButton#incremento_video_extract_button:hover {"
+        " border-color: palette(text);"
+        "}"
+        "QPushButton#incremento_video_bookmark_button,"
+        " QPushButton#incremento_video_bookmark_count_button {"
+        " border: none; background: transparent; padding: 7px 11px;"
+        "}"
+        "QPushButton#incremento_video_bookmark_button {"
+        " border-right: 1px solid palette(midlight); border-radius: 0; font-weight: 600;"
+        "}"
+        "QPushButton#incremento_video_bookmark_count_button {"
+        " min-width: 16px; padding-left: 8px; padding-right: 8px; border-radius: 0;"
+        " color: palette(placeholder-text);"
+        "}"
+        "QPushButton#incremento_video_bookmark_button:hover,"
+        " QPushButton#incremento_video_bookmark_count_button:hover {"
+        " background: palette(alternate-base);"
+        "}"
+        "QToolButton#incremento_video_overflow_button {"
+        " border: 1px solid palette(midlight); border-radius: 9px; background: palette(base);"
+        " min-width: 36px; padding: 7px 9px; font-size: 15px; font-weight: 700;"
+        "}"
+        "QToolButton#incremento_video_overflow_button:hover {"
+        " background: palette(alternate-base);"
+        "}"
+        "QToolButton#incremento_video_overflow_button::menu-indicator {"
+        " image: none; width: 0px;"
+        "}"
+        "QMenu#incremento_video_overflow_menu {"
+        " background: palette(window); color: palette(text); border: 1px solid palette(midlight);"
+        " padding: 7px;"
+        "}"
+        "QMenu#incremento_video_overflow_menu::item {"
+        " border: 1px solid palette(midlight); border-radius: 7px; padding: 9px 14px;"
+        " margin: 2px;"
+        "}"
+        "QMenu#incremento_video_overflow_menu::item:selected {"
+        " background: palette(highlight); color: palette(highlighted-text);"
+        "}"
+        "QMenu#incremento_video_overflow_menu::item:disabled {"
+        " color: palette(placeholder-text); }"
+        "QMenu#incremento_video_overflow_menu::separator {"
+        " height: 1px; background: palette(midlight); margin: 7px 6px;"
+        "}"
+    )
+    vbox.addWidget(toolbar)
 
     seek_slider = QSlider(Qt.Orientation.Horizontal)
     seek_slider.setRange(0, 0)
     seek_slider.setEnabled(False)
-    seek_slider.setMinimumWidth(200)
-    ctrl_layout.addWidget(seek_slider, 1)
-
-    reader_back_btn = QPushButton(_tr("reader_back"))
-    reader_back_btn.setToolTip(_tr("reader_video_jump_back_ten"))
-    ctrl_layout.addWidget(reader_back_btn)
-    reader_search_btn = QPushButton(_tr("reader_search"))
-    ctrl_layout.addWidget(reader_search_btn)
-
-    add_btn = QPushButton(_tr("reader_video_add_card_here"))
-    ctrl_layout.addWidget(add_btn)
-    bookmark_btn = QPushButton(_tr("reader_bookmark"))
-    ctrl_layout.addWidget(bookmark_btn)
-    bookmarks_btn = QPushButton(_video_bookmark_count_label(0))
-    ctrl_layout.addWidget(bookmarks_btn)
-    browser_btn = QPushButton(_tr("reader_open_in_browser"))
-    browser_btn.setEnabled(False)
-    ctrl_layout.addWidget(browser_btn)
-    download_btn = QPushButton(_tr("reader_video_download_local"))
-    download_btn.setEnabled(False)
-    ctrl_layout.addWidget(download_btn)
-    captions_btn = QPushButton(_tr("reader_video_captions"))
-    captions_btn.setEnabled(False)
-    ctrl_layout.addWidget(captions_btn)
-    vbox.addWidget(ctrl)
-
-    manual_ctrl = QWidget(container)
-    manual_layout = QHBoxLayout(manual_ctrl)
-    manual_layout.setContentsMargins(8, 0, 8, 4)
-    manual_layout.setSpacing(4)
-    resume_lbl = QLabel(_tr("reader_video_resume_at"))
-    resume_input = QLineEdit()
-    resume_input.setPlaceholderText(_tr("reader_video_time_placeholder"))
-    resume_input.setMaximumWidth(150)
-    resume_btn = QPushButton(_tr("reader_video_set_time"))
-    review_all_btn = QPushButton(_tr("reader_review_all"))
-    review_all_btn.setToolTip(
-        _tr("reader_video_review_all_hint")
-    )
-    review_all_btn.setEnabled(False)
-    manual_layout.addWidget(resume_lbl)
-    manual_layout.addWidget(resume_input, 1)
-    manual_layout.addWidget(resume_btn)
-    manual_layout.addWidget(review_all_btn)
-    manual_layout.addStretch()
-    vbox.addWidget(manual_ctrl)
+    seek_slider.setMinimumWidth(140)
 
     local_ctrl = QWidget(container)
     local_layout = QHBoxLayout(local_ctrl)
@@ -362,6 +464,7 @@ def _build_video_dock():
     local_layout.addWidget(back_btn)
     local_layout.addWidget(play_btn)
     local_layout.addWidget(fwd_btn)
+    local_layout.addWidget(seek_slider, 1)
     local_layout.addWidget(QLabel(_tr("reader_video_speed")))
     local_layout.addWidget(rate_combo)
     local_layout.addWidget(vol_lbl)
@@ -373,13 +476,25 @@ def _build_video_dock():
     configure_reader_shell_buttons(
         "video",
         {
-            "back": reader_back_btn,
-            "search": reader_search_btn,
-            "extract": add_btn,
+            "back": back_action,
+            "search": search_action,
+            "extract": extract_btn,
             "bookmark": bookmark_btn,
-            "review_all": review_all_btn,
+            "review_all": review_all_action,
+            "more": overflow_btn,
         },
     )
+    back_action.setText(f"\u2190  {back_action.text()}")
+    search_action.setText(f"\u2315  {search_action.text()}")
+    browser_action.setText(f"\u2197  {browser_action.text()}")
+    download_action.setText(f"\u21e9  {download_action.text()}")
+    captions_action.setText(f"CC  {captions_action.text()}")
+    review_all_action.setText(f"\u2637  {review_all_action.text()}")
+    extract_btn.setText(f"\u2702  {extract_btn.text()}")
+    bookmark_btn.setText(f"\u2606  {bookmark_btn.text()}")
+    overflow_btn.setText("\u2022\u2022\u2022")
+    back_action.setToolTip(_tr("reader_video_jump_back_ten"))
+    review_all_action.setToolTip(_tr("reader_video_review_all_hint"))
     ts_lbl.setAccessibleName(_tr("reader_video_status_accessible"))
 
     caption_ctrl = QWidget(container)
@@ -427,34 +542,37 @@ def _build_video_dock():
     dock._local_fwd_btn = fwd_btn
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
-    dock._browser_btn = browser_btn
+    dock._browser_btn = browser_action
     dock._bookmark_btn = bookmark_btn
     dock._bookmarks_btn = bookmarks_btn
     dock._bookmarks_panel = bookmarks_panel
-    dock._download_btn = download_btn
-    dock._captions_btn = captions_btn
+    dock._download_btn = download_action
+    dock._captions_btn = captions_action
     dock._resume_input = resume_input
     dock._resume_btn = resume_btn
-    dock._review_all_btn = review_all_btn
-    dock._reader_back_btn = reader_back_btn
-    dock._reader_search_btn = reader_search_btn
+    dock._review_all_btn = review_all_action
+    dock._reader_back_btn = back_action
+    dock._overflow_btn = overflow_btn
+    dock._overflow_menu = overflow_menu
     dock._caption_ctrl = caption_ctrl
     dock._target_cc_btn = target_cc_btn
     dock._reference_cc_btn = reference_cc_btn
     dock._caption_status = caption_status
-    qconnect(add_btn.clicked, _video_add_card_at_point)
+    qconnect(extract_btn.clicked, _video_add_card_at_point)
     qconnect(
-        reader_back_btn.clicked,
-        lambda: _seek_to_seconds(max(0.0, float(_last_known_position or 0.0) - 10.0)),
+        back_action.triggered,
+        lambda _checked=False: _seek_to_seconds(
+            max(0.0, float(_last_known_position or 0.0) - 10.0)
+        ),
     )
     qconnect(bookmark_btn.clicked, _add_current_video_bookmark)
     qconnect(bookmarks_btn.clicked, _toggle_video_bookmarks_panel)
-    qconnect(browser_btn.clicked, _open_video_in_browser)
-    qconnect(download_btn.clicked, download_current_video_locally)
-    qconnect(captions_btn.clicked, configure_current_video_captions)
+    qconnect(browser_action.triggered, lambda _checked=False: _open_video_in_browser())
+    qconnect(download_action.triggered, lambda _checked=False: download_current_video_locally())
+    qconnect(captions_action.triggered, lambda _checked=False: configure_current_video_captions())
     qconnect(resume_btn.clicked, _on_manual_time_submit)
     qconnect(resume_input.returnPressed, _on_manual_time_submit)
-    qconnect(review_all_btn.clicked, _start_all_video_review)
+    qconnect(review_all_action.triggered, lambda _checked=False: _start_all_video_review())
     qconnect(seek_slider.sliderPressed, _on_seek_slider_pressed)
     qconnect(seek_slider.sliderReleased, _on_seek_slider_released)
     qconnect(seek_slider.valueChanged, _on_seek_slider_value_changed)
@@ -666,7 +784,12 @@ def _set_download_button_enabled(enabled: bool, *, has_local_copy: bool = False)
         return
     try:
         btn.setEnabled(bool(enabled))
-        btn.setText(_tr("reader_video_redownload_local") if has_local_copy else _tr("reader_video_download_local"))
+        label = (
+            _tr("reader_video_redownload_local")
+            if has_local_copy
+            else _tr("reader_video_download_local")
+        )
+        btn.setText(f"\u21e9  {label}")
     except Exception:
         pass
 
@@ -945,7 +1068,10 @@ def _refresh_video_bookmarks_panel() -> None:
         return
     bookmarks = _video_bookmarks()
     try:
-        _video_dock._bookmarks_btn.setText(_video_bookmark_count_label(len(bookmarks)))
+        count_label = _video_bookmark_count_label(len(bookmarks))
+        _video_dock._bookmarks_btn.setText(str(len(bookmarks)))
+        _video_dock._bookmarks_btn.setAccessibleName(count_label)
+        _video_dock._bookmarks_btn.setToolTip(count_label)
     except Exception:
         pass
     panel = getattr(_video_dock, "_bookmarks_panel", None)

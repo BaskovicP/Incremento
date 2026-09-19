@@ -63,14 +63,47 @@ def knowledge_tree_link_state(parent_in_tree: bool) -> dict[str, object]:
 
 def parse_batch_qa_text(raw_text: str) -> list[dict[str, object]]:
     normalized = str(raw_text or "").replace("\r\n", "\n").replace("\r", "\n")
-    blocks = []
+    lines = normalized.split("\n")
+    has_labels = any(
+        line.lstrip().startswith(("Q:", "A:"))
+        for line in lines
+        if line.strip()
+    )
+    if not has_labels:
+        values = [line.strip() for line in lines if line.strip()]
+        rows: list[dict[str, object]] = []
+        for index in range(0, len(values), 2):
+            question = values[index]
+            if index + 1 >= len(values):
+                rows.append(
+                    _invalid_batch_qa_row(
+                        question,
+                        "",
+                        t("backend_extract_missing_answer_line"),
+                    )
+                )
+                continue
+            rows.append(
+                {
+                    "question": question,
+                    "answer": values[index + 1],
+                    "valid": True,
+                    "error": "",
+                }
+            )
+        return rows
+
+    blocks: list[list[str]] = []
     current: list[str] = []
-    for line in normalized.split("\n"):
+    for line in lines:
         if not line.strip():
             if current:
                 blocks.append(current)
                 current = []
             continue
+        if line.lstrip().startswith("Q:") and current:
+            blocks.append(current)
+            current = []
         current.append(line)
     if current:
         blocks.append(current)

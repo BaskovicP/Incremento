@@ -47,6 +47,67 @@ def test_epub_video_and_web_apply_the_shared_pdf_reader_shell_contract():
         assert "configure_reader_shell_buttons(" in source, filename
 
 
+def test_video_reader_uses_a_compact_primary_bar_and_ordered_overflow_menu():
+    source = (ROOT / "frontend" / "video_dock.py").read_text(encoding="utf-8")
+    build_start = source.index("def _build_video_dock()")
+    build_end = source.index("\ndef _local_video_html(", build_start)
+    build_source = source[build_start:build_end]
+
+    assert 'toolbar.setObjectName("incremento_video_toolbar")' in build_source
+    assert 'time_group.setObjectName("incremento_video_time_group")' in build_source
+    assert 'extract_btn.setObjectName("incremento_video_extract_button")' in build_source
+    assert 'bookmark_group.setObjectName("incremento_video_bookmark_group")' in build_source
+    assert 'overflow_btn.setObjectName("incremento_video_overflow_button")' in build_source
+    assert "QToolButton.ToolButtonPopupMode.InstantPopup" in build_source
+
+    assert build_source.index("toolbar_layout.addWidget(time_group)") < build_source.index(
+        "toolbar_layout.addWidget(extract_btn)"
+    )
+    assert build_source.index("toolbar_layout.addWidget(extract_btn)") < build_source.index(
+        "toolbar_layout.addWidget(bookmark_group)"
+    )
+    assert build_source.index("toolbar_layout.addWidget(bookmark_group)") < build_source.index(
+        "toolbar_layout.addWidget(overflow_btn)"
+    )
+
+    overflow_actions = (
+        "back_action",
+        "search_action",
+        "browser_action",
+        "download_action",
+        "captions_action",
+        "review_all_action",
+    )
+    positions = [
+        build_source.index(f"overflow_menu.addAction({action})")
+        for action in overflow_actions
+    ]
+    assert positions == sorted(positions)
+    assert "overflow_menu.addSeparator()" in build_source
+
+    for legacy_direct_control in (
+        "ctrl_layout.addWidget(reader_back_btn)",
+        "ctrl_layout.addWidget(reader_search_btn)",
+        "ctrl_layout.addWidget(browser_btn)",
+        "ctrl_layout.addWidget(download_btn)",
+        "ctrl_layout.addWidget(captions_btn)",
+        "manual_layout.addWidget(review_all_btn)",
+    ):
+        assert legacy_direct_control not in build_source
+
+
+def test_video_toolbar_uses_readable_night_mode_palette_roles():
+    source = (ROOT / "frontend" / "video_dock.py").read_text(encoding="utf-8")
+    build_start = source.index("def _build_video_dock()")
+    build_end = source.index("\ndef _local_video_html(", build_start)
+    build_source = source[build_start:build_end]
+
+    assert build_source.count("color: palette(placeholder-text);") >= 3
+    assert '"QMenu#incremento_video_overflow_menu::item:disabled {"' in build_source
+    assert "border: 1px solid palette(midlight)" in build_source
+    assert "color: palette(mid);" not in build_source
+
+
 def test_epub_reader_uses_pdf_style_bottom_customizable_controls():
     source = (ROOT / "frontend" / "epub_dock.py").read_text(encoding="utf-8")
     build_start = source.index("def _build_epub_dock()")

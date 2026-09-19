@@ -1197,6 +1197,32 @@ def test_consume_pending_extract_options_combines_source_and_topic_tags(monkeypa
     assert saved == [["existing", "Source", "topic", "branch"]]
 
 
+def test_apply_extract_options_adds_custom_tags_and_exclusive_item_classification(monkeypatch):
+    note = _FakeNote(["existing", "topic"], note_id=11)
+    saved = []
+
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: False)
+    monkeypatch.setattr(dock, "configured_add_card_topic_tags", lambda config=None: ["topic"])
+    monkeypatch.setattr(dock, "configured_add_card_item_tags", lambda config=None: ["item"])
+    monkeypatch.setattr(dock, "_save_note_tag_changes", lambda current_note: saved.append(list(current_note.tags)))
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda current_note, priority: 1)
+
+    result = dock.apply_extract_options_to_note(
+        note,
+        {
+            "priority": 22,
+            "mark_topic": False,
+            "mark_item": True,
+            "tags": ["custom", "Existing"],
+        },
+    )
+
+    assert note.tags == ["existing", "custom", "item"]
+    assert saved == [["existing", "custom", "item"]]
+    assert result["added_tags"] == ["custom"]
+    assert result["priority_cards_changed"] == 1
+
+
 def test_set_pending_extract_options_snapshots_source_tags(monkeypatch):
     source_note = _FakeNote(["Topic", "Source", "source"], note_id=22)
 
@@ -2177,6 +2203,41 @@ def test_snapshot_add_card_target_state_allows_one_visible_field(monkeypatch):
     assert snapshot["note_type_model"]["flds"] == [{"name": "Front"}, {"name": "Incremento_Parent"}]
 
 
+def test_snapshot_extract_batch_state_uses_originating_native_add_editor(monkeypatch):
+    note = _FakeNote(["custom", "topic"], field_names=["Front", "Back"])
+    editor = _FakeEditor(note=note, add_mode=True)
+    editor.parentWindow = types.SimpleNamespace(
+        deck_chooser=types.SimpleNamespace(selected_deck_id=42),
+    )
+
+    monkeypatch.setattr(dock, "_add_card_dock", None)
+    monkeypatch.setattr(dock, "_pending_extract_options", {"priority": 7, "source": "pdf"})
+    monkeypatch.setattr(dock, "_pending_extract_context", {"parent_card_id": 99})
+    monkeypatch.setattr(dock, "scratch_priority_for_editor", lambda current: 64.5)
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                decks=types.SimpleNamespace(get=lambda deck_id: {"id": deck_id, "name": "Native deck"})
+            )
+        ),
+    )
+
+    snapshot = dock.snapshot_extract_batch_state(editor=editor)
+
+    assert snapshot["deck_id"] == 42
+    assert snapshot["deck_name"] == "Native deck"
+    assert snapshot["extract_options"] == {
+        "priority": 64.5,
+        "mark_topic": True,
+        "mark_item": False,
+    }
+    assert snapshot["extract_context"] == {}
+    assert snapshot["default_classification"] == "topic"
+    assert snapshot["default_tags"] == ["custom"]
+
+
 def test_create_extract_batch_notes_uses_selected_field_mapping_and_explicit_state(monkeypatch):
     model = {
         "name": "Basic",
@@ -2219,8 +2280,20 @@ def test_create_extract_batch_notes_uses_selected_field_mapping_and_explicit_sta
         question_field="Back",
         answer_field="Extra",
         rows=[
-            {"question": "Q1", "answer": "A1"},
-            {"question": "Q2", "answer": "A2"},
+            {
+                "question": "Q1",
+                "answer": "A1",
+                "priority": 9.5,
+                "classification": "topic",
+                "tags": ["alpha"],
+            },
+            {
+                "question": "Q2",
+                "answer": "A2",
+                "priority": 81,
+                "classification": "item",
+                "tags": ["beta", "shared"],
+            },
         ],
         extract_options={
             "priority": 15.0,
@@ -2240,12 +2313,20 @@ def test_create_extract_batch_notes_uses_selected_field_mapping_and_explicit_sta
     assert collection.created_notes[1]["Back"] == "Q2"
     assert collection.created_notes[1]["Extra"] == "A2"
     assert priority_calls == [
-        ("Q1", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55}),
-        ("Q2", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55}),
+        ("Q1", {"priority": 9.5, "mark_topic": True, "source": "reviewer", "source_card_id": 55, "mark_item": False, "tags": ["alpha"]}),
+        ("Q2", {"priority": 81.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55, "mark_item": True, "tags": ["beta", "shared"]}),
     ]
     assert context_calls == [
-        ("Q1", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55, "priority_cards_changed": 1, "copied_source_tags": []}, {"parent_card_id": 55, "metadata": {"source_type": "Extract"}}),
-        ("Q2", {"priority": 15.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55, "priority_cards_changed": 1, "copied_source_tags": []}, {"parent_card_id": 55, "metadata": {"source_type": "Extract"}}),
+        (
+            "Q1",
+            {"priority": 9.5, "mark_topic": True, "source": "reviewer", "source_card_id": 55, "mark_item": False, "tags": ["alpha"], "priority_cards_changed": 1, "copied_source_tags": []},
+            {"parent_card_id": 55, "metadata": {"source_type": "Extract"}},
+        ),
+        (
+            "Q2",
+            {"priority": 81.0, "mark_topic": False, "source": "reviewer", "source_card_id": 55, "mark_item": True, "tags": ["beta", "shared"], "priority_cards_changed": 1, "copied_source_tags": []},
+            {"parent_card_id": 55, "metadata": {"source_type": "Extract"}},
+        ),
     ]
     assert len(mark_calls) == 2
     assert dock._pending_extract_options == {"priority": 77.0, "source": "pdf"}
@@ -2328,7 +2409,7 @@ def test_on_editor_did_update_tags_skips_extract_mode_sync_when_suspended(monkey
     assert sync_calls == []
 
 
-def test_toolbar_buttons_register_even_before_note_is_loaded():
+def test_edit_mode_toolbar_buttons_register_even_before_note_is_loaded():
     buttons = []
     editor = _FakeEditor(note=None, add_mode=False)
 
@@ -2337,14 +2418,24 @@ def test_toolbar_buttons_register_even_before_note_is_loaded():
     assert [button["label"] for button in buttons] == ["T", "I"]
 
 
-def test_add_mode_toolbar_includes_new_card_priority_button():
+def test_add_mode_toolbar_includes_priority_batch_qa_and_tag_buttons():
     buttons = []
     editor = _FakeEditor(note=None, add_mode=True)
 
     dock._add_add_card_tag_toolbar_buttons(buttons, editor)
 
-    assert [button["label"] for button in buttons] == ["P", "T", "I"]
+    assert [button["label"] for button in buttons] == ["P", "Q/A", "T", "I"]
     assert buttons[0]["id"] == dock._ADD_CARD_PRIORITY_BUTTON_ID
+    assert buttons[1]["id"] == dock._EXTRACT_BATCH_BUTTON_ID
+
+
+def test_batch_qa_toolbar_button_dispatches_from_originating_editor():
+    editor = _FakeEditor(_FakeNote(note_id=0), add_mode=True)
+    editor.web = _FakeWeb()
+
+    dock._on_extract_batch_button(editor)
+
+    assert editor.web.eval_calls == ["pycmd('incremento_open_extract_batch');"]
 
 
 def test_new_card_priority_button_stores_dialog_value_on_originating_note(monkeypatch):

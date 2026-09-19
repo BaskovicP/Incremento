@@ -201,6 +201,7 @@ def test_prepared_djvu_is_cleaned_and_never_imported_after_dialog_close_or_profi
         _cancel_event=types.SimpleNamespace(is_set=lambda: False), _addon_dir="/tmp/test",
         _deck_combo=types.SimpleNamespace(currentText=lambda: "Topics"),
         _cancel_btn=Mock(),
+        _djvu_compression=types.SimpleNamespace(choice_for=lambda path: "original"),
         _set_row_status=Mock(), _update_add_progress=Mock(), _show_error=Mock(),
     )
     dialog._request_current = lambda: pdf_dialog.AddPdfDialog._request_current(dialog)
@@ -213,3 +214,24 @@ def test_prepared_djvu_is_cleaned_and_never_imported_after_dialog_close_or_profi
     assert not dialog._request_current()
     taskman.run_in_background.call_args.args[1](types.SimpleNamespace(result=lambda: prepared))
     prepared.close.assert_called_once()
+
+
+def test_djvu_import_captures_selected_compression_before_background_work(monkeypatch):
+    tasks = types.SimpleNamespace(run_in_background=Mock())
+    monkeypatch.setattr(pdf_dialog, "mw", types.SimpleNamespace(taskman=tasks))
+    monkeypatch.setattr(pdf_dialog, "_paths", types.SimpleNamespace(get_active_profile=lambda: "Test"))
+    prepare = Mock()
+    monkeypatch.setattr(pdf_dialog._djvu_manager, "prepare_djvu_pdf", prepare)
+    choices = {"book.djvu": "black_white"}
+    dialog = types.SimpleNamespace(
+        _request_current=lambda: True, _profile="Test", _collection=object(),
+        _cancel_event=types.SimpleNamespace(is_set=lambda: False), _addon_dir="/tmp/test",
+        _deck_combo=types.SimpleNamespace(currentText=lambda: "Topics"), _cancel_btn=Mock(),
+        _set_row_status=Mock(), _update_add_progress=Mock(),
+        _djvu_compression=types.SimpleNamespace(choice_for=choices.get),
+    )
+    pdf_dialog.AddPdfDialog._process_djvu_file(dialog, [("book.djvu", "Book", [], False, 50)], 0)
+    choices["book.djvu"] = "original"
+    tasks.run_in_background.call_args.args[0]()
+    assert prepare.call_args.kwargs["compression"] == "black_white"
+    assert tasks.run_in_background.call_args.kwargs["uses_collection"] is False

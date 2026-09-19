@@ -8,6 +8,7 @@ import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
 import { createReaderLanguage } from './i18n.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
+import { selectionCleaned } from './pdfTextSelection.mjs';
 import {
   PDF_APPEARANCE_MODES,
   normalizePdfAppearanceMode,
@@ -94,33 +95,6 @@ const DEFAULT_CONTROL_VISIBILITY = {
   review: true,
 };
 
-function calculateTextWidth(text, font) {
-  const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement('canvas'));
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return text.length * 8;
-  ctx.font = font;
-  return ctx.measureText(text).width;
-}
-
-function nodesInSelection(range, textLayer) {
-  if (!range || !textLayer) return null;
-  const all = textLayer.children;
-  const nodes = [];
-  const start = range.startContainer?.nodeName === '#text'
-    ? range.startContainer.parentNode
-    : range.startContainer;
-  const end = range.endContainer?.nodeName === '#text'
-    ? range.endContainer.parentNode
-    : range.endContainer;
-  let inside = false;
-  for (let i = 0; i < all.length; i += 1) {
-    if (all[i] === start) inside = true;
-    if (inside) nodes.push(all[i]);
-    if (all[i] === end) break;
-  }
-  return nodes;
-}
-
 function isSelectionInside(sel, container) {
   if (!sel || !container || !sel.rangeCount) return false;
   for (let i = 0; i < sel.rangeCount; i += 1) {
@@ -187,100 +161,6 @@ function findBestVisibleTextSpan(textLayer) {
     }
   }
   return best || spans[0];
-}
-
-function selectionCleaned(sel, textLayer) {
-  try {
-    if (!sel || !sel.rangeCount) return '';
-    const range = sel.getRangeAt(0);
-    const nodes = nodesInSelection(range, textLayer);
-    const original = (sel.toString() || '').trim();
-    if (!nodes || nodes.length <= 1) return original;
-
-    let text = '';
-    let offsetLeftLast = 0;
-    let offsetTopLast = 0;
-    let textWidthLast = 0;
-    let insertedCount = 0;
-    let lastFontSize = null;
-    const lastYDiffs = [];
-
-    for (let i = 0; i < nodes.length; i += 1) {
-      const node = nodes[i];
-      const piece = (node.innerText || node.textContent || '');
-      if (!piece) continue;
-
-      if ((node.offsetLeft < offsetLeftLast || node.offsetTop > offsetTopLast + 5) && !piece.startsWith(' ')) {
-        const fontSize = Number((node.style.fontSize || '').replace('px', '')) || null;
-        if (lastFontSize && fontSize && Math.abs(fontSize - lastFontSize) > 4) {
-          text += '\n\n' + piece;
-          insertedCount += 2;
-        } else if (lastYDiffs.length > 0 && (node.offsetTop - offsetTopLast) > lastYDiffs[lastYDiffs.length - 1] + 2) {
-          text += '\n\n' + piece;
-          insertedCount += 2;
-        } else if (text.endsWith('-')) {
-          text = text.slice(0, -1) + piece;
-          insertedCount -= 1;
-        } else {
-          const joined = joinPdfTextParts(text, piece);
-          insertedCount += joined.length - text.length - piece.length;
-          text = joined;
-        }
-        if (offsetTopLast !== 0) {
-          lastYDiffs.push(node.offsetTop - offsetTopLast);
-        }
-        lastFontSize = fontSize;
-      } else if (offsetLeftLast + textWidthLast < node.offsetLeft - 2 && !piece.startsWith(' ')) {
-        const joined = joinPdfTextParts(text, piece);
-        insertedCount += joined.length - text.length - piece.length;
-        text = joined;
-      } else if (offsetLeftLast + textWidthLast > node.offsetLeft - 5) {
-        text = text.trimEnd() + piece;
-      } else {
-        text += piece;
-      }
-
-      offsetLeftLast = node.offsetLeft;
-      offsetTopLast = node.offsetTop;
-
-      const fontDescriptor = `${node.style.fontWeight || 'normal'} ${node.style.fontSize || '12px'} ${node.style.fontFamily || 'sans-serif'}`;
-      const scaleX = Number((node.style.transform || '').match(/[0-9]+(\.[0-9]+)?/)?.[0] || 1);
-      textWidthLast = calculateTextWidth(piece.trim(), fontDescriptor) * scaleX;
-    }
-
-    if (!text.length) return original;
-
-    text = text.replace(/( |\u00a0){2,}/g, ' ')
-      .replace(/ ([,.;:]) /g, '$1 ')
-      .replace(/ ([)\].!?:])/g, '$1')
-      .replace(/([\[(]) /g, '$1')
-      .trim();
-
-    if (!original) return text;
-    if (!original.startsWith(text.substring(0, Math.min(10, text.length)))) {
-      for (let y = 10; y > 0; y -= 1) {
-        const probe = original.substring(0, Math.min(y, original.length));
-        const idx = text.indexOf(probe);
-        if (idx > 0) {
-          text = text.substring(idx);
-          break;
-        }
-      }
-    }
-    if (text.length > original.length + insertedCount) {
-      for (let y = 10; y > 0; y -= 1) {
-        const probe = original.substring(Math.max(0, original.length - y));
-        const idx = text.lastIndexOf(probe);
-        if (idx >= 0) {
-          text = text.substring(0, idx + probe.length);
-          break;
-        }
-      }
-    }
-    return text.trim();
-  } catch {
-    return (sel?.toString() || '').trim();
-  }
 }
 
 function normalizeJumpText(value) {
@@ -1169,14 +1049,14 @@ export default function PdfViewer() {
         w: r.width  / scale,
         h: r.height / scale,
       })))
-      .filter(r => r.w > 2 && r.h > 2);
+      .filter(r => r.w > 0 && r.h > 0);
     if (!rects.length) return false;
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const hl = {
       id,
       page: pageRef.current,
       color: forcedColor || hlColorRef.current,
-      text: sel.toString(),
+      text: selectionCleaned(sel, tl),
       rects,
     };
     setHighlights(prev => [...prev, hl]);

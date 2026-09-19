@@ -31,15 +31,15 @@ export async function importIntoIncremento(payload) {
 
 export async function loadBrowserCaptureMeta() {
   const response = await bridgeFetch(BROWSER_CAPTURE_META_URL, {
-    method: "GET",
-  });
+    method: "POST",
+  }, { safeToRetry: true });
   return parseBridgeResponse(response);
 }
 
 export async function loadBrowserMediaRef(cardId) {
   const response = await bridgeFetch(`${BROWSER_MEDIA_REF_URL}?cardId=${encodeURIComponent(String(cardId || ""))}`, {
-    method: "GET",
-  });
+    method: "POST",
+  }, { safeToRetry: true });
   return parseBridgeResponse(response);
 }
 

@@ -148,6 +148,10 @@ msgstr "问答文本块无效。"
 msgid "backend_extract_missing_answer"
 msgstr "缺少 A: 行。"
 
+#. Incremento UI: alternating Q/A input has an unmatched question line
+msgid "backend_extract_missing_answer_line"
+msgstr "缺少答案行。"
+
 #. Incremento UI: extract missing question
 msgid "backend_extract_missing_question"
 msgstr "缺少 Q: 行。"

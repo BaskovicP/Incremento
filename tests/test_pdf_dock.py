@@ -128,6 +128,147 @@ def test_pdf_appearance_policy_uses_saved_mode_unless_force_is_enabled():
     ) == "original"
 
 
+def test_pdf_snapshot_remembered_field_resolves_by_note_type_and_name():
+    config = {
+        "pdf_snapshot_auto_field_enabled": True,
+        "pdf_snapshot_auto_fields": {"Basic": "Back"},
+    }
+
+    assert pdf_dock.resolve_pdf_snapshot_field_index(
+        "Basic", ["Front", "Back"], config
+    ) == 1
+    assert pdf_dock.resolve_pdf_snapshot_field_index(
+        "Cloze", ["Text", "Back"], config
+    ) == -1
+    assert pdf_dock.resolve_pdf_snapshot_field_index(
+        "Basic", ["Front", "Extra"], config
+    ) == -1
+    assert pdf_dock.resolve_pdf_snapshot_field_index(
+        "Basic",
+        ["Front", "Back"],
+        {**config, "pdf_snapshot_auto_field_enabled": False},
+    ) == -1
+    assert pdf_dock.resolve_pdf_snapshot_field_index(
+        "Basic",
+        ["Front", "Back"],
+        {**config, "pdf_snapshot_auto_field_enabled": "false"},
+    ) == -1
+
+
+def test_remember_pdf_snapshot_field_preserves_other_config(monkeypatch):
+    saved = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "_config",
+        lambda config=None: {
+            "future_setting": {"keep": True},
+            "pdf_snapshot_auto_fields": {"Cloze": "Text"},
+        },
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "save_addon_config",
+        lambda manager, package, config: saved.append(dict(config)),
+    )
+
+    pdf_dock._remember_pdf_snapshot_field("Basic", "Back")
+
+    assert saved == [
+        {
+            "future_setting": {"keep": True},
+            "pdf_snapshot_auto_field_enabled": True,
+            "pdf_snapshot_auto_fields": {"Cloze": "Text", "Basic": "Back"},
+        }
+    ]
+
+
+def test_pdf_snapshot_selection_skips_picker_for_valid_remembered_field(monkeypatch):
+    monkeypatch.setattr(
+        pdf_dock,
+        "resolve_pdf_snapshot_field_index",
+        lambda note_type_name, field_names, config=None: 1,
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "_show_pdf_snapshot_field_picker",
+        lambda *args, **kwargs: pytest.fail("remembered field should skip the picker"),
+        raising=False,
+    )
+
+    assert pdf_dock._select_pdf_snapshot_field(
+        "Basic", ["Front", "Back"], object()
+    ) == 1
+
+
+def test_pdf_snapshot_selection_remembers_checked_picker_choice(monkeypatch):
+    remembered = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "resolve_pdf_snapshot_field_index",
+        lambda note_type_name, field_names, config=None: -1,
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "_show_pdf_snapshot_field_picker",
+        lambda field_names, preview: (1, True),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "_remember_pdf_snapshot_field",
+        lambda note_type_name, field_name: remembered.append(
+            (note_type_name, field_name)
+        ),
+        raising=False,
+    )
+
+    assert pdf_dock._select_pdf_snapshot_field(
+        "Basic", ["Front", "Back"], object()
+    ) == 1
+    assert remembered == [("Basic", "Back")]
+
+
+def test_pdf_snapshot_field_context_keeps_note_type_and_field_names(monkeypatch):
+    note = types.SimpleNamespace(
+        note_type=lambda: {
+            "name": "Basic",
+            "flds": [{"name": "Front"}, {"name": "Back"}],
+        }
+    )
+    dock = types.SimpleNamespace(
+        widget=lambda: types.SimpleNamespace(
+            editor=types.SimpleNamespace(note=note),
+        )
+    )
+    monkeypatch.setattr(pdf_dock, "_cb_get_add_card_dock", lambda: dock)
+
+    assert pdf_dock._pdf_snapshot_add_card_fields() == (
+        "Basic",
+        ["Front", "Back"],
+    )
+
+
+def test_pdf_snapshot_picker_places_remember_checkbox_with_field_buttons(monkeypatch):
+    checkbox = MagicMock()
+    checkbox_type = MagicMock(return_value=checkbox)
+    dialog = MagicMock()
+    dialog.exec.return_value = False
+    monkeypatch.setattr(pdf_dock, "QDialog", MagicMock(return_value=dialog))
+    monkeypatch.setattr(pdf_dock, "QVBoxLayout", MagicMock())
+    monkeypatch.setattr(pdf_dock, "QLabel", MagicMock())
+    monkeypatch.setattr(pdf_dock, "QPushButton", MagicMock())
+    monkeypatch.setattr(pdf_dock, "QCheckBox", checkbox_type)
+    monkeypatch.setattr(pdf_dock, "t", lambda key, **values: key)
+
+    assert pdf_dock._show_pdf_snapshot_field_picker(
+        ["Front", "Back"], MagicMock()
+    ) == (-1, False)
+    checkbox_type.assert_called_once_with("reader_always_use_snapshot_field")
+    checkbox.setAccessibleName.assert_called_once_with(
+        "reader_always_use_snapshot_field"
+    )
+
+
 def test_current_pdf_appearance_re_resolves_after_settings_change(monkeypatch):
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")

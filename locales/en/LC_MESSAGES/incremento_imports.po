@@ -106,7 +106,7 @@ msgid "imports_select_pdf_djvu_folder"
 msgstr "Select folder with PDF or DjVu files"
 
 msgid "imports_djvu_preview"
-msgstr "DjVu preview is available in the bookshelf after import.\nExisting text is preserved during conversion to PDF."
+msgstr "Choose compression while sample pages are prepared automatically.\nExisting text is preserved during conversion to PDF."
 
 msgid "imports_djvu_converting"
 msgstr "Converting DjVu…"
@@ -1337,3 +1337,78 @@ msgstr "Source PDF"
 #. Reviewer menu and overlay
 msgid "reviewer_visibility_source_hint"
 msgstr "Source reference on this card opens the document."
+
+msgid "imports_djvu_compression"
+msgstr "PDF compression for this DjVu"
+
+msgid "imports_djvu_mode_original"
+msgstr "Archival lossless — very large"
+
+msgid "imports_djvu_mode_mrc"
+msgstr "Layered compact — black foreground"
+
+msgid "imports_djvu_mode_compact_color"
+msgstr "Compact colour"
+
+msgid "imports_djvu_mode_balanced"
+msgstr "Balanced colour"
+
+msgid "imports_djvu_mode_small"
+msgstr "Small grayscale"
+
+msgid "imports_djvu_mode_black_white"
+msgstr "Black and white"
+
+msgid "imports_djvu_description_original"
+msgstr "Preserve the original resolution and colours without lossy image compression. This can create an extremely large PDF."
+
+msgid "imports_djvu_description_mrc"
+msgstr "Sharp full-resolution black text and line art over a compressed colour background. Usually far smaller than a full-resolution colour layer; coloured foreground becomes black. Falls back to compact colour when layers are unavailable."
+
+msgid "imports_djvu_auto_choice"
+msgstr "Automatically selected {mode}, the smallest estimated general-purpose option. You can choose another mode."
+
+msgid "imports_djvu_description_compact_color"
+msgstr "Colour at 200 dpi with JPEG compression. Much smaller than archival lossless while retaining colour."
+
+msgid "imports_djvu_description_balanced"
+msgstr "Colour at 300 dpi with JPEG compression. Smaller files; fine details may soften."
+
+msgid "imports_djvu_description_small"
+msgstr "Grayscale at 200 dpi. Removes colour; small symbols may soften. Check the sample pages."
+
+msgid "imports_djvu_description_black_white"
+msgstr "Original-resolution black-and-white text layer. Colour and shading may disappear. Image-only pages may remain grayscale. Check diagrams before importing."
+
+msgid "imports_djvu_estimate"
+msgstr "Estimate sizes"
+
+msgid "imports_djvu_estimating"
+msgstr "Sampling pages for all six options…"
+
+msgid "imports_djvu_estimate_hint"
+msgstr "Estimating and previewing up to 8 pages automatically. Existing text stays selectable in every mode."
+
+msgid "imports_djvu_expansion_warning"
+msgstr "Warning: this choice is unusually large compared with the source DjVu. Choose a compact option unless you explicitly need archival lossless images."
+
+msgid "imports_djvu_sample_page"
+msgstr "Sample page"
+
+msgid "imports_djvu_preview_page"
+msgstr "Preview page {page}"
+
+msgid "imports_djvu_smaller"
+msgstr "About {percent}% smaller than the original-quality PDF."
+
+msgid "imports_djvu_larger"
+msgstr "About {percent}% larger than the original-quality PDF."
+
+msgid "imports_djvu_estimate_result"
+msgstr "Estimated PDF: {low:.1f}–{high:.1f} MiB\n{comparison}\nSource DjVu: {source:.1f} MiB · Sampled {sampled} of {total} pages.\nApproximate range, not a guarantee. Running new OCR may change the size."
+
+msgid "imports_djvu_estimate_failed"
+msgstr "Could not estimate: {reason}\nYou can retry or import with the selected compression."
+
+msgid "imports_djvu_estimate_changed"
+msgstr "The source file changed. Estimate again for the current file."

@@ -14,7 +14,8 @@ def test_djvu_preview_guidance_fits_in_all_bundled_languages():
         from aqt.qt import QApplication
         app = QApplication([])
         aqt.mw = SimpleNamespace(col=SimpleNamespace(tags=SimpleNamespace(all=lambda: [])),
-            addonManager=SimpleNamespace(getConfig=lambda *args: {}))
+            addonManager=SimpleNamespace(getConfig=lambda *args: {}),
+            taskman=SimpleNamespace(run_in_background=lambda *args, **kwargs: None))
         from backend import priority_manager
         sys.modules['priority_manager'] = priority_manager
         from backend.i18n import initialize_language

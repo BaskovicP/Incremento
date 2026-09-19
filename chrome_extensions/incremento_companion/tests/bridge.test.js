@@ -17,6 +17,7 @@ beforeEach(() => resetBridgeAuthorizationForTests());
 function withHandshake(handler) {
   return async (url, options) => {
     if (String(url).endsWith("/incremento/handshake")) {
+      assert.equal(options?.method, "POST");
       return {
         ok: true,
         status: 200,
@@ -126,6 +127,175 @@ test("bridge refreshes authorization once after the backend restarts", async () 
   }
 });
 
+test("concurrent stale requests share one authorization refresh", async () => {
+  const originalFetch = globalThis.fetch;
+  let handshakeCount = 0;
+  let staleRequestCount = 0;
+  let releaseStaleRequests;
+  const bothStaleRequestsArrived = new Promise((resolve) => {
+    releaseStaleRequests = resolve;
+  });
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith("/incremento/handshake")) {
+      handshakeCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, protocol: 2, token: `token-${handshakeCount}` }),
+      };
+    }
+
+    const token = options.headers.get("X-Incremento-Token");
+    if (token === "token-1" && staleRequestCount > 0) {
+      staleRequestCount += 1;
+      if (staleRequestCount === 3) {
+        releaseStaleRequests();
+      }
+      await bothStaleRequestsArrived;
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ ok: false, error: "Bridge authorization required." }),
+      };
+    }
+
+    if (token === "token-1") {
+      staleRequestCount = 1;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, kind: "webpage", title: "Example" }),
+    };
+  };
+
+  try {
+    await importIntoIncremento({ kind: "webpage" });
+    await Promise.all([
+      importIntoIncremento({ kind: "webpage" }),
+      importIntoIncremento({ kind: "webpage" }),
+    ]);
+
+    assert.equal(handshakeCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("metadata loading retries a temporarily busy bridge", async () => {
+  const originalFetch = globalThis.fetch;
+  let dataRequestCount = 0;
+
+  globalThis.fetch = withHandshake(async () => {
+    dataRequestCount += 1;
+    if (dataRequestCount === 1) {
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({ ok: false, error: "Bridge is busy.", error_code: "bridge_busy" }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, deckNames: ["Topics"], tagNames: ["stable"] }),
+    };
+  });
+
+  try {
+    const result = await loadBrowserCaptureMeta();
+    assert.deepEqual(result.tagNames, ["stable"]);
+    assert.equal(dataRequestCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("metadata loading retries a transient connection failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let dataRequestCount = 0;
+
+  globalThis.fetch = withHandshake(async () => {
+    dataRequestCount += 1;
+    if (dataRequestCount === 1) {
+      throw new TypeError("temporary connection failure");
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, deckNames: ["Topics"], tagNames: ["stable"] }),
+    };
+  });
+
+  try {
+    const result = await loadBrowserCaptureMeta();
+    assert.deepEqual(result.tagNames, ["stable"]);
+    assert.equal(dataRequestCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("metadata loading retries a transient handshake failure", async () => {
+  const originalFetch = globalThis.fetch;
+  let handshakeCount = 0;
+  let dataRequestCount = 0;
+
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/incremento/handshake")) {
+      handshakeCount += 1;
+      if (handshakeCount === 1) {
+        throw new TypeError("temporary handshake failure");
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, protocol: 2, token: "fresh-token" }),
+      };
+    }
+    dataRequestCount += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, deckNames: ["Topics"], tagNames: ["stable"] }),
+    };
+  };
+
+  try {
+    const result = await loadBrowserCaptureMeta();
+    assert.deepEqual(result.tagNames, ["stable"]);
+    assert.equal(handshakeCount, 2);
+    assert.equal(dataRequestCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an ambiguous POST connection failure is not retried", async () => {
+  const originalFetch = globalThis.fetch;
+  let dataRequestCount = 0;
+
+  globalThis.fetch = withHandshake(async () => {
+    dataRequestCount += 1;
+    throw new TypeError("connection dropped after send");
+  });
+
+  try {
+    await assert.rejects(
+      () => submitBrowserCapture({
+        url: "https://example.com",
+        noteTypeName: "Basic",
+        deckName: "Topics",
+      }),
+      /connection dropped after send/
+    );
+    assert.equal(dataRequestCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("formatBridgeError maps TypeError to the user-facing bridge message", () => {
   const message = formatBridgeError(new TypeError("network"), "Fallback");
   assert.equal(message, "Failed to reach Incremento in Anki. Keep Anki open and reload the addon.");
@@ -182,7 +352,8 @@ test("loadBrowserCaptureMeta loads browser capture metadata", async () => {
     const result = await loadBrowserCaptureMeta();
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "http://127.0.0.1:8766/incremento/browser-capture-meta");
-    assert.equal(calls[0].options.method, "GET");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.body, undefined);
     assert.equal(result.deckNames[0], "Default");
   } finally {
     globalThis.fetch = originalFetch;
@@ -232,7 +403,8 @@ test("loadBrowserMediaRef loads the saved browser media record for a card", asyn
     const result = await loadBrowserMediaRef(42);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "http://127.0.0.1:8766/incremento/browser-media-ref?cardId=42");
-    assert.equal(calls[0].options.method, "GET");
+    assert.equal(calls[0].options.method, "POST");
+    assert.equal(calls[0].options.body, undefined);
     assert.equal(result.timeText, "12:34");
   } finally {
     globalThis.fetch = originalFetch;

@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { isHttpUrl, isPdfUrl, isSupportedVideoUrl } from "../src/shared/url.js";
+import {
+  isHttpUrl,
+  isPdfUrl,
+  isSupportedVideoUrl,
+  resolveLinkedVideoCardId,
+} from "../src/shared/url.js";
 
 test("isHttpUrl accepts http and https URLs", () => {
   assert.equal(isHttpUrl("https://example.com"), true);
@@ -31,6 +36,48 @@ test("isSupportedVideoUrl rejects unsupported or malformed video URLs", () => {
   assert.equal(isSupportedVideoUrl("https://www.youtube.com/watch"), false);
   assert.equal(isSupportedVideoUrl("https://example.com/watch?v=abc123"), false);
   assert.equal(isSupportedVideoUrl("not-a-url"), false);
+});
+
+test("resolveLinkedVideoCardId keeps the badge linked after the URL marker is removed", () => {
+  assert.equal(
+    resolveLinkedVideoCardId(
+      "https://www.youtube.com/watch?v=abc123&t=42s",
+      {
+        cardId: 42,
+        sourceUrl: "https://youtu.be/abc123?t=42s",
+      },
+    ),
+    42,
+  );
+  assert.equal(
+    resolveLinkedVideoCardId(
+      "https://player.vimeo.com/video/123456789#t=42s",
+      {
+        cardId: 84,
+        sourceUrl: "https://vimeo.com/123456789",
+      },
+    ),
+    84,
+  );
+});
+
+test("resolveLinkedVideoCardId rejects stale or non-video tab links", () => {
+  const linked = {
+    cardId: 42,
+    sourceUrl: "https://www.youtube.com/watch?v=abc123",
+  };
+  assert.equal(
+    resolveLinkedVideoCardId("https://www.youtube.com/watch?v=different", linked),
+    0,
+  );
+  assert.equal(resolveLinkedVideoCardId("https://example.com/article", linked), 0);
+  assert.equal(
+    resolveLinkedVideoCardId("https://www.youtube.com/watch?v=abc123", {
+      cardId: 0,
+      sourceUrl: linked.sourceUrl,
+    }),
+    0,
+  );
 });
 
 test("isPdfUrl detects PDF paths and ignores non-PDF paths", () => {

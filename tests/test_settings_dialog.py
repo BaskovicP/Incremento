@@ -582,6 +582,45 @@ class TestIncrementoSettingsDialogPdfHighlightExtractField:
         assert high.pdf_highlight_extract_field == 20
 
 
+class TestIncrementoSettingsDialogPdfSnapshotAutoField:
+    def test_remembered_snapshot_field_defaults_disabled(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.pdf_snapshot_auto_field_enabled is False
+
+    def test_remembered_snapshot_field_can_be_disabled_from_settings(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_pdf_snapshot_auto_field_enabled=True,
+        )
+        assert dialog._pdf_snapshot_auto_field_enabled_cb.isChecked() is True
+
+        dialog._pdf_snapshot_auto_field_enabled_cb.setChecked(False)
+
+        assert dialog.pdf_snapshot_auto_field_enabled is False
+
+    def test_settings_entrypoint_loads_and_saves_snapshot_auto_field(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "openSettingsFunction"
+        )
+        function_source = ast.get_source_segment(source, function)
+
+        assert (
+            "current_pdf_snapshot_auto_field_enabled="
+            "_pdf_dock_mod.configured_pdf_snapshot_auto_field_enabled(cfg)"
+        ) in function_source
+        assert (
+            'cfg["pdf_snapshot_auto_field_enabled"] = '
+            "dlg.pdf_snapshot_auto_field_enabled"
+        ) in function_source
+
+
 class TestIncrementoSettingsDialogExtractCopySourceTags:
     def test_checkbox_reflects_incoming_value(self):
         dialog = IncrementoSettingsDialog(

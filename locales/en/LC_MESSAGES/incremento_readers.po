@@ -22,6 +22,10 @@ msgstr "{reader} reader: {action}"
 msgid "reader_add_card"
 msgstr "+ Add Card"
 
+#. PDF snapshot field picker: Always use the field I choose
+msgid "reader_always_use_snapshot_field"
+msgstr "Always use the field I choose"
+
 #. Reader display label: Annotate
 msgid "reader_annotate"
 msgstr "Annotate"

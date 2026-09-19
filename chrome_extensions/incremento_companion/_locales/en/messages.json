@@ -333,6 +333,45 @@
       }
     }
   },
+  "add_step_reading": {
+    "message": "Step 1 of 3 — Reading the current page"
+  },
+  "add_step_reading_detail": {
+    "message": "Checking the active tab, page title, and URL."
+  },
+  "add_step_preparing": {
+    "message": "Step 2 of 3 — Preparing the $KIND$ card",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "add_step_destination_detail": {
+    "message": "Destination: $DECK$. Tags: $COUNT$. Priority: $PRIORITY$.",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "priority": {
+        "content": "$3"
+      }
+    }
+  },
+  "add_step_sending": {
+    "message": "Step 3 of 3 — Sending the $KIND$ card to Incremento",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "add_step_sending_detail": {
+    "message": "Waiting for Incremento and Anki to create the card. Keep Anki open."
+  },
   "added_card": {
     "message": "Added $KIND$ card: $TITLE$",
     "placeholders": {
@@ -344,8 +383,69 @@
       }
     }
   },
+  "add_success_detail": {
+    "message": "Confirmed in $DECK$. Tags: $COUNT$. Priority: $PRIORITY$.",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "priority": {
+        "content": "$3"
+      }
+    }
+  },
+  "add_failed_detail": {
+    "message": "Stopped during: $STAGE$. The card was not confirmed as added.",
+    "placeholders": {
+      "stage": {
+        "content": "$1"
+      }
+    }
+  },
   "add_content_failed": {
     "message": "Failed to add content."
+  },
+  "error_details_title": {
+    "message": "Error details"
+  },
+  "error_report_title": {
+    "message": "Incremento Companion error"
+  },
+  "error_extension_version": {
+    "message": "Extension version"
+  },
+  "error_action": {
+    "message": "Action"
+  },
+  "error_stage": {
+    "message": "Stage"
+  },
+  "error_reason": {
+    "message": "Reason"
+  },
+  "error_code": {
+    "message": "Error code"
+  },
+  "error_content_scope": {
+    "message": "Content scope"
+  },
+  "error_actual_chars": {
+    "message": "Captured characters"
+  },
+  "error_max_chars": {
+    "message": "Maximum characters"
+  },
+  "copy_error_details": {
+    "message": "Copy error details"
+  },
+  "error_details_copied": {
+    "message": "Error details copied."
+  },
+  "error_details_copy_failed": {
+    "message": "Could not copy the error details. Select the text above and copy it manually."
   },
   "copying_video_time": {
     "message": "Copying last video time..."

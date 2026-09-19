@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 import re
+import tempfile
 from pathlib import Path
 from typing import Mapping
 
@@ -85,18 +86,50 @@ def _slot_path(directory: Path, profile: str, slot: int) -> Path:
     )
 
 
+def _owned_backup_paths(directory: Path, profile: str) -> list[Path]:
+    prefix = f"incremento_{sanitize_profile_name(profile)}_auto_backup_"
+    timestamp_pattern = re.compile(rf"{re.escape(prefix)}\d{{8}}T\d{{12}}Z\.zip\Z")
+    slot_pattern = re.compile(rf"{re.escape(prefix)}slot_(?:0[1-9]|1\d|20)\.zip\Z")
+    return [
+        path
+        for path in directory.iterdir()
+        if (timestamp_pattern.fullmatch(path.name) or slot_pattern.fullmatch(path.name))
+        and path.is_file()
+        and not path.is_symlink()
+    ]
+
+
 def next_backup_path(directory: Path, profile: str, keep: int) -> Path:
-    """Fill fixed slots, then select the oldest for atomic replacement."""
+    """Fill to the selected count, then reuse the oldest file at the same path."""
     limit = max(1, min(MAX_AUTOMATIC_BACKUP_VERSIONS, int(keep)))
-    occupied = []
+    owned = _owned_backup_paths(directory, profile)
+    if len(owned) >= limit:
+        return min(owned, key=lambda path: (path.stat().st_mtime_ns, path.name))
     for slot in range(1, limit + 1):
         path = _slot_path(directory, profile, slot)
         if path.is_symlink() or (path.exists() and not path.is_file()):
             raise ValueError("An automatic backup slot is not a regular file.")
         if not path.exists():
             return path
-        occupied.append(path)
-    return min(occupied, key=lambda path: (path.stat().st_mtime_ns, path.name))
+    raise RuntimeError("No automatic backup slot is available.")
+
+
+def backup_staging_directory(
+    destination: Path,
+    *,
+    automatic: bool,
+    system_temp: Path | None = None,
+) -> Path:
+    """Keep automatic work files outside a synced folder when atomically possible."""
+    if not automatic:
+        return destination
+    try:
+        candidate = Path(system_temp or tempfile.gettempdir()).resolve(strict=True)
+        if candidate.is_dir() and candidate.stat().st_dev == destination.stat().st_dev:
+            return candidate
+    except OSError:
+        pass
+    return destination
 
 
 def _backup_recency(path: Path, timestamp_pattern: re.Pattern[str]) -> tuple[int, int]:

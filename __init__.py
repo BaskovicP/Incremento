@@ -2384,7 +2384,9 @@ def _on_js_message(handled, message, context) -> tuple:
 
     if message == "incremento_open_extract_batch":
         try:
-            snapshot = _add_card_dock_mod.snapshot_extract_batch_state()
+            snapshot = _add_card_dock_mod.snapshot_extract_batch_state(
+                editor=_add_card_dock_mod._current_add_mode_editor(context),
+            )
         except Exception as exc:
             showInfo(str(exc))
             return (True, None)
@@ -4092,8 +4094,12 @@ def _start_full_backup(
         path = str(destination / os.path.basename(path))
         if Path(path).is_symlink():
             raise ValueError("The backup ZIP cannot replace a symbolic link.")
+        staging_directory = _backup_schedule.backup_staging_directory(
+            destination,
+            automatic=automatic_policy is not None,
+        )
         archive_fd, archive_tmp_path = tempfile.mkstemp(
-            prefix=".incremento-backup-", suffix=".zip", dir=str(destination),
+            prefix=".incremento-backup-", suffix=".zip", dir=str(staging_directory),
         )
     except (OSError, ValueError) as exc:
         if automatic_policy is None:
@@ -6401,6 +6407,7 @@ def openSettingsFunction() -> None:
         current_extract_copy_source_tags=_add_card_dock_mod.configured_extract_copy_source_tags(cfg),
         current_extract_highlight_when_extracting=_pdf_dock_mod.configured_highlight_when_extracting(cfg),
         current_pdf_highlight_extract_field=_pdf_dock_mod.configured_pdf_highlight_extract_field(cfg),
+        current_pdf_snapshot_auto_field_enabled=_pdf_dock_mod.configured_pdf_snapshot_auto_field_enabled(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
@@ -6468,6 +6475,7 @@ def openSettingsFunction() -> None:
     cfg["extract_copy_source_tags"] = dlg.extract_copy_source_tags
     cfg["highlight_when_extracting"] = dlg.extract_highlight_when_extracting
     cfg["pdf_highlight_extract_field"] = dlg.pdf_highlight_extract_field
+    cfg["pdf_snapshot_auto_field_enabled"] = dlg.pdf_snapshot_auto_field_enabled
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer

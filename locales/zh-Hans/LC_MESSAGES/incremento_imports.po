@@ -106,7 +106,7 @@ msgid "imports_select_pdf_djvu_folder"
 msgstr "选择包含 PDF 或 DjVu 文件的文件夹"
 
 msgid "imports_djvu_preview"
-msgstr "导入后可在书架中预览 DjVu。\n转换为 PDF 时将保留现有文本。"
+msgstr "选择压缩方式，示例页面会自动准备。\n转换为 PDF 时将保留现有文本。"
 
 msgid "imports_djvu_converting"
 msgstr "正在转换 DjVu…"
@@ -1331,3 +1331,78 @@ msgstr "来源 PDF"
 #. Reviewer menu and overlay
 msgid "reviewer_visibility_source_hint"
 msgstr "此卡片上的来源链接可打开文档。"
+
+msgid "imports_djvu_compression"
+msgstr "此 DjVu 的 PDF 压缩"
+
+msgid "imports_djvu_mode_original"
+msgstr "无损存档 — 文件很大"
+
+msgid "imports_djvu_mode_mrc"
+msgstr "分层紧凑 — 黑色前景"
+
+msgid "imports_djvu_mode_compact_color"
+msgstr "紧凑彩色"
+
+msgid "imports_djvu_mode_balanced"
+msgstr "均衡彩色"
+
+msgid "imports_djvu_mode_small"
+msgstr "小文件灰度"
+
+msgid "imports_djvu_mode_black_white"
+msgstr "黑白"
+
+msgid "imports_djvu_description_original"
+msgstr "保留原始分辨率和颜色，不使用有损图像压缩。可能生成极大的 PDF。"
+
+msgid "imports_djvu_description_mrc"
+msgstr "在压缩彩色背景上保留全分辨率的清晰黑色文字和线条。通常远小于全分辨率彩色前景；前景颜色会变为黑色。图层不可用时回退到紧凑彩色。"
+
+msgid "imports_djvu_auto_choice"
+msgstr "已自动选择 {mode}，这是预计最小的通用选项。您仍可选择其他模式。"
+
+msgid "imports_djvu_description_compact_color"
+msgstr "200 dpi 彩色 JPEG 压缩。保留颜色，同时比无损存档小得多。"
+
+msgid "imports_djvu_description_balanced"
+msgstr "300 dpi 彩色 JPEG 压缩。文件较小，精细细节可能变模糊。"
+
+msgid "imports_djvu_description_small"
+msgstr "200 dpi 灰度。移除颜色，小符号可能变模糊。请检查示例页面。"
+
+msgid "imports_djvu_description_black_white"
+msgstr "原始分辨率的黑白文字图像层。颜色和阴影可能消失。纯图像页面可能保留灰度。导入前请检查图表。"
+
+msgid "imports_djvu_estimate"
+msgstr "估算大小"
+
+msgid "imports_djvu_estimating"
+msgstr "正在为六个选项采样页面…"
+
+msgid "imports_djvu_estimate_hint"
+msgstr "自动估算并预览本书最多 8 页。所有模式均保留现有文本的可选择性。"
+
+msgid "imports_djvu_expansion_warning"
+msgstr "警告：此选项生成的文件与源 DjVu 相比异常大。除非明确需要无损存档图像，否则请选择紧凑选项。"
+
+msgid "imports_djvu_sample_page"
+msgstr "示例页面"
+
+msgid "imports_djvu_preview_page"
+msgstr "预览第 {page} 页"
+
+msgid "imports_djvu_smaller"
+msgstr "比原始质量 PDF 约小 {percent}%。"
+
+msgid "imports_djvu_larger"
+msgstr "比原始质量 PDF 约大 {percent}%。"
+
+msgid "imports_djvu_estimate_result"
+msgstr "预计 PDF：{low:.1f}–{high:.1f} MiB\n{comparison}\n源 DjVu：{source:.1f} MiB · 已采样 {total} 页中的 {sampled} 页。\n此范围仅供参考，不作保证。重新 OCR 可能改变大小。"
+
+msgid "imports_djvu_estimate_failed"
+msgstr "无法估算：{reason}\n您可以重试，或使用所选压缩方式导入。"
+
+msgid "imports_djvu_estimate_changed"
+msgstr "源文件已更改。请重新估算当前文件。"

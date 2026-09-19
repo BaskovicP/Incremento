@@ -86,17 +86,9 @@ export function usePdfRender() {
       const stream = pg.streamTextContent();
       const task = new lib.TextLayer({ textContentSource: stream, container: tl, viewport });
       tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
-      task.render().then(() => {
-        tl.querySelectorAll('span').forEach(span => {
-          if (!/\S/.test(span.textContent)) { span.remove(); return; }
-          const rect = span.getBoundingClientRect();
-          if (rect.width > 0 && rect.width < 3 && rect.height > 0) { span.remove(); return; }
-          const sx = parseFloat((span.style.transform || '').match(/scaleX\(([\d.e+-]+)\)/)?.[1]);
-          if (!isNaN(sx) && sx < 0.05) { span.remove(); return; }
-          const mx = parseFloat((span.style.transform || '').match(/matrix\(([\d.e+-]+)/)?.[1]);
-          if (!isNaN(mx) && mx < 0.05) { span.remove(); }
-        });
-      }).catch(() => {});
+      // Spaces and narrow/compressed glyphs are real PDF text. Removing them
+      // breaks native copying and drops punctuation/letters from OCR selections.
+      task.render().catch(() => {});
     } catch (_) {}
   }, []);
 

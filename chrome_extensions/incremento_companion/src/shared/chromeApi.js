@@ -20,6 +20,22 @@ function isReceivingEndError(error) {
   return /Receiving end does not exist/i.test(String(error?.message || error || ""));
 }
 
+function pageContextError(result) {
+  const error = new Error(String(result?.error || "Failed to inspect the current tab."));
+  const rawCode = String(result?.errorCode || "").trim().toLowerCase();
+  error.code = /^[a-z][a-z0-9_]{0,79}$/.test(rawCode) ? rawCode : "page_context_failed";
+  const rawDetails = result?.errorParams;
+  const count = Number(rawDetails?.count);
+  const actual = Number(rawDetails?.actual);
+  const scope = String(rawDetails?.scope || "").toLowerCase();
+  error.details = {
+    ...(Number.isSafeInteger(count) && count > 0 ? { count } : {}),
+    ...(Number.isSafeInteger(actual) && actual > 0 ? { actual } : {}),
+    ...(["main", "full"].includes(scope) ? { scope } : {}),
+  };
+  return error;
+}
+
 function sendMessageToMainFrame(tabId, message) {
   return new Promise((resolve, reject) => {
     try {
@@ -59,7 +75,11 @@ async function sendMessageToMainFrameWithRetry(tabId, message, attempts = 3) {
   throw lastError || new Error("Failed to inspect the current tab.");
 }
 
-export async function captureSnapshot(tabId) {
+export async function captureSnapshot(tabId, options = {}) {
+  const contextOptions = {
+    includeHtml: options?.includeHtml !== false,
+    htmlScope: String(options?.htmlScope || "full").toLowerCase() === "main" ? "main" : "full",
+  };
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -72,7 +92,7 @@ export async function captureSnapshot(tabId) {
   try {
     fromContentScript = await sendMessageToMainFrameWithRetry(
       tabId,
-      { type: "GET_PAGE_CONTEXT" },
+      { type: "GET_PAGE_CONTEXT", ...contextOptions },
       4
     );
   } catch (error) {
@@ -80,8 +100,8 @@ export async function captureSnapshot(tabId) {
       throw error;
     }
   }
-  if (fromContentScript?.error) {
-    throw new Error(String(fromContentScript.error));
+  if (fromContentScript?.ok === false || fromContentScript?.error) {
+    throw pageContextError(fromContentScript);
   }
   if (fromContentScript) {
     return fromContentScript;
@@ -91,14 +111,21 @@ export async function captureSnapshot(tabId) {
     results = await chrome.scripting.executeScript({
       target: { tabId },
       func: readPageContextFromTab,
-      args: [MAX_BROWSER_CAPTURE_HTML_CHARS, MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS],
+      args: [
+        MAX_BROWSER_CAPTURE_HTML_CHARS,
+        MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+        contextOptions,
+      ],
     });
   } catch (_err) {
     return null;
   }
   const result = results && results[0] ? results[0].result : null;
   if (result?.errorCode) {
-    throw new Error(t(result.errorCode, result.errorParams || {}));
+    throw pageContextError({
+      ...result,
+      error: t(result.errorCode, result.errorParams || {}),
+    });
   }
   if (result?.error) {
     throw new Error(String(result.error));

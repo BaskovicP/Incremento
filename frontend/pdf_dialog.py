@@ -48,7 +48,7 @@ try:
 except ImportError:
     from backend.i18n import t as _t
     from backend import paths as _paths
-    from backend import djvu_manager as _djvu_manager
+    from backend import djvu_manager as _djvu_manager  # type: ignore[no-redef]
 
 
 def _resolve_pdf_storage_abspath(
@@ -251,6 +251,11 @@ class AddPdfDialog(QDialog):
         preview_header = QLabel(_t("imports_preview"))
         preview_header.setStyleSheet("font-weight: bold;")
         right_layout.addWidget(preview_header)
+
+        from .djvu_compression_panel import DjvuCompressionPanel
+        self._djvu_compression = DjvuCompressionPanel(
+            mw.taskman, self._request_current, self._show_djvu_sample, self)
+        right_layout.addWidget(self._djvu_compression)
 
         self._preview_lbl = QLabel(_t("imports_preview_select_file"))
         self._preview_lbl.setWordWrap(True)
@@ -529,6 +534,7 @@ class AddPdfDialog(QDialog):
         if path in self._pdf_paths:
             self._pdf_paths.remove(path)
         if not self._pdf_paths:
+            self._djvu_compression.set_path(None)
             self._preview_lbl.setPixmap(QPixmap())
             self._preview_lbl.setText(_t("imports_preview_select_file"))
             self._preview_name.clear()
@@ -540,6 +546,7 @@ class AddPdfDialog(QDialog):
             if replacement_row >= 0:
                 self._table.setCurrentCell(replacement_row, 1)
             else:
+                self._djvu_compression.set_path(None)
                 self._preview_lbl.setPixmap(QPixmap())
                 self._preview_lbl.setText(_t("imports_pdf_djvu_no_matches"))
                 self._preview_name.clear()
@@ -596,6 +603,7 @@ class AddPdfDialog(QDialog):
 
     def _on_row_changed(self, row: int) -> None:
         if row < 0:
+            self._djvu_compression.set_path(None)
             return
         item = self._table.item(row, 1)
         if item:
@@ -631,6 +639,7 @@ class AddPdfDialog(QDialog):
             self._table.setCurrentCell(replacement_row, 1)
         else:
             self._table.clearSelection()
+            self._djvu_compression.set_path(None)
             self._preview_lbl.setPixmap(QPixmap())
             self._preview_lbl.setText(_t("imports_pdf_djvu_no_matches"))
             self._preview_name.clear()
@@ -786,7 +795,10 @@ class AddPdfDialog(QDialog):
 
     def _show_preview(self, path: str) -> None:
         self._preview_name.setText(Path(path).name)
+        self._djvu_compression.set_path(path if _djvu_manager.is_djvu(path) else None)
         if _djvu_manager.is_djvu(path):
+            if self._djvu_compression.result is not None:
+                return
             self._preview_lbl.setPixmap(QPixmap())
             self._preview_lbl.setText(_t("imports_djvu_preview"))
             return
@@ -796,6 +808,11 @@ class AddPdfDialog(QDialog):
             self._preview_lbl.setPixmap(QPixmap())
             self._preview_lbl.setText(_t("imports_loading"))
             self._ensure_preview(path)
+
+    def _show_djvu_sample(self, png: bytes) -> None:
+        pixmap = QPixmap()
+        if pixmap.loadFromData(png, "PNG"):
+            self._apply_preview_pixmap(pixmap)
 
     # ── Adding files ──────────────────────────────────────────────────────────
 
@@ -843,6 +860,8 @@ class AddPdfDialog(QDialog):
             entries.append((path, title, merged, do_ocr, priority))
 
         self._start_add_progress(len(entries))
+        self._djvu_compression.stop()
+        self._djvu_compression.setEnabled(False)
 
         # Lock the UI during adding
         self._ok_btn.setEnabled(False)
@@ -969,6 +988,7 @@ class AddPdfDialog(QDialog):
         mw.taskman.run_in_background(ocr_task, ocr_done)
 
     def _on_finished(self, _result) -> None:
+        self._djvu_compression.stop()
         self._closed = True
         self._cancel_event.set()
 
@@ -982,6 +1002,7 @@ class AddPdfDialog(QDialog):
             return
         path, title, tags, do_ocr, priority = entries[idx]
         deck = self._deck_combo.currentText()
+        compression = self._djvu_compression.choice_for(path)
         profile, collection = self._profile, self._collection
         cancelled = self._cancel_event
         addon_dir = self._addon_dir
@@ -998,7 +1019,7 @@ class AddPdfDialog(QDialog):
             mw.taskman.run_on_main(update)
 
         def prepare():
-            return _djvu_manager.prepare_djvu_pdf(path, do_ocr=do_ocr, progress_cb=progress,
+            return _djvu_manager.prepare_djvu_pdf(path, do_ocr=do_ocr, compression=compression, progress_cb=progress,
                                                   cancel_cb=lambda: cancelled.is_set()
                                                   or _paths.get_active_profile() != profile)
 

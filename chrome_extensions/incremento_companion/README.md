@@ -46,7 +46,9 @@ The popup provides five import actions:
 - **Add as Video** creates an Incremento Video card from the current YouTube or Vimeo URL. It is enabled only on supported video pages.
 - **Add as Webpage** creates a live Incremento Web card. If the page contains playing media, its detected position can be stored with the new card.
 - **Add Selection to Markdown** creates an Incremento Writing card from the text currently selected on the page.
-- **Add Page to Markdown** converts either the page's main content or the entire page to markdown, according to **Webpage markdown scope**.
+- **Add Page to Markdown** converts either the page's main content or the entire page to markdown, according to **Webpage markdown scope**. Main-content capture selects the largest semantic `main`/`article` region and removes scripts, styles, embedded frames, and hidden/navigation chrome before applying the 2,000,000-character safety limit. Metadata-only actions such as Video and Webpage do not serialize the page HTML.
+
+After an import button is clicked, the popup reports three visible stages: reading the current tab, preparing the destination card, and waiting for Incremento/Anki to create it. The destination summary includes the deck, tag count, and priority. Success is explicitly confirmed; failures identify the stage that stopped instead of disappearing silently. When the operation finishes, the full popup border appears once—green for confirmed creation or red for failure—stays steady briefly, then fades out once; the non-interactive effect respects reduced-motion preferences. Import failures also open a selectable diagnostic block with a **Copy error details** button. The copied report includes the extension version, action, stage, reason, stable error code, and relevant size/scope counters, but never page content, URLs, bridge tokens, or card data.
 
 When a browser tab was opened from an Incremento card, new content created from that tab retains the source-card relationship. A webpage created with **Add as Webpage** also becomes linked to the current tab so its URL and media progress can continue to synchronize.
 
@@ -168,7 +170,7 @@ Incremento Companion communicates with Anki only through local loopback addresse
 
 It does not upload captured page data to an Incremento cloud service or another third-party service. The extension stores its settings, linked-tab session state, and latest video time in browser extension storage.
 
-Port `8766` uses Incremento bridge protocol 2. The extension first performs a local handshake, Anki binds the exact Chrome/Brave extension origin, and every later request carries a short-lived token plus protocol header. The token is regenerated whenever the bridge restarts and is not written to extension storage. Request paths, origin, body size, and concurrent request count are bounded by the add-on.
+Port `8766` uses Incremento bridge protocol 2. The extension first performs a bodyless local POST handshake so Chrome/Brave reliably includes its real extension origin; Anki binds that exact origin, and every later request carries a short-lived token plus protocol header. Read-only metadata requests use the same bodyless POST transport and may retry safely, while ambiguous write failures are not repeated. The token is regenerated whenever the bridge restarts and is not written to extension storage. Request paths, origin, body size, and concurrent request count are bounded by the add-on.
 
 One extension origin is bound per Anki bridge run. If you alternate between separately installed Chrome and Brave copies, restart Anki before connecting the other browser. Ordinary browser tabs do not receive the bridge token; only the extension runtime does.
 
@@ -194,6 +196,8 @@ The bookmarks permission is used only by the bookmark importer, and clipboard pe
 
 The deck list comes from the Incremento bridge. If the popup or bookmark importer falls back to **Topics**, restore the Anki connection first and reopen the popup/importer.
 
+Multiple open tabs are supported. The popup loads Anki decks and tags independently from inspecting the current page, shares bridge reconnect work, and retries brief bridge contention. Its handshake and metadata reads preserve the extension identity even when Chromium omits identity headers from privileged GET requests. After updating an unpacked Companion build, reload the extension once from `chrome://extensions` or `brave://extensions`.
+
 ### Capture does nothing
 
 - Confirm the current tab is a normal HTTP(S) page.
@@ -210,6 +214,7 @@ Choose **Continue**, map **Snapshot field** to an actual note field, create the 
 
 - Open the video from Incremento when possible so the tab carries the exact card link.
 - Confirm AnkiConnect is enabled and reachable on port `8765`.
+- Multiple tracked tabs are queued through AnkiConnect instead of updating it in parallel.
 - Confirm the note is an **Incremento Video** note and its `YouTube_URL` contains the same video ID.
 - Pause the video or switch away from the tab to force a progress save.
 

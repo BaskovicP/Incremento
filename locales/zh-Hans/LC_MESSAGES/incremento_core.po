@@ -302,6 +302,9 @@ msgstr "摘录卡片中的父卡片"
 msgid "settings_pdf_highlight_card_target_field"
 msgstr "PDF 高亮卡片的目标字段："
 
+msgid "settings_pdf_snapshot_auto_field"
+msgstr "自动使用记住的 PDF 截图字段"
+
 msgid "settings_pdf_pages"
 msgstr "PDF 页面"
 

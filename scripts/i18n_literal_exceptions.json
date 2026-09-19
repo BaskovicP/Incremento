@@ -132,6 +132,60 @@
     "reason": "User-owned tag text with a fixed decorative symbol."
   },
   {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u2190  {back_action.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u2315  {search_action.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u2197  {browser_action.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u21e9  {download_action.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"CC  {captions_action.text()}\"",
+    "reason": "Stable captions abbreviation prefixed to an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u2637  {review_all_action.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u2702  {extract_btn.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u2606  {bookmark_btn.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
+    "text": "f\"\\u21e9  {label}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
     "file": "frontend/learn_dialog.py",
     "sink": "getSaveFileName",
     "text": "incremento_stats.json",

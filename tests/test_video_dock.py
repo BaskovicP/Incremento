@@ -380,6 +380,8 @@ def test_recent_video_extract_child_does_not_clear_source_video(monkeypatch):
 def test_refresh_video_bookmarks_panel_renders_comment_actions(monkeypatch):
     html_calls = []
     label_calls = []
+    accessible_calls = []
+    tooltip_calls = []
 
     class _FakePanel:
         def setHtml(self, html):
@@ -388,6 +390,12 @@ def test_refresh_video_bookmarks_panel_renders_comment_actions(monkeypatch):
     class _FakeButton:
         def setText(self, text):
             label_calls.append(text)
+
+        def setAccessibleName(self, text):
+            accessible_calls.append(text)
+
+        def setToolTip(self, text):
+            tooltip_calls.append(text)
 
     monkeypatch.setattr(
         video_dock,
@@ -405,7 +413,9 @@ def test_refresh_video_bookmarks_panel_renders_comment_actions(monkeypatch):
 
     video_dock._refresh_video_bookmarks_panel()
 
-    assert label_calls == ["Bookmarks 2"]
+    assert label_calls == ["2"]
+    assert accessible_calls == ["Bookmarks 2"]
+    assert tooltip_calls == ["Bookmarks 2"]
     assert "Add comment" in html_calls[0]
     assert "Edit comment" in html_calls[0]
     assert "Why this matters" in html_calls[0]

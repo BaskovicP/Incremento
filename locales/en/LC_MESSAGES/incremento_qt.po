@@ -897,7 +897,25 @@ msgid "extract_batch_target"
 msgstr "Target: <b>{note_type}</b> in deck <b>{deck}</b>"
 
 msgid "extract_batch_hint"
-msgstr "Paste one or more blocks separated by blank lines. Each block must start with <code>Q:</code> and contain a later <code>A:</code> line."
+msgstr "Paste alternating question and answer lines, or use Q:/A: blocks for multiline cards. Then preview and edit every card before creating it."
+
+msgid "extract_batch_apply_all"
+msgstr "Apply to all cards:"
+
+msgid "extract_batch_priority"
+msgstr "Priority"
+
+msgid "extract_batch_card_type"
+msgstr "Type"
+
+msgid "extract_batch_other"
+msgstr "Other"
+
+msgid "extract_batch_tags"
+msgstr "Tags"
+
+msgid "extract_batch_tags_hint"
+msgstr "Separate tags with spaces, commas, or semicolons"
 
 msgid "extract_batch_question_field"
 msgstr "Question field:"
@@ -906,7 +924,7 @@ msgid "extract_batch_answer_field"
 msgstr "Answer field:"
 
 msgid "extract_batch_parse_preview"
-msgstr "Parse / Preview"
+msgstr "Preview Cards"
 
 msgid "extract_batch_question"
 msgstr "Question"
@@ -918,7 +936,7 @@ msgid "extract_batch_delete_selected"
 msgstr "Delete Selected"
 
 msgid "extract_batch_create_all"
-msgstr "Create All"
+msgstr "Extract Cards"
 
 msgid "extract_batch_invalid_row"
 msgstr "Invalid row."
@@ -1840,6 +1858,8 @@ msgid "add_card_tree_child"
 msgstr "Tree child"
 msgid "add_card_batch_qa"
 msgstr "Batch Q/A…"
+msgid "add_card_batch_open_failed"
+msgstr "Could not open the batch Q/A dialog."
 msgid "add_card_selection"
 msgstr "SELECTION"
 msgid "add_card_card_priority"

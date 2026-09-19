@@ -5,6 +5,7 @@ import { normalizeHighlightColor } from '../src/highlightColors.mjs';
 import vm from 'node:vm';
 import { transformWithEsbuild } from 'vite';
 import { normalizePdfHighlightRects } from '../src/pdfHighlightRects.mjs';
+import { selectionCleaned } from '../src/pdfTextSelection.mjs';
 
 // Render the actual JSX component without PDF.js or a browser. The resulting
 // React elements retain both the painted geometry and the hover handlers.
@@ -107,6 +108,23 @@ test('wide word-space merging stays bounded at a text height and leaves larger g
 test('snapshot highlights retain their exact selected region', () => {
   const rects = [{ x: 10, y: 10, w: 80, h: 20 }, { x: 95, y: 10, w: 40, h: 20 }];
   assert.deepEqual(paintedRects(render([{ id: 'snapshot', color: 'snapshot', rects }])), rects);
+});
+
+test('OCR baseline variation paints each line once without jagged overlapping fragments', () => {
+  const rects = [
+    { x: 10, y: 20, w: 30, h: 8 },
+    { x: 44, y: 23.3, w: 20, h: 8 },
+    { x: 68, y: 20.5, w: 30, h: 11 },
+    { x: 102, y: 22, w: 15, h: 5 },
+    { x: 10, y: 36, w: 107, h: 8 },
+  ];
+  for (const scale of [0.5, 1, 2]) {
+    const actual = paintedRects(render([{ id: 'ocr', color: 'yellow', rects }], { renderInfo: { scale, tlLeft: 0 } }));
+    assert.deepEqual(actual, [
+      { x: 10 * scale, y: 20 * scale, w: 107 * scale, h: 11.5 * scale },
+      { x: 10 * scale, y: 36 * scale, w: 107 * scale, h: 8 * scale },
+    ]);
+  }
 });
 
 test('merged text highlight geometry scales and offsets with the PDF text layer', () => {
@@ -227,6 +245,7 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
   const scope = {
     useCallback: callback => callback,
     normalizePdfHighlightRects,
+    selectionCleaned,
     textLayerRef: { current: {
       contains: () => true,
       getBoundingClientRect: () => ({ left: 100, top: 40 }),
@@ -280,7 +299,7 @@ for (const outcome of ['selected', 'cancelled', 'page-changed']) {
     let selection = { isCollapsed: false, rangeCount: 1,
       getRangeAt: () => ({ ...range, cloneRange: () => range }) };
     const scope = {
-      useCallback: callback => callback, normalizePdfHighlightRects, normalizeHighlightColor,
+      useCallback: callback => callback, normalizePdfHighlightRects, normalizeHighlightColor, selectionCleaned,
       textLayerRef: { current: { contains: candidate => candidate === node,
         getBoundingClientRect: () => ({ left: 0, top: 0 }) } },
       lastScaleRef: { current: 1 }, pageRef: { current: 6 }, cardIdRef: { current: 42 },

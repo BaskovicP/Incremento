@@ -48,8 +48,18 @@ import {
   requestPersistentSiteAccess,
 } from "../shared/siteAccess.js";
 import { normalizeAvailableTags } from "../shared/tagAutocomplete.js";
+import { pageContextOptionsForImport } from "../shared/pageContext.js";
 import { TagAutocompleteInput } from "./TagAutocompleteInput.jsx";
 import { LanguageSettingsPanel } from "./LanguageSettingsPanel.jsx";
+import { runPopupStartupTasks } from "./startup.js";
+import { runVisibleOperation } from "./visibleOperation.js";
+import {
+  buildErrorReport,
+  copyErrorReport,
+  normalizeErrorCode,
+  safePositiveInteger,
+} from "./errorReport.js";
+import { createOutcomeFlashController } from "./outcomeFlash.js";
 import { currentPreference, currentLanguagePacks, resolveLocale, displayMessage, message, saveLanguageSettings, t, formatNumber } from "../shared/i18n.js";
 import { builtinLanguagePack, downloadLanguagePackCsv, readLanguagePackFile, packCoverage, stageLanguagePack, LanguagePackError, MAX_PACKS } from "../shared/languagePacks.js";
 import { useLanguage } from "../shared/i18nReact.js";
@@ -71,7 +81,25 @@ function languagePackErrorText(error) {
 }
 
 function initialStatus() {
-  return { text: "", kind: "" };
+  return { text: "", detail: "", kind: "" };
+}
+
+function importValidationError(statusText) {
+  const error = new Error("Popup import validation failed");
+  error.code = "validation_failed";
+  error.statusText = statusText;
+  return error;
+}
+
+function importActionMessage(kind, options = {}) {
+  if (kind === "pdf") return message("add_as_pdf");
+  if (kind === "video") return message("add_as_video");
+  if (kind === "webpage") return message("add_as_webpage");
+  if (kind === "writing" && options.writingMode === "webpage_markdown") {
+    return message("add_page_markdown");
+  }
+  if (kind === "writing") return message("add_selection_markdown");
+  return cardKindMessage(kind);
 }
 
 function formatMediaTime(totalSeconds) {
@@ -137,6 +165,9 @@ export function PopupApp() {
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
   const [busy, setBusy] = useState(false);
+  const addOperationInFlight = useRef(false);
+  const outcomeFlashController = useRef(null);
+  const [outcomeFlash, setOutcomeFlash] = useState({ kind: "", revision: 0 });
   const [status, setStatus] = useState(initialStatus);
   const [title, setTitle] = useState("");
   const [commandShortcuts, setCommandShortcuts] = useState([]);
@@ -160,6 +191,14 @@ export function PopupApp() {
   const hasSupportedPage = Boolean(activeTab && isHttpUrl(pageUrl));
   const onVideoPage = isSupportedVideoUrl(pageUrl);
   const detectedTimeText = mediaContext?.hasDetectedTime ? formatMediaTime(mediaContext.seconds) : "";
+
+  useEffect(() => {
+    outcomeFlashController.current = createOutcomeFlashController({ onChange: setOutcomeFlash });
+    return () => {
+      outcomeFlashController.current?.dispose();
+      outcomeFlashController.current = null;
+    };
+  }, []);
 
   function openSettings() {
     setLanguageDraft(currentPreference());
@@ -236,127 +275,133 @@ export function PopupApp() {
 
     async function initialize() {
       setBusy(true);
-      try {
-        const tab = await getActiveTab();
-        if (cancelled) {
-          return;
-        }
-        setActiveTab(tab);
-
-        try {
-          const enabled = await hasPersistentSiteAccess();
-          if (!cancelled) {
-            setPersistentSiteAccess(enabled);
+      const { page } = await runPopupStartupTasks({
+        loadConnection: async () => {
+          try {
+            const meta = await loadBrowserCaptureMeta();
+            if (cancelled) {
+              return meta;
+            }
+            const nextDeckNames = Array.from(
+              new Set(
+                Array.isArray(meta?.deckNames)
+                  ? meta.deckNames.map((value) => String(value || "").trim()).filter(Boolean)
+                  : []
+              )
+            );
+            const availableDecks = nextDeckNames.length > 0 ? nextDeckNames : ["Topics"];
+            setDeckNames(availableDecks);
+            setTagNames(normalizeAvailableTags(meta?.tagNames));
+            setDeckName((currentDeck) => {
+              if (availableDecks.includes(currentDeck)) {
+                return currentDeck;
+              }
+              if (availableDecks.includes("Topics")) {
+                return "Topics";
+              }
+              return availableDecks[0] || "Topics";
+            });
+            setDeckLoadError("");
+            return meta;
+          } catch (error) {
+            if (!cancelled) {
+              setDeckNames(["Topics"]);
+              setTagNames([]);
+              setDeckName((currentDeck) => currentDeck || "Topics");
+              setDeckLoadError(error);
+            }
+            throw error;
           }
-        } catch (_error) {
-          if (!cancelled) {
-            setPersistentSiteAccess(false);
-          }
-        }
-
-        let nextSnapshot = null;
-        if (tab?.id && isHttpUrl(getTabUrl(tab))) {
-          nextSnapshot = await captureSnapshot(tab.id);
+        },
+        inspectPage: async () => {
+          const tab = await getActiveTab();
           if (cancelled) {
             return;
           }
-          setSnapshot(nextSnapshot);
-        }
+          setActiveTab(tab);
 
-        const nextTitle = String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || getTabUrl(tab) || "").trim();
-        if (nextTitle) {
-          setTitle(nextTitle);
-        }
-
-        if (tab?.id) {
           try {
-            const linked = await getLinkedCardContextForTab(tab.id, getTabUrl(tab));
+            const enabled = await hasPersistentSiteAccess();
             if (!cancelled) {
-              setLinkedCard(linked?.linked ? {
-                linked: true,
-                cardId: Number(linked.cardId) || 0,
-              } : { linked: false, cardId: 0 });
+              setPersistentSiteAccess(enabled);
             }
           } catch (_error) {
             if (!cancelled) {
-              setLinkedCard({ linked: false, cardId: 0 });
+              setPersistentSiteAccess(false);
             }
           }
 
-          if (isHttpUrl(getTabUrl(tab))) {
+          let nextSnapshot = null;
+          if (tab?.id && isHttpUrl(getTabUrl(tab))) {
+            nextSnapshot = await captureSnapshot(tab.id, { includeHtml: false });
+            if (cancelled) {
+              return;
+            }
+            setSnapshot(nextSnapshot);
+          }
+
+          const nextTitle = String(nextSnapshot?.title || tab?.title || nextSnapshot?.url || getTabUrl(tab) || "").trim();
+          if (nextTitle) {
+            setTitle(nextTitle);
+          }
+
+          if (tab?.id) {
             try {
-              const media = await getCurrentMediaContextForTab(tab.id);
+              const linked = await getLinkedCardContextForTab(tab.id, getTabUrl(tab));
               if (!cancelled) {
-                setMediaContext(media?.ok ? media : null);
+                setLinkedCard(linked?.linked ? {
+                  linked: true,
+                  cardId: Number(linked.cardId) || 0,
+                } : { linked: false, cardId: 0 });
               }
             } catch (_error) {
               if (!cancelled) {
-                setMediaContext(null);
+                setLinkedCard({ linked: false, cardId: 0 });
               }
             }
-          } else if (!cancelled) {
-            setMediaContext(null);
-          }
-        }
 
-        const commands = await getCommandShortcuts();
-        if (!cancelled) {
-          setCommandShortcuts(Array.isArray(commands) ? commands : []);
-        }
-
-        try {
-          const meta = await loadBrowserCaptureMeta();
-          if (cancelled) {
-            return;
+            if (isHttpUrl(getTabUrl(tab))) {
+              try {
+                const media = await getCurrentMediaContextForTab(tab.id);
+                if (!cancelled) {
+                  setMediaContext(media?.ok ? media : null);
+                }
+              } catch (_error) {
+                if (!cancelled) {
+                  setMediaContext(null);
+                }
+              }
+            } else if (!cancelled) {
+              setMediaContext(null);
+            }
           }
-          const nextDeckNames = Array.from(
-            new Set(
-              Array.isArray(meta?.deckNames)
-                ? meta.deckNames.map((value) => String(value || "").trim()).filter(Boolean)
-                : []
-            )
-          );
-          const availableDecks = nextDeckNames.length > 0 ? nextDeckNames : ["Topics"];
-          setDeckNames(availableDecks);
-          setTagNames(normalizeAvailableTags(meta?.tagNames));
-          setDeckName((currentDeck) => {
-            if (availableDecks.includes(currentDeck)) {
-              return currentDeck;
-            }
-            if (availableDecks.includes("Topics")) {
-              return "Topics";
-            }
-            return availableDecks[0] || "Topics";
-          });
-          setDeckLoadError("");
-        } catch (error) {
+
+          const commands = await getCommandShortcuts();
           if (!cancelled) {
-            setDeckNames(["Topics"]);
-            setTagNames([]);
-            setDeckName((currentDeck) => currentDeck || "Topics");
-            setDeckLoadError(error);
+            setCommandShortcuts(Array.isArray(commands) ? commands : []);
           }
-        }
 
-        const storedLinkSaveSettings = await getLocalExtensionSetting(
-          LINK_SAVE_SETTINGS_KEY,
-          DEFAULT_LINK_SAVE_SETTINGS,
-        );
-        if (!cancelled) {
-          setLinkSaveSettings(normalizeLinkSaveSettings(storedLinkSaveSettings));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setStatus({
-            text: error?.message || t("page_inspect_failed"),
-            kind: "error",
-          });
-        }
-      } finally {
-        if (!cancelled) {
-          setBusy(false);
-        }
+          const storedLinkSaveSettings = await getLocalExtensionSetting(
+            LINK_SAVE_SETTINGS_KEY,
+            DEFAULT_LINK_SAVE_SETTINGS,
+          );
+          if (!cancelled) {
+            setLinkSaveSettings(normalizeLinkSaveSettings(storedLinkSaveSettings));
+          }
+        },
+      });
+
+      if (cancelled) {
+        return;
       }
+
+      if (page.status === "rejected") {
+        setStatus({
+          text: page.reason?.message || t("page_inspect_failed"),
+          kind: "error",
+        });
+      }
+      setBusy(false);
     }
 
     void initialize();
@@ -403,11 +448,11 @@ export function PopupApp() {
     return { tab, linked, media };
   }
 
-  async function readCurrentPageContext() {
+  async function readCurrentPageContext(options = {}) {
     const tab = await getActiveTab();
     let nextSnapshot = null;
     if (tab?.id && isHttpUrl(getTabUrl(tab))) {
-      nextSnapshot = await captureSnapshot(tab.id);
+      nextSnapshot = await captureSnapshot(tab.id, options);
     }
     if (tab) {
       setActiveTab(tab);
@@ -489,144 +534,188 @@ export function PopupApp() {
   }
 
   async function handleAdd(kind, options = {}) {
-    const context = await readCurrentPageContext();
-    const currentTab = context.tab;
-    const currentSnapshot = context.snapshot;
-    const currentPageUrl = context.pageUrl;
-    const currentPageTitle = context.pageTitle;
-    const currentSelectionText = context.selectionText;
-
-    if (!currentTab) {
-      setStatus({ text: message("no_active_tab"), kind: "error" });
+    if (addOperationInFlight.current) {
       return;
     }
-    if (!isHttpUrl(currentPageUrl)) {
-      setStatus({ text: message("only_http_pages"), kind: "error" });
-      return;
-    }
-    if (kind === "video" && !isSupportedVideoUrl(currentPageUrl)) {
-      setStatus({ text: message("open_video_page"), kind: "error" });
-      return;
-    }
-
-    const payload = {
-      kind,
-      url: currentPageUrl,
-      title: title.trim() || currentPageTitle || currentPageUrl,
-      deckName,
-      priority,
-      tags: parseTags(tagsText),
-      selectedText: currentSelectionText,
-    };
-    let currentLinkedCard = linkedCard;
-    try {
-      const linked = await getLinkedCardContextForTab(currentTab.id, currentPageUrl);
-      currentLinkedCard = linked?.linked && Number(linked.cardId) > 0
-        ? { linked: true, cardId: Number(linked.cardId) || 0 }
-        : { linked: false, cardId: 0 };
-      setLinkedCard(currentLinkedCard);
-    } catch (_error) {
-      currentLinkedCard = linkedCard;
-    }
-    if (currentLinkedCard?.linked && Number(currentLinkedCard.cardId) > 0) {
-      payload.parentCardId = Math.max(0, Math.floor(Number(currentLinkedCard.cardId) || 0));
-    }
-    if (kind === "pdf" && currentSnapshot?.html) {
-      payload.html = String(currentSnapshot.html);
-    }
-    if (kind === "writing") {
-      const writingMode = String(options.writingMode || "selection");
-      const shouldAutoTitle = shouldAutoGenerateWritingTitle(title, currentPageTitle, currentPageUrl);
-      if (shouldAutoTitle) {
-        payload.title = buildAutomaticWritingTitle(
-          currentPageTitle,
-          currentPageUrl,
-          writingMode,
-          currentSelectionText
-        );
-      }
-      payload.writingMode = writingMode;
-      payload.preferredFilename = buildPreferredWritingFilename(
-        shouldAutoTitle ? currentPageTitle : payload.title,
-        currentPageUrl
-      );
-      if (writingMode === "selection" && !currentSelectionText) {
-        setStatus({
-          text: message("select_page_text"),
-          kind: "error",
-        });
-        return;
-      }
-      if (writingMode === "webpage_markdown") {
-        payload.pageContentScope = String(pageContentScope || "main");
-        if (!currentSnapshot?.html) {
-          setStatus({
-            text: message("web_content_failed"),
-            kind: "error",
-          });
-          return;
-        }
-        payload.html = String(currentSnapshot.html);
-      }
-    }
-    if (kind === "pdf") {
-      const pdfPayload = await getPdfPayloadForUrl(currentPageUrl);
-      if (pdfPayload) {
-        payload.pdfBase64 = pdfPayload.pdfBase64;
-        payload.pdfFilename = pdfPayload.pdfFilename;
-      }
-    }
-    if (kind === "webpage") {
-      const timing = await resolveWebpageMediaTiming(currentTab, currentPageUrl);
-      if (!timing.ok) {
-        setStatus({ text: timing.error || t("web_time_invalid"), kind: "error" });
-        return;
-      }
-      if (Number(timing.seconds) > 0) {
-        payload.mediaSeconds = Number(timing.seconds);
-        payload.mediaUrl = String(timing.media?.mediaUrl || "").trim();
-        payload.mediaTitle = String(
-          timing.media?.mediaTitle || timing.media?.pageTitle || currentPageTitle || ""
-        ).trim();
-      }
-    }
-
+    addOperationInFlight.current = true;
     setBusy(true);
-    const statusLabel = (
-      kind === "writing" && payload.writingMode === "webpage_markdown"
-        ? message("adding_writing")
-        : message("adding_card", { kind: cardKindMessage(kind) })
-    );
-    setStatus({ text: statusLabel, kind: "" });
+    const kindLabel = cardKindMessage(kind);
+    const actionLabel = importActionMessage(kind, options);
     try {
-      const result = await importIntoIncremento(payload);
-      if (kind === "webpage" && currentTab?.id && Number(result?.cardId) > 0) {
-        try {
-          await registerWebCardTrackingForTab(currentTab.id, Number(result.cardId), currentPageUrl);
-          setLinkedCard({ linked: true, cardId: Number(result.cardId) });
-          if (Number(payload.mediaSeconds) > 0) {
-            await updateBrowserMediaRefBadgeForTab(currentTab.id, {
-              ok: true,
-              hasReference: true,
-              cardId: Number(result.cardId),
-              pageUrl: currentPageUrl,
-              mediaUrl: String(payload.mediaUrl || ""),
-              mediaTitle: String(payload.mediaTitle || ""),
-              seconds: Number(payload.mediaSeconds),
-              timeText: formatMediaTime(payload.mediaSeconds),
-            });
+      const operation = await runVisibleOperation({
+        initialStatus: {
+          text: message("add_step_reading"),
+          detail: message("add_step_reading_detail"),
+          kind: "",
+        },
+        onStatus: setStatus,
+        run: async (report) => {
+          const requestedWritingMode = String(options.writingMode || "selection");
+          const context = await readCurrentPageContext(pageContextOptionsForImport(kind, {
+            writingMode: requestedWritingMode,
+            pageContentScope,
+          }));
+          const currentTab = context.tab;
+          const currentSnapshot = context.snapshot;
+          const currentPageUrl = context.pageUrl;
+          const currentPageTitle = context.pageTitle;
+          const currentSelectionText = context.selectionText;
+
+          if (!currentTab) {
+            throw importValidationError(message("no_active_tab"));
           }
-        } catch (_error) {
-          // Card creation succeeded; tracking can still start when the page is opened from Anki.
-        }
-      }
-      setStatus({ text: message("added_card", { kind: cardKindMessage(result.kind), title: result.title }), kind: "success" });
-    } catch (error) {
-      setStatus({
-        text: formatBridgeError(error, t("add_content_failed")),
-        kind: "error",
+          if (!isHttpUrl(currentPageUrl)) {
+            throw importValidationError(message("only_http_pages"));
+          }
+          if (kind === "video" && !isSupportedVideoUrl(currentPageUrl)) {
+            throw importValidationError(message("open_video_page"));
+          }
+
+          const payload = {
+            kind,
+            url: currentPageUrl,
+            title: title.trim() || currentPageTitle || currentPageUrl,
+            deckName,
+            priority,
+            tags: parseTags(tagsText),
+            selectedText: currentSelectionText,
+          };
+          report({
+            text: message("add_step_preparing", { kind: kindLabel }),
+            detail: message("add_step_destination_detail", {
+              deck: deckName,
+              count: payload.tags.length,
+              priority: formatPriority(priority),
+            }),
+            kind: "",
+          });
+
+          let currentLinkedCard = linkedCard;
+          try {
+            const linked = await getLinkedCardContextForTab(currentTab.id, currentPageUrl);
+            currentLinkedCard = linked?.linked && Number(linked.cardId) > 0
+              ? { linked: true, cardId: Number(linked.cardId) || 0 }
+              : { linked: false, cardId: 0 };
+            setLinkedCard(currentLinkedCard);
+          } catch (_error) {
+            currentLinkedCard = linkedCard;
+          }
+          if (currentLinkedCard?.linked && Number(currentLinkedCard.cardId) > 0) {
+            payload.parentCardId = Math.max(0, Math.floor(Number(currentLinkedCard.cardId) || 0));
+          }
+          if (kind === "pdf" && currentSnapshot?.html) {
+            payload.html = String(currentSnapshot.html);
+          }
+          if (kind === "writing") {
+            const writingMode = requestedWritingMode;
+            const shouldAutoTitle = shouldAutoGenerateWritingTitle(title, currentPageTitle, currentPageUrl);
+            if (shouldAutoTitle) {
+              payload.title = buildAutomaticWritingTitle(
+                currentPageTitle,
+                currentPageUrl,
+                writingMode,
+                currentSelectionText
+              );
+            }
+            payload.writingMode = writingMode;
+            payload.preferredFilename = buildPreferredWritingFilename(
+              shouldAutoTitle ? currentPageTitle : payload.title,
+              currentPageUrl
+            );
+            if (writingMode === "selection" && !currentSelectionText) {
+              throw importValidationError(message("select_page_text"));
+            }
+            if (writingMode === "webpage_markdown") {
+              payload.pageContentScope = String(pageContentScope || "main");
+              if (!currentSnapshot?.html) {
+                throw importValidationError(message("web_content_failed"));
+              }
+              payload.html = String(currentSnapshot.html);
+            }
+          }
+          if (kind === "pdf") {
+            const pdfPayload = await getPdfPayloadForUrl(currentPageUrl);
+            if (pdfPayload) {
+              payload.pdfBase64 = pdfPayload.pdfBase64;
+              payload.pdfFilename = pdfPayload.pdfFilename;
+            }
+          }
+          if (kind === "webpage") {
+            const timing = await resolveWebpageMediaTiming(currentTab, currentPageUrl);
+            if (!timing.ok) {
+              throw importValidationError(timing.error || message("web_time_invalid"));
+            }
+            if (Number(timing.seconds) > 0) {
+              payload.mediaSeconds = Number(timing.seconds);
+              payload.mediaUrl = String(timing.media?.mediaUrl || "").trim();
+              payload.mediaTitle = String(
+                timing.media?.mediaTitle || timing.media?.pageTitle || currentPageTitle || ""
+              ).trim();
+            }
+          }
+
+          report({
+            text: kind === "writing" && payload.writingMode === "webpage_markdown"
+              ? message("adding_writing")
+              : message("add_step_sending", { kind: kindLabel }),
+            detail: message("add_step_sending_detail"),
+            kind: "",
+          });
+          const result = await importIntoIncremento(payload);
+          if (kind === "webpage" && currentTab?.id && Number(result?.cardId) > 0) {
+            try {
+              await registerWebCardTrackingForTab(currentTab.id, Number(result.cardId), currentPageUrl);
+              setLinkedCard({ linked: true, cardId: Number(result.cardId) });
+              if (Number(payload.mediaSeconds) > 0) {
+                await updateBrowserMediaRefBadgeForTab(currentTab.id, {
+                  ok: true,
+                  hasReference: true,
+                  cardId: Number(result.cardId),
+                  pageUrl: currentPageUrl,
+                  mediaUrl: String(payload.mediaUrl || ""),
+                  mediaTitle: String(payload.mediaTitle || ""),
+                  seconds: Number(payload.mediaSeconds),
+                  timeText: formatMediaTime(payload.mediaSeconds),
+                });
+              }
+            } catch (_error) {
+              // Card creation succeeded; tracking can still start when the page is opened from Anki.
+            }
+          }
+          report({
+            text: message("added_card", { kind: cardKindMessage(result.kind), title: result.title }),
+            detail: message("add_success_detail", {
+              deck: deckName,
+              count: payload.tags.length,
+              priority: formatPriority(priority),
+            }),
+            kind: "success",
+          });
+          return result;
+        },
+        failureStatus: (error, lastStatus) => {
+          const reason = error?.statusText || formatBridgeError(error, t("add_content_failed"));
+          return {
+            text: reason,
+            detail: message("add_failed_detail", { stage: lastStatus?.text || kindLabel }),
+            kind: "error",
+            errorDetails: {
+              action: actionLabel,
+              stage: lastStatus?.text || kindLabel,
+              reason,
+              code: normalizeErrorCode(error?.code),
+              contentScope: ["main", "full"].includes(error?.details?.scope)
+                ? error.details.scope
+                : "",
+              actualChars: safePositiveInteger(error?.details?.actual),
+              maxChars: safePositiveInteger(error?.details?.count),
+            },
+          };
+        },
       });
+      outcomeFlashController.current?.trigger(operation.ok ? "success" : "error");
     } finally {
+      addOperationInFlight.current = false;
       setBusy(false);
     }
   }
@@ -843,8 +932,53 @@ export function PopupApp() {
   const selectionShortcut = commandShortcuts.find((command) => command.name === "browser-capture-selection")?.shortcut || "";
   const snapshotShortcut = commandShortcuts.find((command) => command.name === "browser-capture-snapshot")?.shortcut || "";
 
+  function localizedErrorReport(details) {
+    if (!details) return "";
+    const scopeLabel = details.contentScope === "main"
+      ? t("main_content")
+      : details.contentScope === "full"
+        ? t("entire_page")
+        : "";
+    return buildErrorReport({
+      title: t("error_report_title"),
+      fields: [
+        [t("error_extension_version"), chrome.runtime.getManifest?.().version || ""],
+        [t("error_action"), displayMessage(details.action)],
+        [t("error_stage"), displayMessage(details.stage)],
+        [t("error_reason"), displayMessage(details.reason)],
+        [t("error_code"), details.code],
+        [t("error_content_scope"), scopeLabel],
+        [t("error_actual_chars"), details.actualChars ? formatNumber(details.actualChars) : ""],
+        [t("error_max_chars"), details.maxChars ? formatNumber(details.maxChars) : ""],
+      ],
+    });
+  }
+
+  async function handleCopyErrorDetails() {
+    const report = localizedErrorReport(status.errorDetails);
+    try {
+      await copyErrorReport(report);
+      setStatus((current) => current.errorDetails
+        ? { ...current, copyNotice: message("error_details_copied") }
+        : current);
+    } catch (_error) {
+      setStatus((current) => current.errorDetails
+        ? { ...current, copyNotice: message("error_details_copy_failed") }
+        : current);
+    }
+  }
+
+  const copyableErrorReport = localizedErrorReport(status.errorDetails);
+
   return (
     <main className="popup">
+      {outcomeFlash.kind ? (
+        <div
+          key={outcomeFlash.revision}
+          className={`outcome-flash is-${outcomeFlash.kind}`}
+          aria-hidden="true"
+        />
+      ) : null}
       <nav className="popup-navigation">
         <button className="ghost-btn" type="button" disabled={settingsOpen && languageBusy} onClick={settingsOpen ? () => setSettingsOpen(false) : openSettings}>
           {settingsOpen ? t("language_cancel") : t("settings")}
@@ -981,9 +1115,30 @@ export function PopupApp() {
             {t("add_page_markdown")}
           </button>
         </div>
-        <p className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status" role="status" aria-live="polite">
-          {displayMessage(status.text)}
-        </p>
+        <div className={`status${status.kind ? ` is-${status.kind}` : ""}`} id="status">
+          <div role="status" aria-live="polite" aria-atomic="true">
+            <span className="status-main">{displayMessage(status.text)}</span>
+            {status.detail ? <span className="status-detail">{displayMessage(status.detail)}</span> : null}
+          </div>
+          {status.errorDetails ? (
+            <section className="error-diagnostics" aria-label={t("error_details_title")}>
+              <strong>{t("error_details_title")}</strong>
+              <pre>{copyableErrorReport}</pre>
+              <button
+                className="copy-error-btn"
+                type="button"
+                onClick={() => void handleCopyErrorDetails()}
+              >
+                {t("copy_error_details")}
+              </button>
+              {status.copyNotice ? (
+                <span className="copy-error-notice" role="status">
+                  {displayMessage(status.copyNotice)}
+                </span>
+              ) : null}
+            </section>
+          ) : null}
+        </div>
       </section>
 
       <section className="panel panel-secondary">

@@ -7167,29 +7167,7 @@
           } catch (_) {
           }
         };
-        task.render().then(() => {
-          tl.querySelectorAll("span").forEach((span) => {
-            var _a2, _b;
-            if (!/\S/.test(span.textContent)) {
-              span.remove();
-              return;
-            }
-            const rect = span.getBoundingClientRect();
-            if (rect.width > 0 && rect.width < 3 && rect.height > 0) {
-              span.remove();
-              return;
-            }
-            const sx = parseFloat((_a2 = (span.style.transform || "").match(/scaleX\(([\d.e+-]+)\)/)) == null ? void 0 : _a2[1]);
-            if (!isNaN(sx) && sx < 0.05) {
-              span.remove();
-              return;
-            }
-            const mx = parseFloat((_b = (span.style.transform || "").match(/matrix\(([\d.e+-]+)/)) == null ? void 0 : _b[1]);
-            if (!isNaN(mx) && mx < 0.05) {
-              span.remove();
-            }
-          });
-        }).catch(() => {
+        task.render().catch(() => {
         });
       } catch (_) {
       }
@@ -8514,20 +8492,27 @@
       }
     });
   }
+  function pdfRectsShareLine(a, b) {
+    const overlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    const centerDistance = Math.abs(a.y + a.h / 2 - (b.y + b.h / 2));
+    return overlap >= Math.min(a.h, b.h) * 0.35 && centerDistance <= Math.max(a.h, b.h) * 0.6;
+  }
   function normalizePdfHighlightRects(rects) {
-    const valid = (Array.isArray(rects) ? rects : []).filter((r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h })).sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2) || a.x - b.x);
+    const valid = (Array.isArray(rects) ? rects : []).filter((r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h })).sort((a, b) => b.h - a.h || a.y - b.y || a.x - b.x);
     const lines = [];
     for (const rect of valid) {
-      const line = lines.at(-1);
-      const reference = line == null ? void 0 : line[0];
-      const overlap = reference ? Math.min(reference.y + reference.h, rect.y + rect.h) - Math.max(reference.y, rect.y) : 0;
-      const minHeight = reference ? Math.min(reference.h, rect.h) : 0;
-      const centerDistance = reference ? Math.abs(reference.y + reference.h / 2 - (rect.y + rect.h / 2)) : Infinity;
-      if (reference && overlap >= minHeight * 0.6 && centerDistance <= minHeight * 0.5) {
-        line.push(rect);
-      } else {
-        lines.push([rect]);
+      let nearest = null;
+      let distance = Infinity;
+      for (const line of lines) {
+        const reference = line[0];
+        const candidate = Math.abs(reference.y + reference.h / 2 - rect.y - rect.h / 2);
+        if (candidate < distance && pdfRectsShareLine(reference, rect)) {
+          nearest = line;
+          distance = candidate;
+        }
       }
+      if (nearest) nearest.push(rect);
+      else lines.push([rect]);
     }
     return lines.flatMap((line) => {
       const merged = [];
@@ -8545,7 +8530,7 @@
         }
       }
       return merged;
-    });
+    }).sort((a, b) => a.y - b.y || a.x - b.x);
   }
   const HL_COLORS = {
     yellow: "rgba(255,220,0,0.45)",
@@ -8960,6 +8945,56 @@
   function truncatePdfText(value, length) {
     return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
   }
+  function selectionCleaned(selection, textLayer) {
+    if (!(selection == null ? void 0 : selection.rangeCount) || !textLayer) return "";
+    try {
+      const range = selection.getRangeAt(0);
+      if (!textLayer.contains(range.commonAncestorContainer)) return "";
+      const doc = textLayer.ownerDocument;
+      const walker = doc.createTreeWalker(textLayer, 4);
+      let node;
+      let text = "";
+      let previous = null;
+      let line = null;
+      while (node = walker.nextNode()) {
+        if (!range.intersectsNode(node)) continue;
+        const start = node === range.startContainer ? range.startOffset : 0;
+        const end = node === range.endContainer ? range.endOffset : node.textContent.length;
+        const piece = node.textContent.slice(start, end);
+        if (!piece) continue;
+        const part = doc.createRange();
+        part.setStart(node, start);
+        part.setEnd(node, end);
+        const bounds = part.getBoundingClientRect();
+        const rect = { x: bounds.left, y: bounds.top, w: bounds.width, h: bounds.height };
+        const sameLine = line && pdfRectsShareLine(line.reference, rect);
+        let joined = false;
+        if (previous && /\S/.test(piece) && !/\s$/.test(text) && !/^\s/.test(piece)) {
+          const gap = rect.x - (previous.x + previous.w);
+          if (!sameLine && rect.y - line.bottom > Math.max(line.bottom - line.top, rect.h) * 0.85) {
+            text += "\n\n";
+          } else if (!sameLine && new RegExp("\\p{L}-$", "u").test(text) && new RegExp("^\\p{Ll}", "u").test(piece)) {
+            text = text.slice(0, -1);
+          } else if (!sameLine || gap > Math.min(previous.h, rect.h) * 0.1) {
+            text = joinPdfTextParts(text, piece);
+            joined = true;
+          }
+        }
+        if (!joined) text += piece;
+        if (/\S/.test(piece) && rect.w > 0 && rect.h > 0) {
+          previous = rect;
+          line = sameLine ? {
+            reference: rect.h > line.reference.h ? rect : line.reference,
+            top: Math.min(line.top, rect.y),
+            bottom: Math.max(line.bottom, rect.y + rect.h)
+          } : { reference: rect, top: rect.y, bottom: rect.y + rect.h };
+        }
+      }
+      return text.replace(/[ \t\u00a0]+/g, " ").trim();
+    } catch {
+      return (selection.toString() || "").trim();
+    }
+  }
   const PDF_APPEARANCE_MODES = Object.freeze(["original", "dark", "night"]);
   const PAGE_APPEARANCE = Object.freeze({
     original: Object.freeze({
@@ -9051,28 +9086,6 @@
     annotation: true,
     review: true
   };
-  function calculateTextWidth(text, font) {
-    const canvas = calculateTextWidth._canvas || (calculateTextWidth._canvas = document.createElement("canvas"));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return text.length * 8;
-    ctx.font = font;
-    return ctx.measureText(text).width;
-  }
-  function nodesInSelection(range, textLayer) {
-    var _a, _b;
-    if (!range || !textLayer) return null;
-    const all = textLayer.children;
-    const nodes = [];
-    const start = ((_a = range.startContainer) == null ? void 0 : _a.nodeName) === "#text" ? range.startContainer.parentNode : range.startContainer;
-    const end = ((_b = range.endContainer) == null ? void 0 : _b.nodeName) === "#text" ? range.endContainer.parentNode : range.endContainer;
-    let inside = false;
-    for (let i = 0; i < all.length; i += 1) {
-      if (all[i] === start) inside = true;
-      if (inside) nodes.push(all[i]);
-      if (all[i] === end) break;
-    }
-    return nodes;
-  }
   function isSelectionInside(sel, container2) {
     if (!sel || !container2 || !sel.rangeCount) return false;
     for (let i = 0; i < sel.rangeCount; i += 1) {
@@ -9128,88 +9141,6 @@
       }
     }
     return best || spans[0];
-  }
-  function selectionCleaned(sel, textLayer) {
-    var _a;
-    try {
-      if (!sel || !sel.rangeCount) return "";
-      const range = sel.getRangeAt(0);
-      const nodes = nodesInSelection(range, textLayer);
-      const original = (sel.toString() || "").trim();
-      if (!nodes || nodes.length <= 1) return original;
-      let text = "";
-      let offsetLeftLast = 0;
-      let offsetTopLast = 0;
-      let textWidthLast = 0;
-      let insertedCount = 0;
-      let lastFontSize = null;
-      const lastYDiffs = [];
-      for (let i = 0; i < nodes.length; i += 1) {
-        const node = nodes[i];
-        const piece = node.innerText || node.textContent || "";
-        if (!piece) continue;
-        if ((node.offsetLeft < offsetLeftLast || node.offsetTop > offsetTopLast + 5) && !piece.startsWith(" ")) {
-          const fontSize = Number((node.style.fontSize || "").replace("px", "")) || null;
-          if (lastFontSize && fontSize && Math.abs(fontSize - lastFontSize) > 4) {
-            text += "\n\n" + piece;
-            insertedCount += 2;
-          } else if (lastYDiffs.length > 0 && node.offsetTop - offsetTopLast > lastYDiffs[lastYDiffs.length - 1] + 2) {
-            text += "\n\n" + piece;
-            insertedCount += 2;
-          } else if (text.endsWith("-")) {
-            text = text.slice(0, -1) + piece;
-            insertedCount -= 1;
-          } else {
-            const joined = joinPdfTextParts(text, piece);
-            insertedCount += joined.length - text.length - piece.length;
-            text = joined;
-          }
-          if (offsetTopLast !== 0) {
-            lastYDiffs.push(node.offsetTop - offsetTopLast);
-          }
-          lastFontSize = fontSize;
-        } else if (offsetLeftLast + textWidthLast < node.offsetLeft - 2 && !piece.startsWith(" ")) {
-          const joined = joinPdfTextParts(text, piece);
-          insertedCount += joined.length - text.length - piece.length;
-          text = joined;
-        } else if (offsetLeftLast + textWidthLast > node.offsetLeft - 5) {
-          text = text.trimEnd() + piece;
-        } else {
-          text += piece;
-        }
-        offsetLeftLast = node.offsetLeft;
-        offsetTopLast = node.offsetTop;
-        const fontDescriptor = `${node.style.fontWeight || "normal"} ${node.style.fontSize || "12px"} ${node.style.fontFamily || "sans-serif"}`;
-        const scaleX = Number(((_a = (node.style.transform || "").match(/[0-9]+(\.[0-9]+)?/)) == null ? void 0 : _a[0]) || 1);
-        textWidthLast = calculateTextWidth(piece.trim(), fontDescriptor) * scaleX;
-      }
-      if (!text.length) return original;
-      text = text.replace(/( |\u00a0){2,}/g, " ").replace(/ ([,.;:]) /g, "$1 ").replace(/ ([)\].!?:])/g, "$1").replace(/([\[(]) /g, "$1").trim();
-      if (!original) return text;
-      if (!original.startsWith(text.substring(0, Math.min(10, text.length)))) {
-        for (let y = 10; y > 0; y -= 1) {
-          const probe = original.substring(0, Math.min(y, original.length));
-          const idx = text.indexOf(probe);
-          if (idx > 0) {
-            text = text.substring(idx);
-            break;
-          }
-        }
-      }
-      if (text.length > original.length + insertedCount) {
-        for (let y = 10; y > 0; y -= 1) {
-          const probe = original.substring(Math.max(0, original.length - y));
-          const idx = text.lastIndexOf(probe);
-          if (idx >= 0) {
-            text = text.substring(0, idx + probe.length);
-            break;
-          }
-        }
-      }
-      return text.trim();
-    } catch {
-      return ((sel == null ? void 0 : sel.toString()) || "").trim();
-    }
   }
   function normalizeJumpText(value) {
     return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -9978,14 +9909,14 @@
         y: (r.top - tlRect.top) / scale,
         w: r.width / scale,
         h: r.height / scale
-      }))).filter((r) => r.w > 2 && r.h > 2);
+      }))).filter((r) => r.w > 0 && r.h > 0);
       if (!rects.length) return false;
       const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
       const hl = {
         id,
         page: pageRef.current,
         color: forcedColor || hlColorRef.current,
-        text: sel.toString(),
+        text: selectionCleaned(sel, tl),
         rects
       };
       setHighlights((prev) => [...prev, hl]);

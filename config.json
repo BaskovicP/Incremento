@@ -14,6 +14,8 @@
     "extract_copy_source_tags": false,
     "highlight_when_extracting": true,
     "pdf_highlight_extract_field": 1,
+    "pdf_snapshot_auto_field_enabled": false,
+    "pdf_snapshot_auto_fields": {},
     "pdf_default_appearance": "original",
     "pdf_force_default_appearance": false,
     "priority_lower_is_more_important": true,

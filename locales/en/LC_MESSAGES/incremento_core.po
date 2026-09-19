@@ -302,6 +302,9 @@ msgstr "Parent cards in Extract Card"
 msgid "settings_pdf_highlight_card_target_field"
 msgstr "PDF highlight card target field:"
 
+msgid "settings_pdf_snapshot_auto_field"
+msgstr "Automatically use remembered PDF snapshot fields"
+
 msgid "settings_pdf_pages"
 msgstr "PDF pages"
 

@@ -78,8 +78,12 @@ try:
     from ..backend.config_service import (
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
+        configured_pdf_snapshot_auto_field_enabled as _configured_pdf_snapshot_auto_field_enabled,
         load_addon_config,
+        MAX_PDF_SNAPSHOT_AUTO_FIELDS,
+        normalize_pdf_snapshot_auto_fields,
         normalize_pdf_appearance_mode,
+        save_addon_config,
     )
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
@@ -88,8 +92,12 @@ except ImportError:
     from config_service import (  # type: ignore
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
+        configured_pdf_snapshot_auto_field_enabled as _configured_pdf_snapshot_auto_field_enabled,
         load_addon_config,
+        MAX_PDF_SNAPSHOT_AUTO_FIELDS,
+        normalize_pdf_snapshot_auto_fields,
         normalize_pdf_appearance_mode,
+        save_addon_config,
     )
     from anki_compat import show_reviewer_question  # type: ignore
 
@@ -356,6 +364,53 @@ def configured_pdf_highlight_extract_field(config: dict | None = None) -> int:
     except Exception:
         value = 1
     return max(1, min(20, value))
+
+
+def configured_pdf_snapshot_auto_field_enabled(config: dict | None = None) -> bool:
+    return _configured_pdf_snapshot_auto_field_enabled(_config(config))
+
+
+def configured_pdf_snapshot_auto_fields(config: dict | None = None) -> dict[str, str]:
+    return normalize_pdf_snapshot_auto_fields(
+        _config(config).get("pdf_snapshot_auto_fields")
+    )
+
+
+def resolve_pdf_snapshot_field_index(
+    note_type_name: str,
+    field_names: list[str],
+    config: dict | None = None,
+) -> int:
+    """Resolve a remembered field only for the same note type and live field name."""
+    if not configured_pdf_snapshot_auto_field_enabled(config):
+        return -1
+    remembered = configured_pdf_snapshot_auto_fields(config).get(
+        str(note_type_name or "").strip()
+    )
+    if not remembered:
+        return -1
+    try:
+        return list(field_names).index(remembered)
+    except ValueError:
+        return -1
+
+
+def _remember_pdf_snapshot_field(note_type_name: str, field_name: str) -> None:
+    note_type = str(note_type_name or "").strip()
+    target_field = str(field_name or "").strip()
+    if not note_type or not target_field:
+        return
+    cfg = dict(_config())
+    remembered = configured_pdf_snapshot_auto_fields(cfg)
+    if note_type not in remembered and len(remembered) >= MAX_PDF_SNAPSHOT_AUTO_FIELDS:
+        remembered.pop(next(iter(remembered)))
+    remembered[note_type] = target_field
+    cfg["pdf_snapshot_auto_field_enabled"] = True
+    cfg["pdf_snapshot_auto_fields"] = remembered
+    try:
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+    except Exception:
+        return
 
 
 def configured_scroll_to_top_on_page_change(config: dict | None = None) -> bool:
@@ -2871,6 +2926,93 @@ class _PdfShortcutFilter(QObject):
 # ── Snapshot handler ──────────────────────────────────────────────────────────
 
 
+def _pdf_snapshot_add_card_fields() -> tuple[str, list[str]]:
+    note_type_name = ""
+    field_names: list[str] = []
+    try:
+        dock = _cb_get_add_card_dock() if _cb_get_add_card_dock else None
+        if dock:
+            note = dock.widget().editor.note
+            if note:
+                note_type = note.note_type() or {}
+                note_type_name = str(note_type.get("name") or "").strip()
+                field_names = [
+                    str(field.get("name") or "").strip()
+                    for field in list(note_type.get("flds") or [])
+                    if str(field.get("name") or "").strip()
+                ]
+    except Exception:
+        pass
+    if not field_names:
+        field_names = [t("reader_field_number", number=i + 1) for i in range(4)]
+    return note_type_name, field_names
+
+
+def _show_pdf_snapshot_field_picker(
+    field_names: list[str],
+    preview_pixmap,
+) -> tuple[int, bool]:
+    picker = QDialog(mw)
+    picker.setWindowTitle(t("reader_insert_snapshot_title"))
+    picker.setFixedWidth(340)
+    layout = QVBoxLayout(picker)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(0)
+
+    preview_lbl = QLabel()
+    preview_lbl.setPixmap(preview_pixmap)
+    preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    layout.addWidget(preview_lbl)
+
+    layout.addSpacing(14)
+    layout.addWidget(QLabel(t("reader_insert_image_into")))
+    layout.addSpacing(8)
+
+    chosen_idx = [-1]
+
+    def _make_handler(idx):
+        def _handler():
+            chosen_idx[0] = idx
+            picker.accept()
+
+        return _handler
+
+    for i, name in enumerate(field_names):
+        btn = QPushButton(name)
+        btn.setStyleSheet("text-align: left; padding: 7px 12px;")
+        btn.clicked.connect(_make_handler(i))
+        layout.addWidget(btn)
+        layout.addSpacing(4)
+
+    remember_cb = QCheckBox(t("reader_always_use_snapshot_field"))
+    remember_cb.setAccessibleName(t("reader_always_use_snapshot_field"))
+    layout.addSpacing(4)
+    layout.addWidget(remember_cb)
+
+    layout.addSpacing(8)
+    cancel_btn = QPushButton(t("reader_cancel"))
+    cancel_btn.clicked.connect(picker.reject)
+    layout.addWidget(cancel_btn)
+
+    if not picker.exec() or chosen_idx[0] < 0:
+        return -1, False
+    return chosen_idx[0], bool(remember_cb.isChecked())
+
+
+def _select_pdf_snapshot_field(
+    note_type_name: str,
+    field_names: list[str],
+    preview_pixmap,
+) -> int:
+    remembered_idx = resolve_pdf_snapshot_field_index(note_type_name, field_names)
+    if remembered_idx >= 0:
+        return remembered_idx
+    chosen_idx, remember = _show_pdf_snapshot_field_picker(field_names, preview_pixmap)
+    if remember and 0 <= chosen_idx < len(field_names):
+        _remember_pdf_snapshot_field(note_type_name, field_names[chosen_idx])
+    return chosen_idx
+
+
 def _handle_pdf_snapshot(msg: str) -> None:
     """Save snapshot image to media and fill a chosen field in the Add Card dock."""
     import base64 as _b64
@@ -2899,17 +3041,7 @@ def _handle_pdf_snapshot(msg: str) -> None:
         # Open Add Card dock and read its current field names
         if _cb_open_add_card_dock:
             _cb_open_add_card_dock()
-        field_names = []
-        try:
-            dock = _cb_get_add_card_dock() if _cb_get_add_card_dock else None
-            if dock:
-                note = dock.widget().editor.note
-                if note:
-                    field_names = [f["name"] for f in note.note_type()["flds"]]
-        except Exception:
-            pass
-        if not field_names:
-            field_names = [t("reader_field_number", number=i + 1) for i in range(4)]
+        note_type_name, field_names = _pdf_snapshot_add_card_fields()
 
         # Build pixmap preview
         pixmap = QPixmap.fromImage(QImage.fromData(img_bytes))
@@ -2919,50 +3051,17 @@ def _handle_pdf_snapshot(msg: str) -> None:
                 180, Qt.TransformationMode.SmoothTransformation
             )
 
-        # Dialog: image preview + one button per field name
-        picker = QDialog(mw)
-        picker.setWindowTitle(t("reader_insert_snapshot_title"))
-        picker.setFixedWidth(340)
-        layout = QVBoxLayout(picker)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(0)
-
-        preview_lbl = QLabel()
-        preview_lbl.setPixmap(scaled)
-        preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(preview_lbl)
-
-        layout.addSpacing(14)
-        layout.addWidget(QLabel(t("reader_insert_image_into")))
-        layout.addSpacing(8)
-
-        chosen_idx = [-1]
-
-        def _make_handler(idx):
-            def _handler():
-                chosen_idx[0] = idx
-                picker.accept()
-
-            return _handler
-
-        for i, name in enumerate(field_names):
-            btn = QPushButton(name)
-            btn.setStyleSheet("text-align: left; padding: 7px 12px;")
-            btn.clicked.connect(_make_handler(i))
-            layout.addWidget(btn)
-            layout.addSpacing(4)
-
-        layout.addSpacing(8)
-        cancel_btn = QPushButton(t("reader_cancel"))
-        cancel_btn.clicked.connect(picker.reject)
-        layout.addWidget(cancel_btn)
-
-        if not picker.exec() or chosen_idx[0] < 0:
+        chosen_idx = _select_pdf_snapshot_field(
+            note_type_name,
+            field_names,
+            scaled,
+        )
+        if chosen_idx < 0:
             return
 
         if _cb_fill_dock_field:
             _cb_fill_dock_field(
-                chosen_idx[0],
+                chosen_idx,
                 f'<img src="{escape(media_filename, quote=True)}">',
             )
     except Exception as e:

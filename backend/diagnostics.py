@@ -373,6 +373,8 @@ _KNOWN_CONFIG_KEYS = {
     "pdf_default_appearance",
     "pdf_force_default_appearance",
     "pdf_highlight_extract_field",
+    "pdf_snapshot_auto_field_enabled",
+    "pdf_snapshot_auto_fields",
     "pin_hash",
     "prefer_web_card_resume_in_original_page",
     "priority_lower_is_more_important",

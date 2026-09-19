@@ -101,6 +101,38 @@ def test_parse_batch_qa_text_returns_two_valid_rows():
     ]
 
 
+def test_parse_batch_qa_text_accepts_alternating_question_and_answer_lines():
+    rows = parse_batch_qa_text("One?\nFirst\nTwo?\nSecond")
+
+    assert rows == [
+        {"question": "One?", "answer": "First", "valid": True, "error": ""},
+        {"question": "Two?", "answer": "Second", "valid": True, "error": ""},
+    ]
+
+
+def test_parse_batch_qa_text_marks_unpaired_question_line_invalid():
+    rows = parse_batch_qa_text("One?\nFirst\nMissing answer")
+
+    assert rows == [
+        {"question": "One?", "answer": "First", "valid": True, "error": ""},
+        {
+            "question": "Missing answer",
+            "answer": "",
+            "valid": False,
+            "error": "Missing answer line.",
+        },
+    ]
+
+
+def test_parse_batch_qa_text_accepts_adjacent_labeled_pairs_without_blank_lines():
+    rows = parse_batch_qa_text("Q: One\nA: First\nQ: Two\nA: Second")
+
+    assert rows == [
+        {"question": "One", "answer": "First", "valid": True, "error": ""},
+        {"question": "Two", "answer": "Second", "valid": True, "error": ""},
+    ]
+
+
 def test_parse_batch_qa_text_preserves_multiline_question_and_answer():
     rows = parse_batch_qa_text("Q: Line one\nLine two\nA: Answer one\nAnswer two")
 

@@ -148,6 +148,10 @@ msgstr "Nevaljan blok pitanja i odgovora."
 msgid "backend_extract_missing_answer"
 msgstr "Nedostaje redak A:."
 
+#. Incremento UI: alternating Q/A input has an unmatched question line
+msgid "backend_extract_missing_answer_line"
+msgstr "Nedostaje redak odgovora."
+
 #. Incremento UI: extract missing question
 msgid "backend_extract_missing_question"
 msgstr "Nedostaje redak Q:."

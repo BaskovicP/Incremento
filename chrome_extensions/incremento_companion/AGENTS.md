@@ -17,6 +17,7 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - `src/bookmarks/bookmarkModel.js`: pure bookmark flattening/classification/selection model; keep UI-independent behavior here.
 - `src/offscreen/main.js`: narrowly scoped clipboard write handler for service-worker environments without direct clipboard access.
 - `src/shared/bridgeAuth.js`: authenticated port `8766` fetch boundary; all Incremento bridge calls pass through it.
+- `src/shared/ankiConnect.js`: bounded, serialized port `8765` request boundary for optional AnkiConnect video-note updates.
 - `src/shared/bridge.js`: typed Incremento endpoints and payload transport.
 - `src/shared/chromeApi.js`: promise wrappers, tab capture, injection, storage, and Chrome capability fallbacks.
 - `src/shared/browserCaptureModel.js`, `linkSaveModel.js`, `pdfFetch.js`, `siteAccess.js`, `url.js`, and `writingTitle.js`: deterministic input normalization and capability boundaries used by popup/background/content flows and covered by Node tests.
@@ -27,7 +28,7 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 
 ## Trust Boundaries and Bridge Protocols
 
-- Port `8766` is Incremento bridge protocol 2. Obtain the ephemeral token from `/incremento/handshake`, then send `X-Incremento-Token` and `X-Incremento-Protocol` on every data request through `bridgeAuth.js`.
+- Port `8766` is Incremento bridge protocol 2. Obtain the ephemeral token with a bodyless `POST /incremento/handshake`, then send `X-Incremento-Token` and `X-Incremento-Protocol` on every data request through `bridgeAuth.js`. Keep read-only bridge RPCs as retry-safe bodyless POSTs: privileged Chromium GETs may omit the extension `Origin`.
 - A `401` allows exactly one fresh handshake and retry. Keep the token only in module memory; never place it in `chrome.storage`, a URL, DOM, log, or clipboard.
 - The addon binds one exact `chrome-extension://<id>` origin and enforces request-size/concurrency limits. Preserve the extension `Origin`; do not add proxy/server relays or a direct unauthenticated `fetch()` to port `8766`.
 - Port `8765` is the optional AnkiConnect API and is intentionally separate from the Incremento bridge. Its direct JSON request in the background worker must not be copied to Incremento endpoints or treated as bridge authentication.

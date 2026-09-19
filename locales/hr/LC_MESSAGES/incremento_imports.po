@@ -106,7 +106,7 @@ msgid "imports_select_pdf_djvu_folder"
 msgstr "Odaberite mapu s PDF ili DjVu datotekama"
 
 msgid "imports_djvu_preview"
-msgstr "Pretpregled DjVu dokumenta dostupan je na polici nakon uvoza.\nPostojeći tekst čuva se pri pretvorbi u PDF."
+msgstr "Odaberite kompresiju dok se uzorci stranica automatski pripremaju.\nPostojeći tekst čuva se pri pretvorbi u PDF."
 
 msgid "imports_djvu_converting"
 msgstr "Pretvaranje DjVu dokumenta…"
@@ -1343,3 +1343,78 @@ msgstr "Izvorni PDF"
 #. Reviewer menu and overlay
 msgid "reviewer_visibility_source_hint"
 msgstr "Poveznica na izvor na ovoj kartici otvara dokument."
+
+msgid "imports_djvu_compression"
+msgstr "Kompresija PDF-a za ovaj DjVu"
+
+msgid "imports_djvu_mode_original"
+msgstr "Arhivski bez gubitaka — vrlo veliko"
+
+msgid "imports_djvu_mode_mrc"
+msgstr "Slojevito kompaktno — crni prednji sloj"
+
+msgid "imports_djvu_mode_compact_color"
+msgstr "Kompaktno u boji"
+
+msgid "imports_djvu_mode_balanced"
+msgstr "Uravnoteženo u boji"
+
+msgid "imports_djvu_mode_small"
+msgstr "Manje, u sivim tonovima"
+
+msgid "imports_djvu_mode_black_white"
+msgstr "Crno-bijelo"
+
+msgid "imports_djvu_description_original"
+msgstr "Zadržava izvornu razlučivost i boje bez gubitne kompresije slika. Može stvoriti iznimno velik PDF."
+
+msgid "imports_djvu_description_mrc"
+msgstr "Oštar crni tekst i crte u punoj razlučivosti iznad komprimirane pozadine u boji. Obično znatno manje od prednjeg sloja u boji pune razlučivosti; boje prednjeg sloja postaju crne. Ako slojevi nisu dostupni, koristi kompaktni način u boji."
+
+msgid "imports_djvu_auto_choice"
+msgstr "Automatski je odabrano {mode}, najmanja procijenjena mogućnost za opću uporabu. Možete odabrati drugi način."
+
+msgid "imports_djvu_description_compact_color"
+msgstr "Boja pri 200 dpi uz JPEG kompresiju. Znatno manje od arhivskog načina, uz zadržavanje boje."
+
+msgid "imports_djvu_description_balanced"
+msgstr "Boja pri 300 dpi uz JPEG kompresiju. Manje datoteke; sitni detalji mogu biti manje oštri."
+
+msgid "imports_djvu_description_small"
+msgstr "Sivi tonovi pri 200 dpi. Uklanja boju; mali simboli mogu biti manje oštri. Provjerite uzorke stranica."
+
+msgid "imports_djvu_description_black_white"
+msgstr "Crno-bijeli slikovni sloj teksta u izvornoj razlučivosti. Boja i sjenčanje mogu nestati. Slikovne stranice mogu ostati u sivim tonovima. Provjerite dijagrame prije uvoza."
+
+msgid "imports_djvu_estimate"
+msgstr "Procijeni veličine"
+
+msgid "imports_djvu_estimating"
+msgstr "Uzorkovanje stranica za svih šest mogućnosti…"
+
+msgid "imports_djvu_estimate_hint"
+msgstr "Automatska procjena i pregled do 8 stranica ove knjige. Postojeći tekst ostaje moguće odabrati u svakom načinu."
+
+msgid "imports_djvu_expansion_warning"
+msgstr "Upozorenje: ovaj je izbor neuobičajeno velik u usporedbi s izvornim DjVu-om. Odaberite kompaktni način osim ako izričito trebate arhivske slike bez gubitaka."
+
+msgid "imports_djvu_sample_page"
+msgstr "Uzorak stranice"
+
+msgid "imports_djvu_preview_page"
+msgstr "Pregled stranice {page}"
+
+msgid "imports_djvu_smaller"
+msgstr "Približno {percent}% manje od PDF-a izvorne kvalitete."
+
+msgid "imports_djvu_larger"
+msgstr "Približno {percent}% veće od PDF-a izvorne kvalitete."
+
+msgid "imports_djvu_estimate_result"
+msgstr "Procjena PDF-a: {low:.1f}–{high:.1f} MiB\n{comparison}\nIzvorni DjVu: {source:.1f} MiB · Uzorkovano {sampled} od {total} stranica.\nPribližan raspon, bez jamstva. Novi OCR može promijeniti veličinu."
+
+msgid "imports_djvu_estimate_failed"
+msgstr "Procjena nije uspjela: {reason}\nMožete pokušati ponovno ili uvesti uz odabranu kompresiju."
+
+msgid "imports_djvu_estimate_changed"
+msgstr "Izvorna datoteka je promijenjena. Ponovite procjenu za trenutačnu datoteku."

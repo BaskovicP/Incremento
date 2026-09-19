@@ -105,6 +105,30 @@ def test_missing_pdf_appearance_policy_defaults_to_original_without_force():
     assert normalized["pdf_force_default_appearance"] is False
 
 
+def test_pdf_snapshot_field_preferences_are_bounded_and_normalized():
+    normalized = config_service.normalize_config(
+        {
+            "pdf_snapshot_auto_field_enabled": "yes",
+            "pdf_snapshot_auto_fields": {
+                " Basic ": " Back ",
+                "": "ignored",
+                "Missing field": "",
+                42: "ignored",
+            },
+        }
+    )
+
+    assert normalized["pdf_snapshot_auto_field_enabled"] is True
+    assert normalized["pdf_snapshot_auto_fields"] == {"Basic": "Back"}
+
+
+def test_pdf_snapshot_field_preferences_default_to_asking_each_time():
+    normalized = config_service.normalize_config({})
+
+    assert normalized["pdf_snapshot_auto_field_enabled"] is False
+    assert normalized["pdf_snapshot_auto_fields"] == {}
+
+
 @pytest.mark.parametrize("raw, expected", [
     ({}, "topic/done"),
     ({"topic_done_tag": "reading::finished"}, "reading::finished"),

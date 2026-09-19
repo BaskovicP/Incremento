@@ -132,7 +132,7 @@ The map is an ownership index, not permission to couple every module in a group.
 
 - Main file: `backend/browser_bridge.py`.
 - Main endpoint: `http://127.0.0.1:8766/incremento/add-content`.
-- Protocol 2 requires `/incremento/handshake`, binds one exact extension origin per bridge run, and requires ephemeral token/protocol headers on every data request.
+- Protocol 2 uses a bodyless `POST /incremento/handshake` so Chromium supplies the real extension origin, binds that one exact origin per bridge run, and requires ephemeral token/protocol headers on every data request. Browser metadata reads also use bodyless POSTs because privileged extension GETs may omit `Origin`; keep the legacy GET handlers only for compatibility.
 - Keep body-size validation before reads and preserve the bounded handler semaphore. Never expose the bridge on a non-loopback interface.
 - Browser-capture metadata endpoint: `http://127.0.0.1:8766/incremento/browser-capture-meta`.
 - The bridge supports single-item imports, batch `items`, direct PDF bytes via `pdfBase64`, generic browser-capture note creation, writing imports in `selection` and `webpage_markdown` modes, and tracked web-card media progress updates.

@@ -172,7 +172,8 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
         "_current_profile_name": lambda: "P",
         "_paths": types.SimpleNamespace(get_user_files_dir=lambda *_: profile_root),
         "_backup_schedule": types.SimpleNamespace(
-            validate_destination=lambda folder, _profile: Path(folder)
+            validate_destination=lambda folder, _profile: Path(folder),
+            backup_staging_directory=lambda _destination, *, automatic: tmp_path,
         ),
         "_load_addon_config": lambda *_: {},
         "_video_dock_mod": types.SimpleNamespace(flush_video_progress=lambda: None),

@@ -10,30 +10,37 @@
  * Heights and gaps use the same units, so the merge rule works at different zooms
  * and with either rendered CSS coordinates or unscaled PDF coordinates.
  */
+export function pdfRectsShareLine(a, b) {
+  const overlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  const centerDistance = Math.abs((a.y + a.h / 2) - (b.y + b.h / 2));
+  // OCR words have different ascenders, descenders, and imperfect baselines.
+  // Use the taller word for center tolerance without merging adjacent rows.
+  return overlap >= Math.min(a.h, b.h) * 0.35
+    && centerDistance <= Math.max(a.h, b.h) * 0.6;
+}
+
 export function normalizePdfHighlightRects(rects) {
   const valid = (Array.isArray(rects) ? rects : [])
     .filter(r => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0)
     .map(r => ({ x: r.x, y: r.y, w: r.w, h: r.h }))
-    .sort((a, b) => (a.y + a.h / 2) - (b.y + b.h / 2) || a.x - b.x);
+    .sort((a, b) => b.h - a.h || a.y - b.y || a.x - b.x);
 
   const lines = [];
   for (const rect of valid) {
-    const line = lines.at(-1);
-    const reference = line?.[0];
-    const overlap = reference
-      ? Math.min(reference.y + reference.h, rect.y + rect.h) - Math.max(reference.y, rect.y)
-      : 0;
-    const minHeight = reference ? Math.min(reference.h, rect.h) : 0;
-    const centerDistance = reference
-      ? Math.abs((reference.y + reference.h / 2) - (rect.y + rect.h / 2))
-      : Infinity;
-    // Compare against the original line box, so expanding a union cannot
-    // gradually join neighboring lines in tightly spaced text.
-    if (reference && overlap >= minHeight * 0.6 && centerDistance <= minHeight * 0.5) {
-      line.push(rect);
-    } else {
-      lines.push([rect]);
+    let nearest = null;
+    let distance = Infinity;
+    for (const line of lines) {
+      const reference = line[0];
+      const candidate = Math.abs(reference.y + reference.h / 2 - rect.y - rect.h / 2);
+      // The tallest original box anchors a row. Never compare against a growing
+      // union, which could gradually bridge neighboring lines.
+      if (candidate < distance && pdfRectsShareLine(reference, rect)) {
+        nearest = line;
+        distance = candidate;
+      }
     }
+    if (nearest) nearest.push(rect);
+    else lines.push([rect]);
   }
 
   return lines.flatMap(line => {
@@ -56,5 +63,5 @@ export function normalizePdfHighlightRects(rects) {
       }
     }
     return merged;
-  });
+  }).sort((a, b) => a.y - b.y || a.x - b.x);
 }

@@ -1,5 +1,6 @@
 import { formatBridgeError, importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
 import { bridgeFetch } from "../shared/bridgeAuth.js";
+import { ankiConnectClient } from "../shared/ankiConnect.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
   MAX_BROWSER_CAPTURE_HTML_CHARS,
@@ -14,14 +15,17 @@ import {
   LINK_SAVE_SETTINGS_KEY,
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
-import { isSupportedVideoUrl } from "../shared/url.js";
+import { isSupportedVideoUrl, resolveLinkedVideoCardId } from "../shared/url.js";
 import {
   buildAutomaticWritingTitle,
   buildPreferredWritingFilename,
 } from "../shared/writingTitle.js";
 import { syncPersistentSiteContentScript } from "../shared/siteAccess.js";
 import { formatNumber, initializeLanguage, t, subscribeLanguage, watchLanguageStorage } from "../shared/i18n.js";
-import { readPageContextFromTab } from "../shared/pageContext.js";
+import {
+  pageContextOptionsForImport,
+  readPageContextFromTab,
+} from "../shared/pageContext.js";
 import { cardKindLabel } from "../shared/cardKind.js";
 
 const TAB_STATE = new Map();
@@ -32,8 +36,6 @@ const STORAGE_KEY = "incremento_last_video_time";
 const WEB_TRACK_STORAGE_KEY = "incremento_tracked_web_tabs";
 const LINKED_CARD_STORAGE_KEY = "incremento_linked_card_tabs";
 const OFFSCREEN_PATH = "offscreen.html";
-const ANKICONNECT_URL = "http://127.0.0.1:8765";
-const ANKICONNECT_VERSION = 6;
 const INCREMENTO_NOTE_TYPE = "Incremento Video";
 const WEB_TRACK_BRIDGE_URL = "http://127.0.0.1:8766/incremento/update-web-card";
 const WEB_TRACK_MEDIA_BRIDGE_URL = "http://127.0.0.1:8766/incremento/update-web-card-media";
@@ -262,6 +264,16 @@ function extractTrackedVideoCardId(rawUrl) {
   } catch (_err) {
     return 0;
   }
+}
+
+async function resolveTrackedVideoCardIdForTab(tabId, rawUrl) {
+  const directCardId = extractTrackedVideoCardId(rawUrl);
+  if (directCardId > 0) {
+    await registerLinkedCardContextFromUrl(tabId, rawUrl);
+    return directCardId;
+  }
+  const linkedContext = await loadLinkedCardContext(tabId);
+  return resolveLinkedVideoCardId(rawUrl, linkedContext);
 }
 
 function extractIncrementoCardIdFromUrl(rawUrl) {
@@ -698,7 +710,7 @@ async function maybeSyncTrackedWebTab(tabId, rawUrl, title = "") {
 }
 
 async function getTrackingStatusForTab(tabId, rawUrl) {
-  const videoCardId = extractTrackedVideoCardId(rawUrl);
+  const videoCardId = await resolveTrackedVideoCardIdForTab(tabId, rawUrl);
   if (videoCardId > 0) {
     return { tracked: true, mode: "video", cardId: videoCardId };
   }
@@ -716,21 +728,7 @@ async function getTrackingStatusForTab(tabId, rawUrl) {
 }
 
 async function callAnki(action, params = {}) {
-  const payload = {
-    action,
-    version: ANKICONNECT_VERSION,
-    params,
-  };
-  const resp = await fetch(ANKICONNECT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await resp.json();
-  if (data?.error) {
-    throw new Error(String(data.error));
-  }
-  return data?.result;
+  return ankiConnectClient.call(action, params);
 }
 
 async function syncTimeToAnki(state) {
@@ -889,14 +887,22 @@ async function triggerBrowserCaptureOnTab(tab, mode) {
   return !!response?.ok;
 }
 
-async function capturePageContext(tabId) {
+async function capturePageContext(tabId, options = {}) {
   await languageReady;
   if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
     return null;
   }
   await ensureContentScriptInjected(tabId);
+  const contextOptions = {
+    includeHtml: options?.includeHtml !== false,
+    htmlScope: String(options?.htmlScope || "full").toLowerCase() === "main" ? "main" : "full",
+  };
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_PAGE_CONTEXT" }, { frameId: 0 });
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      { type: "GET_PAGE_CONTEXT", ...contextOptions },
+      { frameId: 0 },
+    );
     if (response?.ok) {
       return response;
     }
@@ -913,7 +919,11 @@ async function capturePageContext(tabId) {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: readPageContextFromTab,
-      args: [MAX_BROWSER_CAPTURE_HTML_CHARS, MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS],
+      args: [
+        MAX_BROWSER_CAPTURE_HTML_CHARS,
+        MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
+        contextOptions,
+      ],
     });
     const result = results?.[0]?.result || null;
     if (result?.errorCode) {
@@ -1104,7 +1114,20 @@ async function addCurrentPageToIncremento(command) {
     return {ok: false, error: t("only_http_pages")};
   }
 
-  const context = await capturePageContext(tab.id);
+  let contextOptions = pageContextOptionsForImport("webpage");
+  if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF) {
+    contextOptions = pageContextOptionsForImport("pdf");
+  } else if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
+    contextOptions = pageContextOptionsForImport("writing", {
+      writingMode: "webpage_markdown",
+      pageContentScope: "main",
+    });
+  } else if (command === COMMAND_ADD_SELECTION_TO_MARKDOWN) {
+    contextOptions = pageContextOptionsForImport("writing", { writingMode: "selection" });
+  } else if (command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO) {
+    contextOptions = pageContextOptionsForImport("video");
+  }
+  const context = await capturePageContext(tab.id, contextOptions);
   const pageUrl = String(context?.url || getTabUrl(tab) || "").trim();
   const pageTitle = String(context?.title || tab.title || pageUrl).trim();
   const selectionText = String(context?.selectionText || "");
@@ -1445,28 +1468,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "heartbeat") {
-    const tabId = sender?.tab?.id;
-    if (typeof tabId !== "number") {
-      sendResponse?.({ ok: false });
-      return false;
-    }
-    const state = {
-      provider: typeof msg.provider === "string" ? msg.provider : "",
-      videoId: typeof msg.videoId === "string" ? msg.videoId : "",
-      cardId: Math.max(0, Math.floor(Number(msg.cardId) || 0)),
-      seconds: Number(msg.seconds) || 0,
-      flush: !!msg.flush,
-      title: typeof msg.title === "string" ? msg.title : "",
-      url: typeof msg.url === "string" ? msg.url : "",
-      updatedAt: Date.now(),
-    };
-    TAB_STATE.set(tabId, state);
-    updateActionState(state);
-    if (state.flush) {
-      void persistAndCopy(state, { copyToClipboard: false });
-    }
-    sendResponse?.({ ok: true });
-    return false;
+    void (async () => {
+      const tabId = sender?.tab?.id;
+      if (typeof tabId !== "number") {
+        sendResponse?.({ ok: false });
+        return;
+      }
+      const rawUrl = typeof msg.url === "string" ? msg.url : "";
+      const linkedCardId = await resolveTrackedVideoCardIdForTab(tabId, rawUrl);
+      const state = {
+        provider: typeof msg.provider === "string" ? msg.provider : "",
+        videoId: typeof msg.videoId === "string" ? msg.videoId : "",
+        cardId: linkedCardId,
+        seconds: Number(msg.seconds) || 0,
+        flush: !!msg.flush,
+        title: typeof msg.title === "string" ? msg.title : "",
+        url: rawUrl,
+        updatedAt: Date.now(),
+      };
+      TAB_STATE.set(tabId, state);
+      updateActionState(state);
+      if (state.flush) {
+        void persistAndCopy(state, { copyToClipboard: false });
+      }
+      sendResponse?.({ ok: true });
+    })();
+    return true;
   }
 
   if (msg.type === "web_media_heartbeat") {

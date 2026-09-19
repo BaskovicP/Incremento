@@ -3,6 +3,14 @@
   "entries": [
     {
       "component": "addon",
+      "key": "add_card_batch_open_failed",
+      "form": "",
+      "source": "Could not open the batch Q/A dialog.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "add_card_batch_qa",
       "form": "",
       "source": "Batch Q/A…",
@@ -2974,6 +2982,14 @@
     },
     {
       "component": "addon",
+      "key": "backend_extract_missing_answer_line",
+      "form": "",
+      "source": "Missing answer line.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "backend_extract_missing_question",
       "form": "",
       "source": "Missing Q: line.",
@@ -4035,9 +4051,25 @@
     },
     {
       "component": "addon",
+      "key": "extract_batch_apply_all",
+      "form": "",
+      "source": "Apply to all cards:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "extract_batch_card_type",
+      "form": "",
+      "source": "Type",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "extract_batch_create_all",
       "form": "",
-      "source": "Create All",
+      "source": "Extract Cards",
       "tokens": [],
       "markup": []
     },
@@ -4121,20 +4153,23 @@
       "component": "addon",
       "key": "extract_batch_hint",
       "form": "",
-      "source": "Paste one or more blocks separated by blank lines. Each block must start with <code>Q:</code> and contain a later <code>A:</code> line.",
+      "source": "Paste alternating question and answer lines, or use Q:/A: blocks for multiline cards. Then preview and edit every card before creating it.",
       "tokens": [],
-      "markup": [
-        "<code>",
-        "</code>",
-        "<code>",
-        "</code>"
-      ]
+      "markup": []
     },
     {
       "component": "addon",
       "key": "extract_batch_invalid_row",
       "form": "",
       "source": "Invalid row.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "extract_batch_other",
+      "form": "",
+      "source": "Other",
       "tokens": [],
       "markup": []
     },
@@ -4150,7 +4185,15 @@
       "component": "addon",
       "key": "extract_batch_parse_preview",
       "form": "",
-      "source": "Parse / Preview",
+      "source": "Preview Cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "extract_batch_priority",
+      "form": "",
+      "source": "Priority",
       "tokens": [],
       "markup": []
     },
@@ -4228,6 +4271,22 @@
       "tokens": [
         "{count}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "extract_batch_tags",
+      "form": "",
+      "source": "Tags",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "extract_batch_tags_hint",
+      "form": "",
+      "source": "Separate tags with spaces, commas, or semicolons",
+      "tokens": [],
       "markup": []
     },
     {
@@ -4908,9 +4967,198 @@
     },
     {
       "component": "addon",
+      "key": "imports_djvu_auto_choice",
+      "form": "",
+      "source": "Automatically selected {mode}, the smallest estimated general-purpose option. You can choose another mode.",
+      "tokens": [
+        "{mode}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_compression",
+      "form": "",
+      "source": "PDF compression for this DjVu",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_djvu_converting",
       "form": "",
       "source": "Converting DjVu…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_description_balanced",
+      "form": "",
+      "source": "Colour at 300 dpi with JPEG compression. Smaller files; fine details may soften.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_description_black_white",
+      "form": "",
+      "source": "Original-resolution black-and-white text layer. Colour and shading may disappear. Image-only pages may remain grayscale. Check diagrams before importing.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_description_compact_color",
+      "form": "",
+      "source": "Colour at 200 dpi with JPEG compression. Much smaller than archival lossless while retaining colour.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_description_mrc",
+      "form": "",
+      "source": "Sharp full-resolution black text and line art over a compressed colour background. Usually far smaller than a full-resolution colour layer; coloured foreground becomes black. Falls back to compact colour when layers are unavailable.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_description_original",
+      "form": "",
+      "source": "Preserve the original resolution and colours without lossy image compression. This can create an extremely large PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_description_small",
+      "form": "",
+      "source": "Grayscale at 200 dpi. Removes colour; small symbols may soften. Check the sample pages.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_estimate",
+      "form": "",
+      "source": "Estimate sizes",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_estimate_changed",
+      "form": "",
+      "source": "The source file changed. Estimate again for the current file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_estimate_failed",
+      "form": "",
+      "source": "Could not estimate: {reason}\nYou can retry or import with the selected compression.",
+      "tokens": [
+        "{reason}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_estimate_hint",
+      "form": "",
+      "source": "Estimating and previewing up to 8 pages automatically. Existing text stays selectable in every mode.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_estimate_result",
+      "form": "",
+      "source": "Estimated PDF: {low:.1f}–{high:.1f} MiB\n{comparison}\nSource DjVu: {source:.1f} MiB · Sampled {sampled} of {total} pages.\nApproximate range, not a guarantee. Running new OCR may change the size.",
+      "tokens": [
+        "{comparison}",
+        "{high:.1f}",
+        "{low:.1f}",
+        "{sampled}",
+        "{source:.1f}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_estimating",
+      "form": "",
+      "source": "Sampling pages for all six options…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_expansion_warning",
+      "form": "",
+      "source": "Warning: this choice is unusually large compared with the source DjVu. Choose a compact option unless you explicitly need archival lossless images.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_larger",
+      "form": "",
+      "source": "About {percent}% larger than the original-quality PDF.",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_mode_balanced",
+      "form": "",
+      "source": "Balanced colour",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_mode_black_white",
+      "form": "",
+      "source": "Black and white",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_mode_compact_color",
+      "form": "",
+      "source": "Compact colour",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_mode_mrc",
+      "form": "",
+      "source": "Layered compact — black foreground",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_mode_original",
+      "form": "",
+      "source": "Archival lossless — very large",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_mode_small",
+      "form": "",
+      "source": "Small grayscale",
       "tokens": [],
       "markup": []
     },
@@ -4934,8 +5182,18 @@
       "component": "addon",
       "key": "imports_djvu_preview",
       "form": "",
-      "source": "DjVu preview is available in the bookshelf after import.\nExisting text is preserved during conversion to PDF.",
+      "source": "Choose compression while sample pages are prepared automatically.\nExisting text is preserved during conversion to PDF.",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_preview_page",
+      "form": "",
+      "source": "Preview page {page}",
+      "tokens": [
+        "{page}"
+      ],
       "markup": []
     },
     {
@@ -4946,6 +5204,24 @@
       "tokens": [
         "{current}",
         "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_sample_page",
+      "form": "",
+      "source": "Sample page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_djvu_smaller",
+      "form": "",
+      "source": "About {percent}% smaller than the original-quality PDF.",
+      "tokens": [
+        "{percent}"
       ],
       "markup": []
     },
@@ -9256,6 +9532,14 @@
       "key": "reader_all_files",
       "form": "",
       "source": "All files (*)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_always_use_snapshot_field",
+      "form": "",
+      "source": "Always use the field I choose",
       "tokens": [],
       "markup": []
     },
@@ -26831,6 +27115,14 @@
     },
     {
       "component": "addon",
+      "key": "settings_pdf_snapshot_auto_field",
+      "form": "",
+      "source": "Automatically use remembered PDF snapshot fields",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_play_a_beep_when_the_focus_timer_finishes",
       "form": "",
       "source": "Play a beep when the focus timer finishes",
@@ -29443,6 +29735,16 @@
     },
     {
       "component": "extension",
+      "key": "add_failed_detail",
+      "form": "",
+      "source": "Stopped during: $STAGE$. The card was not confirmed as added.",
+      "tokens": [
+        "$STAGE$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "add_page_markdown",
       "form": "",
       "source": "Add Page to Markdown",
@@ -29455,6 +29757,74 @@
       "form": "",
       "source": "Add Selection to Markdown",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_step_destination_detail",
+      "form": "",
+      "source": "Destination: $DECK$. Tags: $COUNT$. Priority: $PRIORITY$.",
+      "tokens": [
+        "$COUNT$",
+        "$DECK$",
+        "$PRIORITY$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_step_preparing",
+      "form": "",
+      "source": "Step 2 of 3 — Preparing the $KIND$ card",
+      "tokens": [
+        "$KIND$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_step_reading",
+      "form": "",
+      "source": "Step 1 of 3 — Reading the current page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_step_reading_detail",
+      "form": "",
+      "source": "Checking the active tab, page title, and URL.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_step_sending",
+      "form": "",
+      "source": "Step 3 of 3 — Sending the $KIND$ card to Incremento",
+      "tokens": [
+        "$KIND$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_step_sending_detail",
+      "form": "",
+      "source": "Waiting for Incremento and Anki to create the card. Keep Anki open.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "add_success_detail",
+      "form": "",
+      "source": "Confirmed in $DECK$. Tags: $COUNT$. Priority: $PRIORITY$.",
+      "tokens": [
+        "$COUNT$",
+        "$DECK$",
+        "$PRIORITY$"
+      ],
       "markup": []
     },
     {
@@ -29992,6 +30362,14 @@
     },
     {
       "component": "extension",
+      "key": "copy_error_details",
+      "form": "",
+      "source": "Copy error details",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "copy_last_video_time",
       "form": "",
       "source": "Copy last video time",
@@ -30181,6 +30559,102 @@
       "key": "entire_page",
       "form": "",
       "source": "Entire page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_action",
+      "form": "",
+      "source": "Action",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_actual_chars",
+      "form": "",
+      "source": "Captured characters",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_code",
+      "form": "",
+      "source": "Error code",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_content_scope",
+      "form": "",
+      "source": "Content scope",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_details_copied",
+      "form": "",
+      "source": "Error details copied.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_details_copy_failed",
+      "form": "",
+      "source": "Could not copy the error details. Select the text above and copy it manually.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_details_title",
+      "form": "",
+      "source": "Error details",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_extension_version",
+      "form": "",
+      "source": "Extension version",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_max_chars",
+      "form": "",
+      "source": "Maximum characters",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_reason",
+      "form": "",
+      "source": "Reason",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_report_title",
+      "form": "",
+      "source": "Incremento Companion error",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_stage",
+      "form": "",
+      "source": "Stage",
       "tokens": [],
       "markup": []
     },

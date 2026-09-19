@@ -27,6 +27,8 @@ DEFAULT_REVIEWER_BUTTON_VISIBILITY = {
     "extract": True,
 }
 PDF_APPEARANCE_MODES = frozenset({"original", "dark", "night"})
+MAX_PDF_SNAPSHOT_AUTO_FIELDS = 50
+MAX_PDF_SNAPSHOT_FIELD_NAME_LENGTH = 255
 _DAY_END_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 _BOOLEAN_DEFAULTS = {
@@ -197,6 +199,29 @@ def configured_pdf_force_default_appearance(
     return _bool((config or {}).get("pdf_force_default_appearance"), False)
 
 
+def configured_pdf_snapshot_auto_field_enabled(
+    config: Mapping[str, Any] | None = None,
+) -> bool:
+    return _bool((config or {}).get("pdf_snapshot_auto_field_enabled"), False)
+
+
+def normalize_pdf_snapshot_auto_fields(value: Any) -> dict[str, str]:
+    """Return a bounded note-type-to-field preference map."""
+    if not isinstance(value, Mapping):
+        return {}
+    normalized: dict[str, str] = {}
+    for raw_note_type, raw_field in value.items():
+        if len(normalized) >= MAX_PDF_SNAPSHOT_AUTO_FIELDS:
+            break
+        if not isinstance(raw_note_type, str) or not isinstance(raw_field, str):
+            continue
+        note_type = raw_note_type.strip()[:MAX_PDF_SNAPSHOT_FIELD_NAME_LENGTH]
+        field_name = raw_field.strip()[:MAX_PDF_SNAPSHOT_FIELD_NAME_LENGTH]
+        if note_type and field_name:
+            normalized[note_type] = field_name
+    return normalized
+
+
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
@@ -205,6 +230,12 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config["topic_done_tag"] = configured_topic_done_tag(config)
     config["pdf_default_appearance"] = configured_pdf_default_appearance(config)
     config["pdf_force_default_appearance"] = configured_pdf_force_default_appearance(config)
+    config["pdf_snapshot_auto_field_enabled"] = (
+        configured_pdf_snapshot_auto_field_enabled(config)
+    )
+    config["pdf_snapshot_auto_fields"] = normalize_pdf_snapshot_auto_fields(
+        config.get("pdf_snapshot_auto_fields")
+    )
     backup_profiles = config.get("automatic_backups")
     config["automatic_backups"] = {
         str(profile): normalize_policy(policy)

@@ -358,6 +358,7 @@ class IncrementoSettingsDialog(QDialog):
         current_extract_copy_source_tags: bool = False,
         current_extract_highlight_when_extracting: bool = True,
         current_pdf_highlight_extract_field: int = 1,
+        current_pdf_snapshot_auto_field_enabled: bool = False,
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
@@ -631,6 +632,14 @@ class IncrementoSettingsDialog(QDialog):
             ),
             self._pdf_highlight_extract_field_spin,
         )
+
+        self._pdf_snapshot_auto_field_enabled_cb = QCheckBox(
+            t("settings_pdf_snapshot_auto_field")
+        )
+        self._pdf_snapshot_auto_field_enabled_cb.setChecked(
+            bool(current_pdf_snapshot_auto_field_enabled)
+        )
+        extraction_form.addRow("", self._pdf_snapshot_auto_field_enabled_cb)
 
         extraction_layout.addLayout(extraction_form)
         extraction_layout.addWidget(_subsection_title(t('settings_saved_provenance')))
@@ -1772,6 +1781,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def pdf_highlight_extract_field(self) -> int:
         return max(1, min(20, int(self._pdf_highlight_extract_field_spin.value())))
+
+    @property
+    def pdf_snapshot_auto_field_enabled(self) -> bool:
+        return bool(self._pdf_snapshot_auto_field_enabled_cb.isChecked())
 
     @property
     def extract_source_links(self) -> dict[str, bool]:

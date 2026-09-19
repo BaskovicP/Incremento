@@ -165,12 +165,12 @@ SQLite additionally owns the append-across-days trend data that the aggregate fi
 
 The companion talks to `127.0.0.1:8766` using bridge protocol 2:
 
-1. a Chrome/Brave extension origin performs a handshake;
+1. a Chrome/Brave extension performs a bodyless POST handshake, which preserves its browser-supplied origin even when privileged GET requests would omit it;
 2. the bridge binds that origin for the Anki run and returns an ephemeral token;
 3. every data request supplies the token and protocol headers;
 4. the bridge enforces exact origin, request-size, path, and concurrent-handler limits.
 
-Tokens reset when the bridge/profile stops. The extension retries one handshake after a `401`. Only loopback clients are trusted; Incremento exposes no remote listener. Source and generated `dist/` extension files must remain aligned.
+Tokens reset when the bridge/profile stops. Read-only bridge RPCs also use bodyless POSTs and are explicitly retry-safe; mutating POSTs are never repeated after an ambiguous connection failure. The extension retries one handshake after a `401`. Only loopback clients are trusted; Incremento exposes no remote listener. Source and generated `dist/` extension files must remain aligned.
 
 ## Backup and diagnostics
 

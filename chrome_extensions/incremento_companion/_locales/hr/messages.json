@@ -333,6 +333,45 @@
       }
     }
   },
+  "add_step_reading": {
+    "message": "Korak 1 od 3 — Čitanje trenutačne stranice"
+  },
+  "add_step_reading_detail": {
+    "message": "Provjera aktivne kartice preglednika, naslova stranice i URL-a."
+  },
+  "add_step_preparing": {
+    "message": "Korak 2 od 3 — Priprema kartice vrste $KIND$",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "add_step_destination_detail": {
+    "message": "Odredište: $DECK$. Oznake: $COUNT$. Prioritet: $PRIORITY$.",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "priority": {
+        "content": "$3"
+      }
+    }
+  },
+  "add_step_sending": {
+    "message": "Korak 3 od 3 — Slanje kartice vrste $KIND$ u Incremento",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "add_step_sending_detail": {
+    "message": "Čeka se da Incremento i Anki izrade karticu. Ostavite Anki otvoren."
+  },
   "added_card": {
     "message": "Dodana kartica vrste $KIND$: $TITLE$",
     "placeholders": {
@@ -344,8 +383,69 @@
       }
     }
   },
+  "add_success_detail": {
+    "message": "Potvrđeno u špilu $DECK$. Oznake: $COUNT$. Prioritet: $PRIORITY$.",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "priority": {
+        "content": "$3"
+      }
+    }
+  },
+  "add_failed_detail": {
+    "message": "Zaustavljeno tijekom koraka: $STAGE$. Dodavanje kartice nije potvrđeno.",
+    "placeholders": {
+      "stage": {
+        "content": "$1"
+      }
+    }
+  },
   "add_content_failed": {
     "message": "Nije moguće dodati sadržaj."
+  },
+  "error_details_title": {
+    "message": "Pojedinosti pogreške"
+  },
+  "error_report_title": {
+    "message": "Pogreška u Incremento Companionu"
+  },
+  "error_extension_version": {
+    "message": "Verzija proširenja"
+  },
+  "error_action": {
+    "message": "Radnja"
+  },
+  "error_stage": {
+    "message": "Korak"
+  },
+  "error_reason": {
+    "message": "Razlog"
+  },
+  "error_code": {
+    "message": "Kôd pogreške"
+  },
+  "error_content_scope": {
+    "message": "Opseg sadržaja"
+  },
+  "error_actual_chars": {
+    "message": "Obuhvaćeno znakova"
+  },
+  "error_max_chars": {
+    "message": "Najviše znakova"
+  },
+  "copy_error_details": {
+    "message": "Kopiraj pojedinosti pogreške"
+  },
+  "error_details_copied": {
+    "message": "Pojedinosti pogreške su kopirane."
+  },
+  "error_details_copy_failed": {
+    "message": "Nije moguće kopirati pojedinosti pogreške. Označite gornji tekst i kopirajte ga ručno."
   },
   "copying_video_time": {
     "message": "Kopira se posljednje vrijeme videozapisa..."

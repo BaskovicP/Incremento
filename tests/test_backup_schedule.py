@@ -116,7 +116,7 @@ def test_rotation_keeps_selected_five_versions_after_sixth_success(tmp_path):
 
 
 @pytest.mark.parametrize("keep", [1, 5])
-def test_slot_target_fills_selected_count_then_reuses_oldest_after_atomic_replace(
+def test_slot_target_fills_selected_count_then_reuses_oldest_path(
     tmp_path, keep,
 ):
     slots = []
@@ -136,6 +136,7 @@ def test_slot_target_fills_selected_count_then_reuses_oldest_after_atomic_replac
     staged.write_bytes(b"new verified backup")
     os.replace(staged, target)
     assert target.read_bytes() == b"new verified backup"
+    assert not staged.exists()
     for number, other in enumerate(slots[1:], start=2):
         assert other.read_bytes() == f"verified backup {number}".encode()
     assert backup_schedule.prune_backups(tmp_path, "P", keep, protected=target) == []
@@ -145,18 +146,22 @@ def test_slot_target_fills_selected_count_then_reuses_oldest_after_atomic_replac
     ]
 
 
-def test_new_slots_retire_legacy_timestamp_backups_after_verified_replacement(tmp_path):
+def test_existing_legacy_backups_are_reused_before_creating_more_files(tmp_path):
     legacy = [backup_schedule.backup_filename("P", t) for t in range(1, 5)]
-    for name in legacy:
+    for index, name in enumerate(legacy, start=1):
         (tmp_path / name).write_bytes(b"old")
+        os.utime(tmp_path / name, ns=(index * 1_000_000_000,) * 2)
 
     target = backup_schedule.next_backup_path(tmp_path, "P", 3)
-    target.write_bytes(b"new verified backup")
+    assert target == tmp_path / legacy[0]
+    staged = tmp_path / ".staged.zip"
+    staged.write_bytes(b"new verified backup")
+    os.replace(staged, target)
     removed = backup_schedule.prune_backups(tmp_path, "P", 3, protected=target)
 
-    assert set(removed) == {tmp_path / legacy[0], tmp_path / legacy[1]}
+    assert removed == [tmp_path / legacy[1]]
     assert {path.name for path in tmp_path.glob("*.zip")} == {
-        target.name, legacy[2], legacy[3],
+        legacy[0], legacy[2], legacy[3],
     }
 
 
@@ -173,20 +178,49 @@ def test_reusable_backup_slot_rejects_symlink_without_touching_target(tmp_path):
     assert slot.is_symlink()
 
 
-def test_fixed_slots_replace_future_dated_legacy_backups_during_migration(tmp_path):
+def test_legacy_backup_names_rotate_in_place_without_new_slot_uploads(tmp_path):
     legacy = [
         backup_schedule.backup_filename("P", 4_102_444_800 + offset)
         for offset in range(3)
     ]
-    for name in legacy:
+    for index, name in enumerate(legacy, start=1):
         (tmp_path / name).write_bytes(b"legacy")
+        os.utime(tmp_path / name, ns=(index * 1_000_000_000,) * 2)
 
     for number in range(1, 4):
         target = backup_schedule.next_backup_path(tmp_path, "P", 3)
-        target.write_bytes(f"new {number}".encode())
+        staged = tmp_path / f".staged-{number}.zip"
+        staged.write_bytes(f"new {number}".encode())
+        os.replace(staged, target)
         backup_schedule.prune_backups(tmp_path, "P", 3, protected=target)
 
-    assert {path.name for path in tmp_path.glob("*.zip")} == {
-        f"incremento_P_auto_backup_slot_{number:02d}.zip"
-        for number in range(1, 4)
+    assert {path.name for path in tmp_path.glob("*.zip")} == set(legacy)
+    assert {path.read_bytes() for path in tmp_path.glob("*.zip")} == {
+        b"new 1", b"new 2", b"new 3",
     }
+
+
+def test_automatic_backup_stages_outside_destination_on_same_volume(tmp_path):
+    destination = tmp_path / "synced"
+    system_temp = tmp_path / "system-temp"
+    destination.mkdir()
+    system_temp.mkdir()
+
+    selected = backup_schedule.backup_staging_directory(
+        destination, automatic=True, system_temp=system_temp,
+    )
+
+    assert selected == system_temp.resolve()
+
+
+def test_manual_backup_stages_in_selected_destination(tmp_path):
+    destination = tmp_path / "manual"
+    system_temp = tmp_path / "system-temp"
+    destination.mkdir()
+    system_temp.mkdir()
+
+    selected = backup_schedule.backup_staging_directory(
+        destination, automatic=False, system_temp=system_temp,
+    )
+
+    assert selected == destination

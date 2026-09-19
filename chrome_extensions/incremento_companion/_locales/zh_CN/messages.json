@@ -317,6 +317,45 @@
       }
     }
   },
+  "add_step_reading": {
+    "message": "第 1/3 步 — 读取当前页面"
+  },
+  "add_step_reading_detail": {
+    "message": "正在检查活动标签页、页面标题和 URL。"
+  },
+  "add_step_preparing": {
+    "message": "第 2/3 步 — 准备 $KIND$ 卡片",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "add_step_destination_detail": {
+    "message": "目标：$DECK$。标签：$COUNT$。优先级：$PRIORITY$。",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "priority": {
+        "content": "$3"
+      }
+    }
+  },
+  "add_step_sending": {
+    "message": "第 3/3 步 — 将 $KIND$ 卡片发送到 Incremento",
+    "placeholders": {
+      "kind": {
+        "content": "$1"
+      }
+    }
+  },
+  "add_step_sending_detail": {
+    "message": "正在等待 Incremento 和 Anki 创建卡片。请保持 Anki 打开。"
+  },
   "added_card": {
     "message": "已添加 $KIND$ 卡片：$TITLE$",
     "placeholders": {
@@ -328,8 +367,69 @@
       }
     }
   },
+  "add_success_detail": {
+    "message": "已在 $DECK$ 中确认。标签：$COUNT$。优先级：$PRIORITY$。",
+    "placeholders": {
+      "deck": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      },
+      "priority": {
+        "content": "$3"
+      }
+    }
+  },
+  "add_failed_detail": {
+    "message": "停止于：$STAGE$。尚未确认卡片已添加。",
+    "placeholders": {
+      "stage": {
+        "content": "$1"
+      }
+    }
+  },
   "add_content_failed": {
     "message": "添加内容失败。"
+  },
+  "error_details_title": {
+    "message": "错误详情"
+  },
+  "error_report_title": {
+    "message": "Incremento Companion 错误"
+  },
+  "error_extension_version": {
+    "message": "扩展版本"
+  },
+  "error_action": {
+    "message": "操作"
+  },
+  "error_stage": {
+    "message": "步骤"
+  },
+  "error_reason": {
+    "message": "原因"
+  },
+  "error_code": {
+    "message": "错误代码"
+  },
+  "error_content_scope": {
+    "message": "内容范围"
+  },
+  "error_actual_chars": {
+    "message": "已采集字符数"
+  },
+  "error_max_chars": {
+    "message": "最大字符数"
+  },
+  "copy_error_details": {
+    "message": "复制错误详情"
+  },
+  "error_details_copied": {
+    "message": "错误详情已复制。"
+  },
+  "error_details_copy_failed": {
+    "message": "无法复制错误详情。请选中上方文本并手动复制。"
   },
   "copying_video_time": {
     "message": "正在复制最近的视频时间…"

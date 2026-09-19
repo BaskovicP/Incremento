@@ -3,6 +3,27 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selectable', async () => {
+  const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8');
+  const start = source.indexOf('  const renderTextLayer = useCallback(');
+  const end = source.indexOf('  const renderLinkAnnotations', start);
+  const spans = [' ', 'i', '.', 'compressed'].map(text => ({
+    textContent: text, style: { transform: 'scaleX(0.04)' }, removed: false,
+    getBoundingClientRect: () => ({ width: 2, height: 10 }),
+    remove() { this.removed = true; },
+  }));
+  const scope = {
+    useCallback: callback => callback,
+    textLayerRef: { current: { style: { setProperty() {} }, querySelectorAll: () => spans } },
+    containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
+    window: { pdfjsLib: { TextLayer: class { render() { return Promise.resolve(); } } } },
+  };
+  vm.runInNewContext(source.slice(start, end) + '\nglobalThis.render = renderTextLayer;', scope);
+  scope.render({ streamTextContent() {} }, { scale: 1, width: 600, height: 800 });
+  await Promise.resolve();
+  assert.deepEqual(spans.filter(span => !span.removed).map(span => span.textContent), [' ', 'i', '.', 'compressed']);
+});
+
 function loader() {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8');
   const start = source.indexOf('  const doStart = useCallback(');

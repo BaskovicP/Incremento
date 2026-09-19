@@ -80,6 +80,8 @@ def test_full_backup_uses_non_modal_activity_status_instead_of_progress_dialog()
     assert "start_activity(" in backup_body
     assert "update_activity(" in backup_body
     assert "mw.progress.start(" not in backup_body
+    assert "_backup_schedule.backup_staging_directory(" in backup_body
+    assert "os.replace(archive_tmp_path, path)" in backup_body
 
 
 def test_automatic_backup_dialog_exposes_close_trigger():

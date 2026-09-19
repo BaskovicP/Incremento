@@ -65,6 +65,87 @@ def test_bridge_never_authorizes_an_originless_handshake(monkeypatch):
     assert handler._bind_handshake_origin() is False
 
 
+def test_bridge_accepts_empty_post_handshake_from_extension_origin(monkeypatch):
+    origin = "chrome-extension://" + "a" * 32
+    monkeypatch.setattr(browser_bridge, "_allowed_extension_origin", "")
+    monkeypatch.setattr(browser_bridge, "_bridge_token", "secret")
+    handler = _bare_bridge_handler({"Content-Length": "0"}, origin=origin)
+    handler.path = browser_bridge.BRIDGE_HANDSHAKE_PATH
+    handler.rfile = type(
+        "_Body",
+        (),
+        {"read": lambda *_args: (_ for _ in ()).throw(AssertionError("read"))},
+    )()
+    responses = []
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    handler._do_POST()
+
+    assert responses == [(200, {"ok": True, "protocol": 2, "token": "secret"})]
+    assert browser_bridge._allowed_extension_origin == origin
+
+
+def test_bridge_post_handshake_rejects_a_body_before_binding_origin(monkeypatch):
+    origin = "chrome-extension://" + "a" * 32
+    monkeypatch.setattr(browser_bridge, "_allowed_extension_origin", "")
+    monkeypatch.setattr(browser_bridge, "_bridge_token", "secret")
+    handler = _bare_bridge_handler({"Content-Length": "1"}, origin=origin)
+    handler.path = browser_bridge.BRIDGE_HANDSHAKE_PATH
+    handler.rfile = type(
+        "_Body",
+        (),
+        {"read": lambda *_args: (_ for _ in ()).throw(AssertionError("read"))},
+    )()
+    responses = []
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    handler._do_POST()
+
+    assert responses == [
+        (400, {"ok": False, "error": "Request body must be empty.", "error_code": "invalid_request"})
+    ]
+    assert browser_bridge._allowed_extension_origin == ""
+    assert handler.close_connection is True
+
+
+def test_bridge_accepts_empty_post_for_browser_capture_metadata(monkeypatch):
+    origin = "chrome-extension://" + "a" * 32
+    monkeypatch.setattr(browser_bridge, "_allowed_extension_origin", origin)
+    monkeypatch.setattr(browser_bridge, "_bridge_token", "secret")
+    monkeypatch.setattr(
+        browser_bridge,
+        "_run_on_main_and_wait",
+        lambda callback: callback(),
+    )
+    monkeypatch.setattr(
+        browser_bridge,
+        "_browser_capture_meta_on_main",
+        lambda: {"ok": True, "deckNames": ["Topics"], "tagNames": ["stable"]},
+    )
+    handler = _bare_bridge_handler(
+        {
+            "Content-Length": "0",
+            "X-Incremento-Token": "secret",
+            "X-Incremento-Protocol": "2",
+        },
+        origin=origin,
+    )
+    handler.path = browser_bridge.BROWSER_CAPTURE_META_PATH
+    handler.rfile = type(
+        "_Body",
+        (),
+        {"read": lambda *_args: (_ for _ in ()).throw(AssertionError("read"))},
+    )()
+    responses = []
+    handler._send_json = lambda status, payload: responses.append((status, payload))
+
+    handler._do_POST()
+
+    assert responses == [
+        (200, {"ok": True, "deckNames": ["Topics"], "tagNames": ["stable"]})
+    ]
+
+
 def test_bridge_requires_matching_protocol_and_token(monkeypatch):
     monkeypatch.setattr(browser_bridge, "_bridge_token", "secret")
 

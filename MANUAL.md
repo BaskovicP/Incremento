@@ -391,6 +391,12 @@ It can also sync watched YouTube/Vimeo time back into Incremento video cards.
 
 The popup and the full text/snapshot capture form load existing tags from the active Anki profile. Focus the tag field or type any part of a tag to open suggestions, then click one or use the arrow keys with Enter/Tab. Completion replaces only the tag currently being typed, so other space- or comma-separated tags remain intact; new tags are still accepted.
 
+You can keep multiple Chrome/Brave tabs open. Companion coordinates bridge reconnects, uses an origin-preserving local handshake for deck/tag metadata, keeps that loading independent from inspection of the current page, and serializes optional AnkiConnect video-time updates so one problematic or busy tab does not blank the popup metadata for the others.
+
+When you choose an import action such as **Add as Video**, the popup shows each stage: reading the current tab, preparing the card and destination, and waiting for Incremento/Anki to create it. The final message confirms the created card or names the stage where the operation stopped, along with the underlying error when available. The whole popup border appears once—green after confirmed creation or red after failure—stays steady briefly, then fades out once, without taking focus or blocking another click; reduced-motion mode uses a steady brief border. A failed import also shows a selectable diagnostic report and **Copy error details**. The report contains the extension version, action, stage, reason, stable error code, and applicable scope/size counters; it excludes page content, URLs, connection tokens, and card data.
+
+**Add Page to Markdown** reads only the selected content scope. **Main content** prefers the page's semantic article/main region and removes scripts, styles, embedded frames, hidden elements, and navigation chrome before enforcing the capture limit. Video, Webpage, and selection-only actions read page metadata without serializing the full HTML, so a large background DOM does not block those actions. **Entire page** intentionally remains subject to the full safety limit after non-content nodes are removed.
+
 ---
 
 ## 6. PDF and EPUB Cards
@@ -406,9 +412,44 @@ priority and the import checkboxes work the same for both formats.
 Incremento converts DjVu documents in the background into managed PDFs, keeping
 the existing text layer and its positions. The resulting card uses the PDF
 reader, Document Bookshelf, search, highlighting and extraction tools. The
-original DjVu file is left untouched. A DjVu preview becomes available in the
-bookshelf after import. Cancel stops conversion and pending imports; documents
+original DjVu file is left untouched. Cancel stops conversion and pending imports; documents
 already imported remain available.
+
+Select a DjVu row to choose **PDF compression for this DjVu** in the preview
+panel. Each file has its own choice, retained while the import dialog is open:
+
+| Choice | Image quality |
+| --- | --- |
+| **Layered compact — black foreground** | Keeps a sharp full-resolution black text/line-art mask over a compressed 120 dpi colour background. Foreground colours become black. If a document has no usable DjVu layers, Incremento safely falls back to Compact colour. |
+| **Compact colour** | 200 dpi colour with JPEG compression; a smaller conventional PDF when the layered mode is not suitable. |
+| **Balanced colour** | 300 dpi colour with JPEG compression; fine details may soften. |
+| **Small grayscale** | 200 dpi grayscale with JPEG compression; removes colour and may soften small symbols. |
+| **Black and white** | Original-resolution black-and-white rendering; colour and shading can disappear. Image-only pages may remain grayscale. |
+| **Archival lossless (very large)** | Original resolution and colours with lossless image compression. This can expand a small DjVu into a PDF hundreds of megabytes in size. |
+
+Selecting a DjVu row automatically samples up to eight pages spread through the
+book, including the first and last pages. Unless you already chose a mode for that
+file, Incremento then selects the smallest estimate among Layered compact,
+Compact colour and Balanced colour. You can override that choice. Switch modes to
+compare the estimated PDF size range, percentage change against an archival
+lossless PDF, and the sample-page preview. **Estimate sizes** retries the estimate
+when needed. The source DjVu size is shown separately: a compressed PDF can still
+be larger than the DjVu. Incremento displays an extra warning when the estimate is
+at least ten times the source size or reaches 250 MiB. Use the preview page
+selector to inspect interior text and diagrams as well as the cover.
+Estimates use the same conversion settings as import and include existing OCR
+text. They are approximate, can show an increase, and may change if new OCR runs.
+Short documents of eight pages or fewer are measured in full. Estimation runs
+offline in the background, can be cancelled, and creates no cards or managed
+files. Choosing another file or closing the dialog cancels pending estimation;
+failure to estimate does not prevent importing with the chosen setting.
+
+Every compression choice preserves existing selectable text and its page
+coordinates. Layered compact keeps text and line art sharp while compressing the
+photographic background separately, but turns foreground colours black. Check
+small mathematical symbols, faint lines, and shaded or coloured diagrams before
+choosing the smaller modes. This control applies to new DjVu imports; existing
+PDFs are not rewritten.
 
 DjVu import requires **PyMuPDF** and **DjVuLibre** (`ddjvu` and `djvutxt`).
 Check **Incremento → Utils → Check Dependencies…** for installation guidance.
@@ -416,7 +457,11 @@ On macOS, install DjVuLibre with `brew install djvulibre`; on Debian/Ubuntu,
 use `sudo apt install djvulibre-bin`. On Windows, install DjVuLibre and add its
 tool directory to PATH. Restart Anki after installing dependencies.
 
-Existing DjVu text is reused without running OCR again. **Use OCR** is optional
+Existing DjVu text is reused without running OCR again. OCR words may extend
+outside their enclosing line or paragraph boxes as long as they remain inside
+the page; their original positions are preserved. Symbols missing from the
+primary font use bundled fallback fonts without downloading anything.
+**Use OCR** is optional
 and runs only when the whole document has no usable text layer and Tesseract is
 available. Use **OCR all possible** or **Don't OCR anything** to set every eligible
 PDF and DjVu row at once. Without OCR, image-only documents can still be read,
@@ -531,7 +576,10 @@ the current annotation color unchanged.
 
 The blue text-selection preview and saved text highlights join word spaces,
 including wider spaces in justified text, between PDF text fragments on the
-same line. Overlapping boxes render once for even color; separate lines and
+same line. Small OCR baseline differences stay within one highlight band.
+Copying and extracting text preserve word spaces, narrow letters, punctuation,
+and the exact selected start and end characters, including in converted DjVu
+documents. Overlapping boxes render once for even color; separate lines and
 wide column gutters remain clear. Hovering a highlight
 with a saved note shows one note popup beside the pointer.
 The note icon stays transparent until you hover over its annotation controls
@@ -623,17 +671,20 @@ Incremento saves the last watched position for each video card and resumes from 
 
 The dock includes:
 
-- current time display
-- seek bar
-- **Add Card at this point**
-- **Review All…** for linked video cards, with Topic/Item, timestamp range, nested scope, due-state, limit, and ordering controls
-- **Open in Browser**
+- a compact current-time and manual resume-time control
+- a primary **Extract** action for adding a card at the current timestamp
+- **Bookmark** plus a live bookmark count that opens the saved return points
+- an overflow menu for **Back** (10 seconds), **Open in Browser**, **Download Local Copy…**, **Captions…**, and **Review All**; the shared **Search** action stays visible but disabled because video cards do not have text search
+
+**Review All** opens the linked-card picker with Topic/Item, timestamp range,
+nested scope, due-state, limit, and ordering controls.
 
 For local playback, extra controls appear:
 
 - play / pause
 - skip back 10s
 - skip forward 10s
+- seek bar
 - playback speed
 - volume
 
@@ -850,6 +901,14 @@ The chosen priority is saved for every card generated by that note. This matters
 
 For topic cards, the dialog can also expose **A-Factor**, which adjusts the topic's interval behavior.
 
+### Batch Q/A cards
+
+Both Anki's normal **Add** window and Incremento's persistent **Add Card** dock expose a `Q/A` toolbar button. It opens a batch editor for creating many cards against the note type and deck selected in the originating Add window.
+
+Paste either alternating non-empty lines—question, answer, question, answer—or labeled `Q:` / `A:` blocks. Labeled blocks may contain multiline questions and answers. Click **Preview Cards** to see every proposed card before anything is created. You can edit questions and answers, delete unwanted rows, map question and answer text to any two visible note fields, and set each row's priority, Topic/Item/Other classification, and tags.
+
+The **Apply to all cards** controls copy one priority, classification, and tag set to every preview row; afterward, individual rows can still be adjusted. Tags may be separated with spaces, commas, or semicolons. Click **Extract Cards** only after the preview is ready. When the batch starts from an active Incremento extraction, its existing source metadata and lineage are retained; a standalone batch remains independent of any extraction open in another Add window.
+
 ### Extract Card from the current reviewer card
 
 Press `Alt+X` to open the **Extract Card** dialog.
@@ -884,6 +943,8 @@ It is used by:
 - timestamp-based video note creation
 
 When text is selected in a supported source, transfer buttons appear next to Add Card fields so you can insert the selection directly.
+
+After drawing a PDF snapshot, the field picker includes **Always use the field I choose**. Check it before choosing a field to remember that field for the current note type. Later PDF snapshots using that note type are inserted there automatically; if the field or note type is no longer available, Incremento safely shows the picker again. Turn off **Automatically use remembered PDF snapshot fields** under **Settings → Extraction** to ask every time again.
 
 An **Extract composer** strip keeps the current source, priority, Topic/Item choice, tree-link choice, and batch action together. Non-empty extraction drafts autosave after edits under the active Anki profile. If Anki or the dock closes before the note is added, the next Add Card dock offers **Restore** or **Discard**. A successful add or explicit discard clears that saved draft.
 
@@ -931,11 +992,11 @@ The full backup is private and intentionally contains your cards, media, databas
 
 The APKG and `user_files/<ProfileName>/` snapshot always refer to the same active profile. Restoring this archive does not require deleting other existing Incremento profile folders.
 
-Incremento runs SQLite's integrity check and copies the database through SQLite's backup API. It writes and validates a temporary ZIP before atomically replacing the selected destination. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
+Incremento runs SQLite's integrity check and copies the database through SQLite's backup API. It writes and validates a temporary ZIP before atomically replacing the selected destination. Automatic exports keep that work file outside the selected folder when the filesystem permits, so cloud-sync software sees only the completed slot. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
 
-Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Choose how many automatic versions to keep, from 1 to 20 (5 by default). Incremento fills that many fixed ZIP slots; once they are full, the next successful, validated backup replaces the oldest slot. For example, with five selected, the sixth backup replaces the first. Older timestamp-named automatic ZIPs are retired as the new slots fill. The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Automatic backups run in the background with a progress window that explains why Anki is temporarily unavailable and shows the current stage. Progress and failures also appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before an existing slot is replaced or older automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
+Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Choose how many automatic versions to keep, from 1 to 20 (5 by default). Incremento creates slot files until that count is reached; after that, each successful, validated backup atomically replaces the oldest automatic ZIP at the same path. For example, with five selected, the sixth backup replaces the first. Older timestamp-named automatic ZIPs count toward the limit and are reused instead of creating a second set of slot files. The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Automatic backups run in the background with a progress window that explains why Anki is temporarily unavailable and shows the current stage. Progress and failures also appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before an existing automatic ZIP is replaced or excess automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
 
-A folder synced by the Google Drive desktop app (or another cloud-sync app) can be selected, but Incremento itself does not sign in to a cloud service or verify that the ZIP finished uploading. These full backups include private cards, media and configuration: protect the sync account and destination accordingly. Keep an additional backup outside the sync service if you need protection against cloud-side deletion or account loss.
+A folder synced by the Google Drive desktop app (or another cloud-sync app) can be selected. Incremento builds automatic backups outside that folder when possible, validates them, and then exposes only the final fixed slot to the sync service. Incremento itself does not sign in to a cloud service or verify that the ZIP finished uploading. Temporary `.incremento-backup-*.zip` items uploaded by an older version may need to be removed once in the cloud provider's web interface because they can remain remotely after disappearing from the local folder. These full backups include private cards, media and configuration: protect the sync account and destination accordingly. Keep an additional backup outside the sync service if you need protection against cloud-side deletion or account loss.
 
 ---
 
@@ -947,7 +1008,7 @@ Choose **Incremento → Settings** to open seven tabs:
 
 - **Language**: choose Automatic (follow Anki), English, Hrvatski, or 简体中文
 
-- **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, topic/tag defaults, and saved provenance link types
+- **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, remembered PDF snapshot-field reuse, topic/tag defaults, and saved provenance link types
 - **Review**: priority direction, per-type reviewer badge visibility, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
 - **Topics**: which card types/tags count as topics, the Done tag, the default topic A-factor, More/Less strength, the maximum topic interval, Add Card topic/item tags, whether Incremento auto-creates the `Topics` deck, which profiles that applies to, and the red Postpone button behavior
 - **Writing**: editor defaults, automatic backup intervals, progress visibility, default progress scope, and word-count mode
