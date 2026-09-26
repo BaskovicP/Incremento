@@ -2,12 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildContextMenuImportOptions,
   buildLinkSaveFallbackTitle,
   buildLinkSaveTitle,
   DEFAULT_LINK_SAVE_SETTINGS,
   eventMatchesLinkSaveModifier,
   isSupportedLinkSaveUrl,
   normalizeLinkSaveSettings,
+  resolveContextMenuDeckName,
 } from "../src/shared/linkSaveModel.js";
 
 test("normalizeLinkSaveSettings applies defaults and preserves supported modifier keys", () => {
@@ -19,14 +21,40 @@ test("normalizeLinkSaveSettings applies defaults and preserves supported modifie
       modifierKey: "shift",
       navigateAfterSave: false,
       contextMenuEnabled: false,
+      contextMenuDeckName: "Research",
     }),
     {
       modifierClickEnabled: true,
       modifierKey: "shift",
       navigateAfterSave: false,
       contextMenuEnabled: false,
+      contextMenuDeckName: "Research",
     },
   );
+});
+
+test("context-menu import options always apply topic and the configured deck", () => {
+  assert.deepEqual(
+    buildContextMenuImportOptions({ contextMenuDeckName: "  Study   Videos  " }),
+    {
+      deckName: "Study Videos",
+      tags: ["topic"],
+    },
+  );
+  assert.deepEqual(
+    buildContextMenuImportOptions({ contextMenuDeckName: "" }),
+    {
+      deckName: "Topics",
+      tags: ["topic"],
+    },
+  );
+});
+
+test("resolveContextMenuDeckName keeps an available choice and falls back safely", () => {
+  assert.equal(resolveContextMenuDeckName("Research", ["Topics", "Research"]), "Research");
+  assert.equal(resolveContextMenuDeckName("Missing", ["Archive", "Topics"]), "Topics");
+  assert.equal(resolveContextMenuDeckName("Missing", ["Archive", "Reading"]), "Archive");
+  assert.equal(resolveContextMenuDeckName("Missing", []), "Topics");
 });
 
 test("eventMatchesLinkSaveModifier requires the configured modifier without extras", () => {

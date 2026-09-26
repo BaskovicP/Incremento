@@ -10,12 +10,13 @@ import {
   validateBrowserCaptureScreenshotDataUrl,
 } from "../shared/browserCaptureModel.js";
 import {
+  buildContextMenuImportOptions,
   buildLinkSaveTitle,
   isSupportedLinkSaveUrl,
   LINK_SAVE_SETTINGS_KEY,
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
-import { isSupportedVideoUrl, resolveLinkedVideoCardId } from "../shared/url.js";
+import { classifyLinkImportKind, isSupportedVideoUrl, resolveLinkedVideoCardId } from "../shared/url.js";
 import {
   buildAutomaticWritingTitle,
   buildPreferredWritingFilename,
@@ -54,7 +55,9 @@ const COMMAND_ADD_SELECTION_TO_MARKDOWN = "add-selection-to-markdown";
 const COMMAND_ADD_PAGE_TO_MARKDOWN = "add-page-to-markdown";
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
-const CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID = "incremento-save-link-as-webpage";
+// Preserve the installed menu id while broadening the action from webpage-only
+// to automatic video/webpage classification.
+const CONTEXT_MENU_SAVE_LINK_ID = "incremento-save-link-as-webpage";
 let contextMenuSyncQueue = Promise.resolve();
 let lastActionState = null;
 // Start loading the saved preference immediately, without delaying MV3 listener
@@ -1022,19 +1025,19 @@ async function syncLinkSaveContextMenu() {
       const settings = await loadLinkSaveSettings();
       if (!settings.contextMenuEnabled) {
         if (chrome.contextMenus.remove) {
-          await new Promise((resolve) => chrome.contextMenus.remove(CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID, () => { void chrome.runtime?.lastError; resolve(); }));
+          await new Promise((resolve) => chrome.contextMenus.remove(CONTEXT_MENU_SAVE_LINK_ID, () => { void chrome.runtime?.lastError; resolve(); }));
         }
         return;
       }
       await new Promise((resolve) => {
         try {
           const create = () => chrome.contextMenus.create({
-            id: CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID,
+            id: CONTEXT_MENU_SAVE_LINK_ID,
             title: t("context_save_link"),
             contexts: ["link"],
           }, () => { void chrome.runtime?.lastError; resolve(); });
           if (chrome.contextMenus.update) {
-            chrome.contextMenus.update(CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID, { title: t("context_save_link") }, () => {
+            chrome.contextMenus.update(CONTEXT_MENU_SAVE_LINK_ID, { title: t("context_save_link") }, () => {
               if (chrome.runtime?.lastError) create(); else resolve();
             });
           } else {
@@ -1048,12 +1051,17 @@ async function syncLinkSaveContextMenu() {
   return contextMenuSyncQueue;
 }
 
-async function loadContextMenuLinkInfo(tabId, linkUrl) {
+async function loadContextMenuLinkInfo(tabId, linkUrl, frameId = 0) {
   if (typeof tabId !== "number" || !chrome.tabs?.sendMessage) {
     return null;
   }
+  await ensureContentScriptInjected(tabId);
   try {
-    const response = await chrome.tabs.sendMessage(tabId, { type: "GET_CONTEXT_LINK_INFO" }, { frameId: 0 });
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      { type: "GET_CONTEXT_LINK_INFO", url: String(linkUrl || "") },
+      { frameId: Math.max(0, Math.floor(Number(frameId) || 0)) },
+    );
     if (!response?.ok) {
       return null;
     }
@@ -1070,7 +1078,13 @@ async function loadContextMenuLinkInfo(tabId, linkUrl) {
   }
 }
 
-async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
+async function addExplicitLinkToIncremento(
+  tabId,
+  rawUrl,
+  rawTitle,
+  requestedKind = "webpage",
+  importOptions = {},
+) {
   await languageReady;
   const url = String(rawUrl || "").trim();
   if (!isSupportedLinkSaveUrl(url)) {
@@ -1081,12 +1095,31 @@ async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
     return { ok: false, error: message };
   }
 
-  let payload = buildImportPayload("webpage", {
+  const kind = requestedKind === "video" ? "video" : "webpage";
+  if (kind === "video" && !isSupportedVideoUrl(url)) {
+    const message = t("open_video_page");
+    if (typeof tabId === "number") {
+      await showToastInTab(tabId, message);
+    }
+    return { ok: false, error: message };
+  }
+
+  let payload = buildImportPayload(kind, {
     url,
     title: buildLinkSaveTitle(rawTitle, url),
     selectionText: "",
     html: "",
   });
+  const deckName = String(importOptions?.deckName || "").trim();
+  const tags = Array.isArray(importOptions?.tags)
+    ? importOptions.tags.map((tag) => String(tag || "").trim()).filter(Boolean)
+    : [];
+  if (deckName) {
+    payload.deckName = deckName;
+  }
+  if (tags.length > 0) {
+    payload.tags = tags;
+  }
   payload = await attachLinkedParentCard(payload, tabId, url);
 
   try {
@@ -1096,7 +1129,7 @@ async function addExplicitWebpageToIncremento(tabId, rawUrl, rawTitle) {
     }
     return { ok: true, result };
   } catch (error) {
-    const message = String(error?.message || t("add_webpage_failed"));
+    const message = String(error?.message || t("add_content_failed"));
     if (typeof tabId === "number") {
       await showToastInTab(tabId, message);
     }
@@ -1614,7 +1647,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     void (async () => {
       await languageReady;
       const tabId = typeof sender?.tab?.id === "number" ? sender.tab.id : null;
-      const result = await addExplicitWebpageToIncremento(
+      const result = await addExplicitLinkToIncremento(
         tabId,
         String(msg.url || ""),
         String(msg.title || ""),
@@ -1757,16 +1790,25 @@ chrome.action.onClicked.addListener(() => {
 
 if (chrome.contextMenus?.onClicked) {
   chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId !== CONTEXT_MENU_SAVE_LINK_AS_WEBPAGE_ID) {
+    if (info.menuItemId !== CONTEXT_MENU_SAVE_LINK_ID) {
       return;
     }
     void (async () => {
       await languageReady;
       const tabId = typeof tab?.id === "number" ? tab.id : null;
       const linkUrl = String(info.linkUrl || "").trim();
-      const contextLink = tabId !== null ? await loadContextMenuLinkInfo(tabId, linkUrl) : null;
+      const contextLink = tabId !== null
+        ? await loadContextMenuLinkInfo(tabId, linkUrl, info.frameId)
+        : null;
       const title = String(contextLink?.title || "").trim();
-      await addExplicitWebpageToIncremento(tabId, linkUrl, title);
+      const settings = await loadLinkSaveSettings();
+      await addExplicitLinkToIncremento(
+        tabId,
+        linkUrl,
+        title,
+        classifyLinkImportKind(linkUrl),
+        buildContextMenuImportOptions(settings),
+      );
     })();
   });
 }

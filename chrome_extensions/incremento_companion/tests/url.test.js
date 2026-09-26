@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  classifyLinkImportKind,
   isHttpUrl,
   isPdfUrl,
   isSupportedVideoUrl,
@@ -36,6 +37,17 @@ test("isSupportedVideoUrl rejects unsupported or malformed video URLs", () => {
   assert.equal(isSupportedVideoUrl("https://www.youtube.com/watch"), false);
   assert.equal(isSupportedVideoUrl("https://example.com/watch?v=abc123"), false);
   assert.equal(isSupportedVideoUrl("not-a-url"), false);
+});
+
+test("classifyLinkImportKind routes supported video links to video and other web links to webpage", () => {
+  assert.equal(classifyLinkImportKind("https://www.youtube.com/watch?v=abc123"), "video");
+  assert.equal(classifyLinkImportKind("https://youtu.be/abc123?t=90"), "video");
+  assert.equal(classifyLinkImportKind("https://www.youtube.com/shorts/abc123"), "video");
+  assert.equal(classifyLinkImportKind("https://vimeo.com/123456789"), "video");
+  assert.equal(classifyLinkImportKind("https://www.youtube.com/playlist?list=PL123"), "webpage");
+  assert.equal(classifyLinkImportKind("https://example.com/article"), "webpage");
+  assert.equal(classifyLinkImportKind("javascript:alert(1)"), "");
+  assert.equal(classifyLinkImportKind("not-a-url"), "");
 });
 
 test("resolveLinkedVideoCardId keeps the badge linked after the URL marker is removed", () => {

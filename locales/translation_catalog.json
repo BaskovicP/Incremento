@@ -30310,9 +30310,17 @@
     },
     {
       "component": "extension",
+      "key": "context_link_deck",
+      "form": "",
+      "source": "Right-click destination deck",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "context_save_link",
       "form": "",
-      "source": "Save link to Incremento as webpage",
+      "source": "Add link to Incremento",
       "tokens": [],
       "markup": []
     },
@@ -31743,7 +31751,7 @@
       "component": "extension",
       "key": "quick_link_save_note",
       "form": "",
-      "source": "Save clicked links directly to Incremento as webpage cards and optionally keep navigating.",
+      "source": "The right-click action recognizes supported YouTube and Vimeo videos, saves to the selected deck, and always applies the topic tag.",
       "tokens": [],
       "markup": []
     },

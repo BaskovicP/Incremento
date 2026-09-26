@@ -366,10 +366,14 @@ def test_normalize_add_content_payload_accepts_video_alias():
             "kind": "youtube",
             "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
             "title": "  Demo video  ",
+            "deckName": "Research",
+            "tags": ["topic"],
         }
     )
     assert payload["kind"] == "video"
     assert payload["title"] == "Demo video"
+    assert payload["deck_name"] == "Research"
+    assert payload["tags"] == ["topic"]
 
 
 def test_normalize_add_content_payload_keeps_pdf_base64_payload():

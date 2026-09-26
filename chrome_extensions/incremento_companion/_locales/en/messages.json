@@ -63,7 +63,7 @@
     "message": "Choose the language for the Companion interface. Changes apply immediately."
   },
   "context_save_link": {
-    "message": "Save link to Incremento as webpage"
+    "message": "Add link to Incremento"
   },
   "item_one": {
     "message": "$COUNT$ item",
@@ -153,7 +153,7 @@
     "message": "Quick link save"
   },
   "quick_link_save_note": {
-    "message": "Save clicked links directly to Incremento as webpage cards and optionally keep navigating."
+    "message": "The right-click action recognizes supported YouTube and Vimeo videos, saves to the selected deck, and always applies the topic tag."
   },
   "enable_modifier_save": {
     "message": "Enable modifier-click save on links"
@@ -166,6 +166,9 @@
   },
   "enable_context_link": {
     "message": "Enable right-click link action"
+  },
+  "context_link_deck": {
+    "message": "Right-click destination deck"
   },
   "save_quick_link_settings": {
     "message": "Save quick link settings"

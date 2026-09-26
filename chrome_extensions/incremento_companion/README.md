@@ -84,7 +84,7 @@ Snapshots are limited to the current viewport, but you can scroll between captur
 
 ## Save links while browsing
 
-The **Quick link save** section of the popup can create Incremento Web cards without first opening the target link.
+The **Quick link save** section of the popup can create Incremento cards without first opening the target link.
 
 ### Modifier-click
 
@@ -99,7 +99,7 @@ Incremento creates a webpage card and displays a small success or error message 
 
 ### Right-click action
 
-Enable **Enable right-click link action**, save the settings, then right-click a link and choose **Save link to Incremento as webpage**.
+Enable **Enable right-click link action**, choose the **Right-click destination deck**, save the settings, then right-click a link and choose **Add link to Incremento**. Every card created by this action receives the `topic` tag and goes to the selected deck. Supported YouTube and Vimeo video links create Incremento Video cards automatically; other HTTP(S) links create Incremento Web cards. YouTube watch, short, live, embed, and `youtu.be` links are recognized, and a timestamp in the clicked URL is preserved.
 
 Links saved from a tab linked to an Incremento card retain that card as their source/parent context.
 

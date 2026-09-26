@@ -63,7 +63,7 @@
     "message": "Odaberite jezik sučelja dodatka. Promjene se primjenjuju odmah."
   },
   "context_save_link": {
-    "message": "Spremi poveznicu u Incremento kao mrežnu stranicu"
+    "message": "Dodaj poveznicu u Incremento"
   },
   "item_one": {
     "message": "$COUNT$ stavka",
@@ -153,7 +153,7 @@
     "message": "Brzo spremanje poveznice"
   },
   "quick_link_save_note": {
-    "message": "Spremite kliknute poveznice izravno u Incremento kao kartice mrežnih stranica i po želji nastavite navigaciju."
+    "message": "Radnja desnog klika prepoznaje podržane YouTube i Vimeo videozapise, sprema u odabrani špil i uvijek dodaje oznaku topic."
   },
   "enable_modifier_save": {
     "message": "Omogući spremanje poveznica klikom s modifikatorom"
@@ -166,6 +166,9 @@
   },
   "enable_context_link": {
     "message": "Omogući radnju poveznice desnom tipkom"
+  },
+  "context_link_deck": {
+    "message": "Odredišni špil za desni klik"
   },
   "save_quick_link_settings": {
     "message": "Spremi postavke brzog spremanja poveznica"

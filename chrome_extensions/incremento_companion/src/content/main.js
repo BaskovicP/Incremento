@@ -231,9 +231,17 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     if (!isSupportedLinkSaveUrl(url)) {
       return null;
     }
+    const accessibleTitle = String(
+      anchor.getAttribute?.("aria-label")
+      || anchor.getAttribute?.("title")
+      || anchor.querySelector?.("[aria-label]")?.getAttribute?.("aria-label")
+      || anchor.querySelector?.("[title]")?.getAttribute?.("title")
+      || anchor.textContent
+      || ""
+    );
     return {
       url,
-      title: buildLinkSaveTitle(anchor.textContent || "", url),
+      title: buildLinkSaveTitle(accessibleTitle, url),
     };
   }
 
@@ -499,10 +507,25 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         return false;
       }
       if (msg.type === "GET_CONTEXT_LINK_INFO") {
+        const requestedUrl = String(msg.url || "").trim();
+        let linkInfo = lastContextLinkInfo;
+        if (requestedUrl && String(linkInfo?.url || "") !== requestedUrl) {
+          let matchingAnchor = null;
+          const links = document.links || [];
+          const limit = Math.min(Number(links.length) || 0, 2_000);
+          for (let index = 0; index < limit; index += 1) {
+            const anchor = links[index];
+            if (String(anchor?.href || anchor?.getAttribute?.("href") || "").trim() === requestedUrl) {
+              matchingAnchor = anchor;
+              break;
+            }
+          }
+          linkInfo = buildAnchorLinkInfo(matchingAnchor || null);
+        }
         sendResponse?.({
           ok: true,
-          url: String(lastContextLinkInfo?.url || ""),
-          title: String(lastContextLinkInfo?.title || ""),
+          url: String(linkInfo?.url || ""),
+          title: String(linkInfo?.title || ""),
         });
         return false;
       }

@@ -12,6 +12,7 @@ export const DEFAULT_LINK_SAVE_SETTINGS = {
   modifierKey: "alt",
   navigateAfterSave: true,
   contextMenuEnabled: true,
+  contextMenuDeckName: "Topics",
 };
 
 function collapseWhitespace(value) {
@@ -34,7 +35,33 @@ export function normalizeLinkSaveSettings(rawSettings) {
     modifierKey,
     navigateAfterSave: raw.navigateAfterSave !== false,
     contextMenuEnabled: raw.contextMenuEnabled !== false,
+    contextMenuDeckName: collapseWhitespace(raw.contextMenuDeckName).slice(0, 240)
+      || DEFAULT_LINK_SAVE_SETTINGS.contextMenuDeckName,
   };
+}
+
+export function buildContextMenuImportOptions(settings) {
+  const normalized = normalizeLinkSaveSettings(settings);
+  return {
+    deckName: normalized.contextMenuDeckName,
+    tags: ["topic"],
+  };
+}
+
+export function resolveContextMenuDeckName(savedDeckName, availableDeckNames) {
+  const available = Array.from(new Set(
+    (Array.isArray(availableDeckNames) ? availableDeckNames : [])
+      .map((name) => collapseWhitespace(name))
+      .filter(Boolean)
+  ));
+  const saved = collapseWhitespace(savedDeckName);
+  if (saved && available.includes(saved)) {
+    return saved;
+  }
+  if (available.includes("Topics")) {
+    return "Topics";
+  }
+  return available[0] || DEFAULT_LINK_SAVE_SETTINGS.contextMenuDeckName;
 }
 
 export function eventMatchesLinkSaveModifier(event, settings) {

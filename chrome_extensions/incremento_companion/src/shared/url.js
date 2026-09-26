@@ -35,6 +35,13 @@ export function isSupportedVideoUrl(url) {
   return Boolean(supportedVideoIdentity(url));
 }
 
+export function classifyLinkImportKind(url) {
+  if (!isHttpUrl(url)) {
+    return "";
+  }
+  return isSupportedVideoUrl(url) ? "video" : "webpage";
+}
+
 export function resolveLinkedVideoCardId(currentUrl, linkedContext) {
   const cardId = Math.max(0, Math.floor(Number(linkedContext?.cardId) || 0));
   if (cardId <= 0) {

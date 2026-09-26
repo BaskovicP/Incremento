@@ -63,7 +63,7 @@
     "message": "选择助手界面的语言。更改会立即生效。"
   },
   "context_save_link": {
-    "message": "将链接作为网页保存到 Incremento"
+    "message": "将链接添加到 Incremento"
   },
   "item_other": {
     "message": "$COUNT$ 项",
@@ -137,7 +137,7 @@
     "message": "快速保存链接"
   },
   "quick_link_save_note": {
-    "message": "将点击的链接直接保存为 Incremento 网页卡片，也可以继续导航。"
+    "message": "右键操作会识别受支持的 YouTube 和 Vimeo 视频，保存到所选牌组，并始终添加 topic 标签。"
   },
   "enable_modifier_save": {
     "message": "启用修饰键点击保存链接"
@@ -150,6 +150,9 @@
   },
   "enable_context_link": {
     "message": "启用右键链接操作"
+  },
+  "context_link_deck": {
+    "message": "右键操作的目标牌组"
   },
   "save_quick_link_settings": {
     "message": "保存快速链接设置"

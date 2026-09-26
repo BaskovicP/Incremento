@@ -32,6 +32,7 @@ import {
   LINK_SAVE_SETTINGS_KEY,
   MODIFIER_OPTIONS,
   normalizeLinkSaveSettings,
+  resolveContextMenuDeckName,
 } from "../shared/linkSaveModel.js";
 import {
   DEFAULT_PRIORITY,
@@ -191,6 +192,10 @@ export function PopupApp() {
   const hasSupportedPage = Boolean(activeTab && isHttpUrl(pageUrl));
   const onVideoPage = isSupportedVideoUrl(pageUrl);
   const detectedTimeText = mediaContext?.hasDetectedTime ? formatMediaTime(mediaContext.seconds) : "";
+  const contextMenuDeckName = resolveContextMenuDeckName(
+    linkSaveSettings.contextMenuDeckName,
+    deckNames,
+  );
 
   useEffect(() => {
     outcomeFlashController.current = createOutcomeFlashController({ onChange: setOutcomeFlash });
@@ -874,7 +879,10 @@ export function PopupApp() {
     setBusy(true);
     setStatus({ text: message("saving_link_settings"), kind: "" });
     try {
-      const normalized = normalizeLinkSaveSettings(linkSaveSettings);
+      const normalized = normalizeLinkSaveSettings({
+        ...linkSaveSettings,
+        contextMenuDeckName,
+      });
       await setLocalExtensionSetting(LINK_SAVE_SETTINGS_KEY, normalized);
       setLinkSaveSettings(normalized);
       setStatus({ text: message("saved_link_settings"), kind: "success" });
@@ -1211,6 +1219,23 @@ export function PopupApp() {
             }))}
           />
           <span>{t("enable_context_link")}</span>
+        </label>
+        <label className="field">
+          <span>{t("context_link_deck")}</span>
+          <select
+            value={contextMenuDeckName}
+            disabled={busy}
+            onChange={(event) => setLinkSaveSettings((current) => ({
+              ...current,
+              contextMenuDeckName: event.target.value,
+            }))}
+          >
+            {deckNames.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
         </label>
         <button
           className="ghost-btn"

@@ -389,6 +389,8 @@ If you install the optional companion extension in Chrome/Brave, it can send the
 
 It can also sync watched YouTube/Vimeo time back into Incremento video cards.
 
+For one-click link import, enable **Enable right-click link action** in the Companion popup, choose the **Right-click destination deck**, and save the quick-link settings. Right-click a link and choose **Add link to Incremento**. Every card created by this action receives the `topic` tag and goes to the selected deck. Supported YouTube and Vimeo links automatically create Incremento Video cards, while other HTTP(S) links create Incremento Web cards. The clicked link is imported without opening it first, and supported video timestamps are preserved.
+
 The popup and the full text/snapshot capture form load existing tags from the active Anki profile. Focus the tag field or type any part of a tag to open suggestions, then click one or use the arrow keys with Enter/Tab. Completion replaces only the tag currently being typed, so other space- or comma-separated tags remain intact; new tags are still accepted.
 
 You can keep multiple Chrome/Brave tabs open. Companion coordinates bridge reconnects, uses an origin-preserving local handshake for deck/tag metadata, keeps that loading independent from inspection of the current page, and serializes optional AnkiConnect video-time updates so one problematic or busy tab does not blank the popup metadata for the others.
