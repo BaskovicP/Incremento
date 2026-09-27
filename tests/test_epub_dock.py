@@ -612,10 +612,11 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
     program = r"""
         const fs = require('node:fs');
         const code = JSON.parse(fs.readFileSync(0, 'utf8')).code;
-        const textNode = {};
+        const textNode = {nodeType: 3, nodeValue: '0123456789'};
         const foreignNode = {};
         let caretNode = textNode;
         const selected = [];
+        const visualTop = offset => ({1: 10, 2: 20, 3: 20, 4: 40, 5: 60, 9: 260}[offset] ?? 20);
         const makeRange = (start = 0, end = start) => ({
           startContainer: textNode,
           endContainer: textNode,
@@ -628,6 +629,14 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
           collapse() { this.endContainer = this.startContainer; this.endOffset = this.startOffset; },
           cloneRange() { return makeRange(this.startOffset, this.endOffset); },
           compareBoundaryPoints(_how, source) { return this.startOffset - source.startOffset; },
+          selectNodeContents(node) { this.selectedNode = node; },
+          getClientRects() {
+            if (!this.selectedNode) return [];
+            return [20, 40, 60].map(top => ({left: 0, right: 10, top, bottom: top + 18, width: 10, height: 18}));
+          },
+          getBoundingClientRect() {
+            return {left: this.startOffset, top: visualTop(this.startOffset), width: 0, height: 18};
+          },
         });
         const document = { createRange: () => makeRange() };
         const window = {
@@ -647,35 +656,40 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
           },
         };
         const textNodes = () => [textNode];
-        const caretRangeAtPoint = x => {
-          const range = makeRange(x, x);
+        const caretRangeAtPoint = (x, y) => {
+          const offset = x === 9 && y === 57 ? 4 : x;
+          const range = makeRange(offset, offset);
           range.startContainer = caretNode;
           range.endContainer = caretNode;
           range.commonAncestorContainer = caretNode;
           return range;
         };
         const reportSelection = () => {};
-        const event = (x, buttons = 1) => ({
+        const event = (x, buttons = 1, y = 10) => ({
           button: 0, buttons, isPrimary: true, pointerId: 12,
-          clientX: x, clientY: 10, target: dragTarget,
+          clientX: x, clientY: y, target: dragTarget,
           preventDefault() { this.defaultPrevented = true; },
         });
         eval(code);
-        const down = event(2);
+        const down = event(2, 1, 20);
         beginPreciseSelectionDrag(down);
         const nativeSelection = event(2);
         blockNativeSelectionDuringPreciseDrag(nativeSelection);
-        const first = event(3);
+        const first = event(3, 1, 20);
         updatePreciseSelectionDrag(first);
         const forward = [selected[0].startOffset, selected[0].endOffset];
-        updatePreciseSelectionDrag(event(5));
+        updatePreciseSelectionDrag(event(5, 1, 60));
         const later = [selected[0].startOffset, selected[0].endOffset];
-        updatePreciseSelectionDrag(event(1));
+        updatePreciseSelectionDrag(event(9, 1, 59));
+        const interline = [selected[0].startOffset, selected[0].endOffset];
+        updatePreciseSelectionDrag(event(9, 1, 55));
+        const rejectedJump = [selected[0].startOffset, selected[0].endOffset];
+        updatePreciseSelectionDrag(event(1, 1, 10));
         const backward = [selected[0].startOffset, selected[0].endOffset];
         caretNode = foreignNode;
         updatePreciseSelectionDrag(event(9));
         const outside = [selected[0].startOffset, selected[0].endOffset];
-        finishPreciseSelectionDrag(event(1, 0));
+        finishPreciseSelectionDrag(event(1, 0, 10));
         const afterRelease = event(1, 0);
         blockNativeSelectionDuringPreciseDrag(afterRelease);
         process.stdout.write(JSON.stringify({
@@ -684,7 +698,7 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
           afterReleasePrevented: !!afterRelease.defaultPrevented,
           pointerReleased: capturedPointer === null,
           movePrevented: !!first.defaultPrevented,
-          forward, later, backward, outside,
+          forward, later, interline, rejectedJump, backward, outside,
         }));
     """
     result = subprocess.run(
@@ -703,6 +717,8 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         "movePrevented": True,
         "forward": [2, 3],
         "later": [2, 5],
+        "interline": [2, 4],
+        "rejectedJump": [2, 4],
         "backward": [1, 2],
         "outside": [1, 2],
     }

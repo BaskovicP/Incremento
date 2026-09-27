@@ -2219,6 +2219,106 @@ def _build_page_script(
           return null;
         }}
       }}
+      function preciseCaretVisualPoint(caret) {{
+        if (!caret) return null;
+        try {{
+          let rect = caret.getBoundingClientRect ? caret.getBoundingClientRect() : null;
+          if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) {{
+            const node = caret.startContainer;
+            const length = node && node.nodeType === 3 ? String(node.nodeValue || '').length : 0;
+            if (!length) return null;
+            const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, length));
+            const probe = document.createRange();
+            if (offset < length) {{
+              probe.setStart(node, offset);
+              probe.setEnd(node, offset + 1);
+            }} else {{
+              probe.setStart(node, offset - 1);
+              probe.setEnd(node, offset);
+            }}
+            rect = probe.getBoundingClientRect ? probe.getBoundingClientRect() : null;
+          }}
+          if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
+          return {{
+            y: Number(rect.top) + (Number(rect.height) / 2),
+            height: Number(rect.height),
+          }};
+        }} catch (err) {{
+          return null;
+        }}
+      }}
+      function preciseTextRowRects(nodes) {{
+        const rows = [];
+        try {{
+          for (const node of nodes) {{
+            if (rows.length >= 4000) break;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const rects = range.getClientRects ? Array.from(range.getClientRects()) : [];
+            for (const rect of rects) {{
+              if (!rect || !(Number(rect.height) > 0) || !(Number(rect.width) >= 0)) continue;
+              rows.push({{
+                top: Number(rect.top), bottom: Number(rect.bottom),
+                left: Number(rect.left), right: Number(rect.right),
+                height: Number(rect.height),
+              }});
+              if (rows.length >= 4000) break;
+            }}
+          }}
+        }} catch (err) {{
+          return [];
+        }}
+        return rows;
+      }}
+      function preciseCaretAtPoint(session, clientX, clientY) {{
+        const x = Number(clientX);
+        const y = Number(clientY);
+        const nativeCaret = caretRangeAtPoint(x, y);
+        const nativePoint = preciseCaretVisualPoint(nativeCaret);
+        const nativeIsNearby = nativePoint
+          && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
+        if (nativeIsNearby || !session.rows.length) return nativeCaret;
+        let nearest = null;
+        let nearestDistance = Infinity;
+        for (const row of session.rows) {{
+          const verticalDistance = y < row.top ? row.top - y : (y > row.bottom ? y - row.bottom : 0);
+          const horizontalDistance = x < row.left ? row.left - x : (x > row.right ? x - row.right : 0);
+          const distance = verticalDistance * 10000 + horizontalDistance;
+          if (distance < nearestDistance) {{
+            nearest = row;
+            nearestDistance = distance;
+          }}
+        }}
+        if (!nearest) return nativeCaret;
+        const inset = Math.min(1, Math.max(0, nearest.height / 4));
+        const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
+        const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
+        const snapped = caretRangeAtPoint(probeX, probeY);
+        return snapped && snapped.startContainer && session.nodes.has(snapped.startContainer)
+          ? snapped : nativeCaret;
+      }}
+      function preciseCaretMovementMatchesPointer(session, caret, clientY) {{
+        const nextPointerY = Number(clientY);
+        const nextPoint = preciseCaretVisualPoint(caret);
+        const previousPointerY = session.lastPointerY;
+        const previousPoint = session.lastCaretPoint;
+        session.lastPointerY = nextPointerY;
+        if (!nextPoint) return true;
+        if (!previousPoint || !Number.isFinite(previousPointerY) || !Number.isFinite(nextPointerY)) {{
+          session.lastCaretPoint = nextPoint;
+          return true;
+        }}
+        const pointerDelta = nextPointerY - previousPointerY;
+        const caretDelta = nextPoint.y - previousPoint.y;
+        const lineHeight = Math.max(1, previousPoint.height, nextPoint.height);
+        const movesOpposite = Math.abs(pointerDelta) >= 1
+          && pointerDelta * caretDelta < 0
+          && Math.abs(caretDelta) > lineHeight * 0.75;
+        const leapsPastPointer = Math.abs(caretDelta) > Math.abs(pointerDelta) + lineHeight * 2.25;
+        if (movesOpposite || leapsPastPointer) return false;
+        session.lastCaretPoint = nextPoint;
+        return true;
+      }}
       function replaceEpubSelection(range) {{
         const selection = window.getSelection ? window.getSelection() : null;
         if (!selection || !range) return false;
@@ -2259,9 +2359,12 @@ def _build_page_script(
         window._incrementoEpubPreciseSelectionDrag = {{
           anchor,
           nodes: new Set(nodes),
+          rows: preciseTextRowRects(nodes),
           moved: false,
           pointerId,
           captureTarget: target || null,
+          lastPointerY: Number(event.clientY),
+          lastCaretPoint: preciseCaretVisualPoint(caret),
         }};
         if (pointerId !== null && target && target.setPointerCapture) {{
           try {{ target.setPointerCapture(pointerId); }} catch (err) {{}}
@@ -2271,8 +2374,9 @@ def _build_page_script(
         const session = window._incrementoEpubPreciseSelectionDrag;
         if (!session) return false;
         event.preventDefault();
-        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
+        const caret = preciseCaretAtPoint(session, event.clientX, event.clientY);
         if (!caret || !caret.startContainer || !session.nodes.has(caret.startContainer)) return false;
+        if (!preciseCaretMovementMatchesPointer(session, caret, event.clientY)) return false;
         const next = preciseSelectionRange(session.anchor, caret);
         if (!next || !replaceEpubSelection(next)) return false;
         session.moved = session.moved || !next.collapsed;

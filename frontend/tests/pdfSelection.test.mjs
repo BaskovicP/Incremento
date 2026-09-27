@@ -199,12 +199,13 @@ test('dragging a live selection handle moves only that endpoint and cannot cross
 });
 
 test('initial trackpad drag follows the nearest character instead of accepting native row jumps', () => {
-  const textNode = {};
+  const textNode = { nodeType: 3, nodeValue: '0123456789' };
   const foreignNode = {};
   const layerListeners = new Map();
   const documentListeners = new Map();
   const selected = [];
   let caretNode = textNode;
+  const visualTop = offset => ({ 1: 10, 2: 20, 3: 20, 4: 40, 5: 60, 9: 260 }[offset] ?? 20);
   const makeRange = (start = 0, end = start) => ({
     startContainer: textNode,
     endContainer: textNode,
@@ -217,16 +218,37 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     collapse() { this.endContainer = this.startContainer; this.endOffset = this.startOffset; },
     cloneRange() { return makeRange(this.startOffset, this.endOffset); },
     compareBoundaryPoints(_how, source) { return this.startOffset - source.startOffset; },
+    selectNodeContents(node) { this.selectedNode = node; },
+    getClientRects() {
+      if (!this.selectedNode) return [];
+      return [20, 40, 60].map(top => ({ left: 0, right: 10, top, bottom: top + 18, width: 10, height: 18 }));
+    },
+    getBoundingClientRect() {
+      return { left: this.startOffset, top: visualTop(this.startOffset), width: 0, height: 18 };
+    },
   });
   const document = {
-    caretRangeFromPoint: x => {
-      const range = makeRange(x, x);
+    caretRangeFromPoint: (x, y) => {
+      const offset = x === 9 && y === 57 ? 4 : x;
+      const range = makeRange(offset, offset);
       range.startContainer = caretNode;
       range.endContainer = caretNode;
       range.commonAncestorContainer = caretNode;
       return range;
     },
     createRange: () => makeRange(),
+    createTreeWalker: () => {
+      let visited = false;
+      return {
+        currentNode: null,
+        nextNode() {
+          if (visited) return false;
+          visited = true;
+          this.currentNode = textNode;
+          return true;
+        },
+      };
+    },
     addEventListener: (name, callback) => documentListeners.set(name, callback),
     removeEventListener: (name, callback) => {
       assert.equal(documentListeners.get(name), callback);
@@ -283,10 +305,24 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   assert.equal(oneCharacter.defaultPrevented, true);
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 3]);
 
-  documentListeners.get('pointermove')(event(5));
+  documentListeners.get('pointermove')(event(5, { clientY: 60 }));
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 5]);
 
-  documentListeners.get('pointermove')(event(1));
+  documentListeners.get('pointermove')(event(9, { clientY: 59 }));
+  assert.deepEqual(
+    [selected[0].startOffset, selected[0].endOffset],
+    [2, 4],
+    'an interline pointer must snap to the nearest rendered row',
+  );
+
+  documentListeners.get('pointermove')(event(9, { clientY: 55 }));
+  assert.deepEqual(
+    [selected[0].startOffset, selected[0].endOffset],
+    [2, 4],
+    'reversing upward must reject a caret that spuriously jumps many rows downward',
+  );
+
+  documentListeners.get('pointermove')(event(1, { clientY: 10 }));
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
 
   caretNode = foreignNode;

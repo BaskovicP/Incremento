@@ -8971,6 +8971,108 @@
     selection.addRange(range);
     return true;
   }
+  function caretVisualPoint(document2, caret) {
+    var _a, _b;
+    if (!document2 || !caret) return null;
+    try {
+      let rect = (_a = caret.getBoundingClientRect) == null ? void 0 : _a.call(caret);
+      if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) {
+        const node = caret.startContainer;
+        const length = (node == null ? void 0 : node.nodeType) === 3 ? String(node.nodeValue || "").length : 0;
+        if (!length) return null;
+        const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, length));
+        const probe = document2.createRange();
+        if (offset < length) {
+          probe.setStart(node, offset);
+          probe.setEnd(node, offset + 1);
+        } else {
+          probe.setStart(node, offset - 1);
+          probe.setEnd(node, offset);
+        }
+        rect = (_b = probe.getBoundingClientRect) == null ? void 0 : _b.call(probe);
+      }
+      if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
+      return {
+        y: Number(rect.top) + Number(rect.height) / 2,
+        height: Number(rect.height)
+      };
+    } catch (_error) {
+      return null;
+    }
+  }
+  function collectTextRowRects(document2, root) {
+    var _a, _b, _c, _d;
+    if (!document2 || !root || typeof document2.createTreeWalker !== "function") return [];
+    const rows = [];
+    try {
+      const showText = ((_b = (_a = document2.defaultView) == null ? void 0 : _a.NodeFilter) == null ? void 0 : _b.SHOW_TEXT) ?? 4;
+      const walker = document2.createTreeWalker(root, showText);
+      while (walker.nextNode() && rows.length < 4e3) {
+        const node = walker.currentNode;
+        if (!((_c = node == null ? void 0 : node.nodeValue) == null ? void 0 : _c.length)) continue;
+        const range = document2.createRange();
+        range.selectNodeContents(node);
+        for (const rect of Array.from(((_d = range.getClientRects) == null ? void 0 : _d.call(range)) || [])) {
+          if (!rect || !(Number(rect.height) > 0) || !(Number(rect.width) >= 0)) continue;
+          rows.push({
+            top: Number(rect.top),
+            bottom: Number(rect.bottom),
+            left: Number(rect.left),
+            right: Number(rect.right),
+            height: Number(rect.height)
+          });
+        }
+      }
+    } catch (_error) {
+      return [];
+    }
+    return rows;
+  }
+  function caretAtStablePoint(document2, root, session, clientX, clientY) {
+    const x = Number(clientX);
+    const y = Number(clientY);
+    const nativeCaret = caretRangeAtPoint(document2, x, y);
+    const nativePoint = caretVisualPoint(document2, nativeCaret);
+    const nativeIsNearby = nativePoint && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
+    if (nativeIsNearby || !session.textRows.length) return nativeCaret;
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const row of session.textRows) {
+      const verticalDistance = y < row.top ? row.top - y : y > row.bottom ? y - row.bottom : 0;
+      const horizontalDistance = x < row.left ? row.left - x : x > row.right ? x - row.right : 0;
+      const distance = verticalDistance * 1e4 + horizontalDistance;
+      if (distance < nearestDistance) {
+        nearest = row;
+        nearestDistance = distance;
+      }
+    }
+    if (!nearest) return nativeCaret;
+    const inset = Math.min(1, Math.max(0, nearest.height / 4));
+    const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
+    const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
+    const snapped = caretRangeAtPoint(document2, probeX, probeY);
+    return (snapped == null ? void 0 : snapped.startContainer) && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+  }
+  function caretMovementMatchesPointer(document2, session, caret, clientY) {
+    const nextPointerY = Number(clientY);
+    const nextPoint = caretVisualPoint(document2, caret);
+    const previousPointerY = session.lastPointerY;
+    const previousPoint = session.lastCaretPoint;
+    session.lastPointerY = nextPointerY;
+    if (!nextPoint) return true;
+    if (!previousPoint || !Number.isFinite(previousPointerY) || !Number.isFinite(nextPointerY)) {
+      session.lastCaretPoint = nextPoint;
+      return true;
+    }
+    const pointerDelta = nextPointerY - previousPointerY;
+    const caretDelta = nextPoint.y - previousPoint.y;
+    const lineHeight = Math.max(1, previousPoint.height, nextPoint.height);
+    const movesOpposite = Math.abs(pointerDelta) >= 1 && pointerDelta * caretDelta < 0 && Math.abs(caretDelta) > lineHeight * 0.75;
+    const leapsPastPointer = Math.abs(caretDelta) > Math.abs(pointerDelta) + lineHeight * 2.25;
+    if (movesOpposite || leapsPastPointer) return false;
+    session.lastCaretPoint = nextPoint;
+    return true;
+  }
   function installPrecisePdfSelectionDrag(textLayer, {
     document: document2 = globalThis.document,
     window: window2 = globalThis.window
@@ -8998,8 +9100,9 @@
       var _a;
       if (!session) return false;
       (_a = event.preventDefault) == null ? void 0 : _a.call(event);
-      const caret = caretRangeAtPoint(document2, Number(event.clientX), Number(event.clientY));
+      const caret = caretAtStablePoint(document2, textLayer, session, event.clientX, event.clientY);
       if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return false;
+      if (!caretMovementMatchesPointer(document2, session, caret, event.clientY)) return false;
       const next = preciseRangeFromAnchor(document2, session.anchor, caret);
       if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
       return replaceSelection(window2, next);
@@ -9025,7 +9128,13 @@
       (_b = anchor.collapse) == null ? void 0 : _b.call(anchor, true);
       if (!replaceSelection(window2, anchor)) return;
       const pointerId = usePointerEvents && Number.isFinite(event.pointerId) ? event.pointerId : null;
-      session = { anchor, pointerId };
+      session = {
+        anchor,
+        pointerId,
+        lastPointerY: Number(event.clientY),
+        lastCaretPoint: caretVisualPoint(document2, caret),
+        textRows: collectTextRowRects(document2, textLayer)
+      };
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
         try {
           textLayer.setPointerCapture(pointerId);

@@ -43,6 +43,114 @@ function replaceSelection(window, range) {
   return true;
 }
 
+function caretVisualPoint(document, caret) {
+  if (!document || !caret) return null;
+  try {
+    let rect = caret.getBoundingClientRect?.();
+    if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) {
+      const node = caret.startContainer;
+      const length = node?.nodeType === 3 ? String(node.nodeValue || '').length : 0;
+      if (!length) return null;
+      const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, length));
+      const probe = document.createRange();
+      if (offset < length) {
+        probe.setStart(node, offset);
+        probe.setEnd(node, offset + 1);
+      } else {
+        probe.setStart(node, offset - 1);
+        probe.setEnd(node, offset);
+      }
+      rect = probe.getBoundingClientRect?.();
+    }
+    if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
+    return {
+      y: Number(rect.top) + (Number(rect.height) / 2),
+      height: Number(rect.height),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function collectTextRowRects(document, root) {
+  if (!document || !root || typeof document.createTreeWalker !== 'function') return [];
+  const rows = [];
+  try {
+    const showText = document.defaultView?.NodeFilter?.SHOW_TEXT ?? 4;
+    const walker = document.createTreeWalker(root, showText);
+    while (walker.nextNode() && rows.length < 4000) {
+      const node = walker.currentNode;
+      if (!node?.nodeValue?.length) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of Array.from(range.getClientRects?.() || [])) {
+        if (!rect || !(Number(rect.height) > 0) || !(Number(rect.width) >= 0)) continue;
+        rows.push({
+          top: Number(rect.top),
+          bottom: Number(rect.bottom),
+          left: Number(rect.left),
+          right: Number(rect.right),
+          height: Number(rect.height),
+        });
+      }
+    }
+  } catch (_error) {
+    return [];
+  }
+  return rows;
+}
+
+function caretAtStablePoint(document, root, session, clientX, clientY) {
+  const x = Number(clientX);
+  const y = Number(clientY);
+  const nativeCaret = caretRangeAtPoint(document, x, y);
+  const nativePoint = caretVisualPoint(document, nativeCaret);
+  const nativeIsNearby = nativePoint
+    && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
+  if (nativeIsNearby || !session.textRows.length) return nativeCaret;
+
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const row of session.textRows) {
+    const verticalDistance = y < row.top ? row.top - y : (y > row.bottom ? y - row.bottom : 0);
+    const horizontalDistance = x < row.left ? row.left - x : (x > row.right ? x - row.right : 0);
+    const distance = verticalDistance * 10000 + horizontalDistance;
+    if (distance < nearestDistance) {
+      nearest = row;
+      nearestDistance = distance;
+    }
+  }
+  if (!nearest) return nativeCaret;
+  const inset = Math.min(1, Math.max(0, nearest.height / 4));
+  const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
+  const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
+  const snapped = caretRangeAtPoint(document, probeX, probeY);
+  return snapped?.startContainer && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+}
+
+function caretMovementMatchesPointer(document, session, caret, clientY) {
+  const nextPointerY = Number(clientY);
+  const nextPoint = caretVisualPoint(document, caret);
+  const previousPointerY = session.lastPointerY;
+  const previousPoint = session.lastCaretPoint;
+  session.lastPointerY = nextPointerY;
+  if (!nextPoint) return true;
+  if (!previousPoint || !Number.isFinite(previousPointerY) || !Number.isFinite(nextPointerY)) {
+    session.lastCaretPoint = nextPoint;
+    return true;
+  }
+  const pointerDelta = nextPointerY - previousPointerY;
+  const caretDelta = nextPoint.y - previousPoint.y;
+  const lineHeight = Math.max(1, previousPoint.height, nextPoint.height);
+  const movesOpposite = Math.abs(pointerDelta) >= 1
+    && pointerDelta * caretDelta < 0
+    && Math.abs(caretDelta) > lineHeight * 0.75;
+  const leapsPastPointer = Math.abs(caretDelta) > Math.abs(pointerDelta) + lineHeight * 2.25;
+  if (movesOpposite || leapsPastPointer) return false;
+  session.lastCaretPoint = nextPoint;
+  return true;
+}
+
 /**
  * Replace Chromium's initial text-drag tracking with exact caret hit-testing.
  * Qt WebEngine can jump several PDF.js rows during a trackpad drag, while
@@ -77,8 +185,9 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   const update = (event) => {
     if (!session) return false;
     event.preventDefault?.();
-    const caret = caretRangeAtPoint(document, Number(event.clientX), Number(event.clientY));
+    const caret = caretAtStablePoint(document, textLayer, session, event.clientX, event.clientY);
     if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return false;
+    if (!caretMovementMatchesPointer(document, session, caret, event.clientY)) return false;
     const next = preciseRangeFromAnchor(document, session.anchor, caret);
     if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
     return replaceSelection(window, next);
@@ -108,7 +217,13 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     anchor.collapse?.(true);
     if (!replaceSelection(window, anchor)) return;
     const pointerId = usePointerEvents && Number.isFinite(event.pointerId) ? event.pointerId : null;
-    session = { anchor, pointerId };
+    session = {
+      anchor,
+      pointerId,
+      lastPointerY: Number(event.clientY),
+      lastCaretPoint: caretVisualPoint(document, caret),
+      textRows: collectTextRowRects(document, textLayer),
+    };
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
       try {
         textLayer.setPointerCapture(pointerId);
